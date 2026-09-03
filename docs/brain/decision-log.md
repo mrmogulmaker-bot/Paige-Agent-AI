@@ -1,5 +1,30 @@
 # Decision Log — chronological one-liners
 
+- **CORRECTION to the entry below, same day: the role gate I added was global where it had to be tenant-scoped (2026-09-03, `business_context.readiness`)** —
+  an adversarial read of my own pushed diff, run while CI was still going, found the gate added to
+  close the client-leak was itself wrong. It copied the Pipeline reference adapter's
+  `has_any_role(uid, array['admin','super_admin','coach'])`; `user_roles` carries **no `tenant_id`**,
+  so it answers the wrong question in both directions (§59's global-role trap). It **wrongly admits**
+  a user who holds 'admin' from workspace X while they resolve workspace Y, and it **wrongly refuses**
+  a freshly provisioned Solo owner, because the current deferred-signup path
+  (`record_signup_acceptance` / `provision_tenant`, `20260808190000`) grants the base role `'user'`
+  and nothing else — silently turning away the exact persona the capability exists for, since a
+  refusal renders nothing in chat. **Measured on prod before changing anything** (counts only, no
+  PII): of the 7 users who resolve a tenant, the global and tenant-scoped gates admit the **same 7** —
+  0 wrongly admitted, 0 wrongly refused *today*. All 7 owners hold `admin`, which is history rather
+  than construction. So the change is a no-op for every current user and closes both holes going
+  forward. Now `is_tenant_admin(<resolved tenant>) OR is_platform_owner()`. **The test could not have
+  caught it** — it inserted the `user_roles` rows itself, proving the gate works without ever proving
+  real owners hold that role; the refused fixture now carries a GLOBAL staff role while remaining a
+  mere workspace `member`, so a regression to a global predicate turns 3 assertions red (mutation-
+  proven) instead of passing for the wrong reason. **Flagged upstream, not fixed here:**
+  `get_pipeline_spine_evidence` still carries the global predicate; its binding is `PARTIAL` with no
+  authenticated drive, so the path where it matters has never been exercised. **Also in this
+  correction:** the migration collided a SECOND time (`20261111000000` was taken by
+  `the_offer_editor…` in the minutes between my check and my push), reddening both `verify` and
+  `database-contract` for one cause — the repo's own `npm run lint:migration-versions` catches this
+  and was not run locally; it is now, and lessons-learned 0c is amended to say so.
+
 - **Systems Check and PAIGE were reading a table Setup stopped writing to — three defects, not one (2026-09-03, `business_context.readiness`)** —
   the reported symptom was "Systems Check and PAIGE report old or separate findings after Setup is
   updated," which sounds like staleness. A source-to-consumer trace found it is **not a staleness
