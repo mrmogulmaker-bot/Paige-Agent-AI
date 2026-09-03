@@ -166,6 +166,52 @@ function recordInherited(id, pairs) {
   }
 }
 
+/**
+ * THE ACT, WHILE YOU ARE POINTING AT IT.
+ *
+ * The resting contrast sweep never sees a hover state, so a hover rule that destroys the label is
+ * invisible to it. This surface shipped one: hover moved the ground to `--violet-2`, which is
+ * LIGHTER than `--violet` in both palettes, against a label fixed at white — 4.43:1 in light and
+ * 2.57:1 in dark, on the buttons that record a payment processor and create an offer. Measured
+ * here so it cannot come back.
+ */
+async function actHoverContrast(page) {
+  const buttons = await page.$$(".so .btn-p");
+  const out = [];
+  for (const button of buttons) {
+    await button.hover();
+    await page.waitForTimeout(60);
+    out.push(await button.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const parse = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const lum = (rgb) => {
+        const [r, g, b] = rgb.map((c) => {
+          const v = c / 255;
+          return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      // Walk to the first non-transparent ground, exactly as the resting sweep does.
+      let node = el, bg = null;
+      while (node && !bg) {
+        const value = getComputedStyle(node).backgroundColor;
+        if (value && !/rgba\(0, 0, 0, 0\)|transparent/.test(value)) bg = parse(value);
+        node = node.parentElement;
+      }
+      if (!bg) return null;
+      const fg = parse(style.color);
+      const lf = lum(fg), lg = lum(bg);
+      const ratio = (Math.max(lf, lg) + 0.05) / (Math.min(lf, lg) + 0.05);
+      return {
+        label: el.textContent.trim().slice(0, 22),
+        size: parseFloat(style.fontSize),
+        ratio: Number(ratio.toFixed(2)),
+      };
+    }));
+  }
+  return out.filter(Boolean);
+}
+
 async function main() {
   await assertPortFree();
   fs.mkdirSync(OUT, { recursive: true });
@@ -269,6 +315,39 @@ async function main() {
           novel(pop.subAA).map((p) => `"${p.text}" ${p.ratio}:1 <${p.floor}`).join(" | "));
         recordInherited(id, pop.subAA);
         check(!pop.horizontal, `${id}: populated does not overflow`);
+        // The sheen must never paint OVER the sentence it marks. It shipped with `inset:0` and no
+        // z-index, which took that copy from 7.03:1 to 4.13:1 in dark every time the sweep crossed
+        // a word — a harm that exists only mid-animation, so no resting contrast sweep can see it.
+        // The stacking invariant is asserted instead: below the text, above the strip's own ground.
+        const sheen = await page.evaluate(() => {
+          const strip = document.querySelector(".so-next");
+          if (!strip) return null;
+          const after = getComputedStyle(strip, "::after");
+          return {
+            zIndex: after.zIndex,
+            isolation: getComputedStyle(strip).isolation,
+            iterations: after.animationIterationCount,
+            seconds: parseFloat(after.animationDuration) + parseFloat(after.animationDelay),
+          };
+        });
+        check(sheen !== null, `${id}: the next-step strip renders`);
+        if (sheen) {
+          check(sheen.zIndex === "-1" && sheen.isolation === "isolate",
+            `${id}: the sheen paints below the text, not over it`,
+            `z-index=${sheen.zIndex} isolation=${sheen.isolation}`);
+          // WCAG 2.2.2: motion that runs past five seconds needs a pause/stop mechanism. Ending
+          // inside five seconds meets it with nothing for anyone to operate.
+          check(sheen.iterations === "1" && sheen.seconds <= 5,
+            `${id}: the sheen stops on its own inside five seconds`,
+            `${sheen.iterations}x over ${sheen.seconds}s`);
+        }
+
+        const hovered = await actHoverContrast(page);
+        check(hovered.length > 0, `${id}: the primary acts are present to hover`, `n=${hovered.length}`);
+        const dimmed = hovered.filter((b) => b.ratio < (b.size >= 18.66 ? 3 : 4.5));
+        check(dimmed.length === 0, `${id}: every act stays readable while hovered`,
+          dimmed.map((b) => `"${b.label}" ${b.ratio}:1 @${b.size}px`).join(" | ")
+            || hovered.map((b) => `${b.ratio}:1`).join(" "));
         await page.screenshot({ path: path.join(OUT, `populated-${theme}-${frame.name}.png`), fullPage: true });
 
         // ── 3. UNREADABLE ACTIVITY — a member whose RLS filters every row. This is the state the

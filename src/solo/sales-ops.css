@@ -121,7 +121,7 @@
 .so-ready-act { display: flex; align-items: center; gap: 8px; flex: none; }
 
 .so-next {
-  position: relative; overflow: hidden;
+  position: relative; overflow: hidden; isolation: isolate;
   margin: 12px 0 14px; padding: 10px 12px; border-radius: var(--r-s);
   background: var(--gold-tint); border: 1px solid var(--gold-line);
   font-size: 12px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty;
@@ -136,12 +136,18 @@
     color-mix(in srgb, var(--gold-bright) 22%, transparent) 50%,
     transparent 70%);
   transform: translateX(-100%);
-  animation: so-sheen 8s ease-in-out infinite;
+  /* Below the text, above the strip's own ground. */
+  z-index: -1;
+  /* ONE sweep on arrival, finished in 2.1s — not an endless loop. WCAG 2.2.2 wants a pause/stop
+   * mechanism for motion that runs past five seconds, and a pause control on a decorative sheen is
+   * absurd; ending inside five seconds meets the same requirement with nothing to operate. Users
+   * who have set the OS reduced-motion flag never see it at all (below). */
+  animation: so-sheen 1.6s ease-in-out .5s;
   pointer-events: none;
 }
 @keyframes so-sheen {
-  0%, 62% { transform: translateX(-100%); }
-  92%, 100% { transform: translateX(100%); }
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
 }
 .so-next b { color: var(--ink); font-weight: 600; margin-right: 6px; }
 
@@ -187,7 +193,11 @@
  * a change to make from inside one surface (§00). `#fff` is copied verbatim from the shipped dark
  * rule rather than tokenised, because `--ink-inv` inverts per theme and would go dark on violet. */
 .paige-solo .so .btn-p { background: var(--violet); border-color: var(--violet); color: #fff; }
-.paige-solo .so .btn-p:hover { background: var(--violet-2); border-color: var(--violet-2); color: #fff; }
+.paige-solo .so .btn-p:hover {
+  background: color-mix(in srgb, var(--violet) 86%, #000);
+  border-color: color-mix(in srgb, var(--violet) 86%, #000);
+  color: #fff;
+}
 
 /* ── tables ─────────────────────────────────────────────────────────────────────────────────── */
 
@@ -201,17 +211,25 @@
 .so-tr:last-child { border-bottom: 0; }
 .so-th {
   font: 600 10.5px/1 var(--font); letter-spacing: .08em; text-transform: uppercase;
-  color: var(--violet); padding-bottom: 7px;
+  padding-bottom: 7px;
 }
 .so-tr > span { min-width: 0; font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
+/* SPECIFICITY, not preference. `.so-tr > span` is (0,1,1); every rule below was written as a bare
+ * class, (0,1,0), on a span that is a DIRECT CHILD of `.so-tr` — so the generic cell colour won and
+ * the column headers and the money figures both painted `--ink-2`. The owner asked for exactly
+ * these two things ("the fine lines, and the details… their money, their income") and neither
+ * shipped: the rules were in the stylesheet, dead. `.so-th` sets colour on the ROW, whose spans take
+ * their own colour from that same rule, so inheritance could never reach them either. Matching the
+ * child selector is what makes any of it paint. */
 .so-cell-name {
   font-weight: 500; color: var(--ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.so-num { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
-.so-num--ok   { color: var(--ok); }
-.so-num--warn { color: var(--warn); }
-.so-num--bad  { color: var(--bad); }
+.so-tr.so-th > span { color: var(--violet); }
+.so-tr > span.so-num { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
+.so-tr > span.so-num--ok   { color: var(--ok); }
+.so-tr > span.so-num--warn { color: var(--warn); }
+.so-tr > span.so-num--bad  { color: var(--bad); }
 .so-quiet { color: var(--ink-3); font-size: 11.5px; }
 
 button.so-row {

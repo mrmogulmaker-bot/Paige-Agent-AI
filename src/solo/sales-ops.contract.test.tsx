@@ -569,7 +569,13 @@ describe("Sales operations — what an owner can actually do", () => {
     expect(headings.some((h) => /Sales/.test(h))).toBe(false);
   });
 
-  it("renders no masthead above the work on a normal tab", () => {
+  it("renders no masthead above the work on any of the six tabs", () => {
+    // Every tab, not just this one. The removal is in `growth2.tsx` and applies to all six; guarded
+    // on Sales alone, restoring the banner on the other five left the whole suite green.
+    for (const slug of ["overview", "catalog", "sales", "pipeline", "social", "performance"]) {
+      renderAt(`/solo/42/growth/${slug}`);
+      expect(host.querySelector(".pg-hd"), `masthead returned on ${slug}`).toBeNull();
+    }
     renderAt("/solo/42/growth/sales");
     // The surface starts at the first band. A legacy address still gets a head — that is its only
     // orientation — but a normal tab does not.
@@ -597,6 +603,26 @@ describe("Sales operations — what an owner can actually do", () => {
     // The acts are the primary action, not a plain control.
     const act = [...host.querySelectorAll("button")].find((b) => b.textContent === "Quick offer");
     expect(act?.className).toContain("btn-p");
+
+    // AND the rules can actually WIN. The three above assert a class is on an element, which jsdom
+    // can answer without a stylesheet — they stayed green through a full revert of the round-2 CSS,
+    // and stayed green while the money figure painted `--ink-2` anyway. Every state colour lands on
+    // a span that is a DIRECT CHILD of `.so-tr`, whose own `.so-tr > span` rule is (0,1,1); a bare
+    // `.so-num--warn` is (0,1,0) and silently loses. The child selector is the whole fix.
+    const sheet = readFileSync(resolve(process.cwd(), "src/solo/sales-ops.css"), "utf8");
+    for (const tone of ["ok", "warn", "bad"]) {
+      expect(sheet).toMatch(new RegExp(`\\.so-tr\\s*>\\s*span\\.so-num--${tone}`));
+    }
+    expect(sheet).toMatch(/\.so-tr\s*>\s*span\.so-num\b/);
+    // `.so-th` sets colour on the ROW; its spans take theirs from `.so-tr > span`, so inheritance
+    // can never reach them and the header rule has to name the child too.
+    expect(sheet).toMatch(/\.so-tr\.so-th\s*>\s*span/);
+    // A hover on a fixed-white label must DARKEN. `--violet-2` is lighter than `--violet` in both
+    // palettes and took the act to 2.79:1 in dark, measured.
+    expect(sheet).not.toMatch(/\.so\s+\.btn-p:hover[^}]*--violet-2/);
+    // The sheen sits below the text it marks, and stops on its own.
+    expect(sheet).toMatch(/\.so-next::after[^}]*z-index:\s*-1/s);
+    expect(sheet).not.toMatch(/animation:\s*so-sheen[^;]*infinite/);
   });
 
   it("keeps its own load phases distinct from the Campaigns snapshot's", () => {
