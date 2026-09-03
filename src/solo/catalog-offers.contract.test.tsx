@@ -1007,9 +1007,21 @@ describe("Catalog Offers — rendered flows", () => {
     expect(legacyUpsertFn).toContain(
       '.from("tenants")\n    .select("account_type, parent_tenant_id")\n    .eq("id", tenantId)',
     );
-    expect(legacyUpsertFn).toContain('tenantRow.account_type !== "standalone"');
-    expect(legacyUpsertFn).toContain('tenantRow.parent_tenant_id !== null');
-    expect(legacyUpsertFn).toContain('return json(403, { error: "solo_workspaces_only" });');
+    // Asserted as ONE contiguous block, not as separate toContain checks on each condition: an
+    // independent review of the pushed diff flagged that two separate substring checks cannot tell
+    // `||` from `&&` — a mutation joining these with `&&` instead of `||` would still contain every
+    // substring a split assertion could check, while silently letting an Agency/Enterprise tenant
+    // (parent_tenant_id IS NULL, account_type != "standalone") slip through, since `false && true`
+    // is `false`. Matching the exact source block, operator included, closes that gap.
+    expect(legacyUpsertFn).toContain(
+      '  if (\n' +
+      '    !tenantRow ||\n' +
+      '    tenantRow.parent_tenant_id !== null ||\n' +
+      '    tenantRow.account_type !== "standalone"\n' +
+      '  ) {\n' +
+      '    return json(403, { error: "solo_workspaces_only" });\n' +
+      '  }',
+    );
     // Runs AFTER the membership/role check and BEFORE any product row is created or updated.
     const memberAt = legacyUpsertFn.indexOf('return json(403, { error: "tenant_admin_required" });');
     const tierAt = legacyUpsertFn.indexOf('return json(403, { error: "solo_workspaces_only" });');
