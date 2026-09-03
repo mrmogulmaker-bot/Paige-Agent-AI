@@ -73,10 +73,17 @@ user id, deal id or stage text.
 
 **Production-verified grants (catalog class):** `authenticated` may EXECUTE it; `anon` may not.
 
-## A safe server-side Rail reader EXISTS and is deployed — and no consumer calls it
+## A safe server-side Rail reader EXISTS and is deployed — and as of 2026-09-03 the four owner-facing consumers CALL it
+
+> **SUPERSEDED HEADING, corrected 2026-09-03 (§58 — the dated finding below is kept, not deleted).**
+> This section was written on 2026-09-02 under the heading *"and no consumer calls it"*, which was
+> true then and is false now. **Slice B moved all four owner-facing Rail consumers onto the deployed
+> resolvers**; everything the 2026-09-02 text says about the resolver itself still stands, and
+> everything it says about *no consumer using it* is superseded by the correction section below.
 
 **Deployed 2026-09-02. Read this next to the section below, never instead of it.** The two facts are
-not in tension: the server can now answer safely, and no owner-facing screen asks it.
+not in tension: the server can now answer safely, and (as of the date this paragraph was written) no
+owner-facing screen asked it.
 
 `public.get_solo_rail_activity(p_limit integer)` — `SECURITY DEFINER`, `stable`,
 `set search_path to 'public'` — returns tenant-scoped Rail history **without granting the browser any
@@ -341,6 +348,76 @@ Two things follow:
 **Never record this as an empty feed or a healthy one.** If a future session sees no activity in Solo,
 the first hypothesis is this grant, not an idle workspace.
 
+### CORRECTED 2026-09-03 — the four owner-facing consumers now call the resolvers (Slice B)
+
+**What changed, and the one measurement that makes it matter.** `authenticated` has **no `SELECT`
+privilege on `paige_client_events`** — re-verified on production `xygzykjyynhzqytbqnzu` on
+2026-09-03: `has_table_privilege('authenticated','public.paige_client_events','SELECT')` = `false`.
+So every direct-table read in `useRailEvents.ts` and `useSoloActivityFeed.ts` was **refused in
+production, always, for every owner**. The two `useRailEvents` consumers then rendered that refusal
+as *"Nothing across your clients yet"* and *"Nothing yet"*. **The Rail feeds were not sparse; they
+were denied, and they said the opposite.**
+
+Slice B changes the seam, not the schema — no migration, and no grant was widened:
+
+| Consumer | Was | Now |
+|---|---|---|
+| `src/hooks/useRailEvents.ts` (tenant scope) | `.from("paige_client_events").eq("tenant_id", …)` | `rpc("get_solo_rail_activity", { p_limit })` — **no tenant argument exists to pass** |
+| `src/hooks/useRailEvents.ts` (client scope) | `.from("paige_client_events").eq("contact_id", …)` | `rpc("get_client_rail", { p_contact_id, p_limit, p_lens: "client" })` — the narrower lens |
+| `src/solo/data/useSoloActivityFeed.ts` | `.from("paige_client_events")` | `rpc("get_solo_rail_activity", { p_limit })` |
+| `src/components/paige/PaigeRailFeed.tsx` · `src/components/app/ClientActivityFeed.tsx` | destructured `{ events, connected }`, discarding the error | consume `historyStatus` — four states, kept apart |
+
+Verified on production the same day: both resolvers are `EXECUTE`-granted to `authenticated` and
+**not** to `anon` (`get_solo_rail_activity(integer)`, `get_client_rail(uuid,integer,text)`).
+
+**This is a §9 TIGHTENING, and naming the mechanism matters more than the fact.** The direct read
+was governed by `pce_staff_read`:
+
+```
+is_platform_owner() OR (tenant_id = current_user_tenant_id()
+                        AND has_any_role(auth.uid(), ARRAY['admin','super_admin','coach']))
+```
+
+That is the **§59 global-role trap**: `user_roles` carries no `tenant_id`, so `has_any_role` asks a
+*global* question, while `current_user_tenant_id()` honours `active_tenant_id` for an active
+`tenant_members` row at **any** role — plain `member` included. A user who is a plain member of
+workspace B and holds a global `coach`/`admin` role earned in workspace A could therefore read
+**B's entire tenant Rail** by switching workspace. `get_solo_rail_activity` closes that: it requires
+an active `tenant_members` row **of the resolved workspace** at `owner`/`admin`/`coach`.
+
+**§58 — the capability delta, stated rather than buried.** The only access removed is that
+escalation path, which is the defect. No legitimate owner loses anything: the table read was
+returning nothing to everyone. **`pce_staff_read` itself is UNCHANGED and still carries the trap** —
+it is simply unreachable from these four consumers now. Any *other* direct reader still goes through
+it; the two Analytics readers (`useClientEngagement.ts`, `CohortRetentionTable.tsx`) are exactly
+that, and remain tracked as **#802**, routed to Analytics. Fixing the policy is not this slice's,
+and the four consumers no longer depend on it either way.
+
+**Removed export (§58, deliberate):** `railHistoryFilter` — it chose *which column* to filter, a
+decision the server now owns outright. Its unit tests were replaced, not deleted, by tests of
+`railHistoryRequest` (which resolver answers which scope) and `classifyRailReadError` (42501 is a
+refusal, anything else is an outage). No user-facing capability rode on it.
+
+**Request safety (the §51 shape this also closes).** A slow answer for one workspace could
+previously land after a switch and paint under the next workspace's heading — both reads
+individually authorized, so no policy could catch it. Both hooks now carry a monotonic request
+counter, bumped **during render** on a scope change and again per read; a response is honoured only
+while the counter still matches.
+
+**METHOD NOTE, recorded because it nearly shipped as a false green.** The first version of the
+switch tests asserted the DOM *after* `act()`, which flushes passive effects — so a reset moved from
+render into a `useEffect` still passed 11/11. That test could not fail on the defect it named. The
+tests now record every committed frame from a `useLayoutEffect` (which runs after the commit's DOM
+mutations and before passive effects) and assert the previous scope appears in **none** of them.
+Each mechanism was then falsified deliberately — guard removed, guard moved into an effect, the four
+states collapsed back to `events.length === 0` — and each falsification produced the expected
+failure. **An `act()`-based assertion structurally cannot observe a painted stale frame; if a future
+session writes one, it is testing nothing.**
+
+**Still owed (§13):** authenticated owner runtime proof. Everything above is automated, static and
+production-catalog evidence. No browser drove the deployed surface as a signed-in owner in this
+session.
+
 **This verdict SURVIVED the resolver shipping, and the reason matters (2026-09-02).** A safe server
 reader is now deployed — see the section above — but `useRailEvents.ts:198` and
 `useSoloActivityFeed.ts:171` still read `paige_client_events` **directly**, and the browser still has
@@ -387,7 +464,10 @@ verdict is about the platform, not about every consumer equally.
 The status line is therefore unchanged, and the honest shape of the remaining gap has changed:
 
 > **Before:** no safe path existed.
-> **Now:** a safe path exists and no owner-facing consumer uses it.
+> **Then (2026-09-02):** a safe path exists and no owner-facing consumer uses it.
+> **Now (2026-09-03, Slice B):** all four owner-facing consumers use it, and each distinguishes
+> loading, refusal, unavailable, empty and populated. What remains owed is authenticated owner
+> runtime proof — not a code path.
 
 Do not read "the resolver is deployed" as "the Rail is readable by the owner." Those are the two
 classes this file's opening table exists to keep apart — **production catalog** proves the object is
@@ -464,6 +544,17 @@ overlap, not an oversight, and it is why the register exists.
 | 3 | **Pipeline governance repair** — issue **#755** — before any Pipeline Chat write bridge | parked, owner decision required |
 | 4 | Stale doctrine correction | done for the Trust Compass claims (PR #743) |
 | 5 | Calendar as the next bounded read-only Spine capability | not started, not authorized |
+
+> **RESOLVED 2026-09-03 by owner decision (§58 — the 2026-09-02 measurement below is kept, not
+> deleted).** No documented abandoned-work/transfer procedure exists in this repository, so the
+> ownership condition below was structurally unmeetable. The owner ruled directly: *"take ownership
+> of the Rail consumer repair now. Do not wait any longer for #776 or #729 ownership replies."*
+> **Slice B therefore adopted NOTHING from either branch.** All four consumer files were read from
+> current `origin/main` and edited in place, so no unreviewed work was imported and neither PR's
+> diff was duplicated. #729's unrelated hotfixes were deliberately not absorbed. The scope-guard
+> IDEA credited to #729 below was implemented independently and differently — and the measured
+> reason is recorded above: an effect-based reset only *shortens* the stale frame, so the guard runs
+> during render. The transfer record lives in task #29.
 
 **Two open PRs already hold Rail consumer work and must not be duplicated (measured 2026-09-02).**
 PR **#776** (`318f1dbd`) carries the now-merged `20261042000000` migration **plus** consumer changes to

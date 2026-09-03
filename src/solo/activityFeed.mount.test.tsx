@@ -19,7 +19,10 @@ import { describe, expect, it, vi } from "vitest";
  * and a list of events is worse than either alone.
  */
 
-const harness = vi.hoisted(() => ({ rows: [] as unknown[], error: null as { message: string } | null }));
+const harness = vi.hoisted(() => ({
+  rows: [] as unknown[],
+  error: null as { code?: string; message: string } | null,
+}));
 
 vi.mock("@/integrations/supabase/client", () => {
   const chain: Record<string, unknown> = {};
@@ -28,13 +31,19 @@ vi.mock("@/integrations/supabase/client", () => {
   // undefined mid-call and React reports an unhandled error even though every test passes —
   // a stub that models fewer methods than the code calls fails loudly but not as a test failure.
   for (const m of ["select", "order", "eq", "ilike", "in"]) chain[m] = () => chain;
-  chain.limit = () => Promise.resolve({ data: harness.rows, error: harness.error });
+  chain.limit = () => Promise.resolve({ data: [], error: null });
   return {
     supabase: {
       from: () => chain,
       channel: () => ({ on: () => ({ subscribe: () => ({}) }), subscribe: () => ({}) }),
       removeChannel: () => {},
-      rpc: () => Promise.resolve({ data: null, error: null }),
+      // The activity feed now reads the DEPLOYED resolver rather than the table, so the harness
+      // answers by RPC NAME. Dispatching on the name matters: this Solo tree issues other RPCs,
+      // and a blanket answer would feed this fixture to all of them.
+      rpc: (fn: string) =>
+        fn === "get_solo_rail_activity"
+          ? Promise.resolve({ data: harness.rows, error: harness.error })
+          : Promise.resolve({ data: null, error: null }),
       auth: { getUser: () => Promise.resolve({ data: { user: null } }) },
     },
   };
@@ -80,9 +89,12 @@ describe("TeamHub — the Activity tab", () => {
     unmount(m);
   });
 
-  it("replaces the timeline when the read fails, rather than showing an empty one", async () => {
+  it("replaces the timeline when the DATABASE REFUSES, rather than showing an empty one", async () => {
     harness.rows = [];
-    harness.error = { message: "permission denied" };
+    // What the deployed resolver actually raises when the caller is not entitled to this
+    // workspace's rail. Before this slice a refusal rendered as an empty timeline, which told the
+    // operator their team had done nothing all week.
+    harness.error = { code: "42501", message: "RAIL_FORBIDDEN" };
     const { TeamHub } = await import("@/solo/team");
     const m = await mount(TeamHub as React.ComponentType, "err");
     expect(m.container.textContent).toContain("not a record of nothing happening");
@@ -103,7 +115,7 @@ describe("TrustCompass — the 'Working now' panel", () => {
 
   it("says the read failed INSTEAD of listing events, not alongside them", async () => {
     harness.rows = [];
-    harness.error = { message: "permission denied" };
+    harness.error = { code: "42501", message: "RAIL_FORBIDDEN" };
     const { TrustCompass } = await import("@/solo/compass");
     const m = await mount(TrustCompass as React.ComponentType, "err");
     expect(m.container.textContent).toContain("not a record of nothing happening");
