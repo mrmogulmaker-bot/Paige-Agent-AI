@@ -236,7 +236,7 @@ a state the contract has no way to carry.
 | **`UNAVAILABLE` behaviour** | **Represented per §3.0** — the key is always present and carries an enumerated `unavailable_*` value; it is never omitted. Where a field has no proven source — today: the promotional/trial/paid classification, and any delegate authority — the capability reports that field absent with its reason. **It never substitutes a default, an inference, or a plan name it did not read.** |
 | **Freshness** | `staleAfterDays: 1`, `projectionWindowDays: 1`. The registry requires both of every evidence capability (`contracts.ts:18-19`), and an earlier revision supplied them for capability 2 alone — so the two CURRENT-STATE reads would have had their freshness chosen by whoever registered them first, and the same billing status could be stale in one implementation and current in another. Both are 1 here because this is a **current-state** read, not a history: an answer about today's plan that is a week old is not a stale answer, it is a wrong one. |
 | **Audit boundary** | The read is recorded as a read: capability key, caller, resolved tenant, outcome (`answered` / `refused` / `unavailable`). **No projected values are written to the audit record**, because an audit row is a second copy of whatever it stores. |
-| **Maturity today** | `UNAVAILABLE`. **Blocked as a capability** on SCR-2026-09-02-B (workspace subject, the non-client Chat path, **and the refusal channel**) and on **B-1**. **B-2 and B-3 block individual FIELDS, not the read** — without B-2 the caller set is Owner-only and without B-3 the classification field reports `UNAVAILABLE` with its reason, which is exactly the behaviour this contract already specifies. Listing them as capability blockers would make that fallback unreachable and hold back a useful subscription-status read for no reason. |
+| **Maturity today** | `UNAVAILABLE`. **Blocked as a capability** on SCR-2026-09-02-B (workspace subject, the non-client Chat path, **and the refusal channel**) and on **B-1**. **B-2 and B-3 block individual FIELDS, not the read** — without B-2 the caller set is Owner-only and and with B-3 now ruled (§9a) the classification field still reports `UNAVAILABLE` — because the ruling authorises a shape no source yet supplies — but for the honest reason "no conforming tenant-scoped source" rather than "the decision is owed". Listing them as capability blockers would make that fallback unreachable and hold back a useful subscription-status read for no reason. |
 
 ### 3.2 `billing.my_billing_notice_history`
 
@@ -304,7 +304,7 @@ requirements on Billing, not as designs for Billing.
 |---|---|---|---|
 | **B-1** | A **role-scoped** workspace billing status read. `get_tenant_platform_subscription()` is granted to `authenticated` with no role gate, so today any member — `coach`, `member` — can read the workspace's plan, status and renewal. That may be a deliberate product decision; it is **wider than this request's Owner-only requirement**, and the seam cannot narrow what the source hands out to every member. Billing decides: gate the existing function, or supply a gated variant. | capability 1 | **exists but ungated by role** |
 | **B-2** | A **billing authority model** — who is the workspace's billing contact, who are its delegates, and what a delegate may see. Without it, "Billing delegate" has no referent and the capabilities fall back to Owner only. | capabilities 1 and 3 | **does not exist** |
-| **B-3** | A **stated position on revenue classification visibility.** See §9 — this is the one true shared-contract decision in this request. | capability 1 | **decision owed** |
+| **B-3** | ~~A stated position on revenue classification visibility.~~ **RULED 2026-09-03 — see §9a.** Option 2, conditioned: coarse classification, own workspace, Owner-only, no raw amount, and only from a real tenant-scoped source carrying provenance and an as-of date. What is now owed is not a decision but a SOURCE of that shape — `tenant_revenue_classification` stays operator-internal and is not widened. | capability 1 | **decided; conforming source owed** |
 | **B-4** | A **billing notice ledger**: tenant-scoped, per-recipient, carrying category, occurrence time, delivery state, a **bounded actionability fact**, and a **resolution rule** (below). The owner-visible topic label is **derived from the category** by the capability, so the ledger must not store a free-text label — and it must not carry message bodies, addresses, or provider payloads. | capabilities 2 and 3 | **does not exist** |
 | | **Two additions to B-4, each because a capability promised something the ledger as first described could not produce.** (a) **Actionability**: category, time and delivery state cannot distinguish an informational notice from one the recipient must act on, so capability 2's next-action state had no producer. (b) **Resolution**: an append-only ledger of delivery *outcomes* satisfies every other clause and still cannot tell an old failure that was later delivered from one that is genuinely unresolved — so capability 3's "unresolved" counts had no producer either. B-4 must therefore carry a current lifecycle/resolution state per notice, **or** a correlation key plus a stated rule for when a later outcome resolves an earlier failure. Without one of those, "unresolved" is a word with no definition and the count reports `UNAVAILABLE`. | 2 and 3 | **owed** |
 | **B-5** | A **delivery-path availability signal** — whether billing notices can be delivered at all — distinct from whether any individual notice succeeded. | capability 3 | **does not exist** |
@@ -476,9 +476,39 @@ So there are three possible answers and this request does not choose between the
 
 **This is a §9 operator/tenant seam decision with a §57 source-of-truth dimension, and the seam is
 exactly the kind that rots when an engineer picks the convenient answer.** Option 2 is the one that
-best matches the assignment's wording; option 1 is the one that requires no seam change at all. The
-decision is the owner's with Billing, and until it is made, capability 1 declares that field
-`UNAVAILABLE` with this reason rather than guessing.
+best matches the assignment's wording; option 1 is the one that requires no seam change at all.
+
+### 9a. RULED — owner, 2026-09-03: option 2, conditioned
+
+> *"An Owner may see a coarse revenue classification for their own workspace only when it comes from
+> a real tenant-scoped source with clear provenance and date context. No raw revenue amount through
+> this Compass path; no Admin or Member access by default; show unavailable when the source is
+> absent or unverified."*
+
+Read precisely, because the conditions are the ruling and not decoration:
+
+| The ruling says | Which binds this contract to |
+|---|---|
+| **coarse classification** | the enumerated set only. No `comp_reason`, no `notes`, no tier name that encodes a negotiation. |
+| **their own workspace only** | the existing server-side tenant derivation. No parameter names a workspace, so none can be abused. |
+| **a real tenant-scoped source** | **NOT `tenant_revenue_classification`.** That table is `is_platform_owner` RLS with a comment reading *"tenants never read it"*, and this ruling does **not** widen it. Billing must expose a narrow, tenant-scoped derived field; reading the operator table directly would be the seam rot §9 names. |
+| **clear provenance and date context** | two NEW required companions to the value: where the classification came from, and as-of when. A classification with no provenance or no date is **unverified** and therefore unavailable — see the row below. |
+| **no raw revenue amount** | already true of this contract and now explicitly permanent for this path: no MRR, no invoice total, no plan price beyond the plan the workspace is on. |
+| **no Admin or Member access by default** | Owner-only stays Owner-only. A Billing delegate reaches this field only if B-2 grants that person billing-view authority explicitly (§3.1's existing rule), never by role inheritance. |
+| **show unavailable when the source is absent or unverified** | the §3.0 representation, unchanged — the key is present and carries an enumerated `unavailable_*` value. |
+
+**WHAT THIS DOES AND DOES NOT UNBLOCK, stated plainly so the ruling is not over-read.** The
+DECISION is made and B-3 is closed. The FIELD is still `UNAVAILABLE` today, because the ruling
+authorises a *shape* and no source of that shape exists yet: Billing owes a tenant-scoped derived
+classification carrying provenance and an as-of date. Until that lands, capability 1 reports the
+field unavailable — now with the reason *"no conforming tenant-scoped source"* rather than *"the
+decision is owed."* Those are different reasons and the difference is the whole of what changed.
+
+**The two new companions are a contract requirement, not a nicety.** A bare `promotional` with no
+provenance cannot be distinguished by an Owner from a stale guess, and a classification is exactly
+the kind of fact that goes quietly wrong months after it was set. `provenance` and `as_of` are
+enumerated/bounded like every other field here: an implementation that cannot supply both reports
+the classification unavailable rather than supplying the value alone.
 
 ---
 
@@ -526,7 +556,7 @@ answer (§70).
 | A platform-billing and notification-readiness check | Systems Check | **#822** | §8 |
 | Solo Settings → Notifications cleanup | Solo Shell | **#822** | §8 |
 | Client consent and delivery preferences | Client Portal | **#823** | §8 |
-| The revenue-classification visibility decision | Owner, with Billing | **#819** (B-3) | §9 |
+| ~~The revenue-classification visibility decision~~ **RULED 2026-09-03 (§9a)** — what remains is Billing supplying a conforming tenant-scoped source with provenance and an as-of date | Billing | **#819** (B-3) | §9a |
 
 Each is filed against the workstream that owns it, with the exact contract it owes and the reason
 it is blocked. None of them is work this request does on their behalf.
