@@ -26,7 +26,9 @@ The established information architecture remains:
 6. Paige brief / owner-confirmed operating context
 
 Setup uses the Settings main-content visible-scroll policy. It does not create a new Settings
-taxonomy or another PAIGE workspace.
+taxonomy or another PAIGE workspace. Paige Brief remains an anchored section on this page. Its
+**Teach Paige** action opens a guided slide-out and both **Back to Setup** and close return to the
+same Setup context; it is not a hidden page or sub-route.
 
 ## Tenant data and domain owner
 
@@ -55,6 +57,7 @@ different tenant.
 | First use | Existing sections render honest empty values and provenance; Edit Brief is available only to an authorized role |
 | Populated / partial | Stored fields render with field-level provenance and a stored revision |
 | Edit | A clearly named Edit Brief mode; legal and ownership controls appear only for workspace Owner |
+| Guided Paige Brief | Slide-out edits are temporary until applied to the main Setup draft, then remain unsaved until the ordinary durable Save changes action succeeds |
 | Validation | Field-level errors plus a focused summary; no write occurs |
 | Pending | Save controls are disabled and labelled `Saving…`; no success copy appears |
 | Saved | Render only after durable write and stored read-back; include the stored time/revision |
@@ -93,7 +96,9 @@ is not authorization.
 
 ## What PAIGE can read or do
 
-Current truth: the shared Spine registry does not declare Setup. No new Setup field is claimed as a
+Current truth: the shared Spine registry does not declare Setup. The guided Paige Brief editor is
+a manual owner-input surface; voice conversation, transcript extraction, and example indexing are
+PROPOSED and do not send content to PAIGE, Mind, Spine, or Rail. No new Setup field is claimed as a
 PAIGE, Mind, Spine, or Rail input by this repair. A future handoff may permit only reviewed,
 non-sensitive operating context such as public business name, website, regions/service area,
 offers, delivery model, ideal customer/segments, priorities, goals, constraints, brand voice,
