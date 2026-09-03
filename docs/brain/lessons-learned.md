@@ -805,8 +805,28 @@ checks, no defective guard. What was blind was the **local** run, which compares
 - A stronger pre-merge check, when it is worth the time, is to scan **every remote branch** rather
   than main: `for b in $(git branch -r ...); do git ls-tree -r --name-only "$b" supabase/migrations
   ...`. It found that only #845's and the Rail's migrations existed at or above `…48` across all
-  423 branches, which is how `20261050000000` was chosen. That is an *improvement* to a working
-  guard, not a fix for a broken one — do not file it as a defect.
+  423 branches. That is an *improvement* to a working guard, not a fix for a broken one — do not
+  file it as a defect.
+
+**And then I broke this entry's own rule, in the same session, having just quoted it.** The
+version chosen that way — `20261050000000` — was genuinely free across every branch, and still
+wrong. Production's ledger already carried `20261104000000`, `20261103000000` and
+`20261102010000`, whose files this repository could not see at the time: **shape 3, named a few
+paragraphs above.** Applying 50 would have put it behind three migrations already live. The
+branch scan answers "is it free"; only `select max(version) from
+supabase_migrations.schema_migrations` answers "does it sort after what is applied", and both
+must hold. It was caught because another PR's commit message happened to mention prod's newest
+version — luck, not method.
+
+So the check before taking a version is **two queries, not one**:
+1. free across the repo and every remote branch (the scan above), AND
+2. **strictly greater than `max(version)` in prod's ledger** (an MCP query — the repo cannot
+   tell you this).
+
+The meta-lesson, which is the reason this paragraph exists at all: reading the rule is not
+applying it. This entry was open in the same session, quoted in a commit message, and the very
+next decision violated it — because the decision *felt* thorough (423 branches!) and thoroughness
+in the wrong dimension reads exactly like rigour.
 
 **And a second-order lesson, since this is the third time this branch wrote about the same event.**
 Two of the three write-ups were wrong before they were right: the first blamed the guard, and an

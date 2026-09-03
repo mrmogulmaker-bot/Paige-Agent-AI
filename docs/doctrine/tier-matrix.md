@@ -1937,9 +1937,20 @@ What was blind was the LOCAL run, which compares against whatever `origin/main` 
 last fetched; mine predated #845, so no main-based comparison could have seen it at that moment.
 The gap is the window between a local pre-merge check and the merge itself. **Re-grounding at the
 end is necessary and still not sufficient, because the base moves after you look at it, and a green
-local lint is a hint rather than a verdict — CI is the authority.** `20261050000000` was chosen by
-scanning ALL 423 remote branches rather than main alone, which is a stronger pre-merge check than
-the local one but is not a replacement for the guard.
+local lint is a hint rather than a verdict — CI is the authority.**
+
+**A FOURTH renumber followed, and it was not a collision — it was mine.** `20261050000000` was
+chosen by scanning all 423 remote branches, and it was genuinely free. It was still wrong, because
+freedom is not the only constraint: production's ledger already carried `20261104000000`,
+`20261103000000` and `20261102010000`, so 50 would have been applied **out of order**, behind three
+migrations already live. `docs/brain/lessons-learned.md` states that rule — a replacement must sort
+after everything already applied — and names this exact shape, a version whose file the repository
+cannot see. I quoted that entry approvingly in the same session and then picked a version by
+scanning the repo without querying the ledger. It surfaced only because another PR's commit message
+mentioned prod's newest applied version, which is luck rather than method. Now `20261106000000`:
+above prod's highest applied version and free across every branch (`…1105` is taken by #850). **The
+rule: free in the repo AND greater than the maximum in prod's ledger. The repo cannot tell you the
+second thing — query it.**
 
 **Final independent review (round 8), applied.** Three findings, none blocking, all fixed rather
 than filed: this row was placed OUTSIDE the Surface ledger (under *Setup legal sender identity*),
@@ -1987,7 +1998,7 @@ and was fixed anyway, with a regression test proven red against the prior behavi
   this slice is a real round-trip to the database.
 - **Persisted apply — OWED, and this line is updated from a real query, never from the pipeline
   running.** At the time of writing the migration is not yet applied to production. §32.a requires
-  `schema_migrations` to carry `20261050000000` AND the six columns to exist on `tenant_products`
+  `schema_migrations` to carry `20261106000000` AND the six columns to exist on `tenant_products`
   AND the status CHECK to permit `paused`, each shown by a query result pasted here.
 
 **Truth label: `PARTIAL`, deliberately.** The read is real and tenant-scoped, but a tenant cannot

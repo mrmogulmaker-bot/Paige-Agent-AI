@@ -1,42 +1,44 @@
 -- Offer Catalog Slice 2A — `tenant_products` becomes the tenant's canonical OFFER record.
 --
--- VERSION NOTE — renumbered THREE times, and the third one is the instructive one.
+-- VERSION NOTE — renumbered FOUR times. The fourth is the one worth reading, because it is the
+-- only one that was not a collision, and it is the one I walked into while writing about it.
 --
--- 20261044000000 went to the Rail work. 20261045000000 went to Billing Foundation A. Then
--- 20261048000000 went to team-member removal (#845), which merged AFTER this branch had already
--- re-grounded against main and run `lint:migration-versions` clean at that exact number.
+-- 20261044000000 went to the Rail. 20261045000000 to Billing Foundation A. 20261048000000 to
+-- team-member removal (#845), which merged after this branch had re-grounded and run
+-- `lint:migration-versions` clean at that exact number.
 --
--- WHY MY CHECK MISSED IT, WHICH IS NOT THE SAME AS THE GUARD MISSING IT. Corrected after reading
--- the CI log rather than assuming: `lint:migration-versions` DID catch this, in `verify`, the
--- moment it ran against the real merge base --
+-- THE GUARD IS NOT DEFECTIVE, and an earlier version of this comment said it was. CI passes the
+-- real merge base to the lint, so it caught #845's collision the moment that PR landed --
 --
 --     BASE_REF: 1a22637c3ea8fdaa195ad24e53cec582dbc7bcd5
 --     x migration-version-collision-lint: 1 collision(s).
---       two migrations share version 20261048000000 ...
 --
--- and `database-contract` caught it independently by replaying from zero. One root cause, both
--- checks. The guard is not defective and this comment previously said it was.
+-- and `database-contract` caught it independently by replaying from zero. What was blind was the
+-- LOCAL run, whose `origin/main` predated #845. The gap is the window between a local pre-merge
+-- check and the merge itself, not a hole in the check.
 --
--- What was blind was the LOCAL run: it compares against whatever `origin/main` the working copy
--- last fetched, and mine was fetched before #845 merged, so no main-based comparison could have
--- seen it at that moment. The gap is the window between a local pre-merge check and the merge
--- itself, not a hole in the check. Re-grounding at the end is necessary and still not sufficient,
--- because the base keeps moving after you look at it. CI is the authority; a green local lint is
--- a hint.
+-- THE FOURTH RENUMBER, which no collision check would ever have reported. 20261050000000 was
+-- chosen by scanning every remote branch, and it was genuinely free. It was still WRONG, because
+-- freedom is not the only constraint: production's ledger already carried
 --
--- Two migrations sharing a version is not a naming annoyance. On a database that has ALREADY
--- applied one of them, the second is SILENTLY SKIPPED — the columns below simply never exist,
--- every tenant reads "not available on this deployment yet" forever, and the deploy looks
--- entirely successful. It only fails loudly here because a fresh replay applies both.
+--     20261104000000  solo_managed_sender_lifecycle
+--     20261103000000  solo_setup_business_context
+--     20261102010000  official_2022_naics_reference
 --
--- 20261050000000 was chosen by scanning ALL 423 remote branches rather than main alone. At that
--- moment the only migrations at or above 20261048000000 anywhere in the repository were #845's
--- (on main and five branches) and the Rail's 20261049000000 — so 50 is free against work in
--- flight, not merely against work already merged. That is a stronger PRE-merge check than a local
--- main-based one, and it is what a fourth collision would have to get past. It is not a
--- replacement for the guard, which already catches this at the merge itself.
+-- so 50 would have been applied OUT OF ORDER, behind three migrations already live. This repo's
+-- own lessons-learned entry states the rule -- a replacement version must sort AFTER everything
+-- already applied -- and it names this exact shape: a version whose file the repository cannot
+-- see, visible only in `supabase_migrations.schema_migrations`. I quoted that entry approvingly
+-- and then chose a version by scanning the REPO without ever querying the LEDGER. Caught only
+-- because another PR's commit message happened to mention prod's newest applied version, which is
+-- luck, not method.
 --
--- This range is heavily contended: six branches carried #845's migration before it merged.
+-- 20261106000000 is chosen against BOTH: above production's highest applied version (…1104), and
+-- free across all remote branches (…1105 is taken by #850). The rule, stated so the next session
+-- does not have to rediscover it: a migration version must be free in the repo AND greater than
+-- the maximum in prod's ledger. Query the ledger. The repo cannot tell you the second thing.
+--
+-- This range is heavily contended: main moved five times during this one slice.
 --
 -- WHY THIS TABLE AND NOT A NEW ONE (§18, one home per capability). `tenant_products` already IS
 -- the tenant's commercial record: it is read by the storefront (anon), the admin storefront panel,
