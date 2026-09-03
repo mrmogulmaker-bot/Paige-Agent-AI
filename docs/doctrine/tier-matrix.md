@@ -1576,6 +1576,15 @@ behind by an earlier agency act-as (#806). `/admin` now applies the same shipped
 the one change here with cross-tier reach:** an agency or enterprise operator holding more than one
 active tenant now sees the chooser on the `/admin` door too, where before they went straight through.
 
+**THE FILTER THAT ACTUALLY SEALED THE RECOVERY PATH, found live rather than in review.** The owner,
+locked into a sub-account, was sent to `/choose-account` and it bounced him straight back. Two of his
+three workspaces are on `trial`, and the chooser, the exit control and the door each counted only
+tenants whose status was exactly `active` — so he read as a one-workspace person, the picker decided
+there was nothing to choose, and returned him to the context he was escaping. Production carries 8
+`active`, 4 `trial`, 1 `canceled`. All three surfaces now count one shared population,
+`enterableWorkspaces`, which excludes only workspaces that are genuinely gone and is written as a
+DENY list so a status nobody anticipated cannot silently trap anyone again.
+
 **A SEPARATE, PRE-EXISTING SETUP CYCLE IS NOT CLOSED BY THIS, and the distinction matters.** The
 gate below adds no leg to it, but `RequireSetupComplete` holds a playbook-less Solo or sub-account
 tenant on `/admin/marketplace` while `Admin`'s own shell gates are not path-scoped, so a CANARY-ON

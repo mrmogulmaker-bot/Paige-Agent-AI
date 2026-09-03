@@ -6,6 +6,8 @@ import {
   routeAllowsTier,
   workspaceRootForTenant,
   clearWorkspaceScopedState,
+  enterableWorkspaces,
+  isEnterableTenantStatus,
   hasEnteredWorkspace,
   rememberWorkspaceEntered,
 } from "./workspaceEntry";
@@ -126,6 +128,54 @@ describe("workspace entry containment", () => {
     expect(workspaceRootForTenant(undefined)).toBeNull();
     expect(workspaceRootForTenant({ account_type: "standalone", parent_tenant_id: null, account_number: null, features: soloOn }))
       .toBeNull();
+  });
+
+  // The filter that locked the owner out of his own recovery path. Counting only
+  // `active` meant a person whose other workspaces were on `trial` looked like a
+  // one-workspace person: the chooser found nothing to choose and bounced them
+  // back into the context they were escaping. Production carries 4 trial tenants.
+  describe("which workspaces a person may be offered", () => {
+    it("treats a TRIAL workspace as enterable — it is live, not gone", () => {
+      expect(isEnterableTenantStatus("trial")).toBe(true);
+      expect(isEnterableTenantStatus("active")).toBe(true);
+    });
+
+    it("excludes only workspaces that are genuinely gone", () => {
+      expect(isEnterableTenantStatus("canceled")).toBe(false);
+      expect(isEnterableTenantStatus("cancelled")).toBe(false);
+      expect(isEnterableTenantStatus("deleted")).toBe(false);
+      expect(isEnterableTenantStatus("archived")).toBe(false);
+      expect(isEnterableTenantStatus(null)).toBe(false);
+      expect(isEnterableTenantStatus(undefined)).toBe(false);
+      expect(isEnterableTenantStatus("  ")).toBe(false);
+    });
+
+    it("is a DENY list, so a status nobody anticipated does not silently trap people", () => {
+      // The failure this shape prevents: a new status added later would, under an
+      // allow list, make every workspace carrying it unreachable with no code change.
+      expect(isEnterableTenantStatus("past_due")).toBe(true);
+      expect(isEnterableTenantStatus("grace_period")).toBe(true);
+    });
+
+    it("is case- and whitespace-tolerant, because the value comes from data", () => {
+      expect(isEnterableTenantStatus("CANCELED")).toBe(false);
+      expect(isEnterableTenantStatus(" Canceled ")).toBe(false);
+    });
+
+    it("narrows a real list to exactly the offerable workspaces", () => {
+      const tenants = [
+        { id: "solo", status: "active" },
+        { id: "child-a", status: "trial" },
+        { id: "child-b", status: "trial" },
+        { id: "gone", status: "canceled" },
+      ];
+      expect(enterableWorkspaces(tenants).map((t) => t.id)).toEqual(["solo", "child-a", "child-b"]);
+      // Three, not one. One is what made the chooser decide there was nothing to
+      // choose and send the owner back where he came from.
+      expect(enterableWorkspaces(tenants)).toHaveLength(3);
+      expect(enterableWorkspaces(null)).toEqual([]);
+      expect(enterableWorkspaces(undefined)).toEqual([]);
+    });
   });
 
   describe("entry record", () => {

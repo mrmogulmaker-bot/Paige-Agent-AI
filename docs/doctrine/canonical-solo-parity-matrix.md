@@ -95,9 +95,9 @@ Status: **RULED — enablement routed to #790.** Recorded as the first entry in 
 
 | Item | Where | Status |
 |---|---|---|
-| Switch control | `MemberAccountSwitcher.tsx:34` | **CANONICAL** — hidden unless standalone with ≥2 memberships |
+| Switch control | `WorkspaceExitControl.tsx` | **CANONICAL** (revised 2026-09-03, #811) — an EXIT, not a picker: it selects nothing and navigates to `/choose-account`, where the choice is made. Replaces `MemberAccountSwitcher.tsx`, now deleted. Shown to anyone holding more than one ENTERABLE workspace, with no tier condition — the old control required `account_type='standalone'`, so it was absent in exactly the situation that needed it |
 | Persist-before-commit | `useTenantContext.tsx:494-505` | **CANONICAL** — writes `profiles.active_tenant_id` first, commits client scope only after confirmation, so browser scope and `current_user_tenant_id()` cannot disagree |
-| Stale-request protection | four independent layers | **CANONICAL** — hard document navigation (`MemberAccountSwitcher.tsx:50`); load/subject epochs (`useTenantContext.tsx:170-178`); per-hook request gate (`settings-contract.ts:127-140`, used by 8 hooks); render-time identity fence (`account-identity.ts:60-64`) |
+| Stale-request protection | four independent layers | **CANONICAL** — hard document navigation (now `ChooseAccount.tsx` `choose()`, which is where the tenant actually changes; it moved there with the deletion of `MemberAccountSwitcher.tsx` and no layer was lost); load/subject epochs (`useTenantContext.tsx:170-178`); per-hook request gate (`settings-contract.ts:127-140`, used by 8 hooks); render-time identity fence (`account-identity.ts:60-64`) |
 | PAIGE scope cleared on switch | `SoloApp.tsx:237` + `paigeClientScope.ts:45-48` | **CANONICAL** — effect plus a read-time refusal, so the guard does not depend on winning a race |
 
 ---

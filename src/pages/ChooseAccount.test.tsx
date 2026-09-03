@@ -44,6 +44,9 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
+// Captured once, before any test can mutate the harness.
+const PRISTINE_TENANTS = harness.context.tenants.map((t) => ({ ...t }));
+
 import ChooseAccount from "./ChooseAccount";
 
 function LocationProbe() {
@@ -60,6 +63,10 @@ describe("ChooseAccount", () => {
     localStorage.clear();
     harness.membershipError = null;
     harness.context.activeTenantId = "antonio";
+    // Restore the tenant fixture. Several cases mutate it (status, canary,
+    // account_number) and without this the mutations leak forward and the next
+    // test passes or fails for a reason that has nothing to do with its subject.
+    harness.context.tenants = PRISTINE_TENANTS.map((t) => ({ ...t }));
     harness.user = { id: "user-1", email: "mrmogulmaker@gmail.com" };
     harness.memberships = [
       { tenant_id: "antonio", role: "admin" },
@@ -145,6 +152,35 @@ describe("ChooseAccount", () => {
     expect(sessionStorage.getItem("paige.workspace.entered")).toBe("mogul");
   });
 
+  // THE LOCKOUT GUARD. The owner was parked in a sub-account and could not reach
+  // this page's picker at all: two of his three workspaces were on `trial`, the
+  // filter counted only `active`, so it saw ONE choice, concluded there was
+  // nothing to choose, and redirected him back to /admin — into the exact context
+  // he was trying to leave. A trial workspace is live and must be offered.
+  it("offers TRIAL workspaces, not only active ones", async () => {
+    harness.context.tenants = harness.context.tenants.map((t) =>
+      t.id === "mogul" ? { ...t, status: "trial" } : t,
+    ) as typeof harness.context.tenants;
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    // Still two choices, so the picker RENDERS rather than bouncing to /admin.
+    // The probe always renders; what matters is that it still reads this page.
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
+    expect(host.textContent).toContain("Where do you want to work?");
+    expect(host.textContent).toContain("Mogul Maker Academy");
+  });
+
+  it("does not offer a workspace that is genuinely gone", async () => {
+    harness.context.tenants = harness.context.tenants.map((t) =>
+      t.id === "mogul" ? { ...t, status: "canceled" } : t,
+    ) as typeof harness.context.tenants;
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    expect(host.textContent).not.toContain("Mogul Maker Academy");
+  });
+
   // LOOP GUARD. `/admin` sends multi-context people here; this page re-queries
   // memberships while the door reads the tenant context, so the two can disagree.
   // On zero choices an earlier revision wrote no settlement record and still left
@@ -183,7 +219,7 @@ describe("ChooseAccount", () => {
 
   // Nothing from the previous account may render under the new one's heading.
   // A full-page load already clears React state and the query cache; what survives
-  // is browser storage, and these four keys name the OLD account rather than a
+  // is browser storage, and these three keys name the OLD account rather than a
   // preference belonging to the person.
   it("drops the leaving workspace's identity and navigation state when a choice is made", async () => {
     const assign = vi.fn();

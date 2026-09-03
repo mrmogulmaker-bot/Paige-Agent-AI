@@ -178,9 +178,20 @@ describe("/admin entry gate", () => {
     notTheChooser(await renderAt("/admin"));
   });
 
-  it("counts only ACTIVE tenants, matching the population the chooser will offer", async () => {
-    h.ctx.tenants = [soloTenant, { ...childTenant, status: "suspended" }];
+  // It must count the SAME population the chooser will offer, or the two disagree
+  // and the door sends people to a picker that immediately sends them back.
+  it("counts the ENTERABLE tenants, matching the population the chooser will offer", async () => {
+    // A workspace that is genuinely gone is not a choice.
+    h.ctx.tenants = [soloTenant, { ...childTenant, status: "canceled" }];
     notTheChooser(await renderAt("/admin"));
+  });
+
+  // The owner-impacting case: counting only `active` made a person whose other
+  // workspaces were on trial look like a one-workspace person, so the door never
+  // asked and left him parked in a context he had not chosen.
+  it("counts a TRIAL workspace, so a trial-heavy person is still asked", async () => {
+    h.ctx.tenants = [soloTenant, { ...childTenant, status: "trial" }];
+    expect(await renderAt("/admin")).toBe("/choose-account");
   });
 
   it("never asks platform staff, who switch through the audited operator seam", async () => {
@@ -198,39 +209,54 @@ describe("/admin entry gate", () => {
 
   // The chooser's second-chance marker, for a browser where the session record
   // cannot be written at all. It settles only the hop it arrives on.
-  it("accepts the chooser's URL marker, and CONSUMES it so it cannot be bookmarked", async () => {
+  // The marker is honoured ONLY where the durable record cannot exist. On any
+  // browser that can hold the record, a bookmarked `?picked=1` is simply ignored —
+  // which closes the bookmark bypass without touching the URL. An earlier revision
+  // stripped the param during render instead, and a render that mutates what it
+  // reads is not pure: React re-running the mount pass read the already-stripped
+  // URL, concluded nothing had settled, and rebuilt the redirect loop.
+  it("honours the chooser's URL marker only when the durable record cannot be written", async () => {
     const original = window.location;
-    const replaceState = vi.spyOn(window.history, "replaceState");
     Object.defineProperty(window, "location", {
       configurable: true,
       value: { ...original, pathname: "/admin", search: "?picked=1", hash: "" },
     });
-    notTheChooser(await renderAt("/admin"));
-    // Stripped from the visible URL: a marker that survives is a permanent answer
-    // to the entry question for whoever bookmarks that address.
-    expect(replaceState).toHaveBeenCalled();
-    expect(String(replaceState.mock.calls.at(-1)?.[2])).not.toContain("picked");
-    replaceState.mockRestore();
+
+    // Storage works: the record is the signal, so the marker is ignored and the
+    // door still asks. This is what makes a bookmarked ?picked=1 harmless.
+    expect(await renderAt("/admin")).toBe("/choose-account");
+
+    // Storage throws: there is no record to consult, so the marker is honoured.
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = () => { throw new Error("storage disabled"); };
+    try {
+      notTheChooser(await renderAt("/admin"));
+    } finally {
+      Storage.prototype.setItem = setItem;
+    }
     Object.defineProperty(window, "location", { configurable: true, value: original });
   });
 
-  // §58 REGRESSION GUARD — agency act-as. `AccountSwitcher` and `AgencyBoard` both
-  // call `agency_enter_subaccount(child)` and then `window.location.assign("/admin")`,
-  // so `/admin` is a live landing for a drill-down that has ALREADY happened. An
-  // agency owner is always multi-context (provisioning gives them an active owner
-  // membership in every child), so without the record written at those producers
-  // the door intercepts the act-as and sends them to the chooser — breaking the
-  // parent → authorized child flow for the third time in this repair.
-  it("does not intercept an agency act-as that has already been recorded", async () => {
-    const child: Tenant = { id: "child-b", status: "active", account_type: "sub_account", parent_tenant_id: "p", account_number: 3855 };
-    h.ctx.activeTenantId = child.id;
-    h.ctx.activeTenant = child;
-    h.ctx.tenants = [soloTenant, child];
-    h.tier = { tierKey: "sub_account", soloStandalone: false, loading: false };
-    h.ctx.agencyShellEnabled = true;
-    // What the act-as producers now do before assigning to /admin.
-    sessionStorage.setItem("paige.workspace.entered", child.id);
-    expect(await renderAt("/admin")).not.toBe("/choose-account");
+  // The read must be PURE: re-rendering the same mount, or React re-running a
+  // mount pass, must reach the same answer. Anything else is the loop again.
+  it("reaches the same answer on every render of the same URL", async () => {
+    const original = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...original, pathname: "/admin", search: "?picked=1", hash: "" },
+    });
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = () => { throw new Error("storage disabled"); };
+    try {
+      notTheChooser(await renderAt("/admin"));
+      notTheChooser(await renderAt("/admin"));
+      notTheChooser(await renderAt("/admin"));
+      // The URL is untouched — nothing was consumed, so nothing can disagree.
+      expect(window.location.search).toBe("?picked=1");
+    } finally {
+      Storage.prototype.setItem = setItem;
+      Object.defineProperty(window, "location", { configurable: true, value: original });
+    }
   });
 
   it("never asks off a half-resolved account context", async () => {

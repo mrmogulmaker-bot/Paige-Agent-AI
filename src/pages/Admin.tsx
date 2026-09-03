@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, Suspense, lazy as reactLazy } from "react";
+import React, { useEffect, useState, Suspense, lazy as reactLazy } from "react";
 
 // Auto-recover from stale chunk errors after a deploy: when index.html is
 // cached but references hashed JS chunks that no longer exist, dynamic imports
@@ -36,7 +36,9 @@ import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 import {
   WORKSPACE_CHOOSER_PATH,
   WORKSPACE_CHOOSER_SETTLED_PARAM,
+  enterableWorkspaces,
   hasEnteredWorkspace,
+  workspaceRecordUsable,
 } from "@/lib/auth/workspaceEntry";
 import { FundingRoute, FundingGate } from "@/components/admin/FundingRoute";
 import { RequireFeature } from "@/components/tier/RequireFeature";
@@ -269,37 +271,27 @@ const Admin = () => {
   // mounts this component just as `/admin` does, and a literal compare would let
   // any non-lowercase spelling walk straight past the entry question and resume a
   // parked context — the exact behaviour the ruling removes.
-  // Secondary to the session record, and only for the hop the chooser just made:
-  // see WORKSPACE_CHOOSER_SETTLED_PARAM. Read from `window.location` because it
-  // must survive the chooser's full-page assign.
-  //
-  // CONSUMED ON READ, which is the difference between a one-hop signal and a
-  // permanent bypass. The chooser leaves a canary-off tenant on `/admin?picked=1`
-  // with `replace`, so that URL sits in the address bar and is what a person
-  // bookmarks as "my dashboard" — and a marker that is never stripped would then
-  // answer the entry question forever, for that bookmark, defeating the ruling.
-  // Stripping it rewrites the visible URL without navigating, so the hop it was
-  // minted for still works and nothing durable is left behind.
-  const chooserSettledOnThisHop = useRef<boolean | null>(null);
-  if (chooserSettledOnThisHop.current === null) {
-    chooserSettledOnThisHop.current = false;
-    try {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get(WORKSPACE_CHOOSER_SETTLED_PARAM) === "1") {
-        chooserSettledOnThisHop.current = true;
-        params.delete(WORKSPACE_CHOOSER_SETTLED_PARAM);
-        const query = params.toString();
-        window.history.replaceState(
-          window.history.state,
-          "",
-          `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
-        );
+  // Secondary to the session record, and honoured ONLY on a browser that cannot
+  // hold one — see WORKSPACE_CHOOSER_SETTLED_PARAM for why that condition is the
+  // whole of its safety. Read from `window.location` because it must survive the
+  // chooser's full-page assign, and read PURELY: an earlier revision stripped the
+  // param here to stop it being bookmarked, which made the render mutate the value
+  // it reads. React re-invoking a mount render then saw a URL the discarded pass
+  // had already stripped and rebuilt the very loop this marker prevents.
+  const chooserSettledOnThisHop =
+    !workspaceRecordUsable() &&
+    (() => {
+      try {
+        return new URLSearchParams(window.location.search).get(WORKSPACE_CHOOSER_SETTLED_PARAM) === "1";
+      } catch {
+        return false;
       }
-    } catch {
-      // No URL to read, or history is unavailable: fall back to the session
-      // record alone, which is the durable signal anyway.
-    }
-  }
+    })();
+
+  // Lower-cased because React Router matches routes case-insensitively: `/Admin`
+  // mounts this component just as `/admin` does, and a literal compare would let
+  // any non-lowercase spelling walk straight past the entry question and resume a
+  // parked context — the exact behaviour the ruling removes.
   const atAdminDoor = useLocation().pathname.replace(/\/+$/, "").toLowerCase() === "/admin";
 
   useEffect(() => {
@@ -440,7 +432,7 @@ const Admin = () => {
     !accountContextLoading &&
     accountContextStatus === "ready" &&
     !hasEnteredWorkspace(activeTenantId) &&
-    !chooserSettledOnThisHop.current &&
+    !chooserSettledOnThisHop &&
     shouldOfferAccountPicker({
       // Honest note on the quantity: the predicate's parameter is a MEMBERSHIP
       // count, and `Auth.tsx` feeds it exactly that. Here it is the RLS-visible
@@ -448,7 +440,7 @@ const Admin = () => {
       // today — the `tenants` SELECT policy is `is_tenant_member(id)`, and that
       // helper requires an active membership — so this asks the same question by
       // a different route. If that policy ever widens, this count widens with it.
-      activeMembershipCount: (tenants ?? []).filter((t) => t.status === "active").length,
+      activeMembershipCount: enterableWorkspaces(tenants).length,
       isPlatformStaff,
     })
   ) {

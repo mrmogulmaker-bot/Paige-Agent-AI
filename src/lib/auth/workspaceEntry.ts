@@ -29,6 +29,48 @@ import { resolveTierKey, type TierClassification, type TierKey } from "@/lib/tie
  * say where someone wants to be, never where they may be.
  */
 
+/**
+ * Statuses that are NOT enterable. Everything else is a workspace a person can
+ * be in, and must therefore be offered.
+ *
+ * THIS IS THE FILTER THAT SEALED THE RECOVERY PATH SHUT. The chooser, the exit
+ * control and the `/admin` door each asked "how many workspaces does this person
+ * have?" by counting tenants whose status is exactly `active` — so a person whose
+ * other workspaces are on `trial` counted as having only one, the chooser decided
+ * there was nothing to choose, and redirected them back to `/admin` and into the
+ * very context they were trying to leave. Measured on production: 8 `active`,
+ * 4 `trial`, 1 `canceled`. A trial workspace is live; excluding it was never
+ * intended, and the owner hit it while locked out of his own Solo workspace.
+ *
+ * Stated as a DENY list on purpose. An allow list of "known good" statuses fails
+ * in the direction that traps people — every status added later would be silently
+ * un-enterable, and the symptom is a person who cannot reach their own workspace.
+ * Locking someone out of a status should require naming it here.
+ */
+const NON_ENTERABLE_TENANT_STATUS = new Set(["canceled", "cancelled", "deleted", "archived"]);
+
+/** Can a person actually work in a tenant with this status? */
+export function isEnterableTenantStatus(status: string | null | undefined): boolean {
+  // Normalise BEFORE the emptiness check: a whitespace-only status is absent, not
+  // a status the deny list happens not to name. Checking `!status` first let "  "
+  // through as enterable, which is the deny list failing open on malformed data.
+  const normalised = (status ?? "").trim().toLowerCase();
+  if (!normalised) return false;
+  return !NON_ENTERABLE_TENANT_STATUS.has(normalised);
+}
+
+/**
+ * The workspaces a person may actually be offered — the ONE population every
+ * surface that asks "how many workspaces?" must count (§18).
+ *
+ * The chooser, the exit control and the shell door had three separate copies of
+ * this question and could disagree, which is a silently dead recovery button at
+ * one surface and a redirect loop at another. One home, one answer.
+ */
+export function enterableWorkspaces<T extends { status?: string | null }>(tenants: readonly T[] | null | undefined): T[] {
+  return (tenants ?? []).filter((t) => isEnterableTenantStatus(t.status));
+}
+
 /** The authorized entry chooser. A person LEAVES a workspace to reach it. */
 export const WORKSPACE_CHOOSER_PATH = "/choose-account";
 
@@ -203,14 +245,44 @@ export const WORKSPACE_ENTERED_KEY = "paige.workspace.entered";
  * best-effort — private mode and blocked storage make every write a no-op — and
  * where that happens a tenant whose shell canary is off has nowhere durable to
  * land: the chooser sends it to `/admin`, the door sees no record, and the two
- * bounce, one hop per click, forever. This marker survives exactly the immediate
- * hop, which is the hop that needs saving.
+ * bounce, one hop per click, forever.
  *
- * It is not a grant, and it is not the primary mechanism. An earlier revision
- * made it the ONLY mechanism and that was the defect: it survives one navigation,
- * so the first in-app link re-armed the gate.
+ * IT IS HONOURED ONLY WHEN `workspaceRecordUsable()` IS FALSE, and that condition
+ * is what makes it safe rather than a hole. Two earlier revisions got this wrong
+ * in opposite directions. Making it the ONLY mechanism failed because a URL
+ * marker survives one navigation, so the first in-app link re-armed the gate.
+ * Then CONSUMING it — stripping it from the URL during render to stop it being
+ * bookmarked as a permanent answer — was worse: a render that mutates the value
+ * that same render reads is not a pure render, so React re-invoking the mount
+ * pass (StrictMode in development, an interrupted render in principle) read a URL
+ * the discarded pass had already stripped, concluded nothing had settled, and
+ * rebuilt the exact infinite redirect the marker exists to prevent.
+ *
+ * Gating on storage instead closes the bookmark hole without touching the URL at
+ * all: on any browser that can hold the record, a bookmarked `?picked=1` is
+ * simply ignored, because the record is the signal there. It is honoured only
+ * where no record can exist — and a bookmark is the least of anyone's problems in
+ * a browser that cannot write one.
  */
 export const WORKSPACE_CHOOSER_SETTLED_PARAM = "picked";
+
+/**
+ * Can this browser actually hold the session record?
+ *
+ * The URL marker below exists ONLY to cover the case where it cannot, so this is
+ * what decides whether that marker is honoured at all. A pure read: it probes,
+ * cleans up after itself, and mutates nothing a later render depends on.
+ */
+export function workspaceRecordUsable(): boolean {
+  try {
+    const probe = `${WORKSPACE_ENTERED_KEY}.probe`;
+    sessionStorage.setItem(probe, "1");
+    sessionStorage.removeItem(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Record that this session entered `tenantId` by choosing it. Best-effort. */
 export function rememberWorkspaceEntered(tenantId: string | null | undefined): void {

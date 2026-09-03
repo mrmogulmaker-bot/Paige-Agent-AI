@@ -10,6 +10,7 @@ import { tenantAccountLabel } from "@/lib/auth/accountSelection";
 import {
   WORKSPACE_CHOOSER_SETTLED_PARAM,
   clearWorkspaceScopedState,
+  enterableWorkspaces,
   rememberWorkspaceEntered,
   workspaceRootForTenant,
 } from "@/lib/auth/workspaceEntry";
@@ -72,8 +73,8 @@ export default function ChooseAccount() {
 
   const choices = useMemo<Choice[]>(() => {
     const roles = new Map(memberships.map((membership) => [membership.tenant_id, membership.role]));
-    return context.tenants
-      .filter((tenant) => roles.has(tenant.id) && tenant.status === "active")
+    return enterableWorkspaces(context.tenants)
+      .filter((tenant) => roles.has(tenant.id))
       .map((tenant) => ({ tenant, role: roles.get(tenant.id) ?? "member" }));
   }, [context.tenants, memberships]);
 
