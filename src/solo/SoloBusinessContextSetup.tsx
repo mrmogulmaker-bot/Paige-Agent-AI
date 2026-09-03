@@ -52,6 +52,14 @@ import {
   type SoloSetupTab,
 } from "./settings-business-context-contract";
 import "./settings-setup.css";
+import {
+  ADDRESS_AUTOCOMPLETE,
+  COUNTRY_OPTIONS,
+  US_STATE_OPTIONS,
+  lookupUsZip,
+  type AddressOption,
+  type ZipPlace,
+} from "./setup-address-options";
 
 type EditableField = SoloSetupTextField | "businessRegistrationNumber";
 type Field = {
@@ -60,7 +68,7 @@ type Field = {
   hint?: string;
   wide?: boolean;
   multiline?: boolean;
-  options?: string[];
+  options?: Array<string | AddressOption>;
 };
 const profileFields: Field[] = [
   { key: "legalName", label: "Legal business name" },
@@ -126,8 +134,8 @@ const addressFields: Field[] = [
   { key: "registeredPostalCode", label: "Postal code" },
   {
     key: "registeredIsoCountry",
-    label: "Country code",
-    hint: "Two-letter country code, such as US, CA, GB, or FR.",
+    label: "Country",
+    options: COUNTRY_OPTIONS,
   },
 ];
 const directionFields: Field[] = [
@@ -404,6 +412,13 @@ function Fields({
           field.key !== "businessRegistrationNumber"
             ? draft.provenance[field.key]?.source
             : undefined;
+        const sourceLocked =
+          source === "connection_sourced" &&
+          sourceDecisions[field.key as SoloSetupTextField] !== "override";
+        const displayOption = field.options?.find(
+          (option) =>
+            typeof option !== "string" && option.value === draft[field.key],
+        );
         return (
           <div
             className={`setup-field${field.wide ? " setup-field--wide" : ""}`}
@@ -419,6 +434,8 @@ function Fields({
                   id={`setup-${field.key}`}
                   name={field.key}
                   value={draft[field.key]}
+                  disabled={sourceLocked}
+                  onBlur={(e) => onChange(field.key, e.target.value)}
                   onChange={(e) => onChange(field.key, e.target.value)}
                   aria-invalid={Boolean(errors[field.key])}
                 />
@@ -427,11 +444,30 @@ function Fields({
                   id={`setup-${field.key}`}
                   name={field.key}
                   value={draft[field.key]}
+                  disabled={sourceLocked}
+                  autoComplete={ADDRESS_AUTOCOMPLETE[field.key]}
                   onChange={(e) => onChange(field.key, e.target.value)}
                 >
+                  {!field.options.includes("") && (
+                    <option value="">Choose</option>
+                  )}
+                  {Boolean(draft[field.key]) &&
+                    !field.options.some(
+                      (option) =>
+                        (typeof option === "string" ? option : option.value) ===
+                        draft[field.key],
+                    ) && (
+                      <option value={draft[field.key]}>
+                        {draft[field.key] || "Choose"}
+                      </option>
+                    )}
                   {field.options.map((option) => (
-                    <option key={option} value={option}>
-                      {option || "Choose"}
+                    <option
+                      key={typeof option === "string" ? option : option.value}
+                      value={typeof option === "string" ? option : option.value}
+                    >
+                      {(typeof option === "string" ? option : option.label) ||
+                        "Choose"}
                     </option>
                   ))}
                 </select>
@@ -447,9 +483,11 @@ function Fields({
                   autoComplete={
                     field.key === "businessRegistrationNumber"
                       ? "off"
-                      : undefined
+                      : ADDRESS_AUTOCOMPLETE[field.key]
                   }
                   value={draft[field.key]}
+                  disabled={sourceLocked}
+                  onBlur={(e) => onChange(field.key, e.target.value)}
                   onChange={(e) => onChange(field.key, e.target.value)}
                   aria-invalid={Boolean(errors[field.key])}
                 />
@@ -460,7 +498,9 @@ function Fields({
                   ? draft.businessRegistrationNumberLast4
                     ? `Stored securely · ending in ${draft.businessRegistrationNumberLast4}`
                     : null
-                  : draft[field.key]}
+                  : displayOption && typeof displayOption !== "string"
+                    ? displayOption.label
+                    : draft[field.key]}
               </ReadValue>
             )}
             {editing && !locked && source === "connection_sourced" && (
@@ -527,6 +567,7 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
   const currentTenant = useRef(data.activeTenantId);
   currentTenant.current = data.activeTenantId;
   const errorSummary = useRef<HTMLDivElement>(null);
+  const formSurface = useRef<HTMLFieldSetElement>(null);
   const [sources, setSources] = useState<SetupKnowledgeSource[]>([]);
   const [profile, setProfile] = useState<SoloPaigeProfile>(EMPTY_PAIGE_PROFILE);
   const [examples, setExamples] = useState<SetupVoiceExample[]>([]);
@@ -705,8 +746,11 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
   );
   const cancel = async () => {
     if (data.saving) return;
+    const captured = captureMountedDraft();
+    const hasAutofill =
+      Object.keys(captured.changes).length > 0 || captured.email !== email;
     if (
-      dirty &&
+      (dirty || hasAutofill) &&
       !(await confirm({
         title: "Discard unsaved Setup changes?",
         description: "The durable workspace record will remain unchanged.",
@@ -727,8 +771,42 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
       decisions[key] !== "override"
     )
       return;
-    setDraft((now) => ({ ...now, [key]: value }));
+    const captured = captureMountedDraft();
+    setDraft((now) => ({ ...now, ...captured.changes, [key]: value }));
+    setEmail(captured.email);
     setErrors((now) => ({ ...now, [key]: undefined }));
+  };
+  const beginEdit = () => {
+    if (!data.canEdit || data.saving) return false;
+    if (!editing) reset();
+    else reconcileMountedDraft();
+    setEditing(true);
+    setNotice(null);
+    return true;
+  };
+  const chooseNaics = async (value: string) => {
+    if (data.accessScope !== "owner_full" || data.saving) return;
+    const tenantAtStart = data.activeTenantId;
+    const replacing =
+      draft.provenance.naicsCode?.source === "connection_sourced";
+    if (
+      replacing &&
+      !(await confirm({
+        title: "Replace the connected industry code?",
+        description:
+          "This saves your chosen code as owner-confirmed business context. It does not change the provider record.",
+        actionLabel: "Use selected code",
+        cancelLabel: "Keep connected code",
+      }))
+    )
+      return;
+    if (currentTenant.current !== tenantAtStart || !beginEdit()) return;
+    setDraft((now) => ({ ...now, naicsCode: value }));
+    if (replacing) setDecisions((now) => ({ ...now, naicsCode: "override" }));
+    setNotice({
+      tone: "ok",
+      text: `NAICS ${value} selected. Save business context to keep it.`,
+    });
   };
   const decide = (key: SoloSetupTextField, value: SetupSourceDecision) => {
     if (data.saving || !editing) return;
@@ -736,11 +814,84 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
       setDraft((now) => ({ ...now, [key]: data.brief[key] }));
     setDecisions((now) => ({ ...now, [key]: value }));
   };
+  function captureMountedDraft() {
+    // Browsers can autofill a native control without dispatching React's change event.
+    // Reconcile only mounted, enabled, explicitly authorized brief fields at commit.
+    const submitted = { ...draft };
+    const changes: Partial<Record<EditableField, string>> = {};
+    const allowedFields = new Set<string>(
+      [
+        ...profileFields,
+        ...addressFields,
+        ...directionFields,
+        ...representativeFields,
+        ...legacyVoiceFields,
+      ].map((field) => field.key),
+    );
+    allowedFields.add("naicsCode");
+    formSurface.current
+      ?.querySelectorAll<
+        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+      >("input[name],textarea[name],select[name]")
+      .forEach((control) => {
+        const key = control.name as EditableField;
+        if (
+          !allowedFields.has(key) ||
+          control.disabled ||
+          (data.accessScope !== "owner_full" && ownerOnlyFields.has(key))
+        )
+          return;
+        if (
+          key !== "businessRegistrationNumber" &&
+          draft.provenance[key]?.source === "connection_sourced" &&
+          decisions[key] !== "override"
+        )
+          return;
+        if (submitted[key] !== control.value) changes[key] = control.value;
+        submitted[key] = control.value;
+      });
+    const emailControl = formSurface.current?.querySelector<HTMLInputElement>(
+      'input[name="primaryBusinessEmail"]',
+    );
+    return {
+      brief: submitted,
+      changes,
+      email:
+        data.accessScope === "owner_full" &&
+        emailDecision === "override" &&
+        emailControl &&
+        !emailControl.disabled
+          ? emailControl.value
+          : email,
+    };
+  }
+  function reconcileMountedDraft() {
+    if (!editing || !data.canEdit || data.saving) return;
+    const captured = captureMountedDraft();
+    setDraft(captured.brief);
+    setEmail(captured.email);
+  }
+  const switchTab = (value: SoloSetupTab) => {
+    if (data.saving) return;
+    reconcileMountedDraft();
+    setTab(value);
+  };
   const save = async () => {
-    if (data.saving || saveInFlight.current || drawerDirty) return;
+    if (
+      !editing ||
+      !data.canEdit ||
+      data.saving ||
+      saveInFlight.current ||
+      drawerDirty
+    )
+      return;
+    const captured = captureMountedDraft();
+    const submitted = captured.brief;
+    setDraft(submitted);
+    setEmail(captured.email);
     const tenantAtStart = data.activeTenantId;
     const fieldErrors = validateSoloSetupBrief(
-      draft,
+      submitted,
       Boolean(data.brief.legalName.trim()),
     );
     const ownerErrors = data.canEditLegal
@@ -778,13 +929,13 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
     saveInFlight.current = true;
     const result = await data.save({
       brief: prepareOwnerConfirmedBrief(
-        draft,
+        submitted,
         new Date().toISOString(),
         data.brief,
         decisions,
       ),
       businessOwners: owners,
-      primaryBusinessEmail: email,
+      primaryBusinessEmail: captured.email,
       primaryBusinessEmailDecision: emailDecision,
       knowledgeSources: sources,
       paigeProfile: profile,
@@ -832,7 +983,10 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
     (data.accessScope === "admin_operational" && ownerOnlyFields.has(key));
   return (
     <fieldset
+      ref={formSurface}
       className="setup-brief"
+      onInputCapture={reconcileMountedDraft}
+      onClickCapture={reconcileMountedDraft}
       disabled={data.saving}
       aria-busy={data.saving}
       style={{ border: 0, padding: "0 0 32px", margin: 0, minWidth: 0 }}
@@ -863,9 +1017,7 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
               editing
                 ? () => void save()
                 : () => {
-                    reset();
-                    setEditing(true);
-                    setNotice(null);
+                    beginEdit();
                   }
             }
           >
@@ -1009,7 +1161,7 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
             aria-controls={`setup-panel-${value}`}
             id={`setup-tab-${value}`}
             tabIndex={tab === value ? 0 : -1}
-            onClick={() => setTab(value)}
+            onClick={() => switchTab(value)}
             onKeyDown={(event) => {
               if (
                 !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
@@ -1026,7 +1178,7 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
                         (event.key === "ArrowRight" ? 1 : -1) +
                         SOLO_SETUP_TABS.length) %
                       SOLO_SETUP_TABS.length;
-              setTab(SOLO_SETUP_TABS[next]);
+              switchTab(SOLO_SETUP_TABS[next]);
               queueMicrotask(() =>
                 document
                   .getElementById(`setup-tab-${SOLO_SETUP_TABS[next]}`)
@@ -1045,6 +1197,7 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
       >
         {tab === "business-profile" && (
           <BusinessProfile
+            key={data.activeTenantId}
             draft={draft}
             email={email}
             editing={editing}
@@ -1054,14 +1207,17 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
             decisions={decisions}
             onChange={change}
             onDecision={decide}
-            onEmail={setEmail}
+            onEmail={(value) => {
+              reconcileMountedDraft();
+              setEmail(value);
+            }}
             emailDecision={emailDecision}
             emailProvenance={data.primaryBusinessEmailProvenance}
             onEmailDecision={(value) => {
               if (value === "adopt") setEmail(data.primaryBusinessEmail);
               setEmailDecision(value);
             }}
-            onNaics={(value) => change("naicsCode", value)}
+            onNaics={(value) => void chooseNaics(value)}
             searchNaics={data.searchNaics}
           />
         )}{" "}
@@ -1103,9 +1259,11 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
             owner={owner}
             editing={editing}
             onAdd={() => {
-              setKnowledgeEditor(sources.length);
+              if (beginEdit()) setKnowledgeEditor(sources.length);
             }}
-            onEdit={setKnowledgeEditor}
+            onEdit={(index) => {
+              if (beginEdit()) setKnowledgeEditor(index);
+            }}
             onRemove={(index) =>
               setSources((now) => now.filter((_, i) => i !== index))
             }
@@ -1169,15 +1327,19 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
           source={sources[knowledgeEditor] ?? newSource()}
           onDirtyChange={setDrawerDirty}
           confirmDiscard={confirmDrawerDiscard}
-          onChange={(value) =>
+          onChange={(value) => {
             setSources((now) =>
               knowledgeEditor === now.length
                 ? [...now, value]
                 : now.map((item, index) =>
                     index === knowledgeEditor ? value : item,
                   ),
-            )
-          }
+            );
+            setNotice({
+              tone: "ok",
+              text: "Knowledge added to your draft. Save business context to keep it.",
+            });
+          }}
           onClose={() => {
             setKnowledgeEditor(null);
             setDrawerDirty(false);
@@ -1305,6 +1467,8 @@ function BusinessProfile({
   >([]);
   const [searchError, setSearchError] = useState("");
   const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
   const searchEpoch = useRef(0);
   useEffect(
     () => () => {
@@ -1312,13 +1476,18 @@ function BusinessProfile({
     },
     [],
   );
-  const run = async () => {
+  const run = useCallback(async () => {
+    clearTimeout(searchTimer.current);
+    if (query.trim().length < 2) return;
     const epoch = ++searchEpoch.current;
     setSearching(true);
     setSearchError("");
     try {
       const found = await searchNaics(query);
-      if (epoch === searchEpoch.current) setResults(found);
+      if (epoch === searchEpoch.current) {
+        setResults(found);
+        setSearched(true);
+      }
     } catch (error) {
       if (epoch === searchEpoch.current)
         setSearchError(
@@ -1327,7 +1496,12 @@ function BusinessProfile({
     } finally {
       if (epoch === searchEpoch.current) setSearching(false);
     }
-  };
+  }, [query, searchNaics]);
+  useEffect(() => {
+    if (query.trim().length < 2) return;
+    searchTimer.current = setTimeout(() => void run(), 350);
+    return () => clearTimeout(searchTimer.current);
+  }, [query, run]);
   return (
     <div className="setup-tab-stack">
       <Section
@@ -1364,9 +1538,11 @@ function BusinessProfile({
           {editing && owner ? (
             <input
               id="setup-primary-email"
+              name="primaryBusinessEmail"
               disabled={emailDecision !== "override"}
               value={email}
               type="email"
+              onBlur={(e) => onEmail(e.target.value)}
               onChange={(e) => onEmail(e.target.value)}
             />
           ) : (
@@ -1400,8 +1576,8 @@ function BusinessProfile({
       </Section>
       <Section
         eyebrow="Business address"
-        title="A structured address people can actually edit"
-        description="Street, unit, city, state or region, postal code, and country are stored separately and reused as one business address."
+        title="Business address"
+        description="Where your business is based."
       >
         {draft.address && (
           <div className="setup-boundary">
@@ -1409,14 +1585,19 @@ function BusinessProfile({
               <strong>Previously saved address</strong>
               <span>{draft.address}</span>
               <small>
-                Preserved for reference. Confirm the separate address fields
-                below; this value is not silently parsed or replaced.
+                Your earlier address is kept for reference. Review the fields
+                below before saving.
               </small>
             </div>
           </div>
         )}
         <Fields
-          fields={addressFields}
+          fields={addressFields.map((field) =>
+            field.key === "registeredRegion" &&
+            draft.registeredIsoCountry.toUpperCase() === "US"
+              ? { ...field, label: "State", options: US_STATE_OPTIONS }
+              : field,
+          )}
           draft={draft}
           editing={editing}
           disabled={disabled}
@@ -1425,6 +1606,22 @@ function BusinessProfile({
           sourceDecisions={decisions}
           onDecision={onDecision}
         />
+        {editing && owner && (
+          <ZipLookup
+            draft={draft}
+            onChange={onChange}
+            disabled={
+              disabled("registeredCity") ||
+              disabled("registeredRegion") ||
+              ["registeredCity", "registeredRegion"].some(
+                (key) =>
+                  draft.provenance[key as SoloSetupTextField]?.source ===
+                    "connection_sourced" &&
+                  decisions[key as SoloSetupTextField] !== "override",
+              )
+            }
+          />
+        )}
       </Section>
       <Section
         eyebrow="Industry reference"
@@ -1433,11 +1630,14 @@ function BusinessProfile({
       >
         <div className="setup-search">
           <input
+            aria-label="Search NAICS by code or business activity"
             value={query}
             onChange={(e) => {
               searchEpoch.current += 1;
               setSearching(false);
               setResults([]);
+              setSearchError("");
+              setSearched(false);
               setQuery(e.target.value);
             }}
             placeholder="Try management consulting or 541611"
@@ -1451,6 +1651,13 @@ function BusinessProfile({
             {searching ? "Searching…" : "Search"}
           </button>
         </div>
+        <span role="status">
+          {searching
+            ? "Searching industry codes…"
+            : searched && !results.length && !searchError
+              ? "No matching codes. Try another business activity or code."
+              : ""}
+        </span>
         {searchError && (
           <div className="setup-notice" data-tone="bad">
             {searchError}
@@ -1460,11 +1667,13 @@ function BusinessProfile({
           {results.map((result) => (
             <button
               key={result.code}
+              aria-pressed={draft.naicsCode === result.code}
               onClick={() => onNaics(result.code)}
-              disabled={!editing || !owner}
+              disabled={!owner}
             >
               <strong>{result.code}</strong>
               <span>{result.title}</span>
+              {draft.naicsCode === result.code && <span>Selected</span>}
             </button>
           ))}
         </div>
@@ -1478,7 +1687,12 @@ function BusinessProfile({
               id="setup-naicsCode"
               name="naicsCode"
               value={draft.naicsCode}
-              onChange={(e) => onNaics(e.target.value)}
+              disabled={
+                disabled("naicsCode") ||
+                (draft.provenance.naicsCode?.source === "connection_sourced" &&
+                  decisions.naicsCode !== "override")
+              }
+              onChange={(e) => onChange("naicsCode", e.target.value)}
             />
           ) : (
             <ReadValue>{draft.naicsCode}</ReadValue>
@@ -1507,6 +1721,98 @@ function BusinessProfile({
           </small>
         </div>
       </Section>
+    </div>
+  );
+}
+
+function ZipLookup({
+  draft,
+  onChange,
+  disabled,
+}: {
+  draft: SoloSetupBrief;
+  onChange: (key: EditableField, value: string) => void;
+  disabled: boolean;
+}) {
+  const [places, setPlaces] = useState<ZipPlace[]>([]);
+  const [message, setMessage] = useState("");
+  const [retry, setRetry] = useState(0);
+  const zip = draft.registeredPostalCode.trim();
+  const country = draft.registeredIsoCountry.toUpperCase();
+  useEffect(() => {
+    setPlaces([]);
+    setMessage("");
+    if (country !== "US" || !/^\d{5}(?:-\d{4})?$/.test(zip)) return;
+    let active = true;
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout>;
+    const timer = setTimeout(() => {
+      setMessage("Finding city and state…");
+      timeout = setTimeout(() => controller.abort(), 6000);
+      void lookupUsZip(zip.slice(0, 5), controller.signal)
+        .then((found) => {
+          if (!active) return;
+          setPlaces(found);
+          setMessage(
+            found.length
+              ? "Choose your city and state, then save your address."
+              : "No ZIP match found. You can enter your city and state manually.",
+          );
+        })
+        .catch(() => {
+          if (active)
+            setMessage(
+              "ZIP lookup is unavailable. Enter your city and state, or try again.",
+            );
+        })
+        .finally(() => clearTimeout(timeout));
+    }, 400);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [zip, country, retry]);
+  if (country !== "US") return null;
+  return (
+    <div className="setup-zip-lookup">
+      <small>
+        Enter a ZIP code for city and state suggestions. Only the ZIP is sent to
+        Zippopotam.us; suggestions are not address verification.
+      </small>
+      <p role="status">{message}</p>
+      {places.map((place) => (
+        <button
+          type="button"
+          className="setup-button"
+          key={`${place.city}-${place.region}`}
+          disabled={disabled}
+          onClick={() => {
+            onChange("registeredCity", place.city);
+            onChange("registeredRegion", place.region);
+            setMessage(
+              "City and state added to your draft. Review and save your address.",
+            );
+          }}
+        >
+          Use {place.city}, {place.region}
+        </button>
+      ))}
+      {places.length > 0 && disabled && (
+        <small>
+          Choose Override on the connected city or state before replacing it.
+        </small>
+      )}
+      {message.includes("unavailable") && (
+        <button
+          type="button"
+          className="setup-button"
+          onClick={() => setRetry((value) => value + 1)}
+        >
+          Retry ZIP lookup
+        </button>
+      )}
     </div>
   );
 }
@@ -2060,7 +2366,7 @@ function KnowledgeBucket({
           </span>
         </div>
       </div>
-      {editing && owner && (
+      {owner && (
         <button
           className="setup-button setup-button--primary setup-add"
           onClick={onAdd}
@@ -2087,20 +2393,40 @@ function KnowledgeBucket({
             .filter(Boolean)
             .join(" · "),
           source: source.provenance.source,
-          actions:
-            editing && owner ? (
-              <>
-                <button className="setup-button" onClick={() => onEdit(index)}>
-                  Edit
-                </button>
-                <button
-                  className="setup-button"
-                  onClick={() => onRemove(index)}
-                >
-                  Remove
-                </button>
-              </>
-            ) : null,
+          actions: (
+            <>
+              {source.sourceUrl &&
+                !validateKnowledgeSource(source).sourceUrl && (
+                  <a
+                    className="setup-button"
+                    href={source.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    referrerPolicy="no-referrer"
+                  >
+                    Open link
+                  </a>
+                )}
+              {owner ? (
+                <>
+                  <button
+                    className="setup-button"
+                    onClick={() => onEdit(index)}
+                  >
+                    Edit
+                  </button>
+                  {editing && (
+                    <button
+                      className="setup-button"
+                      onClick={() => onRemove(index)}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </>
+              ) : null}
+            </>
+          ),
         }))}
       />
     </Section>
@@ -2368,9 +2694,13 @@ function KnowledgeEditor({
             ))}
           </select>
         </label>
-        {source.sourceType === "link" && (
+        {["link", "document", "catalog"].includes(source.sourceType) && (
           <label>
-            <span>HTTPS link</span>
+            <span>
+              {source.sourceType === "link"
+                ? "HTTPS link"
+                : "Document or catalog link (optional)"}
+            </span>
             <input
               value={source.sourceUrl}
               onChange={(e) =>

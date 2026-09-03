@@ -55,6 +55,18 @@ try {
         reducedMotion: "reduce",
       });
       const page = await context.newPage();
+      await page.route("https://api.zippopotam.us/**", (route) =>
+        route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            "post code": "12345",
+            "country abbreviation": "US",
+            places: [
+              { "place name": "Harness City", "state abbreviation": "NY" },
+            ],
+          }),
+        }),
+      );
       const errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
       await page.goto(
@@ -146,6 +158,48 @@ try {
         });
         results.push({ key, ...geometry, errors: [...errors] });
         await page.screenshot({ path: path.join(out, `${key}.png`) });
+        if (tab === "Business profile") {
+          const country = page.locator('select[name="registeredIsoCountry"]');
+          if ((await country.inputValue()) !== "US")
+            throw new Error("Country dropdown lost stored value");
+          const usePlace = page.getByRole("button", {
+            name: "Use Harness City, NY",
+            exact: true,
+          });
+          await usePlace.click();
+          if (
+            (await page.locator('[name="registeredCity"]').inputValue()) !==
+              "Harness City" ||
+            (await page
+              .locator('select[name="registeredRegion"]')
+              .inputValue()) !== "NY"
+          )
+            throw new Error("ZIP suggestion did not populate address draft");
+          await country.scrollIntoViewIfNeeded();
+          await page.screenshot({
+            path: path.join(
+              out,
+              `${width}x${height}-${theme}-address-dropdowns.png`,
+            ),
+          });
+          await page
+            .getByRole("textbox", {
+              name: "Search NAICS by code or business activity",
+            })
+            .fill("management");
+          const result = page.locator(".setup-result-list button").first();
+          await result.click();
+          if (
+            (await page.locator('[name="naicsCode"]').inputValue()) !== "541611"
+          )
+            throw new Error("NAICS selection did not reach draft");
+          await page.screenshot({
+            path: path.join(
+              out,
+              `${width}x${height}-${theme}-naics-selected.png`,
+            ),
+          });
+        }
       }
       await page
         .getByRole("button", { name: "Teach Paige", exact: true })
