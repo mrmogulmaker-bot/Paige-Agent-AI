@@ -1173,6 +1173,46 @@ five of six surfaces without any ledger row noticing.
 | Files a note onto ANOTHER tenant's client | ✓ (operator) | — | — | — | — | — | 403 |
 | A client can read notes filed about them | — | — | — | — | — | — | 403 |
 
+### Rail history, per tier — SHIPPED 2026-09-03 (Slice B, §66)
+
+The owner-facing Rail feeds — "Across your clients — live" (`PaigeRailFeed`), the Solo Trust Compass
+and Team activity panels (`useSoloActivityFeed`), and the client portal's "Your activity"
+(`ClientActivityFeed`) — read the **deployed resolvers** rather than `paige_client_events` directly.
+Frontend-only: no migration, no new grant, no policy change.
+
+**Read the previous row of this table first, because the delta is the point.** Before this ship,
+`has_table_privilege('authenticated','public.paige_client_events','SELECT')` was — and still is —
+`false` on production, so the tenant Rail history read was **refused for every tier**, and two of the
+four surfaces rendered that refusal as *"nothing yet"*. The ✓ below is a capability that existed on
+paper and reached nobody.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Reads own-workspace Rail history (`get_solo_rail_activity`) | ✓ (operator) | ✓ (owner/admin/coach of the active workspace) | ✓ (same) | ✓ (same) | ✓ (same — its OWN rail, never the parent's) | — | 403 |
+| …**previously** reachable through the direct table read | — | — | — | — | — | — | 403 |
+| Reads own-workspace Rail history via a role held in ANOTHER workspace | — | — | — | — | — | — | 403 |
+| Reads a client's Rail (`get_client_rail`, client lens) | ✓ (operator) | staff of that contact's own tenant | same | same | same | own contact only | 403 |
+| A refusal is reported as a refusal, never as an empty feed | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (as "could not be loaded", without naming how access is decided) | 403 |
+| A previous workspace's activity can paint after a switch | — | — | — | — | — | — | 403 |
+
+**The third row is the §59 correction, and it is the only access this ship REMOVES (§58).**
+`pce_staff_read` combines a tenant-agnostic `has_any_role()` with `current_user_tenant_id()`, which
+honours `active_tenant_id` for an active `tenant_members` row at **any** role. A plain member of
+workspace B holding a global `coach`/`admin` role earned in workspace A could therefore have read
+B's whole tenant Rail — had the table grant not already made the read moot. The resolver requires an
+active `tenant_members` row **of the resolved workspace** at owner/admin/coach. The policy is
+unchanged and still carries the trap; it is simply unreachable from these four consumers. Other
+direct readers still go through it — the two Analytics surfaces, tracked as **#802**.
+
+**Sub-account row, stated explicitly because §51 exists for exactly this.** `get_solo_rail_activity`
+takes **no tenant argument**; it resolves the workspace server-side. A sub-account therefore reads
+ITS OWN Rail and can never receive the parent agency's aggregate, and there is no parameter through
+which a caller could ask for one.
+
+**`UNVERIFIED` — authenticated owner runtime proof.** Every row above is from the deployed function
+bodies, the production grant catalog, and automated tests. No browser drove these surfaces as a
+signed-in owner on any tier in this session; #746 stays open until that proof exists.
+
 **The echo row is an honest `—`, not a gap.** Only `PaigeAIChat` (Solo and Sub-account) renders a
 confirm card and echoes back the fingerprint of what it displayed. `useSoloChat`, `FloatingChatbot`,
 `PaigeChat`, `useOperatorChat` and `StudioChat` send no echo and never have. That is why the echo

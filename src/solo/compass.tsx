@@ -110,9 +110,12 @@ export const deptTier=(levels,id)=>tierOfLevel(levels?.[id]??null);
 // exact: do not invent activity, revenue, permissions, provider state, customer records, or
 // successful actions.
 //
-// The panel now reads `paige_client_events` — the Rail, the row `record_rail_event` writes when
-// something actually happens — through `useSoloActivityFeed`. The markup below is unchanged; only
-// where the values come from has changed, which is the whole of the fix.
+// The panel reads the Rail — the row `record_rail_event` writes when something actually happens —
+// through `useSoloActivityFeed`. Since the Slice B consumer repair that hook calls the deployed
+// resolver `get_solo_rail_activity` rather than selecting from `paige_client_events` directly, so
+// the workspace boundary is re-enforced in the function body (§59) instead of resting on
+// `pce_staff_read`, whose `has_any_role` check is tenant-agnostic. The markup below is unchanged;
+// only where the values come from has changed, which is the whole of the fix.
 //
 // ONE THING THE RAIL CANNOT SAY, so the feed does not say it. The amber/red tiers mean "waiting
 // on you" and "your decision". A Rail row is a record that something HAPPENED and carries no
@@ -460,7 +463,10 @@ const[flow,setFlow]=React.useState(null);
 const[toast,setToast]=React.useState(null);
 const[full,setFull]=React.useState(null);
 const[fold,setFold]=React.useState(null);
-const activity=useSoloActivityFeed();
+// The active workspace, already plumbed into this screen as `accountEpoch`. Passing it re-keys
+// the read on a switch and invalidates anything in flight, so the previous workspace's
+// activity can neither stay on screen nor land late under the new one's heading.
+const activity=useSoloActivityFeed(accountEpoch);
 // The recorded events, in the shape this panel's markup already renders. `tier` is always
 // 'green' by construction — see the note where TC_LIVE used to be.
 const live=React.useMemo(()=>activity.items.map(a=>({

@@ -1352,6 +1352,11 @@ master record to move in the SAME PR as the ship. Neither #813 nor #834 did that
 while reading as current. Recorded rather than quietly backfilled, because a record that silently
 catches up teaches nothing about why it fell behind.
 
+> **CORRECTED 2026-09-03 — Slice B repaired exactly this (§58: the paragraph below is kept as
+> written, not deleted, because it was true when written).** All four owner-facing Rail consumers
+> now call the deployed resolvers, and each distinguishes loading, refusal, unavailable, empty and
+> populated. See the Slice B entry below.
+
 **Still NOT repaired by any of the above, and the reason the verdict at the top of this section
 stands: no OWNER-FACING consumer calls any of these resolvers.** `useRailEvents.ts` and
 `useSoloActivityFeed.ts` still read `paige_client_events` directly, and the browser still holds no
@@ -1364,6 +1369,50 @@ SELECT on it, so the owner-visible history surfaces are exactly as broken as bef
 the **owner-facing history** consumers were not, and are Slice B — blocked on the #776/#729 ownership
 seam. `get_solo_rail_activity` and `get_platform_rail` are the two resolvers with genuinely zero
 callers today.
+
+### Rail Slice B — the owner-facing consumers call the safe readers (2026-09-03, no migration)
+
+**Shipped.** Four owner-facing consumers moved off the direct table read and onto the deployed
+resolvers. This is a **frontend-only** change: no migration, no new grant, no policy edit.
+
+| File | Was | Now |
+|---|---|---|
+| `src/hooks/useRailEvents.ts` | `.from("paige_client_events")` (tenant **and** client scope) | `get_solo_rail_activity(p_limit)` for tenant · `get_client_rail(p_contact_id, p_limit, 'client')` for client |
+| `src/solo/data/useSoloActivityFeed.ts` | `.from("paige_client_events")` | `get_solo_rail_activity(p_limit)` |
+| `src/components/paige/PaigeRailFeed.tsx` | `{ events, connected }` — error discarded | consumes `historyStatus`: loading · refused · unavailable · empty · populated |
+| `src/components/app/ClientActivityFeed.tsx` | `{ events, connected }` — error discarded | same five states, in client-facing language, with no SQLSTATE or server string on the surface |
+
+**The measurement that makes this the whole repair, verified read-only on prod `xygzykjyynhzqytbqnzu`
+2026-09-03:** `has_table_privilege('authenticated','public.paige_client_events','SELECT')` = `false`.
+Every direct read was **refused in production, for every owner, always** — and the two
+`useRailEvents` consumers rendered that refusal as *"Nothing across your clients yet"* and
+*"Nothing yet"*. The feeds were not sparse; they were denied and said the opposite. Both resolvers
+are `EXECUTE`-granted to `authenticated` and **not** to `anon`.
+
+**§9 tightening, not a widening.** The direct read was governed by `pce_staff_read`, which carries
+the §59 global-role trap (`has_any_role` is tenant-agnostic while `current_user_tenant_id()` honours
+`active_tenant_id` at any membership role), so a plain member of one workspace holding a global
+`coach`/`admin` role could read that workspace's whole tenant Rail. `get_solo_rail_activity` requires
+an active `tenant_members` row **of the resolved workspace** at owner/admin/coach. The policy itself
+is unchanged and still carries the trap; it is simply unreachable from these four consumers. The two
+Analytics readers of the same table remain tracked as **#802**, routed to Analytics.
+
+**Request safety.** Both hooks carry a monotonic request counter, bumped **during render** on a scope
+change and again per read, so a slow answer for a workspace already left is discarded rather than
+winning by arriving last, and the previous workspace's events are never painted under the new one's
+heading — not even for one frame.
+
+**Evidence, by class.** Automated: full suite `180 files / 2351 tests` green, including a new
+five-case regression suite (successful history · empty history · denied read · workspace switch ·
+stale response) driven through the **real** components, each mechanism deliberately falsified to
+prove the tests fail on the defect they name. Static: `tsc` clean, ESLint clean, `lint:views` /
+`lint:definer-fns` / `lint:tier-features` green. Production catalog: the grants above, read-only.
+**`UNVERIFIED` — authenticated owner runtime proof**: no browser drove the deployed surface as a
+signed-in owner in this session, so #746 stays open until that proof exists.
+
+**Ownership.** The #776/#729 consumer-ownership seam was resolved by owner decision on 2026-09-03.
+Nothing was adopted from either branch: all four files were read from current `main` and edited in
+place. Transfer record in task #29.
 
 **Why `UNAVAILABLE` is still the correct status.** No owner-facing consumer calls the resolver yet —
 `useRailEvents.ts` and `useSoloActivityFeed.ts` still read the denied table directly, re-measured on

@@ -12,7 +12,7 @@
 // Guard: tenantId null → the subscriber opens nothing and we render a quiet skeleton,
 // never a crash.
 import { formatDistanceToNow } from "date-fns";
-import { useRailEvents, type RailEvent } from "@/hooks/useRailEvents";
+import { useRailEvents, type RailEvent, type RailHistoryStatus } from "@/hooks/useRailEvents";
 import { cn } from "@/lib/utils";
 
 const MAX_ROWS = 6;
@@ -105,7 +105,7 @@ interface Props {
  * the component; unsubscribes and re-opens automatically when `tenantId` changes.
  */
 export function PaigeRailFeed({ tenantId }: Props) {
-  const { events, connected } = useRailEvents({ scope: "tenant", tenantId });
+  const { events, connected, historyStatus } = useRailEvents({ scope: "tenant", tenantId });
 
   // No tenant → nothing to stream. Render a stable, non-crashing placeholder.
   if (!tenantId) {
@@ -122,18 +122,63 @@ export function PaigeRailFeed({ tenantId }: Props) {
   return (
     <div>
       <Header connected={connected} />
-      {events.length === 0 ? (
-        <p className="px-0.5 py-2 text-xs text-muted-foreground">
-          Nothing across your clients yet — Paige's moves and client activity show up here live.
-        </p>
-      ) : (
-        <ul className="space-y-1.5">
-          {events.slice(0, MAX_ROWS).map((e) => (
-            <RailRow key={e.id} event={e} />
-          ))}
-        </ul>
-      )}
+      <Body events={events} historyStatus={historyStatus} />
     </div>
+  );
+}
+
+/**
+ * The FOUR answers, kept apart.
+ *
+ * This strip used to read `events.length === 0` and say "Nothing across your clients yet" — which
+ * it also said when the history read was still in flight, when the database REFUSED it, and when
+ * it failed. Three of those four are not "nothing happened", and the middle two are assertions
+ * about Paige's work that were never true. The distinction now comes from `historyStatus`, which
+ * is the state; the error message is only ever detail.
+ *
+ * A live frame that arrives before the history settles is still shown: it is a real event, and
+ * suppressing it would be its own small lie. The refusal and outage lines therefore appear only
+ * when there is nothing real to show alongside them.
+ */
+function Body({ events, historyStatus }: { events: RailEvent[]; historyStatus: RailHistoryStatus }) {
+  if (events.length > 0) {
+    return (
+      <ul className="space-y-1.5">
+        {events.slice(0, MAX_ROWS).map((e) => (
+          <RailRow key={e.id} event={e} />
+        ))}
+      </ul>
+    );
+  }
+
+  if (historyStatus === "loading") {
+    return (
+      <p className="px-0.5 py-2 text-xs text-muted-foreground" aria-live="polite">
+        Loading activity across your clients…
+      </p>
+    );
+  }
+
+  if (historyStatus === "forbidden") {
+    return (
+      <p className="px-0.5 py-2 text-xs text-muted-foreground" role="alert">
+        You do not have access to this workspace's activity, so this is not a record of nothing happening.
+      </p>
+    );
+  }
+
+  if (historyStatus === "unavailable") {
+    return (
+      <p className="px-0.5 py-2 text-xs text-muted-foreground" role="alert">
+        Activity across your clients could not be loaded, so this is not a record of nothing happening.
+      </p>
+    );
+  }
+
+  return (
+    <p className="px-0.5 py-2 text-xs text-muted-foreground">
+      Nothing across your clients yet — Paige's moves and client activity show up here live.
+    </p>
   );
 }
 

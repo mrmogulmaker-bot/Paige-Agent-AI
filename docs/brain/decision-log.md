@@ -28,6 +28,30 @@
   list instead of the shared `REMOVAL_VERB`; outer shape edits collected after boolean fields) are a
   different root cause in a different guard and get their own PR — which will also sweep the MCP
   guard for THIS class rather than only for its own two findings.
+- **The MCP guard's RPC classifier carried its own, shorter removal vocabulary (2026-09-03, follow-up to PR #789 `337510da`)** —
+  #789 introduced `REMOVAL_VERB` precisely to end two enumerations of one idea in one file
+  (*"Two enumerations of the same idea in one file drift apart, so there is one"*), and then left
+  the `.rpc()` call site reading its OWN five-word regex. Measured on released `main`:
+  `.rpc("remove_contacts")`, `"erase_"`, `"truncate_"`, `"unlink_"` and `"discard_"` beside a
+  model-settable boolean each produced **zero violations**, while `.remove()` beside the identical
+  schema was caught. A third of the vocabulary was invisible on the RPC path. **Fixed by separating
+  the WORDS from the anchoring:** one `REMOVAL_WORDS` list, `REMOVAL_VERB` (`^…`) for JS method and
+  scope names as before, `REMOVAL_IN_NAME` (unanchored) for `snake_case` procedure names, which put
+  their verb anywhere. **Evidence (§13):** 14 new self-test cases — the 5 words that were invisible,
+  the 5 that already worked (so the change cannot regress out the other side), and 4 read-only RPCs
+  that must stay silent; the mutation reverting the RPC site to its own list turns exactly 5 red.
+  Guard green on the real repo (117 tools across 3 surfaces), ratchet 13.
+  **§13 — MY OWN COUNT WAS WRONG AND IS CORRECTED HERE.** I first reported "four fail-open findings"
+  on #789 from the review titles. Reproducing all eight live threads against released `main` found
+  **one** fail-open (this one) and **three** false POSITIVES (`z.object({ id })` shorthand, and the
+  `.omit()` / `.pick()` / `.extend()` masks, which report a boolean absent from the runtime schema).
+  The other four — `.augment()`, `.passthrough()`, `.catchall()`, `.merge(open)`, `z.iso.date()` and
+  the overwritten nested shape — **do not reproduce**: they were fixed in later #789 rounds and
+  their threads are stale despite GitHub reporting `is_outdated: false`. A review thread's open
+  state is not evidence the defect is live; the probe is. The three false positives are a different
+  root cause (over-detection, CI friction, no security exposure) and are **routed to their own PR**
+  rather than absorbed here, per the owner's grouping rule.
+
 - **The Trust Compass stopped inventing departments and started inventing activity instead (2026-09-03, follow-up to PR #831 `568be661`)** —
   independent review against the merged commit returned five findings and all five reproduced on
   released `main`. **The load-bearing one:** `tot`/`all` count rows in `paige_action_kinds` — action

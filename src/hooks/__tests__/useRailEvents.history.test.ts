@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { railHistoryFilter, mergeRailHistory, type RailEvent } from "@/hooks/useRailEvents";
+import {
+  railHistoryRequest,
+  classifyRailReadError,
+  mergeRailHistory,
+  type RailEvent,
+} from "@/hooks/useRailEvents";
 
 /**
  * The rail's history read, which did not exist until now.
@@ -9,31 +14,67 @@ import { railHistoryFilter, mergeRailHistory, type RailEvent } from "@/hooks/use
  * written — an operator who opened the page a minute after Paige acted saw nothing, which reads as
  * "she has done nothing" rather than "you were not watching".
  *
- * Two decisions carry that fix and both are graded here: which column scopes the read, and how the
- * backfill merges with what is already live.
+ * Two decisions carry that fix and both are graded here: which DEPLOYED RESOLVER answers a scope,
+ * and how the backfill merges with what is already live.
+ *
+ * The read used to be `.from("paige_client_events").eq(column, id)` and the decision graded here
+ * used to be WHICH COLUMN. It is now which resolver, because the scope moved into the database:
+ * `get_solo_rail_activity` takes no tenant argument at all, and `get_client_rail` refuses a
+ * contact the caller is not entitled to rather than filtering to nothing. A column choice that
+ * relies on a policy to be safe is one policy change away from being the leak; a resolver that
+ * raises 42501 is not.
  */
 const ev = (id: string, at: string): RailEvent => ({
   id, event_kind: "k", surface: "s", actor_type: "paige", audience: "owner",
   visibility: "owner_internal", title: `t-${id}`, summary: null, occurred_at: at, contact_id: null,
 });
 
-describe("railHistoryFilter — §9, the whole isolation decision for the backfill", () => {
-  it("scopes a CLIENT feed by contact, never by tenant", () => {
-    // A client feed narrowed by tenant would show one portal client every other client's events.
-    expect(railHistoryFilter({ scope: "client", contactId: "c1" }, "c1"))
-      .toEqual({ column: "contact_id", value: "c1" });
+describe("railHistoryRequest — §9, the whole isolation decision for the backfill", () => {
+  it("sends a CLIENT feed to get_client_rail, at the CLIENT lens", () => {
+    // The client lens is the narrower projection: the resolver nulls actor_user_id, the department
+    // columns, ref_table and ref_id, returns payload as {}, and admits only client-visible rows.
+    // Asking for a wider lens from a client surface would be asking the server for data this
+    // component has no business rendering.
+    expect(railHistoryRequest({ scope: "client", contactId: "c1" }, "c1", 50)).toEqual({
+      fn: "get_client_rail",
+      args: { p_contact_id: "c1", p_limit: 50, p_lens: "client" },
+    });
   });
 
-  it("scopes a TENANT feed by tenant, never by contact", () => {
-    // And the reverse mistake shows a staff surface almost nothing, which looks like "quiet".
-    expect(railHistoryFilter({ scope: "tenant", tenantId: "t1" }, "t1"))
-      .toEqual({ column: "tenant_id", value: "t1" });
+  it("sends a TENANT feed to get_solo_rail_activity, and passes NO tenant id", () => {
+    // This is the property that matters, not the function name: there is no tenant argument to
+    // get wrong, and no tenant argument a caller could substitute. The resolver reads
+    // current_user_tenant_id() and checks membership OF THAT workspace.
+    const req = railHistoryRequest({ scope: "tenant", tenantId: "t1" }, "t1", 50);
+    expect(req.fn).toBe("get_solo_rail_activity");
+    expect(req.args).toEqual({ p_limit: 50 });
+    expect(JSON.stringify(req)).not.toContain("t1");
   });
 
-  it("filters on the id it was given, not on one carried in the options", () => {
+  it("passes the id it was given, not one carried in the options", () => {
     // The effect resolves the id once, through `resolveTopic`, and the subscription and the read
     // must use that SAME id. Reading a second copy off the options is how the two drift apart.
-    expect(railHistoryFilter({ scope: "client", contactId: "stale" }, "resolved").value).toBe("resolved");
+    const req = railHistoryRequest({ scope: "client", contactId: "stale" }, "resolved", 50);
+    expect(req.fn === "get_client_rail" && req.args.p_contact_id).toBe("resolved");
+  });
+});
+
+describe("classifyRailReadError — a refusal is not an outage", () => {
+  it("reads SQLSTATE 42501 as a refusal", () => {
+    // Every Rail reader raises exactly this. PostgREST surfaces it as `code`.
+    expect(classifyRailReadError({ code: "42501", message: "RAIL_FORBIDDEN" })).toBe("forbidden");
+  });
+
+  it("still reads a refusal when only the message survives the transport", () => {
+    // A layer that drops the code must not silently downgrade "you may not see this" into
+    // "the server is having trouble" — they mean different things to the person reading it.
+    expect(classifyRailReadError({ message: 'RAIL_FORBIDDEN' })).toBe("forbidden");
+  });
+
+  it("reads anything else as an outage rather than assuming a permission problem", () => {
+    expect(classifyRailReadError({ message: "Failed to fetch" })).toBe("unavailable");
+    expect(classifyRailReadError({ code: "57014", message: "canceling statement" })).toBe("unavailable");
+    expect(classifyRailReadError(null)).toBe("unavailable");
   });
 });
 
