@@ -216,6 +216,40 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   // fixing the parent-unmount seam: the switch branch was correct and simply never fired.
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
+  // ...and the roster record ALONE cannot answer that question, which is the sixth read's finding.
+  // The parent feeds this dialog `workspace ?? lastWorkspace.current` ON PURPOSE, because `load(0)`
+  // nulls the roster before it awaits and the dialog must outlive that flash. So for the whole
+  // switch window — the 180ms debounce plus the fetch — the prop above IS the PRE-switch roster,
+  // and `workspaceRef.current.tenant_id !== tenantAtArm` answers "nothing changed" precisely when
+  // it did. Every one of the three post-await guards was therefore blind exactly where it mattered,
+  // and a removal that landed inside that window reinstated the cross-workspace banner (the parent
+  // clears `notice` on `activeTenantId`, which fires BEFORE the roster reloads, so the banner is
+  // written after the clear) while a refusal landed in a dialog the new roster then unmounted —
+  // reported to nobody at all.
+  //
+  // The tenant CONTEXT is the signal that does not flash: it is what the parent's own invite-dialog
+  // guard already keys on. It is read through a commit-assigned ref for the same reason
+  // `removalInFlightRef` is.
+  const { activeTenantId } = useTenantContext();
+  const activeTenantRef = useRef(activeTenantId);
+  // Commit-assigned, matching `removalInFlightRef` and the `Modal` `latest` ref. HONEST NOTE:
+  // mutation cannot tell this apart from a render-phase assignment, because jsdom runs no
+  // StrictMode double-render and discards no renders — so this is the file's stated pattern applied
+  // for consistency, NOT a property any test here proves.
+  useEffect(() => { activeTenantRef.current = activeTenantId; }, [activeTenantId]);
+  // Proof of a switch, never a guess at one. A null/absent live id means UNKNOWN — treating that as
+  // "switched" would report "you have since switched workspace" to an operator who never moved,
+  // which is a false statement rather than a silence, so it is the direction that must fail closed.
+  //
+  // The roster is deliberately NOT consulted as a second witness. I wrote it as one, and mutation
+  // proved the branch can never fire alone: `useTeamWorkspace` returns early without fetching when
+  // there is no tenant id, and when a roster value DOES exist the hook has already asserted
+  // `next.tenant_id === activeTenantId` — so a roster that disagrees with `tenantAtArm` implies a
+  // live id that disagrees too. An unreachable OR that a comment calls load-bearing is the exact
+  // thing the read of this diff filed against the disarm effect below; it is removed rather than
+  // left in to be believed.
+  const switchedAwayFrom = (tenantAtArm: string) =>
+    Boolean(activeTenantRef.current) && activeTenantRef.current !== tenantAtArm;
   // Whether this dialog has been through a removal stage at all. Without it the effect below fires
   // its `idle` branch on MOUNT — and a child's effects commit before its parent's, so it overrode
   // the Modal's own initial focus and left the caret on "Remove from workspace" the moment anyone
@@ -301,7 +335,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
         // longer looking at — and the parent's own switch effect would clear it anyway. Same class
         // as the two branches below; flagged by the third read as pre-existing and fixed here
         // rather than left as the one remaining instance of it.
-        if (workspaceRef.current.tenant_id !== tenantAtArm) {
+        if (switchedAwayFrom(tenantAtArm)) {
           setRemoval({ stage: "idle", error: null, tenantAtArm: null, nameAtArm: null });
           toast.error(refusal.message);
           onClose();
@@ -316,7 +350,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
       // wipe the alert the moment the stage leaves `pending` anyway — showing the refusal for one
       // frame and then discarding it, which is barely better than never showing it. So the outcome
       // goes to the parent-owned channel, which outlives the dialog, and the dialog closes.
-      if (workspaceRef.current.tenant_id !== tenantAtArm) {
+      if (switchedAwayFrom(tenantAtArm)) {
         setRemoval({ stage: "idle", error: null, tenantAtArm: null, nameAtArm: null });
         toast.error(refusal.message);
         onClose();
@@ -342,7 +376,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
       onClose();
       return;
     }
-    if (workspaceRef.current.tenant_id !== tenantAtArm) {
+    if (switchedAwayFrom(tenantAtArm)) {
       // The removal DID happen, in the workspace it named. Say that, rather than leaving the
       // operator with an ambiguity about a destructive act that completed.
       setRemoval({ stage: "idle", error: null, tenantAtArm: null, nameAtArm: null });
@@ -441,7 +475,21 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
       <label>Responsibilities<textarea value={responsibilities} disabled={!workspace.can_manage_profiles || saving} maxLength={2001} onChange={(e) => { setResponsibilities(e.target.value); setSaveConfirmed(false); }} rows={5} placeholder="What this person owns, decides, and hands off."/>{errors.responsibilities && <small role="alert">{errors.responsibilities}</small>}</label>
       {saveConfirmed && <div className="stw-separation-note" role="status"><ShieldCheck/><span>Work details saved. Permission was not changed.</span></div>}
       {workspace.can_change_permissions && permission.mutable && <div className="stw-permission-change"><label>Enforced permission<select value={permissionDraft ?? member.permission} onChange={(e) => setPermissionDraft(e.target.value)}><option value="admin">Admin</option><option value="member">Member</option></select></label>{permissionDraft && permissionDraft !== member.permission && <div className="stw-confirm"><p>Change access from {permission.label} to {permissionPresentation(permissionDraft, false).label}? This changes authorization, not the job title.</p><button className="stw-btn secondary" onClick={() => setPermissionDraft(null)}>Cancel</button><button className="stw-btn" disabled={saving || removalInFlight} onClick={changePermission}>Confirm access change</button></div>}</div>}
-      {canRemove && <div className="stw-permission-change">
+      {/* `canRemove` is recomputed from the LIVE roster, so switching into a workspace where the
+          viewer is only an Admin used to unmount this entire block MID-REMOVAL — taking the
+          "Removing…" status line, Cancel and Confirm with it. What was left was an open dialog
+          saying nothing about a destructive act in flight, with ZERO enabled controls: both close
+          buttons are disabled while pending (deliberately, so a refusal cannot be lost), the work
+          fields are disabled by `!can_manage_profiles`, Escape routes through the same gate, and
+          the Tab trap's own `!focusable.length` branch swallows the key. A page reload was the only
+          exit. Once a removal is under way this block belongs to the call, not to the live roster —
+          it stays until the call settles and the switch guard above closes the dialog properly.
+          The predicate is `!== "idle"` rather than `=== "pending"` because that is the invariant: a
+          removal under way in EITHER stage belongs to its call. Stated plainly so it is not mistaken
+          for a tested fact — only the pending half is provable, since a switch while merely ARMED is
+          unmounted by the parent's stale-selection clear before this gate is reached, and mutation
+          confirms no test here separates the two. */}
+      {(canRemove || removal.stage !== "idle") && <div className="stw-permission-change">
         <div className="stw-confirm">
           {removal.stage === "idle" && <p>Removing someone ends their access to {workspace.tenant_name}. It does not delete their Paige account or the work already recorded under their name.</p>}
           <button ref={removeButtonRef} className="stw-btn secondary" disabled={removal.stage !== "idle" || saving} onClick={() => setRemoval({ stage: "armed", error: null, tenantAtArm: workspace.tenant_id, nameAtArm: workspace.tenant_name })} aria-label={`Remove ${identity.primary} from ${removalWorkspaceName}`}>Remove from workspace</button>

@@ -922,3 +922,133 @@ describe("the fifth read", () => {
     expect(said, "not the one the operator has since switched to").not.toContain("Second Workspace");
   });
 });
+
+describe("the sixth read — the switch guard was blind for the whole switch window", () => {
+  // THE STRUCTURAL DEFECT ALL THREE OF THESE SHARE. The parent hands this dialog
+  // `workspace ?? lastWorkspace.current` deliberately, because `load(0)` nulls the roster before it
+  // awaits and the dialog has to outlive that flash. So for the entire switch window — the 180ms
+  // debounce plus the fetch — the prop IS the PRE-switch roster, and every
+  // `workspaceRef.current.tenant_id !== tenantAtArm` guard answered "nothing changed" exactly when
+  // it had. The three tests already in this file all wait for the new roster to LAND before
+  // settling the call, so every one of them steps over the window rather than into it.
+  const rosterA = () => workspace();
+  const rosterB = (over: Partial<TeamWorkspaceRecord> = {}) =>
+    workspace({ tenant_id: "tenant-2", tenant_name: "Second Workspace", members: [], total_members: 0, ...over });
+
+  /** Arms and confirms a removal in Example Team, then switches WITHOUT letting the new roster land. */
+  async function armConfirmThenSwitchMidFlight(rosterForTenant2: TeamWorkspaceRecord) {
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    const a = rosterA();
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") {
+        return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? a : rosterForTenant2, error: null });
+      }
+      if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
+      return new Promise(() => {});
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    // The switch itself — and then NOTHING that would let the new roster arrive.
+    mocks.tenant.activeTenantId = "tenant-2";
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    return { host, root, settle: (v: { data: unknown; error: unknown }) => settle(v) };
+  }
+
+  it("does not leave a removal banner over the next workspace when the call lands mid-switch", async () => {
+    // The parent clears `notice` on `activeTenantId`, which fires BEFORE the roster reloads. So a
+    // removal settling inside the window wrote the banner AFTER the clear that exists to stop
+    // exactly this, and it then sat over Second Workspace's roster claiming something about
+    // Example Team — the cross-workspace false statement this whole programme keeps closing.
+    const { host, root, settle } = await armConfirmThenSwitchMidFlight(rosterB());
+    await act(async () => { settle({ data: { tenant_id: "tenant-1" }, error: null }); });
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const banners = Array.from(host.querySelectorAll(".stw-separation-note")).map((n) => n.textContent ?? "").join(" | ");
+    expect(banners, `a banner about the old workspace survived onto the new roster: ${JSON.stringify(banners)}`)
+      .not.toMatch(/Example Team/);
+    // ...and the removal is not simply swallowed instead. It happened; it has to be said somewhere.
+    const said = mocks.success.mock.calls.map((c) => String(c[0])).join(" | ");
+    expect(said, "the removal that the server APPLIED is still reported").toMatch(/Example Team/);
+    expect(said, "and says plainly why this roster does not show it").toMatch(/switched workspace/i);
+  });
+
+  it("does not swallow a REFUSAL that lands mid-switch", async () => {
+    // Worse than the banner, because nothing is written at all. The blind guard took the in-dialog
+    // branch; the tenant-2 roster then landed, the disarm effect wiped the error, `removalPending`
+    // went false and the parent unmounted the dialog. Dialog gone, no alert, no toast — the one
+    // outcome this file's own comments call unacceptable for a destructive action.
+    const { host, root, settle } = await armConfirmThenSwitchMidFlight(rosterB());
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const alerts = Array.from(host.querySelectorAll('[role="alert"]')).map((n) => n.textContent ?? "");
+    const toasts = mocks.error.mock.calls.map((c) => String(c[0]));
+    const anywhere = [...alerts, ...toasts].join(" | ");
+    expect(anywhere, `the refusal reached nobody: alerts=${JSON.stringify(alerts)} toasts=${JSON.stringify(toasts)}`)
+      .toMatch(/owner/i);
+  });
+
+  it("keeps the in-flight removal block when the workspace switched to is one the viewer only administers", async () => {
+    // `canRemove` is recomputed from the LIVE roster. Switching into a workspace where the viewer is
+    // an Admin unmounted the whole block mid-call — the "Removing…" status line, Cancel and Confirm
+    // all went — leaving an open dialog that said nothing about a destructive act in flight and had
+    // ZERO enabled controls, because both close buttons are disabled while pending by design. A page
+    // reload was the only way out.
+    const { host, root } = await armConfirmThenSwitchMidFlight(rosterB({ can_change_permissions: false }));
+    // Let the Admin roster actually LAND — that is what flips `canRemove` false.
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const dialog = host.querySelector('[role="dialog"]');
+    expect(dialog, "the dialog is still open, which is what makes the rest of this matter").toBeTruthy();
+    const live = Array.from(dialog!.querySelectorAll('[role="status"]')).map((n) => n.textContent ?? "").join(" | ");
+    expect(live, `an in-flight destructive act is still announced: ${JSON.stringify(live)}`).toMatch(/Removing/);
+    expect(live, "and it still names the workspace it is happening in").toContain("Example Team");
+    expect(confirmButton(host), "the control that owns this call is still rendered").toBeTruthy();
+  });
+
+  // The one below exists because mutation caught it: with only the three tests above, the guard
+  // could be inverted into its false-positive direction without a single assertion noticing.
+  // (Mutation also killed the OTHER half of my first attempt at this guard — a roster "second
+  // witness" — by showing no test could reach it. It was unreachable, and it is gone rather than
+  // documented as load-bearing.)
+
+  it("never treats an UNKNOWN live tenant as a switch that already happened", async () => {
+    // The other direction, and the one that would be a false statement rather than a silence: if an
+    // unresolved tenant context counted as "switched", a perfectly ordinary removal would be
+    // reported as "you have since switched workspace, so this roster does not show it" — to an
+    // operator who never moved, looking at the roster it did happen in.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    const a = workspace();
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") return Promise.resolve({ data: a, error: null });
+      if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
+      return new Promise(() => {});
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    mocks.tenant.activeTenantId = null as unknown as string;
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { settle({ data: { tenant_id: "tenant-1" }, error: null }); });
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const banners = Array.from(host.querySelectorAll(".stw-separation-note")).map((n) => n.textContent ?? "").join(" | ");
+    expect(banners, `the ordinary outcome was announced on the roster it happened in: ${JSON.stringify(banners)}`)
+      .toMatch(/no longer has access to Example Team/);
+    const said = [...mocks.success.mock.calls, ...mocks.error.mock.calls].map((c) => String(c[0])).join(" | ");
+    expect(said, "and nobody was told they had switched workspace when they had not").not.toMatch(/switched workspace/i);
+  });
+});
