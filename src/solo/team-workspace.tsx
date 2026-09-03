@@ -659,11 +659,26 @@ function InviteRow({ invite, onManage }: {
   return <article>
     <div>
       <strong>{recipient}</strong>
-      {/* The verb comes from the EXPIRED state alone, not from `finished`. `finished` is true for
-          accepted and revoked invitations too, and those routinely still have a future expiry —
-          so this read "Accepted · expired Sep 10" while Sep 10 had not yet arrived. An invitation
-          that was accepted last week did not expire; it was accepted. */}
-      <small>{permissionPresentation(invite.permission, false).label} · {state === "expired" ? "expired" : "expires"} {new Date(invite.expires_at).toLocaleDateString()}</small>
+      {/* THE EXPIRY CLAUSE IS ONLY SHOWN WHERE IT MEANS SOMETHING — a pending invitation that will
+          expire, or one that already did. It is omitted for accepted and revoked.
+
+          Two wrong answers were shipped here before this one, in opposite directions. Keying the
+          verb on `finished` said "Accepted · expired Sep 10" while Sep 10 was still ahead. Keying
+          it on `state === "expired"` then said "Accepted · expires Sep 1" once Sep 1 had passed,
+          because `inviteLifecycle` short-circuits on `uses`/`revoked_at` BEFORE it looks at the
+          date, so a used invitation never reports `expired` however old it gets.
+
+          No tense is correct, because the premise is wrong: an invitation that was accepted did
+          not expire and is not going to. Its expiry stopped mattering the moment it was used, and
+          the pill beside it already says what happened. So the clause goes away rather than being
+          conjugated more carefully. */}
+      <small>
+        {permissionPresentation(invite.permission, false).label}
+        {(state === "pending" || state === "expired") && <>
+          {" · "}{state === "expired" ? "expired" : "expires"}{" "}
+          {new Date(invite.expires_at).toLocaleDateString()}
+        </>}
+      </small>
     </div>
     <span className="stw-pill" data-tone={state}>{state}</span>
 
