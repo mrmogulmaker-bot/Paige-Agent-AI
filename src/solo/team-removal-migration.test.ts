@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const PATH = "supabase/migrations/20261044000000_an_owner_can_remove_someone_from_their_workspace.sql";
+const PATH = "supabase/migrations/20261046000000_an_owner_can_remove_someone_from_their_workspace.sql";
 const sql = readFileSync(resolve(process.cwd(), PATH), "utf8");
 
 /** The one function this migration adds — its signature, its header, and its body. */

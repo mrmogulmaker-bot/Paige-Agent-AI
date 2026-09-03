@@ -106,7 +106,7 @@ access. Two entry points, one seam — the Team screen, and PAIGE in the rail be
 | Invitations | `tenant_invite_tokens` where `kind = 'team'` |
 | Identity | `profiles` (display name), `auth.users` (email, last sign-in) |
 | Read | `get_solo_team_workspace(_search,_permission,_limit,_offset)` · `get_paige_team_context()` |
-| Write | `set_solo_team_member_work_profile` · `set_solo_team_member_permission` · `create_/resend_/revoke_solo_team_invite` (service-role only, behind the `solo-team-invitations` edge function) · `remove_solo_team_member` (Owner-only, **merged-pending — migration `20261044000000` is not applied**) |
+| Write | `set_solo_team_member_work_profile` · `set_solo_team_member_permission` · `create_/resend_/revoke_solo_team_invite` (service-role only, behind the `solo-team-invitations` edge function) · `remove_solo_team_member` (Owner-only, **merged-pending — migration `20261046000000` is not applied**) |
 
 All are `SECURITY DEFINER` with the authority check **in the body**, so the same refusal applies
 whether the request came from the screen or from a sentence.

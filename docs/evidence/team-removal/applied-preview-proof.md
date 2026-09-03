@@ -78,3 +78,33 @@ Admin able to end somebody's access by writing `status`, since every resolver re
 - **No authenticated browser drive.** No session, no UI, no real person. This proves the database
   contract on an applied schema; it says nothing about whether an owner can complete the flow in the
   product. That drive is owed to a capable session.
+
+---
+
+## Renumbering note — 2026-09-03, recorded rather than rewritten
+
+**The transcript above is left exactly as it was observed.** It records `20261044000000` as applied
+on the preview branch, and that was true when it was taken.
+
+That version has since been claimed on `main` by a different migration —
+`20261044000000_rail_authority_is_decided_in_this_workspace.sql`, merged as
+[#813](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/813) (`4ccd65d4`) and since applied to
+production, where `supabase_migrations.schema_migrations` now carries the version and
+`to_regprocedure('public.remove_solo_team_member(uuid,uuid)')` returns `null`. This branch's
+migration was therefore renumbered to **`20261046000000`**. Its SQL is unchanged.
+
+**This is the third collision on this branch** (`20261042000000` → `20261043000000` →
+`20261044000000` → `20261046000000`), and the first of the three that `scripts/ci/migration-version-collision-lint.mjs`
+could not have caught before it happened: the guard compares against the merge base, and the twin
+only appeared on `main` after this branch's head was cut. Had it merged as-numbered, `supabase db
+push` would have **skipped the file silently** — CI green, `db-live` advanced, and
+`remove_solo_team_member` simply absent from production.
+
+The three-way check was re-run for the new version: not on `main`, not on any remote branch, and not
+in production's ledger. The `20261046000000` number leaves `20261045000000` to
+[#827](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/827), which releases first.
+
+**What this does NOT re-prove.** The behavioural results above were obtained against the migration
+applied under its old version. The SQL is byte-identical, so they remain evidence about this
+migration's behaviour — but the applied-schema proof for `20261046000000` under its new number comes
+from this PR's own Supabase Preview run, and is not claimed by this note.

@@ -1391,7 +1391,7 @@ inside a tenant workspace it has switched into (§51), not a cross-tenant reach.
 ### Solo Settings → Team — removing someone from a workspace, `/solo/{account}/settings/team`
 
 **§66, same commit as the ship — and the row is deliberately NOT ticked as live.** This entry
-records a capability that is **merged-pending**: the migration `20261044000000` is written, its
+records a capability that is **merged-pending**: the migration `20261046000000` is written, its
 guards are proven against production inside a rolled-back transaction, and nothing is applied. It
 becomes live only when the migration is applied and an authenticated drive confirms it. Until then
 the honest label is `PENDING`, not `SHIPPED`.
