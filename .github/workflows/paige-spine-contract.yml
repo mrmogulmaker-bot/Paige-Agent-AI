@@ -11,6 +11,7 @@ on:
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
+      - "supabase/tests/solo_team_invite_recipient_binding.sql"
       # Same reason for the removal proof: it must re-run when the seam changes.
       - "supabase/tests/solo_team_removal_authority.sql"
       - "supabase/functions/solo-team-invitations/**"
@@ -32,6 +33,7 @@ on:
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
+      - "supabase/tests/solo_team_invite_recipient_binding.sql"
       # Same reason for the removal proof: it must re-run when the seam changes.
       - "supabase/tests/solo_team_removal_authority.sql"
       - "supabase/functions/solo-team-invitations/**"
@@ -81,6 +83,7 @@ jobs:
       # Postgres: the expensive part is `supabase start` + `db reset`, and duplicating it to run
       # one more file would double a 20-minute job for nothing (§24).
       - run: supabase test db supabase/tests/solo_team_invite_workspace_authority.sql
+      - run: supabase test db supabase/tests/solo_team_invite_recipient_binding.sql
       - run: supabase test db supabase/tests/solo_team_removal_authority.sql
       - run: supabase test db supabase/tests/solo_team_invite_lifecycle.sql
       # The business_context.readiness contract: grant surface, both caller paths, and the role
