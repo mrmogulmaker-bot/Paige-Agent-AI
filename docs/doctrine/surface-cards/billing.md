@@ -1,14 +1,14 @@
 # Surface card — Billing (Solo Settings → Billing)
 
 **Truth label: `PARTIAL`.** It stays `PARTIAL`, and what it means CHANGED with Foundation C
-(PR #833, built not merged).
+(PR #833, **released** `11997dac` 2026-09-03).
 
-*Before C (still what is deployed):* the owner read a plan name, status, **price and renewal** from
+*Before C (what WAS deployed until 2026-09-03):* the owner read a plan name, status, **price and renewal** from
 a tenant-scoped seam — and those last two were fabricated. The price came from the plan CATALOGUE
 and the renewal from a seeded `current_period_end`; every live `platform_subscriptions` row carries
 a NULL Stripe customer and subscription id. See `docs/delivery/billing-foundation-c-design.md` §2.
 
-*After C:* no plan, price, renewal, invoice or payment method is stated at all, because no record
+*After C — what is deployed now:* no plan, price, renewal, invoice or payment method is stated at all, because no record
 proves one — every current workspace resolves to an explained `billing-unavailable`. What becomes
 real instead is **billing contacts and notices**: an owner can designate the workspace's primary
 billing contact, add and remove a billing delegate, and see it hold across a reload. That is a

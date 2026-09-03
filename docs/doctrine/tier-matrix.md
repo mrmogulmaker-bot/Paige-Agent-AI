@@ -1826,11 +1826,13 @@ Owner-only. **No delivery exists:** "receives" means designated, not delivered t
 designation creates, changes, transfers, implies, or records legal ownership, equity, corporate or
 trust ownership, trustee or co-owner status** (owner ruling R27, 2026-09-02).
 
-### Platform Billing — Foundation C, the Solo Billing screen (PR #833) — **BUILT, NOT MERGED**
+### Platform Billing — Foundation C, the Solo Billing screen (PR #833, merged `11997dac` 2026-09-03) — **RELEASED**
 
-**§66.** Foundation A's seams had no renderer. Foundation C mounts them. The row below records what
-each tier SEES on `Solo Settings › Billing` once this merges; until it does, the shipped surface is
-still the pre-C tab, which rendered the plan CATALOGUE price for every workspace.
+**§66.** Foundation A's seams had no renderer. Foundation C mounts them. The rows below record what
+each tier SEES on `Solo Settings › Billing` **as deployed**. Released under the owner's MVP release
+cadence (2026-09-03) with ordinary checks green: `verify` and `audit` success on the exact head,
+Vercel deployed, Supabase Preview skipped because the slice carries **no migration**. Status is
+**PARTIAL / Authenticated Runtime Proof Owed** — see the owed list below.
 
 **The §13 correction this slice makes.** The shipped tab joined `get_tenant_platform_subscription()`
 to `platform_subscription_plans` and rendered `Solo · Active · $149.00/month · Renews 5 Aug 2027`.
