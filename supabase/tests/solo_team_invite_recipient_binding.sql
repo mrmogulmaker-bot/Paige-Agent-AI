@@ -43,6 +43,10 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN _denied := true;
   END;
   RESET ROLE;
+  -- Fixture writes are trusted setup, not a continuation of the previous simulated browser.
+  PERFORM set_config('request.jwt.claims', '{}', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', '', true);
   RETURN NEXT ok(_role = CASE WHEN _actor IS NULL THEN 'anon' ELSE 'authenticated' END,
     _label || ': actual caller role');
   RETURN NEXT ok(_denied = NOT _allow, _label || ': expected acceptance/refusal');
@@ -67,6 +71,10 @@ DECLARE
   _replacement jsonb;
   _email text := 'recipient-' || _serial || '@tests.invalid';
 BEGIN
+  -- Fixture writes are trusted setup, not a continuation of the previous simulated browser.
+  PERFORM set_config('request.jwt.claims', '{}', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', '', true);
   INSERT INTO auth.users (id, aud, role, email, email_confirmed_at) VALUES
     (_actor, 'authenticated', 'authenticated', 'wrong-' || _serial || '@tests.invalid', now()),
     (_owner, 'authenticated', 'authenticated', 'owner-' || _serial || '@tests.invalid', now());
@@ -174,6 +182,10 @@ BEGIN
     _rpc || ': negative control changes exactly one binding condition');
   _before := pg_temp.binding_snapshot();
   BEGIN
+  -- Fixture writes are trusted setup, not a continuation of the previous simulated browser.
+  PERFORM set_config('request.jwt.claims', '{}', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', '', true);
     EXECUTE _mutant;
     INSERT INTO auth.users (id, aud, role, email, email_confirmed_at)
     VALUES (_actor, 'authenticated', 'authenticated', 'wrong-negative-' || _serial || '@tests.invalid', now());

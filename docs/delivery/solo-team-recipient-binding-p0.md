@@ -1,6 +1,6 @@
 # Solo Team invitation recipient binding P0
 
-Status: repair candidate; production persistence and executable database proof pending.
+Status: repair candidate in PR #900; isolated applied-schema proof PASS, production persistence pending.
 
 The deployed legacy accept_tenant_invite(text) could accept a Solo Team token without binding the signed-in caller to its intended recipient. This was confirmed by live function-definition and privilege inspection, not by attempting a live exploit. No prior exposure is asserted.
 
@@ -13,3 +13,5 @@ The forward migration changes only two function definitions. Locked token handli
 Current signup pre-confirms accounts; email_confirmed_at is a server account-state check, not independent real-inbox proof. The owner-confirmed invitation send leg remains LIVE. Fresh-account end-to-end acceptance remains Proof Owed until the controlled owner recipient test. No live invitation, membership, account or provider mutation is part of verification.
 
 Delivery-status work resumes only as a separate slice after this P0 is green, merged and production-verified. Super Admin remains deferred.
+
+Verification before release: 110/110 behavioral pgTAP assertions passed on this PR's isolated Supabase preview, including both binding-removal negative controls and late-failure rollback. The exact checked-in statements were run with an output collector that raises on any failed TAP assertion; CI runs the unmodified file against a from-zero schema. Initial fixture run failed because simulated JWT context leaked into setup for the next actor; fixed by clearing fixture context, preserving every consent trigger. 66 focused Team/workspace-context integration tests PASS. Production build PASS. Migration, definer, view, tenant-feature, write-target, managed-schema and credential linters PASS. Independent specification/security and final adversarial reviews PASS. Full CI rerun is required on the corrected fixture commit.
