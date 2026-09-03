@@ -80,7 +80,11 @@ export function removalRefusal(raw: string | null | undefined, personName: strin
     [/cannot remove yourself/, { message: "You can't remove yourself from this workspace.", retryable: false, reconciled: false }],
     [/only an admin or a member/, { message: `${personName}'s access level isn't handled on this screen, so nothing was changed.`, retryable: false, reconciled: false }],
     [/active workspace changed/, { message: `Your active workspace changed before this could run, so nothing was removed. Open ${workspaceName} again to try.`, retryable: false, reconciled: false }],
-    [/authentication required/, { message: "Your session ended before this could run. Sign in again and nothing will have changed.", retryable: false, reconciled: false }],
+    // The seam raises this for a missing ACTOR *or* a missing active WORKSPACE, and they are not the
+    // same thing: platform staff who used Exit tenant, or an owner whose membership went inactive,
+    // still have a perfectly good session. Telling them to sign in again is both untrue and useless.
+    // One sentence that is true of both, rather than a guess at which.
+    [/authentication required/, { message: "This needs an active workspace, and there isn't one right now, so nothing was removed. Reopen Team — or sign in again if you have been signed out.", retryable: false, reconciled: false }],
     [/not on this workspace/, { message: `${personName} is no longer on this team. Nothing further was changed.`, retryable: false, reconciled: true }],
     [/cannot remove admin role from platform owner/, { message: `${personName} holds a platform role that can't be given up here, so nothing was changed.`, retryable: false, reconciled: false }],
   ];
@@ -112,7 +116,12 @@ export function removalRefusal(raw: string | null | undefined, personName: strin
   // the same lie this branch was just repaired to stop telling, one case over. Reachable here rather
   // than theoretical: the RPC takes `FOR UPDATE` on the membership row, which blocks behind a
   // concurrent co-owner grant, which is exactly what that lock is for.
-  if (/canceling statement due to statement timeout/i.test(text)) {
+  // BOTH cancellations, not just the one named in the comment below. `lock_timeout` is what cuts
+  // the FOR UPDATE wait this branch exists for, and its message says "lock timeout" — which misses
+  // /statement timeout/ and hits /timeout/ in the transport test, putting it straight back into the
+  // sentence this branch was written to stop telling. Fixing one and leaving its named sibling was
+  // the miss.
+  if (/canceling statement due to (statement|lock) timeout/i.test(text)) {
     return { message: `That took too long and was cancelled, so nothing changed — ${personName} is still on this team.`, retryable: true, reconciled: false };
   }
   if (/failed to fetch|networkerror|network request|network error|timeout|timed out|aborted|econnreset|load failed/i.test(text)) {

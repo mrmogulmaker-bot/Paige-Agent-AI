@@ -372,7 +372,9 @@ describe("the refusal vocabulary itself", () => {
       ["you cannot remove yourself from this workspace", /can't remove yourself/, false, false],
       ["only an Admin or a Member can be removed from this workspace", /access level isn't handled/, false, false],
       ["your active workspace changed before this could run; nothing was removed", /workspace changed/, false, false],
-      ["authentication required in an active workspace", /session ended/, false, false],
+      // NOT /session ended/ — the seam raises this for a missing actor OR a missing active
+      // workspace, and platform staff who pressed Exit tenant have a perfectly good session.
+      ["authentication required in an active workspace", /needs an active workspace/i, false, false],
       ["that person is not on this workspace's team", /no longer on this team/, false, true],
     ];
     for (const [raw, expected, retryable, reconciled] of cases) {
@@ -1249,6 +1251,125 @@ describe("the eighth read — an unread refusal must not become a pin", () => {
     expect(host.querySelector('[role="dialog"]'), "an unread refusal does not pin a member who is gone").toBeFalsy();
     const save = buttons(host).find((b) => /save work details/i.test(b.textContent ?? ""));
     expect(save, "and no live Save survives over a roster that no longer lists them").toBeFalsy();
+    // ...and the outcome is not lost in the process, which is the half the previous two mechanisms
+    // kept trading against this one. Taking the dialog away re-emits what was in it.
+    const toasts = mocks.error.mock.calls.map((c) => String(c[0])).join(" | ");
+    expect(toasts, `the refusal followed the operator out of the dialog: ${JSON.stringify(toasts)}`).toMatch(/owner/i);
+  });
+
+  it("never loses an unread refusal when a SAVE churns the roster underneath it", async () => {
+    // The ninth read called this a second, wider reachability of the lost-refusal defect: after an
+    // in-dialog refusal the work fields and Save stay live (they gate on `pending`), so Save calls
+    // `onSaved` → `refresh()` → `load(0)`, which nulls the roster.
+    //
+    // HONEST FINDING, recorded because it contradicts the report I was acting on: driven here, it
+    // does NOT reproduce. The reload resolves and the roster returns with the member before any
+    // unmount commits, so the dialog survives and the alert stays readable. I am not claiming a
+    // defect I could not observe, and I am not deleting the case either — the invariant is what
+    // matters and it is asserted as a disjunction, so this stays a real guard: if a future change
+    // does make the dialog die here, the alert assertion fails and only the safety net can rescue it.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    const a = workspace();
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") return Promise.resolve({ data: a, error: null });
+      if (name === "set_solo_team_member_work_profile") return Promise.resolve({ data: null, error: null });
+      if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
+      return new Promise(() => {});
+    });
+    const { host, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+    expect(host.querySelector('[role="alert"]')?.textContent ?? "", "the refusal is painted first").toMatch(/owner/i);
+
+    await act(async () => {
+      const field = host.querySelector<HTMLInputElement>('input[maxlength="121"]')!;
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(field, "Head of Client Success");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => buttons(host).find((b) => /save work details/i.test(b.textContent ?? ""))!.click());
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+
+    const stillOnScreen = Array.from(host.querySelectorAll('[role="alert"]')).map((n) => n.textContent ?? "").join(" | ");
+    const reEmitted = mocks.error.mock.calls.map((c) => String(c[0])).join(" | ");
+    expect(`${stillOnScreen} | ${reEmitted}`,
+      `the refusal was lost by the save: onScreen=${JSON.stringify(stillOnScreen)} toasts=${JSON.stringify(reEmitted)}`)
+      .toMatch(/owner/i);
+  });
+
+  it("announces a refusal after a real switch EXACTLY once", async () => {
+    // Two channels now know about an unread refusal — the switch branch and the unmount net — so
+    // the operator must not hear it twice. A destructive surface that double-reports teaches people
+    // to stop reading it, which costs exactly the losses this net exists to prevent.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    const a = workspace();
+    const b = workspace({ tenant_id: "tenant-2", tenant_name: "Second Workspace", members: [], total_members: 0 });
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? a : b, error: null });
+      if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
+      return new Promise(() => {});
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+    mocks.tenant.activeTenantId = "tenant-2";
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const said = mocks.error.mock.calls.map((c) => String(c[0])).filter((m) => /owner/i.test(m));
+    expect(said.length, `the refusal was announced ${said.length} times: ${JSON.stringify(said)}`).toBe(1);
+  });
+
+  it("does not say the server reported a workspace when it reported none", async () => {
+    // `acted` is null when the reply carries no `tenant_id` at all. Saying "the server reported
+    // acting on a different workspace" then invents a report that never happened — the honest half
+    // of that sentence is "nothing is being claimed here", and the first clause undid it.
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "remove_solo_team_member") return Promise.resolve({ data: null, error: null });
+      return new Promise(() => {});
+    });
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    const said = mocks.error.mock.calls.map((c) => String(c[0])).join(" | ");
+    expect(said, `nothing was claimed: ${JSON.stringify(said)}`).toMatch(/nothing is being claimed/i);
+    expect(said, "and no report was invented").not.toMatch(/reported acting on a different workspace/i);
+  });
+
+  it("does not repeat a refusal the operator has already closed", async () => {
+    // The other side of the net. Closing the dialog yourself IS reading it; re-announcing it as a
+    // toast afterwards would be noise, and noise on a destructive surface teaches people to ignore
+    // the channel that carries the real losses.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
+      return new Promise(() => {});
+    });
+    const onClose = vi.fn();
+    const { host, root, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={onClose} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+    expect(host.querySelector('[role="alert"]')?.textContent ?? "").toMatch(/owner/i);
+
+    const footerClose = host.querySelector<HTMLButtonElement>(".stw-modal-actions button.stw-btn.secondary")!;
+    await act(async () => footerClose.click());
+    expect(onClose, "the close was accepted").toHaveBeenCalled();
+    await act(async () => { root.unmount(); });
+
+    expect(mocks.error.mock.calls.length, `a refusal the operator dismissed was repeated at them: ${JSON.stringify(mocks.error.mock.calls.map((c) => String(c[0])))}`).toBe(0);
   });
 
   it("sends the refusal to the durable channel after Exit tenant, rather than offering a retry that cannot work", async () => {
@@ -1289,6 +1410,15 @@ describe("the eighth read — an unread refusal must not become a pin", () => {
     // and we can say so. The transport branch's `timeout|timed out` would otherwise swallow it and
     // assert a network fact that is simply untrue — the same lie the transport copy was just
     // repaired to stop telling, one case over.
+    // BOTH cancellations. `lock_timeout` is what actually cuts the FOR UPDATE wait this branch was
+    // written for, and its message says "lock timeout" — which misses /statement timeout/ and hits
+    // /timeout/ in the transport test. Fixing one and leaving its named sibling was the miss.
+    for (const raw of ["canceling statement due to statement timeout", "canceling statement due to lock timeout"]) {
+      const cancelled = removalRefusal(raw, "Dana Reyes", "Example Team");
+      expect(cancelled.message, `${raw} must not claim the server was unreachable`).not.toMatch(/could not reach the server/i);
+      expect(cancelled.message, `${raw} says what is actually known`).toMatch(/nothing changed/i);
+      expect(cancelled.retryable, `${raw} is worth trying again`).toBe(true);
+    }
     const timedOut = removalRefusal("canceling statement due to statement timeout", "Dana Reyes", "Example Team");
     expect(timedOut.message, "it must not claim the server was unreachable").not.toMatch(/could not reach the server/i);
     expect(timedOut.message, "it says what is actually known: nothing changed").toMatch(/nothing changed/i);
