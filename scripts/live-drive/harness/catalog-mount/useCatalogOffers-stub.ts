@@ -5,7 +5,7 @@
 // Every fixture below is a plausible tenant record — never one of the owner's real accounts (§63).
 type Mode = "populated" | "empty" | "readonly" | "error" | "resolving" | "unpriced"
   | "authority-unknown" | "fields-unavailable" | "instalment" | "recurring" | "empty-pending"
-  | "switched-account" | "loading" | "unavailable";
+  | "switched-account" | "loading" | "unavailable" | "save-refused" | "save-stale";
 
 let mode: Mode = "populated";
 const listeners = new Set<() => void>();
@@ -86,9 +86,19 @@ export function useCatalogOffers() {
     return () => { listeners.delete(force as () => void); };
   }, [force]);
 
+  // Slice 2B. The WRITE seam is stubbed for the same reason the read is: the component under test
+  // stays real, and only the network boundary is replaced. Without these the surface renders fine
+  // and then throws the moment anybody presses Save — which is precisely why the drive passed 419
+  // checks while having no coverage of the editor whatsoever.
   const base = (offers: unknown[]) => ({
     tenantId: "t", phase: "ready", offers, canManage: true,
     authorityUnknown: false, fieldsUnavailable: false, retry: () => {},
+    saveOffer: async () => (mode === "save-refused"
+      ? { ok: false, message: "an offer needs a name" }
+      : mode === "save-stale"
+        ? { ok: false, stale: true }
+        : { ok: true }),
+    setOfferStatus: async () => ({ ok: true }),
   });
   if (mode === "resolving") return { ...base([]), tenantId: null, phase: "resolving" };
   // The workspace IS resolved and the read is in flight. Distinct from `resolving`, which is the
@@ -113,5 +123,6 @@ export function useCatalogOffers() {
   if (mode === "recurring") return base(RECURRING);
   if (mode === "authority-unknown") return { ...base(OFFERS), canManage: false, authorityUnknown: true };
   if (mode === "fields-unavailable") return { ...base(OFFERS), fieldsUnavailable: true };
+  if (mode === "save-refused" || mode === "save-stale") return base(OFFERS);
   return base(OFFERS);
 }

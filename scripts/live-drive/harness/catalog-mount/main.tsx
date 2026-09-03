@@ -11,7 +11,10 @@ import "@/solo/solo-tokens.css";
 (globalThis as { __React?: typeof React }).__React = React;
 
 const MODES = ["populated", "unpriced", "instalment", "recurring", "empty", "empty-pending", "switched-account", "loading", "unavailable", "readonly",
-  "authority-unknown", "fields-unavailable", "resolving", "error"] as const;
+  "authority-unknown", "fields-unavailable", "resolving", "error",
+  // Slice 2B write outcomes. The drive needs a button for each mode it selects; adding the mode to
+  // the stub alone made setMode time out looking for a control that did not exist.
+  "save-refused", "save-stale"] as const;
 
 function Harness() {
   const [theme, setTheme] = React.useState<"light" | "dark">("light");
