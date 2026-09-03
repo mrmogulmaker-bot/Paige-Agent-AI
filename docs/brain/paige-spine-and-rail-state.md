@@ -222,15 +222,22 @@ enumerate, and three successive attempts to write one here were each incomplete.
 
 **The rule that replaces the list:**
 
-> **Every authenticated write to `internal_bookings` reaches the `has_any_role` gate.** Only
-> service-role writers (`booking-manage`, `public-booking`, and the `service_role`-only
+> **Every authenticated *event-eligible* write to `internal_bookings` reaches the `has_any_role`
+> gate.** Only service-role writers (`booking-manage`, `public-booking`, and the `service_role`-only
 > `create_class_booking` / `reschedule_class_booking`) skip it, because `auth.uid()` is NULL there.
+
+**"Event-eligible" is load-bearing, because the trigger returns early on most writes.** It files
+nothing for a contactless or tenantless row, for an INSERT that is already `cancelled`, for an UPDATE
+that neither cancels nor moves `start_at`, or for a non-representative collective-booking row
+(`20260712260000_booking_rail_emit.sql:58-60, 68-90, 107-120`). A trigger proof using any of those
+transitions **passes without ever reaching `record_rail_event`** — green, and vacuous.
 
 **What that means for a #824 fix, and it is the load-bearing consequence:** the proof belongs at the
 **trigger**, not at a list of call sites. A proof that walks named callers can always be defeated by
 the caller nobody listed — including a direct table write that no TypeScript in this repository
 performs today but the grant permits. Prove that `emit_booking_rail` still records under a staff
-subject after the gate changes, and the caller set stops mattering.
+subject after the gate changes — using a transition that actually reaches the Rail call — and the
+caller set stops mattering.
 
 **And this path files a mismatched attribution, which is worth knowing before anyone "fixes" it.**
 `v_actor := CASE WHEN p_actor_type IN ('owner_staff','client') THEN v_uid ELSE NULL END`, and the
