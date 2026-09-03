@@ -201,12 +201,28 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     // `user_roles.select("role")`, so the row shape is exactly this.
     let roles = (rolesRes.data || []).map((r: { role: string }) => r.role);
 
-    // Platform operators (super_admin) ALWAYS land on the operator console — never
-    // diverted to an agency side, even if they also own/admin an agency tenant.
-    // The platform operator and the agency operator are different §9 audiences.
-    // The door is GOD_CONSOLE, not a string restated here: a second copy is how the
-    // invite door drifted to a different destination for the same role.
-    if (roles.includes("super_admin")) {
+    // Platform operators ALWAYS land on the operator console — never diverted to an
+    // agency side, even if they also own/admin an agency tenant. The platform
+    // operator and the agency operator are different §9 audiences. The door is
+    // GOD_CONSOLE, not a string restated here: a second copy is how the invite door
+    // drifted to a different destination for the same role.
+    //
+    // BOTH OPERATOR TIERS, NOT JUST GOD (§53). `platform_admin` is the delegated
+    // operator tier and is admitted by `RequireOperator` exactly as `super_admin` is
+    // — the guard's predicate is `is_platform_admin()`, which means EITHER role. The
+    // two tiers differ in AUTHORITY (a platform_admin cannot grant roles or pass the
+    // integrity gates frozen on `is_platform_owner()`); they do not differ in where
+    // they land. Testing only `super_admin` here sent a platform_admin — who by
+    // design holds no tenant membership, owns no tenant and has no client row — all
+    // the way through to the "no role, no tenant, hasn't paid" fallback and out to
+    // `/pricing`, on their own platform.
+    //
+    // `OperatorLogin` already worked around this at ITS door, and its comment named
+    // the cause in as many words: "`resolveLandingRoute` — which has no
+    // platform_admin branch at all". Fixing the symptom at one entrance left every
+    // other entrance broken — the ordinary `/auth` sign-in and the landing header
+    // both route through here. The root cause is closed at the resolver instead.
+    if (roles.includes("super_admin") || roles.includes("platform_admin")) {
       return GOD_CONSOLE;
     }
     // Tenant/agency operators may prefer to land on their /agency side (#191);

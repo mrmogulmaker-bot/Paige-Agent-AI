@@ -1,5 +1,33 @@
 # Decision Log — chronological one-liners
 
+- **The delegated operator tier had no landing route, and a comment had named the cause without
+  closing it (2026-09-03, PR #811)** — the owner signed in as `paigeagentai@gmail.com` and was sent
+  to **`/pricing`**, on his own platform. `resolveLandingRoute` branched on `super_admin` only, so a
+  `platform_admin` — who by design holds no `tenant_members` row, owns no tenant and has no client
+  row (§53) — declined every later branch and reached the "no role, no tenant, hasn't paid" fallback.
+  **The gap was already documented and left open:** `OperatorLogin.tsx` works around it at its own
+  door and its comment says so verbatim — *"`resolveLandingRoute` — which has no platform_admin
+  branch at all"* — a §39 peer-gate had caught the symptom at ONE entrance and fixed it there, while
+  the ordinary `/auth` sign-in and the landing header both route through the resolver and had no such
+  workaround. Fixed at the resolver: both operator tiers return `GOD_CONSOLE`, matching
+  `RequireOperator`, whose predicate is `is_platform_admin()` = either role. The tiers differ in
+  AUTHORITY (a platform_admin cannot grant roles or pass the integrity gates frozen on
+  `is_platform_owner()`); they do not differ in where they land. Three cases added, two proven red
+  against the old resolver. **The measurement that mattered more than the fix:** both operator logins
+  are already correctly tenant-less (`admin@paigeagent.ai` = `super_admin`+`admin`,
+  `paigeagentai@gmail.com` = `platform_admin`, zero memberships and zero owned tenants each), so the
+  owner's "one operator account, two logins" ruling was ALREADY satisfied —
+  `admin_app_settings.platform_operator_tenant_id` resolves to exactly one workspace. **"Paige
+  Platform Defaults" is NOT a second operator account** and must not be consolidated into one: it is
+  the §9 default-set registry that seeds the platform prompt templates and carries the wildcard
+  web-host config, is filtered out of `TenantSwitcher` as a SYSTEM tenant, and migration
+  `20260913000000` states in its own header that the operator workspace is *not* that tenant. Deleting
+  or merging it would break both seeds. **A §13 correction on my own reporting:** I first read the
+  Solo fleet by numbers alone and called those two platform tenants "eligible to enable" for the Solo
+  shell; with their NAMES visible they are plainly platform infrastructure, not Solo businesses. Every
+  one of the four REAL Solo accounts already carries the canonical shell, so Solo parity is a
+  finish-the-shell job, not a rollout.
+
 - **Round four cleared the blockers and caught a guard that could not fail (2026-09-03, PR #811)** —
   ITERATE, not BLOCK: 22 loop scenarios driven against the real components on a real history-backed
   router reproduced no cycle this change introduces, and the one that does exist reproduces identically
