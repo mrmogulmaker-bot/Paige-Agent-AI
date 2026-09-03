@@ -1,72 +1,47 @@
-/**
- * Data-boundary stub for the Settings › Integrations harness mount.
- *
- * MOCKS THE PROVIDER, NEVER THE CONTRACT (harness README). The shipped
- * `SoloIntegrationsView`, the shipped `useN8nConnection` and the shipped CSS are
- * all under measurement — only the Supabase transport is replaced, and it answers
- * with the exact shapes the real RPCs return, including their raised errors.
- *
- * THE ROWS ARE VISIBLY SYNTHETIC ON PURPOSE. The instance address reads
- * "harness" so a frame can never be mistaken for a tenant's real configuration
- * (§13/§63). This is GEOMETRY and INTERACTION evidence only. It proves layout,
- * scroll ownership, focus and state rendering. It proves NOTHING about a real
- * provider connection and must never be reported as having done so.
- *
- * No API key value appears anywhere in this file. `api_key_last4` is what the
- * real seam returns; the key itself is unreadable by construction.
- *
- * `?data=` selects the state under measurement:
- *   empty (default) · connected · broken · readonly · error
- */
-export type StubState = "empty" | "connected" | "broken" | "readonly" | "error";
-
-function state(): StubState {
-  const value = new URLSearchParams(window.location.search).get("data");
-  return (value as StubState) || "empty";
+/** Local transport fixtures only. The actual Solo UI and hooks remain under measurement. */
+import { currentHarnessTenantId } from './tenant-context-stub';
+const params = () => new URLSearchParams(window.location.search);
+const mode = () => params().get('data') || 'empty';
+const apiRows = new Map<string, Record<string, unknown>>();
+const mcpRows = new Map<string, Record<string, unknown>>();
+const none = () => ({ configured: false, status: 'unconfigured' });
+function apiRow() {
+ const tenant = currentHarnessTenantId();
+ if (!apiRows.has(tenant)) apiRows.set(tenant, tenant.endsWith('-b') || mode() === 'empty' ? none() : { configured: true, status: mode() === 'broken' ? 'error' : 'connected', label: 'Harness instance', base_url: 'https://harness.example.invalid', api_key_last4: 'demo', last_sync_at: '2026-09-03T12:00:00Z', workflow_count: 0 });
+ return apiRows.get(tenant);
 }
-
-function n8nRow() {
-  switch (state()) {
-    case "connected":
-      return { configured: true, status: "connected", label: "Harness instance",
-        base_url: "https://harness.app.n8n.cloud", api_key_last4: "9f2a",
-        last_sync_at: "2026-08-31T03:00:00Z", workflow_count: 7 };
-    case "broken":
-      return { configured: true, status: "error", label: "Harness instance",
-        base_url: "https://harness.app.n8n.cloud", api_key_last4: "9f2a",
-        last_sync_at: "2026-08-29T03:00:00Z", workflow_count: 7 };
-    case "readonly":
-      return { configured: true, status: "connected", label: "Harness instance",
-        base_url: "https://harness.app.n8n.cloud", api_key_last4: "9f2a", workflow_count: 3 };
-    default:
-      return { configured: false, status: "unconfigured" };
-  }
+function mcpRow() {
+ const tenant = currentHarnessTenantId();
+ if (!mcpRows.has(tenant)) mcpRows.set(tenant, tenant.endsWith('-b') || mode() === 'empty' ? none() : { configured: true, enabled: true, status: mode() === 'connected' || mode() === 'readonly' ? 'connected' : 'error', auth_kind: 'bearer', transport: 'http', server_url_host: 'harness.example.invalid', last_probed_at: '2026-09-03T12:00:00Z', tool_count: mode() === 'connected' ? 2 : null, approved_capabilities: mode() === 'connected' ? ['fixture_read'] : [], pinned_count: mode() === 'connected' ? 1 : 0 });
+ return mcpRows.get(tenant);
 }
-
+const ok = (data: unknown = null) => Promise.resolve({ data, error: null });
+const fail = (message: string) => Promise.resolve({ data: null, error: { message } });
+const pending: Array<() => void> = [];
+window.addEventListener('n8n-harness-finish', () => pending.splice(0).forEach(finish => finish()));
+const mutate = (fn: () => void) => mode() === 'pending' ? new Promise<{data:null;error:null}>(resolve => pending.push(() => { fn(); resolve({data:null,error:null}); })) : (fn(), ok());
 export const supabase = {
-  rpc: (name: string, args?: Record<string, unknown>) => {
-    if (state() === "error" && name.startsWith("get_")) {
-      return Promise.resolve({ data: null, error: { message: "harness: read failed" } });
-    }
-    if (name === "get_tenant_n8n_connection") return Promise.resolve({ data: n8nRow(), error: null });
-    if (name === "get_tenant_mcp_connection") {
-      return Promise.resolve({ data: { configured: false, status: "unconfigured" }, error: null });
-    }
-    if (name === "is_current_user_tenant_admin") {
-      return Promise.resolve({ data: state() !== "readonly", error: null });
-    }
-    if (name === "set_tenant_n8n_connection") {
-      // Mirrors the real seam's own https guard so the error state is a genuine
-      // render of the mapped message, not a hand-placed string.
-      const url = String(args?._base_url ?? "");
-      if (!/^https:\/\//i.test(url)) {
-        return Promise.resolve({ data: null, error: { message: "N8N_INSECURE_URL: instance URL must be https://" } });
-      }
-      return Promise.resolve({ data: { ok: true }, error: null });
-    }
-    if (name === "clear_tenant_n8n_connection") return Promise.resolve({ data: null, error: null });
-    return Promise.resolve({ data: null, error: null });
-  },
+ rpc: (name: string, args?: Record<string, unknown>) => {
+  if (name === 'get_tenant_n8n_connection') return mode() === 'error' || mode() === 'api-error' ? fail('fixture-read-refused') : ok(apiRow());
+  if (name === 'get_tenant_mcp_connections') return mode() === 'error' || mode() === 'mcp-error' ? fail('fixture-read-refused') : ok({ n8n: mcpRow(), zapier: none() });
+  if (name === 'is_current_user_tenant_admin') return ok(mode() !== 'readonly');
+  if (name === 'set_tenant_n8n_connection' || name === 'clear_tenant_n8n_connection') {
+   const tenant = currentHarnessTenantId();
+   if (args?._tenant_id && args._tenant_id !== tenant) return fail('N8N_FORBIDDEN');
+   if (mode() === 'readonly' || mode() === 'refused') return fail('N8N_FORBIDDEN');
+   if (name === 'clear_tenant_n8n_connection') return mutate(() => apiRows.set(tenant, none()));
+   let url: URL; try { url = new URL(String(args?._base_url)); } catch { return fail('N8N_INSECURE_URL'); }
+   if (url.protocol !== 'https:' || url.username || url.password) return fail('N8N_INSECURE_URL');
+   // Deliberately do not retain the supplied key. Saved does not mean health checked.
+   return mutate(() => apiRows.set(tenant, { configured: true, status: 'connected', base_url: url.origin, label: 'Harness instance', api_key_last4: 'demo', workflow_count: 0, last_sync_at: '2026-09-03T12:00:00Z' }));
+  }
+  return ok();
+ },
+ functions: { invoke: (name: string, options: {body?: Record<string,unknown>}) => {
+  const body = options?.body ?? {}; const tenant = currentHarnessTenantId();
+  if (name !== 'tenant-mcp-connect' || body.action !== 'disconnect') return ok({ error: 'unavailable', code: 'MCP_FORBIDDEN' });
+  if (body.expected_tenant_id !== tenant || mode() === 'readonly' || mode() === 'refused') return ok({ error: 'forbidden', code: 'MCP_FORBIDDEN' });
+  return mutate(() => mcpRows.set(tenant, none()));
+ } },
 };
-
 export default { supabase };
