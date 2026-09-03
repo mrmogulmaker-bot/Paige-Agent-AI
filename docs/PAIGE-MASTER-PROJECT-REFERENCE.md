@@ -1802,6 +1802,43 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+ - **2026-09-02 — a tier gate I shipped as the headline fix did not fix the reported flow, and I said
+   so before Gate B rather than after.** The Solo account-context repair (#811) originally led with
+   *"`/business/*` had no tier gate; adding one closes the defect."* The first clause is true and the
+   hole was real. The second is false: in the reported flow the parked context **is** a sub-account,
+   so `/admin` Gate B resolves `tierKey === "sub_account"` and the new gate **allows** it. The gate
+   only ever catches a Solo-tier caller at a `/business` URL — a state nothing in the app routes to.
+   What actually fixes the flow is the entry rule: a fresh sign-in already asked which workspace
+   (`Auth.tsx` + `shouldOfferAccountPicker`), while a RESTORED session came through `/admin` and
+   silently resumed whichever context `active_tenant_id` was parked on; `/admin` now runs the same
+   shipped predicate. **The failure mode worth naming is not the wrong gate — it is that a plausible
+   mechanism was written up as a proven one.** The claim would have survived review: it type-checked,
+   it tested green, its own tests passed, and it described a genuine defect. It only fell over when the
+   chain was walked end to end from the door the owner actually came through. §70 restated: reading
+   that the code is wired is not evidence the person can finish, and a fix for *a* defect is not a fix
+   for *the* defect.
+ - **2026-09-02 — a scoped test run is not a test run.** The same PR gated `/agency/*` as well, and
+   that gate destroyed agency act-as: during a sub-account drill-down `activeTenant` becomes the
+   CHILD while authority comes from the PARENT, so a parent-first tier read ejected operators out of
+   the `/agency/{parent}/sub/{child}/…` path built to serve them. Two PRE-EXISTING integration tests
+   modelled exactly that flow and would have caught it locally — but the local run was scoped to
+   `src/solo` and `src/lib/auth`, so CI found it instead. Reverted byte-identical; the hole it was
+   reaching for is filed (#814) rather than closed by a guess about a tier outside the brief. The
+   habit this replaces: running the tests near the code you touched, when the regression is by
+   definition somewhere you were not looking.
+ - **2026-09-02 — the §39 peer-gate returned BLOCK on a change whose own suite was green, and was
+   right four more times.** Beyond the CI regression it found: a null `activeTenant` on a settled
+   context being classified as tier `solo` (a null is "we do not know yet", never a tier — and
+   `switchTenant` produces exactly that window, so the guard would have ejected an owner mid-switch);
+   `/solo/*` carrying the exact mirror of the hole `/business/*` was being fixed for; a docblock
+   claiming the exit control closed the "parked with no way back" half while it is not mounted in the
+   shell that strands people; and that control counting a different population than the chooser it
+   navigates to, so the button could be a silent round trip. It also caught that the new
+   `shouldOfferWorkspaceExit` was a byte-for-byte duplicate of the shipped `shouldOfferAccountPicker`
+   (§18). **None of these were reachable from the author's own assertions, which is the entire point
+   of the gate** — and the docblock finding is the third time on record that prose in this repository
+   asserted a protection the code did not implement.
 - **2026-09-01 — multi-tenant email identity and workspace identity were previously collapsed into one redirect.** A Google identity can hold several independent Paige memberships, while the agency parent/sub-account switcher governs a different relationship. The approved correction keeps those authority domains distinct: Google selects the person, Paige intersects that person's active membership rows with RLS-visible tenants, and the existing guarded active-tenant write commits the chosen workspace. This is a Gate 1 implementation record only; live authenticated proof and Gate 2 remain outstanding.
 
 - **2026-09-01 — the Pipeline draft entry still claimed optional starter creation after the owner
