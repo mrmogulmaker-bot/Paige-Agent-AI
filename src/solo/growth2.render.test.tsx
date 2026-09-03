@@ -42,6 +42,15 @@ type PipelineWorkspaceFixture = {
 
 vi.mock("./useSoloCampaigns", () => ({ useSoloCampaigns: () => harness.state }));
 
+// Slice 2A — Catalog now opens on Offers, which reads through its own tenant-scoped adapter
+// (`useCatalogOffers`). This file proves the VIBE-OWNED half of the tab, so the offer read is
+// stubbed empty here and the two published-output tests below address that half explicitly by
+// `?type=`, which is also the retired-address contract those five legacy slugs depend on.
+// The Offers half has its own proof in `catalog-offers.contract.test.tsx`.
+vi.mock("./useCatalogOffers", () => ({
+  useCatalogOffers: () => ({ tenantId: "tenant-1", phase: "ready", offers: [], canManage: true, retry: () => {} }),
+}));
+
 let host: HTMLDivElement;
 let root: Root;
 
@@ -401,7 +410,8 @@ describe("Solo Campaigns rendered flows", () => {
   });
 
   it("renders populated grounded rows and closes details with Escape", () => {
-    renderAt("/solo/42/growth/catalog");
+    // `?type=` addresses the Vibe-owned half directly (Slice 2A: Offers is the default section).
+    renderAt("/solo/42/growth/catalog?type=page");
     expect(host.textContent).toContain("Published page");
     const details = [...host.querySelectorAll("button")].find((button) => button.textContent === "Details")!;
     details.focus();
@@ -413,7 +423,7 @@ describe("Solo Campaigns rendered flows", () => {
   });
 
   it("keeps focus inside the modal drawer in both tab directions", () => {
-    renderAt("/solo/42/growth/catalog");
+    renderAt("/solo/42/growth/catalog?type=page");
     const details = [...host.querySelectorAll("button")].find((button) => button.textContent === "Details")!;
     act(() => details.click());
     const close = host.querySelector('[role="dialog"] button') as HTMLButtonElement;

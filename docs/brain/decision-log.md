@@ -1,5 +1,44 @@
 # Decision Log — chronological one-liners
 
+- **The governed-execution guard failed OPEN on a target it could not read, in both rules I had reported as swept (2026-09-03, follow-up to PR #792 `1a22637c`)** —
+  independent review against the merged commit found the same class alive in **R2** and **R4**, and
+  both reproduced. **R2** (nothing loads the superseded #711 bare-boolean gate) read a dynamic
+  specifier with `lit()`, so `const p = "../toolConfirmation.ts"; await import(p)` — and the
+  concatenated, template and `require(p)` forms — all returned FALSE. The gate that accepts a bare
+  `confirm: true` could have been adopted dynamically with CI green. **R4** (the seam never runs its
+  own claim) read an element-access key with `lit()`, so `client["r"+"pc"]`, `client[m]`,
+  `const { [m]: fn } = client` and `({ [m]: fn } = client)` all returned zero hits — the seam could
+  make its own atomic claim undetected. **§13 CORRECTION, and it is the point of this entry:** commit
+  `eb0dbd83` on #792 was titled *"swept R2 and R3 for R1's and R4's blind spot — a NEGATIVE result,
+  asserted"*. That sweep was real and its result is still true — neither rule reads a destructurable
+  expression — but it covered the **INSTANCE (destructuring)** and not the **CLASS (a target the
+  guard cannot read)**, which I had named with an explicit `UNREADABLE_METHOD` sentinel in the
+  sibling MCP guard ONE PR EARLIER. I swept for the thing that had just bitten me instead of for the
+  thing I had just learned. **Fixes:** R2 now RESOLVES a specifier through the same file first — a
+  literal, a substitution-free template, a same-file string const, or a concatenation of those — and
+  fails closed only on what still cannot be read, reported as *"dynamic load with an unreadable
+  specifier"*. Resolving same-file consts is what makes failing closed affordable: the only four
+  non-literal dynamic imports in the scan roots are `import(SPEC)` over module-level consts in
+  `_shared/doc-render.ts`, and they stay silent (measured, not assumed). R4 enumerates what is
+  provably harmless — a string key that is not a data method, a numeric index, an object literal
+  being BUILT with a computed key — and refuses the rest. **Evidence (§13):** 5 mutations, each
+  reverting one fail-closed branch and each proven to turn a distinct new case red; self-test 84 →
+  **98 cases**; both guards green on the real repo via their exact CI commands; `ci:tsc` 13. **Not in
+  this PR, routed rather than absorbed:** the two #789 findings (`.rpc()` matches a hardcoded verb
+  list instead of the shared `REMOVAL_VERB`; outer shape edits collected after boolean fields) are a
+  different root cause in a different guard and get their own PR — which will also sweep the MCP
+  guard for THIS class rather than only for its own two findings.
+- **CORRECTION to the entry below (2026-09-03): PR #852 `759ad8da` shipped this entry and NOT the fix it describes.** The lint
+  change was an uncommitted working-tree edit, lost across a branch switch made to rebuild the
+  frontend for an unrelated production check; the merged commit changed one file,
+  `docs/brain/decision-log.md`. CI was green because the guard file was byte-identical to `main`, so
+  its existing self-test ran and passed and the new cases were absent too. Caught by re-running the
+  classifier against `origin/main` after the squash — the five previously-invisible words still
+  returned zero. **A claim about a change is worth nothing until `git show --stat` on the merged
+  commit is read**; a release whose file list lacks the file the release is about has not happened.
+  The fix is genuinely shipped in the follow-up PR, and the entry below describes it accurately from
+  that point on.
+
 - **The MCP guard's RPC classifier carried its own, shorter removal vocabulary (2026-09-03, follow-up to PR #789 `337510da`)** —
   #789 introduced `REMOVAL_VERB` precisely to end two enumerations of one idea in one file
   (*"Two enumerations of the same idea in one file drift apart, so there is one"*), and then left

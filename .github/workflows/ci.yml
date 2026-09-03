@@ -115,6 +115,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:views
 
+      - name: Live-drive proxy bypass stays loopback-only (dev harness must never bypass a remote host)
+        if: ${{ !cancelled() }}
+        run: npm run harness:proxy-bypass
+
       - name: SECURITY DEFINER fn anon-grant guard (§9/§37 #117 — DEFINER fns must not be anon/PUBLIC-callable)
         if: ${{ !cancelled() }}
         run: npm run lint:definer-fns
