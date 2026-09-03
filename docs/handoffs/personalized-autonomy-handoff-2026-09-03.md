@@ -19,6 +19,13 @@ Measured on prod 2026-09-03: **all 34 rows in `paige_action_kinds` have `tenant_
 workspace sees the same policy. There is no table, column, or RPC in which a workspace's own
 autonomy choice could be stored or read.
 
+That measurement is **not** a property of the schema, and the read must not lean on it: `kind_read` is
+`USING (enabled AND (tenant_id IS NULL OR tenant_id = public.current_user_tenant_id()))`, so RLS
+already admits a workspace's own authored kinds. `useSoloTrust` therefore filters `tenant_id IS NULL`
+explicitly (corrected 2026-09-03) — a tenant-authored kind folded into a number captioned "the
+platform's default" would be the same fabrication arriving from real rows. **A future per-workspace
+grant record must be a SEPARATE read with its own label**, never this one widened.
+
 So the capability below is genuinely missing, not merely unwired.
 
 ## The rule the future design must satisfy

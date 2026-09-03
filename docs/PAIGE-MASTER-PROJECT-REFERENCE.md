@@ -1801,6 +1801,35 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ## 10. §13 corrections log
 
+ - **2026-09-03 — I removed four fabrications from the Solo Trust Compass and introduced three more
+   in the same commit, by swapping the DATA under copy I left unchanged.** #831 replaced ten invented
+   departments carrying hardcoded trust floats with a real read of `paige_departments` and
+   `paige_action_kinds`. The totals the page renders (`tot`, `all`) then counted **catalogue entries**
+   — action *types* — while the surrounding sentences still read *"{all} actions this week · {auto}%
+   she handled alone"*, *"Today · {tot[0]} performed"*, and, on every orb, *"— auto-performed"* over a
+   tier drawn from `Math.random()`. `paige_action_kinds` records no execution and no timestamp, so the
+   period, the count of things done, and the past-tense verb were all invented from a table that
+   cannot supply any of them. **The lesson is narrower and sharper than "check the copy": replacing a
+   fixture with a real read changes what every string ON that surface means, and a caption that was
+   true about the fixture is a new fabrication the moment the data underneath it changes.** Two more
+   from the same commit: the three header percentage badges were left ungated while the page subtitle
+   was gated, so an absent read rendered `null% autopilot … 100% escalated` — a governance claim
+   manufactured out of a missing number; and the instruction *"Drag a ring to change autonomy"*
+   survived the removal of the drag write it described. **None of these were caught by my own
+   verification.** They were found by the independent review requested against the merged commit
+   (§39), which is the layer working as designed — and the reason a green proof of the thing I
+   thought to test is never a proof of the change. Corrected in the follow-up PR, with each fix
+   proven non-vacuous by reverting it and watching a test go red.
+ - **2026-09-03 — the same PR read tenant-authored rows into a number captioned "the platform's
+   default".** `useSoloTrust` selected `paige_action_kinds` with no `tenant_id` filter. The
+   `kind_read` policy is `USING (enabled AND (tenant_id IS NULL OR tenant_id =
+   public.current_user_tenant_id()))`, so RLS deliberately returns a workspace's OWN authored kinds
+   alongside the platform's. Every row on prod is `tenant_id IS NULL` **today**, and I treated that
+   measurement as a guarantee — which is the same mistake in a different costume: a measurement of
+   the current data is not a property of the query. The read now filters to `tenant_id IS NULL` and
+   the pure builders drop a tenant-authored row independently, so a future query edit cannot silently
+   fold a workspace's own policy into a figure that says it is the platform's.
+
  - **2026-09-02 — a tier gate I shipped as the headline fix did not fix the reported flow, and I said
    so before Gate B rather than after.** The Solo account-context repair (#811) originally led with
    *"`/business/*` had no tier gate; adding one closes the defect."* The first clause is true and the

@@ -53,6 +53,19 @@ const DEPT_ICON={owner_ops:'grid',client_experience:'users',executive_office:'sh
  */
 export const tierOfLevel=g=>g==null?null:g>=.6?'green':g>=.34?'amber':'red';
 
+/** The lane an action kind runs in, as a tier. Unknown lanes yield null and are never drawn. */
+export const laneTier=lane=>({auto:'green',confirm:'amber',off:'red'})[lane]||null;
+
+/**
+ * What an orb says. It names a REAL action kind and the lane the platform default puts it in —
+ * never that the act happened. The version this replaces drew the tier from `Math.random()` and
+ * appended "— auto-performed" / "— drafted, waiting on you", asserting an execution the catalogue
+ * behind it does not record; it also concatenated the act OBJECT once `acts` became {label, lane},
+ * rendering "[object Object]" in the toast.
+ */
+export const orbLabel=(d,act)=>d.n+' · '+act.label+
+ ({auto:' — runs automatically by default',confirm:' — drafted for you by default',off:' — always your call'}[act.lane]||'');
+
 /**
  * The real per-department posture, in the shape the markup below already consumes.
  *
@@ -162,11 +175,18 @@ const mo=new MutationObserver(readCol);mo.observe(document.documentElement,{attr
 const hex=(c,a)=>{if(c.startsWith('#')){const n=parseInt(c.slice(1),16);return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`}return c};
 const tint=(t,a)=>t==='none'?'rgba(255,255,255,'+a+')':hex(t==='green'?COL.ok:t==='amber'?COL.warn:COL.bad,a);
 const s=S.current;Object.assign(s,{rot:0,t:0,mx:-999,my:-999,hot:null,orbs:[],segs:[],pulse:0,lit:0});
-const spawn=(force)=>{const D=s.depts||[];if(!D.length)return;const d=D[(Math.random()*D.length)|0];const g=s.trust[d.id];if(g==null)return;
- const rnd=Math.random();const tier=rnd<g*.92?'green':rnd<g*.92+.16?'amber':(Math.random()<.25?'red':'amber');
+// An orb carries ONE REAL action kind and the lane the platform default actually puts it in.
+// It previously drew a tier from `Math.random()` weighted by the department level and labelled it
+// "auto-performed" / "drafted, waiting on you" — a per-act claim that something HAPPENED, from a
+// coin flip, over a catalogue that records no executions. The lane is the only thing this data
+// says, so it is the only thing the orb says. (It also concatenated the act OBJECT, rendering
+// "[object Object]" in the toast, once `acts` became {label, lane}.)
+const spawn=(force)=>{const D=s.depts||[];if(!D.length)return;const d=D[(Math.random()*D.length)|0];
+ const acts=d.acts||[];if(!acts.length)return;
+ const act=acts[(Math.random()*acts.length)|0];const tier=laneTier(act.lane);if(!tier)return;
  const a=d.a0+(0.18+Math.random()*.64)*d.span;
  s.orbs.push({d:d.id,a,r:.10,tier,v:(tier==='green'?.0044:.0036)+Math.random()*.0016,st:0,ph:Math.random()*6.28,
- label:d.n+' · '+d.acts[(Math.random()*d.acts.length)|0]+(tier==='green'?' — auto-performed':tier==='amber'?' — drafted, waiting on you':' — escalated for your call'),born:s.t})};
+ label:orbLabel(d,act),born:s.t})};
 let W=0,H=0,dpr=Math.min(devicePixelRatio||1,2),raf;
 const size=()=>{const r=wrap.current.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*dpr;cv.height=H*dpr;
  cv.style.width=W+'px';cv.style.height=H+'px';ctx.setTransform(dpr,0,0,dpr,0,0)};
@@ -459,21 +479,24 @@ if(full)return <Wrap><PageHead eyebrow="Platform · Trust Compass" title={depts.
 return <div className="fade-in pg" style={{width:'100%',maxWidth:1440,margin:'0 auto'}}>
 <PageHead eyebrow="Platform" title="Trust Compass"
 sub={!trustConfigured?'Platform default policy unavailable.':all+" action types across "+depts.length+" departments, on the platform's default policy. This is not a setting this workspace chose."}
-right={<div className="row" style={{gap:8}}>
-<span className="pill pill-ok"><span className="dot"/>{auto}% autopilot</span>
-<span className="pill pill-warn">{dr}% drafts</span>
-<span className="pill pill-bad">{100-auto-dr}% escalated</span></div>}/>
+right={trustConfigured&&all?<div className="row" style={{gap:8}}>
+<span className="pill pill-ok"><span className="dot"/>{auto}% run automatically</span>
+<span className="pill pill-warn">{dr}% drafted for you</span>
+<span className="pill pill-bad">{100-auto-dr}% your call</span></div>
+:<span className="pill pill-n">Platform default policy unavailable</span>}/>
 <div className="pg-fill tc-grid">
 <div className="card" style={{overflow:'hidden',borderRadius:'var(--r-xl)',position:'relative',minHeight:260,background:'#0A0818',borderColor:'#241F49'}}>
 <TcCanvas sel={sel} setSel={setSel} onOrb={onOrb}/>
 <div style={{position:'absolute',top:16,left:18,right:18,display:'flex',gap:12,justifyContent:'space-between',pointerEvents:'none'}}>
 <div><div style={{fontSize:10.5,letterSpacing:'.26em',color:'rgba(255,255,255,.55)',fontWeight:600}}>WHAT SHE IS ALLOWED TO DO</div>
 <div style={{color:'#fff',fontSize:19,fontWeight:600,letterSpacing:'-.03em',marginTop:4}}>{sel?(depts.find(d=>d.id===sel)?.n||'Department'):depts.length+' departments'}</div>
-<div style={{color:'rgba(255,255,255,.6)',fontSize:12.4,marginTop:3}}>{all} actions this week · {auto}% she handled alone</div></div>
+<div style={{color:'rgba(255,255,255,.6)',fontSize:12.4,marginTop:3}}>{trustConfigured&&all?all+' action types · '+auto+'% run automatically on the platform default':'Platform default policy unavailable'}</div></div>
 <div style={{display:'grid',gap:6,justifyItems:'end',pointerEvents:'auto'}}>
-<span className="row" style={{gap:7,height:26,padding:'0 11px',borderRadius:99,background:'rgba(76,196,140,.16)',color:'#4CC48C',fontSize:11.5,fontWeight:600}}>
-<span className="dot"/>Live · she is working now</span>
-<span style={{color:'rgba(255,255,255,.45)',fontSize:11}}>Drag a ring to change autonomy · click a segment to drill in · click an orb</span>
+<span className="row" style={{gap:7,height:26,padding:'0 11px',borderRadius:99,
+ background:liveState==='ok'?'rgba(76,196,140,.16)':'rgba(255,255,255,.08)',
+ color:liveState==='ok'?'#4CC48C':'rgba(255,255,255,.6)',fontSize:11.5,fontWeight:600}}>
+{liveState==='ok'&&<span className="dot"/>}{liveState==='ok'?'Live · recent activity below':liveState==='loading'?'Reading recent activity':liveState==='error'?'Recent activity unavailable':'No activity recorded yet'}</span>
+<span style={{color:'rgba(255,255,255,.45)',fontSize:11}}>Click a segment to drill in · click an orb to see the action type</span>
 {sel&&<button onClick={()=>setFull(sel)} className="row" style={{gap:6,height:28,padding:'0 12px',borderRadius:99,background:'rgba(255,255,255,.1)',color:'#fff',fontSize:11.8,fontWeight:600}}>
 Open {depts.find(d=>d.id===sel)?.n||'department'}<Ic.arrow size={12}/></button>}</div></div>
 
@@ -485,7 +508,7 @@ Open {depts.find(d=>d.id===sel)?.n||'department'}<Ic.arrow size={12}/></button>}
 {[['Autopilot','#4CC48C'],['Drafts for you','#E3A63C'],['Your call','#EE7A72']].map(([l,c])=>
 <span key={l} className="row" style={{gap:7,height:26,padding:'0 11px',borderRadius:99,background:'rgba(255,255,255,.05)',color:'rgba(255,255,255,.76)',fontSize:11.4}}>
 <span style={{width:7,height:7,borderRadius:'50%',background:c}}/>{l}</span>)}
-<span className="mono" style={{marginLeft:'auto',color:'rgba(255,255,255,.5)',fontSize:11}}>Today · {tot[0]} performed · {tot[1]} for you · {tot[2]} escalated</span></div></div>
+<span className="mono" style={{marginLeft:'auto',color:'rgba(255,255,255,.5)',fontSize:11}}>{trustConfigured&&all?'Platform default · '+tot[0]+' run automatically · '+tot[1]+' drafted for you · '+tot[2]+' your call':'Platform default policy unavailable'}</span></div></div>
 
 <div className="tc-rail">
 <div className="card" style={{display:'flex',flexDirection:'column',minHeight:0,overflow:'hidden'}}>
