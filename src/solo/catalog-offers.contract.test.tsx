@@ -62,6 +62,13 @@ let host: HTMLDivElement;
 let root: Root;
 
 function renderAt(path: string) {
+  // Tear the previous tree down FIRST. Each call used to append a new host and leave the old one
+  // in the document, so a test calling this eight times (the plan-shape loop) left seven orphan
+  // trees behind for every later test in the file. Any assertion reading `document.body` could
+  // then be satisfied by a leftover render rather than the one it just made — a guard that
+  // silently weakens as tests are added, which is the exact failure this suite exists to catch.
+  act(() => root?.unmount());
+  host?.remove();
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -138,6 +145,19 @@ describe("Catalog Offers — tenant-scoped read contract", () => {
     // was replaced by an honest "unrecognised", the test failed for describing the old code rather
     // than for catching a defect. A grep for a source string is not a claim about behaviour.
     expect(adapter).toContain("narrow(row.status, AVAILABILITIES)");
+  });
+});
+
+describe("Catalog Offers — the harness itself", () => {
+  it("leaves no orphan tree behind when a test renders more than once", () => {
+    // The guard on the guards. Without this, an assertion that reads `document.body` can pass
+    // because an EARLIER render is still in the document.
+    setCampaigns();
+    setOffers({ offers: [offer({ name: "Sentinel Offer" })] });
+    renderAt("/solo/4471/growth/catalog");
+    renderAt("/solo/4471/growth/catalog");
+    const hits = (document.body.textContent ?? "").split("Sentinel Offer").length - 1;
+    expect(hits).toBe(1);
   });
 });
 
@@ -311,8 +331,9 @@ describe("Catalog Offers — truthfulness", () => {
     ] })] });
     renderAt("/solo/4471/growth/catalog");
     act(() => (host.querySelector("button.co-row") as HTMLElement).click());
-    // The drawer may portal out of `host`, so read the whole document.
-    const shown = document.body.textContent ?? "";
+    // Scoped to `host`, not `document.body`: the drawer does NOT portal — it renders inside the
+    // tree this test just made — and reading the whole document would let a leftover satisfy it.
+    const shown = host.textContent ?? "";
     expect(shown).toContain("Recurring plan — $99 / month");
     expect(shown).not.toContain("recurring — $99");
     expect(shown).toContain("Plan type not recognised — $99 / month");
