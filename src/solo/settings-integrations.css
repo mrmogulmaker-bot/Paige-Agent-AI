@@ -305,6 +305,7 @@
 @media (prefers-contrast: more) { .ig-n8n-panel .ig-btn { border-color: var(--pg-ink); } }
 @media (forced-colors: active) {
   .ig-n8n-panel .ig-btn, .ig-n8n-panel .ig-close { border: 1px solid CanvasText; }
+  .ig-n8n-panel .ig-n8n-tabs button[aria-selected="true"] { border: 1px solid Highlight; }
   .ig-n8n-panel :is(.ig-btn, .ig-close, [role="tab"]):focus-visible { outline-color: Highlight; }
 }
 @media (prefers-reduced-motion: reduce) { .ig-n8n-panel .ig-n8n-tabs button { transition: none; } }
