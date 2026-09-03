@@ -226,3 +226,49 @@ describe("#802 — the stale frame itself, observed", () => {
     }
   });
 });
+
+describe("#802 — the engagement range has the same frame, and the same guard", () => {
+  function Probe({ sink }: { sink: string[] }) {
+    useLayoutEffect(() => {
+      sink.push(document.body.textContent ?? "");
+    });
+    return null;
+  }
+
+  it("never commits one range's totals beside another range's dates", async () => {
+    // A populated first range.
+    harness.byTable["paige_client_events"] = {
+      data: [
+        { occurred_at: "2026-08-02T10:00:00Z", contact_id: "c1" },
+        { occurred_at: "2026-08-03T10:00:00Z", contact_id: "c2" },
+      ],
+      error: null,
+    };
+    const frames: string[] = [];
+    await render(
+      <>
+        <ClientEngagementSection start="2026-08-01" end="2026-08-10" />
+        <Probe sink={frames} />
+      </>,
+    );
+    expect(host.textContent ?? "").toMatch(/Client events/);
+
+    // Change the range; leave the new read unsettled.
+    frames.length = 0;
+    harness.hang.add("paige_client_events");
+    await render(
+      <>
+        <ClientEngagementSection start="2026-09-01" end="2026-09-10" />
+        <Probe sink={frames} />
+      </>,
+    );
+
+    expect(frames.length).toBeGreaterThan(0);
+    for (const f of frames) {
+      // The previous range's totals must not survive into a frame rendered for the new one.
+      expect(f).not.toMatch(/Client events/);
+      expect(f).not.toMatch(/Active clients/);
+      expect(f).not.toMatch(/Insufficient data/i);
+    }
+  });
+});

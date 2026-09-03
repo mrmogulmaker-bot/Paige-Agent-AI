@@ -52,6 +52,17 @@ const EMPTY: ClientEngagement = {
 
 export function useClientEngagement(start: string, end: string): ClientEngagement {
   const [state, setState] = useState<ClientEngagement>(EMPTY);
+  /**
+   * The range the state above actually describes.
+   *
+   * Setting `loading: true` at the top of the effect is not enough on its own: `useEffect` is
+   * passive, so on a range change React commits the render — new dates on screen, PREVIOUS
+   * totals — and the browser can paint that frame before the effect runs. Keying the result to
+   * its range and treating a mismatch as `loading` DURING RENDER removes that frame rather than
+   * shortening it. Same reasoning as the cohort table's mode guard.
+   */
+  const [resultKey, setResultKey] = useState<string | null>(null);
+  const key = `${start}|${end}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +85,7 @@ export function useClientEngagement(start: string, end: string): ClientEngagemen
       if (error) {
         console.warn("[useClientEngagement] engagement read refused or failed:", error.message);
         setState({ loading: false, unavailable: true, byDay: [], totalEvents: 0, distinctClients: 0 });
+        setResultKey(key);
         return;
       }
 
@@ -105,11 +117,14 @@ export function useClientEngagement(start: string, end: string): ClientEngagemen
         totalEvents: rows.length,
         distinctClients: clients.size,
       });
+      setResultKey(key);
     })();
     return () => {
       cancelled = true;
     };
   }, [start, end]);
 
-  return state;
+  // Render-time guard: a result computed for a different range is never handed to the caller, so
+  // no committed frame can show one range's totals beside another range's dates.
+  return resultKey === key ? state : { ...EMPTY, loading: true };
 }
