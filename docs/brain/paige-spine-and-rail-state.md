@@ -204,10 +204,31 @@ as `owner_staff` through the caller's JWT) and `configure_tenant_pipeline` (file
 `owner_staff`/`paige_agent` with `p_narrow_to_owner = true`, the `owner_internal` shape).
 
 **Conditionally gate-exercising, whenever a staff subject triggers them:** `emit_booking_rail` and
-`customer_respond_to_action`. The booking trigger matters in practice — it fires on **every** insert
-or update of `internal_bookings`, and staff creating a booking on a client's behalf is ordinary, not
-exotic. `customer_respond_to_action` is a customer action by design, so a staff subject there is
-unusual but not structurally prevented.
+`customer_respond_to_action`.
+
+**The booking trigger is the one that matters, and the path into it is specific.** It fires on
+**every** insert or update of `internal_bookings`, but which writers carry a JWT subject decides
+whether the gate runs:
+
+| Writer of `internal_bookings` | Subject | Trigger reaches the gate? |
+|---|---|---|
+| `create_internal_booking`, `create_class_booking`, `reschedule_class_booking` (SQL RPCs) | the authenticated caller | **yes when a staff user calls them** |
+| `booking-manage`, `public-booking` (edge functions) | service role (`admin` client) | no — `auth.uid()` is NULL |
+
+So a staff member booking on a client's behalf **through the RPCs** takes the `has_any_role` branch;
+the same booking made through the edge functions does not. A fix proof that exercises only the edge
+path would miss the regression entirely.
+
+**And this path files a mismatched attribution, which is worth knowing before anyone "fixes" it.**
+`v_actor := CASE WHEN p_actor_type IN ('owner_staff','client') THEN v_uid ELSE NULL END`, and the
+trigger files `p_actor_type = 'client'`. So a staff-triggered booking writes a row that *declares* a
+client action while recording the **staff** UID as `actor_user_id`. That is pre-existing behaviour,
+not something #824's fix introduces — but it means the row's actor field and its actor_type already
+disagree on this path, and a fix should not be blamed for it or accidentally "correct" it without a
+separate decision.
+
+`customer_respond_to_action` is a customer action by design, so a staff subject there is unusual but
+not structurally prevented.
 
 **#824's severity is still unchanged** — member→staff inside one workspace, integrity rather than
 disclosure, escalation population zero. What changed is the fix-impact surface: a two-direction proof
