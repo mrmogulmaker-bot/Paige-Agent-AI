@@ -1390,21 +1390,26 @@ inside a tenant workspace it has switched into (§51), not a cross-tenant reach.
 
 ### Solo Settings → Team — removing someone from a workspace, `/solo/{account}/settings/team`
 
-**§66, same commit as the ship — and the row is deliberately NOT ticked as live.** This entry
-records a capability that is **not yet released**: the migration `20261048000000` is written and its
-guards are proven against production inside a rolled-back transaction.
+**§66 — `SHIPPED`, and this row records what is LIVE, confirmed by query rather than by merge.**
+PR #799 merged as `5ca7893d`; `deploy-migrations.yml` applied `20261048000000` automatically on the
+push to `main` (`supabase db push --include-all`, which is also what applies a version numbered
+below ones already on `main`). Read back from production:
 
-**How it becomes applied, stated precisely so this paragraph does not falsify itself the moment the
-PR merges.** `.github/workflows/deploy-migrations.yml` runs on every push to `main` touching
-`supabase/migrations/**` and executes `supabase db push --include-all`, so the migration applies
-AUTOMATICALLY on merge — it is not a separate manual step, and `--include-all` handles this file
-being numbered below versions already on `main`. The §32 persisted-apply confirmation (the
-`schema_migrations` row, `to_regprocedure` on the function, and the withdrawn `tenant_members`
-grants) is therefore read back from production immediately AFTER the merge and posted on the PR.
+- `supabase_migrations.schema_migrations` contains `20261048000000`.
+- `to_regprocedure('public.remove_solo_team_member(uuid,uuid)')` is non-null.
+- `tenant_members` grants **no** INSERT/UPDATE/DELETE/TRUNCATE to `anon` or `authenticated`;
+  `SELECT` is deliberately retained.
+- Control, so those eight `false`s are a measurement and not a description of the environment:
+  `public.tenants` — untouched by this migration — still grants `anon` TRUNCATE.
 
-The label moves to `SHIPPED` on that confirmation. Even then the authenticated owner drive remains
-`Authenticated Runtime Proof Owed` — applied is not the same as driven, and neither is the same as
-a person having completed the flow.
+The prerequisite half of the program, #827 (`20261047000000`, the invitation-lifecycle repair that
+stops an invitation reaching a workspace the operator never named), was released first and is also
+applied.
+
+**Still owed, and not implied by any of the above: `Authenticated Runtime Proof Owed`.** Applied is
+not driven, and driven is not the same as a person completing the flow. Neither #799 nor #815 is
+closed as fully proven until the owner confirms the live flow. Post-release audit backlog is on the
+#799 release comment.
 
 An Owner can remove one **Admin or Member** from the workspace they are currently in, from the
 existing member editor on the Team screen. Not only an *active* one: the target lookup deliberately
