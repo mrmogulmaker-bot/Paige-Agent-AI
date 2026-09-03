@@ -186,24 +186,34 @@ method that produced them is the thing worth remembering.**
 
 | # | Producer | Kind | Actor filed | Reaches the gate? |
 |---|---|---|---|---|
-| 9 | `customer_respond_to_action` (`20260712240000:282`) | `SECURITY DEFINER` fn | `'client'` | reached; a client caller fails `has_any_role` and lands in the `ELSIF` client branch |
-| 10 | `emit_booking_rail` (`20260712260000:125`) | `SECURITY DEFINER` trigger | `'client'` | as above |
-| 11 | **`configure_tenant_pipeline` (`20260831224500:251`)** | `SECURITY DEFINER` fn | `'owner_staff'` / `'paige_agent'`, with `p_narrow_to_owner = true` | **YES** |
+| 9 | `customer_respond_to_action` (`20260712240000:282`) | `SECURITY DEFINER` fn | `'client'` | **depends on the subject** — a client caller lands in the `ELSIF` branch; a staff caller is admitted by `has_any_role` |
+| 10 | `emit_booking_rail` (`20260712260000:125`) | `SECURITY DEFINER` trigger on `internal_bookings` (`AFTER INSERT OR UPDATE`, every row) | `'client'` | **depends on the subject** — and staff booking on a client's behalf is an ordinary path, so this reaches the gate routinely |
+| 11 | **`configure_tenant_pipeline` (`20260831224500:251`)** | `SECURITY DEFINER` fn | `'owner_staff'` / `'paige_agent'`, with `p_narrow_to_owner = true` | **YES, always** |
 
 **`SECURITY DEFINER` does not null `auth.uid()`** — it changes the executing role, not the JWT claim —
 so an authenticated caller reaching any of these carries their subject into `record_rail_event`.
 
-### So there are TWO gate-exercising paths, not one
+### Which branch admits a write depends on the SUBJECT, not the actor_type filed
 
-**`paige-ai-chat:11267`** mirrors every successful CRM or action tool result as `owner_staff` through
-the caller's JWT. **`configure_tenant_pipeline`** files a deal move as `owner_staff` (or `paige_agent`)
-with `p_narrow_to_owner = true`, which is the `owner_internal` shape. Both can only succeed by
-satisfying `has_any_role(v_uid, ARRAY['admin','super_admin','coach'])`.
+This is the correction that matters most, and it is not a detail: `record_rail_event` tests
+`has_any_role(v_uid, …)` **first**, and only falls to the client branch when that fails. So the
+declared `p_actor_type` does not decide which branch runs — **who is holding the session does.**
+
+**Always gate-exercising:** `paige-ai-chat:11267` (mirrors every successful CRM or action tool result
+as `owner_staff` through the caller's JWT) and `configure_tenant_pipeline` (files a deal move as
+`owner_staff`/`paige_agent` with `p_narrow_to_owner = true`, the `owner_internal` shape).
+
+**Conditionally gate-exercising, whenever a staff subject triggers them:** `emit_booking_rail` and
+`customer_respond_to_action`. The booking trigger matters in practice — it fires on **every** insert
+or update of `internal_bookings`, and staff creating a booking on a client's behalf is ordinary, not
+exotic. `customer_respond_to_action` is a customer action by design, so a staff subject there is
+unusual but not structurally prevented.
 
 **#824's severity is still unchanged** — member→staff inside one workspace, integrity rather than
 disclosure, escalation population zero. What changed is the fix-impact surface: a two-direction proof
-is owed at **both** paths, not at the Chat site alone. Tightening the gate touches two live write
-paths, and breaking either stops the Rail recording silently.
+is owed at **two paths always and two more conditionally** — not at the Chat site alone. Tightening
+the gate touches live write paths in three different languages of caller (edge TypeScript, a SQL
+function, a table trigger), and breaking any of them stops the Rail recording silently.
 
 ### The method error, recorded because it repeated
 
