@@ -94,15 +94,27 @@
  *   · Judging the schema of a tool whose handler this guard does not read as destructive. That is
  *     the one place the `destructiveCall` enumeration below carries real weight: miss a novel
  *     destruction primitive and its schema stops being checked at all.
- *   · `destructiveCall` remains partly an enumeration (`.delete()`, a delete-shaped `.rpc()`,
- *     literal `DELETE FROM`). It is backstopped — not replaced — by the file's own `*.delete` scope
- *     classification, which is why an opaque RPC like `handle_data_subject_request` is caught
- *     despite carrying no delete-ish substring. A genuinely novel destruction primitive calling
- *     none of these, on a tool the file does not scope `*.delete`, would pass.
+ *   · `destructiveCall` remains partly an enumeration (a removal-verb method, a delete-shaped
+ *     `.rpc()`, literal `DELETE FROM`). It is backstopped — not replaced — by the file's own
+ *     removal-verb scope classification, which is why an opaque RPC like
+ *     `handle_data_subject_request` is caught despite carrying no delete-ish substring. A genuinely
+ *     novel destruction primitive calling none of these, on a tool the file does not scope for
+ *     removal, would pass.
  *
  * That last bullet is the real residual risk, and it is deliberately left rather than papered over
  * with another pattern: the durable fix is not a longer list here, it is routing mutating MCP tools
  * through the governed seam (#784), where the classification is the authority instead of the shape.
+ *
+ * What it is NOT any more, because review found both and both reproduced: a call this guard cannot
+ * READ is no longer scored harmless. `admin.rpc(rpcName)` and `admin.from("t")[op]()` used to be
+ * classified non-destructive — not because the guard judged them safe, but because it could not see
+ * the target — so their schemas were never inspected at all. Both now fail closed. That is a
+ * different class from the residual above: the residual is a destruction primitive the guard has
+ * never heard of; these two were destruction the guard was looking straight at and could not name.
+ *
+ * The removal vocabulary also had TWO copies — `destructiveCall` tested the method name `delete`
+ * exactly, `destructiveScopes` tested the scope suffix `.delete` exactly — so widening one would
+ * have left the other behind. They now read one shared `REMOVAL_VERB`.
  *
  * NO ESCAPE HATCH, deliberately. There was one, and review picked it SIX different ways: a plain
  * string, a template tail, JSX text, a comment belonging to the PRECEDING statement, a block comment
@@ -161,6 +173,38 @@ function calleeMethod(callee) {
   if (ts.isElementAccessExpression(callee)) return literalText(callee.argumentExpression);
   return null;
 }
+
+/**
+ * A member call whose method name this guard cannot read.
+ *
+ * `calleeMethod` collapses two very different answers into `null`: "this is not a member call at
+ * all" (`ok(…)`, `String(x)`) and "this IS a member call, but its method name is computed"
+ * (`admin.from("t")[op]()`). Only the second is ignorance, and ignorance must not read as
+ * innocence — so the classifiers below need to tell them apart.
+ */
+const UNREADABLE_METHOD = Symbol("unreadable-method");
+
+/** `calleeMethod`, but returning `UNREADABLE_METHOD` instead of `null` for a computed member call. */
+function calleeMethodOrUnreadable(callee) {
+  if (ts.isPropertyAccessExpression(callee)) return callee.name.text;
+  if (ts.isElementAccessExpression(callee)) return literalText(callee.argumentExpression) ?? UNREADABLE_METHOD;
+  return null;
+}
+
+/**
+ * Method and scope names that remove data, as ONE regex both classifiers read.
+ *
+ * `destructiveCall` matched the method name `delete` EXACTLY and `destructiveScopes` matched the
+ * scope suffix `.delete` exactly, so every other spelling of removal was invisible to both:
+ * Supabase Storage's `.remove([...])` deletes objects, `auth.admin.deleteUser` deletes a user, and
+ * a future `storage.remove` scope would not have been read as destructive either. Two enumerations
+ * of the same idea in one file drift apart, so there is one.
+ *
+ * Anchored deliberately: this matches a name that BEGINS with a removal verb (`delete`,
+ * `deleteUser`, `removeAll`), not one that merely contains one (`softDelete`, `markDeleted` — a
+ * flag write, not a row destruction, and out of scope for a guard about destroying rows).
+ */
+const REMOVAL_VERB = /^(delete|remove|destroy|purge|wipe|erase|truncate|drop|unlink|discard)/i;
 
 /**
  * Every `<something>.tool(<name>, <object>)` call in the file, via the AST.
@@ -428,7 +472,11 @@ export function destructiveScopes(src, fileName = "in-memory.ts") {
   walk(sf, (n) => {
     if (!ts.isPropertyAssignment(n) || !n.name) return;
     const v = literalText(n.initializer);
-    if (!v || !/\.delete$/.test(v)) return;
+    // The action segment of a `resource.action` scope, matched against the SAME removal vocabulary
+    // `destructiveCall` uses. Measured on the three surfaces at the time of writing: this selects
+    // exactly `admin.delete` and `crm.delete`, identical to the previous exact-`.delete` test.
+    const action = typeof v === "string" ? v.slice(v.lastIndexOf(".") + 1) : null;
+    if (!action || v.indexOf(".") < 0 || !REMOVAL_VERB.test(action)) return;
     const k = ts.isIdentifier(n.name) ? n.name.text : literalText(n.name);
     if (k) out.add(k);
   });
@@ -453,17 +501,32 @@ function callsRpc(node) {
   return found;
 }
 
-/** A call that destroys rows: `.delete()`, a delete/purge-shaped RPC, or literal `DELETE FROM`. */
+/**
+ * A call that destroys rows: a removal-verb method, a delete-shaped RPC, or literal `DELETE FROM` —
+ * plus the two calls this guard cannot READ, which fail closed.
+ *
+ * The two unreadable cases are the same defect as everywhere else in this file: answering "not
+ * destructive" because the target could not be seen. `admin.rpc(rpcName)` and
+ * `admin.from("t")[op]()` were both classified harmless, so their schemas were never checked at
+ * all — a silent bypass rather than a loud one. Ignorance is not innocence, so both are now
+ * treated as destructive and marked `[unreadable]` so the failure can say why.
+ *
+ * A `.rpc()` with a LITERAL name that is not delete-shaped stays non-destructive: that name is a
+ * readable choice the guard evaluated, and it is separately backstopped by the `*.delete` scope +
+ * opaque-RPC pairing below. Only the unreadable one fails closed.
+ */
 function destructiveCall(node) {
   let found = null;
   walk(node, (n) => {
     if (found) return;
     if (ts.isCallExpression(n)) {
-      const m = calleeMethod(n.expression);
-      if (m === "delete") { found = ".delete()"; return; }
+      const m = calleeMethodOrUnreadable(n.expression);
+      if (m === UNREADABLE_METHOD) { found = "[unreadable] a call whose method name is computed"; return; }
+      if (typeof m === "string" && REMOVAL_VERB.test(m)) { found = `.${m}()`; return; }
       if (m === "rpc") {
         const a = literalText(n.arguments[0]);
-        if (a && /(delete|purge|destroy|wipe|drop)/i.test(a)) { found = `.rpc("${a}")`; return; }
+        if (a === null) { found = "[unreadable] .rpc() with a computed target"; return; }
+        if (/(delete|purge|destroy|wipe|drop)/i.test(a)) { found = `.rpc("${a}")`; return; }
       }
     }
     const lit = literalText(n);
@@ -1003,6 +1066,66 @@ mcp.tool("bulk_delete_contacts", {
 });
 const TOOL_SCOPE = { bulk_delete_contacts: "crm.delete" };`), 0);
 
+  // ── review, on head 0c7402d8: `destructiveCall` was the enumeration that decides whether a tool
+  // is EXAMINED AT ALL, so a miss there is silent rather than loud. Two were found and both
+  // reproduced against the shipped guard, returning 0. A third — a computed METHOD name — is the
+  // same defect one step over and was found by sweeping the class rather than the two instances.
+  const GATED = `handler: async (a) => { if (a.confirm) await `;
+  const BOOL = `inputSchema: z.object({ confirm: z.boolean() })`;
+
+  // (1) A call whose RPC TARGET is computed. The guard cannot read it, so it must not score it
+  // harmless — that is how `admin.rpc(rpcName)` where rpcName is "purge_everything" got a pass.
+  check("fails closed on .rpc() with a computed target", v(`
+const rpcName = "purge_everything";
+mcp.tool("t", { ${BOOL}, ${GATED}admin.rpc(rpcName); } });`), 1);
+  check("fails closed on .rpc() with a template target", v(`
+mcp.tool("t", { ${BOOL}, ${GATED}admin.rpc(\`purge_\${a.x}\`); } });`), 1);
+  // The negative control that makes the two above mean something: a LITERAL, non-delete-shaped RPC
+  // on a tool with no removal scope is still not destructive. Failing closed on the unreadable one
+  // must not have quietly promoted every RPC.
+  check("a literal non-delete rpc is still NOT destructive", v(`
+mcp.tool("t", { ${BOOL}, ${GATED}admin.rpc("recalculate_totals"); } });`), 0);
+
+  // (2) Removal spelled as something other than the exact method `delete`. Supabase Storage's
+  // `.remove()` deletes objects; `deleteUser` / `deleteBucket` delete through the admin API.
+  check("catches storage .remove()", v(`
+mcp.tool("t", { ${BOOL}, ${GATED}admin.storage.from("b").remove(["k"]); } });`), 1);
+  check("catches auth.admin.deleteUser()", v(`
+mcp.tool("t", { ${BOOL}, ${GATED}admin.auth.admin.deleteUser(a.id); } });`), 1);
+  check("catches storage.deleteBucket()", v(`
+mcp.tool("t", { ${BOOL}, ${GATED}admin.storage.deleteBucket("b"); } });`), 1);
+  check("catches .truncate()", v(`
+mcp.tool("t", { ${BOOL}, ${GATED}admin.from("clients").truncate(); } });`), 1);
+  // Negative control for the widened vocabulary: the ordinary read/write methods a tool actually
+  // uses must not have become destructive. If this ever returns non-zero the regex is too greedy.
+  check("ordinary reads and writes are NOT removals", v(`
+mcp.tool("t", { ${BOOL}, handler: async (a) => { if (a.confirm) {
+  await admin.from("c").select("id"); await admin.from("c").update({ x: 1 });
+  await admin.from("c").insert({ x: 1 }); await admin.from("c").upsert({ x: 1 });
+  await admin.storage.from("b").download("k"); await admin.from("c").softDelete();
+} } });`), 0);
+
+  // (3) The class the review did not name: a computed METHOD. Same ignorance, same fail-open.
+  check("fails closed on a computed method name", v(`
+mcp.tool("t", { ${BOOL}, ${GATED}admin.from("clients")[a.op](); } });`), 1);
+  // …but a computed member READ is not a call, and an element access with a literal is readable.
+  check("a computed member read is not a call", v(`
+mcp.tool("t", { ${BOOL}, handler: async (a) => { if (a.confirm) return ok(a.rows[a.i]); } });`), 0);
+  check("still reads a literal element-access method", v(`
+mcp.tool("t", { ${BOOL}, ${GATED}admin.from("clients")["select"]("id"); } });`), 0);
+
+  // (4) The scope vocabulary is the SAME enumeration in a second place. Widening only the call
+  // classifier would have left it behind, so both read one regex — and the pre-existing behaviour
+  // (`admin.delete`, `crm.delete`) must be unchanged.
+  check("a *.remove scope is destructive, like *.delete", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }),
+  handler: async (a) => { if (a.confirm) await admin.rpc("handle_data_subject_request"); return ok({}); } });
+const TOOL_SCOPE = { t: "storage.remove" };`), 1);
+  check("a *.read scope is still not destructive", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }),
+  handler: async (a) => { if (a.confirm) await admin.rpc("handle_data_subject_request"); return ok({}); } });
+const TOOL_SCOPE = { t: "crm.read" };`), 0);
+
   // z.literal(true) is a model-settable boolean spelled as a literal — the pre-AST matcher caught
   // this and the first AST version regressed on it.
   check("catches z.literal(true) as a boolean (Codex)", v(`
@@ -1347,6 +1470,13 @@ if (violations.length) {
   }
   console.error("\n  A boolean in the tool's own arguments is written by the model. It selects a");
   console.error("  branch; it proves nothing. See docs/doctrine/one-approval-gate.md.");
+  if (violations.some((v) => v.evidence.startsWith("[unreadable]"))) {
+    console.error("\n  One or more of the calls above is marked [unreadable]: this guard could not read the");
+    console.error("  method or RPC target, so it failed CLOSED rather than scoring an unseen call harmless.");
+    console.error("  If the call is genuinely not destructive, write its name as a string literal so the");
+    console.error("  guard can read it. Do not widen the guard to accept computed targets — that restores");
+    console.error("  the exact silent bypass this check exists to remove.");
+  }
   console.error("\n  Fix: remove the destructive branch from this surface until the capability is");
   console.error("  classified in _shared/action-risk.ts and routed through the shared governed Spine");
   console.error("  execution seam. Do NOT invent an approval channel here — that is the Chat build's");
