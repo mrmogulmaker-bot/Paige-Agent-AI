@@ -11,9 +11,10 @@
 -- unrelated function tried to log a bounce.
 BEGIN;
 
--- 38 = 7 surviving statuses + 4 new + 1 constraint control + 4 ranking + 1 live-refusal
--- + 3 archives + 3 survival + 4 refusals + 4 grants + 4 roster + 2 delivery + 1 cross-tenant.
-SELECT plan(38);
+-- 40 = 7 surviving statuses + 4 new + 1 constraint control + 4 ranking + 1 live-refusal
+-- + 3 archives + 3 survival + 4 refusals + 4 grants + 4 roster + 2 delivery + 1 cross-tenant
+-- + 2 out-of-order arrival.
+SELECT plan(40);
 
 -- ── The shared constraint: every OLD value survives ─────────────────────────────────────────────
 -- Asserted one at a time rather than by comparing the whole definition, so a failure names the
@@ -216,6 +217,28 @@ SELECT is(
   'and the full timeline is carried, so the screen can show when it was sent AND when it arrived'
 );
 
+RESET role;
+
+-- ── Events do not arrive in order, and the headline must not walk backwards ─────────────────────
+-- Found by an independent review of the MERGED diff (§39). The LATERAL used to sort by
+-- `created_at DESC` with rank as a mere tiebreak, so a provider RETRY of an earlier stage — which
+-- lands with the newest insert time — dragged the headline backwards. `created_at` is our own
+-- insert time, not the provider's event time, so it was never the right clock to arbitrate by.
+INSERT INTO public.email_send_log (template_name, recipient_email, message_id, status, tenant_id, metadata) VALUES
+  ('team_invite', 'live@tests.invalid', 'msg-live', 'delivered', 'f1000000-0000-0000-0000-00000000aaaa', '{"invite_id":"f1000000-0000-0000-0000-0000000000a1","via":"retry"}'::jsonb);
+
+SET LOCAL role TO authenticated;
+SET LOCAL request.jwt.claims TO '{"sub":"f1000000-0000-0000-0000-000000000001","role":"authenticated"}';
+SELECT is(
+  (SELECT (public.get_solo_team_workspace(NULL, 'all', 25, 0))->'invitations'->0->'delivery'->>'status'),
+  'opened',
+  'a RETRIED delivered event arriving after opened does not walk the headline backwards'
+);
+SELECT is(
+  (SELECT jsonb_array_length((public.get_solo_team_workspace(NULL, 'all', 25, 0))->'invitations'->0->'delivery'->'history')),
+  4,
+  'and the retry is still kept in the timeline — the history records what happened, the headline judges it'
+);
 RESET role;
 
 -- The §9 assertion this whole design turns on: the delivery join must not leak another workspace.

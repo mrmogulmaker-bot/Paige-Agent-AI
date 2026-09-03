@@ -659,7 +659,11 @@ function InviteRow({ invite, onManage }: {
   return <article>
     <div>
       <strong>{recipient}</strong>
-      <small>{permissionPresentation(invite.permission, false).label} · {finished ? "expired" : "expires"} {new Date(invite.expires_at).toLocaleDateString()}</small>
+      {/* The verb comes from the EXPIRED state alone, not from `finished`. `finished` is true for
+          accepted and revoked invitations too, and those routinely still have a future expiry —
+          so this read "Accepted · expired Sep 10" while Sep 10 had not yet arrived. An invitation
+          that was accepted last week did not expire; it was accepted. */}
+      <small>{permissionPresentation(invite.permission, false).label} · {state === "expired" ? "expired" : "expires"} {new Date(invite.expires_at).toLocaleDateString()}</small>
     </div>
     <span className="stw-pill" data-tone={state}>{state}</span>
 

@@ -17,9 +17,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SoloTeamWorkspace } from "./team-workspace";
+import { readFileSync } from "node:fs";
 import {
   deliveryPresentation,
   inviteIsFinished,
+  inviteLifecycle,
   type InviteDelivery,
   type TeamInviteRecord,
   type TeamWorkspaceRecord,
@@ -77,13 +79,20 @@ beforeEach(() => {
 });
 
 describe("what the delivery record is allowed to claim", () => {
-  it("says an invitation with no recorded send was NOT sent, rather than inventing a status", () => {
-    // The defect in one assertion. `emailed: res.ok` meant "the POST was accepted" and was shown
-    // as though it meant delivered; an invitation with nothing recorded must say so plainly.
+  it("says an absent record is UNKNOWN, never that the email was not sent", () => {
+    // This assertion used to require the words "not sent", and was therefore a test that
+    // ENCODED the defect. An independent review of the merged diff caught it: every invitation
+    // emailed before this feature existed has no `email_send_log` row, because the old sender
+    // never wrote one — so "Not sent yet" told the owner an email that WAS sent never went. The
+    // owner's own revoked invitation is exactly that case. Absence of a record cannot distinguish
+    // never-sent from sent-and-unobserved, so the copy may not pick one.
     const p = deliveryPresentation(null);
-    expect(p.label).toMatch(/not sent/i);
     expect(p.tone).toBe("none");
-    expect(p.label).not.toMatch(/sent$|delivered|opened/i);
+    expect(p.label).toMatch(/not recorded/i);
+    expect(p.label).not.toMatch(/not sent/i);
+    expect(`${p.label} ${p.detail ?? ""}`).not.toMatch(/\bwas not sent\b|\bnever sent\b|\bnot sent yet\b/i);
+    // And it still must not invent a positive status.
+    expect(p.label).not.toMatch(/delivered|opened|clicked/i);
   });
 
   it("keeps 'sent' short of claiming delivery", () => {
@@ -211,7 +220,10 @@ describe("the delivery report the owner asked for", () => {
   it("does not draw a progress trail for an invitation that was never emailed", async () => {
     const { host } = await open([invite({ delivery: null })]);
     const block = host.querySelector(".stw-invite-delivery")!;
-    expect(block.textContent).toMatch(/not sent yet/i);
+    // Was `/not sent yet/i` — the second test that encoded the over-claim. It asserts the honest
+    // wording now, and explicitly that the false one has not come back.
+    expect(block.textContent).toMatch(/not recorded/i);
+    expect(block.textContent).not.toMatch(/not sent yet/i);
     expect(block.querySelectorAll("li").length, "four grey steps would imply a journey that never started").toBe(0);
   });
 
@@ -230,5 +242,28 @@ describe("the delivery report the owner asked for", () => {
     const { host } = await open([invite({ uses: 1, delivery: delivered("clicked", [{ status: "sent", at: new Date().toISOString() }]) })]);
     const past = host.querySelector("details.stw-invite-past")!;
     expect(past.textContent).toMatch(/Link clicked/);
+  });
+});
+
+describe("an accepted invitation did not expire — it was accepted", () => {
+  it("uses the expiry verb only for an invitation that actually expired", () => {
+    // "Accepted · expired Sep 10" while Sep 10 was still in the future. The verb was driven by
+    // `inviteIsFinished`, which is true for accepted and revoked rows too, and those routinely
+    // carry a future expiry. Found by the independent review of the merged diff (§39).
+    const future = new Date(Date.now() + 6 * 86400000).toISOString();
+    const past = new Date(Date.now() - 6 * 86400000).toISOString();
+
+    expect(inviteLifecycle(invite({ uses: 1, expires_at: future }))).toBe("accepted");
+    expect(inviteLifecycle(invite({ revoked_at: new Date().toISOString(), expires_at: future }))).toBe("revoked");
+    expect(inviteLifecycle(invite({ expires_at: past }))).toBe("expired");
+
+    // All three are "finished", which is why keying the verb on finished was wrong.
+    expect(inviteIsFinished(invite({ uses: 1, expires_at: future }))).toBe(true);
+    expect(inviteIsFinished(invite({ revoked_at: new Date().toISOString(), expires_at: future }))).toBe(true);
+
+    // The screen must key on the state, not on finished.
+    const src = readFileSync("src/solo/team-workspace.tsx", "utf8");
+    expect(src).toContain('state === "expired" ? "expired" : "expires"');
+    expect(src).not.toContain('finished ? "expired" : "expires"');
   });
 });

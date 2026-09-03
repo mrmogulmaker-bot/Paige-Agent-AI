@@ -57,7 +57,17 @@ export function deliveryPresentation(delivery: InviteDelivery | null | undefined
   detail: string | null;
 } {
   if (!delivery) {
-    return { label: "Not sent yet", tone: "none", detail: "No email has been recorded for this invitation." };
+    // "Not sent yet" was a FALSE claim, and the owner's own revoked invitation is the case that
+    // proves it: every invitation emailed before this feature existed has no `email_send_log` row,
+    // because the previous sender never wrote one. Absence of a record cannot distinguish an email
+    // that was never sent from one that was sent and never observed — so say exactly that, and
+    // nothing stronger. Asserting "not sent" about an email that WAS sent is the same class of
+    // over-claim this whole surface was built to remove.
+    return {
+      label: "Delivery not recorded",
+      tone: "none",
+      detail: "Nothing was recorded for this invitation, so whether it reached anyone is unknown.",
+    };
   }
   switch (delivery.status) {
     case "sent":

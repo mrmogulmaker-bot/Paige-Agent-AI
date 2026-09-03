@@ -1615,17 +1615,40 @@ of every invitation act; it is what makes the workspace PAIGE names trustworthy.
 **§61 default: no exception.** Distribution is unchanged from the Team seam rows above; this repairs
 how an existing capability resolves its workspace and grants nobody anything new.
 
+**CORRECTED IN FLIGHT by `20261107000000` (the headline ordering), and the reason it was needed is
+the lesson.** #850 was marked ready for review and merged in the same beat, so the independent
+review had no window to run before the merge — its five findings, three of them real defects in
+shipped code, landed on an already-merged PR. §39 says a green CI never waives the peer-gate; this
+waived it by sequencing. The corrections:
+
+| Finding | What was wrong | Fixed by |
+|---|---|---|
+| `email.sent` insert | `idx_email_send_log_message_sent_unique` is UNIQUE on `message_id WHERE status='sent'`, and the sender already writes that row — so every inbound `email.sent` violated it, answered 500, and Resend would retry for ever. Triggered by the single act of subscribing to `email.*`. | webhook returns 200 `already recorded` on `23505` |
+| origin lookup | supabase-js returns `{data:null,error}` rather than throwing; the error was discarded, so a transient failure answered 200 and the event was lost permanently | `error: originError` destructured, 500 before the absent-row branch |
+| headline status | ordered `created_at DESC` first with rank a mere tiebreak, so a retried `delivered` arriving after `opened` walked the display backwards. `created_at` is OUR insert time, never the provider's event time. | `20261107000000` — rank first, `created_at` second |
+| "Not sent yet" | a false claim about every invitation emailed before this feature existed, which has no log row because the old sender never wrote one — including the owner's own revoked one | "Delivery not recorded" |
+| "expired" verb | keyed on `finished`, which is true for accepted and revoked rows that routinely still have a future expiry | keyed on the `expired` state |
+
 **Owed:** authenticated runtime proof. Authorized as immediate post-release owner acceptance
 (2026-09-02) rather than a release blocker, and the surface stays **Authenticated Runtime Proof
 Owed** until the owner confirms the live flow.
 
 ### Solo Team — an invitation says what happened to it, `/solo/{account}/settings/team`
 
-**§66, same commit as the ship. NOT YET LIVE — this records the change under review in #850.** The
-migration is `20261105000000`; production's newest applied version is `20261104000000` and
-`to_regprocedure('public.archive_solo_team_invite(uuid,uuid,uuid)')` is null, both confirmed by query
-2026-09-03. This row is written now because §66 binds the ledger to the commit; it is corrected to
-`SHIPPED` on merge, not left ambiguous.
+**§66 — `SHIPPED`.** #850 merged as `f85115e9`. Corrected from the "NOT YET LIVE" wording this row
+was first written under, on the evidence below rather than on the merge succeeding. Read back from
+production 2026-09-03, with the grant checks carrying their own control so the measurement is known
+to work:
+
+- `supabase_migrations.schema_migrations` contains `20261105000000` — it landed as a BACKFILL, since
+  #810 had already put `20261106000000` on prod while #850 was in flight. `supabase db push
+  --include-all` applies a version numbered below ones already applied; this row is the proof it
+  actually did, rather than being silently skipped.
+- `archive_solo_team_invite(uuid,uuid,uuid)` and `email_delivery_rank(text)` both non-null.
+- `tenant_invite_tokens.archived_at` exists; the `email_send_log` status CHECK now admits `clicked`.
+- EXECUTE on the archive function: `anon` false, `authenticated` false, **and** the control —
+  `get_solo_team_workspace` to `authenticated` — true, so the two refusals measure something.
+- `handle-resend-webhook` deployed ACTIVE at version 3.
 
 **The report.** A revoked invitation stayed on the operator's list for ever with no action on it, and
 no stage of any invitation could be answered — sent, delivered, opened, clicked were all unknown.
