@@ -3098,3 +3098,46 @@ constructed as a fixture to prove.
 
 **The lesson:** measuring who is affected *right now* is not measuring what the change can do. A
 capability that is dormant at the moment of measurement reads as absent.
+
+### Spine item 4 (Clients / Pipeline / Sales) — do NOT build (2026-09-03, #893)
+
+Grounded on production. The recommendation is **do not register a Spine capability for this
+domain**, for the same reason and by the same method as the Connections packet: it already has a
+home, and a second one would be a rival answer rather than a new one.
+
+**Two existing homes.** PAIGE already reads this domain through `crm_pipeline_summary`,
+`crm_list_deals`, `crm_search_contacts`, `crm_get_contact_summary` and `crm_list_tasks`, plus
+governed writes carrying confirm-gating. And `practice_dashboard_metrics(p_window_days)` already
+aggregates it in SQL — `SECURITY DEFINER`, granted `authenticated`, tenant server-resolved,
+raising `practice_scope_forbidden` on a null tenant. A third answer could disagree with the
+dashboard the tenant is looking at (§57).
+
+**What the stores hold** (measured, not inferred from a table existing): `pipeline_stages` 89 rows
+across 12 tenants; `pipelines` 17/12; `clients` 7 rows across 3 tenants, so **10 of 13 workspaces
+have an empty book**; `deals` 1; `tenant_products`, `tenant_prices` and
+`tenant_service_subscriptions` all **0**. Structure is real; activity is not.
+
+**`orders` is Platform Billing wearing a Sales name.** Columns `user_id`, `stripe_session_id`,
+`plan_type` — and **no `tenant_id` at all**. It is a tenant paying Paige (§38 L1), never a tenant's
+client paying the tenant. Reading it as Sales would attribute platform subscription revenue to
+tenant sales.
+
+**Honest states of record:** pipeline configured `LIVE`; client book `LIVE` and honestly `0` for 10
+of 13; deal activity `PARTIAL` with no derivable aggregate; revenue / velocity / forecast
+`UNAVAILABLE`; tenant commerce `NOT_CONNECTED`; payment completion `UNAVAILABLE` to Sales.
+
+**Two corrections inside this packet, both self-caught before they shipped.**
+1. The single deal is **not** fixture-like — real workspace, real value, staged, linked contact,
+   status `open`, updated after creation. The conclusion (no aggregates) survives; the reason
+   changes to *"one real deal is not a sample"*. The wrong reason would have justified the right
+   answer on a basis that evaporates the moment a second deal exists.
+2. I hypothesised that `practice_dashboard_metrics`' missing role gate exposed revenue aggregates
+   to a workspace's own clients. **It does not** — the deployed `current_user_tenant_id()` has no
+   `clients.linked_user_id` branch, so an unlinked client resolves `NULL` and is refused. I had
+   conflated it with `get_paige_persona_context()`, which does resolve that branch first. Withdrawn
+   rather than shipped as a finding — and the same conflation in the opposite direction turned out
+   to be a genuine defect (see the CRM binding entry).
+
+The packet also names **what would reopen the decision** — a deal population where movement is
+measurable, or tenant commerce actually configured — so this is a decision with a trigger rather
+than a permanent no.
