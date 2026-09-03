@@ -32,6 +32,8 @@ reason. The rule and its reporting gate live in `.claude/skills/second-brain/SKI
 config, or lands a ruling updates the relevant brain file **in the same commit**. A stale brain is
 worse than none — it lies with authority.
 
+**Billing P0 current truth (2026-09-03):** authenticated owner setup FAIL; repair candidate, provider completion unverified. Secret presence confirmed without values. [Repair, flow boundaries and proof ledger](../delivery/billing-payment-setup-p0.md). Prepaid credits remain gated on payment setup verification and owner commercial approval.
+
 **Brain-internal files**
 | File | What it holds | When to read |
 |---|---|---|

@@ -711,9 +711,7 @@ function providerFieldsFrom(status: WorkspaceBillingStatus): ReadonlyArray<{ lab
   } else if (status.providerState === "mapped") {
     rows.push({ label: "Provider billing account", value: "Set up" });
     rows.push(status.paymentMethodConnected
-      ? { label: "Payment method", value: `${status.paymentMethodBrand ?? "Card"} •••• ${status.paymentMethodLast4 ?? "····"}`
-          + (status.paymentMethodExpMonth && status.paymentMethodExpYear
-              ? ` (exp ${status.paymentMethodExpMonth}/${status.paymentMethodExpYear})` : "") }
+      ? { label: "Payment method", value: "Connected" }
       : { label: "Payment method", value: "None connected yet" });
   }
   return rows;
@@ -892,10 +890,6 @@ export interface PaymentSetupInput {
   canManageBilling: boolean;
   billingAccountState: BillingAccountState;
   paymentMethodConnected: boolean;
-  paymentMethodBrand: string | null;
-  paymentMethodLast4: string | null;
-  paymentMethodExpMonth: number | null;
-  paymentMethodExpYear: number | null;
 }
 
 const NO_SETUP_FIELDS: ReadonlyArray<{ label: string; value: string }> = [];
@@ -927,13 +921,11 @@ export function resolveWorkspacePaymentSetupPresentation(input: PaymentSetupInpu
   }
 
   if (input.paymentMethodConnected) {
-    const exp = input.paymentMethodExpMonth && input.paymentMethodExpYear
-      ? ` (exp ${input.paymentMethodExpMonth}/${input.paymentMethodExpYear})` : "";
     return {
       state: "setup-connected",
       heading: "Payment method on file",
-      body: "PAIGE Platform charges this method for this workspace's subscription. Setting up a new one replaces it.",
-      fields: fieldsFrom([["On file", `${input.paymentMethodBrand ?? "Card"} •••• ${input.paymentMethodLast4 ?? "····"}${exp}`]]),
+      body: "A payment method is connected for this workspace. Updating it does not start a charge, change the plan, or end promotional access.",
+      fields: fieldsFrom([["Payment method", "Connected"]]),
       canAct: true, actionLabel: "Update payment method", canRetry: false,
     };
   }
@@ -953,6 +945,8 @@ export const PAYMENT_SETUP_REFUSAL_COPY: Record<string, string> = {
   owner_only: "Payment setup is managed by the workspace owner. Ask them to set it up.",
   billing_account_ambiguous: "This workspace's billing records need a platform review before payment setup can proceed. Nothing about your access has changed.",
   billing_account_unresolvable: "The payment provider could not open a setup page for this workspace. The attempt was recorded for the platform to review.",
+  provider_unavailable: "The payment provider is temporarily unavailable. Try again. Nothing about your access has changed.",
+  provider_configuration: "Payment setup needs a platform configuration update before it can open. Nothing about your access or promotional status has changed.",
   needs_config: "Payment setup isn't turned on for this workspace yet. This isn't something a retry fixes — the platform has been notified. Nothing about your access or your promotional status has changed.",
   audit_failed: "The platform could not record this request, so setup was not opened. Try again.",
   authority_unreadable: "Your billing permissions could not be read just now. Try again.",
@@ -977,5 +971,5 @@ export const PAYMENT_SETUP_REFUSAL_COPY: Record<string, string> = {
  */
 export const PAYMENT_SETUP_DURABLE_REFUSALS: ReadonlySet<string> = new Set([
   "no_active_workspace", "not_applicable_scope", "owner_only",
-  "billing_account_ambiguous", "needs_config",
+  "billing_account_ambiguous", "needs_config", "provider_configuration",
 ]);

@@ -44,7 +44,7 @@
  * billing this workspace. What the workspace charges its own customers runs on the tenant's own
  * processor (§38 / §197 LAYER 2) and is stated there, not here.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { Bell, CalendarClock, CircleDollarSign, CreditCard, ExternalLink, RefreshCw, TriangleAlert, Users } from "lucide-react";
 import { Card, NotYours, Outcome, Status, type WriteState } from "./settings-primitives";
@@ -55,7 +55,7 @@ import {
 } from "./billing-contract";
 import { useWorkspaceAiUsage } from "./data/useWorkspaceAiUsage";
 import { useWorkspaceBillingStatus } from "./data/useWorkspaceBillingStatus";
-import { usePlatformBillingConnect } from "./data/usePlatformBillingConnect";
+import { usePlatformBillingConnect, consumePaymentSetupReturn, clearPaymentSetupReturn, verifyPaymentSetupActor } from "./data/usePlatformBillingConnect";
 import {
   PORTAL_REFUSAL_COPY, useWorkspaceBillingAuthority,
 } from "./data/useWorkspaceBillingAuthority";
@@ -119,9 +119,9 @@ function PlanCard({ status }: { status: BillingStatusHook }) {
  * The Billing Experience payment-method connect act (owner brief 2026-09-03, item 4), added ABOVE
  * the pre-existing hosted-portal block in the SAME "Payment method" card (§18 one home) rather than
  * a new card. The gate mirrors the SERVER's own gate exactly (authority.scope/canManageBilling), so
- * the button is never offered to someone the server is certain to refuse (§36). Payment-method
- * DISPLAY facts (brand/last4/exp) come from `status` — the same read the plan card uses — never
- * invented here. The hosted-portal block below is UNCHANGED: still gated purely on `authority`,
+ * the button is never offered to someone the server is certain to refuse (§36).
+ * Connected-state truth comes from `status`; card details never enter the browser.
+ * The hosted-portal block below is UNCHANGED: still gated purely on `authority`,
  * still the pre-existing, tested, flag-gated act.
  */
 function PortalCard({ authority, status, activeTenantId }: { authority: Authority; status: BillingStatusHook; activeTenantId: string | null }) {
@@ -147,10 +147,6 @@ function PortalCard({ authority, status, activeTenantId }: { authority: Authorit
     canManageBilling: authority.authority?.canManageBilling === true,
     billingAccountState: authority.authority?.billingAccountState ?? "not_applicable",
     paymentMethodConnected: status.status?.paymentMethodConnected === true,
-    paymentMethodBrand: status.status?.paymentMethodBrand ?? null,
-    paymentMethodLast4: status.status?.paymentMethodLast4 ?? null,
-    paymentMethodExpMonth: status.status?.paymentMethodExpMonth ?? null,
-    paymentMethodExpYear: status.status?.paymentMethodExpYear ?? null,
   });
   const setupSection = <>
     <div className="ss-state" data-setup-state={setup.state} role={setup.state === "setup-loading" ? "status" : setup.state === "setup-unreadable" ? "alert" : undefined}>
@@ -512,48 +508,92 @@ export function SoloBillingView() {
   // put "Primary billing contact set for this workspace." under a workspace where nothing was set,
   // and a portal refusal under a workspace where the portal was never pressed. Remounting is the
   // whole answer: an outcome is a report about ONE workspace and cannot outlive it.
-  const { activeTenantId } = useTenantContext();
+  const { activeTenantId, loading: workspaceLoading } = useTenantContext();
   const workspace = activeTenantId ?? "none";
 
-  // Payment setup return (item 4): Stripe redirects back with ?payment_setup=success|cancelled.
-  // This is UX ONLY — never an authority signal. The real grant is entirely server-side (the
-  // webhook, keyed on the session's SIGNED metadata); this only tells the page "go re-read your
-  // real status" and shows an honest banner while it does. Read once on mount, then stripped from
-  // the URL so a refresh never re-announces a return that already happened.
-  const [setupReturn, setSetupReturn] = useState<"success" | "cancelled" | null>(null);
+  // Return correlation is UI-only; connection truth always comes from the scoped status RPC.
+  const [setupReturn, setSetupReturn] = useState<{ tenantId: string; userId: string; kind: "success" | "cancelled" | "pending" } | null>(null);
+  const callbackAttempt = useRef<{ tenantId: string; flag: string | null; result: Promise<{ userId: string } | null> } | null>(null);
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const flag = params.get("payment_setup");
-    if (flag === "success" || flag === "cancelled") {
-      setSetupReturn(flag);
-      params.delete("payment_setup");
-      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
-      window.history.replaceState(null, "", next);
+    if (!activeTenantId || workspaceLoading) return;
+    let cancelled = false;
+    if (!callbackAttempt.current) {
+      const params = new URLSearchParams(window.location.search);
+      const flag = params.get("payment_setup");
+      callbackAttempt.current = {
+        tenantId: activeTenantId, flag,
+        result: flag !== null || params.has("payment_setup_state")
+          ? consumePaymentSetupReturn(activeTenantId, params.get("payment_setup_state")) : Promise.resolve(null),
+      };
+      if (flag !== null || params.has("payment_setup_state")) {
+        params.delete("payment_setup");
+        params.delete("payment_setup_state");
+        window.history.replaceState(null, "", `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash ?? ""}`);
+      }
     }
-  }, []);
-  // On a success return, poll the real status read a few times — the webhook may not have landed
-  // yet — so the confirmation is DRIVEN BY THE REAL READ, never assumed from the redirect alone.
+    if (callbackAttempt.current.tenantId !== activeTenantId) {
+      callbackAttempt.current = { tenantId: activeTenantId, flag: null, result: Promise.resolve(null) };
+    }
+    const attempt = callbackAttempt.current;
+    if (attempt.tenantId === activeTenantId) {
+      void attempt.result.then((correlated) => {
+        if (!cancelled && correlated && (attempt.flag === "success" || attempt.flag === "cancelled")) {
+          setSetupReturn({ tenantId: activeTenantId, userId: correlated.userId, kind: attempt.flag });
+        }
+      });
+    }
+    return () => { cancelled = true; };
+  }, [activeTenantId, workspaceLoading]);
+  const returnActionGeneration = useRef(0);
   useEffect(() => {
-    if (setupReturn !== "success") return;
+    returnActionGeneration.current += 1;
+    return () => { returnActionGeneration.current += 1; };
+  }, [activeTenantId, setupReturn]);
+  useEffect(() => {
+    if (setupReturn && setupReturn.tenantId !== activeTenantId) {
+      setSetupReturn(null);
+      clearPaymentSetupReturn();
+    } else if (setupReturn?.kind !== "cancelled" && status.status?.tenantId === activeTenantId && status.status?.paymentMethodConnected) {
+      setSetupReturn(null);
+    }
+  }, [activeTenantId, setupReturn, status.status?.tenantId, status.status?.paymentMethodConnected]);
+  const paymentConfirmed = status.status?.tenantId === activeTenantId && status.status?.paymentMethodConnected === true;
+  useEffect(() => {
+    if (setupReturn?.kind !== "success" || setupReturn.tenantId !== activeTenantId || paymentConfirmed) return;
     let cancelled = false;
     let attempts = 0;
-    const poll = () => {
-      if (cancelled || attempts >= 5) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      if (cancelled) return;
       attempts += 1;
-      void status.refresh().then(() => {
-        if (!cancelled && attempts < 5) setTimeout(poll, 1500);
-      });
+      if (!await verifyPaymentSetupActor(setupReturn.tenantId, setupReturn.userId)) {
+        if (!cancelled) setSetupReturn(null);
+        return;
+      }
+      if (cancelled) return;
+      await status.refresh();
+      if (cancelled) return;
+      if (attempts < 5) timer = setTimeout(poll, 1500);
+      else setSetupReturn((current) => current?.tenantId === activeTenantId && current.kind === "success" ? { ...current, kind: "pending" } : current);
     };
-    const t = setTimeout(poll, 1000);
-    return () => { cancelled = true; clearTimeout(t); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setupReturn]);
+    timer = setTimeout(poll, 1000);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [setupReturn, activeTenantId, status.refresh, paymentConfirmed]);
+  const visibleReturn = setupReturn?.tenantId === activeTenantId ? setupReturn : null;
 
   return <div className="ss-grid">
-    {setupReturn && <div className="ss-state" data-setup-return={setupReturn} role="status">
-      {setupReturn === "success"
-        ? <><RefreshCw className="ss-spin" aria-hidden/><span><strong>Confirming your payment method…</strong>This updates automatically once the platform confirms it. Nothing else about your plan changed.</span></>
-        : <><TriangleAlert aria-hidden/><span><strong>Payment setup was cancelled</strong>Nothing about your billing changed.</span></>}
+    {visibleReturn && <div className="ss-state" data-setup-return={visibleReturn.kind} role="status">
+      {visibleReturn.kind === "cancelled"
+        ? <><TriangleAlert aria-hidden/><span><strong>Payment setup was cancelled</strong>Nothing about your billing changed.</span></>
+        : visibleReturn.kind === "pending"
+          ? <><TriangleAlert aria-hidden/><span><strong>Payment confirmation is still pending</strong>Refresh to check the platform's current status. No connection has been assumed.</span><button type="button" onClick={async () => {
+            const generation = returnActionGeneration.current;
+            const valid = await verifyPaymentSetupActor(visibleReturn.tenantId, visibleReturn.userId);
+            if (generation !== returnActionGeneration.current) return;
+            if (valid) await status.refresh();
+            else setSetupReturn(null);
+          }}>Refresh</button></>
+          : <><RefreshCw className="ss-spin" aria-hidden/><span><strong>Confirming your payment method…</strong>Checking the platform's current status. No connection has been assumed.</span></>}
     </div>}
     <PlanCard status={status}/>
     <ContactsCard key={`contacts:${workspace}`} authority={authority}

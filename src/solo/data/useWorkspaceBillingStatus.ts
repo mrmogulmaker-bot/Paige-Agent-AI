@@ -31,10 +31,6 @@ export interface WorkspaceBillingStatus {
   billedBy: string | null;
   providerState: BillingProviderState | null;
   paymentMethodConnected: boolean;
-  paymentMethodBrand: string | null;
-  paymentMethodLast4: string | null;
-  paymentMethodExpMonth: number | null;
-  paymentMethodExpYear: number | null;
   seatsIncluded: number | null;
   seatsUsed: number | null;
   contactsIncluded: number | null;
@@ -55,8 +51,7 @@ export const NO_WORKSPACE_STATUS: WorkspaceBillingStatus = {
   tenantId: null, workspaceName: null, scope: "none", canView: false, canManage: false,
   accessState: "unknown", revenueClass: null, planSlug: null, planName: null,
   amountDueCents: null, paymentMethodRequired: false, billedBy: null, providerState: null,
-  paymentMethodConnected: false, paymentMethodBrand: null, paymentMethodLast4: null,
-  paymentMethodExpMonth: null, paymentMethodExpYear: null,
+  paymentMethodConnected: false,
   seatsIncluded: null, seatsUsed: null, contactsIncluded: null, contactsUsed: null,
   smsIncluded: null, smsUsed: null, aiTokensIncluded: null, aiCreditTokenRatio: null,
   paidAddonsCount: null, primaryContactCount: null, delegateCount: null,
@@ -99,10 +94,6 @@ export function parseWorkspaceBillingStatusRow(row: Record<string, unknown>): Wo
     billedBy: str(row.billed_by),
     providerState: asProviderState(row.provider_state),
     paymentMethodConnected: row.payment_method_connected === true,
-    paymentMethodBrand: str(row.payment_method_brand),
-    paymentMethodLast4: str(row.payment_method_last4),
-    paymentMethodExpMonth: num(row.payment_method_exp_month),
-    paymentMethodExpYear: num(row.payment_method_exp_year),
     seatsIncluded: num(row.seats_included),
     seatsUsed: num(row.seats_used),
     contactsIncluded: num(row.contacts_included),
@@ -123,12 +114,14 @@ export function parseWorkspaceBillingStatusRow(row: Record<string, unknown>): Wo
 export function useWorkspaceBillingStatus() {
   const { activeTenantId, loading: tenantLoading } = useTenantContext();
   const gate = useRef(createSettingsRequestGate());
+  const requestTenant = useRef<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<WorkspaceBillingStatus | null>(null);
 
   const load = useCallback(async () => {
     const token = gate.current.begin();
+    requestTenant.current = activeTenantId;
     setLoading(true);
     setError(null);
     setStatus(null);
@@ -139,8 +132,18 @@ export function useWorkspaceBillingStatus() {
       setLoading(false);
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error: rpcErr } = await supabase.rpc("get_workspace_billing_status" as any);
+    let response;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      response = await supabase.rpc("get_workspace_billing_status" as any);
+    } catch {
+      if (gate.current.isCurrent(token)) {
+        setError("This workspace's billing status could not be read.");
+        setLoading(false);
+      }
+      return;
+    }
+    const { data, error: rpcErr } = response;
     if (!gate.current.isCurrent(token)) return; // a late answer for a workspace we have left
     if (rpcErr) {
       setError("This workspace's billing status could not be read.");
@@ -148,7 +151,7 @@ export function useWorkspaceBillingStatus() {
       return;
     }
     const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
-    if (!row) {
+    if (!row || row.tenant_id !== activeTenantId) {
       setError("This workspace's billing status could not be read.");
       setLoading(false);
       return;
@@ -163,5 +166,7 @@ export function useWorkspaceBillingStatus() {
     return () => g.clear();
   }, [load]);
 
-  return { loading: loading || tenantLoading, error, status, refresh: load };
+  const visibleStatus = status?.tenantId && status.tenantId !== activeTenantId ? null : status;
+  const sameWorkspace = requestTenant.current === activeTenantId;
+  return { loading: loading || tenantLoading || !sameWorkspace || (status !== null && visibleStatus === null), error: sameWorkspace ? error : null, status: visibleStatus, refresh: load };
 }

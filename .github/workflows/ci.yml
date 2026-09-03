@@ -457,6 +457,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run build
 
+      - name: Billing payment setup safety and reconciliation
+        if: ${{ !cancelled() }}
+        run: |
+          node --import ./scripts/client-memory-authz/register.mjs --test scripts/billing-payment-setup.test.mjs supabase/functions/_shared/payment-setup-reconciliation.test.ts
+          deno test --allow-import=esm.sh,deno.land --deny-net --deny-env --deny-read --deny-write --deny-run --deny-ffi --deny-sys supabase/functions/_shared/stripe-webhook-signature.test.ts
+
       - name: Test
         if: ${{ !cancelled() }}
         run: npm run test
