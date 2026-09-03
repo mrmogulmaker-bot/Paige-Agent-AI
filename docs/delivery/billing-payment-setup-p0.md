@@ -1,6 +1,6 @@
 # Billing payment setup P0 — 2026-09-03
 
-Status: **FAIL / repair in progress. Release candidate; authenticated owner completion UNVERIFIED.**
+Status: **P0 repair RELEASED (#898, `df38d4c7`). Payment setup remains FAIL pending authenticated owner retest; completion UNVERIFIED.**
 
 ## Production facts
 
@@ -22,7 +22,8 @@ Signed setup events use async Web Crypto signature verification. A service-only 
 - Database rollback: real hosted schema privacy proof 5/5 PASS after repair (baseline exposed privacy defects); atomic reconciliation proof PASS, rollback cleanup confirmed. No fixture persisted.
 - Database concurrency: 8 simultaneous deliveries produce exactly one completion and seven duplicates; one mapping and receipt. Migration replay twice PASS.
 - Rendered: isolated Billing harness 200/200 PASS at 1536×770, 1366×768, 1024×768, 900×1000, both themes, focus/reachability and reduced motion. Connected privacy, provider refusal, Selection needed and read-only/error states covered. Synthetic transport, not authenticated/provider proof. Initial obsolete fixture run is INVALID for product acceptance. Production build PASS.
-- Production persistence/deployment: repair NOT deployed at record creation; verify both migrations and Edge revisions after merge.
+- Production persistence/deployment: #898 merged as `df38d4c7a84acc3fc3685a9c243fb5d6670931d6`. All PR CI, Security, Spine and migration checks PASS, Supabase preview green. Both automatic production deployment jobs PASS. Vercel `dpl_712nQn5fyJjv7iGkw1GrkuU63iw4` READY on that exact SHA, serving `paigeagent.ai`, `app.paigeagent.ai` and `paige-agent-ai.vercel.app`. Actual production `SoloApp-DGu1uhNE.js` contains correlation/authority checks and no removed card-field names. `platform-billing-connect` ACTIVE v2 and `stripe-webhook` ACTIVE v55; all five changed runtime files match the release source exactly after line-ending normalization. Migrations `20261200000100` and `20261200000200` confirmed in production ledger. Live SQL verifies private status contract, service-only reconciliation, no authenticated receipt read, and forced RLS. Unsigned connect request returns 401; unsigned webhook is refused (existing missing-signature path returns 500), with no provider traffic or mutation.
+- Local broad Solo regression: 1274/1275 passed; the shell file-scan test timed out during the concurrent run, then passed 4/4 in isolation unchanged. Full Linux CI suite PASS. No test was removed or weakened.
 - Authenticated owner/provider: original attempt FAIL. Hosted page, cancel/completed return and refresh still UNVERIFIED. Never call setup complete from tests or a return flag.
 
 ## One-minute owner test after verified deployment
