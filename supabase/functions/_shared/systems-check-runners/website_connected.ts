@@ -1,37 +1,39 @@
 // systems-check-runners/website_connected.ts — Check #2 (runner_key: website_connected).
 //
-// SEAM (reuse ONLY this): growth_pages (a published row: status='published') OR a non-empty
-//   tenants.brand->>'website' (the §10 config-as-data home; there is no tenants.website column).
-//   A tenant "has a website" if they either published a page in the platform's own growth
-//   authoring seam OR declared an external site URL on their brand profile.
+// SEAM (reuse ONLY this): growth_pages (a published row: status='published') OR the Spine-owned
+//   business_context_readiness contract's 'website' field (owner_confirmed = Setup has a website
+//   on file). A tenant "has a website" if they either published a page in the platform's own
+//   growth authoring seam OR confirmed an external site URL in Setup.
+//
+// This runner used to read tenants.brand->>'website' directly, which the current Setup save path
+// (save_solo_setup_context -> save_solo_setup_identity) never writes -- a fresh scan reported
+// "missing" regardless of what an Owner saved. Reading the readiness contract instead fixes this
+// at the one broken pointer (§18) rather than re-deriving Setup's storage shape here.
 //
 // §51 tenant-scoped; §32 fail-loud; §13 honest evidence. Remediation forge + routing is the core's job.
 
 import type { CheckRunner } from "../systems-check-runner.ts";
-import { throwOnDbError, errorResult, hasText } from "./_kit.ts";
+import { throwOnDbError, errorResult } from "./_kit.ts";
+import { readBusinessContextReadiness, isConfirmed } from "./_business-context-readiness.ts";
 
 export const runnerKey = "website_connected";
 
 export const run: CheckRunner = async (ctx, _row) => {
   const { admin, tenantId } = ctx;
   try {
-    const [pageRes, tenantRes] = await Promise.all([
+    const [pageRes, readiness] = await Promise.all([
       admin
         .from("growth_pages")
         .select("id")
         .eq("tenant_id", tenantId)
         .eq("status", "published")
         .limit(1),
-      admin.from("tenants").select("brand").eq("id", tenantId).maybeSingle(),
+      readBusinessContextReadiness(admin, tenantId),
     ]);
     throwOnDbError(pageRes.error, "growth_pages");
-    throwOnDbError(tenantRes.error, "tenants.brand");
 
     const hasPublishedPage = (pageRes.data?.length ?? 0) > 0;
-    // external site URL lives in the tenant-authored brand jsonb (no tenants.website column).
-    const brand = ((tenantRes.data as { brand?: Record<string, unknown> } | null)?.brand ?? {}) as Record<string, unknown>;
-    const website = brand.website ?? null;
-    const hasDeclaredSite = hasText(website);
+    const hasDeclaredSite = isConfirmed(readiness.website.status);
     const pass = hasPublishedPage || hasDeclaredSite;
 
     return {

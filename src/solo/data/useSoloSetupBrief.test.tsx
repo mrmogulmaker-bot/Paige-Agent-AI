@@ -115,6 +115,39 @@ describe("useSoloSetupBrief tenant gate", () => {
     host.remove();
   });
 
+  it("returns ok on a genuine successful save, even though this suite's client mock has no `functions` key at all", async () => {
+    // Regression guard: save() now fires a fire-and-forget Systems Check rescan
+    // (rescanBusinessContext, via supabase.functions.invoke) after a successful save. This
+    // suite's own supabase mock above declares no `functions` key — exactly the shape that would
+    // throw if the rescan trigger were not defensively wrapped. A real save must still resolve
+    // "saved" here, proving the rescan can never turn a successful Setup save into a failure.
+    testState.tenantId = "tenant-a";
+    testState.pending.length = 0;
+    testState.saves.length = 0;
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<SaveProbe />));
+    await act(async () => {
+      testState.pending[0].resolve({
+        data: { tenantId: "tenant-a", tenantName: "Business A", brief: { publicName: "Business A", updatedAt: "v1" }, accessScope: "owner_full", businessOwners: [] },
+        error: null,
+      });
+      await Promise.resolve();
+    });
+    await act(async () => host.querySelector("button")?.click());
+    await act(async () => {
+      testState.saves[0].resolve({
+        data: { tenantId: "tenant-a", tenantName: "Business A", brief: { publicName: "Business A", updatedAt: "v2" }, accessScope: "owner_full", businessOwners: [] },
+        error: null,
+      });
+      await Promise.resolve();
+    });
+    expect(host.textContent).toBe("saved");
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
   it("drops a save response that returns after the active account changes", async () => {
     testState.tenantId = "tenant-a";
     testState.pending.length = 0;

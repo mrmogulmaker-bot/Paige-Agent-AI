@@ -25,25 +25,39 @@ recorded something as working that a person could not use:
 
 Everything below states which class it belongs to. **Nothing here was driven in a browser.**
 
-## The Spine is PARTIAL — one capability, not a connected platform
+## The Spine is PARTIAL — two capabilities, not a connected platform
 
 **Do not read the Spine's existence as departments being wired to PAIGE.** Measured by running the
-repo's own guards on 2026-09-02:
+repo's own guards on 2026-09-02, with the capability count re-measured 2026-09-03:
 
 | Measure | Value | How |
 |---|---|---|
-| Registered Spine capabilities | **1** | `node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs` → `PASS (1 capability)` |
+| Registered Spine capabilities | **2** | `node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs` → `PASS (2 capability)` |
 | Inline Chat tools | **105** | `node scripts/ci/chat-tool-registry-lint.mjs` → `105 tool(s) inline, none added (baseline 105)` |
 | Classified actions | **62** — 32 `ordinary`, 28 `high`, 2 `owner_only`, 5 exempt, 0 unclassified writes | `npm run lint:action-risk` |
 
-The one capability is `pipeline.deal_stage_evidence` — read-only, `chatBinding: PARTIAL`,
+The first capability is `pipeline.deal_stage_evidence` — read-only, `chatBinding: PARTIAL`,
 `mindBinding: PARTIAL` (raised from `UNAVAILABLE` by PR **#747** on 2026-09-02 — a `PARTIAL` binding,
-not a `LIVE` one; the capability count is unchanged at one). **PAIGE reaches departments today
+not a `LIVE` one). **PAIGE reaches departments today
 through the 105 hand-wired tools, not
-through the Spine.** The Spine is the governed path with one department crossed over.
+through the Spine.** The Spine is the governed path with two capabilities crossed over.
 
-**No department other than Pipeline is declared in the registry.** The Team and Setup surface cards
-(`../doctrine/surface-cards/`) each say the same of themselves, independently.
+The second is **`business_context.readiness`** (2026-09-03) — read-only status + provenance over four
+Setup fields (`website`, `business_phone`, `industry`, `primary_business_email`), never a raw value.
+Adapter `public.get_business_context_readiness(uuid)`. It is the **first WORKSPACE-level Spine
+capability**, and it reached that without the shared-primitive change the section below says a
+workspace-level capability needs — because **it does not use the Rail resolver at all.** Read the next
+section with that distinction in mind: those four constraints govern *Rail-signal-backed* capabilities.
+A capability whose evidence is a live read over a tenant's own current record has no signal to resolve,
+no `contact_id` to be null, and no client-scoped Chat gate to sit behind — so it sidesteps all four.
+That is not a loophole in the constraints; it is a different evidence class, and it buys none of the
+Rail's properties (no history, no citation, no attribution, no freshness boundary — the row is simply
+current as of the call). Its `chatBinding`/`mindBinding` are `PARTIAL`: `paige-ai-chat` injects the
+block into every tenant turn's system context, unit-tested, with no authenticated drive yet.
+
+**No department other than Pipeline and Setup's business context is declared in the registry.** The
+Team and Setup surface cards (`../doctrine/surface-cards/`) each say the same of themselves,
+independently.
 
 ### Why most departments cannot simply be added
 
@@ -59,9 +73,18 @@ Four properties of the shipped code decide eligibility. They are constraints, no
    A department whose value lives in free text cannot express it under this contract.
 
 Consequence: **Team · Settings · Connections · Marketplace · Billing · Analytics · Social are
-workspace-level and cannot reach `LIVE` without a shared-primitive change.** The owner ruled
-2026-09-02 (Team card, decision 2) that a Rail event may not carry a null `contact_id`; the repair is
-a distinct tenant/workspace-level outcome projection, and it is a **Spine Change Request**, unstarted.
+workspace-level and cannot reach `LIVE` AS RAIL-BACKED CAPABILITIES without a shared-primitive
+change.** The owner ruled 2026-09-02 (Team card, decision 2) that a Rail event may not carry a null
+`contact_id`; the repair is a distinct tenant/workspace-level outcome projection, and it is a
+**Spine Change Request**, unstarted.
+
+**Corrected 2026-09-03 (§13):** as written above, that consequence read as "no workspace-level
+capability at all until the Rail is changed." `business_context.readiness` disproves the broader
+reading — a workspace-level capability CAN be declared and consumed today when its evidence is a
+**live read** rather than a Rail signal. What still stands, unchanged, is the narrower claim: a
+workspace-level capability cannot carry Rail HISTORY (an attributable, cited, dated record of an
+outcome that happened) until that Change Request lands. Choose the class deliberately: "what is true
+right now" is a live read and available; "what happened, and who did it" is Rail-backed and blocked.
 
 ### The reference implementation any new capability must copy
 

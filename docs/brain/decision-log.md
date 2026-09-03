@@ -1,5 +1,58 @@
 # Decision Log — chronological one-liners
 
+- **CORRECTION to the entry below, same day: the role gate I added was global where it had to be tenant-scoped (2026-09-03, `business_context.readiness`)** —
+  an adversarial read of my own pushed diff, run while CI was still going, found the gate added to
+  close the client-leak was itself wrong. It copied the Pipeline reference adapter's
+  `has_any_role(uid, array['admin','super_admin','coach'])`; `user_roles` carries **no `tenant_id`**,
+  so it answers the wrong question in both directions (§59's global-role trap). It **wrongly admits**
+  a user who holds 'admin' from workspace X while they resolve workspace Y, and it **wrongly refuses**
+  a freshly provisioned Solo owner, because the current deferred-signup path
+  (`record_signup_acceptance` / `provision_tenant`, `20260808190000`) grants the base role `'user'`
+  and nothing else — silently turning away the exact persona the capability exists for, since a
+  refusal renders nothing in chat. **Measured on prod before changing anything** (counts only, no
+  PII): of the 7 users who resolve a tenant, the global and tenant-scoped gates admit the **same 7** —
+  0 wrongly admitted, 0 wrongly refused *today*. All 7 owners hold `admin`, which is history rather
+  than construction. So the change is a no-op for every current user and closes both holes going
+  forward. Now `is_tenant_admin(<resolved tenant>) OR is_platform_owner()`. **The test could not have
+  caught it** — it inserted the `user_roles` rows itself, proving the gate works without ever proving
+  real owners hold that role; the refused fixture now carries a GLOBAL staff role while remaining a
+  mere workspace `member`, so a regression to a global predicate turns 3 assertions red (mutation-
+  proven) instead of passing for the wrong reason. **Flagged upstream, not fixed here:**
+  `get_pipeline_spine_evidence` still carries the global predicate; its binding is `PARTIAL` with no
+  authenticated drive, so the path where it matters has never been exercised. **Also in this
+  correction:** the migration collided a SECOND time (`20261111000000` was taken by
+  `the_offer_editor…` in the minutes between my check and my push), reddening both `verify` and
+  `database-contract` for one cause — the repo's own `npm run lint:migration-versions` catches this
+  and was not run locally; it is now, and lessons-learned 0c is amended to say so.
+
+- **Systems Check and PAIGE were reading a table Setup stopped writing to — three defects, not one (2026-09-03, `business_context.readiness`)** —
+  the reported symptom was "Systems Check and PAIGE report old or separate findings after Setup is
+  updated," which sounds like staleness. A source-to-consumer trace found it is **not a staleness
+  defect for three of the four fields**. Setup's current save path
+  (`save_solo_setup_context` → `save_solo_setup_identity`, migration `20261046000000`) writes
+  `website`/`phone`/`industry` into **`tenant_legal_profile` columns**; three Systems Check runners
+  (`website_connected`, `company_info_populated`, `comms_configured`) and PAIGE's brand/brief prompt
+  section instead read **`tenants.brand->>'website'/'business_phone'/'industry'`** — a location the
+  current save path never writes. A perfectly fresh scan reported "missing" regardless of what an
+  Owner saved, because the pointer, not the data, was stale. Three independent causes, each confirmed
+  separately (the brief explicitly said not to infer one cause for all fields): **(A)** the wrong-table
+  read, at three call sites sharing one broken pointer; **(B)** "refresh" never re-scanned —
+  `useSystemsCheck.refresh()` only invalidates the React Query cache, and the one mechanism that would
+  re-run a check (`systems-check-run-change`, already deployed and correctly surface-mapped) had **zero
+  callers anywhere in `src/`**; **(C)** PAIGE could not have said it even with the right source —
+  `buildBusinessBriefSection` has no `website`/`phone` key at all, and `buildBrandSection`'s
+  `b.website`/`b.phone` lines read the same dead `brand` keys. **`primary_business_email` was NOT
+  broken** — it is correctly written to `tenants.brand->'support_email'` with provenance in
+  `tenant_setup_business_context_meta`, and already reaches PAIGE via `resolve_tenant_brand()`. **Also
+  measured:** no phone-format validation existed anywhere, client or server, before this work — so
+  "malformed" becomes a real, reportable status here for the first time rather than silently passing as
+  present. **Fix:** one narrow Spine contract, `public.get_business_context_readiness(uuid)` — status +
+  provenance only, never a raw value, always exactly four rows so "no signal" can never be confused
+  with a silent read failure. Both consumers now read it: the three runners via one shared helper (§18,
+  so the fix lands once rather than per runner), and PAIGE via a per-turn context block. Setup remains
+  the sole writer and sole source of truth; a Setup save now fires the existing change-triggered
+  re-check so the persisted finding is refreshed at save time instead of waiting for the nightly sweep.
+
 - **The governed-execution guard failed OPEN on a target it could not read, in both rules I had reported as swept (2026-09-03, follow-up to PR #792 `1a22637c`)** —
   independent review against the merged commit found the same class alive in **R2** and **R4**, and
   both reproduced. **R2** (nothing loads the superseded #711 bare-boolean gate) read a dynamic
