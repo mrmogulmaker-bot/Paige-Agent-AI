@@ -173,6 +173,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/architecture/MARKETPLACE-DATA-MODEL.md` | Marketplace data model | Marketplace tables/RLS |
 | `docs/architecture/SPRINT_C1_TENANT_READINESS.md` | Sprint C.1 non-MMA tenant readiness gate | Tenant-readiness onboarding |
 | `docs/architecture/paige-spine-tool-migration-map.md` | **Every one of the 105 legacy Chat tools, with one disposition each** (13 Migrate · 79 Spine Change Request · 3 Keep unavailable · 10 Retire), nine sequenced waves, the verified baseline and its reconciliation, the CI-ratchet proposal, and the ten-condition `LIVE` standard. Records why the Spine's evidence contract carries enumerated events and not records | Before adding a Chat tool, migrating one to the Spine, or answering "is department X connected to PAIGE?" — read `paige-spine-and-rail-state.md` first for the *state*, this for the *plan* |
+| `docs/architecture/paige-mind-integration-matrix.md` | **Every Solo surface, and whether it can safely give PAIGE evidence** — two separate axes so a `PARTIAL` can never be read as a working capability: readiness under the shipped contract, and whether authenticated tenant-safe evidence actually flows today (it does not, anywhere). Carries the four structural constraints, the per-surface forbidden fields, and why the Rail holding 7 unreadable rows gates the whole programme | Before proposing, sequencing or building ANY Mind capability · when asked "can PAIGE know X?" |
 
 ## Strategy · Audits · Assessments index
 

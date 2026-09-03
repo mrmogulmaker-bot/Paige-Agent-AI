@@ -1105,6 +1105,36 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
+
+**What it settles.** `docs/architecture/paige-mind-integration-matrix.md` records, per Solo surface,
+whether that surface can safely give PAIGE real tenant-scoped evidence — and what is in the way where
+it cannot. Read-only architectural truth; it changes no runtime surface, shared module, Rail, Spine or
+Mind implementation.
+
+**The headline, and it is not encouraging.** **No surface has authenticated, tenant-safe Mind evidence
+flowing today — including Pipeline.** The matrix carries two deliberately separate axes so that a
+`PARTIAL` readiness label can never be mistaken for a working capability: one for what the contract
+could carry, one for what a real owner can actually get, which is currently nothing anywhere.
+
+**Why.** Verified on prod: `paige_client_events` grants `authenticated` and `anon` **nothing**, so the
+Rail is readable only through a `SECURITY DEFINER` lens (#746, release-blocking), and it holds **7 rows**
+platform-wide. On top of that, four structural constraints — the Rail is per-client, the resolver accepts
+only a client subject, evidence loads only inside a client-scoped Chat turn, and the safe summary is a
+constant — leave the registry at **exactly one capability** and put most departments behind Change
+Requests that have not been raised.
+
+**Recommended next Mind step is not a build:** the authenticated two-Solo-tenant drive of the one
+capability that already exists, which is itself gated on #746. If a build is wanted behind it, raise
+**SCR-2** (non-client subject types) naming Analytics as its reference consumer — Analytics fails
+exactly one constraint and already ships an adapter with the right authorization, freshness and
+coverage semantics. **Clients is explicitly not recommended** despite being the only other
+client-subject surface: the owner's own UI write emits no Rail event, so a capability built today would
+let PAIGE state a history that omits everything the owner did by hand.
+
+**Raised, not implemented, and routed away from Mind:** #786 and #787 (Rail producers) · #788
+(Connections/security, tracked privately).
+
 ### Billing Foundation A — workspace billing identity + designated billing contacts (PR #816, **MERGED `f455d8a5` 2026-09-03 under owner Gate B; migration `20261045000000` APPLIED on prod, edge functions deployed**)
 
 **Live state, verified on prod 2026-09-03 (not inferred from a green pipeline):** `20261045000000` is in
