@@ -1,5 +1,129 @@
 # Solo Setup persistence repair — release evidence
 
+## 2026-09-03 continuation — approved business-context replacement
+
+The sections below document the earlier persistence repair, **not proof of the expanded candidate**.
+The current candidate is on `codex/solo-setup-business-context-approved`; it is committed and
+not deployed at this checkpoint. The owner's approved design is the canonical five-subtab Setup
+surface for every top-level Solo tenant: Business profile, People & email, Knowledge bucket,
+Direction, and Paige brief. The expanded guided Paige brief replaces only the old brief area.
+
+Candidate work lives in `src/solo/SoloBusinessContextSetup.tsx`, its Solo data adapter/contract,
+Solo tests/styles and the approved Setup-owned migrations. `settings.tsx` has only the Setup
+import/mount substitution. Existing Team, Billing, provider, PAIGE, Spine, Rail and Mind owners
+are not replaced. No direct Team membership/role mutation is added.
+
+The owner's production-MVP release cadence is controlling: ordinary functional/check failures
+must be repaired; missing authenticated proof, reviewer outages and non-blocking audit items do
+not create new approval gates. A released candidate without owner proof remains `PARTIAL` /
+`Authenticated Runtime Proof Owed`.
+
+### Current real scope decision
+
+Managed-email registration cannot be implemented correctly by updating Setup's registry alone.
+The shared sender lifecycle rebuilds the actual connector from the tenant slug. A scoped exception
+was explicitly approved on 2026-09-03 in `docs/handoff/solo-setup-managed-email-exception.md`.
+The forward lifecycle migration now atomically registers the identity and connector for opted-in
+top-level Solo tenants. All other tiers retain their existing behavior. The adapter requires a
+matching tenant-bound readback before showing registration success; disabled identities fail closed.
+
+### Latest checkpoint (supersedes the earlier candidate counts below)
+
+- Current main `263042a670be76987493c0342a2eff0a45894ef4` was reconciled in merge `854575fd`.
+  Main's new Billing view stays intact; this branch changes only the Setup import/mount there.
+- Automated: 92 focused Setup tests across 11 files pass. Independent managed-email UI/adapter
+  verification covers 37 tests, including mismatched responses, readback, retry, account switching,
+  first use, duplicate mutation refusal and preservation of dirty brief state.
+- Full local suite: 2,371 passed / 3 failed. Two failures are unchanged Windows portability tests
+  (`grep` dependency and slash normalization); the unchanged Clients layout test passed its 37-test
+  isolated rerun. Hosted Linux CI remains the release gate; these failures are not hidden.
+- Build exits 0. Type ratchet passes (13 inherited errors, no new errors). Scoped ESLint,
+  migration-version, definer-grant and three-migration lint checks pass. The migration INSERT/SELECT
+  warning is reviewed: tenant id/name are guarded and name is coalesced to a non-null fallback.
+- Real isolated PostgreSQL: 22 sender/lifecycle/access and supplemental upsert cases PASS at
+  `docs/evidence/solo-setup-business-context-sql-proof.json`; the test cluster was stopped. The independent
+  harness applies all three new migrations and uses real extracted authorization/resolver/helper
+  functions with synthetic dependency tables, not a full production clone or authenticated browser.
+  Separate connections prove committed knowledge/profile/example create/edit/remove and reload;
+  stale and cross-tenant requests roll back, and no-op saves preserve provenance/timestamps. The
+  older legal/Vault save seam is explicitly stubbed and is not re-proven by this supplement harness.
+- Source review fixed the missing-tenant FOUND check, disabled-identity synchronization, exact
+  availability matching and durable registration readback. No Team or provider activation occurs.
+- Browser connector fails before initialization with a Windows sandbox ACL error. Authenticated
+  runtime proof remains OWED. The isolated structural browser fallback renders the real shared
+  Solo Settings/Setup components and CSS, with synthetic transport and no session-store access.
+  All 88 read/edit/drawer states pass all four viewport sizes and both themes, without horizontal
+  overflow, clipped inputs or runtime errors. Read surfaces have at most one Settings scroll owner;
+  the drawer fits the viewport. This is not live owner evidence. The generated report is preserved
+  in `docs/evidence/solo-setup-business-context-render-proof.json`.
+- Nothing is yet merged or deployed. Knowledge/voice storage is not PAIGE/Mind/Spine/Rail ingestion.
+
+### Owner acceptance and post-release audit backlog
+
+Use **any top-level Solo workspace**, including Mogul Maker Academy or First Sterling Capital.
+Settings -> Setup must show Business profile, People & email, Knowledge bucket, Direction and
+Paige brief. No specific account is the canonical feature gate.
+
+1. Edit business context; save a non-sensitive business field, entity fact and representative.
+2. Reload, leave Setup and return, then switch to another Solo workspace and back; verify the
+   original records persist and the other business never displays those values.
+3. Add and edit a knowledge note and a voice example; save, reopen and confirm stable records.
+4. Register an available managed email; verify stored readback, retry and later rename retention.
+   Disabled identities and unavailable addresses must refuse; this is not an email delivery test.
+5. Confirm business-owner facts never modify Team membership or workspace roles. Protected
+   registration numbers remain masked; do not put a real identifier into a proof screenshot.
+
+Authenticated acceptance is owed until actually driven. End-to-end custom-provider delivery,
+voice conversation/extraction, uploads/imports, and new Spine/Rail/Mind/PAIGE consumption remain
+separate workstreams, not implied by saved Setup records. Documentation surface-card reconciliation
+belongs to #731's owner; independent-review and UI polish follow-ups do not add owner approval gates.
+
+### Review repairs and evidence separation
+
+- Automated: 65 focused tests across seven files pass, including ten new adapter tests for safe retry errors, unresolved-session refusal,
+  late account-switch reads/writes, expected tenant/revision/email arguments, duplicate save
+  refusal, Admin null supplemental contract, guarded registration/dismissal, Member refusal and
+  stable empty snapshots that prevent a first-load form-reset loop. This total includes legacy
+  regression tests; it is not 65 authenticated flows. The new UI has 13 tests and SQL contract has 13.
+- Static: reviewed SQL adds expected-tenant checks before nested writes, profile-row serialization,
+  email concurrency/source decisions, server-owned provenance, private snapshot tracking,
+  profile allowlisting and bounded source/example collections.
+- UI regression repairs: stale conflict draft replacement, pending-input freeze, preservation of
+  legacy facts and representative controls, explicit provenance decisions, isolated drawer drafts,
+  focus/return/cancel behavior and pending-proposal review. Combined focused verification passes.
+- Build/static: production build exits 0; scoped ESLint passes; migration versions and definer
+  grants lint pass. The repository type ratchet passes with 13 baseline / 13 current errors;
+  unrestricted typecheck is not clean because those inherited shared-module errors remain.
+- Independent review: the database reviewer rechecked the repaired adapter and SQL argument
+  alignment and reported no material adapter findings; SQL execution remains separately unverified.
+- SQL runtime: UNVERIFIED for the new migrations. A local PostgreSQL service exists but no
+  disposable database identity was verified; no credentials or unknown database were used.
+- Rendered structural / authenticated runtime: proof for this expanded candidate remains owed.
+  The local HTML prototype is design evidence only, not durable save evidence.
+
+Current main was fetched to `3b666d4e98c528458555e21673a8bc72ea02d420`; integration and exact final
+head checks remain before release. Do not reuse the older `bfc5a8e` approval SHA as evidence for
+this changed candidate.
+
+### Documentation collision handoff
+
+Open PR #731 owns `docs/doctrine/surface-cards/setup.md` and the Setup scroll playbook. Those files
+are left untouched in this continuation. Its owner must reconcile the approved five-subtab design,
+the existing Settings scroll owner, the guided brief return path and the expanded persistence
+states with the old six-section surface card. No scroll-policy redesign is implied. PRs #724 and
+#674 also touch `settings.tsx`; the Setup-only import/mount must be reconciled without absorbing
+their unrelated routing or provider changes.
+
+### Future integration handoff
+
+Setup source records and structured voice examples remain tenant-owned and unconnected to model
+runtime. Source URLs are stored, not fetched; documents/catalog entries are references, not an
+upload/import pipeline. The existing `solo-setup-business-context-spine-handoff.md` exclusions
+continue to apply. Future consumption may consider owner-reviewed voice character, audience
+relationship, message structure, preferred/avoided language, channel differences and working
+boundaries, but must separately establish safe projection and authorization. Freeform source or
+example content is not automatically safe for PAIGE, Mind, Spine or Rail.
+
 ## Scope
 
 Shared canonical Solo Settings → Setup template. The existing six-section information architecture,

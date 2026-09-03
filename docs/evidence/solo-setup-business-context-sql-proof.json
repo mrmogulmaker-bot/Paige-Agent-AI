@@ -1,0 +1,113 @@
+{
+  "generatedAt": "2026-09-03T11:31:09.200Z",
+  "status": "PASS",
+  "environment": "new disposable local PostgreSQL cluster; synthetic records only",
+  "host": "127.0.0.1",
+  "port": 55879,
+  "clusterStopped": true,
+  "assurance": "Real PostgreSQL execution of tracked new migrations and extracted real sender/access functions. Synthetic dependency schema; NOT full production schema replay, provider delivery, or authenticated browser proof.",
+  "migrations": [
+    {
+      "name": "20261102010000_official_2022_naics_reference.sql",
+      "sha256": "6efdaf7b123df9ed7cb16b71a378a0304490bc66c7637a1a63f5c2de13b52e20"
+    },
+    {
+      "name": "20261103000000_solo_setup_business_context.sql",
+      "sha256": "ebdbc0f19fabc25b1ae85e1cc14267445af9518e21d99a298dca65270a973ecd"
+    },
+    {
+      "name": "20261104000000_solo_managed_sender_lifecycle.sql",
+      "sha256": "22cd3dd70b0c41251e7deb81aaa83918d2c77cdd68849bba08aef1bcb02a1f44"
+    }
+  ],
+  "results": [
+    {
+      "name": "all three new migrations compile and apply on isolated real PostgreSQL",
+      "status": "PASS"
+    },
+    {
+      "name": "Agency, Enterprise, child standalone, sub-account, system and suspended behavior is preserved",
+      "status": "PASS"
+    },
+    {
+      "name": "missing tenant is rejected by managed connector helper",
+      "status": "PASS"
+    },
+    {
+      "name": "anonymous, Member, Admin and non-Solo actors cannot register",
+      "status": "PASS"
+    },
+    {
+      "name": "expected-tenant mismatch refuses before mutation",
+      "status": "PASS"
+    },
+    {
+      "name": "Solo owner registration updates registry marker and connector atomically and is repeatable",
+      "status": "PASS"
+    },
+    {
+      "name": "tenant rename preserves registered Solo address through the actual lifecycle trigger",
+      "status": "PASS"
+    },
+    {
+      "name": "verified custom sender priority is unchanged while managed identity stays independently visible",
+      "status": "PASS"
+    },
+    {
+      "name": "registry, inbound-only and reserved collisions refuse with complete rollback",
+      "status": "PASS"
+    },
+    {
+      "name": "two tenants racing for one address yield exactly one complete winner",
+      "status": "PASS"
+    },
+    {
+      "name": "held registration and tenant rename resolve without deadlock or sender drift",
+      "status": "PASS"
+    },
+    {
+      "name": "new sealed context tables refuse direct authenticated reads and writes",
+      "status": "PASS"
+    },
+    {
+      "name": "disabled existing sender refuses registration without silently reactivating",
+      "status": "PASS"
+    },
+    {
+      "name": "later authoritative registry changes survive the Solo lifecycle",
+      "status": "PASS"
+    },
+    {
+      "name": "supplement first use creates real tenant-scoped knowledge profile and voice records",
+      "status": "PASS"
+    },
+    {
+      "name": "stable-id edits upsert existing supplemental records without duplicates",
+      "status": "PASS"
+    },
+    {
+      "name": "no-op supplement save preserves knowledge voice timestamps and all field provenance",
+      "status": "PASS"
+    },
+    {
+      "name": "stale revision and expected-tenant save failures rollback every supplement and base seam",
+      "status": "PASS"
+    },
+    {
+      "name": "cross-tenant source and voice IDs are refused with complete transaction rollback",
+      "status": "PASS"
+    },
+    {
+      "name": "invalid source content and unsupported profile fields fail atomically",
+      "status": "PASS"
+    },
+    {
+      "name": "Admin null supplements preserve owner records while nonnull changes and Member saves refuse",
+      "status": "PASS"
+    },
+    {
+      "name": "owner removal persists and never creates Team access records",
+      "status": "PASS"
+    }
+  ]
+}
