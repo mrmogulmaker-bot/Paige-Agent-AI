@@ -9,15 +9,35 @@ function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 }
 
+/**
+ * `expectedTenantId` is the workspace the caller believes it is acting in — the Team screen sends
+ * the `tenant_id` it rendered the roster and the workspace name from; Paige sends the tenant the
+ * conversation is about. It is NOT trusted here and is not resolved here. It travels to
+ * `solo_team_invite_authority`, which proves the actor's active owner/admin membership in that exact
+ * workspace and refuses otherwise. A client can therefore use it to ABORT a call and can never use
+ * it to select a workspace it has no authority in.
+ *
+ * It is deliberately not defaulted, not inferred, and not validated into something plausible here.
+ * The whole defect this endpoint was repaired for was a server that filled in a workspace nobody
+ * named, so a missing value must reach the database and be refused there, by the one authority.
+ */
 type InviteAction =
-  | { action: "create"; email?: string; permission?: string; jobTitle?: string; responsibilities?: string }
-  | { action: "resend" | "revoke"; inviteId?: string };
+  | {
+      action: "create";
+      expectedTenantId?: string;
+      email?: string;
+      permission?: string;
+      jobTitle?: string;
+      responsibilities?: string;
+    }
+  | { action: "resend" | "revoke"; expectedTenantId?: string; inviteId?: string };
 
 type PreparedInvite = {
   id?: string;
   token?: string;
   email?: string;
   expires_at?: string;
+  tenant_id?: string;
 };
 
 Deno.serve(async (req) => {
@@ -43,10 +63,18 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ ok: false, error: "Invalid request" }, 400); }
   const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
+  // Passed through untouched, including when absent. `?? null` rather than a fallback: the database
+  // is the only thing entitled to decide that a workspace was not named.
+  const expectedTenantId = typeof body.expectedTenantId === "string" ? body.expectedTenantId : null;
+
   try {
     if (body.action === "revoke") {
       if (!body.inviteId) return json({ ok: false, error: "Invitation is required" }, 400);
-      const { error } = await admin.rpc("revoke_solo_team_invite", { _actor: user.id, _invite_id: body.inviteId });
+      const { error } = await admin.rpc("revoke_solo_team_invite", {
+        _actor: user.id,
+        _expected_tenant_id: expectedTenantId,
+        _invite_id: body.inviteId,
+      });
       if (error) throw error;
       return json({ ok: true, state: "revoked" });
     }
@@ -55,6 +83,7 @@ Deno.serve(async (req) => {
     if (body.action === "create") {
       const { data, error } = await admin.rpc("create_solo_team_invite", {
         _actor: user.id,
+        _expected_tenant_id: expectedTenantId,
         _email: String(body.email ?? ""),
         _permission: String(body.permission ?? "member"),
         _job_title: body.jobTitle ?? null,
@@ -64,7 +93,11 @@ Deno.serve(async (req) => {
       invite = data as PreparedInvite | null;
     } else if (body.action === "resend") {
       if (!body.inviteId) return json({ ok: false, error: "Invitation is required" }, 400);
-      const { data, error } = await admin.rpc("resend_solo_team_invite", { _actor: user.id, _invite_id: body.inviteId });
+      const { data, error } = await admin.rpc("resend_solo_team_invite", {
+        _actor: user.id,
+        _expected_tenant_id: expectedTenantId,
+        _invite_id: body.inviteId,
+      });
       if (error) throw error;
       invite = data as PreparedInvite | null;
     } else {
@@ -72,14 +105,29 @@ Deno.serve(async (req) => {
     }
 
     if (!invite?.token || !invite.email) throw new Error("Invitation could not be prepared");
+    // The database now returns the workspace it actually acted in. Checking it here costs one
+    // comparison and means a reintroduced fallback surfaces as a refusal instead of as a token in a
+    // stranger's inbox. Checked BEFORE the send, because an email cannot be recalled.
+    if (expectedTenantId && invite.tenant_id && invite.tenant_id !== expectedTenantId) {
+      throw new Error("not authorized: this invitation resolved to a different workspace than the one requested");
+    }
     const { data: sendData, error: sendError } = await admin.functions.invoke("send-portal-invite", {
       body: { token: invite.token, email: invite.email },
     });
     const emailed = !sendError && sendData?.emailed === true;
-    return json({ ok: true, invitationId: invite.id, expiresAt: invite.expires_at, emailed });
+    return json({
+      ok: true,
+      invitationId: invite.id,
+      expiresAt: invite.expires_at,
+      tenantId: invite.tenant_id ?? null,
+      emailed,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Team invitation failed";
-    const denied = /only an owner|only an owner or admin|not authorized/i.test(message);
+    // An authority refusal is a 403, not a generic 400. `was not named` is listed explicitly: it is
+    // an authorization refusal from the same resolver, but its wording contains none of the older
+    // phrases, and a §37 response-consumer miss here would silently downgrade it to a 400.
+    const denied = /only an owner|only an owner or admin|not authorized|was not named/i.test(message);
     return json({ ok: false, error: message }, denied ? 403 : 400);
   }
 });
