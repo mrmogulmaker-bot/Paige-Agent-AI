@@ -1,5 +1,13 @@
 -- Offer Catalog Slice 2A — `tenant_products` becomes the tenant's canonical OFFER record.
 --
+-- VERSION NOTE. This was 20261044000000 until the Rail work landed
+-- `20261044000000_rail_authority_is_decided_in_this_workspace.sql` on main with the SAME version.
+-- Two migrations sharing a version is not a naming annoyance: the second one is SILENTLY SKIPPED.
+-- Had this merged, none of the columns below would exist on prod, every tenant would have read
+-- "not available on this deployment yet" forever, and nothing would have failed loudly enough for
+-- anyone to notice. `lint:migration-versions` and the local `db reset` both caught it. Renumbered
+-- to 20261045000000 rather than renumbering theirs, because theirs is already on main.
+--
 -- WHY THIS TABLE AND NOT A NEW ONE (§18, one home per capability). `tenant_products` already IS
 -- the tenant's commercial record: it is read by the storefront (anon), the admin storefront panel,
 -- the contact billing panel, the agency billing roll-up, `useTenantOffers` (which feeds the New

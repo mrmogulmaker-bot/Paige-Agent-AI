@@ -27,7 +27,7 @@ const stripSql = (src: string) => src.replace(/^\s*--.*$/gm, "");
 const adapter = stripTs(read("src/solo/useCatalogOffers.ts"));
 const surface = stripTs(read("src/solo/catalog-offers.tsx"));
 const migration = stripSql(
-  read("supabase/migrations/20261044000000_tenant_products_carry_the_offer_definition.sql"),
+  read("supabase/migrations/20261045000000_tenant_products_carry_the_offer_definition.sql"),
 );
 // The comment-stripper is itself load-bearing, so prove it removes prose and keeps code.
 const adapterRaw = read("src/solo/useCatalogOffers.ts");

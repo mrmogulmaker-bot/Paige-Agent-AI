@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { supabase } from "@/integrations/supabase/client";
 
-/** Mirrors `tenant_products.status` after migration 20261044000000. */
+/** Mirrors `tenant_products.status` after migration 20261045000000. */
 /**
  * The four recorded states, plus `unrecognised` for a value this build has no reading for. That
  * fifth member is NOT a status a tenant can record: it is what the surface says when the column
@@ -35,7 +35,7 @@ export type OfferAvailability = "draft" | "active" | "paused" | "archived" | "un
  * ('one_time','recurring','service') but the only writer on production
  * (`tenant-product-upsert`) sets it from whether a recurring plan exists and never writes
  * 'service'. Deriving Product/Service from it would have labelled every coaching retainer a
- * "Product". The commercial kind is its own column, added by 20261044000000.
+ * "Product". The commercial kind is its own column, added by 20261045000000.
  */
 export type OfferBillingCadence = "one_time" | "recurring" | "service";
 export type OfferKind = "product" | "service";
@@ -151,7 +151,7 @@ export function useCatalogOffers(): CatalogOffersState {
     void (async () => {
       try {
         // THE DEPLOY-ORDER RACE THIS CLOSES. The five offer columns arrive in migration
-        // 20261044000000, which CI applies on push to `main` — the same push Vercel builds from.
+        // 20261045000000, which CI applies on push to `main` — the same push Vercel builds from.
         // Whichever lands first, this read must not break: asking for a column that does not exist
         // yet makes PostgREST reject the whole request (42703) and the surface would go to its
         // error state for every tenant until the migration caught up. So the extended read is
@@ -245,7 +245,7 @@ export function useCatalogOffers(): CatalogOffersState {
           pricesByProduct.set(productId, list);
         }
 
-        // `types.ts` is generated from production, which has not applied 20261044000000 yet, so it
+        // `types.ts` is generated from production, which has not applied 20261045000000 yet, so it
         // does not know the five new columns. The cast is through `unknown` deliberately: it is a
         // statement that this shape is wider than the generated type, not a claim that they match.
         // Regenerating types after the migration lands narrows it back — see the Gate B packet.
