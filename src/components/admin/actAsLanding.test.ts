@@ -28,22 +28,27 @@ import { describe, expect, it } from "vitest";
 const PRODUCERS = [
   { file: "src/components/admin/AccountSwitcher.tsx", arg: "child.id" },
   { file: "src/pages/admin/AgencyBoard.tsx", arg: "childId" },
+  // The third producer. It stays inside the agency shell rather than handing off to
+  // `/admin`, so it never reaches the entry door — but a §37 inventory that lists two
+  // of three producers is the shape of the miss it exists to prevent, and a later
+  // change could route this one through the door without anyone noticing the gap.
+  { file: "src/agency/AgencyApp.tsx", arg: "childId" },
 ] as const;
 
 describe("agency act-as landing on /admin", () => {
   it.each(PRODUCERS)("$file records the entry before handing off to the /admin door", ({ file, arg }) => {
     const src = readFileSync(file, "utf8");
 
-    // It really is a producer of this destination.
+    // It really is a producer of an act-as transition.
     expect(src).toContain("agency_enter_subaccount");
-    expect(src).toContain('window.location.assign("/admin")');
 
     // And it settles the door before leaving, WITH THE CHILD IT JUST ENTERED.
     // Asserting the argument matters: a call left in place with the wrong value —
     // or none — reads as intact wiring and settles the door against nothing.
     const remembers = src.indexOf(`rememberWorkspaceEntered(${arg})`);
-    const assigns = src.indexOf('window.location.assign("/admin")');
     expect(remembers).toBeGreaterThan(-1);
-    expect(remembers).toBeLessThan(assigns);
+    // Where the producer hands off to the door, the record must be written first.
+    const assigns = src.indexOf('window.location.assign("/admin")');
+    if (assigns > -1) expect(remembers).toBeLessThan(assigns);
   });
 });

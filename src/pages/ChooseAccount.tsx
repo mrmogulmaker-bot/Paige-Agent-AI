@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useTenantContext, type TenantSummary } from "@/hooks/useTenantContext";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { supabase } from "@/integrations/supabase/client";
-import { tenantAccountLabel } from "@/lib/auth/accountSelection";
+import { shouldOfferAccountPicker, tenantAccountLabel } from "@/lib/auth/accountSelection";
 import { allowAccountSwitch } from "@/lib/auth/accountSwitchGuard";
 import {
   WORKSPACE_CHOOSER_SETTLED_PARAM,
@@ -79,46 +79,93 @@ export default function ChooseAccount() {
       .map((tenant) => ({ tenant, role: roles.get(tenant.id) ?? "member" }));
   }, [context.tenants, memberships]);
 
-  // Nothing to choose, so do not ask. The destination is the person's own
-  // workspace root when their tenant has one; `/admin` otherwise, which is where
-  // a tenant whose shell canary is off renders inline anyway.
+  // ONE TRUTHFUL TRANSITION, shared by the explicit pick and the nothing-to-ask
+  // auto-leave (owner ruling 2026-09-03). A workspace is recorded as ENTERED only
+  // when the transition into it actually succeeded.
   //
-  // LEAVING FOR `/admin` MUST CARRY A SETTLEMENT SIGNAL, or the two surfaces
-  // deadlock: `/admin` sends multi-context people here, this page re-queries
-  // memberships while the door reads the tenant context, and a disagreement
-  // between those two sources becomes an infinite redirect rather than a wrong
-  // number. An earlier revision wrote the record only on the ONE-choice branch —
-  // so the ZERO-choice branch, which is exactly where the two sources disagree,
-  // looped forever.
+  // THE DEFECT THIS REPLACES. The auto-leave used to record `only.id` without ever
+  // calling `switchTenant(only.id)`, so whenever that differed from the active
+  // tenant the record named a workspace nobody had entered. The `/admin` door
+  // compares the record against `activeTenantId`, so it never matched, the door
+  // sent the person back here, and the two bounced forever — a driven, reproducible
+  // infinite redirect. Recording an entry that did not happen is what made the two
+  // surfaces disagree; making the record follow the transition is what settles them.
+  const enterWorkspace = useCallback(async (tenant: TenantSummary): Promise<boolean> => {
+    const changing = tenant.id !== context.activeTenantId;
+    if (changing) {
+      // The unsaved-Setup / save-in-progress guard, honoured at the moment scope
+      // actually changes. Registered module-level, so any surface still mounted
+      // with unsaved work gets its say.
+      const allowed = await allowAccountSwitch({
+        fromTenantId: context.activeTenantId ?? null,
+        toTenantId: tenant.id,
+        toTenantName: tenant.name,
+      });
+      if (!allowed) return false;
+      const switched = await context.switchTenant(tenant.id);
+      if (!switched) {
+        setError("Paige couldn't open that account. Your current workspace is unchanged.");
+        return false;
+      }
+      // Nothing from the previous account may render under the new one's heading.
+      clearWorkspaceScopedState();
+    }
+    // Only now: the person is genuinely in this workspace, either because the
+    // switch succeeded or because they were already in it.
+    rememberWorkspaceEntered(tenant.id);
+    return true;
+  }, [context]);
+
+  // Nothing to choose, so do not ask.
   //
-  // AND A FAILED READ IS NOT ZERO CHOICES. When the membership query errors this
-  // page has learned nothing about the person's workspaces, so it renders its
-  // error card and its Retry rather than leaving. Navigating away on an error is
-  // what made that card unreachable and turned any transient failure on one query
-  // into a redirect storm.
+  // A FAILED READ IS NOT ZERO CHOICES. When the membership query errors this page
+  // has learned nothing, so it renders its error card and its Retry rather than
+  // leaving. Navigating away on an error is what made that card unreachable and
+  // turned any transient failure on one query into a redirect storm.
+  //
+  // AND IT REFUSES TO HAND BACK TO A DOOR THAT WILL RETURN IT. With no choice to
+  // offer there is no transition to make and nothing honest to record, so leaving
+  // for `/admin` is only safe when the door would not immediately ask again. The
+  // door counts the SAME population this page does, so that is answerable here:
+  // when it would ask, this page stops and says so instead of starting a cycle.
   useEffect(() => {
     if (loading || error) return;
     if (context.accountContextLoading || context.accountContextStatus !== "ready") return;
     if (!context.isPlatformStaff && choices.length >= 2) return;
-    // Platform staff keep their existing landing exactly (§58): they move between
-    // tenants through the audited operator seam, not this chooser, so they are
-    // never sent into a tenant workspace root by it.
-    const only = !context.isPlatformStaff && choices.length === 1 ? choices[0].tenant : null;
-    if (only) {
-      if (only.id !== context.activeTenantId) clearWorkspaceScopedState();
-      rememberWorkspaceEntered(only.id);
-    } else if (!context.isPlatformStaff) {
-      // No choice to make. Settle the door against whatever context is actually
-      // active so it does not send this person straight back here.
-      rememberWorkspaceEntered(context.activeTenantId);
-    }
-    navigate(leaveFor(workspaceRootForTenant(only)), { replace: true });
+    void (async () => {
+      // Platform staff keep their existing landing exactly (§58): they move between
+      // tenants through the audited operator seam, not this chooser, so they are
+      // never sent into a tenant workspace root by it.
+      if (context.isPlatformStaff) {
+        navigate("/admin", { replace: true });
+        return;
+      }
+      if (choices.length === 1) {
+        const only = choices[0].tenant;
+        if (!(await enterWorkspace(only))) return;
+        const root = workspaceRootForTenant(only);
+        // A real switch just happened, so re-resolve every provider from scratch
+        // rather than carry the previous workspace's caches across.
+        if (only.id !== context.activeTenantId) window.location.assign(leaveFor(root));
+        else navigate(leaveFor(root), { replace: true });
+        return;
+      }
+      const doorWouldAsk = shouldOfferAccountPicker({
+        activeMembershipCount: enterableWorkspaces(context.tenants).length,
+        isPlatformStaff: context.isPlatformStaff,
+      });
+      if (doorWouldAsk) {
+        setError(
+          "Paige couldn't confirm which workspaces you can open. Your access has not changed.",
+        );
+        return;
+      }
+      navigate("/admin", { replace: true });
+    })();
   }, [
     choices,
-    context.accountContextLoading,
-    context.accountContextStatus,
-    context.activeTenantId,
-    context.isPlatformStaff,
+    context,
+    enterWorkspace,
     error,
     loading,
     navigate,
@@ -126,37 +173,14 @@ export default function ChooseAccount() {
 
   const choose = async (choice: Choice) => {
     setError(null);
-    // Also honoured at the actual switch, not only at the exit that led here. The
-    // guard registry is module-level, so any surface still mounted with unsaved work
-    // gets its say — and this is the moment scope actually changes.
-    const allowed = await allowAccountSwitch({
-      fromTenantId: context.activeTenantId ?? null,
-      toTenantId: choice.tenant.id,
-      toTenantName: choice.tenant.name,
-    });
-    if (!allowed) return;
     setSwitchingTo(choice.tenant.id);
-    const switched = await context.switchTenant(choice.tenant.id);
-    if (!switched) {
+    if (!(await enterWorkspace(choice.tenant))) {
       setSwitchingTo(null);
-      setError("Paige couldn't open that account. Your current workspace is unchanged.");
       return;
     }
-    // Drop the leaving workspace's identity/navigation state, then record the
-    // choice, both BEFORE leaving: nothing from the previous account may render
-    // under the new one, and the `/admin` door must not ask again for a workspace
-    // this person has just explicitly picked. The clear is conditional because
-    // re-picking the workspace you are already in changes nothing and should not
-    // discard state that belongs to it.
-    if (choice.tenant.id !== context.activeTenantId) clearWorkspaceScopedState();
-    rememberWorkspaceEntered(choice.tenant.id);
-    // Enter the chosen workspace at ITS OWN root rather than routing back through
-    // `/admin`, which is the door that resumes a parked context — except for a
-    // tenant whose shell canary is off, whose shell only exists inline at `/admin`.
-    // A full-page assign (not a client navigate) is kept deliberately: `switchTenant`
-    // has just changed the server-side active context, and every provider should
-    // re-resolve against it from scratch rather than carry the previous workspace's
-    // caches across.
+    // Enter at the workspace's OWN root rather than routing back through `/admin`,
+    // which is the door that resumes a parked context — except for a tenant whose
+    // shell canary is off, whose shell only exists inline at `/admin`.
     window.location.assign(leaveFor(workspaceRootForTenant(choice.tenant)));
   };
 

@@ -123,35 +123,46 @@ describe("ChooseAccount", () => {
   // surfaces count workspaces from different sources — this page re-queries
   // memberships, the host reads the tenant context — so they can disagree by one.
   // Without the marker on the way back, a disagreement is an infinite redirect.
-  it("leaves to the single workspace's root, and marks the fallback so /admin cannot bounce it back", async () => {
+  // ONE TRUTHFUL TRANSITION. With a single workspace to offer, the page does not
+  // merely record it and leave — it performs the switch, and only records the entry
+  // once that succeeded. Recording an entry that never happened is exactly what made
+  // the door and this page disagree forever.
+  it("actually switches into the single workspace before recording it as entered", async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, assign, search: "" } });
     harness.memberships = [{ tenant_id: "mogul", role: "owner" }];
+    harness.context.switchTenant = vi.fn(async () => true);
+
     await act(async () => {
       root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
     });
-    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/solo/222222/command-center");
 
-    // Entering is recorded BEFORE leaving, so the `/admin` door does not ask
-    // again for a workspace this session has just resolved.
+    expect(harness.context.switchTenant).toHaveBeenCalledWith("mogul");
+    expect(assign).toHaveBeenCalledWith("/solo/222222/command-center");
     expect(sessionStorage.getItem("paige.workspace.entered")).toBe("mogul");
-
-    // Same single choice, but its shell canary is OFF: that tenant's shell only
-    // exists inline at `/admin`, so that is where it goes — and the entry is still
-    // recorded, which is what stops `/admin` bouncing it straight back here.
-    act(() => root.unmount());
-    host.remove();
-    sessionStorage.clear();
-    host = document.createElement("div");
-    document.body.appendChild(host);
-    root = createRoot(host);
-    harness.context.tenants = harness.context.tenants.map((t) =>
-      t.id === "mogul" ? { ...t, features: {} } : t,
-    ) as typeof harness.context.tenants;
-    await act(async () => {
-      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
-    });
-    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/admin");
-    expect(sessionStorage.getItem("paige.workspace.entered")).toBe("mogul");
+    Object.defineProperty(window, "location", { configurable: true, value: original });
   });
+
+  // The other half of the same rule: a FAILED switch records nothing and goes
+  // nowhere, so the door still knows this person has not settled anywhere.
+  it("records nothing and stays put when the switch itself fails", async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, assign, search: "" } });
+    harness.memberships = [{ tenant_id: "mogul", role: "owner" }];
+    harness.context.switchTenant = vi.fn(async () => false);
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /></MemoryRouter>);
+    });
+
+    expect(assign).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("paige.workspace.entered")).toBeNull();
+    expect(host.textContent).toContain("couldn't open that account");
+    Object.defineProperty(window, "location", { configurable: true, value: original });
+  });
+
 
   // THE LOCKOUT GUARD. The owner was parked in a sub-account and could not reach
   // this page's picker at all: two of his three workspaces were on `trial`, the
@@ -187,21 +198,32 @@ describe("ChooseAccount", () => {
   // On zero choices an earlier revision wrote no settlement record and still left
   // for `/admin`, which bounced it straight back — an infinite redirect in exactly
   // the branch where the sources disagree.
-  it("settles the door before leaving even when it has NOTHING to offer", async () => {
+  // LOOP GUARD, restated for the converged transition. With nothing to offer there
+  // is no transition to make and nothing honest to record, so handing back to
+  // `/admin` is only safe when that door would not immediately ask again. Here the
+  // context still lists enterable workspaces while the membership read returned
+  // none — the exact disagreement — so the page stops rather than starting a cycle.
+  it("refuses to hand back to a door that would immediately ask again", async () => {
     harness.memberships = [];
     await act(async () => {
       root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
     });
-    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/admin");
-    // BOTH signals, asserted separately. An earlier version of this test ORed
-    // them — and because the zero-choice branch always leaves via the marker, the
-    // second disjunct was unconditionally true and the first was never exercised.
-    // Deleting the record write, the exact line this case exists to guard, left
-    // the test green. A guard that cannot fail on the fix it guards is the
-    // false-green the peer-gate exists to catch, so each signal stands alone.
-    expect(sessionStorage.getItem("paige.workspace.entered")).toBe(harness.context.activeTenantId);
-    expect(host.querySelector("[data-search]")?.getAttribute("data-search")).toBe("?picked=1");
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
+    expect(host.textContent).toContain("couldn't confirm which workspaces");
+    expect(sessionStorage.getItem("paige.workspace.entered")).toBeNull();
   });
+
+  // And when the door genuinely would NOT ask — no enterable workspaces at all —
+  // leaving for /admin is correct and terminates.
+  it("hands back to /admin when that door has nothing to ask about either", async () => {
+    harness.memberships = [];
+    harness.context.tenants = [];
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/admin");
+  });
+
 
   // A FAILED READ IS NOT ZERO CHOICES. Navigating away on an error made the error
   // card and its Retry unreachable, and turned any transient failure on one query

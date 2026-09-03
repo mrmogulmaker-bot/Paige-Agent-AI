@@ -1,5 +1,34 @@
 # Decision Log — chronological one-liners
 
+- **The chooser recorded a workspace it never entered, and that lie was the loop (2026-09-03, PR #811)** —
+  round six drove a reproducible infinite `/admin ↔ /choose-account` redirect and proved it a regression
+  against the immediately-preceding head: three scenarios settled in 3 hops there and spun past 40 here.
+  **Root cause, exactly:** the chooser's one-choice auto-leave called `rememberWorkspaceEntered(only.id)`
+  WITHOUT ever calling `switchTenant(only.id)`, so whenever that differed from the active tenant the
+  record named a workspace nobody had entered. The `/admin` door compares the record against
+  `activeTenantId`, never matched, and sent the person back. Round five's fix had also gated the URL
+  fallback marker on "storage unusable", which switched off the only thing masking the disagreement on
+  normal browsers — so the underlying lie became visible as a hang. **Owner ruling: one truthful
+  transition — a workspace is recorded as entered only when the transition into it actually succeeded.**
+  Both paths (explicit pick, nothing-to-ask auto-leave) now share one `enterWorkspace`: guard → switch →
+  clear prior state → record, with every step conditional on the previous one succeeding. A failed switch
+  records nothing and goes nowhere. With NO choice to offer there is no transition and nothing honest to
+  record, so the page hands back to `/admin` only when that door would not immediately ask again —
+  answerable because both surfaces now count the same population — and otherwise stops and says so
+  rather than starting a cycle it cannot win. **Producer inventory (§37), completed:** four surfaces ask
+  "which workspaces can this person enter?" — the chooser, the exit control and the `/admin` door all
+  route through `enterableWorkspaces`; `Auth.tsx` is the one remaining copy, counting `tenant_members`
+  rows with no tenant-status filter, and it is OUTSIDE the owner's four-file scoped exception, so it is
+  reported rather than edited. Its divergence is an extra hop at sign-in, not a hang — traced, not
+  assumed. **Two unguarded properties closed:** `WorkspaceExitControl` had no test file at all (its
+  status filter could be deleted with 2054 tests green) and now has nine, two mutations proven red; and
+  the §37 act-as guard listed two of three producers, now three. **`suspended` aligned:**
+  `enterableWorkspaces` offered it while `tenantLifecycle.isDestructiveStatus` and the operator
+  switcher's "archived" bucket both treat it as terminal — offering a workspace the rest of the platform
+  calls archived is a door shut from the other side. Zero tenants carry it, so this aligns the rule
+  rather than changing an outcome. The deny list stays a deny list: excluding `trial` is what locked the
+  owner out of his own account.
+
 - **The delegated operator tier had no landing route, and a comment had named the cause without
   closing it (2026-09-03, PR #811)** — the owner signed in as `paigeagentai@gmail.com` and was sent
   to **`/pricing`**, on his own platform. `resolveLandingRoute` branched on `super_admin` only, so a

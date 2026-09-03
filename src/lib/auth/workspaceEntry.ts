@@ -47,7 +47,24 @@ import { resolveTierKey, type TierClassification, type TierKey } from "@/lib/tie
  * un-enterable, and the symptom is a person who cannot reach their own workspace.
  * Locking someone out of a status should require naming it here.
  */
-const NON_ENTERABLE_TENANT_STATUS = new Set(["canceled", "cancelled", "deleted", "archived"]);
+// `suspended` sits here because two sibling modules already treat it as terminal —
+// `tenantLifecycle.isDestructiveStatus` pairs it with `canceled`, and the operator
+// switcher buckets both as "archived". Offering a workspace the rest of the platform
+// calls archived would hand someone a door that is shut from the other side. Zero
+// tenants carry it today, so this aligns the rule rather than changing an outcome.
+//
+// It stays a DENY list on purpose: an allow list of known-good statuses fails in the
+// direction that traps people, and any status added to the enum later would be
+// silently unreachable instead of silently offered. `trial` and `past_due` are both
+// live states someone must be able to work in — excluding `trial` is what locked the
+// owner out of his own account.
+const NON_ENTERABLE_TENANT_STATUS = new Set([
+  "canceled",
+  "cancelled",
+  "suspended",
+  "deleted",
+  "archived",
+]);
 
 /** Can a person actually work in a tenant with this status? */
 export function isEnterableTenantStatus(status: string | null | undefined): boolean {
