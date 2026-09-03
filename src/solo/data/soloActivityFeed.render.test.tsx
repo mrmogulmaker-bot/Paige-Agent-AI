@@ -20,13 +20,18 @@ const harness = vi.hoisted(() => ({ result: null as SelectResult | null }));
 
 vi.mock("@/integrations/supabase/client", () => {
   const builder = () => {
-    const chain: Record<string, unknown> = {};
-    // `in` is required because the Solo tree these tests mount now reaches `usePaigeDeptStatus`,
-    // which issues `.select(...).in("status", …).limit(...)`. Without it the chain returns
-    // undefined mid-call and React reports an unhandled error even though every test passes —
-    // a stub that models fewer methods than the code calls fails loudly but not as a test failure.
-    for (const m of ["select", "order", "eq", "ilike", "in"]) chain[m] = () => chain;
-    chain.limit = () => Promise.resolve(harness.result ?? { data: [], error: null });
+    // The chain is a Proxy rather than an enumerated method list. Enumerating meant every new
+    // builder method the Solo tree reached for ('in' for usePaigeDeptStatus, then 'is' for the
+    // platform-default filter in useSoloTrust) returned undefined mid-call and surfaced as an
+    // UNHANDLED ERROR while every test still passed — a failure shape that is easy to miss and
+    // that has now been paid for twice. Anything but the terminal `limit` chains.
+    const chain: Record<string, unknown> = new Proxy({}, {
+      get: (_t, k) => {
+        if (typeof k !== "string" || k === "then") return undefined;
+        if (k === "limit") return () => Promise.resolve(harness.result ?? { data: [], error: null });
+        return () => chain;
+      },
+    });
     return chain;
   };
   return {

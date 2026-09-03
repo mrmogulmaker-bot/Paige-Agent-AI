@@ -22,7 +22,7 @@ vi.mock("@/hooks/usePaigeDeptStatus", () => ({
   usePaigeDeptStatus: () => ({ loading: false, configured: true, departments: [] }),
 }));
 
-import { MiniCompass, TrustCompass } from "./compass";
+import { MiniCompass, TrustCompass, orbLabel, laneTier } from "./compass";
 
 let host: HTMLDivElement;
 let root: Root;
@@ -209,6 +209,132 @@ describe("TrustCompass canvas — it runs, not merely compiles", () => {
     expect(() => draw(<TrustCompass />)).not.toThrow();
     harness.value = { loading: true, configured: false, departments: [], bySlug: {}, error: null };
     expect(() => draw(<TrustCompass />)).not.toThrow();
+  });
+});
+
+/**
+ * WHAT THE PAGE SAYS ABOUT ACTIVITY.
+ *
+ * `tot`/`all` count CATALOGUE ENTRIES in `paige_action_kinds`. That table records no execution and
+ * no timestamp, so every clause about a period, a count of things done, or a verb in the past tense
+ * is invented from it. Four fabrications were removed from this surface and these three arrived in
+ * the same commit, because the DATA under the copy was swapped and the COPY was left alone. These
+ * drive the real page and read what it actually says.
+ */
+describe("TrustCompass page — kind counts are policy entries, never completed actions", () => {
+  const real = () => {
+    const d = dept({ lanes: { auto: 3, confirm: 1, off: 0 }, kinds: 4, defaultLevel: 0.875 });
+    return { loading: false, configured: true, departments: [d], bySlug: { [d.slug]: d }, error: null };
+  };
+
+  it("makes no claim about a period, a total done, or an act performed", () => {
+    harness.value = real();
+    const text = draw(<TrustCompass />).textContent ?? "";
+    // Anti-vacuity: if the page rendered nothing these would all pass for the wrong reason.
+    expect(text).toMatch(/action types/i);
+    for (const claim of [/this week/i, /handled alone/i, /\bToday\b/, /\bperformed\b/, /she is working now/i]) {
+      expect(text, `the page still claims activity: ${claim}`).not.toMatch(claim);
+    }
+  });
+
+  it("says whose policy the numbers are", () => {
+    harness.value = real();
+    const text = draw(<TrustCompass />).textContent ?? "";
+    expect(text).toMatch(/platform default/i);
+  });
+
+  it("shows no trend ON THE PAGE — '+14%' rendered on two rail buttons", () => {
+    harness.value = real();
+    const text = draw(<TrustCompass />).textContent ?? "";
+    expect(text).toMatch(/Trust over time/i);          // anti-vacuity: the affordance still exists
+    expect(text).not.toMatch(/\+14%/);
+  });
+
+  it("shows no trend INSIDE THE FOLDOUT either — which required opening it", () => {
+    // `Foldout` is `if (!open) return null`, so asserting against the closed page was VACUOUS:
+    // restoring the fabricated title "Your trust has grown 14% in 30 days" left every test green.
+    // The mutation caught that, which is the only reason this test drives the click.
+    harness.value = real();
+    const h = draw(<TrustCompass />);
+    const open = [...h.querySelectorAll("button")].find((b) => /over time/i.test(b.textContent ?? ""));
+    expect(open, "the trend affordance is gone, so this asserts nothing").toBeTruthy();
+    act(() => { open!.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    const text = h.textContent ?? "";
+    // Anti-vacuity: the foldout is genuinely open and its honest body is what is on screen.
+    expect(text).toMatch(/Nothing records this yet/i);
+    for (const claim of [/grown 14%/i, /moved outward/i, /none reversed/i, /trajectory/i, /\+14%/]) {
+      expect(text, `the foldout still asserts a trend: ${claim}`).not.toMatch(claim);
+    }
+  });
+
+  it("never says the WORKSPACE set the level it calls a platform default", () => {
+    // `MiniCompass` bodies read "… <dept> is <tier>." and are introduced by a caller-supplied
+    // label. Two callers supplied "because you have", which credits the workspace for a policy the
+    // very next sentence calls "not a setting this workspace chose".
+    for (const src of ["src/solo/systems.tsx", "src/solo/vault.tsx", "src/solo/compass.tsx"]) {
+      const t = fs.readFileSync(path.join(process.cwd(), src), "utf8");
+      expect(t, `${src} still tells the owner they set this`).not.toMatch(/label="[^"]*because you have/);
+    }
+  });
+
+  it("never promises a future autonomous act from a platform default", () => {
+    // Systems rendered "She will handle this one herself." from `deptTier`, which reads the
+    // PLATFORM's default lane. A lane is a policy, not a commitment about what will happen in this
+    // workspace — and the mutation proved nothing was asserting this until now.
+    const t = fs.readFileSync(path.join(process.cwd(), "src/solo/systems.tsx"), "utf8");
+    expect(t).not.toMatch(/She will handle this one herself/i);
+    // Anti-vacuity: the block still exists and still states the lane.
+    expect(t).toMatch(/runs automatically on the platform default/i);
+  });
+
+  it("offers no drag affordance, because the drag write was removed", () => {
+    harness.value = real();
+    expect(draw(<TrustCompass />).textContent ?? "").not.toMatch(/drag a ring/i);
+  });
+
+  it("on an UNAVAILABLE read, shows no percentage at all — not null%, not 100% escalated", () => {
+    // The badges were ungated while the page subtitle was gated, so before the read resolved and
+    // permanently after a failed one they read "null% autopilot … 100% escalated" — a governance
+    // claim manufactured out of an absent number.
+    for (const v of [
+      { loading: false, configured: false, departments: [], bySlug: {}, error: "boom" },
+      { loading: true, configured: false, departments: [], bySlug: {}, error: null },
+    ]) {
+      harness.value = v;
+      const text = draw(<TrustCompass />).textContent ?? "";
+      expect(text, "an absent read still rendered a percentage").not.toMatch(/null%|NaN|100% (escalated|your call)/);
+      expect(text).toMatch(/unavailable/i);
+    }
+  });
+});
+
+/** The orb label is built inside the rAF loop into canvas state, so no DOM assertion reaches it. */
+describe("orbLabel — a real act and its lane, never an execution", () => {
+  it("names the act and the lane it is ROUTED to", () => {
+    expect(orbLabel({ n: "Sales" }, { label: "Draft follow-up", lane: "auto" }))
+      .toBe("Sales · Draft follow-up — runs automatically by default");
+  });
+
+  it("never concatenates the act object", () => {
+    // The regression: `acts` became {label, lane} and the label kept concatenating the element.
+    for (const lane of ["auto", "confirm", "off"] as const) {
+      expect(orbLabel({ n: "Sales" }, { label: "Draft follow-up", lane })).not.toContain("object Object");
+    }
+  });
+
+  it("claims no execution in any lane", () => {
+    for (const lane of ["auto", "confirm", "off"] as const) {
+      const l = orbLabel({ n: "Sales" }, { label: "Draft follow-up", lane });
+      expect(l, l).not.toMatch(/performed|handled|waiting on you|escalated for/i);
+    }
+  });
+
+  it("laneTier drops a lane it cannot name, so no orb is drawn for it", () => {
+    expect(laneTier("auto")).toBe("green");
+    expect(laneTier("confirm")).toBe("amber");
+    expect(laneTier("off")).toBe("red");
+    expect(laneTier("supervised")).toBeNull();
+    expect(laneTier(null)).toBeNull();
   });
 });
 
