@@ -28,8 +28,14 @@
  * NOTHING IS SENT. No sender exists for billing notices anywhere on the platform, so the section
  * says that in plain words rather than implying that a designation reaches an inbox.
  *
- * SCOPE. Everything here lives under `src/solo/`. No shared module, no other tier's surface, and
- * no client-billing (Sales, §197 LAYER 2) concern is touched.
+ * SCOPE. Everything here lives under `src/solo/`. No shared module and no other tier's surface is
+ * touched.
+ *
+ * CLIENT BILLING IS NOT HERE, AND THAT IS THE POINT (owner, 2026-09-03). A "What you charge your
+ * clients" card used to sit on this surface as a pointer. It has MOVED to Campaigns → Sales, where
+ * the tenant's own commercial activity lives. Billing is one direction of money only: the platform
+ * billing this workspace. What the workspace charges its own customers runs on the tenant's own
+ * processor (§38 / §197 LAYER 2) and is stated there, not here.
  */
 import { useMemo, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -357,16 +363,6 @@ function UsageCard() {
   </Card>;
 }
 
-/** The pointer out to the other kind of billing, so nobody looks for client invoices here (§18). */
-function ClientBillingBoundaryCard() {
-  return <Card title="What you charge your clients" icon={CircleDollarSign} truth="UNAVAILABLE">
-    <p>
-      This page is only about what this workspace pays the platform. What you charge your own clients
-      runs on your own payment processor and does not appear here.
-    </p>
-  </Card>;
-}
-
 export function SoloBillingView() {
   // ONE authority read for the whole surface. Three components asking the same server question
   // three times would also be three chances for them to disagree mid-switch.
@@ -383,6 +379,5 @@ export function SoloBillingView() {
     <ContactsCard key={`contacts:${workspace}`} authority={authority}/>
     <PortalCard key={`portal:${workspace}`} authority={authority}/>
     <UsageCard/>
-    <ClientBillingBoundaryCard/>
   </div>;
 }

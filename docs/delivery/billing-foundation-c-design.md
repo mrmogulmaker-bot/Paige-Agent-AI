@@ -50,7 +50,7 @@ list and its `PARTIAL` truth label — unchanged, and `settings-contract.test.ts
 |---|---|
 | `src/solo/billing-contract.ts` (new) | the presentation contract — a pure resolver |
 | `src/solo/billing-contract.test.ts` (new) | its negative properties |
-| `src/solo/settings-billing.tsx` (new) | the five cards |
+| `src/solo/settings-billing.tsx` (new) | the cards (four, after the client-billing boundary moved to Sales — §10) |
 | `src/solo/settings-billing.test.tsx` (new) | the flows, driven |
 | `src/solo/settings-primitives.tsx` (new) | `Card` · `Field` · `Status` · `Truth` · `ReadState` · `Outcome` · `NotYours`, moved verbatim out of `settings.tsx` |
 | `src/solo/data/useWorkspaceBillingCandidates.ts` (new) | who may be designated, from the existing roster read |
@@ -311,3 +311,31 @@ authority read is unchanged. This slice adds a **consumer**, not a contract.
 - **`useSoloComms().billing` is now consumed by nothing.** Billing was its only reader. Its
   three-query billing fetch still runs on Connections and Setup for a value nobody reads. Removing
   it changes two other destinations, so it is not done here.
+
+
+---
+
+## 10. Post-release boundary correction (owner, 2026-09-03)
+
+Looking at the released screen, the owner ruled the **"What you charge your clients"** card out of
+place and moved it to **Campaigns → Sales**:
+
+> "We don't need this inside of the billing area because this is the tenant billing their customers.
+> That will happen inside of sales. Billing is for us, our platform billing the tenant."
+
+Done. The card is removed from `settings-billing.tsx` and renders on `Campaigns › Sales`
+(`src/solo/growth2.tsx`, `ClientBillingBoundary`) — client charges run on the tenant's own
+processor, Paige is never merchant of record for them (§38 / §197 LAYER 2), and it points back to
+Settings → Billing for what the workspace pays the platform. The Billing test that asserted the
+card's presence is **inverted** to assert its absence, and the drive gained a per-frame check that
+no client-billing wording returns there, because a boundary that only lives in a commit message
+drifts back.
+
+**One card was deliberately NOT moved, and it was raised rather than assumed.** The owner's message
+grouped *Invoices & payment method* with it. That card is the tenant's invoices **from Paige** and
+the payment method they would pay Paige with — **platform billing by the owner's own definition**.
+Moving it would have removed the workspace's only route to its own platform invoices (§58) and
+contradicted the very rule being applied, so it stays and the distinction is stated here.
+
+Billing now renders four cards: Platform subscription · Billing contacts and notices · Invoices &
+payment method · Usage & limits. Drive **124/124**.
