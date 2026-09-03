@@ -6989,42 +6989,25 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     };
 
     /**
-     * THE INVITE FAMILY RESOLVES ITS WORKSPACE DIFFERENTLY, AND THE DIFFERENCE HAS A VICTIM.
+     * THE INVITE FAMILY NOW RESOLVES ITS WORKSPACE THE SAME WAY EVERYTHING ELSE DOES.
      *
-     * Caught by adversarial review. `create_/resend_/revoke_solo_team_invite` read
-     * `profiles.active_tenant_id` RAW. `current_user_tenant_id()` — which the roster and the two
-     * RPCs use — COALESCEs that to the caller's earliest active membership when it is null or not
-     * entitled. So a real, sole OWNER whose `active_tenant_id` happens to be null reads their own
-     * roster perfectly, passes the guard above, and is then told by the invite RPC:
+     * There used to be a workaround here. `create_/resend_/revoke_solo_team_invite` read
+     * `profiles.active_tenant_id` RAW while the roster used `current_user_tenant_id()`, so a sole
+     * OWNER with a null pointer read their own roster and was then told "only an owner or admin may
+     * invite team members" — false, about the owner of that workspace. Paige pre-read the column and
+     * refused first, so that at least the REASON she gave was true.
      *
-     *     "only an owner or admin may invite team members"
+     * The database repair removed the cause, so the workaround is DELETED rather than moved. Keeping
+     * it would have relocated the false refusal from SQL into TypeScript, where the database can no
+     * longer falsify it: the invitation would now succeed, and Paige would be the only thing left
+     * standing between an owner and their own workspace.
      *
-     * They are the owner. The message is false, and Paige would relay it in her own voice — which
-     * is the §13 failure, not merely a poor error string. The guard above reconciled two resolvers
-     * and reconciled the wrong pair for three of the five tools.
-     *
-     * The RPCs are not changed here: they are shared with the Team screen, which has the same
-     * defect, and correcting a `SECURITY DEFINER` tenant resolver is its own change with its own
-     * producer inventory. What is fixed is the honesty — the refusal now names the real cause, and
-     * names it BEFORE an email could be attempted, rather than after the database has said
-     * something untrue about who the person is.
+     * What replaces it is not a check at all — it is an argument. `expectedTenantId` is sent with
+     * every invitation act, and `solo_team_invite_authority` proves the caller's active owner/admin
+     * membership in that exact workspace. `teamSeamTenantMismatch()` above already established that
+     * `personaCtx.tenant_id` is the workspace this conversation is about AND that the roster agrees,
+     * so it is the honest thing to name.
      */
-    const inviteSeamBlocked = async (): Promise<string | null> => {
-      const expected = personaCtx?.tenant_id ?? null;
-      const { data, error } = await supabaseClient
-        .from("profiles").select("active_tenant_id").eq("user_id", user.id).maybeSingle();
-      // A read that fails proves nothing either way, so it does not manufacture a refusal — the
-      // RPC's own authority check is still ahead of any actual write.
-      if (error) return null;
-      const active = typeof data?.active_tenant_id === "string" ? data.active_tenant_id : null;
-      if (!active) {
-        return "Invitations are sent from whichever workspace you're currently switched into, and right now no workspace is set as your active one — so I'd be sending on behalf of nothing. Open the workspace you want them to join and ask me again. This isn't about your permissions; you may well be its owner.";
-      }
-      if (expected && active !== expected) {
-        return "The workspace invitations would be sent from isn't the one this conversation is about. I've stopped rather than invite someone into the wrong workspace. Switch to the one you mean and ask me again.";
-      }
-      return null;
-    };
 
     /** The teammate, named if the caller can see them; an honest placeholder if not. */
     const describeTeamMember = async (userId: unknown): Promise<string | null> => {
@@ -9912,8 +9895,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             ) {
               const wrongTenant = await teamSeamTenantMismatch();
               if (wrongTenant) throw new Error(wrongTenant);
-              const inviteBlocked = await inviteSeamBlocked();
-              if (inviteBlocked) throw new Error(inviteBlocked);
               // The three invitation acts go through `solo-team-invitations`, which is the ONLY
               // caller of the invite RPCs — they are revoked from `authenticated` entirely and
               // granted to `service_role` alone, so there is no path from here that bypasses it.
@@ -9924,6 +9905,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const invokeBody = tc.function.name === "team_invite_member"
                 ? {
                     action: "create",
+                    expectedTenantId: personaCtx?.tenant_id ?? null,
                     email: args.email,
                     permission: args.permission,
                     jobTitle: typeof args.job_title === "string" ? args.job_title : "",
@@ -9931,6 +9913,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   }
                 : {
                     action: tc.function.name === "team_invite_resend" ? "resend" : "revoke",
+                    expectedTenantId: personaCtx?.tenant_id ?? null,
                     inviteId: args.invitation_id,
                   };
               const { data: inv, error: invErr } = await supabaseClient.functions.invoke(

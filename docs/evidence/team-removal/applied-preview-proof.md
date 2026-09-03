@@ -108,3 +108,32 @@ in production's ledger. The `20261046000000` number leaves `20261045000000` to
 applied under its old version. The SQL is byte-identical, so they remain evidence about this
 migration's behaviour — but the applied-schema proof for `20261046000000` under its new number comes
 from this PR's own Supabase Preview run, and is not claimed by this note.
+
+---
+
+## Renumbered again, 2026-09-03 — the fourth collision, and the fifth and sixth versions tried
+
+**Appended, not rewritten.** Everything above is left as it was written; this note records what
+happened afterwards.
+
+`20261046000000` was itself claimed on `main` while this branch waited, by
+`20261046000000_solo_setup_persistence_repair.sql` ([#829](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/829)),
+which is applied on production. Merging current `main` into this branch put **two files at the same
+version in one tree** — the state in which `supabase db push` skips one of them silently, because the
+ledger is keyed on the version alone and does not know a filename.
+
+The migration is therefore now **`20261048000000`**. Its SQL is still unchanged. `20261047000000` went
+to [#827](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/827), which released first and is
+applied on production.
+
+The three-way check was re-run for `20261048000000` at this head: absent from production's
+`schema_migrations` (which carries `…44`, `…45`, `…46`, `…47`), absent from `main`'s tree, and absent
+from **every** remote branch — scanned, not assumed.
+
+**The claim in the paragraph above is now stale, and is not carried forward.** No Supabase Preview
+run has applied this migration under `20261048000000`, and the earlier preview evidence was taken at
+`20261044000000`. Rather than restate a preview claim at a version no preview has seen, the
+applied-schema proof for the released version is `supabase/tests/solo_team_removal_authority.sql`,
+executed by the `database-contract` job against a schema `supabase db reset` replays from zero — the
+same mechanism the sibling invitation release used, and one that does not depend on preview-branch
+availability.

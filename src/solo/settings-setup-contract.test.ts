@@ -45,6 +45,49 @@ describe("Solo Setup business brief contract", () => {
     expect(saved.provenance.legalName).toBeUndefined();
   });
 
+  it("preserves connection provenance until an explicit adopt or override decision", () => {
+    const original = {
+      ...EMPTY_SOLO_SETUP_BRIEF,
+      publicName: "Northstar Advisory",
+      website: "https://connected.example",
+      provenance: {
+        website: { source: "connection_sourced" as const, confidence: "observed" as const },
+      },
+    };
+    const untouched = prepareOwnerConfirmedBrief(original, "2026-09-02T12:00:00Z", original);
+    expect(untouched.provenance.website?.source).toBe("connection_sourced");
+
+    const adopted = prepareOwnerConfirmedBrief(original, "2026-09-02T12:00:00Z", original, { website: "adopt" });
+    expect(adopted.provenance.website?.source).toBe("owner_confirmed");
+    expect(adopted.sourceDecisions).toEqual({ website: "adopt" });
+
+    const overridden = prepareOwnerConfirmedBrief(
+      { ...original, website: "https://owner.example" },
+      "2026-09-02T12:00:00Z",
+      original,
+      { website: "override" },
+    );
+    expect(overridden.sourceDecisions).toEqual({ website: "override" });
+  });
+
+  it("starts without U.S.-specific legal assumptions and accepts global regions", () => {
+    expect(EMPTY_SOLO_SETUP_BRIEF.businessRegistrationIdentifier).toBe("");
+    expect(EMPTY_SOLO_SETUP_BRIEF.regionsOfOperation).toBe("");
+    expect(EMPTY_SOLO_SETUP_BRIEF.registeredIsoCountry).toBe("");
+    expect(validateSoloSetupBrief({
+      ...EMPTY_SOLO_SETUP_BRIEF,
+      publicName: "Global Advisory",
+      legalName: "Global Advisory SAS",
+      registeredRegion: "Île-de-France",
+      registeredIsoCountry: "FR",
+    })).toEqual({});
+  });
+
+  it("refuses clearing the legal name from an existing legal sender record", () => {
+    const brief = { ...EMPTY_SOLO_SETUP_BRIEF, publicName: "Public name", legalName: "" };
+    expect(validateSoloSetupBrief(brief, true).legalName).toContain("legal business name");
+  });
+
   it("applies a Team-backed representative proposal only to the owner's draft", () => {
     const current = {
       ...EMPTY_SOLO_SETUP_BRIEF,

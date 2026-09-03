@@ -9,9 +9,10 @@
 -- so it was replaced with this.
 --
 -- The migration body below is inlined from
--- supabase/migrations/20261046000000_an_owner_can_remove_someone_from_their_workspace.sql with its
--- (renumbered from 20261044000000 on 2026-09-03 — see the note in applied-preview-proof.md; the
---  SQL below is byte-identical to what was executed, only the file's version prefix changed)
+-- supabase/migrations/20261048000000_an_owner_can_remove_someone_from_their_workspace.sql with its
+-- (renumbered 20261042000000 -> 43 -> 44 -> 46 -> 20261048000000 as each version was claimed on
+--  main ahead of this branch — see the notes in applied-preview-proof.md; the SQL below is
+--  byte-identical to what was executed, only the file's version prefix ever changed)
 -- comments stripped. Applying it inside the transaction is what makes this a genuine execution proof
 -- rather than a reading of the SQL: if the function did not compile or a guard did not fire, the
 -- scenarios below would say so.

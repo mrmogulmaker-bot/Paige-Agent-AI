@@ -63,7 +63,7 @@ function humanizeRole(raw: string | null | undefined): string {
 function mapPerson(m: RosterMember): SoloPerson {
   const status: SoloPerson["status"] = m.suspended_at
     ? "Suspended"
-    : m.last_sign_in_at
+    : (m.tenant_role || m.tenant_is_owner)
       ? "Active"
       : "Invited";
   const role = m.tenant_is_owner ? "Owner" : humanizeRole(m.tenant_role ?? m.roles[0] ?? null);
