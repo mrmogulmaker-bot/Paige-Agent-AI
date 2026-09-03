@@ -103,14 +103,67 @@ function lit(node) {
  */
 const UNREADABLE = Symbol("unreadable");
 
-/** Every same-file `const/let/var NAME = "literal"` binding, so a named specifier can be resolved. */
+/**
+ * Same-file names that provably stand for ONE string, so a named specifier can be resolved.
+ *
+ * The first version of this flattened every declaration into a first-name-wins map, ignoring scope,
+ * reassignment, and the difference between `const` and `let`. Review found it wrong in BOTH
+ * directions on the same input shape: `const p = "./safe.ts"` at top level with
+ * `const p = "../toolConfirmation.ts"` inside a function resolved to the SAFE one and hid a gate
+ * load, and reversing the two falsely reported a safe load as the gate. A resolver that answers
+ * confidently from the wrong binding is worse than one that declines — it is the fail-open this
+ * whole rule exists to remove, reintroduced by the fix for it.
+ *
+ * A lint has no scope resolver, so this does not pretend to have one. A name is trusted ONLY when
+ * the file leaves no room for it to mean anything else:
+ *
+ *   1. exactly ONE binding site for that name anywhere in the file — any kind counts, including a
+ *      parameter, an import, and a function or class declaration, because each is a way for the
+ *      name to mean something different at the call site;
+ *   2. that binding is a `const` variable declaration with a string-literal initializer; and
+ *   3. the name is never the target of an assignment.
+ *
+ * Anything else is UNREADABLE and fails closed, which is the correct side to err on: the message
+ * tells the author to write a literal or an unambiguous const. Measured against the scan roots,
+ * the four real dynamic imports all name a unique module-level const, so this costs nothing.
+ */
 function constStrings(sf) {
-  const out = new Map();
+  const bindingCount = new Map();
+  const assigned = new Set();
+  const constValue = new Map();
+  const bind = (name) => {
+    if (!name || !ts.isIdentifier(name)) return;
+    bindingCount.set(name.text, (bindingCount.get(name.text) ?? 0) + 1);
+  };
   walk(sf, (n) => {
-    if (!ts.isVariableDeclaration(n) || !n.initializer || !ts.isIdentifier(n.name)) return;
-    const v = lit(n.initializer);
-    if (v !== null && !out.has(n.name.text)) out.set(n.name.text, v);
+    if (ts.isVariableDeclaration(n)) {
+      bind(n.name);
+      // `const` is a property of the declaration LIST, not of the declaration.
+      const isConst = n.parent && ts.isVariableDeclarationList(n.parent)
+        && (n.parent.flags & ts.NodeFlags.Const) !== 0;
+      if (isConst && n.initializer && ts.isIdentifier(n.name)) {
+        const v = lit(n.initializer);
+        if (v !== null) constValue.set(n.name.text, v);
+      }
+      return;
+    }
+    if (ts.isParameter(n) || ts.isBindingElement(n)) { bind(n.name); return; }
+    if (ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n)) { bind(n.name); return; }
+    if (ts.isImportSpecifier(n) || ts.isNamespaceImport(n)) { bind(n.name); return; }
+    if (ts.isImportClause(n) && n.name) { bind(n.name); return; }
+    if (ts.isBinaryExpression(n) && ts.isIdentifier(n.left)
+        && n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+        && n.operatorToken.kind <= ts.SyntaxKind.LastAssignment) {
+      assigned.add(n.left.text); return;
+    }
+    if ((ts.isPostfixUnaryExpression(n) || ts.isPrefixUnaryExpression(n)) && ts.isIdentifier(n.operand)) {
+      assigned.add(n.operand.text);
+    }
   });
+  const out = new Map();
+  for (const [name, v] of constValue) {
+    if (bindingCount.get(name) === 1 && !assigned.has(name)) out.set(name, v);
+  }
   return out;
 }
 
@@ -680,6 +733,29 @@ if (process.argv.includes("--self-test")) {
   ]) check(`R2 RESOLVES the gate through ${label}`, gateLoadReason(src, "t.ts"), "loads");
   check("R2 FAILS CLOSED on a specifier it cannot resolve at all",
     gateLoadReason("const g = await import(pickAtRuntime());", "t.ts"), "unreadable");
+
+  // THE RESOLVER'S OWN FAIL-OPEN (Codex, on the first version of this fix). A first-name-wins map
+  // over every declaration in the file, ignoring scope, reassignment and const-ness, was wrong in
+  // BOTH directions on one input shape: it resolved a shadowed name to the SAFE binding and hid a
+  // gate load, and reversing the two values falsely reported a safe load as the gate. A resolver
+  // that answers confidently from the wrong binding is the fail-open this rule exists to remove,
+  // reintroduced by the fix for it. A name is now trusted only when the file leaves no room for it
+  // to mean anything else.
+  for (const [label, src] of [
+    ["a SHADOWED const (the load was hidden)",
+      `const p = "./safe.ts"; function f() { const p = "../toolConfirmation.ts"; return import(p); }`],
+    ["a shadowed const the other way round (a safe load was falsely reported as the gate)",
+      `const p = "../toolConfirmation.ts"; function f() { const p = "./safe.ts"; return import(p); }`],
+    ["a REASSIGNED let", `let p = "./safe.ts"; p = "../toolConfirmation.ts"; const g = import(p);`],
+    ["a var", `var p = "../toolConfirmation.ts"; const g = import(p);`],
+    ["a PARAMETER shadowing a const", `const p = "./safe.ts"; function f(p) { return import(p); }`],
+  ]) check(`R2 refuses to resolve ${label}`, gateLoadReason(src, "t.ts"), "unreadable");
+  // The control that keeps resolution worth having: a UNIQUE, unassigned const still resolves, or
+  // the four real dynamic imports in the scan roots would all start failing closed.
+  check("R2 still resolves a unique, unassigned const naming the gate",
+    gateLoadReason(`const p = "../toolConfirmation.ts"; const g = import(p);`, "t.ts"), "loads");
+  check("R2 still resolves a unique const naming something else, and stays quiet",
+    gateLoadReason(`const S = "npm:pdf-lib@1.17.1"; const l = import(S);`, "t.ts"), null);
   // The controls that make failing closed affordable: the four real non-literal dynamic imports in
   // the scan roots are all `import(SPEC)` over a module-level const, and they must stay silent.
   check("R2 resolves an UNRELATED const specifier and stays quiet",
