@@ -6,6 +6,7 @@ import { subtabPath } from "@/lib/routing/tierBranches";
 import { Ic, PageHead } from "./_shared";
 import { useSoloCampaigns } from "./useSoloCampaigns";
 import { CatalogOffers } from "./catalog-offers";
+import { SalesOps } from "./sales-ops";
 import "./solo-campaigns.css";
 
 // Vibe Studio still imports this project-only fixture. Campaigns never renders it;
@@ -22,7 +23,7 @@ const TRUTH = {
   overview: ["UNAVAILABLE", "A tenant-authorized all-state campaign rollup is not yet available."],
   catalog: ["PARTIAL", "Published pages, funnels, forms, and captured submissions come from tenant-scoped records."],
   offers: ["PARTIAL", "Offers are read from this workspace’s own product records. Defining and editing them arrives on this screen next; nothing here is a checkout."],
-  sales: ["PROPOSED", "Captured activity can be traced, but a consolidated campaign-sales owner is not available."],
+  sales: ["PARTIAL", "Offers, declared payment handling and recorded payments are read from this workspace’s own records. Per-client agreements are not held here yet, and no order names a campaign, so revenue is never attributed to one."],
   pipeline: ["PROPOSED", "Only explicit form routing configuration and recorded outcomes are shown."],
   social: ["UNAVAILABLE", "A customer-facing social provider connection is not ready."],
   performance: ["PROPOSED", "Source coverage is visible; cross-source campaign analytics are not yet canonical."],
@@ -162,9 +163,13 @@ function ClientBillingBoundary() {
   </div>;
 }
 
-function Sales({ data, setDetail }) {
+function Sales({ data, setDetail, onOpenCatalog }) {
   const routed = data.submissions.filter((row)=>row.contactId||row.dealId);
-  return <section className="campaigns-surface"><SurfaceHead truthKey="sales" title="Routed capture activity" description="Recorded contact and deal references only—never estimated revenue or campaign attribution."/><ClientBillingBoundary/><StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></section>;
+  return <section className="campaigns-surface"><SurfaceHead truthKey="sales" title="Sales operations" description="What this business sells, how it takes payment from its own clients, and the commercial activity it has actually recorded."/>
+    <SalesOps setDetail={setDetail} deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]} onOpenCatalog={onOpenCatalog}/>
+    <ClientBillingBoundary/>
+    <div className="so-band"><div className="so-band-head"><b>Routed capture activity</b><small>Recorded contact and deal references only — never estimated revenue or campaign attribution.</small></div></div>
+    <StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></section>;
 }
 
 function PipelineStageRow({ stage, index, stages, pipeline, canManage, busy, save }) {
@@ -355,6 +360,12 @@ export const GrowthHub=()=>{
   const returnToAssets=React.useCallback(()=>{
     navigate(`${subtabPath("solo",params.account,"growth","catalog")}?type=all`);
   },[navigate,params.account]);
+  // Sales' "Open Catalog" lands on the OFFERS half — the bare catalog path, which Slice 2A made the
+  // offers default. Deliberately not `returnToAssets`, which exists for the retired Vibe addresses
+  // and forces `?type=all` onto the published-assets half instead.
+  const openCatalogOffers=React.useCallback(()=>{
+    navigate(subtabPath("solo",params.account,"growth","catalog"));
+  },[navigate,params.account]);
   const [detail,setDetail]=React.useState(null);
   const closeDetail=React.useCallback(()=>setDetail(null),[]);
   // Also on TENANT change. A detail snapshot is detached from the list it came from, so an open
@@ -370,7 +381,7 @@ export const GrowthHub=()=>{
   let body=<Overview data={data} setDetail={setDetail}/>;
   if(legacy) body=<CompatibilityLanding legacy={legacy} returnToAssets={returnToAssets}/>;
   else if(tab==="catalog") body=<Catalog data={data} setDetail={setDetail} initialType={requestedType}/>;
-  else if(tab==="sales") body=<Sales data={data} setDetail={setDetail}/>;
+  else if(tab==="sales") body=<Sales data={data} setDetail={setDetail} onOpenCatalog={openCatalogOffers}/>;
   else if(tab==="pipeline") body=<PipelineSurface data={data} setDetail={setDetail}/>;
   else if(tab==="social") body=<Social/>;
   else if(tab==="performance") body=<Performance data={data}/>;

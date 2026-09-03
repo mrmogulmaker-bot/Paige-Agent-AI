@@ -2227,6 +2227,122 @@ words rather than showing a control that does nothing. A listed price is a PRESE
 a checkout; tenant checkout remains unreachable in production independently of this change.
 
 
+### Campaigns → Sales, `/solo/{account}/growth/sales` (Sales Operations Slice A)
+
+**§66, same commit as the change.** Written to survive the merge: what is LIVE is recorded below,
+and the migration's applied state on production is marked **owed** rather than claimed, because CI
+applies it on merge and a `BEGIN..ROLLBACK` proof is necessary and explicitly not sufficient (§32.a).
+
+**What the change is.** The Sales tab was an empty routed-activity screen. It is now the workspace's
+sales-operations home: a readiness panel that answers what is and is not set up, the canonical
+Catalog offers made commercially legible, a quick-create that writes ONE canonical offer, the first
+writer for how the business takes money from its own clients, and the commercial activity it has
+actually recorded. Everything previously on the tab is preserved — see §58 below.
+
+**The boundary, restated because this tab is where it gets tested.** Settings → Billing is what the
+workspace pays PAIGE. This tab is what the workspace charges its OWN clients. Nothing here collects,
+holds, schedules or routes money; PAIGE is never merchant of record for a tenant→client charge
+(§38). `tenant-checkout-session` (destination charges on Paige's platform account — the live §38
+violation recorded against #458) and `tenant-stripe-connect` (mints a real Stripe Express account)
+are the two functions that would break that, and a test asserts, over comment-stripped source, that
+neither is reachable from this surface or its adapter.
+
+| Tier | Sees Sales operations | Why |
+|---|---|---|
+| Platform operator (God) | ✓ **only with a tenant selected** | `growth` is carried for §35 dogfooding, but this surface reads the ACTIVE tenant: an operator with none selected has `activeTenantId === null`, which the adapter maps to `phase: "unavailable"` and the surface renders "Sales needs a resolved workspace". Operator scope has its own `SalesSurface` (ledger row `/operator/campaigns/sales`); this row is the Solo shell's. |
+| Agency | ✗ | `growth` excludes Agency entirely (owner ruling 2026-08-11, §61 preserved exception). No new feature key is introduced, so the existing route gate decides — **§61 default: no exception**, and per §61's behavioural rule this was not put to the owner. |
+| Enterprise | ✓ via `growth` | Inherits the Solo baseline. |
+| Solo | ✓ via `growth` | The tier this slice is built for. |
+| Sub-account | ✓ via `growth` | Identical to Solo (§60). |
+| Client / Anonymous | ✗ | No client or anonymous route reaches `/solo/*`. The declared-handling RPC additionally revokes `anon` EXECUTE — and that REVOKE is load-bearing, proved below. |
+
+**Authority inside the tenant, and one asymmetry worth naming.** The adapter asks
+`tenant_members.role` — the column; `tenant_role` is the enum TYPE — filtered on the same workspace,
+the caller's own `auth.uid()`, and `status = 'active'`. `canManage` is `owner`/`admin`. But
+`tenant_orders` RLS is `is_tenant_admin`, which is **stricter than the `is_tenant_member` that got
+the caller onto this surface**: a plain member's activity read fails. That failure is recorded as
+`ordersReadable: false` and rendered as *"not readable at your access level"* — never as an empty
+list, because an unreadable table shown as zero activity is the exact class of lie this surface
+exists to avoid. A member sees the offers and is told in words that they cannot change anything.
+
+**§58 — what shipped before this slice, and still does.** The tab previously carried two untested
+things: the owner-placed `ClientBillingBoundary` (2026-09-03, the surface's only §38 statement) and
+the routed-capture read. `growth2.contract.test.tsx` pinned only the TAB, so a rebuild could have
+deleted both and stayed green. **Nothing is removed.** Both are preserved verbatim, and
+`sales-ops.contract.test.tsx`'s `§58` block — six tests, written and run GREEN against the
+PRE-rebuild surface in its own commit, then unchanged across the rebuild — is what makes that a
+guarantee rather than a claim. The routed-capture band gained a heading; its copy, its read, its
+drawer payload and its empty state are untouched.
+
+**Truth label moved `PROPOSED` → `PARTIAL`, and the note was rewritten in the same commit.** The
+state word is a §13 claim: offers, declared payment handling and recorded payments are now read from
+the workspace's own records, so `PROPOSED` would understate it. `PARTIAL` is right because two real
+things are still absent, and the note names both: per-client agreements are not held here yet, and
+**no order names a campaign** — `utm_campaign` lives on `analytics_events` and `referral_clicks`,
+never on the order, so send → click → order does not join. Attribution is therefore not shown at
+all rather than shown badly.
+
+**Evidence, separated.**
+- *Automated:* 29 contract/render tests (`sales-ops.contract.test.tsx`) — 6 of them the §58 block —
+  **plus 13 that EXECUTE the adapter against a recording fake client**
+  (`useSoloSalesOps.adapter.test.tsx`). The second file exists for the reason the sibling one does:
+  the contract suite mocks the hook outright, so every claim it makes about the query would be a
+  `toContain` over source, and `toContain("tenant_members")` passes whatever the column is called.
+  The §70.1 flows are DRIVEN, not read: the payment declaration is opened, chosen, saved, and the
+  exact arguments sent are asserted; a refusal is proved to keep the form open carrying the server's
+  own sentence; an abandoned quick offer is proved to write nothing.
+- *Static/build:* `ci:tsc` clean against the ratchet (baseline 13, current 13 — no new errors);
+  `ci:regression`, `lint:definer-fns`, `lint:tier-features`, `lint:migration-versions`,
+  `lint:shadow-vars`, `lint:write-targets`, `lint:skeleton` all pass; production build passes; full
+  suite 2708/2708 across 193 files.
+- *Pre-existing failure, not caused here and not repaired here:* `lint:gold` fails on
+  `src/components/dashboard/BusinessCreditDashboard.tsx:271`. Confirmed identical on the clean tree
+  by stashing this branch's changes and re-running. It is a design surface and not this slice's
+  file (§00/§28), so it is reported rather than touched.
+- *Database, proved against prod ref `xygzykjyynhzqytbqnzu` inside `BEGIN..ROLLBACK`* — three
+  proofs, nothing persisted: (1) the function compiles, is `SECURITY DEFINER`, carries
+  `search_path=public, pg_temp`, and has the intended 3-argument identity; (2) an **unauthenticated
+  call is denied `42501`** by the first in-body guard, so the guard is a guard; (3) the REVOKE is
+  **load-bearing, not decorative** — measured before and after in one transaction,
+  `has_function_privilege('anon', …)` is `true` before the REVOKE and `false` after, with
+  `authenticated` `true`. That third proof exists because the second run initially omitted the
+  REVOKEs and showed anon able to execute.
+- **OWED — persisted apply (§32.a).** `20261130000000` is NOT yet on production; CI applies it on
+  merge. What is owed, and must be shown by real queries rather than by the pipeline reporting
+  success: the `schema_migrations` row for `20261130000000`, and
+  `has_function_privilege('anon', 'public.declare_client_payment_handling(uuid,text,text[])',
+  'EXECUTE') = false` against the live function.
+- **UNVERIFIED — authenticated runtime on any tier, and the deployed surface.** §32.c is owed to a
+  session that can drive the deployed app. This session holds no browser tool and could not reach
+  live prod, so no evidence here is a real round-trip to the database: the adapter suite proves the
+  query SHAPE and the resolved authority against a fake client, not that PostgREST answers it as
+  expected.
+
+**Migration version — chosen against BOTH maxima, which is the part the repo alone cannot tell you.**
+Prod ledger max applied `20261111000000` (MCP query); highest on ANY remote branch `20261120000000`
+(scan of every remote head); `20261111050000` also in flight on a billing branch, which is the
+likeliest thing to move in this range while this slice is open. `20261130000000` sorts after all
+three with deliberate headroom, skipping the `2026112x` band. The header of `20261110000000` records
+five collisions in this range across two slices; re-verify both maxima immediately before merge,
+because that is the only step that has ever caught it.
+
+**What this slice does NOT do, recorded so the next one does not assume it.** No per-client
+agreement record exists — `tenant_service_subscriptions` was examined and cannot express one (no
+amount column at all, `billing_period` is free text with no CHECK, zero CHECK constraints on
+status, and its start date is `current_period_start`, which a webhook rewrites). No client read
+exists under `src/solo/` at all, which is the real prerequisite for agreements and is the next
+slice's first task. No campaign attribution, for the join reason above.
+
+**Producer inventory (§37) for the one new seam.** `declare_client_payment_handling` is NEW, so it
+has exactly one producer: `useSoloSalesOps.declarePaymentHandling`, called from the Sales surface.
+The two columns it writes had **zero writers repo-wide** before this — verified by search — and two
+readers, both Systems Check runners (`payment_processor_connected.ts` #9,
+`payment_methods_declared.ts` #10). Those checks have been structurally unpassable for every tenant
+since they shipped, because the product told an owner to "tell Paige which processor the business
+uses" and had nowhere to record the answer. This seam is what makes them passable; neither runner
+changes, and both read the same columns with the same allow-lists this function validates against.
+
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

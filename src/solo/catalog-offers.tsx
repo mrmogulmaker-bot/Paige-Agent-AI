@@ -70,7 +70,7 @@ const kindOf = (offer) => offer.kind;
 // or three orders of magnitude, which is the one thing this surface exists not to do.
 // The runtime already knows every ISO-4217 exponent, so it is asked rather than tabulated here;
 // an unrecognised code throws RangeError and falls back to the 2 digits most currencies use.
-function minorUnitDigits(currency) {
+export function minorUnitDigits(currency) {
   try {
     const digits = new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -82,7 +82,7 @@ function minorUnitDigits(currency) {
   }
 }
 
-function money(minorUnits, currency) {
+export function money(minorUnits, currency) {
   if (minorUnits === null || minorUnits === undefined || Number.isNaN(minorUnits)) return null;
   if (minorUnits === 0) return "Free";
   const digits = minorUnitDigits(currency);
