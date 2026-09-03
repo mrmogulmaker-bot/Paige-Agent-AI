@@ -75,6 +75,20 @@ describe("buildLaneCounts — counts real rows, drops what it cannot name", () =
     expect(Object.keys(buildLaneCounts([mk("", "auto", 0)]))).toEqual([]);
     expect(buildLaneCounts([mk("sales", "auto", 0, false)]).sales).toBeUndefined();
   });
+
+  it("DROPS a tenant-authored kind — it is not the platform default this hook reports", () => {
+    // The `kind_read` policy is
+    //   USING (enabled AND (tenant_id IS NULL OR tenant_id = public.current_user_tenant_id()))
+    // so RLS returns a workspace's OWN kinds alongside the platform's. The query filters them out;
+    // this asserts the builders do too, so a future query edit cannot silently fold a workspace's
+    // authored kind into a figure captioned "the platform's default policy".
+    const tenantAuthored = { ...mk("sales", "auto", 0), tenant_id: "11111111-1111-1111-1111-111111111111" };
+    expect(buildLaneCounts([tenantAuthored]).sales).toBeUndefined();
+    expect(buildActLabels([tenantAuthored]).sales).toBeUndefined();
+    // Negative control: the SAME row, platform-scoped, IS counted — so the assertion above is
+    // failing on the tenant_id and not on some other property of the fixture.
+    expect(buildLaneCounts([{ ...tenantAuthored, tenant_id: null }]).sales).toEqual({ auto: 1, confirm: 0, off: 0 });
+  });
 });
 
 describe("buildActLabels — the platform's own words, never invented ones", () => {
@@ -173,6 +187,11 @@ describe("the vocabulary is the real one", () => {
     ]) {
       expect(compass, `still renders "${gone}"`).not.toContain(gone);
     }
+  });
+
+  it("the READ is scoped to platform defaults, not only the builders", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/solo/data/useSoloTrust.ts"), "utf8");
+    expect(src).toContain('.is("tenant_id", null)');
   });
 
   it("neither confidence nor trend is derivable, so this hook returns neither", () => {

@@ -278,7 +278,7 @@ onClick={()=>setOpen(o)}>
 return <button onClick={e=>{e.stopPropagation();setDial(dial===o.id?null:o.id)}} className={'pill '+cls} style={{height:26,padding:'0 11px',marginLeft:'auto',cursor:'pointer'}}>
 {lbl==='Draft ready'&&<Ic.spark size={11}/>}{lbl==='Autopilot'&&<span className="dot"/>}{lbl}<Ic.chev size={10} style={{transform:'rotate(90deg)',opacity:.6}}/></button>})()}</span></div>
 {dial===o.id&&<div className="fade-in" style={{padding:'0 20px 14px',background:'var(--surface-2)',borderTop:'1px solid var(--line-soft)'}}>
-<div style={{paddingTop:13}}><MiniCompass dept={VLT_TCD[o.dept]} label="This is where it sits because you have"/></div>
+<div style={{paddingTop:13}}><MiniCompass dept={VLT_TCD[o.dept]} label="It sits here because, on the platform default,"/></div>
 <div className="sub" style={{marginTop:7}}>Applies to every obligation this department handles, not just this one.</div></div>}
 </React.Fragment>})
 :<div style={{padding:'54px 22px',textAlign:'center'}}>
