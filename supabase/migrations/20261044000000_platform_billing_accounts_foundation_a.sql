@@ -16,7 +16,7 @@
 --       "no subscription". So this read distinguishes absent / ambiguous / not_applicable.
 --   R13 never a fallback. Absence of a mapping row is absence of the thing.
 --   R18–R26 (packet §4.5, same day) billing notices are transactional; a verified Owner must be
---       DESIGNATED billing owner before a paid plan can activate; Owners may designate active
+--       DESIGNATED primary billing contact before a paid plan can activate; Owners may designate active
 --       Admins as notice delegates; receive / view / manage stay separate permissions; verified
 --       email only; explicit event catalogue; every designation change and delivery attempt is
 --       audited; no workspace becomes chargeable because this model exists. DELIVERY IS NOT WIRED.
@@ -51,8 +51,8 @@ COMMENT ON TABLE public.platform_billing_accounts IS
 
 ALTER TABLE public.platform_billing_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_billing_accounts FORCE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.platform_billing_accounts FROM PUBLIC, anon;
-GRANT SELECT ON TABLE public.platform_billing_accounts TO authenticated;   -- RLS narrows to operators
+REVOKE ALL ON TABLE public.platform_billing_accounts FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.platform_billing_accounts TO authenticated;   -- RLS narrows: operators read, platform owner writes
 GRANT ALL    ON TABLE public.platform_billing_accounts TO service_role;
 
 DROP POLICY IF EXISTS pba_operator_read ON public.platform_billing_accounts;
@@ -72,32 +72,46 @@ CREATE TRIGGER trg_pba_updated BEFORE UPDATE ON public.platform_billing_accounts
 CREATE OR REPLACE FUNCTION public.platform_billing_account_top_level_guard()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE _parent uuid; _acct text; _found boolean;
 BEGIN
-  IF EXISTS (SELECT 1 FROM public.tenants t WHERE t.id = NEW.tenant_id AND t.parent_tenant_id IS NOT NULL) THEN
+  -- Fails CLOSED: a tenant the writer cannot see is not a top-level tenant it may map.
+  SELECT t.parent_tenant_id, t.account_type, true INTO _parent, _acct, _found
+  FROM public.tenants t WHERE t.id = NEW.tenant_id;
+  IF NOT COALESCE(_found, false) OR _parent IS NOT NULL OR _acct = 'sub_account' THEN
     RAISE EXCEPTION 'platform_billing_account_top_level_only' USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
 END;
 $$;
+REVOKE ALL ON FUNCTION public.platform_billing_account_top_level_guard() FROM PUBLIC, anon, authenticated;
 DROP TRIGGER IF EXISTS trg_platform_billing_account_top_level ON public.platform_billing_accounts;
 CREATE TRIGGER trg_platform_billing_account_top_level
   BEFORE INSERT OR UPDATE ON public.platform_billing_accounts
   FOR EACH ROW EXECUTE FUNCTION public.platform_billing_account_top_level_guard();
 
--- ── 1b. Billing recipients: who this workspace has DESIGNATED to receive billing notices ─────
--- Owner ruling 2026-09-02 (packet §4.5, R18–R26): billing notices are transactional platform
--- notices. Before a paid plan can activate, a workspace names at least one VERIFIED Owner as its
--- billing owner/contact; an Owner may also designate current, active Admins as notice delegates.
--- Nothing is inferred from whoever is signed in; nothing is granted to every Admin; a delegate
--- receives notices and gains NO view and NO manage authority. Delivery is NOT wired in Foundation
--- A — this is the designation record, plus the ledger every future delivery must write to.
-CREATE TABLE IF NOT EXISTS public.platform_billing_recipients (
+-- ── 1b. Billing contacts: who this workspace has DESIGNATED for billing notices ─────────────
+-- Owner rulings 2026-09-02 (packet §4.5, R18–R27). Two FUNCTIONAL billing designations:
+--   primary_contact — the workspace's primary billing contact. Initially must be a verified,
+--                     current, active workspace Owner. At least one is required before a paid
+--                     plan can activate.
+--   delegate        — an optional billing delegate. Initially must be a verified, current, active
+--                     workspace Admin, chosen by an Owner.
+-- NEITHER designation creates, changes, transfers, implies, or records legal ownership, equity,
+-- corporate or trust ownership, trustee status, or co-owner status (R27). "Owner" here is only
+-- an ELIGIBILITY rule read live from tenant_members.is_owner; the platform's ownership model
+-- (co-ownership, transfer, corporate/trust ownership) is separate work this table never stands
+-- in for. Nothing is inferred from whoever is signed in; nothing is granted to every Admin; a
+-- delegate receives notices and gains NO view and NO manage authority. No default or backfilled
+-- contact is ever created for an existing workspace. Delivery is NOT wired in Foundation A —
+-- this is the designation record, plus the ledger every future delivery must write to.
+CREATE TABLE IF NOT EXISTS public.platform_billing_contacts (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id     uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
   user_id       uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  designation   text NOT NULL CHECK (designation IN ('billing_owner', 'billing_delegate')),
+  designation   text NOT NULL CHECK (designation IN ('primary_contact', 'delegate')),
   designated_by uuid NULL,
   designated_at timestamptz NOT NULL DEFAULT now(),
   revoked_at    timestamptz NULL,
@@ -106,41 +120,44 @@ CREATE TABLE IF NOT EXISTS public.platform_billing_recipients (
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
 -- One LIVE designation per person per workspace; revoked rows stay as history.
-CREATE UNIQUE INDEX IF NOT EXISTS platform_billing_recipients_live_uniq
-  ON public.platform_billing_recipients (tenant_id, user_id) WHERE revoked_at IS NULL;
-CREATE INDEX IF NOT EXISTS platform_billing_recipients_tenant_live_idx
-  ON public.platform_billing_recipients (tenant_id) WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS platform_billing_contacts_live_uniq
+  ON public.platform_billing_contacts (tenant_id, user_id) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS platform_billing_contacts_tenant_live_idx
+  ON public.platform_billing_contacts (tenant_id) WHERE revoked_at IS NULL;
 
-COMMENT ON TABLE public.platform_billing_recipients IS
+COMMENT ON TABLE public.platform_billing_contacts IS
   'LAYER 1 (Platform Subscriptions Tenant->Paige) per Doctrine §197. Billing Foundation A: the '
-  'workspace''s DESIGNATED billing-notice recipients — billing_owner (a verified Owner; at least '
-  'one is required before a paid plan can activate) and billing_delegate (a current, active Admin '
-  'the Owner chose). Designation confers the right to RECEIVE notices only — never to view or '
-  'manage billing (those stay Owner-only). Never inferred from a signed-in email. Stores user ids, '
-  'never addresses. Written only through the designate/revoke RPCs (Owner) or a platform owner; '
-  'readable by platform operators; the Owner reads through get_workspace_billing_recipients().';
+  'workspace''s DESIGNATED billing contacts — primary_contact (a verified, current, active '
+  'workspace Owner; at least one is required before a paid plan can activate) and delegate (a '
+  'verified, current, active Admin chosen by an Owner). FUNCTIONAL designations only: neither '
+  'creates, changes, transfers, implies, or records legal ownership, equity, corporate/trust '
+  'ownership, trustee or co-owner status. A designation confers the right to RECEIVE billing '
+  'notices only — never to view or manage billing (those stay workspace-Owner-only). Never '
+  'inferred from a signed-in email. Stores user ids, never addresses. Written only through the '
+  'designate/revoke RPCs (Owner) or a platform owner; readable by platform operators; the Owner '
+  'reads through get_workspace_billing_contacts(). No default or backfilled row is ever created.';
 
-ALTER TABLE public.platform_billing_recipients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.platform_billing_recipients FORCE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.platform_billing_recipients FROM PUBLIC, anon;
-GRANT SELECT ON TABLE public.platform_billing_recipients TO authenticated;   -- RLS narrows to operators
-GRANT ALL    ON TABLE public.platform_billing_recipients TO service_role;
+ALTER TABLE public.platform_billing_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.platform_billing_contacts FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.platform_billing_contacts FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.platform_billing_contacts TO authenticated;   -- RLS narrows: operators read, platform owner writes
+GRANT ALL    ON TABLE public.platform_billing_contacts TO service_role;
 
-DROP POLICY IF EXISTS pbr_operator_read ON public.platform_billing_recipients;
-CREATE POLICY pbr_operator_read ON public.platform_billing_recipients
+DROP POLICY IF EXISTS pbc_operator_read ON public.platform_billing_contacts;
+CREATE POLICY pbc_operator_read ON public.platform_billing_contacts
   FOR SELECT TO authenticated USING (public.is_platform_operator());
-DROP POLICY IF EXISTS pbr_platform_owner_write ON public.platform_billing_recipients;
-CREATE POLICY pbr_platform_owner_write ON public.platform_billing_recipients
+DROP POLICY IF EXISTS pbc_platform_owner_write ON public.platform_billing_contacts;
+CREATE POLICY pbc_platform_owner_write ON public.platform_billing_contacts
   FOR ALL TO authenticated USING (public.is_platform_owner()) WITH CHECK (public.is_platform_owner());
 
-DROP TRIGGER IF EXISTS trg_pbr_updated ON public.platform_billing_recipients;
-CREATE TRIGGER trg_pbr_updated BEFORE UPDATE ON public.platform_billing_recipients
+DROP TRIGGER IF EXISTS trg_pbc_updated ON public.platform_billing_contacts;
+CREATE TRIGGER trg_pbc_updated BEFORE UPDATE ON public.platform_billing_contacts
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- The eligibility rules are STRUCTURAL (a trigger), so they hold for every writer — the Owner
 -- RPC, a platform owner, a service context — not only the path an audit happened to check (§51).
 -- SECURITY DEFINER only so it may read auth.users.email_confirmed_at; it validates and never writes.
-CREATE OR REPLACE FUNCTION public.platform_billing_recipient_guard()
+CREATE OR REPLACE FUNCTION public.platform_billing_contact_guard()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -159,15 +176,15 @@ BEGIN
        OR NEW.user_id IS DISTINCT FROM OLD.user_id
        OR NEW.designation IS DISTINCT FROM OLD.designation
        OR (OLD.revoked_at IS NOT NULL AND NEW.revoked_at IS NULL) THEN
-      RAISE EXCEPTION 'billing_recipient_immutable' USING ERRCODE = '42501';
+      RAISE EXCEPTION 'billing_contact_immutable' USING ERRCODE = '42501';
     END IF;
     RETURN NEW;
   END IF;
 
   SELECT t.parent_tenant_id, t.account_type, true INTO _parent, _acct, _found
   FROM public.tenants t WHERE t.id = NEW.tenant_id;
-  IF NOT COALESCE(_found, false) OR _parent IS NOT NULL OR _acct IN ('agency', 'enterprise') THEN
-    RAISE EXCEPTION 'billing_recipient_top_level_solo_only' USING ERRCODE = '42501';
+  IF NOT COALESCE(_found, false) OR _parent IS NOT NULL OR _acct IN ('agency', 'enterprise', 'sub_account') THEN
+    RAISE EXCEPTION 'billing_contact_top_level_solo_only' USING ERRCODE = '42501';
   END IF;
 
   SELECT m.role::text INTO _role
@@ -175,28 +192,28 @@ BEGIN
   WHERE m.tenant_id = NEW.tenant_id AND m.user_id = NEW.user_id AND m.status = 'active'
   LIMIT 1;
   IF _role IS NULL THEN
-    RAISE EXCEPTION 'billing_recipient_not_member' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'billing_contact_not_member' USING ERRCODE = '42501';
   END IF;
   -- Ownership is the canonical is_owner predicate (20260803190000), never role = 'owner'.
-  IF NEW.designation = 'billing_owner' AND NOT public.is_tenant_owner(NEW.user_id, NEW.tenant_id) THEN
-    RAISE EXCEPTION 'billing_recipient_not_owner' USING ERRCODE = '42501';
+  IF NEW.designation = 'primary_contact' AND NOT public.is_tenant_owner(NEW.user_id, NEW.tenant_id) THEN
+    RAISE EXCEPTION 'billing_contact_primary_requires_owner' USING ERRCODE = '42501';
   END IF;
-  IF NEW.designation = 'billing_delegate' AND _role <> 'admin' THEN
-    RAISE EXCEPTION 'billing_recipient_not_admin' USING ERRCODE = '42501';
+  IF NEW.designation = 'delegate' AND _role <> 'admin' THEN
+    RAISE EXCEPTION 'billing_contact_delegate_requires_admin' USING ERRCODE = '42501';
   END IF;
   -- Verified email delivery only (R23): an unverified address is never designated.
   SELECT (u.email_confirmed_at IS NOT NULL) INTO _verified FROM auth.users u WHERE u.id = NEW.user_id;
   IF NOT COALESCE(_verified, false) THEN
-    RAISE EXCEPTION 'billing_recipient_email_unverified' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'billing_contact_email_unverified' USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.platform_billing_recipient_guard() FROM PUBLIC, anon, authenticated;
-DROP TRIGGER IF EXISTS trg_platform_billing_recipient_guard ON public.platform_billing_recipients;
-CREATE TRIGGER trg_platform_billing_recipient_guard
-  BEFORE INSERT OR UPDATE ON public.platform_billing_recipients
-  FOR EACH ROW EXECUTE FUNCTION public.platform_billing_recipient_guard();
+REVOKE ALL ON FUNCTION public.platform_billing_contact_guard() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS trg_platform_billing_contact_guard ON public.platform_billing_contacts;
+CREATE TRIGGER trg_platform_billing_contact_guard
+  BEFORE INSERT OR UPDATE ON public.platform_billing_contacts
+  FOR EACH ROW EXECUTE FUNCTION public.platform_billing_contact_guard();
 
 -- ── 1c. The delivery ledger (R25): every future billing-notice attempt and outcome lands here ─
 -- NO writer exists in Foundation A. Delivery is a later release with its own mail-provider
@@ -206,7 +223,7 @@ CREATE TRIGGER trg_platform_billing_recipient_guard
 CREATE TABLE IF NOT EXISTS public.platform_billing_notification_log (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id           uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
-  recipient_id        uuid NULL REFERENCES public.platform_billing_recipients(id) ON DELETE SET NULL,
+  contact_id        uuid NULL REFERENCES public.platform_billing_contacts(id) ON DELETE SET NULL,
   recipient_user_id   uuid NOT NULL,
   event               text NOT NULL CHECK (event IN (
                         'trial_ending', 'plan_changed', 'invoice_receipt', 'payment_failed',
@@ -238,8 +255,8 @@ COMMENT ON TABLE public.platform_billing_notification_log IS
 
 ALTER TABLE public.platform_billing_notification_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_billing_notification_log FORCE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.platform_billing_notification_log FROM PUBLIC, anon;
-GRANT SELECT ON TABLE public.platform_billing_notification_log TO authenticated;   -- RLS narrows to operators
+REVOKE ALL ON TABLE public.platform_billing_notification_log FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.platform_billing_notification_log TO authenticated;   -- RLS narrows: operators read, platform owner writes
 GRANT ALL    ON TABLE public.platform_billing_notification_log TO service_role;
 
 DROP POLICY IF EXISTS pbnl_operator_read ON public.platform_billing_notification_log;
@@ -276,29 +293,55 @@ COMMENT ON FUNCTION public.billing_active_tenant_id() IS
   'No agency/operator/oldest-membership fallback — a money path never guesses a workspace.';
 
 -- ── 3. The ONE read: what may this caller do about platform billing, here? (§10 Paige-callable)
+-- The ONE definition of "every LAYER-1 customer id this workspace has ever been recorded with"
+-- (§18): platform_subscriptions.stripe_customer_id ∪ tenants.stripe_customer_id. The read and the
+-- reconcile both call it; a fourth source is added here and nowhere else.
+CREATE OR REPLACE FUNCTION public.platform_billing_layer1_customer_ids(p_tenant_id uuid)
+RETURNS text[]
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COALESCE(array_agg(DISTINCT s.cid), '{}'::text[])
+  FROM (
+    SELECT ps.stripe_customer_id AS cid
+    FROM public.platform_subscriptions ps
+    WHERE ps.tenant_id = p_tenant_id AND ps.stripe_customer_id IS NOT NULL
+    UNION
+    SELECT t.stripe_customer_id
+    FROM public.tenants t
+    WHERE t.id = p_tenant_id AND t.stripe_customer_id IS NOT NULL
+  ) s;
+$$;
+REVOKE ALL ON FUNCTION public.platform_billing_layer1_customer_ids(uuid) FROM PUBLIC, anon, authenticated;
+COMMENT ON FUNCTION public.platform_billing_layer1_customer_ids(uuid) IS
+  'Billing Foundation A (internal; no app-role EXECUTE): the distinct LAYER-1 Stripe customer ids ever '
+  'recorded for a tenant — platform_subscriptions.stripe_customer_id ∪ tenants.stripe_customer_id. '
+  'The single definition behind get_workspace_billing_authority() and platform_billing_account_reconcile().';
+
 -- A private predicate shared by the read and by the paid-activation gate: how many LIVE
--- billing_owner designations still name a verified, current Owner of this top-level Solo workspace.
-CREATE OR REPLACE FUNCTION public.platform_billing_verified_owner_count(p_tenant_id uuid)
+-- primary_contact designations still name a verified, current Owner of this top-level Solo workspace.
+CREATE OR REPLACE FUNCTION public.platform_billing_verified_primary_contact_count(p_tenant_id uuid)
 RETURNS integer
 LANGUAGE sql
 STABLE SECURITY DEFINER
 SET search_path = public
 AS $$
   SELECT count(*)::int
-  FROM public.platform_billing_recipients r
+  FROM public.platform_billing_contacts r
   JOIN auth.users u ON u.id = r.user_id
   JOIN public.tenants t ON t.id = r.tenant_id
   WHERE r.tenant_id = p_tenant_id
-    AND r.designation = 'billing_owner'
+    AND r.designation = 'primary_contact'
     AND r.revoked_at IS NULL
     AND t.parent_tenant_id IS NULL
-    AND t.account_type NOT IN ('agency', 'enterprise')
+    AND t.account_type NOT IN ('agency', 'enterprise', 'sub_account')
     AND u.email_confirmed_at IS NOT NULL
     AND public.is_tenant_owner(r.user_id, r.tenant_id);
 $$;
-REVOKE ALL ON FUNCTION public.platform_billing_verified_owner_count(uuid) FROM PUBLIC, anon, authenticated;
-COMMENT ON FUNCTION public.platform_billing_verified_owner_count(uuid) IS
-  'Billing Foundation A (internal; no app-role EXECUTE): live billing_owner designations that still '
+REVOKE ALL ON FUNCTION public.platform_billing_verified_primary_contact_count(uuid) FROM PUBLIC, anon, authenticated;
+COMMENT ON FUNCTION public.platform_billing_verified_primary_contact_count(uuid) IS
+  'Billing Foundation A (internal; no app-role EXECUTE): live primary_contact designations that still '
   'name a verified, current Owner of a top-level Solo workspace. Used by the authority read and by '
   'platform_billing_paid_activation_ready().';
 
@@ -312,7 +355,7 @@ RETURNS TABLE(
   can_view_billing boolean,         -- R22: separate from manage; Owner-only in A
   receives_billing_notices boolean, -- R22: the caller holds a LIVE designation here
   billing_contact_state text,       -- not_applicable | none | designated | designated_needs_attention
-  paid_activation_ready boolean     -- R19: ≥1 verified, current Owner designated billing_owner
+  paid_activation_ready boolean     -- R19: ≥1 verified, current Owner designated primary_contact
 )
 LANGUAGE plpgsql
 STABLE SECURITY DEFINER
@@ -339,7 +382,7 @@ BEGIN
   END IF;
 
   SELECT CASE
-           WHEN t.parent_tenant_id IS NOT NULL THEN 'sub_account'
+           WHEN t.parent_tenant_id IS NOT NULL OR t.account_type = 'sub_account' THEN 'sub_account'
            WHEN t.account_type = 'agency'     THEN 'agency'
            WHEN t.account_type = 'enterprise' THEN 'enterprise'
            ELSE 'top_level_solo'
@@ -363,43 +406,34 @@ BEGIN
   IF _scope <> 'top_level_solo' THEN
     _state := 'not_applicable';
   ELSE
-    -- Every LAYER-1 customer id this workspace has ever been recorded with.
-    SELECT array_agg(DISTINCT s.cid) INTO _ids
-    FROM (
-      SELECT ps.stripe_customer_id AS cid
-      FROM public.platform_subscriptions ps
-      WHERE ps.tenant_id = _t AND ps.stripe_customer_id IS NOT NULL
-      UNION
-      SELECT t.stripe_customer_id
-      FROM public.tenants t
-      WHERE t.id = _t AND t.stripe_customer_id IS NOT NULL
-    ) s;
+    -- Every LAYER-1 customer id this workspace has ever been recorded with (one definition, §18).
+    _ids := public.platform_billing_layer1_customer_ids(_t);
 
     SELECT a.stripe_customer_id INTO _mapped
     FROM public.platform_billing_accounts a WHERE a.tenant_id = _t;
 
     IF _mapped IS NOT NULL THEN
       -- Mapped, and no LAYER-1 record disagrees with the mapping → mapped; otherwise ambiguous.
-      IF EXISTS (SELECT 1 FROM unnest(COALESCE(_ids, '{}'::text[])) u WHERE u <> _mapped) THEN
+      IF EXISTS (SELECT 1 FROM unnest(_ids) u WHERE u <> _mapped) THEN
         _state := 'ambiguous';
       ELSE
         _state := 'mapped';
       END IF;
-    ELSIF _ids IS NOT NULL AND array_length(_ids, 1) > 1 THEN
+    ELSIF cardinality(_ids) > 1 THEN
       _state := 'ambiguous';   -- two customers, no decision made: never guess (R13)
     ELSE
       _state := 'absent';      -- no mapping row; reconcile may create one if exactly one id exists
     END IF;
 
-    -- Recipients (R18–R22). Receiving is a designation, never a role; viewing/managing stay Owner-only.
+    -- Billing contacts (R18–R22). Receiving is a designation, never a role; viewing/managing stay Owner-only.
     _receives := EXISTS (
-      SELECT 1 FROM public.platform_billing_recipients r
+      SELECT 1 FROM public.platform_billing_contacts r
       WHERE r.tenant_id = _t AND r.user_id = auth.uid() AND r.revoked_at IS NULL
     );
     SELECT count(*)::int INTO _live
-    FROM public.platform_billing_recipients r
-    WHERE r.tenant_id = _t AND r.designation = 'billing_owner' AND r.revoked_at IS NULL;
-    _verified := public.platform_billing_verified_owner_count(_t);
+    FROM public.platform_billing_contacts r
+    WHERE r.tenant_id = _t AND r.designation = 'primary_contact' AND r.revoked_at IS NULL;
+    _verified := public.platform_billing_verified_primary_contact_count(_t);
     _contact := CASE
                   WHEN _live = 0     THEN 'none'
                   WHEN _verified = 0 THEN 'designated_needs_attention'  -- named, but no longer a verified current Owner
@@ -421,7 +455,7 @@ COMMENT ON FUNCTION public.get_workspace_billing_authority() IS
   'mapping state. Never returns a Stripe identifier. can_manage_billing / can_view_billing = '
   'is_tenant_owner() AND top-level Solo (R2, R22 — separate fields on purpose); '
   'receives_billing_notices = the caller holds a live designation (R22); billing_contact_state and '
-  'paid_activation_ready say whether a verified Owner is designated billing owner (R19). '
+  'paid_activation_ready say whether a verified Owner is designated primary billing contact (R19). '
   'billing_account_state distinguishes absent / ambiguous / not_applicable so no caller can render '
   '"no subscription" for a skipped or unsupported read (R8).';
 
@@ -444,34 +478,32 @@ BEGIN
   END IF;
 
   CREATE TEMP TABLE _pba_agg ON COMMIT DROP AS
-  WITH ids AS (
-    SELECT t.id AS tenant_id, x.cid
-    FROM public.tenants t
-    JOIN LATERAL (
-      SELECT ps.stripe_customer_id AS cid
-      FROM public.platform_subscriptions ps
-      WHERE ps.tenant_id = t.id AND ps.stripe_customer_id IS NOT NULL
-      UNION
-      SELECT t.stripe_customer_id WHERE t.stripe_customer_id IS NOT NULL
-    ) x ON true
-    WHERE t.parent_tenant_id IS NULL
-      AND EXISTS (
-        SELECT 1 FROM public.platform_subscriptions ps2
-        WHERE ps2.tenant_id = t.id AND ps2.stripe_customer_id IS NOT NULL
-      )
-  )
-  SELECT tenant_id, array_agg(DISTINCT cid) AS cids FROM ids GROUP BY tenant_id;
+  SELECT t.id AS tenant_id, public.platform_billing_layer1_customer_ids(t.id) AS cids
+  FROM public.tenants t
+  WHERE t.parent_tenant_id IS NULL
+    AND t.account_type IS DISTINCT FROM 'sub_account'
+    AND EXISTS (
+      SELECT 1 FROM public.platform_subscriptions ps2
+      WHERE ps2.tenant_id = t.id AND ps2.stripe_customer_id IS NOT NULL
+    );
 
   SELECT count(*),
-         COALESCE(array_agg(tenant_id) FILTER (WHERE array_length(cids, 1) > 1), '{}')
+         COALESCE(array_agg(tenant_id) FILTER (WHERE cardinality(cids) > 1), '{}')
     INTO _candidates, _ambiguous
   FROM _pba_agg;
 
-  -- A customer id recorded against MORE THAN ONE workspace is never mapped silently either.
-  SELECT COALESCE(array_agg(cid), '{}') INTO _shared
+  -- A customer id recorded against MORE THAN ONE workspace (in ANY arity), or already mapped to a
+  -- DIFFERENT workspace, is never mapped silently either — it is returned for a person to resolve.
+  SELECT COALESCE(array_agg(DISTINCT cid), '{}') INTO _shared
   FROM (
-    SELECT cids[1] AS cid FROM _pba_agg WHERE array_length(cids, 1) = 1
-    GROUP BY cids[1] HAVING count(*) > 1
+    SELECT u.cid FROM _pba_agg a, unnest(a.cids) AS u(cid)
+    GROUP BY u.cid HAVING count(DISTINCT a.tenant_id) > 1
+    UNION
+    SELECT u.cid
+    FROM _pba_agg a
+    CROSS JOIN LATERAL unnest(a.cids) AS u(cid)
+    JOIN public.platform_billing_accounts m
+      ON m.stripe_customer_id = u.cid AND m.tenant_id <> a.tenant_id
   ) d;
 
   -- ON THE lint_migrations.py PATTERN-2 WARNING (INSERT … SELECT), answered here rather than
@@ -486,9 +518,9 @@ BEGIN
   INSERT INTO public.platform_billing_accounts (tenant_id, stripe_customer_id, stripe_account, source)
   SELECT a.tenant_id, a.cids[1], 'legacy', 'backfill_subscription'
   FROM _pba_agg a
-  WHERE array_length(a.cids, 1) = 1
+  WHERE cardinality(a.cids) = 1
     AND NOT (a.cids[1] = ANY (_shared))
-  ON CONFLICT (tenant_id) DO NOTHING;
+  ON CONFLICT DO NOTHING;   -- either unique (tenant, or customer-per-account): an existing row wins, never an abort
   GET DIAGNOSTICS _inserted = ROW_COUNT;
 
   DROP TABLE IF EXISTS _pba_agg;
@@ -512,7 +544,7 @@ COMMENT ON FUNCTION public.platform_billing_account_reconcile() IS
 -- ── 4b. Designation seams (§10 Paige-callable): the Owner names who receives billing notices ─
 -- A private resolver every designation seam shares: the caller's active workspace, IFF it is a
 -- top-level Solo workspace AND the caller is its Owner. Raises otherwise — never a fallback.
-CREATE OR REPLACE FUNCTION public.platform_billing_owner_workspace()
+CREATE OR REPLACE FUNCTION public.platform_billing_workspace_owner_scope()
 RETURNS uuid
 LANGUAGE plpgsql
 STABLE SECURITY DEFINER
@@ -528,22 +560,22 @@ BEGIN
     RAISE EXCEPTION 'no_active_workspace' USING ERRCODE = '42501';
   END IF;
   SELECT t.parent_tenant_id, t.account_type INTO _parent, _acct FROM public.tenants t WHERE t.id = _t;
-  IF _parent IS NOT NULL OR _acct IN ('agency', 'enterprise') THEN
+  IF _parent IS NOT NULL OR _acct IN ('agency', 'enterprise', 'sub_account') THEN
     RAISE EXCEPTION 'billing_not_applicable' USING ERRCODE = '42501';
   END IF;
   IF NOT public.is_tenant_owner(auth.uid(), _t) THEN
-    RAISE EXCEPTION 'billing_owner_only' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'billing_workspace_owner_only' USING ERRCODE = '42501';
   END IF;
   RETURN _t;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.platform_billing_owner_workspace() FROM PUBLIC, anon, authenticated;
-COMMENT ON FUNCTION public.platform_billing_owner_workspace() IS
+REVOKE ALL ON FUNCTION public.platform_billing_workspace_owner_scope() FROM PUBLIC, anon, authenticated;
+COMMENT ON FUNCTION public.platform_billing_workspace_owner_scope() IS
   'Billing Foundation A (internal; no app-role EXECUTE): the caller''s active top-level Solo workspace '
   'iff the caller is its Owner (strict resolver + is_tenant_owner). Raises no_active_workspace / '
-  'billing_not_applicable / billing_owner_only. Shared by every designation seam.';
+  'billing_not_applicable / billing_workspace_owner_only. Shared by every designation seam.';
 
-CREATE OR REPLACE FUNCTION public.platform_billing_recipient_designate(p_user_id uuid, p_designation text)
+CREATE OR REPLACE FUNCTION public.platform_billing_contact_designate(p_user_id uuid, p_designation text)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -553,37 +585,45 @@ DECLARE
   _t  uuid;
   _id uuid;
 BEGIN
-  _t := public.platform_billing_owner_workspace();
-  IF p_designation NOT IN ('billing_owner', 'billing_delegate') THEN
-    RAISE EXCEPTION 'billing_recipient_bad_designation' USING ERRCODE = '22023';
+  _t := public.platform_billing_workspace_owner_scope();
+  -- One designation act at a time per workspace: the duplicate pre-check and the last-contact rule
+  -- in revoke are read-then-write, so both serialize on the workspace for the transaction.
+  PERFORM pg_advisory_xact_lock(hashtext('platform_billing_contacts:' || _t::text));
+  IF p_designation NOT IN ('primary_contact', 'delegate') THEN
+    RAISE EXCEPTION 'billing_contact_bad_designation' USING ERRCODE = '22023';
   END IF;
   IF p_user_id IS NULL THEN
-    RAISE EXCEPTION 'billing_recipient_bad_user' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'billing_contact_bad_user' USING ERRCODE = '22023';
   END IF;
-  IF EXISTS (SELECT 1 FROM public.platform_billing_recipients r
+  IF EXISTS (SELECT 1 FROM public.platform_billing_contacts r
              WHERE r.tenant_id = _t AND r.user_id = p_user_id AND r.revoked_at IS NULL) THEN
-    RAISE EXCEPTION 'billing_recipient_already_designated' USING ERRCODE = '23505';
+    RAISE EXCEPTION 'billing_contact_already_designated' USING ERRCODE = '23505';
   END IF;
-  -- Eligibility (member, owner-for-billing_owner, admin-for-delegate, verified email, top-level
-  -- Solo) is enforced by trg_platform_billing_recipient_guard and surfaces as its named error.
-  INSERT INTO public.platform_billing_recipients (tenant_id, user_id, designation, designated_by)
-  VALUES (_t, p_user_id, p_designation, auth.uid())
-  RETURNING id INTO _id;
+  -- Eligibility (member, owner-for-primary_contact, admin-for-delegate, verified email, top-level
+  -- Solo) is enforced by trg_platform_billing_contact_guard and surfaces as its named error.
+  BEGIN
+    INSERT INTO public.platform_billing_contacts (tenant_id, user_id, designation, designated_by)
+    VALUES (_t, p_user_id, p_designation, auth.uid())
+    RETURNING id INTO _id;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'billing_contact_already_designated' USING ERRCODE = '23505';
+  END;
   -- Same transaction as the designation (R25): recorded and done cannot disagree.
   INSERT INTO public.paige_audit_log (actor_user_id, actor_role, action, target_type, target_id, tenant_id, payload)
-  VALUES (auth.uid(), 'owner', 'platform_billing_recipient_designated', 'platform_billing_recipient', _id, _t,
+  VALUES (auth.uid(), 'owner', 'platform_billing_contact_designated', 'platform_billing_contact', _id, _t,
           jsonb_build_object('designation', p_designation, 'recipient_user_id', p_user_id));
   RETURN jsonb_build_object('id', _id, 'designation', p_designation);
 END;
 $$;
-REVOKE ALL ON FUNCTION public.platform_billing_recipient_designate(uuid, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.platform_billing_recipient_designate(uuid, text) TO authenticated;
-COMMENT ON FUNCTION public.platform_billing_recipient_designate(uuid, text) IS
-  'Billing Foundation A (§10): the Owner of a top-level Solo workspace designates a verified Owner '
-  'as billing_owner or a current, active Admin as billing_delegate (R18–R23). Caller-derived '
-  'workspace; body-supplied user must be an existing active member. Audited in the same transaction.';
+REVOKE ALL ON FUNCTION public.platform_billing_contact_designate(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.platform_billing_contact_designate(uuid, text) TO authenticated;
+COMMENT ON FUNCTION public.platform_billing_contact_designate(uuid, text) IS
+  'Billing Foundation A (§10): the Owner of a top-level Solo workspace designates a verified, current '
+  'Owner as primary_contact or a verified, current Admin as delegate (R18–R23). A functional billing '
+  'designation only — never a change of ownership (R27). Caller-derived workspace; body-supplied user '
+  'must be an existing active member. Audited in the same transaction.';
 
-CREATE OR REPLACE FUNCTION public.platform_billing_recipient_revoke(p_recipient_id uuid)
+CREATE OR REPLACE FUNCTION public.platform_billing_contact_revoke(p_contact_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -594,47 +634,48 @@ DECLARE
   _des text;
   _uid uuid;
 BEGIN
-  _t := public.platform_billing_owner_workspace();
+  _t := public.platform_billing_workspace_owner_scope();
+  PERFORM pg_advisory_xact_lock(hashtext('platform_billing_contacts:' || _t::text));
   SELECT r.designation, r.user_id INTO _des, _uid
-  FROM public.platform_billing_recipients r
-  WHERE r.id = p_recipient_id AND r.tenant_id = _t AND r.revoked_at IS NULL;
+  FROM public.platform_billing_contacts r
+  WHERE r.id = p_contact_id AND r.tenant_id = _t AND r.revoked_at IS NULL;
   IF _des IS NULL THEN
-    RAISE EXCEPTION 'billing_recipient_not_found' USING ERRCODE = 'P0002';
+    RAISE EXCEPTION 'billing_contact_not_found' USING ERRCODE = 'P0002';
   END IF;
-  -- A subscribed workspace never loses its last billing owner (R19): revoke blocks, it never guesses.
-  IF _des = 'billing_owner'
-     AND NOT EXISTS (SELECT 1 FROM public.platform_billing_recipients o
-                     WHERE o.tenant_id = _t AND o.designation = 'billing_owner'
-                       AND o.revoked_at IS NULL AND o.id <> p_recipient_id)
+  -- A subscribed workspace never loses its last primary billing contact (R19): revoke blocks, it never guesses.
+  IF _des = 'primary_contact'
+     AND NOT EXISTS (SELECT 1 FROM public.platform_billing_contacts o
+                     WHERE o.tenant_id = _t AND o.designation = 'primary_contact'
+                       AND o.revoked_at IS NULL AND o.id <> p_contact_id)
      AND EXISTS (SELECT 1 FROM public.platform_subscriptions ps
                  WHERE ps.tenant_id = _t AND ps.status IN ('active', 'trialing', 'past_due')) THEN
-    RAISE EXCEPTION 'billing_owner_required_while_subscribed' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'billing_primary_contact_required_while_subscribed' USING ERRCODE = '42501';
   END IF;
-  UPDATE public.platform_billing_recipients
+  UPDATE public.platform_billing_contacts
      SET revoked_at = now(), revoked_by = auth.uid()
-   WHERE id = p_recipient_id;
+   WHERE id = p_contact_id;
   INSERT INTO public.paige_audit_log (actor_user_id, actor_role, action, target_type, target_id, tenant_id, payload)
-  VALUES (auth.uid(), 'owner', 'platform_billing_recipient_revoked', 'platform_billing_recipient', p_recipient_id, _t,
+  VALUES (auth.uid(), 'owner', 'platform_billing_contact_revoked', 'platform_billing_contact', p_contact_id, _t,
           jsonb_build_object('designation', _des, 'recipient_user_id', _uid));
-  RETURN jsonb_build_object('id', p_recipient_id, 'revoked', true);
+  RETURN jsonb_build_object('id', p_contact_id, 'revoked', true);
 END;
 $$;
-REVOKE ALL ON FUNCTION public.platform_billing_recipient_revoke(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.platform_billing_recipient_revoke(uuid) TO authenticated;
-COMMENT ON FUNCTION public.platform_billing_recipient_revoke(uuid) IS
+REVOKE ALL ON FUNCTION public.platform_billing_contact_revoke(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.platform_billing_contact_revoke(uuid) TO authenticated;
+COMMENT ON FUNCTION public.platform_billing_contact_revoke(uuid) IS
   'Billing Foundation A (§10): the Owner revokes a live designation in their own top-level Solo '
-  'workspace. Refuses to remove the last billing_owner while a platform subscription is active / '
+  'workspace. Refuses to remove the last primary_contact while a platform subscription is active / '
   'trialing / past_due (R19). Audited in the same transaction.';
 
-CREATE OR REPLACE FUNCTION public.get_workspace_billing_recipients()
+CREATE OR REPLACE FUNCTION public.get_workspace_billing_contacts()
 RETURNS TABLE(
   id uuid,
   user_id uuid,
-  designation text,           -- billing_owner | billing_delegate
+  designation text,           -- primary_contact | delegate
   role text,                  -- the recipient's current active tenant_members.role, or null
   display_name text,
   email_verified boolean,
-  still_eligible boolean,     -- billing_owner: still a verified current Owner · delegate: still a verified active Admin
+  still_eligible boolean,     -- primary_contact: still a verified current Owner · delegate: still a verified active Admin
   designated_at timestamptz,
   designated_by uuid
 )
@@ -644,18 +685,18 @@ SET search_path = public
 AS $$
 DECLARE _t uuid;
 BEGIN
-  _t := public.platform_billing_owner_workspace();   -- R22: viewing billing is Owner-only in A
+  _t := public.platform_billing_workspace_owner_scope();   -- R22: viewing billing is Owner-only in A
   RETURN QUERY
   SELECT r.id, r.user_id, r.designation,
          m.role::text,
          p.full_name,
          (u.email_confirmed_at IS NOT NULL),
          (u.email_confirmed_at IS NOT NULL) AND CASE
-            WHEN r.designation = 'billing_owner' THEN public.is_tenant_owner(r.user_id, r.tenant_id)
+            WHEN r.designation = 'primary_contact' THEN public.is_tenant_owner(r.user_id, r.tenant_id)
             ELSE m.role::text = 'admin'
          END,
          r.designated_at, r.designated_by
-  FROM public.platform_billing_recipients r
+  FROM public.platform_billing_contacts r
   LEFT JOIN public.tenant_members m
          ON m.tenant_id = r.tenant_id AND m.user_id = r.user_id AND m.status = 'active'
   LEFT JOIN public.profiles p ON p.user_id = r.user_id
@@ -664,11 +705,11 @@ BEGIN
   ORDER BY r.designated_at;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.get_workspace_billing_recipients() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.get_workspace_billing_recipients() TO authenticated;
-COMMENT ON FUNCTION public.get_workspace_billing_recipients() IS
+REVOKE ALL ON FUNCTION public.get_workspace_billing_contacts() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_workspace_billing_contacts() TO authenticated;
+COMMENT ON FUNCTION public.get_workspace_billing_contacts() IS
   'Billing Foundation A (§10): the Owner''s read of the live billing-notice recipients of their own '
-  'top-level Solo workspace. Raises billing_owner_only / billing_not_applicable / no_active_workspace '
+  'top-level Solo workspace. Raises billing_workspace_owner_only / billing_not_applicable / no_active_workspace '
   'for anyone else — never an empty set that could be mistaken for "no recipients" (R8). Returns '
   'names and verification/eligibility flags, never an email address.';
 
@@ -684,14 +725,14 @@ BEGIN
   IF auth.uid() IS NOT NULL AND NOT public.is_platform_operator() THEN
     RAISE EXCEPTION 'platform_billing_paid_activation_ready_forbidden' USING ERRCODE = '42501';
   END IF;
-  RETURN public.platform_billing_verified_owner_count(p_tenant_id) > 0;
+  RETURN public.platform_billing_verified_primary_contact_count(p_tenant_id) > 0;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.platform_billing_paid_activation_ready(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.platform_billing_paid_activation_ready(uuid) TO authenticated, service_role;
 COMMENT ON FUNCTION public.platform_billing_paid_activation_ready(uuid) IS
   'Billing Foundation A (R19): true iff the top-level Solo workspace has at least one live '
-  'billing_owner designation naming a verified, current Owner. The paid-activation release MUST call '
+  'primary_contact designation naming a verified, current Owner. The paid-activation release MUST call '
   'this before creating any paid platform subscription. Service/operator callers only (42501 otherwise).';
 
 -- ── 5. Run the backfill once, here, and say what it did ─────────────────────────────────────

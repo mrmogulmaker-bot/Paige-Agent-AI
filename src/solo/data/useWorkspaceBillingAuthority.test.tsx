@@ -44,6 +44,13 @@ const adminRow = (tenant: string) => ({
   error: null,
 });
 
+/** The shape @supabase/functions-js really returns for a non-2xx: the code is only in the body. */
+const httpRefusal = (code: string, status = 403) => ({
+  data: null,
+  error: { name: "FunctionsHttpError", message: "Edge Function returned a non-2xx status code",
+           context: new Response(JSON.stringify({ error: code }), { status, headers: { "content-type": "application/json" } }) },
+});
+
 let root: Root | null = null;
 let seen: Array<ReturnType<typeof useWorkspaceBillingAuthority>> = [];
 function Probe() {
@@ -198,18 +205,34 @@ describe("useWorkspaceBillingAuthority — openPortal", () => {
     expect(harness.open).not.toHaveBeenCalled();
   });
 
-  it("maps every server refusal to owner copy and opens nothing", async () => {
+  it("maps every server refusal — delivered as the REAL non-2xx transport shape — to owner copy and opens nothing", async () => {
     harness.rpc.mockResolvedValue(adminRow("tenant-a"));
     mount();
     await flush();
-    for (const code of ["owner_only", "not_applicable_scope", "billing_account_absent", "billing_account_ambiguous", "not_enabled", "needs_config", "audit_failed", "billing_account_unresolvable"] as const) {
-      harness.invoke.mockResolvedValueOnce({ data: { error: code }, error: null });
+    const statuses: Record<string, number> = { billing_account_absent: 409, billing_account_ambiguous: 409, billing_account_unresolvable: 409, needs_config: 503, audit_failed: 500 };
+    for (const code of ["owner_only", "not_applicable_scope", "billing_account_absent", "billing_account_ambiguous", "not_enabled", "needs_config", "audit_failed", "billing_account_unresolvable", "no_active_workspace", "authority_unreadable"] as const) {
+      harness.invoke.mockResolvedValueOnce(httpRefusal(code, statuses[code] ?? 403));
       let result: unknown;
       await act(async () => { result = await latest().openPortal(); });
       expect(result).toEqual({ ok: false, reason: code });
       expect(PORTAL_REFUSAL_COPY[code]).toMatch(/\S/);
     }
     expect(harness.open).not.toHaveBeenCalled();
+  });
+
+  it("an act started while the authority read is in flight never orphans the read", async () => {
+    let resolveRead!: (v: unknown) => void;
+    harness.rpc.mockImplementationOnce(() => new Promise((r) => { resolveRead = r; }));
+    harness.invoke.mockResolvedValueOnce(httpRefusal("owner_only"));
+    mount();
+    expect(latest().loading).toBe(true);
+    let result: unknown;
+    await act(async () => { result = await latest().openPortal(); });
+    expect(result).toEqual({ ok: false, reason: "owner_only" });
+    await act(async () => { resolveRead(ownerRow("tenant-a")); await Promise.resolve(); });
+    await flush();
+    expect(latest().loading).toBe(false);
+    expect(latest().authority?.canManageBilling).toBe(true);
   });
 
   it("a transport failure is 'network' with retry copy, never a guessed refusal", async () => {
@@ -225,12 +248,18 @@ describe("useWorkspaceBillingAuthority — openPortal", () => {
 });
 
 describe("decidePortalOpen — the pure contract", () => {
-  it("needs both a url and the matching tenant id", () => {
-    expect(decidePortalOpen("t1", { data: { url: "https://x", tenant_id: "t1" }, error: null })).toEqual({ open: "https://x" });
-    expect(decidePortalOpen("t1", { data: { url: "https://x" }, error: null })).toEqual({ refuse: "network" });
-    expect(decidePortalOpen(null, { data: { url: "https://x", tenant_id: "t1" }, error: null })).toEqual({ refuse: "workspace_changed" });
+  it("needs both a url and the matching tenant id", async () => {
+    expect(await decidePortalOpen("t1", { data: { url: "https://x", tenant_id: "t1" }, error: null })).toEqual({ open: "https://x" });
+    expect(await decidePortalOpen("t1", { data: { url: "https://x" }, error: null })).toEqual({ refuse: "network" });
+    expect(await decidePortalOpen(null, { data: { url: "https://x", tenant_id: "t1" }, error: null })).toEqual({ refuse: "workspace_changed" });
   });
-  it("an unknown error code is reported as network, never as an access decision", () => {
-    expect(decidePortalOpen("t1", { data: { error: "something_new" }, error: null })).toEqual({ refuse: "network" });
+  it("reads the refusal code from the non-2xx BODY, never from the generic error message", async () => {
+    expect(await decidePortalOpen("t1", httpRefusal("owner_only"))).toEqual({ refuse: "owner_only" });
+    expect(await decidePortalOpen("t1", { data: null, error: { message: "owner_only" } })).toEqual({ refuse: "network" });
+  });
+  it("still accepts a 2xx-with-error body, and an unknown code is network, never an access decision", async () => {
+    expect(await decidePortalOpen("t1", { data: { error: "owner_only" }, error: null })).toEqual({ refuse: "owner_only" });
+    expect(await decidePortalOpen("t1", { data: { error: "something_new" }, error: null })).toEqual({ refuse: "network" });
+    expect(await decidePortalOpen("t1", httpRefusal("something_new", 418))).toEqual({ refuse: "network" });
   });
 });

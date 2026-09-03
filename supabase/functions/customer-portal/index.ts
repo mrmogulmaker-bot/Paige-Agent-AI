@@ -8,7 +8,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const logStep = (step: string, details?: any) => {
+const logStep = (step: string, details?: Record<string, unknown>) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[CUSTOMER-PORTAL] ${step}${detailsStr}`);
 };
@@ -67,7 +67,10 @@ serve(async (req) => {
         target_type: "stripe_customer",
         target_id: null,
         payload: { reason: legacy.code },
-      }).then(() => {}, () => {});
+      }).then(
+        () => {},
+        (e: unknown) => console.error(`[CUSTOMER-PORTAL] refusal audit insert failed: ${(e as { code?: string })?.code ?? "unknown"}`),
+      );
       logStep("Refused", { reason: legacy.code });
       return new Response(JSON.stringify({ error: legacy.code }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -81,10 +84,8 @@ serve(async (req) => {
       return_url: `${origin}/dashboard`,
     });
     
-    logStep("Customer portal session created", { 
-      sessionId: portalSession.id, 
-      url: portalSession.url 
-    });
+    // The portal URL is a bearer-like session link: it is returned to the caller, never logged.
+    logStep("Customer portal session created", { sessionId: portalSession.id });
 
     return new Response(JSON.stringify({ url: portalSession.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

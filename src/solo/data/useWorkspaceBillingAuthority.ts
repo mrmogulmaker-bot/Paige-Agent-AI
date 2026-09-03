@@ -15,10 +15,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate } from "@/solo/settings-contract";
+import { readFunctionErrorBody } from "@/lib/integrations/connectError";
 
 export type BillingScope = "none" | "sub_account" | "agency" | "enterprise" | "top_level_solo";
 export type BillingAccountState = "not_applicable" | "mapped" | "ambiguous" | "absent";
-/** R19: whether a verified, current Owner is designated as the workspace's billing owner. */
+/** R19: whether a verified, current Owner is designated as the workspace's primary billing contact. */
 export type BillingContactState = "not_applicable" | "none" | "designated" | "designated_needs_attention";
 
 export interface WorkspaceBillingAuthority {
@@ -69,10 +70,10 @@ export const PORTAL_REFUSAL_COPY: Record<PortalRefusal, string> = {
   not_enabled: "Managing billing from here is not switched on yet.",
   no_active_workspace: "No workspace is selected, so there is no billing account to open.",
   not_applicable_scope: "Platform billing is not applicable to this account type yet.",
-  owner_only: "Billing is managed by the workspace owner. Ask them, or ask PAIGE to send the request.",
+  owner_only: "Billing is managed by the workspace owner. Ask them to open it.",
   billing_account_absent: "This workspace has no billing account linked yet. Nothing about your access has changed.",
   billing_account_ambiguous: "This workspace's billing records need a platform review before the portal can open. Nothing about your access has changed.",
-  billing_account_unresolvable: "The billing provider could not open this workspace's account. The platform has been notified.",
+  billing_account_unresolvable: "The billing provider could not open this workspace's account. The attempt was recorded for the platform to review.",
   needs_config: "Billing is not configured for this workspace on the platform side yet.",
   audit_failed: "The platform could not record this request, so the portal was not opened. Try again.",
   authority_unreadable: "Your billing permissions could not be read just now. Try again.",
@@ -92,18 +93,26 @@ function asContact(v: unknown): BillingContactState {
   return v === "none" || v === "designated" || v === "designated_needs_attention" ? v : "not_applicable";
 }
 
-/** Pure, tested: turn the function's response into a decision the hook can act on. */
-export function decidePortalOpen(
+/**
+ * Pure, tested: turn the function's response into a decision the hook can act on.
+ *
+ * The function answers every refusal as a NON-2xx with `{ error: code }` in the body. The Supabase
+ * functions client surfaces that as `{ data: null, error: FunctionsHttpError }` whose `.message` is
+ * the generic "Edge Function returned a non-2xx status code" and whose `.context` is the Response —
+ * so the code is read from the BODY through the repo's one helper (§18), never from `.message`.
+ * (Independent review of the first head caught the previous version reading a shape the transport
+ * never produces, which turned every refusal into `network`.)
+ */
+export async function decidePortalOpen(
   capturedTenantId: string | null,
   response: { data: unknown; error: unknown },
-): { open: string } | { refuse: PortalRefusal } {
-  if (response.error) {
-    const msg = String((response.error as { message?: string })?.message ?? "");
-    const code = msg && KNOWN.has(msg) ? (msg as PortalRefusal) : null;
-    return { refuse: code ?? "network" };
+): Promise<{ open: string } | { refuse: PortalRefusal }> {
+  if (response.error || (response.data && typeof (response.data as { error?: unknown }).error === "string")) {
+    const body = await readFunctionErrorBody(response.error, response.data);
+    const raw = body?.error;
+    return { refuse: typeof raw === "string" && KNOWN.has(raw) ? (raw as PortalRefusal) : "network" };
   }
-  const data = (response.data ?? {}) as { url?: unknown; tenant_id?: unknown; error?: unknown };
-  if (typeof data.error === "string") return { refuse: KNOWN.has(data.error) ? (data.error as PortalRefusal) : "network" };
+  const data = (response.data ?? {}) as { url?: unknown; tenant_id?: unknown };
   if (typeof data.url !== "string" || typeof data.tenant_id !== "string") return { refuse: "network" };
   if (!capturedTenantId || data.tenant_id !== capturedTenantId) return { refuse: "workspace_changed" };
   return { open: data.url };
@@ -112,6 +121,10 @@ export function decidePortalOpen(
 export function useWorkspaceBillingAuthority() {
   const { activeTenantId, loading: tenantLoading } = useTenantContext();
   const gate = useRef(createSettingsRequestGate());
+  // Acts compare against the LIVE workspace instead of bumping the read epoch, so an act started
+  // while the read is in flight never orphans the read (a review finding on the first head).
+  const tenantRef = useRef(activeTenantId);
+  tenantRef.current = activeTenantId;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authority, setAuthority] = useState<WorkspaceBillingAuthority | null>(null);
@@ -167,13 +180,13 @@ export function useWorkspaceBillingAuthority() {
 
   /** Opens the hosted portal for the workspace the click was made in, or explains why not. */
   const openPortal = useCallback(async (): Promise<PortalResult> => {
-    const captured = activeTenantId;
-    const token = gate.current.begin();
+    const captured = tenantRef.current;
     // No body: the server derives the workspace and the actor from the token alone.
     const response = await supabase.functions.invoke("platform-billing-portal");
-    const decision = decidePortalOpen(captured, response);
+    const decision = await decidePortalOpen(captured, response);
     // A response that arrives after the workspace changed is discarded, whatever it says.
-    const result: PortalResult = !gate.current.isCurrent(token)
+    const stillHere = tenantRef.current === captured;
+    const result: PortalResult = !stillHere
       ? { ok: false, reason: "workspace_changed" }
       : "open" in decision
         ? { ok: true }
@@ -181,9 +194,9 @@ export function useWorkspaceBillingAuthority() {
     if (result.ok && "open" in decision) {
       window.open(decision.open, "_blank", "noopener");
     }
-    if (gate.current.isCurrent(token)) setLastPortal(result);
+    if (stillHere) setLastPortal(result);
     return result;
-  }, [activeTenantId]);
+  }, []);
 
   return { loading: loading || tenantLoading, error, authority, lastPortal, refresh: load, openPortal };
 }

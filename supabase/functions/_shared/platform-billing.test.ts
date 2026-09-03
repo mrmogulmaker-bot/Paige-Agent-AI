@@ -52,6 +52,14 @@ function fakeAdmin(rows: Record<string, Array<Record<string, unknown>>>, failing
           : { data: (rows[name] ?? []).filter((r) => filters.every(([k, v]) => r[k] === v))[0] ?? null, error: null },
       ),
       insert: (row: Record<string, unknown>) => {
+        if (name === "platform_billing_accounts") {
+          const all = rows[name] ?? [];
+          // Mirror the two real uniques: tenant_id, and (stripe_account, stripe_customer_id).
+          if (all.some((r) => r.tenant_id === row.tenant_id) ||
+              all.some((r) => r.stripe_account === row.stripe_account && r.stripe_customer_id === row.stripe_customer_id)) {
+            return Promise.resolve({ error: { code: "23505" } });
+          }
+        }
         (rows[name] ??= []).push(row);
         return Promise.resolve({ error: null });
       },
@@ -95,4 +103,43 @@ Deno.test("upsertBillingAccount: inserts when absent; replay is already_mapped; 
   assertEquals(admin.rows.paige_audit_log[0].action, "platform_billing_account_conflict");
   // The audit payload names accounts and source only — never the customer ids.
   assertEquals(JSON.stringify(admin.rows.paige_audit_log[0].payload).includes("cus_"), false);
+});
+
+Deno.test("upsertBillingAccount: a concurrent replay that lost the insert race re-reads and answers already_mapped", async () => {
+  const admin = fakeAdmin({});
+  // Simulate the race: the first read sees nothing, but the row lands before our insert.
+  const realFrom = admin.from;
+  let reads = 0;
+  admin.from = (name: string) => {
+    const q = realFrom(name);
+    if (name === "platform_billing_accounts") {
+      const realMaybeSingle = q.maybeSingle;
+      q.maybeSingle = () => {
+        reads++;
+        if (reads === 1) {
+          (admin.rows.platform_billing_accounts ??= []).push({ tenant_id: "t1", stripe_customer_id: "cus_a", stripe_account: "legacy" });
+          return Promise.resolve({ data: null, error: null });
+        }
+        return realMaybeSingle();
+      };
+    }
+    return q;
+  };
+  assertEquals(await upsertBillingAccount(admin, { tenantId: "t1", stripeCustomerId: "cus_a", stripeAccount: "legacy", source: "checkout" }), { outcome: "already_mapped" });
+  assertEquals(admin.rows.paige_audit_log, undefined);
+});
+
+Deno.test("upsertBillingAccount: a customer already mapped to ANOTHER workspace is refused and audited as shared, ids out of the payload", async () => {
+  const admin = fakeAdmin({ platform_billing_accounts: [{ tenant_id: "t-other", stripe_customer_id: "cus_a", stripe_account: "legacy" }] });
+  const r = await upsertBillingAccount(admin, { tenantId: "t1", stripeCustomerId: "cus_a", stripeAccount: "legacy", source: "checkout" });
+  assertEquals(r, { outcome: "error", code: "mapping_customer_shared_across_workspaces" });
+  assertEquals(admin.rows.platform_billing_accounts.length, 1);
+  assertEquals(admin.rows.paige_audit_log.length, 1);
+  assertEquals((admin.rows.paige_audit_log[0].payload as { kind: string }).kind, "customer_shared_across_workspaces");
+  assertEquals(JSON.stringify(admin.rows.paige_audit_log[0].payload).includes("cus_"), false);
+});
+
+Deno.test("upsertBillingAccount: a client that THROWS is an error outcome, never a throw past the webhook", async () => {
+  const admin = { from: () => { throw new Error("boom"); } };
+  assertEquals(await upsertBillingAccount(admin, { tenantId: "t1", stripeCustomerId: "cus_a", stripeAccount: "legacy", source: "checkout" }), { outcome: "error", code: "mapping_threw" });
 });

@@ -19,7 +19,7 @@
 -- the report row (ord 0, res 'info'); nothing else in the batch differs from this file.
 --
 -- MUTATION-TESTED (transcript in the Gate B packet): scripts/sql/platform-billing-account-mutants.sql
--- installs the same migration and, in five savepoints, breaks it one way at a time — the resolver
+-- installs the same migration and breaks it five ways, one at a time — the resolver
 -- swapped for current_user_tenant_id(); the billing-owner predicate keyed on role='owner' instead of
 -- is_tenant_owner(); ambiguity collapsed into absent; the sub-account trigger dropped; the recipient
 -- guard trigger dropped — and asserts that the matching property here (P15, P48, P12, P7, P26) goes
@@ -35,12 +35,12 @@ CREATE TEMP TABLE _p(ord int, res text, label text) ON COMMIT DROP;
 -- ── Controls: the world BEFORE the migration ────────────────────────────────────────────────
 INSERT INTO _p SELECT 1, CASE WHEN to_regclass('public.platform_billing_accounts') IS NULL THEN 'ok' ELSE 'FAIL' END,
   'C1 control: platform_billing_accounts does not exist yet';
-INSERT INTO _p SELECT 2, CASE WHEN count(*)=0 AND to_regclass('public.platform_billing_recipients') IS NULL
+INSERT INTO _p SELECT 2, CASE WHEN count(*)=0 AND to_regclass('public.platform_billing_contacts') IS NULL
                                     AND to_regclass('public.platform_billing_notification_log') IS NULL THEN 'ok' ELSE 'FAIL' END,
   'C2 control: none of the functions, nor the recipients / notification-log tables, exist yet'
   FROM pg_proc WHERE proname IN ('billing_active_tenant_id','get_workspace_billing_authority','platform_billing_account_reconcile',
-                                 'platform_billing_recipient_designate','platform_billing_recipient_revoke',
-                                 'get_workspace_billing_recipients','platform_billing_paid_activation_ready');
+                                 'platform_billing_contact_designate','platform_billing_contact_revoke',
+                                 'get_workspace_billing_contacts','platform_billing_paid_activation_ready');
 
 -- ── Fixtures (as the owning role, so setup never depends on the policy under test) ─────────
 CREATE TEMP TABLE _f ON COMMIT DROP AS SELECT
@@ -51,6 +51,7 @@ CREATE TEMP TABLE _f ON COMMIT DROP AS SELECT
   'aaaaaaaa-0000-4000-8000-00000000a005'::uuid AS u_older,     -- owns solo_old but active_tenant_id is NULL
   'aaaaaaaa-0000-4000-8000-00000000a006'::uuid AS u_actas,     -- active_tenant_id points at solo_a, NO membership
   'aaaaaaaa-0000-4000-8000-00000000a007'::uuid AS u_admin_unv, -- admin of solo_a whose email is NOT verified
+  'aaaaaaaa-0000-4000-8000-00000000a008'::uuid AS u_agency,    -- owner of agency_p
   'bbbbbbbb-0000-4000-8000-00000000b001'::uuid AS solo_a,      -- top-level, ONE customer id → mapped by reconcile
   'bbbbbbbb-0000-4000-8000-00000000b002'::uuid AS solo_b,      -- top-level, TWO customer ids → ambiguous
   'bbbbbbbb-0000-4000-8000-00000000b003'::uuid AS solo_c,      -- top-level, no customer id → absent
@@ -67,7 +68,7 @@ INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, c
 SELECT u, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
        'pba-proof-' || substr(u::text, 33) || '@example.invalid', '', now(), now(),
        CASE WHEN u = u_admin_unv THEN NULL ELSE now() END
-FROM _f, unnest(ARRAY[u_owner,u_admin,u_member,u_sub_owner,u_older,u_actas,u_admin_unv]) AS u;
+FROM _f, unnest(ARRAY[u_owner,u_admin,u_member,u_sub_owner,u_older,u_actas,u_admin_unv,u_agency]) AS u;
 
 INSERT INTO public.tenants (id, slug, name, account_number_prefix, account_number, account_type, parent_tenant_id)
 SELECT solo_a,  'pba-proof-solo-a',  'PBA Proof Solo A',  'PBA', 980001, 'standalone', NULL::uuid FROM _f UNION ALL
@@ -87,7 +88,8 @@ SELECT solo_a,   u_admin,     'active', 'admin'::public.tenant_role,  false FROM
 SELECT solo_a,   u_member,    'active', 'member'::public.tenant_role, false FROM _f UNION ALL
 SELECT sub_x,    u_sub_owner, 'active', 'owner'::public.tenant_role,  true  FROM _f UNION ALL
 SELECT solo_old, u_older,     'active', 'owner'::public.tenant_role,  true  FROM _f UNION ALL
-SELECT solo_a,   u_admin_unv, 'active', 'admin'::public.tenant_role,  false FROM _f;
+SELECT solo_a,   u_admin_unv, 'active', 'admin'::public.tenant_role,  false FROM _f UNION ALL
+SELECT agency_p, u_agency,    'active', 'owner'::public.tenant_role,  true  FROM _f;
 
 -- handle_new_user() (AFTER INSERT ON auth.users) already created every profiles shell with a NULL
 -- active_tenant_id, so the pointer is set by UPDATE. trg_guard_active_tenant refuses a pointer at a
@@ -98,7 +100,8 @@ FROM (SELECT u_owner AS u, solo_a AS t FROM _f UNION ALL
       SELECT u_admin, solo_a FROM _f UNION ALL
       SELECT u_member, solo_a FROM _f UNION ALL
       SELECT u_sub_owner, sub_x FROM _f UNION ALL
-      SELECT u_admin_unv, solo_a FROM _f) v
+      SELECT u_admin_unv, solo_a FROM _f UNION ALL
+      SELECT u_agency, agency_p FROM _f) v
 WHERE p.user_id = v.u;
 -- u_older keeps the shell default (NULL active_tenant_id) — P22 asserts that premise.
 -- u_actas: pointed at solo_a with NO seat — the only way that shape arises in production is a seat
@@ -121,9 +124,10 @@ SELECT solo_b, plan_id, 'active',   'monthly', 'sub_pbaproof_b2', 'cus_pbaproof_
 \i supabase/migrations/20261044000000_platform_billing_accounts_foundation_a.sql
 
 -- ── Reconcile outcome ───────────────────────────────────────────────────────────────────────
-INSERT INTO _p SELECT 3, CASE WHEN a.stripe_customer_id = 'cus_pbaproof_A' AND a.stripe_account='legacy' AND a.source='backfill_subscription' THEN 'ok' ELSE 'FAIL' END,
-  'P3 reconcile mapped the unambiguous tenant (one customer id) as legacy/backfill'
-  FROM public.platform_billing_accounts a, _f WHERE a.tenant_id = solo_a;
+INSERT INTO _p SELECT 3, CASE WHEN EXISTS (SELECT 1 FROM public.platform_billing_accounts a, _f f
+                                            WHERE a.tenant_id = f.solo_a AND a.stripe_customer_id = 'cus_pbaproof_A'
+                                              AND a.stripe_account='legacy' AND a.source='backfill_subscription') THEN 'ok' ELSE 'FAIL' END,
+  'P3 reconcile mapped the unambiguous tenant (one customer id) as legacy/backfill';
 INSERT INTO _p SELECT 4, CASE WHEN count(*)=0 THEN 'ok' ELSE 'FAIL' END,
   'P4 reconcile did NOT map the ambiguous tenant (two customer ids) — never guesses'
   FROM public.platform_billing_accounts a, _f WHERE a.tenant_id = solo_b;
@@ -214,9 +218,8 @@ INSERT INTO _p SELECT 14, CASE WHEN a.scope='sub_account' AND NOT a.can_manage_b
 RESET ROLE; SELECT pg_temp.as_nobody();
 
 -- P22 premise for P15: the shell default really is a NULL pointer
-INSERT INTO _p SELECT 22, CASE WHEN p.active_tenant_id IS NULL THEN 'ok' ELSE 'FAIL' END,
-  'P22 fixture control: u_older owns solo_old and has a NULL active_tenant_id'
-  FROM public.profiles p, _f f WHERE p.user_id = f.u_older;
+INSERT INTO _p SELECT 22, CASE WHEN EXISTS (SELECT 1 FROM public.profiles p, _f f WHERE p.user_id = f.u_older AND p.active_tenant_id IS NULL) THEN 'ok' ELSE 'FAIL' END,
+  'P22 fixture control: u_older owns solo_old and has a NULL active_tenant_id';
 
 -- P15 active_tenant_id NULL while owning an older tenant → NO oldest-membership fallback
 SELECT pg_temp.as_user((SELECT u_older FROM _f));
@@ -282,7 +285,7 @@ CREATE OR REPLACE FUNCTION pg_temp.try_designate(_ord int, _user uuid, _kind tex
 RETURNS void LANGUAGE plpgsql AS $$
 DECLARE msg text := 'no error';
 BEGIN
-  BEGIN PERFORM public.platform_billing_recipient_designate(_user, _kind);
+  BEGIN PERFORM public.platform_billing_contact_designate(_user, _kind);
   EXCEPTION WHEN others THEN msg := SQLERRM; END;
   INSERT INTO _p SELECT _ord, CASE WHEN msg = _want THEN 'ok' ELSE 'FAIL: ' || msg END, _label;
 END $$;
@@ -299,27 +302,27 @@ RESET ROLE; SELECT pg_temp.as_nobody();
 -- P24 an admin cannot designate anyone
 SELECT pg_temp.as_user((SELECT u_admin FROM _f));
 SET LOCAL ROLE authenticated;
-SELECT pg_temp.try_designate(24, (SELECT u_admin FROM _f), 'billing_delegate', 'billing_owner_only',
-  'P24 admin designating (even themself) is refused: billing_owner_only (R21)');
+SELECT pg_temp.try_designate(24, (SELECT u_admin FROM _f), 'delegate', 'billing_workspace_owner_only',
+  'P24 admin designating (even themself) is refused: billing_workspace_owner_only (R21)');
 RESET ROLE; SELECT pg_temp.as_nobody();
 
 -- P25–P29, P38–P39 as the owner
 SELECT pg_temp.as_user((SELECT u_owner FROM _f));
 SET LOCAL ROLE authenticated;
-SELECT pg_temp.try_designate(25, (SELECT u_member FROM _f), 'billing_delegate', 'billing_recipient_not_admin',
-  'P25 a member cannot be a delegate: billing_recipient_not_admin (R20)');
-SELECT pg_temp.try_designate(26, (SELECT u_admin_unv FROM _f), 'billing_delegate', 'billing_recipient_email_unverified',
-  'P26 an admin whose email is unverified cannot be designated: billing_recipient_email_unverified (R23)');
-SELECT pg_temp.try_designate(38, (SELECT u_admin FROM _f), 'billing_owner', 'billing_recipient_not_owner',
-  'P38 an admin cannot be designated billing_owner: billing_recipient_not_owner (R19)');
-SELECT pg_temp.try_designate(39, (SELECT u_older FROM _f), 'billing_delegate', 'billing_recipient_not_member',
-  'P39 a person with no seat here cannot be designated: billing_recipient_not_member (R20, no external recipients)');
-SELECT pg_temp.try_designate(27, (SELECT u_owner FROM _f), 'billing_owner', 'no error',
-  'P27 the owner designates themself billing_owner');
-SELECT pg_temp.try_designate(28, (SELECT u_admin FROM _f), 'billing_delegate', 'no error',
-  'P28 the owner designates a verified, active admin as billing_delegate');
-SELECT pg_temp.try_designate(29, (SELECT u_admin FROM _f), 'billing_delegate', 'billing_recipient_already_designated',
-  'P29 designating the same person twice is refused: billing_recipient_already_designated');
+SELECT pg_temp.try_designate(25, (SELECT u_member FROM _f), 'delegate', 'billing_contact_delegate_requires_admin',
+  'P25 a member cannot be a delegate: billing_contact_delegate_requires_admin (R20)');
+SELECT pg_temp.try_designate(26, (SELECT u_admin_unv FROM _f), 'delegate', 'billing_contact_email_unverified',
+  'P26 an admin whose email is unverified cannot be designated: billing_contact_email_unverified (R23)');
+SELECT pg_temp.try_designate(38, (SELECT u_admin FROM _f), 'primary_contact', 'billing_contact_primary_requires_owner',
+  'P38 an admin cannot be designated primary_contact: billing_contact_primary_requires_owner (R19)');
+SELECT pg_temp.try_designate(39, (SELECT u_older FROM _f), 'delegate', 'billing_contact_not_member',
+  'P39 a person with no seat here cannot be designated: billing_contact_not_member (R20, no external recipients)');
+SELECT pg_temp.try_designate(27, (SELECT u_owner FROM _f), 'primary_contact', 'no error',
+  'P27 the owner designates themself primary_contact');
+SELECT pg_temp.try_designate(28, (SELECT u_admin FROM _f), 'delegate', 'no error',
+  'P28 the owner designates a verified, active admin as delegate');
+SELECT pg_temp.try_designate(29, (SELECT u_admin FROM _f), 'delegate', 'billing_contact_already_designated',
+  'P29 designating the same person twice is refused: billing_contact_already_designated');
 -- P30 the owner's authority now
 INSERT INTO _p SELECT 30, CASE WHEN a.receives_billing_notices AND a.billing_contact_state='designated' AND a.paid_activation_ready AND a.can_manage_billing THEN 'ok' ELSE 'FAIL' END,
   'P30 owner after designation: receives=true, contact=designated, paid_activation_ready=true'
@@ -327,17 +330,19 @@ INSERT INTO _p SELECT 30, CASE WHEN a.receives_billing_notices AND a.billing_con
 -- P32b the owner reads the two live recipients; P32c the read exposes no email column
 INSERT INTO _p SELECT 32, CASE WHEN count(*)=2 AND bool_and(r.email_verified) AND bool_and(r.still_eligible) THEN 'ok' ELSE 'FAIL' END,
   'P32 owner reads exactly the 2 live recipients, both verified and still eligible'
-  FROM public.get_workspace_billing_recipients() r;
+  FROM public.get_workspace_billing_contacts() r;
 RESET ROLE; SELECT pg_temp.as_nobody();
 INSERT INTO _p SELECT 33, CASE WHEN NOT EXISTS (
     SELECT 1 FROM pg_proc p, unnest(p.proargnames) n
-    WHERE p.proname='get_workspace_billing_recipients' AND p.pronamespace='public'::regnamespace AND n = 'email') THEN 'ok' ELSE 'FAIL' END,
-  'P33 get_workspace_billing_recipients() returns no email address column';
+    WHERE p.proname='get_workspace_billing_contacts' AND p.pronamespace='public'::regnamespace AND n = 'email') THEN 'ok' ELSE 'FAIL' END,
+  'P33 get_workspace_billing_contacts() returns no email address column';
 -- P34 both designations were audited, tenant-scoped, in the same transaction (R25)
 INSERT INTO _p SELECT 34, CASE WHEN count(*)=2 AND bool_and(l.tenant_id = f.solo_a) AND bool_and(l.actor_user_id = f.u_owner)
                                     AND bool_and(l.payload::text NOT ILIKE '%@%') THEN 'ok' ELSE 'FAIL' END,
-  'P34 two platform_billing_recipient_designated audit rows, tenant-scoped, actor = owner, payload carries no email'
-  FROM public.paige_audit_log l, _f f WHERE l.action = 'platform_billing_recipient_designated' AND l.target_type='platform_billing_recipient';
+  'P34 two platform_billing_contact_designated audit rows, tenant-scoped, actor = owner, payload carries no email'
+  FROM public.paige_audit_log l, _f f WHERE l.action = 'platform_billing_contact_designated' AND l.target_type='platform_billing_contact' AND l.tenant_id = f.solo_a;
+
+SELECT set_config('pba.primary_contact_id', (SELECT r.id::text FROM public.platform_billing_contacts r, _f f WHERE r.user_id = f.u_owner AND r.tenant_id = f.solo_a AND r.revoked_at IS NULL), true);
 
 -- P31 the delegate: receives notices, may NOT view, may NOT manage (R22)
 SELECT pg_temp.as_user((SELECT u_admin FROM _f));
@@ -349,58 +354,60 @@ INSERT INTO _p SELECT 31, CASE WHEN a.receives_billing_notices AND NOT a.can_vie
 DO $$
 DECLARE msg text := 'no error';
 BEGIN
-  BEGIN PERFORM public.get_workspace_billing_recipients(); EXCEPTION WHEN others THEN msg := SQLERRM; END;
-  INSERT INTO _p SELECT 35, CASE WHEN msg = 'billing_owner_only' THEN 'ok' ELSE 'FAIL: ' || msg END,
-    'P35 a delegate reading the recipient list is refused billing_owner_only — never an empty set (R8/R22)';
+  BEGIN PERFORM public.get_workspace_billing_contacts(); EXCEPTION WHEN others THEN msg := SQLERRM; END;
+  INSERT INTO _p SELECT 35, CASE WHEN msg = 'billing_workspace_owner_only' THEN 'ok' ELSE 'FAIL: ' || msg END,
+    'P35 a delegate reading the recipient list is refused billing_workspace_owner_only — never an empty set (R8/R22)';
 END $$;
--- P36 the delegate cannot revoke (owner only) — the row survives
+-- P36 the delegate cannot revoke (owner only) — the id was read as the owning role BEFORE impersonation
 DO $$
-DECLARE msg text := 'no error';
+DECLARE msg text := 'no error'; _own uuid;
 BEGIN
-  BEGIN PERFORM public.platform_billing_recipient_revoke((SELECT r.id FROM public.platform_billing_recipients r, _f f WHERE r.user_id = f.u_owner AND r.revoked_at IS NULL));
+  SELECT (current_setting('pba.primary_contact_id', true))::uuid INTO _own;
+  IF _own IS NULL THEN RAISE EXCEPTION 'fixture: primary contact id not captured'; END IF;
+  BEGIN PERFORM public.platform_billing_contact_revoke(_own);
   EXCEPTION WHEN others THEN msg := SQLERRM; END;
-  INSERT INTO _p SELECT 36, CASE WHEN msg = 'billing_owner_only' THEN 'ok' ELSE 'FAIL: ' || msg END,
-    'P36 a delegate revoking the billing owner is refused billing_owner_only';
+  INSERT INTO _p SELECT 36, CASE WHEN msg = 'billing_workspace_owner_only' THEN 'ok' ELSE 'FAIL: ' || msg END,
+    'P36 a delegate revoking the primary billing contact is refused billing_workspace_owner_only';
 END $$;
 -- P37 the table itself is invisible to the delegate (RLS: operators only) and direct DML is refused
 INSERT INTO _p SELECT 37, CASE WHEN count(*)=0 THEN 'ok' ELSE 'FAIL' END,
-  'P37 platform_billing_recipients is invisible to an authenticated tenant member (RLS)'
-  FROM public.platform_billing_recipients;
+  'P37 platform_billing_contacts is invisible to an authenticated tenant member (RLS)'
+  FROM public.platform_billing_contacts;
 RESET ROLE; SELECT pg_temp.as_nobody();
 
 -- P40 a sub-account owner: not applicable (R8) — designation refused, never absent
 SELECT pg_temp.as_user((SELECT u_sub_owner FROM _f));
 SET LOCAL ROLE authenticated;
-SELECT pg_temp.try_designate(40, (SELECT u_sub_owner FROM _f), 'billing_owner', 'billing_not_applicable',
+SELECT pg_temp.try_designate(40, (SELECT u_sub_owner FROM _f), 'primary_contact', 'billing_not_applicable',
   'P40 a sub-account owner designating is refused billing_not_applicable (R8)');
 RESET ROLE; SELECT pg_temp.as_nobody();
 
--- P41 revocation rules, as the owner: the last billing_owner is protected while subscribed; a delegate revokes cleanly and is audited
+-- P41 revocation rules, as the owner: the last primary_contact is protected while subscribed; a delegate revokes cleanly and is audited
 SELECT pg_temp.as_user((SELECT u_owner FROM _f));
 SET LOCAL ROLE authenticated;
 DO $$
 DECLARE msg text := 'no error'; _own uuid; _del uuid; _n int;
 BEGIN
   -- The table is RLS-invisible to the owner; the ids are read through the recipients RPC, as the owner would.
-  SELECT r.id INTO _own FROM public.get_workspace_billing_recipients() r WHERE r.designation = 'billing_owner';
-  SELECT r.id INTO _del FROM public.get_workspace_billing_recipients() r WHERE r.designation = 'billing_delegate';
-  BEGIN PERFORM public.platform_billing_recipient_revoke(_own); EXCEPTION WHEN others THEN msg := SQLERRM; END;
-  INSERT INTO _p SELECT 41, CASE WHEN msg = 'billing_owner_required_while_subscribed' THEN 'ok' ELSE 'FAIL: ' || msg END,
-    'P41 revoking the only billing_owner of a subscribed workspace is refused billing_owner_required_while_subscribed (R19)';
+  SELECT r.id INTO _own FROM public.get_workspace_billing_contacts() r WHERE r.designation = 'primary_contact';
+  SELECT r.id INTO _del FROM public.get_workspace_billing_contacts() r WHERE r.designation = 'delegate';
+  BEGIN PERFORM public.platform_billing_contact_revoke(_own); EXCEPTION WHEN others THEN msg := SQLERRM; END;
+  INSERT INTO _p SELECT 41, CASE WHEN msg = 'billing_primary_contact_required_while_subscribed' THEN 'ok' ELSE 'FAIL: ' || msg END,
+    'P41 revoking the only primary_contact of a subscribed workspace is refused billing_primary_contact_required_while_subscribed (R19)';
   msg := 'no error';
-  BEGIN PERFORM public.platform_billing_recipient_revoke(_del); EXCEPTION WHEN others THEN msg := SQLERRM; END;
-  SELECT count(*) INTO _n FROM public.get_workspace_billing_recipients();
+  BEGIN PERFORM public.platform_billing_contact_revoke(_del); EXCEPTION WHEN others THEN msg := SQLERRM; END;
+  SELECT count(*) INTO _n FROM public.get_workspace_billing_contacts();
   INSERT INTO _p SELECT 42, CASE WHEN msg = 'no error' AND _n = 1 THEN 'ok' ELSE 'FAIL: ' || msg || ' n=' || _n END,
     'P42 revoking the delegate succeeds and the owner''s list shrinks to 1';
   msg := 'no error';
-  BEGIN PERFORM public.platform_billing_recipient_revoke(_del); EXCEPTION WHEN others THEN msg := SQLERRM; END;
-  INSERT INTO _p SELECT 43, CASE WHEN msg = 'billing_recipient_not_found' THEN 'ok' ELSE 'FAIL: ' || msg END,
-    'P43 revoking an already-revoked designation is refused billing_recipient_not_found';
+  BEGIN PERFORM public.platform_billing_contact_revoke(_del); EXCEPTION WHEN others THEN msg := SQLERRM; END;
+  INSERT INTO _p SELECT 43, CASE WHEN msg = 'billing_contact_not_found' THEN 'ok' ELSE 'FAIL: ' || msg END,
+    'P43 revoking an already-revoked designation is refused billing_contact_not_found';
 END $$;
 RESET ROLE; SELECT pg_temp.as_nobody();
 INSERT INTO _p SELECT 44, CASE WHEN count(*)=1 AND bool_and(l.tenant_id = f.solo_a) THEN 'ok' ELSE 'FAIL' END,
   'P44 the revocation was audited, tenant-scoped (R25)'
-  FROM public.paige_audit_log l, _f f WHERE l.action = 'platform_billing_recipient_revoked';
+  FROM public.paige_audit_log l, _f f WHERE l.action = 'platform_billing_contact_revoked' AND l.tenant_id = f.solo_a;
 
 -- P45 the delegate's authority after revocation: receives nothing
 SELECT pg_temp.as_user((SELECT u_admin FROM _f));
@@ -423,13 +430,13 @@ END $$;
 RESET ROLE; SELECT pg_temp.as_nobody();
 INSERT INTO _p SELECT 47, CASE WHEN public.platform_billing_paid_activation_ready(f.solo_a) AND NOT public.platform_billing_paid_activation_ready(f.solo_c)
                                     AND NOT public.platform_billing_paid_activation_ready(f.sub_x) THEN 'ok' ELSE 'FAIL' END,
-  'P47 service context: ready=true for the workspace with a verified billing owner, false for one with none, false for a sub-account'
+  'P47 service context: ready=true for the workspace with a verified primary billing contact, false for one with none, false for a sub-account'
   FROM _f f;
 
--- P48 live truth: if the designated billing owner stops being an Owner, the contact state says so and readiness drops
+-- P48 live truth: if the designated primary billing contact stops being an Owner, the contact state says so and readiness drops
 UPDATE public.tenant_members SET is_owner = false WHERE user_id = (SELECT u_owner FROM _f) AND tenant_id = (SELECT solo_a FROM _f);
 INSERT INTO _p SELECT 48, CASE WHEN NOT public.platform_billing_paid_activation_ready(f.solo_a) THEN 'ok' ELSE 'FAIL' END,
-  'P48 a billing_owner designation whose ownership was revoked no longer satisfies the paid-activation gate (computed live, never cached)'
+  'P48 a primary_contact designation whose ownership was revoked no longer satisfies the paid-activation gate (computed live, never cached)'
   FROM _f f;
 SELECT pg_temp.as_user((SELECT u_owner FROM _f));
 SET LOCAL ROLE authenticated;
@@ -449,6 +456,9 @@ BEGIN
   EXCEPTION WHEN check_violation THEN ok := true; END;
   INSERT INTO _p SELECT 50, CASE WHEN ok THEN 'ok' ELSE 'FAIL' END, 'P50 an event outside the explicit catalogue is refused by the ledger CHECK (R18/R24)';
 END $$;
+-- A real ledger row (as the owning role) so P52 proves RLS, not emptiness; removed again before P53.
+INSERT INTO public.platform_billing_notification_log (tenant_id, recipient_user_id, event, status, idempotency_key)
+SELECT solo_a, u_owner, 'access_impacting_status', 'skipped_not_relevant', 'pba-proof-p52' FROM _f;
 SELECT pg_temp.as_user((SELECT u_owner FROM _f));
 SET LOCAL ROLE authenticated;
 DO $$
@@ -461,21 +471,72 @@ BEGIN
   INSERT INTO _p SELECT 51, CASE WHEN ok THEN 'ok' ELSE 'FAIL' END, 'P51 a tenant owner cannot write a delivery row (RLS: service contexts only)';
 END $$;
 INSERT INTO _p SELECT 52, CASE WHEN count(*)=0 THEN 'ok' ELSE 'FAIL' END,
-  'P52 the ledger is invisible to a tenant owner (RLS: operators only)'
+  'P52 a ledger row EXISTS and is invisible to a tenant owner (RLS: operators only)'
   FROM public.platform_billing_notification_log;
 RESET ROLE; SELECT pg_temp.as_nobody();
+INSERT INTO _p SELECT 55, CASE WHEN count(*)=1 THEN 'ok' ELSE 'FAIL' END,
+  'P55 (premise for P52) the seeded ledger row is visible to the owning role'
+  FROM public.platform_billing_notification_log WHERE idempotency_key = 'pba-proof-p52';
+DELETE FROM public.platform_billing_notification_log WHERE idempotency_key = 'pba-proof-p52';
 INSERT INTO _p SELECT 53, CASE WHEN count(*)=0 THEN 'ok' ELSE 'FAIL' END,
   'P53 no delivery row exists after everything above: nothing in Foundation A sends (R23 — delivery not wired)'
   FROM public.platform_billing_notification_log;
+
+-- P56 an agency OWNER: scope=agency, billing not applicable, cannot designate (R8) — the §51 row, proven
+SELECT pg_temp.as_user((SELECT u_agency FROM _f));
+SET LOCAL ROLE authenticated;
+INSERT INTO _p SELECT 56, CASE WHEN a.scope='agency' AND NOT a.can_manage_billing AND NOT a.can_view_billing
+                                    AND a.billing_account_state='not_applicable' AND a.billing_contact_state='not_applicable' AND NOT a.paid_activation_ready THEN 'ok' ELSE 'FAIL' END,
+  'P56 agency owner: scope=agency, every billing capability not applicable (R8/§51)'
+  FROM public.get_workspace_billing_authority() a;
+SELECT pg_temp.try_designate(57, (SELECT u_agency FROM _f), 'primary_contact', 'billing_not_applicable',
+  'P57 an agency owner designating is refused billing_not_applicable');
+RESET ROLE; SELECT pg_temp.as_nobody();
+
+-- P58 revoking the ONLY primary contact of an UNSUBSCRIBED workspace succeeds (the guard is about subscriptions, not permanence)
+SELECT pg_temp.as_user((SELECT u_actas FROM _f));   -- owner of solo_c (no subscription)
+SET LOCAL ROLE authenticated;
+DO $$
+DECLARE msg text := 'no error'; _id uuid;
+BEGIN
+  SELECT (public.platform_billing_contact_designate((SELECT u_actas FROM _f), 'primary_contact')->>'id')::uuid INTO _id;
+  BEGIN PERFORM public.platform_billing_contact_revoke(_id); EXCEPTION WHEN others THEN msg := SQLERRM; END;
+  INSERT INTO _p SELECT 58, CASE WHEN msg = 'no error' THEN 'ok' ELSE 'FAIL: ' || msg END,
+    'P58 the only primary contact of an UNSUBSCRIBED workspace can be revoked';
+END $$;
+RESET ROLE; SELECT pg_temp.as_nobody();
+
+-- P59 a delegate demoted from Admin is reported still_eligible=false (live truth), and the guard refuses an un-revoke / re-point
+UPDATE public.tenant_members SET role = 'member' WHERE user_id = (SELECT u_admin FROM _f) AND tenant_id = (SELECT solo_a FROM _f);
+SELECT pg_temp.as_user((SELECT u_owner FROM _f));
+SET LOCAL ROLE authenticated;
+DO $$
+DECLARE msg text := 'no error'; _n int;
+BEGIN
+  -- the delegate was revoked in P42; designate the (now demoted) admin again must be refused as not-admin
+  BEGIN PERFORM public.platform_billing_contact_designate((SELECT u_admin FROM _f), 'delegate'); EXCEPTION WHEN others THEN msg := SQLERRM; END;
+  INSERT INTO _p SELECT 59, CASE WHEN msg = 'billing_contact_delegate_requires_admin' THEN 'ok' ELSE 'FAIL: ' || msg END,
+    'P59 a demoted admin cannot be (re)designated as delegate: billing_contact_delegate_requires_admin';
+END $$;
+RESET ROLE; SELECT pg_temp.as_nobody();
+UPDATE public.tenant_members SET role = 'admin' WHERE user_id = (SELECT u_admin FROM _f) AND tenant_id = (SELECT solo_a FROM _f);
+DO $$
+DECLARE ok boolean := false;
+BEGIN
+  BEGIN
+    UPDATE public.platform_billing_contacts SET revoked_at = NULL WHERE revoked_at IS NOT NULL AND tenant_id = (SELECT solo_a FROM _f);
+  EXCEPTION WHEN insufficient_privilege THEN ok := true; END;
+  INSERT INTO _p SELECT 60, CASE WHEN ok THEN 'ok' ELSE 'FAIL' END, 'P60 the guard refuses un-revoking a designation (billing_contact_immutable), even for the owning role';
+END $$;
 
 -- P54 anon cannot execute any designation seam
 SET LOCAL ROLE anon;
 DO $$
 DECLARE n int := 0;
 BEGIN
-  BEGIN PERFORM public.platform_billing_recipient_designate('aaaaaaaa-0000-4000-8000-00000000a001'::uuid, 'billing_owner'); EXCEPTION WHEN insufficient_privilege THEN n := n + 1; END;
-  BEGIN PERFORM public.platform_billing_recipient_revoke(gen_random_uuid()); EXCEPTION WHEN insufficient_privilege THEN n := n + 1; END;
-  BEGIN PERFORM public.get_workspace_billing_recipients(); EXCEPTION WHEN insufficient_privilege THEN n := n + 1; END;
+  BEGIN PERFORM public.platform_billing_contact_designate('aaaaaaaa-0000-4000-8000-00000000a001'::uuid, 'primary_contact'); EXCEPTION WHEN insufficient_privilege THEN n := n + 1; END;
+  BEGIN PERFORM public.platform_billing_contact_revoke(gen_random_uuid()); EXCEPTION WHEN insufficient_privilege THEN n := n + 1; END;
+  BEGIN PERFORM public.get_workspace_billing_contacts(); EXCEPTION WHEN insufficient_privilege THEN n := n + 1; END;
   INSERT INTO _p SELECT 54, CASE WHEN n = 3 THEN 'ok' ELSE 'FAIL n=' || n END, 'P54 anon: EXECUTE on designate / revoke / recipients read is refused';
 END $$;
 RESET ROLE; SELECT pg_temp.as_nobody();
