@@ -2067,7 +2067,12 @@ billing-contacts card**, which the approved Gate-1 prototype does not cover (§0
 **§66, same PR as the change.** Written while #865 is open; the persisted-apply confirmation
 (§32.a) is owed on merge and this entry is not final until it is checked.
 
-**What changed.** `get_workspace_billing_status()` (Slice A `20261109040000`, on `main`; Slice B
+**§13 correction (independent review, PR #865):** this row said Slice A was "on `main`". It is
+not — `20261109040000` has never been merged separately; it ships as part of THIS PR's own branch
+history alongside Slices B and C. All three apply together on this PR's merge. Corrected here
+rather than left to compound the exact gap the review caught (see the finding below).
+
+**What changed.** `get_workspace_billing_status()` (Slice A `20261109040000`; Slice B
 `20261111050000` and Slice C `20261120000000`, in #865) is the new source for the Solo "Plan &
 usage" card, REPLACING the mapping-gated `resolveBillingPlanPresentation` path recorded in the
 Foundation C table above — that resolver could never show a real access state because Foundation
@@ -2094,9 +2099,17 @@ connection — collecting a card, creating the Stripe customer only on explicit 
 the new `platform_billing_accounts.payment_method_*` columns from `stripe-webhook` only) and item 5
 (the Spine-safe billing summary wrapper).
 
-**Evidence.** Slice A: 29/29 production rollback proof. Slice B: 9/9, including a property (C5)
-that reproduces the exact old-table bug shape before asserting the fix. Slice C: 4/4, including
-Agency and Enterprise fixtures. Frontend: `src/solo/settings-billing.test.tsx` +
+**A deploy-blocking sequential-apply defect, caught by `database-contract` CI and independently by
+an Agent-based adversarial review (Codex substitute), fixed before merge.** Slice B's
+`CREATE OR REPLACE FUNCTION get_workspace_billing_status()` inserted 5 new columns into the MIDDLE
+of Slice A's `RETURNS TABLE` list; Postgres refuses that shape of REPLACE (`42P13`). No standalone
+`\i`-one-file rollback proof could catch it, because the function never pre-existed in that
+isolated transaction. Fixed with `DROP FUNCTION IF EXISTS` before the REPLACE; regression property
+C1 added, which creates Slice A's real shape first, then `\i`s the real Slice B file.
+
+**Evidence.** Slice A: 29/29 production rollback proof. Slice B: 10/10 (added C1 above), including
+a property (C5) that reproduces the exact old-table bug shape before asserting the fix. Slice C:
+4/4, including Agency and Enterprise fixtures. Frontend: `src/solo/settings-billing.test.tsx` +
 `src/solo/billing-contract.test.ts`, 93 tests across the touched files, 1143/1143 across
 `src/solo/`. A real bug was caught by the new tests themselves before merge: the field-builder
 helpers built `[string,string]` tuples against a `{label,value}` object return type — TypeScript

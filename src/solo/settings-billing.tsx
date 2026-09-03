@@ -1,23 +1,30 @@
 /**
- * Billing Foundation C — Solo Settings › Billing.
+ * Billing Foundation C — Solo Settings › Billing, rebuilt on the Billing Experience read
+ * (owner brief 2026-09-03) — see `resolveWorkspaceBillingStatusPresentation` in
+ * `billing-contract.ts` for the current plan-card contract.
  *
- * This is the screen Foundation A was built under and nothing rendered. It mounts the two real
- * server seams — `get_workspace_billing_authority()` and `get_workspace_billing_contacts()` — and
- * renders ONLY what they prove.
+ * It mounts THREE real server seams — `get_workspace_billing_status()` (the plan/usage card and
+ * the contacts-selection-needed banner), `get_workspace_billing_authority()` (the "Manage billing"
+ * portal act and the contacts-write gate), and `get_workspace_billing_contacts()` — and renders
+ * ONLY what they prove.
  *
  * WHAT IS ACTUALLY INTERACTIVE HERE (§70.1 — a person can finish a job):
  *   Billing contacts and notices. A workspace owner can designate the workspace's primary billing
  *   contact, designate and revoke a billing delegate, and reload to find the change held. Those are
  *   live Owner-only RPCs with structural eligibility guards behind them.
  *
- * WHAT IS DELIBERATELY NOT CLAIMED:
- *   The plan card states what the platform can prove and no more. There is no entitlement
- *   projection yet (Foundation B, packet §4.3 R11), so today it resolves to an EXPLAINED
- *   unavailable — never "no subscription", never a price, never a renewal date, and never the
- *   $149 catalogue figure, which is a price LIST and not a statement that this workspace is
- *   charged anything. `billing-contract.ts` holds that rule and is tested directly.
- *   "Manage billing" says why it cannot open rather than failing vaguely; the portal feature flag
- *   is off on the platform and every current workspace has no billing-account mapping.
+ * WHAT THE PLAN CARD NOW CLAIMS, AND ON WHAT AUTHORITY (§13 — this section replaces an earlier
+ * version that described the OLD, pre-rebuild card and had gone stale):
+ *   `get_workspace_billing_status()` is a real, Owner-only, server-authoritative read — the plan
+ *   card shows a real access state (promotional/trial/paid/past-due/no-plan/internal), a real
+ *   "Amount due today" (including a genuine "$0" for promotional access — that is a proven fact,
+ *   not a placeholder), and "Billed by PAIGE Platform". Provider-account existence and any
+ *   connected payment method are shown as a SEPARATE labelled fact, never gating the access claim
+ *   (R13 — the bug this rebuild exists to correct). The $149 catalogue price is still never shown
+ *   as a charge; a real `amount_due_cents` is what renders, when a real paid subscription exists.
+ *   "Manage billing" (the hosted Stripe portal act) is UNCHANGED and still says why it cannot open
+ *   rather than failing vaguely; the portal feature flag is off on the platform and every current
+ *   workspace has no billing-account mapping.
  *
  * TERMINOLOGY (owner ruling R27, 2026-09-02). "Primary billing contact" and "billing delegate" are
  * FUNCTIONAL designations for receiving billing notices. Neither creates, changes, transfers,

@@ -1237,7 +1237,9 @@ receives.
 
 **Three DB slices, each found-and-fixed a real defect, each proven separately on production inside
 `BEGIN..ROLLBACK` (29/29, 9/9, 4/4; nothing persisted):**
-- **Slice A** (`20261109040000`, already on `main`) — one live primary billing contact per workspace
+- **Slice A** (`20261109040000`, part of THIS PR's own branch history, NOT a prior separate merge —
+  **§13 correction, independent review, PR #865**: this entry originally said "already on main",
+  which was wrong) — one live primary billing contact per workspace
   going forward; the sole-primary revoke guard un-hitched from Stripe (it had required a
   `stripe_customer_id`, which no workspace has, making the guard permanently inert); the first
   `get_workspace_billing_status()`.
@@ -1279,13 +1281,34 @@ flow after the status page is complete"): item 4 (live payment-method connection
 never charges, plus a new discriminated block in `stripe-webhook`) and item 5 (a tenant-safe,
 server-resolved billing summary for Spine).
 
-**Evidence.** Slice A 29/29, Slice B 9/9 (including C5, which reproduces the exact old-table bug
-shape before asserting the fix), Slice C 4/4 — all production `BEGIN..ROLLBACK`, nothing persisted.
-Frontend: 93 tests in the two touched files, 1143/1143 across `src/solo/`; typecheck and lint clean.
-**Status: `PARTIAL` / `Authenticated Runtime Proof Owed`** — no browser-driving tool in this session
-(§32.c); the migrations' persisted-apply confirmation is also owed on merge (§32.a). Independent
-review: Codex was reported unavailable at review time; an Agent-based adversarial review was
-substituted per explicit owner instruction, and Codex review is to resume when it returns.
+**A real deploy-blocking defect, caught twice, independently, and fixed before merge.**
+`database-contract` CI (a full sequential migration replay) failed on `CREATE OR REPLACE FUNCTION
+get_workspace_billing_status()` in Slice B: `42P13 "cannot change return type of existing
+function"`, because Slice B inserts 5 new `payment_method_*` columns into the MIDDLE of Slice A's
+column list, and Postgres refuses to REPLACE a function whose `RETURNS TABLE` row type changed —
+only a `DROP FUNCTION` first, or appending new columns strictly at the end, is legal. None of the
+`BEGIN..ROLLBACK` proofs could catch this: each slice's proof only `\i`s its own migration file, so
+`CREATE OR REPLACE` always acted as a fresh `CREATE` against a name that had never existed in that
+isolated transaction — the conflict only exists when Slice A has genuinely run first. Fixed with a
+`DROP FUNCTION IF EXISTS` immediately before Slice B's `CREATE OR REPLACE`. Independently confirmed
+by BOTH CI (which failed, then passed after the fix) AND the Agent-based adversarial review
+(substituting for Codex, see below), which reproduced the identical error against a local Postgres
+16 install before the fix was known to it, and separately named the exact same root cause. A new
+regression property (C1) was added to `scripts/sql/billing-status-payment-method-proof.sql` that
+creates Slice A's original column shape first, then `\i`s the real Slice B file, so this class of
+bug fails the proof again if it recurs.
+
+**Evidence.** Slice A 29/29, Slice B 10/10 (including C1, the sequential-apply regression above,
+and C5, which reproduces the exact old-table bug shape before asserting the fix), Slice C 4/4 — all
+production `BEGIN..ROLLBACK`, nothing persisted. Frontend: 93 tests in the two touched files,
+1143/1143 across `src/solo/`; typecheck and lint clean. **Status: `PARTIAL` / `Authenticated
+Runtime Proof Owed`** — no browser-driving tool in this session (§32.c); the migrations'
+persisted-apply confirmation is also owed on merge (§32.a). Independent review: Codex was reported
+unavailable at review time; an Agent-based adversarial review was substituted per explicit owner
+instruction, found the deploy-blocking defect above (already fixed by the time of this entry) plus
+a stale JSDoc header on `settings-billing.tsx` (fixed) and a migration comment overclaiming a
+webhook writer that does not exist yet (fixed to future tense), and Codex review is to resume when
+it returns.
 
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 

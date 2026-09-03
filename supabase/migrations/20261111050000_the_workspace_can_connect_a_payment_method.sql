@@ -35,9 +35,12 @@ ALTER TABLE public.platform_billing_accounts
   ADD COLUMN IF NOT EXISTS payment_method_updated_at      timestamptz NULL;
 
 COMMENT ON COLUMN public.platform_billing_accounts.payment_method_id IS
-  'Stripe PaymentMethod id attached as this workspace''s default. Written ONLY by stripe-webhook '
-  'on setup_intent.succeeded / checkout.session.completed (mode=setup) — never by the connect edge '
-  'function, which never receives or echoes provider payment data (owner brief 2026-09-03).';
+  'Stripe PaymentMethod id attached as this workspace''s default. NULL until the item 4 connect '
+  'flow ships (owner brief 2026-09-03, not yet built as of this migration) — the design is that '
+  'it is written ONLY by stripe-webhook, on setup_intent.succeeded / checkout.session.completed '
+  '(mode=setup), never by the connect edge function itself, which never receives or echoes '
+  'provider payment data. No writer of this column exists yet; independent review, PR #865, '
+  'caught this comment overclaiming a present-tense behavior — corrected to state intent.';
 COMMENT ON COLUMN public.platform_billing_accounts.payment_method_last4 IS
   'Last 4 digits ONLY. No PAN, no full card number, ever stored here or anywhere on the platform.';
 
