@@ -84,46 +84,87 @@ function lineText(src, line) { return (src.split("\n")[line - 1] ?? "").trim(); 
 function lit(node) { return node && ts.isStringLiteralLike(node) ? node.text : null; }
 
 /**
- * R1 — every READ of a `door` property, except the one that records it on the audit line.
+ * R1 — every mention of `door` except the two that are legitimate.
  *
- * Structural rather than spelling-based: `caller.door` and `caller["door"]` are the same read to a
- * parser, and so is any future spelling. Recording it (`door: caller.door` inside an object
- * literal) is the single legitimate use, so that shape — and only that shape — is allowed.
+ * INVERTED, on Codex's recommendation and after this guard was extended three times by adding
+ * whichever access form had just been demonstrated: element access, then plain destructuring, then
+ * a computed destructuring key, and then a destructuring ASSIGNMENT (`({ door: d } = caller)`),
+ * which TypeScript models as a PropertyAssignment rather than a BindingElement and so slipped past
+ * all three. A denylist of access forms loses to the next form every time — the same losing shape
+ * inverted twice already in the MCP guard on the sibling PR.
+ *
+ * So the rule is now an ALLOWLIST OF POSITIONS. Any node naming `door` is a hit unless it sits in
+ * one of exactly two permitted places:
+ *
+ *   1. a TYPE-LEVEL declaration of the field   `door: GovernedDoor` in a type or interface
+ *   2. the audit record copying it             `door: <expr>.door` as an object-literal property
+ *
+ * A new syntax for reading a property lands in neither, so it fails CLOSED rather than passing
+ * unseen. The cost is that a genuinely new legitimate use must be added here deliberately, which
+ * is the correct direction for a guard whose other failure mode is a door-dependent seam shipping
+ * with the check green.
  */
-/** A destructuring key's name, seeing through a computed `["door"]` wrapper. */
-function bindingKeyName(node) {
-  if (!node) return null;
-  if (ts.isComputedPropertyName(node)) return lit(node.expression);
-  if (ts.isIdentifier(node)) return node.text;
-  return lit(node);
-}
-
 export function doorBranches(src, fileName = "in-memory.ts") {
   const sf = parse(src, fileName);
   const hits = [];
   walk(sf, (n) => {
-    let isDoorRead = false;
-    if (ts.isPropertyAccessExpression(n) && n.name.text === "door") isDoorRead = true;
-    if (ts.isElementAccessExpression(n) && lit(n.argumentExpression) === "door") isDoorRead = true;
-    // `const { door } = caller` extracts the same value with no property access at all — and so
-    // does `const { ["door"]: d } = caller`, whose propertyName is a COMPUTED name rather than an
-    // identifier or a bare literal. `lit()` does not see through the computed wrapper, so R1 stayed
-    // green while the seam became door-dependent. Measured before fixing: the computed form
-    // returned no hits, the plain form returned one.
-    if (ts.isBindingElement(n)) {
-      if (bindingKeyName(n.propertyName ?? n.name) === "door") isDoorRead = true;
-    }
-    if (!isDoorRead) return;
-    // The one permitted use: `door: <this read>` as an object-literal property.
-    const p = n.parent;
-    if (p && ts.isPropertyAssignment(p) && p.initializer === n &&
-        p.name && ts.isIdentifier(p.name) && p.name.text === "door") return;
+    if (!namesDoor(n)) return;
+    if (permittedDoorPosition(n)) return;
     const line = lineOf(sf, n);
     hits.push({ line, text: lineText(src, line) });
   });
   const byLine = new Map();
   for (const h of hits) if (!byLine.has(h.line)) byLine.set(h.line, h);
   return [...byLine.values()].sort((a, b) => a.line - b.line);
+}
+
+/** Does this node NAME the door — as an identifier, or as a string standing in for one? */
+function namesDoor(n) {
+  if (ts.isIdentifier(n)) return n.text === "door";
+  // A string is only a NAME when it is being used as one: a key or an index. Prose that happens to
+  // contain the word is not, which is why this checks the parent rather than the text alone.
+  if (!ts.isStringLiteralLike(n) || n.text !== "door") return false;
+  const p = n.parent;
+  if (!p) return false;
+  return (ts.isElementAccessExpression(p) && p.argumentExpression === n) ||
+         ts.isComputedPropertyName(p) ||
+         ((ts.isPropertyAssignment(p) || ts.isPropertySignature(p)) && p.name === n);
+}
+
+/** The two places `door` may legitimately appear. Everything else is a read this seam must not do. */
+function permittedDoorPosition(n) {
+  const p = n.parent;
+  if (!p) return false;
+
+  // 1. A TYPE-LEVEL declaration: `door: GovernedDoor` in a type/interface, or a type reference.
+  if (ts.isPropertySignature(p) && p.name === n) return true;
+  if (ts.isTypeNode(p)) return true;
+
+  // 2. THE AUDIT COPY, and only in its exact shape: `door: <expr>.door` as an object-literal
+  //    property. Both halves are permitted — the key, and the read that feeds it.
+  if (ts.isPropertyAssignment(p) && p.name === n) return isAuditDoorAssignment(p);
+  if ((ts.isPropertyAccessExpression(p) || ts.isElementAccessExpression(p)) &&
+      (p.name === n || p.argumentExpression === n)) {
+    const owner = p.parent;
+    return !!owner && ts.isPropertyAssignment(owner) && owner.initializer === p &&
+           isAuditDoorAssignment(owner);
+  }
+  return false;
+}
+
+/** `door: <anything>` sitting as a property of an object literal — the audit line's shape. */
+function isAuditDoorAssignment(assignment) {
+  if (!assignment.name) return false;
+  const key = ts.isIdentifier(assignment.name) ? assignment.name.text : lit(assignment.name);
+  if (key !== "door") return false;
+  // An object literal on the RIGHT of `=` is a destructuring TARGET, not a record being built —
+  // `({ door: d } = caller)` — so it is not the audit shape and must not borrow its permission.
+  const obj = assignment.parent;
+  if (!obj || !ts.isObjectLiteralExpression(obj)) return false;
+  const outer = obj.parent;
+  if (outer && ts.isBinaryExpression(outer) && outer.left === obj &&
+      outer.operatorToken.kind === ts.SyntaxKind.EqualsToken) return false;
+  return true;
 }
 
 /**
@@ -349,12 +390,16 @@ if (process.argv.includes("--self-test")) {
   check("R1 ternary", doorBranches('const l = caller.door ? "auto" : "confirm";').length, 1);
   check("R1 COMPUTED access (Codex)", doorBranches('if (caller["door"] === "mcp") return x;').length, 1);
   check("R1 computed, single quotes", doorBranches("if (caller['door']) return x;").length, 1);
-  // Codex on 4ed2b276: `const { ["door"]: d } = caller` reads the door and R1 saw nothing, so the
-  // seam could become door-dependent with the guard still green. Measured before fixing: 0 hits
-  // where the plain destructure gave 1.
+  // R1 is now an ALLOWLIST OF POSITIONS, not a denylist of access forms — inverted after being
+  // extended three times by adding whichever form had just been demonstrated. These are every form
+  // that has ever been raised, and the inversion means a form nobody has thought of yet fails
+  // CLOSED instead of passing unseen.
   check("R1 destructured door", doorBranches("const { door } = caller; if (door === \"mcp\") return x;").length, 1);
   check("R1 COMPUTED destructured door (Codex)", doorBranches("const { [\"door\"]: d } = caller; if (d === \"mcp\") return x;").length, 1);
   check("R1 renamed destructure", doorBranches("const { door: d } = caller; if (d === \"mcp\") return x;").length, 1);
+  // The fourth form, and the one that forced the inversion: a destructuring ASSIGNMENT is a
+  // PropertyAssignment, not a BindingElement, so all three checks above missed it.
+  check("R1 destructuring ASSIGNMENT (Codex)", doorBranches("let d; ({ door: d } = caller); if (d === \"mcp\") return x;").length, 1);
   check("R1 ignores an unrelated destructured key", doorBranches("const { tenantId } = caller; return tenantId;").length, 0);
   check("R1 allows the audit assignment", doorBranches("const audit = { door: caller.door, decision };").length, 0);
   check("R1 allows a type declaration", doorBranches("export type C = { door: GovernedDoor };").length, 0);
