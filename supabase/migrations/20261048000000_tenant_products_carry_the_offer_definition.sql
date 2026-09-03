@@ -72,8 +72,14 @@
 -- IT DOES leave `StorefrontPanel`'s `status: "draft" | "active" | "archived"` union narrower than
 -- this CHECK now allows, and that union is deliberately NOT widened here. `StorefrontPanel` is an
 -- Admin surface under `src/components/**`, which the Solo Shell scope rule puts outside this
--- slice without a documented exception. The inaccuracy is latent and cannot manifest in 2A:
--- this slice ships no writes, and no shipped UI offers 'paused', so no row can carry it yet.
+-- slice without a documented exception. The inaccuracy has NO RUNTIME EFFECT, which is a weaker
+-- and more accurate claim than the one this comment first made. It is NOT true that no row can
+-- carry 'paused': this same inventory records that `tenant-product-upsert` takes `status` with no
+-- allowlist, so a tenant-admin JWT — or PAIGE through the callable seam (§10), which doctrine
+-- treats as a first-class caller — can persist it the moment this lands. What is true is that
+-- `StorefrontPanel:378` renders `{p.status}` VERBATIM into a badge, comparing only against
+-- 'active' for the variant, with no lookup map and no switch. A paused row therefore displays
+-- correctly there; only the compile-time union is narrow.
 -- The union widening moves to Slice 2B, where pause becomes reachable and the exception can be
 -- requested for a change that is actually needed rather than a pre-emptive one.
 --

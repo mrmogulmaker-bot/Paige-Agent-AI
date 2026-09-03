@@ -4,7 +4,8 @@
 // test is the real one, so a regression in its states, copy, geometry or truth-telling is caught.
 // Every fixture below is a plausible tenant record — never one of the owner's real accounts (§63).
 type Mode = "populated" | "empty" | "readonly" | "error" | "resolving" | "unpriced"
-  | "authority-unknown" | "fields-unavailable" | "instalment" | "recurring" | "empty-pending";
+  | "authority-unknown" | "fields-unavailable" | "instalment" | "recurring" | "empty-pending"
+  | "switched-account";
 
 let mode: Mode = "populated";
 const listeners = new Set<() => void>();
@@ -64,6 +65,14 @@ const INSTALMENT = [{ ...OFFERS[0], id: "o8", name: "Foundations — payment pla
 const RECURRING = [{ ...OFFERS[0], id: "o9", name: "Advisory retainer",
   prices: [price("pr", 9900, "Monthly", "month", "recurring", null)] }];
 
+// A second workspace with its OWN offers and its OWN categories, sharing no id, name or category
+// with the first — so anything left over from the previous account is visible rather than plausible.
+const OTHER_TENANT_OFFERS = [{
+  ...OFFERS[0], id: "x1", name: "Quarterly Tax Review", summary: "A ninety-minute review of the books before each filing deadline.",
+  category: "Advisory", deliveryShape: "appointment", customerAction: "book",
+  prices: [price("xp1", 45000, "Per review")],
+}];
+
 export function setCatalogHarnessMode(next: Mode) {
   mode = next;
   listeners.forEach((listener) => listener());
@@ -87,6 +96,10 @@ export function useCatalogOffers() {
   // Empty AND mid-deploy: the state EVERY production tenant is in during the window between the
   // frontend shipping and the migration applying. It is the composition the notice exists for.
   if (mode === "empty-pending") return { ...base([]), fieldsUnavailable: true };
+  // A DIFFERENT workspace. The Solo scope rule requires account switch to be proven in the
+  // rendered surface, not only at the adapter — the risk is a surface that keeps showing the
+  // previous workspace's rows, or its category filter, after the tenant underneath it changes.
+  if (mode === "switched-account") return { ...base(OTHER_TENANT_OFFERS), tenantId: "t-other" };
   if (mode === "readonly") return { ...base(OFFERS), canManage: false };
   if (mode === "unpriced") return base(UNPRICED);
   if (mode === "instalment") return base(INSTALMENT);

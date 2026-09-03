@@ -102,6 +102,11 @@ async function measure(page) {
       conflicts: document.querySelectorAll(".co-conflict").length,
       notice: document.querySelectorAll(".co-notice").length,
       firstUse: document.querySelectorAll(".co-first").length,
+      // Which category chip is pressed, and what chips exist. A workspace switch that leaves the
+      // previous account's filter pressed — or its category chips on screen — is the leak the
+      // Solo scope rule's "prior-workspace state cleanup" names.
+      activeFilter: document.querySelector('.co-filter[aria-pressed="true"]')?.textContent?.trim() ?? null,
+      filters: [...document.querySelectorAll(".co-filter")].map((el) => el.textContent?.trim() ?? ""),
     };
   });
 }
@@ -250,6 +255,32 @@ async function main() {
         check(emptyPending.notice === 1, `${id}: the pending notice reaches the empty state`,
           `n=${emptyPending.notice}`);
         check(!emptyPending.horizontal, `${id}: notice above first use does not overflow`);
+
+        // 3c. ACCOUNT SWITCH — required by the Solo Shell scope rule, and previously proven only
+        // at the adapter (a tenantId change re-triggers the read). That is not the risk. The risk
+        // is the SURFACE keeping the previous workspace's rows, or its category filter, after the
+        // tenant underneath it changes. So: land on one workspace, pick a category, switch, and
+        // look for anything of the first workspace still on screen.
+        await setMode(page, "populated");
+        const chips = await page.$$(".co-filter");
+        if (chips.length > 1) await chips[1].click();
+        await settle(page);
+        const before = await measure(page);
+        check(before.activeFilter !== "Everything1" && before.activeFilter !== null,
+          `${id}: a category filter can be selected before the switch`, String(before.activeFilter));
+
+        await setMode(page, "switched-account");
+        const after = await measure(page);
+        check(/Quarterly Tax Review/.test(after.text), `${id}: the new workspace's offers render`);
+        check(!/Foundations Coaching Program/.test(after.text),
+          `${id}: no offer from the previous workspace survives the switch`);
+        check(!after.filters.some((f) => /Programs|Chair services/.test(f)),
+          `${id}: no category from the previous workspace survives the switch`,
+          after.filters.join(" | "));
+        check(/^Everything/.test(after.activeFilter ?? ""),
+          `${id}: the filter resets rather than carrying the old account's selection`,
+          String(after.activeFilter));
+        check(!after.horizontal, `${id}: the switched workspace does not overflow`);
 
         // 4. Read-only.
         await setMode(page, "readonly");
