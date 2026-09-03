@@ -1177,6 +1177,36 @@ Trust Compass consumer, `compass.tsx:377`, does distinguish — which is why the
 is therefore broken for every department that emits to the Rail**, and `paige_audit_log` has no Solo
 reader either.
 
+**A safe server-side Rail reader is now SHIPPED and deployed — and the verdict above still stands
+(2026-09-02).** `public.get_solo_rail_activity(p_limit integer)` is live on production
+(`20261042000000`, then the #794 remediation `20261043000000`; both confirmed in
+`schema_migrations`). It is `SECURITY DEFINER`, takes **no tenant parameter**, returns 11 reviewed
+display fields, and **raises `42501 RAIL_FORBIDDEN` rather than returning an empty timeline** on
+refusal — so a denied caller can no longer be mistaken for an idle workspace. The projection omits
+`payload`, `tenant_id`, `contact_id`, `actor_user_id`, `ref_table` and `ref_id`; it **does** return
+the event row's own `id`, so the accurate claim is that it exposes **no tenant, client, actor or
+source-record identifier and no producer payload** — not that it carries no identifier at all. It deliberately does **not** re-grant browser SELECT on
+`paige_client_events`: that revoke is what keeps the same-shaped flaw in the `pce_staff_read` policy
+unreachable, so the fix for a Rail screen is never a table grant.
+
+**Why `UNAVAILABLE` is still the correct status.** No owner-facing consumer calls the resolver yet —
+`useRailEvents.ts` and `useSoloActivityFeed.ts` still read the denied table directly, re-measured on
+production after both migrations. The remaining *misreporting* is narrower than the read failure: the
+two `useRailEvents` consumers collapse a refusal into an empty feed, while `compass.tsx:377` and
+`team.tsx:235` both render an explicit `role="alert"` failure. **All four are denied; only two of them
+lie about it.** Failure *visibility* and *manual recovery* are separate questions: `team.tsx` offers a
+*Try again* control in every layout, `compass.tsx` only above 1020px — `solo-tokens.css:173` hides its
+retry-bearing branch below that and the foldout replacement (`compass.tsx:440`) has none. **Automatic
+recovery is present regardless:** `useSoloActivityFeed.ts:193–198` re-reads every 15s while visible and
+on window focus, so the missing piece is the *visible manual control*, not recovery. Tracked as a Slice B
+scope item on #746, not as a second misreporting surface. The two Analytics readers of the same denied
+table (`useClientEngagement.ts:48`, `CohortRetentionTable.tsx:74`) discard the error entirely and render
+it as "Insufficient data" — a separate slice, tracked as **#802**. The gap changed shape rather than closing: **before, no safe path
+existed; now a safe path exists and nothing uses it.** Issue **#746 stays open**, and closing it also
+requires authenticated owner runtime proof, not a deployed function. Full record, including the #794
+cross-workspace defect this foundation shipped with and the three lessons from it:
+`docs/brain/paige-spine-and-rail-state.md`.
+
 **Pipeline governance — three findings, follow-up work and NOT capability:** the Spine's Pipeline
 evidence is a **silent subset** (`deal_move_stage` and `pipeline_attach` move deals with no Rail
 event, so PAIGE cannot see her own move); `deal_move_stage` never consults `move_policy`; and
@@ -1190,6 +1220,15 @@ a held request is unresolvable and permanently blocks archiving its stage or pip
 3. **Pipeline governance repair — issue #755 — a parked prerequisite before any Pipeline Chat write bridge.**
 4. **Stale doctrine correction** (done for the Trust Compass claims; see §10).
 5. **Calendar as the next bounded read-only Spine capability.**
+
+> **CORRECTED 2026-09-02 — items 1 and 2 have moved; the ruling above is kept as written.** The Rail
+> recovery path in item 2 was taken by **PR #785** (`20261042000000`) and its **#794 remediation, PR
+> #795** (`20261043000000`), both merged and deployed — **not** by #644, which remains open and
+> unauthorized on the same terms stated above. **#746 is still OPEN**: the merged work is the safe
+> server resolver only, and no owner-facing consumer has been moved onto it, so item 1 (**#729**)
+> remains blocked — its repair reads the direct table, which is still refused by design. What changed
+> is that the unblock is now a consumer change rather than a missing capability. Closing #746 also
+> requires authenticated owner runtime proof. Order 3–5 is unaffected.
 
 **Not authorized by this record:** no Calendar evidence, Pipeline mutation, provider work, or other
 implementation begins from it.
