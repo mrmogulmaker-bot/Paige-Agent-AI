@@ -2090,15 +2090,30 @@ from the drawer its row already opens, and moves through draft / active / paused
 the same place. Archive asks first. The editor carries NO status control: lifecycle sits beside the
 offer, so nobody publishes something by accident while renaming it.
 
+**CLOSED 2026-09-03 (migration `20261131000000`).** The RPC-open gap every non-Solo row below used
+to describe is fixed: both functions now read the caller's own `tenants` row
+(`account_type`/`parent_tenant_id`) and refuse with `'the offer catalog is available to Solo
+workspaces only right now'` unless it is literally `account_type = 'standalone'` with no
+`parent_tenant_id` — the same strict test `isSoloStandalone()` already applies client-side, run
+server-side against the authenticated tenant, never a client-supplied claim. Owner ruling: this is
+a refusal to grant Catalog write access **by accident** while no approved surface exists for other
+tiers, not a judgment that they can never have it — a future Agency/Enterprise/sub-account Catalog
+experience needs its own product decision. Proven 10/10 in a rolled-back production transaction
+(real Agency, sub-account, and a temporarily-relabelled Enterprise tenant, each refused; the Solo
+owner's create/status-change path, cross-tenant write, client-tenant-claim bypass, and unauthenticated/
+no-membership paths all unchanged). `tenant-product-upsert` (the legacy `/admin/setup` Storefront
+panel's write path) has the same missing check and is a SEPARATE seam, deliberately out of this
+hotfix's scope — flagged, not fixed.
+
 | Tier | Can write an offer | Why |
 |---|---|---|
-| Platform operator (God) | ✗ refused, unless also a tenant member | `current_user_tenant_id()` honors an operator's selected `active_tenant_id` (via `is_platform_admin()`), so the RPC gets past the tenant resolve — but `is_tenant_admin(_tenant)` checks only `tenant_members.role IN ('owner','admin')` with no operator bypass, so a bare act-as with no membership row fails `42501` at that check. An operator who *also* holds an owner/admin membership in the tenant can write (Codex finding, PR #860 — the row above previously claimed the opposite). |
-| Solo owner / admin | ✓ | `is_tenant_admin()` inside the function body, not the EXECUTE grant (§59). |
-| Solo member | ✗ refused, and the acts are OMITTED not disabled | A disabled control says "later"; the truth is "not your role". |
-| Sub-account owner / admin | **UI: ✗ · RPC: ✓** | `workspaceEntry.ts` routes `sub_account` to `/business/*`, which mounts `BusinessEntry` → `AgencyApp mode="subaccount"` → **its own** `./growth` (`src/agency/growth.tsx`) — a different component tree from `src/solo/growth2.tsx`'s `GrowthHub`, the only place `CatalogOffers` is imported. A sub-account caller never reaches this editor through the app (Codex finding, PR #860, round 5 — the prior wording presented this as a shipped capability; confirmed by grep, `agency/growth.tsx` has zero references to `catalog-offers`). The RPC itself has no tier check, so it still accepts a sub-account's real `tenant_members` row the same as it accepts an agency's (see the Agency row). |
-| Agency (as a tenant) | **UI: ✗ · RPC: ✓ — an exposed gap, not a feature** | `tierFeatures.ts` excludes `CREATION_SURFACES` from `AGENCY_FEATURES` by owner ruling (§60/§61: agency manages sub-accounts, does not run its own campaigns), and — same reachability gap as the sub-account row above — `/agency/*` also mounts `AgencyApp`, never `CatalogOffers`. But neither RPC's body checks `account_type`; an agency owner/admin (a real `tenant_members` row with `role IN ('owner','admin')` on their own tenant) can call `save_solo_offer`/`set_solo_offer_status` directly and both `current_user_tenant_id()` and `is_tenant_admin()` succeed (Codex finding, PR #860, round 3). Same class as the `customer_portal_invite` UI-only lock §60 already documents — recorded honestly rather than presented as intended agency write support; not fixed here, per §31/§13 this row states what exists, it does not silently patch the server. |
-| Enterprise (as a tenant) | **UI: ✗ · RPC: ✓** | Routes to `/agency/*` alongside Agency (§60: Enterprise is the Agency shell + per-tenant customization) — same `AgencyApp` mount, same absence of `CatalogOffers`. `ENTERPRISE_FEATURES` DOES carry the `growth` feature bit (it is deliberately creation-capable, unlike Agency), but that bit describes eligibility for the Studio/creation surfaces generally, not deployed access to this specific editor — there is no route that mounts it for Enterprise either (Codex finding, PR #860, round 5; a missing row here is what let round 4's Owed note talk about "preserving Enterprise RPC access" with no row to attach it to). The RPC accepts an Enterprise owner/admin for the same reason it accepts Agency's: no `account_type` check. |
-| Client / Anonymous | ✗ | `REVOKE ALL … FROM PUBLIC, anon`, verified live: `anon_can_execute: false`. |
+| Platform operator (God) | ✗ refused, always | Was "refused unless also a tenant member" — now refused unconditionally unless that membership is on a Solo tenant, because the new tier guard runs regardless of who the caller is. An operator with a real owner/admin row on an Agency/sub-account/Enterprise tenant is now refused where they previously were not. |
+| Solo owner / admin | ✓ | `is_tenant_admin()` inside the function body (§59), now followed by the literal Solo-only check — unchanged for this tier since it already satisfies both. |
+| Solo member | ✗ refused, and the acts are OMITTED not disabled | A disabled control says "later"; the truth is "not your role". Unchanged by this migration. |
+| Sub-account owner / admin | ✗ refused (was UI: ✗ · RPC: ✓) | `workspaceEntry.ts` routes `sub_account` to `/business/*` → `AgencyApp mode="subaccount"` → its own `./growth`, never `CatalogOffers` — the UI gap already existed. The RPC gap is now closed: `parent_tenant_id IS NOT NULL` refuses every sub-account, including a legacy `account_type='standalone'` one, before any row is touched. |
+| Agency (as a tenant) | ✗ refused (was UI: ✗ · RPC: ✓ — an exposed gap) | `tierFeatures.ts` already excluded `CREATION_SURFACES` from `AGENCY_FEATURES`, and `/agency/*` never mounted `CatalogOffers`. The RPC gap this row used to document — no `account_type` check — is closed by the same literal comparison. |
+| Enterprise (as a tenant) | ✗ refused (was UI: ✗ · RPC: ✓) | Routes to `/agency/*` alongside Agency, same absence of `CatalogOffers`. `ENTERPRISE_FEATURES` carries the `growth` feature bit (deliberately creation-capable, unlike Agency) — that describes eligibility for the Studio/creation surfaces generally, not this specific editor, and the guard makes no exception for it: Enterprise is refused the same as Agency until a dedicated Enterprise Catalog experience exists. |
+| Client / Anonymous | ✗ | `REVOKE ALL … FROM PUBLIC, anon`, verified live: `anon_can_execute: false`. Unchanged. |
 
 **Superseded same day by #863.** `cd9d2e21`'s delayed Codex review (see lessons-learned) returned
 six real findings against the merged head — four P1, including a draft saved to the wrong tenant on
@@ -2169,14 +2184,13 @@ allowlist, and cross-field validation of `kind` against `billing_interval`. Whet
 operator acting on a tenant's catalog *should* write without a membership row (i.e. whether
 `is_tenant_admin` should carry an operator bypass here the way other admin-facing RPCs do) is a
 product decision, not a bug this row fixes silently — flagged, not resolved, per the table above.
-**Also owed: closing the agency RPC gap** — either `save_solo_offer`/`set_solo_offer_status` gain an
-explicit `account_type <> 'agency'` guard (Enterprise is deliberately excluded from any such guard:
-`ENTERPRISE_FEATURES` is a strict union of `SOLO_FEATURES` and `AGENCY_FEATURES` plus
-`CREATION_SURFACES` explicitly re-added — §60/§61's hybrid tier is creation-capable by design, and
-an `account_type NOT IN ('agency','enterprise')` guard would have wrongly revoked that; caught by
-Codex, PR #860, round 4, against this row's own prior draft), or the owner rules that agency write
-access is intentional and the UI gate is what's wrong. Either resolution is a code change outside
-this docs-only PR's scope; recording the gap honestly is what this PR does. A visual/colour pass on
+**The agency/sub-account/Enterprise RPC gap this section used to describe is CLOSED** (migration
+`20261131000000`, owner-briefed hotfix, 2026-09-03) — see the table above. Note the resolution is
+narrower than either option this row used to weigh: the guard refuses **every** non-Solo tenant
+(Agency, sub-account, AND Enterprise) rather than picking one `account_type <> 'x'` exception list,
+because the owner ruling was "Solo is the only account type allowed... right now," not a
+per-tier carve-out — closing the earlier draft's Enterprise-inclusion mistake (Codex, PR #860,
+round 4) by refusing everyone uniformly instead of trying to name every tier to exclude. A visual/colour pass on
 the Solo Catalog buttons is requested and
 explicitly deferred to Claude
 Design (§00) — no design decision made here.
