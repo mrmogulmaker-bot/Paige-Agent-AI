@@ -198,10 +198,19 @@ describe("/admin entry gate", () => {
 
   // The chooser's second-chance marker, for a browser where the session record
   // cannot be written at all. It settles only the hop it arrives on.
-  it("accepts the chooser's URL marker as settlement for the hop it arrives on", async () => {
+  it("accepts the chooser's URL marker, and CONSUMES it so it cannot be bookmarked", async () => {
     const original = window.location;
-    Object.defineProperty(window, "location", { configurable: true, value: { ...original, search: "?picked=1" } });
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...original, pathname: "/admin", search: "?picked=1", hash: "" },
+    });
     notTheChooser(await renderAt("/admin"));
+    // Stripped from the visible URL: a marker that survives is a permanent answer
+    // to the entry question for whoever bookmarks that address.
+    expect(replaceState).toHaveBeenCalled();
+    expect(String(replaceState.mock.calls.at(-1)?.[2])).not.toContain("picked");
+    replaceState.mockRestore();
     Object.defineProperty(window, "location", { configurable: true, value: original });
   });
 

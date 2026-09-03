@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Suspense, lazy as reactLazy } from "react";
+import React, { useEffect, useRef, useState, Suspense, lazy as reactLazy } from "react";
 
 // Auto-recover from stale chunk errors after a deploy: when index.html is
 // cached but references hashed JS chunks that no longer exist, dynamic imports
@@ -272,13 +272,34 @@ const Admin = () => {
   // Secondary to the session record, and only for the hop the chooser just made:
   // see WORKSPACE_CHOOSER_SETTLED_PARAM. Read from `window.location` because it
   // must survive the chooser's full-page assign.
-  const chooserSettledOnThisHop = (() => {
+  //
+  // CONSUMED ON READ, which is the difference between a one-hop signal and a
+  // permanent bypass. The chooser leaves a canary-off tenant on `/admin?picked=1`
+  // with `replace`, so that URL sits in the address bar and is what a person
+  // bookmarks as "my dashboard" — and a marker that is never stripped would then
+  // answer the entry question forever, for that bookmark, defeating the ruling.
+  // Stripping it rewrites the visible URL without navigating, so the hop it was
+  // minted for still works and nothing durable is left behind.
+  const chooserSettledOnThisHop = useRef<boolean | null>(null);
+  if (chooserSettledOnThisHop.current === null) {
+    chooserSettledOnThisHop.current = false;
     try {
-      return new URLSearchParams(window.location.search).get(WORKSPACE_CHOOSER_SETTLED_PARAM) === "1";
+      const params = new URLSearchParams(window.location.search);
+      if (params.get(WORKSPACE_CHOOSER_SETTLED_PARAM) === "1") {
+        chooserSettledOnThisHop.current = true;
+        params.delete(WORKSPACE_CHOOSER_SETTLED_PARAM);
+        const query = params.toString();
+        window.history.replaceState(
+          window.history.state,
+          "",
+          `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+        );
+      }
     } catch {
-      return false;
+      // No URL to read, or history is unavailable: fall back to the session
+      // record alone, which is the durable signal anyway.
     }
-  })();
+  }
   const atAdminDoor = useLocation().pathname.replace(/\/+$/, "").toLowerCase() === "/admin";
 
   useEffect(() => {
@@ -389,8 +410,19 @@ const Admin = () => {
   // two paths `RequireSetupComplete` deliberately exempts so a tenant can choose a
   // playbook. A multi-context tenant mid-setup then cycled forever — chooser →
   // their workspace root → setup gate → `/admin/marketplace` → chooser — and could
-  // never reach Setup to break out of it. Anything below the door is somewhere the
-  // person has already navigated to; only the door asks.
+  // never reach Setup to break out of it.
+  //
+  // THE COST OF THAT SCOPING, STATED RATHER THAN GLOSSED. An earlier version of
+  // this comment justified it as "anything below the door is somewhere the person
+  // has already navigated to", which is FALSE for a restored tab, a bookmark or a
+  // shared link: landing directly on `/admin/contacts` with a wrongly-parked
+  // context still drops the person into that context's shell without asking. That
+  // is a narrower version of the reported defect and it is not closed here.
+  // Widening the gate to the subtree re-opens the Setup cycle above, and the fix
+  // for THAT collides with a standing shell-ownership directive, so the ordering
+  // is #826 first. Recorded so the gap is known rather than assumed away — a
+  // comment asserting a property the code does not have is exactly what this
+  // repair keeps being caught by.
   //
   // THREE MORE THINGS IT DELIBERATELY WILL NOT DO:
   //  • It never fires until the account context is genuinely settled. Asking off a
@@ -408,7 +440,7 @@ const Admin = () => {
     !accountContextLoading &&
     accountContextStatus === "ready" &&
     !hasEnteredWorkspace(activeTenantId) &&
-    !chooserSettledOnThisHop &&
+    !chooserSettledOnThisHop.current &&
     shouldOfferAccountPicker({
       // Honest note on the quantity: the predicate's parameter is a MEMBERSHIP
       // count, and `Auth.tsx` feeds it exactly that. Here it is the RLS-visible

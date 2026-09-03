@@ -156,12 +156,14 @@ describe("ChooseAccount", () => {
       root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
     });
     expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/admin");
-    // Either signal terminates the cycle: the durable record, or the marker on
-    // the hop for a browser where storage cannot be written at all.
-    expect(
-      sessionStorage.getItem("paige.workspace.entered") === harness.context.activeTenantId ||
-        host.querySelector("[data-search]")?.getAttribute("data-search") === "?picked=1",
-    ).toBe(true);
+    // BOTH signals, asserted separately. An earlier version of this test ORed
+    // them — and because the zero-choice branch always leaves via the marker, the
+    // second disjunct was unconditionally true and the first was never exercised.
+    // Deleting the record write, the exact line this case exists to guard, left
+    // the test green. A guard that cannot fail on the fix it guards is the
+    // false-green the peer-gate exists to catch, so each signal stands alone.
+    expect(sessionStorage.getItem("paige.workspace.entered")).toBe(harness.context.activeTenantId);
+    expect(host.querySelector("[data-search]")?.getAttribute("data-search")).toBe("?picked=1");
   });
 
   // A FAILED READ IS NOT ZERO CHOICES. Navigating away on an error made the error

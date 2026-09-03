@@ -1601,7 +1601,12 @@ controls drill an agency operator into an authorized sub-account — `AccountSwi
 gives them an active owner membership in every child they create, so the door would have intercepted
 a drill-down that had already happened and sent them to the chooser instead of the child. Both
 producers now record the entry before handing off: an act-as IS an explicit choice of operating
-context. `actAsLanding.test.ts` guards the wiring at both, and fails if either loses it.
+context. `actAsLanding.test.ts` guards the wiring at both: it fails if either drops the call, reorders it after
+the hand-off, or passes the wrong child. It is a source-reading guard and cannot see a call made
+unreachable, so it is a removal guard rather than a proof of runtime behaviour — stated here so the
+row is not read as more than it is. A third producer, `AgencyApp`'s own `syncIntoChild`, records the
+entry too; it stays inside the agency shell, so it never reached the door, but leaving one producer
+out of the inventory is how the last two rounds went.
 
 **The settlement record survives navigation, and its predecessor did not.** `hasEnteredWorkspace`
 reads a session key written by the chooser before it leaves. It replaced a `?picked=1` URL marker
@@ -1630,12 +1635,19 @@ null and enters inline at `/admin`, exactly as today. Without this the chooser w
 un-canaried shell to tenants whose operator had not enabled it, and routed a freshly-provisioned
 `account_type: null` tenant into the Solo shell — the case that gate rejects in as many words.
 
-**Choosing a workspace drops the previous one's identity and navigation state.** A full page load
-already clears React state and the query cache; what survives is browser storage. Four keys named the
-OLD account rather than a preference belonging to the person — an impersonated contact, a selected
-business, a client-view latch, and a stashed OAuth return path, the last being literally a route back
-into the previous workspace. All four are cleared on selection. Tenant-keyed values and pure
-cosmetics (theme, density, rail collapse) are deliberately left alone.
+**Choosing a DIFFERENT workspace drops the previous one's identity and navigation state.** A full
+page load already clears React state and the query cache; what survives is browser storage. **Three**
+session keys named the OLD account rather than a preference belonging to the person — an impersonated
+contact, a client-view latch, and a stashed OAuth return path, the last being literally a route back
+into the previous workspace. All three are cleared when the chosen tenant differs from the active one;
+re-picking the workspace you are already in changes nothing and discards nothing.
+
+A fourth, `paige.activeBusinessId`, was in that list and was **removed after checking its owning
+module**: `BusinessContext` selects by `owner_user_id`, so it names the PERSON, not the account they
+were in. Clearing it would have been over-clearing justified by a comment that did not match the code
+— the same class of mistake as prose asserting a protection, which is what this repair keeps being
+caught by. Tenant-keyed values and pure cosmetics (theme, density, rail collapse) are likewise left
+alone.
 
 **No in-shell picker survives.** `MemberAccountSwitcher` — which listed every readable tenant with no
 status filter and PERSISTED `active_tenant_id` on selection — is deleted; `WorkspaceExitControl`

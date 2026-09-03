@@ -1,5 +1,26 @@
 # Decision Log — chronological one-liners
 
+- **Round four cleared the blockers and caught a guard that could not fail (2026-09-03, PR #811)** —
+  ITERATE, not BLOCK: 22 loop scenarios driven against the real components on a real history-backed
+  router reproduced no cycle this change introduces, and the one that does exist reproduces identically
+  on the base commit (#826). **The finding worth keeping is the test, not the code.** The guard for
+  round three's zero-choice BLOCK asserted its two settlement signals with an `||`, and because that
+  branch always leaves via the URL marker the second disjunct was unconditionally true — so deleting
+  the record write, the exact line the case existed to guard, left the suite green. Split into two
+  assertions and re-proven red. **A guard that cannot fail on the fix it guards is the false-green the
+  peer-gate exists to catch, and this one was guarding a previously-blocking defect.** The same pass
+  found `actAsLanding.test.ts` passing with `rememberWorkspaceEntered(undefined)`; it now asserts the
+  ARGUMENT, and says plainly that a source-reading guard cannot see a call made unreachable. Also
+  closed: `/admin?picked=1` was a bookmarkable permanent bypass of the entry question, since the
+  chooser leaves canary-off tenants on exactly that URL — the marker is now consumed and stripped on
+  read; and `AgencyApp.syncIntoChild`, the third act-as producer, records the entry too. **Two comments
+  were corrected rather than defended:** the gate's justification claimed "anything below the door is
+  somewhere the person has already navigated to", which is false for a restored tab or a bookmark —
+  a narrower version of the reported defect that is NOT closed here, because widening the gate re-opens
+  #826's cycle; and the tier matrix said four storage keys were cleared when the code clears three. The
+  recurring shape across all four rounds: every defect lived in code that type-checked, built and
+  passed its author's tests, and two of them were prose asserting a property the code did not have.
+
 - **Round three of the peer-gate broke agency act-as for the THIRD time, through a door nobody had
   inventoried (2026-09-02, PR #811)** — `/admin` is not only a door a person opens; it is a
   DESTINATION that shipped code redirects to. `AccountSwitcher` and `AgencyBoard` both call

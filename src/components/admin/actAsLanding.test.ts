@@ -13,28 +13,35 @@
 // already happened and sends them to the chooser instead of the child. That broke
 // a shipped capability, and it is the third distinct way this repair has done so.
 //
-// This is a STRUCTURAL guard, and it is honest about that: it reads the source
-// rather than driving the components, which are heavy and network-bound. It
-// proves the wiring exists and fails if either producer loses it. It does not
-// prove the runtime behaviour — that is the authenticated drive's job.
+// This is a STRUCTURAL guard, and it is honest about what that can and cannot
+// see. It reads the source rather than driving the components, which are heavy
+// and network-bound. It fails if either producer drops the call, reorders it
+// after the hand-off, or passes the wrong child. It CANNOT see a call made
+// unreachable — inside a false branch, or after an early return — so it is a
+// removal guard, not a proof of runtime behaviour. That is the authenticated
+// drive's job, and this file does not stand in for it.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+// The child-id expression each producer must pass, so a call that survives with
+// the wrong argument (or none) is not mistaken for the wiring being intact.
 const PRODUCERS = [
-  "src/components/admin/AccountSwitcher.tsx",
-  "src/pages/admin/AgencyBoard.tsx",
+  { file: "src/components/admin/AccountSwitcher.tsx", arg: "child.id" },
+  { file: "src/pages/admin/AgencyBoard.tsx", arg: "childId" },
 ] as const;
 
 describe("agency act-as landing on /admin", () => {
-  it.each(PRODUCERS)("%s records the entry before handing off to the /admin door", (file) => {
+  it.each(PRODUCERS)("$file records the entry before handing off to the /admin door", ({ file, arg }) => {
     const src = readFileSync(file, "utf8");
 
     // It really is a producer of this destination.
-    expect(src).toContain('agency_enter_subaccount');
+    expect(src).toContain("agency_enter_subaccount");
     expect(src).toContain('window.location.assign("/admin")');
 
-    // And it settles the door before leaving.
-    const remembers = src.indexOf("rememberWorkspaceEntered(");
+    // And it settles the door before leaving, WITH THE CHILD IT JUST ENTERED.
+    // Asserting the argument matters: a call left in place with the wrong value —
+    // or none — reads as intact wiring and settles the door against nothing.
+    const remembers = src.indexOf(`rememberWorkspaceEntered(${arg})`);
     const assigns = src.indexOf('window.location.assign("/admin")');
     expect(remembers).toBeGreaterThan(-1);
     expect(remembers).toBeLessThan(assigns);
