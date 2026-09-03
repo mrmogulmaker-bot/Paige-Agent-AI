@@ -62,27 +62,34 @@ describe("solo-team-invitations passes the named workspace to the one authority"
   });
 
   it("shows only the sentences this seam authored, never raw database text", () => {
-    // The Team screen now renders this string verbatim, so whatever is thrown reaches a person.
-    // A PostgrestError's message is raw PostgREST/Postgres text: during a deploy window PGRST202
-    // would have put a backend function signature in product copy (§11). Caught by the second
-    // round of adversarial review, on a fix from the first.
+    // The Team screen renders this string verbatim, so whatever is thrown reaches a person. A
+    // PostgrestError's message is raw PostgREST/Postgres text: during a deploy window PGRST202
+    // would have put a backend function signature in product copy (§11).
     expect(HANDLER).toContain("const AUTHORED_REFUSALS = [");
-    const list = HANDLER.slice(HANDLER.indexOf("const AUTHORED_REFUSALS = ["), HANDLER.indexOf("];", HANDLER.indexOf("const AUTHORED_REFUSALS = [")));
-    // Every sentence the migrations raise on purpose is listed, so the repair's precision survives.
-    for (const phrase of [
-      "not authorized to manage team invitations",
-      "the workspace for this invitation was not named",
-      "only an owner or admin may manage team invitations in that workspace",
-      "team invitations may grant only Admin or Member",
-      "a valid email address is required",
-      "this person already belongs to the workspace",
-      "team invitation not found",
-      "an accepted invitation cannot be resent",
-      "pending team invitation not found",
-    ]) {
-      expect(list, `${phrase} reaches the operator`).toContain(phrase);
+    const listStart = HANDLER.indexOf("const AUTHORED_REFUSALS = [");
+    const list = HANDLER.slice(listStart, HANDLER.indexOf("\n];", listStart));
+
+    // DERIVED FROM THE MIGRATION, not from a hardcoded copy. Round 3 of the adversarial read: the
+    // previous version listed sentences by hand, so a REWORD was caught by other tests but an
+    // ADDITION was not — a new RAISE would have shown generic copy with nothing to notice it.
+    const migration = readFileSync(
+      resolve(process.cwd(), "supabase/migrations/20261045000000_an_invitation_is_sent_to_the_workspace_the_owner_named.sql"),
+      "utf8",
+    );
+    const raised = [...migration.matchAll(/RAISE EXCEPTION '([^']+)'/g)].map((m) => m[1]);
+    expect(raised.length, "the migration's raises were found").toBeGreaterThanOrEqual(10);
+    for (const sentence of new Set(raised)) {
+      expect(list, `the migration raises "${sentence}" — it must reach the operator`).toContain(sentence);
     }
-    // And anything else is logged and replaced rather than shown.
+
+    // This function's own throws travel too.
+    for (const own of [...HANDLER.matchAll(/throw new Error\("([^"]+)"\)/g)].map((m) => m[1])) {
+      expect(list, `this function throws "${own}" — it must reach the operator`).toContain(own);
+    }
+
+    // Everything else is logged and replaced, and equality is what keeps caller-controlled text
+    // (a uuid cast error quoting the caller's own input) from carrying a phrase past the filter.
+    expect(HANDLER).toContain("const authored = AUTHORED_REFUSALS.includes(message);");
     expect(HANDLER).toContain("if (!authored) console.error");
     expect(HANDLER).toMatch(/error: authored\s*\?\s*message/);
     expect(HANDLER).toContain("The invitation could not be completed just now.");

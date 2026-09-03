@@ -41,10 +41,17 @@ type PreparedInvite = {
 };
 
 /**
- * Every refusal this seam RAISES on purpose, as substrings. Sourced from the migrations that
- * define them — `20261045000000` (the authority resolver and the three invitation functions) and
- * `20260901001520` (the validation raises those functions kept). A sentence not on this list did
- * not come from us, so it is not shown to anyone.
+ * Every refusal this seam RAISES on purpose, as COMPLETE messages. Sourced from
+ * `20261045000000`, which re-bodies the resolver and all three invitation functions and therefore
+ * restates every validation raise itself — nothing from `20260901001520` executes on this path any
+ * more. A sentence not on this list did not come from us, so it is not shown to anyone.
+ *
+ * MATCHED BY EQUALITY, NOT `includes()`. Round 3 of the adversarial read: Postgres embeds the
+ * offending value in its own messages (`invalid input syntax for type uuid: "<value>"`), and
+ * `inviteId` reaches the uuid cast unvalidated — so with substring matching a caller sending
+ * `inviteId: "team invitation not found"` would have carried an authored phrase past the filter
+ * and been shown raw PostgREST text. Every entry here is a whole message, so equality costs
+ * nothing and closes it.
  */
 const AUTHORED_REFUSALS = [
   // solo_team_invite_authority
@@ -61,8 +68,9 @@ const AUTHORED_REFUSALS = [
   "an accepted invitation cannot be resent",
   // revoke_solo_team_invite
   "pending team invitation not found",
-  // this function's own redirect check
-  "resolved to a different workspace than the one requested",
+  // this function's own throws
+  "not authorized: this invitation resolved to a different workspace than the one requested",
+  "Invitation could not be prepared",
 ];
 
 Deno.serve(async (req) => {
@@ -183,7 +191,7 @@ Deno.serve(async (req) => {
     //
     // So the honest sentences pass through and everything else is logged and replaced. Caught by
     // the second round of adversarial review, on a fix from the first.
-    const authored = message === "Invitation could not be prepared" || AUTHORED_REFUSALS.some((phrase) => message.includes(phrase));
+    const authored = AUTHORED_REFUSALS.includes(message);
     if (!authored) console.error("[solo-team-invitations] unrecognised failure:", message);
     return json({
       ok: false,

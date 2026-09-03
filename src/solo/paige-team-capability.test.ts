@@ -298,7 +298,12 @@ describe("the handler's Team call sites (source-level proof, not runtime proof)"
     // deleted, `guardAt` fell back to the `team_set_permission` guard 1820 chars earlier — under
     // the 2000 budget — and `member_grant_role` opens AFTER the invite branch, so that check could
     // never match. All four assertions passed against the regression they were written to catch.
-    const inviteBranchOpen = HANDLER.lastIndexOf("} else if (", branchStart);
+    // Anchored on the branch's own CONDITION rather than on brace style. Round 3: `} else if (`
+    // was fragile both ways — writing the opener as `} else if(` let a deleted guard pass, and a
+    // comment containing that text between the guard and the body made it fail with the guard
+    // present. There is no formatter in this repo, but a semantic anchor costs nothing.
+    const inviteBranchOpen = HANDLER.lastIndexOf('tc.function.name === "team_invite_member" ||', branchStart);
+    expect(inviteBranchOpen, "the invitation branch's condition was located").toBeGreaterThan(-1);
     expect(guardAt, "the guard is inside the invitation branch, not the one before it")
       .toBeGreaterThan(inviteBranchOpen);
   });
