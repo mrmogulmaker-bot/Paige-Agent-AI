@@ -110,6 +110,10 @@ export type CatalogOffersState = {
  */
 export type OfferDraft = {
   readonly id: string | null;
+  /** The workspace this form was opened in. Sent as `_expected_tenant_id` so a switch ABORTS. */
+  readonly tenantId: string | null;
+  /** The exact `tenant_prices` row the form was populated from, or null if no plan was shown. */
+  readonly priceId: string | null;
   readonly name: string;
   readonly summary: string;
   readonly description: string;
@@ -134,7 +138,11 @@ export type OfferWriteResult = {
   readonly message?: string;
   /** The row moved under the editor. Offer a reload, never a retry — a retry overwrites them. */
   readonly stale?: boolean;
-  readonly result?: { id?: string; status?: string; updated_at?: string } | null;
+  readonly result?: {
+    id?: string; status?: string; updated_at?: string;
+    /** Set when the definition saved but the PRICE was deliberately left alone. */
+    price_note?: string | null;
+  } | null;
 };
 
 const EMPTY = {
@@ -198,6 +206,8 @@ export function useCatalogOffers(): CatalogOffersState {
     }
     const { data, error } = await supabase.rpc(
       fn as never,
+      // The caller's own `_expected_tenant_id` WINS where it supplies one — that is the whole
+      // point of finding 1's fix, so the spread order here is load-bearing rather than stylistic.
       { _expected_tenant_id: activeTenantId, ...args } as never,
     );
     if (error) {
@@ -218,6 +228,12 @@ export function useCatalogOffers(): CatalogOffersState {
   }, [activeTenantId]);
 
   const saveOffer = useCallback((draft: OfferDraft) => runWrite("save_solo_offer", {
+    // The workspace the FORM WAS OPENED AGAINST, not the one the hook is in now. An independent
+    // review proved why: `_expected_tenant_id` is refusal-only on the server and correct, but the
+    // client was sending the CURRENT tenant — so an owner who opened a new-offer form in workspace
+    // A, switched to B and pressed Save saw no mismatch, and A's drafted offer was created in B.
+    // The guard could never fire because the caller kept agreeing with itself.
+    _expected_tenant_id: draft.tenantId,
     _offer_id: draft.id ?? null,
     _name: draft.name,
     _summary: draft.summary || null,
@@ -231,6 +247,10 @@ export function useCatalogOffers(): CatalogOffersState {
     _price_currency: draft.priceCurrency || null,
     _price_interval: draft.priceInterval || null,
     _expected_updated_at: draft.expectedUpdatedAt ?? null,
+    // The exact plan the form was populated from. `leadPrice` picks the CHEAPEST active plan, and
+    // the previous version always wrote `sort_order = 0` — so on a multi-plan offer a name-only
+    // edit copied the displayed plan's figures over a different one.
+    _price_id: draft.priceId,
   }), [runWrite]);
 
   const setOfferStatus = useCallback((

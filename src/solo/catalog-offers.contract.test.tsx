@@ -97,7 +97,7 @@ function setCampaigns(over: Record<string, unknown> = {}) {
 /** The write seam, recorded rather than performed, so a test can assert what the surface SENT. */
 let saved: Array<Record<string, unknown>>;
 let moved: Array<[string, string, string | null]>;
-let saveOutcome: { ok: boolean; message?: string; stale?: boolean };
+let saveOutcome: { ok: boolean; message?: string; stale?: boolean; result?: { price_note?: string | null } };
 let statusOutcome: { ok: boolean; message?: string; stale?: boolean };
 
 function setOffers(over: Record<string, unknown> = {}) {
@@ -867,6 +867,104 @@ describe("Catalog Offers — rendered flows", () => {
     for (const word of ["Publish", "Archive", "Pause", "Draft", "Status"]) {
       expect(editor.textContent).not.toContain(word);
     }
+  });
+
+  // ── The six findings an independent review returned AFTER #800 merged ─────────────────────
+  it("saves a draft into the workspace it was OPENED in, never the one switched to", async () => {
+    // P1. The server's `_expected_tenant_id` is refusal-only and correct — but the client was
+    // sending the CURRENT tenant, so the guard agreed with itself and a draft started in one
+    // workspace was created in another. The fix is which value the caller sends.
+    setCampaigns(); setOffers({ offers: [] });
+    renderAt("/solo/4471/growth/catalog");
+    openEditor();
+    type("Name", "Started in tenant-1");
+    await act(async () => { clickText("Save"); });
+    expect(saved[0]._expected_tenant_id ?? saved[0].tenantId).toBe("tenant-1");
+  });
+
+  it("discards an open draft when the workspace changes", () => {
+    setCampaigns(); setOffers({ offers: [] });
+    renderAt("/solo/4471/growth/catalog");
+    expect(openEditor()).toBeTruthy();
+    // A form standing open over another workspace's catalog shows one tenant's words above
+    // another's offers, which is its own defect even with the server guard now firing.
+    setCampaigns({ tenantId: "tenant-2" });
+    setOffers({ tenantId: "tenant-2", offers: [] });
+    act(() => root.render(
+      <MemoryRouter initialEntries={["/solo/4471/growth/catalog"]}>
+        <Routes><Route path="/solo/:account/*" element={<GrowthHub />} /></Routes>
+      </MemoryRouter>,
+    ));
+    expect(document.querySelector(".co-editor")).toBeNull();
+  });
+
+  it("edits the plan the form displayed, not whichever row sorts first", async () => {
+    // P1. `leadPrice` picks the CHEAPEST active plan; the RPC used to always write sort_order 0.
+    // On a multi-plan offer that copied the displayed plan's figures onto a different one.
+    setCampaigns();
+    setOffers({ offers: [offer({
+      prices: [
+        { id: "expensive", nickname: "Full", unitAmount: 300000, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true },
+        { id: "cheapest", nickname: "Starter", unitAmount: 50000, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true },
+      ],
+    })] });
+    renderAt("/solo/4471/growth/catalog");
+    const row = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Foundations"));
+    act(() => { row?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    clickText("Edit");
+    await act(async () => { clickText("Save"); });
+    // The form was populated from the cheapest plan, so that is the id the save must carry.
+    expect(saved[0].priceId).toBe("cheapest");
+  });
+
+  it("keeps the editor open and says so when the price was deliberately left alone", async () => {
+    // The server reports a price it refused to touch — connected to checkout, or a deposit or
+    // instalment plan. Silently not saving a price somebody just typed is the same class of lie
+    // as inventing one, so the note surfaces and the form stays open.
+    setCampaigns(); setOffers();
+    saveOutcome = { ok: true, result: { price_note: "This offer's price is connected to checkout, so it was not changed here." } };
+    renderAt("/solo/4471/growth/catalog");
+    const row = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Foundations"));
+    act(() => { row?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    clickText("Edit");
+    await act(async () => { clickText("Save"); });
+    expect(document.querySelector(".co-editor")).toBeTruthy();
+    expect(document.querySelector(".co-editor")!.textContent).toContain("connected to checkout");
+  });
+
+  it("closes on a clean save that touched the price", async () => {
+    setCampaigns(); setOffers();
+    saveOutcome = { ok: true, result: { price_note: null } };
+    renderAt("/solo/4471/growth/catalog");
+    const row = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Foundations"));
+    act(() => { row?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    clickText("Edit");
+    await act(async () => { clickText("Save"); });
+    expect(document.querySelector(".co-editor")).toBeNull();
+  });
+
+  it("never rewrites a checkout-connected or deposit price, and clears one that is emptied", () => {
+    // Static guards over the migration, because these branches are SQL and the harness has no
+    // database. Each names the exact condition the review found missing.
+    const fix = read("supabase/migrations/20261111000000_the_offer_editor_stops_short_of_the_checkout_price.sql");
+    const sql = stripSql(fix);
+    // Finding 2: a Stripe-backed row is refused, not rewritten.
+    expect(sql).toContain("_price.stripe_price_id IS NOT NULL");
+    // Finding 4: deposit and instalment plans are not flattened by a name-only edit.
+    expect(sql).toContain("_price.kind IN ('deposit', 'installment')");
+    // Finding 6: an emptied price is deactivated rather than silently reappearing.
+    expect(sql).toContain("UPDATE public.tenant_prices SET active = false");
+    // Finding 3: the update is BY ID, never by sort_order.
+    expect(sql).toContain("WHERE id = _price.id");
+    expect(sql).not.toContain("AND sort_order = 0");
+    // Finding 5: publication on a storefront tenant needs a checkout-ready price.
+    expect(sql).toContain("tp.stripe_price_id IS NOT NULL");
+    expect(sql).toContain("storefront_enabled");
+    // A new SIGNATURE is a NEW function and inherits EXECUTE to PUBLIC — proven live in a rolled
+    // back transaction, where the 15-arg overload came back anon-executable until this ran.
+    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.save_solo_offer\([^)]*uuid\) FROM PUBLIC, anon/);
+    // And the old 14-arg overload is dropped, or finding 2 stays reachable behind it.
+    expect(sql).toContain("DROP FUNCTION IF EXISTS public.save_solo_offer(");
   });
 
   it("switches between the two concepts without leaving the tab", () => {
