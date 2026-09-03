@@ -1,10 +1,11 @@
 # Platform Billing → Spine: proposed source contract (Foundation A)
 
-> **STATUS: PROPOSED · UNMERGED.** This describes the Billing source model on branch
-> `claude/billing-foundation-a` (draft PR #816) as designed and rollback-proven. **None of it is
-> merged, applied to production, deployed, or reachable.** After the slice merges under its own
-> Gate B this file is refreshed with the shipped commit and the words PROPOSED/UNMERGED are removed.
-> Until then a Spine or Rail reader must treat every field here as *not yet available*.
+> **STATUS: SHIPPED.** PR #816 merged as **`f455d8a5`** (2026-09-03) under owner Gate B; migration
+> **`20261045000000` is applied on prod** and the seams below exist and are callable (verified by
+> direct query, not by a green pipeline). A Spine or Rail reader may rely on §2's fields **as a
+> contract**, with two live caveats: every billing table currently holds **0 rows** (no workspace has
+> a mapping or a designated contact yet), and **no delivery exists** — §6 still governs, so
+> `receives_billing_notices` means *designated*, never *delivered to*.
 >
 > **Who owns what.** Platform Billing owns this model — its terminology, authority semantics,
 > source records and lifecycle rules. Spine is a **reader** of the safe subset below. Spine is not
