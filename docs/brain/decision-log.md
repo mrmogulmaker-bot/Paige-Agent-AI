@@ -36,6 +36,22 @@
   not. The deny list stays a deny list: excluding `trial` is what locked the owner out of his own
   account.
 
+- **Two surfaces asked one question with different inputs, for the third time (2026-09-03, PR #811)** — the
+  §39 peer-gate's round-eight pass drove a case the seven before it had not: with the entry record already
+  naming the active workspace and the membership read transiently returning nothing, `ChooseAccount`'s
+  simulation of the `/admin` door **refused to hand back to a door that would in fact have accepted**, and
+  parked the person on an error card the door itself would never have shown. Root cause is the same shape as
+  round four and round seven: the chooser had its own COPY of the door's rule, and the copy counted
+  workspaces without consulting the record. Fixed by making it one predicate — `doorWouldAskAgain` in
+  `src/lib/auth/workspaceEntry.ts` (§18 one home) — that both the door and the chooser call; only the two
+  conditions a surface alone can see (being at the door, the URL marker for the hop in progress) stay local.
+  Mutation-proven on both sides: deleting the record check turns a test red in `ChooseAccount.test.tsx` AND
+  in `Admin.entryGate.test.tsx`. **Also corrected (§13):** the blocked-storage comment said only that the
+  person "is asked again, which is the safe direction to fail" — true, and an understatement. Round eight
+  drove it: for a multi-workspace person whose workspace has no deep-linkable root, `/admin` re-asks on every
+  return for the whole session. Not a redirect storm (each cycle needs a click, and the right workspace is
+  still entered), accepted rather than papered over, and now written down as what it is.
+
 - **The delegated operator tier had no landing route, and a comment had named the cause without
   closing it (2026-09-03, PR #811)** — the owner signed in as `paigeagentai@gmail.com` and was sent
   to **`/pricing`**, on his own platform. `resolveLandingRoute` branched on `super_admin` only, so a

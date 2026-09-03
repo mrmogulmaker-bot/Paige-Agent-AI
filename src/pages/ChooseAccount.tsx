@@ -6,13 +6,13 @@ import { Button } from "@/components/ui/button";
 import { useTenantContext, type TenantSummary } from "@/hooks/useTenantContext";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { supabase } from "@/integrations/supabase/client";
-import { shouldOfferAccountPicker, tenantAccountLabel } from "@/lib/auth/accountSelection";
+import { tenantAccountLabel } from "@/lib/auth/accountSelection";
 import { allowAccountSwitch } from "@/lib/auth/accountSwitchGuard";
 import {
   WORKSPACE_CHOOSER_SETTLED_PARAM,
   clearWorkspaceScopedState,
+  doorWouldAskAgain,
   enterableWorkspaces,
-  reachableWorkspaceCount,
   rememberWorkspaceEntered,
   workspaceRootForTenant,
 } from "@/lib/auth/workspaceEntry";
@@ -151,17 +151,23 @@ export default function ChooseAccount() {
         else navigate(leaveFor(root), { replace: true });
         return;
       }
-      const doorWouldAsk = shouldOfferAccountPicker({
-        activeMembershipCount: reachableWorkspaceCount(context.tenants, context.activeTenantId),
-        isPlatformStaff: context.isPlatformStaff,
-      });
-      if (doorWouldAsk) {
+      // The SAME predicate the door runs (§18), not a copy of it. An earlier copy
+      // counted workspaces but never consulted the entry record, so it could refuse
+      // to hand back to a door that would have accepted — parking someone on an
+      // error card the door itself would never have shown them.
+      if (
+        doorWouldAskAgain({
+          tenants: context.tenants,
+          activeTenantId: context.activeTenantId,
+          isPlatformStaff: context.isPlatformStaff,
+        })
+      ) {
         setError(
           "Paige couldn't confirm which workspaces you can open. Your access has not changed.",
         );
         return;
       }
-      navigate("/admin", { replace: true });
+      navigate(leaveFor(null), { replace: true });
     })();
   }, [
     choices,

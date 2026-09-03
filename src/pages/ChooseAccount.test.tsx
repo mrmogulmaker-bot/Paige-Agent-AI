@@ -213,6 +213,22 @@ describe("ChooseAccount", () => {
     expect(sessionStorage.getItem("paige.workspace.entered")).toBeNull();
   });
 
+  // ROUND EIGHT'S FINDING 3. The refusal above is right only when the door really
+  // would ask. This page's copy of that rule counted workspaces but never consulted
+  // the entry record, so with a record already naming the active workspace — the
+  // person HAS chosen, and the door would wave them through — it still parked them
+  // on an error card the door itself would never have shown. Both surfaces now run
+  // one predicate, so a divergence like this cannot be reintroduced on one side.
+  it("hands back when the record already names the active workspace, even with nothing to offer", async () => {
+    sessionStorage.setItem("paige.workspace.entered", "antonio");
+    harness.memberships = [];
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/admin");
+    expect(host.textContent).not.toContain("couldn't confirm which workspaces");
+  });
+
   // And when the door genuinely would NOT ask — no enterable workspaces at all —
   // leaving for /admin is correct and terminates.
   it("hands back to /admin when that door has nothing to ask about either", async () => {

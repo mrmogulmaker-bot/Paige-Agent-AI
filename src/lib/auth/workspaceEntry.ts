@@ -1,3 +1,4 @@
+import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 import { resolveTierKey, type TierClassification, type TierKey } from "@/lib/tier/tierFeatures";
 
 /**
@@ -219,6 +220,52 @@ export function reachableWorkspaceCount(
 }
 
 /**
+ * Would the `/admin` door ask the entry question, for a caller in this state?
+ *
+ * ONE HOME (§18), because the chooser has to be able to answer it. When the
+ * chooser has nothing to offer it wants to hand back to `/admin` — but only if
+ * the door will accept, otherwise it starts a cycle it cannot win. So the chooser
+ * SIMULATES the door, and a simulation that consults different inputs than the
+ * thing it simulates is not a simulation.
+ *
+ * WHY THIS EXISTS. Round eight drove exactly that divergence: the chooser's copy
+ * counted workspaces but never consulted the entry record, so with a record
+ * already naming the active workspace and a membership read that transiently
+ * returned nothing, the chooser refused to hand back to a door that would in fact
+ * have let the person straight through — and parked them on an error card. Same
+ * class as the round-four and round-seven defects: two surfaces asking one
+ * question with different inputs. There is now one predicate and both call it.
+ *
+ * The caller supplies `chooserSettled` because that half is read from the URL of
+ * the hop in progress, which only the rendering surface can see.
+ */
+export function doorWouldAskAgain(input: {
+  tenants: readonly { id: string; status?: string | null }[] | null | undefined;
+  activeTenantId: string | null | undefined;
+  isPlatformStaff: boolean;
+  chooserSettled?: boolean;
+}): boolean {
+  // Platform staff move between tenants through the audited operator seam (§53),
+  // never this one — checked here as well as inside the shared predicate so the
+  // short-circuit is visible at the door rather than implied.
+  if (input.isPlatformStaff) return false;
+  // Already asked and answered on this hop, on a browser that cannot hold a record.
+  if (input.chooserSettled) return false;
+  // Already answered durably: this person chose THIS workspace.
+  if (hasEnteredWorkspace(input.activeTenantId)) return false;
+  return shouldOfferAccountPicker({
+    // Honest note on the quantity: the predicate's parameter is a MEMBERSHIP
+    // count, and `Auth.tsx` feeds it exactly that. Here it is the RLS-visible
+    // tenant list. For a non-staff caller the two coincide today — the `tenants`
+    // SELECT policy is `is_tenant_member(id)`, and that helper requires an active
+    // membership — so this asks the same question by a different route. If that
+    // policy ever widens, this count widens with it.
+    activeMembershipCount: reachableWorkspaceCount(input.tenants, input.activeTenantId),
+    isPlatformStaff: input.isPlatformStaff,
+  });
+}
+
+/**
  * The workspace root a given tenant should be entered at, or null when that
  * tenant has no deep-linkable root and must be entered inline at `/admin`.
  *
@@ -352,8 +399,17 @@ export function rememberWorkspaceEntered(tenantId: string | null | undefined): v
   try {
     sessionStorage.setItem(WORKSPACE_ENTERED_KEY, tenantId);
   } catch {
-    // Private mode or blocked storage: the person is asked again, which is the
-    // safe direction to fail.
+    // Private mode or blocked storage. It fails in the safe direction — the person
+    // is asked again rather than let through — but stating only that understates
+    // it (round eight, finding 2, driven). For a multi-workspace person whose
+    // workspace has no deep-linkable root, the chooser's destination is `/admin`
+    // itself, and the `?…settled=1` marker covers only that one hop; every later
+    // return to `/admin` re-asks, for the whole session. It is not a redirect
+    // storm — each cycle needs a human click, and the correct workspace is still
+    // entered — but `/admin` never settles for that person until storage works.
+    // Accepted rather than papered over: the alternatives are a durable marker in
+    // a store that is by definition unavailable, or a URL token that would have to
+    // survive bookmarking, which is a bypass, not a fix.
   }
 }
 

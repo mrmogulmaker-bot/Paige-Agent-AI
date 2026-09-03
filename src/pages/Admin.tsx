@@ -32,12 +32,10 @@ import { toast } from "sonner";
 import { RoleGate } from "@/components/auth/RoleGate";
 import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 import {
   WORKSPACE_CHOOSER_PATH,
   WORKSPACE_CHOOSER_SETTLED_PARAM,
-  reachableWorkspaceCount,
-  hasEnteredWorkspace,
+  doorWouldAskAgain,
   workspaceRecordUsable,
 } from "@/lib/auth/workspaceEntry";
 import { FundingRoute, FundingGate } from "@/components/admin/FundingRoute";
@@ -426,22 +424,21 @@ const Admin = () => {
   //
   // `hasEnteredWorkspace` is what stops it asking twice. It is keyed on the tenant
   // id, so a context the person did NOT choose re-arms the question by itself.
+  //
+  // The question itself lives in `doorWouldAskAgain` (§18) rather than here,
+  // because the chooser must be able to ask whether THIS door would accept before
+  // it hands back — and a copy of the rule over there drifted from this one, which
+  // is round eight's finding 3. Only the two conditions this surface alone can see
+  // stay local: being at the door, and the context having resolved.
   if (
     atAdminDoor &&
-    !isPlatformStaff &&
     !accountContextLoading &&
     accountContextStatus === "ready" &&
-    !hasEnteredWorkspace(activeTenantId) &&
-    !chooserSettledOnThisHop &&
-    shouldOfferAccountPicker({
-      // Honest note on the quantity: the predicate's parameter is a MEMBERSHIP
-      // count, and `Auth.tsx` feeds it exactly that. Here it is the RLS-visible
-      // tenant list, filtered to active. For a non-staff caller the two coincide
-      // today — the `tenants` SELECT policy is `is_tenant_member(id)`, and that
-      // helper requires an active membership — so this asks the same question by
-      // a different route. If that policy ever widens, this count widens with it.
-      activeMembershipCount: reachableWorkspaceCount(tenants, activeTenantId),
+    doorWouldAskAgain({
+      tenants,
+      activeTenantId,
       isPlatformStaff,
+      chooserSettled: chooserSettledOnThisHop,
     })
   ) {
     return <Navigate to={WORKSPACE_CHOOSER_PATH} replace />;
