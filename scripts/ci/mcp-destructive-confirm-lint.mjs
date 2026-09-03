@@ -766,6 +766,51 @@ function modelSettableBooleans(schemaNode) {
   return names;
 }
 
+
+/**
+ * Is this schema's KEY SPACE provably closed — can the model send a key the shape does not declare?
+ *
+ * `modelSettableBooleans` answers "is a DECLARED field a boolean". It cannot answer this, because
+ * an open object declares nothing about the key the model actually sends. Measured, nine ways to
+ * leave the key space open all passed with zero violations while `args.confirm` reached a
+ * `.delete()`:
+ *
+ *   z.object({}).passthrough()            z.looseObject({})
+ *   z.object({}).catchall(z.boolean())    z.object({}).nonstrict()
+ *   z.object({ id }).passthrough()        z.object({}).and(z.record(z.string(), z.boolean()))
+ *   z.object({}).catchall(z.any())        z.intersection(z.object({}), z.record(…))
+ *                                         z.union([z.object({}), z.record(…)])
+ *
+ * ALLOWLIST, NOT DENYLIST — the third inversion in this file, for the third time the same reason.
+ * Enumerating the ways to OPEN a schema loses to the next combinator; enumerating the ways to keep
+ * it CLOSED means an unrecognised one fails closed. A closed schema is a closed-object builder at
+ * the head of a chain of methods that provably do not widen the key space, and nothing else.
+ */
+const CLOSED_OBJECT_BUILDERS = new Set(["object", "strictObject", "interface"]);
+const KEYSPACE_PRESERVING = new Set([
+  // Wrappers that change cardinality, docs or validation but never the set of accepted keys.
+  "optional", "nullable", "nullish", "default", "catch", "readonly", "describe", "brand",
+  "refine", "superRefine", "meta", "register", "transform", "pipe",
+  // Shape edits. They add, remove or relax DECLARED fields — every one of which `shapeFields`
+  // already collects — and leave the object as closed as it found it.
+  "extend", "safeExtend", "augment", "merge", "pick", "omit", "partial", "required",
+  "deepPartial", "strict",
+]);
+
+function schemaKeySpaceIsClosed(node) {
+  const e = unwrapValue(node);
+  if (!e || !ts.isCallExpression(e)) return false;
+  const method = calleeMethod(e.expression);
+  if (method === null) return false;
+  const receiver = (ts.isPropertyAccessExpression(e.expression) || ts.isElementAccessExpression(e.expression))
+    ? e.expression.expression : null;
+  if (receiver && ts.isIdentifier(receiver) && receiver.text === SCHEMA_NS) {
+    return CLOSED_OBJECT_BUILDERS.has(method);      // the head decides
+  }
+  if (!KEYSPACE_PRESERVING.has(method)) return false;   // widens, or this guard does not know it
+  return receiver ? schemaKeySpaceIsClosed(receiver) : false;
+}
+
 export function findViolations(src, file = "<memory>") {
   const out = [];
   const scopes = destructiveScopes(src, file);
@@ -808,6 +853,14 @@ export function findViolations(src, file = "<memory>") {
     if (schema && !schemaIsComplete(schema)) {
       out.push({ file, tool: tool.name, line: tool.line, evidence: destructive,
                  fields: ["<schema not fully readable — cannot rule out a model-settable boolean>"] });
+      continue;
+    }
+    // A schema that admits an UNDECLARED key admits an undeclared boolean, whatever its declared
+    // fields say. This is checked separately from the field walk because the field walk cannot see
+    // it: an open object's shape is silent about the key the model actually sends.
+    if (schema && !schemaKeySpaceIsClosed(schema)) {
+      out.push({ file, tool: tool.name, line: tool.line, evidence: destructive,
+                 fields: ["<schema admits undeclared keys — a model-settable boolean cannot be ruled out>"] });
       continue;
     }
     const booleans = modelSettableBooleans(schema);
@@ -1079,6 +1132,39 @@ mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
 mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
   // …and the false positive from the same round: a definition that is overwritten must not have its
   // SUBTREE searched either, or the nested shape inside the discarded value is still reported.
+  // Codex on d6d24e2e: an OPEN object admits a key the shape never declared, so the field walk —
+  // which only ever inspects DECLARED fields — was structurally unable to see it. Nine forms,
+  // measured, all passing with `args.confirm` reaching a `.delete()`. The check is an allowlist of
+  // key-space-preserving methods over a closed-object head: the file's THIRD inversion, for the
+  // third time the same reason.
+  const OPEN_SCHEMAS = [
+    ["passthrough", `z.object({}).passthrough()`],
+    ["passthrough with a declared field", `z.object({ id: z.string() }).passthrough()`],
+    ["catchall(boolean)", `z.object({}).catchall(z.boolean())`],
+    ["catchall(any)", `z.object({}).catchall(z.any())`],
+    ["looseObject (zod 4)", `z.looseObject({})`],
+    ["looseObject with a field", `z.looseObject({ id: z.string() })`],
+    ["nonstrict (zod 3)", `z.object({}).nonstrict()`],
+    ["and(record)", `z.object({}).and(z.record(z.string(), z.boolean()))`],
+    ["intersection(object, record)", `z.intersection(z.object({}), z.record(z.string(), z.boolean()))`],
+    ["union([object, record])", `z.union([z.object({}), z.record(z.string(), z.boolean())])`],
+  ];
+  const OPEN_HANDLER = `handler: async (args) => { if (args.confirm) await admin.from("clients").delete(); }`;
+  for (const [label, schema] of OPEN_SCHEMAS) {
+    check(`REFUSES an OPEN schema: ${label}`, findViolations(`
+mcp.tool("t", { inputSchema: ${schema}, ${OPEN_HANDLER} });`, "t.ts").length, 1);
+  }
+  // …and the closed forms must NOT trip it, or the guard blocks every legitimate destructive tool.
+  for (const [label, schema] of [
+    ["z.object", `z.object({ id: z.string() })`],
+    ["z.strictObject", `z.strictObject({ id: z.string() })`],
+    ["a chain of key-space-preserving wrappers",
+     `z.object({ id: z.string() }).describe("x").optional().refine(() => true)`],
+    ["extend", `z.object({ id: z.string() }).extend({ note: z.string() })`],
+    ["partial + strict", `z.object({ id: z.string() }).partial().strict()`],
+  ]) check(`ADMITS a CLOSED schema: ${label}`, findViolations(`
+mcp.tool("t", { inputSchema: ${schema}, ${OPEN_HANDLER} });`, "t.ts").length, 0);
+
   // Codex on 909bbee6: a shorthand was reported as the FIELD admitting a boolean, while the
   // identical longhand was correctly reported as an unreadable schema. Same idiom, same refusal —
   // so the reasons must match too. Fixed in `isKeyPosition`, not by resolving the name: this guard
