@@ -21,7 +21,11 @@ const harness = vi.hoisted(() => ({ result: null as SelectResult | null }));
 vi.mock("@/integrations/supabase/client", () => {
   const builder = () => {
     const chain: Record<string, unknown> = {};
-    for (const m of ["select", "order", "eq", "ilike"]) chain[m] = () => chain;
+    // `in` is required because the Solo tree these tests mount now reaches `usePaigeDeptStatus`,
+    // which issues `.select(...).in("status", …).limit(...)`. Without it the chain returns
+    // undefined mid-call and React reports an unhandled error even though every test passes —
+    // a stub that models fewer methods than the code calls fails loudly but not as a test failure.
+    for (const m of ["select", "order", "eq", "ilike", "in"]) chain[m] = () => chain;
     chain.limit = () => Promise.resolve(harness.result ?? { data: [], error: null });
     return chain;
   };

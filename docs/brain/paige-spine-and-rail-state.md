@@ -164,6 +164,111 @@ shape as #794, on the write path, and an integrity/attribution exposure rather t
 Its sharpest form is `p_narrow_to_owner = true`, which yields `audience='owner'` /
 `visibility='owner_internal'`: a plain member could file into the owner's private feed.
 
+### The Rail PRODUCER inventory — every write call site, by execution context
+
+Measured against `main`. **Corrected twice in review; the corrections are recorded because the
+method that produced them is the thing worth remembering.**
+
+**TypeScript producers — eight call sites, seven service-role:**
+
+| # | Call site | Client | `auth.uid()` | Reaches the `has_any_role` branch? |
+|---|---|---|---|---|
+| 1 | `_shared/mcp-outcome.ts:842` | service role | NULL | no |
+| 2 | `_shared/railAutomation.ts:103` | service role | NULL | no |
+| 3 | `growth-process-submission:519` | service role | NULL | no |
+| 4 | `handle-inbound-sms:434` | service role | NULL | no |
+| 5 | `paige-mcp:5282` | service role | NULL | no |
+| 6 | `send-message:1374` | service role | NULL | no |
+| 7 | `paige-ai-chat:889` | **service role** (`supabase`, built with `SUPABASE_SERVICE_ROLE_KEY` at `:587`) | NULL | **no** |
+| 8 | **`paige-ai-chat:11267`** | **caller JWT** (`supabaseClient`, anon key + `Authorization` at `:575`) | **set** | **YES** |
+
+**SQL producers — three live, and they were missing entirely from the first version of this table:**
+
+| # | Producer | Kind | Actor filed | Reaches the gate? |
+|---|---|---|---|---|
+| 9 | `customer_respond_to_action` (`20260712240000:282`) | `SECURITY DEFINER` fn | `'client'` | **depends on the subject** — a client caller lands in the `ELSIF` branch; a staff caller is admitted by `has_any_role` |
+| 10 | `emit_booking_rail` (`20260712260000:125`) | `SECURITY DEFINER` trigger on `internal_bookings` (`AFTER INSERT OR UPDATE`, every row) | `'client'` | **depends on the subject** — and staff booking on a client's behalf is an ordinary path, so this reaches the gate routinely |
+| 11 | **`configure_tenant_pipeline` (`20260831224500:251`)** | `SECURITY DEFINER` fn | `'owner_staff'` / `'paige_agent'`, with `p_narrow_to_owner = true` | **YES, always** |
+
+**`SECURITY DEFINER` does not null `auth.uid()`** — it changes the executing role, not the JWT claim —
+so an authenticated caller reaching any of these carries their subject into `record_rail_event`.
+
+### Which branch admits a write depends on the SUBJECT, not the actor_type filed
+
+This is the correction that matters most, and it is not a detail: `record_rail_event` tests
+`has_any_role(v_uid, …)` **first**, and only falls to the client branch when that fails. So the
+declared `p_actor_type` does not decide which branch runs — **who is holding the session does.**
+
+**Always gate-exercising:** `paige-ai-chat:11267` (mirrors every successful CRM or action tool result
+as `owner_staff` through the caller's JWT) and `configure_tenant_pipeline` (files a deal move as
+`owner_staff`/`paige_agent` with `p_narrow_to_owner = true`, the `owner_internal` shape).
+
+**Conditionally gate-exercising, whenever a staff subject triggers them:** `emit_booking_rail` and
+`customer_respond_to_action`.
+
+**The booking trigger is the one that matters, and the path into it is specific.** It fires on
+**every** insert or update of `internal_bookings`, but which writers carry a JWT subject decides
+whether the gate runs:
+
+**Do not try to enumerate the writers. The set is OPEN, and that is the finding.** Verified on
+production: `authenticated` holds **INSERT and UPDATE directly on `internal_bookings`**
+(`has_table_privilege` both true, 5 RLS policies), and **all four** booking RPCs are
+authenticated-executable — `create_internal_booking`, `admin_set_booking_status`,
+`cancel_internal_booking`, `reschedule_internal_booking`.
+
+So any authenticated caller RLS permits — through an RPC, or by writing the table directly through
+the Data API — fires this trigger with their own subject. There is no closed list of callers to
+enumerate, and three successive attempts to write one here were each incomplete.
+
+**The rule that replaces the list:**
+
+> **Every authenticated *event-eligible* write to `internal_bookings` reaches the `has_any_role`
+> gate.** Only service-role writers (`booking-manage`, `public-booking`, and the `service_role`-only
+> `create_class_booking` / `reschedule_class_booking`) skip it, because `auth.uid()` is NULL there.
+
+**"Event-eligible" is load-bearing, because the trigger returns early on most writes.** It files
+nothing for a contactless or tenantless row, for an INSERT that is already `cancelled`, for an UPDATE
+that neither cancels nor moves `start_at`, or for a non-representative collective-booking row
+(`20260712260000_booking_rail_emit.sql:58-60, 68-90, 107-120`). A trigger proof using any of those
+transitions **passes without ever reaching `record_rail_event`** — green, and vacuous.
+
+**What that means for a #824 fix, and it is the load-bearing consequence:** the proof belongs at the
+**trigger**, not at a list of call sites. A proof that walks named callers can always be defeated by
+the caller nobody listed — including a direct table write that no TypeScript in this repository
+performs today but the grant permits. Prove that `emit_booking_rail` still records under a staff
+subject after the gate changes — using a transition that actually reaches the Rail call — and the
+caller set stops mattering.
+
+**And this path files a mismatched attribution, which is worth knowing before anyone "fixes" it.**
+`v_actor := CASE WHEN p_actor_type IN ('owner_staff','client') THEN v_uid ELSE NULL END`, and the
+trigger files `p_actor_type = 'client'`. So a staff-triggered booking writes a row that *declares* a
+client action while recording the **staff** UID as `actor_user_id`. That is pre-existing behaviour,
+not something #824's fix introduces — but it means the row's actor field and its actor_type already
+disagree on this path, and a fix should not be blamed for it or accidentally "correct" it without a
+separate decision.
+
+`customer_respond_to_action` is a customer action by design, so a staff subject there is unusual but
+not structurally prevented.
+
+**#824's severity is still unchanged** — member→staff inside one workspace, integrity rather than
+disclosure, escalation population zero. What changed is the fix-impact surface: a two-direction proof
+is owed at **two paths always and two more conditionally** — not at the Chat site alone. Tightening
+the gate touches live write paths in three different languages of caller (edge TypeScript, a SQL
+function, a table trigger), and breaking any of them stops the Rail recording silently.
+
+### The method error, recorded because it repeated
+
+The first version of this table said "all eight" and named one gate-exercising site. It was wrong
+twice: `paige-ai-chat:889` was called caller-JWT when it is service-role (the two clients differ by
+one identifier twelve lines apart at `:575`/`:587`), and the SQL producers were absent because the
+inventory grep was scoped to `supabase/functions/**` and `src/**` — **migrations were excluded, so a
+producer written in SQL could not appear.**
+
+That is the **third** narrow-scope search error in this line of work: `src/`-only missed Chat's
+resolver consumer (#836), and this one missed an entire producer language. The rule that would have
+caught all three: **when a claim is about "everywhere", the search must be repository-wide first and
+narrowed only to explain results — never scoped first and generalised after.**
+
 **Measured exposure, stated honestly:** 3 users hold a global staff role across multiple tenants;
 **0** currently sit at a non-staff seat. Structurally live, never reached. **Re-measured 2026-09-03
 for the writer's population** — 9 users hold a global staff role *at all*, and **0** of them sit at a
