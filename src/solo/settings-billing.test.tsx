@@ -739,6 +739,27 @@ describe("payment setup — the connect act (item 4)", () => {
     expect(host.querySelector("[data-setup-durable-refusal]")).toBeFalsy();
   });
 
+  it("keeps the action live after billing_account_unresolvable too — the server maps every Stripe exception (network blips, rate limits, transient 5xx) to this one code, so it is never assumed permanent (Codex review, #886)", async () => {
+    world({ status: { provider_state: "not_created" } });
+    invoke.mockImplementation((name: string) => {
+      if (name === "platform-billing-connect") {
+        return Promise.resolve({
+          data: null,
+          error: Object.assign(new Error("Edge Function returned a non-2xx status code"), {
+            context: new Response(JSON.stringify({ error: "billing_account_unresolvable" }), { status: 409 }),
+          }),
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+    const { host } = await render();
+    await click(byText(host, "Set up payment method"));
+    await act(async () => { await Promise.resolve(); });
+    expect(text(host)).toContain("The payment provider could not open a setup page");
+    expect(byText(host, "Set up payment method")).toBeTruthy();
+    expect(host.querySelector("[data-setup-durable-refusal]")).toBeFalsy();
+  });
+
   it("does not navigate to a URL minted for a different workspace than the one clicked in", async () => {
     world({ status: { provider_state: "not_created" } });
     invoke.mockImplementation((name: string) => {

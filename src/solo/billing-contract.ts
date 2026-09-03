@@ -702,8 +702,10 @@ function providerFieldsFrom(status: WorkspaceBillingStatus): ReadonlyArray<{ lab
   if (status.providerState === "not_created") {
     // Owner, 2026-09-03 hotfix: this used to read as a flat dead end sitting next to a "Set up
     // payment method" button, which read as contradictory. It is a readiness condition, not a
-    // block — the button below is exactly how it gets resolved, so it says so.
-    rows.push({ label: "Provider billing account", value: "Not set up yet — use “Set up payment method” below to create one" });
+    // block. Points at the SECTION, never the specific button label — the button itself can be
+    // withdrawn after a durable refusal (PAYMENT_SETUP_DURABLE_REFUSALS), and this field has no
+    // visibility into that state; naming the section stays true either way (Codex review, #886).
+    rows.push({ label: "Provider billing account", value: "Not set up yet — see Payment method below" });
   } else if (status.providerState === "ambiguous") {
     rows.push({ label: "Provider billing account", value: "Needs a platform review before it can be shown" });
   } else if (status.providerState === "mapped") {
@@ -962,11 +964,18 @@ export const PAYMENT_SETUP_REFUSAL_COPY: Record<string, string> = {
  * Which refusals a retry genuinely cannot fix (owner brief 2026-09-03 hotfix: "do not present a
  * fake actionable button" once setup is genuinely unavailable). A click that reaches the server and
  * comes back with one of these means clicking again hits the exact same wall — so the section
- * switches to a durably-unavailable state instead of leaving the same button sitting there. Every
- * other refusal (`audit_failed`, `authority_unreadable`, `network`, `workspace_changed`) is a
- * transient condition a retry can genuinely clear, so the button stays live for exactly those.
+ * switches to a durably-unavailable state instead of leaving the same button sitting there.
+ *
+ * `billing_account_unresolvable` is DELIBERATELY EXCLUDED (Codex review, #886): the server's own
+ * catch block maps EVERY exception from `stripe.customers.create()`/`checkout.sessions.create()`
+ * to this one code — network blips, Stripe rate limits, a transient 5xx — indistinguishable from a
+ * genuinely permanent failure at the client. Treating it as durable would withdraw the button on a
+ * plain hiccup, exactly the "recoverable... with a safe retry" case the owner asked to preserve.
+ * `needs_config` stays durable: it fires purely on a missing env var, which no client-side retry
+ * changes. Every other refusal (`audit_failed`, `authority_unreadable`, `network`,
+ * `workspace_changed`, `billing_account_unresolvable`) is treated as retryable.
  */
 export const PAYMENT_SETUP_DURABLE_REFUSALS: ReadonlySet<string> = new Set([
   "no_active_workspace", "not_applicable_scope", "owner_only",
-  "billing_account_ambiguous", "billing_account_unresolvable", "needs_config",
+  "billing_account_ambiguous", "needs_config",
 ]);
