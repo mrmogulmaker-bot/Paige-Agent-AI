@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
--- Billing Foundation A — rollback proof for migration 20261044000000 (platform_billing_accounts,
+-- Billing Foundation A — rollback proof for migration 20261045000000 (platform_billing_accounts,
 -- billing_active_tenant_id, get_workspace_billing_authority, platform_billing_account_reconcile).
 --
 -- HOW TO RUN: from the repo root, `node scripts/sql/run-rollback-proof.mjs scripts/sql/platform-billing-account-proof.sql`
@@ -121,7 +121,7 @@ SELECT solo_b, plan_id, 'canceled', 'monthly', 'sub_pbaproof_b1', 'cus_pbaproof_
 SELECT solo_b, plan_id, 'active',   'monthly', 'sub_pbaproof_b2', 'cus_pbaproof_B2' FROM _f;
 
 -- ── Install the migration (runs reconcile once, as auth.uid() IS NULL) ──────────────────────
-\i supabase/migrations/20261044000000_platform_billing_accounts_foundation_a.sql
+\i supabase/migrations/20261045000000_platform_billing_accounts_foundation_a.sql
 
 -- ── Reconcile outcome ───────────────────────────────────────────────────────────────────────
 INSERT INTO _p SELECT 3, CASE WHEN EXISTS (SELECT 1 FROM public.platform_billing_accounts a, _f f

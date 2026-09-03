@@ -7,6 +7,10 @@ owner's terminology and non-ownership correction (§11.0, R27) and the findings 
 review of the implementation head (both reviewers FIX-THEN-SHIP; every finding integrated and
 re-proven — §5 and §8 record where). v3.1 describes the code on the branch; where v3 and the code
 disagreed, the code was fixed or this doc was corrected, never left to drift.**
+**Migration version: `20261045000000`** — renumbered from `20261044000000` on 2026-09-03 after `main`
+merged an unrelated migration carrying that same version (CI's `database-contract` job applies the
+merge ref and hit a duplicate `schema_migrations` key). Content unchanged; the proof file, the
+parity test and the registry reference the new name.
 Written against `main` `1fb7928` under Gate 1 (packet §4.2–§4.4: R1, R2, R3, R8, R13). The
 implementation head gets its own independent review before Gate B. **Nothing here is merged,
 deployed, applied to production, or touches a Stripe object.**

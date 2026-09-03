@@ -9,7 +9,7 @@ import {
 } from "./billing-notifications.ts";
 
 const MIGRATION = new URL(
-  "../../migrations/20261044000000_platform_billing_accounts_foundation_a.sql",
+  "../../migrations/20261045000000_platform_billing_accounts_foundation_a.sql",
   import.meta.url,
 );
 
