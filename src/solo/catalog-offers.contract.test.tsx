@@ -8,7 +8,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GrowthHub } from "./growth2";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -94,12 +94,31 @@ function setCampaigns(over: Record<string, unknown> = {}) {
   };
 }
 
+/** The write seam, recorded rather than performed, so a test can assert what the surface SENT. */
+let saved: Array<Record<string, unknown>>;
+let moved: Array<[string, string, string | null]>;
+let saveOutcome: { ok: boolean; message?: string; stale?: boolean };
+let statusOutcome: { ok: boolean; message?: string; stale?: boolean };
+
 function setOffers(over: Record<string, unknown> = {}) {
   harness.offers = {
     tenantId: "tenant-1", phase: "ready", offers: [offer()], canManage: true,
-    authorityUnknown: false, fieldsUnavailable: false, retry: vi.fn(), ...over,
+    authorityUnknown: false, fieldsUnavailable: false, retry: vi.fn(),
+    saveOffer: vi.fn(async (draft: Record<string, unknown>) => { saved.push(draft); return saveOutcome; }),
+    setOfferStatus: vi.fn(async (id: string, next: string, seen: string | null) => {
+      moved.push([id, next, seen]);
+      return statusOutcome;
+    }),
+    ...over,
   };
 }
+
+beforeEach(() => {
+  saved = [];
+  moved = [];
+  saveOutcome = { ok: true };
+  statusOutcome = { ok: true };
+});
 
 afterEach(() => {
   act(() => root?.unmount());
@@ -505,7 +524,20 @@ describe("Catalog Offers — rendered flows", () => {
     setCampaigns(); setOffers({ offers: [] });
     renderAt("/solo/4471/growth/catalog");
     expect(host.textContent).toContain("Nothing is listed yet");
-    expect(host.textContent).toContain("Adding and editing offers arrives on this screen in the next release");
+    // Slice 2A promised here that "adding and editing offers arrives in the next release". 2B IS
+    // that release, so the promise is replaced by the act rather than left standing — a surface
+    // that still advertises a future version of itself after shipping it is lying quietly.
+    expect(host.textContent).not.toContain("next release");
+    const add = [...host.querySelectorAll("button")].find((b) => b.textContent === "Add your first offer");
+    expect(add).toBeTruthy();
+  });
+
+  it("offers no way in from first use when the caller may not define offers", () => {
+    setCampaigns(); setOffers({ offers: [], canManage: false });
+    renderAt("/solo/4471/growth/catalog");
+    expect(host.textContent).toContain("Nothing is listed yet");
+    expect([...host.querySelectorAll("button")].some((b) => b.textContent === "Add your first offer")).toBe(false);
+    expect(host.textContent).toContain("An owner or admin defines what this business sells");
   });
 
   it("names the missing fact when an active offer has no amount recorded", () => {
@@ -672,6 +704,169 @@ describe("Catalog Offers — rendered flows", () => {
       </MemoryRouter>,
     ));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  // ── Slice 2B: the offer becomes writable ──────────────────────────────────────────────────
+  const openEditor = () => {
+    const add = [...host.querySelectorAll("button")]
+      .find((b) => b.textContent === "New offer" || b.textContent === "Add your first offer");
+    act(() => { add?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    return document.querySelector(".co-editor");
+  };
+  const type = (label: string, value: string) => {
+    // By row label first, then by aria-label — the currency sits INSIDE the Price row and has no
+    // label span of its own, so a row-only lookup would silently find the wrong input.
+    const field = [...document.querySelectorAll(".co-field")]
+      .find((f) => f.querySelector("span")?.textContent === label);
+    const input = (field?.querySelector("input, textarea")
+      ?? document.querySelector(`[aria-label="${label}"]`)) as HTMLInputElement | undefined;
+    expect(input, `no field labelled ${label}`).toBeTruthy();
+    act(() => {
+      // React tracks the DOM value, so a bare `.value =` is swallowed on the next render.
+      const proto = input instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, "value")!.set!.call(input, value);
+      input!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  };
+  const clickText = (text: string) => {
+    const button = [...document.querySelectorAll("button")].find((b) => b.textContent === text);
+    expect(button, `no button labelled ${text}`).toBeTruthy();
+    act(() => { button!.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+  };
+
+  it("takes a first-time owner from an empty catalog to a saved offer", async () => {
+    setCampaigns(); setOffers({ offers: [] });
+    renderAt("/solo/4471/growth/catalog");
+    expect(openEditor()).toBeTruthy();
+    type("Name", "Twelve-week program");
+    await act(async () => { clickText("Save"); });
+    expect(saved).toHaveLength(1);
+    expect(saved[0].name).toBe("Twelve-week program");
+    // The pack's rule: a name is the only requirement, and everything unstated stays unstated.
+    expect(saved[0].id).toBeNull();
+    expect(saved[0].summary).toBe("");
+    expect(saved[0].priceAmount).toBeNull();
+    // A clean save closes the editor.
+    expect(document.querySelector(".co-editor")).toBeNull();
+  });
+
+  it("will not save an offer with no name", () => {
+    setCampaigns(); setOffers({ offers: [] });
+    renderAt("/solo/4471/growth/catalog");
+    openEditor();
+    const save = [...document.querySelectorAll("button")].find((b) => b.textContent === "Save");
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    type("Name", "   ");
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("sends a price in MINOR units, never the number typed", async () => {
+    setCampaigns(); setOffers({ offers: [] });
+    renderAt("/solo/4471/growth/catalog");
+    openEditor();
+    type("Name", "Chair service");
+    type("Price", "40.50");
+    await act(async () => { clickText("Save"); });
+    // 40.50 is 4050 minor units. Sending 40.5 would price a haircut at forty cents.
+    expect(saved[0].priceAmount).toBe(4050);
+  });
+
+  it("converts a price by the CURRENCY's exponent, not a hardcoded hundred", async () => {
+    // Caught by reading my own diff: the first version of the editor divided and multiplied by
+    // 100, reintroducing in the WRITE path the defect an independent review had just found in the
+    // read path. JPY has no minor unit, so 500 means ¥500 — ×100 would have saved ¥50,000.
+    setCampaigns(); setOffers({ offers: [] });
+    renderAt("/solo/4471/growth/catalog");
+    openEditor();
+    type("Name", "Tokyo session");
+    type("Currency", "jpy");
+    type("Price", "500");
+    await act(async () => { clickText("Save"); });
+    expect(saved[0].priceAmount).toBe(500);
+    expect(saved[0].priceCurrency).toBe("jpy");
+  });
+
+  it("keeps the editor open and says nothing was saved when the save is refused", async () => {
+    setCampaigns(); setOffers({ offers: [] });
+    saveOutcome = { ok: false, message: "an offer needs a name" };
+    renderAt("/solo/4471/growth/catalog");
+    openEditor();
+    type("Name", "Something");
+    await act(async () => { clickText("Save"); });
+    // Closing on a refusal would discard what they typed ON TOP of telling them it failed.
+    expect(document.querySelector(".co-editor")).toBeTruthy();
+    expect(document.querySelector(".co-editor")!.textContent).toContain("an offer needs a name");
+  });
+
+  it("tells a person who lost the race that nothing was saved, and not to retry", async () => {
+    setCampaigns(); setOffers({ offers: [] });
+    saveOutcome = { ok: false, stale: true };
+    renderAt("/solo/4471/growth/catalog");
+    openEditor();
+    type("Name", "Something");
+    await act(async () => { clickText("Save"); });
+    const text = document.querySelector(".co-editor")!.textContent ?? "";
+    expect(text).toContain("Someone else changed this offer");
+    expect(text).toContain("Nothing was saved");
+  });
+
+  it("edits an existing offer against the version it was opened at", async () => {
+    setCampaigns(); setOffers();
+    renderAt("/solo/4471/growth/catalog");
+    const row = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Foundations Coaching Program"));
+    act(() => { row?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    clickText("Edit");
+    await act(async () => { clickText("Save"); });
+    expect(saved).toHaveLength(1);
+    expect(saved[0].id).toBe("offer-1");
+    // The optimistic-concurrency token, carried from the row the form was opened against.
+    expect(saved[0].expectedUpdatedAt).toBe("2026-08-28T12:00:00Z");
+  });
+
+  it("moves an offer's lifecycle from the drawer, carrying the version it saw", () => {
+    setCampaigns(); setOffers({ offers: [offer({ availability: "active" })] });
+    renderAt("/solo/4471/growth/catalog");
+    const row = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Foundations"));
+    act(() => { row?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    clickText("Pause");
+    expect(moved).toEqual([["offer-1", "paused", "2026-08-28T12:00:00Z"]]);
+  });
+
+  it("asks before archiving, and does nothing when the answer is no", () => {
+    setCampaigns(); setOffers();
+    renderAt("/solo/4471/growth/catalog");
+    const row = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Foundations"));
+    act(() => { row?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    clickText("Archive");
+    expect(confirm).toHaveBeenCalled();
+    expect(moved).toEqual([]);
+    confirm.mockRestore();
+  });
+
+  it("offers no acts at all to a caller who may not change the catalog", () => {
+    setCampaigns(); setOffers({ canManage: false });
+    renderAt("/solo/4471/growth/catalog");
+    const labels = [...host.querySelectorAll("button")].map((b) => b.textContent);
+    expect(labels).not.toContain("New offer");
+    const row = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Foundations"));
+    act(() => { row?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    const drawer = document.querySelector('[role="dialog"]')!;
+    // Omitted, not disabled: a disabled control says "later", when the truth is "not your role".
+    expect(drawer.textContent).not.toContain("Publish");
+    expect(drawer.textContent).not.toContain("Archive");
+  });
+
+  it("never offers a status picker inside the editor", () => {
+    setCampaigns(); setOffers({ offers: [] });
+    renderAt("/solo/4471/growth/catalog");
+    const editor = openEditor()!;
+    // Lifecycle belongs beside the offer, not inside the form that renames it — otherwise a person
+    // publishes something by accident while editing its wording.
+    for (const word of ["Publish", "Archive", "Pause", "Draft", "Status"]) {
+      expect(editor.textContent).not.toContain(word);
+    }
   });
 
   it("switches between the two concepts without leaving the tab", () => {

@@ -93,6 +93,48 @@ export type CatalogOffersState = {
   /** The offer columns are not on this deployment yet, so classified fields read as absent. */
   readonly fieldsUnavailable: boolean;
   readonly retry: () => void;
+  /** Slice 2B. Create when `draft.id` is null, edit when it is set. Never changes status. */
+  readonly saveOffer: (draft: OfferDraft) => Promise<OfferWriteResult>;
+  /** Slice 2B. The lifecycle, separate from the editor — see `set_solo_offer_status`. */
+  readonly setOfferStatus: (
+    offerId: string,
+    next: OfferAvailability,
+    expectedUpdatedAt: string | null,
+  ) => Promise<OfferWriteResult>;
+};
+
+/**
+ * What the editor collects. Deliberately NOT `Partial<CatalogOffer>`: a draft is what a person
+ * typed, so every optional field is an empty string rather than absent, and `expectedUpdatedAt`
+ * carries the version the form was opened against so a concurrent edit refuses instead of winning.
+ */
+export type OfferDraft = {
+  readonly id: string | null;
+  readonly name: string;
+  readonly summary: string;
+  readonly description: string;
+  readonly kind: OfferKind | "";
+  readonly deliveryShape: OfferDeliveryShape | "";
+  readonly pricePresentation: OfferPricePresentation | "";
+  readonly customerAction: OfferCustomerAction | "";
+  readonly category: string;
+  /** MINOR units, matching `tenant_prices.unit_amount`. `null` states no price at all. */
+  readonly priceAmount: number | null;
+  readonly priceCurrency: string;
+  readonly priceInterval: "" | "one_time" | "day" | "week" | "month" | "year";
+  readonly expectedUpdatedAt: string | null;
+};
+
+/**
+ * A write reports what actually happened (§13). `ok: false` always means NOTHING was written —
+ * both functions are single-statement and atomic, so there is no partial outcome to describe.
+ */
+export type OfferWriteResult = {
+  readonly ok: boolean;
+  readonly message?: string;
+  /** The row moved under the editor. Offer a reload, never a retry — a retry overwrites them. */
+  readonly stale?: boolean;
+  readonly result?: { id?: string; status?: string; updated_at?: string } | null;
 };
 
 const EMPTY = {
@@ -132,12 +174,74 @@ const AVAILABILITIES: readonly OfferAvailability[] = ["draft", "active", "paused
 export function useCatalogOffers(): CatalogOffersState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [state, setState] = useState<Omit<CatalogOffersState, "retry">>({
+  const [state, setState] = useState<Omit<CatalogOffersState, "retry" | "saveOffer" | "setOfferStatus">>({
     tenantId: activeTenantId ?? null,
     phase: accountContextLoading ? "resolving" : "loading",
     ...EMPTY,
   });
   const retry = useCallback(() => setRefreshKey((key) => key + 1), []);
+
+  // WHY THE MUTATIONS LIVE HERE AND NOT IN THE COMPONENT. Every write has to refresh the read that
+  // rendered the form, and the read's tenant is resolved here. Putting the write in the component
+  // would give it a second opinion about which workspace it is in — which is precisely the class of
+  // bug the synchronous guard below exists to prevent, moved one layer up.
+  //
+  // `_expected_tenant_id` is REFUSAL-ONLY on the server: it never selects a workspace, it can only
+  // abort. Sending the tenant this hook currently believes it is in is what makes a form opened
+  // against one catalog fail rather than silently save into another.
+  const runWrite = useCallback(async (
+    fn: "save_solo_offer" | "set_solo_offer_status",
+    args: Record<string, unknown>,
+  ): Promise<OfferWriteResult> => {
+    if (!activeTenantId) {
+      return { ok: false, message: "This workspace could not be resolved, so nothing was saved." };
+    }
+    const { data, error } = await supabase.rpc(
+      fn as never,
+      { _expected_tenant_id: activeTenantId, ...args } as never,
+    );
+    if (error) {
+      // The server writes these sentences for the person, not for a log, so they are surfaced as
+      // written rather than replaced with a generic failure. A message we cannot read still says
+      // plainly that nothing changed, because the functions are single-statement and atomic.
+      console.error(`[catalog-offers] ${fn} failed`, error);
+      return {
+        ok: false,
+        message: error.message || "That could not be saved. Nothing was changed.",
+        // 40001 is the optimistic-concurrency refusal: someone else moved the row first. The
+        // surface offers a reload rather than a retry, because retrying would overwrite them.
+        stale: error.code === "40001",
+      };
+    }
+    setRefreshKey((key) => key + 1);
+    return { ok: true, result: (data ?? null) as OfferWriteResult["result"] };
+  }, [activeTenantId]);
+
+  const saveOffer = useCallback((draft: OfferDraft) => runWrite("save_solo_offer", {
+    _offer_id: draft.id ?? null,
+    _name: draft.name,
+    _summary: draft.summary || null,
+    _description: draft.description || null,
+    _offer_kind: draft.kind || null,
+    _delivery_shape: draft.deliveryShape || null,
+    _price_presentation: draft.pricePresentation || null,
+    _customer_action: draft.customerAction || null,
+    _category: draft.category || null,
+    _price_amount: draft.priceAmount,
+    _price_currency: draft.priceCurrency || null,
+    _price_interval: draft.priceInterval || null,
+    _expected_updated_at: draft.expectedUpdatedAt ?? null,
+  }), [runWrite]);
+
+  const setOfferStatus = useCallback((
+    offerId: string,
+    next: OfferAvailability,
+    expectedUpdatedAt: string | null,
+  ) => runWrite("set_solo_offer_status", {
+    _offer_id: offerId,
+    _next_status: next,
+    _expected_updated_at: expectedUpdatedAt,
+  }), [runWrite]);
 
   useEffect(() => {
     let current = true;
@@ -320,5 +424,5 @@ export function useCatalogOffers(): CatalogOffersState {
       : "unavailable" as const,
     ...EMPTY,
   };
-  return { ...visible, retry };
+  return { ...visible, retry, saveOffer, setOfferStatus };
 }

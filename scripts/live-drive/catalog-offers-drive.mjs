@@ -322,6 +322,81 @@ async function main() {
           `${id}: no workspace renders neither offers nor an empty catalog`,
           `rows=${unavailable.rows} firstUse=${unavailable.firstUse}`);
 
+        // 3f. THE EDITOR (Slice 2B). This block exists because its absence was the gap: the drive
+        // passed 419 checks over a surface whose write half it never touched, and the stub did not
+        // even provide `saveOffer` — so the first press of Save in a real browser would have
+        // thrown, and nothing here would have noticed.
+        await setMode(page, "empty");
+        await page.click("button.btn-g");                       // "Add your first offer"
+        await page.waitForTimeout(90);
+        const editor = await page.evaluate(() => {
+          const panel = document.querySelector(".co-editor");
+          const save = [...document.querySelectorAll(".co-editor-foot button")]
+            .find((b) => b.textContent === "Save");
+          const rows = [...document.querySelectorAll(".co-field")];
+          const overflowing = rows.filter((r) => r.scrollWidth > r.clientWidth + 1).length;
+          return {
+            open: Boolean(panel),
+            modal: panel?.getAttribute("aria-modal") === "true",
+            labelled: Boolean(panel?.getAttribute("aria-labelledby")),
+            saveDisabled: Boolean(save?.disabled),
+            rows: rows.length,
+            overflowing,
+            wider: panel ? panel.getBoundingClientRect().width > document.documentElement.clientWidth + 1 : false,
+            statusWords: ["Publish", "Archive", "Pause", "Status"].filter((w) => panel?.textContent?.includes(w)),
+            text: panel?.textContent ?? "",
+          };
+        });
+        check(editor.open, `${id}: the editor opens from first use`);
+        check(editor.modal && editor.labelled, `${id}: the editor is a labelled modal dialog`);
+        check(editor.rows >= 8, `${id}: every field row rendered`, `rows=${editor.rows}`);
+        check(editor.overflowing === 0, `${id}: no field row overflows`, `n=${editor.overflowing}`);
+        check(!editor.wider, `${id}: the editor never exceeds the viewport`);
+        check(editor.saveDisabled, `${id}: Save is refused until the offer has a name`);
+        // The pack's rule, rendered: lifecycle is not in the form that renames the offer.
+        check(editor.statusWords.length === 0, `${id}: no status control inside the editor`,
+          editor.statusWords.join(", "));
+        check(/A name is all this needs to save/.test(editor.text),
+          `${id}: the editor says what it actually requires`);
+
+        // Typing a name is the whole precondition, so Save must become reachable on it alone.
+        await page.fill(".co-field input", "Drive-created offer");
+        await page.waitForTimeout(60);
+        const named = await page.evaluate(() => {
+          const save = [...document.querySelectorAll(".co-editor-foot button")]
+            .find((b) => b.textContent === "Save");
+          return { disabled: Boolean(save?.disabled), foot: document.querySelector(".co-editor-foot")?.textContent ?? "" };
+        });
+        check(!named.disabled, `${id}: a name alone makes Save reachable`);
+        check(/Anything left blank stays unstated/.test(named.foot),
+          `${id}: the editor states that blanks stay unstated`);
+
+        // Close it before touching the harness controls. The editor is correctly modal, so its
+        // scrim intercepts pointer events — leaving it open made the next `setMode` click time out
+        // against its own dialog. That is the editor behaving properly and the drive sequencing
+        // badly, which is worth distinguishing rather than "fixing" by weakening the scrim.
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(70);
+
+        // A refused save must keep the panel open and say nothing was written.
+        await setMode(page, "save-refused");
+        await page.click("button.btn-g");
+        await page.waitForTimeout(80);
+        await page.fill(".co-field input", "Refused offer");
+        await page.click(".co-editor-foot button.btn-g");
+        await page.waitForTimeout(120);
+        const refused = await page.evaluate(() => ({
+          open: Boolean(document.querySelector(".co-editor")),
+          text: document.querySelector(".co-editor")?.textContent ?? "",
+        }));
+        check(refused.open, `${id}: a refused save keeps the editor open`);
+        check(/an offer needs a name/.test(refused.text), `${id}: the refusal is shown as written`);
+
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(80);
+        const closed = await page.evaluate(() => !document.querySelector(".co-editor"));
+        check(closed, `${id}: Escape closes the editor`);
+
         // 4. Read-only.
         await setMode(page, "readonly");
         const readonly = await measure(page);
