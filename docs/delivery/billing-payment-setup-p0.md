@@ -16,6 +16,10 @@ Every attempt carries a nonauthorizing workspace comparison and return marker. C
 
 Signed setup events use async Web Crypto signature verification. A service-only transaction validates tenant/actor/attempt/customer/account bindings and persists mapping, connected state and private completion receipt together. Failed persistence is retryable; completed duplicates are acknowledged from their private receipt without another provider dependency. No default invoice method is selected. Setup writes no card summaries; the Solo status RPC excludes card fields and provider identifiers. Spine retains its narrow plan/promotion, amount due, contact readiness, usage and owner-action contract. Duplicate primary contacts remain Selection needed.
 
+## Same-second confirmation follow-up (#899)
+
+Late review found that Stripe confirmation timestamps have second precision: two valid sessions in that second could overwrite one another by webhook arrival order. Additive migration `20261200000300_payment_setup_deterministic_order.sql` preserves the applied migration and compares confirmation time, first server request audit time, then a stable attempt tie-break. Retry audit rows cannot move the first request time. Unknown pre-upgrade ordering preserves the existing method on equal seconds. Ordering metadata remains server-private and participates in the same persistence transaction. No frontend, provider request, charge, plan or contact mutation is added. Independent local PostgreSQL proof and hosted current-schema rollback proof PASS: forward/reverse delivery, exact ties, first-audit retry order, duplicate immutability, legacy NULL compatibility and injected persistence rollback. Hosted cleanup confirmed; no test data or schema persisted. Production persistence of this follow-up is checked separately after merge.
+
 ## Evidence ledger
 
 - Automated: 22 setup/reconciliation tests and 4 actual synthetic HMAC signature tests PASS; changed Edge handlers Deno check PASS. Frontend targeted tests 130/130 PASS; independent final review PASS. TypeScript ratchet PASS (13 existing diagnostics, no increase); full typecheck is not clean.
