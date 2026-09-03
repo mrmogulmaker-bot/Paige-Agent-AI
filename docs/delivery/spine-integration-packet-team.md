@@ -1,7 +1,7 @@
 # Source-to-Spine packet 2 — Team and notification authority
 
 **Status: NOT BLOCKED. One buildable slice, three things that stay unavailable, one correction to a
-doctrine record, and one correction to this packet's own first draft.** No code written yet. Produced 2026-09-03, before any implementation, per the
+doctrine record, and **three** corrections to this packet's own first draft.** No code written yet. Produced 2026-09-03, before any implementation, per the
 integration discipline: a packet first, never an invented source model. Every claim below is
 grounded on production (`xygzykjyynhzqytbqnzu`) or on an executed check, not on a doc's snapshot.
 
@@ -47,7 +47,7 @@ Grants read from `pg_proc` on production, not from migration text.
 |---|---|---|
 | Safe role facts | **yes** | `tenant_members.role` via `get_paige_team_context().speaker.permission` and `.members[].permission` |
 | Safe authority facts | **yes** | `is_tenant_owner()`, surfaced as `get_workspace_billing_authority().can_manage_billing` / `.can_view_billing` |
-| Billing-notice eligibility | **yes** | `get_workspace_billing_authority().receives_billing_notices` (the caller's own) and `.billing_contact_state` (the workspace's) |
+| Billing-notice eligibility | **yes, but it is a Billing fact** | `get_workspace_billing_authority().receives_billing_notices` (the caller's own) and `.billing_contact_state` (the workspace's). It belongs to a **Billing** capability, not this one — see the split correction below |
 | A roster PAIGE can name people from | **already live**, and **out of scope for a Spine safe summary** | see the PII note below |
 | Whether a teammate other than the caller receives notices | **NO** | `get_workspace_billing_contacts()` is Owner-only and returns `display_name` + `user_id` — real contact data, which a Spine read may not carry |
 
@@ -148,12 +148,54 @@ authority states**, and deliberately carries no name, no email, and no user id:
 |---|---|
 | `viewer_permission` | `owner`, `admin`, `coach`, `member` — the full `tenant_role` enum, read from `tenant_members.role`, **not** the collapsed field |
 | `viewer_is_legal_owner` | `true`, `false` (from `is_tenant_owner()`) |
-| `viewer_receives_billing_notices` | `true`, `false` |
 | `member_count` | integer |
 | `pending_invitation_count` | integer, **owner/admin only**; `unavailable` otherwise |
-| `billing_contact_state` | `none`, `designated`, `designated_needs_attention`, `not_applicable` |
+
+Billing-notice eligibility and billing-contact state were in this table in the first draft and have
+been moved out — see the correction immediately below.
 
 The roster block stays exactly as it is. Nothing is removed (§58).
+
+### Correction — this projection originally spanned two source owners, and that was wrong
+
+The first draft of the table above put `viewer_receives_billing_notices` and `billing_contact_state`
+in the **same capability** as the Team facts, because the brief names item 2 "Team **and
+notification** authority". Registering them together would have meant one capability whose facts
+come from `tenant_members` *and* from `platform_billing_contacts` — blurring exactly the ownership
+line the brief's own "do not conflate" instruction draws, in the registry entry itself.
+
+**Split, therefore:**
+
+| Capability | Facts | Source owner |
+|---|---|---|
+| `team.authority` (this slice) | `viewer_permission`, `viewer_is_legal_owner`, `member_count`, `pending_invitation_count` | Team |
+| a Billing capability (**not mine to build**) | `receives_billing_notices`, `billing_contact_state` | Platform Billing — and open PR **#870** is already building it, as `get_billing_spine_evidence()` |
+
+Billing-notice eligibility is a *Billing* fact that happens to be *about* a team member. Spine
+carrying it under a Team capability would make Spine the place two domains meet, which is the
+opposite of what a source-owned contract is for. PAIGE ends up with both, from two honestly-labelled
+capabilities, and can state each with its real provenance.
+
+### Correction — a migration IS required, and the first draft said it was not
+
+The registry permits exactly **one** `evidence.adapter` per capability
+(`contracts.ts` → `readonly adapter: string`). The obvious candidate,
+`public.get_paige_team_context()`, returns every active member's **name and verified account
+email**. Registering it as this capability's adapter would declare a Spine evidence surface that
+carries contact data — precisely what the Spine rules forbid — and the Chat adapter would receive
+that PII into the edge function only to throw it away. **A boundary that discards data after
+receiving it is not a boundary.**
+
+So this slice needs a narrow SQL projection of its own —
+`public.get_team_authority_readiness(_tenant_id uuid default null)` — mirroring
+`get_business_context_readiness` exactly: dual caller path (server-resolved tenant for a JWT caller,
+`_tenant_id` honoured only where `auth.uid()` is null), an in-body role gate rather than a grant
+(§59), a fixed row set on every call so a refusal is never an empty result (§13), and **no name, no
+email, no user id ever selected**. The PII then never leaves Postgres.
+
+The earlier claim that "no migration is required" was true about the *data* — every underlying fact
+is already on production — and false about the *object*: projecting it safely needs one. Corrected
+below and in the collisions section.
 
 ## A correction to `docs/doctrine/surface-cards/team.md`
 
@@ -223,8 +265,9 @@ Grounded against `main` at `2fdb8391` and every open branch:
   edits it.
 - **`paige-ai-chat/index.ts`** — shared, and heavily contended historically. The insertion point is
   the block sequence next to `businessContextReadinessBlock`; it is additive.
-- **No migration is required.** Both reads already exist on production. This is the first integration
-  in the sequence that needs no schema change at all.
+- **One migration is required** — `public.get_team_authority_readiness`, the narrow projection
+  (see the correction above). The underlying facts all exist on production already; the projection
+  object does not. Version it above `20261140000000`, which open PR **#870** already claims.
 - **Team-owned files are not touched.** `get_paige_team_context()`, `SoloTeamWorkspace`, the five
   `team_*` tools and the surface card all stay as they are.
 
@@ -233,6 +276,7 @@ Grounded against `main` at `2fdb8391` and every open branch:
 | Item | Label | Why |
 |---|---|---|
 | Per-teammate notice eligibility | **UNAVAILABLE** | needs Owner-only contact data a Spine read may not carry |
+| The caller's own notice eligibility | **DEFERRED TO BILLING** | a Billing fact; open PR #870 is building `get_billing_spine_evidence()`. Not folded into `team.authority` — that would blur the ownership line the brief draws |
 | Team **authority / notice** facts in Systems Check | **NOT CONNECTED** | no service-role path on `get_paige_team_context()` or `get_workspace_billing_authority()`; reported to the source owners. Membership itself **is** reachable via `list_team_members(tenant)` |
 | Rail visibility of Team actions | **NOT CONNECTED** | Team's own documented `PARTIAL` gap |
 | The `permission` collapse in the Team block | **routed to Team** | latent, zero divergent rows on prod, Team-owned to fix |
@@ -241,9 +285,19 @@ Grounded against `main` at `2fdb8391` and every open branch:
 
 ## The proposed slice
 
-One capability, `team.authority`, declared in the Spine registry, projecting the six safe facts
-above into PAIGE's Chat context beside the readiness block, with an explicit refusal state. No
-migration, no new table, no change to any Team surface or tool, and no second roster.
+One capability, `team.authority`, declared in the Spine registry, projecting **four** Team-owned
+safe facts into PAIGE's Chat context beside the readiness block, with an explicit refusal state.
+
+One new migration — `public.get_team_authority_readiness`, the narrow projection that keeps member
+names and emails inside Postgres. **No new table**, no change to any Team surface, tool, or existing
+read, and no second roster. The Chat adapter mirrors `businessContextChatEvidence.ts` (a live
+stateless read, deliberately not routed through the Rail-signal resolver) rather than forking a
+third pattern.
+
+One repair to carry with it: `.github/workflows/paige-spine-contract.yml`'s vitest step does not
+list `paige-spine-business-context-readiness.test.ts`, so that proof runs only in the repo-wide
+`verify` job and not in the Spine contract workflow whose path filter matches it. Both files get
+added to that line.
 
 Two things I am **not** doing without the source owner: narrowing `get_paige_team_context()`'s
 `permission` computation, and adding a service-role path to either read.
