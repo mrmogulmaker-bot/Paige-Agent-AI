@@ -2283,18 +2283,29 @@ never on the order, so send → click → order does not join. Attribution is th
 all rather than shown badly.
 
 **Evidence, separated.**
-- *Automated:* 29 contract/render tests (`sales-ops.contract.test.tsx`) — 6 of them the §58 block —
-  **plus 13 that EXECUTE the adapter against a recording fake client**
+- *Automated:* 35 contract/render tests (`sales-ops.contract.test.tsx`) — 6 of them the §58 block —
+  **plus 15 that EXECUTE the adapter against a recording fake client**
   (`useSoloSalesOps.adapter.test.tsx`). The second file exists for the reason the sibling one does:
   the contract suite mocks the hook outright, so every claim it makes about the query would be a
   `toContain` over source, and `toContain("tenant_members")` passes whatever the column is called.
   The §70.1 flows are DRIVEN, not read: the payment declaration is opened, chosen, saved, and the
   exact arguments sent are asserted; a refusal is proved to keep the form open carrying the server's
   own sentence; an abandoned quick offer is proved to write nothing.
+- *Rendered:* **344/344 checks in `scripts/live-drive/sales-ops-drive.mjs`** (`npm run
+  drive:sales-ops`), reproduced on two consecutive runs leaving no orphan process — the real
+  components with only the network reads stubbed, across both palettes and all four Solo widths,
+  asserting the six-tab lock, the five readiness answers, no horizontal overflow, no `$0` for an
+  unrecorded amount, no total or forecast asserted, the §58 boundary and routed-capture band still
+  rendering, every section carrying a real heading, the shared pill primitive rather than a fork,
+  and the editor being genuinely modal (background `inert`, Escape closing, the shell released).
+  24 frames under `scripts/live-drive/artifacts/sales-ops/` (gitignored).
 - *Static/build:* `ci:tsc` clean against the ratchet (baseline 13, current 13 — no new errors);
   `ci:regression`, `lint:definer-fns`, `lint:tier-features`, `lint:migration-versions`,
-  `lint:shadow-vars`, `lint:write-targets`, `lint:skeleton` all pass; production build passes; full
-  suite 2708/2708 across 193 files.
+  `lint:shadow-vars`, `lint:write-targets`, `lint:skeleton`, `lint:views` all pass; production build
+  passes; full suite 2716/2716 across 193 files. **Scope note, because the bullet overclaimed
+  without it:** `sales-ops.tsx` carries `// @ts-nocheck` — the house pattern in `src/solo/`, shared
+  with `catalog-offers.tsx` and `growth2.tsx` — so the ratchet checks the adapter and both test
+  files and NOT the surface component.
 - *Pre-existing failure, not caused here and not repaired here:* `lint:gold` fails on
   `src/components/dashboard/BusinessCreditDashboard.tsx:271`. Confirmed identical on the clean tree
   by stashing this branch's changes and re-running. It is a design surface and not this slice's
@@ -2307,16 +2318,74 @@ all rather than shown badly.
   `has_function_privilege('anon', …)` is `true` before the REVOKE and `false` after, with
   `authenticated` `true`. That third proof exists because the second run initially omitted the
   REVOKEs and showed anon able to execute.
+- **MEASUREMENT handed to Claude Design, not acted on (§00).** The render pass measures every text
+  pair. Seven come in under 4.5:1, and every one is a pairing this surface INHERITED rather than
+  chose: `--ink-3` on `--canvas` at 11.5–12px reads **4.15:1 light / 4.36:1 dark** and is the same
+  pair `.co-summary`, `.co-price small` and `.co-shape` already ship on the sibling Catalog tab;
+  `.pill-n` reads **3.58:1** and `.pill-warn` **3.54:1**, both shared primitives in
+  `solo-tokens.css`; `.campaigns-truth--unavailable` reads **3.58:1** from `solo-campaigns.css`.
+  Changing any of them would be a design decision AND would leave this surface inconsistent with its
+  siblings, so the drive gates on introducing nothing WORSE and prints these as a handover. The
+  ratios are the measurement; what to do about them is CD's.
 - **OWED — persisted apply (§32.a).** `20261130000000` is NOT yet on production; CI applies it on
   merge. What is owed, and must be shown by real queries rather than by the pipeline reporting
   success: the `schema_migrations` row for `20261130000000`, and
   `has_function_privilege('anon', 'public.declare_client_payment_handling(uuid,text,text[])',
   'EXECUTE') = false` against the live function.
-- **UNVERIFIED — authenticated runtime on any tier, and the deployed surface.** §32.c is owed to a
-  session that can drive the deployed app. This session holds no browser tool and could not reach
-  live prod, so no evidence here is a real round-trip to the database: the adapter suite proves the
-  query SHAPE and the resolved authority against a fake client, not that PostgREST answers it as
-  expected.
+- **UNVERIFIED — authenticated runtime against the DEPLOYED app.** §32.c is owed to a session that
+  can reach live production. No evidence here is a real round-trip to the database: the render pass
+  stubs the network reads and the adapter suite proves the query SHAPE and the resolved authority
+  against a fake client, not that PostgREST answers it as expected.
+  **§13 CORRECTION, recorded rather than quietly amended.** The first version of this bullet gave
+  the reason as *"this session holds no browser tool"*. **That was false.** An independent reviewer
+  ran `npm run harness:selftest`, which launches real Chromium through Playwright and passes every
+  falsifiability arm — including the contrast arm that catches exactly the class of defect the same
+  review then found in this surface's own pill fork. Only *"could not reach live prod"* was ever
+  true, and it never explained the absence of a LOCAL render class. The claim was wrong, the missing
+  evidence was produced (see *Rendered* above), and the reason is now stated accurately. A capability
+  this session actually held was reported as absent; §32.c is explicit that the honest degrade is
+  keyed to LACKING the capability, never to the agent's name.
+
+**The §39 peer-gate found what this slice's own tests structurally could not.** Five independent
+reviewers read the pushed diff, each attacking one dimension, and every finding was then handed to a
+separate skeptic told to refute it. Eight confirmed, two partly. The one that matters most:
+
+> **`QuickOffer`'s draft omitted `tenantId`.** `saveOffer` forwards it as `_expected_tenant_id`, and
+> `runWrite` merges `{ _expected_tenant_id: activeTenantId, ...args }` — so a draft that OMITS the
+> key still contributes `undefined`, which WINS the spread and is then dropped entirely by
+> `JSON.stringify`. `save_solo_offer` declares that parameter with no DEFAULT and its 14-argument
+> overload was dropped in `20261111000000`, so PostgREST resolved no function at all: **every Quick
+> offer create would have failed, 100% of the time, on every tier**, rendering the raw function
+> signature into the drawer footer. All 42 tests passed over it, because the contract suite mocks
+> `saveOffer` and asserted `id`/`name`/`kind`/`priceInterval` and never the field whose absence broke
+> it. This is §70's anchoring failure in miniature — the handler was proven WIRED, not proven to let
+> a person FINISH — and it is exactly the defect class a green proof cannot see.
+
+Also confirmed and fixed: `ordersReadable` modelled the `tenant_orders` boundary as an ERROR channel,
+but that table GRANTs SELECT to `authenticated` and gates on RLS, which FILTERS ROWS — so a plain
+member gets `200/[]/no error`, the flag could never be false, and the "not readable at your access
+level" copy written for exactly that caller could never render; readability now derives from the
+same predicate the policy uses, with a non-empty result standing as its own proof so a platform
+operator is not mislabelled. The pipeline row counted `deals.length` outside the Campaigns
+`StateFrame`, so a workspace whose deal read had ERRORED was told it had no deals — permanently, not
+as a flash. The agreements row hardcoded "Not recorded yet" over a table it never queried, while
+Command Center counts that same table as *Active retainers* for the same owner. Both editors declared
+`aria-modal="true"` and implemented none of it. Four section titles were `<b>`, and "Routed capture
+activity" had been an `<h2>` before this diff. And the adapter test's denial fixture
+(`{data: null, error: {code: "42501"}}`) was an input this RLS configuration cannot produce, so it
+encoded the wrong model and passed.
+
+**§18, answered late but answered.** The four questions were not stated before the build, which is
+itself the miss. Searched: `src/solo/`, `src/operator/surfaces/campaigns/`, `src/pages/admin/setup/`,
+and every `from("tenant_orders")` / `from("tenant_products")` reader repo-wide. Siblings that do
+something adjacent: **`StorefrontPanel`** (`src/pages/admin/setup/SetupGeneral.tsx`) creates offers
+through `tenant-product-upsert` and lists `tenant_orders` — a genuine second offer-creation home for
+the same person, recorded here as owed rather than resolved in this slice; `CatalogSurface`
+(operator scope) and `MarketCatalogSurface` (marketplace) read different records entirely.
+Why Sales rather than extending one of them: `StorefrontPanel` is the STOREFRONT/Stripe path whose
+destination-charge posture is the live §38 violation (#458), so routing a tenant's own commercial
+record through it is precisely what the Catalog seam was separated to avoid. The type decision is
+made by a plan, never by a human clicking first: there is no artifact-type picker on this surface.
 
 **Migration version — chosen against BOTH maxima, which is the part the repo alone cannot tell you.**
 Prod ledger max applied `20261111000000` (MCP query); highest on ANY remote branch `20261120000000`

@@ -150,16 +150,38 @@ describe("useSoloSalesOps — the query it actually issues", () => {
   });
 
   it("treats an unreadable activity table as unknown, not as an empty one", async () => {
-    // `tenant_orders` RLS is `is_tenant_admin`, stricter than the `is_tenant_member` that got the
-    // caller onto this surface. A plain member's read fails, and that must not error the surface
-    // OR render as "no activity".
-    results.tenant_orders = { data: null, error: { code: "42501", message: "permission denied" } };
+    // THE INPUT THIS CASE ORIGINALLY USED COULD NOT HAPPEN. It faked the denial as
+    // `{data: null, error: {code: "42501"}}` — but `tenant_orders` GRANTs SELECT to
+    // `authenticated`, so no caller ever sees 42501. The only gate is the RLS policy
+    // `torders_admin_read USING (is_tenant_admin(tenant_id) OR is_platform_owner())`, and RLS is a
+    // ROW FILTER: a plain member's read returns 200 with an EMPTY array and NO error. Modelled
+    // wrongly, the test passed while `ordersReadable = !error` could never be false, so a member of
+    // a workspace WITH payments would have been told in a definite sentence that it had none.
+    results.tenant_orders = { data: [], error: null };
     results.tenant_members = { data: { role: "member" }, error: null };
     await run();
     expect(latest?.phase).toBe("ready");
+    expect(latest?.canManage).toBe(false);
     expect(latest?.ordersReadable).toBe(false);
     expect(latest?.orders).toEqual([]);
+  });
+
+  it("does not tell a platform operator their own successful read failed", async () => {
+    // A platform operator satisfies the policy through `is_platform_owner()` and has NO
+    // `tenant_members` row, so authority alone would wrongly mark their read unreadable. A
+    // non-empty result is its own proof that the policy admitted them.
+    results.tenant_members = { data: null, error: null };
+    await run();
     expect(latest?.canManage).toBe(false);
+    expect(latest?.orders).toHaveLength(1);
+    expect(latest?.ordersReadable).toBe(true);
+  });
+
+  it("still reports an actual read failure as unreadable", async () => {
+    results.tenant_orders = { data: null, error: { message: "boom" } };
+    await run();
+    expect(latest?.phase).toBe("ready");
+    expect(latest?.ordersReadable).toBe(false);
   });
 
   it("reports a failed authority read as unknown, never as a refusal", async () => {

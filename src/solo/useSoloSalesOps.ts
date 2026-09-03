@@ -215,10 +215,6 @@ export function useSoloSalesOps(): SalesOpsState {
           console.error("[sales-ops] membership read failed; treating authority as unknown", roleResponse.error);
         }
 
-        // `tenant_orders` is admin-only at the RLS layer while this surface is member-reachable, so
-        // a read failure here is EXPECTED for a plain member and must not error the whole surface.
-        // It is recorded as "not readable" and rendered as such.
-        const ordersReadable = !orderResponse.error;
         if (orderResponse.error) {
           console.warn("[sales-ops] commercial activity is not readable for this caller", orderResponse.error);
         }
@@ -252,6 +248,23 @@ export function useSoloSalesOps(): SalesOpsState {
           }));
 
         const role = (roleResponse.data as { role?: unknown } | null)?.role;
+        const canManage = role === "owner" || role === "admin";
+
+        // WHY READABILITY IS DERIVED FROM AUTHORITY AND NOT FROM AN ERROR.
+        // The first version of this read `!orderResponse.error`, which models the boundary as an
+        // error channel. It is not one: `tenant_orders` GRANTs SELECT to `authenticated`, so every
+        // signed-in caller holds the table privilege and never sees 42501. The only gate is the
+        // RLS policy `torders_admin_read USING (is_tenant_admin(tenant_id) OR is_platform_owner())`
+        // — and RLS is a ROW FILTER, so a plain member's read returns 200 with an EMPTY array and
+        // no error. The flag could therefore never be false, and the "not readable at your access
+        // level" copy written for exactly that caller could never render: a member of a workspace
+        // with recorded payments would be told, in a definite sentence, that it had none.
+        //
+        // `canManage` is the same predicate the policy uses (`is_tenant_admin`). The `orders.length`
+        // disjunct is what keeps a PLATFORM OPERATOR honest — they satisfy the policy through
+        // `is_platform_owner()` while having no `tenant_members` row at all, so authority alone
+        // would wrongly tell them their own successful read had failed.
+        const ordersReadable = !orderResponse.error && (canManage || orders.length > 0);
 
         setState({
           tenantId: activeTenantId,
@@ -265,7 +278,7 @@ export function useSoloSalesOps(): SalesOpsState {
           methods,
           orders,
           ordersReadable,
-          canManage: role === "owner" || role === "admin",
+          canManage,
           authorityUnknown: Boolean(roleResponse.error) || !callerId,
         });
       } catch (error) {

@@ -166,9 +166,9 @@ function ClientBillingBoundary() {
 function Sales({ data, setDetail, onOpenCatalog }) {
   const routed = data.submissions.filter((row)=>row.contactId||row.dealId);
   return <section className="campaigns-surface"><SurfaceHead truthKey="sales" title="Sales operations" description="What this business sells, how it takes payment from its own clients, and the commercial activity it has actually recorded."/>
-    <SalesOps setDetail={setDetail} deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]} onOpenCatalog={onOpenCatalog}/>
+    <SalesOps setDetail={setDetail} deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]} dealsPhase={data.phase} onOpenCatalog={onOpenCatalog}/>
     <ClientBillingBoundary/>
-    <div className="so-band"><div className="so-band-head"><b>Routed capture activity</b><small>Recorded contact and deal references only — never estimated revenue or campaign attribution.</small></div></div>
+    <div className="so-band"><div className="so-band-head"><h3>Routed capture activity</h3><small>Recorded contact and deal references only — never estimated revenue or campaign attribution.</small></div></div>
     <StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></section>;
 }
 

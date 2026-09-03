@@ -227,6 +227,9 @@ describe("Sales operations — what an owner can actually do", () => {
   });
 
   it("distinguishes 'you have none' from 'I could not look' on payments", () => {
+    // `tenant_orders` GRANTs SELECT to authenticated and gates on RLS, which FILTERS ROWS rather
+    // than erroring — so a non-admin gets 200/[]/no-error. The adapter derives this flag from
+    // authority for that reason; see useSoloSalesOps.adapter.test.tsx for the executed proof.
     harness.sales.ordersReadable = false;
     renderAt("/solo/42/growth/sales");
     const text = host.textContent ?? "";
@@ -318,6 +321,13 @@ describe("Sales operations — what an owner can actually do", () => {
 
     expect(harness.offers.saveOffer).toHaveBeenCalledTimes(1);
     const sent = (harness.offers.saveOffer as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // THE FIELD WHOSE ABSENCE MADE EVERY CREATE FAIL, and which the first version of this test did
+    // not check. `saveOffer` forwards it as `_expected_tenant_id`; `runWrite` merges
+    // `{ _expected_tenant_id: activeTenantId, ...args }`, so a draft that OMITS the key still
+    // contributes `undefined`, which WINS the spread and is then dropped by JSON.stringify. The
+    // rpc declares that parameter with no DEFAULT and its 14-arg overload was dropped, so
+    // PostgREST resolved no function at all. Asserting id/name/kind/interval could never see it.
+    expect(sent.tenantId).toBe("tenant-1");
     // A create, against the one canonical record: no id, and it is Catalog's own draft shape.
     expect(sent.id).toBeNull();
     expect(sent.name).toBe("Monthly advisory retainer");
@@ -459,6 +469,85 @@ describe("Sales operations — what an owner can actually do", () => {
     renderAt("/solo/42/growth/sales");
     expect(host.textContent).toContain("this version cannot read");
     expect(host.textContent).toContain("Not readable");
+  });
+
+  it("calls unreadable pipeline work unknown, not empty", () => {
+    // SalesOps renders OUTSIDE the Campaigns StateFrame, and useSoloCampaigns returns `deals: []`
+    // for resolving, loading, unavailable AND error alike. Counting length alone therefore told a
+    // workspace whose deal read had FAILED that it had no deals — permanently, not as a flash.
+    harness.state.phase = "error";
+    renderAt("/solo/42/growth/sales");
+    expect(host.textContent).toContain("Your pipeline could not be read");
+    expect(host.textContent).not.toContain("No deals on the board yet");
+  });
+
+  it("never asserts a workspace has no retainers, because it does not read them", () => {
+    renderAt("/solo/42/growth/sales");
+    const text = host.textContent ?? "";
+    expect(text).toContain("Client agreements, retainers and subscriptions");
+    // `tenant_service_subscriptions` is already counted as "Active retainers" on Command Center for
+    // this same owner. A hardcoded "Not recorded yet" here would put two surfaces in disagreement
+    // about one record, over a table this tab never queries.
+    expect(text).toContain("This tab does not hold a per-client agreement record yet");
+    // "Not readable" would assert a read that failed. Nothing was read, so nothing failed.
+    expect(text).toContain("Not here");
+    expect(text).not.toMatch(/retainers and subscriptions[\s\S]{0,40}Not recorded yet/);
+  });
+
+  it("gives every section a real heading, not bold text", () => {
+    renderAt("/solo/42/growth/sales");
+    const headings = [...host.querySelectorAll("h1,h2,h3")].map((h) => h.textContent?.trim());
+    // Before this surface existed the tab had ONE h2, "Routed capture activity". Rebuilding around
+    // it must not leave a five-section page whose sections are bold text to a screen reader.
+    expect(headings).toContain("Where this business stands");
+    expect(headings).toContain("What you sell");
+    expect(headings).toContain("Commercial activity");
+    expect(headings).toContain("Routed capture activity");
+  });
+
+  it("makes its dialogs actually modal, not merely labelled so", async () => {
+    renderAt("/solo/42/growth/sales");
+    const opener = buttonSaying("Record it") as HTMLButtonElement;
+    // Focus explicitly before clicking. A real browser focuses a button when it is clicked and
+    // always when it is reached by keyboard; jsdom's `.click()` does not, so without this the test
+    // would be asserting focus RESTORE from a state where nothing was focused to begin with.
+    act(() => { opener.focus(); opener.click(); });
+
+    const dialog = document.querySelector('[role="dialog"][aria-modal="true"]') as HTMLElement;
+    expect(dialog).not.toBeNull();
+    // Declaring aria-modal without enforcing it is a claim the DOM does not honour. The shell
+    // behind the scrim goes inert, so Tab and a virtual cursor both stay in the panel.
+    const shell = host.querySelector(".solo-campaigns > .campaigns-scroll");
+    expect(shell?.hasAttribute("inert")).toBe(true);
+
+    // Tab from the last focusable wraps to the first rather than escaping into the page.
+    const focusable = [...dialog.querySelectorAll("button:not([disabled]), input")] as HTMLElement[];
+    expect(focusable.length).toBeGreaterThan(1);
+    const last = focusable[focusable.length - 1];
+    act(() => last.focus());
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })); });
+    expect(document.activeElement).toBe(focusable[0]);
+
+    // On close the background is released and focus returns to what opened it.
+    const cancel = focusable.find((el) => el.textContent === "Cancel") as HTMLButtonElement;
+    act(() => cancel.click());
+    expect(shell?.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("uses the shared pill primitive rather than a local fork", () => {
+    renderAt("/solo/42/growth/sales");
+    // §11: add to the layer, do not fork a one-off. The fork this replaced also dropped a dark-mode
+    // pair to 3.79:1, under AA, on the readiness panel's primary state signal.
+    expect(host.querySelector(".so-pill")).toBeNull();
+    expect(host.querySelector(".pill")).not.toBeNull();
+  });
+
+  it("keeps our plumbing vocabulary out of what a person reads", () => {
+    harness.sales.phase = "error";
+    renderAt("/solo/42/growth/sales");
+    expect(host.textContent).toContain("Your records were not changed");
+    expect(host.textContent).not.toContain("tenant-scoped read");
   });
 
   it("keeps its own load phases distinct from the Campaigns snapshot's", () => {

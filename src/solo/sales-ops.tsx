@@ -96,8 +96,20 @@ function when(value) {
     : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
 
+/**
+ * The SHARED pill, not a local one. The first version of this file declared `.so-pill` with its own
+ * height, size, tracking and ground — a fork of `solo-tokens.css`'s live `.pill`, whose three
+ * tone→token mappings it copied exactly. The fork was not free: its darker ground took the neutral
+ * tone from 4.50:1 to 3.79:1 in dark mode, below AA for text that small, on the readiness panel's
+ * primary state signal. §11 says add to the layer rather than fork a one-off, and the layer already
+ * had this.
+ */
 function Pill({ tone, children }) {
-  return <span className="so-pill" data-tone={tone || "none"}>{children}</span>;
+  const cls = tone === "ok" ? "pill pill-ok"
+    : tone === "warn" ? "pill pill-warn"
+    : tone === "bad" ? "pill pill-bad"
+    : "pill pill-n";
+  return <span className={cls}>{children}</span>;
 }
 
 /**
@@ -108,11 +120,15 @@ function Pill({ tone, children }) {
  *   unknown — could not be read. NEVER collapsed into `none`: "you have none" and "I could not
  *             look" are different sentences and only one of them is the person's fault.
  */
-function ReadyRow({ state, label, detail, action }) {
-  const word = state === "ok" ? "Ready"
+function ReadyRow({ state, label, detail, action, word: override }) {
+  // `unknown` covers two different absences and they need different words. "Not readable" is true
+  // when a READ failed or authority forbade it; it is a lie for a row that never queried anything,
+  // which is why the agreements row passes its own word. Asserting a failure that did not happen is
+  // the same class of error as asserting a zero the record does not prove.
+  const word = override ?? (state === "ok" ? "Ready"
     : state === "warn" ? "Needs you"
     : state === "unknown" ? "Not readable"
-    : "Not set up";
+    : "Not set up");
   const tone = state === "ok" ? "ok" : state === "warn" ? "warn" : "none";
   return (
     <div className="so-ready-row">
@@ -124,6 +140,49 @@ function ReadyRow({ state, label, detail, action }) {
       <span className="so-ready-act">{action}</span>
     </div>
   );
+}
+
+/**
+ * What makes `aria-modal="true"` true. Declaring it without enforcing it is a claim the DOM does
+ * not honour: Tab walks straight out of the panel into the page behind the scrim, and on close the
+ * focus lands wherever the browser decides. `DetailDrawer` in `growth2.tsx` already implements all
+ * three parts; this is the same contract for the two editors on this surface, not a second
+ * invention of it.
+ *
+ * Returns the ref to put on the panel. The caller keeps its own Escape handling, because only the
+ * caller knows whether a save is in flight.
+ */
+function useModalDialog(onClose, busy) {
+  const panelRef = React.useRef(null);
+  React.useEffect(() => {
+    const previous = document.activeElement;
+    // Everything the shell already rendered goes inert, so a screen reader's virtual cursor and
+    // Tab both stay inside the panel.
+    const background = document.querySelectorAll(
+      ".solo-campaigns > .campaigns-nav, .solo-campaigns > .campaigns-scroll",
+    );
+    background.forEach((node) => node.setAttribute("inert", ""));
+
+    const onKeyDown = (event) => {
+      if (event.key !== "Tab") return;
+      const focusable = [...(panelRef.current?.querySelectorAll(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [])];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      background.forEach((node) => node.removeAttribute("inert"));
+      // Focus goes back to whatever opened this, so the keyboard does not restart at the top.
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, []);
+  return panelRef;
 }
 
 /**
@@ -139,6 +198,7 @@ function PaymentEditor({ data, onClose }) {
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState(null);
   const firstRef = React.useRef(null);
+  const panelRef = useModalDialog(onClose, busy);
 
   React.useEffect(() => { firstRef.current?.focus(); }, []);
   React.useEffect(() => {
@@ -164,7 +224,7 @@ function PaymentEditor({ data, onClose }) {
   return (
     <>
       <button className="so-editor-scrim" tabIndex={-1} aria-label="Close" onClick={() => !busy && onClose()} />
-      <aside className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-pay-title">
+      <aside ref={panelRef} className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-pay-title">
         <header className="so-editor-head">
           <div style={{ flex: 1 }}>
             <h2 id="so-pay-title">How your clients pay you</h2>
@@ -234,7 +294,7 @@ function PaymentEditor({ data, onClose }) {
  *
  * Cancelling creates nothing. There is no draft row written on open and none to clean up.
  */
-function QuickOffer({ offers, onClose, onCreated }) {
+function QuickOffer({ offers, tenantId, onClose, onCreated }) {
   const [name, setName] = React.useState("");
   const [kind, setKind] = React.useState("");
   const [amount, setAmount] = React.useState("");
@@ -244,6 +304,7 @@ function QuickOffer({ offers, onClose, onCreated }) {
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState(null);
   const nameRef = React.useRef(null);
+  const panelRef = useModalDialog(onClose, busy);
 
   React.useEffect(() => { nameRef.current?.focus(); }, []);
   React.useEffect(() => {
@@ -268,6 +329,16 @@ function QuickOffer({ offers, onClose, onCreated }) {
     const digits = minorUnitDigits(currency);
     const outcome = await offers.saveOffer({
       id: null,
+      // THE WORKSPACE THIS FORM WAS OPENED IN, and the reason this field is not optional.
+      // `saveOffer` forwards it as `_expected_tenant_id`, and `runWrite` merges
+      // `{ _expected_tenant_id: activeTenantId, ...args }` — so a draft that OMITS the key still
+      // contributes `_expected_tenant_id: undefined`, which wins the spread and is then dropped
+      // entirely by JSON.stringify. `save_solo_offer` declares that parameter with no DEFAULT and
+      // its 14-argument overload was dropped in 20261111000000, so PostgREST resolves no function
+      // and every create fails with the raw signature rendered into the footer. Captured on OPEN
+      // rather than at save, so a workspace switch mid-edit is refused by the server instead of
+      // silently saving into the workspace the person switched to.
+      tenantId,
       name: name.trim(),
       summary: "",
       description: "",
@@ -298,7 +369,7 @@ function QuickOffer({ offers, onClose, onCreated }) {
   return (
     <>
       <button className="so-editor-scrim" tabIndex={-1} aria-label="Close" onClick={() => !busy && onClose()} />
-      <aside className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-offer-title">
+      <aside ref={panelRef} className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-offer-title">
         <header className="so-editor-head">
           <div style={{ flex: 1 }}>
             <h2 id="so-offer-title">Quick offer</h2>
@@ -379,7 +450,7 @@ function QuickOffer({ offers, onClose, onCreated }) {
  * this adds no second drawer (§18) and inherits its focus trap and Escape handling. `deals` arrives
  * from the Campaigns snapshot rather than a fifth tenant read.
  */
-export function SalesOps({ setDetail, deals = [], onOpenCatalog }) {
+export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCatalog }) {
   const sales = useSoloSalesOps();
   const offers = useCatalogOffers();
   const [editor, setEditor] = React.useState(null);
@@ -417,7 +488,7 @@ export function SalesOps({ setDetail, deals = [], onOpenCatalog }) {
       <div className="campaigns-state" role="alert">
         <span className="campaigns-truth campaigns-truth--unavailable">UNAVAILABLE</span>
         <h2>Sales operations could not load</h2>
-        <p>Your records were not changed. Try the tenant-scoped read again.</p>
+        <p>Your records were not changed. Try loading this again.</p>
         <button className="btn btn-s" onClick={sales.retry}><Ic.arrow size={13} />Retry</button>
       </div>
     );
@@ -480,6 +551,7 @@ export function SalesOps({ setDetail, deals = [], onOpenCatalog }) {
       {editor === "offer" ? (
         <QuickOffer
           offers={offers}
+          tenantId={offers.tenantId}
           onClose={() => setEditor(null)}
           onCreated={() => setEditor(null)}
         />
@@ -488,7 +560,7 @@ export function SalesOps({ setDetail, deals = [], onOpenCatalog }) {
       {/* ── readiness ─────────────────────────────────────────────────────────────────────── */}
       <section className="so-band">
         <div className="so-band-head">
-          <b>Where this business stands</b>
+          <h3>Where this business stands</h3>
           <small>Each answer is a record that exists, or honestly does not.</small>
         </div>
 
@@ -535,9 +607,14 @@ export function SalesOps({ setDetail, deals = [], onOpenCatalog }) {
         />
 
         <ReadyRow
-          state="none"
+          // NOT `state="none"`. This row reads nothing, so it cannot say a workspace HAS none —
+          // and `tenant_service_subscriptions` is already counted as "Active retainers" on Command
+          // Center for this same owner, so asserting zero here would put two surfaces in
+          // disagreement about one record. It states what is true of THIS TAB and nothing more.
+          state="unknown"
+          word="Not here"
           label="Client agreements, retainers and subscriptions"
-          detail="Not recorded yet. This tab does not hold a per-client agreement record — the next slice adds one."
+          detail="This tab does not hold a per-client agreement record yet, so it reports none — see Command Center for recorded retainers."
         />
 
         <ReadyRow
@@ -555,11 +632,17 @@ export function SalesOps({ setDetail, deals = [], onOpenCatalog }) {
         />
 
         <ReadyRow
-          state={linkedDeals > 0 ? "ok" : "none"}
+          // The Campaigns snapshot returns `deals: []` for resolving, loading, unavailable AND
+          // error alike, so counting length alone reported "no deals" to a workspace whose deal
+          // read had FAILED. That is the collapse this row's own docstring forbids, and for the
+          // error case it was permanent rather than a first-paint flash.
+          state={dealsPhase !== "ready" ? "unknown" : linkedDeals > 0 ? "ok" : "none"}
           label="Linked pipeline work"
-          detail={linkedDeals > 0
-            ? `${linkedDeals} deal${linkedDeals === 1 ? "" : "s"} on the board.`
-            : "No deals on the board yet."}
+          detail={dealsPhase !== "ready"
+            ? "Your pipeline could not be read, so this is unknown rather than empty."
+            : linkedDeals > 0
+              ? `${linkedDeals} deal${linkedDeals === 1 ? "" : "s"} on the board.`
+              : "No deals on the board yet."}
         />
 
         <p className="so-next"><b>Next</b> {nextStep}</p>
@@ -568,7 +651,7 @@ export function SalesOps({ setDetail, deals = [], onOpenCatalog }) {
       {/* ── what this business sells ──────────────────────────────────────────────────────── */}
       <section className="so-band">
         <div className="so-band-head">
-          <b>What you sell</b>
+          <h3>What you sell</h3>
           <small>Catalog owns these records. Changing one changes it everywhere.</small>
           <span style={{ flex: 1 }} />
           {onOpenCatalog ? (
@@ -618,7 +701,7 @@ export function SalesOps({ setDetail, deals = [], onOpenCatalog }) {
       {/* ── commercial activity ───────────────────────────────────────────────────────────── */}
       <section className="so-band">
         <div className="so-band-head">
-          <b>Commercial activity</b>
+          <h3>Commercial activity</h3>
           <small>Recorded payments only. Nothing here is a forecast, a total, or campaign attribution.</small>
         </div>
 
