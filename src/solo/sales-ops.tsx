@@ -108,6 +108,7 @@ function Pill({ tone, children }) {
   const cls = tone === "ok" ? "pill pill-ok"
     : tone === "warn" ? "pill pill-warn"
     : tone === "bad" ? "pill pill-bad"
+    : tone === "opportunity" ? "pill pill-v"
     : "pill pill-n";
   return <span className={cls}>{children}</span>;
 }
@@ -129,7 +130,13 @@ function ReadyRow({ state, label, detail, action, word: override }) {
     : state === "warn" ? "Needs you"
     : state === "unknown" ? "Not readable"
     : "Not set up");
-  const tone = state === "ok" ? "ok" : state === "warn" ? "warn" : "none";
+  // `none` reads VIOLET, not grey. Grey says "dead"; a business that has not recorded its offers
+  // yet has an opportunity in front of it, and §23 says the colour carries that rather than a
+  // neutral fill. `unknown` stays neutral — a thing we could not read is genuinely inert.
+  const tone = state === "ok" ? "ok"
+    : state === "warn" ? "warn"
+    : state === "unknown" ? "none"
+    : "opportunity";
   return (
     <div className="so-ready-row">
       <Pill tone={tone}>{word}</Pill>
@@ -279,7 +286,7 @@ function PaymentEditor({ data, onClose }) {
           </span>
           <span style={{ flex: 1 }} />
           <button className="btn btn-s" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="btn btn-s btn-g" onClick={save} disabled={busy || !processor}>
+          <button className="btn btn-s btn-p" onClick={save} disabled={busy || !processor}>
             {busy ? "Saving…" : "Save"}
           </button>
         </footer>
@@ -438,7 +445,7 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
           </span>
           <span style={{ flex: 1 }} />
           <button className="btn btn-s" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="btn btn-s btn-g" onClick={save} disabled={busy || !named}>
+          <button className="btn btn-s btn-p" onClick={save} disabled={busy || !named}>
             {busy ? "Saving…" : "Create offer"}
           </button>
         </footer>
@@ -452,7 +459,7 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
  * this adds no second drawer (§18) and inherits its focus trap and Escape handling. `deals` arrives
  * from the Campaigns snapshot rather than a fifth tenant read.
  */
-export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCatalog }) {
+export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCatalog, truth }) {
   const sales = useSoloSalesOps();
   const offers = useCatalogOffers();
   const [editor, setEditor] = React.useState(null);
@@ -563,8 +570,10 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
       <section className="so-band">
         <div className="so-band-head">
           <h3>Where this business stands</h3>
+          {truth ? <span className={`campaigns-truth campaigns-truth--${String(truth[0]).toLowerCase()}`}>{truth[0]}</span> : null}
           <small>Each answer is a record that exists, or honestly does not.</small>
         </div>
+        {truth ? <p className="so-orient">{truth[1]}</p> : null}
 
         <ReadyRow
           state={processorState}
@@ -581,7 +590,14 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
                       : " · no methods recorded"}`
           }
           action={sales.canManage ? (
-            <button className="btn btn-s" onClick={() => setEditor("payment")}>
+            // `btn-p`, not `btn-g`. Gold is the act (§11) and `btn-g` is the Solo shell's gold
+            // button — but its own pair, `--gold` on `--gold-tint`, measures 2.72:1 in light mode,
+            // far under AA, and this render pass caught it the moment these buttons took it. A
+            // primary action nobody can read is the opposite of what "more vibrant" asked for, so
+            // the acts take the shell's violet primary (white on `--violet`, ~7:1) instead. The
+            // gold-button measurement is reported to CD rather than fixed here — `.btn-g` is a
+            // shared primitive and the sibling Catalog tab ships it on "New offer" today.
+            <button className="btn btn-s btn-p" onClick={() => setEditor("payment")}>
               {sales.processor === null ? "Record it" : "Change"}
             </button>
           ) : (
@@ -604,7 +620,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
                 : `${live.length} live of ${offers.offers.length} recorded.`
           }
           action={offers.canManage ? (
-            <button className="btn btn-s" onClick={() => setEditor("offer")}>Quick offer</button>
+            <button className="btn btn-s btn-p" onClick={() => setEditor("offer")}>Quick offer</button>
           ) : null}
         />
 
@@ -733,7 +749,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
                     {order.customerName || order.customerEmail || "Not recorded"}
                   </span>
                   <span role="cell"><Pill tone={state.tone}>{state.label}</Pill></span>
-                  <span role="cell" className="so-num">
+                  <span role="cell" className={`so-num so-num--${state.tone}`}>
                     {money(order.amountTotal, order.currency) ?? "—"}
                   </span>
                   <span role="cell" className="so-quiet">{when(order.createdAt)}</span>
