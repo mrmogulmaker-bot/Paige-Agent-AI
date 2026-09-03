@@ -4,11 +4,15 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { GrowthHub } from "@/solo/growth2";
 import { setSalesHarnessMode, type Mode } from "./useSoloSalesOps-stub";
+import { setAgreementsHarnessMode, type AgreementsMode } from "./useSoloAgreements-stub";
 import "@/index.css";
 import "@/solo/solo-tokens.css";
 
 // The stub reaches React through the global so it can subscribe without importing a second copy.
 (globalThis as { __React?: typeof React }).__React = React;
+
+const AGREEMENT_MODES: readonly AgreementsMode[] =
+  ["none", "no-clients", "populated", "unreadable", "readonly", "error"];
 
 const MODES: readonly Mode[] = [
   "first-use", "declared", "not-yet", "unrecognised-processor", "populated",
@@ -25,7 +29,7 @@ function Harness() {
   }, [theme]);
 
   return (
-    <div style={{ height: "100vh", display: "grid", gridTemplateRows: "42px minmax(0,1fr)" }}>
+    <div style={{ height: "100vh", display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
       <aside
         aria-label="Reviewer controls"
         data-harness-controls
@@ -36,6 +40,11 @@ function Harness() {
         }}
       >
         <strong style={{ marginRight: 6 }}>LOCAL REVIEW · NO LIVE DATA</strong>
+        {AGREEMENT_MODES.map((mode) => (
+          <button key={mode} data-agreements={mode} onClick={() => setAgreementsHarnessMode(mode)}>
+            terms:{mode}
+          </button>
+        ))}
         {MODES.map((mode) => (
           <button key={mode} data-mode={mode} onClick={() => setSalesHarnessMode(mode)}>{mode}</button>
         ))}

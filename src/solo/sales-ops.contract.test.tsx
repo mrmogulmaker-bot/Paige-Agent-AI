@@ -54,6 +54,7 @@ const harness = vi.hoisted(() => ({
   state: {} as Record<string, unknown>,
   offers: {} as Record<string, unknown>,
   sales: {} as Record<string, unknown>,
+  agreements: {} as Record<string, unknown>,
 }));
 
 vi.mock("./useSoloCampaigns", () => ({ useSoloCampaigns: () => harness.state }));
@@ -65,6 +66,13 @@ vi.mock("./useCatalogOffers", () => ({ useCatalogOffers: () => harness.offers })
 vi.mock("./useSoloSalesOps", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./useSoloSalesOps")>();
   return { ...actual, useSoloSalesOps: () => harness.sales };
+});
+// Same reason, same split: this file proves the SURFACE. What the agreements adapter sends — the
+// tenant filter on the client read, the draft's own expected tenant, the authority-derived
+// readable flag — is proved in `useSoloAgreements.adapter.test.tsx` against a recording client.
+vi.mock("./useSoloAgreements", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./useSoloAgreements")>();
+  return { ...actual, useSoloAgreements: () => harness.agreements };
 });
 
 let host: HTMLDivElement;
@@ -120,6 +128,19 @@ beforeEach(() => {
     authorityUnknown: false,
     retry: vi.fn(),
     declarePaymentHandling: vi.fn(async () => ({ ok: true, result: {} })),
+  };
+  harness.agreements = {
+    tenantId: "tenant-1",
+    phase: "ready",
+    agreements: [],
+    clients: [],
+    clientsReadable: true,
+    agreementsReadable: true,
+    canManage: true,
+    authorityUnknown: false,
+    retry: vi.fn(),
+    saveAgreement: vi.fn(async () => ({ ok: true, result: {} })),
+    setAgreementStatus: vi.fn(async () => ({ ok: true, result: {} })),
   };
 });
 
@@ -218,7 +239,7 @@ describe("Sales operations — what an owner can actually do", () => {
     expect(text).toContain("Where this business stands");
     expect(text).toContain("How your clients pay you");
     expect(text).toContain("What you sell");
-    expect(text).toContain("Client agreements, retainers and subscriptions");
+    expect(text).toContain("What each client pays you");
     expect(text).toContain("Payments and invoices");
     expect(text).toContain("Linked pipeline work");
     // First use: nothing recorded is stated as such, and the next step names a real act.
@@ -481,17 +502,54 @@ describe("Sales operations — what an owner can actually do", () => {
     expect(host.textContent).not.toContain("No deals on the board yet");
   });
 
-  it("never asserts a workspace has no retainers, because it does not read them", () => {
+  // §58 — THIS TEST REPLACES ITS OWN PREDECESSOR, DELIBERATELY.
+  //
+  // What it used to assert: that this tab said "Not here" about client terms, because it read
+  // nothing and therefore could not claim a workspace HAD none. That was true and is no longer:
+  // the tab reads `tenant_client_agreements` now, so it can say none and mean it. The old
+  // assertions are gone because the capability they described is gone, not because they were
+  // inconvenient — the removal is named in the PR body rather than left for someone to notice.
+  //
+  // The Command Center caveat that row carried SURVIVES, and is asserted here: Command Center
+  // counts "Active retainers" from `tenant_service_subscriptions`, a different table this tab
+  // still never queries, so this surface must not put the word "retainer" on a COUNT. Two
+  // surfaces counting retainers from two sources is the §57 divergence that caveat existed for.
+  it("now reads client terms, and still refuses to count retainers Command Center owns", () => {
     renderAt("/solo/42/growth/sales");
     const text = host.textContent ?? "";
-    expect(text).toContain("Client agreements, retainers and subscriptions");
-    // `tenant_service_subscriptions` is already counted as "Active retainers" on Command Center for
-    // this same owner. A hardcoded "Not recorded yet" here would put two surfaces in disagreement
-    // about one record, over a table this tab never queries.
-    expect(text).toContain("This tab does not hold a per-client agreement record yet");
-    // "Not readable" would assert a read that failed. Nothing was read, so nothing failed.
-    expect(text).toContain("Not here");
-    expect(text).not.toMatch(/retainers and subscriptions[\s\S]{0,40}Not recorded yet/);
+    expect(text).toContain("What each client pays you");
+    expect(text).not.toContain("This tab does not hold a per-client agreement record yet");
+    expect(text).not.toContain("Not here");
+    // Nothing recorded reads as nothing recorded — a claim this tab can now actually make.
+    expect(text).toContain("Nothing recorded yet");
+    // The word may name the section; it may never sit on a number this tab did not read.
+    expect(text).not.toMatch(/\d+\s+(active\s+)?retainers?/i);
+  });
+
+  it("says a member's unreadable client book is unknown, never zero", () => {
+    // `clients` GRANTs SELECT to authenticated and gates on RLS, which FILTERS ROWS rather than
+    // erroring — so a plain member gets 200/[]/no-error, exactly as `tenant_orders` does. A
+    // surface that renders that as "none" tells a member their workspace has no clients while
+    // showing them its offers.
+    harness.agreements.agreementsReadable = false;
+    harness.agreements.clientsReadable = false;
+    harness.agreements.agreements = [];
+    renderAt("/solo/42/growth/sales");
+    const text = host.textContent ?? "";
+    expect(text).toContain("not readable at your access level");
+    expect(text).toContain("That is different from there being none");
+    expect(text).not.toMatch(/What each client pays you[\s\S]{0,80}Nothing recorded yet/);
+  });
+
+  it("keeps the money boundary on the terms band, and promises no billing", () => {
+    renderAt("/solo/42/growth/sales");
+    const text = host.textContent ?? "";
+    expect(text).toContain("Recording it bills nobody and sends nothing");
+    // "Agreement" means a SIGNED DOCUMENT everywhere else in this product, including
+    // `clients.agreement_signed_at` on the table this very band reads. The band must say so.
+    expect(text).toContain("signing and documents stay with the client");
+    // Nothing here may imply money moved.
+    expect(text).not.toMatch(/\b(invoiced|charged|collected|paid in full)\b/i);
   });
 
   it("gives every section a real heading, not bold text", () => {
