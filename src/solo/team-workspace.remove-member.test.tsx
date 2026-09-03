@@ -658,3 +658,38 @@ describe("what the third read found", () => {
     ).toBe(true);
   });
 });
+
+describe("the last cross-workspace claim", () => {
+  it("does not put a reconciliation banner over a workspace it is not about", async () => {
+    // `onRemoved` writes the roster banner. A "not on this team" reconciliation arriving after the
+    // operator switched would have claimed something about a workspace no longer on screen — the
+    // same class as the two branches beside it, and the one instance left unfixed. Flagged as
+    // pre-existing by the third read.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    const rosterA = workspace();
+    const rosterB = workspace({ tenant_id: "tenant-2", tenant_name: "Second Workspace", members: [], total_members: 0 });
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") {
+        return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? rosterA : rosterB, error: null });
+      }
+      return new Promise((res) => { settle = res; });
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    mocks.tenant.activeTenantId = "tenant-2";
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => { settle({ data: null, error: { message: "that person is not on this workspace's team" } }); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const banner = host.querySelector('[role="status"].stw-separation-note');
+    expect(banner, "no roster banner over the workspace this is not about").toBeNull();
+    const spoken = mocks.error.mock.calls.map((c) => String(c[0]));
+    expect(spoken.some((t) => t.trim().length > 0), `but the operator was still told: ${JSON.stringify(spoken)}`).toBe(true);
+  });
+});

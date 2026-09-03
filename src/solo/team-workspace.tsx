@@ -282,6 +282,18 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
       if (refusal.reconciled) {
         // Not a removal this owner performed, and it must never be reported as one. The roster is
         // simply behind, so reconcile it and say exactly that.
+        //
+        // ...but only into the workspace it is about. `onRemoved` writes the roster banner, and if
+        // the operator has switched since, that banner makes a claim about a workspace they are no
+        // longer looking at — and the parent's own switch effect would clear it anyway. Same class
+        // as the two branches below; flagged by the third read as pre-existing and fixed here
+        // rather than left as the one remaining instance of it.
+        if (workspaceRef.current.tenant_id !== tenantAtArm) {
+          setRemoval({ stage: "idle", error: null, tenantAtArm: null, nameAtArm: null });
+          toast.error(refusal.message);
+          onClose();
+          return;
+        }
         onRemoved?.(refusal.message);
         onClose();
         return;
@@ -318,7 +330,10 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
       return;
     }
 
-    onRemoved?.(`${identity.primary} no longer has access to ${workspace.tenant_name}.`);
+    // `nameAtArm`, not the click-time closure: the guard above proves the ids match, so this is
+    // the same workspace either way — but naming the one the call was SENT to is what this whole
+    // sequence is about, and it stays right if that workspace is renamed mid-call.
+    onRemoved?.(`${identity.primary} no longer has access to ${nameAtArm}.`);
     onClose();
   };
 
@@ -350,6 +365,12 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   // `aria-label`, which the footer button does not carry. Every path now goes through `requestClose`,
   // and the controls are DISABLED rather than live-looking and inert.
   const removalInFlight = removal.stage === "pending";
+  // NOTE FOR ANYONE TIDYING THIS: the four `onClose()` calls inside `confirmRemoval` are RAW on
+  // purpose and must stay that way. They run after the call has settled, but `requestClose` closes
+  // over `removalInFlight` from the render that started it — still `pending` — so routing them
+  // through here would refuse the close and strand the operator in a dialog whose work is done.
+  // Every close path a PERSON can trigger goes through `requestClose`; the settle paths are the
+  // component deciding it is finished, which is the one case the gate must not block.
   const requestClose = () => { if (removalInFlight) return; onClose(); };
   return <Modal title={identity.primary} description="Work details describe what this person does. Permission controls what they can access."
     busy={removalInFlight}
