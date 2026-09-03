@@ -7566,9 +7566,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       const executeToolCalls = async (toolCalls: any[], queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }>) => {
       const toolResults: any[] = [];
       const executed: any[] = [];
-      // auth.uid() is constant for the whole request, so the CRM workspace binding below
-      // resolves the caller's own workspace ONCE per round rather than per tool call.
-      let callerOwnTenantMemo: { tenant: string | null; failed: boolean } | null = null;
       for (const tc of toolCalls) {
         if (!tc || !tc.function?.name) continue;
         // Actual dispatch boundary: the account may change after the model round was
@@ -9019,25 +9016,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // nine tools for all nine active operators, caught by the peer-gate. `supabaseClient`
               // (L577) carries the caller's Authorization header, and is the same client the
               // persona RPC this comparand is measured against is called on (L1571).
-              if (callerOwnTenantMemo === null) {
-                const { data: ownTenant, error: ownTenantErr } = await supabaseClient.rpc(
-                  "current_user_tenant_id",
-                );
-                if (ownTenantErr) {
-                  // LOUD, not swallowed (§32): a failed check and a genuine mismatch are different
-                  // things and must not report the same cause (§13).
-                  console.error(
-                    "[paige] CRM workspace binding check FAILED:",
-                    ownTenantErr.message,
-                  );
-                }
-                callerOwnTenantMemo = {
-                  tenant: (ownTenant as string | null) ?? null,
-                  failed: !!ownTenantErr,
-                };
+              // RESOLVED PER TOOL, DELIBERATELY NOT MEMOISED ACROSS THE BATCH.
+              // The extra round-trip buys a fail-closed property. `crmTenantId` is resolved ONCE
+              // per request from personaCtx, so if the caller's active workspace changes mid-batch
+              // a freshly-resolved current_user_tenant_id() no longer equals it and the remaining
+              // tools refuse. Caching would make both sides equally stale, they would compare
+              // equal, and later tools would run against the OLD workspace — which is precisely
+              // the window this loop's own dispatch-boundary comment says the per-tool assertion
+              // exists to close. revalidateTenantKnowledgeScope() does not cover it either: it
+              // early-returns true when the turn carries no protected content, so on an ordinary
+              // turn nothing else re-checks scope between tools.
+              const { data: ownTenant, error: ownTenantErr } = await supabaseClient.rpc(
+                "current_user_tenant_id",
+              );
+              if (ownTenantErr) {
+                // LOUD, not swallowed (§32): a failed check and a genuine mismatch are different
+                // things and must not report the same cause (§13).
+                console.error("[paige] CRM workspace binding check FAILED:", ownTenantErr.message);
               }
-              const callerOwnTenant = callerOwnTenantMemo.tenant;
-              const callerTenantErr = callerOwnTenantMemo.failed;
+              const callerOwnTenant = (ownTenant as string | null) ?? null;
+              const callerTenantErr = !!ownTenantErr;
               // Fail CLOSED: if we cannot establish the caller's own workspace, we cannot establish
               // that it is the conversation's, and these handlers bypass RLS.
               if (callerTenantErr || !callerOwnTenant || callerOwnTenant !== crmTenantId) {
