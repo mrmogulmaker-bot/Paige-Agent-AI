@@ -1146,6 +1146,50 @@ everything the owner did by hand.
 **Raised, not implemented, and routed away from Mind:** #786 and #787 (Rail producers) · #788
 (Connections/security, tracked privately).
 
+### Billing Foundation C — the Solo Billing screen (PR #833, **BUILT, NOT MERGED — no production write of any kind**)
+
+**What it is.** Foundation A shipped three seams and no renderer; nothing in `src/` imported the two
+hooks and no surface called `get_workspace_billing_authority()`. Foundation C mounts them at
+`Solo Settings › Billing` and removes the claims the shipped tab was making.
+
+**The correction.** The shipped tab read `get_tenant_platform_subscription()`, joined it to the plan
+CATALOGUE and rendered `Solo · Active · $149.00/month · Renews 5 Aug 2027` for every workspace.
+Queried on prod 2026-09-03 (ref `xygzykjyynhzqytbqnzu`): all four live `platform_subscriptions` rows
+carry a NULL `stripe_customer_id` **and** a NULL `stripe_subscription_id`; three are `test_seed:
+true`, the fourth `revenue_class: promotional` / `provider_state: not_created`. **The catalogue is a
+price list, not a charge, and a seeded period end is not a renewal.** The catalogue is no longer an
+input to the screen, and a test walks every state reachable **without an entitlement projection**
+(which is every state reachable today) and fails on any `$` in the output.
+
+**The state machine** is `src/solo/billing-contract.ts`, over the Gate-1 approved vocabulary
+(packet §9.1). Promotional / trial / paid need an entitlement record that proves them; "Choose a
+plan" needs a successful read that returned `source: none`; every unavailable carries one of five
+distinct causes. **The entitlement projection is Foundation B** (packet §4.3 R11), so today every
+top-level Solo workspace resolves to `billing-unavailable · no_billing_account` — never a
+promotional grant (R13).
+
+**What an owner can now finish (§70.1):** designate the workspace's primary billing contact, add and
+remove a billing delegate, reload and find it held. R27 is stated on the surface (a designation is
+not ownership); so is the fact that no notice is sent, because no sender exists.
+
+**Reviewed independently (§39/§5), and it mattered.** Seven findings, four of them defects live on
+the pushed head: a failed roster read rendered as "this workspace has nobody eligible"; a write
+outcome survived a workspace switch; an unrecognised mapping state fell **through** the guards into
+"this workspace has a billing account" plus an enabled Manage-billing button; and the shared harness
+store had no migration. Two doctrine findings: the shipped **"Usage & limits"** card had been
+deleted with no call-out (**§58 — restored**), and **R22 was half-held** — `can_view_billing` was
+consumed nowhere, harmless today and a leak the moment Foundation B supplies a price, so the plan
+card now refuses a non-viewing Solo member.
+
+**Evidence:** 70 new tests; full suite 168 files / 2076 tests (with `origin/main` merged in); `ci:tsc` ratchet unchanged; build
+green; **116/116 rendered checks** across 4 viewports × 2 palettes plus failed-read and read-only.
+**OWED:** the authenticated owner drive on the deployed surface (§32.c) — the harness transport is a
+stub; a **Gate-1 pass on the billing-contacts card**, which the approved prototype does not cover
+(§00 — CC does not fill a gap in the pack); and a §57 divergence, since Settings › Connections still
+renders "Solo plan · LIVE" from the catalogue join this slice disqualifies. **Untouched:** the
+portal flag (off), every Stripe object, `platform_subscriptions`, the catalogue, Foundation B, and
+every shared module outside `src/solo/`.
+
 ### Billing Foundation A — workspace billing identity + designated billing contacts (PR #816, **MERGED `f455d8a5` 2026-09-03 under owner Gate B; migration `20261045000000` APPLIED on prod, edge functions deployed**)
 
 **Live state, verified on prod 2026-09-03 (not inferred from a green pipeline):** `20261045000000` is in
@@ -1273,6 +1317,40 @@ the event row's own `id`, so the accurate claim is that it exposes **no tenant, 
 source-record identifier and no producer payload** — not that it carries no identifier at all. It deliberately does **not** re-grant browser SELECT on
 `paige_client_events`: that revoke is what keeps the same-shaped flaw in the `pce_staff_read` policy
 unreachable, so the fix for a Rail screen is never a table grant.
+
+**Every Rail READER is now authority-correct and refuses explicitly (verified on the deployed bodies,
+2026-09-03).** Two migrations landed after the paragraph above was written and are recorded here
+because they were not — see the §13 note that follows:
+
+| Migration | PR | What it changed |
+|---|---|---|
+| `20261044000000` | #813 (closes #804) | `get_client_rail` reads the caller's role from an active `tenant_members` row **of the same workspace the rows come from**, so a staff role earned in another tenant no longer satisfies it; adds the minimal `get_client_rail_for_chat` projection |
+| `20261049000000` | #834 | `get_platform_rail` raises `42501 RAIL_FORBIDDEN` instead of `RETURN;`, so a denied platform caller is no longer indistinguishable from an empty platform |
+
+Both confirmed present in `schema_migrations` on prod. The resulting state: **no Rail reader carries
+the tenant-agnostic `has_any_role()`, and no Rail reader answers a denial with an empty set.** The
+Rail **writer** `record_rail_event` still gates on `has_any_role()` — tracked as **#824**, parked; it
+is an integrity/attribution exposure inside a single workspace, not a disclosure or cross-tenant one,
+and its escalation population measures zero.
+
+**§13 — this entry is a late correction, and the lateness is the point.** §0 and §66 require the
+master record to move in the SAME PR as the ship. Neither #813 nor #834 did that, so between
+2026-09-02 and 2026-09-03 this file described a Rail reader surface two migrations behind production
+while reading as current. Recorded rather than quietly backfilled, because a record that silently
+catches up teaches nothing about why it fell behind.
+
+**Still NOT repaired by any of the above, and the reason the verdict at the top of this section
+stands: no OWNER-FACING consumer calls any of these resolvers.** `useRailEvents.ts` and
+`useSoloActivityFeed.ts` still read `paige_client_events` directly, and the browser still holds no
+SELECT on it, so the owner-visible history surfaces are exactly as broken as before.
+
+**Be precise about "nothing uses it", because that is not true of the whole Rail.** `get_client_rail_for_chat`
+**does** have a live production consumer: the PAIGE Chat edge function calls it at
+`supabase/functions/paige-ai-chat/index.ts:4662` (hydration) and `:8384` (tool dispatch), wired by
+#813. So the accurate split is: the **Chat** consumer was repointed onto a safe resolver and works;
+the **owner-facing history** consumers were not, and are Slice B — blocked on the #776/#729 ownership
+seam. `get_solo_rail_activity` and `get_platform_rail` are the two resolvers with genuinely zero
+callers today.
 
 **Why `UNAVAILABLE` is still the correct status.** No owner-facing consumer calls the resolver yet —
 `useRailEvents.ts` and `useSoloActivityFeed.ts` still read the denied table directly, re-measured on

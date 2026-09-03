@@ -96,3 +96,47 @@
 @container (max-width: 820px) { .setup-intro { flex-direction: column; }.setup-intro__actions { width: 100%; justify-content: flex-end; }.setup-architecture { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @container (max-width: 620px) { .setup-fields, .setup-email-grid, .setup-architecture, .setup-owner-card { grid-template-columns: 1fr; }.setup-field--wide { grid-column: auto; }.setup-proposal { grid-template-columns: auto minmax(0,1fr); }.setup-proposal > div:last-child { grid-column: 1 / -1; justify-content: flex-end; }.setup-handoff, .setup-ownership__head { align-items: flex-start; flex-direction: column; }.setup-handoff a { width: 100%; justify-content: center; } }
 @container (max-width: 420px) { .setup-intro__actions { flex-direction: column-reverse; }.setup-button { width: 100%; }.setup-source-legend > span:not(.setup-source) { display: none; } }
+
+.setup-paige-brief__actions { display: flex; align-items: center; gap: 9px; }
+.setup-paige-brief__actions .setup-button { display: inline-flex; align-items: center; gap: 6px; }
+.setup-paige-brief__actions svg { width: 14px; }
+.setup-paige-brief__actions > span { color: var(--pg-muted); font-size: 9px; }
+.setup-paige-brief__grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 9px; }
+.setup-paige-brief__card { display: grid; min-width: 0; align-content: start; gap: 7px; padding: 12px; border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip); background: var(--pg-lift); }
+.setup-paige-brief__card > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.setup-paige-brief__card h3 { margin: 0; color: var(--pg-faint); font-size: 9px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+.setup-paige-brief__card .setup-read-value { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+.setup-paige-brief__card small { color: var(--pg-faint); font-size: 9px; line-height: 1.4; }
+.setup-paige-brief__manual { border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip); background: var(--pg-lift); }
+.setup-paige-brief__manual summary { padding: 10px 12px; cursor: pointer; color: var(--pg-ink); font-size: 10px; font-weight: 750; }
+.setup-paige-brief__manual[open] summary { border-bottom: 1px solid var(--pg-line-soft); }
+.setup-paige-brief__manual .setup-fields { padding: 11px; }
+.setup-paige-drawer__backdrop { position: fixed; inset: 0; z-index: 40; display: flex; justify-content: flex-end; background: color-mix(in srgb, var(--pg-ink) 48%, transparent); }
+.setup-paige-drawer { display: flex; width: min(620px,100%); height: 100%; flex-direction: column; overflow: auto; padding: 20px; color: var(--pg-ink); background: var(--pg-surface); box-shadow: -18px 0 48px color-mix(in srgb, var(--pg-ink) 24%, transparent); animation: setup-paige-drawer-in 180ms ease-out; }
+.setup-paige-drawer__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 13px; border-bottom: 1px solid var(--pg-line-soft); }
+.setup-paige-drawer__head > div { max-width: 500px; }
+.setup-paige-drawer__head span { color: var(--pg-gold-core); font-size: 9px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+.setup-paige-drawer__head h2 { margin: 3px 0 5px; font: 650 22px/1.12 var(--pg-font-display); letter-spacing: -.025em; }
+.setup-paige-drawer__head p { margin: 0; color: var(--pg-muted); font-size: 11px; line-height: 1.5; }
+.setup-paige-drawer__head button { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border: 1px solid var(--pg-line); border-radius: 50%; color: var(--pg-ink); background: var(--pg-raised); cursor: pointer; }
+.setup-paige-drawer__head svg { width: 16px; }
+.setup-paige-drawer__back { width: fit-content; margin: 12px 0 0; border: 0; padding: 5px 0; color: var(--pg-violet); background: transparent; font: 750 10px/1 var(--pg-font-sans); cursor: pointer; }
+.setup-paige-drawer__notice,.setup-paige-drawer__save-note { display: flex; align-items: flex-start; gap: 9px; padding: 11px; border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip); background: var(--pg-lift); }
+.setup-paige-drawer__notice { margin-top: 12px; }
+.setup-paige-drawer__notice svg,.setup-paige-drawer__save-note svg { width: 16px; flex: none; color: var(--pg-gold-core); }
+.setup-paige-drawer__notice div,.setup-paige-drawer__save-note span { display: grid; gap: 2px; }
+.setup-paige-drawer__notice strong,.setup-paige-drawer__save-note strong { font-size: 10px; }
+.setup-paige-drawer__notice span,.setup-paige-drawer__save-note span { color: var(--pg-muted); font-size: 9px; line-height: 1.45; }
+.setup-paige-drawer__fields { display: grid; gap: 10px; margin: 13px 0; }
+.setup-paige-drawer__fields label { display: grid; gap: 5px; padding: 12px; border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip); background: var(--pg-lift); }
+.setup-paige-drawer__fields label > span { font-size: 11px; font-weight: 750; }
+.setup-paige-drawer__fields small,.setup-paige-drawer__fields em { color: var(--pg-muted); font-size: 9px; line-height: 1.4; }
+.setup-paige-drawer__fields em { color: var(--pg-warning); font-style: normal; }
+.setup-paige-drawer__fields textarea { min-height: 104px; resize: vertical; border: 1px solid var(--pg-line); border-radius: 8px; padding: 9px 10px; color: var(--pg-ink); background: var(--pg-surface); font: 500 12px/1.5 var(--pg-font-sans); }
+.setup-paige-drawer__fields textarea:disabled { opacity: .68; }
+.setup-paige-drawer__footer { position: sticky; bottom: -20px; display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; padding: 14px 0 20px; background: var(--pg-surface); }
+.setup-paige-drawer :is(button,textarea):focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 2px; }
+@keyframes setup-paige-drawer-in { from { opacity: .6; transform: translateX(22px); } }
+@media (prefers-reduced-motion: reduce) { .setup-paige-drawer { animation: none; } }
+@container (max-width: 620px) { .setup-paige-brief__grid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .setup-paige-drawer { padding: 16px; }.setup-paige-drawer__footer { bottom: -16px; padding-bottom: 16px; } }
