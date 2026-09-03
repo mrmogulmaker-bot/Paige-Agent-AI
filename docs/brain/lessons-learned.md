@@ -88,6 +88,17 @@ Each cost one failed run on prod (rollback, nothing persisted) before it was wri
   (`CREATE OR REPLACE` the original) instead of rolling the savepoint back.
 - A property that is "0 rows visible" is vacuous unless a sibling proves the row EXISTS to the owning
   role (P52 needed P55).
+- **AMENDED 2026-09-03 — a hand-built local stand-in passes exactly the checks it models, and no
+  others.** With no Docker in the session I could not run `supabase test db`, so I shimmed pgTAP
+  against a local Postgres with hand-written stub tables. It reported **18/18 green**; CI then failed
+  the same file at the fixture, on `trg_guard_active_tenant` — a REAL trigger my stub schema simply
+  did not have. The shim was not wrong about the assertions; it was silent about everything it had
+  not been told existed, and silence read as success. Two rules: (1) when the fixture writes to a
+  table production guards, model the guard in the stand-in — after adding this one, the shim
+  reproduced CI's exact error string and the corrected ordering went green; (2) never quote a shim
+  run as proof the CI file passes — it is evidence about the assertions, not about the schema. The
+  actual fix was already written down two bullets above (seed the seat, then the pointer); the shim
+  is what let me skip reading it.
 - **The batch you RAN is not the file you COMMITTED unless you re-derive it.** The MCP runner takes a
   derived batch (`\i` expanded, `RAISE NOTICE` swapped for a report row). A fix applied to the derived
   copy in `/tmp` and not to the committed mutants file left the repo carrying a subquery that fails

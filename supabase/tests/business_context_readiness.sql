@@ -36,6 +36,7 @@ SELECT ok(
 );
 
 -- ── Fixtures: two tenants; tenant A has a coach AND a client, tenant B has its own coach ──
+-- (seat-then-pointer ordering below is required by a real trigger — see the note there)
 INSERT INTO auth.users (id, aud, role, email) VALUES
   ('b1000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'bcr-coach-a@tests.invalid'),
   ('b1000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', 'bcr-client-a@tests.invalid'),
@@ -49,16 +50,23 @@ VALUES
   ('b2000000-0000-0000-0000-000000002222', 'bcr-contract-b', 'BCR Contract B', 'active', 'standalone', 'BCB', 8400002,
    '{}'::jsonb, '{}'::jsonb);
 
+-- ORDER MATTERS, and it is not arbitrary (lessons-learned 0d): `trg_guard_active_tenant` refuses
+-- an `active_tenant_id` pointed at a workspace where the user holds no seat, so the SEATS are
+-- seeded FIRST and the pointer set after. And `INSERT INTO auth.users` already created the
+-- `profiles` shell via `handle_new_user`, so the pointer is an UPDATE, never an INSERT.
+INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
+  ('b1000000-0000-0000-0000-000000001111', 'b1000000-0000-0000-0000-000000000001', 'owner', 'active', true, now()),
+  ('b1000000-0000-0000-0000-000000001111', 'b1000000-0000-0000-0000-000000000002', 'member', 'active', false, now()),
+  ('b2000000-0000-0000-0000-000000002222', 'b2000000-0000-0000-0000-000000000001', 'owner', 'active', true, now());
+
+-- Upsert rather than a bare UPDATE: if `handle_new_user` did create the shell this updates it, and
+-- if it did not, a bare UPDATE would touch 0 rows and leave the pointer NULL — a fixture that fails
+-- for a reason that has nothing to do with what is under test.
 INSERT INTO public.profiles (user_id, active_tenant_id) VALUES
   ('b1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000001111'),
   ('b1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000001111'),
   ('b2000000-0000-0000-0000-000000000001', 'b2000000-0000-0000-0000-000000002222')
 ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id;
-
-INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
-  ('b1000000-0000-0000-0000-000000001111', 'b1000000-0000-0000-0000-000000000001', 'owner', 'active', true, now()),
-  ('b1000000-0000-0000-0000-000000001111', 'b1000000-0000-0000-0000-000000000002', 'member', 'active', false, now()),
-  ('b2000000-0000-0000-0000-000000002222', 'b2000000-0000-0000-0000-000000000001', 'owner', 'active', true, now());
 
 -- The client is deliberately given a GLOBAL staff role while being only a 'member' of this
 -- workspace. That is the §59 global-role trap in fixture form: a gate written against
