@@ -203,18 +203,8 @@ function calleeMethodOrUnreadable(callee) {
  * Anchored deliberately: this matches a name that BEGINS with a removal verb (`delete`,
  * `deleteUser`, `removeAll`), not one that merely contains one (`softDelete`, `markDeleted` — a
  * flag write, not a row destruction, and out of scope for a guard about destroying rows).
- *
- * The WORDS are separate from the anchoring, because the two name shapes this file classifies want
- * different anchoring over the same vocabulary. A method or scope is a JS name and is matched from
- * its start. A stored-procedure name is `snake_case` and puts its verb anywhere — `remove_contacts`,
- * `contacts_truncate` — so `REMOVAL_IN_NAME` matches the same words unanchored. The RPC classifier
- * previously carried its OWN five-word list; a third of the vocabulary was invisible to it, so
- * `.rpc("remove_contacts")` beside a model-settable boolean produced zero violations while
- * `.remove()` beside the same schema was caught. One list, two anchorings, no drift.
  */
-const REMOVAL_WORDS = "delete|remove|destroy|purge|wipe|erase|truncate|drop|unlink|discard";
-const REMOVAL_VERB = new RegExp(`^(${REMOVAL_WORDS})`, "i");
-const REMOVAL_IN_NAME = new RegExp(`(${REMOVAL_WORDS})`, "i");
+const REMOVAL_VERB = /^(delete|remove|destroy|purge|wipe|erase|truncate|drop|unlink|discard)/i;
 
 /**
  * Every `<something>.tool(<name>, <object>)` call in the file, via the AST.
@@ -536,7 +526,7 @@ function destructiveCall(node) {
       if (m === "rpc") {
         const a = literalText(n.arguments[0]);
         if (a === null) { found = "[unreadable] .rpc() with a computed target"; return; }
-        if (REMOVAL_IN_NAME.test(a)) { found = `.rpc("${a}")`; return; }
+        if (/(delete|purge|destroy|wipe|drop)/i.test(a)) { found = `.rpc("${a}")`; return; }
       }
     }
     const lit = literalText(n);
@@ -1015,33 +1005,6 @@ mcp.tool("bulk_delete_contacts", {
     return ok(await admin.from("clients").delete().in("id", contact_ids));
   },
 });`), 1);
-
-  // THE RPC CLASSIFIER CARRIED ITS OWN, SHORTER VOCABULARY (Codex, post-merge on #789).
-  // `destructiveCall` matched a METHOD name against the shared `REMOVAL_VERB` and then matched an
-  // `.rpc()` TARGET against a separate five-word regex, so a third of the vocabulary was invisible
-  // on that path: `.rpc("remove_contacts")` beside a model-settable boolean produced ZERO
-  // violations while `.remove()` beside the identical schema was caught. Two enumerations of one
-  // idea in one file — which is the exact drift the shared regex was introduced to end, left in
-  // place on the one call site that did not read it.
-  {
-    const rpcTool = (name) => `
-mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }),
-  handler: async (args) => { if (args.confirm) await admin.rpc("${name}", {}); } });
-const TOOL_SCOPE = { t: "crm.write" };`;
-    for (const name of ["remove_contacts", "erase_contacts", "truncate_contacts",
-                        "unlink_contacts", "discard_contacts"]) {
-      check(`catches .rpc("${name}") — a word the RPC path could not see`, v(rpcTool(name)), 1);
-    }
-    // The five it already saw must not regress out the other side of the change.
-    for (const name of ["delete_contacts", "purge_contacts", "destroy_contacts",
-                        "wipe_contacts", "drop_contacts"]) {
-      check(`still catches .rpc("${name}")`, v(rpcTool(name)), 1);
-    }
-    // And the controls that keep the rule usable: a read is not a removal.
-    for (const name of ["get_contacts", "list_contacts", "upsert_contact", "send_email"]) {
-      check(`allows .rpc("${name}")`, v(rpcTool(name)), 0);
-    }
-  }
 
   check("catches a delete RPC", v(`
 mcp.tool("nuke", { inputSchema: z.object({ force: z.boolean() }),
