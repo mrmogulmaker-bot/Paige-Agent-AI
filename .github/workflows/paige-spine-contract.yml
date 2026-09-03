@@ -6,6 +6,14 @@ on:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
       - "supabase/tests/paige_spine_foundation.sql"
+      # The Solo Team invitation proof must re-run when the seam it proves changes,
+      # not only when a migration happens to touch it.
+      - "supabase/tests/solo_team_invite_workspace_authority.sql"
+      - "supabase/functions/solo-team-invitations/**"
+      # The Solo Team invitation proof must re-run when the seam it proves changes,
+      # not only when a migration happens to touch it.
+      - "supabase/tests/solo_team_invite_workspace_authority.sql"
+      - "supabase/functions/solo-team-invitations/**"
       - "src/__tests__/paige-spine-*.test.ts"
       - "src/solo/paigeClientScope.ts"
       - "src/solo/paigeClientScope.test.ts"

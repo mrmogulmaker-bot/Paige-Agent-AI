@@ -67,6 +67,22 @@ Deno.serve(async (req) => {
   // is the only thing entitled to decide that a workspace was not named.
   const expectedTenantId = typeof body.expectedTenantId === "string" ? body.expectedTenantId : null;
 
+  // A DEPLOY-WINDOW REFUSAL, not an authorization one. Migrations, edge functions and the
+  // frontend ship as three independent pipelines off one merge, so an operator holding an
+  // already-loaded Team page across the deploy sends the pre-merge body, with no workspace in
+  // it. Without this they would hit the database's authority refusal and be told they may not
+  // manage invitations — false, and the exact class of false statement this endpoint was just
+  // repaired to stop making. Say what actually happened and what fixes it.
+  //
+  // This does NOT weaken the server-side proof: the database refuses a missing workspace
+  // independently, and a caller still cannot select a workspace it has no authority in.
+  if (!expectedTenantId) {
+    return json({
+      ok: false,
+      error: "This page is out of date, so it could not say which workspace to invite into. Reload Team and try again.",
+    }, 400);
+  }
+
   try {
     if (body.action === "revoke") {
       if (!body.inviteId) return json({ ok: false, error: "Invitation is required" }, 400);

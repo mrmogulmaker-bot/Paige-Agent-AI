@@ -9,7 +9,7 @@
 -- raise. That the outcome tests PASS with no JWT present is the regression test for it.
 BEGIN;
 
-SELECT plan(36);
+SELECT plan(42);
 
 -- ── Reachability ────────────────────────────────────────────────────────────────────────────────
 SELECT ok(
@@ -30,7 +30,34 @@ SELECT ok(
 );
 SELECT ok(
   has_function_privilege('service_role', 'public.create_solo_team_invite(uuid,uuid,text,text,text,text)', 'EXECUTE'),
-  'the edge function''s service role can reach the seam'
+  'the edge function''s service role can reach create'
+);
+-- Asserted for all three, symmetrically. Coverage gap caught by adversarial review: with only
+-- create asserted, dropping either remaining GRANT left 36/36 green while Resend and Revoke
+-- failed for every operator.
+SELECT ok(
+  has_function_privilege('service_role', 'public.resend_solo_team_invite(uuid,uuid,uuid)', 'EXECUTE'),
+  'the edge function''s service role can reach resend'
+);
+SELECT ok(
+  has_function_privilege('service_role', 'public.revoke_solo_team_invite(uuid,uuid,uuid)', 'EXECUTE'),
+  'the edge function''s service role can reach revoke'
+);
+SELECT ok(
+  has_function_privilege('service_role', 'public.solo_team_invite_authority(uuid,uuid)', 'EXECUTE'),
+  'the resolver is reachable by the role its callers run as'
+);
+SELECT ok(
+  NOT has_function_privilege('anon', 'public.resend_solo_team_invite(uuid,uuid,uuid)', 'EXECUTE'),
+  'anonymous callers cannot resend a team invitation'
+);
+SELECT ok(
+  NOT has_function_privilege('anon', 'public.revoke_solo_team_invite(uuid,uuid,uuid)', 'EXECUTE'),
+  'anonymous callers cannot revoke a team invitation'
+);
+SELECT ok(
+  NOT has_function_privilege('anon', 'public.solo_team_invite_authority(uuid,uuid)', 'EXECUTE'),
+  'anonymous callers cannot reach the authority resolver'
 );
 SELECT ok(
   NOT has_function_privilege('authenticated', 'public.solo_team_invite_authority(uuid,uuid)', 'EXECUTE'),
@@ -38,7 +65,7 @@ SELECT ok(
 );
 SELECT ok(
   NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.solo_team_invite_authority(uuid,uuid)'::regprocedure),
-  'the authority resolver is SECURITY INVOKER, so it fails closed under RLS on its own'
+  'the authority resolver is SECURITY INVOKER — it is granted no privilege of its own beyond its callers'
 );
 
 -- The guessing signatures are GONE, not merely superseded. PostgREST resolves an overload by the

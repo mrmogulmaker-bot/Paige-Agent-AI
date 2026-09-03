@@ -285,9 +285,18 @@ describe("the handler's Team call sites (source-level proof, not runtime proof)"
 
     // The workspace it names is the one already reconciled against the roster, and that
     // reconciliation still runs ahead of every invitation act.
-    const guardAt = HANDLER.indexOf("const wrongTenant = await teamSeamTenantMismatch();", branchStart - 4000);
-    expect(guardAt, "the tenant guard precedes the invitation body").toBeGreaterThan(-1);
+    // lastIndexOf, NOT indexOf. The same guard string appears in the work-profile and
+    // permission branches earlier in the file, so a windowed indexOf matched one of THOSE —
+    // the assertion stayed green with the invitation branch's own guard deleted. Caught by
+    // adversarial review. This is the guard that makes `personaCtx.tenant_id` non-null and
+    // roster-agreeing, and without it PAIGE would name a workspace nothing had reconciled.
+    const guardAt = HANDLER.lastIndexOf("const wrongTenant = await teamSeamTenantMismatch();", branchStart);
+    expect(guardAt, "the invitation branch has its own tenant guard").toBeGreaterThan(-1);
     expect(guardAt).toBeLessThan(branchStart);
+    // And it belongs to THIS branch: nothing else sits between the guard and the body.
+    const between = HANDLER.slice(guardAt, branchStart);
+    expect(between).not.toContain("tc.function.name === \"member_grant_role\"");
+    expect(between.length, "the guard is adjacent to the invitation body").toBeLessThan(2000);
   });
 
   it("carries the email-delivery outcome into the result instead of assuming it", () => {
