@@ -75,6 +75,31 @@ const ROSTER = {
 };
 
 /** The server double. `contacts` is a live array so a write can change what the RE-READ returns. */
+/**
+ * The AI-usage row as `get_workspace_ai_usage()` actually returns it: `bigint` columns arrive as
+ * STRINGS over PostgREST, so the fixture uses strings. A fixture that used numbers would let a
+ * number-only parser pass here and return nothing on the real platform.
+ */
+function usageRow(over: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
+  return {
+    tenant_id: "tenant-a",
+    scope: "top_level",
+    can_view: true,
+    usage_state: "ok",
+    revenue_class: "promotional",
+    reference_plan_slug: "solo",
+    included_ai_tokens_month: "5000000",
+    ai_credit_token_ratio: 1000,
+    period_source: "calendar_month",
+    period_start: "2026-09-01T00:00:00Z",
+    period_end: "2026-10-01T00:00:00Z",
+    tokens_used: "1250000",
+    events_counted: 7,
+    usage_last_recorded_at: "2026-09-02T10:00:00Z",
+    ...over,
+  };
+}
+
 function world(over: {
   authority?: Partial<AuthorityRow>;
   authorityError?: { message: string } | null;
@@ -83,6 +108,8 @@ function world(over: {
   writeError?: { message: string } | null;
   roster?: unknown;
   rosterError?: { message: string } | null;
+  usage?: Partial<Record<string, unknown>> | null;
+  usageError?: { message: string } | null;
 } = {}) {
   const state = { contacts: over.contacts ?? [] };
   rpc.mockImplementation((name: string, args?: Record<string, unknown>) => {
@@ -91,6 +118,13 @@ function world(over: {
     }
     if (name === "get_workspace_billing_contacts") {
       return Promise.resolve(over.contactsError ? { data: null, error: over.contactsError } : { data: state.contacts, error: null });
+    }
+    if (name === "get_workspace_ai_usage") {
+      if (over.usageError) return Promise.resolve({ data: null, error: over.usageError });
+      // `usage: null` means "the RPC returned no row" — the shape a failed/absent read has, which
+      // the card must report as unreadable rather than as zero usage.
+      if (over.usage === null) return Promise.resolve({ data: [], error: null });
+      return Promise.resolve({ data: [usageRow(over.usage)], error: null });
     }
     if (name === "get_solo_team_workspace") {
       return Promise.resolve(over.rosterError ? { data: null, error: over.rosterError } : { data: over.roster ?? ROSTER, error: null });
@@ -144,6 +178,7 @@ const submit = async (form: HTMLFormElement | null) => {
 const planState = (host: HTMLElement) => host.querySelector("[data-billing-state]")?.getAttribute("data-billing-state");
 const portalState = (host: HTMLElement) => host.querySelector("[data-portal-state]")?.getAttribute("data-portal-state");
 const contactsState = (host: HTMLElement) => host.querySelector("[data-contacts-state]")?.getAttribute("data-contacts-state");
+const usageState = (host: HTMLElement) => host.querySelector("[data-usage-state]")?.getAttribute("data-usage-state");
 
 beforeEach(() => {
   context.tenantId = "tenant-a";
@@ -169,8 +204,14 @@ describe("what the screen refuses to claim", () => {
   it("keeps the Usage & limits card that already shipped here", async () => {
     world();
     const { host } = await render();
-    expect(text(host)).toContain("Usage & limits");
-    expect(text(host)).toContain("No totals are shown");
+    // §58 NOTE — this guard used to assert the card said "Usage & limits" / "No totals are shown".
+    // That card was UNAVAILABLE because the platform had no allowance model and no tenant-safe read
+    // of the meter. Both now exist (owner ruling 2026-09-03), so the card was UPGRADED in place —
+    // not removed. The guard is rewritten to assert the stronger capability rather than deleted,
+    // because a deleted guard is how a card silently disappears next time.
+    expect(text(host)).toContain("AI usage");
+    expect(usageState(host)).toBe("usage-tracked");
+    expect(text(host)).toContain("5,000 AI credits (5,000,000 tokens)");
   });
 
   /** R22: a Solo member who may not VIEW billing is refused the plan, not shown it. */
@@ -581,5 +622,113 @@ describe("workspace switching", () => {
     await act(async () => { await Promise.resolve(); });
 
     expect(text(host)).not.toContain("Owner of A");
+  });
+});
+
+/**
+ * AI usage on this surface. The contract itself is asserted directly in `ai-usage-contract.test.ts`;
+ * what matters HERE is that the card is wired to the real seam, that a refusal reaches the screen
+ * as a refusal, and that a total for one workspace can never be read under another.
+ */
+describe("AI usage card", () => {
+  it("reads the server seam with no argument, so the workspace is never client-supplied", async () => {
+    world();
+    await render();
+    const call = rpc.mock.calls.find((c) => c[0] === "get_workspace_ai_usage");
+    expect(call).toBeDefined();
+    expect(call?.[1]).toBeUndefined();
+  });
+
+  it("states the allowance, the usage and the remainder, with the credit conversion spelled out", async () => {
+    world();
+    const { host } = await render();
+    expect(usageState(host)).toBe("usage-tracked");
+    expect(text(host)).toContain("5,000 AI credits (5,000,000 tokens)");
+    expect(text(host)).toContain("1,250 AI credits (1,250,000 tokens)");
+    expect(text(host)).toContain("3,750 AI credits (3,750,000 tokens)");
+    expect(text(host)).toContain("One AI credit is 1,000 tokens recorded by the platform.");
+  });
+
+  it("calls a promotional workspace promotional, and never a paid plan", async () => {
+    world();
+    const { host } = await render();
+    expect(text(host)).toContain("Promotional AI usage tracking");
+  });
+
+  it("shows no cost, no projection and no overage anywhere on the surface", async () => {
+    world();
+    const { host } = await render();
+    expect(text(host)).not.toMatch(/overage|projected|forecast|on track to|will run out/i);
+    // The one "$" the surface is allowed is none: no price is proven for any current workspace.
+    expect(text(host)).not.toMatch(/\$\d/);
+  });
+
+  it("reports a failed read as unreadable and offers a retry — never as zero usage", async () => {
+    world({ usageError: { message: "boom" } });
+    const { host } = await render();
+    expect(usageState(host)).toBe("usage-error");
+    expect(text(host)).not.toMatch(/0 AI credits/);
+    expect(byText(host, "Retry")).toBeDefined();
+  });
+
+  it("treats an empty result as unreadable rather than as a workspace that used nothing", async () => {
+    world({ usage: null });
+    const { host } = await render();
+    expect(usageState(host)).toBe("usage-error");
+  });
+
+  it("retries the read when asked, rather than only clearing the message", async () => {
+    world({ usageError: { message: "boom" } });
+    const { host } = await render();
+    const before = rpc.mock.calls.filter((c) => c[0] === "get_workspace_ai_usage").length;
+    await click(byText(host, "Retry"));
+    expect(rpc.mock.calls.filter((c) => c[0] === "get_workspace_ai_usage").length).toBeGreaterThan(before);
+  });
+
+  it("tells a non-owner why no total is shown instead of showing them a zero", async () => {
+    world({ usage: { usage_state: "owner_only", can_view: false, tokens_used: null, included_ai_tokens_month: null, ai_credit_token_ratio: null } });
+    const { host } = await render();
+    expect(usageState(host)).toBe("usage-owner-only");
+    expect(text(host)).not.toMatch(/0 AI credits/);
+  });
+
+  it("tells a sub-account the roll-up is undecided rather than claiming it used nothing", async () => {
+    world({ usage: { usage_state: "not_applicable", scope: "sub_account", can_view: false, tokens_used: null } });
+    const { host } = await render();
+    expect(usageState(host)).toBe("usage-not-applicable");
+    expect(text(host)).toContain("not a statement that nothing was used");
+  });
+
+  it("says a plan defines no allowance instead of rendering it as zero included", async () => {
+    world({ usage: { included_ai_tokens_month: null, ai_credit_token_ratio: null, reference_plan_slug: "enterprise" } });
+    const { host } = await render();
+    expect(usageState(host)).toBe("usage-no-allowance");
+    expect(text(host)).not.toMatch(/0 AI credits \(0 tokens\) included/i);
+    expect(text(host)).toContain("does not define an included monthly amount");
+  });
+
+  it("shows a real zero from a successful read, which a refusal must not be confusable with", async () => {
+    world({ usage: { tokens_used: "0", events_counted: 0 } });
+    const { host } = await render();
+    expect(usageState(host)).toBe("usage-tracked");
+    expect(text(host)).toContain("0 AI credits (0 tokens)");
+  });
+
+  it("never paints one workspace's usage total under the next one", async () => {
+    world({ usage: { tokens_used: "1250000" } });
+    const { host, root } = await render();
+    expect(text(host)).toContain("1,250 AI credits");
+
+    context.tenantId = "tenant-b";
+    world({
+      authority: { tenant_id: "tenant-b" },
+      roster: { ...ROSTER, tenant_id: "tenant-b", members: [] },
+      usage: { tenant_id: "tenant-b", tokens_used: "40000" },
+    });
+    await act(async () => root.render(<SoloBillingView />));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(text(host)).not.toContain("1,250 AI credits");
+    expect(text(host)).toContain("40 AI credits (40,000 tokens)");
   });
 });

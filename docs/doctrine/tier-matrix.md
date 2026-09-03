@@ -1568,10 +1568,11 @@ workspace it has switched into, Enterprise both. No owner ruling was sought, and
 
 ### Solo Team — an invitation goes to the workspace the operator named, `/solo/{account}/settings/team`
 
-**§66, same commit as the ship. NOT YET RELEASED — this records the change under review in #815, not
-live availability.** Nothing below is shipped truth until the PR merges and `20261047000000` is
-confirmed persisted on prod; this row is written now because §66 binds the ledger to the commit, and
-it will be corrected to SHIPPED or removed rather than left ambiguous.
+**§66 — `SHIPPED`. Corrected 2026-09-03 from the "NOT YET RELEASED" wording this row was first
+written under, which promised it would be resolved rather than left ambiguous.** #815/#827 merged and
+`deploy-migrations.yml` applied the migration on the push to `main`. Read back from production
+2026-09-03: `supabase_migrations.schema_migrations` contains `20261047000000`, and
+`to_regprocedure('public.solo_team_invite_authority(uuid,uuid)')` is non-null.
 
 **The defect.** `create_/resend_/revoke_solo_team_invite` read `profiles.active_tenant_id` **raw**
 while `get_solo_team_workspace` — the read that decides whether the Invite button is even offered —
@@ -1614,9 +1615,84 @@ of every invitation act; it is what makes the workspace PAIGE names trustworthy.
 **§61 default: no exception.** Distribution is unchanged from the Team seam rows above; this repairs
 how an existing capability resolves its workspace and grants nobody anything new.
 
+**CORRECTED IN FLIGHT by `20261107000000` (the headline ordering), and the reason it was needed is
+the lesson.** #850 was marked ready for review and merged in the same beat, so the independent
+review had no window to run before the merge — its five findings, three of them real defects in
+shipped code, landed on an already-merged PR. §39 says a green CI never waives the peer-gate; this
+waived it by sequencing. The corrections:
+
+| Finding | What was wrong | Fixed by |
+|---|---|---|
+| `email.sent` insert | `idx_email_send_log_message_sent_unique` is UNIQUE on `message_id WHERE status='sent'`, and the sender already writes that row — so every inbound `email.sent` violated it, answered 500, and Resend would retry for ever. Triggered by the single act of subscribing to `email.*`. | webhook returns 200 `already recorded` on `23505` |
+| origin lookup | supabase-js returns `{data:null,error}` rather than throwing; the error was discarded, so a transient failure answered 200 and the event was lost permanently | `error: originError` destructured, 500 before the absent-row branch |
+| headline status | ordered `created_at DESC` first with rank a mere tiebreak, so a retried `delivered` arriving after `opened` walked the display backwards. `created_at` is OUR insert time, never the provider's event time. | `20261107000000` — rank first, `created_at` second |
+| "Not sent yet" | a false claim about every invitation emailed before this feature existed, which has no log row because the old sender never wrote one — including the owner's own revoked one | "Delivery not recorded" |
+| "expired" verb | keyed on `finished`, which is true for accepted and revoked rows that routinely still have a future expiry | keyed on the `expired` state |
+
 **Owed:** authenticated runtime proof. Authorized as immediate post-release owner acceptance
 (2026-09-02) rather than a release blocker, and the surface stays **Authenticated Runtime Proof
 Owed** until the owner confirms the live flow.
+
+### Solo Team — an invitation says what happened to it, `/solo/{account}/settings/team`
+
+**§66 — `SHIPPED`.** #850 merged as `f85115e9`. Corrected from the "NOT YET LIVE" wording this row
+was first written under, on the evidence below rather than on the merge succeeding. Read back from
+production 2026-09-03, with the grant checks carrying their own control so the measurement is known
+to work:
+
+- `supabase_migrations.schema_migrations` contains `20261105000000` — it landed as a BACKFILL, since
+  #810 had already put `20261106000000` on prod while #850 was in flight. `supabase db push
+  --include-all` applies a version numbered below ones already applied; this row is the proof it
+  actually did, rather than being silently skipped.
+- `archive_solo_team_invite(uuid,uuid,uuid)` and `email_delivery_rank(text)` both non-null.
+- `tenant_invite_tokens.archived_at` exists; the `email_send_log` status CHECK now admits `clicked`.
+- EXECUTE on the archive function: `anon` false, `authenticated` false, **and** the control —
+  `get_solo_team_workspace` to `authenticated` — true, so the two refusals measure something.
+- `handle-resend-webhook` deployed ACTIVE at version 3.
+
+**The report.** A revoked invitation stayed on the operator's list for ever with no action on it, and
+no stage of any invitation could be answered — sent, delivered, opened, clicked were all unknown.
+
+**What was actually wrong.** `send-portal-invite` returned `emailed: res.ok`, which is "the POST was
+accepted", and never read the response body — so Resend's message id, the only handle by which a
+later event could be matched, was discarded on every send. And a finished invitation had no exit:
+`revoke` set the state and the row stayed, because there was no archive path and, deliberately, no
+delete path.
+
+**The repair.** The send is logged to `email_send_log` with the message id and `metadata.invite_id`.
+A new `handle-resend-webhook` edge function verifies Svix signatures and **appends** one row per
+delivery event, deriving `tenant_id` from our own originating row rather than the payload. The Team
+screen renders the four-step trail and a status line, and a finished invitation can be archived into
+a collapsed *Past invitations* drawer — never deleted, because a revoked invitation is evidence that
+somebody's access was withdrawn, the same reason #799 removed the browser roles' `DELETE` on the
+sibling membership table.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| See an invitation's delivery trail | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Archive a finished invitation | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Archive a still-live invitation | 403 | 403 | 403 | 403 | 403 | 403 | 403 |
+| Archive an invitation on another workspace | 403 | 403 | 403 | 403 | 403 | 403 | 403 |
+| Delete an invitation outright | — | — | — | — | — | — | — |
+
+Distribution is unchanged from the Team seam rows above, so **§61 default: no exception** — this adds
+reporting and a clearing action to an existing capability and grants nobody anything new. The God
+`—` is the same honest resolver refusal, not a gate: `archive_solo_team_invite` reuses
+`solo_team_invite_authority(_actor, _expected_tenant_id)`, which needs a membership row to prove. Anon
+and `authenticated` cannot execute it at all — `REVOKE`d, service_role only.
+
+**One shared table extended, owner-approved.** `email_send_log`'s status CHECK was read live and
+widened additively from `pending, sent, suppressed, failed, bounced, complained, dlq` to also accept
+`delivered, delivery_delayed, opened, clicked`. Every pre-existing status still inserts, and the
+constraint still refuses an invented status — both asserted in `solo_team_invite_lifecycle.sql`
+rather than inspected.
+
+**Owed, and it is a genuine external dependency, not a deferral.** The delivery trail reports
+**"Not sent yet"** until the webhook endpoint is registered with Resend and `RESEND_WEBHOOK_SECRET`
+is set. Both are owner actions — one an external production configuration change, one a credential.
+Until they are done the webhook refuses every event **by design** (it fails closed rather than
+trusting an unsigned payload), and no delivery, open or click can be observed. Archive, revoke and
+resend do not depend on it. The surface stays **Authenticated Runtime Proof Owed**.
 
 ### PAIGE Mind — Pipeline deal-stage evidence, `/solo/{account}/growth` → deal → Ask PAIGE
 
@@ -1889,11 +1965,54 @@ no_billing_account`. R13 binds: absence of a record is never inferred as a promo
 | Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|---|
 | Plan card | `plan-no-workspace` (act-as pointer, no seat) | `plan-unsupported` | `plan-unsupported` | `billing-unavailable · no_billing_account` today (mapped + projection ⇒ the paid/trial/promo states, Foundation B) | **`role-refusal`** — R22 makes VIEW a permission of its own, and the server publishes `can_view_billing` Owner-only in A. (**§13 correction:** this row first read "same state as the Owner — the plan is not a secret", which recorded a deviation from R22 that no owner ruling supports.) | `plan-subaccount` ("not because there is no plan") | `plan-no-workspace` | route not reachable |
-| Manage billing (portal entry) | `portal-not-applicable` | `portal-not-applicable` | `portal-not-applicable` | `portal-unavailable` today (flag off AND no mapping); `portal-entry` only when `mapped` | `role-refusal` | `portal-not-applicable` | `portal-not-applicable` | — |
+| Manage billing (portal entry) — card renamed **"Payment method"** (owner, 2026-09-03; it no longer claims invoices, which are the tenant's instrument toward their own customers) | `portal-not-applicable` | `portal-not-applicable` | `portal-not-applicable` | `portal-unavailable` today (flag off AND no mapping); `portal-entry` only when `mapped` | `role-refusal` | `portal-not-applicable` | `portal-not-applicable` | — |
 | Billing contacts and notices | refusal state with its reason | `billing_not_applicable` | `billing_not_applicable` | ✓ designate / revoke, and the list | the refusal is rendered as a refusal, never as "there are none" | `billing_not_applicable` | `billing_workspace_owner_only` | — |
 | Candidate list (`get_solo_team_workspace`) | not read | not read | not read | read ONLY when `can_manage_billing` | **not read** (§9 least privilege) | not read | not read | — |
 | Usage & limits | shown (`UNAVAILABLE`) | shown | shown | shown | shown | shown | shown | — |
+| ↳ **superseded** by the AI usage entry below (allowance slice) — the card now states a real total; §58: upgraded in place, never removed | | | | | | | | |
 | Client-billing pointer | **moved to Campaigns › Sales** (owner, 2026-09-03) — Billing is one direction of money only | moved | moved | moved | moved | moved | moved | — |
+
+### Platform Billing — AI usage allowance, slice 1+2 (branch `claude/platform-billing-clarification-l6zqr5`) — **NOT YET MERGED**
+
+**§66.** This entry records what the slice makes true and is written BEFORE the merge, so it states
+the branch rather than a commit. It supersedes the `Usage & limits` row in the Foundation C table
+above, which recorded that card as `UNAVAILABLE` on every tier.
+
+**What changed.** The plan source now carries an AI allowance beside seats/contacts/SMS
+(`platform_subscription_plans.included_ai_tokens_month` + `.ai_credit_token_ratio` — solo 5,000,000
+tokens @ 1,000/credit = 5,000 credits; agency 15,000,000 = 15,000 credits; enterprise NULL, a custom
+quote), and `get_workspace_ai_usage()` reads the EXISTING `platform_usage_events` meter
+(`event_type = 'llm_tokens'`). No second meter was built. `platform_metered_events` is untouched —
+it is the LAYER 3 pass-through and a different concern.
+
+**Visibility only (D6/D7/D8).** Nothing here throttles, degrades, charges, or predicts. Exhausting
+the allowance changes nothing, and the card says so. Enforcement, if it ever exists, belongs at the
+action-bus policy clamp (§67), never on a Billing screen.
+
+**Promotional, and labelled as such.** Every current workspace is promotional during beta. The card
+reads "Promotional AI usage tracking" and does not present the reading as a purchased entitlement.
+The revenue class comes from its own explicit record; an unclassified workspace is NOT inferred to
+be promotional (R13).
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| AI usage card | `usage-no-workspace` (act-as pointer, no seat) | `usage-tracked` against the agency allowance | `usage-no-allowance` (enterprise allowance is deliberately NULL — a custom quote, never a zero) | `usage-tracked`: included, used, remaining, in credits AND tokens, with the period and its source named | **`usage-owner-only`** — R22 makes VIEW its own permission; a NULL total, never a zero | `usage-not-applicable` — the roll-up decision is unmade, so nothing is claimed either way | `usage-no-workspace` | EXECUTE revoked from `anon` |
+| Allowance on the plan | reads all plans | agency 15,000,000 @ 1,000 | NULL (custom quote) | solo 5,000,000 @ 1,000 | same plan, refused view | plan not read for a sub-account | — | — |
+| Per-workspace AI **cost** | **not shown anywhere, on any tier** | — | — | — | — | — | — | — |
+
+**Why cost is absent on every tier, deliberately.** `paige_llm_trace` carries an `est_usd_total` of
+$4.88 across 697 calls, but **632 of those 697 (91%) carry no cost at all**. That figure is a floor
+of unknown distance from the truth. Cost attribution is an internal operator-observability backlog
+item; putting an incomplete number on a tenant's Billing screen would be the same class of error as
+the $149 catalogue price this workstream already removed.
+
+**Evidence.** Migration proven against production inside `BEGIN..ROLLBACK`
+(`scripts/sql/ai-usage-allowance-proof.sql`, 26/26 properties, 0 failures, nothing persisted).
+Presentation proven directly (`src/solo/ai-usage-contract.test.ts`). Solo Owner, Solo Admin/Member
+and the failed-read world are **rendered** in the harness
+(`scripts/live-drive/settings-billing-drive.mjs`). Agency, Enterprise, Sub-account, God and Anon are
+proven at the **resolver and the database**, not rendered. **Authenticated runtime on the deployed
+surface: OWED** (§32.c) — and the migration's persisted-apply confirmation is owed on merge (§32.a).
 
 **How each row above is evidenced, so a reader can tell proof from inference (§13).** The Solo Owner
 and Solo Admin/Member columns are **rendered** (`scripts/live-drive/settings-billing-drive.mjs`,

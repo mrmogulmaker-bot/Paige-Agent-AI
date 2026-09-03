@@ -16,7 +16,7 @@ const initial = {
     registeredCity: "Example City",
     registeredRegion: "Example Region",
     registeredPostalCode: "12345",
-    registeredCountryCode: "US",
+    registeredIsoCountry: "US",
     entityType: "llc",
     formationJurisdiction: "Example jurisdiction",
     representativeUserIds: ["harness-owner"],

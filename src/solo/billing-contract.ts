@@ -16,7 +16,7 @@
  *       record. "No subscription found, therefore promotional" is forbidden (R13).
  *     • A trial is reachable ONLY from a real trial record on the entitlement.
  *     • Paid/subscribed is reachable ONLY from a real `paid_subscription` entitlement.
- *     • A price, a renewal date, an invoice or a payment method is rendered ONLY from the
+ *     • A price, a renewal date or a payment method is rendered ONLY from the
  *       entitlement projection. It is NEVER derived from the plan CATALOGUE
  *       (`platform_subscription_plans`), which is a price list, not a statement that this
  *       workspace is charged anything.
@@ -177,7 +177,7 @@ export function resolveBillingPlanPresentation(input: BillingPlanInput): Billing
       state: "role-refusal",
       heading: "Billing for this workspace is visible to its owner",
       body:
-        "What this workspace pays the platform, and its invoices and payment method, are the owner's to see " +
+        "What this workspace pays the platform, and the payment method it is charged on, are the owner's to see " +
         "and to change. Nothing about your own access is affected.",
       fields: NO_FIELDS, note: "", reason: null, canRetry: false,
     };
@@ -271,7 +271,7 @@ export function resolveBillingPlanPresentation(input: BillingPlanInput): Billing
       fields: fieldsFrom([
         ["Cost", "$0 — no payment method needed"],
         ["In force", e.noExpiry ? "Until the platform changes it — no end date set" : e.endsAt],
-        ["Invoices", "None — this is not a paid subscription"],
+        ["Payment method", "None needed — this is not a paid subscription"],
         ["Converts automatically?", "No"],
       ]),
       note:
@@ -396,8 +396,8 @@ export function resolveBillingPortalPresentation(input: {
       state: "role-refusal",
       heading: "Billing is managed by the workspace owner",
       body:
-        "Invoices, the payment method and the plan are handled by the owner of this workspace. You can see that " +
-        "this page exists; you cannot change billing from it.",
+        "The payment method and the plan are handled by the owner of this workspace. You can see that this page " +
+        "exists; you cannot change billing from it.",
       canOpen: false,
     };
   }
@@ -417,9 +417,8 @@ export function resolveBillingPortalPresentation(input: {
         ? "This workspace’s billing records need a platform review before the provider page can be opened. " +
           "Nothing about your access has changed."
         : input.billingAccountState === "absent"
-          ? "Invoices and the payment method are held by the platform’s payment provider. This workspace has no " +
-            "billing account linked to it yet, so there is nothing for the provider to open. Nothing about your " +
-            "access has changed."
+          ? "The payment method is held by the platform’s payment provider. This workspace has no billing account " +
+            "linked to it yet, so there is nothing for the provider to open. Nothing about your access has changed."
           : "The platform reported this workspace’s billing setup in a way this page does not recognise, so the " +
             "provider page is not offered. Nothing about your access has changed.",
       canOpen: false,
@@ -427,10 +426,220 @@ export function resolveBillingPortalPresentation(input: {
   }
   return {
     state: "portal-entry",
-    heading: "Invoices and payment method",
+    heading: "Payment method",
     body:
-      "Invoices, receipts and the card on file are held by the platform’s payment provider. Opening them takes " +
-      "you to a secure page for this workspace’s billing account and brings you back here.",
+      "The card the platform charges for this workspace is held by the payment provider. Opening it takes you to " +
+      "a secure page for this workspace’s billing account and brings you back here.",
     canOpen: true,
+  };
+}
+
+/* ── AI usage (owner ruling 2026-09-03) ─────────────────────────────────────────────────────── */
+
+/**
+ * The usage card's presentation contract. Same discipline as the plan card: one pure function,
+ * server-owned inputs only, and every state reachable only from a record that proves it.
+ *
+ * THREE THINGS THIS DELIBERATELY DOES NOT DO, all owner-ruled:
+ *
+ *  1. No COST. Not per-workspace spend, not an estimate, not the $4.88 figure from
+ *     `paige_llm_trace` — 632 of its 697 calls carry no cost at all, so that number is a floor of
+ *     unknown distance from the truth, and putting a floor on a Billing screen is putting a wrong
+ *     number on a Billing screen. Cost attribution is an internal operator-observability backlog
+ *     item, not a tenant-facing one.
+ *  2. No PREDICTED OVERAGE and no projection. There is no overage to predict: the allowance is
+ *     visibility only, exhausting it changes nothing, and a "you will run out on the 14th" line
+ *     would imply a consequence that does not exist.
+ *  3. No conversion into "actions", "messages" or any other invented unit. The meter records
+ *     tokens. Credits are tokens ÷ the plan's own stored ratio, and that ratio travels with the
+ *     read so this file never hardcodes 1,000. Any other unit would be a number we made up (D5:
+ *     the unit must be one the meter actually records).
+ *
+ * ON PROMOTIONAL WORKSPACES. Every current workspace is promotional during beta. The card says so
+ * in those words and does NOT dress the reading up as a paid-plan entitlement — the allowance is
+ * shown as the figure being tracked against, not as something purchased. That distinction is the
+ * whole reason the revenue class is read from its own record rather than inferred.
+ */
+export type AiUsageStateId =
+  | "usage-loading"
+  | "usage-error"
+  | "usage-not-applicable"
+  | "usage-owner-only"
+  | "usage-no-workspace"
+  /** A real total, with a real period, and a plan allowance to measure it against. */
+  | "usage-tracked"
+  /** A real total and a real period, but the plan defines no allowance to compare it to. */
+  | "usage-no-allowance";
+
+export interface AiUsagePresentation {
+  state: AiUsageStateId;
+  heading: string;
+  body: string;
+  fields: ReadonlyArray<{ label: string; value: string }>;
+  note: string;
+  canRetry: boolean;
+}
+
+export interface AiUsageInput {
+  loading: boolean;
+  readFailed: boolean;
+  usageState: "ok" | "not_applicable" | "no_workspace" | "owner_only";
+  revenueClass: string | null;
+  includedAiTokensMonth: number | null;
+  aiCreditTokenRatio: number | null;
+  periodSource: "subscription" | "calendar_month" | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  tokensUsed: number | null;
+  /** Injected so the formatter is deterministic under test rather than locale-of-the-runner. */
+  formatDate?: (iso: string) => string;
+}
+
+const NO_USAGE_FIELDS: ReadonlyArray<{ label: string; value: string }> = [];
+
+function formatCount(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+/**
+ * Credits are floored, never rounded. 4,999,500 tokens used against a 5,000 credit allowance must
+ * not read as "5,000 credits used" while 500 tokens of it remain — a rounded-up figure would be
+ * the only number on the card that overstates, and it would overstate in the direction that
+ * alarms. Remaining is clamped at zero for the same reason in reverse: a negative credit count is
+ * not a thing a person can act on, and this card carries no overage concept to explain it.
+ */
+export function creditsFrom(tokens: number, ratio: number): number {
+  return ratio > 0 ? Math.floor(tokens / ratio) : 0;
+}
+
+function defaultFormatDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
+export function resolveAiUsagePresentation(input: AiUsageInput): AiUsagePresentation {
+  const fmt = input.formatDate ?? defaultFormatDate;
+
+  if (input.loading) {
+    return { state: "usage-loading", heading: "Clearing and resolving this account…", body: "", fields: NO_USAGE_FIELDS, note: "", canRetry: false };
+  }
+  if (input.readFailed) {
+    return {
+      state: "usage-error",
+      heading: "Couldn’t read this workspace’s AI usage",
+      body: "The usage total could not be read just now. Nothing about your access or your workspace has changed.",
+      fields: NO_USAGE_FIELDS,
+      note: "",
+      canRetry: true,
+    };
+  }
+  if (input.usageState === "no_workspace") {
+    return {
+      state: "usage-no-workspace",
+      heading: "No workspace is selected",
+      body: "There is no workspace selected, so there is no AI usage to show.",
+      fields: NO_USAGE_FIELDS,
+      note: "",
+      canRetry: false,
+    };
+  }
+  if (input.usageState === "not_applicable") {
+    return {
+      state: "usage-not-applicable",
+      heading: "Not applicable to this account type",
+      body:
+        "AI usage for a sub-account is not reported here yet. This is not a statement that nothing was used — " +
+        "how sub-account usage rolls up to the parent account has not been decided, so nothing is claimed either way.",
+      fields: NO_USAGE_FIELDS,
+      note: "",
+      canRetry: false,
+    };
+  }
+  if (input.usageState === "owner_only") {
+    return {
+      state: "usage-owner-only",
+      heading: "Usage is visible to the workspace owner",
+      body:
+        "AI usage for this workspace is shown to its owner. Your access here has not changed, and no total is " +
+        "shown rather than a zero, which would be a claim about the account.",
+      fields: NO_USAGE_FIELDS,
+      note: "",
+      canRetry: false,
+    };
+  }
+
+  // From here the read SUCCEEDED, so a total exists — including a legitimate zero.
+  const used = input.tokensUsed ?? 0;
+  const periodLabel =
+    input.periodStart && input.periodEnd
+      ? `${fmt(input.periodStart)} – ${fmt(input.periodEnd)}`
+      : null;
+  // The period is NAMED, never implied. A calendar month is not a billing period, and calling it one
+  // is the same fabrication Foundation C removed from the plan card.
+  //
+  // This sentence lives in the NOTE, not in a field. It was a field first, and the rendered frame
+  // showed it clipped to "This calendar month (this workspace has no …" — the `ss-field` primitive
+  // is built for short values and truncates. Every assertion still passed, because the text was in
+  // the DOM; it just could not be read. A disclosure a person cannot finish reading is not a
+  // disclosure, and the fix is to stop putting a sentence in a value slot, not to restyle a shared
+  // primitive (§00 — the presentation of that primitive is not this file's call).
+  const periodSourceSentence =
+    input.periodSource === "subscription"
+      ? "This is your subscription’s current billing period."
+      : input.periodSource === "calendar_month"
+        ? "This is the calendar month — this workspace has no provider billing period."
+        : null;
+  const promotional = input.revenueClass === "promotional";
+  const heading = promotional ? "Promotional AI usage tracking" : "AI usage";
+
+  const allowance = input.includedAiTokensMonth;
+  const ratio = input.aiCreditTokenRatio;
+
+  if (allowance === null || ratio === null || ratio <= 0) {
+    return {
+      state: "usage-no-allowance",
+      heading,
+      body: promotional
+        ? "This workspace is on promotional access during the beta. Its AI usage is recorded and shown here; " +
+          "its plan does not define an included monthly amount, so there is nothing to measure it against."
+        : "This workspace’s AI usage is recorded and shown here. Its plan does not define an included monthly " +
+          "amount, so there is nothing to measure it against.",
+      fields: fieldsFrom([
+        ["Used this period", `${formatCount(used)} tokens`],
+        ["Period", periodLabel],
+      ]),
+      note: [periodSourceSentence, "Nothing is charged for this usage, and nothing stops working."]
+        .filter(Boolean).join(" "),
+      canRetry: false,
+    };
+  }
+
+  const usedCredits = creditsFrom(used, ratio);
+  const allowanceCredits = creditsFrom(allowance, ratio);
+  const remainingTokens = Math.max(0, allowance - used);
+  const remainingCredits = creditsFrom(remainingTokens, ratio);
+
+  return {
+    state: "usage-tracked",
+    heading,
+    body: promotional
+      ? "This workspace is on promotional access during the beta, and its AI usage is being tracked against the " +
+        "amount included with its plan. Nothing is charged for it, nothing stops working when the amount is " +
+        "used up, and this figure is shown so you can see what you are using."
+      : "This workspace’s AI usage is tracked against the amount included with its plan. Nothing here charges " +
+        "you and nothing stops working when the amount is used up.",
+    fields: fieldsFrom([
+      ["Included each month", `${formatCount(allowanceCredits)} AI credits (${formatCount(allowance)} tokens)`],
+      ["Used this period", `${formatCount(usedCredits)} AI credits (${formatCount(used)} tokens)`],
+      ["Remaining", `${formatCount(remainingCredits)} AI credits (${formatCount(remainingTokens)} tokens)`],
+      ["Period", periodLabel],
+    ]),
+    // Stated on the card, every time, because a credit is our unit and nobody arrives knowing it —
+    // alongside which period the figures cover, in full rather than clipped to an ellipsis.
+    note: [periodSourceSentence, `One AI credit is ${formatCount(ratio)} tokens recorded by the platform.`]
+      .filter(Boolean).join(" "),
+    canRetry: false,
   };
 }

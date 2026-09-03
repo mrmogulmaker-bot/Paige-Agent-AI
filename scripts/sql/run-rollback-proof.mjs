@@ -12,8 +12,14 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 const args = process.argv.slice(2);
 const mcp = args.includes("--mcp");
+// `--lean` drops whole-line `--` comments and blank lines from the DERIVED batch so a large proof
+// fits a transport with a payload ceiling. It is a scripted derivation of the committed file, never
+// a hand-trimmed copy (lessons-learned 0d): the SQL is byte-identical, only non-executing lines go.
+// A `--` inside a string literal would be mangled, so a line is dropped ONLY when the whole line is
+// a comment, and the count of dropped lines is printed to stderr so the trim is visible.
+const lean = args.includes("--lean");
 const file = args.find((a) => !a.startsWith("--"));
-if (!file) { console.error("usage: run-rollback-proof.mjs [--mcp] <proof.sql>"); process.exit(2); }
+if (!file) { console.error("usage: run-rollback-proof.mjs [--mcp] [--lean] <proof.sql>"); process.exit(2); }
 let out = readFileSync(resolve(file), "utf8").split("\n").map((line) => {
   const m = line.match(/^\\i\s+(\S+)\s*$/);
   if (!m) return line;
@@ -26,5 +32,10 @@ if (mcp) {
     "CREATE TEMP TABLE _first ON COMMIT DROP AS SELECT public.platform_billing_account_reconcile() AS r;\n" +
     "INSERT INTO _p SELECT 0, 'info', 'first reconcile: ' || (SELECT r::text FROM _first);");
   out = out.replace("count(*) FILTER (WHERE res<>'ok') AS failed", "count(*) FILTER (WHERE res NOT IN ('ok','info')) AS failed");
+}
+if (lean) {
+  const before = out.split("\n").length;
+  out = out.split("\n").filter((l) => l.trim() !== "" && !l.trimStart().startsWith("--")).join("\n");
+  console.error(`--lean: ${before - out.split("\n").length} comment/blank lines dropped; SQL unchanged`);
 }
 process.stdout.write(out);
