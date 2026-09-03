@@ -1,5 +1,26 @@
 # Decision Log — chronological one-liners
 
+- **RELEASED to production: `business_context.readiness`, the Spine's 2nd capability and its 1st workspace-level one (2026-09-03, PR #864, merge `7ad98cff`, migration `20261112000000`)** —
+  merged under explicit owner Gate 2 authorization, all 7 checks green. `deploy-migrations` and
+  `deploy-edge-functions` both succeeded; `paige-ai-chat`, `systems-check-run-change`,
+  `systems-check-run-onboarding` and `systems-check-run-scheduled` redeployed; `edge-live..main`
+  drift is zero. **Persisted-apply proof against a pre-merge baseline** (§32.a): `schema_migrations`
+  row and the function object both went **0 → 1**, so the deploy demonstrably acted. The deployed
+  body carries the tenant-scoped gate (`is_tenant_admin(v_tenant) or is_platform_owner()`) and, with
+  comments stripped, contains no `has_any_role`. **The defect is fixed on real data:** tenant
+  `d8a0a880` had website, phone and industry in `tenant_legal_profile` and none of them in
+  `tenants.brand` — it was being told all three were missing; executing the deployed function as that
+  workspace's real owner now returns all three `owner_confirmed` from `setup`, with
+  `primary_business_email` correctly `connection_sourced` from `connections`. **What is NOT proven:**
+  the role gate cannot be exercised on prod because zero non-staff `tenant_members` exist — it is
+  proven in CI (18 assertions, mutation-tested) and is a forward-looking guard for the first member
+  ever added; and the authenticated UI drive remains owed, blocked on unset `LIVE_DRIVE_*`
+  credentials, NOT on the "no browser" reason I wrongly gave throughout (see the correction below and
+  lessons-learned 0h). **Owner decision surfaced, not silently absorbed:** two tenants whose values
+  live only in the legacy `tenants.brand` now read `needs_confirmation`, flipping `website_connected`
+  (both) and `comms_configured`'s phone half (one) from pass to fail — true under the source-of-truth
+  rule, but a visible change (§58).
+
 - **CORRECTION to the entry below, same day: the role gate I added was global where it had to be tenant-scoped (2026-09-03, `business_context.readiness`)** —
   an adversarial read of my own pushed diff, run while CI was still going, found the gate added to
   close the client-leak was itself wrong. It copied the Pipeline reference adapter's

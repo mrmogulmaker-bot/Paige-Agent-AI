@@ -2673,3 +2673,44 @@ and exposes only masked registration-number state on reload. This does **not** m
 from Agency, sub-account, Enterprise, pure-client, or platform-operator surfaces. Those tiers may
 later consume or administer the same canonical record only through a separately approved flow.
 The platform operator's master-account Primary Customer Profile is distinct from every tenant's subaccount Secondary Customer Profile.
+
+## Business context readiness — the Spine contract behind Systems Check and PAIGE (released 2026-09-03)
+
+Recorded here per §66 in the same change that shipped it. **LIVE on production** — PR #864, merge
+`7ad98cff`, migration `20261112000000`, persisted-apply proven against a pre-merge baseline.
+
+`public.get_business_context_readiness(uuid)` returns status + provenance (never a raw value) for
+four Setup fields: `website`, `business_phone`, `industry`, `primary_business_email`. Always exactly
+four rows, so "no signal" can never be confused with a read that failed quietly.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Read own workspace's business-context readiness | ✓ | ✓ | ✓ | ✓ | ✓ | 403 | 403 |
+| Systems Check reports website / phone / industry from it | ✓ | ✓ | ✓ | ✓ | ✓ | 403 | 403 |
+| PAIGE answers "what's configured right now" from it | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Name another workspace's tenant in the call | 403 | 403 | 403 | 403 | 403 | 403 | 403 |
+
+**How each row is enforced, not asserted.** The tenant is always server-resolved from the caller's
+own session (`current_user_tenant_id()`); a JWT caller's `_tenant_id` argument is ignored outright,
+which is what makes the last row a flat 403 for every tier including God. The one caller permitted to
+name a tenant is the service-role path (the Systems Check runners), honoured only because
+`auth.uid()` is null there and the calling edge function already resolved that tenant from a verified
+JWT.
+
+**Client and Anonymous are refused by construction, not by omission.** `anon` holds no EXECUTE grant
+at all (verified on prod). A workspace's own client IS an authenticated user of that same tenant, so
+the in-body gate — `is_tenant_admin(v_tenant) or is_platform_owner()` — is what actually refuses
+them; the capability declares `audience: owner_internal` and this is the predicate that keeps that
+promise. A refusal returns four `unavailable` rows with reason `not permitted for this account`, so
+the response shape holds and nothing leaks about whether any field is confirmed. PAIGE renders
+**nothing** on a refusal rather than telling a client their coach's setup status is unreadable.
+
+**Honest limit on the tier evidence.** The Client row is proven by the CI pgTAP file (18 assertions,
+mutation-tested — reverting to a global role predicate turns 3 red), NOT on production: there are
+currently zero active `tenant_members` whose role is not owner/admin, so no such caller exists on
+prod to test with. It is a forward-looking guard for the first member or client ever added.
+
+**Known visible change (§58).** Two tenants whose website/phone live only in the legacy
+`tenants.brand` — never confirmed in Setup — now read `needs_confirmation`, flipping
+`website_connected` and one `comms_configured` phone half from pass to fail. True under the
+source-of-truth rule; surfaced for an owner decision rather than absorbed.
