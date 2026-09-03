@@ -197,6 +197,18 @@ try {
         await page.getByRole("tab", { name: tab, exact: true }).click();
         if (new URL(page.url()).pathname !== `${setupRoot}/${addresses[tab]}`)
           throw new Error("Tab did not navigate: " + tab);
+        // The existing shell animates text colors. Assert the settled color,
+        // not the first interpolated frame after aria-selected changes.
+        await page.waitForFunction(() => {
+          const selected = document.querySelector('.setup-tabs [aria-selected="true"]');
+          if (!selected) return false;
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--pg-ink)';
+          selected.append(probe);
+          const settled = getComputedStyle(selected).color === getComputedStyle(probe).color;
+          probe.remove();
+          return settled;
+        }, undefined, {timeout:3000});
         const geometry = await page.evaluate(() => {
           const host = document.querySelector("[data-solo-screen-host]");
           const box = document
@@ -213,9 +225,11 @@ try {
               const probe = document.createElement('span');
               probe.style.color = 'var(--pg-ink)';
               selected.append(probe);
-              const ok = getComputedStyle(selected).color === getComputedStyle(probe).color;
+              const actual = getComputedStyle(selected).color;
+              const expected = getComputedStyle(probe).color;
+              const ok = actual === expected;
               probe.remove();
-              if (!ok) throw new Error('Generic link styling changed the selected Setup tab color');
+              if (!ok) throw new Error(`Generic link styling changed the selected Setup tab color: ${actual} != ${expected}`);
               return 'canonical';
             })(),
             horizontal:
