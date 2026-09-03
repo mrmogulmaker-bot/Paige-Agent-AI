@@ -225,8 +225,13 @@ describe("what happens when it fails", () => {
     // hold, and when the member is not in the new roster the dialog unmounts in the same flush and
     // takes the message with it — telling the operator nothing about a call the server may have
     // applied. The assertion still proves the same intent: nothing claims success.
+    // The wording is now about WHAT HAPPENED, not a guess at why. This sub-case is the server
+    // echoing a different tenant while the client never switched at all — the previous message
+    // told the operator "your active workspace changed", which was simply false here, and the
+    // harness certified it. Named by the fourth read.
     const spoken = mocks.error.mock.calls.map((c) => String(c[0]));
-    expect(spoken.some((t) => /workspace changed/i.test(t)), `said: ${JSON.stringify(spoken)}`).toBe(true);
+    expect(spoken.some((t) => /server reported acting on a different workspace/i.test(t)), `said: ${JSON.stringify(spoken)}`).toBe(true);
+    expect(spoken.some((t) => /your active workspace changed/i.test(t)), "and does not claim the operator switched when they did not").toBe(false);
   });
 });
 
@@ -691,5 +696,78 @@ describe("the last cross-workspace claim", () => {
     expect(banner, "no roster banner over the workspace this is not about").toBeNull();
     const spoken = mocks.error.mock.calls.map((c) => String(c[0]));
     expect(spoken.some((t) => t.trim().length > 0), `but the operator was still told: ${JSON.stringify(spoken)}`).toBe(true);
+  });
+});
+
+describe("the fourth read", () => {
+  it("will not let a removal and a permission change overlap in EITHER order", async () => {
+    // The fourth read found the gate was itself a stale closure: `changePermission` captures
+    // `requestClose` at the render where it was pressed, so if the removal had not started yet that
+    // copy held `removalInFlight === false` and closed the dialog unconditionally when its own RPC
+    // resolved — mid-removal, discarding the refusal exactly as before. The earlier test only ever
+    // drove the other order, where the closure happens to be right.
+    //
+    // The fix is two-part, and this asserts the part a person can observe: the two destructive acts
+    // are now MUTUALLY EXCLUSIVE, so the interleaving cannot begin from either side. The gate also
+    // reads a ref now, which is what makes any surviving stale copy of `requestClose` correct —
+    // that half is defence in depth and, with the interleaving impossible, is NOT reachable through
+    // the UI to assert. Stated rather than counted as proven.
+    let settlePermission: (v: unknown) => void = () => {};
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "set_solo_team_member_permission") return new Promise((res) => { settlePermission = res; });
+      return new Promise(() => {});
+    });
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+
+    // A permission change in flight must lock the destructive control.
+    const select = host.querySelector<HTMLSelectElement>("select")!;
+    await act(async () => { select.value = "admin"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await act(async () => buttons(host).find((b) => /access change/i.test(b.textContent ?? ""))!.click());
+    expect(removeTrigger(host)?.disabled, "Remove is locked while a permission change is in flight").toBe(true);
+
+    await act(async () => { settlePermission({ data: null, error: null }); });
+    expect(removeTrigger(host)?.disabled, "and unlocked again once it settles").toBe(false);
+
+    // ...and the reverse: a removal in flight must lock the permission control.
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+    await act(async () => { select.value = "admin"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    const confirmAccess = buttons(host).find((b) => /access change/i.test(b.textContent ?? ""));
+    expect(confirmAccess, "the permission confirmation is on screen to be judged").toBeTruthy();
+    expect(confirmAccess!.disabled, "the permission change is locked while a removal is in flight").toBe(true);
+  });
+
+  it("names one workspace in EVERY string of the removal block, including the aria-labels", async () => {
+    // Pinning only the live-region line left the paragraph above it and both aria-labels reading the
+    // live roster, so three of four asserted a destructive act against the workspace it was NOT
+    // happening in — while the fixed one said otherwise. The screen contradicted itself, and a
+    // screen-reader user heard the wrong claim from the button labels.
+    const rosterA = workspace();
+    const rosterB = workspace({ tenant_id: "tenant-2", tenant_name: "Second Workspace", members: [], total_members: 0 });
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") {
+        return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? rosterA : rosterB, error: null });
+      }
+      return new Promise(() => {});
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    mocks.tenant.activeTenantId = "tenant-2";
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const dialog = host.querySelector('[role="dialog"]')!;
+    const spoken = [
+      dialog.textContent ?? "",
+      ...Array.from(dialog.querySelectorAll("[aria-label]")).map((n) => n.getAttribute("aria-label") ?? ""),
+    ].join(" | ");
+    expect(spoken, "the whole block names the workspace the call was sent to").toContain("Example Team");
+    expect(spoken, "and nothing in it claims anything about the workspace now on screen").not.toContain("Second Workspace");
   });
 });

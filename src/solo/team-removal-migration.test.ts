@@ -295,7 +295,10 @@ describe("the table underneath — a guarded function is not a boundary on its o
       if (named) { job = named[1]; inOwnerStep = false; continue; }
       // Job-level options sit at four spaces. A job switched off takes every step with it.
       if (job && /^ {4}\S/.test(line) && disables(line)) conditionalJobs.add(job);
-      if (job && line.trim() === RUN) { owner = job; inOwnerStep = true; continue; }
+      // Reset on each occurrence: two steps carrying the same run line, the first disabled and the
+      // second live, otherwise leaves the flag set from the first — a false positive. It fails
+      // CLOSED, so it was safe, but a guard that cries wolf gets disabled by the next person.
+      if (job && line.trim() === RUN) { owner = job; inOwnerStep = true; ownerStepDisabled = false; continue; }
       if (inOwnerStep) {
         // Still inside the step that carries the proof? A sibling `- ` at the same indent ends it.
         if (/^ {6}- /.test(line)) { inOwnerStep = false; continue; }

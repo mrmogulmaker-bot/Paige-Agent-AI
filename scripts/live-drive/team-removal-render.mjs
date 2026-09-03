@@ -191,11 +191,11 @@ async function main() {
     // which outlives the dialog. Asserted where it actually lands, rather than where it used to.
     const said = await page
       .locator('[data-sonner-toast], [role="status"], [role="alert"]')
-      .filter({ hasText: /workspace changed/i })
+      .filter({ hasText: /different workspace/i })
       .first()
       .textContent()
       .catch(() => null);
-    /workspace changed/i.test(said ?? "")
+    /different workspace/i.test(said ?? "")
       ? note("OK", "a removal the server applied elsewhere is not reported as success here")
       : note("FAIL", `wrong-workspace state wrong: ${JSON.stringify(said)}`);
   });
