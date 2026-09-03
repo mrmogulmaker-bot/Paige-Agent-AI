@@ -36,6 +36,7 @@ CREATE TEMP TABLE _f ON COMMIT DROP AS SELECT
   'dddddddd-0000-4000-8000-00000000f006'::uuid AS u_sub,
   'dddddddd-0000-4000-8000-00000000f007'::uuid AS u_dual,
   'dddddddd-0000-4000-8000-00000000f008'::uuid AS u_dual_b,
+  'dddddddd-0000-4000-8000-00000000f009'::uuid AS u_promo_admin,
   'eeeeeeee-0000-4000-8000-00000000f001'::uuid AS w_promo,
   'eeeeeeee-0000-4000-8000-00000000f002'::uuid AS w_noplan,
   'eeeeeeee-0000-4000-8000-00000000f003'::uuid AS w_internal,
@@ -48,7 +49,7 @@ GRANT SELECT, INSERT ON _p TO authenticated, anon;
 INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at, email_confirmed_at)
 SELECT u, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
        'bst-proof-' || substr(u::text, 33) || '@example.invalid', '', now(), now(), now()
-FROM _f, unnest(ARRAY[u_promo_owner,u_promo_second,u_member,u_noplan,u_internal,u_sub,u_dual,u_dual_b]) AS u;
+FROM _f, unnest(ARRAY[u_promo_owner,u_promo_second,u_member,u_noplan,u_internal,u_sub,u_dual,u_dual_b,u_promo_admin]) AS u;
 
 INSERT INTO public.tenants (id, slug, name, account_number_prefix, account_number, account_type, parent_tenant_id, owner_user_id)
 SELECT w_promo,   'bst-proof-promo',    'BST Proof Promo Co',   'BSA', 982001, 'standalone', NULL::uuid, u_promo_owner FROM _f UNION ALL
@@ -63,6 +64,7 @@ INSERT INTO public.tenant_members (tenant_id, user_id, status, role, is_owner)
 SELECT w_promo,    u_promo_owner,  'active', 'owner'::public.tenant_role,  true  FROM _f UNION ALL
 SELECT w_promo,    u_promo_second, 'active', 'owner'::public.tenant_role,  true  FROM _f UNION ALL
 SELECT w_promo,    u_member,       'active', 'member'::public.tenant_role, false FROM _f UNION ALL
+SELECT w_promo,    u_promo_admin,  'active', 'admin'::public.tenant_role,  false FROM _f UNION ALL
 SELECT w_noplan,   u_noplan,       'active', 'owner'::public.tenant_role,  true  FROM _f UNION ALL
 SELECT w_internal, u_internal,     'active', 'owner'::public.tenant_role,  true  FROM _f UNION ALL
 SELECT w_sub,      u_sub,          'active', 'owner'::public.tenant_role,  true  FROM _f UNION ALL
@@ -138,7 +140,10 @@ INSERT INTO _p SELECT 13, CASE WHEN workspace_name='BST Proof Promo Co' THEN 'ok
 INSERT INTO _p SELECT 14, CASE WHEN provider_state='not_created' THEN 'ok' ELSE 'FAIL ' || provider_state END,
   'P14 the missing provider mapping is reported as its own readiness fact, separate from access'
   FROM public.get_workspace_billing_status();
-INSERT INTO _p SELECT 15, CASE WHEN seats_included=3 AND seats_used=3 AND contacts_included=250 AND contacts_used=4
+-- seats_used is 4, not 3: the workspace has owner + second owner + member + the admin added for
+-- P42. The number moved when the fixture gained a member, which is the point of measuring it from
+-- active tenant_members rather than asserting a constant.
+INSERT INTO _p SELECT 15, CASE WHEN seats_included=3 AND seats_used=4 AND contacts_included=250 AND contacts_used=4
                                THEN 'ok' ELSE 'FAIL seats=' || seats_used || ' contacts=' || contacts_used END,
   'P15 included-versus-used is measured from real sources (active members, public.clients)'
   FROM public.get_workspace_billing_status();
@@ -222,12 +227,17 @@ BEGIN
   SELECT w_promo INTO _t FROM _f;
   BEGIN
     INSERT INTO public.platform_billing_contacts (tenant_id, user_id, designation, designated_by)
-    SELECT _t, u_member, 'delegate', u_promo_owner FROM _f;
+    -- An ADMIN, because Foundation A's eligibility guard requires one for a delegate
+    -- (billing_contact_delegate_requires_admin). The first version of this fixture used a MEMBER and
+    -- the property failed — correctly, and not because of the new one-primary guard. Reading that
+    -- failure as "my guard blocks delegates" and loosening the guard would have removed a working
+    -- eligibility rule to satisfy a broken fixture.
+    SELECT _t, u_promo_admin, 'delegate', u_promo_owner FROM _f;
     _ok := true;
   EXCEPTION WHEN others THEN _ok := false;
   END;
   INSERT INTO _p SELECT 42, CASE WHEN _ok THEN 'ok' ELSE 'FAIL a delegate was blocked' END,
-    'P42 the guard constrains primaries only — a delegate is still addable alongside one';
+    'P42 the guard constrains primaries only — an ELIGIBLE (admin) delegate is still addable alongside one';
 END $$;
 
 -- ── P50s: the sole-primary rule no longer depends on Stripe ─────────────────────────────────
@@ -243,6 +253,18 @@ SELECT
     WHERE b.tenant_id=f.w_dual AND b.designation='primary_contact' AND b.revoked_at IS NULL LIMIT 1) AS dual_primary;
 GRANT SELECT ON _ids TO authenticated;
 
+DO $$
+DECLARE _blocked boolean := false; _t uuid;
+BEGIN
+  SELECT w_promo INTO _t FROM _f;
+  BEGIN
+    INSERT INTO public.platform_billing_contacts (tenant_id, user_id, designation, designated_by)
+    SELECT _t, u_member, 'delegate', u_promo_owner FROM _f;
+  EXCEPTION WHEN insufficient_privilege THEN _blocked := true;
+  END;
+  INSERT INTO _p SELECT 43, CASE WHEN _blocked THEN 'ok' ELSE 'FAIL a MEMBER became a billing delegate' END,
+    'P43 a non-admin member is still refused as a delegate — the eligibility rule P42 tripped over is intact';
+END $$;
 INSERT INTO _p SELECT 49, CASE WHEN promo_primary IS NOT NULL AND dual_primary IS NOT NULL
                                THEN 'ok' ELSE 'FAIL the fixture ids are null, so the revoke tests below would be vacuous' END,
   'P49 both revoke targets resolved — without this the next two properties pass for the wrong reason'
