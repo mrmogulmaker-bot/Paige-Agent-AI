@@ -2257,6 +2257,88 @@ the fix is in this same PR. **Authenticated runtime on the deployed surface: OWE
 browser-driving tool in this session; owed to the next capable session, same as the AI-usage slice
 above.
 
+### Platform Billing — payment-method connect + Spine billing evidence, items 4–5 (owner brief 2026-09-03)
+
+**Continuation of the row above (PR #865, items 1–3, merged `5ae7a34a`).** Built on the fresh branch
+off that merged production `main`, per the owner's explicit item-4/item-5 continuation brief
+(2026-09-03), authorized through PR/merge/deploy/production verification without a routine
+approval pause.
+
+**Item 4 — owner-only payment-method connection.** A new edge function
+`platform-billing-connect` opens a Stripe Checkout Session in `mode: "setup"` (a SetupIntent, never
+a charge) for the authorized Owner of a `top_level` Solo/Sub-account/Enterprise workspace. Its own
+decision function `decideConnectAccess()` (`platform-billing-connect/decide.ts`) mirrors — and
+DIFFERS from in exactly one place — the existing hosted-portal gate
+(`decidePortalAccess`/`decideLegacyPortal`): it allows BOTH `billing_account_state: "mapped"` AND
+`"absent"`, because connect is how a mapping first comes to exist; the portal only ever allows
+`"mapped"`. No external Stripe customer or provider object is created until the authorized owner
+explicitly clicks — never on page load, deploy, migration, background reconciliation, or a test.
+The Stripe Customer created (idempotency key `pbc_customer_${tenantId}`) is created only if none
+already exists; the Checkout Session return webhook (`stripe-webhook`, keyed on
+`session.metadata.platform_billing_connect_tenant_id`) resolves the SetupIntent → PaymentMethod,
+writes brand/last4/exp onto `platform_billing_accounts` via the new
+`upsertPaymentMethod()` shared writer (`_shared/platform-billing.ts`, following the file's existing
+`upsertBillingAccount()` mapping-conflict discipline: a customer-id mismatch between the event and
+the tenant's own mapping row is refused, nothing written, never silently overwritten), and sets the
+new payment method as the Stripe customer's default. **What is deliberately NOT in this slice:** a
+payment-method REMOVAL flow. No removal seam exists in the current provider wiring, and building
+one safely (recovering/blocking a workspace that removes its only method) is separate design work
+— honestly scoped out per the brief's own "record the exact reason as Proof Owed or follow-up"
+allowance, not silently dropped.
+
+**Item 5 — the Spine-safe billing summary, `get_billing_spine_evidence()`
+(`20261140000000`).** Built entirely on `get_workspace_billing_status()` (§18 — never a second
+computation of the same facts), in the exact fixed-field contract `get_pipeline_spine_evidence()`
+(`20260902004019`) established: `signal_id, kind, tenant_id, subject_type, subject_ref,
+occurred_at, recorded_at, source_system, source_record_ref, source_actor_type, availability,
+classification, lifecycle, safe_summary, facts, audience, schema_version, expires_at,
+outcome_ref`. `facts` carries plan/promotional status, `amount_due_cents`, a derived
+`payment_setup_state` (`connected | required | unavailable | not_required`), the primary billing
+contact's NAME (owner callers only — a non-owner reads zero rows, same R22 gate as the Billing
+screen itself), measured seats/contacts/AI-usage counts, and a derived `owner_action_needed` +
+`owner_action_reason` (dual-primary selection-needed, or a required-but-unconnected payment
+method). **Structurally excluded, not merely omitted:** Stripe customer/payment-method ids, card
+brand/last4/expiry, full invoice payloads, internal cost estimates, cross-workspace data, sales/
+client-payment data — none of those fields exist on `get_workspace_billing_status()`'s own return
+shape, so there is nothing in reach to accidentally select. `SECURITY DEFINER`,
+`REVOKE ALL FROM PUBLIC, ANON, SERVICE_ROLE; GRANT EXECUTE TO AUTHENTICATED`.
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| "Set up payment method" action | n/a (no book) | `status-unsupported` (excluded, never `top_level`) | `status-unsupported` (same) | `resolveWorkspacePaymentSetupPresentation()` renders `setup-needed`/`setup-connected` and opens Stripe Checkout (`mode: setup`) on click | `setup-not-owner` — refused, no external action initiated | n/a (`scope <> top_level`) | route not reachable | EXECUTE revoked |
+| `get_billing_spine_evidence()` | 0 rows unless a real top-level workspace is act-as'd (no book of its own) | 0 rows (`scope <> top_level`) | 0 rows (`scope <> top_level`, same guard as item 1–3's status card) | 1 row, full facts incl. primary contact name | 0 rows (R22 — `can_view=false`) | 0 rows (`scope <> top_level`) | — | EXECUTE revoked |
+
+**Evidence.** Backend: `deno check` clean across `_shared/platform-billing.ts`,
+`platform-billing-connect/{index,decide}.ts`, `stripe-webhook/index.ts`; `deno test` 28/28
+(`platform-billing.test.ts` 18, `decide.test.ts` 10). Frontend: `npx tsc --noEmit` clean; 1215/1215
+across `src/solo/` (67 in `settings-billing.test.tsx` alone, incl. 9 new payment-setup-act cases: a
+promotional workspace with no method, cancel-and-return, provider failure, non-owner refusal,
+ambiguous-mapping refusal, and the redirect-return success/cancelled banners); `npx eslint` clean on
+every changed `src/` file (the CI eslint gate's actual scope — edge functions are a separate Deno
+tree the gate does not lint, per `.github/workflows/ci.yml`'s own `changed_src.txt` filter).
+**Production rollback proof (`scripts/sql/billing-spine-evidence-proof.sql`), 14/14, 0 failures**:
+P1–P6 promotional owner (one row, real name, `$0` due, no owner action, zero Stripe/card keys in
+`facts`); P7 a non-owner member of the same workspace reads zero rows; P8 an ambiguous provider
+mapping reads `unavailable`; P9–P10 `past_due` reads `required` with a real reason; **P11–P12 a
+genuine two-live-primary workspace reads `owner_action_needed=true` with the dual-primary
+reason** (the fixture recreates the historical pair `trg_platform_billing_one_primary`
+(`20261109040000`) — now permanently live on production — would otherwise correctly refuse as a
+NEW second primary; the proof disables that one trigger for exactly the two inserts that
+reconstruct the pre-trigger state MMA already carries, then re-enables it before the migration
+under proof even runs, so the assertion exercises the same shape of state the trigger is designed
+to tolerate, not one it was bypassed to create going forward); P13 a sub-account owner reads zero
+rows; P80 `anon` EXECUTE is refused (`insufficient_privilege`). Transaction rolled back —
+production unaffected by the proof run itself.
+
+**§32.a persisted-apply confirmation: OWED**, to be recorded here after merge (schema_migrations
+advancing to include `20261140000000`, `get_billing_spine_evidence()` present in `pg_proc`, per the
+same direct-query discipline used for items 1–3 above) — not assumed from a green rollback proof.
+**Authenticated runtime on the deployed Checkout/webhook round-trip: OWED** (§32.c) — this session
+has no browser-driving tool; the webhook side is proven by real Stripe SetupIntent/PaymentMethod
+retrieval calls in the shared-writer unit tests, but a live click-through of "Set up payment
+method" → Stripe-hosted Checkout → return → confirmation banner has not been driven end-to-end by
+this session and is owed to the next capable one, same standing gap as the items 1–3 row above.
+
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
 
 **§66, same commit as the change.** This row was first written while Slice 2A was a draft, and said
@@ -2543,6 +2625,50 @@ all rather than shown badly.
   this session actually held was reported as absent; §32.c is explicit that the honest degrade is
   keyed to LACKING the capability, never to the agent's name.
 
+**Round 2 — owner instructions from the live surface (2026-09-03), applied the same day.**
+
+1. *"Do you see where it says 'sales' in the banner area? It says 'sales' again at the top in the
+   subtab. We're being very, very redundant… eliminating that whole banner section."* The
+   `PageHead` masthead is **removed from every Campaigns tab**, not just Sales — it said
+   `CAMPAIGNS / <tab>` directly above a tab strip already naming the tab, under a shell already
+   saying Campaigns, and spent roughly 90px doing it. §58: nothing it carried is lost. The
+   truth-key legend moved into the tab row; Sales' own `SurfaceHead` (a third "Sales") was folded
+   into the first band, which now carries the `PARTIAL` label and the orientation note. A legacy
+   address still renders a head, because that is its only orientation. The word now appears
+   **exactly once** on the surface, and a test counts it structurally rather than over
+   `textContent` — the tab strip concatenates ("CatalogSalesPipeline"), so a word-boundary match
+   over the page finds nothing and would have passed while proving nothing.
+
+2. *"I need this whole area to be way more colorful… the buttons, the fine lines, and the details…
+   This is representing their money, their income, their opportunities."* and *"even that white
+   background looks really, really bland… don't be afraid to use CSS… any motion or any type of
+   graphic design… keep it symmetrical."* The surface now has **its own ground** — a violet field
+   with a fine diagonal weave, drawn from `--violet-line`/`--violet-tint`/`--gold-tint` rather than
+   an image, so both palettes follow for free — with the bands sitting on it as raised plates.
+   §23 is the rule this follows: indigo is the platform's calm-credible ground (§6), and a deeper
+   draw of it makes the money tab read as its own plane without inventing a colour the platform
+   does not own. Colour carries meaning, never decoration: nothing-recorded-yet reads **violet**
+   (an opportunity, not dead grey), ready **green**, waiting **amber**; each readiness row carries
+   a state-keyed accent bar whose colour is set from its own pill, so the bar and the word cannot
+   disagree; a recorded amount takes its state's colour; column headers and section marks carry
+   the brand. Motion is one staggered rise on mount and one slow sheen on the single next act —
+   both off under `prefers-reduced-motion`, and every tint gets a real border under
+   `forced-colors`.
+
+   **§00 note, stated rather than assumed.** Colour is Claude Design's, and this round was made on
+   a direct owner instruction that named the outcome. Where a choice was measurable it was measured
+   rather than judged: the acts do **not** take the shell's gold button, because `--gold` on
+   `--gold-tint` measures **2.72:1** in light — the render gate caught it the moment they did — and
+   a primary action nobody can read is the opposite of what was asked for. They take the shell's
+   violet primary instead (~7:1 in light), mirrored into light mode from the rule
+   `solo-tokens.css` already applies in dark, and scoped to this surface because whether the whole
+   shell should follow is CD's call. The gold-button ratio is handed over as a measurement; the
+   sibling Catalog tab ships that pair on "New offer" today.
+
+   Re-verified after each change: **344/344** render checks across both palettes and four widths,
+   1202 Solo tests, 2726 full-suite, ratchet and build clean.
+
+
 **The §39 peer-gate found what this slice's own tests structurally could not.** Five independent
 reviewers read the pushed diff, each attacking one dimension, and every finding was then handed to a
 separate skeptic told to refute it. Eight confirmed, two partly. The one that matters most:
@@ -2643,3 +2769,44 @@ and exposes only masked registration-number state on reload. This does **not** m
 from Agency, sub-account, Enterprise, pure-client, or platform-operator surfaces. Those tiers may
 later consume or administer the same canonical record only through a separately approved flow.
 The platform operator's master-account Primary Customer Profile is distinct from every tenant's subaccount Secondary Customer Profile.
+
+## Business context readiness — the Spine contract behind Systems Check and PAIGE (released 2026-09-03)
+
+Recorded here per §66 in the same change that shipped it. **LIVE on production** — PR #864, merge
+`7ad98cff`, migration `20261112000000`, persisted-apply proven against a pre-merge baseline.
+
+`public.get_business_context_readiness(uuid)` returns status + provenance (never a raw value) for
+four Setup fields: `website`, `business_phone`, `industry`, `primary_business_email`. Always exactly
+four rows, so "no signal" can never be confused with a read that failed quietly.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Read own workspace's business-context readiness | ✓ | ✓ | ✓ | ✓ | ✓ | 403 | 403 |
+| Systems Check reports website / phone / industry from it | ✓ | ✓ | ✓ | ✓ | ✓ | 403 | 403 |
+| PAIGE answers "what's configured right now" from it | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Name another workspace's tenant in the call | 403 | 403 | 403 | 403 | 403 | 403 | 403 |
+
+**How each row is enforced, not asserted.** The tenant is always server-resolved from the caller's
+own session (`current_user_tenant_id()`); a JWT caller's `_tenant_id` argument is ignored outright,
+which is what makes the last row a flat 403 for every tier including God. The one caller permitted to
+name a tenant is the service-role path (the Systems Check runners), honoured only because
+`auth.uid()` is null there and the calling edge function already resolved that tenant from a verified
+JWT.
+
+**Client and Anonymous are refused by construction, not by omission.** `anon` holds no EXECUTE grant
+at all (verified on prod). A workspace's own client IS an authenticated user of that same tenant, so
+the in-body gate — `is_tenant_admin(v_tenant) or is_platform_owner()` — is what actually refuses
+them; the capability declares `audience: owner_internal` and this is the predicate that keeps that
+promise. A refusal returns four `unavailable` rows with reason `not permitted for this account`, so
+the response shape holds and nothing leaks about whether any field is confirmed. PAIGE renders
+**nothing** on a refusal rather than telling a client their coach's setup status is unreadable.
+
+**Honest limit on the tier evidence.** The Client row is proven by the CI pgTAP file (18 assertions,
+mutation-tested — reverting to a global role predicate turns 3 red), NOT on production: there are
+currently zero active `tenant_members` whose role is not owner/admin, so no such caller exists on
+prod to test with. It is a forward-looking guard for the first member or client ever added.
+
+**Known visible change (§58).** Two tenants whose website/phone live only in the legacy
+`tenants.brand` — never confirmed in Setup — now read `needs_confirmation`, flipping
+`website_connected` and one `comms_configured` phone half from pass to fail. True under the
+source-of-truth rule; surfaced for an owner decision rather than absorbed.

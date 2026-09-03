@@ -53,7 +53,38 @@ no `contact_id` to be null, and no client-scoped Chat gate to sit behind — so 
 That is not a loophole in the constraints; it is a different evidence class, and it buys none of the
 Rail's properties (no history, no citation, no attribution, no freshness boundary — the row is simply
 current as of the call). Its `chatBinding`/`mindBinding` are `PARTIAL`: `paige-ai-chat` injects the
-block into every tenant turn's system context, unit-tested, with no authenticated drive yet.
+block into every tenant turn's system context, unit-tested, with no authenticated UI drive yet.
+
+**RELEASED AND PROVEN ON PRODUCTION 2026-09-03** — PR #864, merge commit `7ad98cff`, migration
+`20261112000000`. This is the class of evidence the table at the top of this file calls
+*production catalog / schema* PLUS a real execution, and it is worth being exact about which
+claims it does and does not support:
+
+| Claim | Evidence | Class |
+|---|---|---|
+| The migration persisted | `schema_migrations` row for `20261112000000` went **0 → 1**; the function object went **0 → 1**. Baseline captured on prod BEFORE the merge, so this proves the deploy acted rather than confirming what was already there | production catalog |
+| The shipped gate is the tenant-scoped one | `pg_get_functiondef` on prod, comment lines stripped: executable code contains `is_tenant_admin` and does NOT contain `has_any_role`. The literal gate line is `and not (public.is_tenant_admin(v_tenant) or public.is_platform_owner())` | production catalog |
+| The grant surface is right | on prod: `anon` cannot execute; `authenticated` and `service_role` can; `SECURITY DEFINER` with `search_path` pinned | production catalog |
+| **The defect was real and is fixed** | tenant `d8a0a880` holds website, phone AND industry in `tenant_legal_profile` while `tenants.brand` held **none** of them — it was being told all three were missing. Executing the deployed function as that workspace's real owner returns `website: owner_confirmed`, `business_phone: owner_confirmed`, `industry: owner_confirmed` (source `setup`, with freshness), and `primary_business_email: connection_sourced` (source `connections`) | **authenticated runtime, server-side** |
+| The role gate refuses a non-staff caller | **NOT provable on prod today** — there are currently **zero** active `tenant_members` whose role is not owner/admin, so no such caller exists to test with. Proven instead by the CI pgTAP file (18 assertions, mutation-tested: reverting to the global predicate turns 3 of them red). On production it is a forward-looking guard protecting the first member or client ever added | automated test |
+| The consumer path is live | `deploy-edge-functions` shipped `paige-ai-chat`, `systems-check-run-change`, `systems-check-run-onboarding`, `systems-check-run-scheduled`; `edge-live..main` drift is zero | production catalog |
+| The owner's own UI flow | **STILL OWED.** Not "no browser" — see the correction below | UNVERIFIED |
+
+**§13 correction, recorded because the wrong reason was quoted repeatedly.** Through this slice I
+claimed the live drive was owed because the session had *no browser capability*, and that production
+was unreachable. Both were false, and `lessons-learned` **0h** is written about exactly this move.
+`npm run harness:selftest` launches real Chromium via Playwright and passes every falsifiability arm;
+`https://paigeagent.ai` returns 200 from the sandbox. The true limit is narrow and checkable:
+**`LIVE_DRIVE_EMAIL` / `LIVE_DRIVE_PASSWORD` are unset**, so the *authenticated* UI drive cannot run.
+Contract-level production verification needs no browser at all, which is why the table above exists.
+
+**One consequence worth an owner decision, not a defect.** Setup is now the source, so two tenants
+(`7eaf8859`, `e7f1b157`) whose values live only in the legacy `tenants.brand` — written by the older
+`update_business_profile` path, never confirmed in Setup — now read `needs_confirmation` where the
+old reader said "present". Neither has a published growth page, so `website_connected` flips
+pass → fail for both, and `comms_configured`'s phone half flips for `7eaf8859`. That is literally
+true ("the owner has not saved this in Setup") and is the direction the source-of-truth rule points,
+but it IS a visible change for those workspaces (§58: flagged, not silent).
 
 **No department other than Pipeline and Setup's business context is declared in the registry.** The
 Team and Setup surface cards (`../doctrine/surface-cards/`) each say the same of themselves,

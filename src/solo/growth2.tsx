@@ -165,8 +165,8 @@ function ClientBillingBoundary() {
 
 function Sales({ data, setDetail, onOpenCatalog }) {
   const routed = data.submissions.filter((row)=>row.contactId||row.dealId);
-  return <section className="campaigns-surface"><SurfaceHead truthKey="sales" title="Sales operations" description="What this business sells, how it takes payment from its own clients, and the commercial activity it has actually recorded."/>
-    <SalesOps setDetail={setDetail} deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]} dealsPhase={data.phase} onOpenCatalog={onOpenCatalog}/>
+  return <section className="campaigns-surface">
+    <SalesOps setDetail={setDetail} deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]} dealsPhase={data.phase} onOpenCatalog={onOpenCatalog} truth={TRUTH.sales}/>
     <ClientBillingBoundary/>
     <div className="so-band"><div className="so-band-head"><h3>Routed capture activity</h3><small>Recorded contact and deal references only — never estimated revenue or campaign attribution.</small></div></div>
     <StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></section>;
@@ -330,7 +330,7 @@ function CampaignTabs({ tabs, current, setCurrent }) {
     pendingCampaignTabFocus=nextKey;
     setCurrent(nextKey);
   };
-  return <div className="campaigns-nav"><div className="campaigns-tabs" role="tablist" aria-label="Campaigns views">{tabs.map((tab,index)=><button id={`campaigns-tab-${tab[0]}`} aria-controls="campaigns-tabpanel" key={tab[0]} role="tab" aria-selected={current===tab[0]} tabIndex={current===tab[0]?0:-1} onClick={()=>setCurrent(tab[0])} onKeyDown={(event)=>onKeyDown(event,index)}>{tab[2]()}<span>{tab[1]}</span></button>)}</div><button className="btn btn-s btn-p campaigns-studio" data-solo-vibe-studio-launcher onClick={openStudio}><Ic.spark size={13}/>Vibe Studio</button></div>;
+  return <div className="campaigns-nav"><div className="campaigns-tabs" role="tablist" aria-label="Campaigns views">{tabs.map((tab,index)=><button id={`campaigns-tab-${tab[0]}`} aria-controls="campaigns-tabpanel" key={tab[0]} role="tab" aria-selected={current===tab[0]} tabIndex={current===tab[0]?0:-1} onClick={()=>setCurrent(tab[0])} onKeyDown={(event)=>onKeyDown(event,index)}>{tab[2]()}<span>{tab[1]}</span></button>)}</div><div className="campaigns-truth-key" aria-label="Capability truth labels"><TruthTag state="LIVE"/><TruthTag state="PARTIAL"/><TruthTag state="PROPOSED"/><TruthTag state="UNAVAILABLE"/></div><button className="btn btn-s btn-p campaigns-studio" data-solo-vibe-studio-launcher onClick={openStudio}><Ic.spark size={13}/>Vibe Studio</button></div>;
 }
 
 // Retained for the existing hidden Clients compatibility mount. It performs no
@@ -377,7 +377,6 @@ export const GrowthHub=()=>{
   // without duplicating the state.
   React.useEffect(()=>{setDetail(null);},[tab,segment,data.tenantId]);
   React.useEffect(()=>{if(segment!=="active")return;const account=params.account;if(account)navigate(`/solo/${account}/growth/overview${location.search}`,{replace:true});},[segment,params.account,location.search,navigate]);
-  const title=tabs.find((item)=>item[0]===tab)?.[1]||"Overview";
   let body=<Overview data={data} setDetail={setDetail}/>;
   if(legacy) body=<CompatibilityLanding legacy={legacy} returnToAssets={returnToAssets}/>;
   else if(tab==="catalog") body=<Catalog data={data} setDetail={setDetail} initialType={requestedType}/>;
@@ -385,5 +384,5 @@ export const GrowthHub=()=>{
   else if(tab==="pipeline") body=<PipelineSurface data={data} setDetail={setDetail}/>;
   else if(tab==="social") body=<Social/>;
   else if(tab==="performance") body=<Performance data={data}/>;
-  return <div className="solo-campaigns" data-campaigns-view={tab}><CampaignTabs tabs={tabs} current={tab} setCurrent={setTab}/><div id="campaigns-tabpanel" role="tabpanel" aria-labelledby={`campaigns-tab-${tab}`} className="campaigns-scroll"><PageHead eyebrow="Campaigns" title={legacy?LEGACY[legacy].label:title} sub="Grounded campaign work and published outputs, with creative ownership kept in Vibe Studio." right={<div className="campaigns-truth-key" aria-label="Capability truth labels"><TruthTag state="LIVE"/><TruthTag state="PARTIAL"/><TruthTag state="PROPOSED"/><TruthTag state="UNAVAILABLE"/></div>}/>{body}</div><DetailDrawer detail={detail} onClose={closeDetail}/></div>;
+  return <div className="solo-campaigns" data-campaigns-view={tab}><CampaignTabs tabs={tabs} current={tab} setCurrent={setTab}/><div id="campaigns-tabpanel" role="tabpanel" aria-labelledby={`campaigns-tab-${tab}`} className="campaigns-scroll">{legacy?<PageHead eyebrow="Campaigns" title={LEGACY[legacy].label} sub={LEGACY[legacy].note}/>:null}{body}</div><DetailDrawer detail={detail} onClose={closeDetail}/></div>;
 };

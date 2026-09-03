@@ -1,5 +1,26 @@
 # Decision Log — chronological one-liners
 
+- **RELEASED to production: `business_context.readiness`, the Spine's 2nd capability and its 1st workspace-level one (2026-09-03, PR #864, merge `7ad98cff`, migration `20261112000000`)** —
+  merged under explicit owner Gate 2 authorization, all 7 checks green. `deploy-migrations` and
+  `deploy-edge-functions` both succeeded; `paige-ai-chat`, `systems-check-run-change`,
+  `systems-check-run-onboarding` and `systems-check-run-scheduled` redeployed; `edge-live..main`
+  drift is zero. **Persisted-apply proof against a pre-merge baseline** (§32.a): `schema_migrations`
+  row and the function object both went **0 → 1**, so the deploy demonstrably acted. The deployed
+  body carries the tenant-scoped gate (`is_tenant_admin(v_tenant) or is_platform_owner()`) and, with
+  comments stripped, contains no `has_any_role`. **The defect is fixed on real data:** tenant
+  `d8a0a880` had website, phone and industry in `tenant_legal_profile` and none of them in
+  `tenants.brand` — it was being told all three were missing; executing the deployed function as that
+  workspace's real owner now returns all three `owner_confirmed` from `setup`, with
+  `primary_business_email` correctly `connection_sourced` from `connections`. **What is NOT proven:**
+  the role gate cannot be exercised on prod because zero non-staff `tenant_members` exist — it is
+  proven in CI (18 assertions, mutation-tested) and is a forward-looking guard for the first member
+  ever added; and the authenticated UI drive remains owed, blocked on unset `LIVE_DRIVE_*`
+  credentials, NOT on the "no browser" reason I wrongly gave throughout (see the correction below and
+  lessons-learned 0h). **Owner decision surfaced, not silently absorbed:** two tenants whose values
+  live only in the legacy `tenants.brand` now read `needs_confirmation`, flipping `website_connected`
+  (both) and `comms_configured`'s phone half (one) from pass to fail — true under the source-of-truth
+  rule, but a visible change (§58).
+
 - **CORRECTION to the entry below, same day: the role gate I added was global where it had to be tenant-scoped (2026-09-03, `business_context.readiness`)** —
   an adversarial read of my own pushed diff, run while CI was still going, found the gate added to
   close the client-leak was itself wrong. It copied the Pipeline reference adapter's
@@ -1879,3 +1900,35 @@ write, a client-supplied tenant claim, and the pre-existing unauthenticated/no-m
 all proven unchanged). `docs/doctrine/tier-matrix.md`'s Slice 2B rows updated in the same commit —
 the gap they described as open is now closed, and the table records the new server-side reality
 per tier.
+
+## 2026-09-03 — Billing Experience items 4–5: owner-only payment-method connect + Spine evidence (continuation of #865)
+
+Owner brief authorized continuing directly to items 4 and 5 without a routine approval pause. Item
+4: `platform-billing-connect` edge function opens a Stripe Checkout Session in `mode: "setup"`
+(SetupIntent, never a charge) for the authorized Owner of a `top_level` workspace only — its access
+decision mirrors the existing hosted-portal gate with one deliberate difference (it also allows
+`billing_account_state: "absent"`, since connect is how a mapping first comes to exist). No
+external Stripe object is created before an explicit owner click. `stripe-webhook` gained one new
+discriminated block that resolves the Checkout return's SetupIntent → PaymentMethod and writes it
+via a new shared writer, `upsertPaymentMethod()`, refusing (never overwriting) on a customer-id
+mismatch. Payment-method removal was deliberately left out of scope — no removal seam exists yet,
+and building one safely is separate design work.
+
+Item 5: `get_billing_spine_evidence()` — built entirely on `get_workspace_billing_status()` (never a
+second computation), in the exact fixed-field contract `get_pipeline_spine_evidence()` established.
+Answers Spine's five listed questions and structurally excludes every forbidden category (no Stripe
+id, no card details, no invoice payload, no cross-workspace or sales data) because those fields do
+not exist on the function it reads from.
+
+**The proof-writing lesson worth keeping:** the first draft of the dual-primary fixture assumed it
+could seed two live primary contacts "before the trigger's migration runs" — a technique that
+worked for #865's own Slice A proof (where the trigger didn't exist yet in that isolated
+transaction) but fails once the trigger is permanently live on production, which it now is. The fix
+was `ALTER TABLE ... DISABLE TRIGGER trg_platform_billing_one_primary` for exactly the two inserts
+that reconstruct the real historical pair (MMA's own pre-trigger data), then re-enabling it before
+the migration under proof runs. Recorded so a future proof against an already-shipped guard doesn't
+re-derive this from a failed `BEGIN..ROLLBACK` run first.
+
+Production rollback proof: 14/14 (P1–P13 + P80), 0 failures, nothing persisted. §32.a
+persisted-apply confirmation and §32.c authenticated runtime are both owed post-merge, same standing
+pattern as #865.

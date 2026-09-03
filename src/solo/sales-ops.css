@@ -14,12 +14,69 @@
  * happens to be open behind it — `catalog-offers.css` takes 60/61, which works only because its
  * editor and that drawer are never open together, and that is an assumption rather than a rule. */
 
-.so { display: block; }
+/* ─── THE FIELD ────────────────────────────────────────────────────────────────────────────────
+ *
+ * Owner instruction, 2026-09-03: *"even that white background looks really, really bland. We got to
+ * do something else besides that, something that may be in contrast with the rest of the platform.
+ * I just want this area to be very distinctive… don't be afraid to use CSS… any motion or any type
+ * of graphic design… keep it symmetrical and make sure it makes sense with the page."*
+ *
+ * So this surface gets its OWN GROUND rather than the shell's flat canvas — a violet field with a
+ * fine diagonal weave over it. It is the one tab in Campaigns about money coming IN, and §23 says
+ * the colour carries that: indigo is the platform's calm-credible ground (§6), and giving this tab
+ * a deeper draw of it makes the surface read as its own plane the moment you land on it, without
+ * inventing a colour the platform does not already own.
+ *
+ * The bands then sit ON the field as raised plates, which is where the depth comes from — layered
+ * elevation and hairlines, never a flat fill (§22). Every value is a token; the weave is built from
+ * `--violet-line` at low alpha rather than an image, so it follows both palettes for free and costs
+ * no request.
+ *
+ * Vertical space is SPENT CAREFULLY, because the same instruction that asked for this asked for
+ * more room: the plates use tight padding and the field adds none of its own at the top. */
+.so {
+  display: block;
+  padding: 12px 14px 18px;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--violet-line) 26%, transparent) 0 1px,
+      transparent 1px 9px
+    ),
+    radial-gradient(90% 70% at 8% 0%, color-mix(in srgb, var(--violet-tint) 88%, transparent) 0%, transparent 58%),
+    radial-gradient(70% 60% at 96% 4%, color-mix(in srgb, var(--gold-tint) 55%, transparent) 0%, transparent 52%),
+    linear-gradient(180deg, color-mix(in srgb, var(--violet-tint) 45%, var(--surface-sunk)) 0%, var(--canvas) 52%);
+}
+
+/* Each band is a raised plate on that field. Same width, same radius, same padding — the symmetry
+ * the instruction asked to keep — with the elevation doing the separating instead of a rule. */
+.so-band {
+  position: relative;
+  margin-bottom: 10px;
+  padding: 13px 16px 6px;
+  border: 1px solid var(--violet-line);
+  border-radius: var(--r-m);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--violet-tint) 55%, var(--surface)) 0%, var(--surface) 78px),
+    var(--surface);
+  box-shadow: var(--sh-1);
+  animation: so-rise .34s cubic-bezier(.22,.61,.36,1) both;
+}
+.so-band:nth-of-type(2) { animation-delay: .05s; }
+.so-band:nth-of-type(3) { animation-delay: .1s; }
+.so-band:last-child { margin-bottom: 0; }
+
+/* The plates arrive rather than appearing — a short, single rise, staggered by band. It runs once
+ * on mount and never loops, so it reads as the surface settling rather than as decoration. */
+@keyframes so-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+
 
 /* ── bands ──────────────────────────────────────────────────────────────────────────────────── */
 
-.so-band { padding: 16px 19px 4px; border-bottom: 1px solid var(--line-soft); }
-.so-band:last-child { border-bottom: 0; }
 
 .so-band-head {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 10px;
@@ -36,10 +93,24 @@
 /* ── readiness ──────────────────────────────────────────────────────────────────────────────── */
 
 .so-ready-row {
+  position: relative;
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px; align-items: center;
-  padding: 10px 0; border-bottom: 1px solid var(--line-soft);
+  padding: 10px 0 10px 11px; border-bottom: 1px solid var(--violet-line);
+  transition: background .14s;
 }
+/* A state-keyed accent down the left edge. The pill already names the state in words; this makes
+ * the whole column readable at a glance without adding a row of its own. Colour is set from the
+ * pill's tone by the rules below, so the bar and the word can never disagree. */
+.so-ready-row::before {
+  content: ""; position: absolute; left: 0; top: 9px; bottom: 9px;
+  width: 3px; border-radius: 2px; background: var(--line);
+}
+.so-ready-row:has(.pill-v)::before    { background: var(--violet); }
+.so-ready-row:has(.pill-ok)::before   { background: var(--ok); }
+.so-ready-row:has(.pill-warn)::before { background: var(--warn); }
+.so-ready-row:has(.pill-n)::before    { background: var(--ink-3); }
+.so-ready-row:hover { background: var(--violet-tint); border-radius: 0 var(--r-s) var(--r-s) 0; }
 .so-ready-row:last-of-type { border-bottom: 0; }
 .so-ready-text { display: block; min-width: 0; }
 .so-ready-text b { display: block; font: 500 12.5px/1.35 var(--font); color: var(--ink); }
@@ -50,9 +121,27 @@
 .so-ready-act { display: flex; align-items: center; gap: 8px; flex: none; }
 
 .so-next {
+  position: relative; overflow: hidden;
   margin: 12px 0 14px; padding: 10px 12px; border-radius: var(--r-s);
   background: var(--gold-tint); border: 1px solid var(--gold-line);
   font-size: 12px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty;
+}
+/* The one gold moment on the surface (§11), and the only thing that keeps moving: a slow sheen
+ * that crosses the strip every eight seconds. It marks the single next act without competing with
+ * anything, and it is the first thing switched off under reduced motion. */
+.so-next::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--gold-bright) 22%, transparent) 50%,
+    transparent 70%);
+  transform: translateX(-100%);
+  animation: so-sheen 8s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes so-sheen {
+  0%, 62% { transform: translateX(-100%); }
+  92%, 100% { transform: translateX(100%); }
 }
 .so-next b { color: var(--ink); font-weight: 600; margin-right: 6px; }
 
@@ -66,32 +155,72 @@
  * one-off, and the layer already had this — so the component uses `.pill`/`.pill-ok`/`.pill-warn`/
  * `.pill-bad`/`.pill-n` directly and this section defines nothing. */
 
+/* The heading carries a violet mark. It is what makes each band read as its own thing at a glance
+ * now that the masthead above them is gone. */
+.so-band-head h3 { position: relative; padding-left: 11px; }
+.so-band-head h3::before {
+  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 13px; border-radius: 2px; background: var(--violet);
+}
+
+/* The orientation line the removed masthead used to carry. */
+.so-orient {
+  margin: -4px 0 12px; max-width: 82ch;
+  font-size: 11.5px; line-height: 1.55; color: var(--ink-3); text-wrap: pretty;
+}
+
+/* THE ACT, IN COLOUR — owner instruction, 2026-09-03: "the rest of the buttons, the fine lines,
+ * and the details… This is representing their money, their income, their opportunities."
+ *
+ * `.paige-solo .btn-p` is near-BLACK in light mode (`--ink`) and violet only in dark
+ * (`solo-tokens.css:47,49`). So the platform already treats violet as its primary-action colour —
+ * it just does not do it in light. This mirrors the dark-mode rule into light FOR THIS SURFACE
+ * ONLY, using the same two declarations, so the acts read as acts in both palettes.
+ *
+ * Why not gold, which §11 reserves for the act: the shell's gold button pairs `--gold` on
+ * `--gold-tint`, which measures 2.72:1 in light — far under AA. The render pass caught it the
+ * moment these buttons took it. A primary action nobody can read is the opposite of "more vibrant",
+ * so that measurement is reported to Claude Design rather than shipped. Violet on white measures
+ * ~7:1 in light and is the same pair the shell already ships in dark.
+ *
+ * Scoped to `.so` deliberately: whether the WHOLE shell should follow is Claude Design's call, not
+ * a change to make from inside one surface (§00). `#fff` is copied verbatim from the shipped dark
+ * rule rather than tokenised, because `--ink-inv` inverts per theme and would go dark on violet. */
+.paige-solo .so .btn-p { background: var(--violet); border-color: var(--violet); color: #fff; }
+.paige-solo .so .btn-p:hover { background: var(--violet-2); border-color: var(--violet-2); color: #fff; }
+
 /* ── tables ─────────────────────────────────────────────────────────────────────────────────── */
 
 .so-table { display: grid; margin-bottom: 12px; }
 .so-tr {
   display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, .8fr) auto minmax(0, .7fr) minmax(0, .7fr);
   gap: 12px; align-items: center; padding: 9px 0;
-  border-bottom: 1px solid var(--line-soft); text-align: left;
+  border-bottom: 1px solid var(--violet-line); text-align: left;
 }
 .so-tr-4 { grid-template-columns: minmax(0, 2.2fr) auto minmax(0, .8fr) minmax(0, .9fr); }
 .so-tr:last-child { border-bottom: 0; }
 .so-th {
   font: 600 10.5px/1 var(--font); letter-spacing: .08em; text-transform: uppercase;
-  color: var(--ink-3); padding-bottom: 7px;
+  color: var(--violet); padding-bottom: 7px;
 }
 .so-tr > span { min-width: 0; font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
 .so-cell-name {
   font-weight: 500; color: var(--ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.so-num { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.so-num { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
+.so-num--ok   { color: var(--ok); }
+.so-num--warn { color: var(--warn); }
+.so-num--bad  { color: var(--bad); }
 .so-quiet { color: var(--ink-3); font-size: 11.5px; }
 
 button.so-row {
-  width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line-soft);
-  color: inherit; cursor: pointer;
+  width: 100%; background: none; border: 0; border-bottom: 1px solid var(--violet-line);
+  color: inherit; cursor: pointer; transition: background .12s;
 }
+/* The row lights up as a whole rather than only its name — an offer is a thing the business
+ * sells, and hovering it should feel like picking it up. */
+button.so-row:hover { background: var(--violet-tint); }
 button.so-row:hover .so-cell-name { color: var(--violet); }
 button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; border-radius: 6px; }
 
@@ -175,11 +304,20 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 
 @media (prefers-reduced-motion: reduce) {
   .so-editor { animation: none; }
+  .so-band { animation: none; }
+  .so-next::after { animation: none; opacity: 0; }
+  button.so-row, .so-ready-row { transition: none; }
 }
 
 /* Forced colours drop background tints entirely, so a pill that carried its meaning only in its
  * fill would become unreadable. Each one gets a real border in that mode. */
 @media (forced-colors: active) {
+  /* Forced colours drop every background, so the field, the plates and the accent bars all vanish.
+   * Each thing that carried meaning in a fill gets a real border instead. */
+  .so { background: none; }
+  .so-band { border: 1px solid currentColor; }
+  .so-ready-row::before { background: currentColor; }
+  .so-next::after { display: none; }
   .so-editor { border-left: 1px solid currentColor; }
   .so-pick button[aria-pressed="true"] { border: 2px solid currentColor; }
   .so-next { border: 1px solid currentColor; }
