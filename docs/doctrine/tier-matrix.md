@@ -2060,6 +2060,65 @@ Foundation A's proven behaviour, not something this slice re-tested. **Authentic
 deployed surface: OWED** — the harness transport is a stub (§32.c). **Also owed: a Gate-1 pass on the
 billing-contacts card**, which the approved Gate-1 prototype does not cover (§00).
 
+### Campaigns → Catalog → Offers — WRITABLE, `/solo/{account}/growth/catalog` (Slice 2B)
+
+**§66, and late — this is the debt from merging without it.** Slice 2B merged as `cd9d2e21` and
+this row is a follow-up rather than the same commit, which is the rule broken to record it. Said
+plainly because the alternative is a ledger that quietly disagrees with production.
+
+**What a person can now do.** From an empty catalog, "Add your first offer" opens a slide-over
+editor; a name is the only requirement; anything left blank is written as NULL and renders as the
+honest em-dash rather than an invented value. An existing offer is edited from the drawer its row
+already opens, and moves through draft / active / paused / archived from the same place. Archive
+asks first. The editor carries NO status control: lifecycle sits beside the offer, so nobody
+publishes something by accident while renaming it.
+
+| Tier | Can write an offer | Why |
+|---|---|---|
+| Platform operator (God) | ✓ **only with a tenant selected** | Both RPCs resolve the workspace from `current_user_tenant_id()`; an operator with none is refused `42501` before any row is read. |
+| Solo owner / admin | ✓ | `is_tenant_admin()` inside the function body, not the EXECUTE grant (§59). |
+| Solo member | ✗ refused, and the acts are OMITTED not disabled | A disabled control says "later"; the truth is "not your role". |
+| Sub-account owner / admin | ✓ own catalog only | Same session-resolved scope; a foreign offer id simply finds nothing. |
+| Agency (as a tenant) | ✓ own catalog only | Never a sub-account's — the tenant is never taken from the caller. |
+| Client / Anonymous | ✗ | `REVOKE ALL … FROM PUBLIC, anon`, verified live: `anon_can_execute: false`. |
+
+**Persisted apply — CONFIRMED on production 2026-09-03**, from real queries after `cd9d2e21`,
+never from the pipeline reporting success:
+
+```
+select version, name from supabase_migrations.schema_migrations where version='20261110000000';
+→ 20261110000000  a_solo_owner_can_write_their_own_offer
+
+save_solo_offer        security_definer: true   anon: false   authenticated: true
+set_solo_offer_status  security_definer: true   anon: false   authenticated: true
+```
+
+Queried immediately after the merge both came back EMPTY — the deploy had not run yet. Recorded
+because "merged" and "live on the database" are different facts, and the gap between them is where
+a false green lives.
+
+**Truth label: `PARTIAL` / Authenticated Runtime Proof Owed.** The schema is live and the surface
+is rendered-proven, but nobody has signed into a real tenant and created an offer. `tenant_products`
+is still empty on production, so first-use is the state every tenant sees.
+
+**Evidence.** 2619 tests / 190 files. Rendered: **523/523** across both palettes and all four Solo
+widths, zero orphan processes — up from 419, because the drive previously passed over a surface
+whose write half it never touched and whose stub did not even provide `saveOffer`. Five new guards
+each proven RED against their own defect. Both functions compiled against production's real schema
+inside a rolled-back transaction, zero persisted afterward.
+
+**The contradiction this slice did NOT settle.** The Catalog pack
+(`super-admin-shell-v3/campaigns-catalog-sales-spec.md`) says "The state is derived, never chosen…
+Do not expose a status picker", deriving state from price plus the channels an offer sells on. 2A
+shipped, and the owner ruled, a RECORDED status whose `paused` is explicitly the state no derivation
+can infer. Both cannot hold. That pack is the Platform Operator shell, so 2B implements the shipped
+Solo model; the ruling is owed when the two catalogs converge, and belongs to the owner and Claude
+Design, not here.
+
+**Owed.** Price editing beyond the single lead price — 2A renders plans, tiers and instalments;
+2B authors only one. `tenant-product-upsert` still needs a `status` allowlist, a `currency`
+allowlist, and cross-field validation of `kind` against `billing_interval`.
+
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
 
 **§66, same commit as the change.** This row was first written while Slice 2A was a draft, and said
