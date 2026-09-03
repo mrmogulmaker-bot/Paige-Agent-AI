@@ -583,14 +583,18 @@ function fieldAdmitsBoolean(node) {
   if (method === null) return true;
   const receiver = (ts.isPropertyAccessExpression(e.expression) || ts.isElementAccessExpression(e.expression))
     ? e.expression.expression : null;
-  // A head call is `z.x(...)` OR a namespace-qualified one such as zod 4's `z.iso.date()`, whose
-  // receiver is `z.iso` rather than the bare `z`. Requiring the bare identifier sent `z.iso.date()`
-  // down the chained branch, where it hit a non-call expression and was refused — a legitimate
-  // field failing CI on a construct that rejects booleans on both zods.
+  // A head call is `z.x(...)` or a call under a NAMED SAFE NAMESPACE. Generalising this to "any
+  // namespace under z" was a fail-open I introduced while fixing a false positive: `z.coerce`
+  // is a namespace too, and `z.coerce.string()` COERCES a boolean rather than rejecting it —
+  // measured, `z.coerce.string().safeParse(true)` yields `"true"`, on both zods. So the terminal
+  // `string` looked safe while the field accepted `true` and reached a truthy destructive branch.
+  //
+  // Namespaces are therefore allowlisted by name, like everything else on this side of the guard.
+  // An unrecognised namespace falls to the chained branch, hits a non-call receiver, and refuses.
   const isHead = receiver && (
     (ts.isIdentifier(receiver) && receiver.text === SCHEMA_NS) ||
     (ts.isPropertyAccessExpression(receiver) && chainRoot(receiver) === SCHEMA_NS &&
-     !ts.isCallExpression(receiver.expression)));
+     !ts.isCallExpression(receiver.expression) && SAFE_NAMESPACES.has(receiver.name.text)));
 
   if (!isHead) {
     // A chained call — `z.string().optional()`. The receiver decides, and a schema handed to a
@@ -625,7 +629,12 @@ function memberAdmitsBoolean(arg) {
 }
 
 /** The object literals that hold a schema's FIELDS, as opposed to a builder's options. */
-const SHAPE_BUILDERS = new Set(["object", "strictObject", "looseObject", "extend", "interface"]);
+const SHAPE_BUILDERS = new Set([
+  "object", "strictObject", "looseObject", "extend", "safeExtend", "interface",
+]);
+
+/** Namespaces under `z` whose builders reject a boolean. NOT `z.coerce`, which converts one. */
+const SAFE_NAMESPACES = new Set(["iso"]);
 
 /**
  * Is this property a FIELD of a schema shape, rather than a key in a builder's options bag?
@@ -637,8 +646,18 @@ const SHAPE_BUILDERS = new Set(["object", "strictObject", "looseObject", "extend
 function isSchemaShapeProperty(prop) {
   const shape = prop.parent;
   if (!shape || !ts.isObjectLiteralExpression(shape)) return false;
-  const call = shape.parent;
-  if (!call || !ts.isCallExpression(call) || call.arguments[0] !== shape) return false;
+  // The shape may be wrapped in transparent syntax — `z.object(({…}))`, `({…}) as z.ZodRawShape`,
+  // a `satisfies`. Reading `shape.parent` directly saw the wrapper instead of the call and rejected
+  // the real field, so a boolean-gated destructive tool written that way passed clean. A second
+  // fail-open introduced by the same false-positive fix as the namespace one.
+  let node = shape;
+  while (node.parent && (ts.isParenthesizedExpression(node.parent) || ts.isAsExpression(node.parent) ||
+         ts.isSatisfiesExpression?.(node.parent) || ts.isNonNullExpression(node.parent))) {
+    node = node.parent;
+  }
+  const call = node.parent;
+  if (!call || !ts.isCallExpression(call)) return false;
+  if (!call.arguments.some((a) => unwrapValue(a) === shape)) return false;
   return SHAPE_BUILDERS.has(calleeMethod(call.expression) ?? "");
 }
 
@@ -941,6 +960,16 @@ mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 0);
   // …and the fail-closed direction still holds where it must.
   check("an options object does NOT hide a real field", v(`
 mcp.tool("t", { inputSchema: z.object({ id: z.string().regex(/x/, { message: "bad" }), confirm: z.boolean() }), ${DESTRUCTIVE} });`), 1);
+  // Codex on 8e210fbd: three FAIL-OPENS, each introduced by the previous commit's false-positive
+  // fixes. Relaxing a guard is exactly where holes get made, so these are permanent.
+  for (const [label, schema] of [
+    ["z.coerce.string() (coerces true -> \"true\")", `z.object({ confirm: z.coerce.string() })`],
+    ["z.coerce.number()", `z.object({ confirm: z.coerce.number() })`],
+    ["a parenthesised shape", `z.object(({ confirm: z.boolean() }))`],
+    ["a shape behind an `as` assertion", `z.object(({ confirm: z.boolean() }) as z.ZodRawShape)`],
+    ["a shape added by safeExtend", `z.object({ id: z.string() }).safeExtend({ confirm: z.boolean() })`],
+  ]) check(`REFUSES ${label}`, v(`
+mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
   check("an ELEMENT-ACCESS delete is still a delete", v(`
 mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }), handler: async ({ confirm }) => { if (confirm) await admin.from("clients")["delete"](); } });`), 1);
   check("an ELEMENT-ACCESS destructive rpc is still destructive", v(`
