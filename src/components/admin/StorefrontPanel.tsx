@@ -73,9 +73,7 @@ type Product = {
   id: string;
   name: string;
   description: string | null;
-  // `paused` became a legal state in migration 20261048000000 (Offer Catalog). This is a read-side
-  // type over `tenant_products.status`, so it must carry every value the CHECK now allows.
-  status: "draft" | "active" | "paused" | "archived";
+  status: "draft" | "active" | "archived";
   product_type: string;
   stripe_product_id: string | null;
 };
@@ -484,20 +482,6 @@ type PlanDraft = {
   installments_total: string;
 };
 
-// One row of `prices` AS THIS PANEL SENDS IT — a drafted plan resolved to cents.
-// Deliberately narrower than what `tenant-product-upsert` will accept: the endpoint
-// lower-cases any `currency` and also honours a "day" interval, neither of which this
-// panel can produce. Read the function before widening a field here on its authority.
-type PricePayload = {
-  kind: PlanDraft["kind"];
-  nickname: string | null;
-  unit_amount: number;
-  currency: "usd";
-  billing_interval: PlanDraft["billing_interval"] | "one_time";
-  interval_count: number;
-  installments_total?: number;
-};
-
 function makePlan(kind: PlanDraft["kind"] = "one_time"): PlanDraft {
   return {
     kind,
@@ -546,7 +530,7 @@ function CreateProductDialog({
       toast.error("Add at least one billing plan");
       return;
     }
-    const pricesPayload: PricePayload[] = [];
+    const pricesPayload: any[] = [];
     for (const p of plans) {
       const unit = Math.round(parseFloat(p.amount) * 100);
       if (isNaN(unit) || unit <= 0) {
@@ -591,7 +575,7 @@ function CreateProductDialog({
       },
     );
     setCreating(false);
-    const serverErr = (data as { error?: string } | null)?.error;
+    const serverErr = (data as any)?.error;
     if (error || serverErr) {
       console.error("tenant-product-upsert failed", { error, data });
       toast.error(serverErr || error?.message || "Failed to create product");
