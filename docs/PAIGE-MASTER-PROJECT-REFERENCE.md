@@ -441,6 +441,8 @@ ledger). Parked, not started: issues #748, #749, #750, #766, #769, #770, #771, #
 
 ### Solo Team — PAIGE can act on the team (LIVE on production, capability `PARTIAL`) — 2026-09-02
 
+**2026-09-03 invitation-security P0:** a direct legacy consumer bypassed recipient binding. PR #900 hardens both Solo token consumers; isolated 110-assertion proof passes, production verification pending. [Bounded repair and separated evidence](delivery/solo-team-recipient-binding-p0.md). The owner-confirmed send leg remains LIVE; fresh-account end-to-end acceptance remains Proof Owed.
+
 **Evidence, on current `main`.** Merged in **PR #728** (`76bb3bbca`, *PAIGE Spine foundation registry
 and safe Pipeline evidence*), not through #675. Applied on prod ref `xygzykjyynhzqytbqnzu`:
 `supabase_migrations.schema_migrations` carries `20261039000000` and `20261040000000`, and
