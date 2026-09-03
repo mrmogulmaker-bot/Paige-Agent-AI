@@ -1173,6 +1173,46 @@ five of six surfaces without any ledger row noticing.
 | Files a note onto ANOTHER tenant's client | ✓ (operator) | — | — | — | — | — | 403 |
 | A client can read notes filed about them | — | — | — | — | — | — | 403 |
 
+### Rail history, per tier — SHIPPED 2026-09-03 (Slice B, §66)
+
+The owner-facing Rail feeds — "Across your clients — live" (`PaigeRailFeed`), the Solo Trust Compass
+and Team activity panels (`useSoloActivityFeed`), and the client portal's "Your activity"
+(`ClientActivityFeed`) — read the **deployed resolvers** rather than `paige_client_events` directly.
+Frontend-only: no migration, no new grant, no policy change.
+
+**Read the previous row of this table first, because the delta is the point.** Before this ship,
+`has_table_privilege('authenticated','public.paige_client_events','SELECT')` was — and still is —
+`false` on production, so the tenant Rail history read was **refused for every tier**, and two of the
+four surfaces rendered that refusal as *"nothing yet"*. The ✓ below is a capability that existed on
+paper and reached nobody.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Reads own-workspace Rail history (`get_solo_rail_activity`) | ✓ (operator) | ✓ (owner/admin/coach of the active workspace) | ✓ (same) | ✓ (same) | ✓ (same — its OWN rail, never the parent's) | — | 403 |
+| …**previously** reachable through the direct table read | — | — | — | — | — | — | 403 |
+| Reads own-workspace Rail history via a role held in ANOTHER workspace | — | — | — | — | — | — | 403 |
+| Reads a client's Rail (`get_client_rail`, client lens) | ✓ (operator) | staff of that contact's own tenant | same | same | same | own contact only | 403 |
+| A refusal is reported as a refusal, never as an empty feed | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (as "could not be loaded", without naming how access is decided) | 403 |
+| A previous workspace's activity can paint after a switch | — | — | — | — | — | — | 403 |
+
+**The third row is the §59 correction, and it is the only access this ship REMOVES (§58).**
+`pce_staff_read` combines a tenant-agnostic `has_any_role()` with `current_user_tenant_id()`, which
+honours `active_tenant_id` for an active `tenant_members` row at **any** role. A plain member of
+workspace B holding a global `coach`/`admin` role earned in workspace A could therefore have read
+B's whole tenant Rail — had the table grant not already made the read moot. The resolver requires an
+active `tenant_members` row **of the resolved workspace** at owner/admin/coach. The policy is
+unchanged and still carries the trap; it is simply unreachable from these four consumers. Other
+direct readers still go through it — the two Analytics surfaces, tracked as **#802**.
+
+**Sub-account row, stated explicitly because §51 exists for exactly this.** `get_solo_rail_activity`
+takes **no tenant argument**; it resolves the workspace server-side. A sub-account therefore reads
+ITS OWN Rail and can never receive the parent agency's aggregate, and there is no parameter through
+which a caller could ask for one.
+
+**`UNVERIFIED` — authenticated owner runtime proof.** Every row above is from the deployed function
+bodies, the production grant catalog, and automated tests. No browser drove these surfaces as a
+signed-in owner on any tier in this session; #746 stays open until that proof exists.
+
 **The echo row is an honest `—`, not a gap.** Only `PaigeAIChat` (Solo and Sub-account) renders a
 confirm card and echoes back the fingerprint of what it displayed. `useSoloChat`, `FloatingChatbot`,
 `PaigeChat`, `useOperatorChat` and `StudioChat` send no echo and never have. That is why the echo
@@ -1388,6 +1428,76 @@ renders `granted_lane` alone would be reporting a request as an outcome.
 Agency by resell, Enterprise both — so no owner ruling was sought. Agency's ✓ above is for acting
 inside a tenant workspace it has switched into (§51), not a cross-tenant reach.
 
+### Solo Settings → Team — removing someone from a workspace, `/solo/{account}/settings/team`
+
+**§66 — `SHIPPED`, and this row records what is LIVE, confirmed by query rather than by merge.**
+PR #799 merged as `5ca7893d`; `deploy-migrations.yml` applied `20261048000000` automatically on the
+push to `main` (`supabase db push --include-all`, which is also what applies a version numbered
+below ones already on `main`). Read back from production:
+
+- `supabase_migrations.schema_migrations` contains `20261048000000`.
+- `to_regprocedure('public.remove_solo_team_member(uuid,uuid)')` is non-null.
+- `tenant_members` grants **no** INSERT/UPDATE/DELETE/TRUNCATE to `anon` or `authenticated`;
+  `SELECT` is deliberately retained.
+- Control, so those eight `false`s are a measurement and not a description of the environment:
+  `public.tenants` — untouched by this migration — still grants `anon` TRUNCATE.
+
+The prerequisite half of the program, #827 (`20261047000000`, the invitation-lifecycle repair that
+stops an invitation reaching a workspace the operator never named), was released first and is also
+applied.
+
+**Still owed, and not implied by any of the above: `Authenticated Runtime Proof Owed`.** Applied is
+not driven, and driven is not the same as a person completing the flow. Neither #799 nor #815 is
+closed as fully proven until the owner confirms the live flow. Post-release audit backlog is on the
+#799 release comment.
+
+An Owner can remove one **Admin or Member** from the workspace they are currently in, from the
+existing member editor on the Team screen. Not only an *active* one: the target lookup deliberately
+carries no status filter, because `UNIQUE (tenant_id, user_id)` means a filter could only hide a row
+— and a hidden row is both unremovable here and still counted as "already belongs to the workspace"
+by the invitation functions. A suspended membership is removable, and the roster already shows it. `remove_solo_team_member(_member_user_id,
+_expected_tenant_id)` derives the actor from `auth.uid()` and the workspace from
+`current_user_tenant_id()`; the tenant argument is a **refusal-only** confirmation token that can
+abort the call and can never select a workspace.
+
+| Capability | God | Agency (own roster) | Agency (switched into a sub-account) | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| Remove an Admin or Member (Owner only) | — | ✓ | **✗** | ✓ | ✓ | ✓ | — | 403 |
+| Remove an Owner or co-Owner | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
+| Remove yourself | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
+| Remove a legacy specialised permission (e.g. Coach) | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
+| Remove somebody by direct table write | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+
+The ✓ cells are Owner-only *within* that tier: an Admin is refused by the same function that serves
+the Owner.
+
+**The switched-into-a-sub-account column is `✗`, and an earlier draft of this row got it wrong.**
+It said `✓` and glossed it as "acting inside a tenant workspace it has switched into". That is false,
+and the correction is recorded rather than quietly edited because this table is the source of truth
+other sessions answer from. `agency_enter_subaccount()` — both overloads, read on production — seats
+the manager as `role = 'admin'` and never sets `is_owner`, preserving `'owner'` only on a row that
+was already one. `remove_solo_team_member` gates on `is_tenant_owner(_actor, _tenant)`, which
+requires `is_owner = true`. So a switched-in agency manager is an Admin in that child workspace and
+is refused with *"only the workspace owner may remove someone from this workspace"*. An Agency's own
+Owner removing someone from the Agency tenant's own roster is the `✓`.
+
+The God row is `—` for the same honest reason the Chat seam's is: a tenant-less operator has no
+`current_user_tenant_id()`, so the function raises rather than reaching across tenants.
+
+**The last row is the part that makes the others true.** Before this change,
+`GRANT SELECT, INSERT, UPDATE, DELETE … TO authenticated` (`20260629175341:62`) plus the `FOR ALL`
+policy `Tenant admins manage members` let any tenant **Admin** `DELETE` any membership row —
+including every Owner's — straight through PostgREST, and `anon` and `authenticated` both held
+`TRUNCATE`, which row-level security does not gate at all (measured, not assumed:
+`docs/evidence/team-removal/`). The same migration revokes `INSERT, UPDATE, DELETE, TRUNCATE` from
+both browser roles. `SELECT` is untouched. Every writer of the table is a `SECURITY DEFINER`
+function owned by `postgres`, so no legitimate path loses anything.
+
+**Removal ends one workspace's access and nothing wider**, proven against production with a person
+holding memberships in two workspaces: the other membership, that workspace's roster, the person's
+platform identity, their profile and their authored history are all untouched, and a global role
+they still earn elsewhere is retained. A re-invitation through the existing path remains possible.
+
 ### PAIGE Chat — the Solo Team seam, `/solo/{account}/paige/chat` and every other chat surface
 
 **§66, same commit as the ship.** Paige could already READ a workspace's team — the roster, each
@@ -1455,6 +1565,58 @@ reported, not silently changed, because that RPC has its own callers.
 
 **§61 default: no exception.** God/Solo/Sub-account per the standing distribution, Agency inside a
 workspace it has switched into, Enterprise both. No owner ruling was sought, and none was needed.
+
+### Solo Team — an invitation goes to the workspace the operator named, `/solo/{account}/settings/team`
+
+**§66, same commit as the ship. NOT YET RELEASED — this records the change under review in #815, not
+live availability.** Nothing below is shipped truth until the PR merges and `20261047000000` is
+confirmed persisted on prod; this row is written now because §66 binds the ledger to the commit, and
+it will be corrected to SHIPPED or removed rather than left ambiguous.
+
+**The defect.** `create_/resend_/revoke_solo_team_invite` read `profiles.active_tenant_id` **raw**
+while `get_solo_team_workspace` — the read that decides whether the Invite button is even offered —
+used `current_user_tenant_id()`, which COALESCEs to the caller's earliest active membership. The two
+disagreed, and a sole owner whose pointer was null read their own roster, was offered the button, and
+was told *"only an owner or admin may invite team members"* about a workspace they own. The
+null-pointer population is manufactured continuously: provisioning never writes the column, the
+client computes a working value and declines to persist it (so the null survives every login), tenant
+deletion clears it, and removing somebody from a workspace clears it by design.
+
+**The repair.** Authority is proved against a workspace the caller NAMES.
+`solo_team_invite_authority(_actor, _expected_tenant_id)` requires an active `tenant_members` row
+with owner or admin authority in that exact workspace — no COALESCE, no ORDER BY, no LIMIT. The Team
+screen sends the `tenant_id` it rendered the roster and workspace name from; PAIGE sends the tenant
+the conversation is already reconciled to. The parameter is **refusal-only**: it can abort a call and
+can never select a workspace the caller has no authority in.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| Invite / resend / revoke, workspace named and proved | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Invite without naming a workspace | 403 | 403 | 403 | 403 | 403 | 403 | 403 |
+| Invite into a workspace the caller is not an owner/admin of | 403 | 403 | 403 | 403 | 403 | 403 | 403 |
+
+The God `—` is unchanged and still honest rather than a gate: a tenant-less operator has no
+membership row to prove, so the resolver refuses. An operator switched into a tenant is the Agency ✓
+case (§51). Anon and `authenticated` cannot execute any of the three at all — service_role only.
+
+**Why the read's fallback was deliberately not inherited (owner ruling, 2026-09-02).** Guessing the
+earliest active membership is cheap for a roster read, which self-corrects on screen. An invitation
+emails a live 7-day access token to a stranger and cannot be recalled. A guess is acceptable only
+where a harmless read can self-correct, so the invite family takes the same refusal-only
+expected-workspace token that member removal takes rather than a fallback designed for reads.
+
+**PAIGE's workaround was deleted, not moved.** `inviteSeamBlocked` pre-read the raw pointer so that
+at least her refusal named a true cause. With the cause gone it would have become the only thing
+refusing an invitation that now succeeds — the same false refusal one layer further from the truth,
+where the database can no longer falsify it. `teamSeamTenantMismatch` remains and still runs ahead
+of every invitation act; it is what makes the workspace PAIGE names trustworthy.
+
+**§61 default: no exception.** Distribution is unchanged from the Team seam rows above; this repairs
+how an existing capability resolves its workspace and grants nobody anything new.
+
+**Owed:** authenticated runtime proof. Authorized as immediate post-release owner acceptance
+(2026-09-02) rather than a release blocker, and the surface stays **Authenticated Runtime Proof
+Owed** until the owner confirms the live flow.
 
 ### PAIGE Mind — Pipeline deal-stage evidence, `/solo/{account}/growth` → deal → Ask PAIGE
 
@@ -1536,6 +1698,355 @@ says so rather than letting a future reader infer that billing shipped.
 metadata, explicitly labelled, never promoted to a billing column, and **null on 197 of the first
 228 rows** because those calls were never priced upstream. The key is always present so the absence
 is stated. See the decision log entry for MET1.
+
+### Workspace entry and containment — `/solo/*`, `/business/*`, `/agency/*`, `/choose-account`
+
+**§66, same commit as the ship.** Owner ruling 2026-09-02: account choice happens at ENTRY, never
+inside a workspace. This row records who may MOUNT each shell after the change, and — because the
+defect that forced it was a person being placed in a mode they do not operate in — which tier each
+route now refuses.
+
+| Route root | Mounts | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| `/solo/*` | Solo shell | — (no tenant ⇒ held) | → `/agency/{n}` | → `/agency/{n}` | ✓ | → `/business/{n}` | — | → `/auth` |
+| `/business/*` | Sub-account shell (`AgencyApp mode="subaccount"`) | — (no tenant ⇒ held) | → `/agency/{n}` | → `/agency/{n}` | → `/solo/{n}` | ✓ | — | → `/auth` |
+| `/agency/*` numeric | Agency shell | unchanged | ✓ | ✓ | **unchanged — see below** | ✓ *(acting-child)* | — | unchanged |
+| `/agency/*` non-numeric | Legacy board | unchanged | ✓ | ✓ | unchanged | unchanged | — | unchanged |
+| `/choose-account` | Entry chooser | → `/admin` | ✓ | ✓ | ✓ | ✓ | — | → `/auth` |
+
+**`/agency/*` is deliberately NOT gated, and that is a stated gap rather than an oversight.** A first
+revision of this change gated the numeric leg too, and CI proved it destroyed a shipped capability
+(§58): during an agency act-as, `activeTenant` becomes the CHILD while the operator's authority comes
+from the parent, so a tier gate read `sub_account` and ejected the operator out of the
+`/agency/{parent}/sub/{child}/…` path that exists to serve exactly that flow. The hole the gate was
+reaching for — a Solo caller who TYPES `/agency/{n}` mounts the agency shell and is never sent home,
+because `AgencyApp`'s own guard returns early when the caller owns no agency — is real, is reachable
+only by typing a URL (nothing routes a Solo caller there), belongs to the Agency tier, and is tracked
+separately rather than closed by a guess about agency behaviour.
+
+**A `—` in the God column is a HOLD, not a refusal.** An operator with no active tenant has no tenant
+classification, and the entries refuse to classify an unresolved caller at all: a null `activeTenant`
+is "we do not know yet", not "tier solo". That distinction is load-bearing — `switchTenant` commits
+the new active id before the tenant list refetches, so treating the gap as a tier would eject an
+owner mid-switch out of a workspace they legitimately hold.
+
+**Entry now ASKS at both doors, where it previously asked at only one.** A fresh sign-in already
+routed a multi-context person to `/choose-account` (`Auth.tsx`, via `shouldOfferAccountPicker`). A
+RESTORED session came through `/admin` and silently resumed whichever context `active_tenant_id` was
+parked on — which is how an owner who expected their Solo workspace was placed in a sub-account left
+behind by an earlier agency act-as (#806). `/admin` now applies the same shipped predicate. **This is
+the one change here with cross-tier reach:** an agency or enterprise operator holding more than one
+active tenant now sees the chooser on the `/admin` door too, where before they went straight through.
+
+**THE FILTER THAT ACTUALLY SEALED THE RECOVERY PATH, found live rather than in review.** The owner,
+locked into a sub-account, was sent to `/choose-account` and it bounced him straight back. Two of his
+three workspaces are on `trial`, and the chooser, the exit control and the door each counted only
+tenants whose status was exactly `active` — so he read as a one-workspace person, the picker decided
+there was nothing to choose, and returned him to the context he was escaping. Production carries 8
+`active`, 4 `trial`, 1 `canceled`. All three surfaces now count one shared population,
+`enterableWorkspaces`, which excludes only workspaces that are genuinely gone and is written as a
+DENY list so a status nobody anticipated cannot silently trap anyone again.
+
+**A SEPARATE, PRE-EXISTING SETUP CYCLE IS NOT CLOSED BY THIS, and the distinction matters.** The
+gate below adds no leg to it, but `RequireSetupComplete` holds a playbook-less Solo or sub-account
+tenant on `/admin/marketplace` while `Admin`'s own shell gates are not path-scoped, so a CANARY-ON
+tenant bounces between that path and its shell root forever. Measured on production: 4 tenants carry
+the Solo canary, 4 the agency canary, and exactly 1 canary-on tenant has no playbook — a top-level
+**agency**, which the setup gate deliberately exempts. So the defect is real in code and unreachable
+in data today, and a Solo canary rollout (#790) is precisely what would activate it. Tracked as #826;
+the fix touches a standing shell-ownership directive and wants an owner ruling.
+
+**IT FIRES ON THE DOOR — the exact path `/admin` — AND NOT ON THE SUBTREE, which is the whole of a
+confirmed infinite redirect.** `/admin/*` is a single route element, so a check in `Admin`'s render
+body runs for every path beneath it, `/admin/marketplace` and `/admin/setup` included — the two paths
+`RequireSetupComplete` deliberately exempts so a tenant can choose a playbook. A multi-context tenant
+mid-setup then cycled forever (chooser → their workspace root → setup gate → `/admin/marketplace` →
+chooser) and could never reach Setup to break out. Found by the §39 peer-gate, not by any test,
+because nothing in the repository rendered `Admin` at all; `Admin.entryGate.test.tsx` is its first,
+and three of its nine cases go red against the unscoped gate.
+
+**`/admin` IS ALSO A DESTINATION, and every producer of it had to be inventoried (§37).** Two shipped
+controls drill an agency operator into an authorized sub-account — `AccountSwitcher`'s row and
+`AgencyBoard`'s card — and both call `agency_enter_subaccount(child)` and then
+`window.location.assign("/admin")`. An agency owner is ALWAYS multi-context, because provisioning
+gives them an active owner membership in every child they create, so the door would have intercepted
+a drill-down that had already happened and sent them to the chooser instead of the child. Both
+producers now record the entry before handing off: an act-as IS an explicit choice of operating
+context. `actAsLanding.test.ts` guards the wiring at both: it fails if either drops the call, reorders it after
+the hand-off, or passes the wrong child. It is a source-reading guard and cannot see a call made
+unreachable, so it is a removal guard rather than a proof of runtime behaviour — stated here so the
+row is not read as more than it is. A third producer, `AgencyApp`'s own `syncIntoChild`, records the
+entry too; it stays inside the agency shell, so it never reached the door, but leaving one producer
+out of the inventory is how the last two rounds went.
+
+**The settlement record survives navigation, and its predecessor did not.** `hasEnteredWorkspace`
+reads a session key written by the chooser before it leaves. It replaced a `?picked=1` URL marker
+that survived exactly one navigation — any in-app link pushes a history entry with no query string,
+so the first click anywhere re-armed the gate. The key is the TENANT ID, not a boolean: a context the
+person did not choose re-arms the question by itself, which is the situation this whole repair exists
+for. It carries no claim about what may be read — scope stays `active_tenant_id` behind its
+membership trigger plus `current_user_tenant_id()` on every read — so it is a loop breaker, never a
+grant. A `?picked=1` marker survives alongside it as a strictly SECONDARY signal covering the one
+case the record cannot: storage that throws, where a canary-off tenant would otherwise bounce one hop
+per click forever. The door is also compared case-insensitively, because React Router matches routes
+that way and `/Admin` would otherwise walk straight past the question.
+
+**The chooser leaves only when it has actually learned something.** A failed membership read is not
+zero choices: it renders the error card and its Retry rather than navigating, which is what makes
+that card reachable at all — an earlier revision navigated away on error and turned any transient
+failure on one query into a redirect storm. And when there is genuinely nothing to offer, it settles
+the door against the active context before leaving, because the zero-choice branch is exactly where
+this page's membership query and the door's tenant-context count disagree.
+
+**The chooser respects the per-tenant shell canaries (§57/§58).** `workspaceRootForTenant` returns a
+root only when that tenant's own `solo_shell_enabled` / `agency_shell_enabled` is set, and only for a
+LITERAL `standalone` account_type in the Solo case — both copied from the gates in `Admin.tsx`, which
+promise to be byte-unchanged while those operator-set flags are unset. A flag-off tenant resolves to
+null and enters inline at `/admin`, exactly as today. Without this the chooser would have handed the
+un-canaried shell to tenants whose operator had not enabled it, and routed a freshly-provisioned
+`account_type: null` tenant into the Solo shell — the case that gate rejects in as many words.
+
+**Choosing a DIFFERENT workspace drops the previous one's identity and navigation state.** A full
+page load already clears React state and the query cache; what survives is browser storage. **Three**
+session keys named the OLD account rather than a preference belonging to the person — an impersonated
+contact, a client-view latch, and a stashed OAuth return path, the last being literally a route back
+into the previous workspace. All three are cleared when the chosen tenant differs from the active one;
+re-picking the workspace you are already in changes nothing and discards nothing.
+
+A fourth, `paige.activeBusinessId`, was in that list and was **removed after checking its owning
+module**: `BusinessContext` selects by `owner_user_id`, so it names the PERSON, not the account they
+were in. Clearing it would have been over-clearing justified by a comment that did not match the code
+— the same class of mistake as prose asserting a protection, which is what this repair keeps being
+caught by. Tenant-keyed values and pure cosmetics (theme, density, rail collapse) are likewise left
+alone.
+
+**No in-shell picker survives.** `MemberAccountSwitcher` — which listed every readable tenant with no
+status filter and PERSISTED `active_tenant_id` on selection — is deleted; `WorkspaceExitControl`
+replaces it in the Solo and legacy `/admin` shells and only navigates OUT to the chooser. **It is not
+mounted in the sub-account shell**, whose account slot is pack-locked (§00, `src/agency/CLAUDE.md`)
+and whose pack is silent on such a control; tracked as #808. So recovery from inside `/business/*`
+depends on the entry rule above, not on a control in that shell — stated here rather than left for a
+reader to assume the coverage is complete.
+
+**Evidence class.** Every row is proven by component-level tests that drive the real entry with a
+mocked tenant context and read the resulting router location, plus the pure rule's own unit tests —
+`SoloEntry.test.tsx`, `BusinessEntry.test.tsx`, `ChooseAccount.test.tsx`, `workspaceEntry.test.ts`,
+each proven red against the pre-change code. **No row has been driven by an authenticated session**,
+which is a weaker class of evidence than a drive and must not be represented as one.
+### Platform Billing — Foundation A seams (branch `claude/billing-foundation-a`, PR #816) — **NOT LIVE**
+### Platform Billing — Foundation A seams (PR #816, merged `f455d8a5` 2026-09-03) — **LIVE**
+
+**§66.** Nothing owner-visible ships in A (the Solo Billing screen is Foundation C, not built). What
+changes per tier is the set of Paige-callable billing seams (§10) and who they refuse. **Migration
+`20261045000000` is APPLIED on prod** — the version is in `supabase_migrations.schema_migrations`,
+and the 3 tables, 12 functions, 6 policies and 4 triggers were queried directly on ref
+`xygzykjyynhzqytbqnzu` (2026-09-03), so the rows below are shipped truth, not a design claim. They
+were also proven pre-merge inside `BEGIN … ROLLBACK` (64/64 properties, 5/5 mutants caught).
+
+**§13 correction, 2026-09-03:** this block said `20261047000000` — PR #827 renamed the version
+inside it to its own migration while editing the file. Foundation A's migration is `20261045000000`;
+`20261047000000` is the invitation slice. Corrected here rather than left to mislead the next reader.
+
+**Still not live, deliberately:** `PLATFORM_BILLING_PORTAL_ENABLED` is not flipped, so the portal row
+below refuses every caller `not_enabled` regardless of tier until an authenticated owner drive lands.
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| `get_workspace_billing_authority()` (the one read; never a Stripe id) | `scope=none` (act-as pointer with no seat resolves to nothing) | `scope=agency`, everything `not_applicable` | `scope=enterprise`, `not_applicable` | `can_manage_billing` / `can_view_billing` = true; mapping state absent / ambiguous / mapped | false / false; state still truthful | `scope=sub_account`, `not_applicable` | non-owner path (false) or `scope=none` | EXECUTE revoked |
+| `platform-billing-portal` (hosted Stripe portal, flag default OFF) | `no_active_workspace` | `not_applicable_scope` | `not_applicable_scope` | the only allowed caller (and only when `mapped`, flag on, keys named) | `owner_only` | `not_applicable_scope` | `owner_only` / `no_active_workspace` | 401 |
+| `platform_billing_contact_designate` / `_revoke` (primary billing contact = verified current Owner; billing delegate = verified current Admin) | `no_active_workspace` | `billing_not_applicable` | `billing_not_applicable` | ✓ (Owner-only, audited) | `billing_workspace_owner_only` | `billing_not_applicable` | `billing_workspace_owner_only` | EXECUTE revoked |
+| `get_workspace_billing_contacts()` (Owner-only view; no email column) | `no_active_workspace` | `billing_not_applicable` | `billing_not_applicable` | ✓ | `billing_workspace_owner_only` (never an empty set) | `billing_not_applicable` | `billing_workspace_owner_only` | EXECUTE revoked |
+| `platform_billing_paid_activation_ready(tenant)` (R19 gate; **no caller yet**) | ✓ (operator) | 42501 | 42501 | 42501 | 42501 | 42501 | 42501 | EXECUTE revoked |
+| `platform_billing_account_reconcile()` (backfill; ambiguous/shared RETURNED, never inserted) | ✓ (operator / service) | 42501 | 42501 | 42501 | 42501 | 42501 | 42501 | EXECUTE revoked |
+| Tables `platform_billing_accounts` / `_contacts` / `_notification_log` (direct SELECT) | operator read (RLS) | 0 rows | 0 rows | 0 rows | 0 rows | 0 rows | 0 rows | no grant |
+
+**Receive / view / manage are three permissions, enforced separately.** A billing delegate reads
+`receives_billing_notices=true` and nothing else; `can_view_billing` / `can_manage_billing` stay
+Owner-only. **No delivery exists:** "receives" means designated, not delivered to. **Neither
+designation creates, changes, transfers, implies, or records legal ownership, equity, corporate or
+trust ownership, trustee or co-owner status** (owner ruling R27, 2026-09-02).
+
+### Platform Billing — Foundation C, the Solo Billing screen (PR #833, merged `11997dac` 2026-09-03) — **RELEASED**
+
+**§66.** Foundation A's seams had no renderer. Foundation C mounts them. The rows below record what
+each tier SEES on `Solo Settings › Billing` **as deployed**. Released under the owner's MVP release
+cadence (2026-09-03) with ordinary checks green: `verify` and `audit` success on the exact head,
+Vercel deployed, Supabase Preview skipped because the slice carries **no migration**. Status is
+**PARTIAL / Authenticated Runtime Proof Owed** — see the owed list below.
+
+**The §13 correction this slice makes.** The shipped tab joined `get_tenant_platform_subscription()`
+to `platform_subscription_plans` and rendered `Solo · Active · $149.00/month · Renews 5 Aug 2027`.
+All four live `platform_subscriptions` rows carry a NULL `stripe_customer_id` AND a NULL
+`stripe_subscription_id`; three are `test_seed: true` and the fourth is `revenue_class:
+promotional`, `provider_state: not_created` (queried on ref `xygzykjyynhzqytbqnzu`, 2026-09-03). A
+catalogue row is a price LIST. The catalogue is no longer an input to this screen.
+
+**Not yet reachable, and why.** Promotional, trial and paid states exist in the resolver but cannot
+be reached, because the entitlement projection that would prove them is **Foundation B** (Gate 1
+packet §4.3 R11). Until B lands, a top-level Solo workspace resolves to `billing-unavailable ·
+no_billing_account`. R13 binds: absence of a record is never inferred as a promotional grant.
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| Plan card | `plan-no-workspace` (act-as pointer, no seat) | `plan-unsupported` | `plan-unsupported` | `billing-unavailable · no_billing_account` today (mapped + projection ⇒ the paid/trial/promo states, Foundation B) | **`role-refusal`** — R22 makes VIEW a permission of its own, and the server publishes `can_view_billing` Owner-only in A. (**§13 correction:** this row first read "same state as the Owner — the plan is not a secret", which recorded a deviation from R22 that no owner ruling supports.) | `plan-subaccount` ("not because there is no plan") | `plan-no-workspace` | route not reachable |
+| Manage billing (portal entry) | `portal-not-applicable` | `portal-not-applicable` | `portal-not-applicable` | `portal-unavailable` today (flag off AND no mapping); `portal-entry` only when `mapped` | `role-refusal` | `portal-not-applicable` | `portal-not-applicable` | — |
+| Billing contacts and notices | refusal state with its reason | `billing_not_applicable` | `billing_not_applicable` | ✓ designate / revoke, and the list | the refusal is rendered as a refusal, never as "there are none" | `billing_not_applicable` | `billing_workspace_owner_only` | — |
+| Candidate list (`get_solo_team_workspace`) | not read | not read | not read | read ONLY when `can_manage_billing` | **not read** (§9 least privilege) | not read | not read | — |
+| Usage & limits | shown (`UNAVAILABLE`) | shown | shown | shown | shown | shown | shown | — |
+| Client-billing pointer | **moved to Campaigns › Sales** (owner, 2026-09-03) — Billing is one direction of money only | moved | moved | moved | moved | moved | moved | — |
+
+**How each row above is evidenced, so a reader can tell proof from inference (§13).** The Solo Owner
+and Solo Admin/Member columns are **rendered** (`scripts/live-drive/settings-billing-drive.mjs`,
+116/116 across 4 viewports × 2 palettes + the failed-read and read-only worlds). Every scope column —
+God, Agency, Enterprise, Sub-account — is **proven at the resolver** by the scope enumeration in
+`src/solo/billing-contract.test.ts`, not rendered. The God row's `plan-no-workspace` additionally
+**infers** that `billing_active_tenant_id()` returns null for an act-as pointer with no seat; that is
+Foundation A's proven behaviour, not something this slice re-tested. **Authenticated runtime on the
+deployed surface: OWED** — the harness transport is a stub (§32.c). **Also owed: a Gate-1 pass on the
+billing-contacts card**, which the approved Gate-1 prototype does not cover (§00).
+
+### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
+
+**§66, same commit as the change.** This row was first written while Slice 2A was a draft, and said
+so — which the final review flagged as a sentence engineered to become false the instant it merged,
+since §66 records what is LIVE rather than what is in flight. It is now written to survive the merge:
+**the migration's applied state on production is recorded below under *Persisted apply*, and that
+line is the one to trust.** Pre-merge it carried a `BEGIN..ROLLBACK` proof against prod ref
+`xygzykjyynhzqytbqnzu`, confirmed clean (0 rows, original `tenant_products_status_check` intact,
+0 new columns) — necessary, and explicitly NOT sufficient (§32.a).
+
+**What the change is.** Campaigns → Catalog now holds two durable concepts under one tab, per the
+owner's Gate 1 ruling of 2026-09-02: **Offers** (the tenant's commercial definition — what the
+business sells) as the default section, and **Published assets** (the Vibe-owned pages, funnels and
+forms) preserved unchanged beside it, keeping its ownership sentence, its truth label and the
+retired-address behaviour that five legacy slugs depend on. Slice 2A is READ ONLY. It creates
+nothing, changes nothing and charges nothing.
+
+| Tier | Sees Offers | Why |
+|---|---|---|
+| Platform operator (God) | ✓ **only with a tenant selected** | `growth`/`studio` are carried for §35 dogfooding, but this surface reads the ACTIVE tenant: an operator with no tenant selected has `activeTenantId === null`, which `useCatalogOffers` maps to `phase: "unavailable"` and the surface renders "Campaigns needs a resolved workspace" — not offers. Operator scope has its own `CatalogSurface`; this row is the Solo shell's. |
+| Agency | ✗ | `growth` excludes Agency entirely (owner ruling 2026-08-11, §61 preserved exception). No new feature key is introduced, so the existing route gate decides — §61 default: no exception. |
+| Enterprise | ✓ via `growth` | Inherits the Solo baseline. |
+| Solo | ✓ via `growth` | The tier this slice is built for. |
+| Sub-account | ✓ via `growth` | Identical to Solo (§60). |
+| Client / Anonymous | ✗ | No client or anonymous route reaches `/solo/*`. A *paused* or *draft* offer additionally stops being readable by `anon`, because `tp_public_active_read` is `status = 'active'`. |
+
+**Authority inside the tenant.** The read asks `tenant_members.role` — the column; `tenant_role` is
+the enum TYPE, and asking for it returns 42703 — filtered on all three of the SAME workspace the
+rows come from, the caller's own `auth.uid()`, and `status = 'active'`. All three matter: the
+workspace scope is what keeps this off a global role (§59's global-role trap, the defect repaired
+in `20261043000000`), and the caller + active-seat filters are what make the row unique, since an
+admin can read every member row in their tenant and an unfiltered `maybeSingle()` would raise
+PGRST116. The predicate matches `is_tenant_admin()` exactly. `canManage` is `owner`/`admin`; a plain member sees the catalog and is told in
+words that they cannot change it. Slice 2A exposes no write, so `canManage` currently gates only
+that notice; Slice 2B's command seam is what it will really gate.
+
+**Round 9 — Codex, five findings, every one real and every one fixed.** Two were §9 exposure and
+neither was theoretical. The hook wrote its state inside `useEffect`, i.e. after paint, so on the
+render where `activeTenantId` changes IN PLACE — which is exactly what an operator's `switchTenant`
+does, without remounting, because `GrowthHub` is keyed by route rather than tenant — it still
+returned the PREVIOUS workspace's `ready` offers: another tenant's names, descriptions and prices
+under the newly selected workspace, for one paint. Fixed by adopting the synchronous `visibleState`
+guard that `useSoloCampaigns`, the sibling hook on this same tab, already had. Separately, an open
+detail drawer holds a snapshot detached from the list it came from, and its cleanup watched
+`[tab, segment]` but not the tenant — so after a switch it kept showing the previous workspace's
+record indefinitely. The remaining three: the drawer dropped a recorded instalment count so a
+bounded plan read as open-ended; the bare `/growth/catalog` kept showing Published assets after the
+type query was dropped without unmounting; and `money()` divided by 100 for every currency, so a
+recorded ¥500 rendered as "5 JPY" and KWD 500 as "5 KWD" instead of 0.500 — reachable because
+`tenant_prices.currency` carries no CHECK and its writer has no allowlist.
+
+**Two of that round's first five guards were FALSE, and the break-test is what caught them.** Both
+passed with their own defect reintroduced: the drawer guard read the whole drawer's text and was
+satisfied by the separate "Price shown" row, which already carries the arithmetic; and the
+tenant-switch guard read the hook's final value, but `act()` flushes effects before it returns, so
+it inspected the state the effect had already corrected — the single paint the fix exists for had
+closed before the assertion ran. Both were rewritten and all six of this slice's late fixes are now
+proven red against their own defect. Recorded because a guard that cannot fail is worse than no
+guard, and only running the perturbation distinguishes the two.
+
+**A THIRD migration-version collision — and a §13 correction about it, made after reading the CI
+log instead of assuming.** #845 took `20261048000000` and merged AFTER this branch re-grounded on
+main and ran `lint:migration-versions` clean at that number. The first version of this paragraph,
+and of the migration's own header, said the guard was "structurally blind" to it. **That was
+wrong.** CI passes the real merge base to the lint (`BASE_REF: 1a22637c…`), so once #845 merged the
+guard caught it immediately, in `verify` — and `database-contract` caught it independently by
+replaying from zero. One root cause, both red checks, no defective guard.
+
+What was blind was the LOCAL run, which compares against whatever `origin/main` the working copy
+last fetched; mine predated #845, so no main-based comparison could have seen it at that moment.
+The gap is the window between a local pre-merge check and the merge itself. **Re-grounding at the
+end is necessary and still not sufficient, because the base moves after you look at it, and a green
+local lint is a hint rather than a verdict — CI is the authority.**
+
+**A FOURTH renumber followed, and it was not a collision — it was mine.** `20261050000000` was
+chosen by scanning all 423 remote branches, and it was genuinely free. It was still wrong, because
+freedom is not the only constraint: production's ledger already carried `20261104000000`,
+`20261103000000` and `20261102010000`, so 50 would have been applied **out of order**, behind three
+migrations already live. `docs/brain/lessons-learned.md` states that rule — a replacement must sort
+after everything already applied — and names this exact shape, a version whose file the repository
+cannot see. I quoted that entry approvingly in the same session and then picked a version by
+scanning the repo without querying the ledger. It surfaced only because another PR's commit message
+mentioned prod's newest applied version, which is luck rather than method. Now `20261106000000`:
+above prod's highest applied version and free across every branch (`…1105` is taken by #850). **The
+rule: free in the repo AND greater than the maximum in prod's ledger. The repo cannot tell you the
+second thing — query it.**
+
+**Final independent review (round 8), applied.** Three findings, none blocking, all fixed rather
+than filed: this row was placed OUTSIDE the Surface ledger (under *Setup legal sender identity*),
+so a reader walking the ledger would not have found Catalog → Offers in it; it carried a sentence
+telling the reader to read every cell as "what this change would make true, never as live
+availability", which becomes false on merge and contradicted the paragraph above it; and the
+category filter reserved the string `"all"` as its everything-sentinel while
+`tenant_products.category` is deliberately unconstrained free text, so a tenant category named
+`all` would have filtered to everything while claiming its own count, with two chips pressed at
+once. The third is unreachable until 2B ships the write seam (no writer sets `category` today)
+and was fixed anyway, with a regression test proven red against the prior behaviour.
+
+**Evidence, separated.**
+- *Automated:* 54 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 19 that EXECUTE
+  the adapter against a recording fake client** (`useCatalogOffers.adapter.test.tsx`). The second
+  file exists because the first mocks the read entirely: an adversarial review of the pushed diff
+  found that the membership query asked for `tenant_members.tenant_role` when the column is `role`,
+  which would have made `canManage` false for every owner — silently, past 24 green tests and a
+  clean `tsc`. Three perturbations are proven to turn the new suite red: the wrong column name, a
+  dropped caller scope, and re-deriving the commercial kind from billing cadence. A second review at
+  `c7ea208` added three more, each proven to fail against the prior commit before it passed: a
+  recurring plan's per-period figure headlined as a flat price, that same figure as the floor of
+  several plans, and an `aria-label` that replaced the row's contents and made the price and the
+  derived-conflict sentence inaudible to a screen reader.
+- *Correction to this row (§13).* It previously read `251/251`. That figure came from a local run of
+  a script version edited before it was pushed; the committed script yields 243, and the reviewer
+  could not reproduce 251. **A correction that then went stale itself:** this bullet was left saying
+  283 while the row above it climbed to 419, so the same section carried two different counts — the
+  final review caught it. The count is now **419**, and it moved because each review round added
+  rendered coverage: a recurring fixture, the empty-AND-mid-deploy composition, account switch,
+  restored session, and the loading and unavailable branches. Cite what the committed
+  script prints, not a local run.
+- *Static/build:* `ci:tsc` clean against the ratchet; `lint:views`, `lint:definer-fns`,
+  `lint:tier-features`, `lint:skeleton`, `lint:migration-versions`, `lint:managed-schema`,
+  `lint:pg-tokens`, `lint:write-targets` all pass; production build passes.
+- *Rendered:* 419/419 checks in `scripts/live-drive/catalog-offers-drive.mjs`, reproduced on three consecutive runs leaving zero orphan processes — the real components
+  with only the network read stubbed, across both palettes and all four Solo widths, asserting the
+  six-tab lock, no horizontal overflow, no fabricated commerce data, no `$0`, and the exact shipped
+  canvas values in each theme.
+- **UNVERIFIED:** authenticated runtime on any tier, and the deployed surface. §32.c is owed to a
+  session that can drive the deployed app. The harness renders our components with the NETWORK READ
+  STUBBED, and the contract suite mocks the adapter outright — so neither of those evidence classes
+  touches the real query. The adapter suite closes that gap against a fake client, which proves the
+  query SHAPE and the resolved authority, not that PostgREST answers it as expected. No evidence in
+  this slice is a real round-trip to the database.
+- **Persisted apply — OWED, and this line is updated from a real query, never from the pipeline
+  running.** At the time of writing the migration is not yet applied to production. §32.a requires
+  `schema_migrations` to carry `20261106000000` AND the six columns to exist on `tenant_products`
+  AND the status CHECK to permit `paused`, each shown by a query result pasted here.
+
+**Truth label: `PARTIAL`, deliberately.** The read is real and tenant-scoped, but a tenant cannot
+yet define an offer on this screen — `tenant_products` is empty on production (0 rows, 0 tenants
+with a storefront enabled), so first-use is the state every tenant sees. The surface says that in
+words rather than showing a control that does nothing. A listed price is a PRESENTED price and not
+a checkout; tenant checkout remains unreachable in production independently of this change.
+
 
 ## Known ambiguities and hazards (log, don't hide — §13)
 

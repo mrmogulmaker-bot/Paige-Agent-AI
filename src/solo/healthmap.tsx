@@ -1,7 +1,6 @@
 // @ts-nocheck
 import React from "react";
 import { Ic, Foldout, Wrap } from "./_shared";
-import { useTrust } from "./compass";
 import { SC_CHECKS, scCol, ScDrawer } from "./systems";
 
 const SHM_CLUSTERS=[
@@ -110,7 +109,8 @@ const[checks,setChecks]=React.useState(SC_CHECKS);
 const[sel,setSel]=React.useState(null);
 const[open,setOpen]=React.useState(null);
 const[hover,setHover]=React.useState(null);
-const trust=useTrust();
+// `useTrust()` was called here and its result never read — a dead subscription to the compass
+// fixture, removed rather than repointed at the real read it does not use.
 const[toast,setToast]=React.useState(null);
 const[fold,setFold]=React.useState(null);
 const onNode=React.useCallback(id=>setOpen(SC_CHECKS.find(c=>c.id===id)),[]);

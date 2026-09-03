@@ -11,7 +11,8 @@ This capability is **tenant-owned domain behavior** inside Clients / People, wit
 - Contact editor owner: `PeopleContactEditor.tsx`.
 - Human mutation adapter: `contactUpsert.ts`.
 - Server-owned mutation contract: `upsert_contact`, introduced by `20260901035325_solo_people_contact_upsert_hotfix.sql`.
-- Governed PAIGE seam: `paige-ai-chat/index.ts` plus the exact-subject / exact-patch confirmation helpers in `_shared/toolConfirmation.ts`.
+- Governed PAIGE seam: `paige-ai-chat/index.ts` — the inline confirm sequence over `paige_pending_confirmations`, which fingerprints the call, claims the proposal atomically, and executes the STORED arguments.
+  **CORRECTED 2026-09-02 (§13/§BRAIN.3).** This line previously named "the exact-subject / exact-patch confirmation helpers in `_shared/toolConfirmation.ts`" as part of the governed seam. That module (#711) was superseded on 2026-09-02 and left in the tree unwired (`paige-ai-chat/index.ts:7922`); measured on `origin/main` `b5fe7f63`, its only importer anywhere in `supabase/` or `src/` is its own test file. The contact-update path is governed by the inline sequence above, not by that module.
 
 Tenant identity, roles, assignable members, capability truth, and contact records must come from server-resolved tenant context and authorization. None may fork shell geometry.
 

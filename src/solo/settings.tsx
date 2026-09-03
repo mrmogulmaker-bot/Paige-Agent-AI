@@ -5,7 +5,6 @@ import {
   Building2,
   CalendarClock,
   CheckCircle2,
-  CircleDollarSign,
   ExternalLink,
   FileLock2,
   Globe2,
@@ -43,41 +42,20 @@ import {
   type ManagedIdentityRecord,
   type SettingsTruth,
 } from "./settings-contract";
+import {
+  Card, Field, NotYours, Outcome, ReadState, Status, Truth, type WriteState,
+} from "./settings-primitives";
 import { settingsScrollOwner, SETTINGS_SCROLLBAR_SHOWN, settingsDestinationShowsScrollbar } from "./settings-scroll-owner";
 import { CalendarsView } from "./connections-calendars";
-import { SoloSetupView } from "./settings-setup";
+import { SoloBusinessContextSetup } from "./SoloBusinessContextSetup";
+import { SoloBillingView } from "./settings-billing";
 import "./settings.css";
-
-function Truth({ value, capability = false }: { value: SettingsTruth; capability?: boolean }) {
-  return <span className="ss-truth" data-truth={value}>{capability ? `Capability: ${value}` : value}</span>;
-}
-
-function Status({ tone = "neutral", children }: { tone?: string; children: ReactNode }) {
-  return <span className="ss-status" data-tone={tone}><i />{children}</span>;
-}
-
-function Card({ title, icon: Icon, truth, capabilityTruth = false, children, actions }: { title: string; icon: typeof Building2; truth?: SettingsTruth; capabilityTruth?: boolean; children: ReactNode; actions?: ReactNode }) {
-  return <section className="ss-card">
-    <header><span className="ss-card-icon"><Icon aria-hidden /></span><h2>{title}</h2>{truth && <Truth value={truth} capability={capabilityTruth}/>}<div className="ss-card-actions">{actions}</div></header>
-    <div className="ss-card-body">{children}</div>
-  </section>;
-}
 
 function OrthogonalConnectionState({ accountLabel, healthLabel, tone }: { accountLabel: string; healthLabel: string; tone: ConnectionStateTone }) {
   return <dl className="ss-connection-state">
     <div><dt>Account configuration</dt><dd>{accountLabel}</dd></div>
     <div><dt>Operational health</dt><dd><Status tone={tone}>{healthLabel}</Status></dd></div>
   </dl>;
-}
-
-function Field({ label, value }: { label: string; value?: string | null }) {
-  return <div className="ss-field"><span>{label}</span><strong>{value?.trim() || "Not provided"}</strong></div>;
-}
-
-function ReadState({ loading, error, retry, children }: { loading: boolean; error: string | null; retry: () => void; children: ReactNode }) {
-  if (loading) return <div className="ss-state" role="status"><RefreshCw className="ss-spin"/>Clearing and resolving this account…</div>;
-  if (error) return <div className="ss-state" role="alert"><TriangleAlert/><span><strong>Couldn’t load this account</strong>{error}</span><button onClick={retry}>Retry</button></div>;
-  return <>{children}</>;
 }
 
 function useManagedIdentity() {
@@ -840,21 +818,6 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
  * (§70.1 — a toast is not persistence).
  * ------------------------------------------------------------------------- */
 
-type WriteState = { tone: "ok" | "bad"; message: string } | null;
-
-function Outcome({ state }: { state: WriteState }) {
-  if (!state) return null;
-  return <div className="ss-outcome" data-tone={state.tone} role="status" aria-live="polite">
-    {state.tone === "ok" ? <CheckCircle2 aria-hidden/> : <TriangleAlert aria-hidden/>}
-    <span>{state.message}</span>
-  </div>;
-}
-
-/** Shown in place of the controls when the caller may not write here (§9). */
-function NotYours({ what }: { what: string }) {
-  return <p className="ss-note">Only a workspace admin can change {what}. Your access here is read-only.</p>;
-}
-
 function SendingDomainsPanel({ comms }: { comms: ReturnType<typeof useSoloComms> }) {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ domain: "", fromEmailLocal: "no-reply", fromName: "" });
@@ -1454,11 +1417,6 @@ function SecurityView() { return <div className="ss-grid"><Card title="Account s
 
 function VaultView() { return <div className="ss-grid"><Card title="Outside relationships & obligations" icon={FileLock2} truth="PROPOSED"><div className="ss-tags">{["Insurance","Lease / rent","Utilities","Vendors","Registrations","Licenses","Annual filings","Tax & compliance"].map(x=><span key={x}>{x}</span>)}</div><p className="ss-note">Structured records, evidence, responsible contacts, renewals, and due dates require a separately approved backend contract.</p></Card><Card title="PAIGE-assisted intake" icon={CalendarClock} truth="PROPOSED"><p>PAIGE may eventually ingest, classify, draft, and store supported information under permission and Trust Compass rules. No upload or memory claim is active here.</p></Card><Card title="Passwords & secrets" icon={KeyRound} truth="UNAVAILABLE"><p>Ordinary Vault fields and documents never accept raw credentials. Secure credential storage is unavailable without a dedicated encrypted contract.</p></Card></div>; }
 
-function BillingView() {
-  const comms = useSoloComms();
-  return <div className="ss-grid"><Card title="Platform subscription" icon={CircleDollarSign} truth="PARTIAL"><ReadState loading={comms.loading} error={comms.error} retry={comms.refresh}>{comms.billing ? <div className="ss-fields"><Field label="Plan" value={comms.billing.name}/><Field label="Status" value={comms.billing.status}/><Field label="Price" value={comms.billing.priceLabel}/><Field label="Renewal" value={comms.billing.renewsLabel}/></div> : <p>No current Solo subscription record was returned.</p>}</ReadState></Card><Card title="Invoices & payment method" icon={FileLock2} truth="UNAVAILABLE"><p>No proven frontend read supports invoices or payment methods here.</p></Card><Card title="Usage & limits" icon={CalendarClock} truth="UNAVAILABLE"><p>Frozen metering designs do not prove runtime usage totals or complete limits. No totals are shown.</p></Card></div>;
-}
-
 export function SoloSettings({ openPaige }: { openPaige?: () => void } = {}) {
   const [tab] = useSubtabRoute("solo", "settings", "setup");
   const tabs=[['setup','Setup'],['team','Team'],['connections','Connections'],['integrations','Integrations'],['notifications','Notifications'],['security-data','Security & data'],['vault','Vault'],['billing','Billing']];
@@ -1591,7 +1549,7 @@ export function SoloSettings({ openPaige }: { openPaige?: () => void } = {}) {
     resetSettingsScroll();
   }, [tab, segment, resetSettingsScroll]);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
-  const view = tab === "team" ? <TeamView openPaige={openPaige}/> : tab === "connections" ? <ConnectionsView initialSegment={segment} onSegmentChange={resetSettingsScroll}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SoloSetupView account={account}/>;
+  const view = tab === "team" ? <TeamView openPaige={openPaige}/> : tab === "connections" ? <ConnectionsView initialSegment={segment} onSegmentChange={resetSettingsScroll}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <SoloBillingView/> : <SoloBusinessContextSetup account={account}/>;
   return <div ref={rootRef} className="solo-settings">
     <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "setup" ? "The owner-confirmed business truth Paige may use to understand and support this workspace." : current.key === "connections" ? "Communications owns whether a message can send. Calendars owns scheduling, links, routing and notification rules." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}

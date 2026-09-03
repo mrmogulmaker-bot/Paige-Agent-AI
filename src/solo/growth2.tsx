@@ -2,8 +2,10 @@
 import React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
+import { subtabPath } from "@/lib/routing/tierBranches";
 import { Ic, PageHead } from "./_shared";
 import { useSoloCampaigns } from "./useSoloCampaigns";
+import { CatalogOffers } from "./catalog-offers";
 import "./solo-campaigns.css";
 
 // Vibe Studio still imports this project-only fixture. Campaigns never renders it;
@@ -19,6 +21,7 @@ export const GR={projects:[
 const TRUTH = {
   overview: ["UNAVAILABLE", "A tenant-authorized all-state campaign rollup is not yet available."],
   catalog: ["PARTIAL", "Published pages, funnels, forms, and captured submissions come from tenant-scoped records."],
+  offers: ["PARTIAL", "Offers are read from this workspace’s own product records. Defining and editing them arrives on this screen next; nothing here is a checkout."],
   sales: ["PROPOSED", "Captured activity can be traced, but a consolidated campaign-sales owner is not available."],
   pipeline: ["PROPOSED", "Only explicit form routing configuration and recorded outcomes are shown."],
   social: ["UNAVAILABLE", "A customer-facing social provider connection is not ready."],
@@ -102,18 +105,66 @@ function Overview({ data, setDetail }) {
   </section>;
 }
 
+// Catalog holds TWO durable concepts under one tab (owner ruling, Gate 1 2026-09-02):
+//   Offers          — what this business sells. Catalog owns the definition.
+//   Published assets — the Vibe-owned pages, funnels and forms that present it. Unchanged, and
+//                      deliberately NOT deleted or reframed as offers.
+// A legacy address (/growth/pages and its four siblings, or ?type=) still means the Vibe-owned
+// half, so an incoming `initialType` opens Published assets rather than Offers.
 function Catalog({ data, setDetail, initialType }) {
+  const [section, setSection] = React.useState(initialType ? "assets" : "offers");
   const [type, setType] = React.useState(initialType || "all");
-  React.useEffect(()=>{ if(initialType) setType(initialType); },[initialType]);
+  // The null transition is reachable without unmounting: clicking the already-selected Catalog
+  // tab navigates to the bare path and history navigation can drop the query too. Without the
+  // else branch the bare /growth/catalog kept showing Published assets, contradicting the
+  // initial state on the line above, which makes Offers the bare-route default.
+  React.useEffect(()=>{
+    if(initialType){ setType(initialType); setSection("assets"); }
+    else { setType("all"); setSection("offers"); }
+  },[initialType]);
   const shown = type === "all" ? data.artifacts : data.artifacts.filter((artifact)=>artifact.type===type);
-  return <section className="campaigns-surface"><SurfaceHead truthKey="catalog" title="Published catalog" description="Read-only published outputs owned by Vibe Studio." action={<div className="campaigns-segmented" aria-label="Filter published outputs">{["all","page","funnel","form"].map((item)=><button key={item} aria-pressed={type===item} onClick={()=>setType(item)}>{item === "all" ? "All" : `${item[0].toUpperCase()}${item.slice(1)}s`}</button>)}</div>}/>
+  const offers = section === "offers";
+  const sectionSwitch = <div className="campaigns-segmented" aria-label="What this tab shows">
+    <button aria-pressed={offers} onClick={()=>setSection("offers")}>Offers</button>
+    <button aria-pressed={!offers} onClick={()=>setSection("assets")}>Published assets</button>
+  </div>;
+  if (offers) return <section className="campaigns-surface"><SurfaceHead truthKey="offers" title="Offers" description="What this business sells — products, services, programs, packages and consultations." action={sectionSwitch}/>
+    <CatalogOffers setDetail={setDetail}/>
+  </section>;
+  return <section className="campaigns-surface"><SurfaceHead truthKey="catalog" title="Published assets" description="Read-only published outputs owned by Vibe Studio." action={sectionSwitch}/>
+    <div className="campaigns-segmented" aria-label="Filter published outputs" style={{margin:"12px 19px 0"}}>{["all","page","funnel","form"].map((item)=><button key={item} aria-pressed={type===item} onClick={()=>setType(item)}>{item === "all" ? "All" : `${item[0].toUpperCase()}${item.slice(1)}s`}</button>)}</div>
     <StateFrame phase={data.phase} retry={data.retry} noun="published outputs">{shown.length===0?<Empty title="No published outputs in this view" detail="Create and publish creative work in Vibe Studio. Campaigns will list only grounded published outputs here."/>:<div className="campaigns-catalog-grid">{shown.map((artifact)=><article className="campaigns-artifact" key={`${artifact.type}-${artifact.id}`}><div><span className="campaigns-type">{artifact.type}</span><h3>{artifact.name}</h3><p>Updated {formatDate(artifact.updatedAt)}</p></div><div className="campaigns-artifact-actions"><button className="btn btn-s" onClick={()=>setDetail({title:artifact.name,rows:[["Type",artifact.type],["Published state",artifact.status],["Recent captures",artifact.type==="form"?`${artifact.recentSubmissions} in the latest 200 workspace submissions`:"Not available"],["Routing contract",artifact.type==="form"?(artifact.routingConfigured?"Configured":"Not configured"):"Not applicable"]],note:"Creative changes remain in Vibe Studio. Recent capture counts are a bounded window, not lifetime totals."})}>Details</button>{artifact.publicHref&&<a className="btn btn-s" href={artifact.publicHref} target="_blank" rel="noreferrer">Open published <Ic.arrow size={12}/></a>}</div></article>)}</div>}</StateFrame>
   </section>;
 }
 
+/**
+ * Client billing — what the TENANT charges ITS OWN customers.
+ *
+ * Moved here from Solo Settings → Billing on the owner's instruction (2026-09-03). Billing is the
+ * platform billing the tenant; what a tenant charges its own customers is a different direction of
+ * money entirely and belongs on the tenant's own commercial surface. It is stated rather than built:
+ * §38 keeps Paige out of the merchant-of-record position for a tenant→client charge, so the money
+ * leg runs on the tenant's own processor and nothing on this surface can be wired to it yet.
+ */
+function ClientBillingBoundary() {
+  return <div className="campaigns-state">
+    <TruthTag state="UNAVAILABLE"/>
+    <h2>Billing your own clients</h2>
+    <p>
+      What you charge your own clients runs on your own payment processor. Nothing here collects it,
+      holds it, or reports it yet — and Paige is never the merchant of record for money your clients
+      pay you.
+    </p>
+    <p>
+      What this <em>workspace</em> pays the platform is a separate thing, and it lives in
+      Settings → Billing.
+    </p>
+  </div>;
+}
+
 function Sales({ data, setDetail }) {
   const routed = data.submissions.filter((row)=>row.contactId||row.dealId);
-  return <section className="campaigns-surface"><SurfaceHead truthKey="sales" title="Routed capture activity" description="Recorded contact and deal references only—never estimated revenue or campaign attribution."/><StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></section>;
+  return <section className="campaigns-surface"><SurfaceHead truthKey="sales" title="Routed capture activity" description="Recorded contact and deal references only—never estimated revenue or campaign attribution."/><ClientBillingBoundary/><StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></section>;
 }
 
 function PipelineStageRow({ stage, index, stages, pipeline, canManage, busy, save }) {
@@ -255,9 +306,9 @@ function Performance({ data }) {
   return <section className="campaigns-surface"><SurfaceHead truthKey="performance" title="Performance coverage" description="A source-by-source view of what can—and cannot—be reported truthfully."/><StateFrame phase={data.phase} retry={data.retry} noun="performance sources"><div className="campaigns-coverage"><article><TruthTag state="UNAVAILABLE"/><h3>Campaign runs</h3><p>A tenant-authorized campaign rollup is not available.</p></article><article><TruthTag state="PARTIAL"/><h3>Published outputs</h3><p>{data.artifacts.length?"Published Vibe Studio outputs are available.":"No published outputs were returned."}</p></article><article><TruthTag state="PROPOSED"/><h3>Attribution and outcomes</h3><p>Captured submissions may carry traceable source and routing references; no ROI or revenue is calculated.</p></article><article><TruthTag state="UNAVAILABLE"/><h3>Social performance</h3><p>No supported provider source is connected to this customer-facing surface.</p></article></div></StateFrame></section>;
 }
 
-function CompatibilityLanding({ legacy, setTab }) {
+function CompatibilityLanding({ legacy, returnToAssets }) {
   const item = LEGACY[legacy];
-  return <section className="campaigns-compat" aria-labelledby="campaigns-compat-title"><span className="campaigns-type">Compatibility address</span><h2 id="campaigns-compat-title">This address moved</h2><p><strong>{item.label}</strong> is no longer a Campaigns subtab. {item.note}</p><div className="campaigns-compat-note"><Ic.shield size={16}/><span>Your workspace and account stay selected. Vibe Studio opens through the existing supported handoff and returns focus here when you leave.</span></div><div className="campaigns-compat-actions"><button className="btn btn-s btn-p" data-solo-vibe-studio-launcher onClick={openStudio}><Ic.spark size={13}/>Vibe Studio</button><button className="btn btn-s" onClick={()=>setTab("catalog")}>Return to Catalog</button></div></section>;
+  return <section className="campaigns-compat" aria-labelledby="campaigns-compat-title"><span className="campaigns-type">Compatibility address</span><h2 id="campaigns-compat-title">This address moved</h2><p><strong>{item.label}</strong> is no longer a Campaigns subtab. {item.note}</p><div className="campaigns-compat-note"><Ic.shield size={16}/><span>Your workspace and account stay selected. Vibe Studio opens through the existing supported handoff and returns focus here when you leave.</span></div><div className="campaigns-compat-actions"><button className="btn btn-s btn-p" data-solo-vibe-studio-launcher onClick={openStudio}><Ic.spark size={13}/>Vibe Studio</button><button className="btn btn-s" onClick={returnToAssets}>Return to Catalog</button></div></section>;
 }
 
 function CampaignTabs({ tabs, current, setCurrent }) {
@@ -296,14 +347,28 @@ export const GrowthHub=()=>{
   const segment=(params["*"]||"").split("/")[1]||"";
   const legacy=LEGACY[segment]?segment:null;
   const query=new URLSearchParams(location.search);
-  const requestedType=["page","funnel","form"].includes(query.get("type"))?query.get("type"):null;
+  const requestedType=["all","page","funnel","form"].includes(query.get("type"))?query.get("type"):null;
+  // The five retired addresses promise "Published pages appear in Catalog", so their one escape
+  // hatch must land on the VIBE-OWNED half. Since Slice 2A made Offers the default section, a bare
+  // setTab("catalog") would have dropped them on an empty offer list — a §58 regression on the exact
+  // recovery path this landing exists to provide. `?type=all` addresses that half explicitly.
+  const returnToAssets=React.useCallback(()=>{
+    navigate(`${subtabPath("solo",params.account,"growth","catalog")}?type=all`);
+  },[navigate,params.account]);
   const [detail,setDetail]=React.useState(null);
   const closeDetail=React.useCallback(()=>setDetail(null),[]);
-  React.useEffect(()=>{setDetail(null);},[tab,segment]);
+  // Also on TENANT change. A detail snapshot is detached from the list it came from, so an open
+  // drawer survived a workspace switch and kept showing the previous tenant's offer name,
+  // description and prices indefinitely. `data.tenantId` flips synchronously (useSoloCampaigns
+  // guards it outside its effect), so this clears on the same render the switch lands on.
+  // This covers every drawer on the tab, not only Offers — the campaign, sales and pipeline
+  // rows had the same detached snapshot, and the fix cannot be narrowed to one of them
+  // without duplicating the state.
+  React.useEffect(()=>{setDetail(null);},[tab,segment,data.tenantId]);
   React.useEffect(()=>{if(segment!=="active")return;const account=params.account;if(account)navigate(`/solo/${account}/growth/overview${location.search}`,{replace:true});},[segment,params.account,location.search,navigate]);
   const title=tabs.find((item)=>item[0]===tab)?.[1]||"Overview";
   let body=<Overview data={data} setDetail={setDetail}/>;
-  if(legacy) body=<CompatibilityLanding legacy={legacy} setTab={setTab}/>;
+  if(legacy) body=<CompatibilityLanding legacy={legacy} returnToAssets={returnToAssets}/>;
   else if(tab==="catalog") body=<Catalog data={data} setDetail={setDetail} initialType={requestedType}/>;
   else if(tab==="sales") body=<Sales data={data} setDetail={setDetail}/>;
   else if(tab==="pipeline") body=<PipelineSurface data={data} setDetail={setDetail}/>;

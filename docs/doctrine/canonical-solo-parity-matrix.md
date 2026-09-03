@@ -95,9 +95,9 @@ Status: **RULED — enablement routed to #790.** Recorded as the first entry in 
 
 | Item | Where | Status |
 |---|---|---|
-| Switch control | `MemberAccountSwitcher.tsx:34` | **CANONICAL** — hidden unless standalone with ≥2 memberships |
+| Switch control | `WorkspaceExitControl.tsx` | **CANONICAL** (revised 2026-09-03, #811) — an EXIT, not a picker: it selects nothing and navigates to `/choose-account`, where the choice is made. Replaces `MemberAccountSwitcher.tsx`, now deleted. Shown to anyone holding more than one ENTERABLE workspace, with no tier condition — the old control required `account_type='standalone'`, so it was absent in exactly the situation that needed it |
 | Persist-before-commit | `useTenantContext.tsx:494-505` | **CANONICAL** — writes `profiles.active_tenant_id` first, commits client scope only after confirmation, so browser scope and `current_user_tenant_id()` cannot disagree |
-| Stale-request protection | four independent layers | **CANONICAL** — hard document navigation (`MemberAccountSwitcher.tsx:50`); load/subject epochs (`useTenantContext.tsx:170-178`); per-hook request gate (`settings-contract.ts:127-140`, used by 8 hooks); render-time identity fence (`account-identity.ts:60-64`) |
+| Stale-request protection | four independent layers | **CANONICAL** — hard document navigation (now `ChooseAccount.tsx` `choose()`, which is where the tenant actually changes; it moved there with the deletion of `MemberAccountSwitcher.tsx` and no layer was lost); load/subject epochs (`useTenantContext.tsx:170-178`); per-hook request gate (`settings-contract.ts:127-140`, used by 8 hooks); render-time identity fence (`account-identity.ts:60-64`) |
 | PAIGE scope cleared on switch | `SoloApp.tsx:237` + `paigeClientScope.ts:45-48` | **CANONICAL** — effect plus a read-time refusal, so the guard does not depend on winning a race |
 
 ---
@@ -168,7 +168,7 @@ Code carries a truth label per destination (`src/solo/settings-contract.ts:95-10
 
 | Destination | Code label | Real write? | Status | Basis |
 |---|---|---|---|---|
-| **Setup** | `LIVE` | `save_solo_setup_identity` | **CANONICAL** + label question | Full editable brief; visible-scroll repair shipped 2026-09-02. Two open points: "Edit brief" is `disabled` with no denial copy (`settings-setup.tsx:231`) while a message exists but is unreachable (`useSoloSetupBrief.ts:130`); and the doctrine defining `LIVE` (`surface-cards/README.md:58-67`) says a workspace-level surface **cannot** reach `LIVE` without a Rail change |
+| **Setup** | `PARTIAL` | `save_solo_setup_context` | **RELEASE CANDIDATE** | Canonical six-section flow now has tenant-scoped durable save/readback, Owner/Admin enforcement, ownership separate from Team access, fail-closed reads, Vault-only full identifiers, conflict/retry/cancel/account-switch treatment, and a passed rollback-only production-schema permission/privacy probe. Exact-head authenticated Owner save/reload/reopen/account-switch proof is still owed before `LIVE`. PAIGE/Mind/Spine remain PROPOSED and Rail UNAVAILABLE. |
 | **Team** | `PARTIAL` | 4 writes incl. edge fn | **CANONICAL** — label understated | Roster, pagination, member editor, invite wizard, permission-specific denial, and honest "row created but email did not send" reporting. Nothing read caps it below its label |
 | **Connections** | `PARTIAL` | many | **CANONICAL** + one gap | Largest surface. The Registration segment silently drops the readiness failure notice — on a failed read `status` is `null` and the line just vanishes with no error and no retry (`settings.tsx:1439` vs the notice at `:583`) → **UI-REPAIR** |
 | **Integrations** | `PARTIAL` | n8n + MCP + automation rules | **CANONICAL** — label honest | Two real connectors, six honest refusals. One dead control: "Set up your pipeline" is a `span` styled as an action with no href, no onClick and no reason (`settings-automations.tsx:157`) → **UI-REPAIR** |

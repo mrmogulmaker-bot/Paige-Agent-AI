@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React from "react";
-import { MemberAccountSwitcher } from "@/components/auth/MemberAccountSwitcher";
+import { WorkspaceExitControl } from "@/components/auth/WorkspaceExitControl";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Bell, Blocks, Building2, CircleDollarSign, FileLock2, Link2, ShieldCheck, Users } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -250,7 +250,7 @@ React.useEffect(()=>{clearPaigeClientScope()},[activeTenantId]);
 const full=route==='paige'||route==='auto'||route==='cal'||route==='home'||route==='analytics'||route==='market';
 const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
 const accountEpochKey=activeTenantId??'resolving';
-const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,compass:<TrustCompass/>,auto:null,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2 accountContext={accountContext} accountEpoch={activeTenantId} openPaige={openPaige}/>,market:<Marketplace/>,settings:<SoloSettings openPaige={openPaige}/>};
+const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,compass:<TrustCompass accountEpoch={activeTenantId}/>,auto:null,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2 accountContext={accountContext} accountEpoch={activeTenantId} openPaige={openPaige}/>,market:<Marketplace/>,settings:<SoloSettings openPaige={openPaige}/>};
 const settingsActive=urlBranchSlug==='settings'?(urlSplat.split('/')[1]||'setup'):(legacySettingsDestination||'setup');
 const contextualNavigation=route==='settings'&&urlDriven?{
   label:'Settings',
@@ -267,7 +267,7 @@ return <TenantCommandCenterShell
 accountName={accountContext.accountName}
 accountType={accountContext.accountType}
 userRole={shellRole}
-accountControls={<MemberAccountSwitcher />}
+accountControls={<WorkspaceExitControl />}
 contextualNavigation={contextualNavigation}
 soloPaigeWorkspace={<SoloPaigeWorkspace key={accountEpochKey} full={route==='paige'} dockedTab={paigeDockedTab} onDockedTabChange={setPaigeDockedTab}/>}
 paigeFull={route==='paige'}

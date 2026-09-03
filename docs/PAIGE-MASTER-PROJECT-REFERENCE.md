@@ -1104,6 +1104,148 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+
+### Billing Foundation C — the Solo Billing screen (PR #833, **RELEASED — merged `11997dac` 2026-09-03; no production write of any kind**)
+
+**What it is.** Foundation A shipped three seams and no renderer; nothing in `src/` imported the two
+hooks and no surface called `get_workspace_billing_authority()`. Foundation C mounts them at
+`Solo Settings › Billing`.
+
+**The correction.** The pre-C tab read `get_tenant_platform_subscription()`, joined it to the plan
+CATALOGUE and rendered `Solo · Active · $149.00/month · Renews 5 Aug 2027` for every workspace.
+Queried on prod 2026-09-03 (ref `xygzykjyynhzqytbqnzu`): all four live `platform_subscriptions` rows
+carry a NULL `stripe_customer_id` **and** a NULL `stripe_subscription_id`; three are `test_seed:
+true`, the fourth `revenue_class: promotional` / `provider_state: not_created`. **The catalogue is a
+price list, not a charge, and a seeded period end is not a renewal.** The catalogue is no longer an
+input to the screen, and a test walks every state reachable **without an entitlement projection**
+(which is every state reachable today) and fails on any `$` in the output.
+
+**The state machine** is `src/solo/billing-contract.ts`, over the Gate-1 approved vocabulary
+(packet §9.1) with three additions and four disclosed deviations. Promotional / trial / paid need an
+entitlement record that proves them; "Choose a plan" needs a successful read that returned
+`source: none`; every unavailable carries one of five distinct causes. **The entitlement projection
+is Foundation B** (packet §4.3 R11), so today every top-level Solo workspace resolves to
+`billing-unavailable · no_billing_account` — never a promotional grant (R13).
+
+**What an owner can now finish (§70.1):** designate the workspace's primary billing contact, add and
+remove a billing delegate, reload and find it held. R27 is stated on the surface (a designation is
+not ownership); so is the fact that no notice is sent, because no sender exists.
+
+**Reviewed independently three times (§39/§5), and it mattered.** Eight findings, five of them
+defects live on a pushed head: a failed roster read rendered as "this workspace has nobody
+eligible"; a write outcome survived a workspace switch; an unrecognised mapping state fell
+**through** the guards into "this workspace has a billing account" plus an enabled Manage-billing
+button; the same mapping fix was left half-applied on the portal card's copy; and the shared harness
+store had no migration. Two doctrine findings: the shipped **"Usage & limits"** card had been
+deleted with no call-out (**§58 — restored**), and **R22 was half-held** — `can_view_billing` was
+consumed nowhere, harmless then and a leak the moment Foundation B supplies a price, so the plan
+card now refuses a non-viewing Solo member.
+
+**Evidence:** 71 new tests; full suite 179 files / 2334 tests; `ci:tsc` ratchet unchanged at 13;
+build green; **116/116 rendered checks** across 4 viewports × 2 palettes plus the failed-read and
+read-only worlds. **Release status: `PARTIAL` / `Authenticated Runtime Proof Owed`.**
+
+**OWED (post-release audit backlog, `docs/delivery/billing-foundation-c-design.md` §9):** the
+authenticated owner drive on the deployed surface (§32.c); a **Gate-1 pass on the billing-contacts
+card**, which the approved prototype does not cover (§00 — CC does not fill a gap in the pack); a
+§57 divergence, since Settings › Connections still renders "Solo plan · LIVE" from the catalogue
+join this slice disqualifies; the now-dead `useSoloComms().billing` fetch; `plan-beta` collapsed
+into `plan-current`; and `past_due` having no approved wording.
+
+**Untouched:** the portal flag (off), every Stripe object, `platform_subscriptions`, the catalogue,
+Foundation B, and every shared module outside `src/solo/`.
+
+**Boundary correction, owner 2026-09-03 (post-release).** The "What you charge your clients" pointer
+card has **moved off Billing to Campaigns → Sales**. The owner's rule: *"Billing is for us, our
+platform billing the tenant"* — client billing is the other direction of money and belongs on the
+tenant's own commercial surface (§38 / §197 LAYER 2). *Invoices & payment method* was deliberately
+**not** moved: those are the tenant's invoices FROM Paige, which is platform billing by that same
+definition. Billing now renders four cards.
+
+### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
+
+**What it settles.** `docs/architecture/paige-mind-integration-matrix.md` records, per Solo surface,
+whether that surface can safely give PAIGE real tenant-scoped evidence — and what is in the way where
+it cannot. Read-only architectural truth; it changes no runtime surface, shared module, Rail, Spine or
+Mind implementation.
+
+**The headline, and it is not encouraging.** **No surface has authenticated, tenant-safe Mind evidence
+flowing today — including Pipeline.** The matrix carries two deliberately separate axes so that a
+`PARTIAL` readiness label can never be mistaken for a working capability: one for what the contract
+could carry, one for what a real owner can actually get, which is currently nothing anywhere.
+
+**Why.** Verified on prod: `paige_client_events` grants `authenticated` and `anon` **nothing**, so the
+Rail is readable only through a `SECURITY DEFINER` lens, and it holds **9 rows** platform-wide (live
+count 2026-09-03T09:35Z). On top of that, four structural constraints — the Rail is per-client, the
+resolver accepts only a client subject, the safe summary is a constant with enumerated facts, and
+evidence loads only inside a client-scoped Chat turn — leave the registry at **exactly one capability**
+and put most departments behind Change Requests that have not been raised.
+
+**§13 — two tracker/record divergences this entry does NOT resolve, because only the owner can.**
+(1) **#746 is CLOSED on GitHub** (2026-09-02T18:21:05Z, merged PRs #785 and #801), while §10 of this
+document at the *"Owner-ruled priority order"* block states "**#746 is still OPEN**" pending
+authenticated owner runtime proof. The functional position is agreed — a safe server resolver is
+deployed and no owner-facing consumer uses it — only the issue state differs.
+(2) The same ruling lists **item 5 as "Calendar as the next bounded read-only Spine capability"**, while
+the Mind Wave 0 direction confirmed Calendar **BLOCKED** and prohibited Calendar work this wave.
+
+**Recommended next Mind step is not a build:** the authenticated two-Solo-tenant drive of the one
+capability that already exists. **Its prerequisite is not #746** — the lens is `SECURITY DEFINER` and
+reads the Rail directly, so the browser grant never applied to it. The prerequisite is that a
+`campaigns_pipeline` Rail row must exist at all: production holds **zero**, so the drive would today
+prove only the empty-result path. If a build is wanted behind it, raise **SCR-2** (non-client subject
+types) naming Analytics as its reference consumer — recording honestly that Analytics needs **SCR-3 as
+well**, since its counts are unbounded and the contract admits only enumerated values. **Clients is
+explicitly not recommended** despite being the only other client-subject surface: the owner's own UI
+write emits no Rail event, so a capability built today would let PAIGE state a history that omits
+everything the owner did by hand.
+
+**Raised, not implemented, and routed away from Mind:** #786 and #787 (Rail producers) · #788
+(Connections/security, tracked privately).
+
+### Billing Foundation A — workspace billing identity + designated billing contacts (PR #816, **MERGED `f455d8a5` 2026-09-03 under owner Gate B; migration `20261045000000` APPLIED on prod, edge functions deployed**)
+
+**Live state, verified on prod 2026-09-03 (not inferred from a green pipeline):** `20261045000000` is in
+`supabase_migrations.schema_migrations`; the 3 tables, 12 functions, 6 policies and the guard triggers exist
+when queried directly; `platform_billing_accounts`, `_contacts` and `_notification_log` each hold **0 rows**
+(reconcile found 0 candidates, exactly as predicted — the 4 live `platform_subscriptions` rows carry NULL
+customer ids); no proof fixture persisted. Edge: `platform-billing-portal` v2 ACTIVE, `customer-portal` v44,
+`stripe-webhook` v50, all deployed by `deploy-edge-functions.yml` on the merge commit.
+**`PLATFORM_BILLING_PORTAL_ENABLED` was NOT flipped** — the portal refuses every call `not_enabled`.
+**Nothing is owner-visible: no screen mounts the hooks, and no surface calls the authority read** — that is
+Foundation C, which is not built. **No email was sent; no sender exists.**
+
+**What it is.** The first Platform Billing slice after the Gate 1 packet (#803): one server-authoritative
+workspace→Stripe-customer mapping (`platform_billing_accounts`), the strict money-path resolver
+`billing_active_tenant_id()`, the one authority read `get_workspace_billing_authority()` (Owner-only
+`can_manage_billing` / `can_view_billing`; `billing_account_state` absent / ambiguous / mapped /
+not_applicable; `billing_contact_state`; `paid_activation_ready`), the reconcile seam, a default-off hosted
+portal function, the legacy `customer-portal` refusal for platform customers, mapping upserts at both
+webhook write sites — **plus the owner's 2026-09-02 billing-notification ruling designed in:**
+`platform_billing_contacts` (**primary billing contact** = a verified, current, active workspace Owner;
+**billing delegate** = a verified, current, active Admin chosen by an Owner — functional designations
+that never create, change, transfer, imply or record legal ownership, equity, corporate/trust or
+co-owner status (owner correction R27, 2026-09-02); Owner-only designate/revoke RPCs, audited), `platform_billing_paid_activation_ready(tenant)` for the later
+activation release (**no caller yet: today's `platform-subscription-checkout` still activates a paid plan without
+a designated primary billing contact — wiring the gate is the activation release's scope**), and the
+`platform_billing_notification_log` ledger with the explicit event catalogue.
+**Delivery is NOT wired; no email is sent by anything in this slice.**
+
+**Evidence classes (kept separate).** Automated: vitest 1913/1913 (25 new), Deno 31/31. Static: tsc ratchet
+13/13, eslint, `lint:definer-fns`, `lint:views`, `lint:managed-schema`, `lint:tier-features`, migration lint
+(1 answered warning), `deno lint`; `deno check` only via CI's Deno ratchet (local esm.sh 404). Runtime,
+rollback-proven on prod on the final migration text: 64/64 properties (C1–C2, P3–P64) + 5/5 mutants caught,
+nothing persisted (re-probed). Independent review of the head: two FIX-THEN-SHIP reports, all findings integrated.
+**No email was sent; no sender exists.** **UNVERIFIED:** authenticated owner drive of the deployed portal
+(flag stays off); local `deno check` on supabase-js-importing functions (esm.sh 404 through the proxy).
+
+**What Gate B for this slice asks for, and nothing more:** merge + migration apply + edge deploy with
+`PLATFORM_BILLING_PORTAL_ENABLED` unset. No Stripe object, no price, no charge, no entitlement record, no
+recipient email. Prod backfill inserts **zero** rows (0 reconcile candidates; the 4 `platform_subscriptions`
+rows carry NULL customer ids). Next: Foundation B (webhook classification + subscription truth, A3/A4),
+Foundation C (truthful Solo Billing screen; mounts both hooks), then the Promotional Beta Access rollout
+packet with its own Gate B. Design: `docs/delivery/billing-foundation-a-design.md` (v3.1). Spine reads a safe
+subset only: `docs/handoff/platform-billing-spine-source-contract.md` (PROPOSED/UNMERGED; refreshed on merge).
 ### PAIGE Mind — first Pipeline evidence slice (SUPERSEDED 2026-09-02 — merged, deployed and applied; see §4)
 
 > **Corrected in place, not deleted (§58).** This entry was written while the work was an
@@ -1177,6 +1319,119 @@ Trust Compass consumer, `compass.tsx:377`, does distinguish — which is why the
 is therefore broken for every department that emits to the Rail**, and `paige_audit_log` has no Solo
 reader either.
 
+**A safe server-side Rail reader is now SHIPPED and deployed — and the verdict above still stands
+(2026-09-02).** `public.get_solo_rail_activity(p_limit integer)` is live on production
+(`20261042000000`, then the #794 remediation `20261043000000`; both confirmed in
+`schema_migrations`). It is `SECURITY DEFINER`, takes **no tenant parameter**, returns 11 reviewed
+display fields, and **raises `42501 RAIL_FORBIDDEN` rather than returning an empty timeline** on
+refusal — so a denied caller can no longer be mistaken for an idle workspace. The projection omits
+`payload`, `tenant_id`, `contact_id`, `actor_user_id`, `ref_table` and `ref_id`; it **does** return
+the event row's own `id`, so the accurate claim is that it exposes **no tenant, client, actor or
+source-record identifier and no producer payload** — not that it carries no identifier at all. It deliberately does **not** re-grant browser SELECT on
+`paige_client_events`: that revoke is what keeps the same-shaped flaw in the `pce_staff_read` policy
+unreachable, so the fix for a Rail screen is never a table grant.
+
+**Every Rail READER is now authority-correct and refuses explicitly (verified on the deployed bodies,
+2026-09-03).** Two migrations landed after the paragraph above was written and are recorded here
+because they were not — see the §13 note that follows:
+
+| Migration | PR | What it changed |
+|---|---|---|
+| `20261044000000` | #813 (closes #804) | `get_client_rail` reads the caller's role from an active `tenant_members` row **of the same workspace the rows come from**, so a staff role earned in another tenant no longer satisfies it; adds the minimal `get_client_rail_for_chat` projection |
+| `20261049000000` | #834 | `get_platform_rail` raises `42501 RAIL_FORBIDDEN` instead of `RETURN;`, so a denied platform caller is no longer indistinguishable from an empty platform |
+
+Both confirmed present in `schema_migrations` on prod. The resulting state: **no Rail reader carries
+the tenant-agnostic `has_any_role()`, and no Rail reader answers a denial with an empty set.** The
+Rail **writer** `record_rail_event` still gates on `has_any_role()` — tracked as **#824**, parked; it
+is an integrity/attribution exposure inside a single workspace, not a disclosure or cross-tenant one,
+and its escalation population measures zero.
+
+**§13 — this entry is a late correction, and the lateness is the point.** §0 and §66 require the
+master record to move in the SAME PR as the ship. Neither #813 nor #834 did that, so between
+2026-09-02 and 2026-09-03 this file described a Rail reader surface two migrations behind production
+while reading as current. Recorded rather than quietly backfilled, because a record that silently
+catches up teaches nothing about why it fell behind.
+
+> **CORRECTED 2026-09-03 — Slice B repaired exactly this (§58: the paragraph below is kept as
+> written, not deleted, because it was true when written).** All four owner-facing Rail consumers
+> now call the deployed resolvers, and each distinguishes loading, refusal, unavailable, empty and
+> populated. See the Slice B entry below.
+
+**Still NOT repaired by any of the above, and the reason the verdict at the top of this section
+stands: no OWNER-FACING consumer calls any of these resolvers.** `useRailEvents.ts` and
+`useSoloActivityFeed.ts` still read `paige_client_events` directly, and the browser still holds no
+SELECT on it, so the owner-visible history surfaces are exactly as broken as before.
+
+**Be precise about "nothing uses it", because that is not true of the whole Rail.** `get_client_rail_for_chat`
+**does** have a live production consumer: the PAIGE Chat edge function calls it at
+`supabase/functions/paige-ai-chat/index.ts:4662` (hydration) and `:8384` (tool dispatch), wired by
+#813. So the accurate split is: the **Chat** consumer was repointed onto a safe resolver and works;
+the **owner-facing history** consumers were not, and are Slice B — blocked on the #776/#729 ownership
+seam. `get_solo_rail_activity` and `get_platform_rail` are the two resolvers with genuinely zero
+callers today.
+
+### Rail Slice B — the owner-facing consumers call the safe readers (2026-09-03, no migration)
+
+**Shipped.** Four owner-facing consumers moved off the direct table read and onto the deployed
+resolvers. This is a **frontend-only** change: no migration, no new grant, no policy edit.
+
+| File | Was | Now |
+|---|---|---|
+| `src/hooks/useRailEvents.ts` | `.from("paige_client_events")` (tenant **and** client scope) | `get_solo_rail_activity(p_limit)` for tenant · `get_client_rail(p_contact_id, p_limit, 'client')` for client |
+| `src/solo/data/useSoloActivityFeed.ts` | `.from("paige_client_events")` | `get_solo_rail_activity(p_limit)` |
+| `src/components/paige/PaigeRailFeed.tsx` | `{ events, connected }` — error discarded | consumes `historyStatus`: loading · refused · unavailable · empty · populated |
+| `src/components/app/ClientActivityFeed.tsx` | `{ events, connected }` — error discarded | same five states, in client-facing language, with no SQLSTATE or server string on the surface |
+
+**The measurement that makes this the whole repair, verified read-only on prod `xygzykjyynhzqytbqnzu`
+2026-09-03:** `has_table_privilege('authenticated','public.paige_client_events','SELECT')` = `false`.
+Every direct read was **refused in production, for every owner, always** — and the two
+`useRailEvents` consumers rendered that refusal as *"Nothing across your clients yet"* and
+*"Nothing yet"*. The feeds were not sparse; they were denied and said the opposite. Both resolvers
+are `EXECUTE`-granted to `authenticated` and **not** to `anon`.
+
+**§9 tightening, not a widening.** The direct read was governed by `pce_staff_read`, which carries
+the §59 global-role trap (`has_any_role` is tenant-agnostic while `current_user_tenant_id()` honours
+`active_tenant_id` at any membership role), so a plain member of one workspace holding a global
+`coach`/`admin` role could read that workspace's whole tenant Rail. `get_solo_rail_activity` requires
+an active `tenant_members` row **of the resolved workspace** at owner/admin/coach. The policy itself
+is unchanged and still carries the trap; it is simply unreachable from these four consumers. The two
+Analytics readers of the same table remain tracked as **#802**, routed to Analytics.
+
+**Request safety.** Both hooks carry a monotonic request counter, bumped **during render** on a scope
+change and again per read, so a slow answer for a workspace already left is discarded rather than
+winning by arriving last, and the previous workspace's events are never painted under the new one's
+heading — not even for one frame.
+
+**Evidence, by class.** Automated: full suite `180 files / 2351 tests` green, including a new
+five-case regression suite (successful history · empty history · denied read · workspace switch ·
+stale response) driven through the **real** components, each mechanism deliberately falsified to
+prove the tests fail on the defect they name. Static: `tsc` clean, ESLint clean, `lint:views` /
+`lint:definer-fns` / `lint:tier-features` green. Production catalog: the grants above, read-only.
+**`UNVERIFIED` — authenticated owner runtime proof**: no browser drove the deployed surface as a
+signed-in owner in this session, so #746 stays open until that proof exists.
+
+**Ownership.** The #776/#729 consumer-ownership seam was resolved by owner decision on 2026-09-03.
+Nothing was adopted from either branch: all four files were read from current `main` and edited in
+place. Transfer record in task #29.
+
+**Why `UNAVAILABLE` is still the correct status.** No owner-facing consumer calls the resolver yet —
+`useRailEvents.ts` and `useSoloActivityFeed.ts` still read the denied table directly, re-measured on
+production after both migrations. The remaining *misreporting* is narrower than the read failure: the
+two `useRailEvents` consumers collapse a refusal into an empty feed, while `compass.tsx:377` and
+`team.tsx:235` both render an explicit `role="alert"` failure. **All four are denied; only two of them
+lie about it.** Failure *visibility* and *manual recovery* are separate questions: `team.tsx` offers a
+*Try again* control in every layout, `compass.tsx` only above 1020px — `solo-tokens.css:173` hides its
+retry-bearing branch below that and the foldout replacement (`compass.tsx:440`) has none. **Automatic
+recovery is present regardless:** `useSoloActivityFeed.ts:193–198` re-reads every 15s while visible and
+on window focus, so the missing piece is the *visible manual control*, not recovery. Tracked as a Slice B
+scope item on #746, not as a second misreporting surface. The two Analytics readers of the same denied
+table (`useClientEngagement.ts:48`, `CohortRetentionTable.tsx:74`) discard the error entirely and render
+it as "Insufficient data" — a separate slice, tracked as **#802**. The gap changed shape rather than closing: **before, no safe path
+existed; now a safe path exists and nothing uses it.** Issue **#746 stays open**, and closing it also
+requires authenticated owner runtime proof, not a deployed function. Full record, including the #794
+cross-workspace defect this foundation shipped with and the three lessons from it:
+`docs/brain/paige-spine-and-rail-state.md`.
+
 **Pipeline governance — three findings, follow-up work and NOT capability:** the Spine's Pipeline
 evidence is a **silent subset** (`deal_move_stage` and `pipeline_attach` move deals with no Rail
 event, so PAIGE cannot see her own move); `deal_move_stage` never consults `move_policy`; and
@@ -1191,8 +1446,28 @@ a held request is unresolvable and permanently blocks archiving its stage or pip
 4. **Stale doctrine correction** (done for the Trust Compass claims; see §10).
 5. **Calendar as the next bounded read-only Spine capability.**
 
+> **CORRECTED 2026-09-02 — items 1 and 2 have moved; the ruling above is kept as written.** The Rail
+> recovery path in item 2 was taken by **PR #785** (`20261042000000`) and its **#794 remediation, PR
+> #795** (`20261043000000`), both merged and deployed — **not** by #644, which remains open and
+> unauthorized on the same terms stated above. **#746 is still OPEN**: the merged work is the safe
+> server resolver only, and no owner-facing consumer has been moved onto it, so item 1 (**#729**)
+> remains blocked — its repair reads the direct table, which is still refused by design. What changed
+> is that the unblock is now a consumer change rather than a missing capability. Closing #746 also
+> requires authenticated owner runtime proof. Order 3–5 is unaffected.
+
 **Not authorized by this record:** no Calendar evidence, Pipeline mutation, provider work, or other
 implementation begins from it.
+
+### Platform Billing — Gate 1 packet delivered and APPROVED 2026-09-02 (Phase 1, read-only; NOTHING BUILT)
+
+- **Boundary (owner-ruled 2026-09-02):** Platform Billing = what the Solo WORKSPACE pays PAIGE (base subscription · included allowances · verified usage/telephony charges only if later approved · paid Marketplace add-ons · invoices, payment methods, status, account credits, entitlement), home Settings → Billing plus operator configuration; the billing account belongs to the workspace, never a staff member. Client Billing = what a Solo charges its own customers (invoices, quotes, payments, balances; Offer Catalog as source; tenant's own processor, §38), home Sales — **never modelled, migrated, or implied inside Settings → Billing.**
+- **Delivered (docs only, zero code, zero migrations, zero Stripe objects):** `docs/delivery/platform-billing-gate1-packet.md` (with a §2.7 per-tier availability table, §51/§56) · `docs/doctrine/surface-cards/billing.md` (truth label `PARTIAL`) · `docs/prototypes/platform-billing-gate1.html` (34 states, throwaway) · `docs/handoff/platform-billing-marketplace-addon-handoff.md`.
+- **What exists today (verified on `main` `1fb7928`):** Settings → Billing reads plan/status/price/renewal via `get_tenant_platform_subscription()`; Invoices & payment method and Usage & limits are honest `UNAVAILABLE` cards; no action exists on the surface. Plans: `solo` $149/mo, `agency` $397/mo, `enterprise` custom (migration-seeded; monthly Stripe Price only). Sole writer of `platform_subscriptions` is the Stripe webhook. `platform_invoices` has no writer. Metering: `llm_tokens` + `tts_char` in `platform_usage_events`; no allowance/threshold model; no tenant-facing usage read. Marketplace: one-time paid checkout exists; recurring add-ons do not; Solo entitlement actions deliberately `UNAVAILABLE`. Operator Revenue surfaces are spec shells with null figures. **0 paying tenants.**
+- **Beta direction ($149 reference → $74.50 beta, defined included allowance, no automatic overage until real usage/cost evidence) is modelled as a PROTOTYPE STATE only.** The eight decisions D1–D8 are ruled or deferred per packet §4.2 (D3, D5–D8 ruled; D1, D2, D4 deferred to the Beta activation packet). As originally put — D1 eligibility · D2 start/end/grandfather · D3 separate Stripe Price vs promotion vs other · D4 after-beta state · D5 exact allowance (units must be a measured meter — tokens today) · D6 warnings/limits · D7 usable/limited/paused after exhaustion · D8 overage automatic/opt-in/unavailable (recommended: unavailable during beta). None invented.
+- **Audit findings, all OPEN (packet §3):** A1 HIGH email-keyed `customer-portal`/`check-subscription` (person, not workspace; no admin gate) · A2 HIGH `install_marketplace_item` ungated on `price_cents` (handed to Marketplace owner) · A3 MEDIUM invoice/refund webhook arms not discriminated on `platform_plan_slug` (§197 cross-layer into `tier_state`) · A4 MEDIUM sub-account "no subscription" misreport · A5 LOW/corrected — the `credit_pulls_per_month` seed is already stripped on `main` by `20260726140000`; prod rows UNVERIFIED (an earlier draft mis-reported it as open, caught by the compliance pass) · A6 `platform_invoices` unwritten · A7 no annual Price · A8 telephony `charge_wired:false` (honest).
+- **Proposed sequence:** 1 Billing Foundation → 2 Beta Base Plan + truthful screen → 3 Included-usage visibility (no automatic overage) → 4 Marketplace paid add-ons → 5 additional meters one at a time under the eight-field meter contract. Enforcement of any limit lives at the action-bus clamp (§67/§68), via a Spine Change Request, never in the Billing screen.
+- **Evidence:** static/code for every audit row; prototype state coverage driven headless by the committed `docs/prototypes/platform-billing-gate1.drive.mjs` (34/34 states, structural-harness class, transcript in the packet §11); authenticated runtime NOT driven; UNVERIFIED — prod meter drain (#737), live `stripe_price_id` resolution, which Stripe account the platform rail uses in prod.
+- **GATE 1 APPROVED 2026-09-02 (rulings R1–R17 in packet §4.2–§4.4).** Owner-only billing acts (R2); Stripe-hosted portal (R3); Solo is the canonical billing experience, Operator screens control-plane only (R9); three beta offers — $74.50 paid beta plan (provider release later), 30-day $0 trial, Operator-granted promotional access — behind ONE entitlement projection with a documented precedence rule (R10/R11); **all currently eligible top-level workspaces go onto Promotional Beta Access via explicit records in a dedicated, reversible, separately Gate-B'd rollout after Foundation C — never as a fallback, never counted as revenue (R12–R15)**; paid-subscriber release discipline (R16). Twelve required Solo states (packet §9.1). **Sequence:** #803 docs merge → Foundation A → B → C → promotional rollout packet → its Gate B → trial / paid-beta provider releases. Platform Billing is a standing workstream; every slice carries an exact-head independent review and its own Gate B. **Nothing is merged, deployed, migrated, granted, or created in Stripe by this entry.**
 
 ### Multi-membership login account picker (Gate 1 approved 2026-09-01; local branch, NOT LIVE)
 
@@ -1630,6 +1905,103 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+ - **2026-09-03 — I released a decision-log entry describing a fix, and shipped none of the fix.**
+   PR #852 (`759ad8da`) was titled *"The MCP guard's RPC classifier carried its own, shorter removal
+   vocabulary"*, carried a full account of the defect and the repair in its body and in the brain
+   ledger, and changed **exactly one file: `docs/brain/decision-log.md`.** The lint change was never
+   in the commit. It had been made as an uncommitted working-tree edit, and was lost across a branch
+   switch I made to rebuild the frontend for an unrelated production check; by the time I ran
+   `git add -A` the only modified file left was the ledger.
+   **CI passed, and could only have passed:** the guard file was byte-identical to `main`, so its
+   existing self-test was green — and my new cases, which would have failed, were not in it either.
+   A green suite proves the code it ran; it says nothing about code that never arrived.
+   **What caught it was verifying against the RELEASED artifact rather than the merge.** After the
+   squash I re-ran the classifier against `origin/main` and the five previously-invisible words still
+   returned zero. The self-test said pass and the behaviour said unchanged; the behaviour was right.
+   Had I stopped at "CI green, merged", the ledger would now carry a confident, dated, false record
+   of a security fix — the precise failure mode §13 exists to prevent, committed in the very entry
+   that was correcting a different one.
+   **The rule this earns: a claim about a change is worth nothing until the diff is read.** Not the
+   PR title, not the commit message, not CI — `git show --stat` on the merged commit. A release whose
+   file list does not contain the file the release is about has not happened.
+   Fix genuinely shipped in the follow-up; the released head is recorded there.
+
+ - **2026-09-03 — I removed four fabrications from the Solo Trust Compass and introduced three more
+   in the same commit, by swapping the DATA under copy I left unchanged.** #831 replaced ten invented
+   departments carrying hardcoded trust floats with a real read of `paige_departments` and
+   `paige_action_kinds`. The totals the page renders (`tot`, `all`) then counted **catalogue entries**
+   — action *types* — while the surrounding sentences still read *"{all} actions this week · {auto}%
+   she handled alone"*, *"Today · {tot[0]} performed"*, and, on every orb, *"— auto-performed"* over a
+   tier drawn from `Math.random()`. `paige_action_kinds` records no execution and no timestamp, so the
+   period, the count of things done, and the past-tense verb were all invented from a table that
+   cannot supply any of them. **The lesson is narrower and sharper than "check the copy": replacing a
+   fixture with a real read changes what every string ON that surface means, and a caption that was
+   true about the fixture is a new fabrication the moment the data underneath it changes.** Two more
+   from the same commit: the three header percentage badges were left ungated while the page subtitle
+   was gated, so an absent read rendered `null% autopilot … 100% escalated` — a governance claim
+   manufactured out of a missing number; and the instruction *"Drag a ring to change autonomy"*
+   survived the removal of the drag write it described. **None of these were caught by my own
+   verification.** They were found by the independent review requested against the merged commit
+   (§39), which is the layer working as designed — and the reason a green proof of the thing I
+   thought to test is never a proof of the change. Corrected in the follow-up PR, with each fix
+   proven non-vacuous by reverting it and watching a test go red.
+ - **2026-09-03 — an honest sentence inside a fabricated frame is still a fabrication.** The widened
+   sweep found that #831 had ADDED the correct note — *"nothing in the platform records a day-by-day
+   history of what Paige did"* — inside a foldout still titled *"Your trust has grown 14% in 30 days"*
+   and subtitled *"Four departments moved outward. None moved back."*, reached by two buttons reading
+   `+14%`. **I wrote the disclaimer and left the claim it disclaims wrapped around it.** The frame is
+   what the reader sees first, and a note further down does not retract a title. Two more from the
+   same family: `MiniCompass` was given the label *"because you have"* by Systems and by the Vault, so
+   the rendered sentence credited the workspace for a policy the component's own next line calls "not
+   a setting this workspace chose"; and Systems promised *"She will handle this one herself"* from a
+   platform-default lane — a lane is a policy, not a commitment about what will happen in a workspace.
+ - **2026-09-03 — the same PR read tenant-authored rows into a number captioned "the platform's
+   default".** `useSoloTrust` selected `paige_action_kinds` with no `tenant_id` filter. The
+   `kind_read` policy is `USING (enabled AND (tenant_id IS NULL OR tenant_id =
+   public.current_user_tenant_id()))`, so RLS deliberately returns a workspace's OWN authored kinds
+   alongside the platform's. Every row on prod is `tenant_id IS NULL` **today**, and I treated that
+   measurement as a guarantee — which is the same mistake in a different costume: a measurement of
+   the current data is not a property of the query. The read now filters to `tenant_id IS NULL` and
+   the pure builders drop a tenant-authored row independently, so a future query edit cannot silently
+   fold a workspace's own policy into a figure that says it is the platform's.
+
+ - **2026-09-02 — a tier gate I shipped as the headline fix did not fix the reported flow, and I said
+   so before Gate B rather than after.** The Solo account-context repair (#811) originally led with
+   *"`/business/*` had no tier gate; adding one closes the defect."* The first clause is true and the
+   hole was real. The second is false: in the reported flow the parked context **is** a sub-account,
+   so `/admin` Gate B resolves `tierKey === "sub_account"` and the new gate **allows** it. The gate
+   only ever catches a Solo-tier caller at a `/business` URL — a state nothing in the app routes to.
+   What actually fixes the flow is the entry rule: a fresh sign-in already asked which workspace
+   (`Auth.tsx` + `shouldOfferAccountPicker`), while a RESTORED session came through `/admin` and
+   silently resumed whichever context `active_tenant_id` was parked on; `/admin` now runs the same
+   shipped predicate. **The failure mode worth naming is not the wrong gate — it is that a plausible
+   mechanism was written up as a proven one.** The claim would have survived review: it type-checked,
+   it tested green, its own tests passed, and it described a genuine defect. It only fell over when the
+   chain was walked end to end from the door the owner actually came through. §70 restated: reading
+   that the code is wired is not evidence the person can finish, and a fix for *a* defect is not a fix
+   for *the* defect.
+ - **2026-09-02 — a scoped test run is not a test run.** The same PR gated `/agency/*` as well, and
+   that gate destroyed agency act-as: during a sub-account drill-down `activeTenant` becomes the
+   CHILD while authority comes from the PARENT, so a parent-first tier read ejected operators out of
+   the `/agency/{parent}/sub/{child}/…` path built to serve them. Two PRE-EXISTING integration tests
+   modelled exactly that flow and would have caught it locally — but the local run was scoped to
+   `src/solo` and `src/lib/auth`, so CI found it instead. Reverted byte-identical; the hole it was
+   reaching for is filed (#814) rather than closed by a guess about a tier outside the brief. The
+   habit this replaces: running the tests near the code you touched, when the regression is by
+   definition somewhere you were not looking.
+ - **2026-09-02 — the §39 peer-gate returned BLOCK on a change whose own suite was green, and was
+   right four more times.** Beyond the CI regression it found: a null `activeTenant` on a settled
+   context being classified as tier `solo` (a null is "we do not know yet", never a tier — and
+   `switchTenant` produces exactly that window, so the guard would have ejected an owner mid-switch);
+   `/solo/*` carrying the exact mirror of the hole `/business/*` was being fixed for; a docblock
+   claiming the exit control closed the "parked with no way back" half while it is not mounted in the
+   shell that strands people; and that control counting a different population than the chooser it
+   navigates to, so the button could be a silent round trip. It also caught that the new
+   `shouldOfferWorkspaceExit` was a byte-for-byte duplicate of the shipped `shouldOfferAccountPicker`
+   (§18). **None of these were reachable from the author's own assertions, which is the entire point
+   of the gate** — and the docblock finding is the third time on record that prose in this repository
+   asserted a protection the code did not implement.
 - **2026-09-01 — multi-tenant email identity and workspace identity were previously collapsed into one redirect.** A Google identity can hold several independent Paige memberships, while the agency parent/sub-account switcher governs a different relationship. The approved correction keeps those authority domains distinct: Google selects the person, Paige intersects that person's active membership rows with RLS-visible tenants, and the existing guarded active-tenant write commits the chosen workspace. This is a Gate 1 implementation record only; live authenticated proof and Gate 2 remain outstanding.
 
 - **2026-09-01 — the Pipeline draft entry still claimed optional starter creation after the owner
@@ -2291,3 +2663,17 @@ The tenant prototype now exposes canonical Calendar and Conversations mounts alo
   history cannot be read, and the current owner-facing consumer treatment is not reliable enough to
   distinguish denied history from empty history.* **The lesson is the one this log exists for: a hook
   returning an error is not a person seeing one, and only the consumer settles that.**
+
+### Solo Settings → Setup durable persistence repair — release candidate (2026-09-02)
+
+The existing six-section Setup design is preserved. The repaired shared Solo flow now has a real
+tenant-scoped edit/save/readback contract, honest validation, pending, failure/retry, conflict,
+cancel, stale-response, account-switch, and read-only states, plus field provenance and global
+legal-entity support. Business ownership records never change Team membership or workspace
+authority. Owner versus Admin permission is server-enforced. Full registration identifiers are
+Vault-only and masked on read; legal ownership, percentages, exact addresses, private contacts,
+and representative IDs are excluded from PAIGE and Rail by default. The unsafe legacy whole-brief
+PAIGE persona projection is removed pending a separately approved safe Spine contract. The exact
+migration and checked-in real-role rollback proof passed against production schema. Truth remains
+`PARTIAL` until exact-head deployment and authenticated Owner save, reload, reopen, and account
+switch proof. Internal `paige_audit_log` attribution is not Rail.

@@ -47,6 +47,12 @@ type AgreementTemplate = {
   required_at_signup: boolean;
   category: string | null;
 };
+type RawAgreementTemplate = Omit<AgreementTemplate, "merge_fields"> & { merge_fields: unknown };
+type RpcResult<T> = { data: T | null; error: { message: string } | null };
+const callRpc = supabase.rpc as unknown as <T>(
+  name: string,
+  args: Record<string, unknown>,
+) => PromiseLike<RpcResult<T>>;
 
 type TenantAgreementVersion = {
   id: string;
@@ -132,7 +138,7 @@ const AgreementsAdmin = () => {
     const primary =
       memberships?.find((m) => m.role === "owner" || m.role === "admin") ?? memberships?.[0];
     const tId = primary?.tenant_id ?? null;
-    const tName = (primary as any)?.tenants?.name ?? "";
+    const tName = (primary?.tenants as { name?: string } | null)?.name ?? "";
     setTenantId(tId);
     setTenantName(tName);
 
@@ -152,12 +158,12 @@ const AgreementsAdmin = () => {
             .eq("is_active", true)
         : Promise.resolve({ data: [] as TenantAgreementVersion[] }),
       tId
-        ? supabase.from("tenant_legal_profile").select("*").eq("tenant_id", tId).maybeSingle()
+        ? callRpc<TenantLegalProfile>("get_tenant_legal_profile_owner", { _tenant_id: tId })
         : Promise.resolve({ data: null }),
     ]);
 
     setTemplates(
-      ((tplRes.data ?? []) as any[]).map((t) => ({
+      ((tplRes.data ?? []) as RawAgreementTemplate[]).map((t) => ({
         ...t,
         merge_fields: Array.isArray(t.merge_fields) ? t.merge_fields : [],
       })),
@@ -198,9 +204,10 @@ const AgreementsAdmin = () => {
     }
     setSaving(true);
     const payload = { ...profile, tenant_id: tenantId };
-    const { error } = await supabase
-      .from("tenant_legal_profile")
-      .upsert(payload, { onConflict: "tenant_id" });
+    const { error } = await callRpc<null>(
+      "save_tenant_legal_profile_owner",
+      { _tenant_id: tenantId, _profile: payload },
+    );
     setSaving(false);
     if (error) {
       toast({ title: "Save failed", description: error.message, variant: "destructive" });

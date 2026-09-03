@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { upsertBillingAccount } from "../_shared/platform-billing.ts";
 
 // Legacy Stripe account (original PaigeAgent account)
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
@@ -760,6 +761,23 @@ serve(async (req) => {
                       rows: upserted?.length ?? 0,
                     });
 
+                    // Billing Foundation A: record the VERIFIED customer ↔ workspace mapping
+                    // (design v2 §4.4). Never overwrites a different existing mapping — that is
+                    // audited as a conflict for an operator. A failure here is logged and never
+                    // undoes the subscription write above.
+                    if (stripeCustId) {
+                      const mapped = await upsertBillingAccount(supabaseAdmin, {
+                        tenantId,
+                        stripeCustomerId: stripeCustId,
+                        stripeAccount: verifiedAccount === "v2" ? "v2" : "legacy",
+                        source: "checkout",
+                        actorUserId: actorUserId ?? null,
+                      });
+                      if (mapped.outcome !== "inserted" && mapped.outcome !== "already_mapped") {
+                        logStep("Platform billing account: not mapped", { sessionId: session.id, tenantId, outcome: mapped.outcome, code: (mapped as { code?: string }).code ?? null });
+                      }
+                    }
+
                     // Mark a super-admin invite consumed (idempotent per sub;
                     // replay-safe). Best-effort — a consume failure must not undo the
                     // subscription. actor is the subscribing tenant admin.
@@ -955,6 +973,21 @@ serve(async (req) => {
                         status: platformStatus,
                         rows: upserted?.length ?? 0,
                       });
+
+                      // Billing Foundation A: the onboarding path is the dominant new-customer
+                      // path, so the mapping is recorded here too (design v2 C4 — both sites).
+                      if (stripeCustId && newTenantId) {
+                        const mapped = await upsertBillingAccount(supabaseAdmin, {
+                          tenantId: newTenantId,
+                          stripeCustomerId: stripeCustId,
+                          stripeAccount: verifiedAccount === "v2" ? "v2" : "legacy",
+                          source: "checkout",
+                          actorUserId: actorUserId ?? null,
+                        });
+                        if (mapped.outcome !== "inserted" && mapped.outcome !== "already_mapped") {
+                          logStep("Platform billing account: not mapped", { sessionId: session.id, tenantId: newTenantId, outcome: mapped.outcome, code: (mapped as { code?: string }).code ?? null });
+                        }
+                      }
 
                       // task #66: mark the staged intake CONSUMED (audit trail, §13 —
                       // retained, not deleted). Only the row that MATCHED this purchase

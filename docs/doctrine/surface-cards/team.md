@@ -106,7 +106,7 @@ access. Two entry points, one seam — the Team screen, and PAIGE in the rail be
 | Invitations | `tenant_invite_tokens` where `kind = 'team'` |
 | Identity | `profiles` (display name), `auth.users` (email, last sign-in) |
 | Read | `get_solo_team_workspace(_search,_permission,_limit,_offset)` · `get_paige_team_context()` |
-| Write | `set_solo_team_member_work_profile` · `set_solo_team_member_permission` · `create_/resend_/revoke_solo_team_invite` (service-role only, behind the `solo-team-invitations` edge function) |
+| Write | `set_solo_team_member_work_profile` · `set_solo_team_member_permission` · `create_/resend_/revoke_solo_team_invite(_actor, _expected_tenant_id, …)` (service-role only, behind the `solo-team-invitations` edge function; authority proved by `solo_team_invite_authority`) · `remove_solo_team_member` (Owner-only, **applied to production as `20261048000000`; owner drive owed**) |
 
 All are `SECURITY DEFINER` with the authority check **in the body**, so the same refusal applies
 whether the request came from the screen or from a sentence.
@@ -126,6 +126,7 @@ from the expanding rail (`openPaige` → `expandRail`), beside whatever screen i
 | Save | Reads back the **stored** values, not the submitted ones |
 | Cancel | Modal dismiss restores focus to the invoking control |
 | Retry | Invitation resend/revoke per row; roster retry on a failed load |
+| Remove | Owner-only, last in the member editor: an armed confirmation naming the person and the workspace, then success / refusal / failure+retry / already-gone, announced in the roster after the dialog closes (**shipped; owner drive owed**) |
 | Denied | "You don't have access to this team" — distinguished from a load failure |
 
 ## What PAIGE can read
@@ -163,6 +164,41 @@ the canonical server-verified approval card, and `team_set_work_profile` stays `
 
 `team_set_work_profile` is `ordinary` — reversible, in-tenant, and structurally unable to reach
 `permission`.
+
+## Removing someone — SHIPPED, with the owner drive still owed
+
+**Truth label for this capability alone: `SHIPPED`.** PR #799 merged as `5ca7893d` and
+`20261048000000` is applied to production — confirmed by live query, not by the merge having
+happened: the `schema_migrations` row exists, `remove_solo_team_member(uuid,uuid)` resolves, and
+`tenant_members` no longer grants INSERT/UPDATE/DELETE/TRUNCATE to `anon` or `authenticated` while
+retaining `SELECT`. A control check (`public.tenants`, untouched, still grants `anon` TRUNCATE)
+proves those withdrawals are this migration's effect rather than the environment's baseline.
+
+**`Authenticated Runtime Proof Owed`.** No authenticated owner drive has been performed, so nobody
+has yet watched a person complete this flow end to end. Applied is not driven. That proof is owed
+and is not implied by anything above.
+
+An Owner removes one **Admin or Member** from the workspace they are in (a suspended membership
+included — see the tier matrix for why the lookup carries no status filter). A switched-in agency
+manager is seated as an Admin by `agency_enter_subaccount` and is therefore refused. The act deletes exactly one
+`tenant_members` row. It does not touch identity, profile, authored records or audit history, and it
+does not reach another workspace — proven on production inside a rolled-back transaction with a
+person who is a member of two workspaces (`docs/evidence/team-removal/`). Owners, co-owners, the
+caller themselves, and legacy specialised permissions are all refused, so the sole Owner is
+unreachable by construction rather than by a count.
+
+**It is not a PAIGE capability.** No chat tool is added; `classifyAction("team_remove_member")`
+remains deliberately `unclassified` and `_shared/action-risk.ts` is untouched. Removal from a
+sentence is a separate, later decision.
+
+**It emits no Rail event**, for the reason recorded below and under owner decision 2: a Team action
+is not a client event, and the workspace-level projection is a separate Spine Change Request. The
+attribution row is written to `audit_logs` exactly as its sibling Team writes are.
+
+**What changed underneath.** The same migration revokes `INSERT, UPDATE, DELETE, TRUNCATE` on
+`tenant_members` from `anon` and `authenticated`, because a guarded function is not a boundary while
+a tenant Admin can delete any membership row — every Owner's included — directly through PostgREST,
+and while both browser roles hold a `TRUNCATE` that row-level security does not gate.
 
 ## Rail outcome and follow-up — **THE GAP**
 
@@ -224,12 +260,26 @@ even for the events that do carry a contact.
   read the same `tenant_members` table but disagree on authorization source (global `user_roles` vs
   tenant membership), owner labelling, suspended members, and truncation. Two homes for "who is on
   the team".
-- **Known defect, unfixed by design:** the three invitation RPCs resolve their workspace from
-  `profiles.active_tenant_id` **raw**, while everything else COALESCEs through
-  `current_user_tenant_id()`. A sole owner with a null `active_tenant_id` is told they are not an
-  owner. PAIGE now refuses first with an honest reason; **the Team screen still shows the false
-  message**, because correcting a `SECURITY DEFINER` resolver is its own change with its own
-  producer inventory.
+- **Repaired (`20261047000000`, #815):** the three invitation RPCs used to resolve their workspace
+  from `profiles.active_tenant_id` **raw**, while everything else COALESCEd through
+  `current_user_tenant_id()`, so a sole owner with a null pointer was told they were not an owner —
+  on the Team screen and, before PAIGE's workaround, in her voice. Invitation authority is now
+  proved by `solo_team_invite_authority(_actor, _expected_tenant_id)` against a workspace the caller
+  NAMES: the Team screen sends the `tenant_id` it rendered the roster from, PAIGE sends the tenant
+  the conversation is about, and the resolver proves active owner/admin membership in that exact
+  workspace. It is refusal-only — a named workspace can abort a call and can never select one.
+  Nothing in the invitation path reads the raw pointer any more, so a stale pointer is structurally
+  incapable of steering an invitation. PAIGE's `inviteSeamBlocked` workaround was DELETED rather
+  than moved: leaving it would have relocated the same false refusal into TypeScript, where the
+  database could no longer falsify it.
+  - The `current_user_tenant_id()` fallback was deliberately **not** inherited. Its second arm picks
+    the earliest active membership, which is fine for a roster read that self-corrects on screen and
+    wrong for an invitation, which emails a live 7-day access token to a stranger. Owner ruling,
+    2026-09-02: a guess is acceptable only where a harmless read can self-correct.
+  - Still true and NOT repaired by this change: the null-pointer population itself. Provisioning
+    never writes the column, the client computes a working value and declines to persist it, and
+    removal clears it by design. The repair makes that harmless for invitations only; other raw
+    readers of `active_tenant_id` were not audited.
 - **Required browser proof, OWED ON A LIVE CAPABILITY — no leg of this has been driven on the live
   authenticated platform, and the code is already serving production.** The order of those two
   facts is the point: this is not proof owed before a release, it is proof owed on something

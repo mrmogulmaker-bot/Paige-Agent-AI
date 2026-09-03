@@ -15,9 +15,13 @@ project_id = "xygzykjyynhzqytbqnzu"
   # token server-side; safe to call with the anon key.
   [functions.send-portal-invite]
     verify_jwt = false
-  # Solo Settings -> Team invitation boundary. The browser sends no tenant id
-  # and receives no raw token; the function verifies the caller JWT and the DB
-  # derives their active tenant and membership authority.
+  # Solo Settings -> Team invitation boundary. The browser receives no raw token.
+  # It DOES send the workspace it is looking at (`expectedTenantId`), which the DB
+  # treats as refusal-only: the function verifies the caller JWT, and
+  # `solo_team_invite_authority` proves owner/admin membership in that exact
+  # workspace. A named workspace can abort a call and can never select one.
+  # (Changed by 20261047000000 — the DB used to derive the active tenant itself,
+  # which is the defect that repair removed.)
   [functions.solo-team-invitations]
     verify_jwt = true
   # Self-serve removal of an abandoned pre-signup shell. Must be authenticated
@@ -354,6 +358,9 @@ project_id = "xygzykjyynhzqytbqnzu"
   # checkout.session.completed arm (discriminant: platform_plan_slug) is the sole
   # writer of platform_subscriptions (§18). §38 Tier-1 Paige-held rail.
   [functions.platform-subscription-checkout]
+    verify_jwt = true
+
+  [functions.platform-billing-portal]
     verify_jwt = true
 
   # #131 — paige-tts: per-message chat voice PLAYBACK. JWT-gated (default posture, but declared

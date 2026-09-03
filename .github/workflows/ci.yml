@@ -115,6 +115,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:views
 
+      - name: Live-drive proxy bypass stays loopback-only (dev harness must never bypass a remote host)
+        if: ${{ !cancelled() }}
+        run: npm run harness:proxy-bypass
+
       - name: SECURITY DEFINER fn anon-grant guard (§9/§37 #117 — DEFINER fns must not be anon/PUBLIC-callable)
         if: ${{ !cancelled() }}
         run: npm run lint:definer-fns
@@ -271,6 +275,28 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:action-risk:test
 
+      # The shared governed execution seam must stay blind to which door called it. A decision
+      # that consults the door makes "reach it a different way" a way to gain permission — which
+      # is how 117 MCP tools ended up outside the gate entirely (#784).
+      - name: Lint — governed execution seam is door-blind and has one approval home
+        if: ${{ !cancelled() }}
+        run: npm run lint:governed-execution
+
+      - name: Governed-execution guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:governed-execution:test
+      # An MCP tool's arguments are authored by a MODEL, so a `confirm: true` read out of them
+      # gates destruction on a value the thing being gated wrote. `bulk_delete_contacts` shipped
+      # exactly that shape and hard-deleted up to 100 client rows with the service-role client
+      # (#784). The Chat-side guard cannot see it: paige-mcp is not in its file list.
+      - name: Lint — no destructive MCP action gated on a model-supplied boolean
+        if: ${{ !cancelled() }}
+        run: npm run lint:mcp-destructive-confirm
+
+      - name: MCP destructive-confirm guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:mcp-destructive-confirm:test
+
       # A similarity search whose search_path excludes `extensions` cannot resolve `<=>` and raises
       # on every call. Three shipped functions were in that state for months, invisible because
       # every call site degrades to an empty result — "no matches" and "cannot execute" look the
@@ -328,10 +354,22 @@ jobs:
           set -o pipefail
           python3 .github/scripts/edge-affected.py < changed_fns.txt > affected_fns.txt
           cat affected_fns.txt
-          # A change under supabase/functions/<fn>/ is affected by construction, so a non-empty
-          # input that resolves to zero functions is a resolver failure, not an empty answer.
-          if [ "$(grep -c . changed_fns.txt || true)" -gt 0 ] && [ "$(grep -c . affected_fns.txt || true)" -eq 0 ]; then
-            echo "::error::edge-affected resolved 0 functions from $(grep -c . changed_fns.txt) changed edge-function file(s) - treating as a resolver failure, not an empty result."
+          # A change under supabase/functions/<fn>/ is affected by construction, so if any changed
+          # file lives in a real function DIRECTORY and nothing resolved, the resolver failed.
+          #
+          # A change confined to _shared/ is a different case, and this guard used to get it wrong.
+          # `edge-affected.py`'s own contract says "Exit 0 always (an empty result is a valid
+          # 'nothing to deploy')" — and a NEW _shared module that no function imports YET resolves
+          # to zero legitimately. The old condition counted every changed edge file, so adding such
+          # a module failed the build for a correct change, with an error message blaming a resolver
+          # that had worked perfectly. First hit by the governed-execution seam, a shared module
+          # deliberately adopted by nothing in its first slice.
+          #
+          # The resolver-crash detector is unchanged in the case it was written for: a changed file
+          # inside a function directory that resolves to zero functions still fails, loudly.
+          changed_in_fn_dirs="$(grep -cE '^supabase/functions/[^_/][^/]*/' changed_fns.txt || true)"
+          if [ "$changed_in_fn_dirs" -gt 0 ] && [ "$(grep -c . affected_fns.txt || true)" -eq 0 ]; then
+            echo "::error::edge-affected resolved 0 functions from $changed_in_fn_dirs changed file(s) inside a function directory - treating as a resolver failure, not an empty result."
             exit 1
           fi
           echo "count=$(grep -c . affected_fns.txt || true)" >> "$GITHUB_OUTPUT"

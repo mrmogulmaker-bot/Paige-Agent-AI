@@ -6,6 +6,42 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 0c. A migration numbered at "the next free slot" collides the moment `main` moves (2026-09-03)
+
+- **Symptom:** Billing Foundation A's migration was `20261044000000`; while the branch was under review
+  `main` merged an unrelated `20261044000000_rail_authority_…`. CI's `database-contract` job
+  (`supabase db reset` on the PR's MERGE ref) failed with a duplicate `schema_migrations` key — after
+  the migration itself had applied cleanly. Had it merged, `deploy-migrations.yml` would have hit the
+  same key on prod.
+- **Root cause:** a version chosen from the branch's view of `main` at branch time; the two-dot diff
+  against a moved `main` also hides the collision (the other file looks like "main added a file").
+- **Rule:** before every push of a migration branch, `git fetch origin main` and compare the version
+  against `git ls-tree origin/main supabase/migrations`; renumber to a free version (content unchanged,
+  `\i` lines / parity-test paths / registry rows follow). Treat the `database-contract` job as the
+  canary it is — it applies the merge ref, which is the only place the collision is visible.
+
+## 0d. Proof-authoring traps in a `BEGIN … ROLLBACK` role-impersonating SQL proof (2026-09-02)
+
+Each cost one failed run on prod (rollback, nothing persisted) before it was written down:
+- `INSERT INTO auth.users` already creates the `profiles` shell (`handle_new_user`) — seed the pointer
+  with `UPDATE`, not `INSERT`.
+- `trg_guard_active_tenant` refuses `profiles.active_tenant_id` pointed at a workspace where the user
+  holds no seat — to fixture an "act-as with no seat" shape, seed the seat, set the pointer, delete the seat.
+- `set_config('request.jwt.claims', …, true)` OUTLIVES `SET LOCAL ROLE`/`RESET ROLE` — clear it
+  explicitly (`'{}'`) or the next block runs as the previous user.
+- Temp tables need `GRANT` to the impersonated roles (`authenticated`, `anon`) or every property
+  written under them fails on the report table, not on the thing under test.
+- `ROLLBACK TO SAVEPOINT` discards the result rows a mutant wrote — un-mutate explicitly
+  (`CREATE OR REPLACE` the original) instead of rolling the savepoint back.
+- A property that is "0 rows visible" is vacuous unless a sibling proves the row EXISTS to the owning
+  role (P52 needed P55).
+- **The batch you RAN is not the file you COMMITTED unless you re-derive it.** The MCP runner takes a
+  derived batch (`\i` expanded, `RAISE NOTICE` swapped for a report row). A fix applied to the derived
+  copy in `/tmp` and not to the committed mutants file left the repo carrying a subquery that fails
+  `42P01` — caught by the compliance reviewer's parity check, not by the green prod run. Rule: fix the
+  committed file first, re-derive the batch from it, and diff the two (non-comment lines) before
+  quoting the run as proof of the file.
+
 ## 0a. Ruling-conversion discipline — don't re-open a ruling as options (D7, 2026-08-11)
 
 - **Symptom:** the owner ruled D7 (Option A, direct C-Corp conversion, standalone, no holdco). CC's §37
@@ -734,6 +770,69 @@ with the line *"a migration version collision is invisible to every gate."* It s
 because nothing mechanical was added at the time — only the note. The lesson behind the lesson:
 recording a failure class without building the check that catches it buys one session's memory,
 not a guard.
+
+### 2026-09-03, PR #810: the guard works. WHEN you run it is the variable.
+
+Offer Catalog Slice 2A was renumbered **three times** — `…44` to the Rail, `…45` to Billing
+Foundation A, `…48` to team-member removal (#845). The third one adds a dimension the shapes above
+do not cover, and it is a timing dimension rather than a new shape.
+
+The branch re-grounded on main and ran `lint:migration-versions` **clean at `20261048000000`**.
+#845 merged afterwards, carrying that same version. Nothing about the check was wrong; the base
+simply moved between looking and merging.
+
+**The correction that matters, because the first write-up of this got it backwards.** It was
+initially reported — and committed into the migration header and the tier matrix — that the guard
+was *"structurally blind"* to this. Reading the actual `verify` log disproved it:
+
+```
+BASE_REF: 1a22637c3ea8fdaa195ad24e53cec582dbc7bcd5
+✗ migration-version-collision-lint: 1 collision(s).
+  two migrations share version 20261048000000 ...
+##[error]Process completed with exit code 1.
+```
+
+CI passes the **real merge base** to the lint, so the guard caught it the moment #845 landed, and
+`database-contract` caught it independently by replaying from zero. One root cause, both red
+checks, no defective guard. What was blind was the **local** run, which compares against whatever
+`origin/main` the working copy last fetched — and that fetch predated #845.
+
+**So the operative rules are about process, not tooling:**
+- A green **local** `lint:migration-versions` is a hint. **CI is the authority**, because only CI
+  evaluates against the base you are actually merging into.
+- Re-grounding at the END is necessary and **still not sufficient**. The base moves after you look
+  at it. On a contended range, expect to renumber at merge time and pick the version LATE.
+- A stronger pre-merge check, when it is worth the time, is to scan **every remote branch** rather
+  than main: `for b in $(git branch -r ...); do git ls-tree -r --name-only "$b" supabase/migrations
+  ...`. It found that only #845's and the Rail's migrations existed at or above `…48` across all
+  423 branches. That is an *improvement* to a working guard, not a fix for a broken one — do not
+  file it as a defect.
+
+**And then I broke this entry's own rule, in the same session, having just quoted it.** The
+version chosen that way — `20261050000000` — was genuinely free across every branch, and still
+wrong. Production's ledger already carried `20261104000000`, `20261103000000` and
+`20261102010000`, whose files this repository could not see at the time: **shape 3, named a few
+paragraphs above.** Applying 50 would have put it behind three migrations already live. The
+branch scan answers "is it free"; only `select max(version) from
+supabase_migrations.schema_migrations` answers "does it sort after what is applied", and both
+must hold. It was caught because another PR's commit message happened to mention prod's newest
+version — luck, not method.
+
+So the check before taking a version is **two queries, not one**:
+1. free across the repo and every remote branch (the scan above), AND
+2. **strictly greater than `max(version)` in prod's ledger** (an MCP query — the repo cannot
+   tell you this).
+
+The meta-lesson, which is the reason this paragraph exists at all: reading the rule is not
+applying it. This entry was open in the same session, quoted in a commit message, and the very
+next decision violated it — because the decision *felt* thorough (423 branches!) and thoroughness
+in the wrong dimension reads exactly like rigour.
+
+**And a second-order lesson, since this is the third time this branch wrote about the same event.**
+Two of the three write-ups were wrong before they were right: the first blamed the guard, and an
+earlier one blamed review. Diagnose from the log, not from the shape of the story you are already
+telling — a failure that has happened three times is exactly when the narrative starts writing
+itself ahead of the evidence.
 
 ---
 

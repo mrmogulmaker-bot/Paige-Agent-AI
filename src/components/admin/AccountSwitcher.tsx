@@ -38,6 +38,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { toast } from "sonner";
 import { consumeSwitchNotice, stashSwitchNotice } from "@/lib/agency/switchNotice";
+import { rememberWorkspaceEntered } from "@/lib/auth/workspaceEntry";
 
 interface ManagedSub {
   id: string;
@@ -116,6 +117,12 @@ export function AccountSwitcher() {
       const { error } = await supabase.rpc("agency_enter_subaccount" as any, { _child: child.id });
       if (error) throw error;
       stashSwitchNotice(`Now managing ${child.name}.`);
+      // An act-as IS an explicit choice of operating context, so record it before
+      // leaving — otherwise the `/admin` door treats this operator as someone who
+      // has not chosen yet and sends them to the workspace chooser, which is how a
+      // shipped agency capability was nearly broken for the third time (§58/§37:
+      // `/admin` is a DESTINATION, and every producer of it has to be inventoried).
+      rememberWorkspaceEntered(child.id);
       window.location.assign("/admin");
     } catch (e) {
       toast.error(switchError(e));

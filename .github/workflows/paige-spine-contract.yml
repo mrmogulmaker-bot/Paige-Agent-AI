@@ -6,6 +6,12 @@ on:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
       - "supabase/tests/paige_spine_foundation.sql"
+      # The Solo Team invitation proof must re-run when the seam it proves changes,
+      # not only when a migration happens to touch it.
+      - "supabase/tests/solo_team_invite_workspace_authority.sql"
+      # Same reason for the removal proof: it must re-run when the seam changes.
+      - "supabase/tests/solo_team_removal_authority.sql"
+      - "supabase/functions/solo-team-invitations/**"
       - "src/__tests__/paige-spine-*.test.ts"
       - "src/solo/paigeClientScope.ts"
       - "src/solo/paigeClientScope.test.ts"
@@ -19,6 +25,12 @@ on:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
       - "supabase/tests/paige_spine_foundation.sql"
+      # The Solo Team invitation proof must re-run when the seam it proves changes,
+      # not only when a migration happens to touch it.
+      - "supabase/tests/solo_team_invite_workspace_authority.sql"
+      # Same reason for the removal proof: it must re-run when the seam changes.
+      - "supabase/tests/solo_team_removal_authority.sql"
+      - "supabase/functions/solo-team-invitations/**"
       - "src/__tests__/paige-spine-*.test.ts"
       - "src/solo/paigeClientScope.ts"
       - "src/solo/paigeClientScope.test.ts"
@@ -55,3 +67,9 @@ jobs:
       - run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector
       - run: supabase db reset
       - run: supabase test db supabase/tests/paige_spine_foundation.sql
+      # Behavioural proof for the Solo Team invitation seam, against the schema `db reset` just
+      # replayed from zero. It rides this job deliberately rather than standing up a second
+      # Postgres: the expensive part is `supabase start` + `db reset`, and duplicating it to run
+      # one more file would double a 20-minute job for nothing (§24).
+      - run: supabase test db supabase/tests/solo_team_invite_workspace_authority.sql
+      - run: supabase test db supabase/tests/solo_team_removal_authority.sql

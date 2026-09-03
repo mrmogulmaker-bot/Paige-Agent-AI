@@ -29,6 +29,21 @@ const rpc = async (name: string, args: Record<string, unknown> = {}) => {
     const row = members.find((m) => m.user_id === args._member_user_id); if (row) row.permission = String(args._new_permission);
     return { data: { ok: true }, error: null };
   }
+  if (name === "remove_solo_team_member") {
+    // Mirrors the server's own guards so the harness cannot show a state the database would refuse.
+    // `?remove=refuse-owner|refuse-nonowner|already-gone|network|wrong-tenant` drives each branch.
+    const forced = new URLSearchParams(window.location.search).get("remove");
+    if (forced === "refuse-nonowner") return { data: null, error: { message: "only the workspace owner may remove someone from this workspace" } };
+    if (forced === "already-gone") return { data: null, error: { message: "that person is not on this workspace's team" } };
+    if (forced === "network") return { data: null, error: { message: "TypeError: Failed to fetch" } };
+    if (forced === "wrong-tenant") return { data: { tenant_id: "some-other-tenant", membership_id: "x", removed_user_id: String(args._member_user_id) }, error: null };
+    const index = members.findIndex((m) => m.user_id === args._member_user_id);
+    if (index < 0) return { data: null, error: { message: "that person is not on this workspace's team" } };
+    if (members[index].is_owner || members[index].permission === "owner") return { data: null, error: { message: "an owner cannot be removed from this workspace here" } };
+    if (args._expected_tenant_id !== "team-harness-tenant") return { data: null, error: { message: "your active workspace changed before this could run; nothing was removed" } };
+    const [gone] = members.splice(index, 1);
+    return { data: { tenant_id: "team-harness-tenant", membership_id: gone.membership_id, removed_user_id: gone.user_id }, error: null };
+  }
   return { data: null, error: { message: `Unsupported harness RPC ${name}` } };
 };
 const invoke = async (_name: string, options: { body?: Record<string, unknown> }) => {

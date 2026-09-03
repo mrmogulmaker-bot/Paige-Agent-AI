@@ -22,7 +22,11 @@ const SC_CHECKS=[
  {id:15,d:'data',n:'CRM completeness',m:'94% complete',s:'warn',ev:['11 clients missing portal access','4 missing phone','2 missing owner'],found:'Portal silence is your earliest churn signal, and eleven clients cannot log in to make a sound.',fix:'Send portal invites to all eleven and assign the two unowned accounts by workload. Queued.'},
  {id:16,d:'data',n:'Orphan records',m:'None found',s:'ok',ev:['0 deals without a client','0 threads without an owner'],found:'Clean.',fix:null}];
 
-const SC_DEPT={infra:'tech',mkt:'mkt',forms:'ops',comms:'tech',pay:'fin',data:'tech'};
+// Real `paige_departments` slugs. These were the compass fixture's invented ids (`tech`, `mkt`,
+// `ops`, `fin`), none of which exist in the platform — so every tier this map produced was read
+// off a hardcoded float for a department that is not real.
+const SC_DEPT={infra:'technology_automation',mkt:'marketing',forms:'operations_pmo',
+ comms:'technology_automation',pay:'finance',data:'technology_automation'};
 const SC_CAT_SCORE=[['infra','Infrastructure',22,25],['mkt','Marketing & tracking',15,20],['forms','Forms & booking',8,10],['comms','Comms & deliverability',12,15],['pay','Payments & ops',10,15],['data','Data quality',6,15]];
 const SC_LIFT=[['Reinstall the Meta Pixel and backfill','+4',7],['Throttle the sending and warm the second domain','+3',3],['Run the dunning sequence on three declines','+2',13]];
 const SC_META={
@@ -72,7 +76,7 @@ return <svg width={w} height={h} style={{overflow:'visible'}}>{hist.map((v,i)=>
 fill={v===0?'var(--ok)':v<2?'var(--warn)':'var(--bad)'} opacity={v===0?.42:.9}/>)}</svg>};
 
 const ScDrawer=({c,onClose,onFix,onOpen})=>{const M=scMeta(c.id);const applied=c.s==='ok'&&/just now/.test(c.m||'');
-const tier=deptTier(SC_DEPT[c.d]);
+const trust=useTrust();const tier=deptTier(trust,SC_DEPT[c.d]);
 return <><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(23,19,49,.36)',backdropFilter:'blur(3px)',zIndex:80}}/>
 <aside className="fade-in" style={{position:'fixed',top:0,right:0,bottom:0,width:'min(580px,96vw)',background:'var(--surface)',borderLeft:'1px solid var(--line)',boxShadow:'var(--sh-3)',zIndex:81,overflow:'auto'}}>
 <div className="row" style={{padding:'16px 22px',borderBottom:'1px solid var(--line)',gap:12,position:'sticky',top:0,background:'var(--surface)',zIndex:2}}>
@@ -108,10 +112,10 @@ return <><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgb
 <div className="row" style={{gap:8,marginTop:12,flexWrap:'wrap'}}>
 <button onClick={()=>{onFix(c);onClose()}} className="row" style={{gap:7,height:34,padding:'0 18px',borderRadius:10,background:'var(--gold-bright)',color:'#2A1C00',fontWeight:700,fontSize:13.2}}><Ic.check size={14}/>Apply fix</button>
 <button className="btn btn-s">Edit fix</button><button className="btn btn-s">Acknowledge as intentional</button><button className="btn btn-s">Dismiss</button></div>
-<div style={{marginTop:12}}><MiniCompass dept={SC_DEPT[c.d]} label="She drafted rather than applied because you have"/></div></div>}
+<div style={{marginTop:12}}><MiniCompass dept={SC_DEPT[c.d]} label="She drafted rather than applied because, on the platform default,"/></div></div>}
 
 {tier==='green'&&!c.fix&&c.s!=='ok'&&<div style={{border:'1px solid var(--ok-tint)',background:'var(--ok-tint)',borderRadius:'var(--r-m)',padding:'12px 14px',fontSize:12.9,color:'var(--ink-2)'}}>
-<strong style={{color:'var(--ink)'}}>She will handle this one herself. </strong>This department is on autopilot, so the fix applies and gets logged without waiting for you.</div>}
+<strong style={{color:'var(--ink)'}}>This department runs automatically on the platform default. </strong>That lane does not wait for your approval — it is the platform's policy for this desk, not a level this workspace set.</div>}
 
 <div><div className="row" style={{justifyContent:'space-between',alignItems:'baseline'}}><div className="eyebrow">Last 30 days</div>
 <span className="sub" style={{fontSize:11.5}}>Findings per day</span></div>
@@ -246,7 +250,7 @@ return <svg width={size} height={size} viewBox={'0 0 '+size+' '+size}><circle cx
 <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={col} strokeWidth="6" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c-(v/100)*c} transform={'rotate(-90 '+size/2+' '+size/2+')'} style={{transition:'stroke-dashoffset .6s'}}/>
 <text x="50%" y="50%" textAnchor="middle" dy="6" fontSize="20" fontWeight="600" fill="var(--ink)" fontFamily="var(--font)" letterSpacing="-1">{v}</text></svg>};
 const sCol=score>85?'var(--ok)':score>65?'var(--warn)':'var(--bad)';
-const fixState=c=>{const t=deptTier(SC_DEPT[c.d]);
+const fixState=c=>{const t=deptTier(trust,SC_DEPT[c.d]);
  if(/just now/.test(c.m||''))return['Fixed','pill-ok'];
  if(/Snoozed/.test(c.m||''))return['Acknowledged','pill-n'];
  if(c.s==='ok')return null;
