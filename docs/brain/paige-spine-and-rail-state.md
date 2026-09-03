@@ -164,6 +164,42 @@ shape as #794, on the write path, and an integrity/attribution exposure rather t
 Its sharpest form is `p_narrow_to_owner = true`, which yields `audience='owner'` /
 `visibility='owner_internal'`: a plain member could file into the owner's private feed.
 
+### The Rail PRODUCER inventory — all eight write call sites, by client identity
+
+Measured against `main` at `11997dac4`. This is the half the reader tables above never covered, and
+it decides whether #824's defective gate is dormant or live.
+
+| # | Call site | Client | `auth.uid()` | Reaches the `has_any_role` branch? |
+|---|---|---|---|---|
+| 1 | `_shared/mcp-outcome.ts:842` | `admin` (service role) | NULL | no |
+| 2 | `_shared/railAutomation.ts:103` | `admin` | NULL | no |
+| 3 | `growth-process-submission:519` | `admin` | NULL | no |
+| 4 | `handle-inbound-sms:434` | `admin` | NULL | no |
+| 5 | `paige-mcp:5282` | `admin` | NULL | no |
+| 6 | `send-message:1374` | `admin` | NULL | no |
+| 7 | `paige-ai-chat:889` | caller JWT | set | reached, falls through to the client branch |
+| 8 | **`paige-ai-chat:11267`** | **caller JWT** | **set** | **YES — this is the branch** |
+
+**Six of eight are service-role**, so they skip the branch entirely. The two Chat sites do not, and
+#8 is the decisive one: it is the tool-result mirror that files `p_actor_type: 'owner_staff'` through
+the caller's own JWT on every successful CRM or action tool call, which can only succeed by
+satisfying `has_any_role(v_uid, ARRAY['admin','super_admin','coach'])`.
+
+**So #824's gate is exercised in production constantly — it is live, not dormant.** That does NOT
+raise its severity: it stays a member→staff escalation inside one workspace, integrity rather than
+disclosure, with an escalation population measured at zero. What changes is that "latent" was the
+wrong word; "live but currently unexploitable" is the right one.
+
+**The consequence for whoever fixes it.** Replacing `has_any_role` with an active `tenant_members`
+row in `('owner','admin','coach')` changes behaviour at site #8 for any Chat user whose membership
+row lacks one of those roles. That is the intended tightening — but site #8 is a live write path on
+every owner CRM action, so a mistake there stops the Rail recording what owners do, **silently**. The
+fix needs a two-direction proof at that call site specifically, not only at the function.
+
+Site #7 is the client-message mirror: `auth.uid()` is set but the caller is the client themselves
+(`linked_user_id = user.id`) with `p_actor_type: 'client'`, so an ordinary client fails
+`has_any_role` and lands correctly in the `ELSIF` client branch.
+
 **Measured exposure, stated honestly:** 3 users hold a global staff role across multiple tenants;
 **0** currently sit at a non-staff seat. Structurally live, never reached. **Re-measured 2026-09-03
 for the writer's population** — 9 users hold a global staff role *at all*, and **0** of them sit at a
