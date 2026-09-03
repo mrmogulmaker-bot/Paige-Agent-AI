@@ -55,3 +55,8 @@ jobs:
       - run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector
       - run: supabase db reset
       - run: supabase test db supabase/tests/paige_spine_foundation.sql
+      # Behavioural proof for the Solo Team invitation seam, against the schema `db reset` just
+      # replayed from zero. It rides this job deliberately rather than standing up a second
+      # Postgres: the expensive part is `supabase start` + `db reset`, and duplicating it to run
+      # one more file would double a 20-minute job for nothing (§24).
+      - run: supabase test db supabase/tests/solo_team_invite_workspace_authority.sql
