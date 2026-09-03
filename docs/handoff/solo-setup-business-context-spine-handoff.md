@@ -1,8 +1,28 @@
 # Solo Setup business-context handoff
 
-**Status: PROPOSED.** Setup stores these facts, but this document does not make them available to
-PAIGE, Mind, Spine, or Rail. A future Spine owner must review and register a tenant-scoped projection
-before any runtime consumption claim changes.
+**Status: PARTLY REALISED (2026-09-03) — this document remains the standing proposal for everything
+NOT listed below.** A tenant-scoped projection has now been registered and consumed:
+`business_context.readiness` (Spine capability; adapter `public.get_business_context_readiness(uuid)`).
+
+What actually shipped is **narrower than this document approves**, deliberately:
+
+- **Four fields only** — `website`, `business_phone`, `industry`, `primary_business_email` — not the
+  eleven-item eligible list below.
+- **Status + provenance only, never the value.** A consumer learns "website: owner-confirmed" or
+  "business phone: needs a valid format"; it never receives the URL, the number, or the address. This
+  is stricter than the list below, which permits the public website value itself. Widening to raw
+  values is a separate decision, not implied by this partial realisation.
+- **Two new provenance states** were needed beyond the three named below, and are now part of the
+  contract: `invalid_format` (present but fails a basic shape check — `business_phone` only) and
+  `unavailable` (the read itself could not be completed, with a reason — deliberately distinct from
+  `needs_confirmation`, which is the normal "nothing entered yet" state Setup tracks).
+- **Consumers:** the Systems Check runners (`website_connected`, `company_info_populated`,
+  `comms_configured`) via one shared helper, and PAIGE's per-turn Chat context. `chatBinding` and
+  `mindBinding` are `PARTIAL` — unit-tested, no authenticated drive yet.
+
+**Everything below still governs.** The exclusion list is unchanged and binds absolutely; the eligible
+list remains a PROPOSAL for any field not in the four above, and a future Spine owner must review and
+register any widening before a runtime consumption claim changes.
 
 ## Eligible non-sensitive fields
 

@@ -6,6 +6,28 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 0b. A tenant-isolation proof cannot see a ROLE leak — the caller inside the tenant (2026-09-03)
+
+- **Symptom:** `get_business_context_readiness` passed a six-scenario local Postgres proof, including
+  an explicitly mutation-tested IDOR probe. It still leaked: a workspace's own **CLIENT** could read
+  their coach's Setup readiness, while the capability descriptor declared `audience: owner_internal`.
+- **Root cause:** every scenario in that proof varied the same axis — **which tenant** the caller
+  belongs to. A client of tenant A *is* an authenticated user of tenant A, so
+  `current_user_tenant_id()` resolved correctly and the function answered correctly for the wrong
+  person. The gate the reference adapter has
+  (`get_pipeline_spine_evidence`: `has_any_role(uid, array['admin','super_admin','coach'])`) was
+  simply absent, and no assertion asked for it. The proof was green and the audience promise was
+  false at the same time, which is exactly the §39 "what would make this GREEN proof a lie?" case.
+- **Rule:** a `SECURITY DEFINER` read has **two** access axes, and tenant isolation is only one.
+  Before calling such a proof done, write the assertion for the second: *which ROLES inside the
+  resolved tenant may see this?* If the capability declares `audience: owner_internal`, a non-staff
+  member of that same tenant must be refused, and the refusal must be **tested** — it is invisible to
+  every cross-tenant assertion you already wrote. Copy the reference adapter's role predicate rather
+  than re-deriving it, and prefer a refusal that keeps the response shape (four rows, reason
+  `not permitted for this account`) so a consumer can tell "may not" from "could not" (§13).
+
+---
+
 ## 0c. A migration numbered at "the next free slot" collides the moment `main` moves (2026-09-03)
 
 - **Symptom:** Billing Foundation A's migration was `20261044000000`; while the branch was under review

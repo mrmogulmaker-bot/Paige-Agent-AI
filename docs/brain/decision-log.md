@@ -1,5 +1,33 @@
 # Decision Log — chronological one-liners
 
+- **Systems Check and PAIGE were reading a table Setup stopped writing to — three defects, not one (2026-09-03, `business_context.readiness`)** —
+  the reported symptom was "Systems Check and PAIGE report old or separate findings after Setup is
+  updated," which sounds like staleness. A source-to-consumer trace found it is **not a staleness
+  defect for three of the four fields**. Setup's current save path
+  (`save_solo_setup_context` → `save_solo_setup_identity`, migration `20261046000000`) writes
+  `website`/`phone`/`industry` into **`tenant_legal_profile` columns**; three Systems Check runners
+  (`website_connected`, `company_info_populated`, `comms_configured`) and PAIGE's brand/brief prompt
+  section instead read **`tenants.brand->>'website'/'business_phone'/'industry'`** — a location the
+  current save path never writes. A perfectly fresh scan reported "missing" regardless of what an
+  Owner saved, because the pointer, not the data, was stale. Three independent causes, each confirmed
+  separately (the brief explicitly said not to infer one cause for all fields): **(A)** the wrong-table
+  read, at three call sites sharing one broken pointer; **(B)** "refresh" never re-scanned —
+  `useSystemsCheck.refresh()` only invalidates the React Query cache, and the one mechanism that would
+  re-run a check (`systems-check-run-change`, already deployed and correctly surface-mapped) had **zero
+  callers anywhere in `src/`**; **(C)** PAIGE could not have said it even with the right source —
+  `buildBusinessBriefSection` has no `website`/`phone` key at all, and `buildBrandSection`'s
+  `b.website`/`b.phone` lines read the same dead `brand` keys. **`primary_business_email` was NOT
+  broken** — it is correctly written to `tenants.brand->'support_email'` with provenance in
+  `tenant_setup_business_context_meta`, and already reaches PAIGE via `resolve_tenant_brand()`. **Also
+  measured:** no phone-format validation existed anywhere, client or server, before this work — so
+  "malformed" becomes a real, reportable status here for the first time rather than silently passing as
+  present. **Fix:** one narrow Spine contract, `public.get_business_context_readiness(uuid)` — status +
+  provenance only, never a raw value, always exactly four rows so "no signal" can never be confused
+  with a silent read failure. Both consumers now read it: the three runners via one shared helper (§18,
+  so the fix lands once rather than per runner), and PAIGE via a per-turn context block. Setup remains
+  the sole writer and sole source of truth; a Setup save now fires the existing change-triggered
+  re-check so the persisted finding is refreshed at save time instead of waiting for the nightly sweep.
+
 - **The governed-execution guard failed OPEN on a target it could not read, in both rules I had reported as swept (2026-09-03, follow-up to PR #792 `1a22637c`)** —
   independent review against the merged commit found the same class alive in **R2** and **R4**, and
   both reproduced. **R2** (nothing loads the superseded #711 bare-boolean gate) read a dynamic

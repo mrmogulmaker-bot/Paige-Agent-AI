@@ -1,7 +1,8 @@
 import { SPINE_ACTION_CLASSIFICATIONS, type SpineCapability } from "./contracts.ts";
 import { PIPELINE_DEAL_STAGE_EVIDENCE } from "./domains/pipeline.ts";
+import { BUSINESS_CONTEXT_READINESS } from "./domains/business_context.ts";
 
-export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE] as const;
+export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS] as const;
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
 const SERVER_SYMBOL_PATTERN = /^public\.[a-z][a-z0-9_]*$/;
