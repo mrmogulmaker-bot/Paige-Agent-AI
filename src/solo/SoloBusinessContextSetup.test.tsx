@@ -804,6 +804,232 @@ describe("canonical Solo Setup business context", () => {
     await act(async () => root.unmount());
   });
 
+  it("starts a guided brief directly and saves through the durable action", async () => {
+    const { host, root } = await mount(
+      "100",
+      "/solo/100/settings/setup/paige-brief",
+    );
+    expect(button(host, "Teach Paige").disabled).toBe(false);
+    await act(async () => button(host, "Teach Paige").click());
+    await setValue(
+      document.body.querySelector<HTMLTextAreaElement>(
+        'textarea[name="voiceCharacter"]',
+      )!,
+      "Warm and direct",
+    );
+    await act(async () =>
+      button(document.body, "Apply to Setup draft").click(),
+    );
+    expect(state.save).not.toHaveBeenCalled();
+    const panel = host.querySelector<HTMLElement>('[role="tabpanel"]')!;
+    expect(panel.textContent).toContain("Warm and direct");
+    await act(async () => button(panel, "Save business context").click());
+    expect(state.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paigeProfile: expect.objectContaining({
+          voiceCharacter: "Warm and direct",
+        }),
+      }),
+    );
+    await act(async () => root.unmount());
+  });
+
+  it("adds an example from read mode and retains it after a failed save", async () => {
+    state.save.mockResolvedValueOnce({
+      ok: false,
+      kind: "failed",
+      error: "Could not save the brief.",
+    });
+    const { host, root } = await mount(
+      "100",
+      "/solo/100/settings/setup/paige-brief",
+    );
+    expect(button(host, "Add an example").disabled).toBe(false);
+    await act(async () => button(host, "Add an example").click());
+    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(button(dialog, "Keep in Setup draft").disabled).toBe(true);
+    await setValue(
+      dialog.querySelector<HTMLTextAreaElement>("textarea")!,
+      "Clear next steps, no hype.",
+    );
+    await act(async () => button(dialog, "Keep in Setup draft").click());
+    expect(state.save).not.toHaveBeenCalled();
+    const panel = host.querySelector<HTMLElement>('[role="tabpanel"]')!;
+    await act(async () => button(panel, "Save business context").click());
+    expect(host.textContent).toContain("Could not save the brief.");
+    expect(panel.textContent).toContain("Clear next steps, no hype.");
+    await act(async () => button(host, "Retry save").click());
+    expect(state.save).toHaveBeenCalledTimes(2);
+    expect(state.save.mock.calls[1][0].voiceExamples[0].example).toBe(
+      "Clear next steps, no hype.",
+    );
+    await act(async () => root.unmount());
+  });
+
+  it.each(["admin_operational", "read_only"] as const)(
+    "keeps rich brief editing refused for %s",
+    async (scope) => {
+      state.accessScope = scope;
+      const { host, root } = await mount(
+        "100",
+        "/solo/100/settings/setup/paige-brief",
+      );
+      expect(button(host, "Teach Paige").disabled).toBe(true);
+      expect(button(host, "Add an example").disabled).toBe(true);
+      await act(async () => button(host, "Teach Paige").click());
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+      expect(state.save).not.toHaveBeenCalled();
+      await act(async () => root.unmount());
+    },
+  );
+
+  it("edits a stored example in place and can discard the whole unsaved change", async () => {
+    state.voiceExamples = [
+      {
+        id: "example-1",
+        channel: "email",
+        kind: "sounds_like",
+        example: "Original voice",
+        note: "Original note",
+        provenance: { source: "owner_confirmed", confidence: "confirmed" },
+      },
+    ] as never[];
+    const { host, root } = await mount(
+      "100",
+      "/solo/100/settings/setup/paige-brief",
+    );
+    await act(async () =>
+      button(
+        host.querySelector<HTMLElement>('[role="tabpanel"]')!,
+        "Edit",
+      ).click(),
+    );
+    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("Edit this example");
+    await setValue(
+      dialog.querySelector<HTMLTextAreaElement>("textarea")!,
+      "Updated voice",
+    );
+    await act(async () => button(dialog, "Keep in Setup draft").click());
+    const panel = host.querySelector<HTMLElement>('[role="tabpanel"]')!;
+    await act(async () => button(panel, "Cancel").click());
+    expect(panel.textContent).toContain("Original voice");
+    expect(panel.textContent).not.toContain("Updated voice");
+    expect(state.save).not.toHaveBeenCalled();
+    await act(async () => button(panel, "Edit").click());
+    await setValue(
+      document.body.querySelector<HTMLTextAreaElement>(
+        '[role="dialog"] textarea',
+      )!,
+      "Durable replacement",
+    );
+    await act(async () =>
+      button(
+        document.body.querySelector<HTMLElement>('[role="dialog"]')!,
+        "Keep in Setup draft",
+      ).click(),
+    );
+    await act(async () => button(panel, "Save business context").click());
+    expect(state.save.mock.calls[0][0].voiceExamples).toEqual([
+      expect.objectContaining({
+        id: "example-1",
+        example: "Durable replacement",
+      }),
+    ]);
+    await act(async () => root.unmount());
+  });
+
+  it("keeps oversized rich text in the drawer for correction", async () => {
+    const { host, root } = await mount(
+      "100",
+      "/solo/100/settings/setup/paige-brief",
+    );
+    await act(async () => button(host, "Teach Paige").click());
+    const voice = document.body.querySelector<HTMLTextAreaElement>(
+      'textarea[name="voiceCharacter"]',
+    )!;
+    expect(voice.maxLength).toBe(4000);
+    await setValue(voice, "a".repeat(4001));
+    expect(button(document.body, "Apply to Setup draft").disabled).toBe(true);
+    await act(async () =>
+      button(
+        document.body.querySelector<HTMLElement>('[role="dialog"]')!,
+        "Cancel",
+      ).click(),
+    );
+    await act(async () => button(host, "Add an example").click());
+    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    const fields = dialog.querySelectorAll<HTMLTextAreaElement>("textarea");
+    expect(fields[0].maxLength).toBe(8000);
+    expect(fields[1].maxLength).toBe(1000);
+    await setValue(fields[0], "Valid example");
+    await setValue(fields[1], "a".repeat(1001));
+    expect(button(dialog, "Keep in Setup draft").disabled).toBe(true);
+    expect(state.save).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
+
+  it.each(["Teach Paige", "Add an example"])(
+    "clears a dirty %s drawer when the tenant changes",
+    async (entry) => {
+      const { host, root } = await mount(
+        "100",
+        "/solo/100/settings/setup/paige-brief",
+      );
+      await act(async () => button(host, entry).click());
+      await setValue(
+        document.body.querySelector<HTMLTextAreaElement>(
+          '[role="dialog"] textarea',
+        )!,
+        "Prior workspace draft",
+      );
+      state.activeTenantId = "tenant-b";
+      state.paigeProfile = {
+        ...EMPTY_PAIGE_PROFILE,
+        voiceCharacter: "New workspace voice",
+      };
+      await act(async () =>
+        root.render(
+          <MemoryRouter>
+            <RouteProof />
+            <SoloBusinessContextSetup account="200" />
+          </MemoryRouter>,
+        ),
+      );
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+      expect(host.textContent).not.toContain("Prior workspace draft");
+      expect(state.save).not.toHaveBeenCalled();
+      await act(async () => root.unmount());
+    },
+  );
+
+  it("opens the existing Knowledge area without losing the brief draft", async () => {
+    const { host, root } = await mount(
+      "100",
+      "/solo/100/settings/setup/paige-brief",
+    );
+    await act(async () => button(host, "Teach Paige").click());
+    await setValue(
+      document.body.querySelector<HTMLTextAreaElement>(
+        'textarea[name="voiceCharacter"]',
+      )!,
+      "Keep this context",
+    );
+    await act(async () =>
+      button(document.body, "Apply to Setup draft").click(),
+    );
+    await act(async () => button(host, "Links & documents").click());
+    expect(host.querySelector("[data-route-proof]")?.textContent).toContain(
+      "/knowledge-bucket",
+    );
+    await act(async () => button(host, "Paige brief").click());
+    expect(host.querySelector('[role="tabpanel"]')?.textContent).toContain(
+      "Keep this context",
+    );
+    expect(state.save).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
+
   it("exposes the rich Paige profile and labels its live conversation adapter honestly", async () => {
     const { host, root } = await mount();
     await act(async () => button(host, "Paige brief").click());

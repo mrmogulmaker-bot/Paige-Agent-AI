@@ -1486,11 +1486,19 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
                   examples={examples}
                   owner={owner}
                   editing={editing}
-                  onGuide={() => setPaigeGuide(true)}
-                  onExample={() => {
-                    setExampleEditor(examples.length);
+                  saving={data.saving}
+                  onSave={() => void save()}
+                  onCancel={() => void cancel()}
+                  onKnowledge={() => switchTab("knowledge-bucket")}
+                  onGuide={() => {
+                    if (owner && beginEdit()) setPaigeGuide(true);
                   }}
-                  onEditExample={setExampleEditor}
+                  onExample={() => {
+                    if (owner && beginEdit()) setExampleEditor(examples.length);
+                  }}
+                  onEditExample={(index) => {
+                    if (owner && beginEdit()) setExampleEditor(index);
+                  }}
                   onRemoveExample={(index) =>
                     setExamples((now) => now.filter((_, i) => i !== index))
                   }
@@ -1577,17 +1585,22 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
         {exampleEditor !== null && (
           <ExampleEditor
             value={examples[exampleEditor] ?? newExample()}
+            existing={exampleEditor < examples.length}
             onDirtyChange={setDrawerDirty}
             confirmDiscard={confirmDrawerDiscard}
-            onChange={(value) =>
+            onChange={(value) => {
               setExamples((now) =>
                 exampleEditor === now.length
                   ? [...now, value]
                   : now.map((item, index) =>
                       index === exampleEditor ? value : item,
                     ),
-              )
-            }
+              );
+              setNotice({
+                tone: "ok",
+                text: "Example kept in your draft. Save business context to keep the changes.",
+              });
+            }}
             onClose={() => {
               setExampleEditor(null);
               setDrawerDirty(false);
@@ -2672,6 +2685,10 @@ function PaigeContext({
   examples,
   owner,
   editing,
+  saving,
+  onSave,
+  onCancel,
+  onKnowledge,
   onGuide,
   onExample,
   onEditExample,
@@ -2681,6 +2698,10 @@ function PaigeContext({
   examples: SetupVoiceExample[];
   owner: boolean;
   editing: boolean;
+  saving: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+  onKnowledge: () => void;
   onGuide: () => void;
   onExample: () => void;
   onEditExample: (index: number) => void;
@@ -2707,7 +2728,7 @@ function PaigeContext({
       <div className="setup-paige-brief__actions">
         <button
           className="setup-button setup-button--primary"
-          disabled={!owner || !editing}
+          disabled={!owner || saving}
           onClick={onGuide}
         >
           <MessageSquareText aria-hidden />
@@ -2715,12 +2736,37 @@ function PaigeContext({
         </button>
         <button
           className="setup-button"
-          disabled={!owner || !editing}
+          disabled={!owner || saving}
           onClick={onExample}
         >
           <Plus aria-hidden />
           Add an example
         </button>
+        <button
+          className="setup-button"
+          disabled={saving}
+          onClick={onKnowledge}
+        >
+          Links &amp; documents
+        </button>
+        {editing && owner && (
+          <>
+            <button
+              className="setup-button"
+              disabled={saving}
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+            <button
+              className="setup-button setup-button--primary"
+              disabled={saving}
+              onClick={onSave}
+            >
+              {saving ? "Saving durable record…" : "Save business context"}
+            </button>
+          </>
+        )}
       </div>
       <div className="setup-paige-brief__grid">
         {SOLO_PAIGE_PROFILE_FIELDS.map((field) => (
@@ -2756,23 +2802,24 @@ function PaigeContext({
           title: `${example.kind === "sounds_like" ? "Sounds like us" : "Avoid this"} · ${example.channel}`,
           text: example.example,
           source: example.provenance.source,
-          actions:
-            editing && owner ? (
-              <>
-                <button
-                  className="setup-button"
-                  onClick={() => onEditExample(index)}
-                >
-                  Edit
-                </button>
+          actions: owner ? (
+            <>
+              <button
+                className="setup-button"
+                onClick={() => onEditExample(index)}
+              >
+                Edit
+              </button>
+              {editing && (
                 <button
                   className="setup-button"
                   onClick={() => onRemoveExample(index)}
                 >
                   Remove
                 </button>
-              </>
-            ) : null,
+              )}
+            </>
+          ) : null,
         }))}
       />
     </Section>
@@ -3109,6 +3156,9 @@ function PaigeGuide({
           </button>
           <button
             className="setup-button setup-button--primary"
+            disabled={SOLO_PAIGE_PROFILE_FIELDS.some(
+              (field) => draft[field].length > 4000,
+            )}
             onClick={() => onApply(draft)}
           >
             Apply to Setup draft
@@ -3134,8 +3184,13 @@ function PaigeGuide({
             <textarea
               name={field}
               value={draft[field]}
+              maxLength={4000}
+              aria-invalid={draft[field].length > 4000 || undefined}
               onChange={(e) => mark(field, e.target.value)}
             />
+            <small>
+              {draft[field].length.toLocaleString()} / 4,000 characters
+            </small>
           </label>
         ))}
       </div>
@@ -3144,12 +3199,14 @@ function PaigeGuide({
 }
 function ExampleEditor({
   value: initial,
+  existing,
   onChange: onCommit,
   onClose,
   onDirtyChange,
   confirmDiscard,
 }: {
   value: SetupVoiceExample;
+  existing: boolean;
   onChange: (value: SetupVoiceExample) => void;
   onClose: () => void;
 } & DrawerDraftProps) {
@@ -3160,21 +3217,30 @@ function ExampleEditor({
   } = useDrawerDraft(initial, onDirtyChange, confirmDiscard, onClose);
   return (
     <Drawer
-      label="Add a voice example"
-      title="Add a real example"
+      label={existing ? "Edit a voice example" : "Add a voice example"}
+      title={existing ? "Edit this example" : "Add a real example"}
       description="Examples remain owner-confirmed Setup records and are not indexed or sent to Paige."
       onClose={() => void close()}
       footer={
-        <button
-          className="setup-button setup-button--primary"
-          disabled={!value.example.trim()}
-          onClick={() => {
-            onCommit(value);
-            onClose();
-          }}
-        >
-          Keep in Setup draft
-        </button>
+        <>
+          <button className="setup-button" onClick={() => void close()}>
+            Cancel
+          </button>
+          <button
+            className="setup-button setup-button--primary"
+            disabled={
+              !value.example.trim() ||
+              value.example.length > 8000 ||
+              value.note.length > 1000
+            }
+            onClick={() => {
+              onCommit(value);
+              onClose();
+            }}
+          >
+            Keep in Setup draft
+          </button>
+        </>
       }
     >
       <div className="setup-paige-drawer__fields">
@@ -3215,6 +3281,8 @@ function ExampleEditor({
           <span>Example</span>
           <textarea
             value={value.example}
+            maxLength={8000}
+            aria-invalid={value.example.length > 8000 || undefined}
             onChange={(e) =>
               onChange({
                 ...value,
@@ -3227,13 +3295,19 @@ function ExampleEditor({
               })
             }
           />
+          <small>
+            {value.example.length.toLocaleString()} / 8,000 characters
+          </small>
         </label>
         <label>
           <span>Why it fits or does not fit</span>
           <textarea
             value={value.note}
+            maxLength={1000}
+            aria-invalid={value.note.length > 1000 || undefined}
             onChange={(e) => onChange({ ...value, note: e.target.value })}
           />
+          <small>{value.note.length.toLocaleString()} / 1,000 characters</small>
         </label>
       </div>
     </Drawer>
