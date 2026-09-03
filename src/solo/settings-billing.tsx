@@ -205,11 +205,18 @@ function DesignateForm({
     </p>;
   }
 
-  return <form className="ss-form" onSubmit={(e) => { e.preventDefault(); if (selected) onDesignate(selected, designation); }}>
+  // The selection is validated against the CURRENT candidates on every render rather than cleared in
+  // an effect. With two eligible owners, designating one leaves `selected` pointing at a person who
+  // is no longer offered: the control shows blank while the button stays enabled, and pressing it
+  // re-sends a designation the server can only refuse. Deriving it means the control and the button
+  // can never disagree about what is chosen.
+  const chosen = candidates.some((c) => c.userId === selected) ? selected : "";
+
+  return <form className="ss-form" onSubmit={(e) => { e.preventDefault(); if (chosen) onDesignate(chosen, designation); }}>
     <div className="ss-form-row">
       <label>
         <span>{isPrimary ? "Primary billing contact" : "Billing delegate"}</span>
-        <select value={selected} disabled={busy !== null} aria-label={isPrimary ? "Choose the primary billing contact" : "Choose a billing delegate"}
+        <select value={chosen} disabled={busy !== null} aria-label={isPrimary ? "Choose the primary billing contact" : "Choose a billing delegate"}
           onChange={(e) => setSelected(e.target.value)}>
           <option value="">Choose someone…</option>
           {candidates.map((c) => <option key={c.userId} value={c.userId}>{c.name}</option>)}
@@ -218,7 +225,7 @@ function DesignateForm({
     </div>
     <div className="ss-form-actions">
       {/* Disabled with nothing chosen: a submit that can only fail is not an act, it is a trap. */}
-      <button type="submit" className="ss-btn" disabled={busy !== null || selected === ""}>
+      <button type="submit" className="ss-btn" disabled={busy !== null || chosen === ""}>
         {busy === key ? <RefreshCw className="ss-spin" aria-hidden/> : null}
         {busy === key ? "Saving…" : isPrimary ? "Set primary billing contact" : "Add billing delegate"}
       </button>

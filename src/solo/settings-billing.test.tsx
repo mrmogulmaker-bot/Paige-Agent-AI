@@ -319,6 +319,36 @@ describe("billing contacts — the flow a person can finish", () => {
     expect(rpc).not.toHaveBeenCalledWith("platform_billing_contact_designate", expect.anything());
   });
 
+  it("clears a selection that is no longer offered, so the button cannot re-send a stale choice", async () => {
+    // Two eligible owners: designating one must not leave the other form pointing at the designated
+    // person with an enabled button.
+    world({
+      contacts: [],
+      roster: {
+        ...ROSTER,
+        members: [
+          ...ROSTER.members,
+          { membership_id: "m4", user_id: "user-owner-2", full_name: "Second Owner", email: "o2@example.test", avatar_url: null, status: "active", permission: "owner", is_owner: true, job_title: null, responsibilities: null, last_sign_in_at: null },
+        ],
+      },
+    });
+    const { host } = await render();
+    const select = selects(host)[0];
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "user-owner", "user-owner-2"]);
+    await choose(select, "user-owner");
+    await submit(select.closest("form"));
+    await act(async () => { await Promise.resolve(); });
+
+    const after = selects(host)[0];
+    expect(Array.from(after.options).map((o) => o.value)).toEqual(["", "user-owner-2"]);
+    expect(after.value).toBe("");
+    expect((byText(host, "Set primary billing contact") as HTMLButtonElement).disabled).toBe(true);
+    const designateCalls = rpc.mock.calls.filter((c) => c[0] === "platform_billing_contact_designate").length;
+    await submit(after.closest("form"));
+    await act(async () => { await Promise.resolve(); });
+    expect(rpc.mock.calls.filter((c) => c[0] === "platform_billing_contact_designate").length).toBe(designateCalls);
+  });
+
   it("shows the server's refusal verbatim and does not pretend the write happened", async () => {
     world({ contacts: [], writeError: { message: "billing_contact_email_unverified" } });
     const { host } = await render();
