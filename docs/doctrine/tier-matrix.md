@@ -2243,6 +2243,88 @@ the fix is in this same PR. **Authenticated runtime on the deployed surface: OWE
 browser-driving tool in this session; owed to the next capable session, same as the AI-usage slice
 above.
 
+### Platform Billing — payment-method connect + Spine billing evidence, items 4–5 (owner brief 2026-09-03)
+
+**Continuation of the row above (PR #865, items 1–3, merged `5ae7a34a`).** Built on the fresh branch
+off that merged production `main`, per the owner's explicit item-4/item-5 continuation brief
+(2026-09-03), authorized through PR/merge/deploy/production verification without a routine
+approval pause.
+
+**Item 4 — owner-only payment-method connection.** A new edge function
+`platform-billing-connect` opens a Stripe Checkout Session in `mode: "setup"` (a SetupIntent, never
+a charge) for the authorized Owner of a `top_level` Solo/Sub-account/Enterprise workspace. Its own
+decision function `decideConnectAccess()` (`platform-billing-connect/decide.ts`) mirrors — and
+DIFFERS from in exactly one place — the existing hosted-portal gate
+(`decidePortalAccess`/`decideLegacyPortal`): it allows BOTH `billing_account_state: "mapped"` AND
+`"absent"`, because connect is how a mapping first comes to exist; the portal only ever allows
+`"mapped"`. No external Stripe customer or provider object is created until the authorized owner
+explicitly clicks — never on page load, deploy, migration, background reconciliation, or a test.
+The Stripe Customer created (idempotency key `pbc_customer_${tenantId}`) is created only if none
+already exists; the Checkout Session return webhook (`stripe-webhook`, keyed on
+`session.metadata.platform_billing_connect_tenant_id`) resolves the SetupIntent → PaymentMethod,
+writes brand/last4/exp onto `platform_billing_accounts` via the new
+`upsertPaymentMethod()` shared writer (`_shared/platform-billing.ts`, following the file's existing
+`upsertBillingAccount()` mapping-conflict discipline: a customer-id mismatch between the event and
+the tenant's own mapping row is refused, nothing written, never silently overwritten), and sets the
+new payment method as the Stripe customer's default. **What is deliberately NOT in this slice:** a
+payment-method REMOVAL flow. No removal seam exists in the current provider wiring, and building
+one safely (recovering/blocking a workspace that removes its only method) is separate design work
+— honestly scoped out per the brief's own "record the exact reason as Proof Owed or follow-up"
+allowance, not silently dropped.
+
+**Item 5 — the Spine-safe billing summary, `get_billing_spine_evidence()`
+(`20261140000000`).** Built entirely on `get_workspace_billing_status()` (§18 — never a second
+computation of the same facts), in the exact fixed-field contract `get_pipeline_spine_evidence()`
+(`20260902004019`) established: `signal_id, kind, tenant_id, subject_type, subject_ref,
+occurred_at, recorded_at, source_system, source_record_ref, source_actor_type, availability,
+classification, lifecycle, safe_summary, facts, audience, schema_version, expires_at,
+outcome_ref`. `facts` carries plan/promotional status, `amount_due_cents`, a derived
+`payment_setup_state` (`connected | required | unavailable | not_required`), the primary billing
+contact's NAME (owner callers only — a non-owner reads zero rows, same R22 gate as the Billing
+screen itself), measured seats/contacts/AI-usage counts, and a derived `owner_action_needed` +
+`owner_action_reason` (dual-primary selection-needed, or a required-but-unconnected payment
+method). **Structurally excluded, not merely omitted:** Stripe customer/payment-method ids, card
+brand/last4/expiry, full invoice payloads, internal cost estimates, cross-workspace data, sales/
+client-payment data — none of those fields exist on `get_workspace_billing_status()`'s own return
+shape, so there is nothing in reach to accidentally select. `SECURITY DEFINER`,
+`REVOKE ALL FROM PUBLIC, ANON, SERVICE_ROLE; GRANT EXECUTE TO AUTHENTICATED`.
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| "Set up payment method" action | n/a (no book) | `status-unsupported` (excluded, never `top_level`) | `status-unsupported` (same) | `resolveWorkspacePaymentSetupPresentation()` renders `setup-needed`/`setup-connected` and opens Stripe Checkout (`mode: setup`) on click | `setup-not-owner` — refused, no external action initiated | n/a (`scope <> top_level`) | route not reachable | EXECUTE revoked |
+| `get_billing_spine_evidence()` | 0 rows unless a real top-level workspace is act-as'd (no book of its own) | 0 rows (`scope <> top_level`) | 0 rows (`scope <> top_level`, same guard as item 1–3's status card) | 1 row, full facts incl. primary contact name | 0 rows (R22 — `can_view=false`) | 0 rows (`scope <> top_level`) | — | EXECUTE revoked |
+
+**Evidence.** Backend: `deno check` clean across `_shared/platform-billing.ts`,
+`platform-billing-connect/{index,decide}.ts`, `stripe-webhook/index.ts`; `deno test` 28/28
+(`platform-billing.test.ts` 18, `decide.test.ts` 10). Frontend: `npx tsc --noEmit` clean; 1215/1215
+across `src/solo/` (67 in `settings-billing.test.tsx` alone, incl. 9 new payment-setup-act cases: a
+promotional workspace with no method, cancel-and-return, provider failure, non-owner refusal,
+ambiguous-mapping refusal, and the redirect-return success/cancelled banners); `npx eslint` clean on
+every changed `src/` file (the CI eslint gate's actual scope — edge functions are a separate Deno
+tree the gate does not lint, per `.github/workflows/ci.yml`'s own `changed_src.txt` filter).
+**Production rollback proof (`scripts/sql/billing-spine-evidence-proof.sql`), 14/14, 0 failures**:
+P1–P6 promotional owner (one row, real name, `$0` due, no owner action, zero Stripe/card keys in
+`facts`); P7 a non-owner member of the same workspace reads zero rows; P8 an ambiguous provider
+mapping reads `unavailable`; P9–P10 `past_due` reads `required` with a real reason; **P11–P12 a
+genuine two-live-primary workspace reads `owner_action_needed=true` with the dual-primary
+reason** (the fixture recreates the historical pair `trg_platform_billing_one_primary`
+(`20261109040000`) — now permanently live on production — would otherwise correctly refuse as a
+NEW second primary; the proof disables that one trigger for exactly the two inserts that
+reconstruct the pre-trigger state MMA already carries, then re-enables it before the migration
+under proof even runs, so the assertion exercises the same shape of state the trigger is designed
+to tolerate, not one it was bypassed to create going forward); P13 a sub-account owner reads zero
+rows; P80 `anon` EXECUTE is refused (`insufficient_privilege`). Transaction rolled back —
+production unaffected by the proof run itself.
+
+**§32.a persisted-apply confirmation: OWED**, to be recorded here after merge (schema_migrations
+advancing to include `20261140000000`, `get_billing_spine_evidence()` present in `pg_proc`, per the
+same direct-query discipline used for items 1–3 above) — not assumed from a green rollback proof.
+**Authenticated runtime on the deployed Checkout/webhook round-trip: OWED** (§32.c) — this session
+has no browser-driving tool; the webhook side is proven by real Stripe SetupIntent/PaymentMethod
+retrieval calls in the shared-writer unit tests, but a live click-through of "Set up payment
+method" → Stripe-hosted Checkout → return → confirmation banner has not been driven end-to-end by
+this session and is owed to the next capable one, same standing gap as the items 1–3 row above.
+
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
 
 **§66, same commit as the change.** This row was first written while Slice 2A was a draft, and said

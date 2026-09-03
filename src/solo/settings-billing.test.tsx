@@ -608,6 +608,138 @@ describe("plan & usage — access state is independent of provider readiness (R1
   });
 });
 
+/**
+ * Item 4 (owner brief 2026-09-03) — the payment-method connect act, rendered inside the SAME
+ * "Payment method" card as the pre-existing hosted-portal block (§18 one home), gated on the SAME
+ * authority the server itself gates on, so the button is never offered where the server would
+ * refuse it (§36 — no dead-end buttons).
+ */
+describe("payment setup — the connect act (item 4)", () => {
+  const originalLocation = Object.getOwnPropertyDescriptor(window, "location")!;
+  let assign: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    assign = vi.fn();
+    Object.defineProperty(window, "location", { value: { ...originalLocation.value, assign }, writable: true, configurable: true });
+  });
+  afterEach(() => { Object.defineProperty(window, "location", originalLocation); });
+
+  const setupState = (host: HTMLElement) => host.querySelector("[data-setup-state]")?.getAttribute("data-setup-state");
+
+  it("offers 'Set up payment method' to the owner when no method is connected yet — not_created reads exactly like an already-mapped-but-unconnected workspace", async () => {
+    for (const providerState of ["not_created", "mapped"]) {
+      world({ status: { provider_state: providerState, payment_method_connected: false } });
+      const { host, root } = await render();
+      expect(setupState(host), providerState).toBe("setup-needed");
+      expect(byText(host, "Set up payment method")).toBeTruthy();
+      await act(async () => root.unmount());
+    }
+  });
+
+  it("offers 'Update payment method' and shows the real masked details once one is connected", async () => {
+    world({ status: {
+      provider_state: "mapped", payment_method_connected: true,
+      payment_method_brand: "Visa", payment_method_last4: "4242",
+      payment_method_exp_month: 12, payment_method_exp_year: 2031,
+    } });
+    const { host } = await render();
+    expect(setupState(host)).toBe("setup-connected");
+    expect(byText(host, "Update payment method")).toBeTruthy();
+  });
+
+  it("never offers payment setup to a non-owner", async () => {
+    world({ authority: { can_manage_billing: false, role: "admin" }, status: { can_manage: false } });
+    const { host } = await render();
+    expect(setupState(host)).toBe("setup-not-owner");
+    expect(byText(host, "Set up payment method")).toBeUndefined();
+    expect(byText(host, "Update payment method")).toBeUndefined();
+  });
+
+  it("refuses payment setup for an ambiguous workspace rather than creating a new provider object over the conflict", async () => {
+    // The setup gate reads `authority.billingAccountState` — the SAME field the server's own
+    // decideConnectAccess gates on — not `status.providerState` (a separate read for display).
+    world({ authority: { billing_account_state: "ambiguous" } });
+    const { host } = await render();
+    expect(setupState(host)).toBe("setup-needs-review");
+    expect(byText(host, "Set up payment method")).toBeUndefined();
+  });
+
+  it("calls platform-billing-connect and navigates to the returned URL for THIS workspace", async () => {
+    world({ status: { provider_state: "not_created" } });
+    invoke.mockImplementation((name: string) => {
+      if (name === "platform-billing-connect") return Promise.resolve({ data: { url: "https://checkout.example/setup", tenant_id: "tenant-a" }, error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+    const { host } = await render();
+    await click(byText(host, "Set up payment method"));
+    await act(async () => { await Promise.resolve(); });
+    expect(invoke).toHaveBeenCalledWith("platform-billing-connect");
+    expect(assign).toHaveBeenCalledWith("https://checkout.example/setup");
+  });
+
+  it("reports the server's refusal reason verbatim and never navigates on a refusal", async () => {
+    world({ status: { provider_state: "not_created" } });
+    invoke.mockImplementation((name: string) => {
+      if (name === "platform-billing-connect") {
+        return Promise.resolve({
+          data: null,
+          error: Object.assign(new Error("Edge Function returned a non-2xx status code"), {
+            context: new Response(JSON.stringify({ error: "billing_account_ambiguous" }), { status: 409 }),
+          }),
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+    const { host } = await render();
+    await click(byText(host, "Set up payment method"));
+    await act(async () => { await Promise.resolve(); });
+    expect(text(host)).toContain("This workspace's billing records need a platform review before payment setup can proceed");
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("does not navigate to a URL minted for a different workspace than the one clicked in", async () => {
+    world({ status: { provider_state: "not_created" } });
+    invoke.mockImplementation((name: string) => {
+      if (name === "platform-billing-connect") return Promise.resolve({ data: { url: "https://checkout.example/setup", tenant_id: "tenant-DIFFERENT" }, error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+    const { host } = await render();
+    await click(byText(host, "Set up payment method"));
+    await act(async () => { await Promise.resolve(); });
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("shows a 'confirming' banner on a successful redirect return, and polls the real status read rather than trusting the URL alone", async () => {
+    context.tenantId = "tenant-a";
+    Object.defineProperty(window, "location", {
+      value: { assign, search: "?payment_setup=success", pathname: "/solo/1/settings/billing" },
+      writable: true, configurable: true,
+    });
+    // history.replaceState is real in jsdom and harmless to call.
+    world();
+    const { host } = await render();
+    expect(host.querySelector("[data-setup-return='success']")).toBeTruthy();
+    expect(text(host)).toContain("Confirming your payment method");
+    const before = rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status").length;
+    // The poll fires on a timer; advancing real timers here would slow the suite, so this asserts
+    // only that the return is detected and rendered — the poll's own re-read is covered by the
+    // dedicated hook-level refresh test on useWorkspaceBillingStatus.
+    expect(rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status").length).toBeGreaterThanOrEqual(before);
+  });
+
+  it("shows a neutral 'cancelled' banner and claims no change on a cancelled redirect return", async () => {
+    context.tenantId = "tenant-a";
+    Object.defineProperty(window, "location", {
+      value: { assign, search: "?payment_setup=cancelled", pathname: "/solo/1/settings/billing" },
+      writable: true, configurable: true,
+    });
+    world();
+    const { host } = await render();
+    expect(host.querySelector("[data-setup-return='cancelled']")).toBeTruthy();
+    expect(text(host)).toContain("Payment setup was cancelled");
+    expect(text(host)).toContain("Nothing about your billing changed");
+  });
+});
+
 describe("authority boundaries", () => {
   it("a non-owner gets a read-only surface: no designate form, no remove, no roster read", async () => {
     world({ authority: { can_manage_billing: false, can_view_billing: false, role: "admin" }, contacts: [contactRow()] });

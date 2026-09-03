@@ -1355,6 +1355,54 @@ a stale JSDoc header on `settings-billing.tsx` (fixed) and a migration comment o
 webhook writer that does not exist yet (fixed to future tense), and Codex review is to resume when
 it returns.
 
+### Billing Experience — payment-method connect + Spine evidence, items 4–5 (owner brief 2026-09-03, continuation of #865)
+
+**Continuation of the row above**, built on the fresh branch off #865's merged `main`, per the
+owner's explicit item-4/item-5 brief, authorized through PR/merge/deploy/production verification
+without a routine approval pause.
+
+**Item 4 — owner-only payment-method connection.** New edge function `platform-billing-connect`:
+Owner-only, `top_level`-scope-only (mirrors `decidePortalAccess`'s gate exactly, with one
+deliberate difference — it allows `billing_account_state: "absent"` as well as `"mapped"`, since
+connect is how a mapping first comes to exist). On explicit owner click only, opens a Stripe
+Checkout Session in `mode: "setup"` — a SetupIntent, never a charge, subscription, or plan
+mutation. No external Stripe customer or provider object is created on page load, deploy,
+migration, background reconciliation, or a test — only on that click, and the Customer create is
+idempotent (`pbc_customer_${tenantId}`) so a retry never mints a second one. The Checkout return is
+handled by a new discriminated block in the existing `stripe-webhook` (keyed on
+`session.metadata.platform_billing_connect_tenant_id`), which resolves the SetupIntent's
+PaymentMethod and writes brand/last4/exp via a new shared writer `upsertPaymentMethod()` — a
+customer-id mismatch between the webhook event and the tenant's own mapping row is refused, nothing
+written, following the same conflict discipline as the existing `upsertBillingAccount()`.
+**Deliberately not in this slice: payment-method removal.** No removal seam exists in the current
+provider wiring; building one safely is separate design work, scoped out honestly per the brief's
+own "record the exact reason as Proof Owed or follow-up" allowance rather than dropped silently.
+
+**Item 5 — `get_billing_spine_evidence()` (`20261140000000`).** Built entirely on
+`get_workspace_billing_status()` (§18 — never a second computation of the same facts), in the exact
+fixed-field contract `get_pipeline_spine_evidence()` established. Answers Spine's five listed
+questions (plan/promotional status, anything due, payment-setup readiness, the primary billing
+contact if the caller is the owner, measured usage, whether owner action is needed) and structurally
+excludes every forbidden category — no Stripe id, no card brand/last4/expiry, no invoice payload, no
+internal cost estimate, no cross-workspace or sales/client-payment data — because none of those
+fields exist on the function it reads from, so there is nothing in reach to accidentally select.
+`SECURITY DEFINER`, `REVOKE ALL FROM PUBLIC, ANON, SERVICE_ROLE; GRANT EXECUTE TO AUTHENTICATED`; a
+non-owner, sub-account, or Agency/Enterprise caller gets zero rows, never a guess (R22).
+
+**Evidence.** Backend: `deno check` clean, `deno test` 28/28. Frontend: `tsc --noEmit` clean,
+1215/1215 across `src/solo/` (9 new payment-setup-act cases), `eslint` clean on every changed `src/`
+file. **Production rollback proof, 14/14, 0 failures, nothing persisted** — including P11/P12, which
+prove `get_billing_spine_evidence()` correctly reads `owner_action_needed=true` with the real
+dual-primary reason for a genuine two-live-primary workspace; the fixture recreates that historical
+state by disabling `trg_platform_billing_one_primary` (the #865 Slice A trigger, permanently live on
+prod) for exactly the two inserts that reconstruct MMA's own pre-trigger pair, then re-enabling it
+before the migration under proof runs — the same shape of state the trigger tolerates, never one it
+was bypassed to create going forward. **Status: `PARTIAL` / `Authenticated Runtime Proof Owed`** —
+no browser-driving tool in this session (§32.c): the shared-writer unit tests prove real Stripe
+SetupIntent/PaymentMethod retrieval logic, but a live click-through of "Set up payment method" →
+Stripe-hosted Checkout → return → confirmation banner has not been driven end-to-end; the
+migration's persisted-apply confirmation is owed on merge (§32.a), same standing pattern as #865.
+
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 
 **What it settles.** `docs/architecture/paige-mind-integration-matrix.md` records, per Solo surface,

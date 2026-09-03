@@ -1870,3 +1870,35 @@ render as a distinct "Selection needed" banner rather than two rows that both lo
 Codex was reported down at review time; owner explicitly authorized substituting an Agent-based
 adversarial review and resuming Codex review when it returns — recorded so a future session does
 not read this as skipping review discipline.
+
+## 2026-09-03 — Billing Experience items 4–5: owner-only payment-method connect + Spine evidence (continuation of #865)
+
+Owner brief authorized continuing directly to items 4 and 5 without a routine approval pause. Item
+4: `platform-billing-connect` edge function opens a Stripe Checkout Session in `mode: "setup"`
+(SetupIntent, never a charge) for the authorized Owner of a `top_level` workspace only — its access
+decision mirrors the existing hosted-portal gate with one deliberate difference (it also allows
+`billing_account_state: "absent"`, since connect is how a mapping first comes to exist). No
+external Stripe object is created before an explicit owner click. `stripe-webhook` gained one new
+discriminated block that resolves the Checkout return's SetupIntent → PaymentMethod and writes it
+via a new shared writer, `upsertPaymentMethod()`, refusing (never overwriting) on a customer-id
+mismatch. Payment-method removal was deliberately left out of scope — no removal seam exists yet,
+and building one safely is separate design work.
+
+Item 5: `get_billing_spine_evidence()` — built entirely on `get_workspace_billing_status()` (never a
+second computation), in the exact fixed-field contract `get_pipeline_spine_evidence()` established.
+Answers Spine's five listed questions and structurally excludes every forbidden category (no Stripe
+id, no card details, no invoice payload, no cross-workspace or sales data) because those fields do
+not exist on the function it reads from.
+
+**The proof-writing lesson worth keeping:** the first draft of the dual-primary fixture assumed it
+could seed two live primary contacts "before the trigger's migration runs" — a technique that
+worked for #865's own Slice A proof (where the trigger didn't exist yet in that isolated
+transaction) but fails once the trigger is permanently live on production, which it now is. The fix
+was `ALTER TABLE ... DISABLE TRIGGER trg_platform_billing_one_primary` for exactly the two inserts
+that reconstruct the real historical pair (MMA's own pre-trigger data), then re-enabling it before
+the migration under proof runs. Recorded so a future proof against an already-shipped guard doesn't
+re-derive this from a failed `BEGIN..ROLLBACK` run first.
+
+Production rollback proof: 14/14 (P1–P13 + P80), 0 failures, nothing persisted. §32.a
+persisted-apply confirmation and §32.c authenticated runtime are both owed post-merge, same standing
+pattern as #865.
