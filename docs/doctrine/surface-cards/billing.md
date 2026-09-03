@@ -16,14 +16,26 @@ billing act an owner can complete, so the surface is no longer read-only — but
 move to `LIVE` until an authenticated owner drives it on the deployed platform (§70/§32.c).
 
 Written 2026-09-02 against `main` `1fb7928` for the Platform Billing Phase 1 packet
-(`docs/delivery/platform-billing-gate1-packet.md`). **Describes the department as it is.**
+(`docs/delivery/platform-billing-gate1-packet.md`); **updated 2026-09-03 for the Foundation C
+release** (`11997dac`). **Describes the department as it is.** Where a column or clause below
+describes the pre-C surface it says so explicitly — an independent review caught three places
+where it still read as current, which on this card is exactly the wrong answer to give a
+maintainer.
 
 ## Owner job and user flow
 
 A Solo owner opens Settings → Billing to learn what their **workspace** pays the platform, when it
 renews, how much of the included allowance is used, which paid add-ons are active, and to update a
-card or download an invoice. Today the flow ends at the first step: they can read plan · status ·
-price · renewal and nothing else.
+card or download an invoice.
+
+**Before Foundation C** the flow ended at the first step, and that step was not true: the plan,
+price and renewal were read from the plan CATALOGUE, not from anything the workspace is charged.
+
+**As deployed now,** the owner learns the truthful state of their billing setup — for every current
+workspace that is *"no billing account linked · nothing is being charged"*, stated with its cause —
+and can complete exactly one billing act: **naming who receives this workspace's billing notices**
+(a primary billing contact, and an optional delegate). Plan, price, renewal, invoices, payment
+method, allowance and add-ons are all still unavailable, each saying why.
 
 **Not this surface's job:** what the owner charges their own customers. That is Sales (client
 billing, §197 LAYER 2, tenant's own processor per §38).
@@ -45,15 +57,17 @@ billing, §197 LAYER 2, tenant's own processor per §38).
 Settings → Billing, eighth of eight Settings destinations. Icon `CircleDollarSign`. Form-fitting
 (not on the visible-scroll list; `src/components/tenant-shell/settings-scroll-contract.ts`).
 
-*Deployed:* rendered by `BillingView` inside `settings.tsx`, fed by `useSoloComms`.
-*After Foundation C (PR #833):* rendered by `SoloBillingView` in `src/solo/settings-billing.tsx`,
+*Deployed now (Foundation C, `11997dac`):* rendered by `SoloBillingView` in `src/solo/settings-billing.tsx`,
 whose states come from the pure `src/solo/billing-contract.ts` and whose data comes from
 `useWorkspaceBillingAuthority` + `useWorkspaceBillingContacts` + `useWorkspaceBillingCandidates`.
 **Billing no longer reads `get_tenant_platform_subscription()` or the plan catalogue at all.**
 
+*Before Foundation C:* rendered by `BillingView` inside `settings.tsx`, fed by `useSoloComms` —
+**removed**, not still present.
+
 ## States
 
-| State | Deployed today | After Foundation C (PR #833) |
+| State | Before Foundation C (removed) | **Deployed now** (Foundation C, `11997dac`) |
 |---|---|---|
 | create | N/A — the CREATE leg is `platform-subscription-checkout` from onboarding | unchanged; plan selection is still not offered here |
 | edit | none | **real** — designate the primary billing contact, add a billing delegate |
