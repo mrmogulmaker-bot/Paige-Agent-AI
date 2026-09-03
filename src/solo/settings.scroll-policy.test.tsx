@@ -274,7 +274,7 @@ describe("Settings gets one visible, usable scroll owner", () => {
   it("leaves every SHORT Settings destination form-fitting", () => {
     // The exception does not widen to the destinations that genuinely fit. Each
     // of these was measured at exactly its host height, at all four viewports.
-    for (const dest of ["team", "notifications", "security-data", "vault", "billing"]) {
+    for (const dest of ["team", "security-data", "vault", "billing"]) {
       expect(settingsDestinationShowsScrollbar(dest), `${dest} must stay form-fitting`).toBe(false);
     }
     // And it is not a default-open policy: an unknown destination stays clipped.

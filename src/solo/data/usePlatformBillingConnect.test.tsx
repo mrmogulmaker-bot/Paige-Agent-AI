@@ -6,13 +6,13 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const harness = vi.hoisted(() => ({ invoke: vi.fn(), assign: vi.fn() }));
+const harness = vi.hoisted(() => ({ invoke: vi.fn(), assign: vi.fn(), rpc: vi.fn(), getUser: vi.fn() }));
 
 vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { functions: { invoke: harness.invoke } },
+  supabase: { functions: { invoke: harness.invoke }, rpc: harness.rpc, auth: { getUser: harness.getUser } },
 }));
 
-import { decideConnectOpen, usePlatformBillingConnect } from "./usePlatformBillingConnect";
+import { decideConnectOpen, usePlatformBillingConnect, consumePaymentSetupReturn, PAYMENT_SETUP_RETURN_KEY } from "./usePlatformBillingConnect";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -53,6 +53,8 @@ describe("usePlatformBillingConnect — openPaymentSetup", () => {
     root = createRoot(host);
     harness.invoke.mockReset();
     harness.assign.mockReset();
+    harness.getUser.mockReset().mockResolvedValue({ data: { user: { id: "user-a" } }, error: null });
+    harness.rpc.mockReset().mockResolvedValue({ data: [{ tenant_id: "t1", can_manage_billing: true, scope: "top_level_solo" }], error: null });
     // jsdom's window.location is not directly spy-able (its `assign` is non-configurable), so the
     // whole property is replaced with a plain object carrying a mock `assign`, restored after.
     Object.defineProperty(window, "location", { value: { assign: harness.assign }, writable: true, configurable: true });
@@ -87,8 +89,38 @@ describe("usePlatformBillingConnect — openPaymentSetup", () => {
     expect(harness.assign).not.toHaveBeenCalled();
   });
 
+  it("refuses a cross-tab server workspace switch without a local rerender", async () => {
+    let resolve!: (value: unknown) => void;
+    harness.invoke.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    await act(async () => root.render(<Harness tenantId="t1" onResult={() => {}} />));
+    await act(async () => { (window as unknown as { __open: () => void }).__open(); });
+    harness.rpc.mockResolvedValue({ data: [{ tenant_id: "t2", can_manage_billing: true, scope: "top_level_solo" }], error: null });
+    await act(async () => { resolve({ data: { url: "https://checkout.example/setup", tenant_id: "t1" }, error: null }); });
+    expect(harness.assign).not.toHaveBeenCalled();
+  });
+
+  it("refuses a different authenticated user in the same workspace", async () => {
+    let resolve!: (value: unknown) => void;
+    harness.invoke.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    await act(async () => root.render(<Harness tenantId="t1" onResult={() => {}} />));
+    await act(async () => { (window as unknown as { __open: () => void }).__open(); });
+    harness.getUser.mockResolvedValue({ data: { user: { id: "user-b" } }, error: null });
+    await act(async () => { resolve({ data: { url: "https://checkout.example/setup", tenant_id: "t1" }, error: null }); });
+    expect(harness.assign).not.toHaveBeenCalled();
+  });
+
+  it("never navigates after a keyed workspace remount", async () => {
+    let resolve!: (value: unknown) => void;
+    harness.invoke.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    await act(async () => { root.render(<Harness key="t1" tenantId="t1" onResult={() => {}} />); });
+    await act(async () => { (window as unknown as { __open: () => void }).__open(); });
+    await act(async () => { root.render(<Harness key="t2" tenantId="t2" onResult={() => {}} />); });
+    await act(async () => { resolve({ data: { url: "https://checkout.example/setup", tenant_id: "t1" }, error: null }); });
+    expect(harness.assign).not.toHaveBeenCalled();
+  });
+
   it("maps every server refusal to a typed reason and navigates nowhere", async () => {
-    for (const code of ["owner_only", "billing_account_ambiguous", "needs_config", "no_active_workspace"]) {
+    for (const code of ["owner_only", "billing_account_ambiguous", "needs_config", "no_active_workspace", "provider_unavailable", "provider_configuration"]) {
       harness.invoke.mockReset();
       harness.assign.mockReset();
       harness.invoke.mockResolvedValueOnce(httpRefusal(code));
@@ -107,5 +139,23 @@ describe("usePlatformBillingConnect — openPaymentSetup", () => {
     await act(async () => { (window as unknown as { __open: () => void }).__open(); await Promise.resolve(); await Promise.resolve(); });
     expect(result).toEqual({ ok: false, reason: "network" });
     expect(harness.assign).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("payment return correlation", () => {
+  it("consumes only a matching current workspace marker, once", async () => {
+    harness.rpc.mockResolvedValue({ data: [{ tenant_id: "a", can_manage_billing: true, scope: "top_level_solo" }], error: null });
+    harness.getUser.mockResolvedValue({ data: { user: { id: "user-a" } }, error: null });
+    window.sessionStorage.setItem(PAYMENT_SETUP_RETURN_KEY, JSON.stringify({ tenantId: "a", userId: "user-a", state: "nonce", startedAt: Date.now() }));
+    expect(await consumePaymentSetupReturn("a", "nonce")).toEqual({ userId: "user-a" });
+    expect(await consumePaymentSetupReturn("a", "nonce")).toBeNull();
+  });
+  it("refuses foreign, missing, expired, future, and malformed markers", async () => {
+    for (const marker of [null, { tenantId: "b", userId: "user-a", state: "nonce", startedAt: Date.now() }, { tenantId: "a", userId: "user-a", state: "other", startedAt: Date.now() }, { tenantId: "a", userId: "user-a", state: "nonce", startedAt: Date.now() - 86400001 }, { tenantId: "a", userId: "user-a", state: "nonce", startedAt: Date.now() + 60000 }, { tenantId: "a" }]) {
+      window.sessionStorage.setItem(PAYMENT_SETUP_RETURN_KEY, JSON.stringify(marker));
+      expect(await consumePaymentSetupReturn("a", "nonce")).toBeNull();
+      expect(window.sessionStorage.getItem(PAYMENT_SETUP_RETURN_KEY)).toBeNull();
+    }
   });
 });

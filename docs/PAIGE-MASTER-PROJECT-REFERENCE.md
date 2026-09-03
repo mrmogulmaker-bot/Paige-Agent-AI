@@ -1228,6 +1228,10 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### Solo Notifications menu retirement — 2026-09-03
+
+The standalone Solo Notifications destination is retired with a same-account replace redirect to Setup and a one-arrival acknowledgement. Billing retains its source-owned designations and no-sender disclosure; its badge now says “Designated for billing notices.” All other source controls remain unchanged. See `docs/delivery/solo-contextual-notifications-retirement.md` for collision scope, source mapping, tests and Proof Owed. Backend containment #896 is already deployed and catalog/source-verified; no production notification records were used as proof.
+
 ### Platform notification permission repair — 2026-09-03
 
 Owner-scoped follow-up to released #883: operator-only SELECT and read_at UPDATE on the legacy platform notification store; remove excessive anonymous/authenticated privileges and all four legacy permissive policies. A restrictive operator boundary prevents permissive-policy reintroduction from admitting tenants. The table remains outside realtime publication (confirmed current production metadata); source producers and service-role privileges remain unchanged. No production notification records are read, seeded, updated or deleted for proof.
@@ -1456,6 +1460,9 @@ webhook writer that does not exist yet (fixed to future tense), and Codex review
 it returns.
 
 ### Billing Experience — payment-method connect + Spine evidence, items 4–5 (PR #870, **MERGED `cdea70ae` 2026-09-03; migrations persisted-apply confirmed on production**)
+
+**2026-09-03 P0 correction — FAIL / repair in progress.** The authenticated owner attempt failed before hosted setup. `STRIPE_SECRET_KEY` is present; missing-secret speculation is superseded. The repair candidate removes card fields from the Solo response, binds delayed client work to workspace/actor, requests cards explicitly and uses atomic retryable webhook persistence without selecting an invoice default. Prior paragraphs below describe the historical release, not verified provider completion. [Current repair and separated proof ledger](delivery/billing-payment-setup-p0.md).
+
 
 **Continuation of the row above**, built on the fresh branch off #865's merged `main`, per the
 owner's explicit item-4/item-5 brief, authorized through PR/merge/deploy/production verification

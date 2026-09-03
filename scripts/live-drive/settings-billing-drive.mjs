@@ -56,7 +56,7 @@ function assertPortFree() {
 
 async function stopProcessTree(child) {
   if (!child?.pid) return;
-  try { process.kill(-child.pid, "SIGTERM"); } catch { /* already stopped */ }
+  try { if (process.platform === "win32") child.kill(); else process.kill(-child.pid, "SIGTERM"); } catch { /* already stopped */ }
 }
 
 async function measure(page) {
@@ -118,6 +118,8 @@ async function openBilling(context, url) {
   await page.locator(".ss-content .ss-card").first().waitFor();
   const fold = page.locator('#tenant-paige-workspace button[aria-label="Fold PAIGE conversation"]');
   if (await fold.isVisible()) await fold.click();
+  await page.waitForFunction(() => document.querySelectorAll(".ss-content .ss-card").length === 4 && document.querySelector("[data-billing-state]")?.getAttribute("data-billing-state") !== "status-loading");
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   return { page, errors };
 }
 
@@ -126,7 +128,7 @@ async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   const vite = spawn(process.execPath, [
     "node_modules/vite/bin/vite.js", "--config",
-    "scripts/live-drive/harness/settings-mount/vite.config.ts", "--port", String(PORT), "--strictPort",
+    "scripts/live-drive/harness/settings-mount/billing.vite.config.ts", "--port", String(PORT), "--strictPort",
   ], { stdio: "ignore", detached: true });
   let browser;
   try {
@@ -150,13 +152,13 @@ async function main() {
         const m = await measure(page);
 
         record(`${label} · Billing renders four cards`, m.cards === 4, `${m.cards} cards, ${m.controls} controls`);
-        record(`${label} · unmapped workspace resolves to an EXPLAINED unavailable`,
-          m.planState === "billing-unavailable", `plan=${m.planState}`);
+        record(`${label} · promotional workspace retains truthful access without provider mapping`,
+          m.planState === "status-promotional", `plan=${m.planState}`);
         record(`${label} · manage billing says why it cannot open`,
           m.portalState === "portal-unavailable", `portal=${m.portalState}`);
         record(`${label} · first use: no billing contact designated`,
           m.contactsState === "none", `contacts=${m.contactsState}`);
-        record(`${label} · NO money figure is rendered anywhere`, !m.moneyFigure);
+        record(`${label} · promotional amount due is $0 with PAIGE Platform as biller`, await page.locator(".ss-content").innerText().then((t) => t.includes("$0") && t.includes("PAIGE Platform")));
         record(`${label} · never claims "no subscription"`, !m.saysNoSubscription);
         record(`${label} · states a designation is not ownership`, m.saysNotOwnership);
         record(`${label} · states notices are not being sent`, m.saysNotSent);
@@ -173,6 +175,26 @@ async function main() {
         record(`${label} · at most one vertical scroll owner`, m.scrollers <= 1,
           `owners=${m.scrollers} ${m.hostScroll}/${m.hostClient}`);
         record(`${label} · no page errors`, errors.length === 0, errors.join(" | "));
+        const reach = await page.evaluate(() => {
+          const controls = [...document.querySelectorAll('.ss-content button:not([disabled]), .ss-content select:not([disabled]), .ss-content a[href]')];
+          return controls.every((el) => {
+            el.scrollIntoView({ block: "center" }); el.focus();
+            const r = el.getBoundingClientRect();
+            return document.activeElement === el && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth;
+          });
+        });
+        record(`${label} · enabled controls accept focus and remain reachable`, reach);
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        const reduced = await page.evaluate(() => {
+          const spin = document.createElement("span"); spin.className = "ss-spin";
+          document.querySelector(".ss-content").append(spin);
+          const style = getComputedStyle(spin);
+          const stopped = style.animationName === "none" || parseFloat(style.animationDuration) <= 0.01;
+          spin.remove(); return stopped;
+        });
+        record(`${label} · reduced motion suppresses the Billing spinner`, reduced);
+        await page.emulateMedia({ reducedMotion: "no-preference" });
+
 
         await page.evaluate(() => {
           const mark = document.createElement("div");
@@ -224,7 +246,7 @@ async function main() {
       record("flow · the designations HOLD across a reload", reloaded.contactsState === "designated");
       record("flow · both designations are still there",
         (await page.locator("[data-contact-designation]").count()) === 2);
-      record("flow · still no money figure after the writes", !reloaded.moneyFigure);
+      record("flow · promotional state is unchanged after designation", reloaded.planState === "status-promotional");
 
       // Revoke, confirmed.
       page.once("dialog", (d) => d.accept());
@@ -237,11 +259,28 @@ async function main() {
       await context.close();
     }
 
+    /* Payment setup states use only synthetic failures: this driver never visits a provider. */
+    for (const mode of ["provider-unavailable", "provider-config", "payment-connected", "duplicate"]) {
+      const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, colorScheme: "dark" });
+      const { page, errors } = await openBilling(context, `${BASE}/solo/1971670/settings/billing?theme=dark&data=${mode}`);
+      if (mode.startsWith("provider-")) {
+        await page.getByRole("button", { name: "Set up payment method", exact: true }).click();
+        await page.getByText(mode === "provider-config" ? "Payment setup needs a platform configuration update" : "The payment provider is temporarily unavailable", { exact: false }).waitFor();
+        record(`${mode} · correct recovery action`, (await page.getByRole("button", { name: "Set up payment method", exact: true }).count()) === (mode === "provider-config" ? 0 : 1));
+      }
+      if (mode === "payment-connected") {
+        record("connected · readiness only, no card details", await page.locator(".ss-content").innerText().then((t) => t.includes("Connected") && !/last.?4|expiry|Visa|4242|••••/.test(t)));
+      }
+      if (mode === "duplicate") record("duplicate · selection remains needed", await page.locator(".ss-content").innerText().then((t) => /selection needed/i.test(t)));
+      record(`${mode} · no page errors`, errors.length === 0, errors.join(" | "));
+      await context.close();
+    }
+
     /* ---- 3. The failed read, and the read-only viewer. ---- */
     // `readonly` now expects `role-refusal`, not `billing-unavailable`: the stub answers
     // can_view_billing=false for that world, and R22 makes VIEW a permission of its own — so the
     // plan is refused to that person rather than reported as unavailable to everyone.
-    for (const [mode, expectPlan] of [["issues", "plan-error"], ["readonly", "role-refusal"]]) {
+    for (const [mode, expectPlan] of [["issues", "status-error"], ["readonly", "status-role-refusal"]]) {
       const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, colorScheme: "dark" });
       const { page, errors } = await openBilling(context, `${BASE}/solo/1971670/settings/billing?theme=dark&data=${mode}`);
       const m = await measure(page);

@@ -2342,6 +2342,9 @@ above.
 
 ### Platform Billing — payment-method connect + Spine billing evidence, items 4–5 (PR #870, **MERGED `cdea70ae` 2026-09-03; migration persisted-apply confirmed on production**)
 
+**2026-09-03 P0 correction — FAIL / repair in progress.** The authenticated owner attempt failed before hosted setup. `STRIPE_SECRET_KEY` is present; missing-secret speculation is superseded. The repair candidate removes card fields from the Solo response, binds delayed client work to workspace/actor, requests cards explicitly and uses atomic retryable webhook persistence without selecting an invoice default. Prior paragraphs below describe the historical release, not verified provider completion. [Current repair and separated proof ledger](../delivery/billing-payment-setup-p0.md).
+
+
 **Continuation of the row above (PR #865, items 1–3, merged `5ae7a34a`).** Built on the fresh branch
 off that merged production `main`, per the owner's explicit item-4/item-5 continuation brief
 (2026-09-03), authorized through PR/merge/deploy/production verification without a routine
