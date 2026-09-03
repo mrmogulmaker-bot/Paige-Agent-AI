@@ -159,14 +159,22 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   const save = async () => {
     if (!workspace.can_manage_profiles || !dirty || Object.keys(errors).length) return;
     setSaving(true);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- migration RPC awaits generated types
-    const { data, error } = await (supabase as any).rpc("set_solo_team_member_work_profile", {
-      _member_user_id: member.user_id,
-      _job_title: title,
-      _responsibilities: responsibilities,
-    });
+    // Same wrap, same reason: `saving` now gates the destructive control, so an escaping rejection
+    // here would silently kill "Remove from workspace" until the dialog is closed and reopened.
+    let data: { job_title?: string | null; responsibilities?: string | null } | null = null;
+    let error: { message?: string } | null = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- migration RPC awaits generated types
+      ({ data, error } = await (supabase as any).rpc("set_solo_team_member_work_profile", {
+        _member_user_id: member.user_id,
+        _job_title: title,
+        _responsibilities: responsibilities,
+      }));
+    } catch (thrown) {
+      error = { message: thrown instanceof Error ? thrown.message : "request failed" };
+    }
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) { toast.error(error.message ?? "The save did not complete. Please try again."); return; }
 
     const nextTitle = typeof data?.job_title === "string" ? data.job_title : data?.job_title === null ? "" : title.trim();
     const nextResponsibilities = typeof data?.responsibilities === "string" ? data.responsibilities : data?.responsibilities === null ? "" : responsibilities.trim();
@@ -188,6 +196,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   const [removal, setRemoval] = useState<{ stage: "idle" | "armed" | "pending"; error: RemovalRefusal | null; tenantAtArm: string | null; /** The workspace NAME as of arming. The pending copy must name the workspace the call was SENT to, which the live one stops being the moment somebody switches. */ nameAtArm: string | null }>({ stage: "idle", error: null, tenantAtArm: null, nameAtArm: null });
   const removeButtonRef = useRef<HTMLButtonElement>(null);
   const removalInFlightRef = useRef(false);
+  useEffect(() => { removalInFlightRef.current = removal.stage === "pending"; }, [removal.stage]);
   // The PARENT must not unmount this dialog mid-call. It renders on `selectedLive`, and a workspace
   // switch during a pending removal nulls the roster and drops the selected member from it — so the
   // editor vanished and BOTH outcomes were lost: a refusal had nowhere to land, and a removal the
@@ -282,7 +291,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
 
     inFlight.current = false;
     if (error) {
-      const refusal = removalRefusal(error.message ?? null, identity.primary, workspace.tenant_name);
+      const refusal = removalRefusal(error.message ?? null, identity.primary, nameAtArm);
       if (refusal.reconciled) {
         // Not a removal this owner performed, and it must never be reported as one. The roster is
         // simply behind, so reconcile it and say exactly that.
@@ -352,10 +361,20 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   const changePermission = async () => {
     if (!permissionDraft) return;
     setSaving(true);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- migration RPC awaits generated types
-    const { error } = await (supabase as any).rpc("set_solo_team_member_permission", { _member_user_id: member.user_id, _new_permission: permissionDraft });
+    // WRAPPED for the same reason `confirmRemoval` is, and it is worse here than it was there.
+    // `saving` now gates the destructive control, so a transport rejection that skips
+    // `setSaving(false)` does not merely wedge this button — it kills "Remove from workspace"
+    // permanently, with nothing said. I hung a gate off this flag and did not give it the
+    // treatment the gate's own comment says it needs.
+    let error: { message?: string } | null = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- migration RPC awaits generated types
+      ({ error } = await (supabase as any).rpc("set_solo_team_member_permission", { _member_user_id: member.user_id, _new_permission: permissionDraft }));
+    } catch (thrown) {
+      error = { message: thrown instanceof Error ? thrown.message : "request failed" };
+    }
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) { toast.error(error.message ?? "The permission change did not complete. Please try again."); return; }
     toast.success(`Permission changed to ${permissionPresentation(permissionDraft, false).label}.`); setPermissionDraft(null); onSaved(); requestClose();
 
   };
@@ -398,8 +417,12 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   // what makes the interleaving that broke the first version of this gate unreachable rather than
   // merely guarded. (`save()` never closes the dialog, so it was not an escape path; it is included
   // for the invariant, not because it leaked.)
-  removalInFlightRef.current = removalInFlight;
-  // NOTE FOR ANYONE TIDYING THIS: the four `onClose()` calls inside `confirmRemoval` are RAW on
+  // Assigned on COMMIT, not during render — the rule this file already states for `Modal`'s
+  // `latest` ref 300 lines up, and which I broke here: a render discarded by StrictMode or
+  // concurrent rendering would leave this holding `true` against a committed `false`, producing a
+  // Close button that looks live and does nothing. `requestClose` only ever runs from an event
+  // handler, which is after commit, so reading a commit-assigned ref is correct.
+  // NOTE FOR ANYONE TIDYING THIS: the six `onClose()` calls inside `confirmRemoval` are RAW on
   // purpose and must stay that way. They run after the call has settled, but `requestClose` closes
   // over a `pending` state that is still true at that instant (the ref updates on the NEXT
   // render, and these run before it) — so routing them
@@ -428,7 +451,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
           {removal.stage === "pending" && <p ref={pendingRef} tabIndex={-1} role="status" aria-busy="true">Removing {identity.primary} from {removalWorkspaceName}…</p>}
           {removal.error && <p ref={errorRef} tabIndex={-1} role="alert">{removal.error.message}</p>}
           <button ref={cancelRef} className="stw-btn secondary" disabled={removal.stage === "pending"} onClick={disarmRemoval}>Cancel</button>
-          <button className="stw-btn" disabled={removal.stage === "pending" || removal.error?.retryable === false} onClick={confirmRemoval} aria-label={`Confirm removing ${identity.primary} from ${removalWorkspaceName}`}>{removal.stage === "pending" ? "Removing\u2026" : removal.error ? "Try again" : "Confirm removal"}</button>
+          <button className="stw-btn" disabled={removal.stage === "pending" || saving || removal.error?.retryable === false} onClick={confirmRemoval} aria-label={`Confirm removing ${identity.primary} from ${removalWorkspaceName}`}>{removal.stage === "pending" ? "Removing\u2026" : removal.error ? "Try again" : "Confirm removal"}</button>
         </div>}
       </div>}
     </div>

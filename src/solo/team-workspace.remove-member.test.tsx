@@ -655,12 +655,18 @@ describe("what the third read found", () => {
     // The server DID act, in the workspace the call named.
     await act(async () => { settle({ data: { tenant_id: "tenant-1" }, error: null }); });
 
+    // ASSERTS WHAT WAS SAID, not merely that something was. The previous version accepted any
+    // non-empty string, so re-collapsing the two branches — recreating the exact defect the split
+    // exists to fix — left it green. Measured: two separate mutations survived it.
     const spoken = mocks.error.mock.calls.concat(mocks.success.mock.calls, mocks.warning.mock.calls).map((c) => String(c[0]));
-    const alerts = Array.from(host.querySelectorAll('[role="alert"]')).map((n) => n.textContent ?? "");
     expect(
-      spoken.some((t) => t.trim().length > 0) || alerts.some((t) => t.trim().length > 0),
-      `the outcome reached the operator somehow. toasts=${JSON.stringify(spoken)} alerts=${JSON.stringify(alerts)}`,
+      spoken.some((t) => /was removed from Example Team/i.test(t)),
+      `the removal that HAPPENED is reported as having happened: ${JSON.stringify(spoken)}`,
     ).toBe(true);
+    expect(
+      spoken.some((t) => /nothing is being claimed/i.test(t)),
+      "and is NOT reported with the other branch's sentence, which would deny a real removal",
+    ).toBe(false);
   });
 });
 
@@ -787,5 +793,132 @@ describe("the fourth read", () => {
     ].join(" | ");
     expect(spoken, "the whole block names the workspace the call was sent to").toContain("Example Team");
     expect(spoken, "and nothing in it claims anything about the workspace now on screen").not.toContain("Second Workspace");
+  });
+});
+
+describe("the fifth read", () => {
+  it("locks the button that SENDS the removal during a permission save, not only the one that arms it", async () => {
+    // My "both directions" claim was false. Only the ARM button carried `|| saving`; the CONFIRM
+    // button did not. So an operator who arms FIRST and then changes permission had a live
+    // "Confirm removal" throughout the permission round trip — an ordinary sequence ("remove them…
+    // actually, change their access first"). Both writes then run together, and the operator is
+    // told the permission change succeeded for somebody whose membership was just deleted.
+    // My earlier test drove permission-then-arm and removal-then-permission, never armed-then-
+    // permission, which is the only ordering that exposes the confirm control.
+    let settlePermission: (v: unknown) => void = () => {};
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "set_solo_team_member_permission") return new Promise((res) => { settlePermission = res; });
+      return new Promise(() => {});
+    });
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+
+    await arm(host);
+    expect(confirmButton(host)?.disabled, "armed and idle: the confirm is live").toBe(false);
+
+    const select = host.querySelector<HTMLSelectElement>("select")!;
+    await act(async () => { select.value = "admin"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await act(async () => buttons(host).find((b) => /access change/i.test(b.textContent ?? ""))!.click());
+
+    expect(confirmButton(host)?.disabled, "and locked the moment another write is in flight").toBe(true);
+
+    await act(async () => { settlePermission({ data: null, error: null }); });
+    expect(confirmButton(host)?.disabled, "and live again once that write settles").toBe(false);
+  });
+
+  it("does not wedge the destructive control for ever when another write is rejected", async () => {
+    // `saving` now gates Remove, so a transport rejection that escapes `setSaving(false)` does not
+    // merely wedge its own button — it kills "Remove from workspace" until the dialog is closed and
+    // reopened, with nothing said. I hung a gate off this flag without giving it the treatment the
+    // gate's own comment says it needs.
+    let failPermission: (e: Error) => void = () => {};
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "set_solo_team_member_permission") return new Promise((_r, rej) => { failPermission = rej; });
+      return new Promise(() => {});
+    });
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+    const select = host.querySelector<HTMLSelectElement>("select")!;
+    await act(async () => { select.value = "admin"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await act(async () => buttons(host).find((b) => /access change/i.test(b.textContent ?? ""))!.click());
+    expect(removeTrigger(host)?.disabled, "locked while it runs").toBe(true);
+
+    await act(async () => { failPermission(new Error("TypeError: Failed to fetch")); });
+    expect(removeTrigger(host)?.disabled, "and released when it fails, rather than wedged for ever").toBe(false);
+    expect(mocks.error.mock.calls.length, "and the failure is reported").toBeGreaterThan(0);
+  });
+
+  it("does not wedge it when the WORK-DETAILS save is the write that is rejected either", async () => {
+    // The sibling of the test above, and it is not redundant: `saving` is shared, but the two
+    // writes are separate functions with separate awaits, so a wrap on one proves nothing about
+    // the other. Mutation-testing the fix confirmed it — removing the try/catch from `save()`
+    // alone left the whole suite green, which is exactly the blind spot that made me write the
+    // permission test and stop.
+    let failSave: (e: Error) => void = () => {};
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "set_solo_team_member_work_profile") return new Promise((_r, rej) => { failSave = rej; });
+      return new Promise(() => {});
+    });
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+
+    const titleInput = host.querySelector<HTMLInputElement>('input[maxlength="121"]')!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+      setter.call(titleInput, "Changed");
+      titleInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => buttons(host).find((b) => /save work details/i.test(b.textContent ?? ""))!.click());
+    expect(removeTrigger(host)?.disabled, "locked while the save runs").toBe(true);
+
+    await act(async () => { failSave(new Error("TypeError: Failed to fetch")); });
+    expect(removeTrigger(host)?.disabled, "and released when the save fails, rather than wedged for ever").toBe(false);
+    expect(mocks.error.mock.calls.length, "and the failure is reported").toBeGreaterThan(0);
+  });
+
+  it("tells the operator to reopen the workspace the removal was SENT to, not the one they switched to", async () => {
+    // "Your active workspace changed" is RAISED BY the switch, so if this sentence ever reads the
+    // LIVE workspace it tells the operator to reopen the one they are already standing in, and
+    // never names the one that still has the person on it. Pinning the in-flight strings did not
+    // reach this: a refusal after a switch leaves the dialog entirely.
+    //
+    // HONEST NOTE, because the fifth read filed the source line as a defect and mutation says
+    // otherwise: swapping `nameAtArm` back for the closure's own `workspace.tenant_name` does NOT
+    // fail this test, and cannot. `confirmRemoval` closes over the render it was created in, and
+    // the disarm effect makes an armed state unable to survive a switch — so those two expressions
+    // are equal by construction, and the older line was correct by way of a stale closure rather
+    // than by intent. What this test actually pins is that the sentence never becomes a LIVE read:
+    // rewriting it as `workspaceRef.current.tenant_name` — the plausible "fix" for that staleness,
+    // and the shape three other strings on this screen had to be corrected away from — turns it
+    // red. That is the regression worth holding, and it is the one being claimed here.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    const rosterA = workspace();
+    const rosterB = workspace({ tenant_id: "tenant-2", tenant_name: "Second Workspace", members: [], total_members: 0 });
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") {
+        return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? rosterA : rosterB, error: null });
+      }
+      if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
+      return new Promise(() => {});
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    mocks.tenant.activeTenantId = "tenant-2";
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    await act(async () => { settle({ data: null, error: { message: "your active workspace changed before this could run; nothing was removed" } }); });
+
+    // After a switch the refusal deliberately leaves the dialog for the parent-owned channel, which
+    // outlives it — so that is where the sentence has to be read.
+    const said = mocks.error.mock.calls.map((c) => String(c[0])).join(" | ");
+    expect(said, `the refusal reached the operator: ${JSON.stringify(said)}`).toMatch(/nothing was removed/i);
+    expect(said, "and names the workspace the call was sent to").toContain("Example Team");
+    expect(said, "not the one the operator has since switched to").not.toContain("Second Workspace");
   });
 });
