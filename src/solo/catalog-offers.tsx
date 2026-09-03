@@ -331,16 +331,22 @@ function FirstUse({ canManage, authorityUnknown, onNew }) {
 }
 
 const EMPTY_DRAFT = {
-  id: null, name: "", summary: "", description: "", kind: "", deliveryShape: "",
+  id: null, tenantId: null, priceId: null,
+  name: "", summary: "", description: "", kind: "", deliveryShape: "",
   pricePresentation: "", customerAction: "", category: "",
   priceAmount: null, priceCurrency: "usd", priceInterval: "", expectedUpdatedAt: null,
 };
 
 /** An existing offer, opened for editing. Its lead price is the one the editor manages. */
-function draftFrom(offer) {
+function draftFrom(offer, tenantId) {
   const lead = leadPrice(offer);
   return {
     id: offer.id,
+    tenantId,
+    // The plan the form is about to display. `leadPrice` picks the CHEAPEST active one, which is
+    // not necessarily `sort_order = 0` — so without carrying its id, a save edited a different row
+    // than the one on screen.
+    priceId: (lead && lead.id) || null,
     name: offer.name || "",
     summary: offer.summary || "",
     description: offer.description || "",
@@ -536,15 +542,24 @@ export function CatalogOffers({ setDetail }) {
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState(null);
 
-  const openNew = () => { setNotice(null); setDraft(EMPTY_DRAFT); };
-  const openEdit = (offer) => { setNotice(null); setDraft(draftFrom(offer)); };
+  const openNew = () => { setNotice(null); setDraft({ ...EMPTY_DRAFT, tenantId: data.tenantId }); };
+  const openEdit = (offer) => { setNotice(null); setDraft(draftFrom(offer, data.tenantId)); };
 
   const save = async () => {
     setBusy(true);
     setNotice(null);
     const outcome = await data.saveOffer(draft);
     setBusy(false);
-    if (outcome.ok) { setDraft(null); return; }
+    if (outcome.ok) {
+      // The definition saved. If the price was left alone — connected to checkout, or a deposit or
+      // instalment plan this editor does not author — the server says so and the form stays open
+      // carrying that sentence, because silently not saving a price the person just typed is the
+      // same class of lie as inventing one.
+      const note = outcome.result?.price_note;
+      if (note) { setNotice({ tone: "bad", text: note }); return; }
+      setDraft(null);
+      return;
+    }
     // The form STAYS OPEN on a refusal. Closing it would discard what the person typed on top of
     // telling them it did not save, and a stale-row refusal specifically needs their words kept so
     // they can decide what to carry over after reloading.
@@ -579,7 +594,11 @@ export function CatalogOffers({ setDetail }) {
   ) : null;
 
 
-  React.useEffect(() => { setCategory(null); }, [data.tenantId]);
+  React.useEffect(() => {
+    setCategory(null);
+    setDraft(null);
+    setNotice(null);
+  }, [data.tenantId]);
 
   if (data.phase === "resolving") {
     return (
