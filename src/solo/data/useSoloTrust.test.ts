@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { buildLaneCounts, deriveLevel } from "./useSoloTrust";
+import { buildLaneCounts, buildActLabels, deriveLevel } from "./useSoloTrust";
 import { DEPARTMENT_NAMES } from "./useSoloActivityFeed";
 
 /**
@@ -11,8 +11,10 @@ import { DEPARTMENT_NAMES } from "./useSoloActivityFeed";
  * the value comes from rows instead of from a constant.
  */
 const PROD_2026_09_03: Array<[string, number, number, number]> = [
-  // [department, auto, confirm, off]
-  ["owner_ops", 10, 3, 0],
+  // [department, auto, confirm, off] — ENABLED kinds only, which is what the hook counts.
+  // owner_ops has 13 ROWS but 11 enabled: "Set up the business" and "Setup step" are disabled.
+  // The two disabled rows are added to the fixture below so the filter is genuinely exercised.
+  ["owner_ops", 8, 3, 0],
   ["client_experience", 0, 7, 0],
   ["technology_automation", 1, 3, 0],
   ["sales", 1, 2, 0],
@@ -25,11 +27,21 @@ const PROD_2026_09_03: Array<[string, number, number, number]> = [
   ["people_talent", 0, 0, 1],
 ];
 
-const rows = PROD_2026_09_03.flatMap(([dept, auto, confirm, off]) => [
-  ...Array.from({ length: auto }, () => ({ default_to_department: dept, default_autonomy_lane: "auto", enabled: true, tenant_id: null })),
-  ...Array.from({ length: confirm }, () => ({ default_to_department: dept, default_autonomy_lane: "confirm", enabled: true, tenant_id: null })),
-  ...Array.from({ length: off }, () => ({ default_to_department: dept, default_autonomy_lane: "off", enabled: true, tenant_id: null })),
-]);
+const mk = (dept: string, lane: string, i: number, enabled = true) => ({
+  default_to_department: dept, default_autonomy_lane: lane, label: `${dept} ${lane} ${i}`, enabled, tenant_id: null,
+});
+
+const rows = [
+  ...PROD_2026_09_03.flatMap(([dept, auto, confirm, off]) => [
+    ...Array.from({ length: auto }, (_, i) => mk(dept, "auto", i)),
+    ...Array.from({ length: confirm }, (_, i) => mk(dept, "confirm", i)),
+    ...Array.from({ length: off }, (_, i) => mk(dept, "off", i)),
+  ]),
+  // The two real DISABLED owner_ops kinds. Present so "drops disabled" is exercised against the
+  // shape prod actually has, not only against a synthetic one-row case.
+  { default_to_department: "owner_ops", default_autonomy_lane: "auto", label: "Set up the business", enabled: false, tenant_id: null },
+  { default_to_department: "owner_ops", default_autonomy_lane: "auto", label: "Setup step", enabled: false, tenant_id: null },
+];
 
 describe("buildLaneCounts — counts real rows, drops what it cannot name", () => {
   it("reproduces the measured prod distribution", () => {
@@ -40,10 +52,13 @@ describe("buildLaneCounts — counts real rows, drops what it cannot name", () =
     expect(Object.keys(counts).sort()).toEqual(PROD_2026_09_03.map(([d]) => d).sort());
   });
 
-  it("covers all 34 kinds — a guard that counts nothing would pass every other assertion", () => {
+  it("covers all 32 ENABLED kinds — a guard that counts nothing would pass every other assertion", () => {
     const counts = buildLaneCounts(rows);
     const total = Object.values(counts).reduce((a, l) => a + l.auto + l.confirm + l.off, 0);
-    expect(total).toBe(34);
+    // 34 rows exist on prod; 32 are enabled. Asserting 32 against a fixture that CONTAINS the two
+    // disabled rows is what makes this an anti-vacuity check rather than a restatement.
+    expect(rows.length).toBe(34);
+    expect(total).toBe(32);
   });
 
   it("DROPS an unrecognised lane rather than bucketing it into a plausible one", () => {
@@ -57,12 +72,43 @@ describe("buildLaneCounts — counts real rows, drops what it cannot name", () =
   });
 
   it("drops a kind with no department, and a disabled kind", () => {
-    expect(buildLaneCounts([
-      { default_to_department: null, default_autonomy_lane: "auto", enabled: true, tenant_id: null },
-    ]).__none__).toBeUndefined();
-    expect(buildLaneCounts([
-      { default_to_department: "sales", default_autonomy_lane: "auto", enabled: false, tenant_id: null },
-    ]).sales).toBeUndefined();
+    expect(Object.keys(buildLaneCounts([mk("", "auto", 0)]))).toEqual([]);
+    expect(buildLaneCounts([mk("sales", "auto", 0, false)]).sales).toBeUndefined();
+  });
+});
+
+describe("buildActLabels — the platform's own words, never invented ones", () => {
+  it("agrees with the counts: same enabled and lane filter", () => {
+    const acts = buildActLabels(rows);
+    const counts = buildLaneCounts(rows);
+    for (const dept of Object.keys(counts)) {
+      const total = counts[dept].auto + counts[dept].confirm + counts[dept].off;
+      expect(acts[dept]?.length, dept).toBe(total);
+    }
+    expect(Object.keys(acts).sort()).toEqual(Object.keys(counts).sort());
+  });
+
+  it("excludes the labels of DISABLED kinds", () => {
+    const acts = buildActLabels(rows);
+    expect(acts.owner_ops.map((a) => a.label)).not.toContain("Set up the business");
+    expect(acts.owner_ops.map((a) => a.label)).not.toContain("Setup step");
+  });
+
+  it("carries each label with the lane it REALLY runs in", () => {
+    const acts = buildActLabels([
+      mk("legal_compliance", "off", 0),
+      mk("executive_office", "auto", 0),
+    ]);
+    expect(acts.legal_compliance[0].lane).toBe("off");
+    expect(acts.executive_office[0].lane).toBe("auto");
+  });
+
+  it("omits an unlabelled kind rather than naming it", () => {
+    // The kind is still COUNTED — it is a real routed capability — but it is never given an
+    // invented display name to fill the gap.
+    const blank = [{ default_to_department: "sales", default_autonomy_lane: "auto", label: "  ", enabled: true, tenant_id: null }];
+    expect(buildLaneCounts(blank).sales).toEqual({ auto: 1, confirm: 0, off: 0 });
+    expect(buildActLabels(blank).sales).toBeUndefined();
   });
 });
 
@@ -81,9 +127,9 @@ describe("deriveLevel — a documented mapping from rows, never a constant", () 
   });
 
   it("gives the measured owner_ops mix a value between confirm and auto", () => {
-    // 10 auto + 3 confirm over 13 => (10 + 1.5) / 13. Asserted as the arithmetic rather than a
-    // rounded literal so a changed weighting cannot pass by coincidence.
-    expect(deriveLevel({ auto: 10, confirm: 3, off: 0 })).toBeCloseTo(11.5 / 13, 12);
+    // 8 enabled auto + 3 confirm over 11 => (8 + 1.5) / 11. Asserted as the arithmetic rather than
+    // a rounded literal so a changed weighting cannot pass by coincidence.
+    expect(deriveLevel({ auto: 8, confirm: 3, off: 0 })).toBeCloseTo(9.5 / 11, 12);
   });
 });
 
@@ -94,17 +140,38 @@ describe("the vocabulary is the real one", () => {
     }
   });
 
-  it("the fixture the compass still ships does NOT use the real vocabulary", () => {
-    // The finding this hook answers, pinned so it cannot be quietly lost. `compass.tsx` seeds its
-    // TRUST store from ten invented ids; only `sales` overlaps the eleven real slugs. When the
-    // compass is rewired this assertion is expected to be INVERTED, not deleted — the inversion is
-    // the proof the rewire actually happened.
+  it("the compass no longer seeds itself from invented department ids", () => {
+    // THE INVERSION. This assertion previously asserted the opposite — that the invented ids were
+    // still present — with a note that it must be inverted rather than deleted when the rewire
+    // landed, because the inversion is the proof it happened. It has landed, so here it is.
     const compass = fs.readFileSync(path.join(process.cwd(), "src/solo/compass.tsx"), "utf8");
-    const invented = ["'exec'", "'mkt'", "'cs'", "'prod'", "'tech'", "'fin'", "'ppl'", "'ops'"];
-    const present = invented.filter((id) => compass.includes(`id:${id}`));
-    expect(present.length, "invented department ids still seeding TRUST").toBeGreaterThan(0);
-    for (const id of present) {
-      expect(Object.keys(DEPARTMENT_NAMES)).not.toContain(id.replaceAll("'", ""));
+    for (const id of ["'exec'", "'mkt'", "'cs'", "'prod'", "'tech'", "'fin'", "'ppl'", "'ops'"]) {
+      expect(compass, `invented id ${id} still seeds a department`).not.toContain(`id:${id}`);
+    }
+    // The fixture array and its mutable singleton are gone, not merely unused.
+    expect(compass).not.toContain("export const TC_DEPTS=[");
+    expect(compass).not.toContain("TRUST.set(");
+  });
+
+  it("the compass presents platform defaults, never a setting the workspace chose", () => {
+    const compass = fs.readFileSync(path.join(process.cwd(), "src/solo/compass.tsx"), "utf8");
+    // The false affordance is gone: no "Slide to change", no writable dial.
+    expect(compass).not.toContain("Slide to change");
+    // And the labelling says whose policy it is.
+    expect(compass).toContain("not a setting this workspace chose");
+  });
+
+  it("the fabricated confidence, trend and action history are gone from the compass", () => {
+    const compass = fs.readFileSync(path.join(process.cwd(), "src/solo/compass.tsx"), "utf8");
+    for (const gone of [
+      "% avg confidence",
+      "Confidence, last 30 days",
+      "% vs last week",
+      "Ran it and logged it",     // the invented per-department action history
+      "Drafted, you approved",
+      "Full history",
+    ]) {
+      expect(compass, `still renders "${gone}"`).not.toContain(gone);
     }
   });
 

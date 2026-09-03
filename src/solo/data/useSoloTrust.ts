@@ -17,12 +17,18 @@
  *
  * WHAT IS REAL, MEASURED ON PROD 2026-09-03 (not inferred):
  *   • 11 departments are seeded — NOT the ten the fixture invents. Only `sales` overlaps.
- *   • 34 rows in `paige_action_kinds`, every one carrying `default_to_department`, spanning all
- *     11 departments, across the three `autonomy_lane` values (auto / confirm / off).
- *   • The distribution is genuinely uneven and therefore worth showing: owner_ops 13 kinds
- *     (10 auto / 3 confirm) · client_experience 7 (all confirm) · technology_automation 4 (1/3) ·
- *     sales 3 (1/2) · legal_compliance 1 (off) · people_talent 1 (off) · executive_office 1 (auto) ·
+ *   • 34 rows in `paige_action_kinds`, of which **32 are enabled**; every one carries
+ *     `default_to_department`, spanning all 11 departments, across the three `autonomy_lane`
+ *     values (auto / confirm / off).
+ *   • ENABLED distribution, which is what this hook counts: owner_ops 11 (8 auto / 3 confirm) ·
+ *     client_experience 7 (all confirm) · technology_automation 4 (1/3) · sales 3 (1/2) ·
+ *     legal_compliance 1 (off) · people_talent 1 (off) · executive_office 1 (auto) ·
  *     operations_pmo 1 (auto) · finance, marketing, product_curriculum 1 each (confirm).
+ *   • The 13-vs-11 gap on owner_ops is real and is the reason this note distinguishes rows from
+ *     enabled rows: two kinds ("Set up the business", "Setup step") are `enabled = false`. An
+ *     earlier revision of this header quoted the 34 TOTAL and owner_ops at 10 auto, which is not
+ *     what the code below counts — it drops disabled kinds. Quoting a number the code does not
+ *     produce is the same defect as inventing one, so it is corrected rather than left.
  *
  * WHAT IS NOT REAL, AND IS THEREFORE NOT RETURNED HERE (§13):
  *   • A per-TENANT department posture. All 34 rows have `tenant_id IS NULL` — they are PLATFORM
@@ -81,6 +87,14 @@ export interface SoloTrustDept {
    * which is a different and stronger claim than "nothing is routed here".
    */
   defaultLevel: number | null;
+  /**
+   * The REAL enabled action kinds routed to this desk — the platform's own label and the lane it
+   * actually runs in, from `paige_action_kinds`. e.g. "Compile daily brief" / auto,
+   * "Flag for review" / off. The fixture this replaces carried invented act names under invented
+   * departments, each with a slider position derived by arithmetic on an invented float. Sorted by
+   * label for a stable order.
+   */
+  acts: Array<{ label: string; lane: AutonomyLane }>;
   /** Live open work at this desk, from `usePaigeDeptStatus` (already tenant-scoped). */
   openCount: number;
   workingCount: number;
@@ -111,6 +125,7 @@ const EMPTY: SoloTrust = {
 interface KindRow {
   default_to_department: string | null;
   default_autonomy_lane: string | null;
+  label: string | null;
   enabled: boolean | null;
   tenant_id: string | null;
 }
@@ -130,6 +145,26 @@ export function buildLaneCounts(kinds: KindRow[]): Record<string, Record<Autonom
     out[dept] ??= { auto: 0, confirm: 0, off: 0 };
     out[dept][lane] += 1;
   }
+  return out;
+}
+
+/** The real labels + lanes per department, same enabled/lane filter as the counts so the two agree. */
+export function buildActLabels(kinds: KindRow[]): Record<string, Array<{ label: string; lane: AutonomyLane }>> {
+  const out: Record<string, Array<{ label: string; lane: AutonomyLane }>> = {};
+  const seen: Record<string, Set<string>> = {};
+  for (const k of kinds) {
+    if (k.enabled === false) continue;
+    const dept = k.default_to_department;
+    const lane = asLane(k.default_autonomy_lane);
+    if (!dept || !lane) continue;
+    const label = (k.label ?? "").trim();
+    if (!label) continue;   // an unlabelled kind is counted but never given an invented name
+    seen[dept] ??= new Set();
+    if (seen[dept].has(label)) continue;
+    seen[dept].add(label);
+    (out[dept] ??= []).push({ label, lane });
+  }
+  for (const dept of Object.keys(out)) out[dept].sort((a, b) => a.label.localeCompare(b.label));
   return out;
 }
 
@@ -158,7 +193,7 @@ export function useSoloTrust(accountEpoch?: string | null): SoloTrust {
       /* eslint-disable @typescript-eslint/no-explicit-any */
       const res = await supabase
         .from("paige_action_kinds" as any)
-        .select("default_to_department, default_autonomy_lane, enabled, tenant_id")
+        .select("default_to_department, default_autonomy_lane, label, enabled, tenant_id")
         .limit(5000);
       /* eslint-enable @typescript-eslint/no-explicit-any */
       if (!active) return;
@@ -182,6 +217,7 @@ export function useSoloTrust(accountEpoch?: string | null): SoloTrust {
     }
 
     const counts = buildLaneCounts(kinds.rows ?? []);
+    const acts = buildActLabels(kinds.rows ?? []);
     const departments: SoloTrustDept[] = status.departments.map((d) => {
       const lanes = counts[d.slug] ?? { auto: 0, confirm: 0, off: 0 };
       return {
@@ -189,6 +225,7 @@ export function useSoloTrust(accountEpoch?: string | null): SoloTrust {
         name: d.name,
         displayOrder: d.displayOrder,
         lanes,
+        acts: acts[d.slug] ?? [],
         kinds: lanes.auto + lanes.confirm + lanes.off,
         defaultLevel: deriveLevel(lanes),
         openCount: d.openCount,

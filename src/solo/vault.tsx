@@ -6,11 +6,16 @@ import { deptTier, useTrust, MiniCompass } from "./compass";
 const VLT_CATS=[['ins','Insurance','shield'],['form','Formation','doc'],['agent','Registered Agent','users'],['dom','Domain & SSL','grid'],
 ['tm','Trademark','vault'],['tax','Tax','chart'],['acct','Accounting','doc'],['lic','Licenses','check'],['saas','SaaS Subscriptions','store'],['cert','Certifications','spark'],['other','Custom']];
 const VLT_DEPT={legal:'Legal & Compliance',fin:'Finance',ops:'Operations'};
-const VLT_TCD={legal:'legal',fin:'fin',ops:'ops'};
-const vltState=(o,tr)=>{const g=tr?tr[VLT_TCD[o.dept]]:null;const t=g!=null?(g>=.6?'green':g>=.34?'amber':'red'):deptTier(VLT_TCD[o.dept]);
+// Real `paige_departments` slugs. The previous values were the compass fixture's invented ids, so
+// a vault document's pill was decided by a hardcoded float for a department that does not exist.
+const VLT_TCD={legal:'legal_compliance',fin:'finance',ops:'operations_pmo'};
+// `t` is the PLATFORM DEFAULT lane for the owning department, or null when that is unreadable or
+// the department has nothing routed to it. It is never a statement that this workspace approved a
+// level, so the labels below say what the platform does — not what the owner authorised.
+const vltState=(o,tr)=>{const t=deptTier(tr,VLT_TCD[o.dept]);
  if(o.status==='lapsed')return['Lapsed','pill-bad'];
- if(o.drafted)return t==='red'?['Escalated','pill-bad']:['Draft ready','pill-v'];
- if(t==='green')return['Autopilot','pill-ok'];
+ if(o.drafted)return t==='red'?['Your call','pill-bad']:['Draft ready','pill-v'];
+ if(t==='green')return['Runs automatically','pill-ok'];
  return['Monitoring','pill-n']};
 const band=d=>d<0?{k:'past',c:'var(--ink-3)',t:'var(--surface-sunk)',l:'Past due'}:d<7?{k:'crit',c:'var(--bad)',t:'var(--bad-tint)',l:'Critical'}:
  d<30?{k:'urg',c:'#C2600C',t:'#FBEBDD',l:'Urgent'}:d<60?{k:'soon',c:'var(--warn)',t:'var(--warn-tint)',l:'Approaching'}:{k:'ok',c:'var(--ok)',t:'var(--ok-tint)',l:'Healthy'};
