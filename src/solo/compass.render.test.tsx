@@ -243,6 +243,50 @@ describe("TrustCompass page — kind counts are policy entries, never completed 
     expect(text).toMatch(/platform default/i);
   });
 
+  it("shows no trend ON THE PAGE — '+14%' rendered on two rail buttons", () => {
+    harness.value = real();
+    const text = draw(<TrustCompass />).textContent ?? "";
+    expect(text).toMatch(/Trust over time/i);          // anti-vacuity: the affordance still exists
+    expect(text).not.toMatch(/\+14%/);
+  });
+
+  it("shows no trend INSIDE THE FOLDOUT either — which required opening it", () => {
+    // `Foldout` is `if (!open) return null`, so asserting against the closed page was VACUOUS:
+    // restoring the fabricated title "Your trust has grown 14% in 30 days" left every test green.
+    // The mutation caught that, which is the only reason this test drives the click.
+    harness.value = real();
+    const h = draw(<TrustCompass />);
+    const open = [...h.querySelectorAll("button")].find((b) => /over time/i.test(b.textContent ?? ""));
+    expect(open, "the trend affordance is gone, so this asserts nothing").toBeTruthy();
+    act(() => { open!.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    const text = h.textContent ?? "";
+    // Anti-vacuity: the foldout is genuinely open and its honest body is what is on screen.
+    expect(text).toMatch(/Nothing records this yet/i);
+    for (const claim of [/grown 14%/i, /moved outward/i, /none reversed/i, /trajectory/i, /\+14%/]) {
+      expect(text, `the foldout still asserts a trend: ${claim}`).not.toMatch(claim);
+    }
+  });
+
+  it("never says the WORKSPACE set the level it calls a platform default", () => {
+    // `MiniCompass` bodies read "… <dept> is <tier>." and are introduced by a caller-supplied
+    // label. Two callers supplied "because you have", which credits the workspace for a policy the
+    // very next sentence calls "not a setting this workspace chose".
+    for (const src of ["src/solo/systems.tsx", "src/solo/vault.tsx", "src/solo/compass.tsx"]) {
+      const t = fs.readFileSync(path.join(process.cwd(), src), "utf8");
+      expect(t, `${src} still tells the owner they set this`).not.toMatch(/label="[^"]*because you have/);
+    }
+  });
+
+  it("never promises a future autonomous act from a platform default", () => {
+    // Systems rendered "She will handle this one herself." from `deptTier`, which reads the
+    // PLATFORM's default lane. A lane is a policy, not a commitment about what will happen in this
+    // workspace — and the mutation proved nothing was asserting this until now.
+    const t = fs.readFileSync(path.join(process.cwd(), "src/solo/systems.tsx"), "utf8");
+    expect(t).not.toMatch(/She will handle this one herself/i);
+    // Anti-vacuity: the block still exists and still states the lane.
+    expect(t).toMatch(/runs automatically on the platform default/i);
+  });
+
   it("offers no drag affordance, because the drag write was removed", () => {
     harness.value = real();
     expect(draw(<TrustCompass />).textContent ?? "").not.toMatch(/drag a ring/i);

@@ -112,10 +112,10 @@ return <><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgb
 <div className="row" style={{gap:8,marginTop:12,flexWrap:'wrap'}}>
 <button onClick={()=>{onFix(c);onClose()}} className="row" style={{gap:7,height:34,padding:'0 18px',borderRadius:10,background:'var(--gold-bright)',color:'#2A1C00',fontWeight:700,fontSize:13.2}}><Ic.check size={14}/>Apply fix</button>
 <button className="btn btn-s">Edit fix</button><button className="btn btn-s">Acknowledge as intentional</button><button className="btn btn-s">Dismiss</button></div>
-<div style={{marginTop:12}}><MiniCompass dept={SC_DEPT[c.d]} label="She drafted rather than applied because you have"/></div></div>}
+<div style={{marginTop:12}}><MiniCompass dept={SC_DEPT[c.d]} label="She drafted rather than applied because, on the platform default,"/></div></div>}
 
 {tier==='green'&&!c.fix&&c.s!=='ok'&&<div style={{border:'1px solid var(--ok-tint)',background:'var(--ok-tint)',borderRadius:'var(--r-m)',padding:'12px 14px',fontSize:12.9,color:'var(--ink-2)'}}>
-<strong style={{color:'var(--ink)'}}>She will handle this one herself. </strong>This department is on autopilot, so the fix applies and gets logged without waiting for you.</div>}
+<strong style={{color:'var(--ink)'}}>This department runs automatically on the platform default. </strong>That lane does not wait for your approval — it is the platform's policy for this desk, not a level this workspace set.</div>}
 
 <div><div className="row" style={{justifyContent:'space-between',alignItems:'baseline'}}><div className="eyebrow">Last 30 days</div>
 <span className="sub" style={{fontSize:11.5}}>Findings per day</span></div>

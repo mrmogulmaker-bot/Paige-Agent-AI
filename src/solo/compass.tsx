@@ -524,12 +524,12 @@ background:l.tier==='green'?'var(--ok)':l.tier==='amber'?'var(--warn)':'var(--ba
 <span className="mono sub" style={{fontSize:10.8,flex:'none'}}>{l.w}</span></button>})}</div></div>
 
 <div className="row" style={{gap:9,flexWrap:'wrap'}}>
-<button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('growth')}><Ic.trend size={14}/>Trust growth · +14%</button>
+<button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('growth')}><Ic.trend size={14}/>Trust over time</button>
 <button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('depts')}><Ic.grid size={14}/>By department</button></div></div>
 
 <div className="tc-railbtn row" style={{gap:9,flexWrap:'wrap'}}>
 <button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('live')}><span className="dot" style={{color:'var(--ok)'}}/>Working now · {live.length}</button>
-<button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('growth')}><Ic.trend size={14}/>+14%</button>
+<button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('growth')}><Ic.trend size={14}/>Over time</button>
 <button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('depts')}><Ic.grid size={14}/>By department</button></div>
 
 <Foldout open={fold==='live'} onClose={()=>setFold(null)} title="Working now" sub="The last few minutes, as they happened">
@@ -541,13 +541,13 @@ style={{width:'100%',textAlign:'left',gap:11,padding:'11px 20px',borderTop:i?'1p
 <span className="sub" style={{fontSize:11.3}}>{l.dept} · {l.tier==='green'?'performed and logged':l.tier==='amber'?'waiting on you':'your decision'}</span></span>
 <span className="mono sub" style={{fontSize:10.8,flex:'none'}}>{l.w}</span></button>})}</div></Foldout>
 
-<Foldout open={fold==='growth'} onClose={()=>setFold(null)} title="Your trust has grown 14% in 30 days" sub="Four departments moved outward. None moved back.">
+<Foldout open={fold==='growth'} onClose={()=>setFold(null)} title="Trust over time" sub="Not available.">
 <div style={{padding:'16px 20px 20px'}}>
 <div className="card" style={{padding:'16px 18px',boxShadow:'none'}}>
-<div className="row" style={{gap:9}}><span className="tile" style={{width:30,height:30,borderRadius:'50%',background:'var(--ok-tint)',color:'var(--ok)'}}><Ic.trend size={15}/></span>
-<div className="grow"><div style={{fontSize:13.4,fontWeight:600}}>Thirty-day trajectory</div>
-<div className="sub" style={{marginTop:2}}>Every outward move you made, and none reversed.</div></div></div>
-<div className="sub" style={{fontSize:11,marginTop:12}} role="status">A fourteen-day trend is not shown: nothing in the platform records a day-by-day history of what Paige did, so any chart here would be drawn from numbers that do not exist.</div></div></div></Foldout>
+<div className="row" style={{gap:9}}><span className="tile" style={{width:30,height:30,borderRadius:'50%',background:'var(--surface-sunk)',color:'var(--ink-3)'}}><Ic.trend size={15}/></span>
+<div className="grow"><div style={{fontSize:13.4,fontWeight:600}}>Nothing records this yet</div>
+<div className="sub" style={{marginTop:2}}>There is no history to show, and none is inferred.</div></div></div>
+<div className="sub" style={{fontSize:11,marginTop:12,lineHeight:1.55}} role="status">Nothing in the platform records a day-by-day history of what Paige did, or of how this workspace's autonomy changed — no such record exists to change. What the compass shows is the platform's <strong>current</strong> default policy, which is the same for every workspace, so there is no movement to plot.</div></div></div></Foldout>
 
 <Foldout open={fold==='depts'} onClose={()=>setFold(null)} title="By department" sub="Action types on the platform default: runs automatically / drafted for you / always your call.">
 <div>{depts.map((d,i)=>{const t=tierOfLevel(d.g);
