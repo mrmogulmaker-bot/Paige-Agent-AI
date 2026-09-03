@@ -1,13 +1,27 @@
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
--- AI usage allowance — rollback proof for migration 20261105000000
+-- AI usage allowance — rollback proof for migration 20261108030000
 -- (platform_subscription_plans.included_ai_tokens_month / ai_credit_token_ratio,
 --  public.get_workspace_ai_usage()).
 --
--- RENUMBERED from 20261050000000 before merge, and the reason matters more than the number:
--- reconciling `main` brought in migrations 20261102/03/04, all of which are ALREADY APPLIED on prod
--- (max applied version 20261104000000, queried 2026-09-03). A migration whose version sorts BELOW
--- the applied maximum is the §32.a false-green in its purest form — it merges, CI reports success,
--- and the schema never changes. Renumbering above the applied max is free while nothing has run it.
+-- RENUMBERED TWICE before merge. The two reasons are different failures and are kept separate:
+--
+--   20261050000000 → 20261105000000. Reconciling `main` brought in 20261102/03/04, all ALREADY
+--   APPLIED on prod (max applied 20261104000000, queried 2026-09-03). A version sorting BELOW the
+--   applied maximum merges, reports success, and never changes the schema.
+--
+--   20261105000000 → 20261108030000. While this branch was open, PR #850 MERGED its own
+--   20261105000000_an_invitation_says_what_happened_to_it.sql. Two files, one version: on push one
+--   is SKIPPED and nothing reports it. `npm run lint:migration-versions` caught it — the repo
+--   already owns this guard, having paid for it three times.
+--
+-- Both end the same way: green CI, unapplied schema. And for THIS migration the silence would be
+-- total, because NULL is also the legitimate enterprise custom-quote value — an unapplied allowance
+-- is indistinguishable from a correctly configured plan, on the card and in the data.
+--
+-- The new number is above everything taken on ANY of the 428 remote branches (the highest was
+-- 20261107000000, on a branch not yet merged — checking main alone is exactly how the earlier
+-- collisions got through), and deliberately OFF the round-number grid, since every collision so far
+-- has been two sessions independently reaching for the same round number.
 --
 -- HOW TO RUN: `node scripts/sql/run-rollback-proof.mjs scripts/sql/ai-usage-allowance-proof.sql`
 -- expands the `\i` and prints one batch, executed as a single statement batch (psql with
@@ -140,7 +154,7 @@ SELECT top_paid, 'llm_tokens', 120000, 'token', date_trunc('day', now()) - inter
 SELECT top_paid, 'llm_tokens', 888888, 'token', date_trunc('day', now()) - interval '10 days' FROM _f;
 
 -- ── Install the migration ───────────────────────────────────────────────────────────────────
-\i supabase/migrations/20261105000000_the_plan_says_how_much_ai_is_included.sql
+\i supabase/migrations/20261108030000_the_plan_says_how_much_ai_is_included.sql
 
 -- ── The ruled figures landed on the real plan rows ──────────────────────────────────────────
 INSERT INTO _p SELECT 10, CASE WHEN included_ai_tokens_month = 5000000 AND ai_credit_token_ratio = 1000
