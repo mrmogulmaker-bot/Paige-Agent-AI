@@ -95,20 +95,25 @@ these carry a suffix.
 
 | This request | Migration-map shorthand | What it asks for | Needed by |
 |---|---|---|---|
-| **SCR-2026-09-02-B** | SCR-2, **C4**, and a **refusal channel** | Three parts, and all three are required or the capabilities are declared and still unusable: (a) the resolver accepts a **workspace** subject type alongside `client`, tenancy still derived server-side; (b) the **Chat loading path reaches the resolver on a turn with no focused client**; (c) a way to express an **authority refusal distinct from an outage** — see below | all three capabilities |
+| **SCR-2026-09-02-B** | SCR-2, **C4**, and a **refusal channel** | (a) the resolver accepts a **workspace** subject type alongside `client`, tenancy still derived server-side; (b) the **Chat loading path reaches the resolver on a turn with no focused client**; (c) a way to express an **authority refusal distinct from an outage** — see the note below the table | (a) and (b): all three capabilities. **(c): capabilities 1 and 3 only** — see below |
+| **SCR-2026-09-02-C** | *(not SCR-3)* | **Withdrawn as originally scoped.** It asked for a record/list shape the contract already has. What remains, if anything, is per-capability vocabulary work at registration time — enumerating the states and bands each capability may report — which is ordinary capability declaration, not a shared-primitive change | — |
+| *(depends on)* | SCR-1 | A workspace-level outcome projection, so a workspace act has somewhere to be recorded | the Rail vocabulary in §6 |
 
-**(c) is a gap this document promised past, and it is worth stating on its own.** §3 says a non-Owner is
-"refused with a reason that names the missing authority" and that an attempt to read another
-recipient's history "is never answered with an empty list". `SpineEvidenceResult` has exactly two
-states — `available` and `unavailable`, the latter carrying `capability_unavailable |
+**(c) is a gap this document promised past, and it is worth stating on its own.** §3 says a
+non-Owner is "refused with a reason that names the missing authority". `SpineEvidenceResult` has
+exactly two states — `available` and `unavailable`, the latter carrying `capability_unavailable |
 resolver_unavailable | subject_required | scope_changed` (`resolveEvidence.ts:9-10`). **There is no
 refusal.** A role-gated RPC's authorization error collapses into `resolver_unavailable`, so an
 implementation satisfying every handoff listed here would report *denials as outages* — telling an
-Owner the billing read is broken when in fact they are not permitted to make it. That is both a
-worse experience and a worse security posture, because an outage invites a retry and a refusal does
-not.
-| **SCR-2026-09-02-C** | *(not SCR-3)* | **Withdrawn as originally scoped.** It asked for a record/list shape the contract already has. What remains, if anything, is per-capability vocabulary work at registration time — enumerating the states and bands each capability may report — which is ordinary capability declaration, not a shared-primitive change | — |
-| *(depends on)* | SCR-1 | A workspace-level outcome projection, so a workspace act has somewhere to be recorded | the Rail vocabulary in §6 |
+Owner the billing read is broken when in fact they are not permitted to make it. An outage invites a
+retry; a refusal does not.
+
+**It is NOT a prerequisite for capability 2**, and saying so was over-correction. That capability
+exposes **no recipient parameter** and derives the only readable recipient from `auth.uid()`, so a
+cross-recipient request cannot be expressed in the first place — the protection there is structural,
+not a refusal at all. §3.2's sentence about refusing such an attempt describes a case the contract
+makes unreachable. Requiring the channel for it would delay a self-only read for a hazard it does
+not have.
 
 **SCR-1 is not raised here.** It belongs to whoever owns the Rail, it is required by 47 of 60
 classified Chat actions rather than by billing alone, and raising it inside a billing request would
@@ -205,7 +210,7 @@ snake case, namespace matching `domain` (`registry.ts:6,17`).
 | **Refusal** | An attempt to read another recipient's history is refused as an authority failure, and is never answered with an empty list — an empty list is a fact about the caller, not a way to hide a refusal. |
 | **`UNAVAILABLE` behaviour** | **This is the capability's state today and it is total.** No billing notice ledger exists (§2b). It reports `UNAVAILABLE` with that reason. It must **never** fall back to `public.notifications`, which is untenanted and carries raw bodies. |
 | **Audit boundary** | Read recorded as above. Never the notice content, never the label, never the recipient's address. |
-| **Maturity today** | `UNAVAILABLE`. Blocked as a capability on SCR-2026-09-02-B (workspace subject, the non-client Chat path, and the refusal channel) and on **B-4** — the ledger itself. No other Billing contract gates this read. |
+| **Maturity today** | `UNAVAILABLE`. Blocked on SCR-2026-09-02-B parts **(a) and (b)** — workspace subject and the non-client Chat path — and on **B-4**, the ledger itself. **Not on the refusal channel:** with no recipient parameter, a cross-recipient request cannot be expressed, so there is nothing here to refuse. No other Billing contract gates this read. |
 
 ### 3.3 `billing.workspace_billing_notification_health`
 
@@ -220,7 +225,7 @@ snake case, namespace matching `domain` (`registry.ts:6,17`).
 | **Refusal** | Non-Owner without explicit grant is refused by authority, not by empty aggregate. |
 | **`UNAVAILABLE` behaviour** | Today every input is absent: no contact model, no delegate model, no delivery ledger. It reports `UNAVAILABLE` per sub-fact with its reason. **A health surface that reports "healthy" because it found nothing to report is the exact false-green this contract exists to prevent** (§32), so absence of evidence is rendered as absence, never as health. |
 | **Audit boundary** | Read recorded as above. |
-| **Maturity today** | `UNAVAILABLE`. Blocked as a capability on SCR-2026-09-02-B (workspace subject, the non-client Chat path, and the refusal channel) and on **B-4** and **B-5**. **B-2 blocks the delegate sub-fact only** — without it, "eligible delegates exist" reports `UNAVAILABLE` and the rest of the health read still answers. |
+| **Maturity today** | `UNAVAILABLE`. Blocked **as a capability** on SCR-2026-09-02-B (all three parts — this read is role-gated, so it needs the refusal channel). Every Billing contract here maps to **sub-facts**, and the per-sub-fact `UNAVAILABLE` behaviour above means a partial answer is useful rather than blocked: **B-2** supplies *both* "a billing contact is configured" and "eligible delegates exist"; **B-4** supplies the unresolved-failure counts; **B-5** supplies delivery-path availability. An earlier draft blocked the whole capability on B-4/B-5 while crediting B-2 with delegates alone — overstating two and understating one. **The genuine minimum is B-2**: with no authority model at all, every sub-fact is absent and the read has nothing to say. |
 
 ### 3.4 What none of them may become
 
@@ -238,7 +243,8 @@ that to be impossible.
 
 ## 4. Source contracts Billing must supply first
 
-Nothing in §3 may be adopted until the owning Billing workstream supplies these. They are stated as
+Each capability in §3 waits on **the contracts its own maturity row names**, not on all of these —
+B-1 does not gate the notice-history read, and B-4 does not gate the status read. They are stated as
 requirements on Billing, not as designs for Billing.
 
 | # | Contract | Why it is required | State today |
