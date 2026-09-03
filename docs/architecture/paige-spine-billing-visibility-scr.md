@@ -190,6 +190,7 @@ snake case, namespace matching `domain` (`registry.ts:6,17`).
 | **Workspace derivation** | Server-side only, from the caller's resolved tenant. The caller supplies no tenant, no account, and no workspace id, on any door. |
 | **Allowed roles** | The workspace **Owner**. A Billing delegate **only if** Billing's source contract explicitly grants billing-view authority to that person — see B-2 in §4. Until B-2 exists there is no delegate concept, so the answer is Owner only. |
 | **Safe projection** | plan/access state · promotional-trial-paid classification *(subject to the open decision in §9)* · renewal or trial-end state **where truly available** · a bounded next-action state. |
+| **The trial-end state is a BOUNDED state, not a date to be judged** | It is projected from a fixed set declared at capability registration — `active` · `ends_within_declared_window` · `ended` — where the window is **one declared constant governed here**. The raw `trial_ends_at` timestamp may also be projected (a date is not a banned value class), but a "*trial ends soon*" claim is only ever the declared band, **never a fresh comparison somebody makes downstream**. The reason is §7's trial pattern: "soon" is a qualitative claim, and a timestamp plus a reader who picks their own threshold is two Mind implementations classifying the same date differently. One declared window, in the contract, is what makes the pattern deterministic. |
 | **Never projected** | payment method data · card or bank details · Stripe customer or subscription identifiers · raw invoices · any other workspace's information · internal provider payloads · plan pricing beyond what the workspace is actually on. |
 | **Refusal** | A caller who is neither Owner nor an explicitly granted delegate is refused with a reason that names the missing authority and does not reveal whether the underlying record exists. A refusal is never a degraded read. |
 | **`UNAVAILABLE` behaviour** | Where a field has no proven source — today: the promotional/trial/paid classification, and any delegate authority — the capability reports that field absent with its reason. **It never substitutes a default, an inference, or a plan name it did not read.** |
@@ -278,6 +279,17 @@ This list is a ban on **classes of value**, not on field names, because the next
 always outside a name list. When a new field appears in a source, the question is which class it
 falls in — not whether it was enumerated here.
 
+**One carve-out, and it is narrow.** "another recipient's data" bans *that recipient's* data — an
+address, an identity, a notice, a per-person outcome. It does **not** ban a **non-identifying
+bounded aggregate computed over other recipients' outcomes**, which is exactly what capability 3's
+unresolved-failure counts are. Without this sentence the ban and §3.3 contradict each other, and an
+implementer reading a value-class ban cannot infer that aggregation is exempt — so it is said rather
+than assumed. The carve-out carries §3.3's own limit with it: **an aggregate that resolves to one
+person is not an aggregate**, and where a count would identify an individual it is reported as a
+bounded band, not an exact figure. Nothing else is exempt: an aggregate may not carry a name, an
+address, a body, or a per-recipient breakdown, and no other capability in §3 has an aggregate to
+compute.
+
 ---
 
 ## 6. Rail event vocabulary — for the Rail owner to implement
@@ -331,9 +343,21 @@ proven records; neither is inference. What is forbidden is a pattern with no pro
 
 | Pattern | Grounded in | Producer |
 |---|---|---|
-| *"A required billing notice could not be delivered."* | a Rail **event** | `billing.notice_failed` (§6) |
+| *"A billing notice could not be delivered."* | a Rail **event** | `billing.notice_failed` (§6) |
 | *"A billing contact is missing."* | a governed **read** | capability 3's `contact_configured` sub-fact. **No event proves it**: `contact_configured`/`_changed`/`_removed` all require someone to have acted, and a workspace that never configured one emits nothing. Absence is a state, and the state is what capability 3 reads |
-| *"Trial access ends soon."* | a governed **read** | `tenants.trial_ends_at` compared to now. `billing.trial_status_changed` fires on a **change of status**, not on time crossing a threshold, so no event will ever announce "soon" |
+| *"Trial access ends soon."* | a governed **read** | capability 1's **declared trial-end band** (§3.1), whose window is a governed constant. Not a Mind comparison against `trial_ends_at`: a timestamp does not itself prove "soon", and an unstated threshold is two implementations disagreeing about the same date. `billing.trial_status_changed` cannot supply it either — it fires on a **change of status**, not on time crossing a threshold, so no event will ever announce "soon" |
+
+**Why "required" came out of the first pattern.** It said *"a **required** billing notice could not
+be delivered"*, and `billing.notice_failed` records one thing — that delivery failed. Requiredness is
+a **separate** event in §6, `billing.notice_requires_action`. A failed optional notice and a failed
+required one produce the identical record, so the word was a fact the producer never established:
+the same defect as the two patterns above it, in a single adjective rather than a missing event.
+**A "required notice failed" pattern is possible but not yet specified**, and what it would take is
+stated here rather than left to be improvised: either a bounded requiredness fact carried on
+`billing.notice_failed` itself, or a **bounded notice reference shared across the notice events** so
+a failure and a requires-action record can be correlated as the same notice. §6 declares neither
+today. That is the Rail owner's design call (#820), not this request's — the pattern stays narrowed
+until one of them exists.
 
 Mind may **not**: infer financial intent; expose message content; report payment credentials; or
 claim delivery or health without proven runtime evidence. A pattern with no record behind it is a
@@ -347,8 +371,9 @@ hat. The two read-grounded patterns wait on their capabilities instead, and on n
 
 **It does not gate the reads.** An earlier draft's wording made the Chat capabilities wait on the
 Rail and Mind work; that was wrong and would have made an unrelated workstream a hidden blocker. The
-three read capabilities depend on SCR-2026-09-02-B and the Billing contracts in §4, and on nothing in
-§6 or §7. If Billing and the Spine subject/routing work land first, the reads may proceed with the
+three read capabilities depend on SCR-2026-09-02-B and on **the Billing contracts their own maturity
+rows name** (§3, not all of §4 — the notice-history read does not wait on B-1, the status read does
+not wait on B-4), and on nothing in §6 or §7. If Billing and the Spine subject/routing work land first, the reads may proceed with the
 Rail vocabulary still unbuilt.
 
 `PIPELINE_MIND_CAPABILITY` is explicit that its shape is one domain's bounded view and that
@@ -444,7 +469,7 @@ answer (§70).
 | B-1 … B-5 source contracts | Billing | **#819** | §4 |
 | SCR-1 (workspace-level outcome projection) | Rail / Spine foundation | **#820** | §1a, §6 |
 | The billing Rail vocabulary | Rail | **#820** | §6, gated on SCR-1 |
-| The billing Mind projection | Mind | **#821** | §7, gated on the Rail carrying real evidence |
+| The billing Mind projection | Mind | **#821** | §7, gated **per pattern**: the delivery-failure pattern on the Rail carrying real evidence, the missing-contact and trial patterns on their capabilities alone |
 | A platform-billing and notification-readiness check | Systems Check | **#822** | §8 |
 | Solo Settings → Notifications cleanup | Solo Shell | **#822** | §8 |
 | Client consent and delivery preferences | Client Portal | **#823** | §8 |
