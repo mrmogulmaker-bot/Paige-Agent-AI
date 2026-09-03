@@ -142,7 +142,7 @@ export const deptTier=(levels,id)=>tierOfLevel(levels?.[id]??null);
 // that they cannot pretend is a design and product decision, and the approval seam itself is the
 // chat confirm gate (§18 — one home), not a second one built here.
 
-const TcCanvas=({sel,setSel,onOrb,drag,setDrag,setPreview})=>{
+const TcCanvas=({sel,setSel,onOrb})=>{
 const wrap=React.useRef(null),cvr=React.useRef(null),S=React.useRef({});
 const{depts}=useTrustDepartments();
 const trust=useTrust();
@@ -160,7 +160,7 @@ const readCol=()=>{const cs=getComputedStyle(document.documentElement);
 readCol();
 const mo=new MutationObserver(readCol);mo.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 const hex=(c,a)=>{if(c.startsWith('#')){const n=parseInt(c.slice(1),16);return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`}return c};
-const tint=(t,a)=>hex(t==='green'?COL.ok:t==='amber'?COL.warn:COL.bad,a);
+const tint=(t,a)=>t==='none'?'rgba(255,255,255,'+a+')':hex(t==='green'?COL.ok:t==='amber'?COL.warn:COL.bad,a);
 const s=S.current;Object.assign(s,{rot:0,t:0,mx:-999,my:-999,hot:null,orbs:[],segs:[],pulse:0,lit:0});
 const spawn=(force)=>{const D=s.depts||[];if(!D.length)return;const d=D[(Math.random()*D.length)|0];const g=s.trust[d.id];if(g==null)return;
  const rnd=Math.random();const tier=rnd<g*.92?'green':rnd<g*.92+.16?'amber':(Math.random()<.25?'red':'amber');
@@ -212,14 +212,23 @@ const draw=()=>{s.t++;if(!reduce){s.rot+=0.00042;s.pulse=Math.sin(s.t*.026)}else
    const gr=ctx.createRadialGradient(cx,cy-G.lift,R*r0*.6,cx,cy-G.lift*.4,R*r1);
    gr.addColorStop(0,tint(tier,al*.9*dim));gr.addColorStop(1,tint(tier,al*.42*dim));
    ctx.fillStyle=gr;ctx.fill()};
-  band(.10,g,'green',.30);band(g,Math.min(g+TC_AMBER,.97),'amber',.30);band(Math.min(g+TC_AMBER,.97),.97,'red',.26);
+  // A department with NO enabled action kinds has no posture (`g === null`). Painting the tier
+  // bands from it would compute `Math.min(null + .24, .97)` and render a full red ring — telling
+  // the owner this desk is "always your call" when in truth nothing is routed to it at all. That
+  // is the exact claim the null exists to prevent, so it draws one neutral ring instead.
+  if(g==null){band(.10,.97,'none',.16)}
+  else{band(.10,g,'green',.30);band(g,Math.min(g+TC_AMBER,.97),'amber',.30);band(Math.min(g+TC_AMBER,.97),.97,'red',.26);}
   ctx.beginPath();const e0=proj(.10,a0,G),e1=proj(.97,a0,G);ctx.moveTo(e0[0],e0[1]);ctx.lineTo(e1[0],e1[1]);
   ctx.strokeStyle='rgba(255,255,255,'+(.10*dim)+')';ctx.lineWidth=1;ctx.stroke();
-  const hovB=drag&&drag.id===d.id;
-  ctx.beginPath();for(let k=0;k<=20;k++){const a=a0+span*(k/20);const p=proj(g,a,G);k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])}
-  ctx.strokeStyle=hex(COL.ok,(hovB?1:.75)*dim);ctx.lineWidth=hovB?3.4:2.1;ctx.stroke();
-  const hm=proj(g,a0+span/2,G);ctx.beginPath();ctx.arc(hm[0],hm[1],hovB?5.4:4,0,6.2832);
-  ctx.fillStyle=hex(COL.ok,dim);ctx.fill();ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1;ctx.stroke();
+  // The boundary line and its knob sit AT radius `g`. A department with no posture has no
+  // boundary to draw — `proj(null, …)` yields NaN coordinates — so it is skipped rather than
+  // drawn somewhere arbitrary. (`hovB`, the drag-hover emphasis, went with the drag itself.)
+  if(g!=null){
+   ctx.beginPath();for(let k=0;k<=20;k++){const a=a0+span*(k/20);const p=proj(g,a,G);k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])}
+   ctx.strokeStyle=hex(COL.ok,.75*dim);ctx.lineWidth=2.1;ctx.stroke();
+   const hm=proj(g,a0+span/2,G);ctx.beginPath();ctx.arc(hm[0],hm[1],4,0,6.2832);
+   ctx.fillStyle=hex(COL.ok,dim);ctx.fill();ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1;ctx.stroke();
+  }
   const lp=proj(1.045,a0+span/2,G);
   const la=((a0+span/2)%6.2832+6.2832)%6.2832;const right=Math.cos(la)>=-0.08;
   ctx.textAlign=right?'left':'right';ctx.textBaseline='middle';
@@ -265,20 +274,19 @@ const rect=()=>cv.getBoundingClientRect();
 const setM=e=>{const r=rect();s.mx=e.clientX-r.left;s.my=e.clientY-r.top};
 const mv=e=>{setM(e);const G=geo();const[r,a]=unproj(s.mx,s.my,G);
  const seg=s.segs.find(g=>{let d=((a-g.a0)%6.2832+6.2832)%6.2832;return d<g.span});
- const nearB=seg&&Math.abs(r-seg.g)<.055&&r>.10&&r<.97;
- cv.style.cursor=drag?'grabbing':s.hot?'pointer':nearB?'ns-resize':seg&&r<1.0?'pointer':'default'};
+ cv.style.cursor=s.hot?'pointer':seg&&r<1.0?'pointer':'default'};
 const dn=e=>{setM(e);const G=geo();const[r,a]=unproj(s.mx,s.my,G);
  if(s.hot){onOrb(s.hot);return}
  const seg=s.segs.find(g=>{let d=((a-g.a0)%6.2832+6.2832)%6.2832;return d<g.span});
  if(!seg)return;
- if(Math.abs(r-seg.g)<.07&&r>.10&&r<.97){setDrag({id:seg.id})}
- else if(r<.99&&r>.10)setSel(p=>p===seg.id?null:seg.id)};
-const up=()=>{if(drag){setDrag(null);setPreview(null)}};
+ // No drag: the boundary reflects platform policy this workspace cannot set, so grabbing it is
+ // not an affordance the surface should offer. Selecting a department still works.
+ if(r<.99&&r>.10)setSel(p=>p===seg.id?null:seg.id)};
 const lv=()=>{s.mx=-999;s.my=-999};
 cv.addEventListener('mousemove',mv);cv.addEventListener('mousedown',dn);window.addEventListener('mousemove',mv);
-window.addEventListener('mouseup',up);cv.addEventListener('mouseleave',lv);
+cv.addEventListener('mouseleave',lv);
 return()=>{cancelAnimationFrame(raf);ro.disconnect();mo.disconnect();cv.removeEventListener('mousemove',mv);
- cv.removeEventListener('mousedown',dn);window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);cv.removeEventListener('mouseleave',lv)}},[drag,onOrb,setSel,setDrag,setPreview]);
+ cv.removeEventListener('mousedown',dn);window.removeEventListener('mousemove',mv);cv.removeEventListener('mouseleave',lv)}},[onOrb,setSel]);
 const hotLabel=S.current.hot;
 return <div ref={wrap} style={{position:'absolute',inset:0}}><canvas ref={cvr} style={{display:'block'}}/></div>};
 
@@ -428,8 +436,6 @@ return <div className="fade-in" style={{display:'grid',gap:16}}>
 export const TrustCompass=()=>{
 const trust=useTrust();
 const[sel,setSel]=React.useState(null);
-const[drag,setDrag]=React.useState(null);
-const[preview,setPreview]=React.useState(null);
 const[flow,setFlow]=React.useState(null);
 const[toast,setToast]=React.useState(null);
 const[full,setFull]=React.useState(null);
@@ -459,7 +465,7 @@ right={<div className="row" style={{gap:8}}>
 <span className="pill pill-bad">{100-auto-dr}% escalated</span></div>}/>
 <div className="pg-fill tc-grid">
 <div className="card" style={{overflow:'hidden',borderRadius:'var(--r-xl)',position:'relative',minHeight:260,background:'#0A0818',borderColor:'#241F49'}}>
-<TcCanvas sel={sel} setSel={setSel} onOrb={onOrb} drag={drag} setDrag={setDrag} setPreview={setPreview}/>
+<TcCanvas sel={sel} setSel={setSel} onOrb={onOrb}/>
 <div style={{position:'absolute',top:16,left:18,right:18,display:'flex',gap:12,justifyContent:'space-between',pointerEvents:'none'}}>
 <div><div style={{fontSize:10.5,letterSpacing:'.26em',color:'rgba(255,255,255,.55)',fontWeight:600}}>WHAT SHE IS ALLOWED TO DO</div>
 <div style={{color:'#fff',fontSize:19,fontWeight:600,letterSpacing:'-.03em',marginTop:4}}>{sel?(depts.find(d=>d.id===sel)?.n||'Department'):depts.length+' departments'}</div>
@@ -471,10 +477,9 @@ right={<div className="row" style={{gap:8}}>
 {sel&&<button onClick={()=>setFull(sel)} className="row" style={{gap:6,height:28,padding:'0 12px',borderRadius:99,background:'rgba(255,255,255,.1)',color:'#fff',fontSize:11.8,fontWeight:600}}>
 Open {depts.find(d=>d.id===sel)?.n||'department'}<Ic.arrow size={12}/></button>}</div></div>
 
-{preview&&<div style={{position:'absolute',left:'50%',bottom:74,transform:'translateX(-50%)',background:'rgba(10,8,24,.92)',border:'1px solid rgba(255,255,255,.16)',
-borderRadius:12,padding:'10px 14px',pointerEvents:'none',textAlign:'center',maxWidth:'86%'}}>
-<div style={{color:'#fff',fontSize:12.6,fontWeight:600}}>{preview.n} · {tierLabel[preview.g>=.6?'green':preview.g>=.34?'amber':'red']}</div>
-<div style={{color:'rgba(255,255,255,.66)',fontSize:11.6,marginTop:3}}>At this setting she would have handled {preview.auto} of {preview.tot} actions this week without asking.</div></div>}
+{/* The drag PREVIEW is gone with the drag. It read "At this setting she would have handled N
+     of M actions this week without asking" — a projection from a dial that set nothing, over a
+     weekly total nothing produced. Removed rather than left unreachable (§13/§58). */}
 
 <div style={{position:'absolute',left:18,right:18,bottom:14,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',pointerEvents:'none'}}>
 {[['Autopilot','#4CC48C'],['Drafts for you','#E3A63C'],['Your call','#EE7A72']].map(([l,c])=>
