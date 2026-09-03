@@ -392,6 +392,12 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   // when its own RPC resolves — mid-removal, discarding the refusal exactly as before. The note
   // below already named this mechanism for the raw closes, and I failed to apply it one line up.
   // A ref cannot go stale, so every copy of `requestClose`, however old, reads the current state.
+  // THE INVARIANT, in both directions: while a removal is in flight NO other write starts, and while
+  // any other write is in flight a removal cannot start. `saving` is shared by the work-details save
+  // and the permission change, so gating on it covers both — deliberately, not incidentally. This is
+  // what makes the interleaving that broke the first version of this gate unreachable rather than
+  // merely guarded. (`save()` never closes the dialog, so it was not an escape path; it is included
+  // for the invariant, not because it leaked.)
   removalInFlightRef.current = removalInFlight;
   // NOTE FOR ANYONE TIDYING THIS: the four `onClose()` calls inside `confirmRemoval` are RAW on
   // purpose and must stay that way. They run after the call has settled, but `requestClose` closes
@@ -426,7 +432,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
         </div>}
       </div>}
     </div>
-    <footer className="stw-modal-actions"><button className="stw-btn secondary" onClick={requestClose} disabled={removalInFlight}>{dirty ? "Cancel" : "Close"}</button>{workspace.can_manage_profiles && <button className="stw-btn" disabled={saving || !dirty || Object.keys(errors).length > 0} onClick={save}>{saving ? "Saving…" : "Save work details"}</button>}</footer>
+    <footer className="stw-modal-actions"><button className="stw-btn secondary" onClick={requestClose} disabled={removalInFlight}>{dirty ? "Cancel" : "Close"}</button>{workspace.can_manage_profiles && <button className="stw-btn" disabled={saving || removalInFlight || !dirty || Object.keys(errors).length > 0} onClick={save}>{saving ? "Saving…" : "Save work details"}</button>}</footer>
   </Modal>;
 }
 export function InviteDialog({ workspace, onClose, onInvited }: { workspace: TeamWorkspaceRecord; onClose: () => void; onInvited: () => void }) {

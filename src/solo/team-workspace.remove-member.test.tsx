@@ -736,6 +736,24 @@ describe("the fourth read", () => {
     const confirmAccess = buttons(host).find((b) => /access change/i.test(b.textContent ?? ""));
     expect(confirmAccess, "the permission confirmation is on screen to be judged").toBeTruthy();
     expect(confirmAccess!.disabled, "the permission change is locked while a removal is in flight").toBe(true);
+
+    // ...and the invariant is symmetric: no OTHER write may start either. `saving` is shared by the
+    // work-details save and the permission change, so the lock covers both — asserted so that is a
+    // decision on the record rather than a side effect of reusing one flag.
+    const titleInput = host.querySelector<HTMLInputElement>('input[maxlength="121"]');
+    expect(titleInput, "the job-title field is present to dirty").toBeTruthy();
+    // Through the NATIVE value setter. Assigning `.value` directly leaves React's own value tracker
+    // untouched, so `onChange` never fires, the field never becomes dirty, and the Save button stays
+    // disabled by `!dirty` — which made the first version of this assertion pass no matter what the
+    // removal lock did. Caught by mutation: unlocking Save left the suite green.
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+      setter.call(titleInput!, "Changed while removing");
+      titleInput!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const saveWork = buttons(host).find((b) => /save work details/i.test(b.textContent ?? ""));
+    expect(saveWork, "the save control is on screen to be judged").toBeTruthy();
+    expect(saveWork!.disabled, "saving work details is locked while a removal is in flight").toBe(true);
   });
 
   it("names one workspace in EVERY string of the removal block, including the aria-labels", async () => {
