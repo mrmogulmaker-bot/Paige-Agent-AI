@@ -459,9 +459,19 @@ describe("what the peer read of the pushed diff found", () => {
     await arm(host);
     await act(async () => confirmButton(host)!.click());
 
-    // Every dismissal path, while the call is still running.
+    // EVERY dismissal path, enumerated by what the person actually clicks — not by `aria-label`.
+    // The first version of this test selected the close control by aria-label, which the FOOTER
+    // button does not carry, so it proved three of the four paths and silently omitted the one
+    // control literally labelled "Close". That is the path a person trying to back out uses, and it
+    // was the one still wired to the ungated prop. Found by an independent read, not by this suite.
     const closeX = buttons(host).find((b) => (b.getAttribute("aria-label") ?? "").toLowerCase().includes("close"));
-    if (closeX) await act(async () => closeX.click());
+    expect(closeX, "the header close control was found").toBeTruthy();
+    await act(async () => closeX!.click());
+    const footerClose = host.querySelector<HTMLButtonElement>(".stw-modal-actions button.stw-btn.secondary");
+    expect(footerClose, "the footer close control was found by its TEXT").toBeTruthy();
+    await act(async () => footerClose!.click());
+    expect(footerClose!.disabled, "and it is disabled, not a live-looking control that silently does nothing").toBe(true);
+    expect(closeX!.disabled, "the header control is disabled too").toBe(true);
     const backdrop = host.querySelector<HTMLElement>(".stw-modal-backdrop, [data-modal-backdrop]");
     if (backdrop) await act(async () => backdrop.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
     await act(async () => {
@@ -471,6 +481,74 @@ describe("what the peer read of the pushed diff found", () => {
 
     // The refusal now has somewhere to land, and the person can read it.
     await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
-    expect(host.querySelector('[role="alert"]')?.textContent ?? "").toMatch(/owner/i);
+    // Scoped to the removal block: `validateWorkProfile` renders its own [role="alert"] elements
+    // under Job title and Responsibilities, and those come FIRST in document order. Correct today
+    // only because the fixture is valid — an over-long title would have silently asserted against
+    // the wrong element.
+    const alerts = Array.from(host.querySelectorAll('[role="alert"]')).map((n) => n.textContent ?? "");
+    expect(alerts.some((t) => /owner/i.test(t)), `no removal refusal among: ${JSON.stringify(alerts)}`).toBe(true);
+  });
+});
+
+describe("what the exact-head re-read found", () => {
+  it("does not wedge on a rejected request now that the dialog cannot be dismissed", async () => {
+    // Blocking dismissal turns an unhandled rejection into a TRAP: supabase-js resolves a PostgREST
+    // refusal into `{ error }` rather than throwing, but a real transport rejection (offline, DNS,
+    // an aborted connection) rejects the promise — and with every close path correctly gated, an
+    // escaping rejection would leave the person on "Removing…" for ever, with no error and no way
+    // out but a page reload, and `inFlight` stuck true so retry is dead too.
+    let fail: (e: Error) => void = () => {};
+    mocks.rpc.mockImplementation(() => new Promise((_res, rej) => { fail = rej; }));
+    const onClose = vi.fn();
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={onClose} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+    await act(async () => { fail(new Error("TypeError: Failed to fetch")); });
+
+    const alerts = Array.from(host.querySelectorAll('[role="alert"]')).map((n) => n.textContent ?? "");
+    expect(alerts.some((t) => t.trim().length > 0), "the rejection is reported, not swallowed").toBe(true);
+    const footerClose = host.querySelector<HTMLButtonElement>(".stw-modal-actions button.stw-btn.secondary");
+    expect(footerClose!.disabled, "and the person can leave again").toBe(false);
+    expect(confirmButton(host), "and retry is offered rather than wedged").toBeTruthy();
+  });
+
+  it("is not unmounted by the PARENT mid-removal, so the outcome still has somewhere to land", async () => {
+    // A second seam entirely: gating dismissal inside the dialog cannot stop the parent unmounting
+    // it. The editor renders on `selectedLive`, and a workspace switch during a pending removal
+    // nulls the roster and drops the selected member — so the dialog vanished with no user action
+    // at all, and BOTH outcomes were lost: the refusal had nowhere to land, and a removal the
+    // server DID apply was never announced.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    const rosterA = workspace();
+    const rosterB = workspace({ tenant_id: "tenant-2", tenant_name: "Second Workspace", members: [], total_members: 0 });
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") {
+        return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? rosterA : rosterB, error: null });
+      }
+      return new Promise((res) => { settle = res; });
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    // The roster reloads and no longer carries the selected member.
+    mocks.tenant.activeTenantId = "tenant-2";
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    expect(host.querySelector('[role="dialog"]'), "the dialog survives the refetch while the call is in flight").toBeTruthy();
+
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+    // Reported through the parent-owned channel rather than in a dialog that now sits over a
+    // different workspace — and reported AT ALL, which is the point. Before this it was discarded.
+    const alerts = Array.from(host.querySelectorAll('[role="alert"]')).map((n) => n.textContent ?? "");
+    const spoken = mocks.error.mock.calls.map((c) => String(c[0]));
+    expect(
+      alerts.some((t) => t.trim().length > 0) || spoken.some((t) => /owner/i.test(t)),
+      `the refusal was reported, not discarded. alerts=${JSON.stringify(alerts)} toasts=${JSON.stringify(spoken)}`,
+    ).toBe(true);
   });
 });

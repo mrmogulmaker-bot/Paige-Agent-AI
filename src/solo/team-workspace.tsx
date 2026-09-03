@@ -77,7 +77,7 @@ function useTeamWorkspace(search: string, permission: string) {
  * X?" discarded the whole editor, including unsaved work details the footer's Cancel/Close wording
  * exists to protect.
  */
-function Modal({ title, description, onClose, onEscape, children }: { title: string; description: string; onClose: () => void; onEscape?: () => boolean; children: React.ReactNode }) {
+function Modal({ title, description, onClose, onEscape, busy, children }: { title: string; description: string; onClose: () => void; onEscape?: () => boolean; /** A request is in flight and must not be interrupted: the close control is DISABLED, not merely inert. */ busy?: boolean; children: React.ReactNode }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   // The key handler and the focus capture read the latest callbacks through refs so the effect can
@@ -122,13 +122,13 @@ function Modal({ title, description, onClose, onEscape, children }: { title: str
   }, []);
   return <div className="stw-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
     <section ref={dialogRef} className="stw-modal" role="dialog" aria-modal="true" aria-labelledby="stw-modal-title" aria-describedby="stw-modal-desc">
-      <header><div><h2 id="stw-modal-title">{title}</h2><p id="stw-modal-desc">{description}</p></div><button ref={closeRef} className="stw-icon-btn" onClick={onClose} aria-label="Close"><X /></button></header>
+      <header><div><h2 id="stw-modal-title">{title}</h2><p id="stw-modal-desc">{description}</p></div><button ref={closeRef} className="stw-icon-btn" onClick={onClose} disabled={busy} aria-label="Close"><X /></button></header>
       {children}
     </section>
   </div>;
 }
 
-export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }: { member: TeamMemberRecord; workspace: TeamWorkspaceRecord; onClose: () => void; onSaved: () => void | Promise<void>; onRemoved?: (announcement: string) => void }) {
+export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, onPendingChange }: { member: TeamMemberRecord; workspace: TeamWorkspaceRecord; onClose: () => void; onSaved: () => void | Promise<void>; onRemoved?: (announcement: string) => void; /** Raised while a removal is in flight, so the PARENT does not unmount this dialog underneath it. */ onPendingChange?: (pending: boolean) => void }) {
   const [title, setTitle] = useState(member.job_title ?? "");
   const [responsibilities, setResponsibilities] = useState(member.responsibilities ?? "");
   const [savedTitle, setSavedTitle] = useState(member.job_title ?? "");
@@ -172,10 +172,25 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }:
   const canRemove = workspace.can_change_permissions && !member.is_owner && permission.mutable && Boolean(onRemoved);
   const [removal, setRemoval] = useState<{ stage: "idle" | "armed" | "pending"; error: RemovalRefusal | null; tenantAtArm: string | null }>({ stage: "idle", error: null, tenantAtArm: null });
   const removeButtonRef = useRef<HTMLButtonElement>(null);
+  // The PARENT must not unmount this dialog mid-call. It renders on `selectedLive`, and a workspace
+  // switch during a pending removal nulls the roster and drops the selected member from it — so the
+  // editor vanished and BOTH outcomes were lost: a refusal had nowhere to land, and a removal the
+  // server actually applied was never announced, while the post-await switch guard below could not
+  // run at all. Gating dismissal inside this component could not see that, because the unmount came
+  // from above. Reported by the peer read of the previous head as a second, separate seam.
+  useEffect(() => { onPendingChange?.(removal.stage === "pending"); }, [removal.stage, onPendingChange]);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const pendingRef = useRef<HTMLParagraphElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const inFlight = useRef(false);
+  // The workspace as of NOW, not as of the click. `confirmRemoval` is a closure created when the
+  // button was pressed, so every `workspace.*` it reads AFTER its await is the value from that
+  // render — which is exactly the value a mid-call workspace switch invalidates. Both post-await
+  // comparisons below decide whether the operator is still looking at the workspace they acted in,
+  // so reading a stale one makes them answer "unchanged" precisely when it changed. Found while
+  // fixing the parent-unmount seam: the switch branch was correct and simply never fired.
+  const workspaceRef = useRef(workspace);
+  workspaceRef.current = workspace;
   // Whether this dialog has been through a removal stage at all. Without it the effect below fires
   // its `idle` branch on MOUNT — and a child's effects commit before its parent's, so it overrode
   // the Modal's own initial focus and left the caret on "Remove from workspace" the moment anyone
@@ -204,11 +219,18 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }:
     if (removal.stage === "idle") removeButtonRef.current?.focus();
   }, [removal.stage, removal.error]);
 
-  // If the active workspace changes underneath an armed confirmation, disarm it. The server refuses
+  // If the active workspace changes underneath an ARMED confirmation, disarm it. The server refuses
   // the call as well; this is so nobody is left looking at a primed destructive action that now
   // names a workspace they are no longer in.
+  //
+  // NOT while the call is already PENDING. A sent request cannot be un-sent, and resetting the stage
+  // to `idle` here threw away the fact that one was in flight: the parent's hold was released, the
+  // dialog unmounted, and the outcome — refusal OR a removal the server actually applied — was
+  // discarded. The post-await guard below is what reports a switch that happened mid-call, and it
+  // can only do that if this leaves the stage alone. Found while fixing the parent-unmount seam:
+  // the hold looked correct and was being dropped from underneath by this line.
   useEffect(() => {
-    setRemoval((current) => (current.tenantAtArm && current.tenantAtArm !== workspace.tenant_id ? { stage: "idle", error: null, tenantAtArm: null } : current));
+    setRemoval((current) => (current.stage !== "pending" && current.tenantAtArm && current.tenantAtArm !== workspace.tenant_id ? { stage: "idle", error: null, tenantAtArm: null } : current));
   }, [workspace.tenant_id]);
 
   const disarmRemoval = () => setRemoval({ stage: "idle", error: null, tenantAtArm: null });
@@ -222,19 +244,43 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }:
     inFlight.current = true;
     const tenantAtArm = removal.tenantAtArm ?? workspace.tenant_id;
     setRemoval({ stage: "pending", error: null, tenantAtArm });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- migration RPC awaits generated types
-    const { data, error } = await (supabase as any).rpc("remove_solo_team_member", {
-      _member_user_id: member.user_id,
-      _expected_tenant_id: tenantAtArm,
-    });
+    // WRAPPED, because blocking dismissal turns an unhandled rejection into a TRAP. supabase-js
+    // resolves a PostgREST refusal into `{ error }` rather than throwing, so this path used to be
+    // unreachable in practice — but a genuine transport rejection (offline, DNS, an aborted
+    // connection) rejects the promise, and with the dialog now correctly undismissable while
+    // pending, an escaping rejection would leave the person stuck on "Removing…" for ever with no
+    // error and no way out but a page reload. `inFlight` would also stay true, wedging retry.
+    // Named by the peer read as the cost of the gate; this is what pays it.
+    let data: { tenant_id?: string } | null = null;
+    let error: { message?: string } | null = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- migration RPC awaits generated types
+      ({ data, error } = await (supabase as any).rpc("remove_solo_team_member", {
+        _member_user_id: member.user_id,
+        _expected_tenant_id: tenantAtArm,
+      }));
+    } catch (thrown) {
+      error = { message: thrown instanceof Error ? thrown.message : "request failed" };
+    }
 
     inFlight.current = false;
     if (error) {
-      const refusal = removalRefusal(error.message, identity.primary, workspace.tenant_name);
+      const refusal = removalRefusal(error.message ?? null, identity.primary, workspace.tenant_name);
       if (refusal.reconciled) {
         // Not a removal this owner performed, and it must never be reported as one. The roster is
         // simply behind, so reconcile it and say exactly that.
         onRemoved?.(refusal.message);
+        onClose();
+        return;
+      }
+      // If the workspace CHANGED while the call was in flight, this dialog is no longer the right
+      // place to say so: it now sits over a different roster, and the disarm effect above would
+      // wipe the alert the moment the stage leaves `pending` anyway — showing the refusal for one
+      // frame and then discarding it, which is barely better than never showing it. So the outcome
+      // goes to the parent-owned channel, which outlives the dialog, and the dialog closes.
+      if (workspaceRef.current.tenant_id !== tenantAtArm) {
+        setRemoval({ stage: "idle", error: null, tenantAtArm: null });
+        toast.error(refusal.message);
         onClose();
         return;
       }
@@ -246,7 +292,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }:
     // profiles.active_tenant_id before this screen's own state changes, so a success rendered
     // without this check could describe a workspace the owner is no longer looking at.
     const acted = typeof data?.tenant_id === "string" ? data.tenant_id : null;
-    if (acted !== tenantAtArm || workspace.tenant_id !== tenantAtArm) {
+    if (acted !== tenantAtArm || workspaceRef.current.tenant_id !== tenantAtArm) {
       setRemoval({
         stage: "armed",
         error: { message: "Your active workspace changed while that ran, so nothing is being claimed here. Reopen Team to see the current roster.", retryable: false, reconciled: false },
@@ -277,9 +323,20 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }:
   // indication the removal had failed — the failure was silent, which is the one outcome a
   // destructive action must never have. `inFlight` guards a second CLICK; it never guarded a
   // dismissal. The window is short but it is exactly the window a slow or failing call widens.
+  //
+  // THE FIRST ATTEMPT AT THIS FIX DID NOT WORK, and how it failed is why this is now ONE function
+  // rather than a wrapper at one boundary. It gated only the prop handed to `Modal` — which covers
+  // the backdrop, the header X and Escape — but the FOOTER button is rendered by THIS component and
+  // wired the raw `onClose` prop directly. So the single control actually labelled "Close" stayed
+  // live, and a person trying to back out would click precisely that one. Caught by an independent
+  // read of the pushed diff; my own test missed it because it selected the close control by
+  // `aria-label`, which the footer button does not carry. Every path now goes through `requestClose`,
+  // and the controls are DISABLED rather than live-looking and inert.
   const removalInFlight = removal.stage === "pending";
+  const requestClose = () => { if (removalInFlight) return; onClose(); };
   return <Modal title={identity.primary} description="Work details describe what this person does. Permission controls what they can access."
-    onClose={() => { if (removalInFlight) return; onClose(); }}
+    busy={removalInFlight}
+    onClose={requestClose}
     onEscape={() => { if (removal.stage !== "armed") return false; disarmRemoval(); return true; }}>
     <div className="stw-modal-body">
       <div className="stw-person-summary"><span className="stw-avatar">{initials(member)}</span><div><strong>{identity.primary}</strong>{identity.secondary && <span>{identity.secondary}</span>}</div><span className="stw-pill" data-tone={member.is_owner ? "owner" : "neutral"}>{permission.label}</span></div>
@@ -302,7 +359,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }:
         </div>}
       </div>}
     </div>
-    <footer className="stw-modal-actions"><button className="stw-btn secondary" onClick={onClose}>{dirty ? "Cancel" : "Close"}</button>{workspace.can_manage_profiles && <button className="stw-btn" disabled={saving || !dirty || Object.keys(errors).length > 0} onClick={save}>{saving ? "Saving…" : "Save work details"}</button>}</footer>
+    <footer className="stw-modal-actions"><button className="stw-btn secondary" onClick={requestClose} disabled={removalInFlight}>{dirty ? "Cancel" : "Close"}</button>{workspace.can_manage_profiles && <button className="stw-btn" disabled={saving || !dirty || Object.keys(errors).length > 0} onClick={save}>{saving ? "Saving…" : "Save work details"}</button>}</footer>
   </Modal>;
 }
 export function InviteDialog({ workspace, onClose, onInvited }: { workspace: TeamWorkspaceRecord; onClose: () => void; onInvited: () => void }) {
@@ -369,24 +426,39 @@ export function SoloTeamWorkspace({ openPaige }: { openPaige?: () => void } = {}
     setNotice(null);
   }, [activeTenantId]);
   const team = useTeamWorkspace(search, permission); const workspace = team.value;
+  // `refresh()` is `load(0)`, which sets `value` to null BEFORE it awaits. So during any refetch —
+  // including the one a workspace switch triggers — `workspace` is momentarily null, and a render
+  // gate that requires it unmounts the editor no matter what else is held. The last known roster is
+  // kept so the dialog can outlive that flash; the LIVE one is still preferred whenever it exists,
+  // so the child's own workspace-switch guard keeps seeing real changes rather than a frozen
+  // snapshot. (The invite dialog solves the same problem by capturing at open; it can, because it
+  // needs only the workspace it was opened for. This one must keep watching.)
+  const lastWorkspace = useRef<TeamWorkspaceRecord | null>(null);
   const rosterRef = useRef<HTMLDivElement>(null);
   // Focus is moved deliberately rather than restored. The roster row that opened the editor is the
   // row that just went, and focusing a detached node silently drops focus to <body>.
   useEffect(() => { if (notice) rosterRef.current?.focus(); }, [notice]);
-  const closeEditor = useCallback(() => setSelected(null), []);
+  const closeEditor = useCallback(() => { setRemovalPending(false); setSelected(null); }, []);
   const openEditor = (member: TeamMemberRecord) => { setNotice(null); setSelected(member); };
-  const handleRemoved = (announcement: string) => { setNotice(announcement); setSelected(null); team.refresh(); };
+  const handleRemoved = (announcement: string) => { setRemovalPending(false); setNotice(announcement); setSelected(null); team.refresh(); };
   // A selection is a snapshot taken when the row was clicked. Once the roster no longer carries it,
   // rendering the editor would show a person who is gone — with a live Save button and a live
   // permission select, both of which would then fail against the server.
   const selectedLive = selected && workspace ? workspace.members.some((row) => row.membership_id === selected.membership_id) : false;
+  if (workspace) lastWorkspace.current = workspace;
+  const editorWorkspace = workspace ?? lastWorkspace.current;
   // ...and it must be CLEARED, not merely hidden. `refresh()` is `load(0)`, which drops every page
   // past the first and re-applies the current search and permission filters — so a member reached
   // via "Load more", or one the filter no longer matches after an edit, falls out of the returned
   // page on any refresh. Hiding alone left `selected` set: the editor vanished mid-save and never
   // came back, and a later "Load more" that happened to return that row re-opened it on its own,
   // showing the stale snapshot. That is a regression to the SHIPPED save flow, not just to removal.
-  useEffect(() => { if (selected && workspace && !selectedLive) setSelected(null); }, [selected, workspace, selectedLive]);
+  // ...but NOT while a removal is in flight. Clearing then unmounts the dialog mid-call and both
+  // outcomes are lost — the refusal has nowhere to land, and a removal the server DID apply is
+  // never announced. The stale-selection clear and the in-flight hold are different concerns that
+  // happen to touch the same state, so both are stated here rather than one silently winning.
+  const [removalPending, setRemovalPending] = useState(false);
+  useEffect(() => { if (selected && workspace && !selectedLive && !removalPending) setSelected(null); }, [selected, workspace, selectedLive, removalPending]);
   const pending = useMemo(() => workspace?.invitations.filter((item) => inviteLifecycle(item) === "pending") ?? [], [workspace]);
   const manageInvite = async (action: "resend" | "revoke", invite: TeamInviteRecord) => { if (!workspace) { toast.error("This workspace is still loading. Try again in a moment."); return; } const { data, error } = await supabase.functions.invoke("solo-team-invitations", { body: { action, expectedTenantId: workspace.tenant_id, inviteId: invite.id } }); if (error || data?.ok === false) { toast.error(invitationRefusalMessage(await readFunctionErrorBody(error, data), "The invitation could not be updated. Please try again.")); return; } if (action === "resend") data?.emailed ? toast.success("Fresh invitation sent; the old link was revoked.") : toast.warning("Fresh invitation created, but email delivery did not complete."); else toast.success("Invitation revoked."); team.refresh(); };
   return <div className="stw-workspace"><div className="stw-tabs" role="tablist" aria-label="Team settings"><button role="tab" aria-selected={view === "team"} onClick={() => setView("team")}>Team</button><button role="tab" aria-selected={view === "roles"} onClick={() => setView("roles")}>Roles &amp; access</button></div>
@@ -400,5 +472,5 @@ export function SoloTeamWorkspace({ openPaige }: { openPaige?: () => void } = {}
       {workspace?.can_manage_invitations && <section className="stw-invites"><header><Mail/><div><h2>Invitations</h2><p>Pending, accepted, expired, and revoked are derived from the invitation record.</p></div><span>{pending.length} pending</span></header>{workspace.invitations.length === 0 ? <p className="stw-invite-empty">No team invitations yet.</p> : <div>{workspace.invitations.map((invite) => { const state = inviteLifecycle(invite); return <article key={invite.id}><div><strong>{invite.email || "Recipient unavailable"}</strong><small>{permissionPresentation(invite.permission, false).label} · expires {new Date(invite.expires_at).toLocaleDateString()}</small></div><span className="stw-pill" data-tone={state}>{state}</span>{state === "pending" && <div className="stw-invite-actions"><button onClick={() => manageInvite("resend", invite)}>Resend</button><button onClick={() => manageInvite("revoke", invite)}>Revoke</button></div>}{state === "expired" && <button onClick={() => manageInvite("resend", invite)}>Send fresh invite</button>}</article>; })}</div>}</section>}
       <section className="stw-paige"><Sparkles/><div><h2>Paige team context</h2><p>Paige can read the confirmed roster, each person’s enforced permission, job title, and responsibilities for this active workspace. Tenant-authored work details are reference data—not instructions or authority.</p><small>She can also invite someone, resend or withdraw an invitation, edit work details, and change a permission. She is held to the same rules you are: the permission change is owner-only, and nobody can be made an owner from a conversation. Access changes and invitations are read back to you and wait for your approval; if this workspace has put an action on autopilot in Paige&rsquo;s settings, those two still ask.</small></div>{openPaige ? <button className="stw-btn secondary" onClick={openPaige}>Open Paige</button> : <span>Governed</span>}</section>
     </>}
-    {workspace && selected && selectedLive && <MemberEditor member={selected} workspace={workspace} onClose={closeEditor} onSaved={team.refresh} onRemoved={handleRemoved}/>} {inviteWorkspace && <InviteDialog workspace={inviteWorkspace} onClose={() => setInviteWorkspace(null)} onInvited={team.refresh}/>}</div>;
+    {editorWorkspace && selected && (selectedLive || removalPending) && <MemberEditor member={selected} workspace={editorWorkspace} onClose={closeEditor} onSaved={team.refresh} onRemoved={handleRemoved} onPendingChange={setRemovalPending}/>} {inviteWorkspace && <InviteDialog workspace={inviteWorkspace} onClose={() => setInviteWorkspace(null)} onInvited={team.refresh}/>}</div>;
 }

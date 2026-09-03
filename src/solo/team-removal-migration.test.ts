@@ -272,11 +272,25 @@ describe("the table underneath — a guarded function is not a boundary on its o
       if (named) { job = named[1]; continue; }
       // A job-level `if:` can switch the whole job off while every step still reads as present.
       if (job && /^ {4}if:/.test(line)) conditional.add(job);
+      // `continue-on-error` is the IDIOMATIC way somebody temporarily unblocks CI, and it leaves the
+      // proof running but unable to fail the build — the same false-green as commenting it out, in
+      // more respectable clothing. Caught at BOTH levels: job (4 spaces) and step (8, under `steps:`).
+      if (job && /^ {4,}continue-on-error:\s*true/.test(line)) conditional.add(job);
       if (job && line.trim() === RUN) owner = job;
     }
 
     expect(owner, `${proof} is run by a job, not merely written in the file`).not.toBeNull();
-    expect(conditional.has(owner as string), `the job running ${proof} is not switched off by an if:`).toBe(false);
+    expect(
+      conditional.has(owner as string),
+      `the job running ${proof} is not switched off by an if: or continue-on-error`,
+    ).toBe(false);
+
+    // HONEST LIMIT, stated rather than implied. This models the shapes this workflow actually uses:
+    // whole-line comments, two-space job keys, four-space job options, and step-level options under
+    // `steps:`. It does NOT interpret YAML, so it cannot see every conceivable way to neuter a job —
+    // an empty `strategy.matrix` producing zero job instances is the one measured bypass that
+    // survives it. That is a real gap, and naming it here is the point: the guard closes the
+    // bypasses somebody reaches for by habit, not every bypass that exists.
 
     // 3. Both triggers, so main is guarded and not just the PR. The sibling PR's round 2 found
     //    exactly this fix half-applied: inserted twice into `pull_request`, never into `push`.
