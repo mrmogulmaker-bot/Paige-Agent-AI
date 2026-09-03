@@ -62,4 +62,3 @@ export async function reconcilePaymentSetup(event: any, account: 'legacy' | 'v2'
     return failure('setup_persistence_retryable');
   }
 }
-
