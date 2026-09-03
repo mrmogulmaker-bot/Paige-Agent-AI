@@ -1615,11 +1615,22 @@ of every invitation act; it is what makes the workspace PAIGE names trustworthy.
 **§61 default: no exception.** Distribution is unchanged from the Team seam rows above; this repairs
 how an existing capability resolves its workspace and grants nobody anything new.
 
-**CORRECTED IN FLIGHT by `20261107000000` (the headline ordering), and the reason it was needed is
-the lesson.** #850 was marked ready for review and merged in the same beat, so the independent
+**§66 — `SHIPPED` (#856, merged `197a10e2`).** Corrected `20261107000000` (the headline ordering) is
+now confirmed persisted on production, not just merged. The reason the correction was needed is
+itself the lesson: #850 was marked ready for review and merged in the same beat, so the independent
 review had no window to run before the merge — its five findings, three of them real defects in
 shipped code, landed on an already-merged PR. §39 says a green CI never waives the peer-gate; this
-waived it by sequencing. The corrections:
+waived it by sequencing. #856 was driven differently on purpose: CI confirmed green first, THEN
+marked ready (not merged in the same beat), and the review was requested explicitly on the exact
+head that merged (`4a381b6a`) — reviewed clean before the merge, catching one more real defect on
+the way (the expiry-verb fix below shipped a mirror-image bug in its first attempt, caught by that
+same review, fixed, and re-reviewed clean on the corrected head).
+
+Read back from production 2026-09-03: `schema_migrations` contains `20261107000000`;
+`get_solo_team_workspace`'s delivery LATERAL orders by
+`public.email_delivery_rank(l.status) DESC, l.created_at DESC` (rank first) and the old
+`created_at DESC` first-clause is gone; `handle-resend-webhook` redeployed ACTIVE at version 7
+(up from the version 3 that shipped with #850). The corrections:
 
 | Finding | What was wrong | Fixed by |
 |---|---|---|
@@ -1629,9 +1640,12 @@ waived it by sequencing. The corrections:
 | "Not sent yet" | a false claim about every invitation emailed before this feature existed, which has no log row because the old sender never wrote one — including the owner's own revoked one | "Delivery not recorded" |
 | "expired" verb | keyed on `finished`, which is true for accepted and revoked rows that routinely still have a future expiry | keyed on the `expired` state |
 
-**Owed:** authenticated runtime proof. Authorized as immediate post-release owner acceptance
-(2026-09-02) rather than a release blocker, and the surface stays **Authenticated Runtime Proof
-Owed** until the owner confirms the live flow.
+**Owed:** authenticated runtime proof — unchanged by this correction. Authorized as immediate
+post-release owner acceptance (2026-09-02) rather than a release blocker, and the surface stays
+**Authenticated Runtime Proof Owed** until the owner confirms the live flow. The one thing that DID
+change: the owner is now unblocked to register the Resend webhook and set `RESEND_WEBHOOK_SECRET` —
+doing so against the pre-#856 code would have made every `email.sent` event fail permanently and
+retry for ever (finding #1 above).
 
 ### Solo Team — an invitation says what happened to it, `/solo/{account}/settings/team`
 
@@ -1648,7 +1662,7 @@ to work:
 - `tenant_invite_tokens.archived_at` exists; the `email_send_log` status CHECK now admits `clicked`.
 - EXECUTE on the archive function: `anon` false, `authenticated` false, **and** the control —
   `get_solo_team_workspace` to `authenticated` — true, so the two refusals measure something.
-- `handle-resend-webhook` deployed ACTIVE at version 3.
+- `handle-resend-webhook` deployed ACTIVE at version 3 (superseded by version 7 under #856, above).
 
 **The report.** A revoked invitation stayed on the operator's list for ever with no action on it, and
 no stage of any invitation could be answered — sent, delivered, opened, clicked were all unknown.
