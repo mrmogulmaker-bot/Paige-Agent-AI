@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-import { upsertBillingAccount } from "../_shared/platform-billing.ts";
+import { upsertBillingAccount, upsertPaymentMethod } from "../_shared/platform-billing.ts";
 
 // Legacy Stripe account (original PaigeAgent account)
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
@@ -1047,6 +1047,84 @@ serve(async (req) => {
             logStep("Platform subscription handler error", {
               sessionId: session.id,
               error: String(platformErr),
+            });
+          }
+          // IMPORTANT — do NOT fall through to slot / plan blocks.
+          break;
+        }
+
+        // === Platform Billing — payment-method connect (Billing Experience item 4,
+        //     owner brief 2026-09-03) ===
+        // Discriminant: session.metadata.platform_billing_connect_tenant_id, Stripe-SIGNED
+        // metadata set by the producer `platform-billing-connect`. Distinct from
+        // `tenant_price_id` / `marketplace_item_slug` / `platform_plan_slug` above — no
+        // collision. This is the ONLY place `platform_billing_accounts.payment_method_*` is
+        // ever written (§18, one writer): the connect function itself never touches the table,
+        // it only opens a `mode: "setup"` Checkout Session and redirects.
+        if (session.metadata?.platform_billing_connect_tenant_id) {
+          try {
+            const tenantId = session.metadata.platform_billing_connect_tenant_id;
+            const stripeCustId = (session.customer as string | null) ?? null;
+            const setupIntentId = (session.setup_intent as string | null) ?? null;
+            if (!stripeCustId || !setupIntentId) {
+              logStep("Platform billing connect: missing customer or setup_intent", {
+                sessionId: session.id, tenantId, hasCustomer: !!stripeCustId, hasSetupIntent: !!setupIntentId,
+              });
+            } else {
+              const activeStripe = verifiedAccount === "v2" ? stripeV2 : stripe;
+              const setupIntent = await activeStripe.setupIntents.retrieve(setupIntentId);
+              const paymentMethodId = (setupIntent.payment_method as string | null) ?? null;
+              if (!paymentMethodId) {
+                logStep("Platform billing connect: setup_intent has no payment_method", { sessionId: session.id, tenantId });
+              } else {
+                const pm = await activeStripe.paymentMethods.retrieve(paymentMethodId);
+                const brand = pm.card?.brand ?? pm.us_bank_account?.bank_name ?? pm.type ?? null;
+                const last4 = pm.card?.last4 ?? pm.us_bank_account?.last4 ?? null;
+                const expMonth = pm.card?.exp_month ?? null;
+                const expYear = pm.card?.exp_year ?? null;
+
+                // First, make sure this workspace is mapped to this customer (idempotent — a
+                // reconnect for an already-mapped workspace with the SAME customer is
+                // already_mapped; a genuinely different customer is a conflict, audited and
+                // left for a person, never guessed).
+                const mapped = await upsertBillingAccount(supabaseAdmin, {
+                  tenantId,
+                  stripeCustomerId: stripeCustId,
+                  stripeAccount: verifiedAccount === "v2" ? "v2" : "legacy",
+                  source: "checkout",
+                  actorUserId: session.metadata.actor_user_id ?? null,
+                });
+                if (mapped.outcome !== "inserted" && mapped.outcome !== "already_mapped") {
+                  logStep("Platform billing connect: mapping not written", { sessionId: session.id, tenantId, outcome: mapped.outcome, code: (mapped as { code?: string }).code ?? null });
+                } else {
+                  const written = await upsertPaymentMethod(supabaseAdmin, {
+                    tenantId, stripeCustomerId: stripeCustId, paymentMethodId, brand, last4, expMonth, expYear,
+                  });
+                  if (written.outcome !== "written") {
+                    logStep("Platform billing connect: payment method not written", { sessionId: session.id, tenantId, outcome: written.outcome });
+                  } else {
+                    logStep("Platform billing connect: payment method written", { sessionId: session.id, tenantId });
+                    // Best-effort, never blocking: make the new method the customer's default for
+                    // future invoices. A failure here does not undo the write above — the
+                    // platform's own record of the method is already correct either way.
+                    try {
+                      await activeStripe.customers.update(stripeCustId, {
+                        invoice_settings: { default_payment_method: paymentMethodId },
+                      });
+                    } catch (defaultErr) {
+                      logStep("Platform billing connect: set default payment method failed", { sessionId: session.id, tenantId, error: String(defaultErr) });
+                    }
+                  }
+                }
+              }
+            }
+          } catch (connectErr) {
+            // A payment-method-connect failure must never 500 the webhook and block other
+            // events (§13 honest, non-throwing — same discipline as the platform-subscription
+            // handler above).
+            logStep("Platform billing connect handler error", {
+              sessionId: session.id,
+              error: String(connectErr),
             });
           }
           // IMPORTANT — do NOT fall through to slot / plan blocks.

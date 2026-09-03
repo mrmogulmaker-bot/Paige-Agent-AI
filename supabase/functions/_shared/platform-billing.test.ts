@@ -1,6 +1,6 @@
 // deno test supabase/functions/_shared/platform-billing.test.ts
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { classifyMapping, decideLegacyPortal, isPlatformCustomer, upsertBillingAccount } from "./platform-billing.ts";
+import { classifyMapping, decideLegacyPortal, isPlatformCustomer, upsertBillingAccount, upsertPaymentMethod } from "./platform-billing.ts";
 
 Deno.test("classifyMapping: no row → insert", () => {
   assertEquals(classifyMapping(null, { stripeCustomerId: "cus_a", stripeAccount: "legacy" }), "insert");
@@ -63,6 +63,14 @@ function fakeAdmin(rows: Record<string, Array<Record<string, unknown>>>, failing
         (rows[name] ??= []).push(row);
         return Promise.resolve({ error: null });
       },
+      update: (patch: Record<string, unknown>) => ({
+        eq: (k: string, v: unknown) => {
+          if (failing.includes(name)) return Promise.resolve({ error: { code: "boom" } });
+          const all = rows[name] ?? [];
+          for (const r of all) if (r[k] === v) Object.assign(r, patch);
+          return Promise.resolve({ error: null });
+        },
+      }),
     };
     return q;
   };
@@ -142,4 +150,57 @@ Deno.test("upsertBillingAccount: a customer already mapped to ANOTHER workspace 
 Deno.test("upsertBillingAccount: a client that THROWS is an error outcome, never a throw past the webhook", async () => {
   const admin = { from: () => { throw new Error("boom"); } };
   assertEquals(await upsertBillingAccount(admin, { tenantId: "t1", stripeCustomerId: "cus_a", stripeAccount: "legacy", source: "checkout" }), { outcome: "error", code: "mapping_threw" });
+});
+
+Deno.test("upsertPaymentMethod: writes brand/last4/exp onto the matching mapping row", async () => {
+  const admin = fakeAdmin({ platform_billing_accounts: [{ tenant_id: "t1", stripe_customer_id: "cus_a" }] });
+  const r = await upsertPaymentMethod(admin, {
+    tenantId: "t1", stripeCustomerId: "cus_a", paymentMethodId: "pm_1",
+    brand: "visa", last4: "4242", expMonth: 12, expYear: 2031,
+  });
+  assertEquals(r, { outcome: "written" });
+  const row = admin.rows.platform_billing_accounts[0];
+  assertEquals(row.payment_method_id, "pm_1");
+  assertEquals(row.payment_method_brand, "visa");
+  assertEquals(row.payment_method_last4, "4242");
+  assertEquals(row.payment_method_exp_month, 12);
+  assertEquals(row.payment_method_exp_year, 2031);
+});
+
+Deno.test("upsertPaymentMethod: no mapping row at all → no_mapping, nothing written", async () => {
+  const admin = fakeAdmin({});
+  const r = await upsertPaymentMethod(admin, {
+    tenantId: "t1", stripeCustomerId: "cus_a", paymentMethodId: "pm_1",
+    brand: "visa", last4: "4242", expMonth: 12, expYear: 2031,
+  });
+  assertEquals(r, { outcome: "no_mapping" });
+});
+
+Deno.test("upsertPaymentMethod: the event's customer id disagrees with the tenant's own mapping row → customer_mismatch, nothing written", async () => {
+  const admin = fakeAdmin({ platform_billing_accounts: [{ tenant_id: "t1", stripe_customer_id: "cus_a" }] });
+  const r = await upsertPaymentMethod(admin, {
+    tenantId: "t1", stripeCustomerId: "cus_WRONG", paymentMethodId: "pm_1",
+    brand: "visa", last4: "4242", expMonth: 12, expYear: 2031,
+  });
+  assertEquals(r, { outcome: "customer_mismatch" });
+  // Confirm nothing was mutated on the real row.
+  assertEquals(admin.rows.platform_billing_accounts[0].payment_method_id, undefined);
+});
+
+Deno.test("upsertPaymentMethod: a failed read is an error outcome, never a silent no-op", async () => {
+  const admin = fakeAdmin({}, ["platform_billing_accounts"]);
+  const r = await upsertPaymentMethod(admin, {
+    tenantId: "t1", stripeCustomerId: "cus_a", paymentMethodId: "pm_1",
+    brand: "visa", last4: "4242", expMonth: 12, expYear: 2031,
+  });
+  assertEquals((r as { outcome: string }).outcome, "error");
+});
+
+Deno.test("upsertPaymentMethod: a client that THROWS is an error outcome, never a throw past the webhook", async () => {
+  const admin = { from: () => { throw new Error("boom"); } };
+  const r = await upsertPaymentMethod(admin, {
+    tenantId: "t1", stripeCustomerId: "cus_a", paymentMethodId: "pm_1",
+    brand: "visa", last4: "4242", expMonth: 12, expYear: 2031,
+  });
+  assertEquals(r, { outcome: "error", code: "payment_method_threw" });
 });
