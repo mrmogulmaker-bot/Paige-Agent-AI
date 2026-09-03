@@ -81,7 +81,20 @@ function lineOf(sf, node) { return sf.getLineAndCharacterOfPosition(node.getStar
 function lineText(src, line) { return (src.split("\n")[line - 1] ?? "").trim(); }
 
 /** The string a node denotes, when it is a literal. */
-function lit(node) { return node && ts.isStringLiteralLike(node) ? node.text : null; }
+/**
+ * The text of a string literal, seeing through transparent wrappers.
+ *
+ * `bindingKeyName` unwrapped a computed `["x"]` key but then handed the inner expression to a `lit`
+ * that only knew a bare literal, so `({ [("rpc")]: rpc } = client)` returned null and R4 reported
+ * zero hits on a seam that had acquired `rpc`. That is the THIRD time a wrapper has hidden a
+ * literal from a caller of this function — `namesDoor` grew its own `effectiveParent` walk for the
+ * same reason. Unwrapping HERE fixes every caller at once instead of a fourth caller-side patch.
+ */
+function lit(node) {
+  let n = node;
+  while (isTransparent(n)) n = n.expression;
+  return n && ts.isStringLiteralLike(n) ? n.text : null;
+}
 
 /**
  * R1 — every mention of `door` except the two that are legitimate.
@@ -108,6 +121,25 @@ export function doorBranches(src, fileName = "in-memory.ts") {
   const sf = parse(src, fileName);
   const hits = [];
   walk(sf, (n) => {
+    // A property read whose KEY this guard cannot read. `caller["do" + "or"]` names the door and no
+    // single string-literal node carries the text, so `namesDoor` declined it and R1 stayed green
+    // on a seam branching on the calling door. Constant-folding that ONE expression form would lose
+    // to the next one (a template, a constant, a variable), so the answer is the same inversion the
+    // rest of this guard already uses: a key the guard cannot name is not a key it may clear.
+    //
+    // Receiver-agnostic deliberately — testing for `caller` would be its own enumeration of
+    // aliases. Numeric indexing (`parts[0]`) stays clean because a number is readable and is not a
+    // property NAME. Measured on the seam: zero element accesses of any kind, so this costs nothing
+    // today and its whole value is the next edit.
+    if (ts.isElementAccessExpression(n)) {
+      const key = n.argumentExpression;
+      const readable = lit(key) !== null || (!!key && ts.isNumericLiteral(key));
+      if (!readable) {
+        const line = lineOf(sf, n);
+        hits.push({ line, text: lineText(src, line), unreadable: true });
+        return;
+      }
+    }
     if (!namesDoor(n)) return;
     if (permittedDoorPosition(n)) return;
     const line = lineOf(sf, n);
@@ -228,6 +260,11 @@ function isValuePosition(node) {
 
   // TERMINALS — these decide.
   if (ts.isVariableDeclaration(p) || ts.isPropertyDeclaration(p)) return p.initializer === child;
+  // DEFAULT VALUES. `function f(a = { door: caller.door })` and `const { a = { door: caller.door } }`
+  // are both an object literal used as a value; the destructuring TARGET forms of each use an
+  // ObjectBindingPattern, a different node kind entirely, so admitting these cannot admit a target.
+  // Review named the parameter case; the binding-element case is the same construct one step over.
+  if (ts.isParameter(p) || ts.isBindingElement(p)) return p.initializer === child;
   if (ts.isReturnStatement(p)) return p.expression === child;
   if (ts.isCallExpression(p) || ts.isNewExpression(p)) return (p.arguments ?? []).includes(child);
   if (ts.isArrowFunction(p)) return p.body === child;
@@ -236,7 +273,10 @@ function isValuePosition(node) {
     if (p.operatorToken.kind === ts.SyntaxKind.EqualsToken) return p.right === child;
     return true;
   }
-  return false;   // ForOf/ForIn initialisers, binding patterns, and anything not listed
+  // ForOf/ForIn initialisers, binding patterns, and anything not listed. An omission here reports a
+  // legitimate audit record as a violation — friction, not a hole — which is why this list may stay
+  // conservative and grow only when a real shape needs it.
+  return false;
 }
 
 /**
@@ -456,7 +496,14 @@ export function gateCallers(roots) {
 // ── self-test ────────────────────────────────────────────────────────────────────────────────
 if (process.argv.includes("--self-test")) {
   let bad = 0;
+  // Counted HERE rather than reconstructed by a grep. The doc quoted `grep -c '^  check('` as the
+  // way to reproduce "72 cases"; that grep returns 62, because loops run several checks from one
+  // call site. Counting output lines instead over-counts by the trailing summary — which is how 43
+  // was once published as 44, and is why the doc argued against the only method that worked. A
+  // number the run emits about itself cannot drift from the run.
+  let ran = 0;
   const check = (label, got, want) => {
+    ran++;
     const ok = JSON.stringify(got) === JSON.stringify(want);
     if (!ok) bad++;
     console.log(`${ok ? "✓" : "✗"} ${label}${ok ? "" : ` — expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`}`);
@@ -601,8 +648,43 @@ interface GovernedApproval { approved?: boolean; }`).fields.length, 1);
   check("R4 claim table name", claimTouches('const t = "paige_pending_confirmations";').length, 1);
   check("R4 clean seam code", claimTouches("const risk = classifyAction(capability.id);").length, 0);
 
-  console.log(bad ? `\n✗ governed-execution-lint self-test: ${bad} failure(s).`
-                  : "\n✓ governed-execution-lint self-test passed.");
+  // ── review, on head eb0dbd83 ────────────────────────────────────────────────────────────────
+  // Three code findings, all reproduced against the shipped guard first. Two are fail-OPEN, one is
+  // a false POSITIVE, and each got its opposite-direction control so neither fix can be vacuous.
+
+  // R1/F1 — a default value is a value. Omitting it reported a legitimate audit record.
+  check("R1 audit record as a PARAMETER default (Codex)",
+        doorBranches("function f(a = { door: caller.door, decision }) {}").length, 0);
+  check("R1 audit record as a BINDING-ELEMENT default",
+        doorBranches("const { a = { door: caller.door, decision } } = o;").length, 0);
+  // …and the control that keeps those two honest: a default value is not a licence for a TARGET.
+  check("R1 destructuring target is still a read, not a default",
+        doorBranches("function f(o) { let d; ({ door: d } = o); }").length, 1);
+  check("R1 a door read inside a parameter default is still a read",
+        doorBranches("function f(a = caller.door) {}").length, 1);
+
+  // R1/F3 — a key this guard cannot read cannot be cleared. `caller["do" + "or"]` names the door
+  // and no single literal node carries the text.
+  check("R1 CONSTANT-FOLDED door key (Codex)",
+        doorBranches('if (caller["do" + "or"] === "mcp") return x;').length, 1);
+  check("R1 VARIABLE key fails closed", doorBranches("if (caller[k] === \"mcp\") return x;").length, 1);
+  check("R1 TEMPLATE key fails closed", doorBranches("if (caller[`do${x}`]) return x;").length, 1);
+  // Controls: readable keys still decide on their own merits, in both directions.
+  check("R1 a readable NON-door key is still clean", doorBranches('const d = caller["decision"];').length, 0);
+  check("R1 NUMERIC indexing is not a property name", doorBranches("const p = parts[0];").length, 0);
+
+  // R4/F2 — a computed destructuring key wrapped in parentheses hid the method name, so the seam
+  // could acquire and invoke `rpc` with R4 green.
+  check("R4 PARENTHESISED computed destructuring key (Codex)",
+        claimTouches('let rpc; ({ [("rpc")]: rpc } = client);').length, 1);
+  check("R4 `as`-wrapped computed destructuring key",
+        claimTouches('let rpc; ({ [("rpc" as string)]: rpc } = client);').length, 1);
+  // Control: unwrapping must not have made every computed key a hit.
+  check("R4 a wrapped NON-data key is still clean",
+        claimTouches('let id; ({ [("id")]: id } = row);').length, 0);
+
+  console.log(bad ? `\n✗ governed-execution-lint self-test: ${bad} failure(s) of ${ran} case(s).`
+                  : `\n✓ governed-execution-lint self-test passed — ${ran} runtime case(s).`);
   process.exit(bad ? 1 : 0);
 }
 
@@ -618,9 +700,16 @@ const branches = doorBranches(src, SEAM);
 if (branches.length) {
   failed = true;
   console.error(`✗ R1 door-blindness: ${branches.length} place(s) read the calling door outside the audit line.\n`);
-  for (const b of branches) console.error(`  ${SEAM}:${b.line}  ${b.text}`);
+  for (const b of branches) {
+    console.error(`  ${SEAM}:${b.line}  ${b.text}${b.unreadable ? "   ← key unreadable" : ""}`);
+  }
   console.error("\n  A decision that consults the door makes 'reach it a different way' a way to gain");
   console.error("  permission. Record the door on the audit line; never read it anywhere else.");
+  if (branches.some((b) => b.unreadable)) {
+    console.error("\n  A line marked 'key unreadable' is a property read whose key this guard cannot name,");
+    console.error("  so it cannot rule out that the key is `door`. It fails CLOSED. Write the key as a");
+    console.error("  string or numeric literal; do not teach the guard to skip keys it cannot read.");
+  }
 }
 
 const approval = booleanApprovalFields(src, SEAM);

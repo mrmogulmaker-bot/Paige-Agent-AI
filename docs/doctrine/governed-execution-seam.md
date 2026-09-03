@@ -140,8 +140,14 @@ tail assertion that the only lane reaching execution is `auto` on an `ordinary` 
 
 ## What CI holds
 
-`lint:governed-execution` (+ `--self-test`, 72 cases — `grep -c '^  check('`, not a count of output lines, which included the trailing summary line and is how 43 was published as 44). Each rule was mutation-tested by introducing
-the violation and confirming the guard fails.
+`lint:governed-execution` (+ `--self-test`, **84 runtime cases**). The count is printed by the run
+itself (`✓ … self-test passed — 84 runtime case(s).`) rather than reconstructed afterwards, because
+both reconstructions were wrong: counting output lines over-counted by the trailing summary (43 was
+once published as 44), and the `grep -c '^  check('` this line used to quote UNDER-counts — it
+returns 62, since the R2/R3 loops run ten cases from two call sites. A number the run emits about
+itself cannot drift from the run. Each rule was mutation-tested by introducing the violation and
+confirming the guard fails; the fixes made for review findings were mutation-tested in BOTH
+directions, so a negative control cannot pass by the guard simply never firing.
 
 | Rule | Holds |
 |---|---|
