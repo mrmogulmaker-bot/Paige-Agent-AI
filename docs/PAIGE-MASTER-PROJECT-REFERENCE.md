@@ -1118,7 +1118,9 @@ webhook write sites — **plus the owner's 2026-09-02 billing-notification rulin
 **billing delegate** = a verified, current, active Admin chosen by an Owner — functional designations
 that never create, change, transfer, imply or record legal ownership, equity, corporate/trust or
 co-owner status (owner correction R27, 2026-09-02); Owner-only designate/revoke RPCs, audited), `platform_billing_paid_activation_ready(tenant)` for the later
-activation release, and the `platform_billing_notification_log` ledger with the explicit event catalogue.
+activation release (**no caller yet: today's `platform-subscription-checkout` still activates a paid plan without
+a designated primary billing contact — wiring the gate is the activation release's scope**), and the
+`platform_billing_notification_log` ledger with the explicit event catalogue.
 **Delivery is NOT wired; no email is sent by anything in this slice.**
 
 **Evidence classes (kept separate).** Automated: vitest 1913/1913 (25 new), Deno 31/31. Static: tsc ratchet

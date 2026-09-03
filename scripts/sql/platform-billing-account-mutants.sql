@@ -19,7 +19,7 @@ INSERT INTO _p SELECT 1, CASE WHEN to_regclass('public.platform_billing_accounts
   'C1 control: platform_billing_accounts does not exist yet';
 INSERT INTO _p SELECT 2, CASE WHEN count(*)=0 AND to_regclass('public.platform_billing_contacts') IS NULL
                                     AND to_regclass('public.platform_billing_notification_log') IS NULL THEN 'ok' ELSE 'FAIL' END,
-  'C2 control: none of the functions, nor the recipients / notification-log tables, exist yet'
+  'C2 control: none of the functions, nor the billing-contacts / notification-log tables, exist yet'
   FROM pg_proc WHERE proname IN ('billing_active_tenant_id','get_workspace_billing_authority','platform_billing_account_reconcile',
                                  'platform_billing_contact_designate','platform_billing_contact_revoke',
                                  'get_workspace_billing_contacts','platform_billing_paid_activation_ready');
@@ -756,7 +756,7 @@ AS $$
   LIMIT 1;
 $$;
 
--- M2 billing-owner predicate keyed on role='owner' instead of is_tenant_owner(): P48 must go RED
+-- M2 workspace-owner predicate keyed on role='owner' instead of is_tenant_owner(): P48 must go RED
 CREATE OR REPLACE FUNCTION public.platform_billing_verified_primary_contact_count(p_tenant_id uuid) RETURNS integer LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
 AS $$
   SELECT count(*)::int FROM public.platform_billing_contacts r

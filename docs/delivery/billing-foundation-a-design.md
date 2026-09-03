@@ -30,7 +30,7 @@ gate. Nothing owner-facing may be built on top of that.
 | Collisions | Open PRs re-read 2026-09-02: none touch `customer-portal`, `stripe-webhook`'s platform arm, `platform_subscriptions`, or `src/solo/settings.tsx` BillingView. Re-checked at the implementation head. |
 | Baseline (worktree, `main` `1fb7928`, before any edit) | `npm run typecheck`: 13 pre-existing errors, all in the committed `tsc-baseline` ratchet · vitest: 156 files / 1888 tests passed |
 | Regression impact map | `SubscriptionContext` (app-wide; calls `check-subscription` + `customer-portal` for the legacy consumer lane) — unchanged for non-platform customers, refused for platform customers · `platform-subscription-checkout` untouched · `stripe-webhook` platform arm gains one helper call at each of its **two** write sites · `platform_subscriptions` RLS untouched · `useSoloComms` untouched |
-| Gates | flow-prototype: not required (A ships no owner-facing UI; C carries the approved prototype). Gate B: exact head, after the independent review of that head. |
+| Gates | flow-prototype: not required (A ships no owner-facing UI; C carries the approved prototype). Gate B: exact head, after the independent review of that head. **Owed to C (§00):** the refusal copy in the two Solo hooks is CC-authored placeholder wording that nothing renders in A; no pack in `docs/design-references/` carries billing refusal copy, so C asks CD before mounting it rather than adopting it. |
 
 ## 2. Threat model (security pass 1, corrected)
 
@@ -310,7 +310,7 @@ every act (P53).
 CHECK ∈ {`skipped_not_relevant`, `skipped_unverified`, `not_configured`, `queued`, `sent`, `failed`} ·
 `provider`, `provider_message_id`, `error_code`, `source_event_id`, `idempotency_key` (unique when
 set) · `attempted_at`, `outcome_at`. **Never an address, subject or body.** RLS FORCE: operators
-read, service writes. A skip is a row, never silence.
+read; service contexts or a platform owner (`is_platform_owner()`) write. A skip is a row, never silence.
 
 ### 11.3 Seams (§10 Paige-callable; all `auth.uid()`-keyed through the strict resolver)
 
@@ -426,8 +426,10 @@ Consolidated in §9.
   row; the read reports `still_eligible=false` / `designated_needs_attention` and the gate ignores
   them. Automatic revocation on role change is a later decision, recorded here rather than assumed.
 - The paid-activation gate is a **server function the activation release must call**; nothing in A
-  can force that call — **it has no caller on this branch**, by design. The Gate B packet for that
-  release must cite it.
+  can force that call — **it has no caller on this branch**, by design. **Consequently the existing
+  `platform-subscription-checkout` path is NOT gated by R19 in A: a paid plan can still activate today
+  without a designated primary billing contact.** Wiring the gate into checkout is the activation
+  release's scope, and its Gate B packet must cite it.
 - **Audit-row visibility (pre-existing policy, not A's change, recorded by the review):** the
   `paige_audit_log` policy *"Tenant admins read their own tenant's audit"* lets a person holding the
   global `admin` app_role read their resolved tenant's audit rows — including A's

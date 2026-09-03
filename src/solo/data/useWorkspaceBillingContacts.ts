@@ -63,7 +63,7 @@ export const BILLING_CONTACT_REFUSAL_COPY: Record<BillingContactRefusal, string>
   billing_contact_primary_requires_owner: "The primary billing contact must be a current workspace owner. This designation does not change who owns the workspace.",
   billing_contact_delegate_requires_admin: "A billing delegate must be a current Admin of this workspace.",
   billing_contact_email_unverified: "That person's email address is not verified yet, so billing notices cannot be sent to it.",
-  billing_contact_already_designated: "That person already receives billing notices for this workspace.",
+  billing_contact_already_designated: "That person is already designated as a billing contact for this workspace.",
   billing_contact_not_found: "That designation no longer exists.",
   billing_primary_contact_required_while_subscribed: "A subscribed workspace must keep a primary billing contact. Designate another one first.",
   billing_contact_bad_designation: "That designation type is not recognised.",
@@ -168,7 +168,7 @@ export function useWorkspaceBillingContacts() {
   );
   /** Owner act: revoke a live designation. */
   const revoke = useCallback(
-    (recipientId: string) => act("platform_billing_contact_revoke", { p_contact_id: recipientId }),
+    (contactId: string) => act("platform_billing_contact_revoke", { p_contact_id: contactId }),
     [act],
   );
 

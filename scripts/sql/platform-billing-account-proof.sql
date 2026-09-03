@@ -20,7 +20,7 @@
 --
 -- MUTATION-TESTED (transcript in the Gate B packet): scripts/sql/platform-billing-account-mutants.sql
 -- installs the same migration and breaks it five ways, one at a time — the resolver
--- swapped for current_user_tenant_id(); the billing-owner predicate keyed on role='owner' instead of
+-- swapped for current_user_tenant_id(); the workspace-owner predicate keyed on role='owner' instead of
 -- is_tenant_owner(); ambiguity collapsed into absent; the sub-account trigger dropped; the recipient
 -- guard trigger dropped — and asserts that the matching property here (P15, P48, P12, P7, P26) goes
 -- RED under each mutant. A property that stays green under its mutant is not a property.
@@ -37,7 +37,7 @@ INSERT INTO _p SELECT 1, CASE WHEN to_regclass('public.platform_billing_accounts
   'C1 control: platform_billing_accounts does not exist yet';
 INSERT INTO _p SELECT 2, CASE WHEN count(*)=0 AND to_regclass('public.platform_billing_contacts') IS NULL
                                     AND to_regclass('public.platform_billing_notification_log') IS NULL THEN 'ok' ELSE 'FAIL' END,
-  'C2 control: none of the functions, nor the recipients / notification-log tables, exist yet'
+  'C2 control: none of the functions, nor the billing-contacts / notification-log tables, exist yet'
   FROM pg_proc WHERE proname IN ('billing_active_tenant_id','get_workspace_billing_authority','platform_billing_account_reconcile',
                                  'platform_billing_contact_designate','platform_billing_contact_revoke',
                                  'get_workspace_billing_contacts','platform_billing_paid_activation_ready');

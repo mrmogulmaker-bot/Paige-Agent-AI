@@ -95,7 +95,7 @@ describe("useWorkspaceBillingAuthority — the read", () => {
     expect(latest().authority?.canManageBilling).toBe(false);
   });
 
-  it("a row without the recipient fields parses to the safe defaults, never to an invented state", async () => {
+  it("a row without the billing-contact fields parses to the safe defaults, never to an invented state", async () => {
     harness.rpc.mockResolvedValueOnce({
       data: [{ tenant_id: "tenant-a", scope: "top_level_solo", role: "owner", can_manage_billing: true, billing_account_state: "absent" }],
       error: null,
