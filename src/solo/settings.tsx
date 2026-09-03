@@ -5,7 +5,6 @@ import {
   Building2,
   CalendarClock,
   CheckCircle2,
-  CircleDollarSign,
   ExternalLink,
   FileLock2,
   Globe2,

@@ -28,8 +28,13 @@
  * that exact reason. The shape below is R11's projection verbatim, so Foundation B feeds this
  * same resolver and the paid/trial/promotional branches light up with no rewrite.
  *
- * State ids are the ones approved at Gate 1 (`docs/prototypes/platform-billing-gate1.html`,
- * packet §9.1). Copy for a state is the approved copy. This file adds no visual decision (§00).
+ * State ids are PORTED from the Gate-1 vocabulary (`docs/prototypes/platform-billing-gate1.html`,
+ * packet §9.1), with three additions and four disclosed deviations — `plan-no-workspace`,
+ * `portal-not-applicable` and `portal-unreadable` are new; `plan-beta` is collapsed into
+ * `plan-current`; and three states drop an approved clause that offers an act nothing offers yet.
+ * The full list is `docs/delivery/billing-foundation-c-design.md` §3a. Claiming this file was
+ * ported wholesale would have been the easier sentence and the false one (§13). This file still
+ * makes no visual decision (§00) — the additions are state-machine holes, not a redesign.
  */
 import type { BillingAccountState, BillingScope } from "./data/useWorkspaceBillingAuthority";
 
@@ -58,6 +63,7 @@ export interface WorkspaceBillingEntitlement {
 
 export type BillingPlanStateId =
   | "plan-loading"
+  | "role-refusal"
   | "plan-error"
   | "plan-no-workspace"
   | "plan-subaccount"
@@ -81,7 +87,9 @@ export type BillingUnavailableReason =
   | "billing_records_need_review"
   | "no_entitlement_source"
   | "entitlement_conflict"
-  | "unsupported_status";
+  | "unsupported_status"
+  /** The server reported a mapping state this screen does not model. Never a claim. */
+  | "mapping_unknown";
 
 export interface BillingPlanPresentation {
   state: BillingPlanStateId;
@@ -100,6 +108,13 @@ export interface BillingPlanInput {
   loading: boolean;
   readFailed: boolean;
   scope: BillingScope;
+  /**
+   * R22: receive, view and manage are three permissions, enforced separately. `can_view_billing` is
+   * Owner-only in Foundation A and the server publishes it as "a separate field on purpose". The
+   * surface consumed only `can_manage_billing`, which is harmless while no plan data exists and
+   * becomes a leak the moment Foundation B supplies a price and a renewal date to render.
+   */
+  canViewBilling: boolean;
   billingAccountState: BillingAccountState;
   /** `null` = no entitlement projection exists yet. NOT "no plan" (see file header). */
   entitlement: WorkspaceBillingEntitlement | null;
@@ -157,6 +172,16 @@ export function resolveBillingPlanPresentation(input: BillingPlanInput): Billing
       fields: NO_FIELDS, note: "", reason: null, canRetry: false,
     };
   }
+  if (input.scope === "top_level_solo" && !input.canViewBilling) {
+    return {
+      state: "role-refusal",
+      heading: "Billing for this workspace is visible to its owner",
+      body:
+        "What this workspace pays the platform, and its invoices and payment method, are the owner's to see " +
+        "and to change. Nothing about your own access is affected.",
+      fields: NO_FIELDS, note: "", reason: null, canRetry: false,
+    };
+  }
   if (input.scope === "agency" || input.scope === "enterprise") {
     return {
       state: "plan-unsupported",
@@ -170,20 +195,34 @@ export function resolveBillingPlanPresentation(input: BillingPlanInput): Billing
 
   // Mapping truth is checked BEFORE the entitlement: an ambiguous or absent mapping is a fact about
   // this workspace that a later entitlement read could not correct, and it is never "no plan".
-  if (input.billingAccountState === "ambiguous") {
+  //
+  // WRITTEN AS "ONLY `mapped` MAY PROCEED", not as a list of the bad cases. The list form fell
+  // THROUGH for `not_applicable` at Solo scope — which `asState()` also produces for any value the
+  // client does not recognise, so an unmodelled server state defaulted into "this workspace has a
+  // billing account". A default that lands in a positive claim is the exact thing this file's
+  // header forbids, so the shape now makes it unreachable rather than merely unlikely.
+  if (input.billingAccountState !== "mapped") {
+    if (input.billingAccountState === "ambiguous") {
+      return unavailable(
+        "billing_records_need_review",
+        "This workspace’s billing records need a platform review before they can be reported. That is different " +
+          "from having no plan: nothing about your access has changed. The platform has been notified; you do not " +
+          "need to do anything.",
+      );
+    }
+    if (input.billingAccountState === "absent") {
+      return unavailable(
+        "no_billing_account",
+        "The platform could not find a billing account linked to this workspace. That is different from having no " +
+          "plan: nothing about your access has changed, and nothing is being charged. The platform has been " +
+          "notified; you do not need to do anything.",
+      );
+    }
     return unavailable(
-      "billing_records_need_review",
-      "This workspace’s billing records need a platform review before they can be reported. That is different " +
-        "from having no plan: nothing about your access has changed. The platform has been notified; you do not " +
-        "need to do anything.",
-    );
-  }
-  if (input.billingAccountState === "absent") {
-    return unavailable(
-      "no_billing_account",
-      "The platform could not find a billing account linked to this workspace. That is different from having no " +
-        "plan: nothing about your access has changed, and nothing is being charged. The platform has been " +
-        "notified; you do not need to do anything.",
+      "mapping_unknown",
+      "The platform reported this workspace’s billing setup in a way this page does not recognise, so it is not " +
+        "described rather than described wrongly. Nothing about your access has changed and nothing is being " +
+        "charged. The platform has been notified.",
     );
   }
 
@@ -362,24 +401,19 @@ export function resolveBillingPortalPresentation(input: {
       canOpen: false,
     };
   }
-  if (input.billingAccountState === "absent") {
+  // Same shape as the plan resolver, and for the same reason: only a `mapped` workspace may be
+  // offered an act against a billing account, so an unmodelled mapping state can never produce a
+  // live money button.
+  if (input.billingAccountState !== "mapped") {
     return {
       state: "portal-unavailable",
       heading: "Not available yet",
-      body:
-        "Invoices and the payment method are held by the platform’s payment provider. This workspace has no " +
-        "billing account linked to it yet, so there is nothing for the provider to open. Nothing about your " +
-        "access has changed.",
-      canOpen: false,
-    };
-  }
-  if (input.billingAccountState === "ambiguous") {
-    return {
-      state: "portal-unavailable",
-      heading: "Not available yet",
-      body:
-        "This workspace’s billing records need a platform review before the provider page can be opened. " +
-        "Nothing about your access has changed.",
+      body: input.billingAccountState === "ambiguous"
+        ? "This workspace’s billing records need a platform review before the provider page can be opened. " +
+          "Nothing about your access has changed."
+        : "Invoices and the payment method are held by the platform’s payment provider. This workspace has no " +
+          "billing account linked to it yet, so there is nothing for the provider to open. Nothing about your " +
+          "access has changed.",
       canOpen: false,
     };
   }

@@ -20,7 +20,7 @@ const SCOPES: BillingScope[] = ["none", "sub_account", "agency", "enterprise", "
 const ACCOUNT_STATES: BillingAccountState[] = ["not_applicable", "mapped", "ambiguous", "absent"];
 
 function base(over: Partial<BillingPlanInput> = {}): BillingPlanInput {
-  return { loading: false, readFailed: false, scope: "top_level_solo", billingAccountState: "absent", entitlement: null, ...over };
+  return { loading: false, readFailed: false, scope: "top_level_solo", canViewBilling: true, billingAccountState: "absent", entitlement: null, ...over };
 }
 
 function entitlement(over: Partial<WorkspaceBillingEntitlement> = {}): WorkspaceBillingEntitlement {
@@ -42,6 +42,7 @@ function allInputs(): BillingPlanInput[] {
       for (const loading of [true, false]) {
         for (const readFailed of [true, false]) {
           out.push(base({ scope, billingAccountState, loading, readFailed, entitlement: null }));
+          out.push(base({ scope, billingAccountState, loading, readFailed, entitlement: null, canViewBilling: false }));
         }
       }
     }
@@ -133,8 +134,14 @@ describe("billing plan presentation — the negative properties", () => {
    * because the catalogue is not an input.
    */
   it("cannot render a catalogue price: the plan catalogue is not an input to this resolver", () => {
-    const everyState = allInputs().map(resolveBillingPlanPresentation);
-    for (const r of everyState) {
+    // SCOPE, stated precisely (a compliance read caught the over-claim): these are the states
+    // reachable with NO entitlement projection — which is every state reachable today. Four of the
+    // resolver's states DO render a figure once a projection exists (`plan-promo`'s "$0",
+    // `plan-trialing`, `plan-current`, `plan-cancel-scheduled`), and they may: that figure comes
+    // from the projection. What can never happen is a figure arriving from the CATALOGUE, because
+    // the catalogue is not an input here at all.
+    const withoutProjection = allInputs().map(resolveBillingPlanPresentation);
+    for (const r of withoutProjection) {
       const text = [r.heading, r.body, r.note, ...r.fields.map((f) => `${f.label} ${f.value}`)].join(" ");
       expect(text).not.toMatch(/\$\s?\d/);
     }
@@ -163,14 +170,38 @@ describe("billing plan presentation — precedence", () => {
     it(name, () => expect(resolveBillingPlanPresentation(input).state).toBe(expected));
   }
 
-  it("distinguishes the four unavailable causes rather than collapsing them", () => {
-    const reasons = [
+  /**
+   * The negative properties in the block above all pass over this: they assert what is NOT claimed,
+   * and a body that wrongly says "this workspace has a billing account" claims nothing they test.
+   * So it is asserted positively, per state.
+   */
+  it("never asserts a billing account exists unless the mapping says mapped", () => {
+    for (const state of [...ACCOUNT_STATES, "pending_review" as BillingAccountState]) {
+      const r = resolveBillingPlanPresentation(base({ billingAccountState: state }));
+      if (state !== "mapped") {
+        expect(r.state, `${state}`).toBe("billing-unavailable");
+        expect(r.body, `${state}`).not.toContain("has a billing account");
+      }
+      const portal = resolveBillingPortalPresentation({ scope: "top_level_solo", canManageBilling: true, billingAccountState: state });
+      expect(portal.canOpen, `portal ${state}`).toBe(state === "mapped");
+    }
+  });
+
+  it("names an unmodelled mapping state as unknown instead of defaulting into one it models", () => {
+    const r = resolveBillingPlanPresentation(base({ billingAccountState: "pending_review" as BillingAccountState }));
+    expect(r.reason).toBe("mapping_unknown");
+    expect(r.body).toContain("does not recognise");
+  });
+
+  it("distinguishes the five unavailable causes rather than collapsing them", () => {
+    const reasons: Array<string | null> = [
       resolveBillingPlanPresentation(base({ billingAccountState: "absent" })).reason,
       resolveBillingPlanPresentation(base({ billingAccountState: "ambiguous" })).reason,
       resolveBillingPlanPresentation(base({ billingAccountState: "mapped" })).reason,
       resolveBillingPlanPresentation(base({ billingAccountState: "mapped", entitlement: entitlement({ status: "unavailable" }) })).reason,
     ];
-    expect(new Set(reasons).size).toBe(4);
+    reasons.push(resolveBillingPlanPresentation(base({ billingAccountState: "pending_review" as BillingAccountState })).reason);
+    expect(new Set(reasons).size).toBe(5);
   });
 
   /** Today's live answer for every current top-level workspace, asserted as such. */
@@ -179,6 +210,33 @@ describe("billing plan presentation — precedence", () => {
     expect(r.state).toBe("billing-unavailable");
     expect(r.reason).toBe("no_billing_account");
     expect(r.body).toContain("nothing is being charged");
+  });
+});
+
+describe("R22 — view is a permission of its own", () => {
+  it("refuses the plan to a Solo member who may not view billing, and shows them no figure", () => {
+    const r = resolveBillingPlanPresentation(base({
+      canViewBilling: false, billingAccountState: "mapped",
+      entitlement: entitlement({ source: "paid_subscription", status: "active", planName: "Solo", priceLabel: "$74.50 / month", renewsAt: "1 October 2026" }),
+    }));
+    expect(r.state).toBe("role-refusal");
+    expect(r.fields).toEqual([]);
+    expect([r.heading, r.body].join(" ")).not.toMatch(/\$\s?\d/);
+  });
+
+  it("still shows the owner the same entitlement", () => {
+    const r = resolveBillingPlanPresentation(base({
+      canViewBilling: true, billingAccountState: "mapped",
+      entitlement: entitlement({ source: "paid_subscription", status: "active", planName: "Solo", priceLabel: "$74.50 / month" }),
+    }));
+    expect(r.state).toBe("plan-current");
+    expect(r.fields.some((f) => f.value === "$74.50 / month")).toBe(true);
+  });
+
+  it("does not let a view refusal mask a failed read or a wrong scope", () => {
+    expect(resolveBillingPlanPresentation(base({ canViewBilling: false, readFailed: true })).state).toBe("plan-error");
+    expect(resolveBillingPlanPresentation(base({ canViewBilling: false, loading: true })).state).toBe("plan-loading");
+    expect(resolveBillingPlanPresentation(base({ canViewBilling: false, scope: "sub_account" })).state).toBe("plan-subaccount");
   });
 });
 

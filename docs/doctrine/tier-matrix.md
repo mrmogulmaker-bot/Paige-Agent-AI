@@ -1641,15 +1641,22 @@ no_billing_account`. R13 binds: absence of a record is never inferred as a promo
 
 | Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|---|
-| Plan card | `plan-no-workspace` (act-as pointer, no seat) | `plan-unsupported` | `plan-unsupported` | `billing-unavailable · no_billing_account` today (mapped + projection ⇒ the paid/trial/promo states, Foundation B) | same state as the Owner — the plan is not a secret; only the ACTS are Owner-only | `plan-subaccount` ("not because there is no plan") | `plan-no-workspace` | route not reachable |
+| Plan card | `plan-no-workspace` (act-as pointer, no seat) | `plan-unsupported` | `plan-unsupported` | `billing-unavailable · no_billing_account` today (mapped + projection ⇒ the paid/trial/promo states, Foundation B) | **`role-refusal`** — R22 makes VIEW a permission of its own, and the server publishes `can_view_billing` Owner-only in A. (**§13 correction:** this row first read "same state as the Owner — the plan is not a secret", which recorded a deviation from R22 that no owner ruling supports.) | `plan-subaccount` ("not because there is no plan") | `plan-no-workspace` | route not reachable |
 | Manage billing (portal entry) | `portal-not-applicable` | `portal-not-applicable` | `portal-not-applicable` | `portal-unavailable` today (flag off AND no mapping); `portal-entry` only when `mapped` | `role-refusal` | `portal-not-applicable` | `portal-not-applicable` | — |
 | Billing contacts and notices | refusal state with its reason | `billing_not_applicable` | `billing_not_applicable` | ✓ designate / revoke, and the list | the refusal is rendered as a refusal, never as "there are none" | `billing_not_applicable` | `billing_workspace_owner_only` | — |
 | Candidate list (`get_solo_team_workspace`) | not read | not read | not read | read ONLY when `can_manage_billing` | **not read** (§9 least privilege) | not read | not read | — |
+| Usage & limits | shown (`UNAVAILABLE`) | shown | shown | shown | shown | shown | shown | — |
 | Client-billing pointer | shown | shown | shown | shown | shown | shown | shown | — |
 
-**Rendered proof, 4 viewports × 2 palettes + failed-read + read-only:** 108/108
-(`scripts/live-drive/settings-billing-drive.mjs`). **Authenticated runtime on the deployed surface:
-OWED** — the harness transport is a stub (§32.c).
+**How each row above is evidenced, so a reader can tell proof from inference (§13).** The Solo Owner
+and Solo Admin/Member columns are **rendered** (`scripts/live-drive/settings-billing-drive.mjs`,
+116/116 across 4 viewports × 2 palettes + the failed-read and read-only worlds). Every scope column —
+God, Agency, Enterprise, Sub-account — is **proven at the resolver** by the scope enumeration in
+`src/solo/billing-contract.test.ts`, not rendered. The God row's `plan-no-workspace` additionally
+**infers** that `billing_active_tenant_id()` returns null for an act-as pointer with no seat; that is
+Foundation A's proven behaviour, not something this slice re-tested. **Authenticated runtime on the
+deployed surface: OWED** — the harness transport is a stub (§32.c). **Also owed: a Gate-1 pass on the
+billing-contacts card**, which the approved Gate-1 prototype does not cover (§00).
 
 ## Known ambiguities and hazards (log, don't hide — §13)
 

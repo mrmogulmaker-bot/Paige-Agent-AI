@@ -82,6 +82,7 @@ async function measure(page) {
       saysNoSubscription: /no subscription|no plan yet|no current solo subscription/i.test(text),
       saysNotOwnership: text.includes("does not change who owns this workspace"),
       saysNotSent: text.includes("not being sent yet"),
+      keepsUsageCard: text.includes("Usage & limits"),
       hostClient: host?.clientHeight ?? 0,
       hostScroll: host?.scrollHeight ?? 0,
       contentWidth: content?.getBoundingClientRect().width ?? 0,
@@ -131,7 +132,7 @@ async function main() {
         const { page, errors } = await openBilling(context, `${BASE}/solo/1971670/settings/billing?theme=${theme}`);
         const m = await measure(page);
 
-        record(`${label} · Billing renders four cards`, m.cards === 4, `${m.cards} cards, ${m.controls} controls`);
+        record(`${label} · Billing renders five cards`, m.cards === 5, `${m.cards} cards, ${m.controls} controls`);
         record(`${label} · unmapped workspace resolves to an EXPLAINED unavailable`,
           m.planState === "billing-unavailable", `plan=${m.planState}`);
         record(`${label} · manage billing says why it cannot open`,
@@ -142,6 +143,7 @@ async function main() {
         record(`${label} · never claims "no subscription"`, !m.saysNoSubscription);
         record(`${label} · states a designation is not ownership`, m.saysNotOwnership);
         record(`${label} · states notices are not being sent`, m.saysNotSent);
+        record(`${label} · keeps the Usage & limits card that already shipped (§58)`, m.keepsUsageCard);
         record(`${label} · no horizontal overflow`, !m.horizontal, `content=${Math.round(m.contentWidth)}px`);
         record(`${label} · at most one vertical scroll owner`, m.scrollers <= 1,
           `owners=${m.scrollers} ${m.hostScroll}/${m.hostClient}`);
@@ -205,7 +207,10 @@ async function main() {
     }
 
     /* ---- 3. The failed read, and the read-only viewer. ---- */
-    for (const [mode, expectPlan] of [["issues", "plan-error"], ["readonly", "billing-unavailable"]]) {
+    // `readonly` now expects `role-refusal`, not `billing-unavailable`: the stub answers
+    // can_view_billing=false for that world, and R22 makes VIEW a permission of its own — so the
+    // plan is refused to that person rather than reported as unavailable to everyone.
+    for (const [mode, expectPlan] of [["issues", "plan-error"], ["readonly", "role-refusal"]]) {
       const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, colorScheme: "dark" });
       const { page, errors } = await openBilling(context, `${BASE}/solo/1971670/settings/billing?theme=dark&data=${mode}`);
       const m = await measure(page);

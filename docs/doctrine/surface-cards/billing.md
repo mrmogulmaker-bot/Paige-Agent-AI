@@ -62,7 +62,8 @@ whose states come from the pure `src/solo/billing-contract.ts` and whose data co
 | retry | `ReadState` retry on a failed read | real, on the authority read AND the contacts read, each with its own cause |
 | empty | "No current Solo subscription record was returned." — **true for a solo with no plan, false for a sub-account** | that sentence is gone. An unmapped workspace says *"could not find a billing account linked to this workspace … nothing is being charged"*; a sub-account says *"not because there is no plan"*; "Choose a plan" needs a successful read that found none |
 | loading | "Clearing and resolving this account…" | unchanged |
-| permission | `canManage` computed and consumed by nothing | `can_manage_billing` (Owner-only, server-derived) gates every act, the designate forms, and the roster read |
+| permission | `canManage` computed and consumed by nothing | `can_manage_billing` gates every act, both designate forms and the roster read; `can_view_billing` (R22, Owner-only in A) refuses the plan card to a Solo member — it was consumed by nothing until a compliance read caught it |
+| usage | "Usage & limits" card, `UNAVAILABLE` | **unchanged and still present.** Foundation C deleted it and the removal was caught as a §58 regression and reverted; packet §9 flow F3 keeps its only presence on this surface |
 
 ## What PAIGE can read
 

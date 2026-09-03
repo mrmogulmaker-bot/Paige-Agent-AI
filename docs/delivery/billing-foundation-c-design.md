@@ -44,7 +44,7 @@ list and its `PARTIAL` truth label — unchanged, and `settings-contract.test.ts
 |---|---|
 | `src/solo/billing-contract.ts` (new) | the presentation contract — a pure resolver |
 | `src/solo/billing-contract.test.ts` (new) | its negative properties |
-| `src/solo/settings-billing.tsx` (new) | the four cards |
+| `src/solo/settings-billing.tsx` (new) | the five cards |
 | `src/solo/settings-billing.test.tsx` (new) | the flows, driven |
 | `src/solo/settings-primitives.tsx` (new) | `Card` · `Field` · `Status` · `Truth` · `ReadState` · `Outcome` · `NotYours`, moved verbatim out of `settings.tsx` |
 | `src/solo/data/useWorkspaceBillingCandidates.ts` (new) | who may be designated, from the existing roster read |
@@ -70,8 +70,18 @@ only by ADDING seams, never by changing an existing answer.
 existed; the flow test was written before the view was correct, and it caught the two defects
 recorded in §5.
 
-**Gates.** Gate 1 is the approved Billing packet and its 34-state prototype; the states and copy
-here are ported from it. Gate 2 (merge / deploy) is not requested by this doc.
+**Gates.** Gate 1 is the approved Billing packet and its 34-state prototype. The **plan** and
+**manage-billing** cards are ported from it, with the deviations in §3a.
+
+**THE CONTACTS CARD IS NOT COVERED BY IT, AND THAT IS A GATE THAT WAS SKIPPED (§00/§69).** The
+Gate-1 prototype predates the billing-notice rulings by hours; grepping it for `billing contact`,
+`delegate` or `designat` returns **zero hits**. Its *function* is owner-ruled in detail (R18–R27)
+and most of its copy is dictated by those rulings and by Foundation A's server refusal vocabulary —
+but its card states, its two forms and its eligibility wording were composed here, and §00 is
+explicit that a surface not in the pack goes back to Claude Design rather than being filled in by
+Claude Code. It is built from the existing Settings kit with zero new CSS, which limits the damage;
+it does not discharge the gate. **This is named in the Gate B packet as owed to CD / the owner, and
+is not claimed as approved.** Gate 2 (merge / deploy) is not requested by this doc.
 
 ---
 
@@ -123,6 +133,19 @@ this*, and resolves to `billing-unavailable · no_entitlement_source` — **neve
 A test enumerates every input this slice can produce and asserts none of them yields `plan-promo`.
 "No subscription found, therefore promotional" cannot be written through this resolver.
 
+### 3a. Deviations from the Gate-1 vocabulary, disclosed
+
+| Deviation | What | Why |
+|---|---|---|
+| **Added** `plan-no-workspace` | no workspace is selected | the prototype had no such state; `plan-none` would have been a claim about an account nobody identified |
+| **Added** `portal-not-applicable` | the portal card outside a top-level Solo workspace | the prototype expressed this by hiding the card; a state id makes it assertable |
+| **Added** `portal-unreadable` | the authority read failed | rendering `portal-not-applicable` for a failed read states an account fact nobody checked |
+| **Added** `mapping_unknown` (a reason, not a state) | the server reported a mapping state this screen does not model | the alternative was a default that fell through into a positive claim — see §5 |
+| **Collapsed** `plan-beta` → `plan-current` | an active paid entitlement renders as the current plan | the $74.50 beta price does not exist on the platform; `plan-beta` is unreachable until the provider release. **Foundation B must not assume it exists** — see §7 |
+| **Shortened** `plan-none`, `plan-trial-ended` | drop *"the owner can choose a plan once plan selection is available"* | plan selection is not offered anywhere on this surface; the clause would point at a control that is not there |
+| **Shortened** `plan-cancel-scheduled` | drops *"The owner can reverse this from the billing portal"* | the portal refuses every caller today |
+| **Added** `role-refusal` on the PLAN card | a Solo member who may not view billing | R22 — see §4a. The id itself is approved (packet §9.1, F5); applying it to the plan card is the new part |
+
 ---
 
 ## 4. What is genuinely interactive
@@ -137,6 +160,20 @@ would lose.
 
 Prod supports this today: four top-level Solo workspaces, each with exactly one verified active
 owner, two of them with two verified admins.
+
+### 4a. R22, and the half of it that was missing
+
+Receive, view and manage are three permissions. The surface held **manage** (every act, both forms
+and the roster read are gated on `can_manage_billing`) and **receive** (the designation is
+rendered) — and consumed `can_view_billing` **nowhere**. That is harmless while no plan data
+exists and becomes a leak the moment Foundation B supplies a price and a renewal date, because
+`PlanCard` would render them to any member. An independent compliance read caught it.
+
+The plan card now resolves to `role-refusal` for a top-level Solo caller whose server-derived
+`can_view_billing` is false, and the resolver asserts that a refused viewer receives **no** field
+and no figure even when the entitlement carries one. The tier-matrix row that previously read *"the
+plan is not a secret; only the ACTS are Owner-only"* was **wrong** — it recorded a deviation from
+R22 that no owner ruling supports — and is corrected.
 
 **The candidate list is the existing roster read** (`get_solo_team_workspace`) — §18, no second
 roster query family and no new server seam. It narrows by ROLE only; the real gate is the database
@@ -170,15 +207,32 @@ A design doc noting the label is gone, and the decision-log entry). No repair wa
    second reads as a claim that the workspace has no owner. They now read differently, and both are
    asserted.
 
+### 5a. Found by the independent reviewers, on the pushed head
+
+| # | Finding | Fix |
+|---|---|---|
+| A1 | A **failed** roster read rendered as *"this workspace has nobody eligible"* — an empty list from an answer nobody received, printed as a fact about the account | `DesignateForm` takes `rosterUnreadable` and renders nothing; the read failure is stated once, above |
+| A2 | A write outcome survived a workspace switch: *"Primary billing contact set for this workspace."* under a workspace where nothing was set, and a portal refusal under a workspace where the portal was never pressed | the two acting cards are keyed on the active workspace, so an outcome cannot outlive the workspace it reports on |
+| A3 | An unrecognised `billing_account_state` at Solo scope fell **through** the mapping guards into *"this workspace has a billing account"* **and an enabled "Manage billing" button** — a positive claim and a money act produced by a default | both resolvers now read *"only `mapped` may proceed"*; anything else is unavailable, with `mapping_unknown` for a state this screen does not model |
+| A4 | The shared harness stub restores its store verbatim from `sessionStorage`, so a store written before the billing tables existed threw synchronously and pinned the card at "Clearing and resolving…" | the seed is spread underneath the stored store |
+| C1 | **§58** — the shipped *"Usage & limits"* card was deleted with no call-out anywhere | **restored**, with its shipped copy unchanged. Removing a shipped card is an owner decision, not a side effect of rewriting the cards either side of it |
+| C2 | **§00/§69** — the contacts card has no Gate-1 prototype | disclosed above and in the Gate B packet; **not** claimed as approved |
+| C3 | **R22** — `can_view_billing` consumed nowhere | §4a |
+| C4–C7 | over-claimed test scope, a wrong producer inventory, an over-claimed vocabulary port, a wrong test split | corrected in this doc, the decision log and the master doc |
+| C8 | **§57** — Connections still renders *"Solo plan · LIVE"* from the same catalogue join this slice disqualifies | disclosed in §8 |
+
+Each of A1–A3 was proven non-vacuous: reverting the fix turns the new test red (1, 2 and 6 tests
+respectively).
+
 ---
 
 ## 6. Evidence, separated by class (§13 / §70.1)
 
 | Class | This slice |
 |---|---|
-| Automated tests | 58 new (31 contract + 27 driven flow). Full suite **167 files / 2052 tests passed** |
+| Automated tests | **70 new — 34 contract + 36 driven flow** (counted, not estimated). Full suite **167 files / 2064 tests passed** |
 | Static / build | `tsc --noEmit` clean on the new files · `ci:tsc` ratchet **unchanged (13 → 13)** · `npm run build` green · `eslint` clean on every changed file · `lint:tier-features`, `lint:skeleton` pass. `lint:gold` fails on `src/components/dashboard/BusinessCreditDashboard.tsx`, verified **pre-existing on `main`** |
-| Structural / harness render | `scripts/live-drive/settings-billing-drive.mjs` — **108/108**, 4 viewports × 2 palettes + failed-read + read-only. Frames watermarked `HARNESS RENDER · NOT LIVE` in `scripts/live-drive/artifacts/settings-billing/` (gitignored) |
+| Structural / harness render | `scripts/live-drive/settings-billing-drive.mjs` — **116/116**, 4 viewports × 2 palettes + failed-read + read-only. Frames watermarked `HARNESS RENDER · NOT LIVE` in `scripts/live-drive/artifacts/settings-billing/` (gitignored) |
 | Prod reads (grounding, no write) | subscription rows and their metadata · revenue classifications · verified owner/admin counts per top-level workspace · the shipped definitions of `get_workspace_billing_authority`, `get_workspace_billing_contacts`, `get_tenant_platform_subscription`, `get_tenant_revenue_breakdown` and the `tenant_revenue_classification` policy |
 | **Authenticated runtime on the deployed surface** | **NOT DRIVEN — OWED.** The harness transport is a stub; a local render is not a deployed one (§32.c). Release status stays `PARTIAL` / `Authenticated Runtime Proof Owed` |
 | UNVERIFIED | whether the deployed bundle renders identically; the portal refusal path against the live edge function (the flag is off, so `not_enabled` is expected and untested live) |
@@ -199,5 +253,28 @@ B builds the entitlement projection. When it lands it should:
    something else when it could not look. Collapsing those two is the one change that would make
    this screen lie again.
 
+5. know that **`plan-beta` is collapsed into `plan-current`** (§3a). When the $74.50 beta price is
+   created, the resolver needs a branch that distinguishes it, or the paid beta plan will render as
+   an ordinary current plan;
+6. respect **R22** (§4a): the projection's price and renewal reach only a caller whose
+   `can_view_billing` is true. The resolver enforces it; a future surface must not route around it.
+
 `docs/handoff/platform-billing-spine-source-contract.md` §2 gains no field from Foundation C — the
 authority read is unchanged. This slice adds a **consumer**, not a contract.
+
+---
+
+## 8. Known divergences, disclosed rather than fixed here
+
+- **§57 — Settings › Connections still says "Solo plan · LIVE".** `billingStep` in
+  `src/solo/settings.tsx` renders a plan name with truth `LIVE` from `tenant_comms_readiness`,
+  which joins `platform_subscriptions` to `platform_subscription_plans` — the same join this
+  slice's whole argument disqualifies. After this merges, Billing says *"the platform could not
+  find a billing account linked to this workspace… nothing is being charged"* while Connections,
+  two tabs away in the same shell, asserts a plan. It is **not introduced by this PR** and sits
+  outside the changed-file boundary, so it is recorded rather than swept in. The design doc's
+  collision check dismissed that card as "messaging readiness, a different concern", which is true
+  of its framing and not true of its `plan_name` assertion. Owed as its own slice.
+- **`useSoloComms().billing` is now consumed by nothing.** Billing was its only reader. Its
+  three-query billing fetch still runs on Connections and Setup for a value nobody reads. Removing
+  it changes two other destinations, so it is not done here.

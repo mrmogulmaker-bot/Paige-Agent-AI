@@ -194,7 +194,11 @@ function load(): Record<string, Row[]> {
   return seed();
 }
 
-const db: Record<string, Row[]> = load();
+// SEED FIRST, then overlay what was stored. `load()` returns a store written by an EARLIER page
+// load, which may predate a table this file now reads — and the billing handlers would then
+// dereference `undefined` and throw synchronously out of `supabase.rpc`, pinning the surface at
+// "Clearing and resolving this account…". Spreading the seed underneath is the migration.
+const db: Record<string, Row[]> = { ...seed(), ...load() };
 
 function persist() {
   try {

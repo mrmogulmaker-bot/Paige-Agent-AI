@@ -1117,7 +1117,8 @@ Queried on prod 2026-09-03 (ref `xygzykjyynhzqytbqnzu`): all four live `platform
 carry a NULL `stripe_customer_id` **and** a NULL `stripe_subscription_id`; three are `test_seed:
 true`, the fourth `revenue_class: promotional` / `provider_state: not_created`. **The catalogue is a
 price list, not a charge, and a seeded period end is not a renewal.** The catalogue is no longer an
-input to the screen, and a test walks every reachable state and fails on any `$` in the output.
+input to the screen, and a test walks every state reachable **without an entitlement projection**
+(which is every state reachable today) and fails on any `$` in the output.
 
 **The state machine** is `src/solo/billing-contract.ts`, over the Gate-1 approved vocabulary
 (packet §9.1). Promotional / trial / paid need an entitlement record that proves them; "Choose a
@@ -1130,11 +1131,23 @@ promotional grant (R13).
 remove a billing delegate, reload and find it held. R27 is stated on the surface (a designation is
 not ownership); so is the fact that no notice is sent, because no sender exists.
 
-**Evidence:** 58 new tests; full suite 167 files / 2052 tests; `ci:tsc` ratchet unchanged; build
-green; **108/108 rendered checks** across 4 viewports × 2 palettes plus failed-read and read-only.
+**Reviewed independently (§39/§5), and it mattered.** Seven findings, four of them defects live on
+the pushed head: a failed roster read rendered as "this workspace has nobody eligible"; a write
+outcome survived a workspace switch; an unrecognised mapping state fell **through** the guards into
+"this workspace has a billing account" plus an enabled Manage-billing button; and the shared harness
+store had no migration. Two doctrine findings: the shipped **"Usage & limits"** card had been
+deleted with no call-out (**§58 — restored**), and **R22 was half-held** — `can_view_billing` was
+consumed nowhere, harmless today and a leak the moment Foundation B supplies a price, so the plan
+card now refuses a non-viewing Solo member.
+
+**Evidence:** 70 new tests; full suite 167 files / 2064 tests; `ci:tsc` ratchet unchanged; build
+green; **116/116 rendered checks** across 4 viewports × 2 palettes plus failed-read and read-only.
 **OWED:** the authenticated owner drive on the deployed surface (§32.c) — the harness transport is a
-stub. **Untouched:** the portal flag (off), every Stripe object, `platform_subscriptions`, the
-catalogue, Foundation B, and every shared module outside `src/solo/`.
+stub; a **Gate-1 pass on the billing-contacts card**, which the approved prototype does not cover
+(§00 — CC does not fill a gap in the pack); and a §57 divergence, since Settings › Connections still
+renders "Solo plan · LIVE" from the catalogue join this slice disqualifies. **Untouched:** the
+portal flag (off), every Stripe object, `platform_subscriptions`, the catalogue, Foundation B, and
+every shared module outside `src/solo/`.
 
 ### Billing Foundation A — workspace billing identity + designated billing contacts (PR #816, **MERGED `f455d8a5` 2026-09-03 under owner Gate B; migration `20261045000000` APPLIED on prod, edge functions deployed**)
 

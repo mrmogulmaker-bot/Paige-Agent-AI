@@ -32,7 +32,8 @@
  * no client-billing (Sales, §197 LAYER 2) concern is touched.
  */
 import { useMemo, useState } from "react";
-import { Bell, CircleDollarSign, CreditCard, ExternalLink, RefreshCw, TriangleAlert, Users } from "lucide-react";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { Bell, CalendarClock, CircleDollarSign, CreditCard, ExternalLink, RefreshCw, TriangleAlert, Users } from "lucide-react";
 import { Card, NotYours, Outcome, Status, type WriteState } from "./settings-primitives";
 import {
   resolveBillingPlanPresentation, resolveBillingPortalPresentation,
@@ -67,6 +68,7 @@ function PlanCard({ authority }: { authority: Authority }) {
     loading: authority.loading,
     readFailed: authority.error !== null,
     scope: resolved.scope,
+    canViewBilling: resolved.canViewBilling,
     billingAccountState: resolved.billingAccountState,
     // Foundation B owns the entitlement projection. Until it exists this is null, which this
     // resolver reads as "no read can answer it" — never as "this workspace has no plan".
@@ -171,7 +173,7 @@ function ContactRow({
 }
 
 function DesignateForm({
-  designation, candidates, eligibleTotal, rosterLoading, busy, onDesignate,
+  designation, candidates, eligibleTotal, rosterLoading, rosterUnreadable, busy, onDesignate,
 }: {
   designation: BillingContactDesignation;
   /** Eligible people NOT already designated. */
@@ -179,6 +181,8 @@ function DesignateForm({
   /** Everyone eligible by role, designated or not. */
   eligibleTotal: number;
   rosterLoading: boolean;
+  /** The roster READ failed. An empty list then means nothing at all about this workspace. */
+  rosterUnreadable: boolean;
   busy: string | null;
   onDesignate: (userId: string, designation: BillingContactDesignation) => void;
 }) {
@@ -190,6 +194,10 @@ function DesignateForm({
   // saying the second when the first is true reads as a claim that the workspace has no owner —
   // straight after the owner was designated. The rendered frame said exactly that.
   if (rosterLoading) return null;
+  // A read that FAILED produces the same empty list as a workspace with nobody eligible. Saying
+  // "no current workspace owner is available" on the strength of it is a claim about the account
+  // derived from an answer nobody received. The card states the read failure once, above.
+  if (rosterUnreadable) return null;
   if (candidates.length === 0) {
     if (eligibleTotal > 0) {
       return <p className="ss-note">
@@ -313,10 +321,12 @@ function ContactsCard({ authority }: { authority: Authority }) {
       {canManage
         ? <>
             <DesignateForm designation="primary_contact" candidates={primaryCandidates}
-              eligibleTotal={candidates.owners.length} rosterLoading={candidates.loading} busy={busy}
+              eligibleTotal={candidates.owners.length} rosterLoading={candidates.loading}
+              rosterUnreadable={candidates.error} busy={busy}
               onDesignate={(userId, designation) => void run(`designate:${designation}`, () => contacts.designate(userId, designation), "Primary billing contact set for this workspace.")}/>
             <DesignateForm designation="delegate" candidates={delegateCandidates}
-              eligibleTotal={candidates.admins.length} rosterLoading={candidates.loading} busy={busy}
+              eligibleTotal={candidates.admins.length} rosterLoading={candidates.loading}
+              rosterUnreadable={candidates.error} busy={busy}
               onDesignate={(userId, designation) => void run(`designate:${designation}`, () => contacts.designate(userId, designation), "Billing delegate added for this workspace.")}/>
           </>
         : <NotYours what="this workspace’s billing contacts"/>}
@@ -334,6 +344,19 @@ function ContactsCard({ authority }: { authority: Authority }) {
   </Card>;
 }
 
+/**
+ * RESTORED, not new (§58). The pre-Foundation-C `BillingView` carried this card and this slice
+ * deleted it without calling the removal out — an independent compliance read caught it. The copy
+ * is the shipped copy, unchanged: it is still exactly true, and it is packet §9 flow F3's only
+ * presence on this surface. Removing a shipped card is an owner decision, not a side effect of
+ * rewriting the two cards either side of it.
+ */
+function UsageCard() {
+  return <Card title="Usage &amp; limits" icon={CalendarClock} truth="UNAVAILABLE">
+    <p>Frozen metering designs do not prove runtime usage totals or complete limits. No totals are shown.</p>
+  </Card>;
+}
+
 /** The pointer out to the other kind of billing, so nobody looks for client invoices here (§18). */
 function ClientBillingBoundaryCard() {
   return <Card title="What you charge your clients" icon={CircleDollarSign} truth="UNAVAILABLE">
@@ -348,10 +371,18 @@ export function SoloBillingView() {
   // ONE authority read for the whole surface. Three components asking the same server question
   // three times would also be three chances for them to disagree mid-switch.
   const authority = useWorkspaceBillingAuthority();
+  // KEYED ON THE WORKSPACE. The hooks reset their DATA on a switch, but the cards' own local state
+  // — the outcome banner, the busy key, a half-made selection — is not data and survived it. That
+  // put "Primary billing contact set for this workspace." under a workspace where nothing was set,
+  // and a portal refusal under a workspace where the portal was never pressed. Remounting is the
+  // whole answer: an outcome is a report about ONE workspace and cannot outlive it.
+  const { activeTenantId } = useTenantContext();
+  const workspace = activeTenantId ?? "none";
   return <div className="ss-grid">
     <PlanCard authority={authority}/>
-    <ContactsCard authority={authority}/>
-    <PortalCard authority={authority}/>
+    <ContactsCard key={`contacts:${workspace}`} authority={authority}/>
+    <PortalCard key={`portal:${workspace}`} authority={authority}/>
+    <UsageCard/>
     <ClientBillingBoundaryCard/>
   </div>;
 }
