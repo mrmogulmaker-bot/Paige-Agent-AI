@@ -1104,6 +1104,40 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+
+### Billing Foundation A — workspace billing identity + designated billing contacts (branch `claude/billing-foundation-a`, draft PR #816, 2026-09-02; NOT LIVE, awaiting exact-head Gate B)
+
+**What it is.** The first Platform Billing slice after the Gate 1 packet (#803): one server-authoritative
+workspace→Stripe-customer mapping (`platform_billing_accounts`), the strict money-path resolver
+`billing_active_tenant_id()`, the one authority read `get_workspace_billing_authority()` (Owner-only
+`can_manage_billing` / `can_view_billing`; `billing_account_state` absent / ambiguous / mapped /
+not_applicable; `billing_contact_state`; `paid_activation_ready`), the reconcile seam, a default-off hosted
+portal function, the legacy `customer-portal` refusal for platform customers, mapping upserts at both
+webhook write sites — **plus the owner's 2026-09-02 billing-notification ruling designed in:**
+`platform_billing_contacts` (**primary billing contact** = a verified, current, active workspace Owner;
+**billing delegate** = a verified, current, active Admin chosen by an Owner — functional designations
+that never create, change, transfer, imply or record legal ownership, equity, corporate/trust or
+co-owner status (owner correction R27, 2026-09-02); Owner-only designate/revoke RPCs, audited), `platform_billing_paid_activation_ready(tenant)` for the later
+activation release (**no caller yet: today's `platform-subscription-checkout` still activates a paid plan without
+a designated primary billing contact — wiring the gate is the activation release's scope**), and the
+`platform_billing_notification_log` ledger with the explicit event catalogue.
+**Delivery is NOT wired; no email is sent by anything in this slice.**
+
+**Evidence classes (kept separate).** Automated: vitest 1913/1913 (25 new), Deno 31/31. Static: tsc ratchet
+13/13, eslint, `lint:definer-fns`, `lint:views`, `lint:managed-schema`, `lint:tier-features`, migration lint
+(1 answered warning), `deno lint`; `deno check` only via CI's Deno ratchet (local esm.sh 404). Runtime,
+rollback-proven on prod on the final migration text: 64/64 properties (C1–C2, P3–P64) + 5/5 mutants caught,
+nothing persisted (re-probed). Independent review of the head: two FIX-THEN-SHIP reports, all findings integrated.
+**No email was sent; no sender exists.** **UNVERIFIED:** authenticated owner drive of the deployed portal
+(flag stays off); local `deno check` on supabase-js-importing functions (esm.sh 404 through the proxy).
+
+**What Gate B for this slice asks for, and nothing more:** merge + migration apply + edge deploy with
+`PLATFORM_BILLING_PORTAL_ENABLED` unset. No Stripe object, no price, no charge, no entitlement record, no
+recipient email. Prod backfill inserts **zero** rows (0 reconcile candidates; the 4 `platform_subscriptions`
+rows carry NULL customer ids). Next: Foundation B (webhook classification + subscription truth, A3/A4),
+Foundation C (truthful Solo Billing screen; mounts both hooks), then the Promotional Beta Access rollout
+packet with its own Gate B. Design: `docs/delivery/billing-foundation-a-design.md` (v3.1). Spine reads a safe
+subset only: `docs/handoff/platform-billing-spine-source-contract.md` (PROPOSED/UNMERGED; refreshed on merge).
 ### PAIGE Mind — first Pipeline evidence slice (SUPERSEDED 2026-09-02 — merged, deployed and applied; see §4)
 
 > **Corrected in place, not deleted (§58).** This entry was written while the work was an

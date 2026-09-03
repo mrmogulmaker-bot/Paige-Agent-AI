@@ -133,6 +133,17 @@ wiring an Enterprise checkout.
 `STRIPE_ADDITIONAL_BUSINESS_PRICE_ID`, `STRIPE_BROKER_BETA_STARTER_PRICE_ID`,
 `STRIPE_BROKER_WORKSPACE_PRICE_ID`, `STRIPE_BROKER_CLIENT_COUPON_CODE`.
 
+**Platform Billing Foundation A (branch `claude/billing-foundation-a`, PR #816 — ⚠ NOT MERGED, NOT
+DEPLOYED, NOT APPLIED; verify before relying on any of this):**
+
+| Name | Kind | State |
+|---|---|---|
+| `PLATFORM_BILLING_PORTAL_ENABLED` | edge secret NAME (flag) | read by `platform-billing-portal`; anything but the exact string `true` refuses every call `not_enabled`. **Unset on prod; Gate B for the slice asks for merge + deploy with it still unset.** Flip only after an authenticated owner drive of the deployed function. |
+| `platform-billing-portal` | edge function (`verify_jwt = true`) | opens Stripe's hosted portal for the caller's OWN top-level Solo workspace as its Owner, via `platform_billing_accounts`; Stripe key chosen BY NAME from the mapping's `stripe_account` (`STRIPE_SECRET_KEY` / `STRIPE_SECRET_KEY_V2`), never a fallback. Not deployed. |
+| `platform_billing_accounts` · `platform_billing_contacts` · `platform_billing_notification_log` | tables (migration `20261045000000`) | LAYER-1 (§197) source records; RLS FORCE, operator read / platform-owner write; tenants read through `get_workspace_billing_authority()` / `get_workspace_billing_contacts()` only. Not applied. |
+
+No sender / mail-provider contract exists for billing notices; the ledger has no writer.
+
 **⚠ Finding — legacy price env names vs the live Solo/Agency catalog.** The
 `STRIPE_PRICE_{STANDARD,PREMIUM,VIP}(_V2)` env names are a *legacy* (consumer funding-coaching)
 tier scheme; the current **platform-subscription** catalog is Solo/Agency (above). Do not assume
