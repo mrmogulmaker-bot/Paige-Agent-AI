@@ -57,8 +57,13 @@ asserted two ways, because a property proven only by a test is one a later edit 
 > records anything.
 >
 > **There is also a FOURTH input** that is not one of the three types: `requestArgs`, inline on the
-> function signature, returned verbatim for a genuine read and for an ordinary `auto`-lane mutation.
-> Nothing binds it to the declared capability either.
+> function signature, returned verbatim for a genuine read — on ANY lane — and for an ordinary
+> `auto`-lane mutation. Nothing binds it to the declared capability either.
+>
+> And the read branch is reachable by **two** kinds of `id`, not one: an unclassified name that
+> reads as a query, and an unclassified name on `action-risk.ts`'s `NON_MUTATING_EXEMPT` list,
+> which `unclassifiedWriteReason` clears before `MUTATION_VERB` is consulted. A write-shaped exempt
+> name such as `growth_page_generate` therefore reaches it too.
 >
 > Six consecutive review rounds found this stated as a guarantee on one input after another. Twice
 > the round that "swept" it closed with a completeness claim that was itself wrong — first "both
@@ -72,7 +77,7 @@ asserted two ways, because a property proven only by a test is one a later edit 
 | 3 | Capability identity | `capability.id` — the exact `action-risk.ts` key. **Adapter must pass the key of the act it is about to run**; a mismatched name silently reclassifies the risk |
 | 4 | Role / access policy | `caller.access`, evaluated by the surface. **An absent verdict is a refusal**, never permission — but `{ allowed: true }` from a request field passes, so the adapter must derive it from real policy |
 | 5 | Action-risk classification | delegated to `classifyAction` — not re-implemented |
-| 6 | Autonomy floor | one-directional clamp: `auto` on `high` becomes `confirm`; `off` always survives. **The lane's provenance is the adapter's** — the seam reads the value, not the setting |
+| 6 | Autonomy floor | one-directional clamp: `auto` on `high` becomes `confirm`; `off` always survives. **The lane's provenance is the adapter's** — the seam reads the value, not the setting. **A genuine read never reaches this step**: step 6 returns first, so a read executes on any lane, including `off` |
 | 7 | Approval-proof validation | a successful atomic claim, or nothing. **There is no boolean input** — but, like point 2, the claim having actually happened is an **adapter obligation the seam cannot verify**. `readClaim` proves the value is a plain object and the execute branch proves `claimedFor` matches; a fabricated `{ claimedArgs, claimedFor }` built from request data passes both |
 | 8 | Stored approved arguments | an approved path runs `claimedArgs`; `requestArgs` is not consulted on it |
 | 9 | Refusal and failure behaviour | **thirteen** typed codes, every one fail-closed (`GOVERNED_REFUSAL_CODES`) |
@@ -162,7 +167,7 @@ either entry in place would introduce a conflict rather than inherit one.
 
 ### Handoff A — for `docs/brain/decision-log.md` (owner: whichever of #783 / #776 merges last)
 
-> - **Spine Wave 1A — shared governed execution seam** (2026-09-02) — `_shared/paige-spine/governedExecution.ts`: one pure, door-blind decision covering identity, server-derived tenancy, capability identity, access, action-risk, the autonomy clamp, approval-proof validation, stored-argument execution, typed fail-closed refusals, a declared outcome channel, and a secret-free audit record. Held by `lint:governed-execution` (R1 door-blind · R2 no adoption of the superseded #711 gate · R3 no boolean approval input · R4 one home for claiming), all four mutation-tested. 67 property tests, including an exhaustive 539,136-combination sweep of the decision space. The mutations actually exercised — the door branch, the lane clamp, the approval-claim shape test, the capability binding, the stored-argument rule and the outcome-channel requirement — are each caught. **This is not a claim that every non-equivalent mutation is caught, and two known classes survive:** the deliberately redundant unrecognised-lane guards (removing EITHER alone leaves the suite green because the other still catches it; removing BOTH fails two tests, which is the point of keeping them), and the refusal *messages* — changing the human-readable text of `tenant_unresolved` is observable and passes all 67 tests, because the suite asserts on refusal CODES rather than on prose. **Foundation only — nothing adopts it, no capability migrated, no customer-facing behaviour changed.** Deliberately does NOT import `_shared/toolConfirmation.ts`: it is unwired (`paige-ai-chat/index.ts:7922`) and its only importer anywhere is its own test.
+> - **Spine Wave 1A — shared governed execution seam** (2026-09-02) — `_shared/paige-spine/governedExecution.ts`: one pure, door-blind decision covering identity, server-derived tenancy, capability identity, access, action-risk, the autonomy clamp, approval-proof validation, stored-argument execution, typed fail-closed refusals, a declared outcome channel, and a secret-free audit record. Held by `lint:governed-execution` (R1 door-blind · R2 no adoption of the superseded #711 gate · R3 no boolean approval input · R4 one home for claiming), all four mutation-tested. 69 property tests, including an exhaustive 539,136-combination sweep of the decision space. The mutations actually exercised — the door branch, the lane clamp, the approval-claim shape test, the capability binding, the stored-argument rule, the outcome-channel requirement, the read branch's lane-independence and the exempt-name path into it — are each caught. **This is not a claim that every non-equivalent mutation is caught, and two known classes survive:** the deliberately redundant unrecognised-lane guards (removing EITHER alone leaves the suite green because the other still catches it; removing BOTH fails two tests, which is the point of keeping them), and the refusal *messages* — changing the human-readable text of `tenant_unresolved` is observable and passes all 69 tests, because the suite asserts on refusal CODES rather than on prose. **Foundation only — nothing adopts it, no capability migrated, no customer-facing behaviour changed.** Deliberately does NOT import `_shared/toolConfirmation.ts`: it is unwired (`paige-ai-chat/index.ts:7922`) and its only importer anywhere is its own test.
 
 ### Handoff B — for `docs/brain/lessons-learned.md` (owner: last of #754 / #731 / #729)
 

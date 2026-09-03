@@ -424,6 +424,38 @@ describe("the layers that were previously inline, and therefore unreachable", ()
     expect(d.kind === "execute" && d.args).toEqual({ first_name: "A" });
   });
 
+  // Codex on 6ddfab4b: two documented behaviours that no test held, so the documentation was the
+  // only thing standing between an adopter and a wrong assumption. Both are asserted now — a
+  // documented behaviour with no test is a comment, and a comment is what drifts.
+  it("a genuine READ executes on EVERY lane, including `off` and an unrecognised one", () => {
+    const READ = { id: "crm_search_contacts", effect: "read" as const };
+    for (const autonomyLane of ["auto", "confirm", "off", "sideways" as never]) {
+      const d = decide({ caller: caller(), capability: READ, approval: { autonomyLane }, requestArgs: { q: "x" } });
+      expect(d.kind, `lane ${String(autonomyLane)}`).toBe("execute");
+      expect(d.kind === "execute" && d.args).toEqual({ q: "x" });
+    }
+  });
+
+  it("an EXEMPT write-shaped id reaches the read branch — the second bypass shape", () => {
+    // `growth_page_generate` is on action-risk.ts's NON_MUTATING_EXEMPT list, which
+    // unclassifiedWriteReason clears BEFORE consulting MUTATION_VERB. So the read branch is
+    // reachable by a write-shaped name, not only by a read-looking one. Asserted so the claim in
+    // GovernedCapability.effect cannot quietly become false again.
+    expect(classifyAction("growth_page_generate")).toBe("unclassified");
+    const d = decide({
+      caller: caller(), capability: { id: "growth_page_generate", effect: "read" },
+      approval: { autonomyLane: "off" }, requestArgs: { brief: "x" },
+    });
+    expect(d.kind).toBe("execute");
+    // …while a NON-exempt write-shaped name declared `read` is still refused. Without this half,
+    // the test above would pass against a seam that had stopped checking write-shaped names at all.
+    const w = decide({
+      caller: caller(), capability: { id: "crm_delete_everything", effect: "read" },
+      approval: { autonomyLane: "off" }, requestArgs: {},
+    });
+    expect(w.kind === "refuse" && w.code).toBe("unclassified_mutation");
+  });
+
   it("never emits a refusal code outside the declared set", () => {
     const seen = new Set<string>();
     for (const door of DOORS) {

@@ -174,11 +174,24 @@ export type GovernedCapability = {
   id: string;
   /** ADAPTER MUST: state the executor's real effect — and pair it with an honest `id`, because the
    *  two are checked TOGETHER. `effect: "read"` alone does not bypass anything: a classified
-   *  mutation name is refused `effect_mismatch`, and a write-shaped unclassified name is refused
-   *  `unclassified_mutation`. The bypass needs BOTH halves false — a read-looking, unclassified
-   *  `id` declared `read` over a mutating executor — which then skips classification, clamp,
-   *  approval and outcome in one move. An earlier version of this comment blamed `effect` alone,
-   *  overstating a real hazard, which in a document adopters act on is its own defect. */
+   *  mutation name is refused `effect_mismatch`, and an unclassified name that reads as a write is
+   *  refused `unclassified_mutation`.
+   *
+   *  The bypass needs BOTH halves false — an `id` that reaches the read branch, declared `read`
+   *  over a mutating executor — which then skips classification, clamp, approval and outcome in
+   *  one move. TWO kinds of `id` reach that branch, not one:
+   *
+   *    - an unclassified name that reads as a query (`unclassifiedWriteReason` returns null
+   *      because `MUTATION_VERB` does not match it), and
+   *    - an unclassified name on `action-risk.ts`'s `NON_MUTATING_EXEMPT` list, which
+   *      `unclassifiedWriteReason` clears BEFORE consulting `MUTATION_VERB` — so a write-shaped
+   *      name such as `growth_page_generate` passes too.
+   *
+   *  Saying the bypass needs a "read-LOOKING" id was therefore wrong in the direction that matters:
+   *  it named a smaller set of dangerous descriptors than actually exists. The exempt names are
+   *  exempt because the acts they name persist nothing; the hazard is an adapter borrowing one of
+   *  them to describe an executor that does. An earlier version of this comment blamed `effect`
+   *  alone, overstating the hazard; this one had understated its shape. */
   effect: "read" | "mutate";
   /**
    * Opaque name of the durable outcome channel this mutation reports on. REQUIRED for a mutation.
@@ -341,7 +354,16 @@ export function decideGovernedExecution(input: {
   capability: GovernedCapability;
   approval: GovernedApproval;
   /**
-   * The arguments the caller wants to run. Used ONLY on an `auto` lane, never on an approved one.
+   * The arguments the caller wants to run. Never used on an APPROVED path — that path runs
+   * `approval.claimedArgs`, which is the whole point of storing them.
+   *
+   * On a MUTATION they are used only on an `auto` lane. On a genuine READ they are used on EVERY
+   * lane, because step 6 returns before step 8 ever validates one: a read declared `confirm`,
+   * `off`, or an unrecognised lane still executes. That is deliberate rather than an oversight —
+   * an autonomy lane governs acts, and a read changes nothing for it to govern — but it is stated
+   * here because the earlier "ONLY on an `auto` lane" made a non-auto lane look like a brake on
+   * reads that it is not. If a lane should ever gate reads, that is a behaviour change with its own
+   * decision to make, not something to infer from this comment.
    *
    * ADAPTER MUST: pass arguments that belong to the declared `capability.id` and to the executor
    * about to run them. This is the FOURTH adapter input and it carries the same rule as the three
