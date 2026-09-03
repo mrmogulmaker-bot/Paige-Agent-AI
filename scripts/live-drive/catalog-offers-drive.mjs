@@ -11,6 +11,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import http from "node:http";
 import { buildLaunchOptions, resolvePlaywright } from "./live-drive.mjs";
 
 const PORT = 5211;
@@ -43,7 +44,31 @@ function assertPortFree() {
 
 async function stopTree(child) {
   if (!child?.pid) return;
-  try { process.kill(-child.pid, "SIGTERM"); } catch { /* already stopped */ }
+  const gone = () => { try { process.kill(-child.pid, 0); return false; } catch { return true; } };
+  try { process.kill(-child.pid, "SIGTERM"); } catch { /* group already gone */ }
+  try { process.kill(child.pid, "SIGTERM"); } catch { /* child already gone */ }
+  // SIGTERM alone was not enough: vite outlived it and kept holding --strictPort 5211, so the run
+  // AFTER A SUCCESSFUL ONE died with "Port already in use". A drive that cannot be run twice is not
+  // reproducible evidence, whatever it printed the first time. Wait for the group, then insist.
+  for (let i = 0; i < 20 && !gone(); i++) await new Promise((r) => setTimeout(r, 100));
+  if (!gone()) {
+    try { process.kill(-child.pid, "SIGKILL"); } catch { /* raced with exit */ }
+    try { process.kill(child.pid, "SIGKILL"); } catch { /* raced with exit */ }
+  }
+}
+
+/**
+ * Navigate and wait for THE SURFACE, never for network idleness.
+ *
+ * The harness pulls a Google Fonts stylesheet and this sandbox has no route to that host, so under
+ * an idle-network wait the page is not idle until the proxy gives up on a request that can never
+ * succeed. The wait was therefore set by an unreachable third party, and page.goto intermittently
+ * blew its 30s budget and failed an otherwise clean run. Waiting on the mounted surface asserts
+ * the thing we actually care about and cannot be held hostage by a blocked font request.
+ */
+async function open(page) {
+  await page.goto(URL, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("main.paige-solo", { timeout: 30000 });
 }
 
 /** Everything the assertions need, read from the live DOM in one pass. */
@@ -104,12 +129,26 @@ async function main() {
   const { chromium } = await resolvePlaywright();
   let browser;
   try {
+    // Readiness is probed with node:http, NOT fetch. `fetch` honours HTTPS_PROXY, so against a
+    // local address it can return a 200 RELAY PAGE from the agent proxy while nothing is listening
+    // on 127.0.0.1 at all — the probe goes green, and Playwright then fails with
+    // ERR_CONNECTION_REFUSED on the first navigation. A readiness check that a proxy can satisfy
+    // is not a readiness check. node:http does not read the proxy env, so this asks the actual
+    // socket. (Same trap as the browser launch, which is why buildLaunchOptions bypasses loopback.)
+    const probeOnce = () => new Promise((resolve) => {
+      const req = http.get({ host: "127.0.0.1", port: PORT, path: "/", timeout: 1000 }, (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      });
+      req.on("error", () => resolve(false));
+      req.on("timeout", () => { req.destroy(); resolve(false); });
+    });
     let ready = false;
     for (let i = 0; i < 60 && !ready; i++) {
-      try { const res = await fetch(URL); ready = res.ok; } catch { /* not up yet */ }
+      ready = await probeOnce();
       if (!ready) await new Promise((r) => setTimeout(r, 500));
     }
-    if (!ready) throw new Error("Harness server did not start.");
+    if (!ready) throw new Error(`Harness server did not start on 127.0.0.1:${PORT}.`);
 
     browser = await chromium.launch(buildLaunchOptions());
 
@@ -121,7 +160,7 @@ async function main() {
     // genuinely new one.
     const warm = await browser.newContext();
     const warmPage = await warm.newPage();
-    await warmPage.goto(URL, { waitUntil: "networkidle" });
+    await open(warmPage);
     await settle(warmPage);
     await warm.close();
 
@@ -137,7 +176,7 @@ async function main() {
         const failedRequests = [];
         page.on("pageerror", (e) => pageErrors.push(String(e.message)));
         page.on("requestfailed", (r) => failedRequests.push(r.url()));
-        await page.goto(URL, { waitUntil: "networkidle" });
+        await open(page);
         if (theme === "dark") { await page.click("[data-theme-toggle]"); await settle(page); }
 
         const id = `${theme}/${frame.name}`;
@@ -247,7 +286,7 @@ async function main() {
     // Both palettes must be genuinely different, not a tint of each other.
     const ctx = await browser.newContext({ viewport: { width: 1536, height: 770 } });
     const page = await ctx.newPage();
-    await page.goto(URL, { waitUntil: "networkidle" });
+    await open(page);
     // Wait for the surface itself, not just the network. One run of this block reported a false
     // FAIL because `main.paige-solo` was momentarily absent after the theme click and `measure`
     // read null — a gate that goes red at random teaches the reader to ignore its red.

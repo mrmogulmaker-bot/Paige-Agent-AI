@@ -27,6 +27,10 @@ const AVAILABILITY = {
   active: { label: "Active", tone: "var(--ok)", note: "Offered to customers right now." },
   paused: { label: "Paused", tone: "var(--warn)", note: "Temporarily not offered. Nothing is cancelled." },
   archived: { label: "Archived", tone: "var(--ink-3)", note: "Retired. Existing references stand." },
+  // Not a state a tenant can set — what this build says when the record holds a value it has no
+  // reading for. It claims nothing, and `conflictOf` stays silent because nothing here is active.
+  unrecognised: { label: "State not recognised", tone: "var(--ink-3)",
+    note: "This deployment has no reading for the state on this record. Nothing is assumed about it." },
 };
 
 const SHAPES = {
@@ -97,7 +101,15 @@ function qualifiedPrice(plan) {
   // The sub-label names the RECORDED kind, never the branch that fired. Deriving it from the
   // branch labelled a deposit-with-an-interval a "Recurring plan" — trading one wrong statement
   // about the record for another.
-  const kindNote = PLAN_KIND[plan.kind] ?? null;
+  // An unrecognised plan kind says so, rather than rendering a bare figure with no sub-label at
+  // all. Silence reads as "nothing more to say about this price"; this record has something to
+  // say and this build cannot read it.
+  // `Object.hasOwn`, not a bare lookup: PLAN_KIND["constructor"] returns a FUNCTION off the
+  // prototype, which is truthy, so `?? null` never fired and the sub-label rendered as nothing.
+  // The adapter now narrows `kind`, so an unreadable one arrives as null and says so here.
+  const kindNote = plan.kind && Object.hasOwn(PLAN_KIND, plan.kind)
+    ? PLAN_KIND[plan.kind]
+    : "Plan type not recognised";
   const period = plan.billingInterval && plan.billingInterval !== "one_time" ? plan.billingInterval : null;
 
   if (plan.kind === "installment") {
@@ -142,7 +154,19 @@ function priceLine(offer) {
     return {
       text: floor ? `From ${qualified.text}` : qualified.text,
       unstated: false,
-      note: several ? "Several plans recorded" : qualified.note,
+      // The record-derived note WINS. Letting "Several plans recorded" replace it put a recurring
+      // plan with no recorded period back to a flat "From $99" with nothing saying it is
+      // per-period — the F1 defect surviving one branch over, and on the likelier shape, since a
+      // recurring plan usually sits beside a one-off. That there are several plans is already
+      // carried by the `From ` prefix; that this one is per-period is carried by nothing else.
+      note: qualified.note,
+      // The presentation label is only ever meaningful beneath an UNQUALIFIED single figure.
+      // Carrying this flag closes the defect class rather than one instance of it: `PLAN_KIND`
+      // is a map, `tenant_prices_kind_check` is a CHECK, and the day a fifth kind is added to
+      // the constraint without the map, a null note would drop straight through to the
+      // presentation fallback and print "Fixed amount" over a "/ month" figure — the same lie,
+      // rebuilt one level up. A qualified figure now suppresses the label whatever the note is.
+      qualified: true,
     };
   }
   return {
@@ -212,7 +236,7 @@ function OfferRow({ offer, onOpen }) {
               tenant's chosen presentation — and never when it would just repeat the value. */}
           {price.note
             ? <small>{price.note}</small>
-            : offer.pricePresentation && !price.unstated
+            : offer.pricePresentation && !price.unstated && !price.qualified
               ? <small>{PRESENTATION[offer.pricePresentation]}</small>
               : null}
         </span>

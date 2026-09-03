@@ -131,9 +131,13 @@ describe("Catalog Offers — tenant-scoped read contract", () => {
     expect(adapter).not.toMatch(/has_any_role|user_roles/);
   });
 
-  it("narrows an unrecognised classification to null rather than guessing a neighbour", () => {
+  it("narrows an unrecognised classification rather than guessing a neighbour", () => {
     expect(adapter).toContain("function narrow<");
-    expect(adapter).toContain('narrow(row.status, AVAILABILITIES) ?? "draft"');
+    // The status fallback is asserted BEHAVIOURALLY in useCatalogOffers.adapter.test.tsx, which
+    // executes the adapter. This line used to pin the literal `?? "draft"` — so when that coercion
+    // was replaced by an honest "unrecognised", the test failed for describing the old code rather
+    // than for catching a defect. A grep for a source string is not a claim about behaviour.
+    expect(adapter).toContain("narrow(row.status, AVAILABILITIES)");
   });
 });
 
@@ -227,6 +231,39 @@ describe("Catalog Offers — truthfulness", () => {
     expect(deposit).not.toContain("Recurring plan");
   });
 
+  it("a kind the surface has no label for still never prints a fixed amount over a period", () => {
+    // `PLAN_KIND` is a map; `tenant_prices_kind_check` is a DB CHECK. Today they agree, so no
+    // stored row can reach this. They agree only as long as someone keeps them in sync — add a
+    // fifth kind to the constraint without the map and a null note drops through to the
+    // presentation fallback, printing "Fixed amount" beneath "$99 / month". This asserts the
+    // INVARIANT (a qualified figure suppresses the presentation label) rather than the map.
+    const text = priceTextFor({ kind: "metered", billingInterval: "month" });
+    expect(text).toContain("$99 / month");
+    expect(text).not.toContain("Fixed amount");
+  });
+
+  it("says a plan type it cannot read is unread, rather than saying nothing", () => {
+    const text = priceTextFor({ kind: "metered", billingInterval: "month" });
+    expect(text).toContain("$99 / month");
+    expect(text).toContain("Plan type not recognised");
+    expect(text).not.toContain("Fixed amount");
+  });
+
+  it("does not let a second plan erase that the first one is per-period", () => {
+    // K13 from the final review: `note: several ? "Several plans recorded" : qualified.note` let
+    // the branch override the record. A recurring plan with no recorded period, beside any second
+    // plan, rendered "From $99 · Several plans recorded" — nothing saying it is per-period at all.
+    setCampaigns();
+    setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [
+      { id: "pr", nickname: "Monthly", unitAmount: 9900, currency: "usd", billingInterval: null, kind: "recurring", installmentsTotal: null, active: true },
+      { id: "po", nickname: "Full", unitAmount: 240000, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true },
+    ] })] });
+    renderAt("/solo/4471/growth/catalog");
+    const cell = host.querySelector(".co-price") as HTMLElement;
+    expect(cell.textContent).toContain("period not recorded");
+    expect(cell.textContent).not.toContain("Fixed amount");
+  });
+
   it("keeps the period when a recurring plan is only the floor of several", () => {
     setCampaigns();
     setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [
@@ -237,7 +274,11 @@ describe("Catalog Offers — truthfulness", () => {
     const cell = host.querySelector(".co-price") as HTMLElement;
     // A floor that drops the period would read "From $99" for a monthly plan — the same lie.
     expect(cell.textContent).toContain("From $99 / month");
-    expect(cell.textContent).toContain("Several plans recorded");
+    // The sub-label is the RECORD's, not the branch's. "Several plans recorded" used to win here
+    // and that is exactly what erased the per-period fact on the sibling case below; the `From `
+    // prefix already carries that there is more than one plan. It still labels an UNqualified
+    // multi-plan price, where nothing else conveys it.
+    expect(cell.textContent).toContain("Recurring plan");
   });
 
   it("does not call several recorded plans one fixed amount", () => {

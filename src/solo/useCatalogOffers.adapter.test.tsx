@@ -213,10 +213,43 @@ describe("useCatalogOffers — what it makes of a row", () => {
     expect(latest!.offers[0].kind).toBe("service");
   });
 
-  it("treats an unreadable status as a draft — the reading that shows it to nobody", async () => {
+  it("says an unreadable status is unread rather than relabelling it a draft", async () => {
+    // It used to coerce to "draft". Safe — a draft is shown to nobody — but it ASSERTED a state
+    // the record does not prove, which is the same class of lie as a price the record does not
+    // prove. A value this build has no reading for now reads as exactly that.
     results.tenant_products = { data: [{ id: "o1", name: "X", status: "nonsense" }], error: null };
     await run();
-    expect(latest!.offers[0].availability).toBe("draft");
+    expect(latest!.offers[0].availability).toBe("unrecognised");
+  });
+
+  it("still claims no conflict for a state it cannot read", async () => {
+    // `conflictOf` fires only on "active", so an unreadable state asserts nothing about whether
+    // the offer is sellable — which is the point of not calling it a draft OR an active offer.
+    results.tenant_products = {
+      data: [{ id: "o1", name: "X", status: "future_state", price_presentation: "fixed" }],
+      error: null,
+    };
+    await run();
+    expect(latest!.offers[0].availability).toBe("unrecognised");
+  });
+
+  it("narrows an unreadable plan kind instead of passing it through raw", async () => {
+    // `kind` was the ONE classified field the adapter did not allow-list. An unmapped value reached
+    // the surface, produced no sub-label, and fell through to the presentation fallback — printing
+    // "Fixed amount" over a per-period figure. Only tenant_prices_kind_check stood in the way: a
+    // DATABASE constraint guarding a rendering decision, with nothing linking the two.
+    results.tenant_products = { data: [{ id: "o1", name: "X", status: "active" }], error: null };
+    results.tenant_prices = {
+      data: [
+        { id: "p1", product_id: "o1", unit_amount: 9900, kind: "subscription", billing_interval: "month", active: true },
+        { id: "p2", product_id: "o1", unit_amount: 9900, kind: "constructor", billing_interval: "month", active: true },
+        { id: "p3", product_id: "o1", unit_amount: 9900, kind: "recurring", billing_interval: "month", active: true },
+      ],
+      error: null,
+    };
+    await run();
+    const kinds = latest!.offers[0].prices.map((p) => p.kind);
+    expect(kinds).toEqual([null, null, "recurring"]);
   });
 
   it("keeps every recorded plan rather than collapsing to one", async () => {

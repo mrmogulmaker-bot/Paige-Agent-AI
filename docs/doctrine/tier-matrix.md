@@ -1606,7 +1606,7 @@ words that they cannot change it. Slice 2A exposes no write, so `canManage` curr
 that notice; Slice 2B's command seam is what it will really gate.
 
 **Evidence, separated.**
-- *Automated:* 39 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 15 that EXECUTE
+- *Automated:* 42 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 17 that EXECUTE
   the adapter against a recording fake client** (`useCatalogOffers.adapter.test.tsx`). The second
   file exists because the first mocks the read entirely: an adversarial review of the pushed diff
   found that the membership query asked for `tenant_members.tenant_role` when the column is `role`,
@@ -1626,7 +1626,7 @@ that notice; Slice 2B's command seam is what it will really gate.
 - *Static/build:* `ci:tsc` clean against the ratchet; `lint:views`, `lint:definer-fns`,
   `lint:tier-features`, `lint:skeleton`, `lint:migration-versions`, `lint:managed-schema`,
   `lint:pg-tokens`, `lint:write-targets` all pass; production build passes.
-- *Rendered:* 283/283 checks in `scripts/live-drive/catalog-offers-drive.mjs` — the real components
+- *Rendered:* 283/283 checks in `scripts/live-drive/catalog-offers-drive.mjs`, reproduced on three consecutive runs leaving zero orphan processes, — the real components
   with only the network read stubbed, across both palettes and all four Solo widths, asserting the
   six-tab lock, no horizontal overflow, no fabricated commerce data, no `$0`, and the exact shipped
   canvas values in each theme.

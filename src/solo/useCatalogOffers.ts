@@ -19,7 +19,16 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { supabase } from "@/integrations/supabase/client";
 
 /** Mirrors `tenant_products.status` after migration 20261044000000. */
-export type OfferAvailability = "draft" | "active" | "paused" | "archived";
+/**
+ * The four recorded states, plus `unrecognised` for a value this build has no reading for. That
+ * fifth member is NOT a status a tenant can record: it is what the surface says when the column
+ * holds something a later migration added and this deployment does not know. Coercing it to
+ * "draft" was safe — a draft is shown to nobody — but it asserted a state the record does not
+ * prove, which is the same class of lie as a price the record does not prove.
+ */
+export type OfferPlanKind = "one_time" | "deposit" | "recurring" | "installment";
+
+export type OfferAvailability = "draft" | "active" | "paused" | "archived" | "unrecognised";
 /** Mirrors `tenant_products.product_type`, which predates this slice. */
 /**
  * `tenant_products.product_type` is BILLING CADENCE, not product-vs-service — its CHECK is
@@ -42,7 +51,7 @@ export type OfferPrice = {
   readonly unitAmount: number | null;
   readonly currency: string | null;
   readonly billingInterval: string | null;
-  readonly kind: string | null;
+  readonly kind: OfferPlanKind | null;
   /** Number of instalments when `kind === "installment"`. `unitAmount` is then PER INSTALMENT. */
   readonly installmentsTotal: number | null;
   readonly active: boolean;
@@ -101,7 +110,18 @@ function narrow<T extends string>(value: unknown, allowed: readonly T[]): T | nu
 const SHAPES: readonly OfferDeliveryShape[] =
   ["digital", "physical", "appointment", "program", "membership", "hybrid"];
 const PRESENTATIONS: readonly OfferPricePresentation[] = ["fixed", "from", "contact", "none"];
+/**
+ * What `tenant_prices.kind` may say. This was the ONE classified field the adapter passed through
+ * raw while allow-listing every other one, and an independent review proved what that cost: an
+ * unmapped kind produced no sub-label, which fell through to the presentation fallback and printed
+ * "Fixed amount" over a per-period figure. Only `tenant_prices_kind_check` stood between that and
+ * a tenant — a DATABASE constraint guarding a rendering decision, with nothing linking the two, so
+ * the day a migration widens the CHECK and forgets the surface it reprints silently. Narrowed here
+ * so an unreadable kind is null and the surface can say so.
+ */
+const PLAN_KINDS: readonly OfferPlanKind[] = ["one_time", "deposit", "recurring", "installment"];
 const ACTIONS: readonly OfferCustomerAction[] = ["buy", "book", "apply", "enquire", "learn"];
+// `unrecognised` is deliberately absent: it is a READING, never a value that can match a row.
 const AVAILABILITIES: readonly OfferAvailability[] = ["draft", "active", "paused", "archived"];
 
 export function useCatalogOffers(): CatalogOffersState {
@@ -218,7 +238,7 @@ export function useCatalogOffers(): CatalogOffersState {
             unitAmount: typeof row.unit_amount === "number" ? row.unit_amount : null,
             currency: typeof row.currency === "string" ? row.currency : null,
             billingInterval: typeof row.billing_interval === "string" ? row.billing_interval : null,
-            kind: typeof row.kind === "string" ? row.kind : null,
+            kind: narrow(row.kind, PLAN_KINDS),
             installmentsTotal: typeof row.installments_total === "number" ? row.installments_total : null,
             active: row.active !== false,
           });
@@ -237,7 +257,7 @@ export function useCatalogOffers(): CatalogOffersState {
             description: typeof row.description === "string" && row.description.trim() ? row.description : null,
             // An unreadable status is treated as a draft: the safest reading is the one that
             // shows the offer to nobody.
-            availability: narrow(row.status, AVAILABILITIES) ?? "draft",
+            availability: narrow(row.status, AVAILABILITIES) ?? "unrecognised",
             billingCadence: narrow(row.product_type, ["one_time", "recurring", "service"] as const) ?? "one_time",
             kind: narrow(row.offer_kind, ["product", "service"] as const),
             deliveryShape: narrow(row.delivery_shape, SHAPES),
