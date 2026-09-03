@@ -42,8 +42,9 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { Bell, CalendarClock, CircleDollarSign, CreditCard, ExternalLink, RefreshCw, TriangleAlert, Users } from "lucide-react";
 import { Card, NotYours, Outcome, Status, type WriteState } from "./settings-primitives";
 import {
-  resolveBillingPlanPresentation, resolveBillingPortalPresentation,
+  resolveAiUsagePresentation, resolveBillingPlanPresentation, resolveBillingPortalPresentation,
 } from "./billing-contract";
+import { useWorkspaceAiUsage } from "./data/useWorkspaceAiUsage";
 import {
   NO_WORKSPACE_AUTHORITY, PORTAL_REFUSAL_COPY, useWorkspaceBillingAuthority,
 } from "./data/useWorkspaceBillingAuthority";
@@ -99,14 +100,14 @@ function PortalCard({ authority }: { authority: Authority }) {
   const [outcome, setOutcome] = useState<WriteState>(null);
 
   if (authority.loading) {
-    return <Card title="Invoices & payment method" icon={CreditCard} truth="PARTIAL">
+    return <Card title="Payment method" icon={CreditCard} truth="PARTIAL">
       <div className="ss-state" role="status"><RefreshCw className="ss-spin" aria-hidden/>Clearing and resolving this account…</div>
     </Card>;
   }
   // A read that FAILED is not an answer about this account type. Rendering "not applicable to this
   // account type" here would state something nobody checked.
   if (authority.error || !authority.authority) {
-    return <Card title="Invoices & payment method" icon={CreditCard} truth="PARTIAL">
+    return <Card title="Payment method" icon={CreditCard} truth="PARTIAL">
       <div className="ss-state" data-portal-state="portal-unreadable" role="alert">
         <TriangleAlert aria-hidden/>
         <span><strong>Couldn’t read your billing permissions</strong>Nothing about your access or your billing has changed.</span>
@@ -120,7 +121,7 @@ function PortalCard({ authority }: { authority: Authority }) {
     billingAccountState: authority.authority.billingAccountState,
   });
 
-  return <Card title="Invoices & payment method" icon={CreditCard} truth="PARTIAL">
+  return <Card title="Payment method" icon={CreditCard} truth="PARTIAL">
     <div className="ss-state" data-portal-state={portal.state}>
       <CreditCard aria-hidden/>
       <span><strong>{portal.heading}</strong>{portal.body}</span>
@@ -357,9 +358,45 @@ function ContactsCard({ authority }: { authority: Authority }) {
  * presence on this surface. Removing a shipped card is an owner decision, not a side effect of
  * rewriting the two cards either side of it.
  */
+/**
+ * AI usage (owner ruling 2026-09-03). This card USED to say UNAVAILABLE, because the platform had
+ * no allowance model and no tenant-safe read of the meter. Both now exist — the allowance lives on
+ * `platform_subscription_plans` and `get_workspace_ai_usage()` reads the existing
+ * `platform_usage_events` meter — so the card states a real total for a real period.
+ *
+ * It states usage and nothing else. No cost, no projection, no overage, and no consequence: the
+ * allowance is VISIBILITY (D6), exhausting it changes nothing (D7), and there is no overage to
+ * charge (D8). Every one of those absences is deliberate and tested in `ai-usage-contract.test.ts`.
+ */
 function UsageCard() {
-  return <Card title="Usage &amp; limits" icon={CalendarClock} truth="UNAVAILABLE">
-    <p>Frozen metering designs do not prove runtime usage totals or complete limits. No totals are shown.</p>
+  const { loading, error, usage, reload } = useWorkspaceAiUsage();
+  const view = resolveAiUsagePresentation({
+    loading,
+    readFailed: error !== null,
+    // While loading, and after a failed read, `usage` is null. The resolver's own precedence
+    // decides those two cases first, so this fallback is only ever consumed once neither holds —
+    // the same discipline PlanCard uses, for the same reason: a silent "no workspace" default
+    // reads as a statement about the account.
+    usageState: usage?.usageState ?? "no_workspace",
+    revenueClass: usage?.revenueClass ?? null,
+    includedAiTokensMonth: usage?.includedAiTokensMonth ?? null,
+    aiCreditTokenRatio: usage?.aiCreditTokenRatio ?? null,
+    periodSource: usage?.periodSource ?? null,
+    periodStart: usage?.periodStart ?? null,
+    periodEnd: usage?.periodEnd ?? null,
+    tokensUsed: usage?.tokensUsed ?? null,
+  });
+
+  return <Card title="AI usage" icon={CalendarClock} truth="PARTIAL">
+    <div className="ss-state" data-usage-state={view.state} role={view.state === "usage-loading" ? "status" : view.state === "usage-error" ? "alert" : undefined}>
+      {view.state === "usage-loading" ? <RefreshCw className="ss-spin" aria-hidden/> : view.state === "usage-error" ? <TriangleAlert aria-hidden/> : <CalendarClock aria-hidden/>}
+      <span><strong>{view.heading}</strong>{view.body}</span>
+      {view.canRetry && <button type="button" onClick={() => void reload()}>Retry</button>}
+    </div>
+    {view.fields.length > 0 && <div className="ss-fields" style={{ marginTop: 9 }}>
+      {view.fields.map((f) => <div className="ss-field" key={f.label}><span>{f.label}</span><strong>{f.value}</strong></div>)}
+    </div>}
+    {view.note && <p className="ss-note">{view.note}</p>}
   </Card>;
 }
 
@@ -378,6 +415,14 @@ export function SoloBillingView() {
     <PlanCard authority={authority}/>
     <ContactsCard key={`contacts:${workspace}`} authority={authority}/>
     <PortalCard key={`portal:${workspace}`} authority={authority}/>
+    {/* NOT keyed on the workspace, unlike its two neighbours, and that is deliberate rather than
+        an oversight. They are keyed because they hold LOCAL state — an outcome banner, a half-made
+        selection — which is not data and survived a switch. This card holds none: everything it
+        shows is derived from the hook, whose own request gate resets on a switch and drops a late
+        answer for a workspace already left. A key here was written first and then removed, because
+        deleting it did not turn a single test red — a guard that cannot fail is decoration, and
+        decoration in a place like this reads as protection that isn't there. The switch is proven
+        by the test instead ("never paints one workspace's usage total under the next one"). */}
     <UsageCard/>
   </div>;
 }

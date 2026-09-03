@@ -1942,11 +1942,54 @@ no_billing_account`. R13 binds: absence of a record is never inferred as a promo
 | Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|---|
 | Plan card | `plan-no-workspace` (act-as pointer, no seat) | `plan-unsupported` | `plan-unsupported` | `billing-unavailable · no_billing_account` today (mapped + projection ⇒ the paid/trial/promo states, Foundation B) | **`role-refusal`** — R22 makes VIEW a permission of its own, and the server publishes `can_view_billing` Owner-only in A. (**§13 correction:** this row first read "same state as the Owner — the plan is not a secret", which recorded a deviation from R22 that no owner ruling supports.) | `plan-subaccount` ("not because there is no plan") | `plan-no-workspace` | route not reachable |
-| Manage billing (portal entry) | `portal-not-applicable` | `portal-not-applicable` | `portal-not-applicable` | `portal-unavailable` today (flag off AND no mapping); `portal-entry` only when `mapped` | `role-refusal` | `portal-not-applicable` | `portal-not-applicable` | — |
+| Manage billing (portal entry) — card renamed **"Payment method"** (owner, 2026-09-03; it no longer claims invoices, which are the tenant's instrument toward their own customers) | `portal-not-applicable` | `portal-not-applicable` | `portal-not-applicable` | `portal-unavailable` today (flag off AND no mapping); `portal-entry` only when `mapped` | `role-refusal` | `portal-not-applicable` | `portal-not-applicable` | — |
 | Billing contacts and notices | refusal state with its reason | `billing_not_applicable` | `billing_not_applicable` | ✓ designate / revoke, and the list | the refusal is rendered as a refusal, never as "there are none" | `billing_not_applicable` | `billing_workspace_owner_only` | — |
 | Candidate list (`get_solo_team_workspace`) | not read | not read | not read | read ONLY when `can_manage_billing` | **not read** (§9 least privilege) | not read | not read | — |
 | Usage & limits | shown (`UNAVAILABLE`) | shown | shown | shown | shown | shown | shown | — |
+| ↳ **superseded** by the AI usage entry below (allowance slice) — the card now states a real total; §58: upgraded in place, never removed | | | | | | | | |
 | Client-billing pointer | **moved to Campaigns › Sales** (owner, 2026-09-03) — Billing is one direction of money only | moved | moved | moved | moved | moved | moved | — |
+
+### Platform Billing — AI usage allowance, slice 1+2 (branch `claude/platform-billing-clarification-l6zqr5`) — **NOT YET MERGED**
+
+**§66.** This entry records what the slice makes true and is written BEFORE the merge, so it states
+the branch rather than a commit. It supersedes the `Usage & limits` row in the Foundation C table
+above, which recorded that card as `UNAVAILABLE` on every tier.
+
+**What changed.** The plan source now carries an AI allowance beside seats/contacts/SMS
+(`platform_subscription_plans.included_ai_tokens_month` + `.ai_credit_token_ratio` — solo 5,000,000
+tokens @ 1,000/credit = 5,000 credits; agency 15,000,000 = 15,000 credits; enterprise NULL, a custom
+quote), and `get_workspace_ai_usage()` reads the EXISTING `platform_usage_events` meter
+(`event_type = 'llm_tokens'`). No second meter was built. `platform_metered_events` is untouched —
+it is the LAYER 3 pass-through and a different concern.
+
+**Visibility only (D6/D7/D8).** Nothing here throttles, degrades, charges, or predicts. Exhausting
+the allowance changes nothing, and the card says so. Enforcement, if it ever exists, belongs at the
+action-bus policy clamp (§67), never on a Billing screen.
+
+**Promotional, and labelled as such.** Every current workspace is promotional during beta. The card
+reads "Promotional AI usage tracking" and does not present the reading as a purchased entitlement.
+The revenue class comes from its own explicit record; an unclassified workspace is NOT inferred to
+be promotional (R13).
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| AI usage card | `usage-no-workspace` (act-as pointer, no seat) | `usage-tracked` against the agency allowance | `usage-no-allowance` (enterprise allowance is deliberately NULL — a custom quote, never a zero) | `usage-tracked`: included, used, remaining, in credits AND tokens, with the period and its source named | **`usage-owner-only`** — R22 makes VIEW its own permission; a NULL total, never a zero | `usage-not-applicable` — the roll-up decision is unmade, so nothing is claimed either way | `usage-no-workspace` | EXECUTE revoked from `anon` |
+| Allowance on the plan | reads all plans | agency 15,000,000 @ 1,000 | NULL (custom quote) | solo 5,000,000 @ 1,000 | same plan, refused view | plan not read for a sub-account | — | — |
+| Per-workspace AI **cost** | **not shown anywhere, on any tier** | — | — | — | — | — | — | — |
+
+**Why cost is absent on every tier, deliberately.** `paige_llm_trace` carries an `est_usd_total` of
+$4.88 across 697 calls, but **632 of those 697 (91%) carry no cost at all**. That figure is a floor
+of unknown distance from the truth. Cost attribution is an internal operator-observability backlog
+item; putting an incomplete number on a tenant's Billing screen would be the same class of error as
+the $149 catalogue price this workstream already removed.
+
+**Evidence.** Migration proven against production inside `BEGIN..ROLLBACK`
+(`scripts/sql/ai-usage-allowance-proof.sql`, 26/26 properties, 0 failures, nothing persisted).
+Presentation proven directly (`src/solo/ai-usage-contract.test.ts`). Solo Owner, Solo Admin/Member
+and the failed-read world are **rendered** in the harness
+(`scripts/live-drive/settings-billing-drive.mjs`). Agency, Enterprise, Sub-account, God and Anon are
+proven at the **resolver and the database**, not rendered. **Authenticated runtime on the deployed
+surface: OWED** (§32.c) — and the migration's persisted-apply confirmation is owed on merge (§32.a).
 
 **How each row above is evidenced, so a reader can tell proof from inference (§13).** The Solo Owner
 and Solo Admin/Member columns are **rendered** (`scripts/live-drive/settings-billing-drive.mjs`,
