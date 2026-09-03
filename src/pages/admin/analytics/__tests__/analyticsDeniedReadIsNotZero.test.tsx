@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act } from "react";
+import React, { act, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -166,5 +166,63 @@ describe("#802 — a mode switch must not paint the previous run's answer", () =
     expect(during).not.toMatch(/\d+%/);
     expect(during).not.toMatch(/accumulate 30 days/i);
     expect(during).toMatch(/Client Retention/i);
+  });
+});
+
+describe("#802 — the stale frame itself, observed", () => {
+  /**
+   * The previous test flushes effects via `act()` before asserting, so it cannot see the frame
+   * React commits BEFORE passive effects run — which is exactly where a stale answer would be
+   * painted. A `useLayoutEffect` probe runs after the DOM is mutated and before passive effects,
+   * so mounting one after the table captures precisely that committed-but-unflushed DOM.
+   */
+  function Probe({ sink }: { sink: string[] }) {
+    useLayoutEffect(() => {
+      sink.push(document.body.textContent ?? "");
+    });
+    return null;
+  }
+
+  it("never commits the previous mode's answer under the new mode's title", async () => {
+    harness.byTable["profiles"] = {
+      data: [
+        { user_id: "u1", created_at: "2026-07-10T00:00:00Z" },
+        { user_id: "u2", created_at: "2026-07-10T00:00:00Z" },
+      ],
+      error: null,
+    };
+    harness.byTable["analytics_events"] = {
+      data: [{ user_id: "u1", created_at: "2026-07-12T00:00:00Z" }],
+      error: null,
+    };
+
+    const frames: string[] = [];
+    await render(
+      <>
+        <CohortRetentionTable mode="platform_signup" />
+        <Probe sink={frames} />
+      </>,
+    );
+    // A populated platform run is on screen.
+    expect(host.textContent ?? "").not.toMatch(/Loading cohorts/i);
+
+    frames.length = 0;
+    harness.hang.add("clients");
+    harness.hang.add("paige_client_events");
+    await render(
+      <>
+        <CohortRetentionTable mode="client_lifecycle" />
+        <Probe sink={frames} />
+      </>,
+    );
+
+    expect(frames.length).toBeGreaterThan(0);
+    // EVERY committed frame during the switch — including the pre-passive-effect one — must
+    // already be showing loading, never a retention figure or the prior mode's copy.
+    for (const f of frames) {
+      expect(f).toMatch(/Loading cohorts/i);
+      expect(f).not.toMatch(/\d+%/);
+      expect(f).not.toMatch(/Retention data populates/i);
+    }
   });
 });

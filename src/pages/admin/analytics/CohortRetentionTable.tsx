@@ -57,6 +57,16 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
   const [hasEnoughData, setHasEnoughData] = useState(true);
   /** #802: the read was REFUSED or FAILED — distinct from "succeeded and found little". */
   const [unavailable, setUnavailable] = useState(false);
+  /**
+   * Which `mode` the state above actually describes.
+   *
+   * Resetting inside the effect is NOT enough. `useEffect` is passive: on a `mode` change React
+   * commits the render — new title, PREVIOUS rows — and the browser can paint that frame before
+   * the effect ever runs. So the stored result is keyed by its mode and the render below refuses
+   * to show a result belonging to a different one. That removes the frame rather than shortening
+   * it, which is the same reason the Rail consumers clear during render instead of in an effect.
+   */
+  const [resultMode, setResultMode] = useState<CohortMode | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +115,7 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
             if (!cancelled) {
               setUnavailable(true);
               setRows([]);
+              setResultMode(mode);
             }
             return;
           }
@@ -148,6 +159,7 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
             if (!cancelled) {
               setUnavailable(true);
               setRows([]);
+              setResultMode(mode);
             }
             return;
           }
@@ -219,6 +231,7 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
         setHasEnoughData(
           result.length > 0 && result.some((r) => r.d30 != null || r.d7 != null),
         );
+        setResultMode(mode);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -227,6 +240,11 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
       cancelled = true;
     };
   }, [mode]);
+
+  // The render-time half of the guard: a result that belongs to another mode is not shown at all,
+  // so no committed frame can carry the previous mode's answer under this one's title.
+  const showingStaleMode = resultMode !== mode;
+  const isLoading = loading || showingStaleMode;
 
   return (
     <Card>
@@ -238,7 +256,7 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {loading ? (
+        {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading cohorts…</p>
         ) : unavailable ? (
           /*
