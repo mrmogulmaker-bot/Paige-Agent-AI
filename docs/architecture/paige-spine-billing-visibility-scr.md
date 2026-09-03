@@ -322,22 +322,28 @@ is persisted and broadcast to staff browsers. **Billing events must not become t
 
 ## 7. Safe evidence Mind may consume — and not before
 
-Mind may **later** surface only grounded patterns, each of which must be traceable to a recorded,
-proven Rail event:
+Mind may **later** surface only grounded patterns. An earlier draft required every one to be
+traceable to a **Rail event**, and then listed three patterns of which only one has an event that
+could produce it — the same failure as the refusal channel in §1a, one section along.
 
-- *"A billing contact is missing."*
-- *"A required billing notice could not be delivered."*
-- *"Trial access ends soon."*
+**A pattern is grounded in an EVENT or in a governed READ, and the distinction is which.** Both are
+proven records; neither is inference. What is forbidden is a pattern with no producer at all.
+
+| Pattern | Grounded in | Producer |
+|---|---|---|
+| *"A required billing notice could not be delivered."* | a Rail **event** | `billing.notice_failed` (§6) |
+| *"A billing contact is missing."* | a governed **read** | capability 3's `contact_configured` sub-fact. **No event proves it**: `contact_configured`/`_changed`/`_removed` all require someone to have acted, and a workspace that never configured one emits nothing. Absence is a state, and the state is what capability 3 reads |
+| *"Trial access ends soon."* | a governed **read** | `tenants.trial_ends_at` compared to now. `billing.trial_status_changed` fires on a **change of status**, not on time crossing a threshold, so no event will ever announce "soon" |
 
 Mind may **not**: infer financial intent; expose message content; report payment credentials; or
 claim delivery or health without proven runtime evidence. A pattern with no record behind it is a
 conclusion, not evidence — and the Brain's rule is that what it concludes is a conclusion
 (`connections-rail-contract.md` §4).
 
-**Sequencing is a hard order, not a preference — and it binds MIND ONLY.** Mind consumes nothing
-until the Rail contract in §6 exists *and* has real evidence flowing through it. A Mind projection
-built against an empty Rail would report health it has never observed, which is §32's false-green
-wearing a different hat.
+**Sequencing binds MIND ONLY, and now binds it per pattern.** The delivery-failure pattern waits on
+the Rail contract in §6 existing *and* carrying real evidence — a Mind projection built against an
+empty Rail would report health it has never observed, which is §32's false-green wearing a different
+hat. The two read-grounded patterns wait on their capabilities instead, and on nothing in §6.
 
 **It does not gate the reads.** An earlier draft's wording made the Chat capabilities wait on the
 Rail and Mind work; that was wrong and would have made an unrelated workstream a hidden blocker. The
