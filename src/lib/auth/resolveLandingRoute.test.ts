@@ -40,7 +40,12 @@ const { resolveLandingRoute } = await import("./resolveLandingRoute");
  * invisible to `AgencyApp`'s identity resolution.
  */
 function mockTables(
-  opts: { agencyLoginDefault?: string | null; agencyVisible?: boolean; tenantsError?: boolean } = {},
+  opts: {
+    agencyLoginDefault?: string | null;
+    agencyVisible?: boolean;
+    tenantsError?: boolean;
+    roles?: string[];
+  } = {},
 ) {
   const agencyVisible = opts.agencyVisible ?? true;
   from.mockImplementation((table: string) => {
@@ -54,7 +59,8 @@ function mockTables(
       }),
     });
     if (table === "user_roles") {
-      return { select: () => ({ eq: () => Promise.resolve({ data: [{ role: "admin" }], error: null }) }) };
+      const roles = (opts.roles ?? ["admin"]).map((role) => ({ role }));
+      return { select: () => ({ eq: () => Promise.resolve({ data: roles, error: null }) }) };
     }
     if (table === "profiles") {
       return one({ agency_login_default: opts.agencyLoginDefault ?? "agency" });
@@ -192,5 +198,37 @@ describe("resolveLandingRoute — agency landing (§65)", () => {
   it("falls through to /admin when the RPC throws", async () => {
     rpc.mockImplementation(() => Promise.reject(new Error("boom")));
     expect(await resolveLandingRoute("u1")).toBe("/admin");
+  });
+
+  // §53 — BOTH operator tiers land on the operator console.
+  //
+  // A `platform_admin` holds no tenant membership, owns no tenant and has no client
+  // row BY DESIGN, so every later branch of this resolver declines them and they
+  // reach the "no role, no tenant, hasn't paid" fallback — which sends the platform's
+  // own delegated operator to `/pricing`. `OperatorLogin` had papered over this at
+  // its own door while naming the cause in a comment; the other entrances (the
+  // ordinary `/auth` sign-in, the landing header) route through here and had no
+  // such workaround.
+  // Naming note (§13): against the pre-fix resolver this case returns `/admin`,
+  // because the shared mock gives every user a tenant. The OWNER's real account has
+  // no tenant at all — by design for this tier — so in production the same missing
+  // branch carried him past every check to the `/pricing` fallback. Same root cause,
+  // different landing depending on whether a tenant exists; the assertion is simply
+  // that an operator reaches the operator console.
+  it("lands a platform_admin on the operator console, not a tenant surface", async () => {
+    mockTables({ roles: ["platform_admin"] });
+    await expect(resolveLandingRoute("u-operator")).resolves.toBe("/operator/fleet/tenants");
+  });
+
+  it("still lands a super_admin on the operator console", async () => {
+    mockTables({ roles: ["super_admin"] });
+    await expect(resolveLandingRoute("u-god")).resolves.toBe("/operator/fleet/tenants");
+  });
+
+  // The operator tier wins over a tenant role held by the same person: the platform
+  // operator and the tenant operator are different §9 audiences.
+  it("prefers the operator console when a platform_admin also carries a tenant role", async () => {
+    mockTables({ roles: ["admin", "platform_admin"] });
+    await expect(resolveLandingRoute("u-both")).resolves.toBe("/operator/fleet/tenants");
   });
 });

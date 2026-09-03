@@ -55,6 +55,83 @@ export function permissionPresentation(permission: TeamPermission, isOwner: bool
   return { label: permission ? permission.charAt(0).toUpperCase() + permission.slice(1).replace(/_/g, " ") : "Member", mutable: false };
 }
 
+/**
+ * What the screen says when a removal does not go through.
+ *
+ * WHY THIS EXISTS RATHER THAN PRINTING `error.message`. The neighbouring controls surface the raw
+ * Postgres string, which is fine while the refusal is one this product authored and wrong the
+ * moment it is not: a trigger deeper down answers with things like
+ * `OWNER_GUARD: tenant ownership may only be changed via grant_co_owner()/revoke_co_owner()`, and
+ * backend identifiers are not product copy. So the reasons this seam authors are recognised, and
+ * everything else degrades to an honest sentence that promises nothing about the cause.
+ *
+ * `reconciled` marks the one refusal that is not a failure: the person was already gone, so the
+ * roster is simply behind. It must never be reported as a removal this owner performed.
+ * `retryable` is false wherever trying again would refuse identically — offering a Try again that
+ * cannot succeed is a worse answer than saying so.
+ */
+export type RemovalRefusal = { message: string; retryable: boolean; reconciled: boolean };
+
+export function removalRefusal(raw: string | null | undefined, personName: string, workspaceName: string): RemovalRefusal {
+  const text = (raw ?? "").toLowerCase();
+  const known: Array<[RegExp, RemovalRefusal]> = [
+    [/only the workspace owner/, { message: "Only the workspace owner can remove people from this workspace.", retryable: false, reconciled: false }],
+    [/an owner cannot be removed/, { message: `${personName} is an owner of ${workspaceName}, and an owner can't be removed here.`, retryable: false, reconciled: false }],
+    [/cannot remove yourself/, { message: "You can't remove yourself from this workspace.", retryable: false, reconciled: false }],
+    // Named, not located. This sentence can outlive the dialog it was raised in, so "on this
+    // screen" stops being true the moment it does; the workspace it is about never stops being true.
+    [/only an admin or a member/, { message: `${personName}'s access level isn't one ${workspaceName}'s team settings can change, so nothing was changed.`, retryable: false, reconciled: false }],
+    [/active workspace changed/, { message: `Your active workspace changed before this could run, so nothing was removed. Open ${workspaceName} again to try.`, retryable: false, reconciled: false }],
+    // The seam raises this for a missing ACTOR *or* a missing active WORKSPACE, and they are not the
+    // same thing: platform staff who used Exit tenant, or an owner whose membership went inactive,
+    // still have a perfectly good session. Telling them to sign in again is both untrue and useless.
+    // One sentence that is true of both, rather than a guess at which.
+    [/authentication required/, { message: "This did not run, and nothing was removed. Reopen Team — or sign in again if you have been signed out.", retryable: false, reconciled: false }],
+    [/not on this workspace/, { message: `${personName} is no longer on this team. Nothing further was changed.`, retryable: false, reconciled: true }],
+    [/cannot remove admin role from platform owner/, { message: `${personName} holds a platform role that can't be given up here, so nothing was changed.`, retryable: false, reconciled: false }],
+  ];
+  for (const [pattern, refusal] of known) if (pattern.test(text)) return refusal;
+
+  // THE DEFAULT IS NOT RETRYABLE, and that is the opposite of what it was. An unrecognised message
+  // is, by definition, one we cannot promise will clear — and a real one proves it: removing a
+  // tenant Admin cascades into trg_sync_tenant_member_to_user_roles, which deletes their global
+  // `admin` grant, which fires protect_owner_admin. When the target is the platform owner that
+  // raises and the whole removal aborts, every time. Offering "Try again" there is an invitation to
+  // press a button that cannot work.
+  //
+  // Only a TRANSPORT failure earns a retry, because only a transport failure is plausibly
+  // transient. Everything else is the server having decided something, and deciding again will
+  // decide the same.
+  //
+  // ...and this branch must NOT claim that nothing changed, which is what it used to say. These are
+  // exactly the failures where the DELETE may have COMMITTED and only the reply was lost — a lost
+  // response is not a refused write. "Nothing changed" is a statement about the database that the
+  // client is in no position to make here, and it is the same class of false sentence this surface
+  // keeps having to close. The unrecognised-server-refusal branch below DOES keep it, because there
+  // the server decided and nothing was written. Retrying is still safe and still offered: a second
+  // call against an already-removed person answers "not on this workspace's team", which maps to the
+  // reconciled branch and tells the truth either way.
+  // A statement timeout is the SERVER deciding, not the network failing: Postgres cancels the
+  // statement and the whole function's transaction rolls back, so nothing was written and we can say
+  // so. It has to be told apart from a lost response BEFORE the transport test below, whose
+  // `timeout|timed out` would otherwise swallow it and assert a network fact that is simply untrue —
+  // the same lie this branch was just repaired to stop telling, one case over. Reachable here rather
+  // than theoretical: the RPC takes `FOR UPDATE` on the membership row, which blocks behind a
+  // concurrent co-owner grant, which is exactly what that lock is for.
+  // BOTH cancellations, not just the one named in the comment below. `lock_timeout` is what cuts
+  // the FOR UPDATE wait this branch exists for, and its message says "lock timeout" — which misses
+  // /statement timeout/ and hits /timeout/ in the transport test, putting it straight back into the
+  // sentence this branch was written to stop telling. Fixing one and leaving its named sibling was
+  // the miss.
+  if (/canceling statement due to (statement|lock) timeout/i.test(text)) {
+    return { message: `That took too long and was cancelled, so nothing changed — ${personName} is still on this team.`, retryable: true, reconciled: false };
+  }
+  if (/failed to fetch|networkerror|network request|network error|timeout|timed out|aborted|econnreset|load failed/i.test(text)) {
+    return { message: `We could not reach the server, so we can't say whether ${personName} was removed. Try again, or reopen Team to see the current roster.`, retryable: true, reconciled: false };
+  }
+  return { message: `Nothing changed — ${personName} is still on this team. Reopen Team to see the current roster.`, retryable: false, reconciled: false };
+}
+
 export function validateWorkProfile(title: string, responsibilities: string): { title?: string; responsibilities?: string } {
   const errors: { title?: string; responsibilities?: string } = {};
   if (title.trim().length > 120) errors.title = "Keep the job title to 120 characters or fewer.";

@@ -9,6 +9,8 @@ on:
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
+      # Same reason for the removal proof: it must re-run when the seam changes.
+      - "supabase/tests/solo_team_removal_authority.sql"
       - "supabase/functions/solo-team-invitations/**"
       - "src/__tests__/paige-spine-*.test.ts"
       - "src/solo/paigeClientScope.ts"
@@ -26,6 +28,8 @@ on:
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
+      # Same reason for the removal proof: it must re-run when the seam changes.
+      - "supabase/tests/solo_team_removal_authority.sql"
       - "supabase/functions/solo-team-invitations/**"
       - "src/__tests__/paige-spine-*.test.ts"
       - "src/solo/paigeClientScope.ts"
@@ -68,3 +72,4 @@ jobs:
       # Postgres: the expensive part is `supabase start` + `db reset`, and duplicating it to run
       # one more file would double a 20-minute job for nothing (§24).
       - run: supabase test db supabase/tests/solo_team_invite_workspace_authority.sql
+      - run: supabase test db supabase/tests/solo_team_removal_authority.sql

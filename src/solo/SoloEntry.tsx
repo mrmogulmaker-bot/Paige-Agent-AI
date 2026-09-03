@@ -3,6 +3,7 @@ import SoloApp from "@/solo/SoloApp";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { EmptyState, PageSkeleton } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
+import { WORKSPACE_CHOOSER_PATH, decideWorkspaceEntry } from "@/lib/auth/workspaceEntry";
 
 /**
  * SoloEntry — the `/solo/*` dispatcher (§65 R3d-i).
@@ -21,10 +22,20 @@ import { Button } from "@/components/ui/button";
  * this address reachable; `SoloApp`'s own top-level ownership guard (§9,
  * mirrors task #171/R3c-i) then keeps the `:account` segment honest against
  * the caller's real tenant.
+ *
+ * THAT GUARD IS ABOUT THE ADDRESS, NOT THE TIER — which is why the tier gate
+ * below exists (owner ruling 2026-09-02). `SoloApp` rewrites the `:account`
+ * segment to the CALLER'S OWN account number, so a sub-account or agency caller
+ * who reached `/solo/{n}` was quietly renumbered and left running the Solo shell:
+ * the right address, the wrong operating mode, with no signal that anything was
+ * off. `/business/*` shipped the mirror image of the same hole. Both now ask the
+ * one tested question — does this caller's SERVER-DERIVED tier own this shell? —
+ * and fail CLOSED to the caller's own root, or to the entry chooser when there is
+ * no single home to name, never into another tenant as a convenience.
  */
 export default function SoloEntry() {
   const location = useLocation();
-  const { accountContextLoading, accountContextStatus, activeTenant, refresh } = useTenantContext();
+  const { accountContextLoading, accountContextStatus, activeTenant, isPlatformStaff, refresh } = useTenantContext();
 
   if (accountContextLoading || accountContextStatus === "resolving") return <PageSkeleton />;
 
@@ -50,6 +61,18 @@ export default function SoloEntry() {
       </div>
     );
   }
+
+  const decision = decideWorkspaceEntry({
+    root: "solo",
+    classification: {
+      account_type: activeTenant.account_type ?? null,
+      parent_tenant_id: activeTenant.parent_tenant_id ?? null,
+      isPlatformStaff,
+    },
+    accountNumber: activeTenant.account_number ?? null,
+  });
+  if (decision.kind === "redirect") return <Navigate to={decision.to} replace />;
+  if (decision.kind === "chooser") return <Navigate to={WORKSPACE_CHOOSER_PATH} replace />;
 
   return (
     <Routes>

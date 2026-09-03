@@ -59,6 +59,7 @@ import {
 } from "@/lib/marketplace/skills";
 import { PLAYBOOK_LIBRARY } from "@/lib/playbook/presets";
 import { stashSwitchNotice } from "@/lib/agency/switchNotice";
+import { rememberWorkspaceEntered } from "@/lib/auth/workspaceEntry";
 
 // A child spins up ready: pick a Playbook preset from the shared library, or let
 // it inherit the agency's. Sentinel = "carry the agency's Playbook down" (no
@@ -263,6 +264,12 @@ export default function AgencyBoard() {
       const { error } = await supabase.rpc("agency_enter_subaccount" as any, { _child: childId });
       if (error) throw error;
       stashSwitchNotice(`Now managing ${childName}.`);
+      // An act-as IS an explicit choice of operating context, so record it before
+      // leaving — otherwise the `/admin` door treats this operator as someone who
+      // has not chosen yet and sends them to the workspace chooser, which is how a
+      // shipped agency capability was nearly broken for the third time (§58/§37:
+      // `/admin` is a DESTINATION, and every producer of it has to be inventoried).
+      rememberWorkspaceEntered(childId);
       window.location.assign("/admin");
     } catch (e) {
       const code = (e as { code?: string } | null)?.code;
