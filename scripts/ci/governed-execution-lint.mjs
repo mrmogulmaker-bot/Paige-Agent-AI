@@ -152,19 +152,52 @@ function permittedDoorPosition(n) {
   return false;
 }
 
-/** `door: <anything>` sitting as a property of an object literal — the audit line's shape. */
+/**
+ * `door: <anything>` sitting as a property of an object literal that is BEING BUILT AS A VALUE.
+ *
+ * The "as a value" half is load-bearing and my first attempt got it wrong twice over. An object
+ * literal is also the syntax for a destructuring TARGET, so `({ door: d } = caller)` is a door READ
+ * wearing the audit record's shape. I excluded that one case by testing for the left of `=` — and
+ * Codex immediately produced `for ({ door: d } of callers)`, whose parent is a ForOfStatement and
+ * not a BinaryExpression at all. Measured on that head: zero hits.
+ *
+ * That is the same losing shape as the guard this function belongs to: enumerating the TARGET
+ * contexts loses to the next one (for-in, nested patterns, a default in a parameter list). So it is
+ * inverted here too — enumerate the VALUE positions, where an object literal is unambiguously a
+ * record being constructed, and treat everything else as a target. A context nobody listed fails
+ * CLOSED, which for this predicate means "not an audit record", which means the read is reported.
+ */
 function isAuditDoorAssignment(assignment) {
   if (!assignment.name) return false;
   const key = ts.isIdentifier(assignment.name) ? assignment.name.text : lit(assignment.name);
   if (key !== "door") return false;
-  // An object literal on the RIGHT of `=` is a destructuring TARGET, not a record being built —
-  // `({ door: d } = caller)` — so it is not the audit shape and must not borrow its permission.
   const obj = assignment.parent;
   if (!obj || !ts.isObjectLiteralExpression(obj)) return false;
-  const outer = obj.parent;
-  if (outer && ts.isBinaryExpression(outer) && outer.left === obj &&
-      outer.operatorToken.kind === ts.SyntaxKind.EqualsToken) return false;
-  return true;
+  return isValuePosition(obj);
+}
+
+/** Is this expression being USED as a value, rather than standing as an assignment target? */
+function isValuePosition(node) {
+  const p = node.parent;
+  if (!p) return false;
+  // Transparent wrappers keep whatever position their parent has.
+  if (ts.isParenthesizedExpression(p) || ts.isAsExpression(p) ||
+      ts.isSatisfiesExpression?.(p) || ts.isTypeAssertionExpression(p) ||
+      ts.isNonNullExpression(p)) return isValuePosition(p);
+  if (ts.isVariableDeclaration(p) || ts.isPropertyDeclaration(p)) return p.initializer === node;
+  if (ts.isPropertyAssignment(p)) return p.initializer === node;
+  if (ts.isReturnStatement(p)) return p.expression === node;
+  if (ts.isCallExpression(p) || ts.isNewExpression(p)) return (p.arguments ?? []).includes(node);
+  if (ts.isArrowFunction(p)) return p.body === node;
+  if (ts.isArrayLiteralExpression(p)) return p.elements.includes(node);
+  if (ts.isSpreadAssignment(p) || ts.isSpreadElement(p)) return p.expression === node;
+  if (ts.isConditionalExpression(p)) return p.whenTrue === node || p.whenFalse === node;
+  if (ts.isBinaryExpression(p)) {
+    // The RIGHT of an assignment is a value; the LEFT is a target. Any other operator takes values.
+    if (p.operatorToken.kind === ts.SyntaxKind.EqualsToken) return p.right === node;
+    return true;
+  }
+  return false;   // ForOf/ForIn initialisers, binding patterns, and anything not listed
 }
 
 /**
@@ -400,6 +433,15 @@ if (process.argv.includes("--self-test")) {
   // The fourth form, and the one that forced the inversion: a destructuring ASSIGNMENT is a
   // PropertyAssignment, not a BindingElement, so all three checks above missed it.
   check("R1 destructuring ASSIGNMENT (Codex)", doorBranches("let d; ({ door: d } = caller); if (d === \"mcp\") return x;").length, 1);
+  // Codex on 7fa7b3f7: an object literal is ALSO the syntax for a destructuring target, so the
+  // audit shape can be worn by a read. My first exclusion tested for the left of `=`; a for-of
+  // target is not a BinaryExpression at all. Inverted to enumerate VALUE positions instead —
+  // these hold both halves of that.
+  check("R1 for-of destructuring target (Codex)", doorBranches("let d; for ({ door: d } of callers) { if (d === \"mcp\") return 1; }").length, 1);
+  check("R1 for-in destructuring target", doorBranches("let d; for ({ door: d } in callers) { if (d === \"mcp\") return 1; }").length, 1);
+  check("R1 allows the audit inside a return", doorBranches("function f(){ return { door: caller.door, decision }; }").length, 0);
+  check("R1 allows the audit as a call argument", doorBranches("log({ door: caller.door });").length, 0);
+  check("R1 allows the audit via an arrow body", doorBranches("const f = () => ({ door: caller.door });").length, 0);
   check("R1 ignores an unrelated destructured key", doorBranches("const { tenantId } = caller; return tenantId;").length, 0);
   check("R1 allows the audit assignment", doorBranches("const audit = { door: caller.door, decision };").length, 0);
   check("R1 allows a type declaration", doorBranches("export type C = { door: GovernedDoor };").length, 0);

@@ -631,7 +631,12 @@ describe("exhaustive sweep of the whole decision space", () => {
     // stored claim is refused `approval_claim_capability_mismatch`, so this sweep compared the six
     // doors across a decision space that contained NO successful claimed mutation at all. A
     // door-dependent regression confined to the stored-claim execution path would have passed it.
-    let executesSeen = 0;
+    // Counts ONLY a stored-claim execution: an approved path returns `claimedArgs` itself, so
+    // identity with the fixture's claim distinguishes it from a read or an auto-lane mutation,
+    // which both return `requestArgs`. Counting every execute made the vacuity guard satisfiable
+    // by executions that have nothing to do with the path it exists to protect — the same defect
+    // as the sweep it was added to guard, one level up.
+    let claimedExecutes = 0;
     for (const authed of [true,false]) for (const lane of SWEEP_LANES) for (const cap of SWEEP_CAPS)
     for (const oc of SWEEP_OUTCOMES) for (const claimedArgs of SWEEP_CLAIMS)
     for (const claimedForRaw of (isStoredClaim(claimedArgs) ? SWEEP_CLAIMED_FOR : ONE_CLAIMED_FOR))
@@ -645,7 +650,7 @@ describe("exhaustive sweep of the whole decision space", () => {
           approval:{ autonomyLane: lane, claimedArgs: claimedArgs as never, claimedFor },
           requestArgs:{ a:1 },
         });
-        if (d.kind === "execute") executesSeen++;
+        if (d.kind === "execute" && d.args === claimedArgs) claimedExecutes++;
         const { audit, ...rest } = d as never as { audit: Record<string,unknown> };
         const { door: _d, ...auditRest } = audit;
         return JSON.stringify({ rest, auditRest });
@@ -656,9 +661,10 @@ describe("exhaustive sweep of the whole decision space", () => {
     expect(mism.length).toBe(0);
     // The oracle above only inspects DISAGREEMENT between doors, so it stays green on a decision
     // space where nothing executes — which is exactly the state this sweep was in. Assert that
-    // approved executes were actually present, or a future tightening can silently empty it again.
-    console.log(`  door sweep saw ${executesSeen} executes across all doors`);
-    expect(executesSeen).toBeGreaterThan(0);
+    // STORED-CLAIM executes were actually present, or a future tightening can silently empty it
+    // again.
+    console.log(`  door sweep saw ${claimedExecutes} stored-claim executes across all doors`);
+    expect(claimedExecutes).toBeGreaterThan(0);
   }, SWEEP_TIMEOUT_MS);
 
   it("owner_only and unclassified never execute under ANY input", () => {
