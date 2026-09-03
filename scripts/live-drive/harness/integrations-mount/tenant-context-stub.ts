@@ -1,22 +1,12 @@
-/**
- * The tenant seam, answered deterministically. `useTenantContext` reaches auth,
- * membership and act-as state that a local mount has none of; stubbing it keeps
- * the SHIPPED surface and its SHIPPED data hook under measurement while the one
- * thing a harness genuinely cannot supply is answered.
- */
-const HARNESS_TENANT = { id: "harness-tenant", account_number: "1971670", name: "Harness workspace" };
-
+/** Synthetic workspace-switch seam for the real Integration UI. No auth or provider calls. */
+import { useSyncExternalStore } from 'react';
+let tenantId = 'harness-tenant-a';
+const listeners = new Set<() => void>();
+export const currentHarnessTenantId = () => tenantId;
+window.addEventListener('n8n-harness-switch', () => { tenantId = tenantId.endsWith('-a') ? 'harness-tenant-b' : 'harness-tenant-a'; listeners.forEach(notify => notify()); });
 export function useTenantContext() {
-  return {
-    activeTenantId: HARNESS_TENANT.id,
-    loading: false,
-    activeTenant: HARNESS_TENANT,
-    // The roster, because the surface resolves an account's ROUTE ADDRESS by
-    // looking its tenant up here. Answering with an `activeTenant` and no list
-    // to find it in is a shape the real context never has, and a stub that
-    // models the seam inaccurately measures a surface nobody runs.
-    tenants: [HARNESS_TENANT],
-    isPlatformStaff: false,
-  };
+ const activeTenantId = useSyncExternalStore(notify => { listeners.add(notify); return () => { listeners.delete(notify); }; }, currentHarnessTenantId);
+ const tenants = [{ id: 'harness-tenant-a', account_number: '1971670', name: 'Harness workspace A' }, { id: 'harness-tenant-b', account_number: '1971671', name: 'Harness workspace B' }];
+ return { activeUserId: 'harness-owner', activeTenantId, loading: false, activeTenant: tenants.find(t => t.id === activeTenantId), tenants, isPlatformStaff: false };
 }
 export default { useTenantContext };

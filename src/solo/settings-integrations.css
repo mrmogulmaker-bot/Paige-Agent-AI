@@ -271,3 +271,40 @@
 
 .ig-cap-name { color: var(--pg-ink-2); font: 650 11px/1.3 var(--pg-font-data); overflow-wrap: anywhere; }
 .ig-cap-desc { color: var(--pg-muted); font: 400 10.5px/1.4 var(--pg-font-ui); overflow-wrap: anywhere; }
+
+/* Approved n8n overview and two-tab drawer; existing Solo geometry and tokens. */
+.ig-n8n-summary { display: grid; gap: 8px; }
+.ig-n8n-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.ig-n8n-summary > div > span:first-child { color: var(--pg-muted); font: 600 11px/1.4 var(--pg-font-ui); }
+.ig-n8n-summary .ig-card-state { justify-content: flex-end; text-align: right; font-size: 10.5px; }
+.ig-n8n-overview { flex: none; padding: 14px; border-bottom: 1px solid var(--pg-line-soft); }
+.ig-n8n-tabs { margin-top: 14px; width: 100%; }
+.ig-n8n-tabs button { flex: 1; min-width: 0; min-height: 34px; }
+.ig-n8n-tile-state { display: flex; grid-column: 1 / -1; justify-content: space-between; align-items: center; gap: 9px; font-size: 10px; color: var(--pg-muted); }
+.ig-n8n-tile-state .ig-card-state { grid-column: auto; }
+.ig-n8n-access { margin-top: 12px; padding: 10px; font-size: 11px; line-height: 1.5; color: var(--pg-muted); }
+.ig-n8n-access p { margin: 3px 0; }
+@media (max-width: 560px) { .ig-n8n-tabs button { padding: 0 7px; } .ig-n8n-summary > div { align-items: flex-start; } }
+
+/* The Solo button reset has class-plus-element specificity. Keep the approved
+   compact controls local to the n8n drawer, including all interaction states. */
+.ig-n8n-panel .ig-btn { border: 1px solid var(--pg-line); color: var(--pg-ink); background: var(--pg-surface); font: 650 11px/1 var(--pg-font-ui); }
+.ig-n8n-panel .ig-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--pg-violet) 50%, var(--pg-line)); background: var(--pg-raised); }
+.ig-n8n-panel .ig-btn[data-primary] { border-color: color-mix(in srgb, var(--pg-gold-core) 60%, var(--pg-line)); background: color-mix(in srgb, var(--pg-gold-core) 15%, var(--pg-raised)); }
+.ig-n8n-panel .ig-btn[data-primary]:hover:not(:disabled) { background: color-mix(in srgb, var(--pg-gold-core) 24%, var(--pg-raised)); }
+.ig-n8n-panel .ig-btn[data-danger] { border-color: color-mix(in srgb, var(--pg-negative) 46%, var(--pg-line)); color: var(--pg-negative); }
+.ig-n8n-panel .ig-btn[data-danger]:hover:not(:disabled) { background: color-mix(in srgb, var(--pg-negative) 10%, transparent); }
+.ig-n8n-panel .ig-close { border: 1px solid var(--pg-line); background: var(--pg-surface); color: var(--pg-ink); }
+.ig-n8n-panel .ig-close:hover { border-color: color-mix(in srgb, var(--pg-violet) 50%, var(--pg-line)); background: var(--pg-raised); }
+.ig-n8n-panel .ig-n8n-tabs button { padding: 0 12px; border: 0; border-radius: 7px; color: var(--pg-muted); background: transparent; font: 650 10px/1 var(--pg-font-ui); white-space: nowrap; transition: background .14s ease, color .14s ease; }
+.ig-n8n-panel .ig-n8n-tabs button:hover:not(:disabled) { color: var(--pg-ink); background: var(--pg-lift); }
+.ig-n8n-panel .ig-n8n-tabs button[aria-selected="true"] { color: var(--pg-ink); background: var(--pg-raised); box-shadow: var(--pg-inset); }
+.ig-n8n-panel .ig-n8n-tabs button:disabled { opacity: .5; cursor: not-allowed; }
+.ig-n8n-panel :is(.ig-btn, .ig-close, [role="tab"]):focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
+@media (max-width: 560px) { .ig-n8n-panel .ig-n8n-tabs button { padding: 0 7px; } }
+@media (prefers-contrast: more) { .ig-n8n-panel .ig-btn { border-color: var(--pg-ink); } }
+@media (forced-colors: active) {
+  .ig-n8n-panel .ig-btn, .ig-n8n-panel .ig-close { border: 1px solid CanvasText; }
+  .ig-n8n-panel :is(.ig-btn, .ig-close, [role="tab"]):focus-visible { outline-color: Highlight; }
+}
+@media (prefers-reduced-motion: reduce) { .ig-n8n-panel .ig-n8n-tabs button { transition: none; } }

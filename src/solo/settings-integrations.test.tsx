@@ -14,7 +14,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SoloIntegrationsView } from "./settings-integrations";
 import { n8nWriteMessage } from "./data/useN8nConnection";
-import { mcpWriteMessage } from "./data/useMcpConnection";
+
 
 const context = vi.hoisted(() => ({ tenantId: "tenant-a", loading: false }));
 const rpc = vi.hoisted(() => vi.fn());
@@ -25,7 +25,7 @@ const invoke = vi.hoisted(() => vi.fn());
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("@/hooks/useTenantContext", () => ({
-  useTenantContext: () => ({ activeTenantId: context.tenantId, loading: context.loading }),
+  useTenantContext: () => ({ activeTenantId: context.tenantId, activeUserId: "user-a", loading: context.loading }),
 }));
 // `from` is stubbed as well as `rpc` because one test navigates to the
 // Automations leaf, which mounts `useSoloAutomations` and reads real tables.
@@ -105,27 +105,6 @@ const type = async (input: Element | null | undefined, value: string) => {
 };
 const fields = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLInputElement>(".ig-field input"));
 
-/* The n8n drawer holds two independent connections, so every MCP assertion is scoped
-   to its own section. An unscoped selector would silently read the API section and
-   pass for the wrong reason. */
-const mcpSection = (host: HTMLElement) => {
-  const section = host.querySelector<HTMLElement>('section[aria-labelledby="ig-sec-mcp"]');
-  if (!section) throw new Error("the tool bridge section is not rendered");
-  return section;
-};
-const mcpFields = (host: HTMLElement) => Array.from(mcpSection(host).querySelectorAll<HTMLInputElement>(".ig-field input"));
-const mcpButton = (host: HTMLElement, text: string) =>
-  Array.from(mcpSection(host).querySelectorAll("button")).find((b) => b.textContent?.includes(text));
-const submitMcp = async (host: HTMLElement) => {
-  await act(async () => { mcpSection(host).querySelector("form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
-  await act(async () => { await Promise.resolve(); });
-};
-/** Connects the bridge with a credential the assertions can then hunt for. */
-const connectBridge = async (host: HTMLElement, credential = "bridge-secret-9876") => {
-  await type(mcpFields(host)[0], "https://acme.app.n8n.cloud/mcp/9f3a-secret-path");
-  await type(mcpFields(host)[1], credential);
-  await submitMcp(host);
-};
 const submit = async (host: HTMLElement) => {
   await act(async () => { host.querySelector("form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
   await act(async () => { await Promise.resolve(); });
@@ -150,7 +129,7 @@ describe("Truth boundary", () => {
     for (const call of rpc.mock.calls.filter((c) => String(c[0]).startsWith("get_"))) {
       expect(call.length).toBe(1);
     }
-    expect(host.textContent).toContain("Connected");
+    expect(host.textContent).toContain("Needs attention");
     expect(host.textContent).not.toContain("must-not-survive");
   });
 
@@ -161,6 +140,7 @@ describe("Truth boundary", () => {
     // own integration and never navigates.
     expect(host.querySelectorAll("a").length).toBe(0);
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     expect(host.querySelectorAll("a").length).toBe(0);
     const labels = buttons(host).map((b) => b.textContent ?? "");
     expect(labels.some((l) => /open automations|command center|marketplace|systems check|mind/i.test(l))).toBe(false);
@@ -174,7 +154,8 @@ describe("Truth boundary", () => {
     const { host } = await render();
     expect(host.textContent).toMatch(/could not be read/i);
     expect(host.textContent).not.toMatch(/connected/i);
-    expect(host.querySelector(".ig-grid")).toBeNull();
+    expect(host.querySelector(".ig-grid")).toBeTruthy();
+    expect(host.textContent).toContain("Status unavailable");
     expect(byText(host, "Try again")).toBeTruthy();
   });
 
@@ -287,7 +268,8 @@ describe("n8n connection flow", () => {
     world();
     const { host } = await render();
     await openCard(host, "n8n");
-    expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/never shown again/i);
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
+    expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/never displayed after this/i);
 
     const [url, key, label] = fields(host);
     await type(url, "https://mine.app.n8n.cloud");
@@ -296,9 +278,9 @@ describe("n8n connection flow", () => {
     await submit(host);
 
     const call = rpc.mock.calls.find((c) => c[0] === "set_tenant_n8n_connection");
-    expect(call?.[1]).toEqual({ _base_url: "https://mine.app.n8n.cloud", _api_key: "n8n_api_SUPERSECRET", _label: "My instance" });
+    expect(call?.[1]).toEqual({ _tenant_id: "tenant-a", _base_url: "https://mine.app.n8n.cloud", _api_key: "n8n_api_SUPERSECRET", _label: "My instance" });
     // The write carries no tenant argument: the seam derives and enforces it.
-    expect(Object.keys(call?.[1] ?? {})).not.toContain("_tenant_id");
+    expect(call?.[1]?._tenant_id).toBe("tenant-a");
     // The key must be gone from the document the moment it is submitted.
     expect(host.innerHTML).not.toContain("SUPERSECRET");
     expect(fields(host).some((f) => f.value.includes("SUPERSECRET"))).toBe(false);
@@ -308,23 +290,26 @@ describe("n8n connection flow", () => {
     world();
     const { host } = await render();
     await openCard(host, "n8n");
-    const connect = byText(host, "Connect n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
+    const connect = byText(host, "Save API connection");
     expect((connect as HTMLButtonElement).disabled).toBe(true);
     await type(fields(host)[0], "https://mine.app.n8n.cloud");
-    expect((byText(host, "Connect n8n") as HTMLButtonElement).disabled).toBe(true);
+    expect((byText(host, "Save API connection") as HTMLButtonElement).disabled).toBe(true);
     await type(fields(host)[1], "k");
-    expect((byText(host, "Connect n8n") as HTMLButtonElement).disabled).toBe(false);
+    expect((byText(host, "Save API connection") as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("shows an existing connection by its last four only, never the key", async () => {
+  it("shows an existing connection as stored, never the key", async () => {
     world({ n8n: { configured: true, status: "connected", label: "Ops", base_url: "https://ops.app.n8n.cloud", api_key_last4: "9f2a", workflow_count: 7 } });
     const { host } = await render();
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     const panel = host.querySelector('[role="dialog"]')?.textContent ?? "";
     expect(panel).toContain("ops.app.n8n.cloud");
-    expect(panel).toContain("••••••••9f2a");
-    expect(panel).toContain("Ops");
-    expect(byText(host, "Manage")).toBeTruthy();
+    expect(panel).toContain("Stored");
+    expect(panel).not.toContain("9f2a");
+
+    expect(byText(host, "Edit API connection")).toBeTruthy();
     expect(byText(host, "Disconnect")).toBeTruthy();
   });
 
@@ -332,21 +317,23 @@ describe("n8n connection flow", () => {
     world({ n8n: { configured: true, status: "error", base_url: "https://ops.app.n8n.cloud", api_key_last4: "9f2a" } });
     const { host } = await render();
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     expect(byText(host, "Reconnect")).toBeTruthy();
     await click(byText(host, "Reconnect"));
     const [url, key] = fields(host);
     expect(url.value).toBe("https://ops.app.n8n.cloud");
     expect(key.value).toBe("");
-    expect((byText(host, "Save changes") as HTMLButtonElement).disabled).toBe(true);
+    expect((byText(host, "Save API connection") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("disconnects only after an explicit confirmation", async () => {
     world({ n8n: { configured: true, status: "connected", api_key_last4: "9f2a" } });
     const { host } = await render();
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     await click(byText(host, "Disconnect"));
     expect(rpc.mock.calls.some((c) => c[0] === "clear_tenant_n8n_connection")).toBe(false);
-    await click(byText(host, "Disconnect it"));
+    await click(byText(host, "Confirm disconnect"));
     expect(rpc.mock.calls.some((c) => c[0] === "clear_tenant_n8n_connection")).toBe(true);
   });
 
@@ -354,6 +341,7 @@ describe("n8n connection flow", () => {
     world();
     const { host } = await render();
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     const before = rpc.mock.calls.filter((c) => c[0] === "get_tenant_n8n_connection").length;
     await type(fields(host)[0], "https://mine.app.n8n.cloud");
     await type(fields(host)[1], "key");
@@ -366,10 +354,11 @@ describe("n8n connection flow", () => {
     world({ admin: false, n8n: { configured: true, status: "connected", api_key_last4: "9f2a" } });
     const { host } = await render();
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/only a workspace admin/i);
     expect(host.querySelector(".ig-form")).toBeNull();
     expect(byText(host, "Disconnect")).toBeFalsy();
-    expect(byText(host, "Manage")).toBeFalsy();
+    expect(byText(host, "Edit API connection")).toBeFalsy();
   });
 
   it("denies a non-admin the connect form on an unconfigured workspace", async () => {
@@ -378,9 +367,10 @@ describe("n8n connection flow", () => {
     world({ admin: false, n8n: { configured: false, status: "unconfigured" } });
     const { host } = await render();
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     expect(host.querySelector(".ig-form")).toBeNull();
     expect(fields(host).length).toBe(0);
-    expect(byText(host, "Connect n8n")).toBeFalsy();
+    expect(byText(host, "Save API connection")).toBeFalsy();
     expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/only a workspace admin/i);
   });
 
@@ -388,6 +378,7 @@ describe("n8n connection flow", () => {
     world({ writeError: { message: 'N8N_INSECURE_URL: instance URL must be https:// (SQLSTATE 22023) column "base_url_ct"' } });
     const { host } = await render();
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     await type(fields(host)[0], "http://mine.example");
     await type(fields(host)[1], "key");
     await submit(host);
@@ -400,6 +391,7 @@ describe("n8n connection flow", () => {
     world({ writeError: { message: "N8N_FORBIDDEN: admin required" } });
     const { host } = await render();
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     await type(fields(host)[0], "https://mine.app.n8n.cloud");
     await type(fields(host)[1], "FAILEDSECRET");
     await submit(host);
@@ -417,15 +409,16 @@ describe("n8n connection flow", () => {
     world();
     const { host } = await render();
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     await type(fields(host)[0], "https://half-typed.example");
     await click(host.querySelector(".ig-close") ?? undefined);
     // Still open, with an explicit choice.
     expect(host.querySelector('[role="dialog"]')).toBeTruthy();
-    expect(host.textContent).toMatch(/unsaved details/i);
+    expect(host.textContent).toMatch(/unsaved API details/i);
     await click(byText(host, "Keep editing"));
     expect(host.querySelector(".ig-form")).toBeTruthy();
     await click(host.querySelector(".ig-close") ?? undefined);
-    await click(byText(host, "Discard them"));
+    await click(byText(host, "Discard changes"));
     expect(host.querySelector('[role="dialog"]')).toBeNull();
   });
 
@@ -433,6 +426,7 @@ describe("n8n connection flow", () => {
     world();
     const { host } = await render();
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     await click(host.querySelector(".ig-close") ?? undefined);
     expect(host.querySelector('[role="dialog"]')).toBeNull();
   });
@@ -465,6 +459,7 @@ describe("Review findings", () => {
     expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Not connected");
 
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     await type(fields(host)[0], "https://mine.app.n8n.cloud");
     await type(fields(host)[1], "key");
     // The catalogue read must run again on success, or the card behind the
@@ -474,16 +469,17 @@ describe("Review findings", () => {
     await submit(host);
     const after = rpc.mock.calls.filter((c) => c[0] === "get_tenant_mcp_connections").length;
     expect(after).toBeGreaterThan(before);
-    expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Connected");
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Needs attention");
   });
 
   it("refreshes the card grid after a disconnection", async () => {
     world({ n8n: { configured: true, status: "connected", api_key_last4: "9f2a" } });
     const { host } = await render();
     await openCard(host, "n8n");
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     await click(byText(host, "Disconnect"));
     world();
-    await click(byText(host, "Disconnect it"));
+    await click(byText(host, "Confirm disconnect"));
     await act(async () => { await Promise.resolve(); });
     expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Not connected");
   });
@@ -492,7 +488,8 @@ describe("Review findings", () => {
     world({ n8n: { configured: true, status: "connected", label: "Ops", base_url: "https://ops.app.n8n.cloud", api_key_last4: "9f2a" } });
     const { host } = await render();
     await openCard(host, "n8n");
-    await click(byText(host, "Manage"));
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
+    await click(byText(host, "Edit API connection"));
     await type(fields(host)[2], "");
     expect(host.querySelector(".ig-form")?.textContent).toMatch(/changed here but not removed/i);
 
@@ -502,17 +499,18 @@ describe("Review findings", () => {
     // blank, so it passes with or without the fix.)
     await click(host.querySelector(".ig-close") ?? undefined);
     expect(host.querySelector('[role="dialog"]')).toBeNull();
-    expect(host.textContent).not.toMatch(/unsaved details/i);
+    expect(host.textContent).not.toMatch(/unsaved API details/i);
   });
 
   it("still treats a genuine name change as a pending change", async () => {
     world({ n8n: { configured: true, status: "connected", label: "Ops", base_url: "https://ops.app.n8n.cloud", api_key_last4: "9f2a" } });
     const { host } = await render();
     await openCard(host, "n8n");
-    await click(byText(host, "Manage"));
+    if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
+    await click(byText(host, "Edit API connection"));
     await type(fields(host)[2], "Ops renamed");
     await click(host.querySelector(".ig-close") ?? undefined);
-    expect(host.textContent).toMatch(/unsaved details/i);
+    expect(host.textContent).toMatch(/unsaved API details/i);
   });
 
   it("returns focus to the card that opened the panel", async () => {
@@ -555,234 +553,8 @@ describe("Write-error language", () => {
  * only a server-side probe writes `connected` and the UI has separate words for every
  * state in between.
  */
-describe("n8n tool bridge (MCP)", () => {
-  it("offers a connect form when nothing is set up, and claims nothing", async () => {
-    world();
-    const { host } = await render();
-    await openCard(host, "n8n");
-    const section = mcpSection(host);
-    expect(section.textContent).toContain("If your n8n instance runs an MCP server");
-    expect(section.querySelector("form")).toBeTruthy();
-    // "Not connected" and "connected" are the only two claims available before a probe,
-    // and neither of the misleading middle states may appear.
-    expect(section.textContent).not.toContain("Connected");
-  });
+// The approved n8n tabs replace the static-credential setup flow; coverage lives in settings-integrations.n8n-tabs.test.tsx.
 
-  it("names this section as the n8n MCP connection, and still keeps the plumbing out", async () => {
-    // The two n8n connections are independent and a workspace has to be able to tell them
-    // apart by reading them. "Direct tool access" described what the section does and
-    // concealed what it is, so the section that IS the MCP connection was the one nobody
-    // could find. It says so now.
-    //
-    // "Transport" and "Bearer" are deliberately NOT in the banned list. They are the
-    // labels n8n's own settings use for the values being copied across, so here they are
-    // the workspace's vocabulary rather than ours.
-    world({ n8n: { configured: false } });
-    const { host } = await render();
-    await openCard(host, "n8n");
-    const copy = mcpSection(host).textContent ?? "";
-    expect(copy).toContain("n8n MCP connection");
-    // ...and the section says outright that it is not the other one, because two
-    // connections to the same provider is exactly where someone assumes one implies the
-    // other.
-    expect(copy).toContain("separate from the API connection");
-    for (const jargon of ["bridge", "JSON-RPC"]) {
-      expect(copy).not.toContain(jargon);
-    }
-  });
-
-  it("saves and PROVES a connection in one act, and reports the proven state", async () => {
-    world();
-    const { host } = await render();
-    await openCard(host, "n8n");
-    await connectBridge(host);
-
-    // The write goes to the probing edge function — never straight to the setter RPC,
-    // which can only ever leave a row unproven.
-    expect(invoke).toHaveBeenCalledWith("tenant-mcp-connect", expect.anything());
-    expect(rpc).not.toHaveBeenCalledWith("set_tenant_n8n_mcp_connection", expect.anything());
-    const [, options] = invoke.mock.calls.at(-1)!;
-    expect(options.body.action).toBe("connect");
-    expect(options.body.provider).toBe("n8n");
-    // The tenant is resolved server-side from the caller's JWT. Sending one from here
-    // would be the argument the server is required to ignore.
-    expect(Object.keys(options.body)).not.toContain("tenant_id");
-  });
-
-  it("says 'saved, not working' when the probe fails — never 'nothing changed'", async () => {
-    world();
-    // The row IS stored; the server just rejected the credential. Reporting that as a
-    // failed save would tell an admin to retype something that is already correct.
-    invoke.mockResolvedValue({ data: { ok: true, status: "error", code: "mcp_http_error" }, error: null });
-    const { host } = await render();
-    await openCard(host, "n8n");
-    await connectBridge(host);
-    expect(mcpSection(host).textContent ?? "").toContain("saved but not working");
-    expect(mcpSection(host).textContent ?? "").not.toContain("nothing was changed");
-  });
-
-  it("still says 'saved' when the probe fails for a reason we do not recognise", async () => {
-    // A code with its own sentence reads correctly whichever family it is handed to, so
-    // it cannot detect the two being confused. An UNRECOGNISED code can: it falls to the
-    // default, where the write family says "nothing was changed" and the probe family
-    // says the opposite. This is the case that catches the wiring, and the reason the
-    // previous test alone was not enough.
-    world();
-    invoke.mockResolvedValue({ data: { ok: true, status: "error", code: "some_unmodelled_failure" }, error: null });
-    const { host } = await render();
-    await openCard(host, "n8n");
-    await connectBridge(host);
-    const text = mcpSection(host).textContent ?? "";
-    expect(text).toContain("It was saved");
-    expect(text).not.toContain("nothing was changed");
-  });
-
-  it("distinguishes a refused save from a failed probe", async () => {
-    // Two different situations, two different sentences. A refused save changed
-    // nothing; a failed probe changed something that does not work.
-    expect(mcpWriteMessage("MCP_INSECURE_URL", "write")).toContain("https://");
-    expect(mcpWriteMessage("mcp_http_error", "probe")).toContain("saved but not working");
-    expect(mcpWriteMessage("MCP_FORBIDDEN", "write")).toContain("admin");
-    // An unrecognised code still degrades into the right family rather than guessing.
-    expect(mcpWriteMessage("something-new", "write")).toContain("nothing was changed");
-    expect(mcpWriteMessage("something-new", "probe")).not.toContain("nothing was changed");
-  });
-
-  it("never renders a stored connection as connected until a probe has said so", async () => {
-    world({ mcp: { n8n: { configured: true, enabled: true, status: "pending_verification", auth_token_last4: "9876", transport: "http", server_url_host: "acme.app.n8n.cloud" } } });
-    const { host } = await render();
-    await openCard(host, "n8n");
-    const text = mcpSection(host).textContent ?? "";
-    expect(text).toContain("Saved, not checked yet");
-    expect(text).not.toContain("Connected");
-  });
-
-  it("never renders the credential or the full server address", async () => {
-    const credential = "bridge-secret-9876";
-    world({ mcp: { n8n: { configured: true, enabled: true, status: "connected", auth_token_last4: "9876", transport: "http", server_url_host: "acme.app.n8n.cloud" } } });
-    const { host } = await render();
-    await openCard(host, "n8n");
-    await click(mcpButton(host, "Manage"));
-    await connectBridge(host, credential);
-
-    // The credential was typed into this document and submitted. After the submit it
-    // must exist nowhere in it — not in a value, not in an error, not in the markup.
-    expect(host.innerHTML).not.toContain(credential);
-    expect(mcpFields(host).map((f) => f.value)).not.toContain(credential);
-    // An n8n MCP path is itself a capability, so only the host is ever shown back.
-    const text = mcpSection(host).textContent ?? "";
-    expect(text).toContain("acme.app.n8n.cloud");
-    expect(text).not.toContain("9f3a-secret-path");
-  });
-
-  it("re-checks a stored connection without re-sending a credential", async () => {
-    world({ mcp: { n8n: { configured: true, enabled: true, status: "error", auth_token_last4: "9876", transport: "http", server_url_host: "acme.app.n8n.cloud" } } });
-    const { host } = await render();
-    await openCard(host, "n8n");
-    await click(mcpButton(host, "Check it again"));
-    const [, options] = invoke.mock.calls.at(-1)!;
-    expect(options.body.action).toBe("verify");
-    // The whole point of a re-check: nothing secret leaves the browser, because
-    // nothing secret is in the browser to send.
-    expect(Object.keys(options.body)).not.toContain("auth_token");
-  });
-
-  it("requires a header name before it will send header authentication", async () => {
-    world();
-    const { host } = await render();
-    await openCard(host, "n8n");
-    const section = mcpSection(host);
-    const select = section.querySelector<HTMLSelectElement>("select")!;
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
-      setter?.call(select, "header");
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await type(mcpFields(host)[0], "https://acme.app.n8n.cloud/mcp/x");
-    await type(mcpFields(host)[1], "tok");
-    const submitButton = mcpButton(host, "Connect tool access") as HTMLButtonElement;
-    expect(submitButton.disabled).toBe(true);
-    // …and becomes possible once the header is named.
-    await type(mcpFields(host)[2], "X-N8N-Api-Key");
-    expect((mcpButton(host, "Connect tool access") as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("lets a non-admin see the state but not change it", async () => {
-    world({ admin: false, mcp: { n8n: { configured: true, enabled: true, status: "connected", auth_token_last4: "9876", transport: "http", server_url_host: "acme.app.n8n.cloud" } } });
-    const { host } = await render();
-    await openCard(host, "n8n");
-    const section = mcpSection(host);
-    expect(section.textContent).toContain("Connected");
-    expect(section.textContent).toContain("Only a workspace admin");
-    // The form is the thing that must be absent — not merely disabled.
-    expect(section.querySelector("form")).toBeNull();
-    expect(mcpButton(host, "Disconnect")).toBeUndefined();
-  });
-
-  it("does not claim either way when the connection cannot be read", async () => {
-    // The catalogue and this section read the same RPC, so a failure at mount shows
-    // the page-level error and no card opens at all. The section's own error branch
-    // is reached when the read starts failing AFTER a good mount — a transient fault
-    // between opening the page and opening the drawer — so that is what is driven.
-    world();
-    const { host } = await render();
-    rpc.mockImplementation((name: string) => {
-      if (name === "get_tenant_mcp_connections") return Promise.resolve({ data: null, error: { message: "boom" } });
-      if (name === "get_tenant_n8n_connection") return Promise.resolve({ data: { configured: false }, error: null });
-      if (name === "is_current_user_tenant_admin") return Promise.resolve({ data: true, error: null });
-      return Promise.resolve({ data: null, error: null });
-    });
-    await openCard(host, "n8n");
-    const text = mcpSection(host).textContent ?? "";
-    expect(text).toContain("could not be read");
-    // Neither "not connected" nor "connected" — an unreadable connection is a third
-    // state, and collapsing it into either of the other two would be a claim.
-    expect(text).not.toContain("Connected");
-    expect(text).not.toContain("If your n8n instance exposes an MCP server");
-    expect(mcpSection(host).querySelector("form")).toBeNull();
-  });
-
-  it("keeps the two providers' connections apart", async () => {
-    // The registry is provider-scoped, so a workspace may hold both at once. Reading
-    // one must never surface the other's state — the mislabel this whole slice guards.
-    world({ mcp: {
-      n8n: { configured: true, enabled: true, status: "error", auth_token_last4: "1111", transport: "sse", server_url_host: "acme.app.n8n.cloud" },
-      zapier: { configured: true, enabled: true, status: "connected", auth_token_last4: "2222", transport: "http", server_url_host: "mcp.zapier.com" },
-    } });
-    const { host } = await render();
-    await openCard(host, "n8n");
-    const text = mcpSection(host).textContent ?? "";
-    expect(text).toContain("Saved, not working");
-    expect(text).toContain("1111");
-    expect(text).toContain("acme.app.n8n.cloud");
-    // Zapier's row is connected. None of it may appear in n8n's section.
-    expect(text).not.toContain("2222");
-    expect(text).not.toContain("mcp.zapier.com");
-    expect(text).not.toContain("Connected");
-  });
-
-  it("guards a close from either section, not just the first", async () => {
-    world();
-    const { host } = await render();
-    await openCard(host, "n8n");
-    // Unsaved input in the SECOND section only. A single shared dirty flag would let
-    // the untouched first section report clean and discard this silently.
-    await type(mcpFields(host)[1], "half-typed-credential");
-    await click(byText(host, "Close n8n") ?? host.querySelector(".ig-close") ?? undefined);
-    expect(host.textContent).toContain("You have unsaved details here");
-    expect(host.querySelector(".ig-panel")).toBeTruthy();
-  });
-});
-
-/**
- * Zapier — connected by consent, never by a pasted credential.
- *
- * The property that matters most here is a NEGATIVE one: this panel must offer no way to
- * type a secret. A field would invite somebody to paste a long-lived Zapier token, which
- * is a permanent credential in our custody that nobody can rotate and the workspace
- * cannot withdraw from their side. The schema refuses to store one; this proves the
- * surface never asks.
- */
 describe("Zapier (its address is its credential)", () => {
   const zapierSection = (host: HTMLElement) => {
     const panel = host.querySelector<HTMLElement>(".ig-panel");

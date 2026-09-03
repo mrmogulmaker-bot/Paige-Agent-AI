@@ -69,7 +69,7 @@ function readConnection(value: unknown): N8nConnection {
     last4: typeof row.api_key_last4 === "string" && row.api_key_last4.trim() ? row.api_key_last4 : null,
     status: typeof row.status === "string" ? row.status : null,
     lastSyncAt: typeof row.last_sync_at === "string" ? row.last_sync_at : null,
-    workflowCount: typeof row.workflow_count === "number" ? row.workflow_count : null,
+    workflowCount: typeof row.workflow_count === "number" && Number.isSafeInteger(row.workflow_count) && row.workflow_count >= 0 ? row.workflow_count : null,
   };
 }
 
@@ -93,15 +93,29 @@ export function n8nWriteMessage(raw: unknown): string {
 }
 
 export function useN8nConnection() {
-  const { activeTenantId, loading: tenantLoading } = useTenantContext();
+  const { activeTenantId, activeUserId, loading: tenantLoading } = useTenantContext();
   const gate = useRef(createSettingsRequestGate());
+  const scope = `${activeUserId ?? ""}:${activeTenantId ?? ""}:${tenantLoading}`;
+  const scopeRef = useRef(scope);
+  const mounted = useRef(false);
+  const mutation = useRef(0);
+  const pendingMutation = useRef(false);
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  // Mask and invalidate during render, before an effect can expose the old workspace.
+  if (scopeRef.current !== scope) {
+    scopeRef.current = scope;
+    gate.current.clear();
+    mutation.current += 1;
+    pendingMutation.current = false;
+  }
   const [state, setState] = useState<N8nState>({
     ...EMPTY, loading: true, error: false, canWrite: false, saving: false, writeError: null,
   });
 
   const load = useCallback(async () => {
+    if (!mounted.current || scopeRef.current !== scope) return;
     const token = gate.current.begin();
-    if (!activeTenantId) {
+    if (!activeTenantId || tenantLoading) {
       setState({ ...EMPTY, loading: false, error: false, canWrite: false, saving: false, writeError: null });
       return;
     }
@@ -110,12 +124,13 @@ export function useN8nConnection() {
       // Newer than the generated client types; returns a boolean only.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).rpc("is_current_user_tenant_admin"),
-    ]);
-    if (!gate.current.isCurrent(token)) return;
+    ]).catch(() => [{ data: null, error: true }, { data: null, error: true }]);
+    if (!mounted.current || scopeRef.current !== scope || !gate.current.isCurrent(token)) return;
+    setLoadedScope(scope);
     if (connection.error) {
       // A failed read is never rendered as "not connected": that would be
       // indistinguishable from a workspace that genuinely has no connection.
-      setState({ ...EMPTY, loading: false, error: true, canWrite: false, saving: false, writeError: null });
+      setState({ ...EMPTY, loading: false, error: true, canWrite: false, saving: pendingMutation.current, writeError: null });
       return;
     }
     setState({
@@ -123,30 +138,42 @@ export function useN8nConnection() {
       loading: false,
       error: false,
       canWrite: admin?.error ? false : admin?.data === true,
-      saving: false,
+      saving: pendingMutation.current,
       writeError: null,
     });
-  }, [activeTenantId]);
+  }, [activeTenantId, scope, tenantLoading]);
 
   useEffect(() => {
+    mounted.current = true;
     const activeGate = gate.current;
     if (!tenantLoading) void load();
-    return () => activeGate.clear();
+    return () => { mounted.current = false; mutation.current += 1; pendingMutation.current = false; activeGate.clear(); };
   }, [load, tenantLoading]);
 
   const write = useCallback(async (run: () => Promise<{ error: unknown }>) => {
-    // Only the saving flag moves. Raising the first-load flag here would blank
-    // the whole surface mid-write.
+    if (!activeTenantId || tenantLoading || !mounted.current || scopeRef.current !== scope || loadedScope !== scope || !state.canWrite || pendingMutation.current) return false;
+    pendingMutation.current = true;
+    const request = ++mutation.current;
+    gate.current.clear();
+    const current = () => mounted.current && scopeRef.current === scope && mutation.current === request;
     setState((prev) => ({ ...prev, saving: true, writeError: null }));
-    const { error } = await run();
-    if (error) {
-      const message = (error as { message?: unknown })?.message;
-      setState((prev) => ({ ...prev, saving: false, writeError: n8nWriteMessage(message) }));
+    try {
+      const { error } = await run();
+      if (!current()) return false;
+      if (error) {
+        setState((prev) => ({ ...prev, saving: false, writeError: n8nWriteMessage((error as { message?: unknown })?.message) }));
+        return false;
+      }
+      pendingMutation.current = false;
+      await load();
+      return current();
+    } catch {
+      if (current()) setState((prev) => ({ ...prev, saving: false, writeError: n8nWriteMessage(null) }));
       return false;
+    } finally {
+      if (current()) { pendingMutation.current = false; setState((prev) => ({ ...prev, saving: false })); }
     }
-    await load();
-    return true;
-  }, [load]);
+  }, [activeTenantId, tenantLoading, scope, loadedScope, state.canWrite, load]);
 
   /**
    * The key is an argument. It is never placed in this hook's state, never
@@ -154,19 +181,24 @@ export function useN8nConnection() {
    */
   const connect = useCallback(
     (draft: N8nDraft) => write(() => supabase.rpc("set_tenant_n8n_connection", {
+      _tenant_id: activeTenantId ?? undefined,
       _base_url: draft.baseUrl.trim(),
       _api_key: draft.apiKey,
       _label: draft.label.trim() || undefined,
     }) as unknown as Promise<{ error: unknown }>),
-    [write],
+    [write, activeTenantId],
   );
 
   const disconnect = useCallback(
-    () => write(() => supabase.rpc("clear_tenant_n8n_connection") as unknown as Promise<{ error: unknown }>),
-    [write],
+    () => write(() => supabase.rpc("clear_tenant_n8n_connection", { _tenant_id: activeTenantId ?? undefined }) as unknown as Promise<{ error: unknown }>),
+    [write, activeTenantId],
   );
 
   const dismissWriteError = useCallback(() => setState((prev) => ({ ...prev, writeError: null })), []);
 
-  return { ...state, connect, disconnect, reload: load, dismissWriteError };
+  const visible = loadedScope === scope && !tenantLoading ? state : {
+    ...EMPTY, loading: !!activeTenantId || tenantLoading, error: false,
+    canWrite: false, saving: false, writeError: null,
+  };
+  return { ...visible, connect, disconnect, reload: load, dismissWriteError };
 }

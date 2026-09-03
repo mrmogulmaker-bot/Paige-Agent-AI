@@ -3,7 +3,7 @@ import { KeyRound, Link2Off, Plug, RefreshCw, TriangleAlert, Workflow, X, Zap } 
 import { useLocation, useNavigate } from "react-router-dom";
 import { SoloAutomationsView } from "./settings-automations";
 import { useN8nConnection } from "./data/useN8nConnection";
-import { useMcpConnection, type McpDraft } from "./data/useMcpConnection";
+import { useMcpConnection } from "./data/useMcpConnection";
 import { useMcpCapabilities } from "./data/useMcpCapabilities";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -22,6 +22,9 @@ type SafeConnectionStatus = {
 };
 
 type IntegrationReadState = {
+  scopeKey: string | null;
+  apiError: boolean;
+  mcpError: boolean;
   tenantId: string | null;
   loading: boolean;
   error: boolean;
@@ -96,47 +99,32 @@ function statusPresentation(value: SafeConnectionStatus | null) {
 }
 
 function useIntegrationStatus() {
-  const { activeTenantId, loading: tenantLoading } = useTenantContext();
+  const { activeTenantId, activeUserId, loading: tenantLoading } = useTenantContext();
+  const scopeKey = `${activeUserId ?? ""}:${activeTenantId ?? ""}:${tenantLoading}`;
   const gate = useRef(createSettingsRequestGate());
-  const [state, setState] = useState<IntegrationReadState>({ tenantId: null, loading: true, error: false, n8n: null, mcp: {} });
-
+  const identity = useRef(scopeKey); identity.current = scopeKey;
+  const mounted = useRef(false);
+  const [state, setState] = useState<IntegrationReadState>({ scopeKey: null, tenantId: null, loading: true, error: false, apiError: false, mcpError: false, n8n: null, mcp: {} });
   const load = useCallback(async () => {
+    if (!mounted.current || identity.current !== scopeKey || tenantLoading) return;
     const token = gate.current.begin();
-    setState({ tenantId: null, loading: true, error: false, n8n: null, mcp: {} });
-    if (!activeTenantId) {
-      setState({ tenantId: null, loading: false, error: false, n8n: null, mcp: {} });
-      return;
-    }
-    const [n8nResult, mcpResult] = await Promise.all([
+    setState({ scopeKey: null, tenantId: null, loading: true, error: false, apiError: false, mcpError: false, n8n: null, mcp: {} });
+    if (!activeTenantId) { setState({ scopeKey, tenantId: null, loading: false, error: false, apiError: true, mcpError: true, n8n: null, mcp: {} }); return; }
+    const results = await Promise.allSettled([
       supabase.rpc("get_tenant_n8n_connection"),
-      // Provider-scoped safe getter, newer than the generated client types. It
-      // returns status per provider only; its secret-bearing counterpart is
-      // service-role and is never callable from this browser surface.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).rpc("get_tenant_mcp_connections"),
     ]);
-    if (!gate.current.isCurrent(token)) return;
-    const failed = Boolean(n8nResult.error || mcpResult.error);
-    setState({
-      tenantId: activeTenantId,
-      loading: false,
-      error: failed,
-      n8n: failed ? null : sanitizeSafeConnectionStatus(n8nResult.data),
-      mcp: failed ? {} : sanitizeMcpByProvider(mcpResult.data),
-    });
-  }, [activeTenantId]);
-
-  useEffect(() => {
-    const activeGate = gate.current;
-    if (!tenantLoading) void load();
-    return () => activeGate.clear();
-  }, [load, tenantLoading]);
-
-  return {
-    ...state,
-    loading: tenantLoading || state.loading || Boolean(activeTenantId && state.tenantId !== activeTenantId),
-    retry: load,
-  };
+    if (!gate.current.isCurrent(token) || identity.current !== scopeKey || !mounted.current) return;
+    const api = results[0].status === "fulfilled" ? results[0].value : null;
+    const mcp = results[1].status === "fulfilled" ? results[1].value : null;
+    const apiError = !api || !!api.error || !api.data || typeof api.data !== "object" || Array.isArray(api.data);
+    const mcpError = !mcp || !!mcp.error || !mcp.data || typeof mcp.data !== "object" || Array.isArray(mcp.data);
+    setState({ scopeKey, tenantId: activeTenantId, loading: false, error: apiError || mcpError, apiError, mcpError,
+      n8n: apiError ? null : sanitizeSafeConnectionStatus(api.data), mcp: mcpError ? {} : sanitizeMcpByProvider(mcp.data) });
+  }, [activeTenantId, scopeKey, tenantLoading]);
+  useEffect(() => { const activeGate = gate.current; mounted.current = true; if (!tenantLoading) void load(); return () => { mounted.current = false; activeGate.clear(); }; }, [load, tenantLoading]);
+  return { ...state, loading: tenantLoading || state.loading || state.scopeKey !== scopeKey, retry: load };
 }
 
 /* ── The catalogue ────────────────────────────────────────────────────────────
@@ -188,74 +176,43 @@ function providerMark(id: ProviderIdentity) {
 
 /* ── n8n: the one provider with a real connection flow ────────────────────── */
 
-function N8nPanelBody({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: boolean) => void; onChanged: () => void }) {
-  // Mounted only for the provider that owns this seam, so opening any other
-  // card issues no n8n read at all.
-  const a = useN8nConnection();
+function N8nPanelBody({ a, onDirtyChange, onChanged }: { a: ReturnType<typeof useN8nConnection>; onDirtyChange: (dirty: boolean) => void; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
-  // The card grid reads its own catalogue snapshot. Without this, connecting
-  // here and closing the panel would leave the card still saying "Not
-  // connected" until the whole view reloaded.
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const commit = useCallback(async (run: () => Promise<boolean>) => {
     const ok = await run();
-    if (ok) onChanged();
-    return ok;
+    if (alive.current && ok) onChanged();
+    return alive.current && ok;
   }, [onChanged]);
-  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
-
-  if (a.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking this workspace…</p>;
-
-  if (a.error) {
-    return <div className="ig-state" role="alert">
-      <TriangleAlert aria-hidden />
-      <span>The connection could not be read, so nothing is being claimed either way — not connected, and not disconnected.</span>
-      <button type="button" className="ig-btn" onClick={() => void a.reload()}>Try again</button>
-    </div>;
-  }
-
-  const showForm = editing || !a.configured;
-
   return <>
-    {a.configured && !editing && <dl className="ig-facts">
-      <div><dt>State</dt><dd>{a.status === "error" ? "Needs attention" : a.status === "connected" ? "Connected" : "Set up"}</dd></div>
-      {a.label && <div><dt>Name</dt><dd>{a.label}</dd></div>}
-      {a.baseUrl && <div><dt>Address</dt><dd className="ig-mono">{a.baseUrl}</dd></div>}
-      <div><dt>API key</dt><dd className="ig-mono">{a.last4 ? `••••••••${a.last4}` : "Stored"}</dd></div>
-      {typeof a.workflowCount === "number" && <div><dt>Workflows seen</dt><dd>{a.workflowCount}</dd></div>}
-    </dl>}
-
-    {!a.configured && !editing && <p className="ig-lede">
-      Connect your own n8n instance so Paige can see what lives there. You provide the address and an
-      API key; the key is stored encrypted and is never shown again, not even to you.
-    </p>}
-
-    {a.writeError && <p className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} />{a.writeError}</p>}
-
-    {!a.canWrite && <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>}
-
-    {showForm && a.canWrite
-      ? <N8nForm
-          a={a}
-          existing={a.configured}
-          onDirtyChange={onDirtyChange}
-          onCommit={commit}
-          onDone={() => { setEditing(false); onDirtyChange(false); }}
-        />
-      : a.canWrite && <div className="ig-actions">
-          <button type="button" className="ig-btn" data-primary onClick={() => setEditing(true)} disabled={a.saving}>
-            <KeyRound aria-hidden size={14} />{a.status === "error" ? "Reconnect" : "Manage"}
-          </button>
-          {confirmingDisconnect ? <span className="ig-confirm">
-            <button type="button" className="ig-btn" data-danger disabled={a.saving}
-              onClick={() => { setConfirmingDisconnect(false); void commit(() => a.disconnect()); }}>
-              Disconnect it
-            </button>
-            <button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep it</button>
-          </span> : <button type="button" className="ig-btn" disabled={a.saving} onClick={() => setConfirmingDisconnect(true)}>
-            <Link2Off aria-hidden size={14} />Disconnect
-          </button>}
-        </div>}
+    <p className="ig-lede">Let Paige see the n8n workspace and its available workflows.</p>
+    {a.loading ? <p className="ig-state" role="status">Checking the API connection…</p> : a.error ? <div className="ig-state" role="alert"><span>The API connection could not be read. Its status and workflow count are unavailable.</span><button type="button" className="ig-btn" onClick={() => void a.reload()}>Try again</button></div> : <>
+      {!editing && <>
+        <dl className="ig-facts">
+          <div><dt>API connection</dt><dd>{!a.configured ? "Not connected" : "Needs attention"}</dd></div>
+          <div><dt>Workflow visibility</dt><dd>{a.configured ? "Unavailable until health is verified for this saved configuration" : "Not connected"}</dd></div>
+          {a.baseUrl && <div><dt>Instance address</dt><dd className="ig-mono">{a.baseUrl}</dd></div>}
+          {a.configured && <div><dt>API key</dt><dd>Stored</dd></div>}
+          {a.lastSyncAt && <div><dt>Recorded check</dt><dd>{safeCheckDate(a.lastSyncAt)} — may predate the saved configuration</dd></div>}
+        </dl>
+        {a.configured && <p className="ig-note">{a.status === "error" ? "The API connection is saved, but its recorded health check failed. The workflow count is unavailable." : "The API connection is saved; health has not been verified for this saved configuration."} This does not describe Paige tools access.</p>}
+      </>}
+      {a.writeError && <p className="ig-error" role="alert">{a.writeError}</p>}
+      {!a.canWrite && <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>}
+      {editing && a.canWrite ? <N8nForm a={a} existing={a.configured} onDirtyChange={onDirtyChange} onCommit={commit} onDone={() => { setEditing(false); onDirtyChange(false); }} /> : <div className="ig-actions">
+        {a.canWrite && <><button type="button" className="ig-btn" data-primary disabled={a.saving} onClick={() => setEditing(true)}>{!a.configured ? "Connect API" : a.status === "error" ? "Reconnect API" : "Edit API connection"}</button>{a.configured && <button type="button" className="ig-btn" disabled={a.saving} onClick={() => setConfirmingDisconnect(true)}>Disconnect API</button>}</>}
+        <button type="button" className="ig-btn" disabled={a.saving} onClick={() => void a.reload()}>Refresh status</button>
+      </div>}
+      {confirmingDisconnect && <div className="ig-confirm-close" role="alertdialog" aria-label="Confirm API disconnect"><p>Disconnect the API connection? Paige tools access will stay unchanged.</p><div className="ig-actions"><button type="button" className="ig-btn" data-danger autoFocus disabled={a.saving} onClick={() => { setConfirmingDisconnect(false); void commit(a.disconnect); }}>Confirm disconnect</button><button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep connection</button></div></div>}
+    </>}
   </>;
+}
+
+function safeCheckDate(value: string) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString() : "Time unavailable";
 }
 
 /* ── What Paige may actually run ───────────────────────────────────────────
@@ -496,72 +453,52 @@ function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
    same drawer because they belong to the same provider, and in separate
    sections because connecting one says nothing about the other. */
 
-function N8nMcpSection({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: boolean) => void; onChanged: () => void }) {
-  const m = useMcpConnection("n8n");
-  const [editing, setEditing] = useState(false);
+const N8N_OAUTH_UNAVAILABLE = "OAuth setup is temporarily unavailable while the secure connection path is being completed.";
+
+function n8nApiSummary(value: SafeConnectionStatus | null, loading: boolean, error: boolean) {
+  if (loading) return { account: "Checking…", tone: "neutral" };
+  if (error || !value || typeof value.configured !== "boolean") return { account: "Status unavailable", tone: "neutral" };
+  return value.configured ? { account: "Needs attention", tone: "warn" } : { account: "Not connected", tone: "neutral" };
+}
+function n8nMcpSummary(value: SafeConnectionStatus | null, loading: boolean, error: boolean) {
+  if (loading) return { account: "Checking…", tone: "neutral" };
+  if (error) return { account: "Status unavailable", tone: "neutral" };
+  if (!value || value.configured === false) return { account: "Not connected", tone: "neutral" };
+  if (value.configured !== true || typeof value.enabled !== "boolean") return { account: "Status unavailable", tone: "neutral" };
+  if (value.status === "connected" && value.enabled === true) return { account: "Connected", tone: "ok" };
+  return { account: "OAuth setup unavailable", tone: "warn" };
+}
+function N8nStateLabel({ value }: { value: { account: string; tone: string } }) {
+  return <span className="ig-card-state" data-tone={value.tone}><i aria-hidden />{value.account}</span>;
+}
+function N8nMcpSection({ m, onChanged }: { m: ReturnType<typeof useMcpConnection>; onChanged: () => void }) {
+  const [access, setAccess] = useState(false);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
-  const commit = useCallback(async (run: () => Promise<boolean>) => {
-    const ok = await run();
-    // The catalogue card reads its own snapshot, so it is refreshed whether or not
-    // the probe succeeded: a stored-but-failing connection is a real state change.
-    onChanged();
-    return ok;
-  }, [onChanged]);
-
-  if (m.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking the n8n MCP connection…</p>;
-
-  if (m.error) {
-    return <div className="ig-state" role="alert">
-      <TriangleAlert aria-hidden />
-      <span>The n8n MCP connection could not be read, so nothing is being claimed either way.</span>
-      <button type="button" className="ig-btn" onClick={() => void m.reload()}>Try again</button>
-    </div>;
-  }
-
-  const showForm = editing || !m.configured;
-
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const disconnect = async () => { const ok = await m.disconnect(); if (alive.current && ok) { setConfirmingDisconnect(false); onChanged(); } };
+  const connected = m.configured && m.enabled && m.status === "connected";
+  const count = (value: number | null) => value === null ? "Unavailable" : value;
   return <>
-    {m.configured && !editing && <dl className="ig-facts">
-      <div><dt>State</dt><dd>{mcpStateWords(m.status)}</dd></div>
-      {m.label && <div><dt>Name</dt><dd>{m.label}</dd></div>}
-      {m.serverUrlHost && <div><dt>Server</dt><dd className="ig-mono">{m.serverUrlHost}</dd></div>}
-      <div><dt>Credential</dt><dd className="ig-mono">{m.last4 ? `••••••••${m.last4}` : "Stored"}</dd></div>
-    </dl>}
-
-    {!m.configured && !editing && <p className="ig-lede">
-      If your n8n instance runs an MCP server, connect it here so Paige can see the tools it offers.
-      This is separate from the API connection above, and having one does not give you the other.
-      You provide the address and a credential; the credential is stored encrypted and is never shown again.
-    </p>}
-
-    {m.writeError && <p className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} />{m.writeError}</p>}
-
-    {!m.canWrite && <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>}
-
-    {showForm && m.canWrite
-      ? <McpForm m={m} existing={m.configured} onDirtyChange={onDirtyChange} onCommit={commit}
-          onDone={() => { setEditing(false); onDirtyChange(false); }} />
-      : m.canWrite && <div className="ig-actions">
-          <button type="button" className="ig-btn" data-primary onClick={() => setEditing(true)} disabled={m.saving}>
-            <KeyRound aria-hidden size={14} />{m.status === "connected" ? "Manage" : "Reconnect"}
-          </button>
-          {/* Re-runs the probe against what is already stored. It never re-sends a
-              credential, which is what makes it safe to offer on a failing connection. */}
-          <button type="button" className="ig-btn" disabled={m.saving} onClick={() => void commit(() => m.verify())}>
-            <RefreshCw aria-hidden size={14} />{m.saving ? "Checking…" : "Check it again"}
-          </button>
-          {confirmingDisconnect ? <span className="ig-confirm">
-            <button type="button" className="ig-btn" data-danger disabled={m.saving}
-              onClick={() => { setConfirmingDisconnect(false); void commit(() => m.disconnect()); }}>
-              Disconnect it
-            </button>
-            <button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep it</button>
-          </span> : <button type="button" className="ig-btn" disabled={m.saving} onClick={() => setConfirmingDisconnect(true)}>
-            <Link2Off aria-hidden size={14} />Disconnect
-          </button>}
-        </div>}
-
-    {m.configured && m.status === "connected" && m.canWrite && <CapabilityApproval provider="n8n" />}
+    <p className="ig-lede">Let Paige use the n8n tools and workflows you explicitly authorize.</p>
+    {m.loading ? <p className="ig-state" role="status">Checking Paige tools access…</p> : m.error ? <div className="ig-state" role="alert"><span>Paige tools access could not be read. Connection and approved-tool counts are unavailable.</span><button type="button" className="ig-btn" onClick={() => void m.reload()}>Try again</button></div> : <>
+      <dl className="ig-facts">
+        <div><dt>Paige tools</dt><dd>{n8nMcpSummary(m, false, false).account}</dd></div>
+        <div><dt>Connection method</dt><dd>{!m.configured ? "Not configured" : m.authKind === "oauth" ? "Stored OAuth connection — current authorization unverified" : ["bearer", "header", "url"].includes(m.authKind ?? "") ? "Saved static MCP credential — not OAuth" : "Connection method unavailable"}</dd></div>
+        <div><dt>Approved tools</dt><dd>{count(m.approvedToolCount)}</dd></div>
+        <div><dt>Tools found</dt><dd>{count(m.toolCount)}</dd></div>
+        {m.lastProbedAt && <div><dt>Last recorded check</dt><dd>{safeCheckDate(m.lastProbedAt)}</dd></div>}
+      </dl>
+      {m.configured && m.status === "error" && <p className="ig-error" role="alert">The saved MCP connection is not working. Tools access is unavailable; its credential may have been refused or the provider may be unavailable.</p>}
+      {m.configured && m.status !== "connected" && m.status !== "error" && <p className="ig-note">The saved MCP configuration has not been verified as working.</p>}
+      {connected && <p className="ig-note">This connection passed its recorded MCP check. A connection alone does not authorize every tool. {["bearer", "header", "url"].includes(m.authKind ?? "") && "It uses a static credential, not OAuth."}</p>}
+      {m.writeError && <p className="ig-error" role="alert">{m.writeError}</p>}
+      <div className="ig-actions"><button type="button" className="ig-btn" disabled={m.saving} onClick={() => void m.reload()}>Refresh status</button>{connected && <button type="button" className="ig-btn" onClick={() => setAccess(!access)} aria-expanded={access}>Manage access</button>}{m.configured && m.canWrite && <button type="button" className="ig-btn" disabled={m.saving} onClick={() => setConfirmingDisconnect(true)}>{connected ? "Disconnect Paige tools" : "Remove saved MCP connection"}</button>}</div>
+      {access && connected && <div className="ig-facts ig-n8n-access"><p>Saved approval summary — read-only</p><p>Approved tools: {count(m.approvedToolCount)}</p><p>Pinned approvals: {count(m.pinnedCount)}</p><p>Approved workflow count: unavailable</p><p>No permissions are changed and no workflow will run here.</p></div>}
+      {!m.canWrite && <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>}
+      {confirmingDisconnect && <div className="ig-confirm-close" role="alertdialog" aria-label="Confirm MCP removal"><p>Remove this saved MCP connection? The API connection will stay unchanged.</p><div className="ig-actions"><button type="button" className="ig-btn" data-danger autoFocus disabled={m.saving} onClick={() => void disconnect()}>Confirm removal</button><button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep connection</button></div></div>}
+    </>}
+    <p className="ig-note">{N8N_OAUTH_UNAVAILABLE}</p>
   </>;
 }
 
@@ -583,92 +520,6 @@ function mcpStateWords(status: string | null): string {
  * submit — success or failure alike. It is never lifted into the hook, never stored,
  * never logged, and never echoed into an error message.
  */
-function McpForm({
-  m, existing, onDone, onDirtyChange, onCommit,
-}: {
-  m: ReturnType<typeof useMcpConnection>;
-  existing: boolean;
-  onDone: () => void;
-  onDirtyChange: (dirty: boolean) => void;
-  onCommit: (run: () => Promise<boolean>) => Promise<boolean>;
-}) {
-  const [serverUrl, setServerUrl] = useState("");
-  const [credential, setCredential] = useState("");
-  const [authKind, setAuthKind] = useState<McpDraft["authKind"]>((m.authKind === "header" ? "header" : "bearer"));
-  const [headerName, setHeaderName] = useState("");
-  const [label, setLabel] = useState(m.label ?? "");
-
-  // The stored address is never returned to a browser — only its host — so this field
-  // starts empty even when reconnecting, and says why rather than looking like a bug.
-  const dirty = credential.length > 0 || serverUrl.length > 0 || label !== (m.label ?? "");
-  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
-
-  const needsHeaderName = authKind === "header";
-  const valid = serverUrl.trim().length > 0 && credential.length > 0 && (!needsHeaderName || headerName.trim().length > 0);
-
-  return <form
-    className="ig-form"
-    onSubmit={async (event) => {
-      event.preventDefault();
-      if (!valid || m.saving) return;
-      const submitted = credential;
-      setCredential("");
-      const ok = await onCommit(() => m.connect({ serverUrl, credential: submitted, authKind, headerName, transport: "http", label }));
-      if (ok) onDone();
-    }}
-  >
-    <label className="ig-field">
-      <span>Tools address</span>
-      <input
-        type="url" inputMode="url" autoComplete="off" spellCheck={false}
-        placeholder="https://your-instance.app.n8n.cloud/mcp/…"
-        value={serverUrl} onChange={(event) => setServerUrl(event.target.value)} disabled={m.saving}
-      />
-      <small>
-        {existing && m.serverUrlHost
-          ? `Currently ${m.serverUrlHost}. The full address is never shown back, because the rest of it is itself a secret — enter it again to change it.`
-          : "Has to start with https://"}
-      </small>
-    </label>
-    <label className="ig-field">
-      <span>Credential</span>
-      <input
-        type="password" autoComplete="off" spellCheck={false}
-        placeholder={existing ? "Enter the credential again to reconnect" : "Paste the credential n8n expects"}
-        value={credential} onChange={(event) => setCredential(event.target.value)} disabled={m.saving}
-      />
-      <small>{existing ? "The stored credential is never shown, so a change needs it again." : "Stored encrypted. It is never displayed after this."}</small>
-    </label>
-    <label className="ig-field">
-      <span>How it is sent</span>
-      <select value={authKind} onChange={(event) => setAuthKind(event.target.value as McpDraft["authKind"])} disabled={m.saving}>
-        <option value="bearer">As a Bearer token</option>
-        <option value="header">In a header you name</option>
-      </select>
-    </label>
-    {needsHeaderName && <label className="ig-field">
-      <span>Header name</span>
-      <input
-        type="text" autoComplete="off" spellCheck={false} placeholder="X-N8N-Api-Key"
-        value={headerName} onChange={(event) => setHeaderName(event.target.value)} disabled={m.saving}
-      />
-    </label>}
-    <label className="ig-field">
-      <span>Name <em>optional</em></span>
-      <input
-        type="text" autoComplete="off" placeholder="What you call this connection"
-        value={label} onChange={(event) => setLabel(event.target.value)} disabled={m.saving}
-      />
-    </label>
-    <div className="ig-actions">
-      <button type="submit" className="ig-btn" data-primary disabled={!valid || m.saving}>
-        {m.saving ? "Connecting…" : existing ? "Save changes" : "Connect tool access"}
-      </button>
-      {existing && <button type="button" className="ig-btn" onClick={onDone} disabled={m.saving}>Cancel</button>}
-    </div>
-  </form>;
-}
-
 /**
  * The key lives only here, only while it is being typed, and is cleared on
  * every submit — success or failure alike. It is never lifted into the hook,
@@ -713,7 +564,7 @@ function N8nForm({
     <label className="ig-field">
       <span>Instance address</span>
       <input
-        type="url" inputMode="url" autoComplete="off" spellCheck={false}
+        autoFocus type="url" inputMode="url" autoComplete="off" spellCheck={false}
         placeholder="https://your-instance.app.n8n.cloud"
         value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} disabled={a.saving}
       />
@@ -738,16 +589,88 @@ function N8nForm({
     </label>
     <div className="ig-actions">
       <button type="submit" className="ig-btn" data-primary disabled={!valid || a.saving}>
-        {a.saving ? "Saving…" : existing ? "Save changes" : "Connect n8n"}
+        {a.saving ? "Saving…" : "Save API connection"}
       </button>
-      {existing && <button type="button" className="ig-btn" onClick={onDone} disabled={a.saving}>Cancel</button>}
+      <button type="button" className="ig-btn" onClick={onDone} disabled={a.saving}>Cancel</button>
     </div>
   </form>;
 }
 
 /* ── The contextual panel ─────────────────────────────────────────────────── */
 
-function ProviderPanel({ row, onClose, onChanged }: { row: ProviderRow; onClose: () => void; onChanged: () => void }) {
+type N8nTab = "api" | "mcp";
+function N8nDrawer({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+  const a = useN8nConnection();
+  const m = useMcpConnection("n8n");
+  const [tab, setTab] = useState<N8nTab>("api");
+  const [dirty, setDirty] = useState(false);
+  const [savingClose, setSavingClose] = useState(false);
+  const [discardTarget, setDiscardTarget] = useState<"close" | N8nTab | null>(null);
+  const [formEpoch, setFormEpoch] = useState(0);
+  const panel = useRef<HTMLElement>(null);
+  const close = useRef<HTMLButtonElement>(null);
+  const discard = useRef<HTMLButtonElement>(null);
+  const requestLeave = useCallback((target: "close" | N8nTab) => {
+    if (target === tab) return;
+    if (a.saving || m.saving) { if (target === "close") setSavingClose(true); return; }
+    if (dirty) { setDiscardTarget(target); return; }
+    if (target === "close") onClose(); else setTab(target);
+  }, [a.saving, m.saving, dirty, onClose, tab]);
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    close.current?.focus();
+    return () => { if (opener && document.contains(opener)) opener.focus(); };
+  }, []);
+  useEffect(() => { if (discardTarget) discard.current?.focus(); }, [discardTarget]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const root = panel.current;
+      if (!root) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        const confirmation = root.querySelector('[role="alertdialog"]');
+        if (confirmation) { const buttons = confirmation.querySelectorAll<HTMLButtonElement>("button"); buttons[buttons.length - 1]?.click(); }
+        else requestLeave("close");
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusRoot = root.querySelector<HTMLElement>('[role="alertdialog"]') ?? root;
+      const items = Array.from(focusRoot.querySelectorAll<HTMLElement>('button,input,select,textarea,a[href],[tabindex="0"]')).filter(item => !item.hasAttribute("disabled") && item.tabIndex !== -1 && item.offsetParent !== null);
+      if (!items.length) return;
+      if (!focusRoot.contains(document.activeElement)) { event.preventDefault(); items[0].focus(); }
+      else if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); }
+      else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [requestLeave]);
+  const tabKeys = (event: React.KeyboardEvent) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === "Home" ? "api" : event.key === "End" ? "mcp" : tab === "api" ? "mcp" : "api";
+    requestLeave(next);
+    if (!dirty) panel.current?.querySelector<HTMLButtonElement>(`#ig-n8n-tab-${next}`)?.focus();
+  };
+  return <div className="ig-layer" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) requestLeave("close"); }}>
+    <aside className="ig-panel ig-n8n-panel" ref={panel} role="dialog" aria-modal="true" aria-labelledby="ig-panel-title">
+      <header><span className="ss-provider-mark" data-provider-mark="n8n" aria-hidden>n8n</span><div><h2 id="ig-panel-title">n8n</h2><span>API visibility and Paige tools</span></div><button ref={close} className="ig-close" type="button" aria-label="Close n8n" onClick={() => requestLeave("close")}><X aria-hidden size={16} /></button></header>
+      <div className="ig-n8n-overview"><div className="ig-n8n-summary" aria-label="Independent n8n connection states"><div><span>API connection</span><N8nStateLabel value={n8nApiSummary(a, a.loading, a.error)} /></div><div><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(m, m.loading, m.error)} /></div></div>
+        <div className="ss-segment ig-n8n-tabs" role="tablist" aria-label="n8n connections" onKeyDown={tabKeys}>{(["api", "mcp"] as const).map(value => <button key={value} type="button" id={`ig-n8n-tab-${value}`} role="tab" aria-selected={tab === value} aria-controls={`ig-n8n-panel-${value}`} tabIndex={tab === value ? 0 : -1} disabled={a.saving || m.saving} onClick={() => requestLeave(value)}>{value === "api" ? "API connection" : "Paige tools (MCP)"}</button>)}</div>
+      </div>
+      <div className="ig-panel-body">
+        {savingClose && <div className="ig-confirm-close" role="alertdialog" aria-label="Saving is in progress"><p>Saving is still in progress. Closing will not cancel it.</p><div className="ig-actions"><button type="button" autoFocus className="ig-btn" onClick={onClose}>Close while saving</button><button type="button" className="ig-btn" onClick={() => setSavingClose(false)}>Keep open</button></div></div>}
+        {discardTarget && <div className="ig-confirm-close" role="alertdialog" aria-label="Discard unsaved API details"><p>You have unsaved API details. Discard them {discardTarget === "close" ? "and close" : "and change tabs"}?</p><div className="ig-actions"><button ref={discard} type="button" className="ig-btn" data-danger onClick={() => { const next = discardTarget; setDirty(false); setDiscardTarget(null); setFormEpoch(value => value + 1); if (next === "close") onClose(); else { setTab(next); panel.current?.querySelector<HTMLButtonElement>(`#ig-n8n-tab-${next}`)?.focus(); } }}>Discard changes</button><button type="button" className="ig-btn" onClick={() => { setDiscardTarget(null); panel.current?.querySelector<HTMLInputElement>("input")?.focus(); }}>Keep editing</button></div></div>}
+        {tab === "api" ? <section id="ig-n8n-panel-api" role="tabpanel" aria-labelledby="ig-n8n-tab-api"><N8nPanelBody key={formEpoch} a={a} onDirtyChange={setDirty} onChanged={onChanged} /></section> : <section id="ig-n8n-panel-mcp" role="tabpanel" aria-labelledby="ig-n8n-tab-mcp"><N8nMcpSection m={m} onChanged={onChanged} /></section>}
+      </div>
+      <footer><span>API visibility and Paige tools authorization are separate.</span></footer>
+    </aside>
+  </div>;
+}
+function ProviderPanel(props: { row: ProviderRow; onClose: () => void; onChanged: () => void }) {
+  return props.row.id === "n8n" ? <N8nDrawer onClose={props.onClose} onChanged={props.onChanged} /> : <LegacyProviderPanel {...props} />;
+}
+
+function LegacyProviderPanel({ row, onClose, onChanged }: { row: ProviderRow; onClose: () => void; onChanged: () => void }) {
   // A drawer can hold more than one connection, so unsaved input is tracked per
   // section. Closing is guarded if EITHER has something unsaved — a single shared
   // flag would let one section clear the other's guard and silently discard input.
@@ -814,22 +737,6 @@ function ProviderPanel({ row, onClose, onChanged }: { row: ProviderRow; onClose:
 
         {row.id === "mcp"
           ? <ZapierPanelBody onChanged={onChanged} />
-          : row.connectable
-          ? <>
-              {/* Two connections, one provider. Each is independent: the REST API can
-                  work while the tool bridge does not, and neither implies the other.
-                  They are kept in separate sections so no state reads as shared, and
-                  either section can report its own failure without the other looking
-                  broken. Unsaved input in either one guards the same close. */}
-              <section className="ig-section" aria-labelledby="ig-sec-api">
-                <h3 id="ig-sec-api">n8n API connection</h3>
-                <N8nPanelBody onDirtyChange={setApiDirty} onChanged={onChanged} />
-              </section>
-              <section className="ig-section" aria-labelledby="ig-sec-mcp">
-                <h3 id="ig-sec-mcp">n8n MCP connection</h3>
-                <N8nMcpSection onDirtyChange={setMcpDirty} onChanged={onChanged} />
-              </section>
-            </>
           : <><p className="ig-lede">{row.note}</p>
               <p className="ig-note">Setting this up is not offered here yet, rather than offered and quietly not working.</p></>}
       </div>
@@ -861,64 +768,32 @@ function useIntegrationsLeaf(): [IntegrationsLeaf, (next: IntegrationsLeaf) => v
 }
 
 export function SoloIntegrationsView() {
+  const { activeTenantId, activeUserId, loading: tenantLoading } = useTenantContext();
+  const scopeKey = `${activeUserId ?? ""}:${activeTenantId ?? ""}`;
   const [leaf, setLeaf] = useIntegrationsLeaf();
   const status = useIntegrationStatus();
   const [category, setCategory] = useState<CatalogueCategory>("all");
-  const [open, setOpen] = useState<ProviderRow | null>(null);
-
-  // n8n's card reports its shipped API-key connection; the Zapier card reports the
-  // tenant's Zapier connection. Both are provider-scoped reads.
-  const liveStatus = (id: ProviderIdentity) => id === "n8n" ? status.n8n : id === "mcp" ? (status.mcp.zapier ?? null) : null;
-  const rows = PROVIDERS.filter((row) => category === "all" || row.filter === category);
-
+  const [open, setOpen] = useState<{ row: ProviderRow; scope: string } | null>(null);
+  useEffect(() => { setOpen(null); }, [scopeKey, tenantLoading]);
+  const rows = PROVIDERS.filter(row => category === "all" || row.filter === category);
   const tabs: ReadonlyArray<{ id: IntegrationsLeaf; label: string; Icon: typeof Workflow }> = [
-    { id: "catalogue", label: "Integrations", Icon: Plug },
-    { id: "automations", label: "Automations", Icon: Zap },
+    { id: "catalogue", label: "Integrations", Icon: Plug }, { id: "automations", label: "Automations", Icon: Zap },
   ];
-
   return <div className="ss-integrations">
-    <div className="ss-subtabs" role="tablist" aria-label="Integrations sections">
-      {tabs.map(({ id, label, Icon }) => (
-        <button key={id} type="button" role="tab" className="ss-subtab" aria-selected={leaf === id}
-          onClick={() => setLeaf(id)}>
-          <Icon aria-hidden size={14} />{label}
-        </button>
-      ))}
-    </div>
-
+    <div className="ss-subtabs" role="tablist" aria-label="Integrations sections">{tabs.map(({ id, label, Icon }) => <button key={id} type="button" role="tab" className="ss-subtab" aria-selected={leaf === id} onClick={() => setLeaf(id)}><Icon aria-hidden size={14} />{label}</button>)}</div>
     {leaf === "automations" ? <SoloAutomationsView /> : <>
-      <div className="ig-bar" role="group" aria-label="Filter integrations">
-        {CATALOGUE_FILTERS.map((filter) => (
-          <button key={filter.id} type="button" aria-pressed={category === filter.id} onClick={() => setCategory(filter.id)}>
-            {filter.label}
-          </button>
-        ))}
-      </div>
-
-      {status.loading ? <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Resolving this account…</p>
-        : status.error ? <div className="ig-state" role="alert">
-            <TriangleAlert aria-hidden />
-            <span>Integration status could not be read. No connection state is being claimed for this account.</span>
-            <button type="button" className="ig-btn" onClick={status.retry}>Try again</button>
-          </div>
-        : <ul className="ig-grid">
-            {rows.map((row) => {
-              const live = statusPresentation(liveStatus(row.id));
-              return <li key={row.id}>
-                <button type="button" className="ig-card" data-provider={row.id} data-owner="integrations"
-                  onClick={() => setOpen(row)} aria-haspopup="dialog">
-                  <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id)}</span>
-                  <span className="ig-card-title"><strong>{row.name}</strong><small>{row.kind}</small></span>
-                  <span className="ig-card-state" data-tone={row.connectable || live.truth !== "UNAVAILABLE" ? live.tone : "neutral"}>
-                    <i aria-hidden />{row.connectable ? live.account : "Not available"}
-                  </span>
-                </button>
-              </li>;
-            })}
-          </ul>}
+      <div className="ig-bar" role="group" aria-label="Filter integrations">{CATALOGUE_FILTERS.map(filter => <button key={filter.id} type="button" aria-pressed={category === filter.id} onClick={() => setCategory(filter.id)}>{filter.label}</button>)}</div>
+      {status.loading ? <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Resolving this account…</p> : <>
+        {status.error && <div className="ig-state" role="alert"><TriangleAlert aria-hidden /><span>Some integration status could not be read. Each connection below reports only its own available state.</span><button type="button" className="ig-btn" onClick={() => void status.retry()}>Try again</button></div>}
+        <ul className="ig-grid">{rows.map(row => {
+          const live = statusPresentation(row.id === "mcp" ? status.mcp.zapier ?? null : null);
+          return <li key={row.id}><button type="button" className="ig-card" data-provider={row.id} data-owner="integrations" onClick={() => setOpen({ row, scope: scopeKey })} aria-haspopup="dialog">
+            <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id)}</span><span className="ig-card-title"><strong>{row.name}</strong><small>{row.kind}</small></span>
+            {row.id === "n8n" ? <><span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={n8nApiSummary(status.n8n, false, status.apiError)} /></span><span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(status.mcp.n8n ?? null, false, status.mcpError)} /></span></> : <span className="ig-card-state" data-tone={row.id === "mcp" && status.mcpError ? "neutral" : row.connectable ? live.tone : "neutral"}><i aria-hidden />{row.id === "mcp" && status.mcpError ? "Status unavailable" : row.connectable ? live.account : "Not available"}</span>}
+          </button></li>;
+        })}</ul>
+      </>}
     </>}
-
-    {open && <ProviderPanel row={open} onClose={() => setOpen(null)} onChanged={status.retry} />}
+    {open && !tenantLoading && open.scope === scopeKey && <ProviderPanel key={`${scopeKey}:${open.row.id}`} row={open.row} onClose={() => setOpen(null)} onChanged={status.retry} />}
   </div>;
 }
-

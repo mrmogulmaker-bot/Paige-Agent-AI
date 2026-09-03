@@ -43,6 +43,9 @@ export type McpConnection = {
    */
   serverUrlHost: string | null;
   lastProbedAt: string | null;
+  toolCount: number | null;
+  approvedToolCount: number | null;
+  pinnedCount: number | null;
 };
 
 export type McpState = McpConnection & {
@@ -67,6 +70,7 @@ export type McpDraft = {
 const EMPTY: McpConnection = {
   configured: false, enabled: false, label: null, last4: null,
   status: null, transport: null, authKind: null, serverUrlHost: null, lastProbedAt: null,
+  toolCount: null, approvedToolCount: null, pinnedCount: null,
 };
 
 function readConnection(value: unknown, provider: McpProvider): McpConnection {
@@ -75,6 +79,9 @@ function readConnection(value: unknown, provider: McpProvider): McpConnection {
   if (!row || typeof row !== "object" || Array.isArray(row)) return EMPTY;
   const r = row as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
+  const count = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  const approved = Array.isArray(r.approved_capabilities) && r.approved_capabilities.every((value) => typeof value === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(value))
+    && new Set(r.approved_capabilities).size === r.approved_capabilities.length ? r.approved_capabilities.length : null;
   return {
     configured: r.configured === true,
     enabled: r.enabled === true,
@@ -85,6 +92,9 @@ function readConnection(value: unknown, provider: McpProvider): McpConnection {
     authKind: str(r.auth_kind),
     serverUrlHost: str(r.server_url_host),
     lastProbedAt: str(r.last_probed_at),
+    toolCount: count(r.tool_count),
+    approvedToolCount: approved,
+    pinnedCount: count(r.pinned_count),
   };
 }
 
@@ -129,15 +139,29 @@ export function mcpWriteMessage(code: unknown, kind: "write" | "probe" = "write"
 }
 
 export function useMcpConnection(provider: McpProvider) {
-  const { activeTenantId, loading: tenantLoading } = useTenantContext();
+  const { activeTenantId, activeUserId, loading: tenantLoading } = useTenantContext();
   const gate = useRef(createSettingsRequestGate());
+  const scope = `${activeUserId ?? ""}:${activeTenantId ?? ""}:${provider}:${tenantLoading}`;
+  const scopeRef = useRef(scope);
+  const mounted = useRef(false);
+  const mutation = useRef(0);
+  const pendingMutation = useRef(false);
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  // Mask and invalidate during render, before an effect can expose the old workspace.
+  if (scopeRef.current !== scope) {
+    scopeRef.current = scope;
+    gate.current.clear();
+    mutation.current += 1;
+    pendingMutation.current = false;
+  }
   const [state, setState] = useState<McpState>({
     ...EMPTY, loading: true, error: false, canWrite: false, saving: false, writeError: null,
   });
 
   const load = useCallback(async () => {
+    if (!mounted.current || scopeRef.current !== scope) return;
     const token = gate.current.begin();
-    if (!activeTenantId) {
+    if (!activeTenantId || tenantLoading) {
       setState({ ...EMPTY, loading: false, error: false, canWrite: false, saving: false, writeError: null });
       return;
     }
@@ -146,10 +170,11 @@ export function useMcpConnection(provider: McpProvider) {
       (supabase as any).rpc("get_tenant_mcp_connections"),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).rpc("is_current_user_tenant_admin"),
-    ]);
-    if (!gate.current.isCurrent(token)) return;
+    ]).catch(() => [{ data: null, error: true }, { data: null, error: true }]);
+    if (!mounted.current || scopeRef.current !== scope || !gate.current.isCurrent(token)) return;
+    setLoadedScope(scope);
     if (connections.error) {
-      setState({ ...EMPTY, loading: false, error: true, canWrite: false, saving: false, writeError: null });
+      setState({ ...EMPTY, loading: false, error: true, canWrite: false, saving: pendingMutation.current, writeError: null });
       return;
     }
     setState({
@@ -157,19 +182,26 @@ export function useMcpConnection(provider: McpProvider) {
       loading: false,
       error: false,
       canWrite: admin?.error ? false : admin?.data === true,
-      saving: false,
+      saving: pendingMutation.current,
       writeError: null,
     });
-  }, [activeTenantId, provider]);
+  }, [activeTenantId, provider, scope, tenantLoading]);
 
   useEffect(() => {
+    mounted.current = true;
     const activeGate = gate.current;
     if (!tenantLoading) void load();
-    return () => activeGate.clear();
+    return () => { mounted.current = false; mutation.current += 1; pendingMutation.current = false; activeGate.clear(); };
   }, [load, tenantLoading]);
 
   const invoke = useCallback(async (body: Record<string, unknown>): Promise<boolean> => {
+    if (!activeTenantId || tenantLoading || !mounted.current || scopeRef.current !== scope || loadedScope !== scope || !state.canWrite || pendingMutation.current) return false;
+    pendingMutation.current = true;
+    const request = ++mutation.current;
+    gate.current.clear();
+    const current = () => mounted.current && scopeRef.current === scope && mutation.current === request;
     setState((prev) => ({ ...prev, saving: true, writeError: null }));
+    try {
     // The workspace this request was STARTED for. The server resolves the tenant itself
     // and this grants nothing; it only lets the server refuse if the person switched
     // workspaces between clicking and the request landing, which would otherwise rebind
@@ -184,20 +216,30 @@ export function useMcpConnection(provider: McpProvider) {
     // rather than on `data`. Reading only `data` left `code` undefined for every refusal
     // the RPC actually raises, so a permission failure and a malformed address produced
     // the same generic line.
+    if (!current()) return false;
     const failure = await readFunctionErrorBody(error, data);
+    if (!current()) return false;
     if (error || typeof failure?.error === "string") {
       const code = typeof failure?.code === "string" ? failure.code : undefined;
       setState((prev) => ({ ...prev, saving: false, writeError: mcpWriteMessage(code, "write") }));
       return false;
     }
     const result = data as { status?: string; code?: string };
+    pendingMutation.current = false;
     await load();
+    if (!current()) return false;
     if (result?.status === "error") {
       setState((prev) => ({ ...prev, writeError: mcpWriteMessage(result.code, "probe") }));
       return false;
     }
     return true;
-  }, [activeTenantId, load, provider]);
+    } catch {
+      if (current()) setState((prev) => ({ ...prev, saving: false, writeError: mcpWriteMessage(null) }));
+      return false;
+    } finally {
+      if (current()) { pendingMutation.current = false; setState((prev) => ({ ...prev, saving: false })); }
+    }
+  }, [activeTenantId, load, provider, tenantLoading, scope, loadedScope, state.canWrite]);
 
   /** The credential is an argument here and nowhere else. */
   const connect = useCallback((draft: McpDraft) => invoke({
@@ -231,5 +273,9 @@ export function useMcpConnection(provider: McpProvider) {
 
   const dismissWriteError = useCallback(() => setState((prev) => ({ ...prev, writeError: null })), []);
 
-  return { ...state, connect, connectByUrl, verify, disconnect, reload: load, dismissWriteError };
+  const visible = loadedScope === scope && !tenantLoading ? state : {
+    ...EMPTY, loading: !!activeTenantId || tenantLoading, error: false,
+    canWrite: false, saving: false, writeError: null,
+  };
+  return { ...visible, connect, connectByUrl, verify, disconnect, reload: load, dismissWriteError };
 }

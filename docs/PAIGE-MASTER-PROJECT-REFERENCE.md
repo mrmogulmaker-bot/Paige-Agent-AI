@@ -1227,6 +1227,9 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+### Solo n8n connection clarity — approved UI slice, 2026-09-03
+
+The owner approved separate API connection and Paige tools (MCP) tabs and independent tile/overview states. This UI slice preserves stored credentials and keeps n8n OAuth **BLOCKED / Proof Owed**, with no live OAuth action or bearer substitute. Current API saved status/count/timestamp does not prove fresh health; the UI must not claim it does. No callback, backend credential, tool-authority, workflow execution, Chat or Spine changes are included. Delivery and proof: `docs/delivery/solo-n8n-connection-clarity.md`. Authenticated owner acceptance is recorded separately from automated/build/deployment evidence.
 
 ### Solo Notifications menu retirement — 2026-09-03
 

@@ -1,0 +1,31 @@
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+const h=vi.hoisted(()=>({rpc:vi.fn(),invoke:vi.fn(),tenant:"a",user:"owner",loading:false}));
+vi.mock("@/integrations/supabase/client",()=>({supabase:{rpc:h.rpc,functions:{invoke:h.invoke}}}));
+vi.mock("@/hooks/useTenantContext",()=>({useTenantContext:()=>({activeTenantId:h.tenant,activeUserId:h.user,loading:h.loading})}));
+import { useN8nConnection } from "./useN8nConnection";
+globalThis.IS_REACT_ACT_ENVIRONMENT=true;
+let root:Root|null=null;
+let seen:Array<ReturnType<typeof useN8nConnection>>=[];
+let provider:"n8n"|"zapier"="n8n";
+function Probe(){const state=useN8nConnection();seen.push(state);return null;}
+const latest=()=>seen.at(-1)!;
+const row=(label:string)=>({configured:true,label,status:"connected",base_url:"https://example.test",workflow_count:0,enabled:true,auth_kind:"bearer",tool_count:0,approved_capabilities:[],pinned_count:0});
+const data=(label:string)=>({data:row(label),error:null});
+function deferred(){let resolve!:(v:unknown)=>void;const promise=new Promise<unknown>(r=>resolve=r);return {promise,resolve};}
+async function mount(){h.rpc.mockImplementation((name:string)=>Promise.resolve(name==="get_tenant_n8n_connection"?data("A"):{data:true,error:null}));const host=document.createElement("div");root=createRoot(host);await act(async()=>{root!.render(<Probe/>)});}
+async function rerender(){await act(async()=>{root!.render(<Probe/>)});}
+afterEach(()=>{act(()=>root?.unmount());root=null;seen=[];h.rpc.mockReset();h.invoke.mockReset();h.tenant="a";h.user="owner";h.loading=false;provider="n8n";});
+describe("useN8nConnection workspace lifecycle",()=>{
+ it("masks old records on the first render of a new workspace",async()=>{await mount();expect(latest().label).toBe("A");const pending=deferred();h.rpc.mockImplementation((name:string)=>name==="get_tenant_n8n_connection"?pending.promise:Promise.resolve({data:true}));const from=seen.length;h.tenant="b";await rerender();expect(seen.slice(from).every(s=>s.label===null&&!s.canWrite)).toBe(true);await act(async()=>pending.resolve(data("B")));expect(latest().label).toBe("B");});
+ it("stale reload cannot invalidate the new workspace read",async()=>{await mount();const stale=latest().reload;const pending=deferred();h.rpc.mockImplementation((name:string)=>name==="get_tenant_n8n_connection"?pending.promise:Promise.resolve({data:true}));h.tenant="b";await rerender();await act(async()=>stale());await act(async()=>pending.resolve(data("B")));expect(latest().label).toBe("B");expect(latest().loading).toBe(false);});
+ it("ignores an older overlapping read in the same workspace",async()=>{await mount();const first=deferred(),second=deferred();let reads=0;h.rpc.mockImplementation((name:string)=>name==="get_tenant_n8n_connection"?(reads++===0?first.promise:second.promise):Promise.resolve({data:true}));let a!:Promise<void>,b!:Promise<void>;act(()=>{a=latest().reload();b=latest().reload()});await act(async()=>{second.resolve(data("new"));await b});await act(async()=>{first.resolve(data("old"));await a});expect(latest().label).toBe("new");});
+ it("masks state while tenant identity loads and when the user changes",async()=>{await mount();const pending=deferred();h.rpc.mockImplementation(()=>pending.promise);h.loading=true;await rerender();expect(latest().label).toBeNull();expect(latest().canWrite).toBe(false);h.loading=false;h.user="other";await rerender();expect(latest().label).toBeNull();});
+ it("ignores stale mutation failure after a workspace switch",async()=>{await mount();const pending=deferred();h.rpc.mockImplementation((name:string)=>name==="clear_tenant_n8n_connection"?pending.promise:Promise.resolve(name==="get_tenant_n8n_connection"?data("B"):{data:true}));let write!:Promise<boolean>;act(()=>{write=latest().disconnect()});h.tenant="b";await rerender();const reads=h.rpc.mock.calls.length;await act(async()=>{pending.resolve({error:{message:"private-provider-payload"}});expect(await write).toBe(false)});expect(latest().writeError).toBeNull();expect(h.rpc.mock.calls.length).toBe(reads);});
+ it("refresh preserves pending writes and duplicate submissions are refused",async()=>{await mount();const pending=deferred();h.rpc.mockImplementation((name:string)=>name==="clear_tenant_n8n_connection"?pending.promise:Promise.resolve(name==="get_tenant_n8n_connection"?data("A"):{data:true}));let write!:Promise<boolean>;act(()=>{write=latest().disconnect()});await act(async()=>latest().reload());expect(latest().saving).toBe(true);await act(async()=>{expect(await latest().disconnect()).toBe(false)});await act(async()=>{pending.resolve({data:{ok:true},error:null});expect(await write).toBe(true)});expect(latest().saving).toBe(false);});
+ it("does not reload or succeed after mutation completion on an unmounted hook",async()=>{await mount();const pending=deferred();h.rpc.mockImplementation((name:string)=>name==="clear_tenant_n8n_connection"?pending.promise:Promise.resolve(name==="get_tenant_n8n_connection"?data("B"):{data:true}));let write!:Promise<boolean>;act(()=>{write=latest().disconnect()});act(()=>root!.unmount());root=null;const reads=h.rpc.mock.calls.length;pending.resolve({data:{ok:true},error:null});expect(await write).toBe(false);expect(h.rpc.mock.calls.length).toBe(reads);});
+ it("turns rejected reads into safe unavailable state",async()=>{await mount();h.rpc.mockRejectedValue(new Error("provider-secret"));await act(async()=>latest().reload());expect(latest().error).toBe(true);expect(latest().label).toBeNull();expect(JSON.stringify(latest())).not.toContain("provider-secret");});
+ it("binds API writes to the existing tenant parameter without retaining the key",async()=>{await mount();await act(async()=>{expect(await latest().connect({baseUrl:"https://example.test",apiKey:"write-only-secret",label:"Instance"})).toBe(true)});expect(h.rpc).toHaveBeenCalledWith("set_tenant_n8n_connection",{_tenant_id:"a",_base_url:"https://example.test",_api_key:"write-only-secret",_label:"Instance"});expect(JSON.stringify(latest())).not.toContain("write-only-secret");await act(async()=>latest().disconnect());expect(h.rpc).toHaveBeenCalledWith("clear_tenant_n8n_connection",{_tenant_id:"a"});});
+
+});
