@@ -45,7 +45,7 @@ import {
 } from "./settings-contract";
 import { settingsScrollOwner, SETTINGS_SCROLLBAR_SHOWN, settingsDestinationShowsScrollbar } from "./settings-scroll-owner";
 import { CalendarsView } from "./connections-calendars";
-import { SoloSetupView } from "./settings-setup";
+import { SoloBusinessContextSetup } from "./SoloBusinessContextSetup";
 import "./settings.css";
 
 function Truth({ value, capability = false }: { value: SettingsTruth; capability?: boolean }) {
@@ -1591,7 +1591,7 @@ export function SoloSettings({ openPaige }: { openPaige?: () => void } = {}) {
     resetSettingsScroll();
   }, [tab, segment, resetSettingsScroll]);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
-  const view = tab === "team" ? <TeamView openPaige={openPaige}/> : tab === "connections" ? <ConnectionsView initialSegment={segment} onSegmentChange={resetSettingsScroll}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SoloSetupView account={account}/>;
+  const view = tab === "team" ? <TeamView openPaige={openPaige}/> : tab === "connections" ? <ConnectionsView initialSegment={segment} onSegmentChange={resetSettingsScroll}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SoloBusinessContextSetup account={account}/>;
   return <div ref={rootRef} className="solo-settings">
     <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "setup" ? "The owner-confirmed business truth Paige may use to understand and support this workspace." : current.key === "connections" ? "Communications owns whether a message can send. Calendars owns scheduling, links, routing and notification rules." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}
