@@ -7566,6 +7566,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       const executeToolCalls = async (toolCalls: any[], queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }>) => {
       const toolResults: any[] = [];
       const executed: any[] = [];
+      // auth.uid() is constant for the whole request, so the CRM workspace binding below
+      // resolves the caller's own workspace ONCE per round rather than per tool call.
+      let callerOwnTenantMemo: { tenant: string | null; failed: boolean } | null = null;
       for (const tc of toolCalls) {
         if (!tc || !tc.function?.name) continue;
         // Actual dispatch boundary: the account may change after the model round was
@@ -9009,9 +9012,32 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // This only ever NARROWS: the global admin/coach requirement above still applies, and
             // this adds the workspace binding on top.
             if (CRM_SERVICE_TOOLS.has(tc.function.name)) {
-              const { data: callerOwnTenant, error: callerTenantErr } = await supabase.rpc(
-                "current_user_tenant_id",
-              );
+              // THE USER-SCOPED CLIENT, NOT THE SERVICE ONE. current_user_tenant_id() is keyed
+              // entirely on auth.uid(); `supabase` (L589) is the SERVICE-ROLE client, where
+              // auth.uid() is NULL — so calling it there resolves NULL for everyone and refuses
+              // every caller. That is what the first push of this PR did: a total outage of all
+              // nine tools for all nine active operators, caught by the peer-gate. `supabaseClient`
+              // (L577) carries the caller's Authorization header, and is the same client the
+              // persona RPC this comparand is measured against is called on (L1571).
+              if (callerOwnTenantMemo === null) {
+                const { data: ownTenant, error: ownTenantErr } = await supabaseClient.rpc(
+                  "current_user_tenant_id",
+                );
+                if (ownTenantErr) {
+                  // LOUD, not swallowed (§32): a failed check and a genuine mismatch are different
+                  // things and must not report the same cause (§13).
+                  console.error(
+                    "[paige] CRM workspace binding check FAILED:",
+                    ownTenantErr.message,
+                  );
+                }
+                callerOwnTenantMemo = {
+                  tenant: (ownTenant as string | null) ?? null,
+                  failed: !!ownTenantErr,
+                };
+              }
+              const callerOwnTenant = callerOwnTenantMemo.tenant;
+              const callerTenantErr = callerOwnTenantMemo.failed;
               // Fail CLOSED: if we cannot establish the caller's own workspace, we cannot establish
               // that it is the conversation's, and these handlers bypass RLS.
               if (callerTenantErr || !callerOwnTenant || callerOwnTenant !== crmTenantId) {
@@ -9020,7 +9046,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   role: "tool",
                   content: JSON.stringify({
                     success: false,
-                    error: "workspace_mismatch",
+                    // Distinct codes: the model must not tell an operator their workspace did not
+                    // match when the truth is that the check itself could not run.
+                    error: callerTenantErr ? "workspace_check_failed" : "workspace_mismatch",
                   }),
                 });
                 continue;
