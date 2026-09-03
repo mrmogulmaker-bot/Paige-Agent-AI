@@ -461,13 +461,6 @@ function destructiveCall(node) {
   return found;
 }
 
-/** A `z.literal(...)` argument that is, or contains, a boolean keyword. */
-function literalAdmitsBoolean(arg) {
-  if (arg.kind === ts.SyntaxKind.TrueKeyword || arg.kind === ts.SyntaxKind.FalseKeyword) return true;
-  if (ts.isArrayLiteralExpression(arg)) return arg.elements.some(literalAdmitsBoolean);
-  return false;
-}
-
 /**
  * Is this builder call the type of a FIELD, rather than a type argument inside a container?
  *
@@ -678,13 +671,45 @@ function shapeFields(schemaNode) {
 }
 
 function collectShapeFields(objectLiteral, out) {
-  for (const prop of objectLiteral.properties) {
-    if (ts.isPropertyAssignment(prop)) { out.push(prop); continue; }
-    if (ts.isSpreadAssignment(prop)) {
-      const inner = unwrapValue(prop.expression);
-      if (inner && ts.isObjectLiteralExpression(inner)) collectShapeFields(inner, out);
+  // One object literal, resolved the way JavaScript resolves it: LAST WRITE WINS per key, with an
+  // inline spread contributing its keys at the position it appears. Keeping every definition made
+  // `z.object({ ...{ confirm: z.boolean() }, confirm: z.string() })` report a boolean field that
+  // does not exist at runtime — a false CI failure on a schema that rejects `true`.
+  //
+  // Scope is deliberate: this applies WITHIN one object literal, where the ordering is a language
+  // rule and unambiguous. Definitions from separate builder calls (`z.object({…}).extend({…})`)
+  // are still unioned, because `walkValues` does not guarantee source order across them and a
+  // guessed order that dropped a real boolean would fail OPEN. Over-reporting across builders is
+  // the safe side of that; over-reporting within one literal was not, because it is decidable.
+  const byName = new Map();
+  const unreadable = [];   // a computed or unresolvable key never removes a key it might not be
+
+  const visit = (obj) => {
+    for (const prop of obj.properties) {
+      if (ts.isSpreadAssignment(prop)) {
+        const inner = unwrapValue(prop.expression);
+        if (inner && ts.isObjectLiteralExpression(inner)) visit(inner);
+        continue;   // an opaque spread is caught by the completeness check, not here
+      }
+      if (!ts.isPropertyAssignment(prop)) continue;
+      const name = staticPropertyName(prop.name);
+      if (name === null) { unreadable.push(prop); continue; }
+      byName.delete(name);        // re-insert so the surviving entry is the LAST one written
+      byName.set(name, prop);
     }
-  }
+  };
+  visit(objectLiteral);
+
+  for (const prop of byName.values()) out.push(prop);
+  for (const prop of unreadable) out.push(prop);
+}
+
+/** A property key readable at parse time, or null when it is computed/unresolvable. */
+function staticPropertyName(name) {
+  if (!name) return null;
+  if (ts.isIdentifier(name) || ts.isPrivateIdentifier(name)) return name.text;
+  if (ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) return name.text;
+  return null;
 }
 
 /**
@@ -1003,6 +1028,17 @@ mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
     ["a field arriving via an inline spread", `z.object({ ...{ confirm: z.boolean() } })`],
   ]) check(`REFUSES ${label}`, v(`
 mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
+  // Codex on f2c17fe4: keeping BOTH definitions of a spread-then-overwritten key reported a boolean
+  // field that does not exist at runtime. Last write wins WITHIN one object literal — and the
+  // reversed order must still be caught, which is what stops the fix from becoming a fail-open.
+  check("ADMITS a spread boolean that is overwritten by a non-boolean", v(`
+mcp.tool("t", { inputSchema: z.object({ ...{ confirm: z.boolean() }, confirm: z.string() }), ${SAFE_H2} });`), 0);
+  check("REFUSES a non-boolean that is overwritten BY a spread boolean", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.string(), ...{ confirm: z.boolean() } }), ${DESTRUCTIVE} });`), 1);
+  check("REFUSES a quoted key overwritten by an identifier key of the same name", v(`
+mcp.tool("t", { inputSchema: z.object({ "confirm": z.string(), confirm: z.boolean() }), ${DESTRUCTIVE} });`), 1);
+  check("a COMPUTED key never cancels a readable boolean", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean(), [k]: z.string() }), ${DESTRUCTIVE} });`), 1);
   for (const m of ["date", "time", "datetime", "duration"]) {
     check(`ADMITS z.iso.${m}()`, v(`
 mcp.tool("t", { inputSchema: z.object({ t: z.iso.${m}(), id: z.string() }), ${SAFE_H2} });`), 0);
