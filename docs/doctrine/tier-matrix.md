@@ -3218,6 +3218,6 @@ prod to test with. It is a forward-looking guard for the first member or client 
 `website_connected` and one `comms_configured` phone half from pass to fail. True under the
 source-of-truth rule; surfaced for an owner decision rather than absorbed.
 
-### Sales agreement schedule detail (release candidate, 2026-09-03)
+### Sales agreement schedule detail (2026-09-03, PR #895)
 
 Solo Sales shows recorded start/renewal/end calendar dates without timezone day shifts. Recurring renewal absence is Not stated; non-recurring is Not applicable. The Slice 2 read/write authority matrix remains unchanged; no shared tier code, policy, writer or schema changes. See `docs/delivery/solo-sales-agreement-schedule.md`. Authenticated production and viewport proof owed.

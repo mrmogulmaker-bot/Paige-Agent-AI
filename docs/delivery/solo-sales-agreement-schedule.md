@@ -1,6 +1,6 @@
 # Solo Sales agreement schedule clarity
 
-Status: release candidate; authenticated production proof owed.
+Status: implemented in PR #895; authenticated production proof owed. Deployment evidence is recorded on that PR.
 
 ## Intended outcome and scope
 
