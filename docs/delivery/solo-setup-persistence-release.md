@@ -3,7 +3,7 @@
 ## 2026-09-03 continuation — approved business-context replacement
 
 The sections below document the earlier persistence repair, **not proof of the expanded candidate**.
-The current candidate is on `codex/solo-setup-business-context-approved`; it is uncommitted and
+The current candidate is on `codex/solo-setup-business-context-approved`; it is committed and
 not deployed at this checkpoint. The owner's approved design is the canonical five-subtab Setup
 surface for every top-level Solo tenant: Business profile, People & email, Knowledge bucket,
 Direction, and Paige brief. The expanded guided Paige brief replaces only the old brief area.
@@ -22,9 +22,34 @@ not create new approval gates. A released candidate without owner proof remains 
 
 Managed-email registration cannot be implemented correctly by updating Setup's registry alone.
 The shared sender lifecycle rebuilds the actual connector from the tenant slug. A scoped exception
-is requested in `docs/handoff/solo-setup-managed-email-exception.md`; until that decision the
-candidate explicitly refuses registration without writing a divergent identity. This is an
-incomplete part of the requested owner flow, not a claim of completion.
+was explicitly approved on 2026-09-03 in `docs/handoff/solo-setup-managed-email-exception.md`.
+The forward lifecycle migration now atomically registers the identity and connector for opted-in
+top-level Solo tenants. All other tiers retain their existing behavior. The adapter requires a
+matching tenant-bound readback before showing registration success; disabled identities fail closed.
+
+### Latest checkpoint (supersedes the earlier candidate counts below)
+
+- Current main `93a21831c1dfeef96e34760c2b0129f188830100` was reconciled in merge `3784c26a`.
+  Main's new Billing view stays intact; this branch changes only the Setup import/mount there.
+- Automated: 92 focused Setup tests across 11 files pass. Independent managed-email UI/adapter
+  verification covers 37 tests, including mismatched responses, readback, retry, account switching,
+  first use, duplicate mutation refusal and preservation of dirty brief state.
+- Full local suite: 2,371 passed / 3 failed. Two failures are unchanged Windows portability tests
+  (`grep` dependency and slash normalization); the unchanged Clients layout test passed its 37-test
+  isolated rerun. Hosted Linux CI remains the release gate; these failures are not hidden.
+- Build exits 0. Type ratchet passes (13 inherited errors, no new errors). Scoped ESLint,
+  migration-version, definer-grant and three-migration lint checks pass. The migration INSERT/SELECT
+  warning is reviewed: tenant id/name are guarded and name is coalesced to a non-null fallback.
+- Real isolated PostgreSQL: 14 sender/lifecycle/access cases PASS at
+  `outputs/solo-setup-db-proof/run-eLT718/proof.json`; the test cluster was stopped. The independent
+  harness applies all three new migrations and uses real extracted authorization/resolver/helper
+  functions with synthetic dependency tables, not a full production clone or authenticated browser.
+- Source review fixed the missing-tenant FOUND check, disabled-identity synchronization, exact
+  availability matching and durable registration readback. No Team or provider activation occurs.
+- Browser connector fails before initialization with a Windows sandbox ACL error. Authenticated
+  runtime proof remains OWED. A structural fallback and additional supplemental persistence proof
+  are being attempted; neither is claimed here as completed.
+- Nothing is yet merged or deployed. Knowledge/voice storage is not PAIGE/Mind/Spine/Rail ingestion.
 
 ### Review repairs and evidence separation
 

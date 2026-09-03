@@ -235,7 +235,10 @@ export function validateKnowledgeSource(source: SetupKnowledgeSource) {
 
 export function validateManagedEmailLocalPart(value: string) {
   const cleaned = value.trim().toLowerCase();
-  if (!/^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/.test(cleaned)) {
+  if (
+    !/^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/.test(cleaned) ||
+    cleaned.includes("..")
+  ) {
     return "Use 1–64 lowercase letters, numbers, periods, underscores, or hyphens.";
   }
   return null;

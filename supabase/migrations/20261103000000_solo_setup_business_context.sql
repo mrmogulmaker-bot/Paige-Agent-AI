@@ -101,6 +101,11 @@ begin
 end $$;
 revoke all on function public.solo_setup_lock_expected_tenant(uuid) from public,anon,authenticated;
 
+-- The following forward migration enables this only after sender synchronization exists.
+create or replace function public.solo_setup_managed_email_registration_ready()
+returns boolean language sql stable set search_path=public as $$ select false $$;
+revoke all on function public.solo_setup_managed_email_registration_ready() from public,anon,authenticated;
+
 create or replace function public.get_solo_business_context()
 returns jsonb language plpgsql stable security definer set search_path=public as $$
 declare
@@ -133,7 +138,7 @@ begin
       'localPart',coalesce(v_managed_local,''),
       'domain',v_managed_domain,
       'address',case when v_managed_local is null then '' else v_managed_local||'@'||v_managed_domain end,
-      'registrationAvailable',false
+      'registrationAvailable',public.solo_setup_managed_email_registration_ready()
     )
   );
 end $$;

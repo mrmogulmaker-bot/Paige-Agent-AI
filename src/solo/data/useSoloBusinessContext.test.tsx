@@ -49,6 +49,13 @@ const loaded = (tenantId = "tenant-a", accessScope = "owner_full") => ({
     accessScope,
     contextRevision: 4,
     primaryBusinessEmail: "business@example.com",
+    managedEmail: {
+      registrationAvailable: true,
+      available: null,
+      localPart: "old-business",
+      domain: "mail.example.com",
+      address: "old-business@mail.example.com",
+    },
   },
   error: null,
 });
@@ -251,9 +258,25 @@ describe("Solo business context data boundary", () => {
       .mockResolvedValueOnce(loaded())
       .mockResolvedValueOnce({
         data: {
+          registered: true,
+          registrationAvailable: true,
+          available: true,
           address: "business@mail.example.com",
           localPart: "business",
           domain: "mail.example.com",
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          ...loaded().data,
+          managedEmail: {
+            registrationAvailable: true,
+            available: null,
+            localPart: "business",
+            domain: "mail.example.com",
+            address: "business@mail.example.com",
+          },
         },
         error: null,
       })
@@ -263,7 +286,7 @@ describe("Solo business context data boundary", () => {
     await act(async () => {
       await latest.registerManagedEmail("business");
     });
-    expect(state.rpc).toHaveBeenLastCalledWith(
+    expect(state.rpc).toHaveBeenCalledWith(
       "register_solo_setup_managed_email",
       { _expected_tenant_id: "tenant-a", _local_part: "business" },
     );
@@ -277,6 +300,332 @@ describe("Solo business context data boundary", () => {
     await act(async () => root.unmount());
   });
 
+  it.each([
+    {
+      registered: false,
+      registrationAvailable: true,
+      available: true,
+      localPart: "business",
+      domain: "mail.example.com",
+      address: "business@mail.example.com",
+    },
+    {
+      registered: true,
+      registrationAvailable: true,
+      available: true,
+      localPart: "different",
+      domain: "mail.example.com",
+      address: "different@mail.example.com",
+    },
+    {
+      registered: true,
+      registrationAvailable: true,
+      available: true,
+      localPart: "business",
+      domain: "wrong.example.com",
+      address: "business@wrong.example.com",
+    },
+  ])(
+    "rejects an unverified or mismatched registration response %#",
+    async (response) => {
+      state.rpc
+        .mockResolvedValueOnce(loaded())
+        .mockResolvedValueOnce({ data: response, error: null });
+      const root = createRoot(document.createElement("div"));
+      await act(async () => root.render(<Probe />));
+      await act(async () => {
+        await expect(latest.registerManagedEmail("business")).rejects.toThrow();
+      });
+      expect(latest.managedEmail?.address).toBe(
+        "old-business@mail.example.com",
+      );
+      expect(latest.saving).toBe(false);
+      await act(async () => root.unmount());
+    },
+  );
+  it("reads back the registered sender without replacing the brief or its conflict revision", async () => {
+    let loads = 0;
+    state.rpc.mockImplementation(async (name: string) => {
+      if (name === "get_solo_business_context") {
+        loads += 1;
+        return loads === 1
+          ? loaded()
+          : {
+              data: {
+                ...loaded().data,
+                brief: { publicName: "Newer other-session brief" },
+                contextRevision: 99,
+                managedEmail: {
+                  registrationAvailable: true,
+                  available: null,
+                  localPart: "business",
+                  domain: "mail.example.com",
+                  address: "business@mail.example.com",
+                },
+              },
+              error: null,
+            };
+      }
+      if (name === "register_solo_setup_managed_email")
+        return {
+          data: {
+            registered: true,
+            registrationAvailable: true,
+            available: true,
+            localPart: "business",
+            domain: "mail.example.com",
+            address: "business@mail.example.com",
+          },
+          error: null,
+        };
+      return { data: null, error: { code: "40001" } };
+    });
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe />));
+    const initial = latest.brief;
+    await act(async () => {
+      await latest.registerManagedEmail("business");
+    });
+    expect(loads).toBe(2);
+    expect(latest.managedEmail).toMatchObject({
+      registrationAvailable: true,
+      address: "business@mail.example.com",
+    });
+    expect(latest.brief).toBe(initial);
+    await act(async () => {
+      expect(await latest.save(currentDraft())).toMatchObject({
+        ok: false,
+        kind: "conflict",
+      });
+    });
+    expect(state.rpc).toHaveBeenLastCalledWith(
+      "save_solo_business_context",
+      expect.objectContaining({ _expected_context_revision: 4 }),
+    );
+    await act(async () => root.unmount());
+  });
+  it("does not call registration successful when durable readback still resolves the old sender", async () => {
+    state.rpc
+      .mockResolvedValueOnce(loaded())
+      .mockResolvedValueOnce({
+        data: {
+          registered: true,
+          registrationAvailable: true,
+          available: true,
+          localPart: "business",
+          domain: "mail.example.com",
+          address: "business@mail.example.com",
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce(loaded());
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe />));
+    await act(async () => {
+      await expect(latest.registerManagedEmail("business")).rejects.toThrow();
+    });
+    expect(latest.managedEmail?.address).toBe("old-business@mail.example.com");
+    await act(async () => root.unmount());
+  });
+  it("releases failed registration for retry and refuses duplicate concurrent mutations", async () => {
+    let finish!: (value: unknown) => void;
+    state.rpc
+      .mockResolvedValueOnce(loaded())
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          code: "23505",
+          message: "private conflicting connector detail",
+        },
+      });
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe />));
+    let request!: Promise<unknown>;
+    await act(async () => {
+      request = latest.registerManagedEmail("business").catch((error) => error);
+      await expect(latest.registerManagedEmail("other")).rejects.toThrow(
+        "not available",
+      );
+      expect(await latest.save(currentDraft())).toMatchObject({ ok: false });
+    });
+    expect(state.rpc).toHaveBeenCalledTimes(2);
+    expect(latest.saving).toBe(true);
+    await act(async () => {
+      finish({
+        data: null,
+        error: { code: "XX000", message: "private endpoint detail" },
+      });
+      expect(((await request) as Error).message).not.toContain("private");
+    });
+    expect(latest.saving).toBe(false);
+    await act(async () => {
+      await expect(latest.registerManagedEmail("other")).rejects.toThrow(
+        "no longer available",
+      );
+    });
+    expect(state.rpc).toHaveBeenCalledTimes(3);
+    await act(async () => root.unmount());
+  });
+  it("rejects delayed managed-email availability after an account switch", async () => {
+    let finish!: (value: unknown) => void;
+    state.rpc
+      .mockResolvedValueOnce(loaded())
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(loaded("tenant-b"));
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe />));
+    let request!: Promise<unknown>;
+    await act(async () => {
+      request = latest.checkManagedEmail("business").catch((error) => error);
+    });
+    state.tenantId = "tenant-b";
+    await act(async () => root.render(<Probe />));
+    await act(async () => {
+      finish({
+        data: { available: true, address: "business@mail.example.com" },
+        error: null,
+      });
+      expect(await request).toBeInstanceOf(Error);
+    });
+    expect(latest.brief.publicName).toBe("tenant-b");
+    await act(async () => root.unmount());
+  });
+  it("drops a delayed managed registration and stale callback after account switch", async () => {
+    let finish!: (value: unknown) => void;
+    state.rpc
+      .mockResolvedValueOnce(loaded())
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(loaded("tenant-b"));
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe />));
+    const oldRegister = latest.registerManagedEmail;
+    let request!: Promise<unknown>;
+    await act(async () => {
+      request = oldRegister("business").catch((error) => error);
+    });
+    state.tenantId = "tenant-b";
+    await act(async () => root.render(<Probe />));
+    await act(async () => {
+      finish({
+        data: {
+          registered: true,
+          registrationAvailable: true,
+          available: true,
+          localPart: "business",
+          domain: "mail.example.com",
+          address: "business@mail.example.com",
+        },
+        error: null,
+      });
+      expect(await request).toBeInstanceOf(Error);
+      await expect(oldRegister("other")).rejects.toThrow("not available");
+    });
+    expect(latest.brief.publicName).toBe("tenant-b");
+    expect(latest.managedEmail?.address).toBe("old-business@mail.example.com");
+    expect(state.rpc).toHaveBeenCalledTimes(3);
+    await act(async () => root.unmount());
+  });
+  it("supports first-use registration when no sender address has been assigned yet", async () => {
+    const identity = {
+      registrationAvailable: true,
+      available: true,
+      localPart: "first-business",
+      domain: "mail.example.com",
+      address: "first-business@mail.example.com",
+    };
+    state.rpc
+      .mockResolvedValueOnce({
+        data: {
+          ...loaded().data,
+          managedEmail: {
+            registrationAvailable: true,
+            available: null,
+            localPart: "",
+            domain: "mail.example.com",
+            address: "",
+          },
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { ...identity, registered: true },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { ...loaded().data, managedEmail: identity },
+        error: null,
+      });
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe />));
+    expect(latest.managedEmail).toMatchObject({
+      registrationAvailable: true,
+      address: "",
+    });
+    await act(async () => {
+      expect(await latest.registerManagedEmail("first-business")).toMatchObject(
+        identity,
+      );
+    });
+    expect(latest.managedEmail?.address).toBe(identity.address);
+    await act(async () => root.unmount());
+  });
+  it("does not apply verified readback after the owner switches accounts during verification", async () => {
+    const identity = {
+      registered: true,
+      registrationAvailable: true,
+      available: true,
+      localPart: "business",
+      domain: "mail.example.com",
+      address: "business@mail.example.com",
+    };
+    let finishReadback!: (value: unknown) => void;
+    state.rpc
+      .mockResolvedValueOnce(loaded())
+      .mockResolvedValueOnce({ data: identity, error: null })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishReadback = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(loaded("tenant-b"));
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe />));
+    let request!: Promise<unknown>;
+    await act(async () => {
+      request = latest.registerManagedEmail("business").catch((error) => error);
+    });
+    expect(latest.saving).toBe(true);
+    state.tenantId = "tenant-b";
+    await act(async () => root.render(<Probe />));
+    await act(async () => {
+      finishReadback({
+        data: { ...loaded().data, managedEmail: identity },
+        error: null,
+      });
+      expect(await request).toBeInstanceOf(Error);
+    });
+    expect(latest.managedEmail?.address).toBe("old-business@mail.example.com");
+    expect(latest.brief.publicName).toBe("tenant-b");
+    expect(latest.saving).toBe(false);
+    await act(async () => root.unmount());
+  });
   it("refuses Member mutations without making a write request", async () => {
     state.rpc.mockResolvedValue(loaded("tenant-a", "read_only"));
     const root = createRoot(document.createElement("div"));

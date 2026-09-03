@@ -77,7 +77,7 @@ function proposalOf(value: unknown): SoloSetupProposal | null {
 
 function managedEmailOf(value: unknown): ManagedEmailIdentity | null {
   const row = objectOf(value);
-  if (typeof row.address !== "string" || !row.address) return null;
+  if (typeof row.address !== "string") return null;
   return {
     localPart:
       typeof row.localPart === "string"
@@ -432,18 +432,51 @@ export function useSoloBusinessContext() {
             "The account changed before registration completed. Reload Setup before continuing.",
           );
         const value = managedEmailOf(data);
-        if (!value)
+        const requestedLocal = localPart.trim().toLowerCase();
+        if (
+          !value ||
+          objectOf(data).registered !== true ||
+          value.localPart !== requestedLocal ||
+          !value.domain ||
+          value.address !== `${requestedLocal}@${value.domain}` ||
+          (managedEmail?.domain && value.domain !== managedEmail.domain)
+        )
           throw new Error(
             "Registration did not return a verified identity. Reload before retrying.",
           );
-        setManagedEmail(value);
-        return value;
+        const { data: stored, error: readError } = await setupRpc(
+          "get_solo_business_context",
+          {},
+        );
+        if (
+          activeTenantRef.current !== tenantAtStart ||
+          epoch !== saveEpoch.current
+        )
+          throw new Error(
+            "The workspace changed. Reload Setup before continuing.",
+          );
+        const storedRow = objectOf(Array.isArray(stored) ? stored[0] : stored);
+        const verified = managedEmailOf(storedRow.managedEmail);
+        if (
+          readError ||
+          storedRow.tenantId !== tenantAtStart ||
+          !verified ||
+          verified.address !== value.address ||
+          verified.localPart !== requestedLocal ||
+          verified.domain !== value.domain
+        )
+          throw new Error(
+            "Registration could not be verified after saving. Reload or retry before using this address.",
+          );
+        // Do not refresh the brief/revision underneath a separate unsaved draft.
+        setManagedEmail(verified);
+        return verified;
       } finally {
         if (mutation.current?.epoch === epoch) mutation.current = null;
         if (saveEpoch.current === epoch) setSaving(false);
       }
     },
-    [activeTenantId, canEdit, accessScope],
+    [activeTenantId, canEdit, accessScope, managedEmail?.domain],
   );
 
   const searchNaics = useCallback(

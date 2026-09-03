@@ -2458,7 +2458,9 @@ function EmailEditor({
       const result = await check(local);
       if (epoch !== checkEpoch.current) return;
       setStatus(
-        result?.available
+        result?.available &&
+          result.address.toLowerCase() ===
+            `${local.trim().toLowerCase()}@${domain.toLowerCase()}`
           ? { tone: "ok", text: `${result.address} is available.` }
           : { tone: "bad", text: "That address is not available." },
       );
@@ -2476,11 +2478,12 @@ function EmailEditor({
     setBusy(true);
     try {
       await register(local);
-      setRegistered(local);
+      setRegistered(local.trim().toLowerCase());
+      setLocal(local.trim().toLowerCase());
       onDirtyChange(false);
       setStatus({
         tone: "ok",
-        text: `${local.toLowerCase()}@${domain} is registered to this workspace.`,
+        text: `${local.trim().toLowerCase()}@${domain} is registered to this workspace.`,
       });
     } catch (error) {
       setStatus({

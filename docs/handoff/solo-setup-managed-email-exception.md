@@ -1,6 +1,7 @@
 # Solo Setup managed-email lifecycle exception
 
-Status: scoped authority required; not a release approval gate. Recorded 2026-09-03.
+Status: scoped authority APPROVED by the owner ("Yes, absolutely, by the way.") on 2026-09-03.
+Implementation and independent runtime checks are in progress; this is not production proof.
 
 ## Owner outcome
 
@@ -16,11 +17,12 @@ once is insufficient: the tenant lifecycle reruns `provision_paige_managed_email
 which reconstructs the address from the slug/name. Availability must also protect existing inbound
 and outbound connector addresses and platform-reserved addresses, not just registry entries.
 
-The candidate therefore refuses registration without writing anything and returns
-`registrationAvailable:false`. This is an incomplete owner outcome, not an implemented registration
-feature. No deployment or production mutation has occurred in this continuation.
+The base migration refuses registration until the forward lifecycle migration enables it.
+Registration atomically updates the registry, private opt-in marker and actual managed connector.
+The Solo adapter requires a matching durable readback before reporting success and leaves any
+unsaved brief and its revision untouched. No deployment or production mutation has occurred yet.
 
-## Exact exception requested
+## Exact exception approved
 
 Add `supabase/migrations/20261104000000_solo_managed_sender_lifecycle.sql` to amend
 `public.provision_paige_managed_email_connector(uuid)` and complete the Setup-only registration
@@ -58,7 +60,10 @@ be verified before implementation, not inferred from the function name.
 
 ## Collision evidence
 
-Current main fetched: `3b666d4e98c528458555e21673a8bc72ea02d420`.
+Current main reconciled: `93a21831c1dfeef96e34760c2b0129f188830100` (merge `3784c26a`).
+The merge preserves main's `SoloBillingView` and changes only the Setup mount.
+Fresh checks of PRs #847, #846, #724, #674, #312 and #731 find no managed-helper collision.
+The known `settings.tsx` overlaps remain separate: only Setup's import/mount is changed here.
 All 30 currently open GitHub PR file lists were checked by the database reviewer; no direct
 managed-email helper/path collision found. Historical unmerged helper commits exist on
 `origin/agent/tenant-wildcards-landing-rings`, `origin/claude/p1-subaccount-owner-leak`, and

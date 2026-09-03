@@ -13,6 +13,9 @@ const state = vi.hoisted(() => ({
   save: vi.fn(),
   refresh: vi.fn(),
   confirm: vi.fn(),
+  registrationAvailable: false,
+  checkEmail: vi.fn(),
+  registerEmail: vi.fn(),
   brief: null as unknown as ReturnType<typeof cleanSoloSetupBrief>,
   businessOwners: [] as never[],
   knowledgeSources: [] as never[],
@@ -47,6 +50,7 @@ vi.mock("./data/useSoloBusinessContext", () => ({
       domain: "mail.paigeagent.ai",
       address: "canonical-solo@mail.paigeagent.ai",
       available: null,
+      registrationAvailable: state.registrationAvailable,
     },
     pendingProposal: null,
     representatives: [
@@ -62,11 +66,8 @@ vi.mock("./data/useSoloBusinessContext", () => ({
     representativesLoading: false,
     representativesError: null,
     save: state.save,
-    checkManagedEmail: vi.fn().mockResolvedValue({
-      available: true,
-      address: "available@mail.paigeagent.ai",
-    }),
-    registerManagedEmail: vi.fn().mockResolvedValue({}),
+    checkManagedEmail: state.checkEmail,
+    registerManagedEmail: state.registerEmail,
     searchNaics: vi.fn().mockResolvedValue([
       {
         code: "541611",
@@ -127,6 +128,23 @@ describe("canonical Solo Setup business context", () => {
     state.save.mockReset().mockResolvedValue({ ok: true, kind: "saved" });
     state.refresh.mockReset();
     state.confirm.mockReset().mockResolvedValue(true);
+    state.registrationAvailable = false;
+    state.checkEmail
+      .mockReset()
+      .mockImplementation(async (local: string) => ({
+        available: true,
+        address: `${local}@mail.paigeagent.ai`,
+      }));
+    state.registerEmail
+      .mockReset()
+      .mockImplementation(async (local: string) => ({
+        registered: true,
+        registrationAvailable: true,
+        available: true,
+        localPart: local,
+        domain: "mail.paigeagent.ai",
+        address: `${local}@mail.paigeagent.ai`,
+      }));
     state.businessOwners = [];
     state.knowledgeSources = [];
     state.voiceExamples = [];
@@ -346,6 +364,126 @@ describe("canonical Solo Setup business context", () => {
     expect(button(host, "Check or change address").disabled).toBe(true);
     expect(host.textContent).toContain("Registration unavailable");
     expect(host.textContent).toContain("canonical-solo@mail.paigeagent.ai");
+    await act(async () => root.unmount());
+  });
+  it("requires a fresh availability result for the exact edited managed-email name", async () => {
+    state.registrationAvailable = true;
+    const { host, root } = await mount();
+    await act(async () => button(host, "People & email").click());
+    await act(async () => button(host, "Check or change address").click());
+    const input = document.body.querySelector<HTMLInputElement>(
+      ".setup-email-composer input",
+    )!;
+    await setValue(input, "first-name");
+    expect(button(document.body, "Register address").disabled).toBe(true);
+    await act(async () => button(document.body, "Check availability").click());
+    expect(state.checkEmail).toHaveBeenLastCalledWith("first-name");
+    expect(button(document.body, "Register address").disabled).toBe(false);
+    await setValue(input, "second-name");
+    expect(button(document.body, "Register address").disabled).toBe(true);
+    state.checkEmail.mockResolvedValueOnce({
+      available: false,
+      address: "second-name@mail.paigeagent.ai",
+    });
+    await act(async () => button(document.body, "Check availability").click());
+    expect(button(document.body, "Register address").disabled).toBe(true);
+    expect(state.registerEmail).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
+  it("does not accept availability for a different returned address", async () => {
+    state.registrationAvailable = true;
+    state.checkEmail.mockResolvedValueOnce({
+      available: true,
+      address: "different-name@mail.paigeagent.ai",
+    });
+    const { host, root } = await mount();
+    await act(async () => button(host, "People & email").click());
+    await act(async () => button(host, "Check or change address").click());
+    await setValue(
+      document.body.querySelector<HTMLInputElement>(
+        ".setup-email-composer input",
+      )!,
+      "requested-name",
+    );
+    await act(async () => button(document.body, "Check availability").click());
+    expect(button(document.body, "Register address").disabled).toBe(true);
+    await act(async () => root.unmount());
+  });
+  it("keeps a dirty brief intact across managed-email failure and successful retry", async () => {
+    state.registrationAvailable = true;
+    state.registerEmail.mockRejectedValueOnce(
+      new Error("Couldn't register this address."),
+    );
+    const { host, root } = await mount();
+    await act(async () => button(host, "Edit business context").click());
+    await setValue(
+      host.querySelector<HTMLInputElement>('input[name="publicName"]')!,
+      "Unsaved business name",
+    );
+    await act(async () => button(host, "People & email").click());
+    await act(async () => button(host, "Check or change address").click());
+    await setValue(
+      document.body.querySelector<HTMLInputElement>(
+        ".setup-email-composer input",
+      )!,
+      "new-business",
+    );
+    await act(async () => button(document.body, "Check availability").click());
+    await act(async () => button(document.body, "Register address").click());
+    expect(document.body.textContent).toContain(
+      "Couldn't register this address.",
+    );
+    expect(document.body.textContent).not.toContain(
+      "is registered to this workspace",
+    );
+    await act(async () => button(document.body, "Check availability").click());
+    await act(async () => button(document.body, "Register address").click());
+    expect(state.registerEmail).toHaveBeenLastCalledWith("new-business");
+    expect(document.body.textContent).toContain(
+      "new-business@mail.paigeagent.ai is registered",
+    );
+    await act(async () => button(document.body, "← Back to Setup").click());
+    await act(async () => button(host, "Business profile").click());
+    expect(
+      host.querySelector<HTMLInputElement>('input[name="publicName"]')!.value,
+    ).toBe("Unsaved business name");
+    expect(state.save).not.toHaveBeenCalled();
+    expect(state.refresh).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
+  it("freezes managed-email input and prevents drawer close during registration", async () => {
+    state.registrationAvailable = true;
+    let finish!: (value: unknown) => void;
+    state.registerEmail.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { host, root } = await mount();
+    await act(async () => button(host, "People & email").click());
+    await act(async () => button(host, "Check or change address").click());
+    const input = document.body.querySelector<HTMLInputElement>(
+      ".setup-email-composer input",
+    )!;
+    await setValue(input, "pending-name");
+    await act(async () => button(document.body, "Check availability").click());
+    await act(async () => button(document.body, "Register address").click());
+    expect(input.disabled).toBe(true);
+    expect(button(document.body, "Register address").disabled).toBe(true);
+    await act(async () => button(document.body, "← Back to Setup").click());
+    expect(document.body.querySelector('[role="dialog"]')).toBeTruthy();
+    await act(async () =>
+      finish({
+        registered: true,
+        registrationAvailable: true,
+        available: true,
+        address: "pending-name@mail.paigeagent.ai",
+        localPart: "pending-name",
+        domain: "mail.paigeagent.ai",
+      }),
+    );
+    expect(state.registerEmail).toHaveBeenCalledOnce();
     await act(async () => root.unmount());
   });
   it("enforces read-only controls for a member", async () => {
