@@ -305,5 +305,20 @@ export function useCatalogOffers(): CatalogOffersState {
     return () => { current = false; };
   }, [activeTenantId, accountContextLoading, refreshKey]);
 
-  return { ...state, retry };
+  // WHY THIS IS NOT JUST `return state`. `setState` inside the effect above runs AFTER paint, so
+  // on the render where `activeTenantId` changes IN PLACE — which is exactly what an operator's
+  // `switchTenant` does, without remounting, because `GrowthHub` is keyed by route and not by
+  // tenant — `state` still holds the PREVIOUS workspace's `ready` offers. For that one paint the
+  // surface would render another tenant's offer names, descriptions and prices under the newly
+  // selected workspace. `useSoloCampaigns`, the sibling hook on this same tab, already guards
+  // this synchronously; this is the same guard, deliberately not a second invention of it.
+  const synchronousTenantId = activeTenantId ?? null;
+  const visible = state.tenantId === synchronousTenantId ? state : {
+    tenantId: synchronousTenantId,
+    phase: accountContextLoading ? "resolving" as const
+      : synchronousTenantId ? "loading" as const
+      : "unavailable" as const,
+    ...EMPTY,
+  };
+  return { ...visible, retry };
 }

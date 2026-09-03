@@ -62,13 +62,34 @@ const kindOf = (offer) => offer.kind;
  * free offer meant it. It reads "Free" — "$0" looks like a bug and "—" would erase a real answer.
  * An UNRECORDED amount is null and renders as an em-dash elsewhere. The two are not the same.
  */
+// How many minor units make one major unit is a property of the CURRENCY, not the constant 100.
+// `tenant_prices.currency` carries no CHECK and `tenant-product-upsert` lower-cases whatever it is
+// given with no allowlist, so a tenant admin — or PAIGE through the callable seam — can record
+// `jpy` today. Dividing by 100 there turns a recorded ¥500 into "5 JPY", and a recorded KWD 500
+// (three minor digits) into "5 KWD" instead of 0.500. Both misstate the tenant's own price by two
+// or three orders of magnitude, which is the one thing this surface exists not to do.
+// The runtime already knows every ISO-4217 exponent, so it is asked rather than tabulated here;
+// an unrecognised code throws RangeError and falls back to the 2 digits most currencies use.
+function minorUnitDigits(currency) {
+  try {
+    const digits = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: String(currency || "USD").toUpperCase(),
+    }).resolvedOptions().maximumFractionDigits;
+    return typeof digits === "number" ? digits : 2;
+  } catch {
+    return 2;
+  }
+}
+
 function money(minorUnits, currency) {
   if (minorUnits === null || minorUnits === undefined || Number.isNaN(minorUnits)) return null;
   if (minorUnits === 0) return "Free";
-  const major = minorUnits / 100;
+  const digits = minorUnitDigits(currency);
+  const major = minorUnits / 10 ** digits;
   const symbol = !currency || currency.toLowerCase() === "usd" ? "$" : "";
   const suffix = symbol ? "" : ` ${String(currency).toUpperCase()}`;
-  return `${symbol}${major % 1 === 0 ? major.toLocaleString("en-US") : major.toFixed(2)}${suffix}`;
+  return `${symbol}${major % 1 === 0 ? major.toLocaleString("en-US") : major.toFixed(digits)}${suffix}`;
 }
 
 /** The lowest recorded active price — what "starting at" actually means against the record. */
@@ -420,7 +441,14 @@ export function CatalogOffers({ setDetail }) {
                     : "Plan type not recognised");
                 const interval = plan.billingInterval && plan.billingInterval !== "one_time"
                   ? ` / ${plan.billingInterval}` : "";
-                return `${label} — ${amount ?? "no amount"}${interval}${plan.active ? "" : " (inactive)"}`;
+                // A recorded instalment COUNT is what makes the plan bounded. The row already
+                // shows the arithmetic ("$500 × 6"); the drawer used to print
+                // "Instalment plan — $500 / month" and hide the six-payment limit, so the same
+                // record read as open-ended in one place and bounded in the other. Same class of
+                // defect as the enum leak above: the drawer disagreeing with its own row.
+                const count = plan.kind === "installment" && plan.installmentsTotal
+                  ? ` × ${plan.installmentsTotal}` : "";
+                return `${label} — ${amount ?? "no amount"}${count}${interval}${plan.active ? "" : " (inactive)"}`;
               })
               .join("\n")
           : "None recorded"],

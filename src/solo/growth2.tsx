@@ -114,7 +114,14 @@ function Overview({ data, setDetail }) {
 function Catalog({ data, setDetail, initialType }) {
   const [section, setSection] = React.useState(initialType ? "assets" : "offers");
   const [type, setType] = React.useState(initialType || "all");
-  React.useEffect(()=>{ if(initialType){ setType(initialType); setSection("assets"); } },[initialType]);
+  // The null transition is reachable without unmounting: clicking the already-selected Catalog
+  // tab navigates to the bare path and history navigation can drop the query too. Without the
+  // else branch the bare /growth/catalog kept showing Published assets, contradicting the
+  // initial state on the line above, which makes Offers the bare-route default.
+  React.useEffect(()=>{
+    if(initialType){ setType(initialType); setSection("assets"); }
+    else { setType("all"); setSection("offers"); }
+  },[initialType]);
   const shown = type === "all" ? data.artifacts : data.artifacts.filter((artifact)=>artifact.type===type);
   const offers = section === "offers";
   const sectionSwitch = <div className="campaigns-segmented" aria-label="What this tab shows">
@@ -325,7 +332,14 @@ export const GrowthHub=()=>{
   },[navigate,params.account]);
   const [detail,setDetail]=React.useState(null);
   const closeDetail=React.useCallback(()=>setDetail(null),[]);
-  React.useEffect(()=>{setDetail(null);},[tab,segment]);
+  // Also on TENANT change. A detail snapshot is detached from the list it came from, so an open
+  // drawer survived a workspace switch and kept showing the previous tenant's offer name,
+  // description and prices indefinitely. `data.tenantId` flips synchronously (useSoloCampaigns
+  // guards it outside its effect), so this clears on the same render the switch lands on.
+  // This covers every drawer on the tab, not only Offers — the campaign, sales and pipeline
+  // rows had the same detached snapshot, and the fix cannot be narrowed to one of them
+  // without duplicating the state.
+  React.useEffect(()=>{setDetail(null);},[tab,segment,data.tenantId]);
   React.useEffect(()=>{if(segment!=="active")return;const account=params.account;if(account)navigate(`/solo/${account}/growth/overview${location.search}`,{replace:true});},[segment,params.account,location.search,navigate]);
   const title=tabs.find((item)=>item[0]===tab)?.[1]||"Overview";
   let body=<Overview data={data} setDetail={setDetail}/>;

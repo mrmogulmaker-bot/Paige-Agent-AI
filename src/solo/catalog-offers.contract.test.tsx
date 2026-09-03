@@ -6,7 +6,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GrowthHub } from "./growth2";
@@ -26,8 +26,14 @@ const stripSql = (src: string) => src.replace(/^\s*--.*$/gm, "");
 
 const adapter = stripTs(read("src/solo/useCatalogOffers.ts"));
 const surface = stripTs(read("src/solo/catalog-offers.tsx"));
+// Resolved by SUFFIX rather than by a pinned version, because this migration has now been
+// renumbered three times as main took its number — and a hard-coded path turns every renumber into
+// an unrelated red test that says "file not found" instead of anything useful. Exactly one match is
+// asserted, so a duplicate copy of this migration is still caught here rather than at deploy.
+const migrationMatches = readdirSync(resolve(process.cwd(), "supabase/migrations"))
+  .filter((name) => name.endsWith("_tenant_products_carry_the_offer_definition.sql"));
 const migration = stripSql(
-  read("supabase/migrations/20261048000000_tenant_products_carry_the_offer_definition.sql"),
+  read(`supabase/migrations/${migrationMatches[0] ?? "__missing__"}`),
 );
 // The comment-stripper is itself load-bearing, so prove it removes prose and keeps code.
 const adapterRaw = read("src/solo/useCatalogOffers.ts");
@@ -102,6 +108,10 @@ afterEach(() => {
 });
 
 describe("Catalog Offers — tenant-scoped read contract", () => {
+  it("has exactly one copy of the offer-definition migration", () => {
+    expect(migrationMatches).toHaveLength(1);
+  });
+
   it("measures code, not comments", () => {
     // The raw file mentions the read pattern in its header; the stripped one must not.
     expect(adapterRaw).toContain("WHY THIS IS ITS OWN HOOK");
@@ -583,6 +593,85 @@ describe("Catalog Offers — rendered flows", () => {
     const pressed = [...host.querySelectorAll('button[aria-pressed="true"]')]
       .filter((b) => b.className.includes("co-filter"));
     expect(pressed).toHaveLength(1);
+  });
+
+  it("states a recorded price in the currency's own minor units, not always hundredths", () => {
+    // `tenant_prices.currency` carries no CHECK and `tenant-product-upsert` lower-cases whatever it
+    // is handed with no allowlist, so `jpy` is writable today. A fixed /100 renders a recorded
+    // ¥500 as "5 JPY" — the tenant's own price, misstated by two orders of magnitude.
+    setCampaigns();
+    setOffers({ offers: [
+      offer({ id: "y", name: "Yen offer", prices: [{ id: "py", nickname: null, unitAmount: 500, currency: "jpy", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true }] }),
+      offer({ id: "k", name: "Dinar offer", prices: [{ id: "pk", nickname: null, unitAmount: 500, currency: "kwd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true }] }),
+    ] });
+    renderAt("/solo/4471/growth/catalog");
+    expect(host.textContent).toContain("500 JPY");
+    expect(host.textContent).not.toContain("5 JPY");
+    // Three minor digits, so 500 minor units is 0.500 — not 5.
+    expect(host.textContent).toContain("0.500 KWD");
+    expect(host.textContent).not.toContain("5 KWD");
+  });
+
+  it("keeps dollars rendering exactly as they did", () => {
+    setCampaigns();
+    setOffers({ offers: [offer({ prices: [{ id: "p", nickname: null, unitAmount: 240000, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true }] })] });
+    renderAt("/solo/4471/growth/catalog");
+    expect(host.textContent).toContain("$2,400");
+  });
+
+  it("carries the instalment count into the drawer, so a bounded plan never reads as open-ended", () => {
+    // The row already shows "$500 × 6". The drawer printed "Instalment plan — $500 / month",
+    // hiding the six-payment limit — the same record reading bounded in one place and
+    // open-ended in the other.
+    setCampaigns();
+    setOffers({ offers: [offer({
+      name: "Instalment offer",
+      prices: [{ id: "pi", nickname: null, unitAmount: 50000, currency: "usd", billingInterval: "month", kind: "installment", installmentsTotal: 6, active: true }],
+    })] });
+    renderAt("/solo/4471/growth/catalog");
+    const row = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Instalment offer"));
+    act(() => { row?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    const drawer = document.querySelector('[role="dialog"]');
+    expect(drawer).toBeTruthy();
+    // Assert the PLAN row, not the drawer as a whole. The first version of this guard read
+    // `drawer.textContent` and was satisfied by the separate "Price shown" row, which already
+    // carries the arithmetic — so it passed with the defect reintroduced. A guard that cannot
+    // fail is worse than no guard, and the break-test is what exposed it.
+    const planRow = [...drawer!.querySelectorAll(".campaigns-detail-row")]
+      .find((row) => row.textContent?.startsWith("Recorded plans"));
+    expect(planRow).toBeTruthy();
+    expect(planRow!.textContent).toContain("Instalment plan — $500 × 6 / month");
+  });
+
+  it("returns to Offers when the type query is dropped without unmounting", () => {
+    // Reachable by clicking the already-selected Catalog tab, or by history navigation: the bare
+    // route defines Offers as the default, so continuing to show Published assets contradicts it.
+    setCampaigns(); setOffers();
+    renderAt("/solo/4471/growth/catalog?type=form");
+    expect(host.textContent).toContain("Read-only published outputs owned by Vibe Studio.");
+    const tab = [...host.querySelectorAll("button")].find((b) => b.textContent === "Catalog");
+    act(() => { tab?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    expect(host.textContent).toContain("What this business sells");
+    expect(host.textContent).not.toContain("Read-only published outputs owned by Vibe Studio.");
+  });
+
+  it("closes an open detail drawer when the workspace changes", () => {
+    // A detail snapshot is detached from the list it came from, so the drawer kept showing the
+    // previous tenant's offer name, description and prices after a switch — indefinitely.
+    setCampaigns(); setOffers();
+    renderAt("/solo/4471/growth/catalog");
+    const row = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Foundations Coaching Program"));
+    act(() => { row?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    expect(document.querySelector('[role="dialog"]')).toBeTruthy();
+
+    setCampaigns({ tenantId: "tenant-2" });
+    setOffers({ tenantId: "tenant-2", offers: [] });
+    act(() => root.render(
+      <MemoryRouter initialEntries={["/solo/4471/growth/catalog"]}>
+        <Routes><Route path="/solo/:account/*" element={<GrowthHub />} /></Routes>
+      </MemoryRouter>,
+    ));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("switches between the two concepts without leaving the tab", () => {

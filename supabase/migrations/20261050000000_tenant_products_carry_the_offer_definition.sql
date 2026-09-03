@@ -1,19 +1,36 @@
 -- Offer Catalog Slice 2A — `tenant_products` becomes the tenant's canonical OFFER record.
 --
--- VERSION NOTE — renumbered TWICE, and the second time is the instructive one.
+-- VERSION NOTE — renumbered THREE times, and the third one is the instructive one.
 --
--- 20261044000000 collided with the Rail work; renumbered to 20261045000000. Then, while this sat
--- in review, Billing Foundation A landed 20261045000000_platform_billing_accounts_foundation_a.sql
--- and took that one too, along with 46 and 47. Now 20261048000000.
+-- 20261044000000 went to the Rail work. 20261045000000 went to Billing Foundation A. Then
+-- 20261048000000 went to team-member removal (#845), which merged AFTER this branch had already
+-- re-grounded against main and run `lint:migration-versions` clean at that exact number.
 --
--- Two migrations sharing a version is not a naming annoyance: the second one is SILENTLY SKIPPED.
--- Neither time would anything have gone red on merge — the columns below simply would not exist on
--- prod, every tenant would have read "not available on this deployment yet" forever, and the deploy
--- would have looked entirely successful. Both times it was caught only by re-grounding against main
--- and re-running `lint:migration-versions` BEFORE merging, not by any review of the branch.
+-- WHY THE GUARD DID NOT CATCH THE THIRD ONE, WHICH IS THE ACTUAL LESSON. The lint compares
+-- versions against `origin/main`. #845's migration was sitting on an unmerged branch at the time
+-- this branch checked, so by construction the guard could not see it — it was structurally blind
+-- to the only place the collision existed. `database-contract` caught it instead, and only
+-- because a full replay from zero is the one gate that applies both files:
 --
--- The lesson for anyone reading this: a long-lived branch is reviewed against a base that moves.
--- Re-ground at the END of the work, not only at the start. This range is contended.
+--     Applying migration 20261048000000_an_owner_can_remove_someone_from_their_workspace.sql...
+--     Applying migration 20261048000000_tenant_products_carry_the_offer_definition.sql...
+--     ERROR: duplicate key value violates unique constraint "schema_migrations_pkey"
+--     Key (version)=(20261048000000) already exists.
+--
+-- Two migrations sharing a version is not a naming annoyance. On a database that has ALREADY
+-- applied one of them, the second is SILENTLY SKIPPED — the columns below simply never exist,
+-- every tenant reads "not available on this deployment yet" forever, and the deploy looks
+-- entirely successful. It only fails loudly here because a fresh replay applies both.
+--
+-- 20261050000000 was chosen by scanning ALL 423 remote branches rather than main alone. At that
+-- moment the only migrations at or above 20261048000000 anywhere in the repository were #845's
+-- (on main and five branches) and the Rail's 20261049000000 — so 50 is free against work in
+-- flight, not merely against work already merged. That is the check the guard should make and
+-- does not; it is recorded as a follow-up rather than widened here, since the guard is shared CI
+-- tooling and this is a Solo-scoped slice.
+--
+-- The lesson for anyone reading this: re-grounding at the END is necessary and NOT sufficient,
+-- because the base moves between your check and your merge. This range is heavily contended.
 --
 -- WHY THIS TABLE AND NOT A NEW ONE (§18, one home per capability). `tenant_products` already IS
 -- the tenant's commercial record: it is read by the storefront (anon), the admin storefront panel,

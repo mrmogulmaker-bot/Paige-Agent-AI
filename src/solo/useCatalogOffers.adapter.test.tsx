@@ -55,9 +55,15 @@ const { useCatalogOffers } = await import("./useCatalogOffers");
 let host: HTMLDivElement;
 let root: Root;
 let latest: ReturnType<typeof useCatalogOffers> | null = null;
+const renders: Array<ReturnType<typeof useCatalogOffers>> = [];
 
 function Probe() {
   latest = useCatalogOffers();
+  // Every render is recorded, not only the last one. `act()` flushes effects before it returns, so
+  // a single `latest` read after `act` reflects the state the effect already corrected — which is
+  // exactly the paint a synchronous-guard test needs to inspect. The first version of this guard
+  // read `latest` and passed with the defect reintroduced.
+  renders.push(latest);
   return null;
 }
 
@@ -74,6 +80,7 @@ const call = (table: string) => calls.find((c) => c.table === table);
 
 beforeEach(() => {
   calls.length = 0;
+  renders.length = 0;
   latest = null;
   currentUserId = "user-1";
   tenant = { activeTenantId: "tenant-1", accountContextLoading: false };
@@ -250,6 +257,45 @@ describe("useCatalogOffers — what it makes of a row", () => {
     await run();
     const kinds = latest!.offers[0].prices.map((p) => p.kind);
     expect(kinds).toEqual([null, null, "recurring"]);
+  });
+
+  it("stops showing the previous tenant's offers on the render the tenant changes", async () => {
+    // `switchTenant` changes `activeTenantId` IN PLACE for an operator session, and `GrowthHub` is
+    // keyed by route rather than tenant, so the hook is NOT remounted. `setState` inside the effect
+    // runs after paint, so without a synchronous guard the first render after the switch still
+    // returns the previous workspace's `ready` offers — another tenant's names, descriptions and
+    // prices under the newly selected workspace, for one paint.
+    results.tenant_products = { data: [{ id: "o1", name: "Tenant One Programme", status: "active" }], error: null };
+    await run();
+    expect(latest!.tenantId).toBe("tenant-1");
+    expect(latest!.offers.map((o) => o.name)).toEqual(["Tenant One Programme"]);
+
+    // Re-render under the new tenant and inspect the FIRST render that followed — the single paint
+    // between the tenant changing and the effect correcting the state. Reading the final value
+    // instead would inspect the already-corrected state and pass either way.
+    const before = renders.length;
+    tenant = { activeTenantId: "tenant-2", accountContextLoading: false };
+    act(() => { root.render(<Probe />); });
+
+    const firstPaint = renders[before];
+    expect(firstPaint).toBeDefined();
+    expect(firstPaint.tenantId).toBe("tenant-2");
+    expect(firstPaint.offers).toEqual([]);
+    expect(firstPaint.phase).toBe("loading");
+    expect(firstPaint.canManage).toBe(false);
+    // And it must never have shown the other workspace's record, on any paint after the switch.
+    for (const paint of renders.slice(before)) {
+      expect(paint.offers.map((o) => o.name)).not.toContain("Tenant One Programme");
+    }
+  });
+
+  it("reports resolving, not loading, when the account context itself is still resolving", async () => {
+    await run();
+    const before = renders.length;
+    tenant = { activeTenantId: null, accountContextLoading: true };
+    act(() => { root.render(<Probe />); });
+    expect(renders[before].phase).toBe("resolving");
+    expect(renders[before].offers).toEqual([]);
   });
 
   it("keeps every recorded plan rather than collapsing to one", async () => {
