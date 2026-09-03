@@ -6,16 +6,23 @@
 -- 20261048000000 went to team-member removal (#845), which merged AFTER this branch had already
 -- re-grounded against main and run `lint:migration-versions` clean at that exact number.
 --
--- WHY THE GUARD DID NOT CATCH THE THIRD ONE, WHICH IS THE ACTUAL LESSON. The lint compares
--- versions against `origin/main`. #845's migration was sitting on an unmerged branch at the time
--- this branch checked, so by construction the guard could not see it — it was structurally blind
--- to the only place the collision existed. `database-contract` caught it instead, and only
--- because a full replay from zero is the one gate that applies both files:
+-- WHY MY CHECK MISSED IT, WHICH IS NOT THE SAME AS THE GUARD MISSING IT. Corrected after reading
+-- the CI log rather than assuming: `lint:migration-versions` DID catch this, in `verify`, the
+-- moment it ran against the real merge base --
 --
---     Applying migration 20261048000000_an_owner_can_remove_someone_from_their_workspace.sql...
---     Applying migration 20261048000000_tenant_products_carry_the_offer_definition.sql...
---     ERROR: duplicate key value violates unique constraint "schema_migrations_pkey"
---     Key (version)=(20261048000000) already exists.
+--     BASE_REF: 1a22637c3ea8fdaa195ad24e53cec582dbc7bcd5
+--     x migration-version-collision-lint: 1 collision(s).
+--       two migrations share version 20261048000000 ...
+--
+-- and `database-contract` caught it independently by replaying from zero. One root cause, both
+-- checks. The guard is not defective and this comment previously said it was.
+--
+-- What was blind was the LOCAL run: it compares against whatever `origin/main` the working copy
+-- last fetched, and mine was fetched before #845 merged, so no main-based comparison could have
+-- seen it at that moment. The gap is the window between a local pre-merge check and the merge
+-- itself, not a hole in the check. Re-grounding at the end is necessary and still not sufficient,
+-- because the base keeps moving after you look at it. CI is the authority; a green local lint is
+-- a hint.
 --
 -- Two migrations sharing a version is not a naming annoyance. On a database that has ALREADY
 -- applied one of them, the second is SILENTLY SKIPPED — the columns below simply never exist,
@@ -25,12 +32,11 @@
 -- 20261050000000 was chosen by scanning ALL 423 remote branches rather than main alone. At that
 -- moment the only migrations at or above 20261048000000 anywhere in the repository were #845's
 -- (on main and five branches) and the Rail's 20261049000000 — so 50 is free against work in
--- flight, not merely against work already merged. That is the check the guard should make and
--- does not; it is recorded as a follow-up rather than widened here, since the guard is shared CI
--- tooling and this is a Solo-scoped slice.
+-- flight, not merely against work already merged. That is a stronger PRE-merge check than a local
+-- main-based one, and it is what a fourth collision would have to get past. It is not a
+-- replacement for the guard, which already catches this at the merge itself.
 --
--- The lesson for anyone reading this: re-grounding at the END is necessary and NOT sufficient,
--- because the base moves between your check and your merge. This range is heavily contended.
+-- This range is heavily contended: six branches carried #845's migration before it merged.
 --
 -- WHY THIS TABLE AND NOT A NEW ONE (§18, one home per capability). `tenant_products` already IS
 -- the tenant's commercial record: it is read by the storefront (anon), the admin storefront panel,

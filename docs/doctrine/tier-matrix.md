@@ -1925,14 +1925,21 @@ closed before the assertion ran. Both were rewritten and all six of this slice's
 proven red against their own defect. Recorded because a guard that cannot fail is worse than no
 guard, and only running the perturbation distinguishes the two.
 
-**A THIRD migration-version collision, and this one names the guard's blind spot.** #845 took
-`20261048000000` and merged AFTER this branch re-grounded on main and ran `lint:migration-versions`
-clean at that number. The guard compares against `origin/main`; #845's migration was on an unmerged
-branch at the time, so the guard was structurally blind to the only place the collision existed.
-`database-contract` caught it, because a replay from zero is the one gate that applies both files.
-`20261050000000` was chosen by scanning ALL 423 remote branches rather than main alone — free
-against work in flight, not merely against work merged. Extending the guard to scan branches is
-recorded as a follow-up; it is shared CI tooling and this is a Solo-scoped slice.
+**A THIRD migration-version collision — and a §13 correction about it, made after reading the CI
+log instead of assuming.** #845 took `20261048000000` and merged AFTER this branch re-grounded on
+main and ran `lint:migration-versions` clean at that number. The first version of this paragraph,
+and of the migration's own header, said the guard was "structurally blind" to it. **That was
+wrong.** CI passes the real merge base to the lint (`BASE_REF: 1a22637c…`), so once #845 merged the
+guard caught it immediately, in `verify` — and `database-contract` caught it independently by
+replaying from zero. One root cause, both red checks, no defective guard.
+
+What was blind was the LOCAL run, which compares against whatever `origin/main` the working copy
+last fetched; mine predated #845, so no main-based comparison could have seen it at that moment.
+The gap is the window between a local pre-merge check and the merge itself. **Re-grounding at the
+end is necessary and still not sufficient, because the base moves after you look at it, and a green
+local lint is a hint rather than a verdict — CI is the authority.** `20261050000000` was chosen by
+scanning ALL 423 remote branches rather than main alone, which is a stronger pre-merge check than
+the local one but is not a replacement for the guard.
 
 **Final independent review (round 8), applied.** Three findings, none blocking, all fixed rather
 than filed: this row was placed OUTSIDE the Surface ledger (under *Setup legal sender identity*),
