@@ -35,6 +35,12 @@ Each cost one failed run on prod (rollback, nothing persisted) before it was wri
   (`CREATE OR REPLACE` the original) instead of rolling the savepoint back.
 - A property that is "0 rows visible" is vacuous unless a sibling proves the row EXISTS to the owning
   role (P52 needed P55).
+- **The batch you RAN is not the file you COMMITTED unless you re-derive it.** The MCP runner takes a
+  derived batch (`\i` expanded, `RAISE NOTICE` swapped for a report row). A fix applied to the derived
+  copy in `/tmp` and not to the committed mutants file left the repo carrying a subquery that fails
+  `42P01` — caught by the compliance reviewer's parity check, not by the green prod run. Rule: fix the
+  committed file first, re-derive the batch from it, and diff the two (non-comment lines) before
+  quoting the run as proof of the file.
 
 ## 0a. Ruling-conversion discipline — don't re-open a ruling as options (D7, 2026-08-11)
 
