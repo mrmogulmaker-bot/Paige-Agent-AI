@@ -87,6 +87,14 @@ design question is reached.
 - **C4 — evidence loads only inside a client-scoped Chat turn.** `paige-ai-chat/index.ts` guards
   the load with `if (scopedClientId)`, so there is no Spine evidence in a general business question.
 
+> **The unbounded-count rule, stated once so it is not re-derived per surface.** C3 admits only
+> values enumerated in the capability's `factValues`, so **any** surface whose safe facts include an
+> unbounded count or amount fails **C3 as well as C2**, and needs **SCR-3 in addition to SCR-2** —
+> or must replace those counts with explicitly enumerated states. On the evidence below that is
+> **Command Center · Campaigns → config/Catalog · Systems Check · Connections · Integrations ·
+> Analytics · Marketplace**. Where a surface section names only C2, read this rule as also binding;
+> it is not a per-surface exemption. Marketplace and Analytics already state SCR-3 explicitly.
+
 > **Numbering note.** C3 and C4 follow `paige-spine-tool-migration-map.md:87-102` — the document this
 > matrix borrows its SCR shorthand from. An earlier draft of this matrix had the two reversed, which
 > made that map's own mapping (**SCR-2 → C2/C4**, **SCR-3 → C3**) read backwards against it. They are
@@ -121,8 +129,8 @@ assessed, and should be read that way rather than as a negative finding.
 - **Owner flow.** Ask PAIGE what a client's recorded stage outcomes prove, and get an answer that
   names its source rather than inferring past it.
 - **Source of truth.** `public.get_pipeline_spine_evidence(text,integer)` over Rail rows written by
-  `configure_tenant_pipeline_core_identity` on a pipeline configuration change. That function is the
-  sole emitter; the two public entry seams reach it through delegating routers —
+  `configure_tenant_pipeline_core_identity` on a **direct move of a contact-linked deal** (see the
+  recommendation section for the exact conditions). That function is the sole emitter; the two public entry seams reach it through delegating routers —
   `configure_tenant_pipeline` (which hardcodes a human actor) and `configure_tenant_pipeline_as_paige`
   (which passes `paige`), and only the second makes the declared `actor` fact value `paige` reachable.
   Note that `deal_move_stage` is in **neither** Rail emitter set and writes `deals` directly, so
@@ -343,7 +351,9 @@ worked around.
 - **Scope.** Workspace or platform — **never per-client. C2 fails.**
 - **Intentionally unavailable — yes.** C1's per-client Rail and C2's client-only resolver are
   deliberate isolation boundaries, not oversights.
-- **Next slice.** Not a Mind slice. Would require SCR-2 introducing a workspace subject type.
+- **Next slice.** Not a Mind slice. Would require **SCR-2 and SCR-3**: SCR-2 for the workspace
+  subject, SCR-3 because `check_count`/`pass_count`/`fail_count` are unbounded integers and C3 admits
+  only enumerated values. SCR-2 alone would still reject a real Systems Check row.
 
 ---
 
@@ -496,7 +506,7 @@ three carry only a prompt, and **no listener consumes a prompt** (**#771**).
 | Campaigns → config · Catalog | `BLOCKED` | **NO** | C2; needs SCR-1/2 |
 | Campaigns → Sales | `BLOCKED` | **NO** | Rail producer dead (#787) |
 | Campaigns → Overview · Social · Performance | `UNAVAILABLE` | **NO** | no source exists |
-| Systems Check | `BLOCKED` | **NO** | C2 — workspace subject |
+| Systems Check | `BLOCKED` | **NO** | C2 **and** C3 (unbounded counts); needs SCR-2 + SCR-3 |
 | Trust Compass inputs | `BLOCKED` | **NO** | C2 — platform subject |
 | Connections | `BLOCKED` | **NO** | C2; provider state is a per-person fact |
 | Integrations | `BLOCKED` | **NO** | C2; best fact vocabulary of the blocked set |
@@ -533,9 +543,14 @@ the flow.
 **That drive has a prerequisite, and it is not #746.** The lens is `SECURITY DEFINER` and reads the
 Rail table directly, so the missing browser grant never applied to it. The prerequisite is that a
 `campaigns_pipeline` Rail row must **exist** — production holds zero, so today the drive would only
-prove the empty-result path, not the evidence path. Producing one legitimately means a real pipeline
-configuration change through `configure_tenant_pipeline_as_paige` on a real tenant; that is a Rail and
-Pipeline decision, not a Mind one.
+prove the empty-result path, not the evidence path. Producing one legitimately requires a **specific** act, not
+any pipeline change: a `move_deal` through `configure_tenant_pipeline_as_paige` on a deal whose
+`contact_client_id` is **not null**, landing in the **direct-move** branch. Verified in the emitter
+body — an approval-gated move records a `pipeline_move_approvals` row, returns `outcome: held` and
+emits **nothing**; a contactless deal emits nothing; creates and stage edits emit nothing. A drive
+run against any of those would leave the lens empty and read as a false negative, so the emission
+must be confirmed before the drive is called conclusive. That is a Rail and Pipeline decision, not a
+Mind one.
 
 If the owner wants a *build* queued behind that: **raise SCR-2 (non-client subject types), naming
 Analytics as its reference consumer** — while recording honestly that Analytics needs **SCR-3 as
