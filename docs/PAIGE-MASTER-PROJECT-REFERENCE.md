@@ -1233,6 +1233,40 @@ source-record identifier and no producer payload** — not that it carries no id
 `paige_client_events`: that revoke is what keeps the same-shaped flaw in the `pce_staff_read` policy
 unreachable, so the fix for a Rail screen is never a table grant.
 
+**Every Rail READER is now authority-correct and refuses explicitly (verified on the deployed bodies,
+2026-09-03).** Two migrations landed after the paragraph above was written and are recorded here
+because they were not — see the §13 note that follows:
+
+| Migration | PR | What it changed |
+|---|---|---|
+| `20261044000000` | #813 (closes #804) | `get_client_rail` reads the caller's role from an active `tenant_members` row **of the same workspace the rows come from**, so a staff role earned in another tenant no longer satisfies it; adds the minimal `get_client_rail_for_chat` projection |
+| `20261049000000` | #834 | `get_platform_rail` raises `42501 RAIL_FORBIDDEN` instead of `RETURN;`, so a denied platform caller is no longer indistinguishable from an empty platform |
+
+Both confirmed present in `schema_migrations` on prod. The resulting state: **no Rail reader carries
+the tenant-agnostic `has_any_role()`, and no Rail reader answers a denial with an empty set.** The
+Rail **writer** `record_rail_event` still gates on `has_any_role()` — tracked as **#824**, parked; it
+is an integrity/attribution exposure inside a single workspace, not a disclosure or cross-tenant one,
+and its escalation population measures zero.
+
+**§13 — this entry is a late correction, and the lateness is the point.** §0 and §66 require the
+master record to move in the SAME PR as the ship. Neither #813 nor #834 did that, so between
+2026-09-02 and 2026-09-03 this file described a Rail reader surface two migrations behind production
+while reading as current. Recorded rather than quietly backfilled, because a record that silently
+catches up teaches nothing about why it fell behind.
+
+**Still NOT repaired by any of the above, and the reason the verdict at the top of this section
+stands: no OWNER-FACING consumer calls any of these resolvers.** `useRailEvents.ts` and
+`useSoloActivityFeed.ts` still read `paige_client_events` directly, and the browser still holds no
+SELECT on it, so the owner-visible history surfaces are exactly as broken as before.
+
+**Be precise about "nothing uses it", because that is not true of the whole Rail.** `get_client_rail_for_chat`
+**does** have a live production consumer: the PAIGE Chat edge function calls it at
+`supabase/functions/paige-ai-chat/index.ts:4662` (hydration) and `:8384` (tool dispatch), wired by
+#813. So the accurate split is: the **Chat** consumer was repointed onto a safe resolver and works;
+the **owner-facing history** consumers were not, and are Slice B — blocked on the #776/#729 ownership
+seam. `get_solo_rail_activity` and `get_platform_rail` are the two resolvers with genuinely zero
+callers today.
+
 **Why `UNAVAILABLE` is still the correct status.** No owner-facing consumer calls the resolver yet —
 `useRailEvents.ts` and `useSoloActivityFeed.ts` still read the denied table directly, re-measured on
 production after both migrations. The remaining *misreporting* is narrower than the read failure: the

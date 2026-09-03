@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode 
 import { Link } from "react-router-dom";
 import { useConfirm } from "@/hooks/useConfirm";
 import { registerAccountSwitchGuard } from "@/lib/auth/accountSwitchGuard";
+import { PaigeBriefPanel, type PaigeBriefValues } from "./PaigeBriefPanel";
 import {
   ArrowRight,
   BriefcaseBusiness,
@@ -182,14 +183,16 @@ export function SoloSetupView({ account }: { account: string }) {
   const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const [saveRecovery, setSaveRecovery] = useState<"failed" | "conflict" | "stale" | null>(null);
   const [proposalId, setProposalId] = useState<string | null>(null);
+  const [paigeDrawerDirty, setPaigeDrawerDirty] = useState(false);
   const previousTenant = useRef(data.activeTenantId);
   const errorSummary = useRef<HTMLDivElement>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(data.brief)
     || JSON.stringify(businessOwners) !== JSON.stringify(persistedOwners)
     || Object.keys(sourceDecisions).length > 0;
+  const hasUnsavedSetup = (editing && dirty) || paigeDrawerDirty;
 
   useEffect(() => {
-    if (!editing || (!dirty && !data.saving)) return;
+    if (!hasUnsavedSetup && !data.saving) return;
     return registerAccountSwitchGuard(async ({ toTenantName }) => {
       if (data.saving) {
         setNotice({ tone: "bad", text: "Wait for this save to finish before switching accounts. The current write cannot be safely discarded." });
@@ -203,7 +206,7 @@ export function SoloSetupView({ account }: { account: string }) {
         destructive: true,
       });
     });
-  }, [confirm, data.saving, dirty, editing]);
+  }, [confirm, data.saving, hasUnsavedSetup]);
 
   useEffect(() => {
     if (!editing) {
@@ -219,6 +222,7 @@ export function SoloSetupView({ account }: { account: string }) {
       setSourceDecisions({});
       setErrors({});
       setOwnerErrors({});
+      setPaigeDrawerDirty(false);
       setNotice({ tone: "bad", text: "The active account changed. The prior account's unsaved draft was discarded and no stale save result was applied." });
     }
     previousTenant.current = data.activeTenantId;
@@ -348,6 +352,33 @@ export function SoloSetupView({ account }: { account: string }) {
       : { tone: "bad", text: result.error || "The suggestion could not be dismissed." });
   };
 
+  const applyPaigeBriefDraft = (values: PaigeBriefValues) => {
+    const fields = ["brandVoice", "operatingPreferences", "doNotAssume"] as const;
+    const blocked = fields.filter((field) => draft.provenance[field]?.source === "connection_sourced" && sourceDecisions[field] !== "override");
+    setDraft((current) => {
+      const next = { ...current };
+      fields.forEach((field) => {
+        if (blocked.includes(field)) return;
+        next[field] = values[field];
+      });
+      return next;
+    });
+    setErrors((current) => ({ ...current, brandVoice: undefined, operatingPreferences: undefined, doNotAssume: undefined }));
+    setEditing(true);
+    setPaigeDrawerDirty(false);
+    setNotice(blocked.length
+      ? { tone: "bad", text: "The editable Paige Brief fields were added to your Setup draft. A connection-sourced field was preserved; explicitly choose Override before changing it." }
+      : { tone: "ok", text: "Paige Brief added to your Setup draft. Save changes to make it durable." });
+  };
+
+  const confirmPaigeBriefDiscard = () => confirm({
+    title: "Discard this unfinished Paige Brief?",
+    description: "The saved workspace record and the main Setup draft will remain unchanged.",
+    actionLabel: "Discard draft",
+    cancelLabel: "Keep working",
+    destructive: true,
+  });
+
   if (data.loading) return <div className="setup-state" role="status"><RefreshCw aria-hidden/>Resolving this workspace’s business truth…</div>;
   if (data.error) return <div className="setup-state setup-state--error" role="alert"><CircleHelp aria-hidden/><span><strong>Couldn’t load this business brief</strong>{data.error}</span><button type="button" onClick={data.refresh}>Retry</button></div>;
 
@@ -446,7 +477,10 @@ export function SoloSetupView({ account }: { account: string }) {
 
     <Section id="business-model" eyebrow="Business model and customers" title="What you sell and who it is for" description="Give Paige enough context to help without inventing an offer, audience or service area."><BriefFields fields={modelFields} draft={draft} editing={editing} disabled={data.saving} errors={errors} onChange={change} sourceDecisions={sourceDecisions} onSourceDecision={setSourceDecision}/></Section>
     <Section id="direction" eyebrow="Direction and goals" title="What the business is working toward" description="Anchor Paige in the current priority, near-term goals, longer direction and real constraints."><BriefFields fields={directionFields} draft={draft} editing={editing} disabled={data.saving} errors={errors} onChange={change} sourceDecisions={sourceDecisions} onSourceDecision={setSourceDecision}/></Section>
-    <Section id="paige-brief" eyebrow="Paige brief" title="How Paige should operate for this business" description="Set the voice, working preferences and the boundaries Paige must not fill with assumptions."><BriefFields fields={paigeFields} draft={draft} editing={editing} disabled={data.saving} errors={errors} onChange={change} sourceDecisions={sourceDecisions} onSourceDecision={setSourceDecision}/></Section>
+    <Section id="paige-brief" eyebrow="Paige brief" title="Teach Paige how this business sounds and works" description="Capture the voice, working style, and boundaries a founder or operator knows. The guided drawer returns here; it is not a hidden page or another Settings destination.">
+      <PaigeBriefPanel key={data.activeTenantId || "unresolved"} draft={draft} canEdit={data.canEdit} disabled={data.saving} sourceDecisions={sourceDecisions} onApply={applyPaigeBriefDraft} onDirtyChange={setPaigeDrawerDirty} confirmDiscard={confirmPaigeBriefDiscard}/>
+      {editing && <details className="setup-paige-brief__manual"><summary>Fine-tune directly in Edit brief</summary><BriefFields fields={paigeFields} draft={draft} editing={editing} disabled={data.saving} errors={errors} onChange={change} sourceDecisions={sourceDecisions} onSourceDecision={setSourceDecision}/></details>}
+    </Section>
 
     <Section id="architecture" eyebrow="Governed architecture" title="How Paige may use this brief" description="Setup supplies context. It does not silently grant action authority.">
       <div className="setup-architecture">
