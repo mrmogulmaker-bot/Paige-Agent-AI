@@ -1,12 +1,13 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SoloBusinessContextSetup } from "./SoloBusinessContextSetup";
 import { cleanSoloSetupBrief } from "./settings-setup-contract";
 import { EMPTY_PAIGE_PROFILE } from "./settings-business-context-contract";
 
 const state = vi.hoisted(() => ({
+  theme: "light",
   accessScope: "owner_full" as "owner_full" | "admin_operational" | "read_only",
   saving: false,
   activeTenantId: "tenant-a",
@@ -16,6 +17,7 @@ const state = vi.hoisted(() => ({
   registrationAvailable: false,
   checkEmail: vi.fn(),
   registerEmail: vi.fn(),
+  searchNaics: vi.fn(),
   brief: null as unknown as ReturnType<typeof cleanSoloSetupBrief>,
   businessOwners: [] as never[],
   knowledgeSources: [] as never[],
@@ -68,13 +70,7 @@ vi.mock("./data/useSoloBusinessContext", () => ({
     save: state.save,
     checkManagedEmail: state.checkEmail,
     registerManagedEmail: state.registerEmail,
-    searchNaics: vi.fn().mockResolvedValue([
-      {
-        code: "541611",
-        title:
-          "Administrative Management and General Management Consulting Services",
-      },
-    ]),
+    searchNaics: state.searchNaics,
     dismissProposal: vi.fn(),
     refresh: state.refresh,
   }),
@@ -82,6 +78,7 @@ vi.mock("./data/useSoloBusinessContext", () => ({
 vi.mock("@/hooks/useConfirm", () => ({
   useConfirm: () => ({ confirm: state.confirm, dialog: null }),
 }));
+vi.mock("next-themes", () => ({ useTheme: () => ({resolvedTheme: state.theme}) }));
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -120,21 +117,27 @@ async function setValue(
 }
 
 describe("canonical Solo Setup business context", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
   beforeEach(() => {
+    state.theme = "light";
     document.body.innerHTML = "";
     state.accessScope = "owner_full";
     state.saving = false;
     state.activeTenantId = "tenant-a";
     state.save.mockReset().mockResolvedValue({ ok: true, kind: "saved" });
     state.refresh.mockReset();
+    state.searchNaics
+      .mockReset()
+      .mockResolvedValue([{ code: "541611", title: "Management consulting" }]);
     state.confirm.mockReset().mockResolvedValue(true);
     state.registrationAvailable = false;
-    state.checkEmail
-      .mockReset()
-      .mockImplementation(async (local: string) => ({
-        available: true,
-        address: `${local}@mail.paigeagent.ai`,
-      }));
+    state.checkEmail.mockReset().mockImplementation(async (local: string) => ({
+      available: true,
+      address: `${local}@mail.paigeagent.ai`,
+    }));
     state.registerEmail
       .mockReset()
       .mockImplementation(async (local: string) => ({
@@ -156,6 +159,20 @@ describe("canonical Solo Setup business context", () => {
     });
   });
 
+  it.each(["light", "dark"])("gives the body-portaled managed-email drawer its own %s theme scope", async (theme) => {
+    state.theme = theme;
+    state.registrationAvailable = true;
+    const {host, root} = await mount();
+    await act(async () => button(host, "People & email").click());
+    await act(async () => button(host, "Check or change address").click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.closest('[data-pg]')?.getAttribute("data-pg")).toBe(theme);
+    expect(host.contains(dialog)).toBe(false);
+    await act(async () => button(document.body, "← Back to Setup").click());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await act(async () => root.unmount());
+  });
+
   it("renders exactly the approved five accessible subtabs in order", async () => {
     const { host, root } = await mount();
     expect(
@@ -169,9 +186,409 @@ describe("canonical Solo Setup business context", () => {
       "Direction",
       "Paige brief",
     ]);
-    expect(host.textContent).toContain(
-      "A structured address people can actually edit",
+    expect(host.textContent).toContain("Business address");
+    expect(host.textContent).not.toContain("people can actually edit");
+    await act(async () => root.unmount());
+  });
+
+  it("selects a NAICS search result from read mode into a saveable draft", async () => {
+    const { host, root } = await mount();
+    await setValue(host.querySelector(".setup-search input")!, "management");
+    await act(async () => button(host, "Search").click());
+    const result = host.querySelector<HTMLButtonElement>(
+      ".setup-result-list button",
+    )!;
+    expect(result.disabled).toBe(false);
+    await act(async () => result.click());
+    expect(
+      host.querySelector<HTMLInputElement>('[name="naicsCode"]')?.value,
+    ).toBe("541611");
+    await act(async () => button(host, "Save business context").click());
+    expect(state.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brief: expect.objectContaining({ naicsCode: "541611" }),
+      }),
     );
+    await act(async () => root.unmount());
+  });
+
+  it("lets an owner start adding knowledge without finding the global edit button", async () => {
+    const { host, root } = await mount();
+    await act(async () => button(host, "Knowledge bucket").click());
+    expect(button(host, "Add knowledge")).toBeTruthy();
+    await act(async () => button(host, "Add knowledge").click());
+    expect(
+      document.querySelector(
+        '[role="dialog"][aria-label="Add business knowledge"]',
+      ),
+    ).toBeTruthy();
+    expect(button(host, "Save business context")).toBeTruthy();
+    await act(async () => root.unmount());
+  });
+
+  it("captures browser-populated address values at save even without an input event", async () => {
+    const { host, root } = await mount();
+    await act(async () => button(host, "Edit business context").click());
+    const input = host.querySelector<HTMLInputElement>(
+      '[name="registeredCity"]',
+    )!;
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(input, "Indianapolis");
+    await act(async () => button(host, "Save business context").click());
+    expect(state.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brief: expect.objectContaining({ registeredCity: "Indianapolis" }),
+      }),
+    );
+    await act(async () => root.unmount());
+  });
+
+  it("offers country and US state dropdowns without rewriting stored facts", async () => {
+    state.brief = cleanSoloSetupBrief({
+      ...state.brief,
+      registeredIsoCountry: "US",
+      registeredRegion: "IN",
+    });
+    const { host, root } = await mount();
+    await act(async () => button(host, "Edit business context").click());
+    const country = host.querySelector<HTMLSelectElement>(
+      'select[name="registeredIsoCountry"]',
+    );
+    const region = host.querySelector<HTMLSelectElement>(
+      'select[name="registeredRegion"]',
+    );
+    expect(country?.value).toBe("US");
+    expect(region?.value).toBe("IN");
+    expect(region?.textContent).toContain("Indiana");
+    expect(country?.querySelector('option[value=""]')).toBeTruthy();
+    expect(region?.querySelector('option[value=""]')).toBeTruthy();
+    await act(async () => root.unmount());
+  });
+
+  it.each(["click", "keyboard"])(
+    "preserves several DOM-only autofilled fields and authorized email across %s tab navigation",
+    async (navigation) => {
+      const { host, root } = await mount();
+      await act(async () => button(host, "Edit business context").click());
+      await act(async () => button(host, "Override email").click());
+      for (const [name, value] of Object.entries({
+        registeredCity: "Indianapolis",
+        registeredStreet: "100 Test Street",
+        primaryBusinessEmail: "new@example.com",
+      })) {
+        const control = host.querySelector<HTMLInputElement>(
+          `input[name="${name}"]`,
+        )!;
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!.call(control, value);
+      }
+      await act(async () => {
+        if (navigation === "click") button(host, "Direction").click();
+        else
+          button(host, "Business profile").dispatchEvent(
+            new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+          );
+      });
+      await act(async () => button(host, "Save business context").click());
+      expect(state.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          brief: expect.objectContaining({
+            registeredCity: "Indianapolis",
+            registeredStreet: "100 Test Street",
+          }),
+          primaryBusinessEmail: "new@example.com",
+          primaryBusinessEmailDecision: "override",
+        }),
+      );
+      await act(async () => root.unmount());
+    },
+  );
+
+  it.each(["admin_operational", "read_only"] as const)(
+    "does not grant NAICS selection or Knowledge editing to %s",
+    async (scope) => {
+      state.accessScope = scope;
+      const { host, root } = await mount();
+      await setValue(host.querySelector(".setup-search input")!, "management");
+      await act(async () => button(host, "Search").click());
+      expect(
+        host.querySelector<HTMLButtonElement>(".setup-result-list button")!
+          .disabled,
+      ).toBe(true);
+      await act(async () => button(host, "Knowledge bucket").click());
+      expect(button(host, "Add knowledge")).toBeUndefined();
+      expect(state.save).not.toHaveBeenCalled();
+      await act(async () => root.unmount());
+    },
+  );
+
+  it("preserves browser-filled siblings when NAICS search rerenders the profile", async () => {
+    const { host, root } = await mount();
+    await act(async () => button(host, "Edit business context").click());
+    const city = host.querySelector<HTMLInputElement>(
+      '[name="registeredCity"]',
+    )!;
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(city, "Autofilled city");
+    await setValue(host.querySelector(".setup-search input")!, "management");
+    expect(city.value).toBe("Autofilled city");
+    await act(async () => button(host, "Search").click());
+    expect(city.value).toBe("Autofilled city");
+    await act(async () => button(host, "Save business context").click());
+    expect(state.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brief: expect.objectContaining({ registeredCity: "Autofilled city" }),
+      }),
+    );
+    await act(async () => root.unmount());
+  });
+
+  it("asks before discarding DOM-only autofill and retains it when cancelled", async () => {
+    const { host, root } = await mount();
+    await act(async () => button(host, "Edit business context").click());
+    const city = host.querySelector<HTMLInputElement>(
+      '[name="registeredCity"]',
+    )!;
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(city, "Autofilled city");
+    state.confirm.mockResolvedValueOnce(false);
+    await act(async () => button(host, "Cancel").click());
+    expect(state.confirm).toHaveBeenCalled();
+    expect(city.value).toBe("Autofilled city");
+    expect(button(host, "Save business context")).toBeTruthy();
+    await act(async () => root.unmount());
+  });
+
+  it("searches while typing and ignores an older NAICS response", async () => {
+    vi.useFakeTimers();
+    let finishOld!: (value: Array<{ code: string; title: string }>) => void;
+    state.searchNaics.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOld = resolve;
+        }),
+    );
+    const { host, root } = await mount();
+    const input = host.querySelector<HTMLInputElement>(".setup-search input")!;
+    await setValue(input, "old activity");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
+    expect(state.searchNaics).toHaveBeenLastCalledWith("old activity");
+    await setValue(input, "management");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
+    expect(host.textContent).toContain("Management consulting");
+    await act(async () =>
+      finishOld([{ code: "999999", title: "Stale activity" }]),
+    );
+    expect(host.textContent).not.toContain("Stale activity");
+    await setValue(input, "");
+    expect(host.querySelector(".setup-result-list button")).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("requires explicit approval before selecting a connected NAICS replacement", async () => {
+    state.brief = cleanSoloSetupBrief({
+      ...state.brief,
+      naicsCode: "111111",
+      provenance: {
+        naicsCode: { source: "connection_sourced", confidence: "confirmed" },
+      },
+    });
+    const { host, root } = await mount();
+    await setValue(host.querySelector(".setup-search input")!, "management");
+    await act(async () => button(host, "Search").click());
+    state.confirm.mockResolvedValueOnce(false);
+    await act(async () =>
+      host
+        .querySelector<HTMLButtonElement>(".setup-result-list button")!
+        .click(),
+    );
+    expect(button(host, "Edit business context")).toBeTruthy();
+    expect(state.save).not.toHaveBeenCalled();
+    state.confirm.mockResolvedValueOnce(true);
+    await act(async () =>
+      host
+        .querySelector<HTMLButtonElement>(".setup-result-list button")!
+        .click(),
+    );
+    await act(async () => button(host, "Save business context").click());
+    expect(state.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brief: expect.objectContaining({ naicsCode: "541611" }),
+      }),
+    );
+    await act(async () => root.unmount());
+  });
+
+  it("does not adopt protected autofilled facts without an explicit source decision", async () => {
+    state.brief = cleanSoloSetupBrief({
+      ...state.brief,
+      registeredCity: "Connected city",
+      provenance: {
+        registeredCity: {
+          source: "connection_sourced",
+          confidence: "confirmed",
+        },
+      },
+    });
+    const { host, root } = await mount();
+    await act(async () => button(host, "Edit business context").click());
+    const city = host.querySelector<HTMLInputElement>(
+      '[name="registeredCity"]',
+    )!;
+    expect(city.disabled).toBe(true);
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(city, "Injected autofill");
+    await act(async () => button(host, "Save business context").click());
+    expect(state.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brief: expect.objectContaining({ registeredCity: "Connected city" }),
+      }),
+    );
+    await act(async () => root.unmount());
+  });
+
+  it("finds a ZIP suggestion, applies it to the draft and sends it through save", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          "post code": "46208",
+          "country abbreviation": "US",
+          places: [
+            { "place name": "Indianapolis", "state abbreviation": "IN" },
+          ],
+        }),
+      }),
+    );
+    state.brief = cleanSoloSetupBrief({
+      ...state.brief,
+      registeredIsoCountry: "US",
+      registeredPostalCode: "46208",
+    });
+    const { host, root } = await mount();
+    await act(async () => button(host, "Edit business context").click());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(state.save).not.toHaveBeenCalled();
+    await act(async () => button(host, "Use Indianapolis, IN").click());
+    expect(
+      host.querySelector<HTMLInputElement>('[name="registeredCity"]')!.value,
+    ).toBe("Indianapolis");
+    expect(
+      host.querySelector<HTMLSelectElement>('[name="registeredRegion"]')!.value,
+    ).toBe("IN");
+    await act(async () => button(host, "Save business context").click());
+    expect(state.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brief: expect.objectContaining({
+          registeredCity: "Indianapolis",
+          registeredRegion: "IN",
+        }),
+      }),
+    );
+    await act(async () => root.unmount());
+  });
+
+  it("ignores a ZIP lookup after switching the country", async () => {
+    vi.useFakeTimers();
+    let finish!: (value: unknown) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    );
+    state.brief = cleanSoloSetupBrief({
+      ...state.brief,
+      registeredIsoCountry: "US",
+      registeredPostalCode: "46208",
+    });
+    const { host, root } = await mount();
+    await act(async () => button(host, "Edit business context").click());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    const country = host.querySelector<HTMLSelectElement>(
+      '[name="registeredIsoCountry"]',
+    )!;
+    await act(async () => {
+      country.value = "CA";
+      country.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () =>
+      finish({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          "post code": "46208",
+          "country abbreviation": "US",
+          places: [
+            { "place name": "Indianapolis", "state abbreviation": "IN" },
+          ],
+        }),
+      }),
+    );
+    expect(button(host, "Use Indianapolis, IN")).toBeUndefined();
+    expect(
+      host.querySelector<HTMLInputElement>('[name="registeredCity"]')!.value,
+    ).toBe("");
+    expect(host.querySelector('input[name="registeredRegion"]')).toBeTruthy();
+    await act(async () => root.unmount());
+  });
+
+  it("keeps a new knowledge link through save failure and retry without duplicate records", async () => {
+    state.save.mockResolvedValueOnce({
+      ok: false,
+      kind: "failed",
+      error: "Could not save",
+    });
+    const { host, root } = await mount();
+    await act(async () => button(host, "Knowledge bucket").click());
+    await act(async () => button(host, "Add knowledge").click());
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    const inputs = dialog.querySelectorAll<HTMLInputElement>("input");
+    await setValue(inputs[0], "Company website");
+    await setValue(inputs[1], "https://example.com/company");
+    await act(async () => button(dialog, "Keep in Setup draft").click());
+    expect(
+      host.querySelector<HTMLAnchorElement>(
+        'a[href="https://example.com/company"]',
+      )?.rel,
+    ).toContain("noopener");
+    expect(state.save).not.toHaveBeenCalled();
+    await act(async () => button(host, "Save business context").click());
+    expect(host.textContent).toContain("Could not save");
+    expect(button(host, "Save business context")).toBeTruthy();
+    await act(async () => button(host, "Save business context").click());
+    expect(state.save).toHaveBeenCalledTimes(2);
+    for (const [payload] of state.save.mock.calls) {
+      expect(payload.knowledgeSources).toHaveLength(1);
+      expect(payload.knowledgeSources[0]).toMatchObject({
+        title: "Company website",
+        sourceUrl: "https://example.com/company",
+      });
+    }
     await act(async () => root.unmount());
   });
 

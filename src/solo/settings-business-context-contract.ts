@@ -215,10 +215,11 @@ export function validateKnowledgeSource(source: SetupKnowledgeSource) {
     errors.reference = "Use 1,000 characters or fewer.";
   if (source.notes.length > 4000)
     errors.notes = "Use 4,000 characters or fewer.";
-  if (source.sourceType === "link") {
+  if (source.sourceType === "link" || source.sourceUrl.trim()) {
     try {
       const url = new URL(source.sourceUrl);
-      if (url.protocol !== "https:") throw new Error("protocol");
+      if (url.protocol !== "https:" || url.username || url.password)
+        throw new Error("protocol");
     } catch {
       errors.sourceUrl =
         "Use a complete https:// link. Setup stores the link but does not fetch it.";
