@@ -12,6 +12,7 @@
  * Requires the harness dev server: npx vite --config scripts/live-drive/harness/team-mount/vite.config.ts
  */
 import { chromium } from "playwright";
+import { resolveExecutablePath } from "./live-drive.mjs";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -47,7 +48,25 @@ const confirmButton = (page) => page.getByRole("button", { name: /^Confirm remov
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  const browser = await chromium.launch({ executablePath: process.env.PW_EXECUTABLE_PATH || undefined });
+  // §18: the BROWSER RESOLUTION is shared, the proxy deliberately is not.
+  //
+  // This used to read PW_EXECUTABLE_PATH and nothing else, so it could not start wherever the
+  // pre-provisioned build differs from the one this repo's playwright expects — the sandbox ships
+  // chromium-1194, playwright wanted 1234, and the harness died with "Executable doesn't exist"
+  // while a working Chromium sat on disk. `resolveExecutablePath` is the existing one home for
+  // that (PW_EXECUTABLE_PATH -> scan PLAYWRIGHT_BROWSERS_PATH -> playwright's own bundle).
+  //
+  // `buildLaunchOptions()` is NOT used, though it wraps that resolver, because it also wires the
+  // agent proxy whenever HTTPS_PROXY is set — correct for a live drive against a real host, wrong
+  // here. Reaching for it routed 127.0.0.1 through the relay and rendered the proxy's own 405 page
+  // instead of the harness; the run then failed hunting a roster row on a page that was never the
+  // harness. This target is a LOCAL dev server and makes no external request at all, so it takes
+  // no proxy.
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    ...(resolveExecutablePath() ? { executablePath: resolveExecutablePath() } : {}),
+  });
 
   // ── 1. The four viewports × both themes, with the confirmation armed ──────────────────────────
   for (const theme of THEMES) {

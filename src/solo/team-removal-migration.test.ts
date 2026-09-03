@@ -239,6 +239,37 @@ describe("the table underneath — a guarded function is not a boundary on its o
     expect(sql).not.toMatch(/REVOKE[^;]*SELECT[^;]*ON public\.tenant_members/);
   });
 
+  it("has its applied-schema proof actually WIRED INTO CI, not merely written", () => {
+    // §68's anchoring case is a check that was registered, had a correct runner, and had NEVER RUN.
+    // A pgTAP file nothing executes is that failure exactly: it looks like evidence in a diff and
+    // proves nothing. So the wiring is asserted, and asserted in BOTH triggers — the sibling PR's
+    // round 2 found precisely this fix half-applied, inserted twice into `pull_request` and never
+    // into `push`, which would have left main unguarded while the PR looked covered.
+    const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/paige-spine-contract.yml"), "utf8");
+    const proof = "supabase/tests/solo_team_removal_authority.sql";
+
+    expect(workflow, "the proof is executed by a job").toContain(`- run: supabase test db ${proof}`);
+
+    const prAt = workflow.indexOf("pull_request:");
+    const pushAt = workflow.indexOf("push:", prAt);
+    const jobsAt = workflow.indexOf("jobs:", pushAt);
+    // Asserted, because an unfound marker returns -1 and every slice below would silently widen to
+    // the whole file — the guard would pass on any placement at all.
+    expect(prAt, "the pull_request trigger was found").toBeGreaterThan(-1);
+    expect(pushAt, "the push trigger was found").toBeGreaterThan(prAt);
+    expect(jobsAt, "the jobs block was found").toBeGreaterThan(pushAt);
+
+    expect(workflow.slice(prAt, pushAt), "the pull_request paths filter matches it").toContain(proof);
+    expect(workflow.slice(pushAt, jobsAt), "the push paths filter matches it too").toContain(proof);
+
+    // And the file it runs has to exist, with a plan that matches the assertions it actually makes.
+    const tap = readFileSync(resolve(process.cwd(), proof), "utf8");
+    const planned = Number(/SELECT plan\((\d+)\);/.exec(tap)?.[1]);
+    const written = (tap.match(/^SELECT (?:ok|is|throws_ok|lives_ok)\(/gm) ?? []).length;
+    expect(planned, "the proof declares a plan").toBeGreaterThan(0);
+    expect(written, "every assertion written is one the plan expects").toBe(planned);
+  });
+
   it("no longer describes itself as advisory, because it is no longer advisory", () => {
     // The first draft of this migration carried a comment admitting the function was advisory
     // against direct table access. That sentence was true when written and false the moment the
