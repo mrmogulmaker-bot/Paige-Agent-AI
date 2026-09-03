@@ -1568,3 +1568,61 @@ the ruling is the owner's.
 *Rule:* **when a blocker has been inherited rather than measured, measure it before repeating it.**
 This one had been restated all session as a reason to skip a check, and one `curl` falsified half of
 it. An inherited limit is a hypothesis with a citation, not a finding.
+
+## A NOT FOUND from an enumeration you never proved complete (2026-09-03, Rail #877 — SECOND occurrence)
+
+**What happened.** Verifying that the new Solo Rail panel was really on production, a two-level
+crawl of the deployed JS chunks reported the panel **absent from all 427 chunks**. Taken at face
+value that reads as "the deploy did not carry the change" — a release-blocking claim.
+
+It was wrong. A **control** — a string known to have been in the deployed bundle *before* this
+slice — came back absent from the same 427. A string that is definitely there cannot be missing
+from a complete enumeration, so the enumeration was incomplete, not the code. The real chunk sat
+deeper in the graph: closure took **five rounds and 733 chunks**.
+
+**The second trap, underneath the first.** A chunk named `SoloApp-CQ9-3o2z.js` WAS reachable at
+level two, and it did not contain the panel. It was **12,562 bytes**; the real one
+(`SoloApp-DxVYmu_L.js`) was **650,307**. Vercel keeps assets from earlier deployments, so an old
+artifact answers `200` under a plausible name indefinitely. Grepping the first plausible name and
+believing the result is how a stale chunk gets mistaken for the current one.
+
+**Why this is the second occurrence.** The same shallow-crawl false negative happened days earlier
+verifying Slice B, where `PaigeRailFeed`'s chunk was reported missing for the same reason. It was
+recorded then as "my chunk enumeration was incomplete" — and the method that produced it was used
+again anyway, because the lesson was written as a note about one incident rather than as a rule.
+
+*Rules, both of which had to fail twice to get written down:*
+
+1. **Run a control before believing a NOT FOUND.** Search for something you already know is there.
+   If the control is also missing, you have measured your search, not the artifact. This costs one
+   extra query and is the only thing that distinguishes "absent" from "not looked hard enough".
+2. **Crawl to closure, and cross-check size against a local build at the deployed commit.** A
+   fixed number of levels is a guess about the graph's depth. Byte-size equality between a locally
+   built chunk and the served one is strong, cheap evidence they are the same source — and it is
+   what exposes a stale same-named artifact.
+
+## A claim written once and copied six times is checked zero times (2026-09-03, Rail #877 → #879)
+
+**What happened.** The Solo Rail slice was justified by "the tenant-wide rail was dark for every
+Solo tenant." That is false. `TrustCompass` is mounted on Solo (`SoloApp.tsx:253`) and its panel
+calls `useSoloActivityFeed` (`compass.tsx:469`); so does Team → Activity (`team.tsx:233`). Both read
+`get_solo_rail_activity` — the tenant-wide reader. Solo already had two tenant-wide rail surfaces.
+
+The true statement is narrower: **`PaigeRailFeed` specifically is unreachable on Solo, and the
+Command Center — Solo's default landing route — carried no Rail surface.**
+
+**How it survived.** The sentence went into the master reference, this brain record, the tier
+matrix, the PR body, the commit message, and the report to the owner. Six copies, and every one was
+written by consulting the previous copy rather than the code. Worse, the tier-matrix edit that
+carried the claim **also carried a table two rows above marking Trust Compass and Team Activity as
+✓ for Solo** — the refutation and the claim shipped in the same diff, in the same file, and neither
+the author nor the pre-merge checks noticed. An independent review caught it after merge.
+
+**Why the usual defences all missed it.** Tests do not assert prose. Lint does not read English. The
+peer-gate reads the diff for defects, and this defect was *consistent with itself* everywhere it
+appeared — a lie repeated identically looks like corroboration.
+
+*Rule:* **a claim gets re-derived from the source at every place it is written, or it gets written
+once and linked.** Copying prose between records copies its errors and manufactures false
+confidence, because each copy looks independently attested. When a record and a table in the same
+change disagree, the table — which was built from the code — wins.
