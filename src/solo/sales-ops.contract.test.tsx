@@ -550,6 +550,55 @@ describe("Sales operations — what an owner can actually do", () => {
     expect(host.textContent).not.toContain("tenant-scoped read");
   });
 
+  it("says the word Sales once, not three times down the page", () => {
+    // OWNER, 2026-09-03: "do you see where it says 'sales' in the banner area? It says 'sales'
+    // again at the top in the subtab. We're being very, very redundant… eliminating that whole
+    // banner section." The banner said CAMPAIGNS / Sales directly above a tab strip already saying
+    // Sales, under a shell already saying Campaigns, and spent ~90px doing it.
+    renderAt("/solo/42/growth/sales");
+    // Counted structurally, not over `textContent` — the tab strip concatenates
+    // ("CatalogSalesPipeline"), so a word-boundary match over the whole page silently finds
+    // nothing and the guard would pass while saying nothing at all.
+    const saying = [...host.querySelectorAll("*")]
+      .filter((el) => el.children.length === 0 && el.textContent?.trim() === "Sales");
+    expect(saying).toHaveLength(1);
+    // And the one that survives is the tab, not a heading repeating it.
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("Sales");
+    // No heading anywhere on the surface repeats the tab's word.
+    const headings = [...host.querySelectorAll("h1,h2,h3")].map((h) => h.textContent ?? "");
+    expect(headings.some((h) => /Sales/.test(h))).toBe(false);
+  });
+
+  it("renders no masthead above the work on a normal tab", () => {
+    renderAt("/solo/42/growth/sales");
+    // The surface starts at the first band. A legacy address still gets a head — that is its only
+    // orientation — but a normal tab does not.
+    expect(host.querySelector(".pg-hd")).toBeNull();
+    expect(host.textContent).not.toContain("Grounded campaign work and published outputs");
+    // What the masthead carried is not lost: the truth label moved onto the first band, and the
+    // legend moved into the tab row.
+    expect(host.querySelector(".so-band-head .campaigns-truth")).not.toBeNull();
+    expect(host.querySelector(".campaigns-nav .campaigns-truth-key")).not.toBeNull();
+  });
+
+  it("spends colour on meaning, not decoration", () => {
+    harness.sales.processor = "paypal";
+    harness.sales.methods = ["cards"];
+    harness.sales.orders = [
+      { id: "o1", productId: null, customerName: "A client", customerEmail: null,
+        amountTotal: 45000, currency: "usd", status: "pending", createdAt: "2026-08-20T12:00:00Z" },
+    ];
+    renderAt("/solo/42/growth/sales");
+    // Nothing recorded reads as an OPPORTUNITY (violet), never as dead grey — §23, and the owner's
+    // "this is representing their money, their income, their opportunities".
+    expect(host.querySelector(".pill-v")).not.toBeNull();
+    // Money awaiting carries its own state colour, so the figure and its pill cannot disagree.
+    expect(host.querySelector(".so-num--warn")).not.toBeNull();
+    // The acts are the primary action, not a plain control.
+    const act = [...host.querySelectorAll("button")].find((b) => b.textContent === "Quick offer");
+    expect(act?.className).toContain("btn-p");
+  });
+
   it("keeps its own load phases distinct from the Campaigns snapshot's", () => {
     harness.sales.phase = "error";
     renderAt("/solo/42/growth/sales");
