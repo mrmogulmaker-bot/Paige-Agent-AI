@@ -1105,7 +1105,17 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
-### Billing Foundation A — workspace billing identity + designated billing contacts (branch `claude/billing-foundation-a`, draft PR #816, 2026-09-02; NOT LIVE, awaiting exact-head Gate B)
+### Billing Foundation A — workspace billing identity + designated billing contacts (PR #816, **MERGED `f455d8a5` 2026-09-03 under owner Gate B; migration `20261045000000` APPLIED on prod, edge functions deployed**)
+
+**Live state, verified on prod 2026-09-03 (not inferred from a green pipeline):** `20261045000000` is in
+`supabase_migrations.schema_migrations`; the 3 tables, 12 functions, 6 policies and the guard triggers exist
+when queried directly; `platform_billing_accounts`, `_contacts` and `_notification_log` each hold **0 rows**
+(reconcile found 0 candidates, exactly as predicted — the 4 live `platform_subscriptions` rows carry NULL
+customer ids); no proof fixture persisted. Edge: `platform-billing-portal` v2 ACTIVE, `customer-portal` v44,
+`stripe-webhook` v50, all deployed by `deploy-edge-functions.yml` on the merge commit.
+**`PLATFORM_BILLING_PORTAL_ENABLED` was NOT flipped** — the portal refuses every call `not_enabled`.
+**Nothing is owner-visible: no screen mounts the hooks, and no surface calls the authority read** — that is
+Foundation C, which is not built. **No email was sent; no sender exists.**
 
 **What it is.** The first Platform Billing slice after the Gate 1 packet (#803): one server-authoritative
 workspace→Stripe-customer mapping (`platform_billing_accounts`), the strict money-path resolver

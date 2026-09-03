@@ -1724,13 +1724,21 @@ mocked tenant context and read the resulting router location, plus the pure rule
 each proven red against the pre-change code. **No row has been driven by an authenticated session**,
 which is a weaker class of evidence than a drive and must not be represented as one.
 ### Platform Billing — Foundation A seams (branch `claude/billing-foundation-a`, PR #816) — **NOT LIVE**
+### Platform Billing — Foundation A seams (PR #816, merged `f455d8a5` 2026-09-03) — **LIVE**
 
-**§66, same commit as the ship — recorded as PENDING, not as shipped.** Nothing owner-visible
-ships in A (the Solo Billing screen is Foundation C). What changes per tier is the set of
-Paige-callable billing seams (§10) and who they refuse; the rows below say what the migration
-`20261047000000` will enforce once it is merged under Gate B and persisted on prod. Until that
-confirmation lands (deploy-migrations `db-live` tag, objects queried on prod), every cell is a
-design claim proven only inside `BEGIN … ROLLBACK` (64/64 properties, 5/5 mutants) — never "live".
+**§66.** Nothing owner-visible ships in A (the Solo Billing screen is Foundation C, not built). What
+changes per tier is the set of Paige-callable billing seams (§10) and who they refuse. **Migration
+`20261045000000` is APPLIED on prod** — the version is in `supabase_migrations.schema_migrations`,
+and the 3 tables, 12 functions, 6 policies and 4 triggers were queried directly on ref
+`xygzykjyynhzqytbqnzu` (2026-09-03), so the rows below are shipped truth, not a design claim. They
+were also proven pre-merge inside `BEGIN … ROLLBACK` (64/64 properties, 5/5 mutants caught).
+
+**§13 correction, 2026-09-03:** this block said `20261047000000` — PR #827 renamed the version
+inside it to its own migration while editing the file. Foundation A's migration is `20261045000000`;
+`20261047000000` is the invitation slice. Corrected here rather than left to mislead the next reader.
+
+**Still not live, deliberately:** `PLATFORM_BILLING_PORTAL_ENABLED` is not flipped, so the portal row
+below refuses every caller `not_enabled` regardless of tier until an authenticated owner drive lands.
 
 | Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|---|
