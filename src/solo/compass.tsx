@@ -282,7 +282,7 @@ return()=>{cancelAnimationFrame(raf);ro.disconnect();mo.disconnect();cv.removeEv
 const hotLabel=S.current.hot;
 return <div ref={wrap} style={{position:'absolute',inset:0}}><canvas ref={cvr} style={{display:'block'}}/></div>};
 
-export const MiniCompass=({dept,label='This action was drafted because the platform default for',compact})=>{
+export const MiniCompass=({dept,label='This action was drafted because the platform default for',compact=false})=>{
 const{depts,loading,configured}=useTrustDepartments();
 const d=depts.find(x=>x.n===dept||x.id===dept);
 // An absent read is reported as absent. It is never rendered as a level, because "no posture" and

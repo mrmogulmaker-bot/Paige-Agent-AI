@@ -63,8 +63,8 @@ describe("buildLaneCounts — counts real rows, drops what it cannot name", () =
 
   it("DROPS an unrecognised lane rather than bucketing it into a plausible one", () => {
     const counts = buildLaneCounts([
-      { default_to_department: "sales", default_autonomy_lane: "supervised", enabled: true, tenant_id: null },
-      { default_to_department: "sales", default_autonomy_lane: null, enabled: true, tenant_id: null },
+      { default_to_department: "sales", default_autonomy_lane: "supervised", label: "x", enabled: true, tenant_id: null },
+      { default_to_department: "sales", default_autonomy_lane: null, label: "y", enabled: true, tenant_id: null },
     ]);
     // Not `{auto:0,confirm:1,off:0}` and not `{...off:2}` — an unknown lane contributes NOTHING,
     // so the department does not appear at all rather than appearing with an invented posture.
