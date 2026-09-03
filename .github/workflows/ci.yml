@@ -281,6 +281,17 @@ jobs:
       - name: Governed-execution guard catches what it claims to
         if: ${{ !cancelled() }}
         run: npm run lint:governed-execution:test
+      # An MCP tool's arguments are authored by a MODEL, so a `confirm: true` read out of them
+      # gates destruction on a value the thing being gated wrote. `bulk_delete_contacts` shipped
+      # exactly that shape and hard-deleted up to 100 client rows with the service-role client
+      # (#784). The Chat-side guard cannot see it: paige-mcp is not in its file list.
+      - name: Lint — no destructive MCP action gated on a model-supplied boolean
+        if: ${{ !cancelled() }}
+        run: npm run lint:mcp-destructive-confirm
+
+      - name: MCP destructive-confirm guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:mcp-destructive-confirm:test
 
       # A similarity search whose search_path excludes `extensions` cannot resolve `<=>` and raises
       # on every call. Three shipped functions were in that state for months, invisible because
