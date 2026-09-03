@@ -8971,6 +8971,88 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               continue;
             }
 
+            // §9/§59 — the role gate above is GLOBAL; this binds it to THIS workspace.
+            //
+            // Two mechanisms combine into a cross-workspace read, and neither is a defect alone:
+            //   1. crmTenantId comes from get_paige_persona_context(), which resolves the
+            //      clients.linked_user_id branch FIRST and only then falls back to
+            //      current_user_tenant_id(). So for a linked CLIENT of workspace B, the
+            //      conversation — and therefore crmTenantId — is B.
+            //   2. The role gate reads public.user_roles, which carries NO tenant_id. It asks
+            //      "is this person staff ANYWHERE", not "staff of crmTenantId".
+            // A user who is admin/coach because of workspace A and a linked client of workspace B
+            // therefore passes the gate via A and runs these RLS-BYPASSING service-role handlers
+            // against B's contacts, deals and tasks.
+            //
+            // PROVEN on prod in a rolled-back transaction, with a global-'admin' owner of workspace
+            // 1c7869ec inserted as a linked client of e7f1b157:
+            //     conversation_tenant e7f1b157 | own_workspace 1c7869ec | global gate TRUE
+            // The handlers use the service-role client, so RLS does not save it: 2 contact records
+            // and a $5,000 deal on that one target.
+            //
+            // Latent when written: clients.linked_user_id is non-null on ZERO prod rows, so the
+            // client-link branch never fires today. It stops being latent the moment a customer
+            // portal user is linked, which is the product's core purpose (§7) — the same shape as
+            // the readiness-read binding defect fixed in #876, but returning real records rather
+            // than status booleans.
+            //
+            // THE PREDICATE REUSES THE CANONICAL RESOLVER RATHER THAN RE-DERIVING AUTHORITY (§18).
+            // current_user_tenant_id() already encodes every legitimate way a caller operates in a
+            // workspace — an active tenant_members seat, agency_can_manage_child, agency_team_role,
+            // and is_platform_admin. So the question is simply: is the conversation's workspace the
+            // caller's OWN? A hand-rolled tenant_members check would have been narrower than the
+            // resolver and would silently lock out an agency manager who holds no seat in the child
+            // tenant they manage — measured: zero such users today, but the branch exists, and
+            // betting against a live capability because it is dormant is exactly the mistake the
+            // peer-gate caught on #885.
+            //
+            // This only ever NARROWS: the global admin/coach requirement above still applies, and
+            // this adds the workspace binding on top.
+            if (CRM_SERVICE_TOOLS.has(tc.function.name)) {
+              // THE USER-SCOPED CLIENT, NOT THE SERVICE ONE. current_user_tenant_id() is keyed
+              // entirely on auth.uid(); `supabase` (L589) is the SERVICE-ROLE client, where
+              // auth.uid() is NULL — so calling it there resolves NULL for everyone and refuses
+              // every caller. That is what the first push of this PR did: a total outage of all
+              // nine tools for all nine active operators, caught by the peer-gate. `supabaseClient`
+              // (L577) carries the caller's Authorization header, and is the same client the
+              // persona RPC this comparand is measured against is called on (L1571).
+              // RESOLVED PER TOOL, DELIBERATELY NOT MEMOISED ACROSS THE BATCH.
+              // The extra round-trip buys a fail-closed property. `crmTenantId` is resolved ONCE
+              // per request from personaCtx, so if the caller's active workspace changes mid-batch
+              // a freshly-resolved current_user_tenant_id() no longer equals it and the remaining
+              // tools refuse. Caching would make both sides equally stale, they would compare
+              // equal, and later tools would run against the OLD workspace — which is precisely
+              // the window this loop's own dispatch-boundary comment says the per-tool assertion
+              // exists to close. revalidateTenantKnowledgeScope() does not cover it either: it
+              // early-returns true when the turn carries no protected content, so on an ordinary
+              // turn nothing else re-checks scope between tools.
+              const { data: ownTenant, error: ownTenantErr } = await supabaseClient.rpc(
+                "current_user_tenant_id",
+              );
+              if (ownTenantErr) {
+                // LOUD, not swallowed (§32): a failed check and a genuine mismatch are different
+                // things and must not report the same cause (§13).
+                console.error("[paige] CRM workspace binding check FAILED:", ownTenantErr.message);
+              }
+              const callerOwnTenant = (ownTenant as string | null) ?? null;
+              const callerTenantErr = !!ownTenantErr;
+              // Fail CLOSED: if we cannot establish the caller's own workspace, we cannot establish
+              // that it is the conversation's, and these handlers bypass RLS.
+              if (callerTenantErr || !callerOwnTenant || callerOwnTenant !== crmTenantId) {
+                toolResults.push({
+                  tool_call_id: tc.id,
+                  role: "tool",
+                  content: JSON.stringify({
+                    success: false,
+                    // Distinct codes: the model must not tell an operator their workspace did not
+                    // match when the truth is that the check itself could not run.
+                    error: callerTenantErr ? "workspace_check_failed" : "workspace_mismatch",
+                  }),
+                });
+                continue;
+              }
+            }
+
             // ── The business phone line ───────────────────────────────────────
             // `functions.invoke` puts NOTHING useful on `error.message` for a non-2xx: it is
             // the literal string "Edge Function returned a non-2xx status code", and the honest
