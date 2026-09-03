@@ -118,17 +118,42 @@ export function doorBranches(src, fileName = "in-memory.ts") {
   return [...byLine.values()].sort((a, b) => a.line - b.line);
 }
 
+/** A destructuring key's name, seeing through a computed `["x"]` wrapper. */
+function bindingKeyName(node) {
+  if (!node) return null;
+  if (ts.isComputedPropertyName(node)) return lit(node.expression);
+  if (ts.isIdentifier(node)) return node.text;
+  return lit(node);
+}
+
+/** Is this node a wrapper that changes nothing about what its child IS? */
+function isTransparent(n) {
+  return !!n && (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) ||
+                 ts.isTypeAssertionExpression(n) || ts.isNonNullExpression(n) ||
+                 (ts.isSatisfiesExpression?.(n) ?? false));
+}
+
+/** The nearest parent that is not a transparent wrapper, and the child as that parent sees it. */
+function effectiveParent(n) {
+  let child = n, p = n.parent;
+  while (isTransparent(p)) { child = p; p = p.parent; }
+  return { parent: p, child };
+}
+
 /** Does this node NAME the door — as an identifier, or as a string standing in for one? */
 function namesDoor(n) {
   if (ts.isIdentifier(n)) return n.text === "door";
   // A string is only a NAME when it is being used as one: a key or an index. Prose that happens to
   // contain the word is not, which is why this checks the parent rather than the text alone.
+  //
+  // Through TRANSPARENT WRAPPERS, because `caller[("door")]` reads the door and a direct-parent
+  // test sees a ParenthesizedExpression and declines. Measured: zero hits before this.
   if (!ts.isStringLiteralLike(n) || n.text !== "door") return false;
-  const p = n.parent;
+  const { parent: p, child } = effectiveParent(n);
   if (!p) return false;
-  return (ts.isElementAccessExpression(p) && p.argumentExpression === n) ||
+  return (ts.isElementAccessExpression(p) && p.argumentExpression === child) ||
          ts.isComputedPropertyName(p) ||
-         ((ts.isPropertyAssignment(p) || ts.isPropertySignature(p)) && p.name === n);
+         ((ts.isPropertyAssignment(p) || ts.isPropertySignature(p)) && p.name === child);
 }
 
 /** The two places `door` may legitimately appear. Everything else is a read this seam must not do. */
@@ -176,25 +201,39 @@ function isAuditDoorAssignment(assignment) {
   return isValuePosition(obj);
 }
 
-/** Is this expression being USED as a value, rather than standing as an assignment target? */
+/**
+ * Is this expression being USED as a value, rather than standing as an assignment target?
+ *
+ * CONTAINERS PROPAGATE, THEY DO NOT DECIDE. My first version accepted a PropertyAssignment or an
+ * array element as proof of a value, which is only true if the CONTAINER is itself a value —
+ * `({ payload: { door: d } } = caller)` and `([{ door: d }] = callers)` are both destructuring
+ * targets whose inner object sits inside exactly those containers. Measured: zero hits before this.
+ *
+ * So a container asks its own position instead of answering for its child, and only the terminals
+ * below decide. Third time this predicate's family has lost to a locally-correct test; propagating
+ * is the structural answer rather than a fourth exclusion.
+ */
 function isValuePosition(node) {
-  const p = node.parent;
+  const { parent: p, child } = effectiveParent(node);
   if (!p) return false;
-  // Transparent wrappers keep whatever position their parent has.
-  if (ts.isParenthesizedExpression(p) || ts.isAsExpression(p) ||
-      ts.isSatisfiesExpression?.(p) || ts.isTypeAssertionExpression(p) ||
-      ts.isNonNullExpression(p)) return isValuePosition(p);
-  if (ts.isVariableDeclaration(p) || ts.isPropertyDeclaration(p)) return p.initializer === node;
-  if (ts.isPropertyAssignment(p)) return p.initializer === node;
-  if (ts.isReturnStatement(p)) return p.expression === node;
-  if (ts.isCallExpression(p) || ts.isNewExpression(p)) return (p.arguments ?? []).includes(node);
-  if (ts.isArrowFunction(p)) return p.body === node;
-  if (ts.isArrayLiteralExpression(p)) return p.elements.includes(node);
-  if (ts.isSpreadAssignment(p) || ts.isSpreadElement(p)) return p.expression === node;
-  if (ts.isConditionalExpression(p)) return p.whenTrue === node || p.whenFalse === node;
+
+  // CONTAINERS — inherit the position of whatever holds them.
+  if (ts.isPropertyAssignment(p) && p.initializer === child) return isValuePosition(p.parent);
+  if (ts.isShorthandPropertyAssignment(p)) return isValuePosition(p.parent);
+  if (ts.isArrayLiteralExpression(p) && p.elements.includes(child)) return isValuePosition(p);
+  if ((ts.isSpreadAssignment(p) || ts.isSpreadElement(p)) && p.expression === child) {
+    return isValuePosition(p.parent);
+  }
+  if (ts.isConditionalExpression(p)) return isValuePosition(p);
+
+  // TERMINALS — these decide.
+  if (ts.isVariableDeclaration(p) || ts.isPropertyDeclaration(p)) return p.initializer === child;
+  if (ts.isReturnStatement(p)) return p.expression === child;
+  if (ts.isCallExpression(p) || ts.isNewExpression(p)) return (p.arguments ?? []).includes(child);
+  if (ts.isArrowFunction(p)) return p.body === child;
   if (ts.isBinaryExpression(p)) {
     // The RIGHT of an assignment is a value; the LEFT is a target. Any other operator takes values.
-    if (p.operatorToken.kind === ts.SyntaxKind.EqualsToken) return p.right === node;
+    if (p.operatorToken.kind === ts.SyntaxKind.EqualsToken) return p.right === child;
     return true;
   }
   return false;   // ForOf/ForIn initialisers, binding patterns, and anything not listed
@@ -371,9 +410,16 @@ export function claimTouches(src, fileName = "in-memory.ts") {
     }
     // `const { rpc } = client` extracts the method with no property access left to match.
     if (ts.isBindingElement(n)) {
-      const src_ = n.propertyName ?? n.name;
-      const nm = src_ && ts.isIdentifier(src_) ? src_.text : lit(src_);
-      if (nm && DATA_METHODS.has(nm)) why = `destructured ${nm}`;
+      if (DATA_METHODS.has(bindingKeyName(n.propertyName ?? n.name) ?? "")) {
+        why = `destructured ${bindingKeyName(n.propertyName ?? n.name)}`;
+      }
+    }
+    // …and so does `({ rpc } = client)`, which is a PropertyAssignment rather than a BindingElement.
+    // R1 had this exact blind spot and I fixed it there WITHOUT checking whether the sibling rule
+    // reading the same syntax had it too. It did. The class sweep is the point, not the instance.
+    if (ts.isPropertyAssignment(n) || ts.isShorthandPropertyAssignment(n)) {
+      const nm = bindingKeyName(ts.isPropertyAssignment(n) ? n.name : n.name);
+      if (nm && DATA_METHODS.has(nm) && !isValuePosition(n.parent)) why = `destructured ${nm}`;
     }
     if (ts.isElementAccessExpression(n)) {
       const k = lit(n.argumentExpression);
@@ -442,6 +488,18 @@ if (process.argv.includes("--self-test")) {
   check("R1 allows the audit inside a return", doorBranches("function f(){ return { door: caller.door, decision }; }").length, 0);
   check("R1 allows the audit as a call argument", doorBranches("log({ door: caller.door });").length, 0);
   check("R1 allows the audit via an arrow body", doorBranches("const f = () => ({ door: caller.door });").length, 0);
+  // Codex on 58230534: a container was accepting a value position LOCALLY, so an object literal
+  // nested inside a destructuring target inherited the audit's permission. Containers now
+  // propagate their own position instead of answering for their child.
+  check("R1 nested object destructuring target (Codex)", doorBranches("let d; ({ payload: { door: d } } = caller); if (d === \"mcp\") return 1;").length, 1);
+  check("R1 array-wrapped destructuring target (Codex)", doorBranches("let d; ([{ door: d }] = callers); if (d === \"mcp\") return 1;").length, 1);
+  check("R1 parenthesised element-access key (Codex)", doorBranches("if (caller[(\"door\")] === \"mcp\") return x;").length, 1);
+  check("R1 allows the audit nested in a record", doorBranches("const d = { audit: { door: caller.door } };").length, 0);
+  check("R1 allows the audit as an array element", doorBranches("const rows = [{ door: caller.door }];").length, 0);
+  // R4 had R1's destructuring-assignment blind spot too, and I fixed R1 without checking.
+  check("R4 destructuring ASSIGNMENT of rpc (Codex)", claimTouches("let rpc; ({ rpc } = client); await rpc(\"redeem\", {});").length, 1);
+  check("R4 destructuring ASSIGNMENT of from", claimTouches("let table; ({ from: table } = client); table(\"x\");").length, 1);
+  check("R4 still ignores a record that merely NAMES rpc", claimTouches("const doc = { rpc: \"documented\" };").length, 0);
   check("R1 ignores an unrelated destructured key", doorBranches("const { tenantId } = caller; return tenantId;").length, 0);
   check("R1 allows the audit assignment", doorBranches("const audit = { door: caller.door, decision };").length, 0);
   check("R1 allows a type declaration", doorBranches("export type C = { door: GovernedDoor };").length, 0);

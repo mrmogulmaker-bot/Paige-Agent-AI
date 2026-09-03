@@ -140,7 +140,7 @@ tail assertion that the only lane reaching execution is `auto` on an `ordinary` 
 
 ## What CI holds
 
-`lint:governed-execution` (+ `--self-test`, 53 cases — `grep -c '^  check('`, not a count of output lines, which included the trailing summary line and is how 43 was published as 44). Each rule was mutation-tested by introducing
+`lint:governed-execution` (+ `--self-test`, 61 cases — `grep -c '^  check('`, not a count of output lines, which included the trailing summary line and is how 43 was published as 44). Each rule was mutation-tested by introducing
 the violation and confirming the guard fails.
 
 | Rule | Holds |
