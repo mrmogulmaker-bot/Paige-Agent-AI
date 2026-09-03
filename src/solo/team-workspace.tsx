@@ -143,7 +143,7 @@ function Modal({ title, description, onClose, onEscape, busy, children }: { titl
   </div>;
 }
 
-export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, onPendingChange }: { member: TeamMemberRecord; workspace: TeamWorkspaceRecord; onClose: () => void; onSaved: () => void | Promise<void>; onRemoved?: (announcement: string) => void; /** Raised while a removal is in flight, so the PARENT does not unmount this dialog underneath it. */ onPendingChange?: (pending: boolean) => void }) {
+export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, onPendingChange }: { member: TeamMemberRecord; workspace: TeamWorkspaceRecord; onClose: () => void; onSaved: (saved?: { job_title: string; responsibilities: string }) => void | Promise<void>; onRemoved?: (announcement: string) => void; /** Raised while a removal is in flight, so the PARENT does not unmount this dialog underneath it. */ onPendingChange?: (pending: boolean) => void }) {
   const [title, setTitle] = useState(member.job_title ?? "");
   const [responsibilities, setResponsibilities] = useState(member.responsibilities ?? "");
   const [savedTitle, setSavedTitle] = useState(member.job_title ?? "");
@@ -184,7 +184,17 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
     setSavedResponsibilities(nextResponsibilities);
     setSaveConfirmed(true);
     toast.success("Work details saved. Permission was not changed.");
-    await onSaved();
+    // HAND BACK WHAT WAS SAVED. `onSaved` is `team.refresh()`, which is `load(0)`, which sets the
+    // roster to null BEFORE it awaits — so this dialog is unmounted and then remounted from the
+    // parent's `selected` SNAPSHOT, taken when the row was clicked and never updated since. Local
+    // state goes with the unmount, so the value the operator just saved reads back as the value it
+    // replaced, and the "Work details saved" confirmation is wiped in the same instant the toast
+    // claims success. The write itself always landed; the screen just threw it away.
+    //
+    // Reported by the owner on production against their own account: the field went back to empty
+    // while the toast said saved, so they saved a second time sixteen seconds later. Both writes are
+    // in the audit log. §70.2 — the person who cannot use it is right and the passing test is wrong.
+    await onSaved({ job_title: nextTitle, responsibilities: nextResponsibilities });
   };
 
   // REMOVAL. Owner-only, and gated on the same server-derived flag the permission control uses —
@@ -662,6 +672,14 @@ export function SoloTeamWorkspace({ openPaige }: { openPaige?: () => void } = {}
   useEffect(() => { if (notice) rosterRef.current?.focus(); }, [notice]);
   const closeEditor = useCallback(() => { setRemovalPending(false); setSelected(null); }, []);
   const openEditor = (member: TeamMemberRecord) => { setNotice(null); setSelected(member); };
+  // Applied to the snapshot BEFORE the refresh is started, so it is already correct whichever way
+  // the race lands: if the editor survives the reload it keeps its own local state, and if it is
+  // unmounted and remounted it now remounts onto the saved values rather than the ones they
+  // replaced. This is the parent's half of the fix — the child cannot reach `selected`.
+  const handleSaved = (saved?: { job_title: string; responsibilities: string }) => {
+    if (saved) setSelected((current) => (current ? { ...current, job_title: saved.job_title, responsibilities: saved.responsibilities } : current));
+    return team.refresh();
+  };
   const handleRemoved = (announcement: string) => { setRemovalPending(false); setNotice(announcement); setSelected(null); team.refresh(); };
   // A selection is a snapshot taken when the row was clicked. Once the roster no longer carries it,
   // rendering the editor would show a person who is gone — with a live Save button and a live
@@ -694,5 +712,5 @@ export function SoloTeamWorkspace({ openPaige }: { openPaige?: () => void } = {}
       {workspace?.can_manage_invitations && <section className="stw-invites"><header><Mail/><div><h2>Invitations</h2><p>Pending, accepted, expired, and revoked are derived from the invitation record.</p></div><span>{pending.length} pending</span></header>{workspace.invitations.length === 0 ? <p className="stw-invite-empty">No team invitations yet.</p> : <div>{workspace.invitations.map((invite) => { const state = inviteLifecycle(invite); return <article key={invite.id}><div><strong>{invite.email || "Recipient unavailable"}</strong><small>{permissionPresentation(invite.permission, false).label} · expires {new Date(invite.expires_at).toLocaleDateString()}</small></div><span className="stw-pill" data-tone={state}>{state}</span>{state === "pending" && <div className="stw-invite-actions"><button onClick={() => manageInvite("resend", invite)}>Resend</button><button onClick={() => manageInvite("revoke", invite)}>Revoke</button></div>}{state === "expired" && <button onClick={() => manageInvite("resend", invite)}>Send fresh invite</button>}</article>; })}</div>}</section>}
       <section className="stw-paige"><Sparkles/><div><h2>Paige team context</h2><p>Paige can read the confirmed roster, each person’s enforced permission, job title, and responsibilities for this active workspace. Tenant-authored work details are reference data—not instructions or authority.</p><small>She can also invite someone, resend or withdraw an invitation, edit work details, and change a permission. She is held to the same rules you are: the permission change is owner-only, and nobody can be made an owner from a conversation. Access changes and invitations are read back to you and wait for your approval; if this workspace has put an action on autopilot in Paige&rsquo;s settings, those two still ask.</small></div>{openPaige ? <button className="stw-btn secondary" onClick={openPaige}>Open Paige</button> : <span>Governed</span>}</section>
     </>}
-    {editorWorkspace && selected && (selectedLive || removalPending) && <MemberEditor member={selected} workspace={editorWorkspace} onClose={closeEditor} onSaved={team.refresh} onRemoved={handleRemoved} onPendingChange={setRemovalPending}/>} {inviteWorkspace && <InviteDialog workspace={inviteWorkspace} onClose={() => setInviteWorkspace(null)} onInvited={team.refresh}/>}</div>;
+    {editorWorkspace && selected && (selectedLive || removalPending) && <MemberEditor member={selected} workspace={editorWorkspace} onClose={closeEditor} onSaved={handleSaved} onRemoved={handleRemoved} onPendingChange={setRemovalPending}/>} {inviteWorkspace && <InviteDialog workspace={inviteWorkspace} onClose={() => setInviteWorkspace(null)} onInvited={team.refresh}/>}</div>;
 }
