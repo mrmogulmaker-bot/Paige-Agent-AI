@@ -1105,6 +1105,47 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
+
+**What it settles.** `docs/architecture/paige-mind-integration-matrix.md` records, per Solo surface,
+whether that surface can safely give PAIGE real tenant-scoped evidence — and what is in the way where
+it cannot. Read-only architectural truth; it changes no runtime surface, shared module, Rail, Spine or
+Mind implementation.
+
+**The headline, and it is not encouraging.** **No surface has authenticated, tenant-safe Mind evidence
+flowing today — including Pipeline.** The matrix carries two deliberately separate axes so that a
+`PARTIAL` readiness label can never be mistaken for a working capability: one for what the contract
+could carry, one for what a real owner can actually get, which is currently nothing anywhere.
+
+**Why.** Verified on prod: `paige_client_events` grants `authenticated` and `anon` **nothing**, so the
+Rail is readable only through a `SECURITY DEFINER` lens, and it holds **9 rows** platform-wide (live
+count 2026-09-03T09:35Z). On top of that, four structural constraints — the Rail is per-client, the
+resolver accepts only a client subject, the safe summary is a constant with enumerated facts, and
+evidence loads only inside a client-scoped Chat turn — leave the registry at **exactly one capability**
+and put most departments behind Change Requests that have not been raised.
+
+**§13 — two tracker/record divergences this entry does NOT resolve, because only the owner can.**
+(1) **#746 is CLOSED on GitHub** (2026-09-02T18:21:05Z, merged PRs #785 and #801), while §10 of this
+document at the *"Owner-ruled priority order"* block states "**#746 is still OPEN**" pending
+authenticated owner runtime proof. The functional position is agreed — a safe server resolver is
+deployed and no owner-facing consumer uses it — only the issue state differs.
+(2) The same ruling lists **item 5 as "Calendar as the next bounded read-only Spine capability"**, while
+the Mind Wave 0 direction confirmed Calendar **BLOCKED** and prohibited Calendar work this wave.
+
+**Recommended next Mind step is not a build:** the authenticated two-Solo-tenant drive of the one
+capability that already exists. **Its prerequisite is not #746** — the lens is `SECURITY DEFINER` and
+reads the Rail directly, so the browser grant never applied to it. The prerequisite is that a
+`campaigns_pipeline` Rail row must exist at all: production holds **zero**, so the drive would today
+prove only the empty-result path. If a build is wanted behind it, raise **SCR-2** (non-client subject
+types) naming Analytics as its reference consumer — recording honestly that Analytics needs **SCR-3 as
+well**, since its counts are unbounded and the contract admits only enumerated values. **Clients is
+explicitly not recommended** despite being the only other client-subject surface: the owner's own UI
+write emits no Rail event, so a capability built today would let PAIGE state a history that omits
+everything the owner did by hand.
+
+**Raised, not implemented, and routed away from Mind:** #786 and #787 (Rail producers) · #788
+(Connections/security, tracked privately).
+
 ### Billing Foundation C — the Solo Billing screen (PR #833, **BUILT, NOT MERGED — no production write of any kind**)
 
 **What it is.** Foundation A shipped three seams and no renderer; nothing in `src/` imported the two
