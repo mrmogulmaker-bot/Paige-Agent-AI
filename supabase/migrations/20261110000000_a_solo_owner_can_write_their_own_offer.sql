@@ -1,11 +1,27 @@
 -- Offer Catalog Slice 2B — the write seam for the tenant's own offer definition.
 --
--- VERSION NOTE. Picked LATE and checked against BOTH conditions, because Slice 2A was renumbered
--- four times and the fourth was an ordering mistake nothing in the repo could have caught:
---   1. free across every remote branch, and
---   2. strictly greater than `max(version)` in production's ledger.
--- The repo answers (1) only. `docs/brain/lessons-learned.md` carries why. Re-check both immediately
--- before merge; this range moved five times during 2A.
+-- VERSION NOTE — 20261110000000, and this is the FIFTH collision across two slices.
+--
+-- 20261107000000 was free against both the repo and prod's ledger when it was chosen. #850's
+-- follow-up then merged carrying that exact version, and `database-contract` caught it on the
+-- from-zero replay:
+--
+--     Applying 20261107000000_a_solo_owner_can_write_their_own_offer.sql...
+--     Applying 20261107000000_the_headline_is_the_furthest_the_email_got.sql...
+--     ERROR: duplicate key value violates unique constraint "schema_migrations_pkey"
+--     Key (version)=(20261107000000) already exists.
+--
+-- The check was not skipped; it was correct when it ran and stale by the time this pushed. That is
+-- the same timing window Slice 2A hit four times, and it is now demonstrably a property of this
+-- range rather than a lapse: five collisions, five different owners, none of them avoidable by
+-- checking harder at the moment of choosing.
+--
+-- Chosen against BOTH maxima, which is the part the repo alone cannot tell you:
+--     prod ledger max applied   20261108030000   (MCP query)
+--     highest on any branch     20261109040000   (scan of all remote branches)
+--     nothing at or above       20261110000000   in either
+-- So this sorts after everything applied AND after everything in flight. Re-verify both
+-- immediately before merge anyway — that is the only step that has ever caught this.
 --
 -- WHY AN RPC AND NOT THE EXISTING EDGE FUNCTION. `tenant-product-upsert` already writes
 -- `tenant_products`, so extending it looks like the §18 answer. It is not, and the reason is §38.
