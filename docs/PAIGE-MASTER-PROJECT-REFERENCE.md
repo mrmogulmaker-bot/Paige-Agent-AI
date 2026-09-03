@@ -131,6 +131,45 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### PAIGE Spine — `business_context.readiness` LIVE on production (2026-09-03)
+
+**Status: RELEASED.** PR #864, merge `7ad98cff`, migration `20261112000000`. The Spine registry now
+carries **two** capabilities, and this is the first **workspace-level** one.
+
+**What PAIGE and Systems Check can now accurately know.** For the caller's own workspace, the status
+and provenance of four Setup fields — `website`, `business_phone`, `industry`,
+`primary_business_email` — via `public.get_business_context_readiness(uuid)`. Status and provenance
+only; the URL, the number and the address never cross. Always exactly four rows, so "no signal" is
+never confused with a read that failed quietly, and the absent states stay distinct:
+`needs_confirmation` (nothing entered yet) vs `unavailable` (could not be read, with a reason).
+
+**The defect it fixed, and why it was not staleness.** Setup's save path writes those fields into
+`tenant_legal_profile` columns; three Systems Check runners and PAIGE's prompt were still reading
+`tenants.brand`, which the current save path never writes. Re-running a scan could never fix that.
+Measured on production: tenant `d8a0a880` held all three in Setup and none in `brand` — it was being
+told all three were missing. The deployed contract, executed as that workspace's real owner, now
+returns all three `owner_confirmed` from `setup`.
+
+**Consumers, all live:** the three runners via one shared helper, PAIGE's per-turn chat context
+block, and a Setup-save trigger firing the existing `systems-check-run-change`. `deploy-edge-functions`
+shipped `paige-ai-chat`, `systems-check-run-change`, `systems-check-run-onboarding`,
+`systems-check-run-scheduled`; drift is zero.
+
+**Boundaries held:** Setup remains the sole writer and sole source of business facts; Connections
+remains the authority for provider/connection-derived email; the Spine added exactly one read and
+owns no copy of anything.
+
+**PROOF OWED (§13):** the authenticated UI drive of the owner flow — blocked on unset
+`LIVE_DRIVE_EMAIL` / `LIVE_DRIVE_PASSWORD`, **not** on browser capability (a claim made repeatedly
+during this slice and since disproven: `npm run harness:selftest` drives real Chromium, and
+production answers 200 from the sandbox — see `docs/brain/lessons-learned.md` 0h). `chatBinding` and
+`mindBinding` stay `PARTIAL` until that drive happens.
+
+**OWNER DECISION SURFACED:** two tenants whose website/phone exist only in the legacy `tenants.brand`
+now read `needs_confirmation`, flipping two checks from pass to fail. Correct under the
+source-of-truth rule, but a visible change — see `docs/doctrine/tier-matrix.md`.
+
+
 ### The Canonical Solo Parity Program — Wave 0 baseline (2026-09-02)
 
 **Status: standing program. Wave 0 RELEASED** — merged to `main` as `a289d0bc` (PR #783); **Wave 1
