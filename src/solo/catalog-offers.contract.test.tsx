@@ -37,6 +37,7 @@ const migration = stripSql(
 );
 // The comment-stripper is itself load-bearing, so prove it removes prose and keeps code.
 const adapterRaw = read("src/solo/useCatalogOffers.ts");
+const legacyUpsertFn = stripTs(read("supabase/functions/tenant-product-upsert/index.ts"));
 
 const offer = (over: Record<string, unknown> = {}) => ({
   id: "offer-1",
@@ -994,6 +995,40 @@ describe("Catalog Offers — rendered flows", () => {
     expect(memberAt).toBeGreaterThan(authAt);
     expect(tierAt).toBeGreaterThan(memberAt);
     expect(firstInsertAt).toBeGreaterThan(tierAt);
+  });
+
+  it("refuses a non-Solo tenant on the legacy tenant-product-upsert writer too", () => {
+    // tenant-product-upsert is a SEPARATE, older write path into the same tenant_products /
+    // tenant_prices tables (StorefrontPanel.tsx, reached today via the legacy /admin/setup/general
+    // fallback whenever a tenant's soloShellEnabled/agencyShellEnabled flag is off — confirmed by
+    // reading Admin.tsx: that fallback gates on role (RoleGate allow admin) only, never on
+    // account_type). It carries no tier check of its own, so it needed the identical Solo-only
+    // guard as save_solo_offer / set_solo_offer_status, checked against the real tenant row.
+    expect(legacyUpsertFn).toContain(
+      '.from("tenants")\n    .select("account_type, parent_tenant_id")\n    .eq("id", tenantId)',
+    );
+    // Asserted as ONE contiguous block, not as separate toContain checks on each condition: an
+    // independent review of the pushed diff flagged that two separate substring checks cannot tell
+    // `||` from `&&` — a mutation joining these with `&&` instead of `||` would still contain every
+    // substring a split assertion could check, while silently letting an Agency/Enterprise tenant
+    // (parent_tenant_id IS NULL, account_type != "standalone") slip through, since `false && true`
+    // is `false`. Matching the exact source block, operator included, closes that gap.
+    expect(legacyUpsertFn).toContain(
+      '  if (\n' +
+      '    !tenantRow ||\n' +
+      '    tenantRow.parent_tenant_id !== null ||\n' +
+      '    tenantRow.account_type !== "standalone"\n' + // tier-feature-exempt: test-fixture string asserting the exact SERVER-SIDE edge-function guard text (supabase/functions/tenant-product-upsert/index.ts) — not a render gate; §60's lint text-scans src/ and cannot distinguish asserted fixture text from live gate code.
+      '  ) {\n' +
+      '    return json(403, { error: "solo_workspaces_only" });\n' +
+      '  }',
+    );
+    // Runs AFTER the membership/role check and BEFORE any product row is created or updated.
+    const memberAt = legacyUpsertFn.indexOf('return json(403, { error: "tenant_admin_required" });');
+    const tierAt = legacyUpsertFn.indexOf('return json(403, { error: "solo_workspaces_only" });');
+    const firstWriteAt = legacyUpsertFn.indexOf('.from("tenant_products")\n      .update(');
+    expect(memberAt).toBeGreaterThan(-1);
+    expect(tierAt).toBeGreaterThan(memberAt);
+    expect(firstWriteAt).toBeGreaterThan(tierAt);
   });
 
   it("switches between the two concepts without leaving the tab", () => {

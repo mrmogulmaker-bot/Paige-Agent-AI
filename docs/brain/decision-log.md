@@ -1977,6 +1977,67 @@ Still owed: §32.c authenticated browser drive of the Checkout round-trip (no br
 in this session); payment-method removal (deliberately out of scope, no removal seam exists yet);
 independent adversarial review (post-release audit per the brief, not a merge blocker).
 
+## 2026-09-03 — tenant-product-upsert: the same Catalog Solo-only gap, on the legacy writer (same-day follow-up)
+
+Owner-authorized follow-up to the `save_solo_offer`/`set_solo_offer_status` tier-guard hotfix
+(PR #871): close the identical account-type gap on `tenant-product-upsert`, the older Storefront
+write path, explicitly scoped separately from the day's second authorization (a Catalog visual
+upgrade, tracked separately) with an instruction not to fold the function's Stripe
+destination-charge concern into this repair.
+
+**Producer inventory (§37), re-grounded on fresh `main`.** `StorefrontPanel.tsx` is the only real
+caller (`.invoke("tenant-product-upsert", ...)`); mounted only by
+`src/pages/admin/setup/SetupGeneral.tsx`; reached via `SetupTabsLayout` at `/admin/setup/general`.
+`App.tsx`'s `/admin/*` route carries no `account_type` gate, only signup-completion. Read
+`Admin.tsx`'s three flag-gated tier redirects in full: Solo (`soloShellEnabled && tierKey==="solo"
+&& soloStandalone`), Agency/Enterprise (`agencyShellEnabled && (tierKey==="agency" ||
+tierKey==="enterprise")`), sub-account (`agencyShellEnabled && tierKey==="sub_account"`) — each
+redirects to its canonical `/solo|agency|business/*` route, or renders the shell inline as a
+fallback, only when the flag is on. When none fire, a legacy `AdminLayout`/`Routes` block renders,
+and its `general` route is gated by `RoleGate allow={["admin"]} allowPlatformStaff` alone — a role
+check, never a tier check. Given the already-established fact that 3 of 7 Solo tenants on
+production lack `solo_shell_enabled` and fall through to this exact legacy branch, and
+`agencyShellEnabled` gates identically for Agency/sub-account/Enterprise, the legacy path is
+reachable from any tier whose shell flag is off — the same class of gap the RPC hotfix closed, on
+a sibling seam that RPC fix never touched.
+
+**Fix.** Added the identical literal guard used in migration `20261131000000`
+(`account_type === "standalone" && parent_tenant_id === null`, mirroring `isSoloStandalone()`) to
+`supabase/functions/tenant-product-upsert/index.ts`, reading the tenant's real `tenants` row —
+never a client-supplied claim — immediately after the existing membership/role check and before
+any `tenant_products`/`tenant_prices` read or write. Refuses with `{ error: "solo_workspaces_only"
+}`, HTTP 403. No migration involved: this is an edge function, ships via the standard
+`deploy-edge-functions.yml` CI path on merge to `main` (§24) rather than a manual MCP deploy.
+
+**§38 classification, not a fix.** The same file mirrors every write to a Stripe Product/Price on
+the **platform** account (`stripe.products.create`/`.update`, `stripe.prices.create`), sold via
+destination charges per its own header comment — `tier-matrix.md` already tracks this as the live
+§38 violation, issue **#458**. Investigated only enough to confirm it is the same already-tracked
+item and not a new one; not modified, per explicit instruction to route rather than silently fold a
+provider-charge change into a tier-authority repair. No new authority decision made here.
+
+**Verification.** New static guard test in `catalog-offers.contract.test.tsx` ("refuses a non-Solo
+tenant on the legacy tenant-product-upsert writer too") asserts the guard text, that it runs after
+the membership/role refusal and before the first `tenant_products` write, and the exact refusal
+shape. Full suite: 2787/2787 passing (198 files), `tsc --noEmit` clean. `docs/doctrine/tier-matrix.md`
+updated in the same commit (§66) — the Slice 2B section's "flagged, not fixed" note on this function
+is now marked CLOSED with the same evidence, and the Owed paragraph narrowed to the three items
+this fix does not touch (status/currency allowlists, kind×billing_interval cross-validation).
+
+**Merged as `9b8b5ec3` (PR #884, squash), then §32.a confirmed** by fetching the deployed
+`tenant-product-upsert` function directly (`mcp__Supabase__get_edge_function`) — its returned
+source is byte-identical to what was pushed, guard included, `updated_at` matching the deploy
+window. An independent adversarial review (peer-gate) of the pushed diff found one real test-quality
+gap before merge — the guard test's two `toContain` checks couldn't distinguish `||` from `&&` in
+the refusal condition, so a mutation swapping the operator would still pass every asserted
+substring while silently letting an Agency/Enterprise tenant through. Fixed by asserting the exact
+contiguous `if` block (operator included) as one string; verified with a break-test (flip `||`→`&&`
+in the source, confirm the test goes red; revert, confirm green). CI then caught a second, unrelated
+issue: the new test's fixture string containing `tenantRow.account_type !== "standalone"` tripped
+the §60 `lint:tier-features` guard, which text-scans `src/` for exactly that pattern and cannot
+distinguish an asserted fixture string from a real render gate — resolved with the lint's own
+documented `// tier-feature-exempt: <reason>` escape hatch.
+
 ## 2026-09-03 — Solo Catalog visual upgrade: owner overrides §00 for CC, scoped to this surface
 
 Same day as the tenant-product-upsert tier-guard closeout, the owner authorized CC to design AND

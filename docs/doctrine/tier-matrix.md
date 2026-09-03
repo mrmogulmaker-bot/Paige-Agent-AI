@@ -2136,8 +2136,30 @@ experience needs its own product decision. Proven 10/10 in a rolled-back product
 (real Agency, sub-account, and a temporarily-relabelled Enterprise tenant, each refused; the Solo
 owner's create/status-change path, cross-tenant write, client-tenant-claim bypass, and unauthenticated/
 no-membership paths all unchanged). `tenant-product-upsert` (the legacy `/admin/setup` Storefront
-panel's write path) has the same missing check and is a SEPARATE seam, deliberately out of this
-hotfix's scope — flagged, not fixed.
+panel's write path) had the same missing check and was flagged here as a SEPARATE seam,
+deliberately out of this hotfix's scope. **CLOSED 2026-09-03, same-day follow-up.** Producer
+inventory (§37) re-grounded on fresh `main`: `StorefrontPanel.tsx` is the only real caller, mounted
+only by `SetupGeneral.tsx` at `/admin/setup/general`, reached via `SetupTabsLayout`. Tracing
+`Admin.tsx`'s three flag-gated shell-takeover redirects (Solo, Agency/Enterprise, sub-account — each
+conditioned on `soloShellEnabled`/`agencyShellEnabled`) confirmed a legacy `AdminLayout`/`Routes`
+fallback renders whenever a tenant's shell flag is off, regardless of tier, and that fallback's
+`general` route is gated only by `RoleGate allow={["admin"]} allowPlatformStaff` — a ROLE check,
+never an `account_type` check. Given the already-established fact that 3 of 7 Solo tenants on
+production lack `solo_shell_enabled`, the identical flag-gating pattern on `agencyShellEnabled`
+makes it reachable from Agency/sub-account/Enterprise tenants too whenever their own flag is off —
+the exact same class of gap the RPC hotfix closed, on a different seam. Fixed by adding the
+identical literal `account_type === "standalone" && parent_tenant_id === null` guard (mirroring
+`isSoloStandalone()`) to `tenant-product-upsert/index.ts`, immediately after the membership/role
+check and before any `tenant_products` read or write, refusing with `solo_workspaces_only`. No
+migration involved — this is edge-function TypeScript, not SQL; ships via the standard
+`deploy-edge-functions.yml` CI path on merge to `main` (§24), not a manual MCP deploy. Static guard
+proven in `catalog-offers.contract.test.tsx` ("refuses a non-Solo tenant on the legacy
+tenant-product-upsert writer too"): asserts the guard text, its position after the role check and
+before the first `tenant_products` write, and the exact refusal error code. The §38
+destination-charge mirroring in this same file (Stripe Product/Price created on the **platform**
+account) was investigated only enough to classify it — it is the tracked, live §38 violation (#458,
+see the Sales row below) — and was **not modified** by this fix, per explicit task-brief instruction
+to route rather than silently fold a provider-charge change into a tier-authority repair.
 
 **Persisted apply — CONFIRMED on production 2026-09-03**, from real queries after merge `2240d066`
 (PR #871), never from the pipeline reporting success:
@@ -2230,7 +2252,8 @@ Design, not here.
 **Owed.** Price editing beyond the single lead price — 2A renders plans, tiers and instalments;
 2B authors only one (though #863 made editing that one plan safe against the storefront/deposit/
 instalment cases above). `tenant-product-upsert` still needs a `status` allowlist, a `currency`
-allowlist, and cross-field validation of `kind` against `billing_interval`. Whether a platform
+allowlist, and cross-field validation of `kind` against `billing_interval` — its Solo-only tier
+guard is now closed (2026-09-03, see above); these three remain genuinely owed. Whether a platform
 operator acting on a tenant's catalog *should* write without a membership row (i.e. whether
 `is_tenant_admin` should carry an operator bypass here the way other admin-facing RPCs do) is a
 product decision, not a bug this row fixes silently — flagged, not resolved, per the table above.
