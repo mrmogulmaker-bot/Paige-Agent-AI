@@ -1017,7 +1017,7 @@ describe("Catalog Offers — rendered flows", () => {
       '  if (\n' +
       '    !tenantRow ||\n' +
       '    tenantRow.parent_tenant_id !== null ||\n' +
-      '    tenantRow.account_type !== "standalone"\n' +
+      '    tenantRow.account_type !== "standalone"\n' + // tier-feature-exempt: test-fixture string asserting the exact SERVER-SIDE edge-function guard text (supabase/functions/tenant-product-upsert/index.ts) — not a render gate; §60's lint text-scans src/ and cannot distinguish asserted fixture text from live gate code.
       '  ) {\n' +
       '    return json(403, { error: "solo_workspaces_only" });\n' +
       '  }',
