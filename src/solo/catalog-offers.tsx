@@ -23,7 +23,10 @@ const KIND_GLYPH = {
 };
 
 const AVAILABILITY = {
-  draft: { label: "Draft", tone: "var(--violet)", note: "Internal only. Nothing customer-facing presents it." },
+  // Violet is reserved for the interactive/focus moment (hover, focus rings) across this file, not
+  // a resting state label — draft reads neutral, same register as archived, so violet keeps exactly
+  // one meaning on this surface.
+  draft: { label: "Draft", tone: "var(--ink-2)", note: "Internal only. Nothing customer-facing presents it." },
   active: { label: "Active", tone: "var(--ok)", note: "Offered to customers right now." },
   paused: { label: "Paused", tone: "var(--warn)", note: "Temporarily not offered. Nothing is cancelled." },
   archived: { label: "Archived", tone: "var(--ink-3)", note: "Retired. Existing references stand." },

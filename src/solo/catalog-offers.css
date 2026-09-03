@@ -1,45 +1,76 @@
-/* Campaigns → Catalog → Offers (Slice 2A).
+/* Campaigns → Catalog → Offers (Slice 2A, visual upgrade — Catalog-local, 2026-09-03).
  *
  * Its own stylesheet rather than an append to `solo-campaigns.css` for two reasons: PR #706 holds
  * that file, and the repo already keeps a stylesheet per Solo surface (`analytics2.css`,
  * `marketplace.css`, `connections-calendars.css`). Every value below is a token defined in
- * `solo-tokens.css` — no hex, so both palettes and forced-colors follow for free. */
+ * `solo-tokens.css` — no hex, so both palettes and forced-colors follow for free.
+ *
+ * VISUAL DIRECTION (owner-authorized, 2026-09-03): a "premium commercial workspace" feel — layered
+ * surfaces, real card hierarchy, and small purposeful motion — WITHOUT touching the shared
+ * `campaigns-surface-head` (SurfaceHead, used by every Campaigns sub-tab), the shared `.btn-g` gold
+ * act-button, or any token in `solo-tokens.css`. Gold stays the platform's spent-on-the-act color
+ * (§11); this file reserves it for the selected/attention moments already carried by the shipped
+ * `.btn-g` and the filter chip's pressed state, and adds violet ONLY to hover/focus — never to a
+ * resting fill — so no shared color primitive changes, only where THIS file spends it. */
 
+/* Filters bar — a restrained warm wash gives Catalog its own header temperature (gold-leaning)
+   distinct from Sales' cooler, flatter one, without duplicating the SurfaceHead title above it. */
 .co-filters {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 5px 14px;
-  padding: 12px 19px; border-bottom: 1px solid var(--line-soft);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px;
+  padding: 14px 19px; border-bottom: 1px solid var(--line-soft);
+  background:
+    radial-gradient(440px 130px at 6% -60%, color-mix(in srgb, var(--gold) 9%, transparent), transparent 70%),
+    var(--surface-2);
 }
 .co-filter {
-  display: inline-flex; align-items: center; gap: 7px; min-height: 28px;
-  padding: 0 2px; font-size: 12.5px; color: var(--ink-3); background: none; border: 0;
+  display: inline-flex; align-items: center; gap: 7px; min-height: 30px;
+  padding: 0 12px; font-size: 12.5px; color: var(--ink-3);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  transition: border-color .12s ease, color .12s ease, background .12s ease;
 }
+.co-filter:hover { border-color: var(--gold-line); color: var(--ink); }
 .co-filter[aria-pressed="true"] {
-  color: var(--ink); font-weight: 600; box-shadow: inset 0 -1px 0 var(--gold);
+  color: var(--gold); font-weight: 600; background: var(--gold-tint); border-color: var(--gold-line);
 }
 .co-filter b { font: 400 10.5px/1 var(--mono); color: var(--ink-3); }
-.co-filter:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; border-radius: 4px; }
+.co-filter[aria-pressed="true"] b { color: var(--gold); opacity: .8; }
+.co-filter:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; border-radius: 999px; }
 
-.co-list { display: grid; padding: 0 19px; }
-.co-row {
-  width: 100%; text-align: left; padding: 12px 0; color: var(--ink);
-  border-bottom: 1px solid var(--line-soft); background: none; border-left: 0;
-  border-right: 0; border-top: 0; display: block;
+/* The list itself carries the second, cooler wash — a restrained layered canvas instead of a flat
+   fill, so the offer cards sit on a surface that reads as a workspace rather than a blank page. */
+.co-list {
+  display: grid; gap: 10px; padding: 18px 19px 22px;
+  background:
+    radial-gradient(520px 170px at 92% -10%, color-mix(in srgb, var(--violet) 6%, transparent), transparent 70%),
+    var(--canvas);
 }
-.co-row:last-child { border-bottom: 0; }
+.co-row {
+  width: 100%; text-align: left; padding: 15px 16px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-m);
+  box-shadow: var(--sh-1); display: block;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.co-row:hover { transform: translateY(-1px); box-shadow: var(--sh-2); border-color: var(--gold-line); }
 .co-row:hover .co-name { color: var(--violet); }
-.co-row:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; border-radius: 6px; }
+.co-row:active { transform: translateY(0); }
+.co-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; border-radius: var(--r-m); }
+@media (prefers-reduced-motion: reduce) {
+  .co-row { transition: box-shadow .12s ease, border-color .12s ease; }
+  .co-row:hover, .co-row:active { transform: none; }
+}
 
 .co-head {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   gap: 14px; align-items: center;
 }
 .co-kind {
-  display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
-  border: 1px solid var(--line); color: var(--gold); flex: none;
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface-sunk); color: var(--gold); flex: none;
 }
 .co-name {
   display: block; font: 500 14.5px/1.3 var(--font); letter-spacing: -.008em;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color .12s ease;
 }
 .co-summary {
   display: block; margin-top: 3px; color: var(--ink-3); font-size: 11.5px;
@@ -47,22 +78,28 @@
 }
 .co-price { display: flex; flex-direction: column; align-items: flex-end; flex: none; min-width: 104px; }
 .co-price b {
-  font: 500 13.5px/1.2 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink);
+  font: 600 13.5px/1.2 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink);
 }
 .co-price b.is-unstated { color: var(--ink-3); font-size: 11.5px; font-weight: 400; }
 .co-price small { color: var(--ink-3); font-size: 10.5px; margin-top: 2px; }
 .co-shape { flex: none; min-width: 104px; text-align: right; color: var(--ink-3); font-size: 11px; }
+/* The tone still comes from the RECORD via inline `style.color` (AVAILABILITY, catalog-offers.tsx)
+   — never re-derived here — but the tinted pill background is new: a `color-mix` against
+   `currentColor` picks up whatever tone is already set, so active reads live-green, paused reads
+   warning-amber, draft/archived read neutral, with no new attribute or JS needed. */
 .co-state {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 9px;
-  border: 1px solid var(--line); border-radius: 999px; font-size: 11px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 10px;
+  border-radius: 999px; font-size: 11px; font-weight: 600;
   white-space: nowrap; flex: none;
+  background: color-mix(in srgb, currentColor 13%, var(--surface));
 }
-.co-state i { width: 5px; height: 5px; rotate: 45deg; background: currentColor; display: block; flex: none; }
+.co-state i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; display: block; flex: none; }
 
 /* The derived-conflict line. It is never a guess: every variant is computed from the record and
- * says which two recorded facts disagree. */
+ * says which two recorded facts disagree. Gold stays the "needs your attention" color, not an
+ * error — nothing here was broken, a fact was simply left unset. */
 .co-conflict {
-  display: flex; align-items: flex-start; gap: 8px; margin-top: 9px; padding: 8px 11px;
+  display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 9px 12px;
   border: 1px solid var(--gold-line); border-radius: 9px; background: var(--gold-tint);
   color: var(--gold); font-size: 11.5px; line-height: 1.45;
 }
@@ -90,8 +127,15 @@
 }
 .co-notice svg { flex: none; margin-top: 1px; }
 
-.co-first { display: grid; place-items: center; text-align: center; gap: 10px; padding: 40px 24px; }
+.co-first { display: grid; place-items: center; text-align: center; gap: 12px; padding: 48px 24px; }
 .co-first > div { max-width: 620px; display: grid; gap: 10px; justify-items: center; }
+/* The empty-state glyph as its own plate — the one visual focal moment a first-run surface earns
+   (§11's own carve-out: a full banner is not warranted here, but a small deliberate icon is). */
+.co-first > div > svg:first-child {
+  display: inline-flex; padding: 13px; margin-bottom: 2px;
+  background: var(--gold-tint); border: 1px solid var(--gold-line); border-radius: 16px;
+  color: var(--gold); box-sizing: content-box;
+}
 .co-first h3 { font-size: 17px; }
 .co-first p { color: var(--ink-2); font-size: 12.8px; line-height: 1.6; }
 .co-examples { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
@@ -107,13 +151,15 @@
 }
 @media (forced-colors: active) {
   .co-state, .co-conflict, .co-notice, .co-examples span { border: 1px solid CanvasText; }
+  .co-state { background: Canvas; }
+  .co-row:hover { transform: none; }
 }
 
 /* ── Slice 2B: the offer editor ───────────────────────────────────────────────────────────────
    Ported from the Catalog pack's "New offering": a slide-over, an 84px label / control grid, rows
    at `padding: 9px 0` separated by a hairline. The pack states this in --pg-* (Operator shell);
    the values below are the Solo shell's own tokens, so the structure is the pack's and the palette
-   is the one 2A already ships. No new colour is introduced by this slice. */
+   is the one 2A already ships. */
 .co-editor-scrim {
   position: fixed; inset: 0; background: rgb(0 0 0 / 38%); border: 0; padding: 0;
   z-index: 60; animation: co-fade 140ms ease-out;
@@ -121,7 +167,7 @@
 .co-editor {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100vw);
   display: flex; flex-direction: column; z-index: 61;
-  background: var(--surface); border-left: 1px solid var(--line);
+  background: var(--surface); border-left: 1px solid var(--line); box-shadow: var(--sh-3);
   animation: co-slide 180ms cubic-bezier(.22,.61,.36,1);
 }
 @keyframes co-fade { from { opacity: 0 } to { opacity: 1 } }
@@ -131,40 +177,48 @@
   .co-editor-scrim, .co-editor { animation: none; }
 }
 
+/* A quiet gold wash behind the editor's own header — the drawer's one focal moment, distinct from
+   a flat white form and consistent with the filters bar above it, without adding a second banner. */
 .co-editor-head {
   display: flex; align-items: flex-start; gap: 12px;
-  padding: 15px 19px 13px; border-bottom: 1px solid var(--line);
+  padding: 16px 19px 13px; border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--gold-tint), transparent 150%);
 }
-.co-editor-head h2 { margin: 0 0 3px; font: 500 15px/1.2 var(--font); letter-spacing: -.008em; color: var(--ink); }
+.co-editor-head h2 { margin: 0 0 3px; font: 600 15px/1.2 var(--font); letter-spacing: -.008em; color: var(--ink); }
 .co-editor-head p { margin: 0; font-size: 11.5px; color: var(--ink-3); }
 .co-editor-body { flex: 1; overflow-y: auto; padding: 0 19px; }
 .co-field {
   display: grid; grid-template-columns: minmax(0, 84px) minmax(0, 1fr); gap: 12px;
-  align-items: start; padding: 9px 0; border-bottom: 1px solid var(--line-soft);
+  align-items: start; padding: 11px 0; border-bottom: 1px solid var(--line-soft);
 }
-.co-field > span { padding-top: 6px; font-size: 11.5px; color: var(--ink-3); }
+.co-field > span { padding-top: 7px; font-size: 11.5px; color: var(--ink-3); }
 .co-field input, .co-field textarea {
-  width: 100%; min-height: 30px; padding: 5px 8px; font: 400 13px/1.4 var(--font);
+  width: 100%; min-height: 32px; padding: 6px 9px; font: 400 13px/1.4 var(--font);
   color: var(--ink); background: var(--surface-sunk);
-  border: 1px solid var(--line); border-radius: 5px;
+  border: 1px solid var(--line); border-radius: 6px;
+  transition: border-color .12s ease, box-shadow .12s ease;
 }
 .co-field textarea { resize: vertical; }
-.co-field input:focus-visible, .co-field textarea:focus-visible,
-.co-pick button:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+.co-field input:focus-visible, .co-field textarea:focus-visible {
+  outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px var(--violet-tint);
+}
+.co-pick:focus-within, .co-pick button:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
 .co-pick { display: flex; flex-wrap: wrap; gap: 5px; }
 .co-pick button {
   min-height: 28px; padding: 0 9px; font-size: 12px; color: var(--ink-3);
   background: none; border: 1px solid var(--line); border-radius: 999px;
+  transition: border-color .12s ease, background .12s ease, color .12s ease;
 }
+.co-pick button:hover { border-color: var(--gold-line); color: var(--ink); }
 .co-pick button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-color: var(--gold-line); background: var(--gold-tint); }
 .co-money { display: flex; gap: 6px; align-items: center; }
 .co-money input { max-width: 120px; }
 
 .co-editor-foot {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 12px 19px; border-top: 1px solid var(--line);
+  padding: 13px 19px; border-top: 1px solid var(--line);
 }
 .co-editor-foot .co-spacer { flex: 1; }
 .co-editor-note { font-size: 11.5px; color: var(--ink-3); }
-.co-editor-note[data-tone="bad"] { color: var(--ink-2); }
+.co-editor-note[data-tone="bad"] { color: var(--bad); }
 .co-acts { display: flex; flex-wrap: wrap; gap: 6px; }

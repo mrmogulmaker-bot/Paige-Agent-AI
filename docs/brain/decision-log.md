@@ -1976,3 +1976,69 @@ done by #870.
 Still owed: §32.c authenticated browser drive of the Checkout round-trip (no browser-driving tool
 in this session); payment-method removal (deliberately out of scope, no removal seam exists yet);
 independent adversarial review (post-release audit per the brief, not a merge blocker).
+
+## 2026-09-03 — Solo Catalog visual upgrade: owner overrides §00 for CC, scoped to this surface
+
+Same day as the tenant-product-upsert tier-guard closeout, the owner authorized CC to design AND
+implement the Catalog visual upgrade itself, explicitly superseding an earlier turn where CC had
+routed the same request to Claude Design via AskUserQuestion (owner had picked "Route to Claude
+Design" first, then reversed that choice in a follow-up message): *"Claude design is probably not
+going to be a good option for us, so can you go back in and start handling the designs for yourself
+because you know this area better than anyone at this point."* This is a scoped, one-time override
+of CLAUDE.md §00 for Catalog only — §00 remains the default everywhere else on the platform.
+
+**Process followed the task brief's explicit requirement: flow-prototype before implementation.**
+Read the real design tokens (`src/solo/solo-tokens.css`, both palettes), the real existing markup
+(`catalog-offers.tsx`/`.css`), and the exact copy strings the shipped surface uses (pulled from
+`catalog-offers.contract.test.tsx` rather than invented). Built a throwaway, self-contained
+interactive HTML prototype (state-switcher: empty/loading/populated/error/four drawer states/
+hover-focus-selected, theme toggle, viewport toggle, reduced-motion toggle, per-state annotations)
+and published it as a Claude Artifact for visibility — not a blocking approval gate, per the task
+brief's explicit "the prototype is implementation preparation, not a new owner-approval pause."
+Self-reviewed against the 12 required states; no product-boundary conflict found (no invented
+inventory/fulfillment/revenue/rating data; colors follow the stated meaning-rules).
+
+**Implementation, scoped tightly to avoid the shared-surface risks named in the brief:**
+- Touched exactly two files: `src/solo/catalog-offers.css` (full visual rewrite) and
+  `src/solo/catalog-offers.tsx` (one line — `AVAILABILITY.draft.tone` from `var(--violet)` to
+  `var(--ink-2)`, so violet stays reserved for the interactive/focus moment only, never a resting
+  state label, consistent with CLAUDE.md §11's "gold is the act color, rings are the other accent"
+  framing rather than the task brief's shorthand "violet = primary action" read literally — the
+  existing shared `.btn-g` gold act-button convention was left untouched rather than converted to
+  violet, since diverging from it would have meant editing the platform's gold-discipline intent,
+  not just Catalog's own presentation).
+- Every class name the contract test suite selects on (`.co-row`, `.co-editor`, `.co-field`,
+  `.co-kind`, `.co-price` — the full list, confirmed by grep before editing) was preserved
+  byte-for-byte; only the CSS rules keyed to them changed. Zero JSX structural changes beyond the
+  one-line tone edit — the whole "premium workspace" read (layered card surfaces, tinted state
+  pills via `color-mix(in srgb, currentColor …)` against the EXISTING inline `style.color`, warm/
+  cool restrained radial washes behind the filters bar and offer list, drawer header wash, hover
+  lift + gold-line border + violet name/focus, filter chip plates, empty-state icon plate) is
+  CSS-only, so the existing behavior (save, refresh, Quick Offer flow, tier-guard refusals, tenant
+  isolation) is provably unchanged — proven by the pre-existing 74/89-test suite passing unmodified
+  (89 on the tier-guard branch which also carries the RPC hotfix test; 88 on `main`'s baseline,
+  since that PR is not yet merged).
+- Did NOT touch `SurfaceHead`/`campaigns-surface-head` (shared across every Campaigns sub-tab —
+  Overview/Catalog/Pipeline/Social/Performance), `solo-campaigns.css` (PR #881's container-query nav
+  fit fix), any shared token in `solo-tokens.css`, or the shared `.btn-g`/`.btn-p` button classes.
+
+**CI guards checked locally before push** (this branch was built with foreknowledge from the sibling
+tier-guard branch's CI failure, which caught a §60 tier-feature-lint false positive on a TEST FIXTURE
+string — see that PR's history): `tsc --noEmit` clean; `node scripts/ci/tier-feature-lint.mjs` clean
+(no `account_type ===` compares outside the one home — this branch's changes are pure CSS + one
+token-value edit, so nothing to flag); `node scripts/gold-discipline-lint.mjs` clean (the actual
+enforced rule is narrower than CLAUDE.md §11's prose suggests — it blocks a SOLID gold FILL on a
+LARGE surface, not the small tinted pills/badges/icon-plates this upgrade uses, which is the same
+pattern the file already shipped with for its conflict banner and selected-pick buttons before this
+change); `node scripts/ci/shadow-var-lint.mjs` clean; `node scripts/ci/regression-lint.mjs` (§3/
+jargon on added lines) clean; ESLint clean (0 errors, pre-existing warnings only); full suite
+2791/2791 passing (200 files).
+
+`docs/doctrine/tier-matrix.md` updated in the same commit (§66) — the stale "deferred to Claude
+Design (§00), no design decision made here" note on the Catalog row is corrected with a dated §13
+note recording the override and what actually shipped, rather than silently left to contradict the
+merged reality.
+
+Owed: §32.c authenticated live-drive at the required viewports/themes (no browser-driving tool in
+this session — flagged, not claimed); the release report format the task brief requires (owner's
+one-minute test, Proof Owed, which source contract is ready for Sales/Spine).
