@@ -20,7 +20,7 @@ project_id = "xygzykjyynhzqytbqnzu"
   # treats as refusal-only: the function verifies the caller JWT, and
   # `solo_team_invite_authority` proves owner/admin membership in that exact
   # workspace. A named workspace can abort a call and can never select one.
-  # (Changed by 20261045000000 — the DB used to derive the active tenant itself,
+  # (Changed by 20261047000000 — the DB used to derive the active tenant itself,
   # which is the defect that repair removed.)
   [functions.solo-team-invitations]
     verify_jwt = true

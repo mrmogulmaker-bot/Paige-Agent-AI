@@ -224,7 +224,7 @@ even for the events that do carry a contact.
   read the same `tenant_members` table but disagree on authorization source (global `user_roles` vs
   tenant membership), owner labelling, suspended members, and truncation. Two homes for "who is on
   the team".
-- **Repaired (`20261045000000`, #815):** the three invitation RPCs used to resolve their workspace
+- **Repaired (`20261047000000`, #815):** the three invitation RPCs used to resolve their workspace
   from `profiles.active_tenant_id` **raw**, while everything else COALESCEd through
   `current_user_tenant_id()`, so a sole owner with a null pointer was told they were not an owner —
   on the Team screen and, before PAIGE's workaround, in her voice. Invitation authority is now

@@ -95,7 +95,7 @@ prod** — `20261039000000` and `20261040000000` in `schema_migrations`; `job_ti
 **Still UNVERIFIED:** email delivery and authenticated tenant behaviour — no leg driven on the live
 authenticated platform.
 
-**Invitation workspace authority — PR #827, migration `20261045000000` (NOT YET MERGED; update this
+**Invitation workspace authority — PR #827, migration `20261047000000` (NOT YET MERGED; update this
 line to SHIPPED, or delete it, when it lands).** The three invitation RPCs used to read
 `profiles.active_tenant_id` **raw** while the roster read used `current_user_tenant_id()`, so a sole
 owner with a null pointer was told they were not an owner of their own workspace. Authority is now
@@ -154,7 +154,7 @@ DEPLOYED, NOT APPLIED; verify before relying on any of this):**
 |---|---|---|
 | `PLATFORM_BILLING_PORTAL_ENABLED` | edge secret NAME (flag) | read by `platform-billing-portal`; anything but the exact string `true` refuses every call `not_enabled`. **Unset on prod; Gate B for the slice asks for merge + deploy with it still unset.** Flip only after an authenticated owner drive of the deployed function. |
 | `platform-billing-portal` | edge function (`verify_jwt = true`) | opens Stripe's hosted portal for the caller's OWN top-level Solo workspace as its Owner, via `platform_billing_accounts`; Stripe key chosen BY NAME from the mapping's `stripe_account` (`STRIPE_SECRET_KEY` / `STRIPE_SECRET_KEY_V2`), never a fallback. Not deployed. |
-| `platform_billing_accounts` · `platform_billing_contacts` · `platform_billing_notification_log` | tables (migration `20261045000000`) | LAYER-1 (§197) source records; RLS FORCE, operator read / platform-owner write; tenants read through `get_workspace_billing_authority()` / `get_workspace_billing_contacts()` only. Not applied. |
+| `platform_billing_accounts` · `platform_billing_contacts` · `platform_billing_notification_log` | tables (migration `20261047000000`) | LAYER-1 (§197) source records; RLS FORCE, operator read / platform-owner write; tenants read through `get_workspace_billing_authority()` / `get_workspace_billing_contacts()` only. Not applied. |
 
 No sender / mail-provider contract exists for billing notices; the ledger has no writer.
 

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const PATH = "supabase/migrations/20261045000000_an_invitation_is_sent_to_the_workspace_the_owner_named.sql";
+const PATH = "supabase/migrations/20261047000000_an_invitation_is_sent_to_the_workspace_the_owner_named.sql";
 const sql = readFileSync(resolve(process.cwd(), PATH), "utf8");
 
 /**

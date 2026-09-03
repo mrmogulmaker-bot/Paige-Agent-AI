@@ -73,7 +73,7 @@ describe("solo-team-invitations passes the named workspace to the one authority"
     // previous version listed sentences by hand, so a REWORD was caught by other tests but an
     // ADDITION was not — a new RAISE would have shown generic copy with nothing to notice it.
     const migration = readFileSync(
-      resolve(process.cwd(), "supabase/migrations/20261045000000_an_invitation_is_sent_to_the_workspace_the_owner_named.sql"),
+      resolve(process.cwd(), "supabase/migrations/20261047000000_an_invitation_is_sent_to_the_workspace_the_owner_named.sql"),
       "utf8",
     );
     const raised = [...migration.matchAll(/RAISE EXCEPTION '([^']+)'/g)].map((m) => m[1]);

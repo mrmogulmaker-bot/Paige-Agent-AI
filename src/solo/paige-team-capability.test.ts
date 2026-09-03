@@ -251,7 +251,7 @@ describe("the handler's Team call sites (source-level proof, not runtime proof)"
     // about the owner of that workspace. Paige carried a `inviteSeamBlocked` pre-read so that at
     // least the reason she gave was true.
     //
-    // The database repair (20261045000000) removed the cause: authority is now proved against a
+    // The database repair (20261047000000) removed the cause: authority is now proved against a
     // workspace the caller NAMES. So the workaround is asserted GONE, not merely relocated — had it
     // survived, the invitation would now succeed while Paige refused it in her own voice, which is
     // the same false refusal one layer further from the truth.

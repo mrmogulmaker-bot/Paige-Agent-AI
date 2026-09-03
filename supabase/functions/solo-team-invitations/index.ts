@@ -42,7 +42,7 @@ type PreparedInvite = {
 
 /**
  * Every refusal this seam RAISES on purpose, as COMPLETE messages. Sourced from
- * `20261045000000`, which re-bodies the resolver and all three invitation functions and therefore
+ * `20261047000000`, which re-bodies the resolver and all three invitation functions and therefore
  * restates every validation raise itself — nothing from `20260901001520` executes on this path any
  * more. A sentence not on this list did not come from us, so it is not shown to anyone.
  *

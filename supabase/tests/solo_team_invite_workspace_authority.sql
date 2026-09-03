@@ -1,6 +1,6 @@
 -- An invitation goes to the workspace the operator NAMED. Behavioural proof against the applied
 -- schema: `supabase db reset` replays every migration from zero, so these assertions run against
--- 20261045000000 as the pipeline actually applies it — not against a function created inside the
+-- 20261047000000 as the pipeline actually applies it — not against a function created inside the
 -- test. Synthetic fixtures; always rolled back.
 --
 -- THE TRAP THIS FILE EXISTS TO CATCH. `auth.uid()` is NULL for every statement below, exactly as it

@@ -1459,7 +1459,7 @@ workspace it has switched into, Enterprise both. No owner ruling was sought, and
 ### Solo Team — an invitation goes to the workspace the operator named, `/solo/{account}/settings/team`
 
 **§66, same commit as the ship. NOT YET RELEASED — this records the change under review in #815, not
-live availability.** Nothing below is shipped truth until the PR merges and `20261045000000` is
+live availability.** Nothing below is shipped truth until the PR merges and `20261047000000` is
 confirmed persisted on prod; this row is written now because §66 binds the ledger to the commit, and
 it will be corrected to SHIPPED or removed rather than left ambiguous.
 
@@ -1594,7 +1594,7 @@ is stated. See the decision log entry for MET1.
 **§66, same commit as the ship — recorded as PENDING, not as shipped.** Nothing owner-visible
 ships in A (the Solo Billing screen is Foundation C). What changes per tier is the set of
 Paige-callable billing seams (§10) and who they refuse; the rows below say what the migration
-`20261045000000` will enforce once it is merged under Gate B and persisted on prod. Until that
+`20261047000000` will enforce once it is merged under Gate B and persisted on prod. Until that
 confirmation lands (deploy-migrations `db-live` tag, objects queried on prod), every cell is a
 design claim proven only inside `BEGIN … ROLLBACK` (64/64 properties, 5/5 mutants) — never "live".
 
