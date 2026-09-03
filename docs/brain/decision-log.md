@@ -20,15 +20,35 @@
   aggregated into a figure captioned *"not a setting this workspace chose"*. Every row is
   platform-scoped **today** and I had treated that measurement as a guarantee; the read now filters
   `.is("tenant_id", null)` and the pure builders drop a tenant row independently, so a query edit
-  cannot silently reintroduce them. **One taken beyond the findings, called out rather than slipped
+  cannot silently reintroduce them. **Then the owner widened the brief** to *every* surviving sentence, label, count,
+  badge or affordance implying tenant activity, autonomous action, confidence, trend, authority or
+  outcome without a conforming source, and the sweep found three more the review had not. **`+14%`
+  rendered on two rail buttons and titled a foldout — "Your trust has grown 14% in 30 days · Four
+  departments moved outward. None moved back." — whose OWN BODY, added by #831, says nothing records
+  a history.** I had written the disclaimer and left the claim it disclaims wrapped around it; an
+  honest sentence inside a fabricated frame is still a fabrication, because the frame is what the
+  reader sees first. Two `MiniCompass` call sites passed the label **"because you have"**
+  (`systems.tsx`, `vault.tsx`), so the rendered sentence credited the workspace for a policy the
+  component's very next line calls "not a setting this workspace chose"; and Systems promised **"She
+  will handle this one herself"** from a platform-default lane — a lane is a policy, not a commitment
+  about what will happen here. **Routed rather than absorbed (owner priority 3):** the fixture
+  obligations in `vault.tsx` and the fixture scan history, dollar amounts and client names in
+  `systems.tsx` belong to the ported Claude Design surfaces #831 did not wire — a separate slice with
+  a separate owner, not something to rewrite under a compass hotfix.
+  **One more taken beyond the findings, called out rather than slipped
   in (§58):** the *"Live · she is working now"* pill asserted current work unconditionally with no
   producer, three lines from the P1 and in the same header; the real activity-feed state was already
-  in scope in that component, so it now says what the feed says. **Evidence, separated (§13):** 8
-  mutations, each proven to turn a test red when reverted — and the FIRST mutation harness was itself
-  wrong (`git checkout` restored from the index, wiping the unstaged fixes, so four mutations measured
-  the unfixed baseline and returned an identical failure count four times, which is the tell); redone
-  against a real file backup. 12 new tests; full suite 179 files / 2344 tests green with **zero
-  unhandled errors** — the two Solo supabase stubs enumerated builder methods by name and broke a
+  in scope in that component, so it now says what the feed says. **Evidence, separated (§13):** 12
+  mutations, each proven to turn a test red when reverted — and getting there took THREE corrections
+  to the harness itself. (1) `git checkout <file>` restores from the INDEX, which wiped the unstaged
+  fixes, so four mutations measured the unfixed baseline and returned an identical failure count four
+  times — an identical number across different mutations is the tell. (2) Restoring the fabricated
+  foldout TITLE left every test green, because `Foldout` is `if (!open) return null` and the closed
+  page contains nothing to assert against; the test now clicks it open. (3) One mutation's replacement
+  carried a literal backslash-n from the shell and never applied, so its "pass" meant nothing. The
+  harness now uses file backups, asserts each mutation applied before believing its result, and
+  compares the tree against the backup after every run. 18 new tests; full suite 179 files / 2348
+  tests green with **zero unhandled errors** — the two Solo supabase stubs enumerated builder methods by name and broke a
   second time (`in`, then `is`), surfacing as unhandled errors while every test passed, so they are
   now Proxies that chain anything but the terminal `limit`. `ci:tsc` ratchet unchanged (13);
   production build green. **NOT PROVEN and owed:** the authenticated owner drive on the deployed

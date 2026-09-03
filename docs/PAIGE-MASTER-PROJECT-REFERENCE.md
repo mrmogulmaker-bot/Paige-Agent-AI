@@ -1869,6 +1869,16 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
    (§39), which is the layer working as designed — and the reason a green proof of the thing I
    thought to test is never a proof of the change. Corrected in the follow-up PR, with each fix
    proven non-vacuous by reverting it and watching a test go red.
+ - **2026-09-03 — an honest sentence inside a fabricated frame is still a fabrication.** The widened
+   sweep found that #831 had ADDED the correct note — *"nothing in the platform records a day-by-day
+   history of what Paige did"* — inside a foldout still titled *"Your trust has grown 14% in 30 days"*
+   and subtitled *"Four departments moved outward. None moved back."*, reached by two buttons reading
+   `+14%`. **I wrote the disclaimer and left the claim it disclaims wrapped around it.** The frame is
+   what the reader sees first, and a note further down does not retract a title. Two more from the
+   same family: `MiniCompass` was given the label *"because you have"* by Systems and by the Vault, so
+   the rendered sentence credited the workspace for a policy the component's own next line calls "not
+   a setting this workspace chose"; and Systems promised *"She will handle this one herself"* from a
+   platform-default lane — a lane is a policy, not a commitment about what will happen in a workspace.
  - **2026-09-03 — the same PR read tenant-authored rows into a number captioned "the platform's
    default".** `useSoloTrust` selected `paige_action_kinds` with no `tenant_id` filter. The
    `kind_read` policy is `USING (enabled AND (tenant_id IS NULL OR tenant_id =
