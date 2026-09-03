@@ -177,6 +177,52 @@ BEGIN
 END $$;
 
 -- ── Impersonation helpers ───────────────────────────────────────────────────────────────────
+-- P16 the migration's own no-op guard, proven to FIRE rather than merely to exist. The guard runs
+-- once, during the migration, and passed -- which proves nothing about whether it CAN fail. So the
+-- allowance is cleared from `solo` (legal: the CHECK only requires the pair move together), the
+-- guard's exact predicate is re-evaluated, and the row is put back. A guard that cannot detect the
+-- failure it names is worse than no guard, because it reads as protection.
+DO $$
+DECLARE _detected text;
+BEGIN
+  UPDATE public.platform_subscription_plans
+     SET included_ai_tokens_month = NULL, ai_credit_token_ratio = NULL
+   WHERE slug = 'solo';
+
+  SELECT string_agg(want.slug, ', ' ORDER BY want.slug) INTO _detected
+  FROM (VALUES ('solo'), ('agency')) AS want(slug)
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.platform_subscription_plans pl
+     WHERE pl.slug = want.slug
+       AND pl.included_ai_tokens_month IS NOT NULL
+       AND pl.ai_credit_token_ratio    IS NOT NULL
+  );
+
+  INSERT INTO _p SELECT 16, CASE WHEN _detected = 'solo' THEN 'ok' ELSE 'FAIL detected=' || COALESCE(_detected,'nothing') END,
+    'P16 the migration''s no-op guard DETECTS an unapplied allowance (it fires, it does not merely exist)';
+
+  UPDATE public.platform_subscription_plans
+     SET included_ai_tokens_month = 5000000, ai_credit_token_ratio = 1000
+   WHERE slug = 'solo';
+END $$;
+
+-- P17 the same predicate is QUIET when the allowance is present, so it cannot fire spuriously and
+-- brick an unrelated migration run.
+DO $$
+DECLARE _detected text;
+BEGIN
+  SELECT string_agg(want.slug, ', ' ORDER BY want.slug) INTO _detected
+  FROM (VALUES ('solo'), ('agency')) AS want(slug)
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.platform_subscription_plans pl
+     WHERE pl.slug = want.slug
+       AND pl.included_ai_tokens_month IS NOT NULL
+       AND pl.ai_credit_token_ratio    IS NOT NULL
+  );
+  INSERT INTO _p SELECT 17, CASE WHEN _detected IS NULL THEN 'ok' ELSE 'FAIL false alarm on ' || _detected END,
+    'P17 the guard is silent once the allowance IS applied — no spurious failure';
+END $$;
+
 CREATE OR REPLACE FUNCTION pg_temp.as_user(_u uuid) RETURNS void LANGUAGE sql AS $$
   SELECT set_config('request.jwt.claims', json_build_object('sub', _u::text, 'role', 'authenticated')::text, true);
 $$;

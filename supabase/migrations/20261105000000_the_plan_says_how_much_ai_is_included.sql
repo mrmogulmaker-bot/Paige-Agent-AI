@@ -59,6 +59,35 @@ UPDATE public.platform_subscription_plans
    SET included_ai_tokens_month = 15000000, ai_credit_token_ratio = 1000
  WHERE slug = 'agency';
 
+-- VERIFY, LOUDLY. Both statements above are UPDATEs keyed on a slug, and an UPDATE that matches no
+-- row is a SUCCESS in Postgres -- it changes nothing and says nothing. That is a silent no-op with a
+-- green migration on top of it, which is the §32 failure mode this repo has already paid for twice.
+--
+-- The slugs are not native: they were seeded 'practice'/'academy' (20260702035703) and renamed to
+-- 'solo'/'agency' later (20260726140000, reaffirmed 20260808150000). Today that ordering holds and
+-- these UPDATEs land. If a future migration renames them again, or a fresh rebuild replays a
+-- different history, this migration would otherwise "succeed" and leave every plan's allowance NULL
+-- -- and NULL is indistinguishable from the deliberate enterprise custom-quote case, so nothing
+-- downstream would notice either. Raising here is the difference between finding that out now and
+-- finding it out from a workspace that shows no allowance.
+DO $$
+DECLARE _missing text;
+BEGIN
+  SELECT string_agg(want.slug, ', ' ORDER BY want.slug) INTO _missing
+  FROM (VALUES ('solo'), ('agency')) AS want(slug)
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.platform_subscription_plans pl
+     WHERE pl.slug = want.slug
+       AND pl.included_ai_tokens_month IS NOT NULL
+       AND pl.ai_credit_token_ratio    IS NOT NULL
+  );
+  IF _missing IS NOT NULL THEN
+    RAISE EXCEPTION
+      'AI allowance was not applied to plan slug(s): % — the UPDATE matched no row, so the slugs have moved. Fix the slug, do not drop this check.',
+      _missing;
+  END IF;
+END $$;
+
 -- ── 2. The tenant-safe monthly usage read ──────────────────────────────────────────────────────
 -- ONE read, auth.uid()-keyed, workspace derived server-side by the strict resolver (§18 — the same
 -- `billing_active_tenant_id()` Foundation A introduced, never a caller-supplied tenant).
