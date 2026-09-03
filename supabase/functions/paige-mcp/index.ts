@@ -144,6 +144,8 @@ import { getActorTier, isClientSeatByScopes } from "../_shared/actorTier.ts";
 // tenant != MMA. These are forward-looking — none are implemented yet but the
 // gate is in place so any future addition is opt-out by default.
 const MASTER_ONLY_TOOLS = new Set<string>([
+  "list_admin_notifications",
+  "create_admin_notification",
   "list_tenants",
   "switch_active_tenant",
   "update_tenant_features",
@@ -5148,6 +5150,7 @@ async function enforceTierAndScope(
   // ever added, this gate MUST iterate over each batch element.
   if (body?.method !== "tools/call") return { ok: true };
   const toolName = body?.params?.name;
+  const operatorNotification = toolName === "list_admin_notifications" || toolName === "create_admin_notification";
   const requiredTier = toolTier(toolName);
 
   // Tier resolution reads the DB (roles/agency). A transient DB error must fail
@@ -5156,8 +5159,17 @@ async function enforceTierAndScope(
   try {
     tier = await actorStore.run(actor, () => deriveTier(actor));
   } catch (e) {
+    if (operatorNotification) return { ok: false, status: 403, error: "This action is unavailable." };
     console.error("[paige-mcp] tier resolution failed", (e as Error)?.message);
     return { ok: false, status: 403, error: "tier_resolution_failed" };
+  }
+
+  // These legacy operator tools must not emit named denial/audit payloads or
+  // reach the privileged handler for a tenant. Existing operator scopes remain.
+  if (operatorNotification) {
+    return tier === "god" && (actor.kind === "platform" || actor.scopes.includes(TOOL_SCOPE[toolName]))
+      ? { ok: true }
+      : { ok: false, status: 403, error: "This action is unavailable." };
   }
 
   // ── TIER GATE (audience) ──
