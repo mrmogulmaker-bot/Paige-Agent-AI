@@ -1,13 +1,14 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { decideLegacyPortal, isPlatformCustomer } from "../_shared/platform-billing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const logStep = (step: string, details?: any) => {
+const logStep = (step: string, details?: Record<string, unknown>) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[CUSTOMER-PORTAL] ${step}${detailsStr}`);
 };
@@ -37,7 +38,7 @@ serve(async (req) => {
     const user = userData.user;
     if (!user?.email) throw new Error("User not authenticated or email not available");
     
-    logStep("User authenticated", { userId: user.id, email: user.email });
+    logStep("User authenticated", { userId: user.id });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
@@ -45,7 +46,37 @@ serve(async (req) => {
       throw new Error("No Stripe customer found for this user");
     }
     const customerId = customers.data[0].id;
-    logStep("Found Stripe customer", { customerId });
+    logStep("Found Stripe customer");
+
+    // Billing Foundation A (finding A1): this LEGACY consumer lane may never open a PLATFORM
+    // customer's portal by email. A platform customer is anything referenced by any LAYER-1
+    // source (mapping, platform_subscriptions, tenants) — not just the mapping table, because
+    // ambiguous tenants are deliberately left unmapped. An unreadable check fails CLOSED.
+    // Platform billing goes through `platform-billing-portal`, keyed on the workspace, Owner-only.
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
+    const legacy = decideLegacyPortal(await isPlatformCustomer(admin, customerId));
+    if (!legacy.allow) {
+      // supabase-js resolves `{ error }` on a failed insert; it does not reject — so the failure is
+      // read from the result, never from a rejection that would not come.
+      const { error: auditErr } = await admin.from("paige_audit_log").insert({
+        tenant_id: null,
+        actor_user_id: user.id,
+        actor_role: null,
+        action: "legacy_customer_portal_refused",
+        target_type: "stripe_customer",
+        target_id: null,
+        payload: { reason: legacy.code },
+      });
+      if (auditErr) console.error(`[CUSTOMER-PORTAL] refusal audit insert failed: ${auditErr.code ?? "unknown"}`);
+      logStep("Refused", { reason: legacy.code });
+      return new Response(JSON.stringify({ error: legacy.code }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: legacy.status,
+      });
+    }
 
     const origin = req.headers.get("origin") || "http://localhost:3000";
     const portalSession = await stripe.billingPortal.sessions.create({
@@ -53,10 +84,8 @@ serve(async (req) => {
       return_url: `${origin}/dashboard`,
     });
     
-    logStep("Customer portal session created", { 
-      sessionId: portalSession.id, 
-      url: portalSession.url 
-    });
+    // The portal URL is a bearer-like session link: it is returned to the caller, never logged.
+    logStep("Customer portal session created", { sessionId: portalSession.id });
 
     return new Response(JSON.stringify({ url: portalSession.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

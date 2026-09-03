@@ -85,3 +85,29 @@ export function normalizeTeamWorkspace(value: unknown): TeamWorkspaceRecord | nu
     invitations: row.invitations,
   };
 }
+
+/**
+ * The server's own sentence for a refused invitation.
+ *
+ * WHY THIS IS NEEDED AT ALL. `supabase.functions.invoke()` returns every non-2xx as
+ * `{ data: null, error }` where `error.message` is the FRAMEWORK CONSTANT
+ * "Edge Function returned a non-2xx status code" and the honest body sits on
+ * `error.context`. A call site that reads `data?.error || error?.message` therefore shows
+ * that constant for EVERY refusal — so the operator who used to be told something false was,
+ * after the seam was repaired, going to be told nothing at all. Extracting the body is
+ * `readFunctionErrorBody`'s job (§18, one home); this decides what to SAY with it.
+ *
+ * The refusals this seam raises are already written for a person ("only an owner or admin may
+ * manage team invitations in that workspace"), so they are shown verbatim rather than mapped
+ * to generic copy — mapping them would throw away the precision the repair exists to provide.
+ */
+export function invitationRefusalMessage(
+  body: Record<string, unknown> | null,
+  fallback: string,
+): string {
+  const raw = body?.error;
+  const sentence = typeof raw === "string" ? raw.trim() : "";
+  // Never echo the framework constant back at a person, whatever path it arrived by.
+  if (sentence && !/non-2xx status code/i.test(sentence)) return sentence;
+  return fallback;
+}

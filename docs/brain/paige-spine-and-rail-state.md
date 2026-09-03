@@ -7,6 +7,11 @@ Grounded 2026-09-02 against `origin/main` `ed22066e71294099e48f0b52c742e3f379faf
 and schema claims established at `76bb3bbca` (#728) and re-checked unchanged at `05735f26b` and
 `ed22066e7` — the commits between them are documentation only.
 
+**Re-grounded 2026-09-02 at `1fb7928862b312245dc16927eb4a52c9463206ca`** after the Rail resolver
+foundation merged and deployed (#785, then the #794 remediation in #795). The consumer-side claims
+below were re-checked at that commit and are **unchanged** — which is the point of the new section
+that follows: a safe server read now exists, and *nothing calls it yet*.
+
 ## The rule this file exists to enforce: existence ≠ reachability
 
 Three different things get called "verified," and collapsing them is how this repository has twice
@@ -68,6 +73,121 @@ user id, deal id or stage text.
 
 **Production-verified grants (catalog class):** `authenticated` may EXECUTE it; `anon` may not.
 
+## A safe server-side Rail reader EXISTS and is deployed — and no consumer calls it
+
+**Deployed 2026-09-02. Read this next to the section below, never instead of it.** The two facts are
+not in tension: the server can now answer safely, and no owner-facing screen asks it.
+
+`public.get_solo_rail_activity(p_limit integer)` — `SECURITY DEFINER`, `stable`,
+`set search_path to 'public'` — returns tenant-scoped Rail history **without granting the browser any
+access to `paige_client_events`**. Production catalog class, read 2026-09-02 at project
+`xygzykjyynhzqytbqnzu`:
+
+| Property | Verified value |
+|---|---|
+| Migrations applied | `20261042000000` (#785) and `20261043000000` (#795), both present in `supabase_migrations.schema_migrations` |
+| Overloads | exactly **1** — no stale signature left behind |
+| Signature | takes `p_limit` only; **no tenant parameter** — the workspace is server-resolved, never caller-supplied |
+| Projection | 11 reviewed display fields (`id, event_kind, surface, actor_type, audience, visibility, from_department, to_department, title, summary, occurred_at`). **Omits** `tenant_id`, `payload`, `ref_table`, `ref_id`, `actor_user_id`, `contact_id`. It **does** return `e.id`, the event row's own UUID primary key — so "no internal identifiers" would be false; the accurate claim is that it exposes no tenant, client, actor or source-record identifier, and no producer payload |
+| On refusal | **raises `42501 RAIL_FORBIDDEN`** — it does not `RETURN;` an empty set |
+| EXECUTE | `authenticated` ✔ · `service_role` ✔ (inert — `auth.uid()` is NULL there, so it raises) · `anon` ✘ |
+| `paige_client_events` SELECT | still **denied** to `authenticated` and `anon` |
+
+**Two properties are load-bearing and must survive any future change.**
+
+1. **It refuses rather than returning empty.** A reader that answers a denied caller with zero rows
+   reproduces, one layer down, the exact lie this whole file exists to name. `42501` is the contract.
+2. **The direct-table revoke is the containment, and it stays.** `pce_staff_read` — the RLS policy on
+   `paige_client_events` — carries the same tenant-agnostic role flaw described in #794 below. It is
+   harmless *only* because the table privilege refuses before RLS is ever consulted. **Re-granting
+   browser SELECT would make that defective policy reachable.** Do not "fix" the Rail by adding a
+   grant. The resolver is the path.
+
+### #794 — the defect this foundation shipped with, and the lesson that outlives it
+
+Slice A (#785) reproduced `pce_staff_read` faithfully, **and reproducing it was the defect.** The
+function gated on two clauses that answer questions about *different* tenants:
+
+```sql
+row filter :  WHERE e.tenant_id = v_tenant,  v_tenant := public.current_user_tenant_id()
+role gate  :  public.has_any_role(v_uid, ARRAY['admin','super_admin','coach'])
+```
+
+`current_user_tenant_id()` honours `profiles.active_tenant_id` for **any** active `tenant_members`
+row, at **any** role — a plain `member` qualifies. `has_any_role()` reads `public.user_roles`, whose
+columns are `(id, user_id, role, created_at)`: **no `tenant_id`.** It is a global question — §59's
+global-role trap. So a global `coach`/`admin`/`super_admin` role earned in tenant A, held by someone
+who is merely a member of tenant B, satisfied the gate **on the role from A** and returned all of
+tenant B's Rail, including the `audience='owner'` / `visibility='owner_internal'` rows.
+
+**Be precise about who those rows are actually for — an earlier draft of this section stated the
+boundary wrongly, in a security postmortem, which is the worst place to state one wrongly.**
+`owner_internal` does **not** mean "the tenant owner alone". The resolver filters on
+`where e.tenant_id = v_tenant` and applies **no `audience` or `visibility` predicate**
+(`20261043000000:79–98`), and `pce_staff_read` likewise admits admins and coaches. So these rows are
+**withheld from clients and from plain members, and visible to authorized tenant staff** — `owner`,
+`admin`, `coach`. That is the real boundary, and it is exactly why #794 mattered: the defect handed a
+**plain member's seat** the staff view, not merely a non-owner's.
+
+Remediated by `20261043000000` (#795): the role is read from an active `tenant_members` row for the
+**same** `v_tenant` the rows come from, so the two clauses now agree about which workspace they mean.
+Verified on production — the deployed body no longer contains `has_any_role`.
+
+**Scope that claim to the READER it was written about. It is not a Rail-wide all-clear, and reading
+it as one is how this record would start asserting something the platform has not earned.** Verified
+against the deployed bodies on 2026-09-03:
+
+| Rail function | Kind | Carries `has_any_role`? | Refuses explicitly? |
+|---|---|---|---|
+| `get_solo_rail_activity` | reader | no | yes — `42501`, since `20261042000000` |
+| `get_client_rail` | reader | no — removed by `20261044000000` | yes — `42501` |
+| `get_client_rail_for_chat` | reader | no — added correct in `20261044000000` | yes — `42501` |
+| `get_platform_rail` | reader | **never did** — it gates on `is_platform_owner()` | yes — `42501`, since `20261049000000` |
+| `record_rail_event` | **writer** | **YES, still** | yes, but see below |
+
+So the accurate statement, and the one to quote instead of line 134 alone: **no Rail READER carries
+`has_any_role`, and no Rail reader answers a denial with an empty set.** The WRITER is the exception
+on the first count, and it is tracked as **#824** — parked, unassigned.
+
+**`get_platform_rail` was a different defect from #794 and must not be filed under it.** It never had
+the global-role trap; its gate was always correct and no unauthorized caller ever received a row from
+it. What it did wrong was answer a denial with `RETURN;`, so a refused caller could not tell *"you may
+not see this"* from *"the platform Rail is empty."* Repaired by `20261049000000` (#834), which changed
+only the shape of the refusal — the authority stays `is_platform_owner()` (super_admin only, §53) and
+was deliberately **not** widened to `is_platform_operator()`.
+
+**The writer's severity is NOT the reader's, and copying it across would overstate #824.**
+`record_rail_event` confines every write with `PERFORM 1 FROM public.clients c WHERE c.id =
+p_contact_id AND c.tenant_id = v_tenant`, raising `contact not in tenant`, so the **cross-tenant**
+version is blocked. What survives is the **member→staff escalation inside one workspace** — the same
+shape as #794, on the write path, and an integrity/attribution exposure rather than a disclosure one.
+Its sharpest form is `p_narrow_to_owner = true`, which yields `audience='owner'` /
+`visibility='owner_internal'`: a plain member could file into the owner's private feed.
+
+**Measured exposure, stated honestly:** 3 users hold a global staff role across multiple tenants;
+**0** currently sit at a non-staff seat. Structurally live, never reached. **Re-measured 2026-09-03
+for the writer's population** — 9 users hold a global staff role *at all*, and **0** of them sit at a
+non-staff seat in any workspace, so the escalation population is empty on both paths. The 9 and the 3
+answer different questions (held-at-all vs. held-across-multiple-tenants) and are not in conflict; the
+figure that governs is the zero, which agrees. That was not a reason to
+downgrade the repair — the path opens the moment any global-role holder is invited as a plain member
+elsewhere, which is ordinary.
+
+**Three lessons, recorded here because `docs/brain/lessons-learned.md` has three open PRs contending
+for its tail (#729, #731, #754 all append at 1276–1279) and a fourth append would conflict with all
+of them.** They belong in that file when the contention clears.
+
+1. **Fidelity to a defective policy resurrects the defect.** Slice A's tests asserted the function
+   *matched* `pce_staff_read`. Matching it was the bug, so those assertions could not see it. A test
+   that encodes "behaves like the thing we are replacing" is not a safety net.
+2. **A revoked grant can be the only thing containing a flaw — so re-exposing the semantics through a
+   different object type re-opens it.** The policy was unreachable; an EXECUTE-granted `SECURITY
+   DEFINER` function with the same body is very reachable. Object type changed, guard did not.
+3. **The review-timing gap is preserved as fact, not tidied away.** Slice A merged ~12 seconds after a
+   Codex review began; that review never completed before production deployment, and this remediation
+   is the direct consequence. #795 did receive a completed Codex review on its exact final head. Every
+   Rail PR now requires one before Gate B. **Do not rewrite the #785 history as though it had one.**
+
 ## Owner-visible Solo Rail activity is UNAVAILABLE — not empty, not healthy
 
 **This is the single most consequential current-state fact in this file, and it must not be read as
@@ -97,11 +217,14 @@ than relayed:
 | Path | Consumer | Distinguishes denied from empty? |
 |---|---|---|
 | `useRailEvents` (Context Rail) | `src/components/paige/PaigeRailFeed.tsx:108` · `src/components/app/ClientActivityFeed.tsx:144` — both destructure only `{ events, connected }` | **NO.** `grep` for `historyError\|historyLoaded` outside the hook and its tests returns **no matches**, so a refused read renders exactly like an empty feed |
-| `useSoloActivityFeed` (Solo Trust Compass) | `src/solo/compass.tsx:377` computes a distinct `'error'` state and renders *"Recent activity could not be loaded, so this is not a record of nothing happening"* with `role="alert"` and a retry | **Yes** — this one is the model treatment |
+| `useSoloActivityFeed` (Solo Trust Compass **and** Team activity) | **Both** consumers distinguish. `src/solo/compass.tsx:377` and `src/solo/team.tsx:235` each compute `loading ? … : error ? 'error' : …` and render `role="alert"` — *"Recent activity could not be loaded, so this is not a record of nothing happening"* and *"This timeline could not be loaded, so it is not a record of nothing happening"*. **Retry is a separate question and is not universal** — see the measured exception below | **Yes for failure visibility; partly for recovery.** **Corrected 2026-09-02, twice:** an earlier version named only `compass.tsx` (`team.tsx` had the same treatment and was uncredited), and the row then claimed both render "with a retry", which is false for Compass at ≤1020px |
 
-So the platform-level statement is *not reliable enough*: two shipped consumers cannot distinguish,
-one can. **An operator who opens the Command Center a minute after PAIGE acts can be told she has done
-nothing** (#746). That is the failure mode — not a visible error.
+So the platform-level statement is *not reliable enough*: **two shipped consumers cannot distinguish
+and two can.** (**Corrected 2026-09-02** — this sentence read "two cannot distinguish, one can" while
+the row above it already named both `compass.tsx` and `team.tsx`; the count was left behind when Team
+gained the treatment.) **An operator who opens the Command Center a minute after PAIGE acts can be told
+she has done nothing** (#746) — through `PaigeRailFeed` or `ClientActivityFeed`, which are the two that
+collapse it. That is the failure mode — not a visible error.
 
 Two things follow:
 
@@ -113,9 +236,64 @@ Two things follow:
 **Never record this as an empty feed or a healthy one.** If a future session sees no activity in Solo,
 the first hypothesis is this grant, not an idle workspace.
 
+**This verdict SURVIVED the resolver shipping, and the reason matters (2026-09-02).** A safe server
+reader is now deployed — see the section above — but `useRailEvents.ts:198` and
+`useSoloActivityFeed.ts:171` still read `paige_client_events` **directly**, and the browser still has
+no SELECT on it. Re-measured on production at `1fb79288`, after both migrations:
+`has_table_privilege('authenticated','public.paige_client_events','SELECT')` is **still `false`** — by
+design, since that revoke is what keeps the defective `pce_staff_read` policy unreachable. So the
+owner-facing behaviour is **byte-for-byte what it was**, and that means exactly what the consumer
+matrix above says — no more:
+
+- **The two `useRailEvents` consumers still collapse a refusal into an empty feed.** `PaigeRailFeed.tsx`
+  and `ClientActivityFeed.tsx` destructure only `{ events, connected }`, so a denied read still renders
+  as "nothing yet". **This is the remaining failure mode among the four Rail-feed consumers** — and it
+  is deliberately scoped to those four, because they are the ones this record audits. **Two Analytics
+  surfaces do the same thing to the same denied table** and are tracked separately as **#802**:
+  `useClientEngagement.ts:48` and `CohortRetentionTable.tsx:74` each destructure only `{ data }`,
+  discard the error, and fall through to `[]` — so a refusal is rendered as *"Insufficient data"* or
+  as retention that never accumulated. **They are out of Slice B's scope, not out of the problem.**
+- **The two `useSoloActivityFeed` consumers do NOT.** Both `compass.tsx:377` and `team.tsx:235` compute
+  `activity.loading ? 'loading' : activity.error ? 'error' : …` and render an explicit `role="alert"`
+  message — *"Recent activity could not be loaded, so this is not a record of nothing happening"* and
+  *"This timeline could not be loaded, so it is not a record of nothing happening"*. **Do not describe
+  these as showing "nothing yet".** They are the model treatment Slice B extends rather than replaces.
+  - **Retry is NOT universal, and the exception is measured.** `team.tsx` offers *Try again* in every
+    layout, and `compass.tsx` offers it in the wide layout (`compass.tsx:421`). But
+    `solo-tokens.css:173` — `@media(max-width:1020px){ .paige-solo .tc-rail{display:none};
+    .paige-solo .tc-railbtn{display:flex} }` — hides the branch that holds Compass's retry at
+    **≤1020px**, and the foldout branch that replaces it (`compass.tsx:440`) carries `role="alert"`
+    **with no retry control**. So at narrow widths a Compass user is told the read failed and has no
+    **manual** way to re-attempt it.
+  - **Recovery is NOT absent, though — and this correction matters more than the gap.**
+    `useSoloActivityFeed.ts:193–198` re-reads on a `setInterval` of `POLL_INTERVAL_MS = 15_000` while
+    the tab is visible, **and** on every `window` `focus` event. So an error state clears itself
+    within ~15 seconds of the cause going away, in every layout, with no user action. The accurate
+    statement is **"no visible manual retry control at ≤1020px"**, not "no retry" and not "no
+    recovery" — those would be false.
+  - **That gap is a Slice B input, not a documentation problem.** Slice B's state contract explicitly
+    includes *failed with a truthful retry path*, so the compact Compass branch is inside its scope
+    and must not be lost. §00: whether a recovery control **exists** is correctness and therefore
+    ours; what it should **look like** is Claude Design's.
+
+That split is why the platform status is *not reliable enough* rather than *never* — and why the
+verdict is about the platform, not about every consumer equally.
+
+The status line is therefore unchanged, and the honest shape of the remaining gap has changed:
+
+> **Before:** no safe path existed.
+> **Now:** a safe path exists and no owner-facing consumer uses it.
+
+Do not read "the resolver is deployed" as "the Rail is readable by the owner." Those are the two
+classes this file's opening table exists to keep apart — **production catalog** proves the object is
+deployed; it proves nothing about whether any code path calls it.
+
 **Rail Recovery is tracked as issue #746 (RELEASE-BLOCKING), and #729 is BLOCKED from Gate 2 by it.**
 #746 is the required separate Rail Recovery prerequisite for #729's first owner flow to become
-production-executable. It is not assigned to #729, and not to this documentation record.
+production-executable. It is not assigned to #729, and not to this documentation record. **The
+resolver landing did not lift that block** — #729's repair #1 operates on the direct-table read, which
+is still refused. What changed is that the unblock is now a consumer change rather than a missing
+capability.
 
 **Existing work, not authorized as a release path:** PR **#644** (`codex/mind-safe-rail-contract`) adds
 `public.get_solo_mind_rail_events()`, a guarded `SECURITY DEFINER` resolver over the same table that
@@ -168,13 +346,27 @@ separately records that the compass clamps **at render only**.
 Later items do not start ahead of earlier ones. Implementation is assigned by the owner, never
 inferred from this file.
 
+**Updated 2026-09-02** after the Rail resolver foundation merged and deployed. Prior states are
+corrected in place rather than deleted; what each row *was* is recoverable from this file's history.
+The Attention Register standard (`docs/doctrine/paige-attention-register.md` §8) names this exact
+table as a live list that obliges an edit when #746 or #755 resolves — that is a known, accepted
+overlap, not an oversight, and it is why the register exists.
+
 | # | Work | State |
 |---|---|---|
-| 1 | PR **#729** — cross-account Rail/Compass hotfix on #728 | **BLOCKED from Gate 2 by #746** |
-| 2 | **Rail recovery + owner-visible outcome reading** — issue **#746**, RELEASE-BLOCKING | the required prerequisite for #729's first owner flow to become production-executable |
+| 1 | PR **#729** — cross-account Rail/Compass hotfix on #728 | **still BLOCKED from Gate 2 by #746.** Its repair #1 reads the direct table, which remains refused. Its `useRailEvents` scope guard is a real dependency for Rail Slice B, not an inconvenience |
+| 2 | **Rail recovery + owner-visible outcome reading** — issue **#746**, RELEASE-BLOCKING | **OPEN — foundation only.** The safe resolver is deployed (#785 + the #794 remediation in #795); **no consumer has been moved onto it**, so no owner-facing screen is repaired. Closing #746 additionally requires authenticated owner runtime proof |
 | 3 | **Pipeline governance repair** — issue **#755** — before any Pipeline Chat write bridge | parked, owner decision required |
 | 4 | Stale doctrine correction | done for the Trust Compass claims (PR #743) |
 | 5 | Calendar as the next bounded read-only Spine capability | not started, not authorized |
+
+**Two open PRs already hold Rail consumer work and must not be duplicated (measured 2026-09-02).**
+PR **#776** (`318f1dbd`) carries the now-merged `20261042000000` migration **plus** consumer changes to
+`ClientActivityFeed.tsx`, `PaigeRailFeed.tsx`, `useRailEvents.ts` and `useSoloActivityFeed.ts` — that
+is Slice B's surface. PR **#729** (`5fd08d2c`) owns the `useRailEvents.ts` scope guard covering a
+painted-frame leak that a request-token approach alone does not catch: React commits a frame of the
+previous scope's data before any passive effect can clear it. **Slice B adopts both rather than
+rewriting them.** Neither may be merged except under its own owner's exact-head authority.
 
 **#746 is not assigned to #729, and not to this record.** It is a separate Rail Recovery workstream.
 
