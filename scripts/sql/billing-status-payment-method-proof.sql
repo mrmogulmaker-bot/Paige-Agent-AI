@@ -93,8 +93,35 @@ UPDATE public.platform_subscriptions SET stripe_customer_id = 'cus_bpm_ambig_A' 
 INSERT INTO public.platform_billing_accounts (tenant_id, stripe_customer_id, stripe_account, source)
 SELECT w_ambig, 'cus_bpm_ambig_B', 'legacy', 'checkout' FROM _f;
 
+-- SEQUENTIAL-REPLAY REGRESSION (found by database-contract CI on this PR, not by this proof —
+-- a standalone `\i` of Slice B alone never creates a conflict because the function doesn't
+-- pre-exist in this isolated transaction). Simulate Slice A's ORIGINAL column list actually
+-- being installed first, so Slice B's `CREATE OR REPLACE FUNCTION` — which inserts 5 new
+-- payment_method_* columns into the MIDDLE of that list — is exercised against a real prior row
+-- type, exactly as the full migration replay does. Without Slice B's `DROP FUNCTION IF EXISTS`
+-- immediately before its `CREATE OR REPLACE`, this step raises 42P13 "cannot change return type
+-- of existing function".
+CREATE OR REPLACE FUNCTION public.get_workspace_billing_status()
+RETURNS TABLE(
+  tenant_id uuid, workspace_name text, scope text, can_view boolean, can_manage boolean,
+  access_state text, revenue_class text, plan_slug text, plan_name text,
+  amount_due_cents integer, payment_method_required boolean, billed_by text, provider_state text,
+  seats_included integer, seats_used integer, contacts_included integer, contacts_used integer,
+  sms_included integer, sms_used integer, ai_tokens_included bigint, ai_credit_token_ratio integer,
+  paid_addons_count integer, primary_contact_count integer, delegate_count integer,
+  primary_selection_needed boolean, notice_delivery_state text, trial_ends_at timestamptz
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $$ BEGIN RETURN QUERY SELECT NULL::uuid, NULL::text, 'none'::text, false, false,
+  'unknown'::text, NULL::text, NULL::text, NULL::text, NULL::integer, false, NULL::text, NULL::text,
+  NULL::integer, NULL::integer, NULL::integer, NULL::integer, NULL::integer, NULL::integer,
+  NULL::bigint, NULL::integer, NULL::integer, NULL::integer, NULL::integer, false, NULL::text, NULL::timestamptz;
+END; $$;
+
 -- ── the migration under proof ───────────────────────────────────────────────────────────────
 \i supabase/migrations/20261111050000_the_workspace_can_connect_a_payment_method.sql
+
+INSERT INTO _p SELECT 1, 'ok', 'C1 Slice B''s CREATE OR REPLACE against a real Slice-A-shaped prior row type did not raise 42P13 (reaching this line proves it)';
 
 -- Attach a payment method to w_pm's mapping row — as the WEBHOOK will, never the connect fn.
 UPDATE public.platform_billing_accounts

@@ -113,6 +113,14 @@ $$;
 
 -- ── get_workspace_billing_status(), CORRECTED to read the mapping from the real Foundation A
 --    table and carrying the payment-method summary. ──────────────────────────────────────────
+-- DROP first: this inserts 5 new payment_method_* columns into the MIDDLE of Slice A's column
+-- list (after provider_state). Postgres refuses CREATE OR REPLACE FUNCTION when the RETURNS TABLE
+-- row type changes ("cannot change return type of existing function", SQLSTATE 42P13) — caught by
+-- database-contract's full sequential migration replay, which applies Slice A first and then hits
+-- this REPLACE against the row type Slice A actually installed. A standalone BEGIN..ROLLBACK proof
+-- of this file alone never surfaces it, because on an environment where Slice A was never applied
+-- first, this CREATE OR REPLACE is really a fresh CREATE with nothing to conflict with.
+DROP FUNCTION IF EXISTS public.get_workspace_billing_status();
 CREATE OR REPLACE FUNCTION public.get_workspace_billing_status()
 RETURNS TABLE(
   tenant_id                uuid,
