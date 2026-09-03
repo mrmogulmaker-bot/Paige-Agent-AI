@@ -110,7 +110,14 @@ INSERT INTO public.profiles (user_id, active_tenant_id) VALUES
   ('d1000000-0000-0000-0000-000000000003', 'd1000000-0000-0000-0000-00000000dddd'),
   ('d1000000-0000-0000-0000-000000000004', 'd1000000-0000-0000-0000-00000000dddd'),
   ('d1000000-0000-0000-0000-000000000005', 'd1000000-0000-0000-0000-00000000dddd'),
-  ('d1000000-0000-0000-0000-000000000006', 'd1000000-0000-0000-0000-00000000dddd'),
+  -- The SUSPENDED admin's pointer is NULL, and that is not tidying — it is required.
+  -- `guard_active_tenant_membership()` fires on UPDATE of profiles and demands an ACTIVE
+  -- membership in the named workspace, and this INSERT ... ON CONFLICT DO UPDATE becomes an
+  -- UPDATE because `handle_new_user` already created a row when the auth user was inserted.
+  -- Pointing a suspended membership's profile at that workspace therefore raises 42501 and
+  -- aborts the whole file. It is also the truthful state: a suspended person is not sitting
+  -- in the workspace they are suspended from.
+  ('d1000000-0000-0000-0000-000000000006', NULL),
   ('d1000000-0000-0000-0000-000000000007', NULL),
   ('e1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-00000000eeee')
 ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id;

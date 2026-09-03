@@ -130,10 +130,36 @@ The three-way check was re-run for `20261048000000` at this head: absent from pr
 `schema_migrations` (which carries `…44`, `…45`, `…46`, `…47`), absent from `main`'s tree, and absent
 from **every** remote branch — scanned, not assumed.
 
-**The claim in the paragraph above is now stale, and is not carried forward.** No Supabase Preview
-run has applied this migration under `20261048000000`, and the earlier preview evidence was taken at
-`20261044000000`. Rather than restate a preview claim at a version no preview has seen, the
-applied-schema proof for the released version is `supabase/tests/solo_team_removal_authority.sql`,
-executed by the `database-contract` job against a schema `supabase db reset` replays from zero — the
-same mechanism the sibling invitation release used, and one that does not depend on preview-branch
-availability.
+**The claim in the paragraph above was stale when this note was first written, and is replaced
+rather than repeated.** The earlier preview evidence was taken at `20261044000000`, so it could not
+speak for `20261048000000`. The applied-schema proof for the released version is therefore
+`supabase/tests/solo_team_removal_authority.sql`, executed by the `database-contract` job against a
+schema `supabase db reset` replays from zero — the same mechanism the sibling invitation release
+used, and one that does not depend on preview-branch availability.
+
+### Correction, later the same day — a preview run then DID apply it
+
+Recorded as a correction rather than by editing the paragraph above, because "no preview has applied
+this" was true when written and false a few minutes later, and the sequence is the point.
+
+The PR's Supabase Preview branch (`mkdevsqajkuhgbhizydl`) ran on head `f44806cb` and applied
+`20261048000000`. Queried directly rather than read off the bot's summary:
+
+| check on the preview branch | observed |
+|---|---|
+| `schema_migrations` | `…40 … 48` present and contiguous, including `20261048000000` |
+| `remove_solo_team_member(uuid,uuid)` | exists |
+| `prosecdef` | `true` — SECURITY DEFINER, as written |
+| `authenticated` EXECUTE on it | `true` |
+| `anon` EXECUTE on it | `false` |
+| `tenant_members` SELECT / `authenticated` | `true` — reads deliberately untouched |
+| `tenant_members` DELETE / UPDATE / INSERT / TRUNCATE / `authenticated` | `false`, `false`, `false`, `false` |
+| `tenant_members` TRUNCATE / DELETE / `anon` | `false`, `false` |
+
+**The bot also reported `Migrations ⚠️ — Applied out-of-order migrations:
+20261045000000_platform_billing_accounts_foundation_a.sql`, and that warning is real but not this
+migration's.** The preview branch is long-lived and had already applied this branch's EARLIER
+version numbers before `…45` arrived on main, so `…45` landed after a higher version was recorded.
+Every version from `…40` to `…48` is present on that branch, so nothing was skipped — but a
+long-lived preview branch whose ledger is a mix of superseded numbers is exactly why it is the
+SECONDARY evidence here and `database-contract`, which replays from zero every time, is the primary.
