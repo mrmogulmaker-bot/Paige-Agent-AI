@@ -1775,3 +1775,24 @@ account first, with Super-Admin-specific features layered on top afterward — s
 invitation-sending should reuse whatever Solo's pattern turns out to be, once Solo itself is done,
 rather than being built in parallel now and risking two divergent implementations. Finish Solo
 first; Super Admin sending is deliberately deferred, not forgotten.
+
+## 2026-09-03 — Billing Experience: access state and provider mapping read independently (PR #865)
+
+Owner brief, continuing from the approved Slice A proof: a promotional workspace with no Stripe
+mapping is a valid promotional account with $0 due, never "billing unavailable." Corrected two real
+bugs found while building the DB read, both by re-reading sibling functions rather than by report:
+(1) `get_workspace_billing_status()` had read provider mapping from
+`platform_subscriptions.stripe_customer_id`, which the real checkout flow never populates — the
+real mapping of record is `platform_billing_accounts`, read via the same
+`platform_billing_layer1_customer_ids()` helper `get_workspace_billing_authority()` already uses;
+(2) every top-level tenant was classified as Solo scope, including Agency/Enterprise — corrected via
+the same `account_type` discriminant `platform_billing_account_top_level_guard` already enforces.
+
+Frontend: the Solo "Plan & usage" card now sources from this corrected read instead of a
+mapping-gated resolver that could never show a real access state. Mogul Maker Academy's two live
+primary billing contacts (pre-existing data, from before Slice A's one-primary trigger existed)
+render as a distinct "Selection needed" banner rather than two rows that both look accepted.
+
+Codex was reported down at review time; owner explicitly authorized substituting an Agent-based
+adversarial review and resuming Codex review when it returns — recorded so a future session does
+not read this as skipping review discipline.
