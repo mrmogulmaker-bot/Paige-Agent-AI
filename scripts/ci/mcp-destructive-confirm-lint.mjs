@@ -808,6 +808,21 @@ function schemaKeySpaceIsClosed(node) {
     return CLOSED_OBJECT_BUILDERS.has(method);      // the head decides
   }
   if (!KEYSPACE_PRESERVING.has(method)) return false;   // widens, or this guard does not know it
+  // A PRESERVING METHOD PRESERVES THE RECEIVER'S KEY POLICY — NOT ITS ARGUMENT'S.
+  //
+  // `z.object({}).merge(z.object({}).passthrough())` inherits the RIGHT-hand schema's unknown-key
+  // policy in both installed zods, and `.pipe()` likewise validates against the schema handed to
+  // it. Recursing only into the receiver called both closed. Measured, four ways: merge with a
+  // passthrough, with a catchall, with a looseObject, and pipe with a passthrough.
+  //
+  // Generalised rather than special-cased to `merge`, because "the methods whose argument is also a
+  // schema" is one more list to get wrong: ANY argument that is itself a `z.` chain must prove its
+  // own closedness. A method added to KEYSPACE_PRESERVING later inherits this check for free.
+  for (const arg of e.arguments) {
+    const a = unwrapValue(arg);
+    if (a && ts.isCallExpression(a) && chainRoot(a.expression) === SCHEMA_NS &&
+        !schemaKeySpaceIsClosed(a)) return false;
+  }
   return receiver ? schemaKeySpaceIsClosed(receiver) : false;
 }
 
@@ -1148,6 +1163,13 @@ mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
     ["and(record)", `z.object({}).and(z.record(z.string(), z.boolean()))`],
     ["intersection(object, record)", `z.intersection(z.object({}), z.record(z.string(), z.boolean()))`],
     ["union([object, record])", `z.union([z.object({}), z.record(z.string(), z.boolean())])`],
+    // Codex on a1f9b3e4: a preserving method preserves the RECEIVER's key policy, not its
+    // ARGUMENT's. Both zods inherit the right-hand schema's unknown-key policy on merge, and pipe
+    // validates against the schema handed to it. My own stated suspicion when I widened the list.
+    ["merge(passthrough)", `z.object({}).merge(z.object({}).passthrough())`],
+    ["merge(catchall)", `z.object({}).merge(z.object({}).catchall(z.boolean()))`],
+    ["merge(looseObject)", `z.object({}).merge(z.looseObject({}))`],
+    ["pipe(passthrough)", `z.object({}).pipe(z.object({}).passthrough())`],
   ];
   const OPEN_HANDLER = `handler: async (args) => { if (args.confirm) await admin.from("clients").delete(); }`;
   for (const [label, schema] of OPEN_SCHEMAS) {
@@ -1162,6 +1184,8 @@ mcp.tool("t", { inputSchema: ${schema}, ${OPEN_HANDLER} });`, "t.ts").length, 1)
      `z.object({ id: z.string() }).describe("x").optional().refine(() => true)`],
     ["extend", `z.object({ id: z.string() }).extend({ note: z.string() })`],
     ["partial + strict", `z.object({ id: z.string() }).partial().strict()`],
+    ["merge with a CLOSED schema", `z.object({ id: z.string() }).merge(z.object({ note: z.string() }))`],
+    ["a default value on a closed object", `z.object({ id: z.string() }).default({})`],
   ]) check(`ADMITS a CLOSED schema: ${label}`, findViolations(`
 mcp.tool("t", { inputSchema: ${schema}, ${OPEN_HANDLER} });`, "t.ts").length, 0);
 
