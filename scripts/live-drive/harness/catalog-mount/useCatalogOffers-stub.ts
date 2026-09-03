@@ -5,7 +5,7 @@
 // Every fixture below is a plausible tenant record — never one of the owner's real accounts (§63).
 type Mode = "populated" | "empty" | "readonly" | "error" | "resolving" | "unpriced"
   | "authority-unknown" | "fields-unavailable" | "instalment" | "recurring" | "empty-pending"
-  | "switched-account";
+  | "switched-account" | "loading" | "unavailable";
 
 let mode: Mode = "populated";
 const listeners = new Set<() => void>();
@@ -91,6 +91,13 @@ export function useCatalogOffers() {
     authorityUnknown: false, fieldsUnavailable: false, retry: () => {},
   });
   if (mode === "resolving") return { ...base([]), tenantId: null, phase: "resolving" };
+  // The workspace IS resolved and the read is in flight. Distinct from `resolving`, which is the
+  // account context itself still settling.
+  if (mode === "loading") return { ...base([]), phase: "loading" };
+  // No workspace could be resolved at all. The tier matrix cites THIS branch as the operator-tier
+  // safety — an operator with no tenant must be told so, never shown an empty catalog — and until
+  // now nothing rendered it.
+  if (mode === "unavailable") return { ...base([]), tenantId: null, phase: "unavailable" };
   if (mode === "error") return { ...base([]), phase: "error", retry: () => setCatalogHarnessMode("populated") };
   if (mode === "empty") return base([]);
   // Empty AND mid-deploy: the state EVERY production tenant is in during the window between the

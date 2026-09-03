@@ -18,16 +18,22 @@ import { useCallback, useEffect, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { supabase } from "@/integrations/supabase/client";
 
-/** Mirrors `tenant_products.status` after migration 20261048000000. */
 /**
- * The four recorded states, plus `unrecognised` for a value this build has no reading for. That
- * fifth member is NOT a status a tenant can record: it is what the surface says when the column
- * holds something a later migration added and this deployment does not know. Coercing it to
- * "draft" was safe — a draft is shown to nobody — but it asserted a state the record does not
- * prove, which is the same class of lie as a price the record does not prove.
+ * Mirrors `tenant_prices.kind` — what SHAPE of plan a price row is, allow-listed here because it
+ * was the one classified field the adapter passed through raw. An unmapped value reached the
+ * surface, produced no sub-label, and fell through to the presentation label, printing "Fixed
+ * amount" over a per-period figure with only a database CHECK standing in the way.
  */
 export type OfferPlanKind = "one_time" | "deposit" | "recurring" | "installment";
 
+/**
+ * Mirrors `tenant_products.status` after migration 20261048000000 — the four recorded states,
+ * plus `unrecognised` for a value this build has no reading for. That fifth member is NOT a status
+ * a tenant can record: it is what the surface says when the column holds something a later
+ * migration added and this deployment does not know. Coercing it to "draft" was safe — a draft is
+ * shown to nobody — but it asserted a state the record does not prove, which is the same class of
+ * lie as a price the record does not prove.
+ */
 export type OfferAvailability = "draft" | "active" | "paused" | "archived" | "unrecognised";
 /** Mirrors `tenant_products.product_type`, which predates this slice. */
 /**
@@ -255,9 +261,14 @@ export function useCatalogOffers(): CatalogOffersState {
             name: typeof row.name === "string" ? row.name : "",
             summary: typeof row.summary === "string" && row.summary.trim() ? row.summary : null,
             description: typeof row.description === "string" && row.description.trim() ? row.description : null,
-            // An unreadable status is treated as a draft: the safest reading is the one that
-            // shows the offer to nobody.
+            // An unreadable status reads as unrecognised, NOT as a draft. This comment used to
+            // say the opposite and was left behind when the behaviour changed — the same doc drift
+            // this slice has already been caught on twice.
             availability: narrow(row.status, AVAILABILITIES) ?? "unrecognised",
+            // The `?? "one_time"` coercion IS the pattern the line above was fixed away from, and
+            // it survives deliberately: `billingCadence` has no UI consumer (referenced only in
+            // tests), so nothing can render a coerced value at a tenant. If it ever gains one,
+            // narrow it to nullable first — otherwise this becomes the same lie one field over.
             billingCadence: narrow(row.product_type, ["one_time", "recurring", "service"] as const) ?? "one_time",
             kind: narrow(row.offer_kind, ["product", "service"] as const),
             deliveryShape: narrow(row.delivery_shape, SHAPES),

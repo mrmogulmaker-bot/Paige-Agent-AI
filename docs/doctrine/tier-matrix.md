@@ -1656,10 +1656,13 @@ The platform operator's master-account Primary Customer Profile is distinct from
 
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
 
-**§66, same commit as the change — and this row is NOT a ship.** Slice 2A is a DRAFT pull request.
-Nothing here is merged, nothing is deployed, and migration `20261048000000` is **not applied to
-production**: it has a `BEGIN..ROLLBACK` proof against prod ref `xygzykjyynhzqytbqnzu` and the
-rollback was confirmed clean (0 rows, original `tenant_products_status_check` intact, 0 new columns).
+**§66, same commit as the change.** This row was first written while Slice 2A was a draft, and said
+so — which the final review flagged as a sentence engineered to become false the instant it merged,
+since §66 records what is LIVE rather than what is in flight. It is now written to survive the merge:
+**the migration's applied state on production is recorded below under *Persisted apply*, and that
+line is the one to trust.** Pre-merge it carried a `BEGIN..ROLLBACK` proof against prod ref
+`xygzykjyynhzqytbqnzu`, confirmed clean (0 rows, original `tenant_products_status_check` intact,
+0 new columns) — necessary, and explicitly NOT sufficient (§32.a).
 The row exists so the matrix records what is in flight rather than going quiet until merge; read
 every cell as "what this change would make true", never as live availability.
 
@@ -1703,14 +1706,16 @@ that notice; Slice 2B's command seam is what it will really gate.
   derived-conflict sentence inaudible to a screen reader.
 - *Correction to this row (§13).* It previously read `251/251`. That figure came from a local run of
   a script version edited before it was pushed; the committed script yields 243, and the reviewer
-  could not reproduce 251. The count is now 283: the BLOCKER added a recurring fixture, and a second
-  review pass added the empty-AND-mid-deploy composition — the state every production tenant is in
-  during the deploy window, which until then was proven only in jsdom. Cite what the committed
+  could not reproduce 251. **A correction that then went stale itself:** this bullet was left saying
+  283 while the row above it climbed to 419, so the same section carried two different counts — the
+  final review caught it. The count is now **419**, and it moved because each review round added
+  rendered coverage: a recurring fixture, the empty-AND-mid-deploy composition, account switch,
+  restored session, and the loading and unavailable branches. Cite what the committed
   script prints, not a local run.
 - *Static/build:* `ci:tsc` clean against the ratchet; `lint:views`, `lint:definer-fns`,
   `lint:tier-features`, `lint:skeleton`, `lint:migration-versions`, `lint:managed-schema`,
   `lint:pg-tokens`, `lint:write-targets` all pass; production build passes.
-- *Rendered:* 387/387 checks in `scripts/live-drive/catalog-offers-drive.mjs`, reproduced on three consecutive runs leaving zero orphan processes, — the real components
+- *Rendered:* 419/419 checks in `scripts/live-drive/catalog-offers-drive.mjs`, reproduced on three consecutive runs leaving zero orphan processes, — the real components
   with only the network read stubbed, across both palettes and all four Solo widths, asserting the
   six-tab lock, no horizontal overflow, no fabricated commerce data, no `$0`, and the exact shipped
   canvas values in each theme.
@@ -1720,7 +1725,10 @@ that notice; Slice 2B's command seam is what it will really gate.
   touches the real query. The adapter suite closes that gap against a fake client, which proves the
   query SHAPE and the resolved authority, not that PostgREST answers it as expected. No evidence in
   this slice is a real round-trip to the database.
-- **NOT APPLIED:** the migration. Post-merge persisted-apply confirmation on prod is owed.
+- **Persisted apply — OWED, and this line is updated from a real query, never from the pipeline
+  running.** At the time of writing the migration is not yet applied to production. §32.a requires
+  `schema_migrations` to carry `20261048000000` AND the six columns to exist on `tenant_products`
+  AND the status CHECK to permit `paused`, each shown by a query result pasted here.
 
 **Truth label: `PARTIAL`, deliberately.** The read is real and tenant-scoped, but a tenant cannot
 yet define an offer on this screen — `tenant_products` is empty on production (0 rows, 0 tenants

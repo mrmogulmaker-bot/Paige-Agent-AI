@@ -304,6 +304,24 @@ async function main() {
           `${id}: the deep-linked destination survives the restore`, String(restored.selectedTab));
         check(!restored.horizontal, `${id}: the restored surface does not overflow`);
 
+        // 3e. LOADING and UNAVAILABLE. Both render branches existed with no test and no drive.
+        // `unavailable` matters more than its size suggests: the tier matrix cites exactly this
+        // branch as the operator-tier safety — an operator with no workspace must be TOLD so
+        // rather than shown an empty catalog — so the branch the matrix leans on was the one
+        // branch nothing rendered.
+        await setMode(page, "loading");
+        const loading = await measure(page);
+        check(loading.rows === 0, `${id}: the loading frame shows no offers`, `rows=${loading.rows}`);
+        check(loading.firstUse === 0, `${id}: a read in flight is not mistaken for an empty catalog`);
+
+        await setMode(page, "unavailable");
+        const unavailable = await measure(page);
+        check(/needs a resolved workspace/i.test(unavailable.text),
+          `${id}: no resolvable workspace says so, in words`);
+        check(unavailable.rows === 0 && unavailable.firstUse === 0,
+          `${id}: no workspace renders neither offers nor an empty catalog`,
+          `rows=${unavailable.rows} firstUse=${unavailable.firstUse}`);
+
         // 4. Read-only.
         await setMode(page, "readonly");
         const readonly = await measure(page);
