@@ -2375,3 +2375,17 @@ The tenant prototype now exposes canonical Calendar and Conversations mounts alo
   history cannot be read, and the current owner-facing consumer treatment is not reliable enough to
   distinguish denied history from empty history.* **The lesson is the one this log exists for: a hook
   returning an error is not a person seeing one, and only the consumer settles that.**
+
+### Solo Settings → Setup durable persistence repair — release candidate (2026-09-02)
+
+The existing six-section Setup design is preserved. The repaired shared Solo flow now has a real
+tenant-scoped edit/save/readback contract, honest validation, pending, failure/retry, conflict,
+cancel, stale-response, account-switch, and read-only states, plus field provenance and global
+legal-entity support. Business ownership records never change Team membership or workspace
+authority. Owner versus Admin permission is server-enforced. Full registration identifiers are
+Vault-only and masked on read; legal ownership, percentages, exact addresses, private contacts,
+and representative IDs are excluded from PAIGE and Rail by default. The unsafe legacy whole-brief
+PAIGE persona projection is removed pending a separately approved safe Spine contract. The exact
+migration and checked-in real-role rollback proof passed against production schema. Truth remains
+`PARTIAL` until exact-head deployment and authenticated Owner save, reload, reopen, and account
+switch proof. Internal `paige_audit_log` attribution is not Rail.

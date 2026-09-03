@@ -58,12 +58,14 @@ export function useTeamRoster(
   const [memberById, setMemberById] = useState<Record<string, RosterMember>>({});
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
+  const [resolvedTenantId, setResolvedTenantId] = useState<string | null>(null);
   const mountedRef = useRef(false);
   const seqRef = useRef(0);
 
   const load = useCallback(async (): Promise<void> => {
     if (!enabled) return;
     const seq = ++seqRef.current;
+    setLoading(true);
     try {
       const usersRes = await supabase.functions.invoke("admin-list-users", { body: {} });
       if (usersRes.error) throw usersRes.error;
@@ -82,6 +84,7 @@ export function useTeamRoster(
           setRolesByUser({});
           setMemberById({});
           setError(null);
+          setResolvedTenantId(activeTenantId);
         }
         return;
       }
@@ -159,6 +162,7 @@ export function useTeamRoster(
       setRolesByUser(byUser);
       setMemberById(idMap);
       setError(null);
+      setResolvedTenantId(activeTenantId);
     } catch (err: unknown) {
       if (!mountedRef.current || seq !== seqRef.current) return;
       // Non-admin (403) or transient failure → honest empty roster, error surfaced.
@@ -166,6 +170,7 @@ export function useTeamRoster(
       setRolesByUser({});
       setMemberById({});
       setError(err instanceof Error ? err.message : "Failed to load team");
+      setResolvedTenantId(activeTenantId);
     } finally {
       if (mountedRef.current && seq === seqRef.current) setLoading(false);
     }
@@ -188,6 +193,16 @@ export function useTeamRoster(
       mountedRef.current = false;
     };
   }, [enabled, load]);
+
+  // Never carry one tenant's people through an account switch while the next
+  // tenant's scoped roster is resolving.
+  useEffect(() => {
+    setMembers([]);
+    setRolesByUser({});
+    setMemberById({});
+    setError(null);
+    setLoading(enabled);
+  }, [activeTenantId, enabled]);
 
   // Realtime: debounced refresh on any roster-shaping change (MembersAdmin pattern).
   useEffect(() => {
@@ -212,5 +227,13 @@ export function useTeamRoster(
     };
   }, [enabled, load]);
 
-  return { members, rolesByUser, memberById, loading, error, refresh };
+  const tenantResolved = !enabled || resolvedTenantId === activeTenantId;
+  return {
+    members: tenantResolved ? members : [],
+    rolesByUser: tenantResolved ? rolesByUser : {},
+    memberById: tenantResolved ? memberById : {},
+    loading: loading || !tenantResolved,
+    error: tenantResolved ? error : null,
+    refresh,
+  };
 }

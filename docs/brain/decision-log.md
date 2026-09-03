@@ -1414,3 +1414,17 @@ authorization and backend capability work are routed out, not absorbed.
 
 Sequential order after Wave 1 releases: Connections → Integrations → the remaining Settings
 destinations in canonical on-screen order. One active implementation wave at a time.
+
+## 2026-09-02 — Solo Setup durable-save repair release candidate; authenticated proof owed
+
+The real Setup save failure was reproduced as SQLSTATE `42804`: the audit-role expression mixed the
+`tenant_role` enum with text and rolled back the transaction. The canonical shared Solo repair uses
+`save_solo_setup_context`, returns the stored tenant record, enforces Owner versus Admin on the
+server, stores business ownership separately from Team access, and blocks cancel/account switch
+while a write is pending. Security review also found and closed three release blockers: unresolved
+operator/agency reads now fail closed, non-U.S. alphanumeric registration values remain only in
+Vault with masked readback, and the legacy whole-brief PAIGE persona projection is removed. The
+exact migration plus checked-in Owner/Admin/Member/anonymous/cross-tenant/privacy probe passed in a
+production-schema transaction and rolled back completely. Status remains `PARTIAL`: exact-head
+deployment and authenticated Owner save → reload → reopen → switch away/back proof are still owed;
+PAIGE/Mind/Spine consumption is PROPOSED and Rail is UNAVAILABLE.
