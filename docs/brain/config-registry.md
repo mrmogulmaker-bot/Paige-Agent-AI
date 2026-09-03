@@ -340,7 +340,7 @@ exist — do not follow references to them.)
 | `deploy-migrations.yml` | push (to `main`) | `supabase db push` → `migration list` verify → moves `db-live` tag (§32 persisted-apply) |
 | `deploy-edge-functions.yml` | push (to `main`) | Deploys only changed functions (follows `_shared` imports via `.github/scripts/edge-affected.py`); moves `edge-live` tag (§24) |
 | `migration-lint.yml` | pull_request | Migration shape lint (§208/§213) |
-| `premerge-migration-proof.yml` | pull_request | Pre-merge `BEGIN..ROLLBACK` migration proof (§32.a) |
+| `premerge-migration-proof.yml` | pull_request (temporarily disabled) | Draft fail-closed replacement: negative restoration failure is proven red; positive restore/application proof is blocked pending a trusted sanitized baseline and credential-safe architecture (§32) |
 | `security-audit.yml` ("Security Audit") | pull_request + push | Security audit gate |
 
 **RLS anon/cross-tenant-reach drift guards (npm scripts wired into `ci.yml`):**

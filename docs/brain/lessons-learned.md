@@ -279,6 +279,24 @@ Each cost one failed run on prod (rollback, nothing persisted) before it was wri
   verify→move `db-live` tag). Confirm with `git diff db-live..HEAD -- 'supabase/migrations/**'` =
   empty. *(This pass verified 762 applied = 762 repo files = zero drift — the good state.)*
 
+### 4a. Premerge proof said green after saying it proved nothing (2026-08-24)
+
+- **Symptom:** `premerge-migration-proof` reported success after the disposable baseline restore
+  failed; the candidate-application step was skipped and the workflow's own comment said the
+  migration was not evaluated.
+- **Root cause:** the restore shell explicitly converted failure into `exit 0`, and every later step
+  depended on a `restore_ok=true` output. GitHub therefore saw a successful job even though no
+  candidate application or behavioral proof occurred.
+- **Rule:** Migration proof is fail-closed. Restoration, ordered identification of one or more
+  candidates, fingerprinted application of every candidate, post-application schema evidence, and
+  a changed behavioral SQL proof are all required. An always-run final verdict independently rejects
+  missing state, skipped phases, missing/mismatched fingerprints, empty schema evidence, or failed
+  proofs. Compatibility helpers belong only in the disposable proof fixture tree, never in
+  production migrations.
+- **Current status:** draft and blocked. The negative fail-closed path is proven; a genuine successful
+  disposable restore, candidate application, and behavioral proof are not yet proven. The vulnerable
+  PR workflow is temporarily disabled pending a trusted sanitized baseline and approved credential model.
+
 ## 5. Producer-inventory misses — a hardening kills a legitimate caller (§37)
 
 - **Symptom:** A security/contract fix ships and silently breaks a legitimate producer — a `pg_cron`
