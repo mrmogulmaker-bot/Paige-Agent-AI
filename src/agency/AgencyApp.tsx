@@ -69,6 +69,7 @@ import { VoiceDeviceProvider } from "@/lib/voice/VoiceDeviceProvider";
 import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
 import { IncomingCallOverlay } from "@/components/admin/voice/IncomingCallOverlay";
 import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPanel";
+import { rememberWorkspaceEntered } from "@/lib/auth/workspaceEntry";
 
 // ── Nav (Agency Shell.dc.html:12587 navMain / 12599 navPlatform) ────────────
 // [route, label, IconFn, badge(sub)] — badge is a fn of `sub` (presenting as a
@@ -502,6 +503,13 @@ const AgencyAppContent = ({ mode = "agency" }) => {
   const syncIntoChild = React.useCallback(async (childId) => {
     const { error } = await supabase.rpc("agency_enter_subaccount", { _child: childId });
     if (error) throw error;
+    // Record the entry, same as the two producers that hand off to `/admin`
+    // (AccountSwitcher, AgencyBoard). This path stays inside the agency shell, so
+    // nothing breaks without it — but the operator's active context IS now the
+    // child, and if they later open `/admin` the door would ask them to choose a
+    // workspace they already deliberately entered. Completing the inventory here
+    // costs a line; leaving one producer out is how the last two rounds went.
+    rememberWorkspaceEntered(childId);
     await switchTenant(childId);
     await refreshTenants();
   }, [switchTenant, refreshTenants]);

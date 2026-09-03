@@ -408,12 +408,20 @@ export function resolveBillingPortalPresentation(input: {
     return {
       state: "portal-unavailable",
       heading: "Not available yet",
+      // THREE arms, not two. The gate fails closed for any non-`mapped` state, but an `else` that
+      // carried the `absent` wording still ASSERTED "this workspace has no billing account linked"
+      // for a state nobody modelled — a positive claim, and one that contradicted the plan card a
+      // few pixels above, which correctly said the setup was not recognised. Failing closed is not
+      // the same as saying something true.
       body: input.billingAccountState === "ambiguous"
         ? "This workspace’s billing records need a platform review before the provider page can be opened. " +
           "Nothing about your access has changed."
-        : "Invoices and the payment method are held by the platform’s payment provider. This workspace has no " +
-          "billing account linked to it yet, so there is nothing for the provider to open. Nothing about your " +
-          "access has changed.",
+        : input.billingAccountState === "absent"
+          ? "Invoices and the payment method are held by the platform’s payment provider. This workspace has no " +
+            "billing account linked to it yet, so there is nothing for the provider to open. Nothing about your " +
+            "access has changed."
+          : "The platform reported this workspace’s billing setup in a way this page does not recognise, so the " +
+            "provider page is not offered. Nothing about your access has changed.",
       canOpen: false,
     };
   }

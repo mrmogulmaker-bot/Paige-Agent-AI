@@ -27,7 +27,7 @@ import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPane
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { AccountSwitcher } from "@/components/admin/AccountSwitcher";
-import { MemberAccountSwitcher } from "@/components/auth/MemberAccountSwitcher";
+import { WorkspaceExitControl } from "@/components/auth/WorkspaceExitControl";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useTierFeatures } from "@/hooks/useTierFeatures";
 import { useProviderAttribution } from "@/hooks/useProviderAttribution";
@@ -449,7 +449,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               userRole={effectiveRole}
               accountControls={
                 <>
-                  <MemberAccountSwitcher />
+                  <WorkspaceExitControl />
                   <AccountSwitcher />
                   {isPlatformStaff && <TenantSwitcher />}
                 </>
