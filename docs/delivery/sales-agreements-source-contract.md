@@ -131,6 +131,21 @@ pattern to copy.
 - **The projection's exact shape** — row set, closed vocabularies, refusal shape. Constrained by §3
   above, but authored wherever the capability lands.
 
+### A worked draft exists, unverified
+
+`docs/delivery/drafts/client-agreements-readiness.draft.sql` holds a drafted read-only resolver
+against this source, produced alongside this contract. It is deliberately **not** in
+`supabase/migrations/` — that directory is applied to production wholesale by `deploy-migrations.yml`
+on merge, and this file has not been executed, proven, or reviewed. It is a starting point for
+whoever owns the placement, not a proposal to merge.
+
+It reached the authorization conclusions in §4 independently of this document and agrees with them.
+It also raises one thing this contract had not: `get_paige_persona_context()` resolves a linked
+client's workspace *ahead* of `current_user_tenant_id()`, so a user who is a client of workspace B
+and a team member of workspace A holds a conversation scoped to B while a read like this resolves A.
+Any Chat-side adapter therefore needs the resolved workspace returned alongside the rows, or the
+binding is impossible rather than merely omitted.
+
 Neither is withheld for lack of an opinion. They are withheld because `registry.ts` is a single
 shared file with one owner, and resolving that seam before building is the part of §18 that actually
 prevents the duplication rather than describing it afterwards.
