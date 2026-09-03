@@ -786,7 +786,21 @@ function modelSettableBooleans(schemaNode) {
  * it CLOSED means an unrecognised one fails closed. A closed schema is a closed-object builder at
  * the head of a chain of methods that provably do not widen the key space, and nothing else.
  */
-const CLOSED_OBJECT_BUILDERS = new Set(["object", "strictObject", "interface"]);
+// MEASURED ON BOTH ZODS THIS REPOSITORY USES, rather than assumed:
+//
+//   zod 3.25.76 (paige-mcp's esm.sh import)   z.object({id}).parse({id,confirm:true}) → {"id":"a"}
+//   zod 4.5.4   (the installed devDependency) z.object({id}).parse({id,confirm:true}) → {"id":"a"}
+//
+// `z.object` ACCEPTS the extra key and STRIPS it from the output, so the handler never receives it
+// — which is what "closed" has to mean here, since the handler reads the output. `z.strictObject`
+// rejects outright on both. Either way no undeclared key reaches a destructive branch.
+//
+// `interface` was on this list and is `undefined` in BOTH versions — it exists in neither zod this
+// repository runs. Removed: an allowlist entry that cannot be verified is exactly the unchecked
+// assumption this file keeps being caught by, and dropping it means a future `z.interface` fails
+// CLOSED until someone measures it, which is the right default for the base case every chain
+// stands on.
+const CLOSED_OBJECT_BUILDERS = new Set(["object", "strictObject"]);
 // THE QUESTION IS THE OUTPUT, NOT THE INPUT — which is the frame the first version got wrong.
 //
 // A handler reads what the schema PRODUCES. I built this list by asking which methods preserve the
