@@ -25,9 +25,16 @@
   the §37 act-as guard listed two of three producers, now three. **`suspended` aligned:**
   `enterableWorkspaces` offered it while `tenantLifecycle.isDestructiveStatus` and the operator
   switcher's "archived" bucket both treat it as terminal — offering a workspace the rest of the platform
-  calls archived is a door shut from the other side. Zero tenants carry it, so this aligns the rule
-  rather than changing an outcome. The deny list stays a deny list: excluding `trial` is what locked the
-  owner out of his own account.
+  calls archived is a door shut from the other side. **§13 correction, same PR:** this entry first said
+  zero tenants carry `suspended` "so this aligns the rule rather than changing an outcome". The count was
+  measured and holds; the inference did not. Round 7 drove the case: a person parked ON a suspended
+  workspace with one other enterable one counted as a single-workspace person, so `WorkspaceExitControl`
+  rendered nothing and the `/admin` door never asked — and the switcher this PR deletes had no status
+  filter, so the narrower rule REMOVED the only in-app way out. Fixed by counting through
+  `reachableWorkspaceCount(tenants, activeTenantId)`, which unions the enterable set with the workspace
+  the person is demonstrably already in: the OFFER list stays narrow, the "can I get out?" count does
+  not. The deny list stays a deny list: excluding `trial` is what locked the owner out of his own
+  account.
 
 - **The delegated operator tier had no landing route, and a comment had named the cause without
   closing it (2026-09-03, PR #811)** — the owner signed in as `paigeagentai@gmail.com` and was sent

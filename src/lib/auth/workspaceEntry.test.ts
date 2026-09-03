@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   WORKSPACE_CHOOSER_PATH,
   authorizedRootForTier,
@@ -9,7 +9,9 @@ import {
   enterableWorkspaces,
   isEnterableTenantStatus,
   hasEnteredWorkspace,
+  reachableWorkspaceCount,
   rememberWorkspaceEntered,
+  workspaceRecordUsable,
 } from "./workspaceEntry";
 import type { TierClassification } from "@/lib/tier/tierFeatures";
 
@@ -175,6 +177,78 @@ describe("workspace entry containment", () => {
       expect(enterableWorkspaces(tenants)).toHaveLength(3);
       expect(enterableWorkspaces(null)).toEqual([]);
       expect(enterableWorkspaces(undefined)).toEqual([]);
+    });
+  });
+
+  // Round seven's F1. The OFFER list and the "is there a way out?" count are two
+  // different questions, and collapsing them into one is what removed an exit.
+  describe("how many workspaces a person can actually reach", () => {
+    it("counts the workspace someone is IN even when its status is not offerable", () => {
+      const tenants = [
+        { id: "held", status: "suspended" },
+        { id: "other", status: "active" },
+      ];
+      // The offer list is unchanged: nobody is sent INTO a suspended workspace.
+      expect(enterableWorkspaces(tenants).map((t) => t.id)).toEqual(["other"]);
+      // But the person parked on it is demonstrably in it, and needs the way out —
+      // counting only the offer list made them look like a one-workspace person, so
+      // the exit control rendered nothing and the door never asked.
+      expect(reachableWorkspaceCount(tenants, "held")).toBe(2);
+    });
+
+    it("does not double-count the active workspace when it is already offerable", () => {
+      const tenants = [
+        { id: "a", status: "active" },
+        { id: "b", status: "trial" },
+      ];
+      expect(reachableWorkspaceCount(tenants, "a")).toBe(2);
+    });
+
+    it("does not invent a workspace from an active id that is not in the list", () => {
+      // A stale `active_tenant_id` pointing at something this person cannot see must
+      // not manufacture a second choice the chooser would then fail to offer.
+      expect(reachableWorkspaceCount([{ id: "a", status: "active" }], "ghost")).toBe(1);
+      expect(reachableWorkspaceCount([{ id: "a", status: "active" }], null)).toBe(1);
+      expect(reachableWorkspaceCount(null, "a")).toBe(0);
+      expect(reachableWorkspaceCount(undefined, undefined)).toBe(0);
+    });
+
+    it("still reports one when the only other workspace is genuinely gone", () => {
+      const tenants = [
+        { id: "a", status: "active" },
+        { id: "gone", status: "canceled" },
+      ];
+      expect(reachableWorkspaceCount(tenants, "a")).toBe(1);
+    });
+  });
+
+  // Round seven's F2. The record is only useful if a read returns what was written,
+  // so that — not "did the write throw?" — is the property this probe must test.
+  describe("whether the entry record can be relied on at all", () => {
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    it("reports usable when a write survives a read", () => {
+      expect(workspaceRecordUsable()).toBe(true);
+    });
+
+    it("reports UNUSABLE when the store accepts writes but returns nothing", () => {
+      // Real browsers do this: some privacy modes expose a quota-zero store that
+      // swallows writes silently. Reporting it usable switches off the URL fallback
+      // while the record it vouched for never matches — the redirect loop, rebuilt.
+      vi.spyOn(Storage.prototype, "getItem").mockReturnValue(null);
+      expect(workspaceRecordUsable()).toBe(false);
+    });
+
+    it("reports unusable when the store throws", () => {
+      vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new Error("blocked");
+      });
+      expect(workspaceRecordUsable()).toBe(false);
+    });
+
+    it("leaves no probe behind", () => {
+      workspaceRecordUsable();
+      expect(sessionStorage.getItem("paige.workspace.entered.probe")).toBeNull();
     });
   });
 

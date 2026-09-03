@@ -36,7 +36,7 @@ import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 import {
   WORKSPACE_CHOOSER_PATH,
   WORKSPACE_CHOOSER_SETTLED_PARAM,
-  enterableWorkspaces,
+  reachableWorkspaceCount,
   hasEnteredWorkspace,
   workspaceRecordUsable,
 } from "@/lib/auth/workspaceEntry";
@@ -440,7 +440,7 @@ const Admin = () => {
       // today — the `tenants` SELECT policy is `is_tenant_member(id)`, and that
       // helper requires an active membership — so this asks the same question by
       // a different route. If that policy ever widens, this count widens with it.
-      activeMembershipCount: enterableWorkspaces(tenants).length,
+      activeMembershipCount: reachableWorkspaceCount(tenants, activeTenantId),
       isPlatformStaff,
     })
   ) {

@@ -50,8 +50,15 @@ import { resolveTierKey, type TierClassification, type TierKey } from "@/lib/tie
 // `suspended` sits here because two sibling modules already treat it as terminal —
 // `tenantLifecycle.isDestructiveStatus` pairs it with `canceled`, and the operator
 // switcher buckets both as "archived". Offering a workspace the rest of the platform
-// calls archived would hand someone a door that is shut from the other side. Zero
-// tenants carry it today, so this aligns the rule rather than changing an outcome.
+// calls archived would hand someone a door that is shut from the other side.
+//
+// CORRECTION (§13): an earlier version of this comment said zero tenants carry
+// `suspended` today, "so this aligns the rule rather than changing an outcome". The
+// first half is a measurement and still holds; the second half was wrong. It changes
+// an outcome the moment an operator suspends a tenant, and it changed one for the
+// worse: a person parked ON a suspended workspace stopped counting as someone with
+// somewhere to go, so their exit vanished. That is why the "can I get out?" surfaces
+// count through `reachableWorkspaceCount` instead of this list — see its comment.
 //
 // It stays a DENY list on purpose: an allow list of known-good statuses fails in the
 // direction that traps people, and any status added to the enum later would be
@@ -180,6 +187,38 @@ export function decideWorkspaceEntry(input: {
 }
 
 /**
+ * How many workspaces can this person actually GET TO from where they are?
+ *
+ * This is the count every "should we offer a way out?" surface asks, and it is
+ * deliberately NOT the same list the chooser OFFERS. The workspace someone is
+ * currently in counts regardless of its status, because they are demonstrably in
+ * it — and if it has been suspended underneath them, that is precisely when they
+ * most need the exit.
+ *
+ * WHY THIS EXISTS (§58). Adding `suspended` to the deny list was correct for the
+ * offer list — the rest of the platform calls those workspaces archived, and
+ * sending someone INTO one is a door shut from the other side. But both counting
+ * surfaces used that same list, so a person parked ON a suspended workspace with
+ * exactly one other enterable one counted as a single-workspace person: the exit
+ * control rendered nothing and the door never asked. The control this PR deletes
+ * had no status filter at all, so its dropdown still rendered — meaning the
+ * narrower rule removed the only in-app way out of a suspended workspace.
+ *
+ * The decision-log line claiming that change "aligns the rule rather than changing
+ * an outcome" was true of today's data and false of the rule: an operator can
+ * suspend a tenant in one click.
+ */
+export function reachableWorkspaceCount(
+  tenants: readonly { id: string; status?: string | null }[] | null | undefined,
+  activeTenantId: string | null | undefined,
+): number {
+  const list = tenants ?? [];
+  const enterable = new Set(enterableWorkspaces(list).map((t) => t.id));
+  if (activeTenantId && list.some((t) => t.id === activeTenantId)) enterable.add(activeTenantId);
+  return enterable.size;
+}
+
+/**
  * The workspace root a given tenant should be entered at, or null when that
  * tenant has no deep-linkable root and must be entered inline at `/admin`.
  *
@@ -294,8 +333,14 @@ export function workspaceRecordUsable(): boolean {
   try {
     const probe = `${WORKSPACE_ENTERED_KEY}.probe`;
     sessionStorage.setItem(probe, "1");
+    // READ IT BACK. The question this answers is not "can I write?" but "will a
+    // read return what I wrote?" — because that is the only property the record
+    // depends on. A store that accepts writes and returns null on read would have
+    // reported itself usable, which switches off the URL fallback while the record
+    // it vouched for never matches: the infinite redirect, rebuilt.
+    const readBack = sessionStorage.getItem(probe);
     sessionStorage.removeItem(probe);
-    return true;
+    return readBack === "1";
   } catch {
     return false;
   }

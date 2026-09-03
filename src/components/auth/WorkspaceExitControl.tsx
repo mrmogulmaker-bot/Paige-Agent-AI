@@ -3,7 +3,7 @@ import { LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { WORKSPACE_CHOOSER_PATH, enterableWorkspaces } from "@/lib/auth/workspaceEntry";
+import { WORKSPACE_CHOOSER_PATH, reachableWorkspaceCount } from "@/lib/auth/workspaceEntry";
 import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 import { allowAccountSwitch } from "@/lib/auth/accountSwitchGuard";
 import { toast } from "sonner";
@@ -79,7 +79,7 @@ export function WorkspaceExitControl() {
   // would find fewer than two choices, and it would send them straight back into
   // the shell they were trying to leave. A recovery control that silently does
   // nothing is worse than one that is absent, because it spends the owner's trust.
-  const reachable = enterableWorkspaces(tenants).length;
+  const reachable = reachableWorkspaceCount(tenants, activeTenantId);
   if (!shouldOfferAccountPicker({ activeMembershipCount: reachable, isPlatformStaff })) return null;
 
   // LEAVING IS WHERE THE UNSAVED WORK IS LOST, so the account-switch guard runs

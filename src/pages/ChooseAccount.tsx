@@ -12,6 +12,7 @@ import {
   WORKSPACE_CHOOSER_SETTLED_PARAM,
   clearWorkspaceScopedState,
   enterableWorkspaces,
+  reachableWorkspaceCount,
   rememberWorkspaceEntered,
   workspaceRootForTenant,
 } from "@/lib/auth/workspaceEntry";
@@ -151,7 +152,7 @@ export default function ChooseAccount() {
         return;
       }
       const doorWouldAsk = shouldOfferAccountPicker({
-        activeMembershipCount: enterableWorkspaces(context.tenants).length,
+        activeMembershipCount: reachableWorkspaceCount(context.tenants, context.activeTenantId),
         isPlatformStaff: context.isPlatformStaff,
       });
       if (doorWouldAsk) {

@@ -92,6 +92,18 @@ describe("WorkspaceExitControl", () => {
     expect(button).toBeFalsy();
   });
 
+  // ROUND SEVEN'S F1 — the regression the narrower status rule introduced. Being
+  // parked ON a suspended workspace is exactly when the exit matters most, and
+  // counting only the OFFER list made that person look like they had nowhere to go.
+  // The control this PR deletes had no status filter, so before this fix the change
+  // removed the only in-app way out of a suspended workspace (§58).
+  it("still offers the exit to someone parked on a suspended workspace", async () => {
+    h.ctx.tenants = [{ id: "a", name: "Held", status: "suspended" }, active("b")];
+    h.ctx.activeTenantId = "a";
+    const { button } = await render();
+    expect(button).toBeTruthy();
+  });
+
   it("counts a trial workspace, which is a live state someone works in", async () => {
     h.ctx.tenants = [active("a"), { id: "b", name: "Trialling", status: "trial" }];
     const { button } = await render();
