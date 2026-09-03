@@ -16,9 +16,14 @@ const SQL = readFileSync(
 
 describe("#746 Slice A — the resolver refuses rather than returning an empty timeline", () => {
   it("raises 42501 instead of RETURN on a failed authorization check", () => {
-    // The whole point of #746: `get_client_rail` and `get_platform_rail` both `RETURN;` when the
-    // caller fails their check, so a refusal is indistinguishable from an empty workspace. A
-    // reader that returns zero rows on denial reproduces the empty-feed lie one layer down.
+    // The whole point of #746: at the time this was written, `get_client_rail` and
+    // `get_platform_rail` both `RETURN;`ed when the caller failed their check, so a refusal was
+    // indistinguishable from an empty workspace. A reader that returns zero rows on denial
+    // reproduces the empty-feed lie one layer down.
+    //
+    // Both have since been corrected, and the comment is updated rather than left asserting the
+    // opposite of live behaviour: `get_client_rail` by 20261044000000, and `get_platform_rail` by
+    // 20261049000000. No Rail reader still answers a denial with an empty set.
     expect(SQL).toMatch(/RAISE EXCEPTION[\s\S]*?42501/i);
     expect(SQL).toMatch(/auth\.uid\(\)/);
   });
