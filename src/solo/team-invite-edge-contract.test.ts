@@ -72,12 +72,15 @@ describe("solo-team-invitations passes the named workspace to the one authority"
     // rather than red. Round 5.
     const listEnd = HANDLER.indexOf("\n];", listStart);
     expect(listEnd, "the allowlist terminator was found").toBeGreaterThan(listStart);
-    // Comments stripped BEFORE parsing. The array is already interleaved with `//` notes and the
-    // JSDoc above it quotes one of the sentences, so a parser reading raw source cannot tell a live
-    // entry from a commented-out one. Round 5 measured it: commenting out
-    // `"team invitation not found"` left the runtime allowlist at 11 and the guard green — round 4's
-    // hole restored by a one-character edit, which is the ordinary way somebody disables a line.
-    const list = HANDLER.slice(listStart, listEnd).replace(/\/\/[^\n]*/g, "");
+    // Comments stripped BEFORE parsing, block form first so a `/* … */` wrapper cannot survive as
+    // a line-comment fragment. The array is interleaved with `//` notes, so a parser reading raw
+    // source cannot tell a live entry from a commented-out one: round 5 measured that commenting
+    // out `"team invitation not found"` left the runtime allowlist at 11 and the guard green —
+    // round 4's hole restored by a one-character edit, which is the ordinary way somebody disables
+    // a line. The exact-head read then found `/* … */` still passed, so both forms are stripped.
+    const list = HANDLER.slice(listStart, listEnd)
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/[^\n]*/g, "");
 
     // DERIVED FROM THE MIGRATION, not from a hardcoded copy. Round 3 of the adversarial read: the
     // previous version listed sentences by hand, so a REWORD was caught by other tests but an
