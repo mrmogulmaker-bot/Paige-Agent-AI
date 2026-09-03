@@ -5,9 +5,24 @@ import {
 import { useSystemsCheck, type SystemsCheckFinding } from "@/hooks/useSystemsCheck";
 import { resolveTenantAccountContext, type TenantAccountContext } from "@/components/tenant-shell/tenantShellRoutes";
 import { useCommandCenter, type CommandApproval } from "./data/useCommandCenter";
+import { useSoloActivityFeed, departmentLabel, elapsedLabel } from "./data/useSoloActivityFeed";
 import "./solo-systems-check-workspace.css";
 
-interface Props { accountContext?: TenantAccountContext | null; openPaige?: () => void }
+interface Props {
+  accountContext?: TenantAccountContext | null;
+  openPaige?: () => void;
+  /**
+   * The active workspace, forwarded by `CommandHub`. Never sent to the server — the Rail resolver
+   * takes no tenant argument — it exists only so a switch is noticed by the feed's request guard.
+   * `CommandHub` ALSO re-keys this whole subtree on the same value, which is the primary mechanism:
+   * a switch unmounts and remounts, so no prior-workspace row, filter, pending read or loading
+   * state can survive it. This prop is the second layer, not the first.
+   */
+  workspaceId?: string | null;
+}
+
+/** How many rail lines the compact panel carries. Deliberately small; the feed reads 25. */
+const RAIL_PANEL_ROWS = 4;
 
 const label = (value: string | null | undefined) =>
   (value || "Other").replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
@@ -80,8 +95,76 @@ function Proof({ children, tone = "partial" }: { children: React.ReactNode; tone
   return <span className={`sc-proof sc-proof--${tone}`}>{children}</span>;
 }
 
-export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) {
+/**
+ * "Recent activity" — the tenant-wide Rail, made reachable from the Solo Command Center.
+ *
+ * WHY THIS EXISTS. The Rail's tenant-wide strip (`PaigeRailFeed`) ships inside `PaigeWorkspace`,
+ * which `TenantCommandCenterShell` renders ONLY when the Solo workspace is absent — and the Solo
+ * shell always supplies it. So that strip is an Agency / sub-account / admin surface, and the
+ * tenant-wide rail was dark for every Solo tenant. This mounts the SAME already-deployed read the
+ * Trust Compass and Team Activity panels use (`useSoloActivityFeed` → `get_solo_rail_activity`);
+ * it is not a second Rail source, and it does not duplicate or re-derive a single event.
+ *
+ * SAFE FIELDS BY CONSTRUCTION, not by filtering here. `get_solo_rail_activity` returns eleven
+ * display columns and `toActivityItem` narrows those to `{id,title,summary,byPaige,departmentSlug,
+ * occurredAt}`. There is no payload, ref_table, ref_id, actor_user_id, tenant_id, contact_id or
+ * email in the shape at all, so none can reach this markup. `id` is a React key and is never
+ * rendered. The feed's `error` string is deliberately NOT rendered either — `status` alone drives
+ * the copy — so no server text, SQLSTATE or function name can surface on a tenant screen.
+ *
+ * FIVE ANSWERS, KEPT APART (§13). Reading `items.length` alone would answer five questions with
+ * one sentence: still loading, refused, failed, genuinely empty, and populated. Three of those are
+ * not "nothing happened", and two of them would be confident false statements about Paige's work.
+ * A refusal therefore never renders as an empty state — it says so, and says so out loud.
+ */
+function RailActivityPanel({ activity }: { activity: ReturnType<typeof useSoloActivityFeed> }) {
+  const rows = activity.items.slice(0, RAIL_PANEL_ROWS);
+  const state = activity.status === "ready" && rows.length ? "live" : activity.status;
+
+  return (
+    <section className="sc-side-panel">
+      <div className="sc-section-heading">
+        <div><span className="sc-kicker">Workspace rail</span><h2>Recent activity</h2></div>
+        {state === "live" && <Proof tone="live">LIVE READ</Proof>}
+        {state === "loading" && <Proof tone="scanning">READING</Proof>}
+        {state === "ready" && <Proof tone="empty">NONE YET</Proof>}
+        {(state === "forbidden" || state === "unavailable") && <Proof tone="unavailable">UNAVAILABLE</Proof>}
+      </div>
+
+      {state === "loading" && (
+        <p className="sc-muted" role="status" aria-live="polite">Reading this workspace&rsquo;s recent activity&hellip;</p>
+      )}
+
+      {state === "forbidden" && (
+        <p className="sc-muted" role="alert">
+          This workspace&rsquo;s recent activity is not available to you here, so this is not a record of nothing happening.
+        </p>
+      )}
+
+      {state === "unavailable" && (
+        <p className="sc-muted" role="alert">
+          This workspace&rsquo;s recent activity could not be loaded, so this is not a record of nothing happening.
+        </p>
+      )}
+
+      {state === "ready" && (
+        <p className="sc-muted">Nothing has been recorded on this workspace&rsquo;s rail yet.</p>
+      )}
+
+      {state === "live" && rows.map((item) => (
+        <article className="sc-approval" key={item.id}>
+          <span>{departmentLabel(item.departmentSlug)} · {item.byPaige ? "PAIGE" : "Person"} · {elapsedLabel(item.occurredAt)}</span>
+          <h3>{item.title}</h3>
+          {item.summary && <p>{item.summary}</p>}
+        </article>
+      ))}
+    </section>
+  );
+}
+
+export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspaceId }: Props) {
   const command = useCommandCenter();
+  const activity = useSoloActivityFeed(workspaceId);
   const systems = useSystemsCheck("tenant");
   const resolvedAccount = resolveTenantAccountContext(accountContext);
   const [filter, setFilter] = useState<EvidenceFilter>("all");
@@ -422,6 +505,7 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
                 <div className="sc-business-signal" key={metric.k}><span>{metric.k}</span><strong>{metric.v}</strong>{command.isError ? <Proof>LAST AVAILABLE · PARTIAL</Proof> : <Proof tone="live">LIVE READ</Proof>}</div>
               )) : <p className="sc-muted">No grounded headline metrics are available.</p>}
             </section>
+            <RailActivityPanel activity={activity} />
           </aside>
         </div>
       </div>

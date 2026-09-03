@@ -1209,6 +1209,22 @@ takes **no tenant argument**; it resolves the workspace server-side. A sub-accou
 ITS OWN Rail and can never receive the parent agency's aggregate, and there is no parameter through
 which a caller could ask for one.
 
+**Solo reachability, corrected 2026-09-03 (§66 — the row below is what SHIPPED, not what was planned).**
+The `get_solo_rail_activity` row above says every tier may READ its own workspace rail. It did not
+say which tiers had a SURFACE showing it, and those were different answers:
+
+| Tenant-wide rail SURFACE | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| `PaigeRailFeed` ("Across your clients — live") | ✓ | ✓ | ✓ | **—** (shell never mounts it) | ✓ | — | 403 |
+| Trust Compass "Working now" · Team → Activity | ✓ | — | — | ✓ | ✓ | — | 403 |
+| **Solo Command Center → Systems Check → "Recent activity"** (new) | ✓ | — | — | **✓** | **✓** | — | 403 |
+
+`PaigeRailFeed` lives inside `PaigeWorkspace`, which `TenantCommandCenterShell` renders only when
+the Solo workspace is absent — and the Solo shell always supplies it. So a Solo tenant had no
+tenant-wide rail surface at all. The new panel closes that on the Solo shell, which sub-accounts
+also reach once `/business` mounts `SoloApp` (sequenced separately — until then a sub-account
+reaches it through the shell it actually renders).
+
 **`UNVERIFIED` — authenticated owner runtime proof.** Every row above is from the deployed function
 bodies, the production grant catalog, and automated tests. No browser drove these surfaces as a
 signed-in owner on any tier in this session; #746 stays open until that proof exists.

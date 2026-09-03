@@ -12,7 +12,11 @@ const TABS = [
   ["mind", "Mind", BrainCircuit],
 ];
 
-const CommandCenter = ({ accountContext, openPaige }) => <SoloSystemsCheckWorkspace accountContext={accountContext} openPaige={openPaige} />;
+// `workspaceId` reaches the Systems Check workspace so its Rail panel can notice a switch.
+// The `key` on the mount below is the primary mechanism — it remounts the subtree, so no
+// prior-workspace row, filter, pending read or loading state survives — and this prop is the
+// feed's own request guard behind it.
+const CommandCenter = ({ accountContext, openPaige, workspaceId }) => <SoloSystemsCheckWorkspace accountContext={accountContext} openPaige={openPaige} workspaceId={workspaceId} />;
 
 const CommandHub = ({ accountContext, openPaige }) => {
   const [tab, setTab] = useSubtabRoute("solo", "command-center", "sys");
@@ -97,7 +101,7 @@ const CommandHub = ({ accountContext, openPaige }) => {
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
         {tab === "sys" ? (
           <div role="tabpanel" id="command-panel-sys" aria-labelledby="command-tab-sys" style={{ height: "100%" }}>
-            <CommandCenter key={activeTenantId ?? "unresolved"} accountContext={accountContext} openPaige={openPaige} />
+            <CommandCenter key={activeTenantId ?? "unresolved"} accountContext={accountContext} openPaige={openPaige} workspaceId={activeTenantId} />
           </div>
         ) : activeTenantId ? (
           <div role="tabpanel" id="command-panel-mind" aria-labelledby="command-tab-mind" style={{ height: "100%" }}>

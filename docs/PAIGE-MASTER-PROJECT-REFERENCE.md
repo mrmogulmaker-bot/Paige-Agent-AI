@@ -1611,6 +1611,32 @@ the **owner-facing history** consumers were not, and are Slice B — blocked on 
 seam. `get_solo_rail_activity` and `get_platform_rail` are the two resolvers with genuinely zero
 callers today.
 
+### Rail Solo reachability — the tenant-wide rail becomes visible in Solo (2026-09-03, no migration)
+
+**Shipped.** A compact `Recent activity` panel in the Solo Command Center → Systems Check side
+stack, reading the already-deployed `get_solo_rail_activity` through the existing
+`useSoloActivityFeed`. Frontend-only: no migration, no grant, no policy edit, **no new Rail source**
+(`useSoloActivityFeed.ts` is byte-unchanged), and no CSS — it reuses the surface's own panel classes.
+
+**The gap it closes.** Slice B repaired `PaigeRailFeed`, but that component ships inside
+`PaigeWorkspace`, which `TenantCommandCenterShell` renders **only when the Solo workspace is
+absent** — and the Solo shell always supplies it. So the tenant-wide rail was structurally dark for
+**every Solo tenant**: the safe reader was deployed, the consumer was repaired, and no Solo surface
+showed it. A repaired consumer on an unreachable surface is not a repaired capability.
+
+**Five answers, kept apart:** real activity · genuinely empty · loading · refused · unavailable. A
+refusal never renders as an empty state. Safe fields hold by construction — the resolver's
+projection carries no payload, ref_table, ref_id, actor_user_id, tenant_id or contact_id, the row
+id is a React key and is never rendered, and the server's error string is never printed.
+
+**Workspace switch:** `CommandHub` already keys the mount on `activeTenantId`, so a switch remounts
+the subtree and nothing survives it; the panel also forwards `workspaceId` into the feed's
+render-time guard and request counter as a second layer.
+
+**Evidence.** Full suite `197 files / 2770 tests` green; `tsc`, ESLint, `lint:views`,
+`lint:definer-fns`, `lint:tier-features` clean; 12 new regression assertions, every mechanism
+deliberately falsified. **`UNVERIFIED` — authenticated runtime proof**, tracked on #874.
+
 ### Rail Slice B — the owner-facing consumers call the safe readers (2026-09-03, no migration)
 
 **Shipped.** Four owner-facing consumers moved off the direct table read and onto the deployed
