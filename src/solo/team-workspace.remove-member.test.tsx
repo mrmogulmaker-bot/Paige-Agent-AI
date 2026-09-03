@@ -1495,3 +1495,44 @@ describe("the eighth read — an unread refusal must not become a pin", () => {
     expect(lost.message, "and still does not assert what the database did").not.toMatch(/nothing changed/i);
   });
 });
+
+describe("what the owner hit on production — a save that reports success and reads back the old value", () => {
+  it("shows the value it just saved, not the one it replaced, when the roster reload unmounts the editor", async () => {
+    // OWNER-REPORTED, 2026-09-03, on their own account. The toast said "Work details saved" while
+    // the Job title field went back to empty, so they saved a second time sixteen seconds later —
+    // both writes are in the production audit log. The write ALWAYS landed; the screen threw it
+    // away: `onSaved` is `team.refresh()` → `load(0)`, which nulls the roster before it awaits, so
+    // the editor unmounts and remounts from the parent's `selected` snapshot, taken when the row
+    // was clicked and never updated since.
+    //
+    // The roster here is deliberately SLOW. Resolving it synchronously lets the dialog survive, and
+    // then this test passes no matter what the product does — which is exactly how this defect sat
+    // in a "post-release audit backlog" instead of being fixed.
+    const withTitle = () => workspace({ members: [member({ job_title: "", responsibilities: "" })] });
+    let saved: { _job_title?: string } | null = null;
+    mocks.rpc.mockImplementation((name: string, args: { _job_title?: string }) => {
+      if (name === "get_solo_team_workspace") return new Promise((res) => setTimeout(() => res({ data: withTitle(), error: null }), 300));
+      if (name === "set_solo_team_member_work_profile") { saved = args; return Promise.resolve({ data: { job_title: args._job_title, responsibilities: "" }, error: null }); }
+      return new Promise(() => {});
+    });
+    const { host, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+
+    const field = () => host.querySelector<HTMLInputElement>('input[maxlength="121"]')!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+      setter.call(field(), "CEO/ Chairman");
+      field().dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => buttons(host).find((b) => /save work details/i.test(b.textContent ?? ""))!.click());
+    // Let the reload land, which is when the remount happens.
+    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });
+
+    expect((saved as { _job_title?: string } | null)?._job_title, "the write carried the typed value").toBe("CEO/ Chairman");
+    const onScreen = host.querySelector<HTMLInputElement>('input[maxlength="121"]');
+    expect(onScreen, "the editor is still open after the save").toBeTruthy();
+    expect(onScreen!.value, `the field reverted to the value the save replaced: ${JSON.stringify(onScreen!.value)}`).toBe("CEO/ Chairman");
+  });
+});
