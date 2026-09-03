@@ -2079,6 +2079,27 @@ the §60 `lint:tier-features` guard, which text-scans `src/` for exactly that pa
 distinguish an asserted fixture string from a real render gate — resolved with the lint's own
 documented `// tier-feature-exempt: <reason>` escape hatch.
 
+## 2026-09-03 · Solo Sales agreements — what may cross into Spine, Rail or Mind
+
+**Owner constraint, absolute, verbatim:** *"no amounts, client details, payment credentials, or
+contract terms into Spine, Rail, or Mind."* Binding on `public.tenant_client_agreements`
+(`20261200000000`, merged `096d6c9d`).
+
+What remains permissible is narrow: readiness, count/status **as a band**, a source-backed next
+action, and freshness **quantized**. Column-by-column classification — all 27 columns, no
+discretionary middle — in `docs/delivery/sales-agreements-source-contract.md`.
+
+**No capability is registered.** Placement belongs to Spine item 4 (issue #890), because
+`registry.ts` is one shared file with one owner.
+
+**Three §13 corrections were made to that contract before it merged**, each verified against source:
+`price_basis` dereferences to an amount (catalog basis forces agreed == list, and `tenant_prices`
+grants SELECT to `anon` for storefront tenants) and is barred; four of 27 columns were unclassified
+under a sentence claiming total coverage; and an asserted client-role hazard does not exist
+(`tenant_role` has no client member) while the real ones — a plain `member`/`coach` resolving the
+tenant, and `clients_admins_full`'s tenant-agnostic global-role path — were missed.
+
+
 ## 2026-09-03 — Solo Catalog visual upgrade: owner overrides §00 for CC, scoped to this surface
 
 Same day as the tenant-product-upsert tier-guard closeout, the owner authorized CC to design AND
