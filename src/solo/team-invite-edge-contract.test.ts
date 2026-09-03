@@ -67,7 +67,17 @@ describe("solo-team-invitations passes the named workspace to the one authority"
     // would have put a backend function signature in product copy (§11).
     expect(HANDLER).toContain("const AUTHORED_REFUSALS = [");
     const listStart = HANDLER.indexOf("const AUTHORED_REFUSALS = [");
-    const list = HANDLER.slice(listStart, HANDLER.indexOf("\n];", listStart));
+    // Asserted, because an unfound terminator returns -1 and `slice(start, -1)` would silently
+    // capture the REST OF THE FILE — 43 phantom entries measured — turning the guard over-broad
+    // rather than red. Round 5.
+    const listEnd = HANDLER.indexOf("\n];", listStart);
+    expect(listEnd, "the allowlist terminator was found").toBeGreaterThan(listStart);
+    // Comments stripped BEFORE parsing. The array is already interleaved with `//` notes and the
+    // JSDoc above it quotes one of the sentences, so a parser reading raw source cannot tell a live
+    // entry from a commented-out one. Round 5 measured it: commenting out
+    // `"team invitation not found"` left the runtime allowlist at 11 and the guard green — round 4's
+    // hole restored by a one-character edit, which is the ordinary way somebody disables a line.
+    const list = HANDLER.slice(listStart, listEnd).replace(/\/\/[^\n]*/g, "");
 
     // DERIVED FROM THE MIGRATION, not from a hardcoded copy. Round 3 of the adversarial read: the
     // previous version listed sentences by hand, so a REWORD was caught by other tests but an

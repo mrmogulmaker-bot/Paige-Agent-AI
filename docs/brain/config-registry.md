@@ -150,15 +150,16 @@ wiring an Enterprise checkout.
 **Platform Billing Foundation A (PR #816 — MERGED as `f455d8a5`; migration `20261045000000` IS
 APPLIED on prod.** Corrected 2026-09-03 from "NOT MERGED, NOT DEPLOYED, NOT APPLIED", which was
 already false when this block arrived: `20261045000000` is in `schema_migrations` on ref
-`xygzykjyynhzqytbqnzu`, verified by query while renumbering around it. **Edge-function deployment
-and the flag's prod state are NOT re-verified here** — treat the per-row "Not deployed" / "Unset on
-prod" notes below as unconfirmed rather than current. Not this PR's slice; corrected because
+`xygzykjyynhzqytbqnzu`, verified by query while renumbering around it, and `platform-billing-portal`
+is deployed ACTIVE. **The one thing still unverified is `PLATFORM_BILLING_PORTAL_ENABLED`'s value on
+prod** — no tool here exposes edge-secret presence, so treat "Unset on prod" below as unconfirmed
+rather than current. Everything else in this block has been checked. Not this PR's slice; corrected because
 §BRAIN.2 has sessions answer "is this live?" from this file, and it was answering wrongly.)
 
 | Name | Kind | State |
 |---|---|---|
 | `PLATFORM_BILLING_PORTAL_ENABLED` | edge secret NAME (flag) | read by `platform-billing-portal`; anything but the exact string `true` refuses every call `not_enabled`. **Unset on prod; Gate B for the slice asks for merge + deploy with it still unset.** Flip only after an authenticated owner drive of the deployed function. |
-| `platform-billing-portal` | edge function (`verify_jwt = true`) | opens Stripe's hosted portal for the caller's OWN top-level Solo workspace as its Owner, via `platform_billing_accounts`; Stripe key chosen BY NAME from the mapping's `stripe_account` (`STRIPE_SECRET_KEY` / `STRIPE_SECRET_KEY_V2`), never a fallback. Not deployed. |
+| `platform-billing-portal` | edge function (`verify_jwt = true`) | opens Stripe's hosted portal for the caller's OWN top-level Solo workspace as its Owner, via `platform_billing_accounts`; Stripe key chosen BY NAME from the mapping's `stripe_account` (`STRIPE_SECRET_KEY` / `STRIPE_SECRET_KEY_V2`), never a fallback. **Deployed on prod** — ACTIVE, version 2, created 2026-09-03T01:19:43Z, 31 seconds after `f455d8a5` merged, i.e. by `deploy-edge-functions.yml` on that merge (verified by listing prod's edge functions 2026-09-03). |
 | `platform_billing_accounts` · `platform_billing_contacts` · `platform_billing_notification_log` | tables (migration `20261045000000`) | LAYER-1 (§197) source records; RLS FORCE, operator read / platform-owner write; tenants read through `get_workspace_billing_authority()` / `get_workspace_billing_contacts()` only. **Applied on prod** (`20261045000000` in `schema_migrations`, verified 2026-09-03). |
 
 No sender / mail-provider contract exists for billing notices; the ledger has no writer.
