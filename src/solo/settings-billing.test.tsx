@@ -247,11 +247,17 @@ describe("what the screen refuses to claim", () => {
     expect(text(host)).not.toMatch(/\$\s?\d/);
   });
 
-  it("points at client billing without pretending to hold it", async () => {
+  /**
+   * The reverse of the old assertion, and deliberately so (owner, 2026-09-03). Client billing MOVED
+   * to Campaigns → Sales. Billing is one direction of money — the platform billing this workspace —
+   * so a card about what the tenant charges its own customers must not reappear here.
+   */
+  it("does not carry client billing any more — that moved to Campaigns › Sales", async () => {
     world();
     const { host } = await render();
-    expect(text(host)).toContain("What you charge your own clients");
-    expect(text(host)).toContain("your own payment processor");
+    expect(text(host)).not.toContain("What you charge your clients");
+    expect(text(host)).not.toContain("your own payment processor");
+    expect(text(host)).not.toMatch(/charge your own clients/i);
   });
 });
 
