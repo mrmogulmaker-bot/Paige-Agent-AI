@@ -80,6 +80,7 @@ describe("Solo Setup owner flow", () => {
     state.pendingProposal = null;
     state.businessOwners = [];
     state.brief.legalName = "";
+    delete (state.brief.provenance as Record<string, unknown>).brandVoice;
     document.body.innerHTML = "";
   });
 
@@ -270,6 +271,130 @@ describe("Solo Setup owner flow", () => {
     });
     await act(async () => Array.from(host.querySelectorAll("button")).find((node) => node.textContent?.trim() === "Adopt")?.click());
     expect(host.querySelector<HTMLInputElement>("#setup-owner-legal-0")?.value).toBe("Connected Holdings");
+    await act(async () => root.unmount());
+  });
+
+  it("keeps Paige Brief inside Setup and returns a guided draft to the durable save flow", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloSetupView account="1971670" /></MemoryRouter>));
+
+    expect(host.querySelector('#paige-brief')).toBeTruthy();
+    expect(host.querySelector('a[href="#paige-brief"]')).toBeTruthy();
+    const open = Array.from(host.querySelectorAll("button"))
+      .find((node) => node.textContent?.includes("Teach Paige")) as HTMLButtonElement;
+    expect(open).toBeTruthy();
+    await act(async () => open.click());
+
+    const dialog = document.body.querySelector('[role="dialog"][aria-label="Teach Paige your business voice"]') as HTMLElement;
+    expect(dialog).toBeTruthy();
+    expect(dialog?.textContent).toContain("Back to Setup");
+    expect(dialog?.textContent).toContain("Talk with Paige is proposed");
+    expect(dialog?.textContent).toContain("Nothing changes until you save the Setup brief");
+
+    const voice = dialog.querySelector<HTMLTextAreaElement>('textarea[name="brandVoice"]')!;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(voice, "Clear, candid, and practical");
+    await act(async () => voice.dispatchEvent(new Event("input", { bubbles: true })));
+    await act(async () => (Array.from(dialog.querySelectorAll("button"))
+      .find((node) => node.textContent?.trim() === "Apply to Setup draft") as HTMLButtonElement).click());
+
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.querySelector<HTMLTextAreaElement>('textarea[name="brandVoice"]')?.value).toBe("Clear, candid, and practical");
+    expect(state.save).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("Save changes to make it durable");
+
+    await act(async () => Array.from(host.querySelectorAll("button"))
+      .find((node) => node.textContent?.trim() === "Save changes")?.click());
+    expect(state.save).toHaveBeenCalledWith(expect.objectContaining({ brandVoice: "Clear, candid, and practical" }), [], null);
+    await act(async () => root.unmount());
+  });
+
+  it("keeps the guided Paige Brief unavailable to read-only members", async () => {
+    state.accessScope = "read_only";
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloSetupView account="1971670" /></MemoryRouter>));
+    const open = Array.from(host.querySelectorAll("button"))
+      .find((node) => node.textContent?.includes("Teach Paige")) as HTMLButtonElement;
+    expect(open.disabled).toBe(true);
+    expect(host.textContent).toContain("Workspace Owner or verified Admin");
+    await act(async () => root.unmount());
+  });
+
+  it("keeps a connection-sourced voice locked until the owner explicitly overrides it", async () => {
+    (state.brief.provenance as Record<string, unknown>).brandVoice = {
+      source: "connection_sourced",
+      confidence: "observed",
+    };
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloSetupView account="1971670" /></MemoryRouter>));
+    const open = Array.from(host.querySelectorAll("button"))
+      .find((node) => node.textContent?.includes("Teach Paige")) as HTMLButtonElement;
+    await act(async () => open.click());
+    const dialog = document.body.querySelector('[role="dialog"][aria-label="Teach Paige your business voice"]') as HTMLElement;
+    expect(dialog.querySelector<HTMLTextAreaElement>('textarea[name="brandVoice"]')?.disabled).toBe(true);
+    expect(dialog.textContent).toContain("explicitly choose Override");
+    await act(async () => (Array.from(dialog.querySelectorAll("button"))
+      .find((node) => node.textContent?.includes("Back to Setup")) as HTMLButtonElement).click());
+    await act(async () => Array.from(host.querySelectorAll("button"))
+      .find((node) => node.textContent?.trim() === "Edit brief")?.click());
+    await act(async () => (Array.from(host.querySelectorAll("button"))
+      .find((node) => node.textContent?.trim() === "Override") as HTMLButtonElement).click());
+    await act(async () => open.click());
+    const reopened = document.body.querySelector('[role="dialog"][aria-label="Teach Paige your business voice"]') as HTMLElement;
+    const voice = reopened.querySelector<HTMLTextAreaElement>('textarea[name="brandVoice"]')!;
+    expect(voice.disabled).toBe(false);
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(voice, "Owner-authorized override voice");
+    await act(async () => voice.dispatchEvent(new Event("input", { bubbles: true })));
+    await act(async () => (Array.from(reopened.querySelectorAll("button"))
+      .find((node) => node.textContent?.trim() === "Apply to Setup draft") as HTMLButtonElement).click());
+    await act(async () => Array.from(host.querySelectorAll("button"))
+      .find((node) => node.textContent?.trim() === "Save changes")?.click());
+    expect(state.save).toHaveBeenCalledWith(expect.objectContaining({
+      brandVoice: "Owner-authorized override voice",
+      sourceDecisions: { brandVoice: "override" },
+    }), [], null);
+    await act(async () => root.unmount());
+  });
+
+  it("confirms before abandoning a dirty guided brief and preserves it when the owner keeps working", async () => {
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloSetupView account="1971670" /></MemoryRouter>));
+    const open = Array.from(host.querySelectorAll("button"))
+      .find((node) => node.textContent?.includes("Teach Paige")) as HTMLButtonElement;
+    await act(async () => open.click());
+    const dialog = document.body.querySelector('[role="dialog"][aria-label="Teach Paige your business voice"]') as HTMLElement;
+    const voice = dialog.querySelector<HTMLTextAreaElement>('textarea[name="brandVoice"]')!;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(voice, "A voice still in progress");
+    await act(async () => voice.dispatchEvent(new Event("input", { bubbles: true })));
+    await act(async () => (Array.from(dialog.querySelectorAll("button"))
+      .find((node) => node.textContent?.includes("Back to Setup")) as HTMLButtonElement).click());
+    expect(document.body.textContent).toContain("Discard this unfinished Paige Brief?");
+    await act(async () => (Array.from(document.body.querySelectorAll("button"))
+      .find((node) => node.textContent?.trim() === "Keep working") as HTMLButtonElement).click());
+    expect(document.body.querySelector('[role="dialog"][aria-label="Teach Paige your business voice"]')).toBeTruthy();
+    expect(voice.value).toBe("A voice still in progress");
+
+    const handledByNestedModal = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    handledByNestedModal.preventDefault();
+    await act(async () => document.dispatchEvent(handledByNestedModal));
+    expect(document.body.querySelector('[role="dialog"][aria-label="Teach Paige your business voice"]')).toBeTruthy();
+    expect(document.body.textContent).not.toContain("Discard this unfinished Paige Brief?");
+
+    let switchPromise!: Promise<boolean>;
+    await act(async () => {
+      switchPromise = allowAccountSwitch({ fromTenantId: "tenant-a", toTenantId: "tenant-b", toTenantName: "Business B" });
+    });
+    expect(document.body.textContent).toContain("Discard Setup changes and switch accounts?");
+    await act(async () => (Array.from(document.body.querySelectorAll("button"))
+      .find((node) => node.textContent?.trim() === "Stay here") as HTMLButtonElement).click());
+    await expect(switchPromise).resolves.toBe(false);
+
+    await act(async () => (Array.from(dialog.querySelectorAll("button"))
+      .find((node) => node.textContent?.trim() === "Cancel") as HTMLButtonElement).click());
+    await act(async () => (Array.from(document.body.querySelectorAll("button"))
+      .find((node) => node.textContent?.trim() === "Discard draft") as HTMLButtonElement).click());
+    expect(document.body.querySelector('[role="dialog"][aria-label="Teach Paige your business voice"]')).toBeNull();
     await act(async () => root.unmount());
   });
 });
