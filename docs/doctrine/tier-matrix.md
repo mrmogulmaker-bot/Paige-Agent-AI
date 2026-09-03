@@ -1905,6 +1905,149 @@ Foundation A's proven behaviour, not something this slice re-tested. **Authentic
 deployed surface: OWED** — the harness transport is a stub (§32.c). **Also owed: a Gate-1 pass on the
 billing-contacts card**, which the approved Gate-1 prototype does not cover (§00).
 
+### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
+
+**§66, same commit as the change.** This row was first written while Slice 2A was a draft, and said
+so — which the final review flagged as a sentence engineered to become false the instant it merged,
+since §66 records what is LIVE rather than what is in flight. It is now written to survive the merge:
+**the migration's applied state on production is recorded below under *Persisted apply*, and that
+line is the one to trust.** Pre-merge it carried a `BEGIN..ROLLBACK` proof against prod ref
+`xygzykjyynhzqytbqnzu`, confirmed clean (0 rows, original `tenant_products_status_check` intact,
+0 new columns) — necessary, and explicitly NOT sufficient (§32.a).
+
+**What the change is.** Campaigns → Catalog now holds two durable concepts under one tab, per the
+owner's Gate 1 ruling of 2026-09-02: **Offers** (the tenant's commercial definition — what the
+business sells) as the default section, and **Published assets** (the Vibe-owned pages, funnels and
+forms) preserved unchanged beside it, keeping its ownership sentence, its truth label and the
+retired-address behaviour that five legacy slugs depend on. Slice 2A is READ ONLY. It creates
+nothing, changes nothing and charges nothing.
+
+| Tier | Sees Offers | Why |
+|---|---|---|
+| Platform operator (God) | ✓ **only with a tenant selected** | `growth`/`studio` are carried for §35 dogfooding, but this surface reads the ACTIVE tenant: an operator with no tenant selected has `activeTenantId === null`, which `useCatalogOffers` maps to `phase: "unavailable"` and the surface renders "Campaigns needs a resolved workspace" — not offers. Operator scope has its own `CatalogSurface`; this row is the Solo shell's. |
+| Agency | ✗ | `growth` excludes Agency entirely (owner ruling 2026-08-11, §61 preserved exception). No new feature key is introduced, so the existing route gate decides — §61 default: no exception. |
+| Enterprise | ✓ via `growth` | Inherits the Solo baseline. |
+| Solo | ✓ via `growth` | The tier this slice is built for. |
+| Sub-account | ✓ via `growth` | Identical to Solo (§60). |
+| Client / Anonymous | ✗ | No client or anonymous route reaches `/solo/*`. A *paused* or *draft* offer additionally stops being readable by `anon`, because `tp_public_active_read` is `status = 'active'`. |
+
+**Authority inside the tenant.** The read asks `tenant_members.role` — the column; `tenant_role` is
+the enum TYPE, and asking for it returns 42703 — filtered on all three of the SAME workspace the
+rows come from, the caller's own `auth.uid()`, and `status = 'active'`. All three matter: the
+workspace scope is what keeps this off a global role (§59's global-role trap, the defect repaired
+in `20261043000000`), and the caller + active-seat filters are what make the row unique, since an
+admin can read every member row in their tenant and an unfiltered `maybeSingle()` would raise
+PGRST116. The predicate matches `is_tenant_admin()` exactly. `canManage` is `owner`/`admin`; a plain member sees the catalog and is told in
+words that they cannot change it. Slice 2A exposes no write, so `canManage` currently gates only
+that notice; Slice 2B's command seam is what it will really gate.
+
+**Round 9 — Codex, five findings, every one real and every one fixed.** Two were §9 exposure and
+neither was theoretical. The hook wrote its state inside `useEffect`, i.e. after paint, so on the
+render where `activeTenantId` changes IN PLACE — which is exactly what an operator's `switchTenant`
+does, without remounting, because `GrowthHub` is keyed by route rather than tenant — it still
+returned the PREVIOUS workspace's `ready` offers: another tenant's names, descriptions and prices
+under the newly selected workspace, for one paint. Fixed by adopting the synchronous `visibleState`
+guard that `useSoloCampaigns`, the sibling hook on this same tab, already had. Separately, an open
+detail drawer holds a snapshot detached from the list it came from, and its cleanup watched
+`[tab, segment]` but not the tenant — so after a switch it kept showing the previous workspace's
+record indefinitely. The remaining three: the drawer dropped a recorded instalment count so a
+bounded plan read as open-ended; the bare `/growth/catalog` kept showing Published assets after the
+type query was dropped without unmounting; and `money()` divided by 100 for every currency, so a
+recorded ¥500 rendered as "5 JPY" and KWD 500 as "5 KWD" instead of 0.500 — reachable because
+`tenant_prices.currency` carries no CHECK and its writer has no allowlist.
+
+**Two of that round's first five guards were FALSE, and the break-test is what caught them.** Both
+passed with their own defect reintroduced: the drawer guard read the whole drawer's text and was
+satisfied by the separate "Price shown" row, which already carries the arithmetic; and the
+tenant-switch guard read the hook's final value, but `act()` flushes effects before it returns, so
+it inspected the state the effect had already corrected — the single paint the fix exists for had
+closed before the assertion ran. Both were rewritten and all six of this slice's late fixes are now
+proven red against their own defect. Recorded because a guard that cannot fail is worse than no
+guard, and only running the perturbation distinguishes the two.
+
+**A THIRD migration-version collision — and a §13 correction about it, made after reading the CI
+log instead of assuming.** #845 took `20261048000000` and merged AFTER this branch re-grounded on
+main and ran `lint:migration-versions` clean at that number. The first version of this paragraph,
+and of the migration's own header, said the guard was "structurally blind" to it. **That was
+wrong.** CI passes the real merge base to the lint (`BASE_REF: 1a22637c…`), so once #845 merged the
+guard caught it immediately, in `verify` — and `database-contract` caught it independently by
+replaying from zero. One root cause, both red checks, no defective guard.
+
+What was blind was the LOCAL run, which compares against whatever `origin/main` the working copy
+last fetched; mine predated #845, so no main-based comparison could have seen it at that moment.
+The gap is the window between a local pre-merge check and the merge itself. **Re-grounding at the
+end is necessary and still not sufficient, because the base moves after you look at it, and a green
+local lint is a hint rather than a verdict — CI is the authority.**
+
+**A FOURTH renumber followed, and it was not a collision — it was mine.** `20261050000000` was
+chosen by scanning all 423 remote branches, and it was genuinely free. It was still wrong, because
+freedom is not the only constraint: production's ledger already carried `20261104000000`,
+`20261103000000` and `20261102010000`, so 50 would have been applied **out of order**, behind three
+migrations already live. `docs/brain/lessons-learned.md` states that rule — a replacement must sort
+after everything already applied — and names this exact shape, a version whose file the repository
+cannot see. I quoted that entry approvingly in the same session and then picked a version by
+scanning the repo without querying the ledger. It surfaced only because another PR's commit message
+mentioned prod's newest applied version, which is luck rather than method. Now `20261106000000`:
+above prod's highest applied version and free across every branch (`…1105` is taken by #850). **The
+rule: free in the repo AND greater than the maximum in prod's ledger. The repo cannot tell you the
+second thing — query it.**
+
+**Final independent review (round 8), applied.** Three findings, none blocking, all fixed rather
+than filed: this row was placed OUTSIDE the Surface ledger (under *Setup legal sender identity*),
+so a reader walking the ledger would not have found Catalog → Offers in it; it carried a sentence
+telling the reader to read every cell as "what this change would make true, never as live
+availability", which becomes false on merge and contradicted the paragraph above it; and the
+category filter reserved the string `"all"` as its everything-sentinel while
+`tenant_products.category` is deliberately unconstrained free text, so a tenant category named
+`all` would have filtered to everything while claiming its own count, with two chips pressed at
+once. The third is unreachable until 2B ships the write seam (no writer sets `category` today)
+and was fixed anyway, with a regression test proven red against the prior behaviour.
+
+**Evidence, separated.**
+- *Automated:* 54 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 19 that EXECUTE
+  the adapter against a recording fake client** (`useCatalogOffers.adapter.test.tsx`). The second
+  file exists because the first mocks the read entirely: an adversarial review of the pushed diff
+  found that the membership query asked for `tenant_members.tenant_role` when the column is `role`,
+  which would have made `canManage` false for every owner — silently, past 24 green tests and a
+  clean `tsc`. Three perturbations are proven to turn the new suite red: the wrong column name, a
+  dropped caller scope, and re-deriving the commercial kind from billing cadence. A second review at
+  `c7ea208` added three more, each proven to fail against the prior commit before it passed: a
+  recurring plan's per-period figure headlined as a flat price, that same figure as the floor of
+  several plans, and an `aria-label` that replaced the row's contents and made the price and the
+  derived-conflict sentence inaudible to a screen reader.
+- *Correction to this row (§13).* It previously read `251/251`. That figure came from a local run of
+  a script version edited before it was pushed; the committed script yields 243, and the reviewer
+  could not reproduce 251. **A correction that then went stale itself:** this bullet was left saying
+  283 while the row above it climbed to 419, so the same section carried two different counts — the
+  final review caught it. The count is now **419**, and it moved because each review round added
+  rendered coverage: a recurring fixture, the empty-AND-mid-deploy composition, account switch,
+  restored session, and the loading and unavailable branches. Cite what the committed
+  script prints, not a local run.
+- *Static/build:* `ci:tsc` clean against the ratchet; `lint:views`, `lint:definer-fns`,
+  `lint:tier-features`, `lint:skeleton`, `lint:migration-versions`, `lint:managed-schema`,
+  `lint:pg-tokens`, `lint:write-targets` all pass; production build passes.
+- *Rendered:* 419/419 checks in `scripts/live-drive/catalog-offers-drive.mjs`, reproduced on three consecutive runs leaving zero orphan processes — the real components
+  with only the network read stubbed, across both palettes and all four Solo widths, asserting the
+  six-tab lock, no horizontal overflow, no fabricated commerce data, no `$0`, and the exact shipped
+  canvas values in each theme.
+- **UNVERIFIED:** authenticated runtime on any tier, and the deployed surface. §32.c is owed to a
+  session that can drive the deployed app. The harness renders our components with the NETWORK READ
+  STUBBED, and the contract suite mocks the adapter outright — so neither of those evidence classes
+  touches the real query. The adapter suite closes that gap against a fake client, which proves the
+  query SHAPE and the resolved authority, not that PostgREST answers it as expected. No evidence in
+  this slice is a real round-trip to the database.
+- **Persisted apply — OWED, and this line is updated from a real query, never from the pipeline
+  running.** At the time of writing the migration is not yet applied to production. §32.a requires
+  `schema_migrations` to carry `20261106000000` AND the six columns to exist on `tenant_products`
+  AND the status CHECK to permit `paused`, each shown by a query result pasted here.
+
+**Truth label: `PARTIAL`, deliberately.** The read is real and tenant-scoped, but a tenant cannot
+yet define an offer on this screen — `tenant_products` is empty on production (0 rows, 0 tenants
+with a storefront enabled), so first-use is the state every tenant sees. The surface says that in
+words rather than showing a control that does nothing. A listed price is a PRESENTED price and not
+a checkout; tenant checkout remains unreachable in production independently of this change.
+
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |
