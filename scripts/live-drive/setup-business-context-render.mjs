@@ -187,6 +187,11 @@ try {
               name: "Search NAICS by code or business activity",
             })
             .fill("management");
+          if (
+            (await page.locator(".setup-search input").inputValue()) !==
+            "management"
+          )
+            throw new Error("NAICS typing was reset by a parent render");
           const result = page.locator(".setup-result-list button").first();
           await result.click();
           if (
@@ -201,6 +206,51 @@ try {
           });
         }
       }
+      await page
+        .getByRole("tab", { name: "Knowledge bucket", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Add knowledge", exact: true })
+        .click();
+      const knowledgeDialog = page.getByRole("dialog");
+      await knowledgeDialog.getByLabel(/^Title/).fill("Harness knowledge link");
+      await knowledgeDialog
+        .getByLabel(/^HTTPS link/)
+        .fill("https://example.com/harness");
+      await knowledgeDialog
+        .getByRole("button", { name: "Keep in Setup draft", exact: true })
+        .click();
+      let source = page
+        .locator(".setup-knowledge-list article")
+        .filter({ hasText: "Harness knowledge link" });
+      if (
+        (await source
+          .getByRole("link", { name: "Open link" })
+          .getAttribute("href")) !== "https://example.com/harness"
+      )
+        throw new Error("Knowledge link did not reach the draft");
+      await source.getByRole("button", { name: "Edit", exact: true }).click();
+      await knowledgeDialog
+        .getByLabel(/^Title/)
+        .fill("Edited harness knowledge");
+      await knowledgeDialog
+        .getByRole("button", { name: "Keep in Setup draft", exact: true })
+        .click();
+      source = page
+        .locator(".setup-knowledge-list article")
+        .filter({ hasText: "Edited harness knowledge" });
+      if (
+        (await source.count()) !== 1 ||
+        (await page.locator(".setup-knowledge-list article").count()) !== 2
+      )
+        throw new Error("Knowledge edit duplicated or lost a source");
+      await page.screenshot({
+        path: path.join(
+          out,
+          `${width}x${height}-${theme}-knowledge-edited.png`,
+        ),
+      });
+      await page.getByRole("tab", { name: "Paige brief", exact: true }).click();
       await page
         .getByRole("button", { name: "Teach Paige", exact: true })
         .click();

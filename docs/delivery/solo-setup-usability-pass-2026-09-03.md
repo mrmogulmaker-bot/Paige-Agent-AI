@@ -66,14 +66,21 @@ Reference behavior: [ZIP API documentation](https://docs.zippopotam.us/docs/v1/)
 | Cancel / conflict / pending / account cleanup | Existing combined adapter tests plus autofill discard and stale tests | Authenticated role/account-switch matrix |
 | Layout | 88 structural samples, 4 supported viewports × both themes; extra ZIP/NAICS interactions and screenshots | Authenticated theme/runtime proof |
 
-Automated: 67 focused tests passing at the latest code edit. Scoped lint/type ratchet and
-production build passed before the final autofill event-capture repair; rerun on final head.
+Automated: 67 focused tests passed at the main-reconciled candidate. Scoped lint/type ratchet and
+production build passed. A final input-event-phase repair then passed 33 component tests;
+the complete final-head rerun is recorded in the task closeout.
 Type baseline: 13 existing errors, no additional errors at that check.
 Rendered structural: no horizontal overflow, clipped inputs or browser runtime errors;
 synthetic transport only. Native browser connector bootstrap failed due to a local sandbox
 ACL helper failure. No authenticated profile/session was read or bypassed.
 Independent review identified and drove repairs for tab loss, email capture, blank selection,
-and search-triggered rerender. Final rereview is required before release.
+and search-triggered rerender. The first event-capture repair then failed real-browser NAICS
+typing despite passing unit tests. Input reconciliation now runs in the bubble phase and
+updates only changed fields. Fresh independent Chromium verification passed ZIP selection,
+autofill preservation, NAICS typing/results/selection, authorized email, Knowledge title/URL
+and Keep-to-draft, and tab round-trips, with no browser errors. This is synthetic runtime,
+not authenticated production acceptance. The browser harness now asserts these control values
+and checks Knowledge edits for duplicate/lost sources.
 Hosted CI, preview, production verification: NOT RUN for this new branch.
 
 ## Collision and preservation inventory

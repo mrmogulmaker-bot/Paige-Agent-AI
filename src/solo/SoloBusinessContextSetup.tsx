@@ -868,8 +868,9 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
   function reconcileMountedDraft() {
     if (!editing || !data.canEdit || data.saving) return;
     const captured = captureMountedDraft();
-    setDraft(captured.brief);
-    setEmail(captured.email);
+    if (Object.keys(captured.changes).length)
+      setDraft((now) => ({ ...now, ...captured.changes }));
+    if (captured.email !== email) setEmail(captured.email);
   }
   const switchTab = (value: SoloSetupTab) => {
     if (data.saving) return;
@@ -985,7 +986,7 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
     <fieldset
       ref={formSurface}
       className="setup-brief"
-      onInputCapture={reconcileMountedDraft}
+      onInput={reconcileMountedDraft}
       onClickCapture={reconcileMountedDraft}
       disabled={data.saving}
       aria-busy={data.saving}
