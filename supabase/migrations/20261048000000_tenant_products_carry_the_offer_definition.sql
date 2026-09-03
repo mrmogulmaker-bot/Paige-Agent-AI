@@ -57,7 +57,8 @@
 --                                 offer must still name it. Slice 2D owns the typed relationship
 --                                 and will revisit the picker's filter with that context.
 --   StorefrontPanel.tsx:137       reads all statuses     -> shows it; its editor offers only
---                                 draft/active, so it can display 'paused' but not set it. Slice 2B
+--                                 draft/active, so it can display 'paused' but not set it. Its TS
+--                                 union is left untouched by this slice (see below). Slice 2B
 --                                 relocates this editor into Catalog and closes that gap.
 --   list_tenant_programs RPC      returns status verbatim -> passes 'paused' through untouched.
 --
@@ -66,11 +67,19 @@
 -- `status: body.status ?? 'draft'` with NO allowlist, relying on this CHECK as its only validation.
 -- Before this migration a caller posting 'paused' was rejected; after it, a tenant-admin JWT can
 -- persist 'paused' through that function even though no UI offers it yet. That is legal and
--- harmless — 'paused' is now a real state and every reader above handles it — but it made
--- `StorefrontPanel`'s `status: "draft" | "active" | "archived"` union untrue, so that union is
--- widened in the same change. The edge function itself is NOT touched here: it deploys on merge,
--- and a read-only slice should not ship an edge deploy. Adding an explicit allowlist there is
--- recorded as a follow-up in the Gate B packet rather than smuggled into this slice.
+-- harmless — 'paused' is now a real state and every reader above handles it.
+--
+-- IT DOES leave `StorefrontPanel`'s `status: "draft" | "active" | "archived"` union narrower than
+-- this CHECK now allows, and that union is deliberately NOT widened here. `StorefrontPanel` is an
+-- Admin surface under `src/components/**`, which the Solo Shell scope rule puts outside this
+-- slice without a documented exception. The inaccuracy is latent and cannot manifest in 2A:
+-- this slice ships no writes, and no shipped UI offers 'paused', so no row can carry it yet.
+-- The union widening moves to Slice 2B, where pause becomes reachable and the exception can be
+-- requested for a change that is actually needed rather than a pre-emptive one.
+--
+-- The edge function is NOT touched here either: it deploys on merge, and a read-only slice should
+-- not ship an edge deploy. Adding an explicit `status` allowlist there — and cross-field validation
+-- of `kind` against `billing_interval` — is recorded as 2B follow-up rather than smuggled in here.
 --
 -- WHAT THIS MIGRATION DELIBERATELY DOES NOT DO. It adds no inventory, no stock, no variants, no
 -- cart, no line items, no tax, no shipping and no checkout. `price_presentation` records how a
