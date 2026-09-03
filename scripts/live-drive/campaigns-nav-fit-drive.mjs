@@ -40,14 +40,40 @@ const FRAMES = [
 ];
 
 /**
- * The content column this surface actually gets, from the shell's own grid
- * (`tenant-command-center-shell.css:1-6`): `216px | minmax(0,1fr) | minmax(340px, 26vw)`.
- * Derived here rather than hardcoded so it stays honest if the shell's columns change.
+ * The content column this surface actually gets.
+ *
+ * The base grid is `tenant-command-center-shell.css:1-6` —
+ * `216px | minmax(0,1fr) | minmax(340px, 26vw)` — but SOLO OVERRIDES the PAIGE column in
+ * `TenantCommandCenterShell.tsx:483`, and modelling the base grid here tested widths that do not
+ * occur. Corrected against the component (Codex review on #881, verified against the source):
+ *
+ *   docked  → minmax(440px, 34vw)     the ordinary Solo session
+ *   wide    → minmax(620px, 52vw)     PAIGE expanded — the NARROWEST real content column
+ *   closed  → 0px                      PAIGE folded away
+ *   overlay → 0px, AND the rail compacts to 72px (`:426-433`, `setNavExpanded(false)`),
+ *             forced for every viewport ≤1080px, so PAIGE floats above instead of taking a column
+ *
+ * The first model subtracted `max(340, 26vw)` at every width and never compacted the rail, so it
+ * claimed 920px at 1536 where the real docked column is 798px, and 468px at 1024 where the real
+ * overlay leaves 952px. Both numbers were fiction: one easier than production, one harsher.
  */
-const RAIL = 216;
-function contentWidth(viewport, paigeOpen) {
-  const paige = paigeOpen ? Math.max(340, viewport * 0.26) : 0;
-  return Math.floor(viewport - RAIL - paige);
+const RAIL_EXPANDED = 216;
+const RAIL_COMPACT = 72;
+const PAIGE_OVERLAY_MAX = 1080;
+
+/** Every PAIGE posture a Solo owner can actually put the shell in. */
+const POSTURES = ["docked", "wide", "closed"];
+
+function contentWidth(viewport, posture) {
+  // Below the breakpoint the shell forces the overlay AND compacts the rail, whatever the
+  // posture — PAIGE stops taking a column at all.
+  const overlay = viewport <= PAIGE_OVERLAY_MAX;
+  const rail = overlay ? RAIL_COMPACT : RAIL_EXPANDED;
+  if (overlay || posture === "closed") return Math.floor(viewport - rail);
+  const paige = posture === "wide"
+    ? Math.max(620, viewport * 0.52)
+    : Math.max(440, viewport * 0.34);
+  return Math.floor(viewport - rail - paige);
 }
 
 const results = [];
@@ -198,8 +224,8 @@ async function main() {
 
     for (const theme of ["light", "dark"]) {
       for (const frame of FRAMES) {
-        for (const paigeOpen of [true, false]) {
-          const width = contentWidth(frame.width, paigeOpen);
+        for (const posture of POSTURES) {
+          const width = contentWidth(frame.width, posture);
           const ctx = await browser.newContext({ viewport: { width: frame.width, height: frame.height } });
           const page = await ctx.newPage();
           const pageErrors = [];
@@ -208,7 +234,7 @@ async function main() {
           if (theme === "dark") { await page.click("[data-theme-toggle]"); await page.waitForTimeout(420); }
           await setContentWidth(page, width);
 
-          const id = `${theme}/${frame.name}/${paigeOpen ? "paige-open" : "paige-closed"}`;
+          const id = `${theme}/${frame.name}/paige-${posture}@${width}px`;
           const nav = await measureNav(page);
 
           check(Boolean(nav), `${id}: nav mounted`);
@@ -276,7 +302,7 @@ async function main() {
             `${id}: the selected tab is on screen after selecting it`,
           );
 
-          if (paigeOpen && theme === "light") {
+          if (posture === "docked" && theme === "light") {
             await page.screenshot({ path: path.join(OUT, `${frame.name}.png`) });
           }
           await ctx.close();

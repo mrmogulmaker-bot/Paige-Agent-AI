@@ -2816,22 +2816,34 @@ diff `7007d213..9723136e`, and it found a **user-visible regression already on p
 > legend into `.campaigns-nav` put it in a row governed by a **viewport** media query
 > (`@media(max-width:1050px)`) while the space it consumes belongs to a container roughly 500px
 > narrower — the Solo shell gives this surface `viewport − 216px rail − max(340px, 26vw) PAIGE`.
-> Reproduced here on the real DOM before any edit: at **1536×770** the legend showed and
-> **Performance** sat outside the strip; at **1366×768** it took **Social** too. The tabs remained
-> technically scrollable, but with overlay scrollbars nothing said so. A second, latent defect fired
-> for the same reason: `focus({preventScroll:true})` on tab change had been harmless while the strip
-> never overflowed, so arrowing to a tab selected it, focused it, and left it off screen — the
-> **selected tab invisible in 7 of 16 measured configurations**, including one with PAIGE closed
+> Reproduced here on the real DOM before any edit. **The first measurement understated it**, because
+> the gate modelled the BASE shell grid; Codex's review of this very PR caught that Solo *overrides*
+> the PAIGE column (`TenantCommandCenterShell.tsx:483`) — docked `minmax(440px,34vw)`, expanded
+> `minmax(620px,52vw)`, and below 1080px an overlay with the rail compacted to 72px. Verified against
+> the component and the gate corrected, the real numbers are worse: **1536 docked (797px) → 1 tab
+> clipped · 1536 with PAIGE expanded (521px) → 4 · 1366 docked (685px) → 2 · 1366 expanded (439px) →
+> 4.** So on a 1366 laptop with PAIGE open, **four of the six tabs were off screen.** A second, latent
+> defect fired for the same reason: `focus({preventScroll:true})` had been harmless while the strip
+> never overflowed, so selecting a tab left it invisible — in **16 of 24** corrected configurations
 > (WCAG 2.4.11).
 
 This is the same failure class as the §70 anchor, one level up: the surface's own gate mounts
 `SalesOps` **alone** and never renders the nav inside the shell's real geometry, so 344 green checks
 could not see it. The gate that was missing now exists — `scripts/live-drive/campaigns-nav-fit-drive.mjs`
-(`npm run drive:campaigns-nav`) — and it was **proved red before it was proved green**: 138/152
-against the shipped code, naming Performance at 1536 and Social+Performance at 1366; **146/146**
-after. It renders the real `GrowthHub` at the four Solo sizes × both palettes × PAIGE open and
-closed, and asserts the six-tab lock, that nothing is clipped while the strip has room, that **every
-tab is reachable** when it does not, and that selecting a tab leaves it on screen.
+(`npm run drive:campaigns-nav`) — and it was **proved red before it was proved green**, twice: first
+against the shipped code, then again after its geometry was corrected (212/228 red, naming all four
+clipped configurations; **218/218** green). It renders the real `GrowthHub` at the four Solo sizes ×
+both palettes × **three PAIGE postures** (docked, expanded, closed/overlay), and asserts the six-tab
+lock, that nothing is clipped while the strip has room, that **every tab is reachable** when it does
+not, and that selecting a tab leaves it on screen.
+
+**The gate's own geometry was wrong first, which is the lesson.** A gate is only as good as its model
+of where the thing lives: modelling `216px | 1fr | minmax(340px,26vw)` claimed 920px at 1536 where
+the real docked column is 797px, and 468px at 1024 where the real overlay leaves 952px — one number
+easier than production, one harsher, and the narrowest real case (439px, PAIGE expanded on a 1366
+laptop) never tested at all. Correcting it turned the compaction threshold from a guess into a
+measurement: at **700px** the compaction reaches the 685px docked-1366 column, where it is the
+difference between all six tabs fitting and one of them scrolling.
 
 **The fix keeps the owner's instruction intact.** No masthead came back. The legend now yields on the
 **nav's own inline size** (`container-type: inline-size` + `@container`), and the strip's compaction

@@ -23,7 +23,16 @@
 @container (max-width:1120px){.campaigns-truth-key{display:none}}
 @media(max-width:760px){.campaigns-nav{gap:8px;padding-inline:12px}.campaigns-tabs{gap:16px}.campaigns-tabs button{font-size:12.5px}.campaigns-studio{width:34px;padding:0;justify-content:center;font-size:0}.campaigns-scroll{padding:14px 12px 24px}.campaigns-surface-head{display:grid}.campaigns-filter select{width:100%}.campaigns-catalog-grid,.campaigns-coverage{grid-template-columns:1fr}.campaigns-segmented{overflow:auto;max-width:100%}}
 @media(max-width:520px){.campaigns-surface,.campaigns-compat{border-radius:12px}.campaigns-row-end .campaigns-status{max-width:100px;overflow:hidden;text-overflow:ellipsis}.campaigns-list-row{padding-inline:14px}.campaigns-artifact-actions{display:grid}.campaigns-artifact-actions .btn{justify-content:center}.campaigns-segmented button{padding-inline:7px}}
-@container (max-width:620px){.campaigns-tabs{gap:14px}.campaigns-tabs button{font-size:12.5px}}
+/* THE NAV SIZES ITSELF, NOT THE WINDOW. These sit AFTER the two viewport queries above on purpose:
+ * they carry tab-strip declarations at the same specificity, and the nav's own width is the
+ * accurate signal. Solo makes the content column much narrower than the window — docked PAIGE is
+ * `minmax(440px,34vw)` (`TenantCommandCenterShell.tsx:483`), so a 1366 session gives this nav 685px
+ * and a 1536 one 797px; with PAIGE expanded, 439px and 521px; below 1080px PAIGE becomes an overlay
+ * and the rail compacts, which widens it again. The 760px viewport rule therefore never fired at
+ * any ordinary laptop width, and the tabs kept their widest spacing in their narrowest column.
+ * 700px is chosen so the compaction reaches the 685px docked-1366 case, where it is the difference
+ * between all six tabs fitting and one of them scrolling. Proved by `npm run drive:campaigns-nav`. */
+@container (max-width:700px){.campaigns-tabs{gap:14px}.campaigns-tabs button{font-size:12.5px}}
 @container (max-width:430px){.campaigns-tabs{gap:11px}.campaigns-studio{width:34px;padding:0;justify-content:center;font-size:0}}
 @media(prefers-reduced-motion:reduce){.solo-campaigns *{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 @media(forced-colors:active){.campaigns-truth,.campaigns-surface,.campaigns-compat,.campaigns-artifact,.campaigns-coverage article{border:1px solid CanvasText}.campaigns-tabs button[aria-selected="true"]{border-bottom:3px solid Highlight}.campaigns-drawer-scrim{background:Canvas}}

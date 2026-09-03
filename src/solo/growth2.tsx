@@ -317,9 +317,12 @@ function CompatibilityLanding({ legacy, returnToAssets }) {
 }
 
 function CampaignTabs({ tabs, current, setCurrent }) {
-  // The Solo shell gives this surface `viewport - 216px rail - max(340px, 26vw) PAIGE`, so the
-  // strip has ~468px at a 1024 viewport and ~344px at 900 — six tabs cannot fit at any spacing and
-  // the strip scrolls by design. Scrolling is only acceptable if the SELECTED tab is on screen, so
+  // The Solo shell hands this surface what is left after the rail and PAIGE. Solo overrides the
+  // PAIGE column (`TenantCommandCenterShell.tsx:483`): docked `minmax(440px,34vw)`, expanded
+  // `minmax(620px,52vw)`, and below 1080px it becomes an overlay while the rail compacts to 72px.
+  // So a 1366 session is 685px docked and 439px with PAIGE expanded — at 439px six tabs cannot fit
+  // at any spacing and the strip scrolls. Scrolling is only acceptable if the SELECTED tab is on
+  // screen, so
   // bring it into view however it was chosen: click, keyboard, deep link, or a route restore.
   // `block:"nearest"` keeps the vertical position still; only the strip's own axis moves.
   React.useLayoutEffect(()=>{
