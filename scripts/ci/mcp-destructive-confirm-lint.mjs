@@ -594,7 +594,8 @@ function fieldAdmitsBoolean(node) {
   const isHead = receiver && (
     (ts.isIdentifier(receiver) && receiver.text === SCHEMA_NS) ||
     (ts.isPropertyAccessExpression(receiver) && chainRoot(receiver) === SCHEMA_NS &&
-     !ts.isCallExpression(receiver.expression) && SAFE_NAMESPACES.has(receiver.name.text)));
+     !ts.isCallExpression(receiver.expression) &&
+     SAFE_NAMESPACED.has(`${receiver.name.text}.${method}`)));
 
   if (!isHead) {
     // A chained call — `z.string().optional()`. The receiver decides, and a schema handed to a
@@ -616,6 +617,7 @@ function fieldAdmitsBoolean(node) {
       ts.isPropertyAssignment(prop) && !literalArgAdmitsBoolean(prop.initializer)));
   }
   if (SCHEMA_WRAPPERS.has(method)) return e.arguments.some(memberAdmitsBoolean);
+  if (receiver && ts.isPropertyAccessExpression(receiver)) return false;   // an allowlisted full name
   return !NON_BOOLEAN_HEADS.has(method);
 }
 
@@ -628,37 +630,61 @@ function memberAdmitsBoolean(arg) {
   return fieldAdmitsBoolean(a);
 }
 
-/** The object literals that hold a schema's FIELDS, as opposed to a builder's options. */
+/**
+ * The builders whose object argument IS a schema's field shape.
+ *
+ * `augment` is zod 3's alias for `extend` and was missing, so a field added through it was ignored
+ * entirely — one of three fail-opens review found in the bottom-up version of this test.
+ */
 const SHAPE_BUILDERS = new Set([
-  "object", "strictObject", "looseObject", "extend", "safeExtend", "interface",
+  "object", "strictObject", "looseObject", "extend", "safeExtend", "augment", "interface",
 ]);
 
-/** Namespaces under `z` whose builders reject a boolean. NOT `z.coerce`, which converts one. */
-const SAFE_NAMESPACES = new Set(["iso"]);
+/**
+ * Namespace-qualified builders that reject a boolean, by FULL name.
+ *
+ * Allowlisting the `iso` namespace alone was not enough: the terminal method still had to appear in
+ * `NON_BOOLEAN_HEADS`, so `z.iso.date()` passed only because `date` happened to be in the generic
+ * list while `z.iso.time()`, `z.iso.datetime()` and `z.iso.duration()` were reported as
+ * model-settable booleans. Full names remove the accident.
+ */
+const SAFE_NAMESPACED = new Set(["iso.date", "iso.time", "iso.datetime", "iso.duration"]);
 
 /**
- * Is this property a FIELD of a schema shape, rather than a key in a builder's options bag?
+ * Every FIELD of every schema shape in this expression, found TOP-DOWN.
  *
- * Treating every property as a field made `id: z.string().regex(/x/, { message: "bad" })` report a
- * model-settable field called `message` — validation metadata, not something the model can send.
- * A field lives in the shape object a schema builder is GIVEN; an option lives anywhere else.
+ * The previous version asked, of each property, "am I inside a shape?" and walked UP through
+ * whatever syntax sat between. Review found three ways past that walk in one round — an
+ * angle-bracket type assertion, an inline spread, and a builder alias — because the set of things
+ * that can sit between a property and its call is open-ended and I was enumerating it.
+ *
+ * Descending instead makes the traversal MINE: find the shape builders, unwrap their object
+ * argument once, and read the properties directly. An inline spread of an object literal is
+ * followed, because its fields are as visible as any other; a spread of a NAME is not followed and
+ * needs no special case here — `schemaIsComplete` already refuses the whole schema for it.
  */
-function isSchemaShapeProperty(prop) {
-  const shape = prop.parent;
-  if (!shape || !ts.isObjectLiteralExpression(shape)) return false;
-  // The shape may be wrapped in transparent syntax — `z.object(({…}))`, `({…}) as z.ZodRawShape`,
-  // a `satisfies`. Reading `shape.parent` directly saw the wrapper instead of the call and rejected
-  // the real field, so a boolean-gated destructive tool written that way passed clean. A second
-  // fail-open introduced by the same false-positive fix as the namespace one.
-  let node = shape;
-  while (node.parent && (ts.isParenthesizedExpression(node.parent) || ts.isAsExpression(node.parent) ||
-         ts.isSatisfiesExpression?.(node.parent) || ts.isNonNullExpression(node.parent))) {
-    node = node.parent;
+function shapeFields(schemaNode) {
+  const out = [];
+  if (!schemaNode) return out;
+  walkValues(schemaNode, (n) => {
+    if (!ts.isCallExpression(n)) return;
+    if (!SHAPE_BUILDERS.has(calleeMethod(n.expression) ?? "")) return;
+    for (const arg of n.arguments) {
+      const a = unwrapValue(arg);
+      if (a && ts.isObjectLiteralExpression(a)) collectShapeFields(a, out);
+    }
+  });
+  return out;
+}
+
+function collectShapeFields(objectLiteral, out) {
+  for (const prop of objectLiteral.properties) {
+    if (ts.isPropertyAssignment(prop)) { out.push(prop); continue; }
+    if (ts.isSpreadAssignment(prop)) {
+      const inner = unwrapValue(prop.expression);
+      if (inner && ts.isObjectLiteralExpression(inner)) collectShapeFields(inner, out);
+    }
   }
-  const call = node.parent;
-  if (!call || !ts.isCallExpression(call)) return false;
-  if (!call.arguments.some((a) => unwrapValue(a) === shape)) return false;
-  return SHAPE_BUILDERS.has(calleeMethod(call.expression) ?? "");
 }
 
 /**
@@ -670,14 +696,12 @@ function isSchemaShapeProperty(prop) {
  */
 function modelSettableBooleans(schemaNode) {
   const names = [];
-  if (!schemaNode) return names;
-  walkValues(schemaNode, (n) => {
-    if (!ts.isPropertyAssignment(n) || !isSchemaShapeProperty(n)) return;
-    if (!fieldAdmitsBoolean(n.initializer)) return;
-    const nm = n.name && ts.isIdentifier(n.name) ? n.name.text
-      : n.name ? (literalText(n.name) ?? "<computed>") : "<unnamed>";
+  for (const field of shapeFields(schemaNode)) {
+    if (!fieldAdmitsBoolean(field.initializer)) continue;
+    const nm = field.name && ts.isIdentifier(field.name) ? field.name.text
+      : field.name ? (literalText(field.name) ?? "<computed>") : "<unnamed>";
     if (!names.includes(nm)) names.push(nm);
-  });
+  }
   return names;
 }
 
@@ -970,6 +994,19 @@ mcp.tool("t", { inputSchema: z.object({ id: z.string().regex(/x/, { message: "ba
     ["a shape added by safeExtend", `z.object({ id: z.string() }).safeExtend({ confirm: z.boolean() })`],
   ]) check(`REFUSES ${label}`, v(`
 mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
+  // Codex on 36f5fe72: three more fail-opens in the bottom-up shape test, plus the iso namespace
+  // reporting three of its four builders as booleans. The test is top-down now; these hold it.
+  const SAFE_H2 = `handler: async ({ id }) => { await admin.rpc("handle_data_subject_request", { id }); }`;
+  for (const [label, schema] of [
+    ["a field added by augment (zod 3)", `z.object({ id: z.string() }).augment({ confirm: z.boolean() })`],
+    ["a shape behind an angle-bracket assertion", `z.object(<z.ZodRawShape>{ confirm: z.boolean() })`],
+    ["a field arriving via an inline spread", `z.object({ ...{ confirm: z.boolean() } })`],
+  ]) check(`REFUSES ${label}`, v(`
+mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
+  for (const m of ["date", "time", "datetime", "duration"]) {
+    check(`ADMITS z.iso.${m}()`, v(`
+mcp.tool("t", { inputSchema: z.object({ t: z.iso.${m}(), id: z.string() }), ${SAFE_H2} });`), 0);
+  }
   check("an ELEMENT-ACCESS delete is still a delete", v(`
 mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }), handler: async ({ confirm }) => { if (confirm) await admin.from("clients")["delete"](); } });`), 1);
   check("an ELEMENT-ACCESS destructive rpc is still destructive", v(`
