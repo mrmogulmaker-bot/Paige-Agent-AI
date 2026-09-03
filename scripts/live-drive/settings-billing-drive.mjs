@@ -82,7 +82,22 @@ async function measure(page) {
       saysNoSubscription: /no subscription|no plan yet|no current solo subscription/i.test(text),
       saysNotOwnership: text.includes("does not change who owns this workspace"),
       saysNotSent: text.includes("not being sent yet"),
-      keepsUsageCard: text.includes("Usage & limits"),
+      // The usage card, which USED to be UNAVAILABLE and now states a real total. §58: it was
+      // upgraded in place, never removed, so the check measures the stronger capability.
+      usageState: document.querySelector("[data-usage-state]")?.getAttribute("data-usage-state") ?? null,
+      keepsUsageCard: text.includes("AI usage"),
+      statesAllowance: /\d[\d,]* AI credits \([\d,]+ tokens\)/.test(text),
+      statesCreditRatio: text.includes("One AI credit is 1,000 tokens recorded by the platform."),
+      // Checked on the RENDERED text of the note, in full. This lived in a field until a frame
+      // showed the field clipping it to an ellipsis while this very check passed.
+      namesPeriodSource: /this is the calendar month — this workspace has no provider billing period\./i.test(text),
+      // Nothing on this surface may imply a charge, a forecast, or a consequence for using it up.
+      claimsOverageOrForecast: /overage|projected|forecast|on track to|will run out|you will be charged/i.test(text),
+      // Owner, 2026-09-03: the card is "Payment method", not "Invoices & payment method". Invoices
+      // are the tenant's instrument toward THEIR customers; what the platform needs on the account
+      // is the card it charges. Checked as an absence too, so the old wording cannot creep back.
+      saysPaymentMethod: text.includes("Payment method"),
+      claimsInvoices: /invoice/i.test(text),
       // Client billing MOVED to Campaigns › Sales. Billing is one direction of money only.
       leaksClientBilling: /charge your (own )?clients|your own payment processor/i.test(text),
       hostClient: host?.clientHeight ?? 0,
@@ -145,7 +160,14 @@ async function main() {
         record(`${label} · never claims "no subscription"`, !m.saysNoSubscription);
         record(`${label} · states a designation is not ownership`, m.saysNotOwnership);
         record(`${label} · states notices are not being sent`, m.saysNotSent);
-        record(`${label} · keeps the Usage & limits card that already shipped (§58)`, m.keepsUsageCard);
+        record(`${label} · keeps the usage card, now stating a real total (§58 upgrade-in-place)`,
+          m.keepsUsageCard && m.usageState === "usage-tracked", `usage=${m.usageState}`);
+        record(`${label} · states the allowance and usage in credits AND tokens`, m.statesAllowance);
+        record(`${label} · spells out what an AI credit is`, m.statesCreditRatio);
+        record(`${label} · names the calendar month as the period source`, m.namesPeriodSource);
+        record(`${label} · claims no overage, forecast or charge for AI usage`, !m.claimsOverageOrForecast);
+        record(`${label} · names the card "Payment method"`, m.saysPaymentMethod);
+        record(`${label} · claims no invoices anywhere (owner, 2026-09-03)`, !m.claimsInvoices);
         record(`${label} · no client-billing content (it moved to Campaigns › Sales)`, !m.leaksClientBilling);
         record(`${label} · no horizontal overflow`, !m.horizontal, `content=${Math.round(m.contentWidth)}px`);
         record(`${label} · at most one vertical scroll owner`, m.scrollers <= 1,
@@ -162,6 +184,12 @@ async function main() {
           document.body.append(mark);
         });
         await page.screenshot({ path: path.join(OUT, `${width}x${height}-${theme}-first-use.png`), fullPage: true });
+        // The Solo shell scrolls INTERNALLY, so `fullPage` captures the viewport and stops — the
+        // cards below the fold are simply absent from the frame. That is how the AI usage card was
+        // invisible in every frame this drive produced while its checks were passing, which is a
+        // frame that cannot be read as evidence for it. An element capture is the fix.
+        await page.locator(".ss-card").filter({ hasText: "AI usage" }).first()
+          .screenshot({ path: path.join(OUT, `${width}x${height}-${theme}-ai-usage.png`) });
         await context.close();
       }
     }
@@ -225,13 +253,24 @@ async function main() {
           (await page.locator(".ss-content select").count()) === 0);
         record("readonly · the read-only reason is stated",
           (await page.locator(".ss-content").innerText()).includes("read-only"));
+        // R22 again, on the usage card: a non-owner is told why, and is never shown a zero, which
+        // would be a claim about the account rather than a refusal to make one.
+        record("readonly · usage is refused to a non-owner, not reported as zero",
+          m.usageState === "usage-owner-only", `usage=${m.usageState}`);
+        record("readonly · no usage figure is rendered for a non-owner", !m.statesAllowance);
       }
       if (mode === "issues") {
         record("issues · a retry is offered on the failed read",
           (await page.getByRole("button", { name: "Retry" }).count()) > 0);
+        // The failed usage read must be its OWN unreadable state, not a zero and not a silent card.
+        record("issues · the failed usage read says so rather than showing zero usage",
+          m.usageState === "usage-error", `usage=${m.usageState}`);
+        record("issues · no usage figure is rendered from a failed read", !m.statesAllowance);
       }
       record(`${mode} · no page errors`, errors.length === 0, errors.join(" | "));
       await page.screenshot({ path: path.join(OUT, `${mode}.png`), fullPage: true });
+      await page.locator(".ss-card").filter({ hasText: "AI usage" }).first()
+        .screenshot({ path: path.join(OUT, `${mode}-ai-usage.png`) });
       await context.close();
     }
   } finally {

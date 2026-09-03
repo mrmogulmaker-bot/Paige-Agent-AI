@@ -37,6 +37,14 @@ and can complete exactly one billing act: **naming who receives this workspace's
 (a primary billing contact, and an optional delegate). Plan, price, renewal, invoices, payment
 method, allowance and add-ons are all still unavailable, each saying why.
 
+**Card rename, owner 2026-09-03: "Invoices & payment method" → "Payment method".** Owner's reason:
+*"I don't think we're going to be accepting invoices or sending people invoices. Invoices are an
+option that they send to their customers. Payment Method is what we want on their account when we're
+billing them."* Same boundary as the client-billing move — invoices are the tenant's instrument
+toward THEIR customers, and this surface is only the platform billing the tenant. The card, its
+copy and its refusal states no longer claim invoices anywhere. `platform_invoices` still exists in
+the schema, still has no writer, and is now surfaced by nothing.
+
 **Not this surface's job:** what the owner charges their own customers. That is **Campaigns →
 Sales** (client billing, §197 LAYER 2, tenant's own processor per §38). Foundation C originally
 carried a "What you charge your clients" pointer card here; the owner moved it to Sales on
@@ -52,8 +60,11 @@ boundary exists to prevent. It renders on `Campaigns › Sales` as the `ClientBi
 | Workspace subscription | `platform_subscriptions` — sole writer is `stripe-webhook` (service role, signed `platform_plan_slug` metadata) |
 | Read seam | `get_tenant_platform_subscription()` (tenant derived server-side) |
 | Role gate | `is_current_user_tenant_admin()` |
-| Invoices | `platform_invoices` — **no writer anywhere**; Stripe holds the truth |
-| Usage | `platform_usage_events` (`llm_tokens`, `tts_char`, `tenant_provisioned`); no allowance model |
+| Payment method | held by the platform's payment provider; reachable only through the portal, which is flag-off |
+| `platform_invoices` | **no writer anywhere**; the table exists and is not surfaced (see the card rename below) |
+| Usage | `platform_usage_events` (`llm_tokens`, `tts_char`, `tenant_provisioned`) — written by `meter_llm_usage()` on an hourly `pg_cron`. **NOT** `platform_metered_events`, which is the §17 LAYER 3 pass-through and has never held a row. |
+| AI allowance | `platform_subscription_plans.included_ai_tokens_month` + `.ai_credit_token_ratio` (solo 5,000,000 @ 1,000/credit; agency 15,000,000 @ 1,000; enterprise NULL = custom quote) |
+| AI usage read | `get_workspace_ai_usage()` — no argument, workspace server-derived, Owner-only (R22) |
 | Add-ons | `marketplace_items` / `marketplace_installs` / `marketplace_install_ledger` |
 
 ## Solo shell placement
@@ -81,13 +92,18 @@ whose states come from the pure `src/solo/billing-contract.ts` and whose data co
 | empty | "No current Solo subscription record was returned." — **true for a solo with no plan, false for a sub-account** | that sentence is gone. An unmapped workspace says *"could not find a billing account linked to this workspace … nothing is being charged"*; a sub-account says *"not because there is no plan"*; "Choose a plan" needs a successful read that found none |
 | loading | "Clearing and resolving this account…" | unchanged |
 | permission | `canManage` computed and consumed by nothing | `can_manage_billing` gates every act, both designate forms and the roster read; `can_view_billing` (R22, Owner-only in A) refuses the plan card to a Solo member — it was consumed by nothing until a compliance read caught it |
-| usage | "Usage & limits" card, `UNAVAILABLE` | **unchanged and still present.** Foundation C deleted it and the removal was caught as a §58 regression and reverted; packet §9 flow F3 keeps its only presence on this surface |
+| usage | "Usage & limits" card, `UNAVAILABLE` | **upgraded in place, never removed (§58).** Now "AI usage": a real current-period token total from `platform_usage_events`, the plan's included allowance, and the remainder — each stated in AI credits AND tokens, with the period and its SOURCE named. A non-owner gets `usage-owner-only` and a sub-account `usage-not-applicable`, each with a NULL total rather than a zero. **No cost, no forecast, no overage, and no consequence** — the allowance is visibility only (D6/D7/D8) |
 
 ## What PAIGE can read
 
 `get_tenant_platform_subscription()` is `GRANT EXECUTE … TO authenticated` and tenant-pinned, so
-PAIGE can answer "what plan is this workspace on" from chat (§10). She cannot read invoices, usage
-totals, allowance, or add-on entitlement as a billing fact — no seam exposes them.
+PAIGE can answer "what plan is this workspace on" from chat (§10).
+
+`get_workspace_ai_usage()` is also `GRANT EXECUTE … TO authenticated` (and `service_role`), takes no
+argument, and derives both the workspace and the caller server-side — so PAIGE can answer "how much
+AI have I used this month, and how much is included" from chat, for the caller's own workspace only,
+and gets the same Owner-only refusal a non-owner sees on the screen. **She cannot read invoices or
+add-on entitlement as a billing fact — no seam exposes them.**
 
 ## What PAIGE can propose or perform
 
@@ -110,7 +126,18 @@ on (Team surface card, decision 2). Not a Billing slice to invent.
 ## Dependencies, collisions, and required browser proof
 
 - **Metering workstream** (MET1 shipped, MET2 evidence owed, parked #737) — Billing reads from it;
-  never writes to it.
+  never writes to it. The AI usage card is the first tenant-facing consumer of that meter.
+- **AI allowance (owner ruling 2026-09-03)** — 5,000 credits/month on solo, 15,000 on agency, one
+  credit = 1,000 server-recorded tokens, stated wherever credits appear. **Visibility only.** No
+  shutdown, no degraded product, no automatic overage, no surprise charge. Eventual enforcement
+  belongs at the action-bus policy clamp (§67), never in this screen.
+- **Every current workspace is promotional during beta**, and the card says so in those words. It
+  does not represent promotional usage as revenue-backed paid-plan entitlement, and it does not
+  imply the $74.50 beta price supports this cost model.
+- **Per-workspace AI COST is deliberately not shown**, on any tier. `paige_llm_trace` reports
+  `est_usd_total` $4.88 across 697 calls, but 632 of them (91%) carry no cost at all — a floor of
+  unknown distance from the truth. Better cost attribution is an internal operator-observability
+  slice, sequenced AFTER tenant-facing usage truth is live.
 - **Marketplace owner** — entitlement floor at `src/solo/marketplace.tsx:79`; paid add-on flow via
   `docs/handoff/platform-billing-marketplace-addon-handoff.md`.
 - **Chat build** — approval gate.

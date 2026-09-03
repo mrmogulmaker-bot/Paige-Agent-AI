@@ -1162,6 +1162,66 @@ tenant's own commercial surface (§38 / §197 LAYER 2). *Invoices & payment meth
 **not** moved: those are the tenant's invoices FROM Paige, which is platform billing by that same
 definition. Billing now renders four cards.
 
+**Second boundary correction, owner 2026-09-03.** *"Invoices & payment method"* is renamed
+**"Payment method"**. Owner's reason: *"I don't think we're going to be accepting invoices or sending
+people invoices. Invoices are an option that they send to their customers. Payment Method is what we
+want on their account when we're billing them."* The card's title, body and every refusal state stop
+claiming invoices. `platform_invoices` remains in the schema with no writer and is now surfaced by
+nothing.
+
+### Billing — AI usage allowance (branch `claude/platform-billing-clarification-l6zqr5`, **NOT MERGED; no production write of any kind**)
+
+**Owner ruling 2026-09-03.** Use the EXISTING `platform_usage_events` as the AI-usage source of
+truth; do not build a parallel meter and do not misuse `platform_metered_events`, which belongs to a
+different pass-through layer. Solo: **5,000 AI credits/month = 5,000,000 server-recorded tokens.**
+Agency: **15,000 credits = 15,000,000 tokens.** **One AI credit is 1,000 tokens**, stated plainly
+anywhere credits appear.
+
+**Visibility only.** No workspace shutdown, no degraded product, no automatic overage, no surprise
+charge. Exhausting the allowance changes nothing, and the card says so. Eventual enforcement belongs
+at the action-bus policy clamp (§67), never in the Billing screen.
+
+**All current workspaces are promotional during beta.** The card is labelled "Promotional AI usage
+tracking" and does NOT represent promotional usage as revenue-backed paid-plan entitlement, nor imply
+the $74.50 beta price supports this cost model. The revenue class is read from its own explicit
+record; an unclassified workspace is never inferred to be promotional (R13).
+
+**What shipped on the branch.** (1) The allowance and the credit ratio on
+`platform_subscription_plans`, NULL-together or set-together under a CHECK, with enterprise
+deliberately NULL — a custom quote, never a zero that reads as "nothing included". (2)
+`get_workspace_ai_usage()`: no argument, workspace server-derived, Owner-only (R22), counting ONLY
+`event_type = 'llm_tokens'` inside a period taken from a real subscription when one exists and
+otherwise reported as `calendar_month`. Every current workspace carries a seeded 2027
+`current_period_end` with a NULL Stripe subscription id, so presenting that as a billing period would
+have repeated exactly the fabrication Foundation C removed. (3) The Billing card, upgraded in place
+from `UNAVAILABLE` (**§58** — it was never removed).
+
+**Two premises the database taught us, now asserted as properties.** The proof was REFUSED twice, and
+both refusals were correct. `trg_ensure_tenant_revenue_classification` already writes a
+`'promotional'` row for every new tenant — so "a workspace with no classification record" cannot arise
+from provisioning at all, making that arm of the resolver defensive rather than expected. And `'paid'`
+is a **gated mint**: owner + signed subscriber agreement + live provider subscription, enforced by
+`enforce_revenue_integrity_chain`; the proof's first fixture ordering wrote the class before the
+subscription it requires. Both are now P36/P37 so a future reader who "tidies" the ordering gets a
+failing check rather than a confusing error.
+
+**Per-workspace AI COST is deliberately not shown, on any tier.** `paige_llm_trace` reports an
+`est_usd_total` of $4.88 across 697 calls, but **632 of them (91%) carry no cost at all** — a floor of
+unknown distance from the truth, and a floor on a Billing screen is a wrong number on a Billing
+screen. Better cost attribution is an internal operator-observability slice, sequenced AFTER
+tenant-facing usage truth is live.
+
+**Evidence.** Migration proven against production inside `BEGIN..ROLLBACK` — **26/26 properties, 0
+failures, nothing persisted** (verified after: zero leftover fixtures, columns and function absent on
+prod). 39 new tests; `160/160` rendered harness checks across 4 viewports × 2 palettes plus the
+failed-read and read-only worlds. **Status: `PARTIAL` / `Authenticated Runtime Proof Owed`** — the
+harness transport is a stub (§32.c), and the migration's **persisted-apply confirmation is owed on
+merge** (§32.a).
+
+**Deliberately NOT in this slice:** plan changes, plan upsert, Stripe mapping, provider portal
+activation, automatic overage, enforcement, and usage-threshold notification SENDING (records and
+readiness only; nothing is sent until a delivery system exists and is separately authorized).
+
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 
 **What it settles.** `docs/architecture/paige-mind-integration-matrix.md` records, per Solo surface,

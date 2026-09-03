@@ -489,6 +489,35 @@ export const supabase = {
         paid_activation_ready: db.platform_billing_contacts.some((c) => c.designation === "primary_contact" && !c.revoked_at),
       }]));
     }
+    // AI usage. The numbers are the REAL production shape: a promotional workspace on the solo
+    // allowance with no provider-backed subscription, so the period is the calendar month. bigint
+    // columns are STRINGS here because that is how PostgREST delivers them — a stub that returned
+    // numbers would let a number-only parser render fine in the harness and blank on the platform.
+    // `data=issues` fails the read, so a drive can show the unreadable state is reachable and is
+    // NOT rendered as zero usage.
+    if (name === "get_workspace_ai_usage") {
+      if (state() === "issues") return Promise.resolve({ data: null, error: { message: "Harness: AI usage unreadable" } });
+      const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+      const monthEnd = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1));
+      return Promise.resolve(ok([{
+        tenant_id: TENANT,
+        scope: "top_level",
+        // R22: viewing usage is Owner-only, exactly like viewing the plan. In `readonly` the stub
+        // answers the refusal the server would answer, not a total with a disabled button.
+        can_view: state() !== "readonly",
+        usage_state: state() === "readonly" ? "owner_only" : "ok",
+        revenue_class: "promotional",
+        reference_plan_slug: "solo",
+        included_ai_tokens_month: state() === "readonly" ? null : "5000000",
+        ai_credit_token_ratio: state() === "readonly" ? null : 1000,
+        period_source: state() === "readonly" ? null : "calendar_month",
+        period_start: state() === "readonly" ? null : monthStart.toISOString(),
+        period_end: state() === "readonly" ? null : monthEnd.toISOString(),
+        tokens_used: state() === "readonly" ? null : "1274300",
+        events_counted: state() === "readonly" ? null : 41,
+        usage_last_recorded_at: state() === "readonly" ? null : new Date().toISOString(),
+      }]));
+    }
     if (name === "get_workspace_billing_contacts") {
       return Promise.resolve(ok(db.platform_billing_contacts.filter((c) => !c.revoked_at).map((c) => ({
         id: c.id, user_id: c.user_id, designation: c.designation,
