@@ -3246,3 +3246,7 @@ memoisation — corrected before merge, because the record of a security change 
 so the guard is proven at the database and unproven where it runs. Three drafts, two broken in ways
 no typecheck, no SQL proof and no green CI could detect, is the concrete argument for the
 least-privilege test tenant specified in #888.
+
+### Solo Sales agreement schedule clarity (release candidate, 2026-09-03)
+
+The Sales agreement detail now includes the recorded renewal date, or an explicit Not stated / Not applicable value. Start, renewal and end are calendar dates and retain their recorded day across timezones. This is read-only presentation over the existing agreement source; no payment, Catalog, role or cross-workspace change. See `docs/delivery/solo-sales-agreement-schedule.md` for scope, acceptance and separated proof. Authenticated browser and production proof remain owed until recorded.

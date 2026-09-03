@@ -772,3 +772,33 @@ describe("Sales operations — the money boundary is structural, not a paragraph
     expect(migrationCode).toMatch(/SET search_path TO 'public', 'pg_temp'/);
   });
 });
+
+// Recorded agreement dates are calendar dates, not timestamp events.
+describe('agreement schedule detail', () => {
+  afterEach(() => vi.restoreAllMocks());
+  it.each([
+    ['recurring', '2026-10-15', 'Oct 15, 2026'],
+    ['recurring', null, 'Not stated'],
+    ['one_time', null, 'Not applicable'],
+  ])('shows dates for %s with renewal %s', (termKind, renewsOn, renewalText) => {
+    const Formatter = Intl.DateTimeFormat;
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function (locale, options) { return       new Formatter('en-US', { timeZone: 'America/Los_Angeles', ...options }); });
+    harness.agreements.clients = [{ id: 'c1', name: 'Example client' }];
+    harness.agreements.agreements = [{
+      id: 'a1', contactId: 'c1', offerId: 'o1', status: 'draft', termKind,
+      agreedAmountMinor: null, catalogSnapshotMinor: null,
+      startsOn: '2026-09-15', renewsOn, endsOn: '2026-11-15',
+    }];
+    renderAt('/solo/42/growth/sales');
+    const row = host.querySelector('[aria-label="Agreements and retainers"] button') as HTMLButtonElement;
+    act(() => row.click());
+    const text = document.querySelector('[role="dialog"]')?.textContent ?? '';
+    expect(text).toContain('Sep 15, 2026');
+    expect(text).toContain('Nov 15, 2026');
+    expect(text).toContain(`Renews${renewalText}`);
+    expect(text).toContain('not an invoice, a charge, or a payment record');
+    expect(harness.agreements.saveAgreement).not.toHaveBeenCalled();
+    expect(harness.agreements.setAgreementStatus).not.toHaveBeenCalled();
+    expect(harness.offers.saveOffer).not.toHaveBeenCalled();
+  });
+});

@@ -278,3 +278,5 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 zero gaps** (completeness-audited this pass) — plus a codebase feature inventory (`codebase-map.md`) and
 live MCP/Stripe/git recon. If you add or move a doc/route/edge-fn, add its row here (or in
 `codebase-map.md`) in the same commit (§BRAIN.3).*
+
+Sales schedule detail release candidate: `docs/delivery/solo-sales-agreement-schedule.md` records renewal visibility, calendar-date handling, acceptance and proof owed. The Sales-to-Spine disclosure boundary remains `docs/delivery/sales-agreements-source-contract.md`; this change registers no capability.

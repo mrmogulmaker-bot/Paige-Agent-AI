@@ -123,12 +123,12 @@ const CADENCE = {
   year: "Yearly",
 };
 
-function when(value) {
+function when(value, calendarDate = false) {
   if (!value) return "Not recorded";
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "Not recorded"
-    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", ...(calendarDate ? { timeZone: "UTC" } : {}) }).format(date);
 }
 
 /**
@@ -885,8 +885,9 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
         : row.termKind === "installment" && row.installmentsTotal
           ? `${row.installmentsTotal} instalments`
           : "Not applicable"],
-      ["Starts", row.startsOn ? when(row.startsOn) : "Not stated"],
-      ["Ends", row.endsOn ? when(row.endsOn) : "Not stated"],
+      ["Starts", row.startsOn ? when(row.startsOn, true) : "Not stated"],
+      ["Renews", row.termKind === "recurring" ? (row.renewsOn ? when(row.renewsOn, true) : "Not stated") : "Not applicable"],
+      ["Ends", row.endsOn ? when(row.endsOn, true) : "Not stated"],
       ["Notes", row.notes || "None recorded"],
     ],
     note: "What this client agreed to. It is not an invoice, a charge, or a payment record — the "
