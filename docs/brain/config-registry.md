@@ -141,6 +141,8 @@ wiring an Enterprise checkout.
 | `we_1U2NB0LUcYKxolNaxGCRBI0y` | **enabled** | "production webhook (secret handed to Supabase `STRIPE_WEBHOOK_SECRET`)"; core checkout/subscription/invoice + `charge.refunded` events |
 | `we_1U2MDCLUcYKxolNaPHAi9mYk` | **disabled** | broader event set (customer/billing/account/plan/invoice.*) |
 
+**Billing P0 verification, 2026-09-03:** production secret-name metadata confirms `STRIPE_SECRET_KEY` present and `STRIPE_SECRET_KEY_V2` absent; both webhook secret names present. Values were never accessed. Presence does not prove valid provider credentials or test/live account alignment. Authenticated Mogul Maker Academy setup failed at the provider-attempt stage. [Current repair and proof status](../delivery/billing-payment-setup-p0.md); do not presume a missing legacy key is the cause.
+
 **Stripe edge secret NAMES** (✅ grep): `STRIPE_SECRET_KEY`, `STRIPE_SECRET_KEY_V2`,
 `STRIPE_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET_V2`, and price-ID env names
 `STRIPE_PRICE_STANDARD`/`_V2`, `STRIPE_PRICE_PREMIUM`/`_V2`, `STRIPE_PRICE_VIP`/`_V2`,

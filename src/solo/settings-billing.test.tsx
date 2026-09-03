@@ -15,7 +15,7 @@
  *    a fresh mount. Plus its delegate variant, its revoke, its cancellation, its refusal, its
  *    retry, its role boundary, and its workspace switch.
  */
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SoloBillingView } from "./settings-billing";
@@ -23,6 +23,7 @@ import { SoloBillingView } from "./settings-billing";
 const context = vi.hoisted(() => ({ tenantId: "tenant-a", loading: false }));
 const rpc = vi.hoisted(() => vi.fn());
 const invoke = vi.hoisted(() => vi.fn());
+const getUser = vi.hoisted(() => vi.fn());
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -30,7 +31,7 @@ vi.mock("@/hooks/useTenantContext", () => ({
   useTenantContext: () => ({ activeTenantId: context.tenantId, loading: context.loading }),
 }));
 vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { rpc, functions: { invoke } },
+  supabase: { rpc, functions: { invoke }, auth: { getUser } },
 }));
 
 type AuthorityRow = {
@@ -212,6 +213,8 @@ const usageState = (host: HTMLElement) => host.querySelector("[data-usage-state]
 beforeEach(() => {
   context.tenantId = "tenant-a";
   context.loading = false;
+  window.sessionStorage.clear();
+  getUser.mockReset().mockResolvedValue({ data: { user: { id: "user-a" } }, error: null });
   rpc.mockReset();
   invoke.mockReset();
   invoke.mockResolvedValue({ data: null, error: null });
@@ -588,15 +591,17 @@ describe("plan & usage — access state is independent of provider readiness (R1
     expect(text(host)).toContain("Not set up yet");
   });
 
-  it("shows a connected payment method's brand and last 4 when one is real", async () => {
+  it("shows connected readiness without card details", async () => {
     world({ status: {
       provider_state: "mapped", payment_method_connected: true,
       payment_method_brand: "Visa", payment_method_last4: "4242",
       payment_method_exp_month: 12, payment_method_exp_year: 2031,
     } });
     const { host } = await render();
-    expect(text(host)).toContain("Visa •••• 4242");
-    expect(text(host)).toContain("exp 12/2031");
+    expect(text(host)).toContain("Connected");
+    expect(text(host)).not.toContain("Visa");
+    expect(text(host)).not.toContain("4242");
+    expect(text(host)).not.toContain("2031");
   });
 
   it("shows real seats/contacts usage, and omits SMS when no meter exists", async () => {
@@ -635,7 +640,7 @@ describe("payment setup — the connect act (item 4)", () => {
     }
   });
 
-  it("offers 'Update payment method' and shows the real masked details once one is connected", async () => {
+  it("offers 'Update payment method' without exposing card details once connected", async () => {
     world({ status: {
       provider_state: "mapped", payment_method_connected: true,
       payment_method_brand: "Visa", payment_method_last4: "4242",
@@ -643,6 +648,9 @@ describe("payment setup — the connect act (item 4)", () => {
     } });
     const { host } = await render();
     expect(setupState(host)).toBe("setup-connected");
+    expect(text(host)).not.toContain("4242");
+    expect(text(host)).not.toContain("Visa");
+    expect(text(host)).not.toContain("2031");
     expect(byText(host, "Update payment method")).toBeTruthy();
   });
 
@@ -672,7 +680,7 @@ describe("payment setup — the connect act (item 4)", () => {
     const { host } = await render();
     await click(byText(host, "Set up payment method"));
     await act(async () => { await Promise.resolve(); });
-    expect(invoke).toHaveBeenCalledWith("platform-billing-connect");
+    expect(invoke).toHaveBeenCalledWith("platform-billing-connect", { body: { expected_tenant_id: "tenant-a", return_state: expect.any(String) } });
     expect(assign).toHaveBeenCalledWith("https://checkout.example/setup");
   });
 
@@ -716,6 +724,37 @@ describe("payment setup — the connect act (item 4)", () => {
     expect(text(host)).toContain("isn't turned on for this workspace yet");
     expect(byText(host, "Set up payment method")).toBeUndefined();
     expect(host.querySelector("[data-setup-durable-refusal]")).toBeTruthy();
+  });
+
+  it("keeps provider outages retryable but withdraws a provider configuration refusal", async () => {
+    for (const reason of ["provider_unavailable", "provider_configuration"]) {
+      world();
+      invoke.mockResolvedValue({ data: { error: reason }, error: null });
+      const { host, root } = await render();
+      await click(byText(host, "Set up payment method"));
+      expect(Boolean(byText(host, "Set up payment method"))).toBe(reason === "provider_unavailable");
+      expect(Boolean(host.querySelector("[data-setup-durable-refusal]"))).toBe(reason === "provider_configuration");
+      await act(async () => root.unmount());
+    }
+  });
+
+  it("settles a thrown status transport failure to a recoverable read error", async () => {
+    world();
+    const normal = rpc.getMockImplementation()!;
+    rpc.mockImplementation((name: string, ...args: unknown[]) => name === "get_workspace_billing_status" ? Promise.reject(new Error("transport unavailable")) : normal(name, ...args));
+    const { host, root } = await render();
+    expect(host.querySelector("[data-setup-state='setup-unreadable']")).toBeTruthy();
+    expect(byText(host, "Retry")).toBeTruthy();
+    await act(async () => root.unmount());
+  });
+
+  it("refuses a status response naming another workspace", async () => {
+    world({ status: { tenant_id: "another-workspace", payment_method_connected: true, workspace_name: "Foreign workspace" } });
+    const { host, root } = await render();
+    expect(text(host)).not.toContain("Foreign workspace");
+    expect(host.querySelector("[data-setup-state='setup-connected']")).toBeNull();
+    expect(host.querySelector("[data-setup-state='setup-unreadable']")).toBeTruthy();
+    await act(async () => root.unmount());
   });
 
   it("keeps the action live after a transient refusal, so a genuine retry is still possible", async () => {
@@ -772,12 +811,151 @@ describe("payment setup — the connect act (item 4)", () => {
     expect(assign).not.toHaveBeenCalled();
   });
 
+  it("ignores an uncorrelated success query and strips it without claiming completion", async () => {
+    window.sessionStorage.clear();
+    Object.defineProperty(window, "location", {
+      value: { assign, search: "?payment_setup=success&payment_setup_state=callback-state", pathname: "/solo/1/settings/billing" },
+      writable: true, configurable: true,
+    });
+    world();
+    const { host } = await render();
+    expect(host.querySelector("[data-setup-return]")).toBeNull();
+  });
+
+  it("retains valid callback correlation across StrictMode effect replay", async () => {
+    Object.defineProperty(window, "location", { value: { assign, search: "?payment_setup=success&payment_setup_state=callback-state", pathname: "/solo/1/settings/billing" }, writable: true, configurable: true });
+    window.sessionStorage.setItem("paige.billing.setup-return", JSON.stringify({ tenantId: "tenant-a", userId: "user-a", state: "callback-state", startedAt: Date.now() }));
+    world();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<StrictMode><SoloBillingView /></StrictMode>));
+    expect(host.querySelector("[data-setup-return='success']")).toBeTruthy();
+    await act(async () => root.unmount());
+  });
+
+  it("drops pending Refresh after a workspace switch while its verification is in flight", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "location", { value: { assign, search: "?payment_setup=success&payment_setup_state=callback-state", pathname: "/solo/1/settings/billing" }, writable: true, configurable: true });
+    window.sessionStorage.setItem("paige.billing.setup-return", JSON.stringify({ tenantId: "tenant-a", userId: "user-a", state: "callback-state", startedAt: Date.now() }));
+    world();
+    const { host, root } = await render();
+    try {
+      await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+      let resolve!: (value: unknown) => void;
+      getUser.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+      await click(byText(host, "Refresh"));
+      context.tenantId = "tenant-b";
+      world({ status: { tenant_id: "tenant-b" }, authority: { tenant_id: "tenant-b" } });
+      await act(async () => root.render(<SoloBillingView />));
+      const reads = rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status").length;
+      await act(async () => resolve({ data: { user: { id: "user-a" } }, error: null }));
+      expect(rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status")).toHaveLength(reads);
+      expect(host.querySelector("[data-setup-return]")).toBeNull();
+      expect(planState(host)).toBe("status-promotional");
+    } finally { await act(async () => root.unmount()); vi.useRealTimers(); }
+  });
+
+  it("refuses a callback from a previous authenticated user in the same workspace", async () => {
+    Object.defineProperty(window, "location", { value: { assign, search: "?payment_setup=success&payment_setup_state=callback-state", pathname: "/solo/1/settings/billing" }, writable: true, configurable: true });
+    window.sessionStorage.setItem("paige.billing.setup-return", JSON.stringify({ tenantId: "tenant-a", userId: "previous-user", state: "callback-state", startedAt: Date.now() }));
+    world();
+    const { host, root } = await render();
+    expect(host.querySelector("[data-setup-return]")).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("stops callback polling when another tab changes the server workspace", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "location", { value: { assign, search: "?payment_setup=success&payment_setup_state=callback-state", pathname: "/solo/1/settings/billing" }, writable: true, configurable: true });
+    window.sessionStorage.setItem("paige.billing.setup-return", JSON.stringify({ tenantId: "tenant-a", userId: "user-a", state: "callback-state", startedAt: Date.now() }));
+    world();
+    const { host, root } = await render();
+    try {
+      expect(host.querySelector("[data-setup-return='success']")).toBeTruthy();
+      world({ authority: { tenant_id: "tenant-b" } });
+      const reads = rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status").length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+      expect(host.querySelector("[data-setup-return]")).toBeNull();
+      expect(rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status")).toHaveLength(reads);
+    } finally { await act(async () => root.unmount()); vi.useRealTimers(); }
+  });
+
+  it("does not accept late callback verification after a local workspace switch", async () => {
+    Object.defineProperty(window, "location", { value: { assign, search: "?payment_setup=success&payment_setup_state=callback-state", pathname: "/solo/1/settings/billing" }, writable: true, configurable: true });
+    window.sessionStorage.setItem("paige.billing.setup-return", JSON.stringify({ tenantId: "tenant-a", userId: "user-a", state: "callback-state", startedAt: Date.now() }));
+    let resolve!: (value: unknown) => void;
+    getUser.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    world();
+    const { host, root } = await render();
+    context.tenantId = "tenant-b";
+    world({ status: { tenant_id: "tenant-b" }, authority: { tenant_id: "tenant-b" } });
+    await act(async () => root.render(<SoloBillingView />));
+    await act(async () => resolve({ data: { user: { id: "user-a" } }, error: null }));
+    expect(host.querySelector("[data-setup-return]")).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("clears the callback banner and cancels polling on a workspace switch", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "location", { value: { assign, search: "?payment_setup=success&payment_setup_state=callback-state", pathname: "/solo/1/settings/billing" }, writable: true, configurable: true });
+    window.sessionStorage.setItem("paige.billing.setup-return", JSON.stringify({ tenantId: "tenant-a", userId: "user-a", state: "callback-state", startedAt: Date.now() }));
+    world();
+    const { host, root } = await render();
+    try {
+      expect(host.querySelector("[data-setup-return='success']")).toBeTruthy();
+      context.tenantId = "tenant-b";
+      world({ status: { tenant_id: "tenant-b" }, authority: { tenant_id: "tenant-b" } });
+      await act(async () => root.render(<SoloBillingView />));
+      const reads = rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status").length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+      expect(host.querySelector("[data-setup-return]")).toBeNull();
+      expect(rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status")).toHaveLength(reads);
+    } finally { await act(async () => root.unmount()); vi.useRealTimers(); }
+  });
+
+  it("ends confirmation polling when the real server status confirms connection", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "location", { value: { assign, search: "?payment_setup=success&payment_setup_state=callback-state", pathname: "/solo/1/settings/billing" }, writable: true, configurable: true });
+    window.sessionStorage.setItem("paige.billing.setup-return", JSON.stringify({ tenantId: "tenant-a", userId: "user-a", state: "callback-state", startedAt: Date.now() }));
+    world();
+    const { host, root } = await render();
+    try {
+      world({ status: { provider_state: "mapped", payment_method_connected: true } });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+      expect(host.querySelector("[data-setup-return]")).toBeNull();
+      expect(host.querySelector("[data-setup-state='setup-connected']")).toBeTruthy();
+      const reads = rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status").length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+      expect(rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status")).toHaveLength(reads);
+    } finally { await act(async () => root.unmount()); vi.useRealTimers(); }
+  });
+
+  it("stops bounded polling with an honest pending state and supports refresh", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "location", { value: { assign, search: "?payment_setup=success&payment_setup_state=callback-state", pathname: "/solo/1/settings/billing" }, writable: true, configurable: true });
+    window.sessionStorage.setItem("paige.billing.setup-return", JSON.stringify({ tenantId: "tenant-a", userId: "user-a", state: "callback-state", startedAt: Date.now() }));
+    world();
+    const { host, root } = await render();
+    try {
+      await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+      expect(host.querySelector("[data-setup-return='pending']")).toBeTruthy();
+      const reads = rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status").length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+      expect(rpc.mock.calls.filter((c) => c[0] === "get_workspace_billing_status")).toHaveLength(reads);
+      world({ status: { provider_state: "mapped", payment_method_connected: true } });
+      await click(byText(host, "Refresh"));
+      expect(host.querySelector("[data-setup-return]")).toBeNull();
+    } finally { await act(async () => root.unmount()); vi.useRealTimers(); }
+  });
+
   it("shows a 'confirming' banner on a successful redirect return, and polls the real status read rather than trusting the URL alone", async () => {
     context.tenantId = "tenant-a";
     Object.defineProperty(window, "location", {
-      value: { assign, search: "?payment_setup=success", pathname: "/solo/1/settings/billing" },
+      value: { assign, search: "?payment_setup=success&payment_setup_state=callback-state", pathname: "/solo/1/settings/billing" },
       writable: true, configurable: true,
     });
+    window.sessionStorage.setItem("paige.billing.setup-return", JSON.stringify({ tenantId: "tenant-a", userId: "user-a", state: "callback-state", startedAt: Date.now() }));
     // history.replaceState is real in jsdom and harmless to call.
     world();
     const { host } = await render();
@@ -793,9 +971,10 @@ describe("payment setup — the connect act (item 4)", () => {
   it("shows a neutral 'cancelled' banner and claims no change on a cancelled redirect return", async () => {
     context.tenantId = "tenant-a";
     Object.defineProperty(window, "location", {
-      value: { assign, search: "?payment_setup=cancelled", pathname: "/solo/1/settings/billing" },
+      value: { assign, search: "?payment_setup=cancelled&payment_setup_state=callback-state", pathname: "/solo/1/settings/billing" },
       writable: true, configurable: true,
     });
+    window.sessionStorage.setItem("paige.billing.setup-return", JSON.stringify({ tenantId: "tenant-a", userId: "user-a", state: "callback-state", startedAt: Date.now() }));
     world();
     const { host } = await render();
     expect(host.querySelector("[data-setup-return='cancelled']")).toBeTruthy();
