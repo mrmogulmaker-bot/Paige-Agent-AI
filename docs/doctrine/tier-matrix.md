@@ -2105,6 +2105,17 @@ no-membership paths all unchanged). `tenant-product-upsert` (the legacy `/admin/
 panel's write path) has the same missing check and is a SEPARATE seam, deliberately out of this
 hotfix's scope — flagged, not fixed.
 
+**Persisted apply — CONFIRMED on production 2026-09-03**, from real queries after merge `2240d066`
+(PR #871), never from the pipeline reporting success:
+
+```
+select version from supabase_migrations.schema_migrations where version = '20261131000000';
+→ 20261131000000
+
+pg_get_functiondef(save_solo_offer)        LIKE '%Solo workspaces only%'  →  true
+pg_get_functiondef(set_solo_offer_status)  LIKE '%Solo workspaces only%'  →  true
+```
+
 | Tier | Can write an offer | Why |
 |---|---|---|
 | Platform operator (God) | ✗ refused, always | Was "refused unless also a tenant member" — now refused unconditionally unless that membership is on a Solo tenant, because the new tier guard runs regardless of who the caller is. An operator with a real owner/admin row on an Agency/sub-account/Enterprise tenant is now refused where they previously were not. |
