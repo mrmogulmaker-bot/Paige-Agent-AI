@@ -210,19 +210,27 @@ as `owner_staff` through the caller's JWT) and `configure_tenant_pipeline` (file
 **every** insert or update of `internal_bookings`, but which writers carry a JWT subject decides
 whether the gate runs:
 
-**The deciding fact is the EXECUTE grant, not whether something is an RPC.** A function granted only
-to `service_role` cannot carry a staff caller at all, so it can never reach the gate:
+**Do not try to enumerate the writers. The set is OPEN, and that is the finding.** Verified on
+production: `authenticated` holds **INSERT and UPDATE directly on `internal_bookings`**
+(`has_table_privilege` both true, 5 RLS policies), and **all four** booking RPCs are
+authenticated-executable — `create_internal_booking`, `admin_set_booking_status`,
+`cancel_internal_booking`, `reschedule_internal_booking`.
 
-| Writer of `internal_bookings` | EXECUTE granted to | Subject | Trigger reaches the gate? |
-|---|---|---|---|
-| **`create_internal_booking`** | `authenticated, service_role` | the authenticated caller | **yes when staff call it** |
-| **`admin_set_booking_status`** | `authenticated, service_role` — called from the **browser** at `src/pages/admin/CalendarAdmin.tsx:174` and `src/components/tenant-calendar/useSoloCalendar.ts:726` | the signed-in staff user | **yes — this is the live staff path** |
-| `create_class_booking`, `reschedule_class_booking` | **`service_role` only** | service role | no — a staff caller cannot execute them |
-| `booking-manage`, `public-booking` (edge functions) | n/a — service-role `admin` client | service role | no — `auth.uid()` is NULL |
+So any authenticated caller RLS permits — through an RPC, or by writing the table directly through
+the Data API — fires this trigger with their own subject. There is no closed list of callers to
+enumerate, and three successive attempts to write one here were each incomplete.
 
-So the authenticated staff paths into the trigger are **`create_internal_booking`** and
-**`admin_set_booking_status`**. A fix proof that exercises the edge functions, or the two
-`*_class_booking` RPCs, tests paths where the gate never runs and would miss the regression entirely.
+**The rule that replaces the list:**
+
+> **Every authenticated write to `internal_bookings` reaches the `has_any_role` gate.** Only
+> service-role writers (`booking-manage`, `public-booking`, and the `service_role`-only
+> `create_class_booking` / `reschedule_class_booking`) skip it, because `auth.uid()` is NULL there.
+
+**What that means for a #824 fix, and it is the load-bearing consequence:** the proof belongs at the
+**trigger**, not at a list of call sites. A proof that walks named callers can always be defeated by
+the caller nobody listed — including a direct table write that no TypeScript in this repository
+performs today but the grant permits. Prove that `emit_booking_rail` still records under a staff
+subject after the gate changes, and the caller set stops mattering.
 
 **And this path files a mismatched attribution, which is worth knowing before anyone "fixes" it.**
 `v_actor := CASE WHEN p_actor_type IN ('owner_staff','client') THEN v_uid ELSE NULL END`, and the
