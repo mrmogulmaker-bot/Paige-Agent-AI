@@ -111,9 +111,34 @@ function Catalog({ data, setDetail, initialType }) {
   </section>;
 }
 
+/**
+ * Client billing — what the TENANT charges ITS OWN customers.
+ *
+ * Moved here from Solo Settings → Billing on the owner's instruction (2026-09-03). Billing is the
+ * platform billing the tenant; what a tenant charges its own customers is a different direction of
+ * money entirely and belongs on the tenant's own commercial surface. It is stated rather than built:
+ * §38 keeps Paige out of the merchant-of-record position for a tenant→client charge, so the money
+ * leg runs on the tenant's own processor and nothing on this surface can be wired to it yet.
+ */
+function ClientBillingBoundary() {
+  return <div className="campaigns-state">
+    <TruthTag state="UNAVAILABLE"/>
+    <h2>Billing your own clients</h2>
+    <p>
+      What you charge your own clients runs on your own payment processor. Nothing here collects it,
+      holds it, or reports it yet — and Paige is never the merchant of record for money your clients
+      pay you.
+    </p>
+    <p>
+      What this <em>workspace</em> pays the platform is a separate thing, and it lives in
+      Settings → Billing.
+    </p>
+  </div>;
+}
+
 function Sales({ data, setDetail }) {
   const routed = data.submissions.filter((row)=>row.contactId||row.dealId);
-  return <section className="campaigns-surface"><SurfaceHead truthKey="sales" title="Routed capture activity" description="Recorded contact and deal references only—never estimated revenue or campaign attribution."/><StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></section>;
+  return <section className="campaigns-surface"><SurfaceHead truthKey="sales" title="Routed capture activity" description="Recorded contact and deal references only—never estimated revenue or campaign attribution."/><ClientBillingBoundary/><StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></section>;
 }
 
 function PipelineStageRow({ stage, index, stages, pipeline, canManage, busy, save }) {

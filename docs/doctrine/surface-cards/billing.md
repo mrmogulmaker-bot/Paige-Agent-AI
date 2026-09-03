@@ -37,8 +37,12 @@ and can complete exactly one billing act: **naming who receives this workspace's
 (a primary billing contact, and an optional delegate). Plan, price, renewal, invoices, payment
 method, allowance and add-ons are all still unavailable, each saying why.
 
-**Not this surface's job:** what the owner charges their own customers. That is Sales (client
-billing, §197 LAYER 2, tenant's own processor per §38).
+**Not this surface's job:** what the owner charges their own customers. That is **Campaigns →
+Sales** (client billing, §197 LAYER 2, tenant's own processor per §38). Foundation C originally
+carried a "What you charge your clients" pointer card here; the owner moved it to Sales on
+2026-09-03, because Billing is one direction of money only — the platform billing this workspace —
+and a card about the other direction sitting on this surface invited exactly the confusion the
+boundary exists to prevent. It renders on `Campaigns › Sales` as the `ClientBillingBoundary` block.
 
 ## Tenant data / domain owner
 

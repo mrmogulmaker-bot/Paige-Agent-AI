@@ -1853,7 +1853,7 @@ no_billing_account`. R13 binds: absence of a record is never inferred as a promo
 | Billing contacts and notices | refusal state with its reason | `billing_not_applicable` | `billing_not_applicable` | ✓ designate / revoke, and the list | the refusal is rendered as a refusal, never as "there are none" | `billing_not_applicable` | `billing_workspace_owner_only` | — |
 | Candidate list (`get_solo_team_workspace`) | not read | not read | not read | read ONLY when `can_manage_billing` | **not read** (§9 least privilege) | not read | not read | — |
 | Usage & limits | shown (`UNAVAILABLE`) | shown | shown | shown | shown | shown | shown | — |
-| Client-billing pointer | shown | shown | shown | shown | shown | shown | shown | — |
+| Client-billing pointer | **moved to Campaigns › Sales** (owner, 2026-09-03) — Billing is one direction of money only | moved | moved | moved | moved | moved | moved | — |
 
 **How each row above is evidenced, so a reader can tell proof from inference (§13).** The Solo Owner
 and Solo Admin/Member columns are **rendered** (`scripts/live-drive/settings-billing-drive.mjs`,
