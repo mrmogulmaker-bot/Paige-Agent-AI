@@ -700,7 +700,10 @@ function moneyFromCents(cents: number): string {
 function providerFieldsFrom(status: WorkspaceBillingStatus): ReadonlyArray<{ label: string; value: string }> {
   const rows: Array<{ label: string; value: string }> = [];
   if (status.providerState === "not_created") {
-    rows.push({ label: "Provider billing account", value: "Not set up yet — no provider account exists for this workspace" });
+    // Owner, 2026-09-03 hotfix: this used to read as a flat dead end sitting next to a "Set up
+    // payment method" button, which read as contradictory. It is a readiness condition, not a
+    // block — the button below is exactly how it gets resolved, so it says so.
+    rows.push({ label: "Provider billing account", value: "Not set up yet — use “Set up payment method” below to create one" });
   } else if (status.providerState === "ambiguous") {
     rows.push({ label: "Provider billing account", value: "Needs a platform review before it can be shown" });
   } else if (status.providerState === "mapped") {
@@ -948,9 +951,22 @@ export const PAYMENT_SETUP_REFUSAL_COPY: Record<string, string> = {
   owner_only: "Payment setup is managed by the workspace owner. Ask them to set it up.",
   billing_account_ambiguous: "This workspace's billing records need a platform review before payment setup can proceed. Nothing about your access has changed.",
   billing_account_unresolvable: "The payment provider could not open a setup page for this workspace. The attempt was recorded for the platform to review.",
-  needs_config: "Payment setup is not configured for this workspace on the platform side yet.",
+  needs_config: "Payment setup isn't turned on for this workspace yet. This isn't something a retry fixes — the platform has been notified. Nothing about your access or your promotional status has changed.",
   audit_failed: "The platform could not record this request, so setup was not opened. Try again.",
   authority_unreadable: "Your billing permissions could not be read just now. Try again.",
   workspace_changed: "You switched workspaces while setup was opening, so it was not opened.",
   network: "Could not reach the platform. Try again.",
 };
+
+/**
+ * Which refusals a retry genuinely cannot fix (owner brief 2026-09-03 hotfix: "do not present a
+ * fake actionable button" once setup is genuinely unavailable). A click that reaches the server and
+ * comes back with one of these means clicking again hits the exact same wall — so the section
+ * switches to a durably-unavailable state instead of leaving the same button sitting there. Every
+ * other refusal (`audit_failed`, `authority_unreadable`, `network`, `workspace_changed`) is a
+ * transient condition a retry can genuinely clear, so the button stays live for exactly those.
+ */
+export const PAYMENT_SETUP_DURABLE_REFUSALS: ReadonlySet<string> = new Set([
+  "no_active_workspace", "not_applicable_scope", "owner_only",
+  "billing_account_ambiguous", "billing_account_unresolvable", "needs_config",
+]);

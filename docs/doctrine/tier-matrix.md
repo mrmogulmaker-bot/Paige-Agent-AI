@@ -2406,6 +2406,66 @@ of, or alongside, #869's narrower authority-based read is a follow-up integratio
 made by this PR — recorded so a future session sees both contracts exist and knows which one this
 slice answers.
 
+**Hotfix (owner report 2026-09-03): the button did not actually work for MMA.** The owner's live
+test found "Set up payment method" sitting next to "no provider billing account exists" (the plan
+card's honest `not_created` fact) with no click producing a working card-collection page.
+
+**Trace performed, all server-side (no browser-driving tool reached this host from this sandbox —
+Chromium got `ERR_CONNECTION_RESET` against both `paige-agent-ai.vercel.app` and
+`xygzykjyynhzqytbqnzu.supabase.co`'s auth endpoint for a synthetic test login, a pre-documented
+sandbox constraint per `scripts/live-drive/README.md`, not a surface defect):**
+- `get_workspace_billing_authority()` impersonated as BOTH MMA's real owner and a freshly
+  `provision_tenant()`-created test workspace (`test-billing-connect-verification`, account
+  `5139244` — a real, `.invalid`-domain, non-PII test fixture, §63-compliant) resolves identically
+  and correctly: `scope=top_level_solo`, `can_manage_billing=true`, `billing_account_state=absent`
+  — exactly the state `decideConnectAccess` is designed to allow.
+- The deployed `SoloApp-*.js` bundle (fetched directly, 650,553 bytes) contains the real item-4
+  code (`platform-billing-connect`, "Set up payment method") — not a stale chunk.
+- `paige_audit_log` carries **zero rows, platform-wide, ever**, for `platform_billing_connect_*`,
+  `platform_billing_portal_*`, or `platform_subscription_checkout*` — and `platform_billing_accounts`
+  / `tenants.stripe_customer_id` / `platform_subscriptions.stripe_subscription_id` all have **zero
+  real rows platform-wide**. No workspace has ever completed, or been refused from, any Stripe
+  checkout on this platform.
+- **Conclusion, stated as the strength of evidence supports and no stronger:** the code path is
+  correctly built and gated (confirmed identical for an existing promotional workspace and a
+  brand-new one — the "unify new and existing accounts" requirement is structurally already met,
+  since neither ever required a pre-existing `platform_billing_accounts` row; the click itself is
+  what creates the Stripe customer). The most likely remaining blocker is that `STRIPE_SECRET_KEY`
+  (and/or `STRIPE_SECRET_KEY_V2`) has never actually been configured as a live Supabase Edge secret
+  for this project — nothing on the platform has ever needed it to work until this exact click. This
+  is a credential this session cannot read, verify, or fabricate (§34); confirming/setting it is the
+  owner's action, named honestly rather than guessed around.
+
+**What WAS fixed, independent of that open question — a real UX defect the trace surfaced:** the
+"Set up payment method" button stayed clickable after ANY refusal, including a durable,
+retry-cannot-fix one (`needs_config`, `billing_account_unresolvable`) — inviting exactly the dead
+click loop the owner reported. `PAYMENT_SETUP_DURABLE_REFUSALS` (`billing-contract.ts`) now
+withdraws the action after one of those specific refusals, replacing it with a plain, non-actionable
+"not available right now" note — while a genuinely transient refusal (`network`, `audit_failed`,
+`authority_unreadable`) still leaves the button live for a real retry, per the owner's explicit
+"recoverable... with a safe retry" vs. "genuinely unavailable... no fake actionable button"
+distinction. The plan card's `not_created` provider-readiness copy also now points at the action
+below it ("use 'Set up payment method' below to create one") instead of reading as a flat dead end
+beside a button that contradicts it.
+
+**Confirmed unaffected by design, not merely by accident:** neither `decideConnectAccess` (server)
+nor `resolveWorkspacePaymentSetupPresentation` (client) reference `billing_contact_state` or
+`primary_selection_needed` anywhere — the payment-setup flow was never coupled to the dual-primary
+selection-needed condition, satisfying the owner's explicit "make sure ... does not incorrectly
+depend on resolving that duplicate-primary condition" requirement without a code change.
+
+**Evidence.** `npx tsc --noEmit` clean; `npx eslint` clean; 1235/1235 across `src/solo/` (2 new
+failing-first tests: durable refusal withdraws the button, transient refusal keeps it). No migration,
+no edge-function change — this hotfix is `src/solo/` only.
+
+**Honest note on a SEPARATE, unconfirmed anomaly found while diagnosing:** creating the synthetic
+test user via direct SQL insert (never the real signup API) and then calling Supabase Auth's
+password grant against it returned `500 "Database error querying schema"` — inconclusive on its
+own (two real MMA users both signed in successfully earlier the SAME day per `last_sign_in_at`,
+so general login is not broken), most likely an artifact of hand-crafting an `auth.users`/
+`auth.identities` row outside GoTrue's own signup path rather than a platform defect — flagged, not
+diagnosed further, so a future session doesn't have to rediscover it from scratch if it recurs.
+
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
 
 **§66, same commit as the change.** This row was first written while Slice 2A was a draft, and said

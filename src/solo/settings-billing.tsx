@@ -49,8 +49,9 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { Bell, CalendarClock, CircleDollarSign, CreditCard, ExternalLink, RefreshCw, TriangleAlert, Users } from "lucide-react";
 import { Card, NotYours, Outcome, Status, type WriteState } from "./settings-primitives";
 import {
-  PAYMENT_SETUP_REFUSAL_COPY, resolveAiUsagePresentation, resolveBillingPortalPresentation,
-  resolveWorkspaceBillingStatusPresentation, resolveWorkspacePaymentSetupPresentation,
+  PAYMENT_SETUP_DURABLE_REFUSALS, PAYMENT_SETUP_REFUSAL_COPY, resolveAiUsagePresentation,
+  resolveBillingPortalPresentation, resolveWorkspaceBillingStatusPresentation,
+  resolveWorkspacePaymentSetupPresentation,
 } from "./billing-contract";
 import { useWorkspaceAiUsage } from "./data/useWorkspaceAiUsage";
 import { useWorkspaceBillingStatus } from "./data/useWorkspaceBillingStatus";
@@ -128,6 +129,15 @@ function PortalCard({ authority, status, activeTenantId }: { authority: Authorit
   const [portalOutcome, setPortalOutcome] = useState<WriteState>(null);
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupOutcome, setSetupOutcome] = useState<WriteState>(null);
+  // A refusal a retry cannot fix (owner brief 2026-09-03 hotfix): once one of these is hit, the
+  // action button is withdrawn rather than left sitting there inviting a click that will refuse
+  // the exact same way every time. Cleared on a workspace switch, same as every other local act
+  // state on this card — a new workspace deserves its own fresh attempt.
+  const [setupDurablyUnavailable, setSetupDurablyUnavailable] = useState(false);
+  useEffect(() => {
+    setSetupDurablyUnavailable(false);
+    setSetupOutcome(null);
+  }, [activeTenantId]);
   const { openPaymentSetup } = usePlatformBillingConnect(activeTenantId);
 
   const setup = resolveWorkspacePaymentSetupPresentation({
@@ -151,17 +161,26 @@ function PortalCard({ authority, status, activeTenantId }: { authority: Authorit
     {setup.fields.length > 0 && <div className="ss-fields" style={{ marginTop: 9 }}>
       {setup.fields.map((f) => <div className="ss-field" key={f.label}><span>{f.label}</span><strong>{f.value}</strong></div>)}
     </div>}
-    {setup.canAct && <div className="ss-form-actions" style={{ marginTop: 10 }}>
+    {setup.canAct && !setupDurablyUnavailable && <div className="ss-form-actions" style={{ marginTop: 10 }}>
       <button type="button" className="ss-btn" disabled={setupBusy} onClick={async () => {
         setSetupBusy(true); setSetupOutcome(null);
         const result = await openPaymentSetup();
         setSetupBusy(false);
-        if ("reason" in result) setSetupOutcome({ tone: "bad", message: PAYMENT_SETUP_REFUSAL_COPY[result.reason] });
+        if ("reason" in result) {
+          setSetupOutcome({ tone: "bad", message: PAYMENT_SETUP_REFUSAL_COPY[result.reason] });
+          if (PAYMENT_SETUP_DURABLE_REFUSALS.has(result.reason)) setSetupDurablyUnavailable(true);
+        }
       }}>
         {setupBusy ? <RefreshCw className="ss-spin" aria-hidden/> : <CreditCard aria-hidden/>}
         {setupBusy ? "Opening…" : setup.actionLabel}
       </button>
     </div>}
+    {/* Genuinely unavailable, per the owner: no button sitting there implying a retry will help.
+        The Outcome banner just above already names the exact reason; this replaces the action. */}
+    {setup.canAct && setupDurablyUnavailable && <p className="ss-note" data-setup-durable-refusal="true">
+      Payment setup isn't available for this workspace right now. The platform has been notified;
+      nothing about your access or your promotional status has changed.
+    </p>}
     <Outcome state={setupOutcome}/>
   </>;
 

@@ -1460,6 +1460,17 @@ and flagged plan/promotional state and amount-due as absent from it. This PR's
 now supplies both of those fields (policy-bounded — never a full ledger). Which contract Spine's
 actual caller wires to is a follow-up integration decision, not resolved by this PR.
 
+**Hotfix (owner report 2026-09-03): the live click did not work for Mogul Maker Academy.** Full
+trace and the dead-button UX fix recorded in `docs/doctrine/tier-matrix.md`'s copy of this row
+(kept there, §18 one home, rather than duplicated here). Summary: server-side authority, decision
+logic, and the deployed bundle all traced correct — for MMA AND for a freshly `provision_tenant()`
+-created test workspace, proving the flow is already unified between new and existing accounts —
+and platform-wide, forever, zero Stripe checkouts of any kind (platform-billing OR portal) have
+ever completed or been refused. The most likely blocker is a `STRIPE_SECRET_KEY` Edge secret never
+having been configured — a credential this session cannot read or fabricate, named honestly as the
+owner's action rather than guessed around. Independent of that, a real UX defect was fixed: a
+durable (retry-cannot-fix) refusal no longer leaves the action button clickable.
+
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 
 **What it settles.** `docs/architecture/paige-mind-integration-matrix.md` records, per Solo surface,

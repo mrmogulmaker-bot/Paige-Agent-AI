@@ -696,6 +696,49 @@ describe("payment setup — the connect act (item 4)", () => {
     expect(assign).not.toHaveBeenCalled();
   });
 
+  it("withdraws the action after a refusal a retry cannot fix, rather than leaving a dead button (owner hotfix 2026-09-03)", async () => {
+    world({ status: { provider_state: "not_created" } });
+    invoke.mockImplementation((name: string) => {
+      if (name === "platform-billing-connect") {
+        return Promise.resolve({
+          data: null,
+          error: Object.assign(new Error("Edge Function returned a non-2xx status code"), {
+            context: new Response(JSON.stringify({ error: "needs_config" }), { status: 503 }),
+          }),
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+    const { host } = await render();
+    expect(byText(host, "Set up payment method")).toBeTruthy();
+    await click(byText(host, "Set up payment method"));
+    await act(async () => { await Promise.resolve(); });
+    expect(text(host)).toContain("isn't turned on for this workspace yet");
+    expect(byText(host, "Set up payment method")).toBeUndefined();
+    expect(host.querySelector("[data-setup-durable-refusal]")).toBeTruthy();
+  });
+
+  it("keeps the action live after a transient refusal, so a genuine retry is still possible", async () => {
+    world({ status: { provider_state: "not_created" } });
+    invoke.mockImplementation((name: string) => {
+      if (name === "platform-billing-connect") {
+        return Promise.resolve({
+          data: null,
+          error: Object.assign(new Error("Edge Function returned a non-2xx status code"), {
+            context: new Response(JSON.stringify({ error: "audit_failed" }), { status: 500 }),
+          }),
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+    const { host } = await render();
+    await click(byText(host, "Set up payment method"));
+    await act(async () => { await Promise.resolve(); });
+    expect(text(host)).toContain("Try again");
+    expect(byText(host, "Set up payment method")).toBeTruthy();
+    expect(host.querySelector("[data-setup-durable-refusal]")).toBeFalsy();
+  });
+
   it("does not navigate to a URL minted for a different workspace than the one clicked in", async () => {
     world({ status: { provider_state: "not_created" } });
     invoke.mockImplementation((name: string) => {
