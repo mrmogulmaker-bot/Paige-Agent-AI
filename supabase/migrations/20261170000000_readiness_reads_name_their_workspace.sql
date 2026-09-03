@@ -125,8 +125,13 @@ begin
     return;
   end if;
 
-  select * into v_legal from public.tenant_legal_profile where tenant_id = v_tenant;
-  select * into v_meta from public.tenant_setup_business_context_meta where tenant_id = v_tenant;
+  -- Table-qualified: `tenant_id` is now also an OUT parameter of this function (it is in the
+  -- RETURNS TABLE above), so a bare reference here is ambiguous between the column and the variable
+  -- and Postgres refuses at RUNTIME, not at create time.
+  select * into v_legal from public.tenant_legal_profile
+   where tenant_legal_profile.tenant_id = v_tenant;
+  select * into v_meta from public.tenant_setup_business_context_meta
+   where tenant_setup_business_context_meta.tenant_id = v_tenant;
   select coalesce(brand, '{}'::jsonb) into v_brand from public.tenants where id = v_tenant;
 
   v_website := nullif(btrim(coalesce(v_legal.website_url, '')), '');
