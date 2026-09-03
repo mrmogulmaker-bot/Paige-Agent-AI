@@ -55,6 +55,52 @@ Rail's properties (no history, no citation, no attribution, no freshness boundar
 current as of the call). Its `chatBinding`/`mindBinding` are `PARTIAL`: `paige-ai-chat` injects the
 block into every tenant turn's system context, unit-tested, with no authenticated UI drive yet.
 
+The third is **`team.authority`** (2026-09-03, PR **#876**, migration `20261150000000`) — exactly two
+Team-owned facts about the CALLER: `viewer_permission` (the raw `tenant_members.role`) and
+`viewer_is_legal_owner` (`is_tenant_owner(caller, tenant)`, **both arguments**). Same evidence class as
+`business_context.readiness`: a live stateless read, no Rail signal, `chatBinding`/`mindBinding`
+`PARTIAL`.
+
+**Why only two facts.** PAIGE already receives member_count and the invitation list from Team's own
+hydration block, so projecting either again would be a second, separately-computed answer to a settled
+question — and a WRONG one: `get_paige_team_context()`'s `invitation_count` has no status filter, so on
+production tenant `d8a0a880` it reports 2 for a workspace whose two team tokens are one accepted and
+one revoked. That is Team's to fix; this capability declines to shadow it.
+
+**Why two facts and not one.** `get_paige_team_context()` computes permission as
+`is_owner OR role = 'owner' -> 'owner'`, which is wider than the canonical ownership predicate — so a
+single string would mean membership and ownership at once. Measured on production: all 13 active members
+have the two agreeing (7 owner/is_owner=true, 6 admin/is_owner=false, zero divergent rows), so this
+changes no answer today and stops a future divergence from becoming a wrong one.
+
+**Billing-notice eligibility is deliberately NOT in it.** That is a Platform Billing fact about a team
+member, and Billing publishes its own Spine read (`get_billing_spine_evidence`, live via
+`20261140000000`). A capability drawing from `tenant_members` AND `platform_billing_contacts` would blur
+the ownership line inside the registry entry itself.
+
+### Both readiness reads name the workspace they resolved (2026-09-03, PR #876)
+
+A cross-workspace defect found by an independent review, latent on production and structurally certain
+to fire. `get_paige_persona_context()` resolves the conversation's tenant **client-link first**
+(`clients.linked_user_id`), falling back to `current_user_tenant_id()`. So a user who is a linked CLIENT
+of workspace B and a TEAM MEMBER of workspace A holds a conversation scoped to B while both readiness
+reads resolve A — and both Chat call sites gated only on "the persona has SOME tenant".
+
+The Team hydration path never had this hole, because `get_paige_team_context()` RETURNS its tenant and
+`_shared/team-context.ts:71` refuses on mismatch. The two readiness reads did not, so **the binding was
+impossible rather than omitted** — which is why a call-site guard alone could not have fixed it.
+
+Both reads now return the workspace they resolved (`tenant_id` on every row, including refusals), and
+both Chat adapters render nothing when it is not the conversation's. A genuine read FAILURE still
+renders the honest "I can't check" block — the error paths return before the binding — so a failure and
+a mis-scoped answer stay distinct. `get_business_context_readiness` needed a drop-and-recreate to add
+the column; its body was reproduced byte-exactly from the deployed definition (md5
+`676d4c4f7c2096fd866e264f836d1d4f`).
+
+**Severity, measured before fixing:** production carries ZERO rows with `clients.linked_user_id` set, so
+the client-link branch never fires and no user could trigger it. It stops being latent the moment a
+client portal user is linked, which is the product's core purpose (§7).
+
 **RELEASED AND PROVEN ON PRODUCTION 2026-09-03** — PR #864, merge commit `7ad98cff`, migration
 `20261112000000`. This is the class of evidence the table at the top of this file calls
 *production catalog / schema* PLUS a real execution, and it is worth being exact about which

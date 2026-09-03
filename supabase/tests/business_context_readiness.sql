@@ -10,7 +10,7 @@
 -- the role axis explicitly so that class cannot come back silently.
 BEGIN;
 
-SELECT plan(18);
+SELECT plan(20);
 
 -- ── Grant surface (§59 — the grant is never the guard, but it is still the outer boundary) ──
 SELECT ok(
@@ -121,6 +121,15 @@ SELECT ok(
   (SELECT row_to_json(bcr_coach)::text FROM bcr_coach WHERE field_key = 'website')
     !~* '(bcr-a\.invalid|https|consulting|owner@)',
   'no raw value crosses — status and provenance only'
+);
+
+SELECT is(
+  (SELECT count(distinct tenant_id)::integer FROM bcr_coach), 1,
+  'every row names ONE workspace, so a Chat caller can prove the rows are about this conversation'
+);
+SELECT is(
+  (SELECT distinct tenant_id FROM bcr_coach), 'b1000000-0000-0000-0000-000000001111'::uuid,
+  'and it is the workspace the read actually resolved'
 );
 
 -- ── The IDOR probe: a caller with an identity may never steer the tenant by argument ──

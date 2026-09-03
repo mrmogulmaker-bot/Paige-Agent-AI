@@ -131,6 +131,48 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### PAIGE Spine — `team.authority`, and both readiness reads bound to their workspace (2026-09-03)
+
+**Status: PR #876**, migrations `20261150000000` + `20261170000000`. The Spine registry now carries
+**three** capabilities.
+
+**What PAIGE can now accurately know.** Her caller's own **seat role** and **legal ownership of this
+workspace**, as two separate facts, via `public.get_team_authority_readiness()`. Never a name, email,
+user id, member count or invitation count — Team's own block already ships the last two, and a rival
+computation would drift from it (its `invitation_count` has no status filter and reports 2 for a
+workspace with zero outstanding invitations on production today; that is Team's to fix).
+
+**Why two facts.** `get_paige_team_context()` computes permission as `is_owner OR role = 'owner'`,
+wider than the canonical `is_tenant_owner()`, so one string would mean membership and ownership at
+once. All 13 active members on production have the two agreeing, so nothing changes today — it stops
+a future divergence from becoming a wrong answer.
+
+**A cross-workspace defect fixed in the same change, found by independent review.**
+`get_paige_persona_context()` resolves the conversation's tenant **client-link first**, so a user who
+is a linked client of workspace B and a team member of workspace A holds a conversation scoped to B
+while both readiness reads resolve A. Both reads now return the workspace they resolved and both Chat
+adapters render nothing on mismatch. **This also fixed `business_context.readiness`, which shipped
+with the same hole in #864.** Latent — production carries zero rows with `clients.linked_user_id`
+set — and certain to fire once client portal users are linked.
+
+**Still owed:** the authenticated UI drive. Bindings stay `PARTIAL`.
+
+### PAIGE Spine — Connections read Setup for business fields (2026-09-03)
+
+**Status: LIVE on production.** PR #878, merge `8689df61`, migration `20261160000000`.
+`tenant_comms_readiness()` fed Solo Settings → Connections its "business name / website / business
+phone" block from `tenants.brand` alone — the **fourth** consumer of the pointer #864 fixed, missed
+because that sweep enumerated Systems Check *runners* and this is a comms resolver. Mogul Maker
+Academy was being told on its own Connections screen that its website and phone were missing while
+both sat in Setup. **Proven on production**, live function executed as that workspace's real owner:
+`{has_name: true, has_phone: true, has_website: true}` — all three were `false` before. Twelve other
+tenants unchanged.
+
+**Deploy caveat (§32.a):** `deploy-migrations` went red on this merge with a `schema_migrations`
+duplicate-key — Supabase's branching integration had already applied it. Prod is correct and
+verified; the `db-live` tag did not move, so the drift check reports this applied migration as
+unapplied until the next successful run. Recorded on incident #198.
+
 ### PAIGE Spine — `business_context.readiness` LIVE on production (2026-09-03)
 
 **Status: RELEASED.** PR #864, merge `7ad98cff`, migration `20261112000000`. The Spine registry now

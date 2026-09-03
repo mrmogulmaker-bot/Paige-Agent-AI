@@ -1,5 +1,27 @@
 # Decision Log — chronological one-liners
 
+- **RELEASED to production: `tenant_comms_readiness()` reads Setup (2026-09-03, PR #878, merge `8689df61`, migration `20261160000000`)** —
+  the FOURTH consumer of the pointer #864 fixed, found only by enumerating what functions READ rather
+  than what they are named. Solo Settings → Connections was telling Mogul Maker Academy its website
+  and business phone were missing while both sat in Setup. Function reproduced byte-exactly from the
+  deployed definition (md5 `fe1374e294534e24558161133dd2af03`) before patching, so the diff is
+  provably one declaration, one read, three booleans. **Proven live** as that workspace's real owner:
+  `{has_name: true, has_phone: true, has_website: true}`, all three previously `false`; twelve other
+  tenants byte-identical. A legacy `tenants.brand` fallback is used HERE (presence booleans) but not
+  in #864 (provenance claims), so the open owner decision on the two legacy-only workspaces stands.
+  **Deploy note:** `deploy-migrations` went red on a `schema_migrations` duplicate key because
+  Supabase branching had already applied it; prod verified correct, `db-live` left stale so the drift
+  check now under-reports. Diagnosed on incident #198.
+
+- **Spine capability 3, `team.authority`, plus a cross-workspace binding fix for BOTH readiness reads (2026-09-03, PR #876)** —
+  two facts kept apart that `get_paige_team_context()` collapses (`is_owner OR role = 'owner'` is
+  wider than `is_tenant_owner()`). Independent review then found that
+  `get_paige_persona_context()` resolves the conversation's tenant client-link first, so a user who
+  is a client of B and a member of A could have A's facts asserted inside B's conversation — a hole
+  that ALSO shipped live in #864. Both reads now name the workspace they resolved; both adapters
+  render nothing on mismatch. Latent (zero `clients.linked_user_id` rows on prod) and certain to fire
+  once client portal users are linked. Mutation-proven: removing the binding turns 6 of 23 tests red.
+
 - **RELEASED to production: `business_context.readiness`, the Spine's 2nd capability and its 1st workspace-level one (2026-09-03, PR #864, merge `7ad98cff`, migration `20261112000000`)** —
   merged under explicit owner Gate 2 authorization, all 7 checks green. `deploy-migrations` and
   `deploy-edge-functions` both succeeded; `paige-ai-chat`, `systems-check-run-change`,
