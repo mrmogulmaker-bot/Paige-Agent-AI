@@ -1977,6 +1977,47 @@ Still owed: §32.c authenticated browser drive of the Checkout round-trip (no br
 in this session); payment-method removal (deliberately out of scope, no removal seam exists yet);
 independent adversarial review (post-release audit per the brief, not a merge blocker).
 
+## 2026-09-03 — Payment-connect hotfix: dead-button fix shipped; root cause narrowed to a likely missing Stripe secret
+
+Owner's live test of #870's "Set up payment method" on Mogul Maker Academy found it didn't
+actually work — a real production gap, treated as an immediate hotfix per explicit instruction, not
+left as Proof Owed.
+
+Traced everything reachable without a browser (headless Chromium got `ERR_CONNECTION_RESET`
+against both the Vercel app host and Supabase's auth endpoint from this sandbox — a pre-documented
+constraint, not a new finding): `get_workspace_billing_authority()` resolves correctly and
+identically for MMA's real owner AND for a freshly `provision_tenant()`-created test workspace
+(`test-billing-connect-verification`, tenant `1c7869ec-05be-4b86-8bca-9bbeecd4557f`, account
+`5139244`, user `2426d036-b38e-45c1-a797-ad727d91e761` — a real, non-PII, `.invalid`-domain test
+fixture created via the actual production signup RPC, left in place per §63's sanctioned
+`test-tenant-*-verification` pattern for future diagnostic use). The deployed bundle carries the
+real code. Decision logic correctly allows the click. And platform-wide, forever, zero rows exist
+in `paige_audit_log` for `platform_billing_connect_*`/`platform_billing_portal_*`, and zero real
+Stripe customer ids exist anywhere in `platform_billing_accounts`/`tenants`/`platform_subscriptions`
+— nobody, ever, has completed or been refused a platform-billing Stripe checkout on this project.
+
+That is the strongest evidence available without a live credential-backed reproduction, and it
+points at `STRIPE_SECRET_KEY` (possibly also `STRIPE_SECRET_KEY_V2`) never having been configured
+as a live Supabase Edge secret — never provably confirmed (this session cannot read secret values,
+by design), but the most likely explanation consistent with every other signal. This is a
+credential gap, not a code defect, and confirming/setting it is the owner's action.
+
+Independent of that open question, the trace surfaced a real, fixable UX defect: any refusal — even
+a durable, retry-proof one like `needs_config` — left the SAME clickable button sitting there,
+which is exactly the dead-click loop the owner described. Fixed: `PAYMENT_SETUP_DURABLE_REFUSALS`
+withdraws the action after a durable refusal (`needs_config`, `billing_account_unresolvable`, and
+the pre-click-only scope refusals) and replaces it with a plain unavailable note, while transient
+refusals (`network`, `audit_failed`, `authority_unreadable`) keep the button live for a genuine
+retry. The plan card's "provider account not yet created" copy now points at the action that
+resolves it instead of reading as a contradiction next to it. `src/solo/` only — no migration, no
+edge-function change.
+
+**A process note worth keeping:** attempting to mint a real login for the synthetic test user via
+direct SQL (bypassing the real signup API entirely) returned a GoTrue `"Database error querying
+schema"` — plausibly just an artifact of hand-crafting `auth.users`/`auth.identities` rows outside
+GoTrue's own write path, since two real MMA users both signed in successfully the same day. Left
+unresolved and flagged rather than chased further, so it isn't silently lost if it recurs.
+
 ## 2026-09-03 — tenant-product-upsert: the same Catalog Solo-only gap, on the legacy writer (same-day follow-up)
 
 Owner-authorized follow-up to the `save_solo_offer`/`set_solo_offer_status` tier-guard hotfix
