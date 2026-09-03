@@ -60,8 +60,8 @@ export const tierOfLevel=g=>g==null?null:g>=.6?'green':g>=.34?'amber':'red';
  * enabled action kinds routed to the desk · `acts` are the platform's own labels for those kinds.
  * There is no `conf` and no `trend`: nothing produces either.
  */
-export const useTrustDepartments=()=>{
- const t=useSoloTrust();
+export const useTrustDepartments=(accountEpoch)=>{
+ const t=useSoloTrust(accountEpoch);
  return React.useMemo(()=>({
   loading:t.loading,
   configured:t.configured,
@@ -76,8 +76,8 @@ export const useTrustDepartments=()=>{
 };
 
 /** slug -> derived platform-default level (or null). Kept as a map so existing call sites index it. */
-export const useTrust=()=>{
- const{depts}=useTrustDepartments();
+export const useTrust=(accountEpoch)=>{
+ const{depts}=useTrustDepartments(accountEpoch);
  return React.useMemo(()=>Object.fromEntries(depts.map(d=>[d.id,d.g])),[depts]);
 };
 
@@ -433,7 +433,7 @@ return <div className="fade-in" style={{display:'grid',gap:16}}>
 <span style={{fontSize:11.5,fontWeight:600,color:laneCol[a.lane]}}>{laneCopy[a.lane]}</span></div>)}
 {!d.acts.length&&<div className="sub" style={{padding:'12px 20px'}}>No enabled action types are routed to this department, so it has no default policy to show.</div>}</div></div></div>};
 
-export const TrustCompass=()=>{
+export const TrustCompass=({accountEpoch}={})=>{
 const trust=useTrust();
 const[sel,setSel]=React.useState(null);
 const[flow,setFlow]=React.useState(null);
@@ -448,7 +448,7 @@ const live=React.useMemo(()=>activity.items.map(a=>({
 // An empty feed and a failed read look identical if you let them, and the second one tells the
 // operator that Paige has done nothing (§13). They are kept apart here and said apart below.
 const liveState=activity.loading?'loading':activity.error?'error':live.length?'ok':'empty';
-const{depts,configured:trustConfigured}=useTrustDepartments();
+const{depts,configured:trustConfigured}=useTrustDepartments(accountEpoch);
 const tot=depts.reduce((a,d)=>[a[0]+d.w[0],a[1]+d.w[1],a[2]+d.w[2]],[0,0,0]);
 const all=tot[0]+tot[1]+tot[2];
 const auto=all?Math.round(tot[0]/all*100):null,dr=all?Math.round(tot[1]/all*100):null;

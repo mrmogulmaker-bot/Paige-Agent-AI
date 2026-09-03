@@ -2,6 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import fs from "node:fs";
+import path from "node:path";
 
 /**
  * A green typecheck is not a working render (§32), and this surface is the one where that gap
@@ -207,5 +209,34 @@ describe("TrustCompass canvas — it runs, not merely compiles", () => {
     expect(() => draw(<TrustCompass />)).not.toThrow();
     harness.value = { loading: true, configured: false, departments: [], bySlug: {}, error: null };
     expect(() => draw(<TrustCompass />)).not.toThrow();
+  });
+});
+
+/**
+ * ACCOUNT SWITCH.
+ *
+ * `SoloApp` renders the screen host as `<main key={route}>` — keyed by ROUTE, not by account — so
+ * switching accounts while sitting on the compass does NOT remount it. Every sibling on that line
+ * carries the epoch (`Analytics2 accountEpoch={activeTenantId}`, `useCommandCenter`'s
+ * `usePaigeDeptStatus(activeTenantId)`); `TrustCompass` did not, so the guard in
+ * `usePaigeDeptStatus` — the one whose own comment says it "prevents React from exposing the
+ * previous epoch for even one commit" — was never engaged for this surface.
+ */
+describe("the epoch reaches the compass, so an account switch cannot show the last account", () => {
+  it("SoloApp passes accountEpoch to TrustCompass, as it does to its siblings", () => {
+    const app = fs.readFileSync(path.join(process.cwd(), "src/solo/SoloApp.tsx"), "utf8");
+    expect(app).toContain("compass:<TrustCompass accountEpoch={activeTenantId}/>");
+    // The host is keyed by route, which is WHY the prop is required. If this ever becomes keyed by
+    // the account, the prop is belt-and-braces rather than load-bearing — and this assertion is
+    // the place that says so.
+    expect(app).toContain("<main key={route}");
+  });
+
+  it("the hook chain forwards the epoch rather than dropping it", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/solo/compass.tsx"), "utf8");
+    expect(src).toContain("useTrustDepartments=(accountEpoch)");
+    expect(src).toContain("useSoloTrust(accountEpoch)");
+    expect(src).toContain("TrustCompass=({accountEpoch}");
+    expect(src).toContain("useTrustDepartments(accountEpoch)");
   });
 });
