@@ -184,6 +184,12 @@ describe("billing plan presentation — precedence", () => {
       }
       const portal = resolveBillingPortalPresentation({ scope: "top_level_solo", canManageBilling: true, billingAccountState: state });
       expect(portal.canOpen, `portal ${state}`).toBe(state === "mapped");
+      // Failing closed is not the same as saying something TRUE: only an `absent` mapping may
+      // assert that no billing account is linked. The gate alone let the else-arm claim it for a
+      // state nobody modelled, contradicting the plan card on the same screen.
+      if (state !== "absent" && state !== "mapped") {
+        expect(portal.body, `portal body ${state}`).not.toContain("has no billing account linked");
+      }
     }
   });
 
@@ -264,6 +270,14 @@ describe("manage billing entry", () => {
       expect(r.canOpen).toBe(false);
       expect(r.body.length).toBeGreaterThan(40);
     }
+  });
+
+  it("does not claim 'no billing account' for a mapping state it does not recognise", () => {
+    const r = resolveBillingPortalPresentation({ scope: "top_level_solo", canManageBilling: true, billingAccountState: "pending_review" as BillingAccountState });
+    expect(r.state).toBe("portal-unavailable");
+    expect(r.canOpen).toBe(false);
+    expect(r.body).toContain("does not recognise");
+    expect(r.body).not.toContain("has no billing account linked");
   });
 
   it("offers the act only to an owner of a mapped top-level Solo workspace", () => {

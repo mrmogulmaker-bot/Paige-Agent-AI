@@ -1105,7 +1105,7 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
-### Billing Foundation C — the Solo Billing screen (PR #833, **BUILT, NOT MERGED — no production write of any kind**)
+### Billing Foundation C — the Solo Billing screen (PR #833, **RELEASED — merged `11997dac` 2026-09-03; no production write of any kind**)
 
 **What it is.** Foundation A shipped three seams and no renderer; nothing in `src/` imported the two
 hooks and no surface called `get_workspace_billing_authority()`. Foundation C mounts them at

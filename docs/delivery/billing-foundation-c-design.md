@@ -1,7 +1,13 @@
 # Billing Foundation C — the Solo Billing screen
 
-**Status: BUILT, NOT MERGED (PR #833).** No production write of any kind: no migration, no Stripe
-object, no billing-state mutation, no email. `PLATFORM_BILLING_PORTAL_ENABLED` stays off.
+**Status: RELEASED — merged `11997dac` 2026-09-03 (PR #833)**, under the owner's MVP release
+cadence: functionally complete, ordinary checks green (`verify` + `audit` success on the exact head,
+Vercel deployed, Supabase Preview skipped — the slice carries **no migration**), no merge conflict,
+no outstanding security or tenant-isolation defect.
+
+**Release status: `PARTIAL` / `Authenticated Runtime Proof Owed`.** No production write of any kind
+was made by this slice: no migration, no Stripe object, no billing-state mutation, no email.
+`PLATFORM_BILLING_PORTAL_ENABLED` stays off. The post-release audit backlog is §9.
 
 Consumes: Gate 1 packet (`docs/delivery/platform-billing-gate1-packet.md`, rulings R1–R27) and the
 Foundation A seams (`docs/delivery/billing-foundation-a-design.md`, live as `f455d8a5`).
@@ -222,7 +228,34 @@ A design doc noting the label is gone, and the decision-log entry). No repair wa
 | C8 | **§57** — Connections still renders *"Solo plan · LIVE"* from the same catalogue join this slice disqualifies | disclosed in §8 |
 
 Each of A1–A3 was proven non-vacuous: reverting the fix turns the new test red (1, 2 and 6 tests
-respectively).
+respectively). A **third** round then verified every fix on the merged head and found one more:
+
+| # | Finding | Fix |
+|---|---|---|
+| R1 (LOW) | A3 was fixed on the plan card and left **half-fixed** on the portal card. The `!== "mapped"` gate was applied, but its copy kept only two arms — so an unmodelled mapping state still asserted *"this workspace has no billing account linked to it yet"*, a positive claim that contradicted the plan card a few pixels above. Failing closed is not the same as saying something true, and the test asserted only `canOpen`, never the body | third arm added; the test now asserts the body, not just the button |
+
+Round three also independently confirmed, by walking the precedence: **there is no path by which a
+price or a renewal reaches a caller with `can_view_billing === false`**; that keying the cards adds
+no remount loop, no double-fetch and no lost in-flight act (the portal's `workspace_changed` guard
+lives in the un-keyed hook); that the restored Usage card is byte-identical to the shipped one; and
+that the harness seed-under-store cannot resurrect a deleted row, because `delete` persists an empty
+array and a stored `[]` always wins over the seed.
+
+---
+
+## 9. Post-release audit backlog
+
+Released under the owner's MVP release cadence with these recorded honestly rather than held as
+blockers:
+
+| Item | Status |
+|---|---|
+| Authenticated owner drive on the deployed surface | **Authenticated Runtime Proof Owed.** `curl` reaches prod; the browser cannot (`ERR_CONNECTION_RESET` — the sandbox proxy forwards only tool hosts), and `LIVE_DRIVE_EMAIL`/`LIVE_DRIVE_PASSWORD` are unset. Needs a browser-capable session or the owner's own look |
+| Gate-1 pass on the billing-contacts card | **Owed to Claude Design (§00).** The approved prototype has zero hits for `billing contact` / `delegate` / `designat`. Function is owner-ruled (R18–R27); states and wording were composed here |
+| §57 — Connections still renders "Solo plan · LIVE" from the catalogue join this slice disqualifies | Pre-existing, outside this boundary. Its own slice |
+| `useSoloComms().billing` is now read by nothing | Its three-query fetch still runs on Connections and Setup. Removing it touches two other destinations |
+| `plan-beta` collapsed into `plan-current` | Foundation B must distinguish it when the $74.50 price exists (§7) |
+| `past_due` has no approved wording | Reported as `unsupported_status`; a state and its copy are a Claude Design decision (§00) |
 
 ---
 
