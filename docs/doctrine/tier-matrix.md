@@ -2070,15 +2070,20 @@ landed same-day, this time in the same PR/commit as the row update.)
 
 **What a person can now do.** From an empty catalog, "Add your first offer" opens a slide-over
 editor; a name is the only requirement; any offer-definition field (summary, description, kind,
-etc.) left blank is written as NULL and renders as the honest em-dash rather than an invented
-value. The price is a different object with a different rule: clearing it does not null
-`unit_amount` (non-nullable) — it sets the row `active = false` and leaves the old figures stored,
-so a read that skips inactive rows shows "unstated" for a reason distinct from a genuinely NULL
-offer field (Codex finding, PR #860: the two look identical from the UI but are not the same fact,
-and a future reader of the raw table needs to know that). An existing offer is edited from the
-drawer its row already opens, and moves through draft / active / paused / archived from the same
-place. Archive asks first. The editor carries NO status control: lifecycle sits beside the offer,
-so nobody publishes something by accident while renaming it.
+etc.) left blank is written as NULL — never an invented value — but the on-screen wording is
+per-field, not a uniform mark: the em-dash (`—`) is reserved for an unrecorded *price*
+(`formatMoney`'s `if (!amount) return { text: "—", unstated: true }`); a blank kind reads "Kind not
+stated", a blank summary/description reads "No description written yet.", and the drawer's own
+fields read "Not stated" / "Not recorded" (Codex finding, PR #860 — the prior wording claimed every
+blank field renders as the same em-dash, which only the price column does). The price is a
+different *object* with a different rule on top of that: clearing it does not null `unit_amount`
+(non-nullable) — it sets the row `active = false` and leaves the old figures stored, so a read that
+skips inactive rows shows "unstated" for a reason distinct from a genuinely NULL offer field (the
+two look identical from the UI but are not the same fact, and a future reader of the raw table
+needs to know that). An existing offer is edited from the drawer its row already opens, and moves
+through draft / active / paused / archived from the same place. Archive asks first. The editor
+carries NO status control: lifecycle sits beside the offer, so nobody publishes something by
+accident while renaming it.
 
 | Tier | Can write an offer | Why |
 |---|---|---|
@@ -2103,8 +2108,12 @@ is what a legitimate write is now permitted to do to an existing price.
 carries a `stripe_price_id` or belongs to a deposit/instalment plan — the person sees why as a
 `price_note`, never a silent no-op. `set_solo_offer_status` refuses to publish an offer as `active`
 on a storefront-enabled tenant with no checkout-ready price (unreachable today: 0 storefront
-tenants, fixed anyway per §31). The draft-tenant bug was a frontend fix: the client now sends the
-tenant the form was opened against, not whichever tenant is current when Save fires.
+tenants, fixed anyway per §31) — **except when `price_presentation = 'contact'`**, the deliberate
+"price on application" path: `_next = 'active' AND _row.price_presentation IS DISTINCT FROM
+'contact'` gates the check, so a contact-priced offer activates with no Stripe-linked price at all
+(Codex finding, PR #860 — the prior wording described the refusal as unconditional). The
+draft-tenant bug was a frontend fix: the client now sends the tenant the form was opened against,
+not whichever tenant is current when Save fires.
 
 **Persisted apply — CONFIRMED on production 2026-09-03**, from real queries after `09691d1a`,
 never from the pipeline reporting success:
