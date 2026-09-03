@@ -230,7 +230,7 @@ respectively).
 
 | Class | This slice |
 |---|---|
-| Automated tests | **70 new — 34 contract + 36 driven flow** (counted, not estimated). Full suite **167 files / 2064 tests passed** |
+| Automated tests | **70 new — 34 contract + 36 driven flow** (counted, not estimated). Full suite **168 files / 2076 tests passed** (on the head with `origin/main` merged in) |
 | Static / build | `tsc --noEmit` clean on the new files · `ci:tsc` ratchet **unchanged (13 → 13)** · `npm run build` green · `eslint` clean on every changed file · `lint:tier-features`, `lint:skeleton` pass. `lint:gold` fails on `src/components/dashboard/BusinessCreditDashboard.tsx`, verified **pre-existing on `main`** |
 | Structural / harness render | `scripts/live-drive/settings-billing-drive.mjs` — **116/116**, 4 viewports × 2 palettes + failed-read + read-only. Frames watermarked `HARNESS RENDER · NOT LIVE` in `scripts/live-drive/artifacts/settings-billing/` (gitignored) |
 | Prod reads (grounding, no write) | subscription rows and their metadata · revenue classifications · verified owner/admin counts per top-level workspace · the shipped definitions of `get_workspace_billing_authority`, `get_workspace_billing_contacts`, `get_tenant_platform_subscription`, `get_tenant_revenue_breakdown` and the `tenant_revenue_classification` policy |

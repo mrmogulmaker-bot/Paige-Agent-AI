@@ -1140,7 +1140,7 @@ deleted with no call-out (**§58 — restored**), and **R22 was half-held** — 
 consumed nowhere, harmless today and a leak the moment Foundation B supplies a price, so the plan
 card now refuses a non-viewing Solo member.
 
-**Evidence:** 70 new tests; full suite 167 files / 2064 tests; `ci:tsc` ratchet unchanged; build
+**Evidence:** 70 new tests; full suite 168 files / 2076 tests (with `origin/main` merged in); `ci:tsc` ratchet unchanged; build
 green; **116/116 rendered checks** across 4 viewports × 2 palettes plus failed-read and read-only.
 **OWED:** the authenticated owner drive on the deployed surface (§32.c) — the harness transport is a
 stub; a **Gate-1 pass on the billing-contacts card**, which the approved prototype does not cover
