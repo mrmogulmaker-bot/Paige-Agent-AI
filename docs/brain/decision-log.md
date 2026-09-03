@@ -1,5 +1,16 @@
 # Decision Log — chronological one-liners
 
+- **CORRECTION to the entry below (2026-09-03): PR #852 `759ad8da` shipped this entry and NOT the fix it describes.** The lint
+  change was an uncommitted working-tree edit, lost across a branch switch made to rebuild the
+  frontend for an unrelated production check; the merged commit changed one file,
+  `docs/brain/decision-log.md`. CI was green because the guard file was byte-identical to `main`, so
+  its existing self-test ran and passed and the new cases were absent too. Caught by re-running the
+  classifier against `origin/main` after the squash — the five previously-invisible words still
+  returned zero. **A claim about a change is worth nothing until `git show --stat` on the merged
+  commit is read**; a release whose file list lacks the file the release is about has not happened.
+  The fix is genuinely shipped in the follow-up PR, and the entry below describes it accurately from
+  that point on.
+
 - **The MCP guard's RPC classifier carried its own, shorter removal vocabulary (2026-09-03, follow-up to PR #789 `337510da`)** —
   #789 introduced `REMOVAL_VERB` precisely to end two enumerations of one idea in one file
   (*"Two enumerations of the same idea in one file drift apart, so there is one"*), and then left
