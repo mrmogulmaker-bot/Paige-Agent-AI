@@ -59,8 +59,13 @@
  * card and a rule only one caller can obey is an outage rather than a rule.
  *
  * **This seam carries Channel 1 forward and does not carry Channel 2.** It has no boolean input at
- * all: the only thing that can turn a `confirm` lane into an execution is a successful atomic claim
- * of a server-held proposal. That is deliberate and it is one-directional — the shared path is at
+ * all: the only thing that can turn a `confirm` lane into an execution is a `claimedArgs` that is a
+ * plain object together with a `claimedFor` equal to the declared capability. That is the STRUCTURE
+ * of a redeemed claim, and it is all this module verifies — whether an atomic single-use redemption
+ * actually happened is the adapter's obligation, exactly as the caveat above says. Stating it as
+ * "a successful atomic claim" here described provenance the seam cannot see, which is the same
+ * overstatement this file has now corrected on all four inputs. That is deliberate and it is
+ * one-directional — the shared path is at
  * least as strict as Chat for every action, and stricter for `ordinary` ones. Chat's inline
  * sequence is untouched by this slice, so nothing a person can do today changes; Channel 2 stays a
  * Chat-local tolerance with a known reason, and it does not become the platform's contract.
@@ -209,8 +214,16 @@ export type GovernedCapability = {
  * `claimedArgs` is the entire approval contract, and it mirrors the live mechanism exactly: the
  * caller performs the atomic compare-and-set against the canonical proposal store and hands over
  * what came back. A successful claim IS the stored arguments — there is no separate "it worked"
- * flag to get out of step with them, and therefore no way to execute an approved action with
- * arguments the approval did not carry.
+ * flag to get out of step with them, so this module never HANDS BACK arguments the approval did
+ * not carry.
+ *
+ * ADAPTER MUST dispatch only a `kind: "execute"` decision, and run exactly `decision.args`.
+ * An earlier version of this sentence said there was "no way" to execute an approved action with
+ * other arguments, and the doctrine called it "unrepresentable". Both overstated: this module is
+ * PURE and owns no executor, so an adapter is free to ignore the decision and run its original
+ * `requestArgs`, or to dispatch on a refusal. The sweep that corrected this claim on all four
+ * INPUTS never turned around and asked the same question of the OUTPUT, which is where the rule
+ * is ultimately kept or broken.
  *
  *   undefined  no approval was attempted
  *   null       an approval was attempted and nothing backed it   (fails closed)
@@ -498,8 +511,15 @@ export function decideGovernedExecution(input: {
     return refuse("autonomy_off", "This action is turned off for this workspace.", laneEffective, clamped);
   }
 
-  // 9 — THE CLAIM, read by SHAPE. Done once, before any lane branches on it, so no path can reach
-  // a decision having skipped the check.
+  // 9 — THE CLAIM, read by SHAPE. Done once, before any lane that could EXECUTE branches on it.
+  //
+  // NOT universal, and the earlier "no path can reach a decision having skipped the check" was
+  // false: a genuine read returns at step 6 and an `off` mutation returns just above, both before
+  // this line — so a read carrying `claimedArgs: true` executes rather than being refused
+  // `approval_claim_malformed`. That is harmless, because neither of those paths consults the
+  // claim for anything, and validating it there would refuse callers over a field their decision
+  // never reads. What the check DOES guarantee is the part that matters: no lane that can execute
+  // a mutation reaches its decision without it.
   const claim = readClaim(approval.claimedArgs);
   if (claim.state === "malformed") {
     return refuse("approval_claim_malformed",

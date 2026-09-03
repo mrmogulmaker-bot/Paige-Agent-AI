@@ -79,8 +79,8 @@ asserted two ways, because a property proven only by a test is one a later edit 
 | 5 | Action-risk classification | delegated to `classifyAction` — not re-implemented |
 | 6 | Autonomy floor | one-directional clamp: `auto` on `high` becomes `confirm`; `off` always survives. **The lane's provenance is the adapter's** — the seam reads the value, not the setting. **A genuine read never reaches this step**: step 6 returns first, so a read executes on any lane, including `off` |
 | 7 | Approval-proof validation | a successful atomic claim, or nothing. **There is no boolean input** — but, like point 2, the claim having actually happened is an **adapter obligation the seam cannot verify**. `readClaim` proves the value is a plain object and the execute branch proves `claimedFor` matches; a fabricated `{ claimedArgs, claimedFor }` built from request data passes both |
-| 8 | Stored approved arguments | an approved path runs `claimedArgs`; `requestArgs` is not consulted on it |
-| 9 | Refusal and failure behaviour | **thirteen** typed codes, every one fail-closed (`GOVERNED_REFUSAL_CODES`) |
+| 8 | Stored approved arguments | an approved path RETURNS `claimedArgs`; `requestArgs` is not consulted on it. **Adapter must dispatch only an `execute` decision and run exactly `decision.args`** — a pure module cannot enforce how its result is consumed |
+| 9 | Refusal and failure behaviour | **thirteen** typed codes, every one fail-closed (`GOVERNED_REFUSAL_CODES`). Claim-shape validation is **not universal**: a genuine read and an `off` mutation return before it, so a read carrying `claimedArgs: true` executes rather than being refused. Harmless — neither path consults the claim — but the guarantee is "no lane that can EXECUTE a mutation skips it", not "every malformed value is refused" |
 | 10 | Safe bounded outcome interface | a mutation must NAME an outcome channel or be refused. **The channel's shape is the Rail workstream's and is deliberately not defined here** — and any non-empty string satisfies it, so the adapter must name a channel that actually records |
 | 11 | Auditability | a structured record carrying no arguments and no secrets |
 
@@ -109,8 +109,15 @@ approval-semantics change, which belongs to the Chat build. The seam therefore m
 contract, whose entire shape is: *an atomic claim returns the stored arguments, or null.*
 
 That collapse is also a simplification worth naming. Because a successful claim IS the arguments,
-there is no separate "it worked" flag that can get out of step with them, so "approved, but running
-something else" is **unrepresentable** rather than merely rejected.
+there is no separate "it worked" flag that can get out of step with them, so this seam never HANDS
+BACK "approved, but running something else".
+
+It is not **unrepresentable**, which is what an earlier version of this paragraph claimed. The
+module is pure and owns no executor, so an adapter can ignore `decision.args` and run its own
+`requestArgs`, or dispatch on a refusal — **so "dispatch only an `execute` decision, and run exactly
+`decision.args`" is an adapter obligation like the others, not a property of the type.** Worth
+recording how this one survived: the sweep that corrected exactly this overstatement on all four
+INPUTS never asked the same question of the OUTPUT, where the rule is actually kept or broken.
 
 ## The fail-open this slice shipped and then caught
 

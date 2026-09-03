@@ -90,6 +90,14 @@ function lit(node) { return node && ts.isStringLiteralLike(node) ? node.text : n
  * parser, and so is any future spelling. Recording it (`door: caller.door` inside an object
  * literal) is the single legitimate use, so that shape — and only that shape — is allowed.
  */
+/** A destructuring key's name, seeing through a computed `["door"]` wrapper. */
+function bindingKeyName(node) {
+  if (!node) return null;
+  if (ts.isComputedPropertyName(node)) return lit(node.expression);
+  if (ts.isIdentifier(node)) return node.text;
+  return lit(node);
+}
+
 export function doorBranches(src, fileName = "in-memory.ts") {
   const sf = parse(src, fileName);
   const hits = [];
@@ -97,11 +105,13 @@ export function doorBranches(src, fileName = "in-memory.ts") {
     let isDoorRead = false;
     if (ts.isPropertyAccessExpression(n) && n.name.text === "door") isDoorRead = true;
     if (ts.isElementAccessExpression(n) && lit(n.argumentExpression) === "door") isDoorRead = true;
-    // `const { door } = caller` extracts the same value with no property access at all.
+    // `const { door } = caller` extracts the same value with no property access at all — and so
+    // does `const { ["door"]: d } = caller`, whose propertyName is a COMPUTED name rather than an
+    // identifier or a bare literal. `lit()` does not see through the computed wrapper, so R1 stayed
+    // green while the seam became door-dependent. Measured before fixing: the computed form
+    // returned no hits, the plain form returned one.
     if (ts.isBindingElement(n)) {
-      const src_ = n.propertyName ?? n.name;
-      const nm = src_ && ts.isIdentifier(src_) ? src_.text : lit(src_);
-      if (nm === "door") isDoorRead = true;
+      if (bindingKeyName(n.propertyName ?? n.name) === "door") isDoorRead = true;
     }
     if (!isDoorRead) return;
     // The one permitted use: `door: <this read>` as an object-literal property.
@@ -339,6 +349,13 @@ if (process.argv.includes("--self-test")) {
   check("R1 ternary", doorBranches('const l = caller.door ? "auto" : "confirm";').length, 1);
   check("R1 COMPUTED access (Codex)", doorBranches('if (caller["door"] === "mcp") return x;').length, 1);
   check("R1 computed, single quotes", doorBranches("if (caller['door']) return x;").length, 1);
+  // Codex on 4ed2b276: `const { ["door"]: d } = caller` reads the door and R1 saw nothing, so the
+  // seam could become door-dependent with the guard still green. Measured before fixing: 0 hits
+  // where the plain destructure gave 1.
+  check("R1 destructured door", doorBranches("const { door } = caller; if (door === \"mcp\") return x;").length, 1);
+  check("R1 COMPUTED destructured door (Codex)", doorBranches("const { [\"door\"]: d } = caller; if (d === \"mcp\") return x;").length, 1);
+  check("R1 renamed destructure", doorBranches("const { door: d } = caller; if (d === \"mcp\") return x;").length, 1);
+  check("R1 ignores an unrelated destructured key", doorBranches("const { tenantId } = caller; return tenantId;").length, 0);
   check("R1 allows the audit assignment", doorBranches("const audit = { door: caller.door, decision };").length, 0);
   check("R1 allows a type declaration", doorBranches("export type C = { door: GovernedDoor };").length, 0);
   check("R1 ignores the word in prose", doorBranches('// a different door === ever\nconst a = 1;').length, 0);
