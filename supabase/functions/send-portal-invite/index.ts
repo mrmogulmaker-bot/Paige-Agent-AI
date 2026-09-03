@@ -115,7 +115,9 @@ Deno.serve(async (req) => {
   // Validate the token, then resolve the brand up the parent chain (below).
   const { data: tok } = await admin
     .from("tenant_invite_tokens")
-    .select("tenant_id, revoked_at, expires_at, email, kind")
+    // `id` is new here: it is the handle every later delivery event is matched back to. Without it
+    // a webhook can prove an email was opened but not WHICH invitation it belonged to.
+    .select("id, tenant_id, revoked_at, expires_at, email, kind")
     .eq("token", token)
     .maybeSingle();
   if (!tok || tok.revoked_at || new Date(tok.expires_at as string) <= new Date()) {
@@ -164,7 +166,37 @@ Deno.serve(async (req) => {
   const kind = String((tok as { kind?: string }).kind ?? "consumer");
   const copy = inviteCopy(kind, tenantName);
 
-  if (!RESEND_KEY) return json({ ok: true, join_url: joinUrl, emailed: false });
+  // THE LOG IS THE POINT, so it is written on every outcome — including the two where no email was
+  // attempted at all. An invitation with no row against it is indistinguishable from one whose row
+  // failed to write, and the operator deserves to be told "never sent" rather than shown a blank.
+  const logSend = async (
+    status: "sent" | "failed",
+    messageId: string | null,
+    detail: Record<string, unknown>,
+  ) => {
+    // Never allowed to break the send. A failure to RECORD an email is not a reason to fail an
+    // email that already left, and this runs after the provider call precisely so it cannot.
+    try {
+      await admin.from("email_send_log").insert({
+        template_name: kind === "team" ? "team_invite" : "portal_invite",
+        recipient_email: recipient,
+        message_id: messageId,
+        status,
+        // The real column, not metadata. `email_send_log.tenant_id` already carries an RLS policy,
+        // so scoping the row properly is what keeps one tenant's delivery data away from another's.
+        tenant_id: (tok as { tenant_id?: string }).tenant_id ?? null,
+        sender_account: "platform",
+        metadata: { via: "send-portal-invite", invite_id: (tok as { id?: string }).id ?? null, kind, ...detail },
+      });
+    } catch { /* the email is what matters; the log is best-effort */ }
+  };
+
+  if (!RESEND_KEY) {
+    // Honest: nothing was attempted. Previously this returned `emailed: false` and wrote nothing,
+    // so the screen could not tell "no provider configured" apart from "provider rejected it".
+    await logSend("failed", null, { reason: "no_provider_configured" });
+    return json({ ok: true, join_url: joinUrl, emailed: false, reason: "no_provider_configured" });
+  }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -178,8 +210,19 @@ Deno.serve(async (req) => {
         text: `${firstName ? `Hi ${firstName},` : "Hi there,"}\n\n${copy.textLead}\n\nOpen it: ${joinUrl}\n`,
       }),
     });
-    return json({ ok: true, join_url: joinUrl, emailed: res.ok });
-  } catch (_e) {
-    return json({ ok: true, join_url: joinUrl, emailed: false });
+    // THE BODY WAS BEING THROWN AWAY. Resend answers with `{ id }`, and that id is the ONLY thing
+    // a later delivered/opened/clicked webhook carries to identify this email. Discarding it is why
+    // the platform could never say more than "the POST was accepted".
+    const payload = await res.json().catch(() => ({}));
+    const messageId = (payload as { id?: string })?.id ?? null;
+    await logSend(res.ok ? "sent" : "failed", messageId, {
+      http_status: res.status,
+      ...(res.ok ? {} : { provider_error: (payload as { message?: string })?.message ?? null }),
+    });
+    return json({ ok: true, join_url: joinUrl, emailed: res.ok, messageId });
+  } catch (e) {
+    // A transport failure is not proof the email did not go. It is proof we do not know.
+    await logSend("failed", null, { reason: "transport", detail: e instanceof Error ? e.message : "unknown" });
+    return json({ ok: true, join_url: joinUrl, emailed: false, reason: "transport" });
   }
 });

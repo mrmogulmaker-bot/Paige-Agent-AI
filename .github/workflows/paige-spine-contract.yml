@@ -73,3 +73,4 @@ jobs:
       # one more file would double a 20-minute job for nothing (§24).
       - run: supabase test db supabase/tests/solo_team_invite_workspace_authority.sql
       - run: supabase test db supabase/tests/solo_team_removal_authority.sql
+      - run: supabase test db supabase/tests/solo_team_invite_lifecycle.sql

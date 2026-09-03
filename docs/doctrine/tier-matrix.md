@@ -1568,10 +1568,11 @@ workspace it has switched into, Enterprise both. No owner ruling was sought, and
 
 ### Solo Team — an invitation goes to the workspace the operator named, `/solo/{account}/settings/team`
 
-**§66, same commit as the ship. NOT YET RELEASED — this records the change under review in #815, not
-live availability.** Nothing below is shipped truth until the PR merges and `20261047000000` is
-confirmed persisted on prod; this row is written now because §66 binds the ledger to the commit, and
-it will be corrected to SHIPPED or removed rather than left ambiguous.
+**§66 — `SHIPPED`. Corrected 2026-09-03 from the "NOT YET RELEASED" wording this row was first
+written under, which promised it would be resolved rather than left ambiguous.** #815/#827 merged and
+`deploy-migrations.yml` applied the migration on the push to `main`. Read back from production
+2026-09-03: `supabase_migrations.schema_migrations` contains `20261047000000`, and
+`to_regprocedure('public.solo_team_invite_authority(uuid,uuid)')` is non-null.
 
 **The defect.** `create_/resend_/revoke_solo_team_invite` read `profiles.active_tenant_id` **raw**
 while `get_solo_team_workspace` — the read that decides whether the Invite button is even offered —
@@ -1617,6 +1618,58 @@ how an existing capability resolves its workspace and grants nobody anything new
 **Owed:** authenticated runtime proof. Authorized as immediate post-release owner acceptance
 (2026-09-02) rather than a release blocker, and the surface stays **Authenticated Runtime Proof
 Owed** until the owner confirms the live flow.
+
+### Solo Team — an invitation says what happened to it, `/solo/{account}/settings/team`
+
+**§66, same commit as the ship. NOT YET LIVE — this records the change under review in #850.** The
+migration is `20261105000000`; production's newest applied version is `20261104000000` and
+`to_regprocedure('public.archive_solo_team_invite(uuid,uuid,uuid)')` is null, both confirmed by query
+2026-09-03. This row is written now because §66 binds the ledger to the commit; it is corrected to
+`SHIPPED` on merge, not left ambiguous.
+
+**The report.** A revoked invitation stayed on the operator's list for ever with no action on it, and
+no stage of any invitation could be answered — sent, delivered, opened, clicked were all unknown.
+
+**What was actually wrong.** `send-portal-invite` returned `emailed: res.ok`, which is "the POST was
+accepted", and never read the response body — so Resend's message id, the only handle by which a
+later event could be matched, was discarded on every send. And a finished invitation had no exit:
+`revoke` set the state and the row stayed, because there was no archive path and, deliberately, no
+delete path.
+
+**The repair.** The send is logged to `email_send_log` with the message id and `metadata.invite_id`.
+A new `handle-resend-webhook` edge function verifies Svix signatures and **appends** one row per
+delivery event, deriving `tenant_id` from our own originating row rather than the payload. The Team
+screen renders the four-step trail and a status line, and a finished invitation can be archived into
+a collapsed *Past invitations* drawer — never deleted, because a revoked invitation is evidence that
+somebody's access was withdrawn, the same reason #799 removed the browser roles' `DELETE` on the
+sibling membership table.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| See an invitation's delivery trail | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Archive a finished invitation | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Archive a still-live invitation | 403 | 403 | 403 | 403 | 403 | 403 | 403 |
+| Archive an invitation on another workspace | 403 | 403 | 403 | 403 | 403 | 403 | 403 |
+| Delete an invitation outright | — | — | — | — | — | — | — |
+
+Distribution is unchanged from the Team seam rows above, so **§61 default: no exception** — this adds
+reporting and a clearing action to an existing capability and grants nobody anything new. The God
+`—` is the same honest resolver refusal, not a gate: `archive_solo_team_invite` reuses
+`solo_team_invite_authority(_actor, _expected_tenant_id)`, which needs a membership row to prove. Anon
+and `authenticated` cannot execute it at all — `REVOKE`d, service_role only.
+
+**One shared table extended, owner-approved.** `email_send_log`'s status CHECK was read live and
+widened additively from `pending, sent, suppressed, failed, bounced, complained, dlq` to also accept
+`delivered, delivery_delayed, opened, clicked`. Every pre-existing status still inserts, and the
+constraint still refuses an invented status — both asserted in `solo_team_invite_lifecycle.sql`
+rather than inspected.
+
+**Owed, and it is a genuine external dependency, not a deferral.** The delivery trail reports
+**"Not sent yet"** until the webhook endpoint is registered with Resend and `RESEND_WEBHOOK_SECRET`
+is set. Both are owner actions — one an external production configuration change, one a credential.
+Until they are done the webhook refuses every event **by design** (it fails closed rather than
+trusting an unsigned payload), and no delivery, open or click can be observed. Archive, revoke and
+resend do not depend on it. The surface stays **Authenticated Runtime Proof Owed**.
 
 ### PAIGE Mind — Pipeline deal-stage evidence, `/solo/{account}/growth` → deal → Ask PAIGE
 
