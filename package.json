@@ -16,6 +16,7 @@
     "ci:regression": "node scripts/ci/regression-lint.mjs",
     "lint:views": "node scripts/ci/view-security-invoker-lint.mjs",
     "verify:pack": "node scripts/live-drive/pack-verify.mjs",
+    "drive:sales-ops": "node scripts/live-drive/sales-ops-drive.mjs",
     "harness:selftest": "node scripts/live-drive/harness/selftest.mjs",
     "harness:proxy-bypass": "node scripts/live-drive/proxy-bypass.selftest.mjs",
     "harness:selftest-reject": "node scripts/live-drive/harness/selftest-reject.mjs",
