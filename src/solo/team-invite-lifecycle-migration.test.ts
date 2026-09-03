@@ -154,7 +154,25 @@ describe("the sender stops throwing away the only handle a delivery event has", 
   });
 
   it("never lets a logging failure break a send that already left", () => {
-    expect(ts).toMatch(/catch \{ \/\* the email is what matters/);
+    // Still true — the try/catch survives. But it no longer SWALLOWS the failure; it logs it.
+    // Scoped to logSend's own body, not just any try/catch in the file (there are several,
+    // including the request-body parse at the top which is a different single-line catch).
+    const logSend = ts.slice(ts.indexOf("const logSend"), ts.indexOf("if (!RESEND_KEY)"));
+    expect(logSend).toMatch(/try \{[\s\S]*catch \(e\)/);
+  });
+
+  it("does not just catch — it checks the RETURNED error, because insert() does not throw", () => {
+    // The gap Codex found reviewing #857's own correction (§39, a review catching a review's own
+    // documentation claim): supabase-js resolves an insert failure as `{ error }`, it does not
+    // reject. A bare try/catch around the await alone would never see that class of failure.
+    const logSend = ts.slice(ts.indexOf("const logSend"), ts.indexOf("if (!RESEND_KEY)"));
+    expect(logSend).toMatch(/const \{ error \} = await admin\.from\("email_send_log"\)\.insert/);
+    expect(logSend).toMatch(/if \(error\) console\.error/);
+  });
+
+  it("logs a THROWN failure too, not just a returned one", () => {
+    const logSend = ts.slice(ts.indexOf("const logSend"), ts.indexOf("if (!RESEND_KEY)"));
+    expect(logSend).toMatch(/catch \(e\) \{[\s\S]{0,120}console\.error/);
   });
 });
 
