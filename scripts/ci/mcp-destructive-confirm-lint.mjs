@@ -284,9 +284,13 @@ function inspectableInitializer(node, member) {
  * real false positive: `as const` parses as a TypeReference whose type name is an identifier
  * literally called `const`, which the value walk then treated as an unread name.
  */
-function walkValues(node, visit) {
+function walkValues(node, visit, prune) {
   visit(node);
-  node.forEachChild((c) => { if (!ts.isTypeNode(c)) walkValues(c, visit); });
+  node.forEachChild((c) => {
+    if (ts.isTypeNode(c)) return;
+    if (prune && prune(c)) return;    // a definition the object literal overwrote: not in the schema
+    walkValues(c, visit, prune);
+  });
 }
 
 /** An identifier that merely NAMES a property, rather than standing for a value. */
@@ -659,49 +663,75 @@ const SAFE_NAMESPACED = new Set(["iso.date", "iso.time", "iso.datetime", "iso.du
 function shapeFields(schemaNode) {
   const out = [];
   if (!schemaNode) return out;
+  // A definition that a later one overwrites is not in the runtime schema, so its SUBTREE must not
+  // be searched either. Without this, `z.object({ ...{ x: z.object({ confirm: z.boolean() }) },
+  // x: z.string() })` reported `confirm`: the outer resolution correctly dropped the first `x`,
+  // and then the blanket walk found the nested `z.object` inside the definition it had just
+  // dropped. Resolving a literal top-down means `discarded` is always populated before the walk
+  // descends into it.
+  const discarded = new Set();
   walkValues(schemaNode, (n) => {
     if (!ts.isCallExpression(n)) return;
     if (!SHAPE_BUILDERS.has(calleeMethod(n.expression) ?? "")) return;
     for (const arg of n.arguments) {
       const a = unwrapValue(arg);
-      if (a && ts.isObjectLiteralExpression(a)) collectShapeFields(a, out);
+      if (!a || !ts.isObjectLiteralExpression(a)) continue;
+      const { surviving, dropped } = resolveObjectLiteral(a);
+      for (const f of surviving) out.push(f);
+      for (const d of dropped) discarded.add(d);
     }
-  });
+  }, (n) => discarded.has(n));
   return out;
 }
 
-function collectShapeFields(objectLiteral, out) {
-  // One object literal, resolved the way JavaScript resolves it: LAST WRITE WINS per key, with an
-  // inline spread contributing its keys at the position it appears. Keeping every definition made
-  // `z.object({ ...{ confirm: z.boolean() }, confirm: z.string() })` report a boolean field that
-  // does not exist at runtime — a false CI failure on a schema that rejects `true`.
-  //
-  // Scope is deliberate: this applies WITHIN one object literal, where the ordering is a language
-  // rule and unambiguous. Definitions from separate builder calls (`z.object({…}).extend({…})`)
-  // are still unioned, because `walkValues` does not guarantee source order across them and a
-  // guessed order that dropped a real boolean would fail OPEN. Over-reporting across builders is
-  // the safe side of that; over-reporting within one literal was not, because it is decidable.
+function resolveObjectLiteral(objectLiteral) {
   const byName = new Map();
-  const unreadable = [];   // a computed or unresolvable key never removes a key it might not be
+  const unreadableName = [];   // a computed key never removes a key it might not be
+  const dropped = [];
+
+  const add = (entry) => {
+    if (entry.name === null) { unreadableName.push(entry); return; }
+    const prev = byName.get(entry.name);
+    if (prev) dropped.push(prev.node);        // overwritten: not in the runtime schema
+    byName.delete(entry.name);                // re-insert so the survivor is the LAST written
+    byName.set(entry.name, entry);
+  };
 
   const visit = (obj) => {
-    for (const prop of obj.properties) {
-      if (ts.isSpreadAssignment(prop)) {
-        const inner = unwrapValue(prop.expression);
+    for (const m of obj.properties) {
+      if (ts.isSpreadAssignment(m)) {
+        const inner = unwrapValue(m.expression);
         if (inner && ts.isObjectLiteralExpression(inner)) visit(inner);
         continue;   // an opaque spread is caught by the completeness check, not here
       }
-      if (!ts.isPropertyAssignment(prop)) continue;
-      const name = staticPropertyName(prop.name);
-      if (name === null) { unreadable.push(prop); continue; }
-      byName.delete(name);        // re-insert so the surviving entry is the LAST one written
-      byName.set(name, prop);
+      const name = m.name ? staticPropertyName(m.name) : null;
+      if (ts.isPropertyAssignment(m)) { add({ name, value: m.initializer, node: m }); continue; }
+      if (ts.isGetAccessorDeclaration(m)) { add({ name, value: getterSchema(m), node: m }); continue; }
+      // EVERY OTHER MEMBER FORM DEFINES A FIELD WHOSE SCHEMA THIS CANNOT READ.
+      //
+      // Shorthand (`{ confirm }`), a setter, a method, and any member kind added to the language
+      // later all reach here. Reading only property assignments meant each of them was dropped
+      // SILENTLY — the field vanished from the schema this guard believes it is inspecting, and a
+      // destructive tool declaring `{ confirm }` passed with zero violations. Four fail-opens of
+      // one shape; the review named one of them, and the sweep found the rest.
+      //
+      // `value: null` makes the field unreadable rather than absent, and `fieldAdmitsBoolean`
+      // treats an unreadable field as admitting a boolean. So the failure mode is now a loud,
+      // easily-fixed false positive instead of a silent pass — the correct side to err on.
+      add({ name, value: null, node: m });
     }
   };
   visit(objectLiteral);
 
-  for (const prop of byName.values()) out.push(prop);
-  for (const prop of unreadable) out.push(prop);
+  return { surviving: [...byName.values(), ...unreadableName], dropped };
+}
+
+/** A getter's schema, when its body is a single `return`. Anything else is unreadable. */
+function getterSchema(node) {
+  const body = node.body;
+  if (!body || body.statements.length !== 1) return null;
+  const only = body.statements[0];
+  return ts.isReturnStatement(only) && only.expression ? only.expression : null;
 }
 
 /** A property key readable at parse time, or null when it is computed/unresolvable. */
@@ -722,9 +752,8 @@ function staticPropertyName(name) {
 function modelSettableBooleans(schemaNode) {
   const names = [];
   for (const field of shapeFields(schemaNode)) {
-    if (!fieldAdmitsBoolean(field.initializer)) continue;
-    const nm = field.name && ts.isIdentifier(field.name) ? field.name.text
-      : field.name ? (literalText(field.name) ?? "<computed>") : "<unnamed>";
+    if (!fieldAdmitsBoolean(field.value)) continue;
+    const nm = field.name ?? "<computed>";
     if (!names.includes(nm)) names.push(nm);
   }
   return names;
@@ -1028,6 +1057,23 @@ mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
     ["a field arriving via an inline spread", `z.object({ ...{ confirm: z.boolean() } })`],
   ]) check(`REFUSES ${label}`, v(`
 mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
+  // Codex on 991ce9bf: a getter supplying the effective schema was dropped. The SWEEP then found
+  // that every non-PropertyAssignment member form was dropped the same way — four silent
+  // fail-opens, of which the review named one. Each is now a case, because "the member kinds I
+  // happened to handle" is exactly the enumeration this file keeps losing to.
+  for (const [label, schema] of [
+    ["a SHORTHAND property", `z.object({ confirm })`],
+    ["a GETTER member", `z.object({ get confirm() { return z.boolean(); } })`],
+    ["a SETTER member", `z.object({ set confirm(v) { } })`],
+    ["a METHOD member", `z.object({ confirm() { return z.boolean(); } })`],
+    ["a getter that OVERWRITES a spread string", `z.object({ ...{ confirm: z.string() }, get confirm() { return z.boolean(); } })`],
+  ]) check(`REFUSES ${label}`, v(`
+mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
+  // …and the false positive from the same round: a definition that is overwritten must not have its
+  // SUBTREE searched either, or the nested shape inside the discarded value is still reported.
+  check("ADMITS a nested shape inside a DISCARDED definition", v(`
+mcp.tool("t", { inputSchema: z.object({ ...{ x: z.object({ confirm: z.boolean() }) }, x: z.string() }), ${DESTRUCTIVE} });`), 0);
+
   // Codex on f2c17fe4: keeping BOTH definitions of a spread-then-overwritten key reported a boolean
   // field that does not exist at runtime. Last write wins WITHIN one object literal — and the
   // reversed order must still be caught, which is what stops the fix from becoming a fail-open.
