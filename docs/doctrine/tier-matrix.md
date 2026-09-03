@@ -1718,6 +1718,18 @@ configuration change, one a credential. Until they are done the webhook refuses 
 design** (it fails closed rather than trusting an unsigned payload). Archive, revoke and resend do
 not depend on it. The surface stays **Authenticated Runtime Proof Owed**.
 
+**Owner-confirmed, 2026-09-03 — the SEND leg only, named precisely so it is not read as more.** The
+owner sent a real Solo Team invitation and confirmed the recipient received it in her actual inbox.
+This is genuine authenticated runtime proof of `create_solo_team_invite` → `send-portal-invite` →
+Resend → a real mailbox — the leg #850 was built to fix (Resend's own `res.ok` used to be reported
+as delivery). It does **not** confirm the parts it did not exercise: the recipient was already a
+platform user, so the new-account accept-invite path (a stranger with only a token creating an
+account) is still unexercised; and delivery TRACKING (Sent → Delivered/Opened/Clicked) still cannot
+be observed by anyone, including the owner, until the webhook + `RESEND_WEBHOOK_SECRET` from the
+paragraph above are configured — so this confirmation cannot and does not extend to that state
+machine at all. The surface stays **Authenticated Runtime Proof Owed** for those two legs; only the
+send leg moves to confirmed.
+
 ### PAIGE Mind — Pipeline deal-stage evidence, `/solo/{account}/growth` → deal → Ask PAIGE
 
 **§66, same commit as the ship.** The first Mind binding: PAIGE states what a recorded Pipeline
