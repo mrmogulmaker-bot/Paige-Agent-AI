@@ -372,11 +372,14 @@ describe("billing contacts — the flow a person can finish", () => {
   });
 
   it("states, on the surface, that a designation is not ownership and that nothing is sent", async () => {
-    world();
+    world({ authority: { receives_billing_notices: true } });
     const { host } = await render();
     expect(text(host)).toContain("does not change who owns this workspace");
     expect(text(host)).toContain("grants no ownership, equity or co-owner status");
     expect(text(host)).toContain("not being sent yet");
+    expect(text(host)).toContain("Designated for billing notices.");
+    expect(text(host)).not.toContain("You receive billing notices here");
+    expect(text(host)).toContain("nothing reaches anyone's inbox today");
   });
 
   it("designates a primary billing contact, sends the right arguments, and re-reads the server", async () => {

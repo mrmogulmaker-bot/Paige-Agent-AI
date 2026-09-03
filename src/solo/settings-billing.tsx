@@ -445,7 +445,7 @@ function ContactsCard({ authority, primarySelectionNeeded }: { authority: Author
   };
 
   return <Card title="Billing contacts and notices" icon={Users} truth="PARTIAL"
-    actions={authority.authority?.receivesBillingNotices ? <Status tone="ok">You receive billing notices here</Status> : undefined}>
+    actions={authority.authority?.receivesBillingNotices ? <Status tone="ok">Designated for billing notices.</Status> : undefined}>
     {body()}
     {candidates.error && <p className="ss-note">The list of people who could be designated could not be read just now, so only the current designations are shown.</p>}
   </Card>;
