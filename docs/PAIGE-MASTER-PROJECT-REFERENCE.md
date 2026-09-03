@@ -1155,6 +1155,13 @@ into `plan-current`; and `past_due` having no approved wording.
 **Untouched:** the portal flag (off), every Stripe object, `platform_subscriptions`, the catalogue,
 Foundation B, and every shared module outside `src/solo/`.
 
+**Boundary correction, owner 2026-09-03 (post-release).** The "What you charge your clients" pointer
+card has **moved off Billing to Campaigns → Sales**. The owner's rule: *"Billing is for us, our
+platform billing the tenant"* — client billing is the other direction of money and belongs on the
+tenant's own commercial surface (§38 / §197 LAYER 2). *Invoices & payment method* was deliberately
+**not** moved: those are the tenant's invoices FROM Paige, which is platform billing by that same
+definition. Billing now renders four cards.
+
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 
 **What it settles.** `docs/architecture/paige-mind-integration-matrix.md` records, per Solo surface,
