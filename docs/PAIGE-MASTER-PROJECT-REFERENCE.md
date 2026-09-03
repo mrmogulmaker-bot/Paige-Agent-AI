@@ -1255,9 +1255,17 @@ while reading as current. Recorded rather than quietly backfilled, because a rec
 catches up teaches nothing about why it fell behind.
 
 **Still NOT repaired by any of the above, and the reason the verdict at the top of this section
-stands:** no product code calls any of these resolvers. `useRailEvents.ts` and `useSoloActivityFeed.ts`
-still read `paige_client_events` directly, and the browser still holds no SELECT on it. A safe reader
-exists and nothing uses it; that consumer repair is Slice B, blocked on the #776/#729 ownership seam.
+stands: no OWNER-FACING consumer calls any of these resolvers.** `useRailEvents.ts` and
+`useSoloActivityFeed.ts` still read `paige_client_events` directly, and the browser still holds no
+SELECT on it, so the owner-visible history surfaces are exactly as broken as before.
+
+**Be precise about "nothing uses it", because that is not true of the whole Rail.** `get_client_rail_for_chat`
+**does** have a live production consumer: the PAIGE Chat edge function calls it at
+`supabase/functions/paige-ai-chat/index.ts:4662` (hydration) and `:8384` (tool dispatch), wired by
+#813. So the accurate split is: the **Chat** consumer was repointed onto a safe resolver and works;
+the **owner-facing history** consumers were not, and are Slice B — blocked on the #776/#729 ownership
+seam. `get_solo_rail_activity` and `get_platform_rail` are the two resolvers with genuinely zero
+callers today.
 
 **Why `UNAVAILABLE` is still the correct status.** No owner-facing consumer calls the resolver yet —
 `useRailEvents.ts` and `useSoloActivityFeed.ts` still read the denied table directly, re-measured on
