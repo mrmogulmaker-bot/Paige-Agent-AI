@@ -111,6 +111,8 @@ export type GovernedDoor = "chat" | "automation" | "agent" | "skill" | "mcp" | "
  *     { tenantId: request.workspaceId, tenantSource: "server" }   a request naming its own tenant
  *     { access: { allowed: true } }                          no policy was consulted
  *     { autonomyLane: request.lane }                         no workspace setting was resolved
+ *     { id: "crm_create_contact", effect: "mutate" }         naming a DIFFERENT act than the one
+ *                                                            about to run — see GovernedCapability
  *
  * The seam enforces that a caller MAKES each assertion and refuses without it. Making the assertion
  * TRUE is the adapter's obligation, and nothing here can verify any of them — this module has no
@@ -148,13 +150,34 @@ export type GovernedCaller = {
   access?: { allowed: boolean; reason?: string };
 };
 
-/** What is being performed. `id` is the canonical action-risk key — the one capability identity. */
+/**
+ * What is being performed. `id` is the canonical action-risk key — the one capability identity.
+ *
+ * THE SAME RULE AS THE OTHER TWO TYPES, AND THIS ONE IS THE SHARPEST EDGE. An earlier version of
+ * this file said the assertion rule was stated "on both exported types". There are three, and the
+ * one left out is the one that names the act:
+ *
+ *     { id: "crm_create_contact", effect: "mutate", outcomeChannel: "rail" }
+ *
+ * passed to a DELETE executor classifies as ordinary, requires no claim, and auto-executes.
+ * `classifyAction` validates the risk mapping for a NAME; it cannot bind that name — or `effect` —
+ * to the executor the adapter is actually about to run. And this module has no Rail, so any
+ * non-empty `outcomeChannel` satisfies the mutation requirement whether or not a durable outcome
+ * is ever emitted.
+ */
 export type GovernedCapability = {
+  /** ADAPTER MUST: pass the canonical `action-risk.ts` key of the act it is ABOUT TO PERFORM. A
+   *  mismatched name silently reclassifies the risk, and the seam cannot detect it. */
   id: string;
+  /** ADAPTER MUST: state the executor's real effect. `"read"` on a mutating executor skips the
+   *  entire mutation path — classification, clamp, approval and outcome. */
   effect: "read" | "mutate";
   /**
    * Opaque name of the durable outcome channel this mutation reports on. REQUIRED for a mutation.
    * Owned by the Rail workstream; its payload shape is deliberately not defined in this file.
+   *
+   * ADAPTER MUST: name a channel that actually records the outcome. The seam checks only that the
+   * string is present — it has no Rail to ask.
    */
   outcomeChannel?: string;
 };

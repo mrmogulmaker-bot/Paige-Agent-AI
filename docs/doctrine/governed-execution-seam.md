@@ -43,23 +43,33 @@ asserted two ways, because a property proven only by a test is one a later edit 
 
 > **Read the whole table under one rule: every input to this seam is an ADAPTER ASSERTION, not a
 > fact the seam establishes.** It has no credential, no policy engine, no autonomy store and no
-> claim table — it is a decision function over what it is told. Points 1, 2, 4, 6 and 7 each name
-> something the adopter must have actually done; the seam refuses when the assertion is absent and
-> cannot tell when it is false. Four consecutive review rounds found this stated as a guarantee on
-> one field after another, which is why it is now stated once, here and on both exported types.
+> claim table, no executor and no Rail — it is a decision function over what it is told. Points 1,
+> 2, **3**, 4, 6, 7 and **10** each name something the adopter must have actually done; the seam
+> refuses when an assertion is absent and cannot tell when it is false.
+>
+> **Point 3 is the sharpest edge**, and it was missed even by the sweep that fixed the others:
+> `{ id: "crm_create_contact", effect: "mutate" }` handed to a DELETE executor classifies as
+> ordinary, needs no claim, and auto-executes. `classifyAction` validates the risk mapping for a
+> NAME; nothing binds that name, or `effect`, to the executor about to run. **Point 10** is the same
+> shape — any non-empty `outcomeChannel` satisfies the mutation requirement, because this module has
+> no Rail to ask whether the channel records anything.
+>
+> Five consecutive review rounds found this stated as a guarantee on one field after another, and
+> the round that "swept" it still claimed completeness across "both exported types" when there are
+> three. The rule is now on all three, and this note no longer claims to be exhaustive.
 
 | # | Point | Where it is enforced |
 |---|---|---|
 | 1 | Authenticated caller identity | `caller.authenticated` + `userId`; refuses `unauthenticated`. **Adapter must have verified a real credential** — the seam reads a boolean |
 | 2 | Server-derived tenant | `tenantSource` must be `"server"` — and **this is an ADAPTER OBLIGATION the seam checks, not a property it can prove.** `GovernedCaller.tenantId` and `tenantSource` are both populated by the adapter, so `{ tenantId: request.workspaceId, tenantSource: "server" }` satisfies the seam while being exactly the thing the point exists to stop. The seam refuses a tenancy that does not *claim* server derivation; only the adapter can make the claim true. An earlier version of this row said the type has no field for a caller-supplied tenant, which is false and is the more dangerous direction to be wrong in |
-| 3 | Capability identity | `capability.id` — the exact `action-risk.ts` key |
+| 3 | Capability identity | `capability.id` — the exact `action-risk.ts` key. **Adapter must pass the key of the act it is about to run**; a mismatched name silently reclassifies the risk |
 | 4 | Role / access policy | `caller.access`, evaluated by the surface. **An absent verdict is a refusal**, never permission — but `{ allowed: true }` from a request field passes, so the adapter must derive it from real policy |
 | 5 | Action-risk classification | delegated to `classifyAction` — not re-implemented |
 | 6 | Autonomy floor | one-directional clamp: `auto` on `high` becomes `confirm`; `off` always survives. **The lane's provenance is the adapter's** — the seam reads the value, not the setting |
 | 7 | Approval-proof validation | a successful atomic claim, or nothing. **There is no boolean input** — but, like point 2, the claim having actually happened is an **adapter obligation the seam cannot verify**. `readClaim` proves the value is a plain object and the execute branch proves `claimedFor` matches; a fabricated `{ claimedArgs, claimedFor }` built from request data passes both |
 | 8 | Stored approved arguments | an approved path runs `claimedArgs`; `requestArgs` is not consulted on it |
 | 9 | Refusal and failure behaviour | **thirteen** typed codes, every one fail-closed (`GOVERNED_REFUSAL_CODES`) |
-| 10 | Safe bounded outcome interface | a mutation must NAME an outcome channel or be refused. **The channel's shape is the Rail workstream's and is deliberately not defined here** |
+| 10 | Safe bounded outcome interface | a mutation must NAME an outcome channel or be refused. **The channel's shape is the Rail workstream's and is deliberately not defined here** — and any non-empty string satisfies it, so the adapter must name a channel that actually records |
 | 11 | Auditability | a structured record carrying no arguments and no secrets |
 
 ## Two decisions a reader will want the reasoning for
