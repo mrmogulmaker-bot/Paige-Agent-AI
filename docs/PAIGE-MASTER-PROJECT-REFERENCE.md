@@ -3039,3 +3039,51 @@ PAIGE persona projection is removed pending a separately approved safe Spine con
 migration and checked-in real-role rollback proof passed against production schema. Truth remains
 `PARTIAL` until exact-head deployment and authenticated Owner save, reload, reopen, and account
 switch proof. Internal `paige_audit_log` attribution is not Rail.
+
+### Two readiness reads disagree about the same two workspaces, and I shipped the second one (2026-09-03)
+
+**§57 cross-surface parity defect, self-reported.** `business_context.readiness` (#864, migration
+`20261112000000`) made Setup the only source for website and phone. `20261160000000` then added a
+legacy-`tenants.brand` fallback to `tenant_comms_readiness`, to repair three flags that were wrongly
+reading `false`. That repair was correct in isolation and **was not checked against the read that had
+already chosen the opposite rule.**
+
+Measured on production, executed as First Sterling Capital's real owner:
+
+| Read | website / business_phone |
+|---|---|
+| `business_context.readiness` | `needs_confirmation` |
+| `tenant_comms_readiness` | `has_website: true`, `has_phone: true` |
+
+Two workspaces are affected — First Sterling Capital (`7eaf8859`, website + phone) and Antonio
+Daniel LLC (`e7f1b157`, website) — and both hold **no** `tenant_legal_profile` values at all.
+
+The open question in #868 was "should a legacy value count as on file?". The status of record is
+narrower and worse: **the platform already answers it both ways at once.** Direction is an owner
+decision (brief at `docs/delivery/owner-decision-legacy-brand-fallback.md`); reconciling the two
+reads afterwards is not optional and does not need one.
+
+**The lesson this log exists for:** a fix that is correct against the surface in front of you can
+still be wrong against the platform. `20261160000000` was verified by executing the flags it
+repaired, and never by asking what else already answered the same question.
+
+### get_tenant_people(): the resting state is not the capability (2026-09-03)
+
+**§58 near-miss, caught by peer review before merge (PR #885).** The `has_role(auth.uid(),'admin')`
+gate on `get_tenant_people()` is tenant-agnostic (§59), and the first draft of the repair gated
+solely on `is_tenant_admin()`, reporting it as a no-op for every current user on the strength of a
+prod measurement.
+
+The measurement was of the **resting state** — both operator accounts sit at `active_tenant_id =
+NULL` — generalised to the **capability**. `operator_enter_tenant()` sets `active_tenant_id` and
+inserts no `tenant_members` row by design, so one click of Act-as in Fleet Console falsifies it:
+driven on prod, the super_admin's roster read went **3 rows → 0**. Shipped gate now also admits
+`is_platform_operator()` (§53).
+
+Also corrected: the affected population is **9**, not 7 — and all 14 `tenant_members` rows on prod
+are active `owner`/`admin`, so there is **not one ordinary member on the platform**. The
+wrongly-admits case the repair closes has no natural representation in the data and had to be
+constructed as a fixture to prove.
+
+**The lesson:** measuring who is affected *right now* is not measuring what the change can do. A
+capability that is dormant at the moment of measurement reads as absent.
