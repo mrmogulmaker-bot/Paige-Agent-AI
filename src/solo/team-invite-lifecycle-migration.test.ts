@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const MIGRATION = "supabase/migrations/20261105000000_an_invitation_says_what_happened_to_it.sql";
+const ORDERING = "supabase/migrations/20261107000000_the_headline_is_the_furthest_the_email_got.sql";
 const WEBHOOK = "supabase/functions/handle-resend-webhook/index.ts";
 const SENDER = "supabase/functions/send-portal-invite/index.ts";
 const INVITES = "supabase/functions/solo-team-invitations/index.ts";
@@ -182,5 +183,93 @@ describe("the proof actually runs", () => {
     // And it is a real step, not a commented-out one.
     const active = wf.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
     expect(active).toContain(line);
+  });
+});
+
+/**
+ * The five corrections from the independent review of the MERGED #850 diff (§39).
+ *
+ * They landed after the merge because that PR was marked ready and merged in the same beat, so the
+ * peer-gate had no window. Recorded as tests rather than as a note, because a lesson that only
+ * lives in prose gets skipped the next time.
+ */
+describe("a retried event does not walk the headline backwards", () => {
+  const sql = code(ORDERING);
+
+  it("orders the delivery headline by lifecycle rank FIRST, not by insert time", () => {
+    expect(sql).toContain("ORDER BY public.email_delivery_rank(l.status) DESC, l.created_at DESC");
+  });
+
+  it("and the old clause, which a provider retry could beat, is gone", () => {
+    // The defect exactly: newest INSERT wins, so a retried `delivered` outranks a real `opened`.
+    expect(sql).not.toContain("ORDER BY l.created_at DESC, public.email_delivery_rank(l.status) DESC");
+  });
+
+  it("changes nothing else in the function it re-declares", () => {
+    // Guards the transcription. Everything but the one ORDER BY must be byte-identical to the
+    // definition 20261105000000 shipped, so no clause can be silently dropped while fixing a sort.
+    const grab = (t: string) => {
+      const start = t.indexOf("CREATE OR REPLACE FUNCTION public.get_solo_team_workspace");
+      return t.slice(start, t.indexOf("$function$;", start) + "$function$;".length);
+    };
+    const strip = (t: string) =>
+      grab(t).split("\n").filter((l) => !l.trim().startsWith("--")).join("\n")
+        .replace("ORDER BY l.created_at DESC, public.email_delivery_rank(l.status) DESC", "SORT")
+        .replace("ORDER BY public.email_delivery_rank(l.status) DESC, l.created_at DESC", "SORT");
+    expect(strip(read(ORDERING))).toBe(strip(read(MIGRATION)));
+  });
+});
+
+describe("the webhook survives the two ways it was going to fail in production", () => {
+  const ts = code(WEBHOOK);
+
+  it("retries when the origin lookup ERRORS, instead of acknowledging the event as unknown", () => {
+    // supabase-js returns { data: null, error } — it does not throw. Reading only `data` made a
+    // transient failure look identical to "we never sent this", and the 200 that followed told
+    // Resend never to retry. The event was then lost for ever.
+    expect(ts).toMatch(/data: origin, error: originError/);
+    const guard = ts.slice(ts.indexOf("originError"));
+    expect(guard).toMatch(/if \(originError\)[\s\S]{0,400}500\)/);
+    // And the error branch must come BEFORE the absent-row branch, or it is unreachable.
+    expect(ts.indexOf("if (originError)")).toBeLessThan(ts.indexOf('ignored: "unknown message_id"'));
+  });
+
+  it("treats the duplicate `sent` row as already-recorded rather than retrying it for ever", () => {
+    // `idx_email_send_log_message_sent_unique` is UNIQUE on message_id WHERE status='sent'. The
+    // sender already writes that row, so an inbound `email.sent` ALWAYS violates it. Answering 500
+    // meant every such event failed permanently and Resend retried it without end — triggered by
+    // the single act of subscribing to `email.*`.
+    expect(ts).toMatch(/error\.code === "23505"/);
+    // BOUNDED to the 23505 branch body. An unbounded slice to end-of-file also caught the
+    // function's final `return json({ ok: true, recorded: status })`, so the assertion passed no
+    // matter what this branch returned — mutation proved it could not fail.
+    const start = ts.indexOf('error.code === "23505"');
+    const dup = ts.slice(start, ts.indexOf("console.error", start));
+    expect(dup).toMatch(/ok: true/);
+    expect(dup).not.toMatch(/\b500\b/);
+    // The 23505 branch must precede the generic 500, or the 500 swallows it first.
+    expect(ts.indexOf('error.code === "23505"')).toBeLessThan(ts.indexOf('"could not record event"'));
+  });
+});
+
+describe("the pgTAP plan matches the assertions it claims", () => {
+  it("sums the documented breakdown and compares it to plan(N)", () => {
+    // A miscounted plan is a CI cycle burned for nothing, and this file has already cost one:
+    // the `unnest` loops generate eleven assertions from two statements, so no naive count of
+    // SELECT lines can check it. What CAN be checked is that the arithmetic the file documents
+    // actually adds up to the number it plans — which is the step that was skipped last time.
+    const sql = readFileSync("supabase/tests/solo_team_invite_lifecycle.sql", "utf8");
+    const planned = Number(/SELECT plan\((\d+)\);/.exec(sql)?.[1]);
+    expect(planned).toBeGreaterThan(0);
+
+    const header = sql.slice(0, sql.indexOf("SELECT plan("));
+    const breakdown = /--\s*(\d+)\s*=([\s\S]*?)\.\s*$/m.exec(
+      header.split("\n").filter((l) => l.startsWith("--")).join("\n"),
+    );
+    expect(breakdown, "the plan must document how it is composed").not.toBeNull();
+    expect(Number(breakdown![1])).toBe(planned);
+
+    const parts = breakdown![2].replace(/--/g, " ").match(/\d+/g)!.map(Number);
+    expect(parts.reduce((a, b) => a + b, 0)).toBe(planned);
   });
 });

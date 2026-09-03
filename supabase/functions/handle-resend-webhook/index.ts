@@ -138,13 +138,23 @@ Deno.serve(async (req) => {
   // Find the row the SENDER wrote, to inherit its tenant, recipient and invitation. Delivery events
   // carry a message id and nothing else we can trust: `data.to` is the provider's copy of the
   // address, and reading tenancy from an inbound payload would let the payload choose the tenant.
-  const { data: origin } = await admin
+  const { data: origin, error: originError } = await admin
     .from("email_send_log")
     .select("tenant_id, recipient_email, template_name, metadata")
     .eq("message_id", messageId)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
+
+  // A FAILED LOOKUP IS NOT AN ABSENT ROW, and supabase-js does not throw — it returns
+  // `{ data: null, error }`. Reading only `data` made a transient PostgREST failure indistinguishable
+  // from "we never sent this", and the branch below would then answer 200 and Resend would never
+  // retry: the event is lost for ever, which is precisely the silence this function exists to end.
+  // 500 first, so a retry can still find the row once the database is reachable again.
+  if (originError) {
+    console.error("[handle-resend-webhook] origin lookup failed", originError.message);
+    return json({ ok: false, error: "could not resolve the originating send" }, 500);
+  }
 
   // An event for an email this platform has no record of sending. Acknowledged, never written:
   // a row with no tenant is a row no RLS policy can scope.
@@ -173,6 +183,16 @@ Deno.serve(async (req) => {
   });
 
   if (error) {
+    // `idx_email_send_log_message_sent_unique` (20260318203215) is UNIQUE on `message_id` WHERE
+    // `status = 'sent'` — a pre-existing safety net against a worker double-sending. The sender
+    // already writes that row, so an inbound `email.sent` is redundant BY CONSTRUCTION and its
+    // insert always violates the index. Answering 500 there would have made every `email.sent`
+    // event fail permanently and Resend retry it for ever — triggered by the very act of
+    // subscribing to `email.*`. It is not a failure: the fact the event reports is already
+    // recorded, so the honest answer is that there was nothing left to do.
+    if (error.code === "23505") {
+      return json({ ok: true, ignored: "already recorded", status });
+    }
     console.error("[handle-resend-webhook] insert failed", error.message);
     // 500 so Resend retries. Losing a delivery event silently is the failure this function exists
     // to end, so it must not answer 200 for work it did not do.

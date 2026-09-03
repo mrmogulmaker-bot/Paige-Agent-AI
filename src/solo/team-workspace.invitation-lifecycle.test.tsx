@@ -20,6 +20,7 @@ import { SoloTeamWorkspace } from "./team-workspace";
 import {
   deliveryPresentation,
   inviteIsFinished,
+  inviteLifecycle,
   type InviteDelivery,
   type TeamInviteRecord,
   type TeamWorkspaceRecord,
@@ -77,13 +78,20 @@ beforeEach(() => {
 });
 
 describe("what the delivery record is allowed to claim", () => {
-  it("says an invitation with no recorded send was NOT sent, rather than inventing a status", () => {
-    // The defect in one assertion. `emailed: res.ok` meant "the POST was accepted" and was shown
-    // as though it meant delivered; an invitation with nothing recorded must say so plainly.
+  it("says an absent record is UNKNOWN, never that the email was not sent", () => {
+    // This assertion used to require the words "not sent", and was therefore a test that
+    // ENCODED the defect. An independent review of the merged diff caught it: every invitation
+    // emailed before this feature existed has no `email_send_log` row, because the old sender
+    // never wrote one — so "Not sent yet" told the owner an email that WAS sent never went. The
+    // owner's own revoked invitation is exactly that case. Absence of a record cannot distinguish
+    // never-sent from sent-and-unobserved, so the copy may not pick one.
     const p = deliveryPresentation(null);
-    expect(p.label).toMatch(/not sent/i);
     expect(p.tone).toBe("none");
-    expect(p.label).not.toMatch(/sent$|delivered|opened/i);
+    expect(p.label).toMatch(/not recorded/i);
+    expect(p.label).not.toMatch(/not sent/i);
+    expect(`${p.label} ${p.detail ?? ""}`).not.toMatch(/\bwas not sent\b|\bnever sent\b|\bnot sent yet\b/i);
+    // And it still must not invent a positive status.
+    expect(p.label).not.toMatch(/delivered|opened|clicked/i);
   });
 
   it("keeps 'sent' short of claiming delivery", () => {
@@ -211,7 +219,10 @@ describe("the delivery report the owner asked for", () => {
   it("does not draw a progress trail for an invitation that was never emailed", async () => {
     const { host } = await open([invite({ delivery: null })]);
     const block = host.querySelector(".stw-invite-delivery")!;
-    expect(block.textContent).toMatch(/not sent yet/i);
+    // Was `/not sent yet/i` — the second test that encoded the over-claim. It asserts the honest
+    // wording now, and explicitly that the false one has not come back.
+    expect(block.textContent).toMatch(/not recorded/i);
+    expect(block.textContent).not.toMatch(/not sent yet/i);
     expect(block.querySelectorAll("li").length, "four grey steps would imply a journey that never started").toBe(0);
   });
 
@@ -230,5 +241,70 @@ describe("the delivery report the owner asked for", () => {
     const { host } = await open([invite({ uses: 1, delivery: delivered("clicked", [{ status: "sent", at: new Date().toISOString() }]) })]);
     const past = host.querySelector("details.stw-invite-past")!;
     expect(past.textContent).toMatch(/Link clicked/);
+  });
+});
+
+describe("the expiry clause is only shown where it means something", () => {
+  // THREE versions of this line have now been wrong, so it is asserted by RENDERING the row in
+  // every lifecycle state rather than by matching source text. The source-string assertion this
+  // replaces would have passed for both earlier defects: it only proved which expression was
+  // written, never what a person ends up reading.
+  const future = () => new Date(Date.now() + 6 * 86400000).toISOString();
+  const past = () => new Date(Date.now() - 6 * 86400000).toISOString();
+  const line = (host: HTMLElement) => host.querySelector("article small")?.textContent ?? "";
+
+  it("says 'expires' for a pending invitation, whose date is still ahead", async () => {
+    const { host } = await open([invite({ expires_at: future() })]);
+    expect(line(host)).toMatch(/expires/);
+    expect(line(host)).not.toMatch(/expired/);
+  });
+
+  it("says 'expired' once a pending invitation's date has passed", async () => {
+    const { host } = await open([invite({ expires_at: past() })]);
+    expect(line(host)).toMatch(/expired/);
+  });
+
+  it("claims no expiry at all for an ACCEPTED invitation, whichever side of the date it is on", async () => {
+    // Both directions, because the two shipped defects were mirror images of each other.
+    const stillAhead = await open([invite({ uses: 1, expires_at: future() })]);
+    expect(line(stillAhead.host)).not.toMatch(/expires|expired/);
+
+    document.body.innerHTML = "";
+    const longGone = await open([invite({ uses: 1, expires_at: past() })]);
+    expect(line(longGone.host)).not.toMatch(/expires|expired/);
+  });
+
+  it("claims no expiry for a REVOKED invitation either", async () => {
+    const stillAhead = await open([invite({ revoked_at: new Date().toISOString(), expires_at: future() })]);
+    expect(line(stillAhead.host)).not.toMatch(/expires|expired/);
+
+    document.body.innerHTML = "";
+    const longGone = await open([invite({ revoked_at: new Date().toISOString(), expires_at: past() })]);
+    expect(line(longGone.host)).not.toMatch(/expires|expired/);
+  });
+
+  it("still names the permission on every one of those rows", async () => {
+    // Guards the guard: if the whole <small> were dropped the four assertions above would pass
+    // vacuously, since an empty string matches none of those patterns.
+    for (const inv of [
+      invite({ expires_at: future() }),
+      invite({ uses: 1, expires_at: past() }),
+      invite({ revoked_at: new Date().toISOString(), expires_at: past() }),
+    ]) {
+      document.body.innerHTML = "";
+      const { host } = await open([inv]);
+      expect(line(host)).toMatch(/\S/);
+      expect(line(host)).toMatch(/admin|member/i);
+    }
+  });
+
+  it("keys the state itself off the lifecycle, which short-circuits before the date", () => {
+    // The root cause in one assertion: `uses`/`revoked_at` win over an elapsed expiry, so an
+    // accepted invitation NEVER reports "expired" however old it is — which is why no tense of
+    // an expiry verb could ever have been right for it.
+    expect(inviteLifecycle(invite({ uses: 1, expires_at: past() }))).toBe("accepted");
+    expect(inviteLifecycle(invite({ revoked_at: new Date().toISOString(), expires_at: past() }))).toBe("revoked");
+    expect(inviteLifecycle(invite({ expires_at: past() }))).toBe("expired");
+    expect(inviteLifecycle(invite({ expires_at: future() }))).toBe("pending");
   });
 });
