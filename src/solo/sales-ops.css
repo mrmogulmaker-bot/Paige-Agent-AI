@@ -190,13 +190,13 @@
  * ~7:1 in light and is the same pair the shell already ships in dark.
  *
  * Scoped to `.so` deliberately: whether the WHOLE shell should follow is Claude Design's call, not
- * a change to make from inside one surface (§00). `#fff` is copied verbatim from the shipped dark
- * rule rather than tokenised, because `--ink-inv` inverts per theme and would go dark on violet. */
-.paige-solo .so .btn-p { background: var(--violet); border-color: var(--violet); color: #fff; }
-.paige-solo .so .btn-p:hover {
+ * a change to make from inside one surface (§00). `--ink-inv` follows the measured pair: light text on deep light-theme violet,
+ * dark text on the brighter dark-theme violet. */
+.paige-solo .so button.btn-p { background: var(--violet); border-color: var(--violet); color: var(--ink-inv); }
+.paige-solo .so button.btn-p:hover {
   background: color-mix(in srgb, var(--violet) 86%, #000);
   border-color: color-mix(in srgb, var(--violet) 86%, #000);
-  color: #fff;
+  color: var(--ink-inv);
 }
 
 /* ── tables ─────────────────────────────────────────────────────────────────────────────────── */
@@ -261,7 +261,7 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 
 /* ── the editor slide-over ──────────────────────────────────────────────────────────────────── */
 
-.so-editor-scrim {
+.so .so-editor-scrim {
   position: fixed; inset: 0; z-index: 96;
   background: var(--ink); opacity: .28; border: 0; padding: 0;
 }
@@ -303,16 +303,16 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so-money { display: flex; gap: 8px; }
 
 .so-pick { display: flex; flex-wrap: wrap; gap: 6px; }
-.so-pick button {
+.so .so-pick button {
   min-height: 28px; padding: 0 10px; border-radius: 999px;
   border: 1px solid var(--line); background: var(--canvas);
   font: 400 11.5px/1 var(--font); color: var(--ink-2); cursor: pointer;
 }
 /* Gold marks the chosen thing — the act — and nothing else on this surface (§11). */
-.so-pick button[aria-pressed="true"] {
+.so .so-pick button[aria-pressed="true"] {
   border-color: var(--gold); background: var(--gold-tint); color: var(--ink); font-weight: 500;
 }
-.so-pick button:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.so .so-pick button:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
 
 .so-editor-foot {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -349,6 +349,41 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
   .so-ready-row::before { background: currentColor; }
   .so-next::after { display: none; }
   .so-editor { border-left: 1px solid currentColor; }
-  .so-pick button[aria-pressed="true"] { border: 2px solid currentColor; }
+  .so .so-pick button[aria-pressed="true"] { border: 2px solid currentColor; }
   .so-next { border: 1px solid currentColor; }
+}
+
+/* Sales drawers live beside, never inside, the inert Sales background. */
+.so.so-overlay { padding: 0; background: none; }
+.so-editor-body { align-content: start; }
+.so .so-pick button { min-height: 36px; border: 1px solid color-mix(in srgb, var(--ink-2) 55%, var(--canvas)); color: var(--ink); }
+.so .so-pick button:hover { background: var(--violet-tint); border-color: var(--violet); }
+.so .so-pick button[aria-pressed="true"] { border-color: var(--violet); background: var(--violet-tint); box-shadow: inset 0 0 0 1px var(--violet); color: var(--ink); font-weight: 600; }
+.so-editor .btn:focus-visible { outline: 2px solid var(--violet); outline-offset: 3px; }
+.so-prerequisite { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ink-2); }
+.so-prerequisite .btn { margin-top: 8px; display: flex; }
+.so-discard { position: absolute; inset: 0; z-index: 2; padding: 24px; background: var(--canvas); display: flex; flex-wrap: wrap; align-content: center; gap: 12px; }
+.so-discard h3, .so-discard p { width: 100%; margin: 0; color: var(--ink); }
+.so-discard p { font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+
+.so-payment-boundary { margin: 8px 0 14px; color: var(--ink-2); font-size: 12px; line-height: 1.5; }
+
+.so-billing-link { padding: 0; border: 0; background: none; font: inherit; color: var(--violet); text-decoration: underline; cursor: pointer; }
+.so-billing-link:focus-visible { outline: 2px solid var(--violet); outline-offset: 3px; }
+
+/* Measured Sales-local text contrast: retain state fills and violet actions while
+ * using the theme's legible foregrounds on the actual raised Sales grounds. */
+.so .so-band-head small, .so .so-absent { color: var(--ink-2); }
+.paige-solo .so .pill-n { color: var(--ink-2); }
+.paige-solo .so .pill-warn { color: var(--ink); }
+.so .so-tr > span.so-num { color: var(--ink-2); }
+
+/* These labels are part of the Sales task, including the portalled editor. */
+.so .so-ready-text small, .so .so-orient, .so .so-quiet,
+.so .so-editor-head p, .so .so-editor-note { color: var(--ink-2); }
+.paige-solo .so span.pill-n, .paige-solo .so span.pill-v { color: var(--ink-2); }
+.so .so-editor-note[data-tone="bad"] { color: var(--bad); }
+
+.paige-solo[data-theme="dark"] .so button.btn-p:hover {
+  background: var(--violet-2); border-color: var(--violet-2); color: var(--ink-inv);
 }

@@ -30,6 +30,7 @@
 // `referral_clicks`, never on the order — so send → click → order does not join. Attribution
 // therefore is not shown at all, rather than shown badly (§13).
 import React from "react";
+import { createPortal } from "react-dom";
 import { Ic } from "./_shared";
 import { useCatalogOffers } from "./useCatalogOffers";
 import { money, minorUnitDigits } from "./catalog-offers";
@@ -198,35 +199,96 @@ function ReadyRow({ state, label, detail, action, word: override }) {
  */
 function useModalDialog() {
   const panelRef = React.useRef(null);
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     const previous = document.activeElement;
-    // Everything the shell already rendered goes inert, so a screen reader's virtual cursor and
-    // Tab both stay inside the panel.
-    const background = document.querySelectorAll(
-      ".solo-campaigns > .campaigns-nav, .solo-campaigns > .campaigns-scroll",
-    );
-    background.forEach((node) => node.setAttribute("inert", ""));
-
-    const onKeyDown = (event) => {
+    const background = [...document.querySelectorAll(".solo-campaigns > .campaigns-nav, .solo-campaigns > .campaigns-scroll")];
+    const alreadyInert = new Set(background.filter(node => node.hasAttribute("inert")));
+    background.forEach(node => node.setAttribute("inert", ""));
+    const scope = () => panelRef.current?.querySelector('[role="alertdialog"]') || panelRef.current;
+    const focusable = () => [...(scope()?.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') || [])].filter(node => !node.closest('[inert]'));
+    const onKey = event => {
       if (event.key !== "Tab") return;
-      const focusable = [...(panelRef.current?.querySelectorAll(
-        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [])];
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      const nodes = focusable(); const first = nodes[0]; const last = nodes[nodes.length - 1];
+      if (!first) { event.preventDefault(); scope()?.focus(); return; }
+      if (event.shiftKey && (document.activeElement === first || !scope()?.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !scope()?.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
     };
-    window.addEventListener("keydown", onKeyDown);
+    const onFocus = event => { if (!scope()?.contains(event.target)) focusable()[0]?.focus(); };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("focusin", onFocus);
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      background.forEach((node) => node.removeAttribute("inert"));
-      // Focus goes back to whatever opened this, so the keyboard does not restart at the top.
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true });
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusin", onFocus);
+      background.forEach(node => { if (!alreadyInert.has(node)) node.removeAttribute("inert"); });
+      if (previous instanceof HTMLElement && previous.isConnected && previous !== document.body) previous.focus({ preventScroll: true });
+      else document.querySelector('.campaigns-nav [aria-selected="true"]')?.focus();
     };
   }, []);
   return panelRef;
+}
+
+// A pending write may finish on the server; its obsolete UI completion must not affect another workspace.
+function useEditorLifetime() {
+  const alive = React.useRef(true);
+  const saving = React.useRef(false);
+  React.useLayoutEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  return { alive, saving };
+}
+
+function useDiscardGuard(dirty, busy, onClose, closeRequested, onContinue) {
+  const [pending, setPending] = React.useState(null);
+  const continueRef = React.useRef(null);
+  const resumeFocus = React.useRef(null);
+  const latestClose = React.useRef(onClose);
+  latestClose.current = onClose;
+  const close = (next = () => latestClose.current()) => {
+    if (busy) return;
+    if (dirty) setPending(() => next);
+    else next();
+  };
+  const previousRequest = React.useRef(false);
+  React.useLayoutEffect(() => {
+    const newlyRequested = closeRequested && !previousRequest.current;
+    previousRequest.current = closeRequested;
+    if (newlyRequested) {
+      if (busy) onContinue?.();
+      else { close(); if (dirty) onContinue?.(); }
+    }
+  });
+  React.useEffect(() => { if (pending) continueRef.current?.focus(); }, [pending]);
+  const keep = () => {
+    resumeFocus.current = continueRef.current?.closest(".so-editor")?.querySelector("h2");
+    setPending(null);
+  };
+  React.useLayoutEffect(() => {
+    if (!pending && resumeFocus.current) {
+      resumeFocus.current.setAttribute("tabindex", "-1");
+      resumeFocus.current.focus({ preventScroll: true });
+      resumeFocus.current = null;
+    }
+  }, [pending]);
+  React.useEffect(() => {
+    if (!dirty && !busy) return;
+    const warnBeforeExit = event => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warnBeforeExit);
+    return () => window.removeEventListener("beforeunload", warnBeforeExit);
+  }, [dirty, busy]);
+  React.useEffect(() => {
+    const onKey = event => {
+      if (event.key !== "Escape") return;
+      event.preventDefault(); event.stopPropagation();
+      if (pending) keep(); else close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  const confirmation = pending ? <div className="so-discard" role="alertdialog" aria-modal="true" aria-labelledby="so-discard-title">
+    <h3 id="so-discard-title">Discard unsaved changes?</h3>
+    <p>Your changes have not been saved. Continue editing to keep them.</p>
+    <button ref={continueRef} className="btn btn-s btn-p" onClick={keep}>Continue editing</button>
+    <button className="btn btn-s" onClick={() => { const next = pending; setPending(null); next(); }}>Discard changes</button>
+  </div> : null;
+  return { close: () => close(), leave: close, confirmation };
 }
 
 /**
@@ -236,39 +298,44 @@ function useModalDialog() {
  * "Stripe": the surface is processor-agnostic by construction (§38), and PAIGE never touches the
  * account either way.
  */
-function PaymentEditor({ data, onClose }) {
+function PaymentEditor({ data, onClose, closeRequested, onContinue }) {
   const [processor, setProcessor] = React.useState(data.processor || "");
   const [methods, setMethods] = React.useState([...data.methods]);
   const [busy, setBusy] = React.useState(false);
+  const waiting = data.phase !== "ready";
   const [notice, setNotice] = React.useState(null);
   const firstRef = React.useRef(null);
   const panelRef = useModalDialog();
 
   React.useEffect(() => { firstRef.current?.focus(); }, []);
-  React.useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape" && !busy) onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, busy]);
+
 
   const toggle = (method) => setMethods((current) =>
     current.includes(method) ? current.filter((m) => m !== method) : [...current, method]);
 
+  const { alive, saving } = useEditorLifetime();
+  const baseline = React.useRef(JSON.stringify([data.processor || "", [...data.methods].sort()]));
+  const dirty = JSON.stringify([processor, [...methods].sort()]) !== baseline.current;
+  const { close, confirmation } = useDiscardGuard(dirty, busy, onClose, closeRequested, onContinue);
   const save = async () => {
+    if (saving.current || waiting) return;
+    saving.current = true;
     setBusy(true);
     setNotice(null);
-    const outcome = await data.declarePaymentHandling(processor, methods);
+    const outcome = await data.declarePaymentHandling(processor, methods).catch(() => ({ ok: false }));
+    if (!alive.current) return;
+    saving.current = false;
     setBusy(false);
     if (outcome.ok) { onClose(); return; }
     // The form STAYS OPEN on a refusal. Closing it would discard the answer on top of telling
     // someone it did not save.
-    setNotice(outcome.message || "That could not be saved. Nothing was changed.");
+    setNotice("That could not be saved. Check your access and try again.");
   };
 
   return (
     <>
-      <button className="so-editor-scrim" tabIndex={-1} aria-label="Close" onClick={() => !busy && onClose()} />
-      <aside ref={panelRef} className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-pay-title">
+      <button className="so-editor-scrim" tabIndex={-1} aria-label="Close" onClick={close} />
+      <aside ref={panelRef} tabIndex={-1} className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-pay-title">
         <header className="so-editor-head">
           <div style={{ flex: 1 }}>
             <h2 id="so-pay-title">How your clients pay you</h2>
@@ -277,12 +344,12 @@ function PaymentEditor({ data, onClose }) {
               money, or give Paige access to your processor.
             </p>
           </div>
-          <button className="btn btn-s" onClick={onClose} disabled={busy} aria-label="Close">
+          <button className="btn btn-s" onClick={close} disabled={busy} aria-label="Close">
             <Ic.x size={14} />
           </button>
         </header>
 
-        <div className="so-editor-body">
+        <div className="so-editor-body" inert={busy || waiting ? "" : undefined}>
           <fieldset className="so-field">
             <legend>Processor</legend>
             <div className="so-pick">
@@ -313,6 +380,7 @@ function PaymentEditor({ data, onClose }) {
           </fieldset>
         </div>
 
+        {waiting ? <p className="so-prerequisite" role="status">Refreshing this workspace. Your unsaved changes are kept; saving is unavailable until the records can be read. {(data.phase === "error") ? <button className="btn btn-s" onClick={data.retry}>Retry loading</button> : null}</p> : null}
         <footer className="so-editor-foot">
           <span className="so-editor-note" data-tone={notice ? "bad" : "plain"}>
             {notice || (processor
@@ -320,11 +388,12 @@ function PaymentEditor({ data, onClose }) {
               : "Choose a processor, or say Nothing yet — both are real answers.")}
           </span>
           <span style={{ flex: 1 }} />
-          <button className="btn btn-s" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="btn btn-s btn-p" onClick={save} disabled={busy || !processor}>
+          <button className="btn btn-s" onClick={close} disabled={busy}>Cancel</button>
+          <button className="btn btn-s btn-p" onClick={save} disabled={busy || waiting || !processor}>
             {busy ? "Saving…" : "Save"}
           </button>
         </footer>
+        {confirmation}
       </aside>
     </>
   );
@@ -338,7 +407,7 @@ function PaymentEditor({ data, onClose }) {
  *
  * Cancelling creates nothing. There is no draft row written on open and none to clean up.
  */
-function QuickOffer({ offers, tenantId, onClose, onCreated }) {
+function QuickOffer({ offers, tenantId, onClose, onCreated, closeRequested, onContinue }) {
   const [name, setName] = React.useState("");
   const [kind, setKind] = React.useState("");
   const [amount, setAmount] = React.useState("");
@@ -346,26 +415,30 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
   const [interval, setInterval] = React.useState("");
   const [shape, setShape] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const waiting = offers.phase !== "ready";
   const [notice, setNotice] = React.useState(null);
   const nameRef = React.useRef(null);
   const panelRef = useModalDialog();
 
   React.useEffect(() => { nameRef.current?.focus(); }, []);
-  React.useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape" && !busy) onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, busy]);
 
+
+  const { alive, saving } = useEditorLifetime();
+  const [created, setCreated] = React.useState(false);
+  const dirty = !created && Boolean(name || kind || amount || currency !== "usd" || interval || shape);
+  const { close, confirmation } = useDiscardGuard(dirty, busy, onClose, closeRequested, onContinue);
   const named = name.trim().length > 0;
 
   const save = async () => {
+    if (saving.current || waiting || created) return;
+    saving.current = true;
     setBusy(true);
     setNotice(null);
     // Minor units, derived from the currency rather than a hardcoded 100 — a ¥500 offer typed as
     // 500 must not be stored as ¥50,000. The arithmetic lives in one place for exactly this reason.
     const major = amount.trim() ? Number(amount.trim()) : null;
     if (major !== null && (!Number.isFinite(major) || major < 0)) {
+      saving.current = false;
       setBusy(false);
       setNotice("That price could not be read, so nothing was saved.");
       return;
@@ -396,24 +469,27 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
       priceInterval: interval,
       expectedUpdatedAt: null,
       priceId: null,
-    });
+    }).catch(() => ({ ok: false }));
+    if (!alive.current) return;
+    saving.current = false;
     setBusy(false);
     if (outcome.ok) {
       // The server reports what it actually did with the price. If it declined to write one, the
       // person is told here rather than discovering it in Catalog — silently not saving a price
       // somebody just typed is the same class of lie as inventing one.
+      setCreated(true);
       const note = outcome.result?.price_note;
-      if (note) { setNotice(note); return; }
+      if (note) { setNotice("Your Catalog draft was created, but its price needs attention. Continue in Catalog to finish it."); return; }
       onCreated(outcome.result?.id ?? null);
       return;
     }
-    setNotice(outcome.message || "That could not be saved. Nothing was changed.");
+    setNotice("That could not be saved. Check your access and try again.");
   };
 
   return (
     <>
-      <button className="so-editor-scrim" tabIndex={-1} aria-label="Close" onClick={() => !busy && onClose()} />
-      <aside ref={panelRef} className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-offer-title">
+      <button className="so-editor-scrim" tabIndex={-1} aria-label="Close" onClick={close} />
+      <aside ref={panelRef} tabIndex={-1} className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-offer-title">
         <header className="so-editor-head">
           <div style={{ flex: 1 }}>
             <h2 id="so-offer-title">Quick offer</h2>
@@ -422,12 +498,12 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
               nothing is public until you publish it there.
             </p>
           </div>
-          <button className="btn btn-s" onClick={onClose} disabled={busy} aria-label="Close">
+          <button className="btn btn-s" onClick={close} disabled={busy} aria-label="Close">
             <Ic.x size={14} />
           </button>
         </header>
 
-        <div className="so-editor-body">
+        <div className="so-editor-body" inert={created || busy || waiting ? "" : undefined}>
           <label className="so-field">
             <span>Name</span>
             <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)}
@@ -472,6 +548,7 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
           </fieldset>
         </div>
 
+        {waiting ? <p className="so-prerequisite" role="status">Refreshing this workspace. Your unsaved changes are kept; saving is unavailable until the records can be read. {(offers.phase === "error") ? <button className="btn btn-s" onClick={offers.retry}>Retry loading</button> : null}</p> : null}
         <footer className="so-editor-foot">
           <span className="so-editor-note" data-tone={notice ? "bad" : "plain"}>
             {notice || (named
@@ -479,11 +556,12 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
               : "A name is all this needs to save.")}
           </span>
           <span style={{ flex: 1 }} />
-          <button className="btn btn-s" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="btn btn-s btn-p" onClick={save} disabled={busy || !named}>
-            {busy ? "Saving…" : "Create offer"}
+          <button className="btn btn-s" onClick={close} disabled={busy}>Cancel</button>
+          <button className="btn btn-s btn-p" onClick={created ? () => onCreated() : save} disabled={busy || waiting || (!created && !named)}>
+            {created ? "Continue in Catalog" : busy ? "Saving…" : "Create offer"}
           </button>
         </footer>
+        {confirmation}
       </aside>
     </>
   );
@@ -499,7 +577,7 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
  * OPENED against, not the current one: sending the current tenant would make the server's refusal
  * guard unable to fire, because the caller would keep agreeing with itself.
  */
-function AgreementEditor({ agreements, offers, tenantId, existing, onClose }) {
+function AgreementEditor({ agreements, offers, tenantId, existing, onClose, closeRequested, onContinue, onCreateClient, onOpenCatalog, returnedClientId }) {
   const panelRef = useModalDialog();
   const firstRef = React.useRef(null);
   const [contactId, setContactId] = React.useState(existing?.contactId ?? "");
@@ -522,6 +600,7 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose }) {
   const [endsOn, setEndsOn] = React.useState(existing?.endsOn ?? "");
   const [notes, setNotes] = React.useState(existing?.notes ?? "");
   const [busy, setBusy] = React.useState(false);
+  const waiting = agreements.phase !== "ready" || offers.phase !== "ready";
   const [notice, setNotice] = React.useState("");
 
   React.useEffect(() => { firstRef.current?.focus(); }, []);
@@ -546,26 +625,31 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose }) {
   // while `ready` ignored the term entirely, so choosing "Not quoted yet" from the empty state
   // enabled a Save that could only ever fail, two clicks in.
   const quoting = basis === "quote_pending";
-  const ready = contactId !== "" && offerId !== ""
+  const ready = agreements.clientsReadable && agreements.clients.some(client => client.id === contactId) && offers.offers.some(offer => offer.id === offerId)
     && (quoting ? term === "custom_quote" : (basis === "catalog" ? planId !== "" : priced));
   // Anything typed is worth protecting on the way out. The check is on the DRAFT, not on a dirty
   // flag, so it is true the moment a field differs from what was opened.
-  const touched = contactId !== (existing?.contactId ?? "") || offerId !== (existing?.offerId ?? "")
-    || term !== (existing?.termKind ?? "one_time") || amount !== "" || notes !== (existing?.notes ?? "")
-    || startsOn !== (existing?.startsOn ?? "");
-
-  const close = () => {
-    if (busy) return;
-    if (touched && !window.confirm("Close without saving? What you typed here will be lost.")) return;
-    onClose();
-  };
+  const draft = JSON.stringify([contactId, offerId, term, basis, planId, amount, currency, cadence, instalments, startsOn, renewsOn, endsOn, notes]);
+  const baseline = React.useRef(draft);
+  const { alive, saving } = useEditorLifetime();
+  const { close, leave, confirmation } = useDiscardGuard(draft !== baseline.current, busy, onClose, closeRequested, onContinue);
+  const returnedApplied = React.useRef(false);
+  React.useEffect(() => {
+    if (!returnedApplied.current && returnedClientId && !existing && agreements.phase === "ready" && agreements.canManage && agreements.clientsReadable && agreements.clients.some(client => client.id === returnedClientId)) {
+      returnedApplied.current = true;
+      setContactId(returnedClientId);
+    }
+  }, [returnedClientId, existing, agreements.phase, agreements.canManage, agreements.clientsReadable, agreements.clients]);
 
   const save = async () => {
+    if (saving.current || waiting) return;
+    saving.current = true;
     setBusy(true);
     setNotice("");
     const digits = minorUnitDigits(currency);
     const major = priced ? Number(amount) : null;
     if (major !== null && !Number.isFinite(major)) {
+      saving.current = false;
       setBusy(false);
       setNotice("That amount is not a number.");
       return;
@@ -600,19 +684,21 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose }) {
       title: null,
       notes: notes.trim() || null,
       expectedUpdatedAt: existing?.updatedAt ?? null,
-    });
+    }).catch(() => ({ ok: false }));
+    if (!alive.current) return;
+    saving.current = false;
     setBusy(false);
     if (outcome.ok) { onClose(); return; }
     // A stale write is NOT a retry — retrying would overwrite whoever else saved. Say so.
     setNotice(outcome.stale
       ? "Someone else changed this while you had it open. Close and reopen it to see their version."
-      : outcome.message || "That could not be saved. Nothing was changed.");
+      : "That could not be saved. Check your access and try again.");
   };
 
   return (
     <>
       <button className="so-editor-scrim" tabIndex={-1} aria-label="Close" onClick={close} />
-      <aside ref={panelRef} className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-agr-title">
+      <aside ref={panelRef} tabIndex={-1} className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-agr-title">
         <header className="so-editor-head">
           <div style={{ flex: 1 }}>
             <h2 id="so-agr-title">{existing ? "Change these terms" : "Record what a client agreed to"}</h2>
@@ -626,10 +712,13 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose }) {
           </button>
         </header>
 
-        <div className="so-editor-body">
+        <div className="so-editor-body" inert={busy || waiting ? "" : undefined}>
+          {!agreements.clientsReadable ? <p className="so-prerequisite" role="alert">Clients could not be read at your current access level. No client has been selected. <button className="btn btn-s" onClick={agreements.retry}>Retry clients</button></p> : null}
+          {agreements.clients.length === 0 && agreements.clientsReadable && onCreateClient ? <p className="so-prerequisite">Add a client in Clients, then return here to record their terms. <button className="btn btn-s btn-p" onClick={() => leave(onCreateClient)}>Create client</button></p> : null}
+          {offers.offers.length === 0 && onOpenCatalog ? <p className="so-prerequisite">An offer is needed before you can record terms. <button className="btn btn-s btn-p" onClick={() => leave(onOpenCatalog)}>Create an offer in Catalog</button></p> : null}
           <label className="so-field">
             <span>Client</span>
-            <select ref={firstRef} value={contactId} onChange={(e) => setContactId(e.target.value)}>
+            <select ref={firstRef} disabled={!agreements.clientsReadable} value={agreements.clientsReadable ? contactId : ""} onChange={(e) => setContactId(e.target.value)}>
               <option value="">Choose a client…</option>
               {agreements.clients.map((client) => (
                 <option key={client.id} value={client.id}>{client.name}</option>
@@ -747,6 +836,7 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose }) {
           </label>
         </div>
 
+        {waiting ? <p className="so-prerequisite" role="status">Refreshing this workspace. Your unsaved changes are kept; saving is unavailable until the records can be read. {(agreements.phase === "error" || offers.phase === "error") ? <button className="btn btn-s" onClick={() => { agreements.retry(); offers.retry(); }}>Retry loading</button> : null}</p> : null}
         <footer className="so-editor-foot">
           <span className="so-editor-note" data-tone={notice ? "bad" : "plain"}>
             {notice || (ready
@@ -755,10 +845,11 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose }) {
           </span>
           <span style={{ flex: 1 }} />
           <button className="btn btn-s" onClick={close} disabled={busy}>Cancel</button>
-          <button className="btn btn-s btn-p" onClick={save} disabled={busy || !ready}>
+          <button className="btn btn-s btn-p" onClick={save} disabled={busy || waiting || !ready}>
             {busy ? "Saving…" : existing ? "Save changes" : "Record terms"}
           </button>
         </footer>
+        {confirmation}
       </aside>
     </>
   );
@@ -769,18 +860,53 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose }) {
  * this adds no second drawer (§18) and inherits its focus trap and Escape handling. `deals` arrives
  * from the Campaigns snapshot rather than a fifth tenant read.
  */
-export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCatalog, truth }) {
+export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCatalog, onOpenBilling, onCreateClient, returnedClientId, panel, onPanelChange, truth }) {
   const sales = useSoloSalesOps();
   const offers = useCatalogOffers();
   const agreements = useSoloAgreements();
-  const [editor, setEditor] = React.useState(null);
+  const panelToEditor = { "quick-offer": "offer", "payment-handling": "payment", "commercial-terms": "agreement" };
+  const editorToPanel = { offer: "quick-offer", payment: "payment-handling", agreement: "commercial-terms" };
+  const controlled = panel !== undefined;
+  const requestedEditor = panelToEditor[panel] || null;
+  const [editor, setLocalEditor] = React.useState(requestedEditor);
   const [editing, setEditing] = React.useState(null);
-
-  // A workspace switch clears anything half-typed. Without this, a draft opened against one
-  // workspace stays on screen under the next one. Both tenant ids are watched because each hook
-  // guards its own synchronously, and the agreements drawer holds the more sensitive draft — a
-  // client name bound to a negotiated amount.
-  React.useEffect(() => { setEditor(null); setEditing(null); }, [sales.tenantId, agreements.tenantId]);
+  const tenantKey = `${sales.tenantId}:${agreements.tenantId}:${offers.tenantId}`;
+  const previousTenant = React.useRef(sales.tenantId);
+  const changedTenant = Boolean(previousTenant.current && sales.tenantId && previousTenant.current !== sales.tenantId);
+  const sameWorkspace = Boolean(sales.tenantId) && sales.tenantId === offers.tenantId && sales.tenantId === agreements.tenantId;
+  const allowed = React.useCallback(candidate => candidate === "offer" ? sameWorkspace && offers.canManage && offers.phase === "ready"
+    : candidate === "payment" ? sales.canManage && sales.phase === "ready"
+    : candidate === "agreement" ? sameWorkspace && agreements.canManage && agreements.phase === "ready" && offers.phase === "ready" : true, [sameWorkspace, sales.canManage, sales.phase, offers.canManage, offers.phase, agreements.canManage, agreements.phase]);
+  const setEditor = next => { setLocalEditor(next); onPanelChange?.(editorToPanel[next] || null); };
+  const finish = () => { setLocalEditor(null); setEditing(null); onPanelChange?.(null, { replace: true }); };
+  const keep = () => onPanelChange?.(editorToPanel[editor]);
+  React.useEffect(() => {
+    if (changedTenant) {
+      previousTenant.current = sales.tenantId;
+      setLocalEditor(null); setEditing(null); onPanelChange?.(null, { replace: true });
+    } else {
+      if (!previousTenant.current && sales.tenantId) previousTenant.current = sales.tenantId;
+      if (controlled && !editor && requestedEditor && allowed(requestedEditor)) setLocalEditor(requestedEditor);
+    }
+  }, [tenantKey, sales.tenantId, controlled, panel, editor, allowed, changedTenant, onPanelChange, requestedEditor]);
+  React.useEffect(() => {
+    if (requestedEditor && sales.phase === "ready" && offers.phase === "ready" && agreements.phase === "ready" && !allowed(requestedEditor)) onPanelChange?.(null, { replace: true });
+  }, [panel, sales.phase, offers.phase, agreements.phase, allowed, onPanelChange, requestedEditor]);
+  const closeRequested = controlled && requestedEditor !== editor;
+  const [overlayHost, setOverlayHost] = React.useState(null);
+  React.useLayoutEffect(() => { setOverlayHost(document.querySelector(".solo-campaigns > .campaigns-overlays")); }, []);
+  const retainedEditor = React.useRef(null);
+  if (!editor) retainedEditor.current = null;
+  if (editor && allowed(editor)) retainedEditor.current = { editor, tenantKey };
+  const phases = editor === "payment" ? [sales.phase] : editor === "offer" ? [offers.phase] : [agreements.phase, offers.phase];
+  const pendingRead = phases.some(phase => phase === "loading" || phase === "error") && phases.every(phase => ["ready", "loading", "error"].includes(phase));
+  const retainDraft = sameWorkspace && pendingRead && retainedEditor.current?.editor === editor && retainedEditor.current?.tenantKey === tenantKey;
+  const activeEditor = changedTenant || (!allowed(editor) && !retainDraft) ? null : editor;
+  const editorContent = <div className="so so-overlay">
+    {activeEditor === "payment" ? <PaymentEditor data={sales} onClose={finish} closeRequested={closeRequested} onContinue={keep} /> : null}
+    {activeEditor === "offer" ? <QuickOffer offers={offers} tenantId={offers.tenantId} onClose={finish} onCreated={() => { finish(); onOpenCatalog?.("quick-offer"); }} closeRequested={closeRequested} onContinue={keep} /> : null}
+    {activeEditor === "agreement" ? <AgreementEditor agreements={agreements} offers={offers} tenantId={agreements.tenantId} existing={editing} onClose={finish} closeRequested={closeRequested} onContinue={keep} onCreateClient={onCreateClient} onOpenCatalog={() => onOpenCatalog?.("commercial-terms")} returnedClientId={returnedClientId} /> : null}
+  </div>;
 
   if (sales.phase === "resolving") {
     return (
@@ -790,7 +916,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
       </div>
     );
   }
-  if (sales.phase === "loading") {
+  if (sales.phase === "loading" && !activeEditor) {
     return (
       <div className="campaigns-skeleton" role="status" aria-label="Loading sales operations">
         <span /><span /><span />
@@ -806,7 +932,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
       </div>
     );
   }
-  if (sales.phase === "error") {
+  if (sales.phase === "error" && !activeEditor) {
     return (
       <div className="campaigns-state" role="alert">
         <span className="campaigns-truth campaigns-truth--unavailable">UNAVAILABLE</span>
@@ -918,24 +1044,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
 
   return (
     <div className="so">
-      {editor === "payment" ? <PaymentEditor data={sales} onClose={() => setEditor(null)} /> : null}
-      {editor === "offer" ? (
-        <QuickOffer
-          offers={offers}
-          tenantId={offers.tenantId}
-          onClose={() => setEditor(null)}
-          onCreated={() => setEditor(null)}
-        />
-      ) : null}
-      {editor === "agreement" ? (
-        <AgreementEditor
-          agreements={agreements}
-          offers={offers}
-          tenantId={agreements.tenantId}
-          existing={editing}
-          onClose={() => { setEditor(null); setEditing(null); }}
-        />
-      ) : null}
+      {activeEditor && overlayHost ? createPortal(editorContent, overlayHost) : null}
 
       {/* ── readiness ─────────────────────────────────────────────────────────────────────── */}
       <section className="so-band">
@@ -948,7 +1057,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
 
         <ReadyRow
           state={processorState}
-          label="How your clients pay you"
+          label="Payment handling"
           detail={
             sales.processorUnrecognised
               ? "Something is recorded that this version cannot read."
@@ -979,6 +1088,8 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
             </small>
           )}
         />
+
+        <p className="so-payment-boundary">Client payments run on your own payment processor. Paige is never the merchant of record for your client payments. {onOpenBilling ? <button className="so-billing-link" onClick={onOpenBilling}>Settings → Billing</button> : <span>Platform subscription: Settings → Billing.</span>}</p>
 
         <ReadyRow
           state={offersState}
@@ -1069,7 +1180,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
           <small>Catalog owns these records. Changing one changes it everywhere.</small>
           <span style={{ flex: 1 }} />
           {onOpenCatalog ? (
-            <button className="btn btn-s" onClick={onOpenCatalog}>Open Catalog <Ic.arrow size={12} /></button>
+            <button className="btn btn-s" onClick={() => onOpenCatalog("quick-offer")}>Open Catalog <Ic.arrow size={12} /></button>
           ) : null}
         </div>
 
@@ -1115,7 +1226,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
       {/* ── what each client pays ─────────────────────────────────────────────────────────── */}
       <section className="so-band">
         <div className="so-band-head">
-          <h3>Agreements and retainers</h3>
+          <h3>Commercial terms and retainers</h3>
           {/* Disambiguated in place rather than renamed. "Agreement" already means a SIGNED
             * DOCUMENT everywhere else in this product — including `clients.agreement_signed_at`
             * on the very table this reads, and an "Agreements" card on the same client's portal
@@ -1123,7 +1234,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
             * It is also §38 statement #1 of exactly two on this band. */}
           <small>
             What each client agreed to pay for one of your offers. Recording it bills nobody and
-            sends nothing — signing and documents stay with the client’s own record.
+            sends nothing — document uploads and signatures are not supported here.
           </small>
         </div>
 
@@ -1151,7 +1262,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
                 : "Nothing recorded yet. Pick a client and one of your offers, then write down what they actually agreed to pay — the amount, how often, and when it starts."}
           </p>
         ) : (
-          <div className="so-table" role="table" aria-label="Agreements and retainers">
+          <div className="so-table" role="table" aria-label="Commercial terms and retainers">
             <div className="so-tr so-th so-tr-4" role="row">
               <span role="columnheader">Client</span>
               <span role="columnheader">State</span>

@@ -3,7 +3,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   TenantRelationshipsClientsWorkspace,
@@ -14,10 +14,14 @@ import {
   workspaceTabs,
 } from "./workspaceModel";
 
+import { beginClientReturn, clearClientReturn, consumeClientReturn, getClientReturn } from "@/solo/sales-navigation";
+
 const useTenantContext = vi.fn();
 const useSubtabRoute = vi.fn();
 const useTenantRelationshipsData = vi.fn();
-const ownerHarness = vi.hoisted(() => ({ conversations: 0, calendars: 0, portals: 0 }));
+const ownerHarness = vi.hoisted(() => ({ conversations: 0, calendars: 0, portals: 0, denied: false }));
+const toastHarness = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("sonner", () => ({ toast: toastHarness }));
 const editorHarness = vi.hoisted(() => ({
   rpc: vi.fn(async (..._args: unknown[]) => ({ data: [] })),
   upsert: vi.fn(async (..._args: unknown[]) => "saved-contact"),
@@ -33,7 +37,7 @@ vi.mock("@/components/tenant-calendar/SoloCalendarWorkspace", async () => {
     },
   };
 });
-vi.mock("@/components/auth/RoleGate", () => ({ RoleGate: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+vi.mock("@/components/auth/RoleGate", () => ({ RoleGate: ({ children, fallback }: { children: React.ReactNode; fallback?: React.ReactNode }) => <>{ownerHarness.denied ? fallback : children}</> }));
 vi.mock("@/pages/admin/ClientsConversations", async () => {
   const ReactModule = await import("react");
   return {
@@ -111,9 +115,13 @@ function LocationProbe() {
 
 describe("tenant Relationships / Clients workspace", () => {
   beforeEach(() => {
+    clearClientReturn();
+    ownerHarness.denied = false;
     useTenantContext.mockReset();
     useSubtabRoute.mockReset();
     useTenantRelationshipsData.mockReset();
+    toastHarness.success.mockClear();
+    toastHarness.error.mockClear();
     editorHarness.rpc.mockClear();
     editorHarness.upsert.mockClear();
     useTenantContext.mockReturnValue({
@@ -125,6 +133,129 @@ describe("tenant Relationships / Clients workspace", () => {
     });
     useSubtabRoute.mockReturnValue(["people", vi.fn()]);
     useTenantRelationshipsData.mockReturnValue(baseData);
+  });
+
+  function clientReturnTree(tier: "solo" | "agency" = "solo") {
+    return <MemoryRouter initialEntries={["/solo/42/clients/people"]}><Routes><Route path="/solo/:account/clients/people" element={<TenantRelationshipsClientsWorkspace routeTier={tier} openPaige={vi.fn()} />} /><Route path="/solo/:account/growth/sales" element={<div>Commercial Terms destination</div>} /></Routes><LocationProbe /></MemoryRouter>;
+  }
+
+  it("opens canonical client creation for a matching Solo continuation and cancels safely without an identifier URL", async () => {
+    beginClientReturn("tenant-solo", "42");
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    await act(async () => root.render(clientReturnTree()));
+    expect(host.querySelector("[data-contact-editor]")).not.toBeNull();
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Cancel")?.click());
+    expect(host.querySelector("[data-location]")?.textContent).toBe("/solo/42/growth/sales?panel=commercial-terms");
+    expect(consumeClientReturn("tenant-solo", "42")).toBeNull();
+    act(() => root.unmount()); host.remove();
+  });
+
+  it.each([["other-tenant", "solo"], ["tenant-solo", "agency"]] as const)("ignores %s continuation in %s context", async (tenant, tier) => {
+    beginClientReturn(tenant, "42");
+    const host = document.createElement("div"); const root = createRoot(host);
+    await act(async () => root.render(clientReturnTree(tier)));
+    expect(host.querySelector("[data-contact-editor]")).toBeNull();
+    expect(host.textContent).not.toContain("Return to commercial terms");
+    act(() => root.unmount());
+  });
+
+  it("returns only a newly persisted canonical client in memory and never in the URL", async () => {
+    beginClientReturn("tenant-solo", "42");
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    await act(async () => root.render(clientReturnTree()));
+    const firstName = Array.from(host.querySelectorAll<HTMLInputElement>("input")).find(input => input.previousElementSibling?.textContent === "First name");
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(firstName, "Avery"); firstName?.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('.trc-contact-editor-steps [role="tab"]')).find(button => button.textContent?.includes("Relationship & consent"))?.click());
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Create contact")?.click());
+    expect(host.querySelector("[data-location]")?.textContent).toBe("/solo/42/growth/sales?panel=commercial-terms");
+    expect(consumeClientReturn("tenant-solo", "42")).toBe("saved-contact");
+    expect(editorHarness.upsert).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-solo", contactId: undefined }));
+    act(() => root.unmount()); host.remove();
+  });
+
+  it("keeps a refused canonical save editable and cancels back without a fabricated client", async () => {
+    beginClientReturn("tenant-solo", "42");
+    editorHarness.upsert.mockRejectedValueOnce(new Error("Client creation refused"));
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    await act(async () => root.render(clientReturnTree()));
+    const firstName = Array.from(host.querySelectorAll<HTMLInputElement>("input")).find(input => input.previousElementSibling?.textContent === "First name");
+    expect(firstName).toBeTruthy();
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(firstName, "Avery"); firstName?.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('.trc-contact-editor-steps [role="tab"]')).find(button => button.textContent?.includes("Relationship & consent"))?.click());
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Create contact")?.click());
+    expect(host.textContent).toContain("Client creation refused");
+    expect(host.textContent).toContain("Retry save");
+    expect(host.querySelector("[data-location]")?.textContent).toBe("/solo/42/clients/people");
+    expect(getClientReturn("tenant-solo", "42")).toBe(true);
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Cancel")?.click());
+    expect(host.textContent).toContain("Discard");
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Discard and return")?.click());
+    expect(host.querySelector("[data-location]")?.textContent).toBe("/solo/42/growth/sales?panel=commercial-terms");
+    expect(consumeClientReturn("tenant-solo", "42")).toBeNull();
+    act(() => root.unmount()); host.remove();
+  });
+
+  it("refuses creation through the canonical role gate and offers an empty return", async () => {
+    beginClientReturn("tenant-solo", "42"); ownerHarness.denied = true;
+    const host = document.createElement("div"); const root = createRoot(host);
+    await act(async () => root.render(clientReturnTree()));
+    expect(host.querySelector("[data-contact-editor]")).toBeNull();
+    expect(host.textContent).toContain("Client creation is not available for this role");
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Return to commercial terms")?.click());
+    expect(host.querySelector("[data-location]")?.textContent).toBe("/solo/42/growth/sales?panel=commercial-terms");
+    expect(editorHarness.upsert).not.toHaveBeenCalled();
+    expect(consumeClientReturn("tenant-solo", "42")).toBeNull();
+    act(() => root.unmount());
+  });
+
+  // Release-blocking proof: PeopleContactEditor needs its separately scoped async
+  // lifecycle guard. Keep active until that approved repair suppresses stale global feedback.
+  it.each(["success", "rejection"] as const)("does not emit a late canonical %s toast after a workspace switch", async (outcome) => {
+    let finish!: (id: string) => void;
+    let reject!: (error: Error) => void;
+    editorHarness.upsert.mockImplementationOnce(() => new Promise<string>((resolve, refuse) => { finish = resolve; reject = refuse; }));
+    beginClientReturn("tenant-solo", "42");
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    try {
+      await act(async () => root.render(clientReturnTree()));
+      const firstName = Array.from(host.querySelectorAll<HTMLInputElement>("input")).find(input => input.previousElementSibling?.textContent === "First name");
+      expect(firstName).toBeTruthy();
+      await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(firstName, "Avery"); firstName?.dispatchEvent(new Event("input", { bubbles: true })); });
+      await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('.trc-contact-editor-steps [role="tab"]')).find(button => button.textContent?.includes("Relationship & consent"))?.click());
+      await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Create contact")?.click());
+      expect(editorHarness.upsert).toHaveBeenCalledTimes(1);
+      useTenantContext.mockReturnValue({ activeTenantId: "tenant-other", activeTenant: { id: "tenant-other", name: "Other", account_type: "standalone", parent_tenant_id: null }, accountContextLoading: false, refresh: vi.fn() });
+      await act(async () => root.render(clientReturnTree()));
+      expect(host.querySelector("[data-contact-editor]")).toBeNull();
+      await act(async () => { if (outcome === "success") finish("old-tenant-contact"); else reject(new Error("Old workspace save failed")); });
+      expect(host.querySelector("[data-location]")?.textContent).toBe("/solo/42/clients/people");
+      expect(toastHarness.success).not.toHaveBeenCalled();
+      expect(toastHarness.error).not.toHaveBeenCalled();
+    } finally {
+      act(() => root.unmount()); host.remove();
+    }
+  });
+
+  it("ignores a delayed canonical save after a workspace switch", async () => {
+    let finish!: (id: string) => void;
+    editorHarness.upsert.mockImplementationOnce(() => new Promise<string>(resolve => { finish = resolve; }));
+    beginClientReturn("tenant-solo", "42");
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    await act(async () => root.render(clientReturnTree()));
+    const firstName = Array.from(host.querySelectorAll<HTMLInputElement>("input")).find(input => input.previousElementSibling?.textContent === "First name");
+    expect(firstName).toBeTruthy();
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(firstName, "Avery"); firstName?.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('.trc-contact-editor-steps [role="tab"]')).find(button => button.textContent?.includes("Relationship & consent"))?.click());
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Create contact")?.click());
+    expect(editorHarness.upsert).toHaveBeenCalledTimes(1);
+    useTenantContext.mockReturnValue({ activeTenantId: "tenant-other", activeTenant: { id: "tenant-other", name: "Other", account_type: "standalone", parent_tenant_id: null }, accountContextLoading: false, refresh: vi.fn() });
+    await act(async () => root.render(clientReturnTree()));
+    await act(async () => finish("old-tenant-contact"));
+    expect(host.querySelector("[data-location]")?.textContent).toBe("/solo/42/clients/people");
+    expect(host.querySelector("[data-contact-editor]")).toBeNull();
+    expect(consumeClientReturn("tenant-solo", "42")).toBeNull();
+    expect(consumeClientReturn("tenant-other", "42")).toBeNull();
+    act(() => root.unmount()); host.remove();
   });
 
   it.each([

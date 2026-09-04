@@ -160,9 +160,9 @@ describe("§58 — behaviour that shipped on Sales before this slice and must su
     // The heading and BOTH paragraphs. Placed by the owner on 2026-09-03; this is the surface's
     // only §38 statement, and it matters most at the exact moment the tab starts looking like it
     // might collect money.
-    expect(text).toContain("Billing your own clients");
-    expect(text).toContain("runs on your own payment processor");
-    expect(text).toContain("Paige is never the merchant of record for money your clients");
+    expect(text).not.toContain("Billing your own clients");
+    expect(text).toContain("run on your own payment processor");
+    expect(text).toContain("Paige is never the merchant of record for your client payments");
     // The pointer to where platform billing actually lives — the other half of the boundary.
     expect(text).toContain("Settings → Billing");
     // Carried as an explicit truth tag, not as prose that reads like a feature.
@@ -237,7 +237,7 @@ describe("Sales operations — what an owner can actually do", () => {
     renderAt("/solo/42/growth/sales");
     const text = host.textContent ?? "";
     expect(text).toContain("Where this business stands");
-    expect(text).toContain("How your clients pay you");
+    expect(text).toContain("Payment handling");
     expect(text).toContain("What you sell");
     expect(text).toContain("What each client pays you");
     expect(text).toContain("Payments and invoices");
@@ -314,7 +314,7 @@ describe("Sales operations — what an owner can actually do", () => {
     // Still open, carrying the server's own sentence. Closing it would discard the answer on top
     // of telling someone it did not save.
     expect(dialog).not.toBeNull();
-    expect(dialog?.textContent).toContain("nothing was written");
+    expect(dialog?.textContent).toContain("Check your access and try again");
   });
 
   it("creates a quick offer through the canonical Catalog seam, and never a second record", async () => {
@@ -400,7 +400,7 @@ describe("Sales operations — what an owner can actually do", () => {
 
     // Silently not saving a price somebody just typed is the same class of lie as inventing one,
     // so the form stays open carrying the server's sentence.
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("connected to checkout");
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("draft was created, but its price needs attention");
   });
 
   it("creates nothing when a quick offer is abandoned", () => {
@@ -547,7 +547,7 @@ describe("Sales operations — what an owner can actually do", () => {
     expect(text).toContain("Recording it bills nobody and sends nothing");
     // "Agreement" means a SIGNED DOCUMENT everywhere else in this product, including
     // `clients.agreement_signed_at` on the table this very band reads. The band must say so.
-    expect(text).toContain("signing and documents stay with the client");
+    expect(text).toContain("document uploads and signatures are not supported here");
     // Nothing here may imply money moved.
     expect(text).not.toMatch(/\b(invoiced|charged|collected|paid in full)\b/i);
   });
@@ -790,7 +790,7 @@ describe('agreement schedule detail', () => {
       startsOn: '2026-09-15', renewsOn, endsOn: '2026-11-15',
     }];
     renderAt('/solo/42/growth/sales');
-    const row = host.querySelector('[aria-label="Agreements and retainers"] button') as HTMLButtonElement;
+    const row = host.querySelector('[aria-label="Commercial terms and retainers"] button') as HTMLButtonElement;
     act(() => row.click());
     const text = document.querySelector('[role="dialog"]')?.textContent ?? '';
     expect(text).toContain('Sep 15, 2026');
@@ -801,4 +801,119 @@ describe('agreement schedule detail', () => {
     expect(harness.agreements.setAgreementStatus).not.toHaveBeenCalled();
     expect(harness.offers.saveOffer).not.toHaveBeenCalled();
   });
+});
+
+
+describe("Sales drawer repair regressions", () => {
+  const click = (label: string) => act(() => buttonSaying(label)!.click());
+  const type = (input: HTMLInputElement, value: string) => act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  it.each(["Quick offer", "Record it", "Record terms"])("mounts %s outside every inert ancestor and closes on Escape", label => {
+    renderAt("/solo/42/growth/sales"); click(label);
+    const drawer = document.querySelector('[role="dialog"]')!;
+    expect(drawer.closest("[inert]")).toBeNull();
+    expect(drawer.closest(".campaigns-overlays")).not.toBeNull();
+    expect(host.querySelector(".campaigns-scroll")?.hasAttribute("inert")).toBe(true);
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.querySelector(".campaigns-scroll")?.hasAttribute("inert")).toBe(false);
+  });
+  it("protects a changed payment choice then discards without saving", () => {
+    renderAt("/solo/42/growth/sales"); click("Record it"); click("Square"); click("Cancel");
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    click("Continue editing");
+    expect(document.activeElement?.tagName).toBe("H2");
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    click("Cancel"); click("Discard changes"); click("Record it");
+    expect(document.querySelector('.so-pick button[aria-pressed="true"]')).toBeNull();
+    expect(harness.sales.declarePaymentHandling).not.toHaveBeenCalled();
+  });
+  it("protects date-only changes to Commercial Terms", () => {
+    renderAt("/solo/42/growth/sales"); click("Record terms");
+    type(document.querySelectorAll<HTMLInputElement>('.so-editor input[type="date"]')[1], "2026-12-31");
+    click("Cancel"); expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    click("Discard changes"); expect(harness.agreements.saveAgreement).not.toHaveBeenCalled();
+  });
+  it("does not offer duplicate creation after a draft saved with a price warning", async () => {
+    harness.offers.saveOffer = vi.fn(async () => ({ ok: true, result: { id: "draft", price_note: "raw provider text" } }));
+    renderAt("/solo/42/growth/sales"); click("Quick offer");
+    type(document.querySelector<HTMLInputElement>('.so-editor input')!, "New draft");
+    await act(async () => buttonSaying("Create offer")!.click());
+    expect(buttonSaying("Create offer")).toBeUndefined();
+    expect(buttonSaying("Continue in Catalog")).toBeDefined();
+    expect(host.textContent).not.toContain("raw provider text");
+    expect(harness.offers.saveOffer).toHaveBeenCalledTimes(1);
+  });
+  it("ignores a completed offer write after its initiating view unmounts", async () => {
+    let finish: (value: unknown) => void = () => {};
+    harness.offers.saveOffer = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+    renderAt("/solo/42/growth/sales"); click("Quick offer");
+    type(document.querySelector<HTMLInputElement>('.so-editor input')!, "Old workspace draft");
+    click("Create offer");
+    renderAt("/solo/99/growth/sales");
+    await act(async () => finish({ ok: true, result: { id: "draft" } }));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.textContent).toContain("Commercial activity");
+    expect(host.textContent).not.toContain("Old workspace draft");
+  });
+});
+
+
+it("warns before document exit only while an unsaved Sales draft exists", () => {
+  renderAt("/solo/42/growth/sales");
+  act(() => buttonSaying("Quick offer")!.click());
+  const clean = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(clean); expect(clean.defaultPrevented).toBe(false);
+  const input = document.querySelector<HTMLInputElement>('.so-editor input')!;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Unsaved");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const dirty = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(dirty); expect(dirty.defaultPrevented).toBe(true);
+  act(() => buttonSaying("Cancel")!.click());
+  act(() => buttonSaying("Discard changes")!.click());
+  const closed = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(closed); expect(closed.defaultPrevented).toBe(false);
+});
+
+it("does not treat an unreadable client list as an empty ready selector", () => {
+  harness.agreements.clientsReadable = false;
+  renderAt("/solo/42/growth/sales");
+  act(() => buttonSaying("Record terms")!.click());
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Clients could not be read");
+  expect(document.querySelector<HTMLSelectElement>('.so-editor select')?.disabled).toBe(true);
+  expect(buttonSaying("Retry clients")).toBeDefined();
+  const save = [...document.querySelectorAll<HTMLButtonElement>('.so-editor button')].find(b => b.textContent === "Record terms");
+  expect(save?.disabled).toBe(true);
+});
+
+
+it("keeps a dirty Terms draft mounted through a same-workspace Client retry", () => {
+  harness.agreements.clientsReadable = false;
+  renderAt("/solo/42/growth/sales");
+  act(() => buttonSaying("Record terms")!.click());
+  const notes = [...document.querySelectorAll<HTMLLabelElement>('.so-editor label')].find(label => label.textContent?.includes("Notes"))!.querySelector("input")!;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(notes, "Keep these notes");
+    notes.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  act(() => buttonSaying("Retry clients")!.click());
+  const repaint = () => act(() => root!.render(<MemoryRouter initialEntries={["/solo/42/growth/sales"]}><Routes><Route path="/solo/:account/*" element={<GrowthHub />} /></Routes></MemoryRouter>));
+  harness.agreements.phase = "loading";
+  harness.agreements.canManage = false;
+  repaint();
+  expect(notes.isConnected).toBe(true);
+  expect(notes.value).toBe("Keep these notes");
+  expect(document.querySelector('.so-editor-body')?.hasAttribute("inert")).toBe(true);
+  harness.agreements.phase = "ready";
+  harness.agreements.canManage = true;
+  harness.agreements.clientsReadable = true;
+  repaint();
+  expect(notes.isConnected).toBe(true);
+  expect(notes.value).toBe("Keep these notes");
+  expect(document.querySelector('.so-editor-body')?.hasAttribute("inert")).toBe(false);
+  expect(harness.agreements.saveAgreement).not.toHaveBeenCalled();
 });

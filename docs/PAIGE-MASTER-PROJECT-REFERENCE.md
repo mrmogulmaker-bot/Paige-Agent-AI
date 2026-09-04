@@ -3270,3 +3270,10 @@ least-privilege test tenant specified in #888.
 ### Solo Sales agreement schedule clarity (2026-09-03, PR #895)
 
 The Sales agreement detail now includes the recorded renewal date, or an explicit Not stated / Not applicable value. Start, renewal and end are calendar dates and retain their recorded day across timezones. This is read-only presentation over the existing agreement source; no payment, Catalog, role or cross-workspace change. See `docs/delivery/solo-sales-agreement-schedule.md` for scope, acceptance and separated proof. Authenticated browser and production proof remain owed until recorded.
+
+
+### 2026-09-03 — Solo Sales Release 1 usability repair remains unreleased
+
+The real Chromium reproduction of all three Sales drawers under an inert ancestor is a usability failure; the prior 73 passing tests did not establish usable drawers. The combined repair is on `codex/solo-sales-release1-usability`, based on `12e495a9`, after the Pipeline owner released the shared editing collision. PR #706 is untouched. Route-backed drawers, canonical Catalog/Client returns, dirty-close safety and removal of the redundant billing banner are implementation work, not live capabilities until this branch releases.
+
+The canonical Client editor has a separately identified late-completion toast path after workspace departure. Its narrowly proposed scope guard remains unapplied pending the shared-file exception. No merge, deployment, authenticated owner acceptance or real persistence success is claimed. See [the current repair evidence and Proof Owed](delivery/solo-sales-usability-r1.md).

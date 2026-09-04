@@ -3224,3 +3224,10 @@ source-of-truth rule; surfaced for an owner decision rather than absorbed.
 ### Sales agreement schedule detail (2026-09-03, PR #895)
 
 Solo Sales shows recorded start/renewal/end calendar dates without timezone day shifts. Recurring renewal absence is Not stated; non-recurring is Not applicable. The Slice 2 read/write authority matrix remains unchanged; no shared tier code, policy, writer or schema changes. See `docs/delivery/solo-sales-agreement-schedule.md`. Authenticated production and viewport proof owed.
+
+
+### 2026-09-03 — Solo Sales Release 1 usability repair remains unreleased
+
+The real Chromium reproduction of all three Sales drawers under an inert ancestor is a usability failure; the prior 73 passing tests did not establish usable drawers. The combined repair is on `codex/solo-sales-release1-usability`, based on `12e495a9`, after the Pipeline owner released the shared editing collision. PR #706 is untouched. Route-backed drawers, canonical Catalog/Client returns, dirty-close safety and removal of the redundant billing banner are implementation work, not live capabilities until this branch releases.
+
+The canonical Client editor has a separately identified late-completion toast path after workspace departure. Its narrowly proposed scope guard remains unapplied pending the shared-file exception. No merge, deployment, authenticated owner acceptance or real persistence success is claimed. See [the current repair evidence and Proof Owed](../delivery/solo-sales-usability-r1.md).

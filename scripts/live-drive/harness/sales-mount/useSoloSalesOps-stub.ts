@@ -21,6 +21,9 @@ export type Mode =
   | "save-refused";
 
 let mode: Mode = "first-use";
+let tenant = "harness-tenant";
+export function setHarnessTenant(next: string) { tenant = next; listeners.forEach(l=>l()); window.dispatchEvent(new Event("sales-harness-tenant")); }
+export function getHarnessTenant() { return tenant; }
 const listeners = new Set<() => void>();
 
 export function setSalesHarnessMode(next: Mode) {
@@ -46,7 +49,7 @@ const ORDERS = [
 
 function snapshot() {
   const base = {
-    tenantId: "harness-tenant",
+    tenantId: tenant,
     phase: "ready" as const,
     processor: null as string | null,
     processorUnrecognised: false,

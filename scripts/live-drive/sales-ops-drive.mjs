@@ -20,7 +20,7 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import { buildLaunchOptions, resolvePlaywright } from "./live-drive.mjs";
 
-const PORT = 5213;
+const PORT = Number(process.env.SALES_PROOF_PORT || 5213);
 const URL = `http://127.0.0.1:${PORT}/`;
 const OUT = path.resolve(import.meta.dirname, "artifacts/sales-ops");
 const REPO = path.resolve(import.meta.dirname, "../..");
@@ -87,7 +87,7 @@ async function measure(page) {
 
     const srgb = (c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
     const lum = ([r, g, b]) => 0.2126 * srgb(r) + 0.7152 * srgb(g) + 0.0722 * srgb(b);
-    const parse = (s) => (s.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+    const parse = (s) => { const c=document.createElement("canvas"); c.width=c.height=1; const x=c.getContext("2d"); x.fillStyle=s; x.fillRect(0,0,1,1); return [...x.getImageData(0,0,1,1).data].slice(0,3); };
     const groundOf = (el) => {
       for (let n = el; n; n = n.parentElement) {
         const bg = getComputedStyle(n).backgroundColor;
@@ -110,7 +110,7 @@ async function measure(page) {
         const weight = Number(cs.fontWeight) || 400;
         // AA: 3.0 for large text (>=24px, or >=18.66px bold), 4.5 otherwise.
         const floor = px >= 24 || (px >= 18.66 && weight >= 700) ? 3.0 : 4.5;
-        return { text: (el.textContent ?? "").trim().slice(0, 40), ratio: Number(ratio.toFixed(2)), px, floor };
+        return { salesOwned: Boolean(el.closest(".so")), text: (el.textContent ?? "").trim().slice(0, 40), ratio: Number(ratio.toFixed(2)), px, floor };
       })
       .filter(Boolean);
 
@@ -157,7 +157,7 @@ async function measure(page) {
  * handed over rather than swallowed.
  */
 const INHERITED_FLOOR = 3.5;
-const novel = (pairs) => pairs.filter((p) => p.ratio < INHERITED_FLOOR);
+const novel = (pairs) => pairs.filter((p) => p.salesOwned || p.ratio < INHERITED_FLOOR);
 const inherited = new Map();
 function recordInherited(id, pairs) {
   for (const p of pairs) {
@@ -183,7 +183,7 @@ async function actHoverContrast(page) {
     await page.waitForTimeout(60);
     out.push(await button.evaluate((el) => {
       const style = getComputedStyle(el);
-      const parse = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const parse = (value) => { const c=document.createElement("canvas"); c.width=c.height=1; const x=c.getContext("2d"); x.fillStyle=value; x.fillRect(0,0,1,1); return [...x.getImageData(0,0,1,1).data].slice(0,3); };
       const lum = (rgb) => {
         const [r, g, b] = rgb.map((c) => {
           const v = c / 255;
@@ -212,6 +212,91 @@ async function actHoverContrast(page) {
   return out.filter(Boolean);
 }
 
+
+async function proveDrawerInteractions(page, id) {
+  const panels = [
+    ["quick-offer", "Quick offer", async d => d.getByRole("textbox", { name: "Name", exact: true }).fill("Unsaved review")],
+    ["payment-handling", "Record it", async d => d.getByRole("button", { name: "Stripe", exact: true }).click()],
+    ["commercial-terms", "Record terms", async d => d.getByRole("textbox", { name: "Notes (optional)" }).fill("Unsaved review")],
+  ];
+  for (const [panel, label, edit] of panels) {
+    console.log(`INTERACTION ${id}/${panel}`);
+    const opener = page.getByRole("button", { name: label, exact: true }).first();
+    for (const exit of ["X", "Cancel", "Escape", "Back"]) {
+      await opener.focus(); await opener.click();
+      const d = page.locator("aside.so-editor"); await d.waitFor();
+      check(new globalThis.URL(page.url()).search === `?panel=${panel}`, `${id}/${panel}: push URL`);
+      check(await d.evaluate(el => !el.closest("[inert]")), `${id}/${panel}: drawer is outside inert ancestry`);
+      check(await page.locator(".campaigns-scroll").evaluate(el => el.inert), `${id}/${panel}: background is inert`);
+      check(await d.evaluate(el=>el.contains(document.activeElement)), `${id}/${panel}: focus enters`);
+      check(await d.locator(".so-pick button").evaluateAll(nodes=>nodes.every(el=>parseFloat(getComputedStyle(el).borderTopWidth)>0)), `${id}/${panel}: choices have visible borders`);
+      const bounds = await d.boundingBox();
+      check(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.y + bounds.height <= page.viewportSize().height + 1, `${id}/${panel}: drawer fits viewport`);
+      check(await d.locator(".so-editor-body").evaluate(el=>["auto","scroll"].includes(getComputedStyle(el).overflowY)), `${id}/${panel}: drawer body owns scrolling`);
+      const enabled = d.locator('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])');
+      await enabled.last().focus(); await page.keyboard.press("Tab");
+      check(await d.evaluate(el=>el.contains(document.activeElement)), `${id}/${panel}: forward focus trap`);
+      await enabled.first().focus(); await page.keyboard.press("Shift+Tab");
+      check(await d.evaluate(el=>el.contains(document.activeElement)), `${id}/${panel}: backward focus trap`);
+      if (exit === "X") await d.getByRole("button", { name: "Close", exact: true }).click();
+      if (exit === "Cancel") await d.getByRole("button", { name: "Cancel", exact: true }).click();
+      if (exit === "Escape") await page.keyboard.press("Escape");
+      if (exit === "Back") await page.goBack();
+      await d.waitFor({ state: "detached" });
+      check(new globalThis.URL(page.url()).search === "", `${id}/${panel}: ${exit} returns to base`);
+      check(await opener.evaluate(el=>el===document.activeElement), `${id}/${panel}: ${exit} restores focus`);
+    }
+    await opener.click(); let d = page.locator("aside.so-editor"); await edit(d);
+    await d.getByRole("button", { name: "Cancel", exact: true }).click();
+    await d.getByRole("button", { name: "Continue editing", exact: true }).click();
+    check(await d.count() === 1, `${id}/${panel}: continue editing retains drawer`);
+    await page.goBack();
+    await d.getByRole("button", { name: "Continue editing", exact: true }).click();
+    check(await d.evaluate(el=>el.contains(document.activeElement)), `${id}/${panel}: Continue after Back restores focus`);
+    await page.goBack();
+    await d.getByRole("button", { name: "Discard changes", exact: true }).waitFor();
+    await page.goBack();
+    await d.getByRole("button", { name: "Discard changes", exact: true }).click();
+    await d.waitFor({ state: "detached" });
+    await opener.click(); d = page.locator("aside.so-editor");
+    check(!(await d.locator("input").evaluateAll(nodes=>nodes.some(n=>n.value==="Unsaved review"))), `${id}/${panel}: discarded values are not saved`);
+    await d.getByRole("button", { name: "Cancel", exact: true }).click();
+    // The precise inert assertion must reject the known defect, not merely check aria-modal.
+    await opener.click(); d=page.locator("aside.so-editor");
+    await page.locator(".campaigns-overlays").evaluate(el=>el.setAttribute("inert",""));
+    check(!(await d.evaluate(el=>!el.closest("[inert]"))), `${id}/${panel}: negative inert control detected`);
+    let blocked=false; try { await d.getByRole("button",{name:"Cancel",exact:true}).click({timeout:500}); } catch { blocked=true; }
+    check(blocked, `${id}/${panel}: negative inert control blocks actual pointer action`);
+    await page.locator(".campaigns-overlays").evaluate(el=>el.removeAttribute("inert"));
+    await d.getByRole("button",{name:"Cancel",exact:true}).click();
+    await page.goto(`${URL}solo/review/growth/sales?panel=${panel}`, {waitUntil:"domcontentloaded"});
+    await page.locator("aside.so-editor").waitFor();
+    await page.locator("aside.so-editor").getByRole("button",{name:"Cancel",exact:true}).click();
+    check(new globalThis.URL(page.url()).pathname.endsWith("/growth/sales") && new globalThis.URL(page.url()).search==="", `${id}/${panel}: direct URL closes safely`);
+    await opener.click(); d=page.locator("aside.so-editor"); await edit(d);
+    // Reviewer controls are outside the product frame; invoke the real fixture tenant transition.
+    await page.locator("[data-switch-workspace]").evaluate(el=>el.click());
+    await d.waitFor({state:"detached"});
+    check(new globalThis.URL(page.url()).search==="", `${id}/${panel}: tenant switch strips route`);
+    check(await page.locator(".so-discard").count()===0, `${id}/${panel}: tenant switch drops previous draft and confirmation`);
+  }
+  await page.goto(`${URL}solo/review/growth/sales?panel=unknown&client=must-not-survive`,{waitUntil:"domcontentloaded"});
+  await page.waitForFunction(()=>window.location.search==="");
+  check(await page.locator("aside.so-editor").count()===0, `${id}: invalid panel normalizes to base`);
+  await page.getByRole("button",{name:"Quick offer",exact:true}).click();
+  await page.locator("aside.so-editor").getByRole("textbox",{name:"Name",exact:true}).fill("Canonical draft review");
+  await page.locator("aside.so-editor").getByRole("button",{name:"Create offer",exact:true}).click();
+  await page.getByRole("button",{name:"Return to Sales",exact:true}).waitFor();
+  check(new globalThis.URL(page.url()).pathname.endsWith("/growth/catalog"), `${id}: Quick Offer continues in canonical Catalog`);
+  await page.getByRole("button",{name:"Return to Sales",exact:true}).click();
+  await page.locator("aside.so-editor").waitFor();
+  check(new globalThis.URL(page.url()).search==="?panel=quick-offer", `${id}: Catalog returns to safe originating panel`);
+  await page.locator("aside.so-editor").getByRole("textbox",{name:"Name",exact:true}).fill("Returned unsaved draft");
+  await page.goBack();
+  await page.getByRole("button",{name:"Discard changes",exact:true}).click();
+  check(new globalThis.URL(page.url()).pathname.endsWith("/growth/sales"), `${id}: Catalog-return dirty Back stays in Sales`);
+}
+
 async function main() {
   await assertPortFree();
   fs.mkdirSync(OUT, { recursive: true });
@@ -219,7 +304,7 @@ async function main() {
   const vite = spawn(process.execPath, [
     "node_modules/vite/bin/vite.js", "--config",
     "scripts/live-drive/harness/sales-mount/vite.config.ts", "--port", String(PORT), "--strictPort",
-  ], { cwd: REPO, stdio: "ignore", detached: true });
+  ], { cwd: REPO, stdio: "ignore", detached: true, windowsHide: true });
 
   const { chromium } = await resolvePlaywright();
   let browser;
@@ -254,13 +339,23 @@ async function main() {
 
     for (const theme of ["light", "dark"]) {
       for (const frame of FRAMES) {
-        const ctx = await browser.newContext({ viewport: { width: frame.width, height: frame.height } });
+        const ctx = await browser.newContext({ reducedMotion: "reduce", viewport: { width: frame.width, height: frame.height } });
         const page = await ctx.newPage();
+        page.setDefaultTimeout(5000); page.setDefaultNavigationTimeout(15000);
         const pageErrors = [];
         page.on("pageerror", (e) => pageErrors.push(String(e.message)));
         await open(page);
-        if (theme === "dark") { await page.click("[data-theme-toggle]"); await settle(page); }
+        if (await page.locator("main.paige-solo").getAttribute("data-theme") !== theme) { await page.click("[data-theme-toggle]"); await settle(page); }
         const id = `${theme}/${frame.name}`;
+
+        if (process.env.SALES_PROOF_HOVER_ONLY === "1") {
+          await setMode(page, "declared");
+          const hover = await actHoverContrast(page);
+          check(hover.length > 0 && hover.every(p=>p.ratio >= 4.5), `${id}: Sales hover contrast`, JSON.stringify(hover));
+          await ctx.close(); continue;
+        }
+        await proveDrawerInteractions(page, id);
+        if (await page.locator("main.paige-solo").getAttribute("data-theme") !== theme) { await page.click("[data-theme-toggle]"); await settle(page); }
 
         // ── 1. FIRST USE — the state every workspace sees before it records anything.
         const first = await measure(page);
@@ -281,7 +376,7 @@ async function main() {
         check(first.overflowing === 0, `${id}: no child overflows its container`, `n=${first.overflowing}`);
 
         // §58 — the two things that shipped before this surface, rendered, not merely imported.
-        check(/Billing your own clients/.test(first.text), `${id}: the client-billing boundary survives`);
+        check(!/Billing your own clients/.test(first.text), `${id}: redundant billing banner is removed`);
         check(/never the merchant of record/.test(first.text), `${id}: the money boundary is stated`);
         check(/Routed capture activity/.test(first.text), `${id}: routed capture survives`);
         check(/Discovery intake form/.test(first.text), `${id}: the routed submission still renders`);
@@ -461,6 +556,7 @@ async function main() {
     await stopTree(vite);
   }
 
+  fs.writeFileSync(path.join(OUT,process.env.SALES_PROOF_HOVER_ONLY === "1" ? "hover-results.json" : "interaction-results.json"), JSON.stringify({ evidence:"local Chromium with deterministic adapters", results },null,2));
   const failed = results.filter((r) => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
   if (inherited.size) {

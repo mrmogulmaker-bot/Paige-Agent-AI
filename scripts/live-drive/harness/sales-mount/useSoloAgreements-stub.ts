@@ -1,3 +1,4 @@
+import { getHarnessTenant } from "./useSoloSalesOps-stub";
 // The client-agreements read, stubbed at the NETWORK boundary only.
 //
 // Everything above this line renders unchanged: `AgreementEditor`, the band, the readiness row,
@@ -88,8 +89,9 @@ export function useSoloAgreements() {
   const [, force] = React.useState(0);
   React.useEffect(() => {
     const listener = () => force((n: number) => n + 1);
+    window.addEventListener("sales-harness-tenant",listener);
     listeners.add(listener);
-    return () => { listeners.delete(listener); };
+    return () => { listeners.delete(listener); window.removeEventListener("sales-harness-tenant",listener); };
   }, []);
-  return snapshot();
+  return { ...snapshot(), tenantId: getHarnessTenant() };
 }

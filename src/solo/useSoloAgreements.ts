@@ -15,7 +15,7 @@
 // - It computes no revenue, no forecast, no attribution, no "performance". An agreement records
 //   what was agreed; it observes nothing about whether it was paid, invoiced or delivered, and the
 //   status vocabulary has no word for any of those (§13/§38).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -194,6 +194,10 @@ function toText(value: unknown): string | null {
 export function useSoloAgreements(): AgreementsState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
   const [refreshKey, setRefreshKey] = useState(0);
+  const activeRef = useRef(activeTenantId);
+  activeRef.current = activeTenantId;
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [state, setState] = useState<
     Omit<AgreementsState, "retry" | "saveAgreement" | "setAgreementStatus">
   >({
@@ -237,16 +241,17 @@ export function useSoloAgreements(): AgreementsState {
       } as never,
     );
     if (error) {
-      console.error("[agreements] save_client_agreement failed", error);
+      console.error("[agreements] save_client_agreement failed");
       // 40001 means someone else wrote while this drawer was open. It is NOT a retry: retrying
       // would overwrite them. The surface offers a reload instead.
       const stale = error.code === "40001";
       return {
         ok: false,
         stale,
-        message: error.message || "That could not be saved. Nothing was changed.",
+        message: "That could not be saved. Check your access and try again.",
       };
     }
+    if (!mounted.current || activeRef.current !== draft.tenantId) return { ok: false, message: "Your workspace changed. Reopen this in the current workspace." };
     setRefreshKey((key) => key + 1);
     return { ok: true, result: (data ?? null) as Record<string, unknown> | null };
   }, []);
@@ -276,13 +281,14 @@ export function useSoloAgreements(): AgreementsState {
       } as never,
     );
     if (error) {
-      console.error("[agreements] set_client_agreement_status failed", error);
+      console.error("[agreements] set_client_agreement_status failed");
       return {
         ok: false,
         stale: error.code === "40001",
         message: error.message || "That could not be changed. Nothing was changed.",
       };
     }
+    if (!mounted.current || activeRef.current !== expected) return { ok: false, message: "Your workspace changed. Reopen this in the current workspace." };
     setRefreshKey((key) => key + 1);
     return { ok: true, result: (data ?? null) as Record<string, unknown> | null };
   }, [activeTenantId]);
@@ -347,7 +353,7 @@ export function useSoloAgreements(): AgreementsState {
         if (!current) return;
 
         if (agreementResponse.error) {
-          console.error("[agreements] agreement read failed", agreementResponse.error);
+          console.error("[agreements] agreement read failed");
           setState({ tenantId: activeTenantId, phase: "error", ...EMPTY });
           return;
         }
@@ -418,7 +424,7 @@ export function useSoloAgreements(): AgreementsState {
           authorityUnknown: Boolean(roleResponse.error) || !callerId,
         });
       } catch (error) {
-        console.error("[agreements] tenant-scoped agreements read failed", error);
+        console.error("[agreements] tenant-scoped agreements read failed");
         if (!current) return;
         setState({ tenantId: activeTenantId, phase: "error", ...EMPTY });
       }
