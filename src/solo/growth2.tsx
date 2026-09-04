@@ -23,7 +23,7 @@ const TRUTH = {
   overview: ["UNAVAILABLE", "A tenant-authorized all-state campaign rollup is not yet available."],
   catalog: ["PARTIAL", "Published pages, funnels, forms, and captured submissions come from tenant-scoped records."],
   offers: ["PARTIAL", "Offers are read from this workspace’s own product records. Defining and editing them arrives on this screen next; nothing here is a checkout."],
-  sales: ["PARTIAL", "Offers, declared payment handling and recorded payments are read from this workspace’s own records. Per-client agreements are not held here yet, and no order names a campaign, so revenue is never attributed to one."],
+  sales: ["PARTIAL", "Offers, declared payment handling and recorded payments are read from this workspace’s own records. Commercial terms record the arrangement with a client; they are not signed documents. No order names a campaign, so revenue is never attributed to one."],
   pipeline: ["PROPOSED", "Only explicit form routing configuration and recorded outcomes are shown."],
   social: ["UNAVAILABLE", "A customer-facing social provider connection is not ready."],
   performance: ["PROPOSED", "Source coverage is visible; cross-source campaign analytics are not yet canonical."],
@@ -138,36 +138,11 @@ function Catalog({ data, setDetail, initialType }) {
   </section>;
 }
 
-/**
- * Client billing — what the TENANT charges ITS OWN customers.
- *
- * Moved here from Solo Settings → Billing on the owner's instruction (2026-09-03). Billing is the
- * platform billing the tenant; what a tenant charges its own customers is a different direction of
- * money entirely and belongs on the tenant's own commercial surface. It is stated rather than built:
- * §38 keeps Paige out of the merchant-of-record position for a tenant→client charge, so the money
- * leg runs on the tenant's own processor and nothing on this surface can be wired to it yet.
- */
-function ClientBillingBoundary() {
-  return <div className="campaigns-state">
-    <TruthTag state="UNAVAILABLE"/>
-    <h2>Billing your own clients</h2>
-    <p>
-      What you charge your own clients runs on your own payment processor. Nothing here collects it,
-      holds it, or reports it yet — and Paige is never the merchant of record for money your clients
-      pay you.
-    </p>
-    <p>
-      What this <em>workspace</em> pays the platform is a separate thing, and it lives in
-      Settings → Billing.
-    </p>
-  </div>;
-}
-
-function Sales({ data, setDetail, onOpenCatalog }) {
+function Sales({ data, setDetail, onOpenCatalog, onOpenClients }) {
   const routed = data.submissions.filter((row)=>row.contactId||row.dealId);
   return <section className="campaigns-surface">
-    <SalesOps setDetail={setDetail} deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]} dealsPhase={data.phase} onOpenCatalog={onOpenCatalog} truth={TRUTH.sales}/>
-    <ClientBillingBoundary/>
+    <SalesOps setDetail={setDetail} deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]} dealsPhase={data.phase} onOpenCatalog={onOpenCatalog} onOpenClients={onOpenClients} truth={TRUTH.sales}/>
+
     <div className="so-band"><div className="so-band-head"><h3>Routed capture activity</h3><small>Recorded contact and deal references only — never estimated revenue or campaign attribution.</small></div>
     <StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></div></section>;
 }
@@ -377,26 +352,43 @@ export const GrowthHub=()=>{
   // Sales' "Open Catalog" lands on the OFFERS half — the bare catalog path, which Slice 2A made the
   // offers default. Deliberately not `returnToAssets`, which exists for the retired Vibe addresses
   // and forces `?type=all` onto the published-assets half instead.
-  const openCatalogOffers=React.useCallback(()=>{
-    navigate(subtabPath("solo",params.account,"growth","catalog"));
+  const openCatalogOffers=React.useCallback((resumeTerms=false)=>{
+    navigate(`${subtabPath("solo",params.account,"growth","catalog")}?origin=sales${resumeTerms === true ? "&resume=terms" : ""}`);
   },[navigate,params.account]);
-  const [detail,setDetail]=React.useState(null);
-  const closeDetail=React.useCallback(()=>setDetail(null),[]);
+  const openClients=React.useCallback(()=>{
+    navigate(`${subtabPath("solo",params.account,"clients","people")}?origin=sales`);
+  },[navigate,params.account]);
+  const previousWorkspace=React.useRef({tenantId:data.tenantId,account:params.account});
+  const workspaceChanged=(!!previousWorkspace.current.tenantId && previousWorkspace.current.tenantId!==data.tenantId) || previousWorkspace.current.account!==params.account;
+  React.useEffect(()=>{
+    previousWorkspace.current={tenantId:data.tenantId,account:params.account};
+    if(!workspaceChanged)return;
+    const next=new URLSearchParams(location.search);
+    if(!next.has("origin"))return;
+    next.delete("origin"); next.delete("resume");
+    navigate({pathname:location.pathname,search:next.toString()},{replace:true});
+  },[workspaceChanged,data.tenantId,params.account,location.pathname,location.search,navigate]);
+  const [detailSnapshot,setDetailSnapshot]=React.useState(null);
+  const setDetail=React.useCallback((value)=>{
+    setDetailSnapshot(value ? { value, tenantId:data.tenantId, account:params.account, tab, segment } : null);
+  },[data.tenantId,params.account,tab,segment]);
+  const detail=detailSnapshot && detailSnapshot.tenantId===data.tenantId && detailSnapshot?.account===params.account && detailSnapshot?.tab===tab && detailSnapshot?.segment===segment && !["resolving","loading","unavailable"].includes(data.phase) ? detailSnapshot.value : null;
+  const closeDetail=React.useCallback(()=>setDetailSnapshot(null),[]);
   // Also on TENANT change. A detail snapshot is detached from the list it came from, so an open
   // drawer survived a workspace switch and kept showing the previous tenant's offer name,
   // description and prices indefinitely. `data.tenantId` flips synchronously (useSoloCampaigns
-  // guards it outside its effect), so this clears on the same render the switch lands on.
+  // guards it outside its effect). The snapshot identity check above hides old content before effects.
   // This covers every drawer on the tab, not only Offers — the campaign, sales and pipeline
   // rows had the same detached snapshot, and the fix cannot be narrowed to one of them
   // without duplicating the state.
-  React.useEffect(()=>{setDetail(null);},[tab,segment,data.tenantId]);
+  React.useEffect(()=>{setDetailSnapshot(null);},[tab,segment,data.tenantId,params.account]);
   React.useEffect(()=>{if(segment!=="active")return;const account=params.account;if(account)navigate(`/solo/${account}/growth/overview${location.search}`,{replace:true});},[segment,params.account,location.search,navigate]);
   let body=<Overview data={data} setDetail={setDetail}/>;
   if(legacy) body=<CompatibilityLanding legacy={legacy} returnToAssets={returnToAssets}/>;
   else if(tab==="catalog") body=<Catalog data={data} setDetail={setDetail} initialType={requestedType}/>;
-  else if(tab==="sales") body=<Sales data={data} setDetail={setDetail} onOpenCatalog={openCatalogOffers}/>;
+  else if(tab==="sales") body=<Sales data={data} setDetail={setDetail} onOpenCatalog={openCatalogOffers} onOpenClients={openClients}/>;
   else if(tab==="pipeline") body=<PipelineSurface data={data} setDetail={setDetail}/>;
   else if(tab==="social") body=<Social/>;
   else if(tab==="performance") body=<Performance data={data}/>;
-  return <div className="solo-campaigns" data-campaigns-view={tab}><h1 className="campaigns-sr-only">Campaigns</h1><CampaignTabs tabs={tabs} current={tab} setCurrent={setTab}/><div id="campaigns-tabpanel" role="tabpanel" aria-labelledby={`campaigns-tab-${tab}`} className="campaigns-scroll">{legacy?<PageHead eyebrow="Campaigns" title={LEGACY[legacy].label}/>:null}{body}</div><DetailDrawer detail={detail} onClose={closeDetail}/></div>;
+  return <div className="solo-campaigns" data-campaigns-view={tab}><h1 className="campaigns-sr-only">Campaigns</h1><CampaignTabs tabs={tabs} current={tab} setCurrent={setTab}/><div id="campaigns-tabpanel" role="tabpanel" aria-labelledby={`campaigns-tab-${tab}`} className="campaigns-scroll">{legacy?<PageHead eyebrow="Campaigns" title={LEGACY[legacy].label}/>:null}{tab==="catalog" && query.get("origin")==="sales" && !workspaceChanged && data.tenantId && data.phase!=="resolving" && <div className="so-source-return"><button type="button" className="btn btn-s btn-p" onClick={()=>navigate(`${subtabPath("solo",params.account,"growth","sales")}${query.get("resume")==="terms" ? "?resume=terms" : ""}`)}>{query.get("resume")==="terms" ? "Return to commercial terms" : "Return to Sales"}</button><span>Finish offer setup here in Catalog, then return when ready.</span></div>}{body}</div><DetailDrawer detail={detail} onClose={closeDetail}/></div>;
 };

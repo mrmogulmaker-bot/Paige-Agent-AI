@@ -22,7 +22,7 @@
 // `tenant_orders` rows are the only monetary facts on this surface and they are shown as recorded,
 // never summed into a figure the record does not prove. Paige is not the merchant of record for
 // any of it — see the migration header for `declare_client_payment_handling`.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -114,8 +114,22 @@ function narrow<T extends string>(value: unknown, allowed: readonly T[]): T | nu
     : null;
 }
 
+// Public copy is chosen from stable error codes, never database/provider messages.
+function safeWriteMessage(code?: string): string {
+  if (code === "40001") return "Someone else changed this record. Close and reopen it before saving.";
+  if (code === "42501") return "Your permission or workspace changed. Reopen this form with owner or admin access.";
+  if (code === "22023" || code === "23514" || code === "22P02") return "Check the selected records, amounts and dates, then try again.";
+  return "The save could not be confirmed. Refresh and check your records before trying again.";
+}
+
 export function useSoloSalesOps(): SalesOpsState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
+  // An identity epoch also invalidates a completion after A -> B -> A.
+  const identity = useRef({ tenantId: activeTenantId, resolving: accountContextLoading });
+  if (identity.current.tenantId !== activeTenantId || identity.current.resolving !== accountContextLoading) {
+    identity.current = { tenantId: activeTenantId, resolving: accountContextLoading };
+  }
+
   const [refreshKey, setRefreshKey] = useState(0);
   const [state, setState] = useState<Omit<SalesOpsState, "retry" | "declarePaymentHandling">>({
     tenantId: activeTenantId ?? null,
@@ -135,25 +149,45 @@ export function useSoloSalesOps(): SalesOpsState {
     if (!activeTenantId) {
       return { ok: false, message: "This workspace could not be resolved, so nothing was saved." };
     }
-    const { data, error } = await supabase.rpc(
-      "declare_client_payment_handling" as never,
-      {
-        _expected_tenant_id: activeTenantId,
-        _processor: processor,
-        // null means "leave the methods alone"; [] means "clear them". They are different
-        // instructions and the server keeps them different.
-        _methods: methods === null ? null : [...methods],
-      } as never,
-    );
-    if (error) {
-      // The server writes these sentences for the person, not for a log, so they surface as
-      // written. A message we cannot read still says plainly that nothing changed — the function
-      // is a single statement, so there is no partial outcome to describe.
-      console.error("[sales-ops] declare_client_payment_handling failed", error);
-      return { ok: false, message: error.message || "That could not be saved. Nothing was changed." };
+    const openedIdentity = identity.current;
+    if (openedIdentity.resolving || !openedIdentity.tenantId) {
+      return { ok: false, message: "Wait for your workspace to finish loading, then try again." };
     }
-    setRefreshKey((key) => key + 1);
-    return { ok: true, result: (data ?? null) as Record<string, unknown> | null };
+    try {
+      const { data, error } = await supabase.rpc(
+        "declare_client_payment_handling" as never,
+        {
+          _expected_tenant_id: activeTenantId,
+          _processor: processor,
+          // null means "leave the methods alone"; [] means "clear them". They are different
+          // instructions and the server keeps them different.
+          _methods: methods === null ? null : [...methods],
+        } as never,
+      );
+      if (identity.current !== openedIdentity) {
+        return { ok: false, message: "Your workspace changed. Reopen this form in the intended workspace." };
+      }
+      if (error) {
+        // The server writes these sentences for the person, not for a log, so they surface as
+        // written. A message we cannot read still says plainly that nothing changed — the function
+        // is a single statement, so there is no partial outcome to describe.
+        console.error("[sales] declare_client_payment_handling failed", { code: error.code });
+        return { ok: false, message: safeWriteMessage(error.code) };
+      }
+      if (data === null || data === undefined) {
+        return { ok: false, message: "The save could not be confirmed. Refresh and check your records before trying again." };
+      }
+      setRefreshKey((key) => key + 1);
+      return { ok: true, result: (data ?? null) as Record<string, unknown> | null };
+    } catch {
+      return {
+        ok: false,
+        message: identity.current !== openedIdentity
+          ? "Your workspace changed. Reopen this form in the intended workspace."
+          : "The save could not be confirmed. Refresh and check your records before trying again.",
+      };
+    }
+
   }, [activeTenantId]);
 
   useEffect(() => {
@@ -298,7 +332,7 @@ export function useSoloSalesOps(): SalesOpsState {
   // another tenant's customer names and amounts under the newly selected workspace. The sibling
   // adapters already guard this synchronously; this is the same guard, not a second invention.
   const synchronousTenantId = activeTenantId ?? null;
-  const visible = state.tenantId === synchronousTenantId ? state : {
+  const visible = !accountContextLoading && state.tenantId === synchronousTenantId ? state : {
     tenantId: synchronousTenantId,
     phase: accountContextLoading ? "resolving" as const
       : synchronousTenantId ? "loading" as const

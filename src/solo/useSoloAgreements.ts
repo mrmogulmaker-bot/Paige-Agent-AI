@@ -15,7 +15,7 @@
 // - It computes no revenue, no forecast, no attribution, no "performance". An agreement records
 //   what was agreed; it observes nothing about whether it was paid, invoiced or delivered, and the
 //   status vocabulary has no word for any of those (§13/§38).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -191,8 +191,22 @@ function toText(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
+// Public copy is chosen from stable error codes, never database/provider messages.
+function safeWriteMessage(code?: string): string {
+  if (code === "40001") return "Someone else changed this record. Close and reopen it before saving.";
+  if (code === "42501") return "Your permission or workspace changed. Reopen this form with owner or admin access.";
+  if (code === "22023" || code === "23514" || code === "22P02") return "Check the selected records, amounts and dates, then try again.";
+  return "The save could not be confirmed. Refresh and check your records before trying again.";
+}
+
 export function useSoloAgreements(): AgreementsState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
+  // An identity epoch also invalidates a completion after A -> B -> A.
+  const identity = useRef({ tenantId: activeTenantId, resolving: accountContextLoading });
+  if (identity.current.tenantId !== activeTenantId || identity.current.resolving !== accountContextLoading) {
+    identity.current = { tenantId: activeTenantId, resolving: accountContextLoading };
+  }
+
   const [refreshKey, setRefreshKey] = useState(0);
   const [state, setState] = useState<
     Omit<AgreementsState, "retry" | "saveAgreement" | "setAgreementStatus">
@@ -210,45 +224,65 @@ export function useSoloAgreements(): AgreementsState {
     if (!draft.tenantId) {
       return { ok: false, message: "This workspace could not be resolved, so nothing was saved." };
     }
-    const { data, error } = await supabase.rpc(
-      "save_client_agreement" as never,
-      {
-        _expected_tenant_id: draft.tenantId,
-        _agreement_id: draft.id,
-        _contact_id: draft.contactId,
-        _offer_id: draft.offerId,
-        _term_kind: draft.termKind,
-        _price_basis: draft.priceBasis,
-        // An ID only. The server reads the amount off `tenant_prices` itself, so the browser
-        // cannot forge what the catalog said.
-        _catalog_price_id: draft.catalogPriceId,
-        _agreed_amount_minor: draft.agreedAmountMinor,
-        _agreed_currency: draft.agreedCurrency,
-        _billing_interval: draft.billingInterval,
-        _interval_count: draft.intervalCount,
-        _installments_total: draft.installmentsTotal,
-        _payment_schedule: draft.paymentSchedule,
-        _starts_on: draft.startsOn,
-        _renews_on: draft.renewsOn,
-        _ends_on: draft.endsOn,
-        _title: draft.title,
-        _notes: draft.notes,
-        _expected_updated_at: draft.expectedUpdatedAt,
-      } as never,
-    );
-    if (error) {
-      console.error("[agreements] save_client_agreement failed", error);
-      // 40001 means someone else wrote while this drawer was open. It is NOT a retry: retrying
-      // would overwrite them. The surface offers a reload instead.
-      const stale = error.code === "40001";
+    const openedIdentity = identity.current;
+    if (openedIdentity.resolving || !openedIdentity.tenantId) {
+      return { ok: false, message: "Wait for your workspace to finish loading, then try again." };
+    }
+    try {
+      const { data, error } = await supabase.rpc(
+        "save_client_agreement" as never,
+        {
+          _expected_tenant_id: draft.tenantId,
+          _agreement_id: draft.id,
+          _contact_id: draft.contactId,
+          _offer_id: draft.offerId,
+          _term_kind: draft.termKind,
+          _price_basis: draft.priceBasis,
+          // An ID only. The server reads the amount off `tenant_prices` itself, so the browser
+          // cannot forge what the catalog said.
+          _catalog_price_id: draft.catalogPriceId,
+          _agreed_amount_minor: draft.agreedAmountMinor,
+          _agreed_currency: draft.agreedCurrency,
+          _billing_interval: draft.billingInterval,
+          _interval_count: draft.intervalCount,
+          _installments_total: draft.installmentsTotal,
+          _payment_schedule: draft.paymentSchedule,
+          _starts_on: draft.startsOn,
+          _renews_on: draft.renewsOn,
+          _ends_on: draft.endsOn,
+          _title: draft.title,
+          _notes: draft.notes,
+          _expected_updated_at: draft.expectedUpdatedAt,
+        } as never,
+      );
+      if (identity.current !== openedIdentity) {
+        return { ok: false, message: "Your workspace changed. Reopen this form in the intended workspace." };
+      }
+      if (error) {
+        console.error("[sales] save_client_agreement failed", { code: error.code });
+        // 40001 means someone else wrote while this drawer was open. It is NOT a retry: retrying
+        // would overwrite them. The surface offers a reload instead.
+        const stale = error.code === "40001";
+        return {
+          ok: false,
+          stale,
+          message: safeWriteMessage(error.code),
+        };
+      }
+      if (data === null || data === undefined) {
+        return { ok: false, message: "The save could not be confirmed. Refresh and check your records before trying again." };
+      }
+      setRefreshKey((key) => key + 1);
+      return { ok: true, result: (data ?? null) as Record<string, unknown> | null };
+    } catch {
       return {
         ok: false,
-        stale,
-        message: error.message || "That could not be saved. Nothing was changed.",
+        message: identity.current !== openedIdentity
+          ? "Your workspace changed. Reopen this form in the intended workspace."
+          : "The save could not be confirmed. Refresh and check your records before trying again.",
       };
     }
-    setRefreshKey((key) => key + 1);
-    return { ok: true, result: (data ?? null) as Record<string, unknown> | null };
+
   }, []);
 
   const setAgreementStatus = useCallback(async (
@@ -266,25 +300,45 @@ export function useSoloAgreements(): AgreementsState {
     if (!expected) {
       return { ok: false, message: "This workspace could not be resolved, so nothing was changed." };
     }
-    const { data, error } = await supabase.rpc(
-      "set_client_agreement_status" as never,
-      {
-        _expected_tenant_id: expected,
-        _agreement_id: id,
-        _status: status,
-        _expected_updated_at: expectedUpdatedAt,
-      } as never,
-    );
-    if (error) {
-      console.error("[agreements] set_client_agreement_status failed", error);
+    const openedIdentity = identity.current;
+    if (openedIdentity.resolving || !openedIdentity.tenantId) {
+      return { ok: false, message: "Wait for your workspace to finish loading, then try again." };
+    }
+    try {
+      const { data, error } = await supabase.rpc(
+        "set_client_agreement_status" as never,
+        {
+          _expected_tenant_id: expected,
+          _agreement_id: id,
+          _status: status,
+          _expected_updated_at: expectedUpdatedAt,
+        } as never,
+      );
+      if (identity.current !== openedIdentity) {
+        return { ok: false, message: "Your workspace changed. Reopen this form in the intended workspace." };
+      }
+      if (error) {
+        console.error("[sales] set_client_agreement_status failed", { code: error.code });
+        return {
+          ok: false,
+          stale: error.code === "40001",
+          message: safeWriteMessage(error.code),
+        };
+      }
+      if (data === null || data === undefined) {
+        return { ok: false, message: "The save could not be confirmed. Refresh and check your records before trying again." };
+      }
+      setRefreshKey((key) => key + 1);
+      return { ok: true, result: (data ?? null) as Record<string, unknown> | null };
+    } catch {
       return {
         ok: false,
-        stale: error.code === "40001",
-        message: error.message || "That could not be changed. Nothing was changed.",
+        message: identity.current !== openedIdentity
+          ? "Your workspace changed. Reopen this form in the intended workspace."
+          : "The save could not be confirmed. Refresh and check your records before trying again.",
       };
     }
-    setRefreshKey((key) => key + 1);
-    return { ok: true, result: (data ?? null) as Record<string, unknown> | null };
+
   }, [activeTenantId]);
 
   useEffect(() => {
@@ -436,7 +490,7 @@ export function useSoloAgreements(): AgreementsState {
   // effect also depends on this: it keys on `tenantId`, and only fires on the switch paint because
   // the value it reads is the guarded one.
   const synchronousTenantId = activeTenantId ?? null;
-  const visible = state.tenantId === synchronousTenantId ? state : {
+  const visible = !accountContextLoading && state.tenantId === synchronousTenantId ? state : {
     tenantId: synchronousTenantId,
     phase: accountContextLoading ? "resolving" as const
       : synchronousTenantId ? "loading" as const

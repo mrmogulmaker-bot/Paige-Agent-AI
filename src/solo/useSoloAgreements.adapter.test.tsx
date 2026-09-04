@@ -21,6 +21,7 @@ const calls: Call[] = [];
 const rpcs: Rpc[] = [];
 let results: Record<string, { data: unknown; error: unknown }> = {};
 let rpcResult: { data: unknown; error: unknown } = { data: null, error: null };
+let rpcOverride: (() => Promise<{ data: unknown; error: unknown }>) | null = null;
 let tenant: { activeTenantId: string | null; accountContextLoading: boolean };
 let currentUserId: string | null;
 
@@ -43,7 +44,7 @@ vi.mock("@/integrations/supabase/client", () => ({
     from: (table: string) => makeChain(table),
     rpc: (fn: string, args: Record<string, unknown>) => {
       rpcs.push({ fn, args });
-      return Promise.resolve(rpcResult);
+      return rpcOverride ? rpcOverride() : Promise.resolve(rpcResult);
     },
     auth: { getUser: async () => ({ data: { user: currentUserId ? { id: currentUserId } : null } }) },
   },
@@ -104,6 +105,7 @@ const CLIENT_ROWS = [
 ];
 
 beforeEach(() => {
+  rpcOverride = null;
   calls.length = 0;
   rpcs.length = 0;
   renders.length = 0;
@@ -318,4 +320,83 @@ describe("useSoloAgreements — what it actually asks the database for", () => {
     expect(latest!.phase).toBe("error");
     expect(latest!.agreements).toEqual([]);
   });
+});
+
+
+describe("write interruption and safe failure", () => {
+  it("contains rejected transport errors without exposing internal details", async () => {
+    await run();
+    rpcOverride = async () => { throw new Error("private_table secret_payload"); };
+    let outcome: { ok: boolean; message?: string } | undefined;
+    await act(async () => { outcome = await latest!.setAgreementStatus("a1", "paused", null, "tenant-1"); });
+    expect(outcome?.ok).toBe(false);
+    expect(outcome?.message).toContain("Refresh");
+    expect(outcome?.message).not.toMatch(/private_table|secret_payload/);
+  });
+
+  it("does not refresh or report success for a write completed after a workspace round trip", async () => {
+    await run();
+    let settle!: (value: { data: unknown; error: unknown }) => void;
+    rpcOverride = () => new Promise((resolve) => { settle = resolve; });
+    const pending = latest!.setAgreementStatus("a1", "paused", null, "tenant-1");
+    tenant = { activeTenantId: "tenant-2", accountContextLoading: false };
+    await act(async () => { root.render(<Probe />); });
+    tenant = { activeTenantId: "tenant-1", accountContextLoading: false };
+    await act(async () => { root.render(<Probe />); });
+    const readsBefore = calls.length;
+    let outcome: { ok: boolean; message?: string } | undefined;
+    await act(async () => { settle({ data: { id: "old-result" }, error: null }); outcome = await pending; });
+    expect(outcome?.ok).toBe(false);
+    expect(calls.length).toBe(readsBefore);
+    expect(outcome).not.toHaveProperty("result");
+  });
+
+  it("clears records and authority on the first resolving render even when the tenant id remains", async () => {
+    await run();
+    renders.length = 0;
+    tenant = { activeTenantId: "tenant-1", accountContextLoading: true };
+    await act(async () => { root.render(<Probe />); });
+    expect(renders[0].phase).toBe("resolving");
+    expect(renders[0].canManage).toBe(false);
+    expect(renders[0].agreements).toEqual([]);
+  });
+});
+
+
+it("does not treat an empty write response as confirmation", async () => {
+  await run();
+  rpcResult = { data: null, error: null };
+  let outcome: { ok: boolean; message?: string } | undefined;
+  await act(async () => { outcome = await latest!.setAgreementStatus("a1", "paused", null, "tenant-1"); });
+  expect(outcome?.ok).toBe(false);
+  expect(outcome?.message).toContain("could not be confirmed");
+});
+
+
+it("contains an agreement-save rejection and withholds a late successful agreement save", async () => {
+  await run();
+  const draft = {
+    tenantId: "tenant-1", id: null, contactId: "c1", offerId: "o1",
+    termKind: "one_time" as const, priceBasis: "catalog" as const, catalogPriceId: "price-1",
+    agreedAmountMinor: null, agreedCurrency: null, billingInterval: null, intervalCount: null,
+    installmentsTotal: null, paymentSchedule: null, startsOn: "2026-09-01",
+    renewsOn: null, endsOn: null, title: null, notes: null, expectedUpdatedAt: null,
+  };
+  rpcOverride = async () => { throw new Error("private document contents"); };
+  let rejected: { ok: boolean; message?: string } | undefined;
+  await act(async () => { rejected = await latest!.saveAgreement(draft); });
+  expect(rejected?.ok).toBe(false);
+  expect(rejected?.message).toContain("could not be confirmed");
+  expect(rejected?.message).not.toContain("private document");
+  let settle!: (value: { data: unknown; error: unknown }) => void;
+  rpcOverride = () => new Promise((resolve) => { settle = resolve; });
+  const pending = latest!.saveAgreement(draft);
+  tenant = { activeTenantId: "tenant-2", accountContextLoading: false };
+  await act(async () => { root.render(<Probe />); });
+  const readsBefore = calls.length;
+  let outcome: { ok: boolean } | undefined;
+  await act(async () => { settle({ data: { id: "old-result" }, error: null }); outcome = await pending; });
+  expect(outcome?.ok).toBe(false);
+  expect(outcome).not.toHaveProperty("result");
+  expect(calls.length).toBe(readsBefore);
 });

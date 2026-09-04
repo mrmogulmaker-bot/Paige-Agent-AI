@@ -352,3 +352,34 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
   .so-pick button[aria-pressed="true"] { border: 2px solid currentColor; }
   .so-next { border: 1px solid currentColor; }
 }
+
+/* Sales-owned working controls: stronger selected, focus and primary action contrast. */
+.solo-campaigns[data-campaigns-view="sales"] .so-editor { background: var(--canvas); }
+.so-editor .btn-p, .so .btn-p, .so-discard .btn-p {
+  background: #6d28d9; border-color: #6d28d9; color: #fff;
+}
+.so-editor .btn-p:hover:not(:disabled), .so .btn-p:hover:not(:disabled) { background: #5b21b6; }
+.so-editor button:focus-visible, .so button:focus-visible {
+  outline: 3px solid var(--violet); outline-offset: 3px;
+}
+.so-pick button { min-height: 36px; border-radius: 8px; font-size: 12px; }
+.so-pick button:hover { border-color: var(--violet); background: var(--violet-tint); }
+.so-pick button[aria-pressed="true"] { background: #6d28d9; color: #fff; border-color: #6d28d9; }
+.so-field input, .so-field select, .so-field textarea { min-height: 40px; border-color: var(--ink-3); }
+.so-field input:disabled { opacity: .7; cursor: not-allowed; }
+.so-editor-body { align-content: start; }
+.so-editor-foot .so-editor-note { flex-basis: 100%; max-width: none; }
+.so-editor-head p { color: var(--ink-2); font-size: 12px; }
+.so-editor-note { color: var(--ink-2); font-size: 12px; }
+.so-success, .so-prerequisite { padding: 14px; border: 1px solid var(--violet); border-radius: 10px; background: var(--violet-tint); color: var(--ink); }
+.so-success { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+.so-prerequisite p { margin: 6px 0 12px; font-size: 13px; }
+.so-discard { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; justify-content: center; gap: 16px; padding: 28px; background: var(--canvas); color: var(--ink); }
+.so-discard h3, .so-discard p { margin: 0; }
+.so-discard p { line-height: 1.6; }
+.so-discard .btn { min-height: 42px; justify-content: center; }
+@media (prefers-reduced-motion: reduce) { .so *, .so-editor * { transition: none !important; animation: none !important; } }
+.so-source-return { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 16px; margin-bottom:12px; border:1px solid var(--violet); border-radius:10px; background:var(--violet-tint); color:var(--ink); font-size:12px; }
+
+.so-ready-row { padding-top:7px; padding-bottom:7px; }
+.so-band-head small, .so-ready-text small, .so-orient, .so-absent { color:var(--ink-2); }

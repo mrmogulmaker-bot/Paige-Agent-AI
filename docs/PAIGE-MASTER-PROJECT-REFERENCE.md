@@ -133,6 +133,10 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ### Solo Sales Ops — a Solo owner can record what one client agreed to (2026-09-03)
 
+**Current usability status: PARTIAL.** Owner feedback explicitly rejects treating the current Sales UX as complete. PR #895 fixed recurring-date display only. **Release 1 usability repair is implemented, pending release/checks** on `codex/solo-sales-usability-r1`, grounded on main `12e495a`: functional drawer close/discard, reachable commercial-term editing, workspace cleanup, clearer controls, canonical Catalog/Clients return paths and removal of the oversized client-billing banner. The owner cleared the historical #706 shared-file collision; Pipeline implementation and six Campaigns tabs stay intact. See `docs/delivery/solo-sales-usability-r1.md` for the live product record and evidence. Local eight-frame interaction proof is in progress; authenticated production persistence and owner acceptance remain **Proof Owed**. No R1 release SHA is claimed here.
+
+The visible record is **Commercial terms and retainers**, not a legal-document lifecycle. Release 2 is a complete Client Agreements prototype, with tenant-uploaded attorney-approved documents first, and requires rendered owner approval before document storage, signature integration or external sends. Neither this record nor an Integration card proves such a provider is connected.
+
 **Status: PR #889**, merged `096d6c9d`, migration `20261200000000` (verified persisted on prod; the
 ledger row is present and is the ledger head). **§0 catch-up:** that PR did not update this file —
 the tier matrix *was* updated in the same commit, so §66 was clean, but the master doc was the miss.
@@ -142,9 +146,9 @@ Slice 1 (Solo Catalog, PR #887 `c0b71f81`) has the same omission and is recorded
 with **one of its own existing clients**, against one canonical Catalog offer: term kind (one-time ·
 recurring · installment · deposit · custom quote), the agreed amount and currency, cadence, start,
 optional renewal and end, and a status of `draft` · `active` · `paused` · `completed` · `cancelled`.
-The negotiated figure is stored as a labelled snapshot beside the Catalog list price at signing and
-is made immutable by trigger, so repricing the offer later cannot rewrite what it cost then; it never
-writes back to Catalog. Writes go through `save_client_agreement` and `set_client_agreement_status`,
+The negotiated figure belongs to this client-specific commercial record. The Catalog price snapshot
+is captured when terms are recorded and is immutable; repricing the offer cannot rewrite it.
+Editing negotiated terms never writes back to Catalog, and recording terms is not signing a document. Writes go through `save_client_agreement` and `set_client_agreement_status`,
 both `SECURITY DEFINER`, both gated on `is_tenant_admin` of the resolved tenant, both
 `authenticated`-only with `anon` revoked. The tenant surface reads it via `src/solo/useSoloAgreements.ts`.
 

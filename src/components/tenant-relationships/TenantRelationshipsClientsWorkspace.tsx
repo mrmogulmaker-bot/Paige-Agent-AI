@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
@@ -88,6 +88,8 @@ export function TenantRelationshipsClientsWorkspace({
   openPaige: () => void;
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const soloClientRoute = /^\/solo\/([^/]+)\/clients(?:\/|$)/.exec(location.pathname);
   const { activeTenantId, activeTenant, accountContextLoading, refresh } = useTenantContext();
   const variant = relationshipWorkspaceVariant(activeTenant?.account_type, activeTenant?.parent_tenant_id);
   const tabs = workspaceTabs(variant);
@@ -109,13 +111,15 @@ export function TenantRelationshipsClientsWorkspace({
 
   useEffect(() => {
     if (previousTenantId.current === activeTenantId) return;
+    const clearSalesOrigin = routeTier === "solo" && !!previousTenantId.current && searchParams.get("origin") === "sales";
     previousTenantId.current = activeTenantId;
     setSelectedContactId(null);
-    if (!searchParams.has("person")) return;
+    if (!searchParams.has("person") && !clearSalesOrigin) return;
     const next = new URLSearchParams(searchParams);
     next.delete("person");
+    if (clearSalesOrigin) next.delete("origin");
     setSearchParams(next, { replace: true });
-  }, [activeTenantId, searchParams, setSearchParams]);
+  }, [activeTenantId, searchParams, setSearchParams, routeTier]);
 
   const selectSoloContact = (id: string) => {
     setSelectedContactId(id);
@@ -167,6 +171,12 @@ export function TenantRelationshipsClientsWorkspace({
 
   return (
     <section className={`trc-workspace${soloPeople ? " trc-workspace--people" : ""}${soloConversations ? " trc-workspace--conversations" : ""}${soloCalendar ? " trc-workspace--calendar" : ""}`} data-relationship-workspace data-variant={variant}>
+      {routeTier === "solo" && soloClientRoute && !(previousTenantId.current && accountIsChanging) && searchParams.get("origin") === "sales" && (
+        <div className="trc-sales-return" style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:8,padding:"8px 18px",flexShrink:0,borderBottom:"1px solid var(--pg-line)"}}>
+          <button type="button" className="btn btn-s btn-p" onClick={() => navigate(`/solo/${soloClientRoute[1]}/growth/sales?resume=terms`)}>Return to commercial terms</button>
+          <span>Create or choose a client here, then return to select them in Sales.</span>
+        </div>
+      )}
       {!soloCalendar && !soloPeople && !soloConversations && (
         <header className="trc-heading">
           <div>

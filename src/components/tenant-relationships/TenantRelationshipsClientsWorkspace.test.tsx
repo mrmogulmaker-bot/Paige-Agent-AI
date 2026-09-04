@@ -127,6 +127,28 @@ describe("tenant Relationships / Clients workspace", () => {
     useTenantRelationshipsData.mockReturnValue(baseData);
   });
 
+  it("returns to the current Solo account without accepting a supplied return URL", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const view = <MemoryRouter initialEntries={["/solo/42/clients/people?origin=sales&returnTo=/solo/99/growth/sales"]}><TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={vi.fn()}/><LocationProbe/></MemoryRouter>;
+    try {
+      act(() => root.render(view));
+      const back = host.querySelector(".trc-sales-return button") as HTMLButtonElement;
+      expect(back).not.toBeNull();
+      act(() => back.click());
+      expect(host.querySelector("[data-location]")?.textContent).toBe("/solo/42/growth/sales?resume=terms");
+      expect(host.querySelector(".trc-sales-return")).toBeNull();
+    } finally {
+      act(() => root.unmount());
+      host.remove();
+    }
+  });
+  it("shows the commercial-terms return only on the Solo client handoff", () => {
+    expect(render("/solo/42/clients/people?origin=sales")).toContain("Return to commercial terms");
+    expect(render("/solo/42/clients/people")).not.toContain("Return to commercial terms");
+    expect(render("/agency/42/clients/people?origin=sales", "agency")).not.toContain("Return to commercial terms");
+  });
   it.each([
     ["agency", null, "relationships"],
     ["enterprise", null, "relationships"],

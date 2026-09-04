@@ -24,6 +24,7 @@ const calls: Call[] = [];
 const rpcs: Rpc[] = [];
 let results: Record<string, { data: unknown; error: unknown }> = {};
 let rpcResult: { data: unknown; error: unknown } = { data: null, error: null };
+let rpcOverride: (() => Promise<{ data: unknown; error: unknown }>) | null = null;
 let tenant: { activeTenantId: string | null; accountContextLoading: boolean };
 let currentUserId: string | null;
 
@@ -46,7 +47,7 @@ vi.mock("@/integrations/supabase/client", () => ({
     from: (table: string) => makeChain(table),
     rpc: (fn: string, args: Record<string, unknown>) => {
       rpcs.push({ fn, args });
-      return Promise.resolve(rpcResult);
+      return rpcOverride ? rpcOverride() : Promise.resolve(rpcResult);
     },
     auth: { getUser: async () => ({ data: { user: currentUserId ? { id: currentUserId } : null } }) },
   },
@@ -81,6 +82,7 @@ async function run() {
 const call = (table: string) => calls.find((c) => c.table === table);
 
 beforeEach(() => {
+  rpcOverride = null;
   calls.length = 0;
   rpcs.length = 0;
   renders.length = 0;
@@ -251,7 +253,7 @@ describe("useSoloSalesOps — the query it actually issues", () => {
     await act(async () => { outcome = await latest?.declarePaymentHandling("stripe", ["cards"]); });
     expect(outcome?.ok).toBe(false);
     // The server's own sentence reaches the person, rather than a generic failure.
-    expect(outcome?.message).toContain("nothing was written");
+    expect(outcome?.message).toContain("permission");
   });
 
   it("refuses to write at all when the workspace is unresolved", async () => {
@@ -286,4 +288,54 @@ describe("useSoloSalesOps — the query it actually issues", () => {
       }
     }
   });
+});
+
+
+describe("write interruption and safe failure", () => {
+  it("contains rejected transport errors without exposing internal details", async () => {
+    await run();
+    rpcOverride = async () => { throw new Error("private_table secret_payload"); };
+    let outcome: { ok: boolean; message?: string } | undefined;
+    await act(async () => { outcome = await latest!.declarePaymentHandling("square", ["cards"]); });
+    expect(outcome?.ok).toBe(false);
+    expect(outcome?.message).toContain("Refresh");
+    expect(outcome?.message).not.toMatch(/private_table|secret_payload/);
+  });
+
+  it("does not refresh or report success for a write completed after a workspace round trip", async () => {
+    await run();
+    let settle!: (value: { data: unknown; error: unknown }) => void;
+    rpcOverride = () => new Promise((resolve) => { settle = resolve; });
+    const pending = latest!.declarePaymentHandling("square", ["cards"]);
+    tenant = { activeTenantId: "tenant-2", accountContextLoading: false };
+    await act(async () => { root.render(<Probe />); });
+    tenant = { activeTenantId: "tenant-1", accountContextLoading: false };
+    await act(async () => { root.render(<Probe />); });
+    const readsBefore = calls.length;
+    let outcome: { ok: boolean; message?: string } | undefined;
+    await act(async () => { settle({ data: { id: "old-result" }, error: null }); outcome = await pending; });
+    expect(outcome?.ok).toBe(false);
+    expect(calls.length).toBe(readsBefore);
+    expect(outcome).not.toHaveProperty("result");
+  });
+
+  it("clears records and authority on the first resolving render even when the tenant id remains", async () => {
+    await run();
+    renders.length = 0;
+    tenant = { activeTenantId: "tenant-1", accountContextLoading: true };
+    await act(async () => { root.render(<Probe />); });
+    expect(renders[0].phase).toBe("resolving");
+    expect(renders[0].canManage).toBe(false);
+    expect(renders[0].orders).toEqual([]);
+  });
+});
+
+
+it("does not treat an empty write response as confirmation", async () => {
+  await run();
+  rpcResult = { data: null, error: null };
+  let outcome: { ok: boolean; message?: string } | undefined;
+  await act(async () => { outcome = await latest!.declarePaymentHandling("square", ["cards"]); });
+  expect(outcome?.ok).toBe(false);
+  expect(outcome?.message).toContain("could not be confirmed");
 });

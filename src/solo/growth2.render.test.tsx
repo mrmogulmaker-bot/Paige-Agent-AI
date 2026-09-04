@@ -58,11 +58,11 @@ function renderAt(path: string) {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  act(() => root.render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/solo/:account/*" element={<><GrowthHub/><LocationProbe/></>}/></Routes></MemoryRouter>));
+  act(() => root.render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/solo/:account/growth/sales" element={<LocationProbe/>}/><Route path="/solo/:account/*" element={<><GrowthHub/><LocationProbe/></>}/></Routes></MemoryRouter>));
 }
 
 function rerenderAt(path: string) {
-  act(() => root.render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/solo/:account/*" element={<><GrowthHub/><LocationProbe/></>}/></Routes></MemoryRouter>));
+  act(() => root.render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/solo/:account/growth/sales" element={<LocationProbe/>}/><Route path="/solo/:account/*" element={<><GrowthHub/><LocationProbe/></>}/></Routes></MemoryRouter>));
 }
 
 function LocationProbe() {
@@ -342,7 +342,7 @@ describe("Solo Campaigns rendered flows", () => {
     act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
     expect(host.querySelector('.pipeline-config-workspace')).not.toBeNull();
     harness.state.tenantId = "tenant-2";
-    act(() => root.render(<MemoryRouter initialEntries={["/solo/42/growth/pipeline"]}><Routes><Route path="/solo/:account/*" element={<><GrowthHub/><LocationProbe/></>}/></Routes></MemoryRouter>));
+    act(() => root.render(<MemoryRouter initialEntries={["/solo/42/growth/pipeline"]}><Routes><Route path="/solo/:account/growth/sales" element={<LocationProbe/>}/><Route path="/solo/:account/*" element={<><GrowthHub/><LocationProbe/></>}/></Routes></MemoryRouter>));
     expect(host.querySelector('.pipeline-config-workspace')).toBeNull();
   });
 
@@ -422,6 +422,23 @@ describe("Solo Campaigns rendered flows", () => {
     expect(document.activeElement).toBe(details);
   });
 
+  it("offers a same-account return from Catalog to unfinished commercial terms", () => {
+    renderAt("/solo/42/growth/catalog?origin=sales&resume=terms&returnTo=https://wrong.test");
+    const back = [...host.querySelectorAll("button")].find((button) => button.textContent === "Return to commercial terms");
+    expect(back).toBeDefined();
+    act(() => back!.click());
+    expect(host.querySelector("[data-location]")?.textContent).toBe("/solo/42/growth/sales?resume=terms");
+  });
+  it("removes detached detail and its inert background after a workspace switch", () => {
+    renderAt("/solo/42/growth/catalog?type=page");
+    const details = [...host.querySelectorAll("button")].find((button) => button.textContent === "Details")!;
+    act(() => details.click());
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+    harness.state.tenantId = "tenant-2";
+    rerenderAt("/solo/42/growth/catalog?type=page");
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.querySelector(".campaigns-nav")?.hasAttribute("inert")).toBe(false);
+  });
   it("keeps focus inside the modal drawer in both tab directions", () => {
     renderAt("/solo/42/growth/catalog?type=page");
     const details = [...host.querySelectorAll("button")].find((button) => button.textContent === "Details")!;
