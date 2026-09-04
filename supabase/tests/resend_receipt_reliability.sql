@@ -29,6 +29,18 @@ INSERT INTO public.email_send_log(message_id,template_name,recipient_email,statu
 SELECT message_id,template_name,recipient_email,'delivered',tenant_id,
  jsonb_build_object('via','handle-resend-webhook','svix_id','msg_historic','invite_id',metadata->>'invite_id')
 FROM public.email_send_log CROSS JOIN generate_series(1,2) WHERE message_id='receipt-origin' AND status='sent';
+-- Isolated proof only: expose a bounded category if the production-safe catch hides a schema incompatibility.
+SAVEPOINT receipt_schema_probe;
+DO $$ DECLARE definition text; BEGIN
+  SELECT pg_get_functiondef('public.process_resend_receipt(text)'::regprocedure) INTO definition;
+  definition := replace(definition, 'EXCEPTION WHEN OTHERS THEN',
+    'EXCEPTION WHEN OTHERS THEN RAISE EXCEPTION ''receipt proof category: %'', CASE SQLSTATE WHEN ''42501'' THEN ''permission'' WHEN ''42703'' THEN ''column'' WHEN ''42702'' THEN ''ambiguous'' WHEN ''42883'' THEN ''operator_or_function'' WHEN ''23514'' THEN ''constraint'' ELSE ''other'' END;');
+  EXECUTE definition;
+END $$;
+SET LOCAL ROLE service_role;
+SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_schema_probe','receipt-portal-12','delivered',NULL)='processed','source schema compatibility');
+RESET ROLE;
+ROLLBACK TO receipt_schema_probe;
 SET LOCAL ROLE service_role;
 DO $$ DECLARE result text; reason text; BEGIN
   result := public.ingest_resend_receipt('msg_portal_null','receipt-portal-12','delivered',NULL);
