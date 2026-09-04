@@ -1,6 +1,6 @@
 # Solo Sales usability repair — Release 1
 
-Status: **IMPLEMENTED / PENDING RELEASE**. Ordinary checks and the local browser drive are in progress. No release commit or production result is claimed here. Owner feedback remains authoritative: Sales is not complete merely because PR #895 corrected recurring-date display.
+Status: **IMPLEMENTED IN PR #903**. Local checks and the browser drive passed; exact-head CI, merge and deployment evidence are recorded on PR #903. Owner feedback remains authoritative: Sales is not complete merely because PR #895 corrected recurring-date display.
 
 ## Outcome and boundaries
 
@@ -25,11 +25,11 @@ The oversized lower “Billing your own clients” banner is removed. Its bounda
 ## Proof ledger
 
 - **Automated/static — PARTIAL:** focused shared Campaigns/Pipeline/Clients tests pass, including same-account return and shared detail/focus regressions. Sales surface/adapter checks and ordinary release checks are being completed in the release workstream. Record their final results on the release PR.
-- **Rendered/local — IN PROGRESS:** real Chromium interaction at 1536×770, 1366×768, 1024×768 and 900×1000, both themes; keyboard, reduced motion, close/discard, create/edit, failures/retry, no-data/loading/refusal and workspace switching are the required matrix. Screenshots alone do not prove those actions.
+- **Rendered/local — PASS for exercised flows:** real Chromium interaction at 1536×770, 1366×768, 1024×768 and 900×1000, both themes; keyboard, reduced motion, close/discard, create/edit, failures/retry, no-data/loading/refusal and workspace switching are the required matrix. Screenshots alone do not prove those actions.
 - **Local persistence — fixture only:** the review harness stores deterministic commercial records in browser storage. It never contacts a payment or signature provider and is not production evidence.
 - **Production persistence — Proof Owed:** offer creation → Catalog, terms save/edit → refresh, unchanged Catalog list price and payment declaration persistence under an authenticated Solo owner.
 - **Authenticated Solo-owner acceptance — Proof Owed:** no owner result is inferred from fixtures, a successful build or a public route response.
-- **Release — PENDING:** merge/deploy once ordinary checks are green under the owner's MVP cadence. Non-blocking proof gaps remain explicitly owed.
+- **Release — PR #903:** merge/deployment revision and check outcomes are recorded on the release PR under the owner's MVP cadence. Non-blocking proof gaps remain explicitly owed.
 
 ## Owner acceptance map
 

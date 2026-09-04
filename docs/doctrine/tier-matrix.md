@@ -3043,7 +3043,7 @@ round 2 are the ones added in round 3.
 
 ### Campaigns → Sales, Slice 2 — what one client agreed to (`tenant_client_agreements`)
 
-**Current wording and usability:** this commercial-record capability is named **Commercial terms and retainers** in R1 (implemented, pending release). Older “Agreements and retainers” wording below records the original release, not a legal-document capability. R1 and PR #895 are separate: dates alone did not complete Sales UX. Current flows and proof are tracked in `docs/delivery/solo-sales-usability-r1.md`.
+**Current wording and usability:** this commercial-record capability is named **Commercial terms and retainers** in R1 (implemented in PR #903). Older “Agreements and retainers” wording below records the original release, not a legal-document capability. R1 and PR #895 are separate: dates alone did not complete Sales UX. Current flows and proof are tracked in `docs/delivery/solo-sales-usability-r1.md`.
 
 **What shipped.** A Solo owner or admin can record the terms one client agreed to for one canonical
 Catalog offer: the arrangement (one-off · recurring · instalments · deposit · custom), the amount
@@ -3229,7 +3229,7 @@ Solo Sales shows recorded start/renewal/end calendar dates without timezone day 
 
 ### Solo Sales usability repair — Release 1 (2026-09-03)
 
-**IMPLEMENTED / PENDING RELEASE; broader Sales UX remains PARTIAL.** PR #895 fixes date display only and does not close usability, actual editing, legal documents, signatures or payment collection. The current R1 changes make commercial-term editing reachable, repair drawer interaction/discard and workspace cleanup, provide canonical Catalog/Clients return paths, and replace the oversized client-billing banner with contextual payment-handling copy. The commercial-record surface is renamed **Commercial terms and retainers**; it generates, stores, sends and signs no legal document.
+**IMPLEMENTED IN PR #903; broader Sales UX remains PARTIAL.** PR #895 fixes date display only and does not close usability, actual editing, legal documents, signatures or payment collection. The current R1 changes make commercial-term editing reachable, repair drawer interaction/discard and workspace cleanup, provide canonical Catalog/Clients return paths, and replace the oversized client-billing banner with contextual payment-handling copy. The commercial-record surface is renamed **Commercial terms and retainers**; it generates, stores, sends and signs no legal document.
 
 Solo owner/admin write authority is preserved. The source read/write matrix above is unchanged; there is no new Agency aggregation, sub-account capability, Operator/Admin behavior or permission grant. The owner cleared #706's historical collision after grounding main `12e495a`; Pipeline logic and the six-tab navigation are preserved. The narrow shared Clients return control renders only on the Solo Sales handoff.
 
