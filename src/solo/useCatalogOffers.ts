@@ -82,10 +82,21 @@ export type CatalogOffer = {
   readonly prices: readonly OfferPrice[];
 };
 
+export type CatalogOffersOptions = {
+  readonly search?: string;
+  /** Zero-based page; applied only when options are supplied. */
+  readonly page?: number;
+  readonly pageSize?: number;
+  /** Exact canonical records needed alongside search, never merged into the result page. */
+  readonly referenceIds?: readonly string[];
+};
+
 export type CatalogOffersState = {
   readonly tenantId: string | null;
   readonly phase: "resolving" | "loading" | "ready" | "error" | "unavailable";
   readonly offers: readonly CatalogOffer[];
+  readonly hasMore: boolean;
+  readonly referencedOffers: readonly CatalogOffer[];
   /** True only for a tenant admin/owner. Slice 2A shows no acts; 2B gates its commands on this. */
   readonly canManage: boolean;
   /** The authority read itself failed. Distinct from "the caller is not an admin". */
@@ -147,6 +158,8 @@ export type OfferWriteResult = {
 
 const EMPTY = {
   offers: [] as readonly CatalogOffer[],
+  hasMore: false,
+  referencedOffers: [] as readonly CatalogOffer[],
   canManage: false,
   authorityUnknown: false,
   fieldsUnavailable: false,
@@ -179,10 +192,18 @@ const ACTIONS: readonly OfferCustomerAction[] = ["buy", "book", "apply", "enquir
 // `unrecognised` is deliberately absent: it is a READING, never a value that can match a row.
 const AVAILABILITIES: readonly OfferAvailability[] = ["draft", "active", "paused", "archived"];
 
-export function useCatalogOffers(): CatalogOffersState {
+export function useCatalogOffers(options?: CatalogOffersOptions): CatalogOffersState {
+  const bounded = options !== undefined;
+  const search = (options?.search ?? "").trim().slice(0, 200);
+  const pageSize = Number.isFinite(options?.pageSize) ? Math.max(1, Math.min(50, Math.floor(options!.pageSize!))) : 5;
+  const page = Number.isFinite(options?.page) ? Math.max(0, Math.min(Math.floor((2147483646 - pageSize) / pageSize), Math.floor(options!.page!))) : 0;
+  const referenceIds = [...new Set((options?.referenceIds ?? []).filter(id => typeof id === "string" && id.trim() !== ""))].sort().slice(0, 200);
+  // A value key avoids refetching when a caller rebuilds an equivalent options object/ID array.
+  const queryKey = bounded ? JSON.stringify([search, page, pageSize, referenceIds]) : "catalog-default";
   const { activeTenantId, accountContextLoading } = useTenantContext();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [state, setState] = useState<Omit<CatalogOffersState, "retry" | "saveOffer" | "setOfferStatus">>({
+  const [state, setState] = useState<Omit<CatalogOffersState, "retry" | "saveOffer" | "setOfferStatus"> & { queryKey: string }>({
+    queryKey,
     tenantId: activeTenantId ?? null,
     phase: accountContextLoading ? "resolving" : "loading",
     ...EMPTY,
@@ -268,15 +289,15 @@ export function useCatalogOffers(): CatalogOffersState {
 
     // Fail closed on identity, exactly as the campaigns adapter does. No tenant, no read.
     if (accountContextLoading) {
-      setState({ tenantId: activeTenantId ?? null, phase: "resolving", ...EMPTY });
+      setState({ queryKey, tenantId: activeTenantId ?? null, phase: "resolving", ...EMPTY });
       return () => { current = false; };
     }
     if (!activeTenantId) {
-      setState({ tenantId: null, phase: "unavailable", ...EMPTY });
+      setState({ queryKey, tenantId: null, phase: "unavailable", ...EMPTY });
       return () => { current = false; };
     }
 
-    setState({ tenantId: activeTenantId, phase: "loading", ...EMPTY });
+    setState({ queryKey, tenantId: activeTenantId, phase: "loading", ...EMPTY });
     void (async () => {
       try {
         // THE DEPLOY-ORDER RACE THIS CLOSES. The five offer columns arrive in migration
@@ -300,21 +321,42 @@ export function useCatalogOffers(): CatalogOffersState {
         const isMissingColumn = (error: ProductRead["error"]) => error?.code === "42703";
         // One helper for both attempts so the two selects cannot drift apart in scope or order,
         // and so the narrower BASE result stays assignable to the same variable.
-        const readProducts = async (columns: string): Promise<ProductRead> =>
-          (await supabase
-            .from("tenant_products")
-            .select(columns)
-            .eq("tenant_id", activeTenantId)
-            .order("name", { ascending: true })) as unknown as ProductRead;
-
-        let productResponse = await readProducts(EXTENDED);
+        const readProducts = async (columns: string, ids?: readonly string[]): Promise<ProductRead> => {
+          let query = supabase.from("tenant_products").select(columns).eq("tenant_id", activeTenantId).order("name", { ascending: true });
+          if (bounded) {
+            query = query.order("id", { ascending: true });
+            if (ids) query = query.in("id", [...ids]);
+            else {
+              if (search.includes("*")) {
+                // PostgREST aliases * to % for ilike. Regex-escape the whole literal term
+                // instead of silently widening a name containing an actual asterisk.
+                query = query.filter("name", "imatch", search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+              } else if (search) query = query.ilike("name", `%${search.replace(/[\\%_]/g, "\\$&")}%`);
+              // Inclusive end: one extra row proves whether another page exists.
+              query = query.range(page * pageSize, page * pageSize + pageSize);
+            }
+          }
+          return (await query) as unknown as ProductRead;
+        };
+        const readWindow = async (columns: string) => Promise.all([
+          readProducts(columns),
+          bounded && referenceIds.length ? readProducts(columns, referenceIds) : Promise.resolve({ data: [], error: null } as ProductRead),
+        ]);
+        let [productResponse, referenceResponse] = await readWindow(EXTENDED);
+        if (!current) return;
         let fieldsUnavailable = false;
-        if (isMissingColumn(productResponse.error)) {
-          if (!current) return;
-          console.warn("[catalog-offers] offer columns not migrated yet; reading the base record");
+        if (isMissingColumn(productResponse.error) || isMissingColumn(referenceResponse.error)) {
           fieldsUnavailable = true;
-          productResponse = await readProducts(BASE);
+          [productResponse, referenceResponse] = await readWindow(BASE);
+          if (!current) return;
         }
+        const productError = productResponse.error || referenceResponse.error;
+        if (productError) throw productError;
+        const returnedProducts = (productResponse.data ?? []) as Record<string, unknown>[];
+        const hasMore = bounded && returnedProducts.length > pageSize;
+        const pageProducts = bounded ? returnedProducts.slice(0, pageSize) : returnedProducts;
+        const referenceProducts = (referenceResponse.data ?? []) as Record<string, unknown>[];
+        const productIds = [...new Set([...pageProducts, ...referenceProducts].map(row => String(row.id)))];
 
         // WHY THIS ASKS FOR THE CALLER'S OWN ROW, AND WHY THAT IS NOT OBVIOUS.
         // `tenant_members`'s SELECT policy is `user_id = auth.uid() OR is_tenant_admin(tenant_id)
@@ -326,12 +368,17 @@ export function useCatalogOffers(): CatalogOffersState {
         const { data: authData } = await supabase.auth.getUser();
         const callerId = authData.user?.id ?? null;
 
-        const [priceResponse, roleResponse] = await Promise.all([
-          supabase
-            .from("tenant_prices")
+        if (!current) return;
+        const readPrices = () => {
+          if (bounded && productIds.length === 0) return Promise.resolve({ data: [], error: null });
+          let query = supabase.from("tenant_prices")
             .select("id,product_id,nickname,unit_amount,currency,billing_interval,kind,installments_total,active,sort_order")
-            .eq("tenant_id", activeTenantId)
-            .order("sort_order", { ascending: true }),
+            .eq("tenant_id", activeTenantId).order("sort_order", { ascending: true });
+          if (bounded) query = query.in("product_id", productIds);
+          return query;
+        };
+        const [priceResponse, roleResponse] = await Promise.all([
+          readPrices(),
           // Authority is asked about THIS workspace, never a global role (§59's global-role trap).
           // The column is `role`; `tenant_role` is the ENUM TYPE's name, not the column's.
           callerId
@@ -378,8 +425,7 @@ export function useCatalogOffers(): CatalogOffersState {
         // does not know the five new columns. The cast is through `unknown` deliberately: it is a
         // statement that this shape is wider than the generated type, not a claim that they match.
         // Regenerating types after the migration lands narrows it back — see the Gate B packet.
-        const offers: CatalogOffer[] = ((productResponse.data ?? []) as unknown as Record<string, unknown>[])
-          .map((row) => ({
+        const mapProducts = (rows: Record<string, unknown>[]): CatalogOffer[] => rows.map((row) => ({
             id: String(row.id ?? ""),
             name: typeof row.name === "string" ? row.name : "",
             summary: typeof row.summary === "string" && row.summary.trim() ? row.summary : null,
@@ -406,10 +452,12 @@ export function useCatalogOffers(): CatalogOffersState {
         const role = (roleResponse.data as { role?: unknown } | null)?.role;
         const canManage = role === "owner" || role === "admin";
 
-        setState({
+        setState({ queryKey,
           tenantId: activeTenantId,
           phase: "ready",
-          offers,
+          offers: mapProducts(pageProducts),
+          hasMore,
+          referencedOffers: mapProducts(referenceProducts),
           canManage,
           // True only when the authority question itself could not be answered. The surface must
           // not assert "you cannot change this" on the back of a failed read.
@@ -422,12 +470,12 @@ export function useCatalogOffers(): CatalogOffersState {
       } catch (error) {
         console.error("[catalog-offers] tenant-scoped offer read failed", error);
         if (!current) return;
-        setState({ tenantId: activeTenantId, phase: "error", ...EMPTY });
+        setState({ queryKey, tenantId: activeTenantId, phase: "error", ...EMPTY });
       }
     })();
 
     return () => { current = false; };
-  }, [activeTenantId, accountContextLoading, refreshKey]);
+  }, [activeTenantId, accountContextLoading, refreshKey, queryKey]);
 
   // WHY THIS IS NOT JUST `return state`. `setState` inside the effect above runs AFTER paint, so
   // on the render where `activeTenantId` changes IN PLACE — which is exactly what an operator's
@@ -437,7 +485,7 @@ export function useCatalogOffers(): CatalogOffersState {
   // selected workspace. `useSoloCampaigns`, the sibling hook on this same tab, already guards
   // this synchronously; this is the same guard, deliberately not a second invention of it.
   const synchronousTenantId = activeTenantId ?? null;
-  const visible = state.tenantId === synchronousTenantId ? state : {
+  const visible = !accountContextLoading && state.tenantId === synchronousTenantId && state.queryKey === queryKey ? state : {
     tenantId: synchronousTenantId,
     phase: accountContextLoading ? "resolving" as const
       : synchronousTenantId ? "loading" as const
