@@ -23,12 +23,17 @@ describe("Solo Zapier API and MCP release contract", () => {
   });
   it("keeps local cleanup available and preserves non-rotating refresh tokens", () => {
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
+    const sql = read("supabase/migrations/20261201000700_solo_zapier_api_mcp_and_skool_intake.sql");
     expect(api).toContain('["cancel", "disconnect", "oauth_refuse", "provision_intake_route"]');
     expect(api).toContain("retainedRefresh");
     expect(api).toContain("String(data.refresh_token)");
     expect(api).toContain("_expected_generation: expectedGeneration");
     expect(api).toContain("null, String(data.generation)");
     expect(api).toContain('.eq("tenant_id", tenantId).in("status", ["pending", "exchanging"])');
+    expect(api).toContain('admin.rpc("zapier_api_begin_oauth"');
+    expect(sql).toContain("tenant_zapier_api_one_active_oauth");
+    expect(sql).toContain("pg_advisory_xact_lock");
+    expect(sql).toContain("FUNCTION public.zapier_api_begin_oauth");
   });
   it("makes OAuth finalization and local disconnect transactional", () => {
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
@@ -44,6 +49,10 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(sql).toContain("tenant_id=_tenant AND generation=_generation");
     expect(sql).toContain("tenant_id=_tenant AND generation=_expected_generation");
     expect(sql).toContain("ZAPIER_GRANT_STALE");
+    expect(sql).toContain("FUNCTION public.set_tenant_zapier_mcp_connection");
+    expect(sql).toContain("auth_kind='oauth'");
+    expect(sql).toContain("auth_header_name=NULL");
+    expect(sql).toContain("'auth_kind','oauth'");
   });
   it("binds inbound routes on the server and deduplicates per tenant", () => {
     const intake = read("supabase/functions/zapier-skool-intake/index.ts");
@@ -76,6 +85,11 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(sql).toContain("zapier_api_test_failed");
     expect(sql).toContain("zapier_api_oauth_refused");
     expect(sql).toContain("Zapier API authorization declined");
+    expect(sql).toContain("FUNCTION public.get_zapier_rail_activity");
+    expect(sql).toContain("w.source_kind IN ('zapier_api_oauth','zapier_api_connection','zapier_mcp_connection','zapier_skool_intake')");
+    const ui = read("src/solo/settings-integrations.tsx");
+    expect(ui).toContain('rpc("get_zapier_rail_activity",{p_limit:5})');
+    expect(ui).not.toContain('rpc("get_solo_rail_activity",{p_limit:50})');
     expect(sql).toContain("zapier_mcp_test_succeeded");
     expect(sql).toContain("zapier_mcp_test_failed");
     expect(sql).toContain("zapier_skool_intake_received");

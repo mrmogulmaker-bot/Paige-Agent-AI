@@ -157,8 +157,7 @@ Deno.serve(async (req) => {
 
   if (action === "oauth_begin") {
     const state = safeState();
-    await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "cancelled" }).eq("tenant_id", tenantId).in("status", ["pending", "exchanging"]);
-    const { error } = await admin.from("tenant_zapier_api_oauth_attempts").insert({ tenant_id: tenantId, actor_id: user.id, state_hash: await digest(state) });
+    const { error } = await admin.rpc("zapier_api_begin_oauth", { _tenant: tenantId, _actor: user.id, _state_hash: await digest(state) });
     if (error) return jsonResponse({ error: "start_failed" }, 500);
     const url = new URL(AUTHORIZE_URL); url.search = new URLSearchParams({ response_type: "code", client_id: Deno.env.get("ZAPIER_API_CLIENT_ID")!, redirect_uri: REDIRECT_URI,
       scope: READ_ONLY_SCOPES, response_mode: "query", state }).toString();

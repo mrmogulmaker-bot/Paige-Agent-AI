@@ -31,6 +31,31 @@ ALTER TABLE public.tenant_zapier_api_oauth_attempts FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON public.tenant_zapier_api_oauth_attempts FROM PUBLIC,anon,authenticated;
 GRANT ALL ON public.tenant_zapier_api_oauth_attempts TO service_role;
 
+-- One tenant has one active API authorization flow. Clean legacy duplicates before
+-- adding the invariant, retaining only the newest attempt.
+WITH ranked AS (
+ SELECT id,row_number() OVER(PARTITION BY tenant_id ORDER BY created_at DESC,id DESC) AS position
+ FROM public.tenant_zapier_api_oauth_attempts WHERE status IN ('pending','exchanging')
+) UPDATE public.tenant_zapier_api_oauth_attempts a SET status='cancelled' FROM ranked r WHERE a.id=r.id AND r.position>1;
+CREATE UNIQUE INDEX tenant_zapier_api_one_active_oauth
+ ON public.tenant_zapier_api_oauth_attempts(tenant_id) WHERE status IN ('pending','exchanging');
+
+CREATE OR REPLACE FUNCTION public.zapier_api_begin_oauth(_tenant uuid,_actor uuid,_state_hash text)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$
+DECLARE attempt_id uuid;BEGIN
+ IF _tenant IS NULL OR _actor IS NULL OR length(COALESCE(_state_hash,''))<32 THEN RAISE EXCEPTION 'ZAPIER_OAUTH_START_INVALID';END IF;
+ -- The advisory lock covers even a tenant with no existing attempt row; the partial
+ -- unique index remains the database-level backstop.
+ PERFORM pg_advisory_xact_lock(hashtextextended(_tenant::text,919));
+ UPDATE public.tenant_zapier_api_oauth_attempts SET status='cancelled'
+  WHERE tenant_id=_tenant AND status IN ('pending','exchanging');
+ INSERT INTO public.tenant_zapier_api_oauth_attempts(tenant_id,actor_id,state_hash)
+  VALUES(_tenant,_actor,_state_hash) RETURNING id INTO attempt_id;
+ RETURN attempt_id;
+END $$;
+REVOKE ALL ON FUNCTION public.zapier_api_begin_oauth(uuid,uuid,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.zapier_api_begin_oauth(uuid,uuid,text) TO service_role;
+
 -- Route identity is server configuration, never accepted from an inbound body.
 CREATE TABLE public.tenant_zapier_intake_routes (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
@@ -219,6 +244,22 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public AS $$ DECLARE v_
 REVOKE ALL ON FUNCTION public.get_solo_rail_activity(integer) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.get_solo_rail_activity(integer) TO authenticated,service_role;
 
+CREATE OR REPLACE FUNCTION public.get_zapier_rail_activity(p_limit integer DEFAULT 5)
+RETURNS TABLE(id uuid,event_kind text,surface text,actor_type text,audience text,visibility text,from_department text,to_department text,title text,summary text,occurred_at timestamptz)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_catalog AS $$
+DECLARE v_uid uuid:=auth.uid();v_tenant uuid:=public.current_user_tenant_id();v_limit integer:=least(greatest(coalesce(p_limit,5),1),50);BEGIN
+ IF v_uid IS NULL OR v_tenant IS NULL OR (NOT public.is_platform_owner() AND NOT EXISTS(
+  SELECT 1 FROM public.tenant_members m WHERE m.user_id=v_uid AND m.tenant_id=v_tenant AND m.status='active' AND m.role IN ('owner','admin','coach')
+ )) THEN RAISE EXCEPTION USING errcode='42501',message='RAIL_FORBIDDEN';END IF;
+ RETURN QUERY SELECT w.id,d.value->>'event_kind',d.value->>'surface',d.value->>'actor_type',d.value->>'audience',d.value->>'visibility',
+  d.value->>'from_department',d.value->>'to_department',d.value->>'title',d.value->>'summary',w.occurred_at
+ FROM public.paige_workspace_events w CROSS JOIN LATERAL(SELECT public._zapier_workspace_event_display(w.outcome)value)d
+ WHERE w.tenant_id=v_tenant AND w.source_kind IN ('zapier_api_oauth','zapier_api_connection','zapier_mcp_connection','zapier_skool_intake')
+ ORDER BY w.occurred_at DESC LIMIT v_limit;
+END $$;
+REVOKE ALL ON FUNCTION public.get_zapier_rail_activity(integer) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.get_zapier_rail_activity(integer) TO authenticated,service_role;
+
 CREATE OR REPLACE FUNCTION public._zapier_cancel_on_workspace_switch()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$ BEGIN
  IF OLD.active_tenant_id IS DISTINCT FROM NEW.active_tenant_id THEN UPDATE public.tenant_zapier_api_oauth_attempts SET status='cancelled' WHERE actor_id=NEW.user_id AND status IN ('pending','exchanging');END IF;RETURN NEW;END $$;
@@ -281,6 +322,49 @@ GRANT EXECUTE ON FUNCTION public.process_zapier_skool_intake(text,text,text,json
 
 ALTER TABLE public.tenant_mcp_connections ADD COLUMN IF NOT EXISTS zapier_generation uuid NOT NULL DEFAULT gen_random_uuid();
 ALTER TABLE public.tenant_mcp_connections ADD COLUMN IF NOT EXISTS zapier_rail_revision bigint NOT NULL DEFAULT 0;
+
+-- OAuth completion is also the migration path from the provider's older URL-style
+-- connection. The conflict branch changes auth kind and clears incompatible fields in
+-- the same write that stores the new grant.
+CREATE OR REPLACE FUNCTION public.set_tenant_zapier_mcp_connection(
+ _tenant_id uuid,_server_url text,_access_token text,_refresh_token text,_expires_at timestamptz,
+ _issuer text,_client_id text,_client_secret text DEFAULT NULL,_scopes text[] DEFAULT NULL,
+ _label text DEFAULT NULL,_actor uuid DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$ BEGIN
+ IF _tenant_id IS NULL THEN RAISE EXCEPTION 'MCP_NO_TENANT' USING ERRCODE='22023';END IF;
+ IF COALESCE(btrim(_server_url),'')='' OR _server_url !~* '^https://' THEN RAISE EXCEPTION 'MCP_INSECURE_URL' USING ERRCODE='22023';END IF;
+ IF COALESCE(btrim(_access_token),'')='' THEN RAISE EXCEPTION 'MCP_NO_TOKEN' USING ERRCODE='22023';END IF;
+ INSERT INTO public.tenant_mcp_connections
+  (tenant_id,provider,label,server_url_ct,auth_token_ct,auth_token_last4,refresh_token_ct,access_token_expires_at,
+   oauth_issuer,oauth_client_id,oauth_client_secret_ct,oauth_scopes,transport,auth_kind,auth_header_name,enabled,status,last_error,created_by,updated_by,updated_at)
+ VALUES(_tenant_id,'zapier',NULLIF(btrim(COALESCE(_label,'')),''),public.platform_encrypt(_server_url),public.platform_encrypt(_access_token),right(_access_token,4),
+  CASE WHEN COALESCE(_refresh_token,'')='' THEN NULL ELSE public.platform_encrypt(_refresh_token) END,_expires_at,_issuer,_client_id,
+  CASE WHEN COALESCE(_client_secret,'')='' THEN NULL ELSE public.platform_encrypt(_client_secret) END,COALESCE(_scopes,ARRAY[]::text[]),
+  'http','oauth',NULL,true,'pending_verification',NULL,_actor,_actor,now())
+ ON CONFLICT(tenant_id,provider) DO UPDATE SET
+  label=COALESCE(NULLIF(btrim(COALESCE(_label,'')),''),tenant_mcp_connections.label),
+  server_url_ct=EXCLUDED.server_url_ct,
+  auth_token_ct=EXCLUDED.auth_token_ct,
+  auth_token_last4=EXCLUDED.auth_token_last4,
+  refresh_token_ct=EXCLUDED.refresh_token_ct,
+  access_token_expires_at=EXCLUDED.access_token_expires_at,
+  oauth_issuer=EXCLUDED.oauth_issuer,
+  oauth_client_id=EXCLUDED.oauth_client_id,
+  oauth_client_secret_ct=EXCLUDED.oauth_client_secret_ct,
+  oauth_scopes=EXCLUDED.oauth_scopes,
+  transport='http',
+  auth_kind='oauth',
+  auth_header_name=NULL,
+  enabled=true,
+  status='pending_verification',
+  last_error=NULL,
+  updated_by=EXCLUDED.updated_by,
+  updated_at=now();
+ RETURN jsonb_build_object('ok',true,'provider','zapier','status','pending_verification','auth_kind','oauth');
+END $$;
+REVOKE ALL ON FUNCTION public.set_tenant_zapier_mcp_connection(uuid,text,text,text,timestamptz,text,text,text,text[],text,uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.set_tenant_zapier_mcp_connection(uuid,text,text,text,timestamptz,text,text,text,text[],text,uuid) TO service_role;
+
 CREATE OR REPLACE FUNCTION public._zapier_mcp_rail_revision()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_catalog AS $$ BEGIN
  IF NEW.provider='zapier' AND (OLD.status IS DISTINCT FROM NEW.status OR OLD.enabled IS DISTINCT FROM NEW.enabled OR OLD.auth_kind IS DISTINCT FROM NEW.auth_kind OR
