@@ -37,13 +37,26 @@ that is recorded rather than quietly corrected — §13, and §58 for anything t
 | Claim | Reality | Evidence |
 |---|---|---|
 | `paige_agents` exists | **No. It has never existed.** Zero hits across all 951 migration files. | `grep -rn "paige_agents" supabase/migrations/` → 0 |
-| The roster doc says otherwise | `paige-c-suite-roster.md` L33 reads, in the present tense, *"Every named agent is discoverable at `paige_agents.name = 'VERA'`"*, and L322–340 gives a full `CREATE TABLE` that was never run. | `docs/doctrine/paige-c-suite-roster.md` |
+| The roster doc says otherwise | `paige-c-suite-roster.md` L33 reads, in the present tense, *"Every named agent is discoverable at `paige_agents.name = 'VERA'`"*, and L325 opens a full `CREATE TABLE paige_agents (…)` that was never run. | `docs/doctrine/paige-c-suite-roster.md` |
 | The real registry | **`public.paige_subagents`** — 28 columns after five `ALTER`s. Globally-unique `slug`; `tenant_id` (NULL = platform default); `department` FK → `paige_departments(slug)`; `config` jsonb carrying `job_kind`; `system_prompt`; `enabled` + `auto_disabled_reason`; `role`/`goal`/`backstory`/`version`; `runtime` check `('local','langgraph')`; `triggers`, `input_schema`, `output_schema`, `requires_role`, `display_order`. | `supabase/migrations/20260629235541_*.sql` + 4 later ALTERs |
 | Tenant scoping | Real. RLS policy **`paige_subagents_tenant_read`** exists; `tenant_id IS NULL` means platform default. | migration + `src/solo/data/useSoloSubagents.ts` |
 | Seeded rows | 34+ across five migrations. Department tagging uses **only the two legacy desks** — 6 `owner_ops`, 4 `client_experience`, 13 NULL. **Zero** agents are tagged to any of the nine §16 blueprint departments, which exist as rows and hold nothing. | migration seeds |
 | The action bus | `paige_action_kinds` — 33 slugs, `default_from_department` / `default_to_department` FKs, `draft_subagent_slug` FK → `paige_subagents(slug)`, and `default_autonomy_lane`. | `supabase/migrations/*action_bus.sql` |
 | The autonomy lane | **`text` + `CHECK`, not a Postgres enum** — `('auto','confirm','off')` — and the same constraint is replicated independently on five tables. | migrations |
 | Generated types are stale | `src/integrations/supabase/types.ts` lists 26 columns for `paige_subagents` and **omits `role`, `goal`, `backstory`, `version`** — all four of which are applied on prod and read at runtime by `paige-orchestrator`. | `types.ts` L12626–12653 vs `supabase/functions/paige-orchestrator/index.ts` L321, L364–368 |
+
+**No named agent exists in the backend — proven two ways, because one way is not enough.**
+The roster doc promises functions like `vera_consent_check()` and `zion_scenario_model()` (L33). A
+word-boundary search alone **cannot** disprove those: underscore is a word character, so
+`\bvera\b` does not match `vera_consent_check`. Both forms were therefore run against
+`supabase/`:
+
+| Search | Hits |
+|---|---|
+| `\b(zion\|nexus\|merit\|cura\|mentor\|vera\|oathen\|scribe\|mason)\b` | **0** |
+| `\b(zion\|nexus\|merit\|cura\|mentor\|vera\|oathen\|scribe\|mason)_[a-z]` (catches `vera_consent_check`) | **0** |
+| `paige_agents` | **0** |
+| `paige_subagents` | 29 files |
 
 **Consequence for this design:** the registry **extends `paige_subagents`**. It does not build the
 `paige_agents` table the roster doc sketches. `paige_subagents.slug` is already the FK target for
@@ -54,11 +67,18 @@ table would fork the taxonomy the action bus already depends on (§18, §12).
 
 | Source | ZION | NEXUS | MERIT | CURA | MENTOR | VERA | Others |
 |---|---|---|---|---|---|---|---|
-| **A.** `paige-c-suite-roster.md` (doctrine) | Strategy & Vision | Growth: **Marketing + Sales** | **Finance & People** | Client Success **+ Curriculum** | **Operations** (n8n, infra) | Trust & Verification | — |
+| **A.** `paige-c-suite-roster.md` L21–27 (doctrine) | Strategy & Vision | Growth: **Marketing + Sales** | **Finance & People** | Client Success **+ Curriculum** | **Operations** (n8n, infra) | Trust & Verification | — |
 | **B.** `PaigeAttribution.tsx` `VP_ROSTER` (**shipped**) | **Operations & automation** | Marketing & growth | **Sales & revenue** | Client success | **Curriculum & delivery** | Quality & standards | — |
 | **C.** `vpDepartments.ts` `DEPT_VP` (**shipped, compile-locked**) | `technology_automation`, `operations_pmo` | `marketing` | `sales`, `finance` | `client_experience` | `product_curriculum` | `legal_compliance` | PAIGE holds `executive_office`, `people_talent`, `owner_ops` |
 | **D.** `src/prototype/TenantRedesign.tsx` (**routed at `/tenant-redesign`**) | Operations | — | — | — | — | — | KAVYN · MIRAEL · VAYRON · METHRA · OATHEN, each labelled *"provisional"* |
 | **E.** `paige-ia.js` (CD pack, operator scope) | *"Fleet half of the sweep"* | named only | — | — | — | — | OATHEN, MASON, SCRIBE |
+
+**A sixth rendering exists, and it is this design's own.** The prototype
+(`../design-references/prototypes/solo-business-game-plan.html`) renders OATHEN with the remit
+*"Owner approvals"* — which differs from the CD pack's *"Holds findings that need your word"* and
+from `TenantRedesign.tsx`'s *"Standards · provisional"*. That is the **proposed** roster, not a
+sixth pre-existing one, but it is a sixth set of words about the same names and is counted here so
+nobody discovers it later and calls it drift.
 
 **A three-way rotation sits between doctrine and code.** Doctrine A says ZION=Strategy,
 MENTOR=Operations, MERIT=Finance&People. Shipped code B/C says ZION=Operations, MENTOR=Curriculum,
@@ -90,7 +110,7 @@ definition forbids. It is shipping now.
    And `src/solo/SoloPaigeWorkspace.contract.test.tsx` L150 is a **shipped CI guard** banning
    `ZION|OATHEN|MASON|KAVYN|MIRAEL|VAYRON|METHRA` from the Solo workspace as *"disputed assignments."*
 3. **Only two names carry brand protection.** `docs/brand/paige-brand-identity.md` L6, owner-approved
-   2026-08-22, locks **PAIGE and ZION only** — while the roster doc L22 claims all seven are
+   2026-08-22, locks **PAIGE and ZION only** — while the roster doc L29 claims all seven are
    *"load-bearing… not casually amendable."* The five names actually shipping to users have no
    brand-level protection.
 4. **The architecture doc is half-wrong.** `CANONICAL-SYSTEM-ARCHITECTURE-2026-08-08.md` L485–491
@@ -117,7 +137,7 @@ what it supersedes, so no history is silently overwritten (§58).
 | **D8** | **OATHEN = owner approvals and consequential exceptions.** Net-new to the roster. Holds; never acts. | Nothing — OATHEN was in no roster. | The owner's brief is explicit that OATHEN must **not** become a replacement for strategic or departmental leadership. It owns the gate, not a department. |
 | **D9** | **SCRIBE = knowledge intake, organisation, provenance, grounded business memory.** Net-new. | Nothing — SCRIBE existed in exactly one line repo-wide. | The MENTOR/SCRIBE boundary was undrawn anywhere: **MENTOR owns knowledge *readiness for delivery*; SCRIBE owns knowledge *intake, provenance and organisation*.** SCRIBE writes into Mind; MENTOR consumes from it. |
 | **D10** | **Communications Operations is a SHARED service**, owned by no single department. | The compile-locked `Record<DeptSlug, VP>` single-owner model in `vpDepartments.ts` L18–20. | **This is the one genuine backend incompatibility** in the brief — see §5. |
-| **D11** | **MASON is not adopted.** The Automation Agent stays generic and unnamed. | The pack's `MASON` and the false provenance comment (§1.3.1). | The owner's controlling table names this role generically. A ninth brand identity should be a deliberate owner ruling, not an inheritance from an incorrect code comment. Recorded, not deleted — if the owner wants MASON, it is a one-line change here. |
+| **D11** | **MASON is not adopted.** The Automation Agent stays generic and unnamed. | The pack's `MASON` and the false provenance comment (§1.3.1). | **Weigh this one knowing what CD actually drew.** MASON is not a stray roster row: `PAIGE Super Admin Shell v3.dc.html` L8448 says *"MASON is the sub-agent she hands automation work to,"* and L8453/L9002 render it **speaking in the UI** as `MASON · automations` and `MASON · setup`. So declining it declines a named actor CD gave a voice. It is declined anyway because the owner's controlling table names this role generically, and because the only claim that MASON was already *our* vocabulary is the false comment in §1.3.1. A ninth brand identity should be a deliberate ruling, not an inheritance from an incorrect code comment. Recorded, not deleted — if the owner wants MASON, it is a one-line change here. |
 | **D12** | **KAVYN · MIRAEL · VAYRON · METHRA are provisional prototype aliases and are retired.** | `src/prototype/TenantRedesign.tsx` L38–42. | Their own labels say *"provisional."* They are a parallel roster for the same six functions, reachable at a real route. Retiring them removes a second live vocabulary. |
 
 **Name durability after this document:** PAIGE and ZION are brand-locked
