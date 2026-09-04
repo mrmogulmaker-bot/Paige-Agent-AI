@@ -131,6 +131,10 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Solo n8n MCP OAuth read/write connection — 2026-09-03
+
+PR #909 merged as 49b9f338. Frontend production deployment is READY on paigeagent.ai and app.paigeagent.ai; dedicated tenant-n8n-oauth version 1 and migration 20261201000000 are deployed and verified. Every Solo workspace owner can connect, edit, reconnect and disconnect through OAuth requesting workflow:read and workflow:write. API health remains independent. 3,020 Linux tests and all ordinary checks passed; rendered evidence covers four viewports and both themes. Final owner consent and real provider discovery are still Proof Owed. Hosted gateway callback URL retention is an accepted MVP residual risk, not a release blocker. See docs/delivery/solo-n8n-oauth-mvp.md.
+
 ### Solo Sales Ops — a Solo owner can record what one client agreed to (2026-09-03)
 
 **Current usability status: PARTIAL.** Owner feedback explicitly rejects treating the current Sales UX as complete. PR #895 fixed recurring-date display only. **Release 1 usability repair is implemented in PR #903** on `codex/solo-sales-usability-r1`, refreshed onto main `bd32fd6`: functional drawer close/discard, reachable commercial-term editing, workspace cleanup, clearer controls, canonical Catalog/Clients return paths and removal of the oversized client-billing banner. The owner cleared the historical #706 shared-file collision; Pipeline implementation and six Campaigns tabs stay intact. See `docs/delivery/solo-sales-usability-r1.md` for the live product record and evidence. Local eight-frame drawer interaction proof passed; authenticated production persistence and owner acceptance remain **Proof Owed**. Merge and deployment evidence are recorded on PR #903.
@@ -1233,13 +1237,13 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
-### Solo n8n connection clarity — approved UI slice, 2026-09-03
+### Solo n8n connection clarity — historical UI slice, 2026-09-03
 
-The owner approved separate API connection and Paige tools (MCP) tabs and independent tile/overview states. This UI slice preserves stored credentials and keeps n8n OAuth **BLOCKED / Proof Owed**, with no live OAuth action or bearer substitute. Current API saved status/count/timestamp does not prove fresh health; the UI must not claim it does. No callback, backend credential, tool-authority, workflow execution, Chat or Spine changes are included. Delivery and proof: `docs/delivery/solo-n8n-connection-clarity.md`. Authenticated owner acceptance is recorded separately from automated/build/deployment evidence.
+The owner approved separate API connection and Paige tools (MCP) tabs and independent tile/overview states. This earlier UI slice preserved stored credentials while OAuth was blocked. Superseded by released PR #909: standard OAuth is live with the owner-accepted gateway logging risk; only final owner consent/provider verification remains Proof Owed. Current API saved status/count/timestamp does not prove fresh health; the UI must not claim it does. No callback, backend credential, tool-authority, workflow execution, Chat or Spine changes are included. Delivery and proof: `docs/delivery/solo-n8n-connection-clarity.md`. Authenticated owner acceptance is recorded separately from automated/build/deployment evidence.
 
 ### Solo n8n API save-and-check completion — 2026-09-03
 
-Owner-authorized follow-up completes one API drawer journey: securely save or replace the key, validate read-only workflow inventory, display verified health/count/check time, and reconnect on refusal. New caller-scoped readiness and service-side revision/attempt fences prevent legacy saved status or stale validation from claiming health. Existing encryption is reused; no credential is replaced by deployment. API visibility and MCP authority remain independent. OAuth stays **BLOCKED / Proof Owed**, with no bearer fallback, callback, webhook, tool or workflow mutation. Proof: `docs/delivery/solo-n8n-api-completion.md`; authenticated owner/provider acceptance remains separate from synthetic runtime, database, and deployment checks.
+Owner-authorized follow-up completes one API drawer journey: securely save or replace the key, validate read-only workflow inventory, display verified health/count/check time, and reconnect on refusal. New caller-scoped readiness and service-side revision/attempt fences prevent legacy saved status or stale validation from claiming health. Existing encryption is reused; no credential is replaced by deployment. API visibility and MCP authority remain independent. That earlier API-only slice made no OAuth change. PR #909 subsequently released OAuth separately; API visibility remains independent and no bearer fallback is offered. Proof: `docs/delivery/solo-n8n-api-completion.md`; authenticated owner/provider acceptance remains separate from synthetic runtime, database, and deployment checks.
 The API feedback follow-up masks prior evidence while checking or uncertain, shares current API status between tile/drawer, and makes optional owner Refresh status run validation. Reopened server checks settle through bounded readiness polling. The safe Integration-to-Spine summary is a proposal only; no downstream wiring or authority is included. See `docs/delivery/solo-n8n-validation-feedback.md`.
 
 ### Solo Notifications menu retirement — 2026-09-03
@@ -3291,3 +3295,4 @@ Owner superseded competing Sales PR #905; its separate Clients fix remains with 
 
 The owner superseded the earlier callback zero-log release block for the standard OAuth connection. Hosted gateway retention of temporary code/state URL metadata is an accepted post-release hardening risk; it is not claimed encrypted or eliminated. Existing token encryption, S256 PKCE, exact redirect, owner/session/workspace binding, replay/expiry checks and read-only initial authority remain mandatory. Scope is the entire Solo shell, with independent per-workspace connections and API health. Implementation and proof: `docs/delivery/solo-n8n-oauth-mvp.md`. This entry records the approved release contract, not successful deployment or owner consent.
 Owner follow-up: OAuth must request workflow:read and workflow:write. Initial connection verification remains read-only; no workflow:execute or automatic mutation is granted. Workflow writes remain subject to the governed action path and explicit approval.
+
