@@ -25,7 +25,7 @@ import { describe, expect, it } from "vitest";
  * It now reads the CURRENT definition. Repoint it again whenever that moves.
  */
 const FIX = readFileSync(
-  "supabase/migrations/20261201000700_the_rail_says_which_agent_acted.sql",
+  "supabase/migrations/20261201000800_the_rail_says_which_agent_acted.sql",
   "utf8",
 );
 

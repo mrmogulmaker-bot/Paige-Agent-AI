@@ -142,7 +142,7 @@ Four properties of the shipped code decide eligibility. They are constraints, no
 
 > ### ⚠ SUPERSEDED IN PART BY PR #925 — read this before the three claims below (§BRAIN.3)
 >
-> PR #925 (`20261201000700_the_rail_says_which_agent_acted.sql`) changes three things this section
+> PR #925 (`20261201000800_the_rail_says_which_agent_acted.sql`) changes three things this section
 > states as current. It is **not yet applied to production**; until `deploy-migrations.yml` runs on
 > merge and `db-live` moves, everything below is still true of the live database. After it applies:
 >
