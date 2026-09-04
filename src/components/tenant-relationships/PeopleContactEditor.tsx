@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -115,6 +115,11 @@ export function PeopleContactEditor({
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const overlayRef = useRef<HTMLHeadingElement | HTMLButtonElement | null>(null);
   const editing = Boolean(contact);
+  const saveScope = useRef(0);
+  useLayoutEffect(() => {
+    saveScope.current += 1;
+    return () => { saveScope.current += 1; };
+  }, [tenantId, contact?.id, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -224,20 +229,25 @@ export function PeopleContactEditor({
       assigned_coach_user_id: form.assignedCoachUserId === "unassigned" ? null : form.assignedCoachUserId,
       do_not_contact: form.doNotContact,
     };
+    const attemptScope = saveScope.current;
+    const isCurrentAttempt = () => saveScope.current === attemptScope;
     setSaving(true);
     setError(null);
     try {
       const contactId = await upsertRelationshipContact({ tenantId, contactId: contact?.id, patch });
+      if (!isCurrentAttempt()) return;
       await onSaved(contactId);
+      if (!isCurrentAttempt()) return;
       setDirty(false);
       setSaved(true);
       toast.success(editing ? "Contact updated" : "Contact created");
     } catch (saveError) {
+      if (!isCurrentAttempt()) return;
       const message = saveError instanceof Error ? saveError.message : "Contact save failed";
       setError(message);
       toast.error(message);
     } finally {
-      setSaving(false);
+      if (isCurrentAttempt()) setSaving(false);
     }
   };
 

@@ -7,6 +7,7 @@ import { Ic, PageHead } from "./_shared";
 import { useSoloCampaigns } from "./useSoloCampaigns";
 import { CatalogOffers } from "./catalog-offers";
 import { SalesOps } from "./sales-ops";
+import { readSalesPanel, salesPath, beginClientReturn, consumeClientReturn, clearClientReturn } from "./sales-navigation";
 import "./solo-campaigns.css";
 
 // Vibe Studio still imports this project-only fixture. Campaigns never renders it;
@@ -23,7 +24,7 @@ const TRUTH = {
   overview: ["UNAVAILABLE", "A tenant-authorized all-state campaign rollup is not yet available."],
   catalog: ["PARTIAL", "Published pages, funnels, forms, and captured submissions come from tenant-scoped records."],
   offers: ["PARTIAL", "Offers are read from this workspace’s own product records. Defining and editing them arrives on this screen next; nothing here is a checkout."],
-  sales: ["PARTIAL", "Offers, declared payment handling and recorded payments are read from this workspace’s own records. Per-client agreements are not held here yet, and no order names a campaign, so revenue is never attributed to one."],
+  sales: ["PARTIAL", "Offers, declared payment handling and recorded payments are read from this workspace’s own records. Commercial terms are records, not legal documents or payment collection. No revenue is attributed to campaigns."],
   pipeline: ["PROPOSED", "Only explicit form routing configuration and recorded outcomes are shown."],
   social: ["UNAVAILABLE", "A customer-facing social provider connection is not ready."],
   performance: ["PROPOSED", "Source coverage is visible; cross-source campaign analytics are not yet canonical."],
@@ -147,27 +148,10 @@ function Catalog({ data, setDetail, initialType }) {
  * §38 keeps Paige out of the merchant-of-record position for a tenant→client charge, so the money
  * leg runs on the tenant's own processor and nothing on this surface can be wired to it yet.
  */
-function ClientBillingBoundary() {
-  return <div className="campaigns-state">
-    <TruthTag state="UNAVAILABLE"/>
-    <h2>Billing your own clients</h2>
-    <p>
-      What you charge your own clients runs on your own payment processor. Nothing here collects it,
-      holds it, or reports it yet — and Paige is never the merchant of record for money your clients
-      pay you.
-    </p>
-    <p>
-      What this <em>workspace</em> pays the platform is a separate thing, and it lives in
-      Settings → Billing.
-    </p>
-  </div>;
-}
-
-function Sales({ data, setDetail, onOpenCatalog }) {
+function Sales({ data, setDetail, onOpenCatalog, panel, onPanelChange, onCreateClient, returnedClientId, onOpenBilling }) {
   const routed = data.submissions.filter((row)=>row.contactId||row.dealId);
   return <section className="campaigns-surface">
-    <SalesOps setDetail={setDetail} deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]} dealsPhase={data.phase} onOpenCatalog={onOpenCatalog} truth={TRUTH.sales}/>
-    <ClientBillingBoundary/>
+    <SalesOps setDetail={setDetail} deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]} dealsPhase={data.phase} onOpenCatalog={onOpenCatalog} panel={panel} onPanelChange={onPanelChange} onCreateClient={onCreateClient} returnedClientId={returnedClientId} onOpenBilling={onOpenBilling} truth={TRUTH.sales}/>
     <div className="so-band"><div className="so-band-head"><h3>Routed capture activity</h3><small>Recorded contact and deal references only — never estimated revenue or campaign attribution.</small></div>
     <StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></div></section>;
 }
@@ -377,26 +361,72 @@ export const GrowthHub=()=>{
   // Sales' "Open Catalog" lands on the OFFERS half — the bare catalog path, which Slice 2A made the
   // offers default. Deliberately not `returnToAssets`, which exists for the retired Vibe addresses
   // and forces `?type=all` onto the published-assets half instead.
-  const openCatalogOffers=React.useCallback(()=>{
-    navigate(subtabPath("solo",params.account,"growth","catalog"));
-  },[navigate,params.account]);
-  const [detail,setDetail]=React.useState(null);
-  const closeDetail=React.useCallback(()=>setDetail(null),[]);
-  // Also on TENANT change. A detail snapshot is detached from the list it came from, so an open
-  // drawer survived a workspace switch and kept showing the previous tenant's offer name,
-  // description and prices indefinitely. `data.tenantId` flips synchronously (useSoloCampaigns
-  // guards it outside its effect), so this clears on the same render the switch lands on.
-  // This covers every drawer on the tab, not only Offers — the campaign, sales and pipeline
-  // rows had the same detached snapshot, and the fix cannot be narrowed to one of them
-  // without duplicating the state.
-  React.useEffect(()=>{setDetail(null);},[tab,segment,data.tenantId]);
+  const scope = `${params.account || ""}:${data.tenantId || ""}`;
+  const previousScope = React.useRef({ account: params.account, tenantId: data.tenantId });
+  const switched = previousScope.current.account !== params.account || (previousScope.current.tenantId != null && previousScope.current.tenantId !== data.tenantId);
+  const panel = switched ? null : readSalesPanel(location.search);
+  const catalogReturn = switched ? null : readSalesPanel(location.search, "returnPanel");
+  const currentScope = React.useRef(scope);
+  currentScope.current = scope;
+  const [returnedClient, setReturnedClient] = React.useState(null);
+  const [detailState, setDetailState] = React.useState(null);
+  const setDetail = React.useCallback((value) => {
+    if (currentScope.current !== scope) return;
+    setDetailState(value ? { scope, tab, value } : null);
+  }, [scope, tab]);
+  const detail = detailState?.scope === scope && detailState?.tab === tab ? detailState.value : null;
+  const closeDetail = React.useCallback(()=>setDetailState(null),[]);
+  React.useLayoutEffect(() => {
+    previousScope.current = { account: params.account, tenantId: data.tenantId };
+    if (!switched) return;
+    setDetailState(null);
+    setReturnedClient(null);
+    clearClientReturn();
+    if (tab === "sales") navigate(salesPath(params.account), { replace: true });
+    else if (new URLSearchParams(location.search).has("panel") || new URLSearchParams(location.search).has("returnPanel")) {
+      const clean = new URLSearchParams(location.search);
+      clean.delete("panel"); clean.delete("returnPanel");
+      navigate({ pathname: location.pathname, search: clean.toString() }, { replace: true });
+    }
+  }, [scope, switched, tab, params.account, data.tenantId, navigate, location.pathname, location.search]);
+  React.useEffect(() => {
+    if (tab !== "sales" || switched) return;
+    // A public panel URL carries only the enum, never browser-only draft fields.
+    // Direct URLs and canonical returns also need a base Sales history step behind the drawer.
+    if (panel && location.state?.salesPanelBase !== params.account) {
+      navigate(salesPath(params.account), { replace: true });
+      navigate(salesPath(params.account, panel), { state: { salesPanelBase: params.account } });
+      return;
+    }
+    const canonical = panel ? `?panel=${panel}` : "";
+    if (location.search !== canonical) navigate(salesPath(params.account, panel), { replace: true });
+    const candidate = data.tenantId ? consumeClientReturn(data.tenantId, params.account) : null;
+    if (candidate) setReturnedClient({ scope, candidate });
+  }, [tab, switched, panel, location.search, location.state, params.account, data.tenantId, scope, navigate]);
+  const onPanelChange = React.useCallback((next, options = {}) => {
+    if (currentScope.current !== scope) return;
+    setDetailState(null);
+    if (!next) setReturnedClient(null);
+    const target = salesPath(params.account, next);
+    if (`${location.pathname}${location.search}` !== target) navigate(target, { replace: !next || Boolean(options.replace), state: next ? { salesPanelBase: params.account } : null });
+  }, [scope, navigate, params.account, location.pathname, location.search]);
+  const openCatalogOffers = React.useCallback((origin = "quick-offer") => {
+    if (currentScope.current !== scope) return;
+    const allowed = readSalesPanel(`?panel=${origin}`) || "quick-offer";
+    navigate(`${subtabPath("solo",params.account,"growth","catalog")}?returnPanel=${allowed}`);
+  }, [scope, navigate, params.account]);
+  const onCreateClient = React.useCallback(() => {
+    if (currentScope.current !== scope || !data.tenantId) return;
+    beginClientReturn(data.tenantId, params.account);
+    navigate(`/solo/${encodeURIComponent(params.account)}/clients/people`);
+  }, [scope, data.tenantId, params.account, navigate]);
   React.useEffect(()=>{if(segment!=="active")return;const account=params.account;if(account)navigate(`/solo/${account}/growth/overview${location.search}`,{replace:true});},[segment,params.account,location.search,navigate]);
   let body=<Overview data={data} setDetail={setDetail}/>;
   if(legacy) body=<CompatibilityLanding legacy={legacy} returnToAssets={returnToAssets}/>;
-  else if(tab==="catalog") body=<Catalog data={data} setDetail={setDetail} initialType={requestedType}/>;
-  else if(tab==="sales") body=<Sales data={data} setDetail={setDetail} onOpenCatalog={openCatalogOffers}/>;
+  else if(tab==="catalog") body=<>{catalogReturn && <button className="btn btn-s" onClick={()=>navigate(salesPath(params.account,catalogReturn))}>Return to Sales</button>}<Catalog data={data} setDetail={setDetail} initialType={requestedType}/></>;
+  else if(tab==="sales") body=<Sales key={scope} data={data} setDetail={setDetail} onOpenCatalog={openCatalogOffers} panel={panel} onPanelChange={onPanelChange} onCreateClient={onCreateClient} returnedClientId={returnedClient?.scope === scope ? returnedClient.candidate : null} onOpenBilling={()=>navigate(`/solo/${encodeURIComponent(params.account)}/settings/billing`)}/>;
   else if(tab==="pipeline") body=<PipelineSurface data={data} setDetail={setDetail}/>;
   else if(tab==="social") body=<Social/>;
   else if(tab==="performance") body=<Performance data={data}/>;
-  return <div className="solo-campaigns" data-campaigns-view={tab}><h1 className="campaigns-sr-only">Campaigns</h1><CampaignTabs tabs={tabs} current={tab} setCurrent={setTab}/><div id="campaigns-tabpanel" role="tabpanel" aria-labelledby={`campaigns-tab-${tab}`} className="campaigns-scroll">{legacy?<PageHead eyebrow="Campaigns" title={LEGACY[legacy].label}/>:null}{body}</div><DetailDrawer detail={detail} onClose={closeDetail}/></div>;
+  return <div className="solo-campaigns" data-campaigns-view={tab}><h1 className="campaigns-sr-only">Campaigns</h1><CampaignTabs tabs={tabs} current={tab} setCurrent={setTab}/><div id="campaigns-tabpanel" role="tabpanel" aria-labelledby={`campaigns-tab-${tab}`} className="campaigns-scroll">{legacy?<PageHead eyebrow="Campaigns" title={LEGACY[legacy].label}/>:null}{body}</div><div className="campaigns-overlays"/><DetailDrawer detail={detail} onClose={closeDetail}/></div>;
 };

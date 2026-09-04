@@ -282,3 +282,6 @@ live MCP/Stripe/git recon. If you add or move a doc/route/edge-fn, add its row h
 `codebase-map.md`) in the same commit (§BRAIN.3).*
 
 Sales schedule detail (PR #895): `docs/delivery/solo-sales-agreement-schedule.md` records renewal visibility, calendar-date handling, acceptance and proof owed. The Sales-to-Spine disclosure boundary remains `docs/delivery/sales-agreements-source-contract.md`; this change registers no capability.
+
+
+- **Solo Sales Release 1 usability — unreleased:** [repair evidence and Proof Owed](../delivery/solo-sales-usability-r1.md). Shared editing collision released; the approved canonical Client completion guard is applied and 174 focused tests pass. Final Chromium and release gates are in progress; authenticated owner proof remains owed.

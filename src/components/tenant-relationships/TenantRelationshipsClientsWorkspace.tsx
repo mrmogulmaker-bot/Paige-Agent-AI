@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
@@ -34,6 +34,7 @@ import {
   type WorkspaceTab,
 } from "./workspaceModel";
 import { TenantCanonicalCalendarWorkspace } from "@/components/tenant-calendar/TenantCanonicalCalendarWorkspace";
+import { clearClientReturn, completeClientReturn, getClientReturn, salesPath } from "@/solo/sales-navigation";
 import { PeopleContactEditor } from "./PeopleContactEditor";
 import "./tenant-relationships-clients-workspace.css";
 
@@ -88,6 +89,8 @@ export function TenantRelationshipsClientsWorkspace({
   openPaige: () => void;
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { account } = useParams();
   const { activeTenantId, activeTenant, accountContextLoading, refresh } = useTenantContext();
   const variant = relationshipWorkspaceVariant(activeTenant?.account_type, activeTenant?.parent_tenant_id);
   const tabs = workspaceTabs(variant);
@@ -106,10 +109,23 @@ export function TenantRelationshipsClientsWorkspace({
     deepLinkedContactId,
   });
   const calendarReturnAddress = location.pathname;
+  const currentReturnScope = useRef({ tenantId: activeTenantId, account, routeTier, accountContextLoading });
+  currentReturnScope.current = { tenantId: activeTenantId, account, routeTier, accountContextLoading };
+  const hasSalesReturn = routeTier === "solo" && variant === "clients" && !accountIsChanging
+    && !accountContextLoading && Boolean(activeTenantId && account && getClientReturn(activeTenantId, account));
+  const returnToCommercialTerms = (contactId?: string) => {
+    const scope = currentReturnScope.current;
+    if (!activeTenantId || !account || scope.tenantId !== activeTenantId || scope.account !== account
+      || scope.routeTier !== "solo" || scope.accountContextLoading || !getClientReturn(activeTenantId, account)) return;
+    if (contactId) completeClientReturn(activeTenantId, account, contactId);
+    else clearClientReturn();
+    navigate(salesPath(account, "commercial-terms"));
+  };
 
   useEffect(() => {
     if (previousTenantId.current === activeTenantId) return;
     previousTenantId.current = activeTenantId;
+    clearClientReturn();
     setSelectedContactId(null);
     if (!searchParams.has("person")) return;
     const next = new URLSearchParams(searchParams);
@@ -211,7 +227,7 @@ export function TenantRelationshipsClientsWorkspace({
         {activeTab === "people" && (
           routeTier === "solo" && variant === "clients"
             ? <SoloPeopleView
-                key={activeTenantId}
+                key={`${activeTenantId}:${account}`}
                 activeTenantId={activeTenantId}
                 data={data}
                 openPaige={openPaige}
@@ -219,6 +235,7 @@ export function TenantRelationshipsClientsWorkspace({
                 deepLinkedContactId={deepLinkedContactId}
                 onSelectContact={selectSoloContact}
                 onClearContact={clearSoloContact}
+                salesReturn={hasSalesReturn ? returnToCommercialTerms : undefined}
               />
             : <PeopleView key={activeTenantId} variant={variant} data={data} openPaige={openPaige} selectedContactId={selectedContactId} onSelectContact={setSelectedContactId} />
         )}
@@ -288,6 +305,7 @@ function SoloPeopleView({
   deepLinkedContactId,
   onSelectContact,
   onClearContact,
+  salesReturn,
 }: {
   activeTenantId: string;
   data: ReturnType<typeof useTenantRelationshipsData>;
@@ -296,10 +314,13 @@ function SoloPeopleView({
   deepLinkedContactId: string | null;
   onSelectContact: (id: string) => void;
   onClearContact: () => void;
+  salesReturn?: (contactId?: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [editorContact, setEditorContact] = useState<ReturnType<typeof useTenantRelationshipsData>["people"][number] | null>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(Boolean(salesReturn));
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [recordLayout, setRecordLayout] = useState<"docked" | "overlay">("docked");
   const workspaceRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<HTMLElement | null>(null);
@@ -321,10 +342,12 @@ function SoloPeopleView({
     : data.people.find(({ id }) => id === selectedContactId) ?? null;
 
   useEffect(() => {
-    setEditorOpen(false);
+    setEditorOpen(Boolean(salesReturn));
     setEditorContact(null);
     editorOriginRef.current = null;
     restoreEditorOriginRef.current = null;
+  // The parent keys this view by tenant; only initialize this continuation once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTenantId]);
 
   const query = search.trim().toLowerCase();
@@ -419,9 +442,10 @@ function SoloPeopleView({
     onClearContact();
   };
 
-  if (!data.peopleAvailable) return <BoundedState eyebrow="People · UNAVAILABLE" title="People are not connected" detail="A server-authorized People contract is required before records can appear." kind="unavailable" />;
-  if (data.peopleLoading) return <BoundedState eyebrow="People · LIVE" title="Loading the authorized book" detail="The previous account and selected record are cleared while this account resolves." kind="loading" />;
-  if (data.peopleError) return <BoundedState eyebrow="People · UNAVAILABLE" title="We couldn't load People" detail="No count, record, or relationship state is inferred from a failed read." kind="error" onRetry={() => void data.retryPeople()} />;
+  const salesReturnButton = salesReturn && <button type="button" onClick={() => salesReturn()}>Return to commercial terms</button>;
+  if (!data.peopleAvailable) return <><BoundedState eyebrow="People · UNAVAILABLE" title="People are not connected" detail="A server-authorized People contract is required before records can appear." kind="unavailable" />{salesReturnButton}</>;
+  if (data.peopleLoading) return <><BoundedState eyebrow="People · LIVE" title="Loading the authorized book" detail="The previous account and selected record are cleared while this account resolves." kind="loading" />{salesReturnButton}</>;
+  if (data.peopleError) return <><BoundedState eyebrow="People · UNAVAILABLE" title="We couldn't load People" detail="No count, record, or relationship state is inferred from a failed read." kind="error" onRetry={() => void data.retryPeople()} />{salesReturnButton}</>;
   const staleDeepLink = Boolean(deepLinkedContactId && !selected && !data.deepLinkLoading);
   const openNewContact = (event: React.MouseEvent<HTMLButtonElement>) => {
     editorOriginRef.current = event.currentTarget.dataset.contactEditorOrigin ?? null;
@@ -435,11 +459,18 @@ function SoloPeopleView({
     setEditorOpen(true);
   };
   const changeEditorOpen = (next: boolean) => {
+    if (!mounted.current) return;
+    if (!next && salesReturn) { salesReturn(); return; }
     if (!next) restoreEditorOriginRef.current = editorOriginRef.current;
     setEditorOpen(next);
   };
   const handleSaved = async (contactId: string) => {
+    if (!mounted.current) return;
+    // Creation already succeeded in the canonical tenant-authorized mutation. Sales must
+    // re-read and authorize this candidate; it is never added to the public person URL.
+    if (salesReturn && !editorContact) { salesReturn(contactId); return; }
     await data.retryPeople();
+    if (!mounted.current) return;
     selectPerson(contactId);
   };
 
@@ -455,13 +486,16 @@ function SoloPeopleView({
         data-active-tenant={activeTenantId}
         aria-label="People contact editor workspace"
       >
-        <PeopleContactEditor
-          open
-          onOpenChange={changeEditorOpen}
-          tenantId={activeTenantId}
-          contact={editorContact}
-          onSaved={handleSaved}
-        />
+        {salesReturn ? (
+          <RoleGate allow={["admin", "super_admin", "coach"]} fallback={<>
+            <BoundedState eyebrow="People · PERMISSION LIMITED" title="Client creation is not available for this role" detail="No client has been created or selected." kind="unavailable" />
+            {salesReturnButton}
+          </>}>
+            <PeopleContactEditor open onOpenChange={changeEditorOpen} tenantId={activeTenantId} contact={editorContact} onSaved={handleSaved} />
+          </RoleGate>
+        ) : (
+          <PeopleContactEditor open onOpenChange={changeEditorOpen} tenantId={activeTenantId} contact={editorContact} onSaved={handleSaved} />
+        )}
       </section>
     );
   }

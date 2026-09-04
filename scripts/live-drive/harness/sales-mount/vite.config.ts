@@ -10,6 +10,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: [
+      ...["@/hooks/useTenantContext","@/hooks/useUserRoles","./useTenantRelationshipsData","./contactUpsert","@/integrations/supabase/client"].map(find=>({find,replacement:path.join(import.meta.dirname,"client-boundary-stub.ts")})),
       { find: "./useSoloSalesOps", replacement: path.join(import.meta.dirname, "useSoloSalesOps-stub.ts") },
       { find: "./useSoloAgreements", replacement: path.join(import.meta.dirname, "useSoloAgreements-stub.ts") },
       { find: "./useCatalogOffers", replacement: path.join(import.meta.dirname, "useCatalogOffers-stub.ts") },

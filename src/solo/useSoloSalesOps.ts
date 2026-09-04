@@ -22,7 +22,7 @@
 // `tenant_orders` rows are the only monetary facts on this surface and they are shown as recorded,
 // never summed into a figure the record does not prove. Paige is not the merchant of record for
 // any of it — see the migration header for `declare_client_payment_handling`.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -117,6 +117,10 @@ function narrow<T extends string>(value: unknown, allowed: readonly T[]): T | nu
 export function useSoloSalesOps(): SalesOpsState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
   const [refreshKey, setRefreshKey] = useState(0);
+  const activeRef = useRef(activeTenantId);
+  activeRef.current = activeTenantId;
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [state, setState] = useState<Omit<SalesOpsState, "retry" | "declarePaymentHandling">>({
     tenantId: activeTenantId ?? null,
     phase: accountContextLoading ? "resolving" : "loading",
@@ -149,9 +153,10 @@ export function useSoloSalesOps(): SalesOpsState {
       // The server writes these sentences for the person, not for a log, so they surface as
       // written. A message we cannot read still says plainly that nothing changed — the function
       // is a single statement, so there is no partial outcome to describe.
-      console.error("[sales-ops] declare_client_payment_handling failed", error);
-      return { ok: false, message: error.message || "That could not be saved. Nothing was changed." };
+      console.error("[sales-ops] declare_client_payment_handling failed");
+      return { ok: false, message: "That could not be saved. Check your access and try again." };
     }
+    if (!mounted.current || activeRef.current !== activeTenantId) return { ok: false, message: "Your workspace changed. Reopen this in the current workspace." };
     setRefreshKey((key) => key + 1);
     return { ok: true, result: (data ?? null) as Record<string, unknown> | null };
   }, [activeTenantId]);
@@ -212,11 +217,11 @@ export function useSoloSalesOps(): SalesOpsState {
         if (roleResponse.error) {
           // A failed authority read is not the same as a caller with no authority. Treating the
           // first as the second is how an owner gets told they may not change their own settings.
-          console.error("[sales-ops] membership read failed; treating authority as unknown", roleResponse.error);
+          console.error("[sales-ops] membership read failed; treating authority as unknown");
         }
 
         if (orderResponse.error) {
-          console.warn("[sales-ops] commercial activity is not readable for this caller", orderResponse.error);
+          console.warn("[sales-ops] commercial activity is not readable for this caller");
         }
 
         // `types.ts` is generated from production and predates the two declared-payment columns, so
@@ -282,7 +287,7 @@ export function useSoloSalesOps(): SalesOpsState {
           authorityUnknown: Boolean(roleResponse.error) || !callerId,
         });
       } catch (error) {
-        console.error("[sales-ops] tenant-scoped sales read failed", error);
+        console.error("[sales-ops] tenant-scoped sales read failed");
         if (!current) return;
         setState({ tenantId: activeTenantId, phase: "error", ...EMPTY });
       }

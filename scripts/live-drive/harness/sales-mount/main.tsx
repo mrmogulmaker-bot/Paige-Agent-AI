@@ -1,10 +1,13 @@
 import { Component, StrictMode, type ErrorInfo, type ReactNode } from "react";
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { GrowthHub } from "@/solo/growth2";
-import { setSalesHarnessMode, type Mode } from "./useSoloSalesOps-stub";
+import { setSalesHarnessMode, setHarnessTenant, getHarnessTenant, type Mode } from "./useSoloSalesOps-stub";
 import { setAgreementsHarnessMode, type AgreementsMode } from "./useSoloAgreements-stub";
+import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relationships/TenantRelationshipsClientsWorkspace";
+import { setClientSaveMode, finishClientSave } from "./client-boundary-stub";
+import { Toaster } from "sonner";
 import "@/index.css";
 import "@/solo/solo-tokens.css";
 
@@ -21,8 +24,9 @@ const MODES: readonly Mode[] = [
 ];
 
 function Harness() {
-  const [theme, setTheme] = React.useState<"light" | "dark">("light");
+  const [theme, setTheme] = React.useState<"light" | "dark">(() => sessionStorage.getItem("sales-review-theme") === "dark" ? "dark" : "light");
   React.useEffect(() => {
+    sessionStorage.setItem("sales-review-theme", theme);
     document.documentElement.setAttribute("data-pg", theme);
     document.documentElement.classList.toggle("dark", theme === "dark");
     document.documentElement.classList.toggle("light", theme === "light");
@@ -39,6 +43,9 @@ function Harness() {
           font: "12px system-ui", color: "#302d36",
         }}
       >
+        <button data-switch-workspace onClick={()=>setHarnessTenant(getHarnessTenant()==="harness-tenant"?"other-tenant":"harness-tenant")}>Switch workspace</button>
+        {["success","failure","delayed-success","delayed-failure"].map(mode=><button key={mode} data-client-mode={mode} onClick={()=>setClientSaveMode(mode)}>client:{mode}</button>)}
+        <button data-client-finish onClick={finishClientSave}>Complete client request</button>
         <strong style={{ marginRight: 6 }}>LOCAL REVIEW · NO LIVE DATA</strong>
         {AGREEMENT_MODES.map((mode) => (
           <button key={mode} data-agreements={mode} onClick={() => setAgreementsHarnessMode(mode)}>
@@ -53,9 +60,9 @@ function Harness() {
         </button>
       </aside>
       <main className="paige-solo" data-theme={theme} style={{ minHeight: 0, minWidth: 0, overflow: "hidden" }}>
-        <MemoryRouter initialEntries={["/solo/review/growth/sales"]}>
-          <Routes><Route path="/solo/:account/*" element={<GrowthHub />} /></Routes>
-        </MemoryRouter>
+        <BrowserRouter>
+          <Toaster/><Routes><Route path="/solo/:account/clients/*" element={<TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={()=>{}} />} /><Route path="/solo/:account/*" element={<GrowthHub />} /><Route path="*" element={<Navigate to="/solo/review/growth/sales" replace />} /></Routes>
+        </BrowserRouter>
       </main>
     </div>
   );

@@ -251,7 +251,7 @@ describe("useSoloSalesOps — the query it actually issues", () => {
     await act(async () => { outcome = await latest?.declarePaymentHandling("stripe", ["cards"]); });
     expect(outcome?.ok).toBe(false);
     // The server's own sentence reaches the person, rather than a generic failure.
-    expect(outcome?.message).toContain("nothing was written");
+    expect(outcome?.message).toContain("Check your access and try again");
   });
 
   it("refuses to write at all when the workspace is unresolved", async () => {
@@ -286,4 +286,21 @@ describe("useSoloSalesOps — the query it actually issues", () => {
       }
     }
   });
+});
+
+
+it("ignores a delayed declaration completion after switching workspace", async () => {
+  await run();
+  let complete: (value: unknown) => void = () => {};
+  rpcResult = new Promise(resolve => { complete = resolve; }) as unknown as typeof rpcResult;
+  const pending = latest!.declarePaymentHandling("square", ["cards"]);
+  tenant = { activeTenantId: "tenant-2", accountContextLoading: false };
+  await act(async () => { root.render(<Probe />); });
+  const readsAfterSwitch = calls.length;
+  let outcome: Awaited<typeof pending> | undefined;
+  await act(async () => { complete({ data: {}, error: null }); outcome = await pending; });
+  expect(outcome?.ok).toBe(false);
+  expect(outcome?.message).toContain("workspace changed");
+  expect(calls.length).toBe(readsAfterSwitch);
+  expect(latest!.tenantId).toBe("tenant-2");
 });

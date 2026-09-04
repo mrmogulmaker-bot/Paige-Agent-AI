@@ -1,3 +1,4 @@
+import { getHarnessTenant } from "./useSoloSalesOps-stub";
 // The canonical offer read, stubbed at the network boundary. Sales calls the REAL hook in
 // production; here only the round trip is replaced, so the offers table and the quick-create
 // path render against the real component.
@@ -22,7 +23,7 @@ const OFFERS = [
 
 export function useCatalogOffers() {
   return {
-    tenantId: "harness-tenant", phase: "ready", offers: OFFERS, canManage: true,
+    tenantId: getHarnessTenant(), phase: "ready", offers: OFFERS, canManage: true,
     authorityUnknown: false, fieldsUnavailable: false, retry: () => {},
     saveOffer: async () => ({ ok: true, result: { id: "offer-new" } }),
     setOfferStatus: async () => ({ ok: true, result: {} }),
