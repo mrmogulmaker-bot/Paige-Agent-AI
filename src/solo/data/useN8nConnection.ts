@@ -1,204 +1,131 @@
-/**
- * n8n connection state for Settings → Integrations.
- *
- * Every read and write goes through the three authoritative RPCs that already
- * exist. They were audited before this hook was written (2026-08-31):
- *
- *   - the caller is always `auth.uid()`, never a parameter, so no passed-actor
- *     bypass is possible;
- *   - the tenant is always `current_user_tenant_id()`, and a differing
- *     `_tenant_id` raises 42501 unless the caller is a platform owner;
- *   - reads require tenant membership, writes and clears require tenant admin;
- *   - EXECUTE is granted to `authenticated` and `service_role` only — `anon`
- *     cannot call any of them, which is what makes the `auth.uid() IS NULL`
- *     service-role branch inside each function safe;
- *   - every rejection RAISEs rather than returning a silent null.
- *
- * The API key is write-only end to end. `get_tenant_n8n_connection` returns
- * `api_key_last4` and never the key itself, so there is no path by which a
- * stored key can be read back to a browser. This hook never holds the key: it
- * is passed as an argument, sent, and dropped.
- */
+/** Tenant-scoped API readiness. Credentials are sent only to the authenticated
+ * save-and-validate action; only its bounded summary enters React state. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate } from "../settings-contract";
 
+export type N8nHealth = "not_configured" | "saved_unverified" | "checking" | "connected" | "needs_attention";
+export type N8nFailure = "authentication_rejected" | "request_refused" | "endpoint_not_found" | "provider_unavailable" | "response_invalid" | "inventory_incomplete" | "address_rejected" | "validation_expired";
 export type N8nConnection = {
+  tenantId: string;
+  canWrite: boolean;
   configured: boolean;
   label: string | null;
-  /** The tenant's own instance address. Not a secret; needed to show and re-edit. */
   baseUrl: string | null;
-  /** Last four characters only. The key itself is never returned by the seam. */
-  last4: string | null;
-  status: string | null;
-  lastSyncAt: string | null;
+  health: N8nHealth;
+  failureCode: N8nFailure | null;
   workflowCount: number | null;
+  checkedAt: string | null;
+  lastSuccessAt: string | null;
 };
-
-export type N8nState = N8nConnection & {
-  loading: boolean;
-  /** The read failed. Distinct from "not configured" — nothing is claimed. */
-  error: boolean;
-  /** Tenant admin. The RPC enforces this too; this only shapes the UI. */
-  canWrite: boolean;
-  saving: boolean;
-  /** Owner-language only. Raw database text is never surfaced. */
-  writeError: string | null;
-};
-
+export type N8nState = N8nConnection & { loading: boolean; error: boolean; saving: boolean; writeError: string | null };
 export type N8nDraft = { baseUrl: string; apiKey: string; label: string };
+const EMPTY: N8nConnection = { tenantId: "", canWrite: false, configured: false, label: null, baseUrl: null, health: "not_configured", failureCode: null, workflowCount: null, checkedAt: null, lastSuccessAt: null };
+const HEALTH = new Set<N8nHealth>(["not_configured", "saved_unverified", "checking", "connected", "needs_attention"]);
+const FAILURES = new Set<N8nFailure>(["authentication_rejected", "request_refused", "endpoint_not_found", "provider_unavailable", "response_invalid", "inventory_incomplete", "address_rejected", "validation_expired"]);
+const date = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
 
-const EMPTY: N8nConnection = {
-  configured: false, label: null, baseUrl: null, last4: null,
-  status: null, lastSyncAt: null, workflowCount: null,
-};
-
-/**
- * Whitelists the fields this surface may show. `last_error` is deliberately
- * NOT among them: it is written from provider responses by the n8n sync path,
- * so it is unbounded external text and has no place in a settings surface.
- */
-function readConnection(value: unknown): N8nConnection {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return EMPTY;
+/** A tenant mismatch or malformed summary is unavailable, never an empty connection. */
+export function readN8nReadiness(value: unknown, expectedTenantId: string): N8nConnection | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
+  if (row.tenant_id !== expectedTenantId || typeof row.configured !== "boolean" || typeof row.can_write !== "boolean" || !HEALTH.has(row.health as N8nHealth)) return null;
+  const health = row.health as N8nHealth;
+  if (row.configured === (health === "not_configured")) return null;
+  const checkedAt = date(row.checked_at), lastSuccessAt = date(row.last_success_at);
+  // Green requires the successful-check provenance, never an old stored status.
+  if (health === "connected" && (!checkedAt || !lastSuccessAt || Date.parse(checkedAt) !== Date.parse(lastSuccessAt) || row.failure_code !== null || typeof row.workflow_count !== "number" || !Number.isSafeInteger(row.workflow_count) || row.workflow_count < 0)) return null;
   return {
-    configured: row.configured === true,
+    tenantId: expectedTenantId, canWrite: row.can_write, configured: row.configured,
     label: typeof row.label === "string" && row.label.trim() ? row.label : null,
     baseUrl: typeof row.base_url === "string" && row.base_url.trim() ? row.base_url : null,
-    last4: typeof row.api_key_last4 === "string" && row.api_key_last4.trim() ? row.api_key_last4 : null,
-    status: typeof row.status === "string" ? row.status : null,
-    lastSyncAt: typeof row.last_sync_at === "string" ? row.last_sync_at : null,
-    workflowCount: typeof row.workflow_count === "number" && Number.isSafeInteger(row.workflow_count) && row.workflow_count >= 0 ? row.workflow_count : null,
+    health, failureCode: FAILURES.has(row.failure_code as N8nFailure) ? row.failure_code as N8nFailure : null,
+    workflowCount: health === "connected" && typeof row.workflow_count === "number" && Number.isSafeInteger(row.workflow_count) && row.workflow_count >= 0 ? row.workflow_count : null,
+    checkedAt, lastSuccessAt,
   };
 }
 
-/**
- * The seam RAISEs a prefixed, non-sensitive code for every rejection it models.
- * Mapping on that prefix keeps the owner's message in the product's own voice
- * and keeps constraint names, column names and provider text off the screen.
- * Anything unrecognised degrades to a plain statement rather than a guess.
- */
-export function n8nWriteMessage(raw: unknown): string {
-  const code = typeof raw === "string" ? raw : "";
-  if (code.includes("N8N_FORBIDDEN")) return "Only a workspace admin can change this connection.";
-  if (code.includes("N8N_INSECURE_URL")) return "The address has to start with https:// so the key is never sent in the clear.";
-  // A URL like https://real.n8n.cloud@somewhere-else/ reads as the first host and
-  // resolves to the second, so the message names the fix rather than the shape.
-  if (code.includes("N8N_URL_CREDENTIALS")) return "Remove the username and password from the address — everything before the @ — and paste just your instance address.";
-  if (code.includes("N8N_NO_URL")) return "Add the address of your n8n instance.";
-  if (code.includes("N8N_NO_KEY")) return "Add an API key.";
-  if (code.includes("N8N_NO_TENANT")) return "This workspace could not be identified, so nothing was changed.";
-  return "That did not save, and nothing was changed. Check the address and the key, then try again.";
+export function n8nWriteMessage(code: unknown): string {
+  if (code === "forbidden") return "Only a workspace admin can change this connection.";
+  if (code === "unauthorized") return "Sign in again, then refresh this connection's status.";
+  if (code === "tenant_changed") return "This workspace changed. Refresh its connection status before trying again.";
+  if (code === "not_configured") return "Save an n8n API connection before checking it.";
+  if (code === "validation_busy") return "A connection check is already in progress. Refresh its status shortly.";
+  return "We could not confirm the result. Refresh the connection status before trying again; your changes may have been saved.";
+}
+
+async function safeErrorCode(data: unknown, error: unknown): Promise<unknown> {
+  const code = (value: unknown) => value && typeof value === "object" ? (value as Record<string, unknown>).error : null;
+  if (code(data)) return code(data);
+  // The function uses HTTP errors for refusals. Read only its bounded code,
+  // never the SDK message, response text, provider payload, or stack.
+  const context = (error as { context?: { json?: () => Promise<unknown> } } | null)?.context;
+  try { return typeof context?.json === "function" ? code(await context.json()) : null; } catch { return null; }
 }
 
 export function useN8nConnection() {
   const { activeTenantId, activeUserId, loading: tenantLoading } = useTenantContext();
   const gate = useRef(createSettingsRequestGate());
   const scope = `${activeUserId ?? ""}:${activeTenantId ?? ""}:${tenantLoading}`;
-  const scopeRef = useRef(scope);
-  const mounted = useRef(false);
-  const mutation = useRef(0);
-  const pendingMutation = useRef(false);
+  const scopeRef = useRef(scope), mounted = useRef(false), mutation = useRef(0), pendingMutation = useRef(false);
   const [loadedScope, setLoadedScope] = useState<string | null>(null);
-  // Mask and invalidate during render, before an effect can expose the old workspace.
-  if (scopeRef.current !== scope) {
-    scopeRef.current = scope;
-    gate.current.clear();
-    mutation.current += 1;
-    pendingMutation.current = false;
-  }
-  const [state, setState] = useState<N8nState>({
-    ...EMPTY, loading: true, error: false, canWrite: false, saving: false, writeError: null,
-  });
+  if (scopeRef.current !== scope) { scopeRef.current = scope; gate.current.clear(); mutation.current += 1; pendingMutation.current = false; }
+  const [state, setState] = useState<N8nState>({ ...EMPTY, loading: true, error: false, saving: false, writeError: null });
 
   const load = useCallback(async () => {
     if (!mounted.current || scopeRef.current !== scope) return;
     const token = gate.current.begin();
-    if (!activeTenantId || tenantLoading) {
-      setState({ ...EMPTY, loading: false, error: false, canWrite: false, saving: false, writeError: null });
-      return;
-    }
-    const [connection, admin] = await Promise.all([
-      supabase.rpc("get_tenant_n8n_connection"),
-      // Newer than the generated client types; returns a boolean only.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase as any).rpc("is_current_user_tenant_admin"),
-    ]).catch(() => [{ data: null, error: true }, { data: null, error: true }]);
+    if (!activeTenantId || tenantLoading) { setState({ ...EMPTY, loading: false, error: false, saving: false, writeError: null }); return; }
+    // This additive RPC is newer than the generated client types.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await Promise.resolve((supabase as any).rpc("get_tenant_n8n_api_readiness")).catch(() => ({ data: null, error: true }));
     if (!mounted.current || scopeRef.current !== scope || !gate.current.isCurrent(token)) return;
     setLoadedScope(scope);
-    if (connection.error) {
-      // A failed read is never rendered as "not connected": that would be
-      // indistinguishable from a workspace that genuinely has no connection.
-      setState({ ...EMPTY, loading: false, error: true, canWrite: false, saving: pendingMutation.current, writeError: null });
-      return;
-    }
-    setState({
-      ...readConnection(connection.data),
-      loading: false,
-      error: false,
-      canWrite: admin?.error ? false : admin?.data === true,
-      saving: pendingMutation.current,
-      writeError: null,
-    });
+    const connection = result.error ? null : readN8nReadiness(result.data, activeTenantId);
+    setState({ ...(connection ?? EMPTY), loading: false, error: !connection, saving: pendingMutation.current, writeError: null });
   }, [activeTenantId, scope, tenantLoading]);
 
-  useEffect(() => {
-    mounted.current = true;
-    const activeGate = gate.current;
-    if (!tenantLoading) void load();
-    return () => { mounted.current = false; mutation.current += 1; pendingMutation.current = false; activeGate.clear(); };
-  }, [load, tenantLoading]);
+  useEffect(() => { mounted.current = true; const activeGate = gate.current; if (!tenantLoading) void load(); return () => { mounted.current = false; mutation.current += 1; pendingMutation.current = false; activeGate.clear(); }; }, [load, tenantLoading]);
 
-  const write = useCallback(async (run: () => Promise<{ error: unknown }>) => {
+  const write = useCallback(async (action: "save" | "validate" | "disconnect", draft?: N8nDraft) => {
     if (!activeTenantId || tenantLoading || !mounted.current || scopeRef.current !== scope || loadedScope !== scope || !state.canWrite || pendingMutation.current) return false;
     pendingMutation.current = true;
     const request = ++mutation.current;
     gate.current.clear();
     const current = () => mounted.current && scopeRef.current === scope && mutation.current === request;
-    setState((prev) => ({ ...prev, saving: true, writeError: null }));
+    setState(prev => ({ ...prev, saving: true, writeError: null }));
     try {
-      const { error } = await run();
+      const body = { action, expected_tenant_id: activeTenantId, ...(draft ? { base_url: draft.baseUrl.trim(), api_key: draft.apiKey, label: draft.label.trim() || undefined } : {}) };
+      const { data, error } = await supabase.functions.invoke("tenant-n8n-api-connect", { body });
       if (!current()) return false;
-      if (error) {
-        setState((prev) => ({ ...prev, saving: false, writeError: n8nWriteMessage((error as { message?: unknown })?.message) }));
+      if (error || data?.ok !== true) {
+        const code = await safeErrorCode(data, error);
+        if (current()) setState(prev => ({ ...prev, saving: false, writeError: n8nWriteMessage(code) }));
         return false;
       }
-      pendingMutation.current = false;
-      await load();
-      return current();
+      const connection = readN8nReadiness(data.connection, activeTenantId);
+      const completed = connection && (action === "disconnect" ? data.outcome === "disconnected" && !connection.configured : (data.outcome === "connected" && connection.health === "connected") || (data.outcome === "needs_attention" && connection.health === "needs_attention"));
+      if (!connection || !completed || (action === "save" && data.saved !== true)) {
+        if (connection && data.outcome === "stale") setState(prev => ({ ...prev, ...connection, loading: false, error: false, saving: false, writeError: "This connection changed while it was being checked. Review its current status before trying again." }));
+        else setState(prev => ({ ...prev, saving: false, writeError: n8nWriteMessage(null) }));
+        return false;
+      }
+      // Invalidate reads started while this write was pending; they cannot
+      // replace its newer persisted readiness with an older snapshot.
+      gate.current.clear();
+      setState({ ...connection, loading: false, error: false, saving: false, writeError: null });
+      return true; // A persisted refusal completes save; it is not healthy success.
     } catch {
-      if (current()) setState((prev) => ({ ...prev, saving: false, writeError: n8nWriteMessage(null) }));
+      if (current()) setState(prev => ({ ...prev, saving: false, writeError: n8nWriteMessage(null) }));
       return false;
-    } finally {
-      if (current()) { pendingMutation.current = false; setState((prev) => ({ ...prev, saving: false })); }
-    }
-  }, [activeTenantId, tenantLoading, scope, loadedScope, state.canWrite, load]);
+    } finally { if (current()) { gate.current.clear(); pendingMutation.current = false; setState(prev => ({ ...prev, saving: false })); } }
+  }, [activeTenantId, tenantLoading, scope, loadedScope, state.canWrite]);
 
-  /**
-   * The key is an argument. It is never placed in this hook's state, never
-   * echoed into an error, and never logged.
-   */
-  const connect = useCallback(
-    (draft: N8nDraft) => write(() => supabase.rpc("set_tenant_n8n_connection", {
-      _tenant_id: activeTenantId ?? undefined,
-      _base_url: draft.baseUrl.trim(),
-      _api_key: draft.apiKey,
-      _label: draft.label.trim() || undefined,
-    }) as unknown as Promise<{ error: unknown }>),
-    [write, activeTenantId],
-  );
-
-  const disconnect = useCallback(
-    () => write(() => supabase.rpc("clear_tenant_n8n_connection", { _tenant_id: activeTenantId ?? undefined }) as unknown as Promise<{ error: unknown }>),
-    [write, activeTenantId],
-  );
-
-  const dismissWriteError = useCallback(() => setState((prev) => ({ ...prev, writeError: null })), []);
-
-  const visible = loadedScope === scope && !tenantLoading ? state : {
-    ...EMPTY, loading: !!activeTenantId || tenantLoading, error: false,
-    canWrite: false, saving: false, writeError: null,
-  };
-  return { ...visible, connect, disconnect, reload: load, dismissWriteError };
+  const connect = useCallback((draft: N8nDraft) => write("save", draft), [write]);
+  const validate = useCallback(() => write("validate"), [write]);
+  const disconnect = useCallback(() => write("disconnect"), [write]);
+  const dismissWriteError = useCallback(() => setState(prev => ({ ...prev, writeError: null })), []);
+  const visible = loadedScope === scope && !tenantLoading ? state : { ...EMPTY, loading: !!activeTenantId || tenantLoading, error: false, saving: false, writeError: null };
+  return { ...visible, connect, validate, disconnect, reload: load, dismissWriteError };
 }
