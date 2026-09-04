@@ -82,6 +82,27 @@ Three properties follow, and they are the whole point:
 - **One approval buys one execution.** The proposal is claimed once, and a proposal minted by a
   request is not redeemable by that same request.
 
+### Server-issued proposal integrity (2026-09-04 correction)
+
+The canonical table is `paige_pending_confirmations`; no feature-specific approval store is added.
+Only the existing authenticated server service path may issue, claim or cancel rows. Browser
+access remains read-only under existing own-row RLS. Service operations must explicitly bind the
+authenticated user and resolved tenant/thread/client scope; RLS no longer supplies write scoping.
+Failed/malformed persona resolution is not a legitimate null tenant. Revalidate the authoritative
+resolver before proposal operations and mutating dispatch; a changed scope invalidates the turn.
+If a decline cannot be persisted, that turn may read but may not mutate or re-propose an action.
+A fingerprint submitted by an authenticated caller selects a proposal; it is not cryptographic
+proof of a physical button click. The model does not author that request field.
+
+`server_issued_at` is nullable with no default or historical backfill. Unmarked legacy rows stay
+intact but cannot be claimed or recovered; a fresh proposal is required. Trusted-only live
+uniqueness permits that re-proposal without deleting or blessing historical rows. Recovery and
+the final atomic claim both require trusted issuance, full scope, expiry, an earlier non-null
+request nonce and unconsumed state. PR #914 recovery stays limited to submitted fingerprints.
+Deploy schema before the matching handler: old handlers cannot issue trusted rows or mutate the
+store, and new handlers against a missing marker fail closed. Verify fresh issuance and legacy
+re-proposal in the deployed runtime before claiming cutover complete. Local code is not release proof.
+
 ## Adding a gated action — the entire contract
 
 **1. Classify the tool** in `supabase/functions/_shared/action-risk.ts`:

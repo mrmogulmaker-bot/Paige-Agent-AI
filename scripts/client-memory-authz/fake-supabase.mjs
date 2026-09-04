@@ -47,6 +47,9 @@ class QueryBuilder {
   select(...a) { this._filters.push(["select", a[0]]); return this; }
   insert(row) {
     this._op = "insert";
+    if (this._table === 'paige_pending_confirmations' && this._kind !== 'service') { this._insertError = {code:'42501',message:'canonical proposals are server writable only'}; return this; }
+    const injected = this._injected();
+    if (injected) { this._insertError = injected; return this; }
     this._live().recorder.inserts.push({ table: this._table, row });
     // LIVE hook, called synchronously as the write happens. A scenario that mirrors inserts only
     // AFTER the drive returns cannot model a row being written and then read back WITHIN the same
@@ -118,16 +121,18 @@ class QueryBuilder {
    *  refuse for unknown authority and never reach the write, so a table-wide error can never
    *  witness a rejected WRITE — which is exactly the class of bug the write checks exist to catch. */
   _injected() {
+    if (this._table === 'paige_pending_confirmations' && this._op !== 'select' && this._kind !== 'service') return {code:'42501',message:'canonical proposals are server writable only'};
     if (this._insertError) return this._insertError;
     const t = this._live().scenario.tableErrors ?? {};
-    return t[`${this._table}:${this._op}`] ?? t[this._table];
+    const error = t[`${this._table}:${this._op}`] ?? t[this._table];
+    return typeof error === 'function' ? error({op:this._op,filters:this._filters,client:this._kind}) : error;
   }
 
   maybeSingle() {
     this._record(true);
-    const rows = this._rows();
     const injected = this._injected();
     if (injected) return Promise.resolve({ data: null, error: injected });
+    const rows = this._rows();
     return Promise.resolve({ data: rows[0] ?? null, error: null });
   }
   single() { return this.maybeSingle(); }
@@ -136,7 +141,8 @@ class QueryBuilder {
     this._record(false);
     const injectedThen = this._injected();
     if (injectedThen) return Promise.resolve({ data: null, error: injectedThen, count: 0 }).then(res, rej);
-    return Promise.resolve({ data: this._rows(), error: null, count: this._rows().length }).then(res, rej);
+    const rows = this._rows();
+    return Promise.resolve({ data: rows, error: null, count: rows.length }).then(res, rej);
   }
 }
 
