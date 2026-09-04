@@ -35,8 +35,10 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(sql).toContain("status='exchanging' AND expires_at>clock_timestamp()");
     expect(sql).toContain("FUNCTION public.zapier_api_disconnect");
     expect(api).toContain('admin.rpc("zapier_api_record_check"');
+    expect(api).toContain('_generation: result.generation');
     expect(api).toContain('error: "rail_unavailable"');
     expect(sql).toContain("FUNCTION public.zapier_api_record_check");
+    expect(sql).toContain("tenant_id=_tenant AND generation=_generation");
   });
   it("binds inbound routes on the server and deduplicates per tenant", () => {
     const intake = read("supabase/functions/zapier-skool-intake/index.ts");
@@ -64,6 +66,8 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(sql).toContain("'ok',false,'outcome','failed'");
     expect(sql).toContain("zapier_api_test_succeeded");
     expect(sql).toContain("zapier_api_test_failed");
+    expect(sql).toContain("zapier_api_oauth_refused");
+    expect(sql).toContain("Zapier API authorization declined");
     expect(sql).toContain("zapier_mcp_test_succeeded");
     expect(sql).toContain("zapier_mcp_test_failed");
     expect(sql).toContain("zapier_skool_intake_received");
@@ -88,5 +92,13 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(callback).toContain('action:"oauth_refuse",state');
     expect(api).toContain('admin.rpc("zapier_api_refuse"');
     expect(sql).toContain("status='refused'");
+    expect(sql).toContain("'zapier_api_oauth',attempt_id,0,'zapier_api_oauth_refused'");
+  });
+  it("distinguishes refresh rejection from transient provider failure", () => {
+    const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
+    expect(api).toContain('response.status === 400 || response.status === 401');
+    expect(api).toContain('response.status === 429 || response.status >= 500');
+    expect(api).toContain('next.kind === "authorization" ? "authorization_expired"');
+    expect(api).toContain('next.kind === "provider" ? "provider_unavailable"');
   });
 });

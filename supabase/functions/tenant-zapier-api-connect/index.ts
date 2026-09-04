@@ -22,7 +22,8 @@ function tokenAuth() { return `Basic ${btoa(`${Deno.env.get("ZAPIER_API_CLIENT_I
 // migration rather than generated database types. Keep the client boundary
 // untyped here so Deno does not infer every new table and RPC as `never`.
 type DatabaseClient = any;
-type CheckResult = { ok: true; count: number | null } | { ok: false; state: string; code: string };
+type CheckResult = ({ ok: true; count: number | null } | { ok: false; state: string; code: string }) & { generation: string };
+type ExchangeResult = { ok: true; token: Record<string, unknown> } | { ok: false; kind: "authorization" | "provider" | "response" };
 
 async function readiness(userClient: DatabaseClient, tenantId: string, canManage: boolean) {
   const { data, error } = await userClient.rpc("get_zapier_api_readiness");
@@ -44,46 +45,59 @@ async function storeGrant(admin: DatabaseClient, tenantId: string, actorId: stri
   return !error;
 }
 
-async function exchange(params: URLSearchParams) {
+async function exchange(params: URLSearchParams): Promise<ExchangeResult> {
   try {
     const response = await fetch(TOKEN_URL, { method: "POST", redirect: "error", signal: AbortSignal.timeout(10_000),
       headers: { Authorization: tokenAuth(), "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body: params });
-    if (!response.ok) return null;
+    if (response.status === 400 || response.status === 401) return { ok: false, kind: "authorization" };
+    if (response.status === 429 || response.status >= 500) return { ok: false, kind: "provider" };
+    if (!response.ok) return { ok: false, kind: "response" };
     const data = await response.json().catch(() => null);
-    return data && typeof data === "object" && !Array.isArray(data) ? data as Record<string, unknown> : null;
-  } catch { return null; }
+    return data && typeof data === "object" && !Array.isArray(data) ? { ok: true, token: data as Record<string, unknown> } : { ok: false, kind: "response" };
+  } catch { return { ok: false, kind: "provider" }; }
 }
 
 async function currentSecret(admin: DatabaseClient, tenantId: string, actorId: string) {
   const { data } = await admin.rpc("zapier_api_secret_for_service", { _tenant: tenantId });
-  if (!data || typeof data.access_token !== "string" || typeof data.refresh_token !== "string") return null;
-  if (Date.parse(String(data.expires_at)) > Date.now() + 120_000) return data as Record<string, unknown>;
+  if (!data || typeof data.access_token !== "string" || typeof data.refresh_token !== "string" || typeof data.generation !== "string") return { ok: false as const, state: "authorization_expired", code: "authorization_expired", generation: null };
+  if (Date.parse(String(data.expires_at)) > Date.now() + 120_000) return { ok: true as const, secret: data as Record<string, unknown> & { generation: string } };
   const next = await exchange(new URLSearchParams({ grant_type: "refresh_token", refresh_token: data.refresh_token }));
-  if (!next || !await storeGrant(admin, tenantId, actorId, next, String(data.refresh_token))) return null;
+  if (!next.ok) return { ok: false as const,
+    state: next.kind === "authorization" ? "authorization_expired" : next.kind === "provider" ? "provider_unavailable" : "needs_attention",
+    code: next.kind === "authorization" ? "authorization_expired" : next.kind === "provider" ? "provider_unavailable" : "response_invalid",
+    generation: String(data.generation) };
+  if (!await storeGrant(admin, tenantId, actorId, next.token, String(data.refresh_token))) return { ok: false as const, state: "needs_attention", code: "response_invalid", generation: String(data.generation) };
   const { data: refreshed } = await admin.rpc("zapier_api_secret_for_service", { _tenant: tenantId });
-  return refreshed && typeof refreshed.access_token === "string" ? refreshed as Record<string, unknown> : null;
+  return refreshed && typeof refreshed.access_token === "string" && typeof refreshed.generation === "string"
+    ? { ok: true as const, secret: refreshed as Record<string, unknown> & { generation: string } }
+    : { ok: false as const, state: "needs_attention", code: "response_invalid", generation: String(data.generation) };
 }
 
 async function checkProvider(admin: DatabaseClient, tenantId: string, actorId: string): Promise<CheckResult> {
-  const secret = await currentSecret(admin, tenantId, actorId);
-  if (!secret) return { ok: false, state: "authorization_expired", code: "authorization_expired" };
+  const current = await currentSecret(admin, tenantId, actorId);
+  if (!current.ok) {
+    if (!current.generation) throw new Error("ZAPIER_CONNECTION_NOT_FOUND");
+    return { ok: false, state: current.state, code: current.code, generation: current.generation };
+  }
+  const secret = current.secret;
+  const generation = secret.generation;
   try {
     const response = await fetch(ZAPS_URL, { redirect: "error", signal: AbortSignal.timeout(10_000), headers: { Authorization: `Bearer ${secret.access_token}`, Accept: "application/json" } });
-    if (response.status === 401) return { ok: false, state: "authorization_expired", code: "authorization_expired" };
-    if (response.status === 403) return { ok: false, state: "capability_unavailable", code: "plan_or_api_unavailable" };
-    if (response.status === 429 || response.status >= 500) return { ok: false, state: "provider_unavailable", code: "provider_unavailable" };
-    if (!response.ok) return { ok: false, state: "needs_attention", code: "response_invalid" };
+    if (response.status === 401) return { ok: false, state: "authorization_expired", code: "authorization_expired", generation };
+    if (response.status === 403) return { ok: false, state: "capability_unavailable", code: "plan_or_api_unavailable", generation };
+    if (response.status === 429 || response.status >= 500) return { ok: false, state: "provider_unavailable", code: "provider_unavailable", generation };
+    if (!response.ok) return { ok: false, state: "needs_attention", code: "response_invalid", generation };
     const body = await response.json().catch(() => null) as { meta?: { count?: unknown }; data?: unknown } | null;
-    if (!body || !Array.isArray(body.data)) return { ok: false, state: "needs_attention", code: "response_invalid" };
+    if (!body || !Array.isArray(body.data)) return { ok: false, state: "needs_attention", code: "response_invalid", generation };
     const count = typeof body.meta?.count === "number" && Number.isSafeInteger(body.meta.count) && body.meta.count >= 0 ? body.meta.count : null;
-    return { ok: true, count };
-  } catch { return { ok: false, state: "provider_unavailable", code: "provider_unavailable" }; }
+    return { ok: true, count, generation };
+  } catch { return { ok: false, state: "provider_unavailable", code: "provider_unavailable", generation }; }
 }
 
 async function persistCheck(admin: DatabaseClient, tenantId: string, actorId: string, result: CheckResult, outcome: string) {
   const { error } = await admin.rpc("zapier_api_record_check", { _tenant: tenantId, _actor: actorId, _healthy: result.ok,
     _state: result.ok ? "connected" : result.state, _failure: result.ok ? null : result.code,
-    _count: result.ok ? result.count : null, _outcome: outcome });
+    _count: result.ok ? result.count : null, _outcome: outcome, _generation: result.generation });
   return !error;
 }
 
@@ -157,12 +171,12 @@ Deno.serve(async (req) => {
       .eq("id", attempt.id).eq("status", "pending").select("id").maybeSingle();
     if (claimError || !claimed) return jsonResponse({ error: "oauth_state_invalid" }, 409);
     const token = await exchange(new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI }));
-    if (!token) {
+    if (!token.ok) {
       await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "failed" }).eq("id", attempt.id).eq("status", "exchanging");
       return jsonResponse({ error: "oauth_exchange_failed" }, 502);
     }
     // The RPC atomically finalizes only an attempt that cancellation has not changed.
-    if (!await storeGrant(admin, tenantId, user.id, token, "", attempt.id)) {
+    if (!await storeGrant(admin, tenantId, user.id, token.token, "", attempt.id)) {
       return jsonResponse({ error: "oauth_state_invalid" }, 409);
     }
     const result = await checkProvider(admin, tenantId, user.id);
