@@ -80,8 +80,11 @@ async function checkProvider(admin: DatabaseClient, tenantId: string, actorId: s
   } catch { return { ok: false, state: "provider_unavailable", code: "provider_unavailable" }; }
 }
 
-async function record(admin: DatabaseClient, tenantId: string, actorId: string, outcome: string) {
-  await admin.from("paige_workspace_events").insert({ tenant_id: tenantId, actor_id: actorId, source_kind: "zapier_api_connection", source_id: crypto.randomUUID(), source_revision: 0, outcome });
+async function persistCheck(admin: DatabaseClient, tenantId: string, actorId: string, result: CheckResult, outcome: string) {
+  const { error } = await admin.rpc("zapier_api_record_check", { _tenant: tenantId, _actor: actorId, _healthy: result.ok,
+    _state: result.ok ? "connected" : result.state, _failure: result.ok ? null : result.code,
+    _count: result.ok ? result.count : null, _outcome: outcome });
+  return !error;
 }
 
 Deno.serve(async (req) => {
@@ -100,13 +103,38 @@ Deno.serve(async (req) => {
   const { data: canManage } = await userClient.rpc("is_tenant_owner", { _user_id: user.id, _tenant_id: tenantId });
   if (action === "status") return jsonResponse({ ok: true, connection: await readiness(userClient, tenantId, canManage === true) });
   if (canManage !== true) return jsonResponse({ error: "forbidden" }, 403);
-  if (!configured() && action !== "cancel" && action !== "disconnect") return jsonResponse({ error: "capability_unavailable", connection: await readiness(userClient, tenantId, true) }, 503);
+  if (!configured() && !["cancel", "disconnect", "oauth_refuse", "provision_intake_route"].includes(action)) return jsonResponse({ error: "capability_unavailable", connection: await readiness(userClient, tenantId, true) }, 503);
 
   if (action === "cancel") {
     const { error: cancelError } = await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "cancelled" })
       .eq("tenant_id", tenantId).eq("actor_id", user.id).in("status", ["pending", "exchanging"]);
     if (cancelError) return jsonResponse({ error: "cancel_failed", connection: await readiness(userClient, tenantId, true) }, 503);
     return jsonResponse({ ok: true, outcome: "cancelled", connection: await readiness(userClient, tenantId, true) });
+  }
+
+  if (action === "oauth_refuse") {
+    const state = typeof body.state === "string" ? body.state : "";
+    if (!state) return jsonResponse({ error: "oauth_bad_callback" }, 400);
+    const { data: refused, error: refuseError } = await admin.rpc("zapier_api_refuse", { _tenant: tenantId, _actor: user.id, _state_hash: await digest(state) });
+    if (refuseError) return jsonResponse({ error: "refusal_persist_failed" }, 503);
+    if (refused !== true) return jsonResponse({ error: "oauth_state_invalid" }, 409);
+    return jsonResponse({ ok: true, outcome: "refused", connection: await readiness(userClient, tenantId, true) });
+  }
+
+  if (action === "provision_intake_route") {
+    const label = typeof body.label === "string" ? body.label.trim() : "";
+    if (!label || label.length > 80) return jsonResponse({ error: "route_label_invalid" }, 400);
+    const routeToken = `zir_${safeState()}`;
+    const { data: routeId, error: routeError } = await admin.rpc("zapier_intake_route_create", {
+      _tenant: tenantId, _actor: user.id, _label: label, _token_hash: await digest(routeToken),
+    });
+    if (routeError || typeof routeId !== "string") return jsonResponse({ error: "route_provision_failed" }, 503);
+    const endpoint = `${Deno.env.get("SUPABASE_URL")}/functions/v1/zapier-skool-intake`;
+    // This owner-only response is the sole disclosure; no UI/chat surface calls this action.
+    return new Response(JSON.stringify({ ok: true, route_id: routeId, endpoint_url: endpoint, header_name: "x-paige-route-token", route_token: routeToken, one_time_secret: true }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
+    });
   }
 
   if (action === "oauth_begin") {
@@ -138,18 +166,15 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "oauth_state_invalid" }, 409);
     }
     const result = await checkProvider(admin, tenantId, user.id);
-    const now = new Date().toISOString();
-    await admin.from("tenant_zapier_api_connections").update(result.ok ? { status: "connected", failure_code: null, accessible_zap_count: result.count, last_checked_at: now, last_success_at: now }
-      : { status: result.state, failure_code: result.code, accessible_zap_count: null, last_checked_at: now }).eq("tenant_id", tenantId);
-    await record(admin, tenantId, user.id, result.ok ? "zapier_api_connected" : "zapier_api_test_failed");
+    if (!await persistCheck(admin, tenantId, user.id, result, result.ok ? "zapier_api_connected" : "zapier_api_test_failed"))
+      return jsonResponse({ error: "rail_unavailable", connection: await readiness(userClient, tenantId, true) }, 503);
     return jsonResponse({ ok: true, outcome: result.ok ? "connected" : "needs_attention", connection: await readiness(userClient, tenantId, true) });
   }
 
   if (action === "test") {
-    const result = await checkProvider(admin, tenantId, user.id); const now = new Date().toISOString();
-    await admin.from("tenant_zapier_api_connections").update(result.ok ? { status: "connected", failure_code: null, accessible_zap_count: result.count, last_checked_at: now, last_success_at: now }
-      : { status: result.state, failure_code: result.code, accessible_zap_count: null, last_checked_at: now }).eq("tenant_id", tenantId);
-    await record(admin, tenantId, user.id, result.ok ? "zapier_api_test_succeeded" : "zapier_api_test_failed");
+    const result = await checkProvider(admin, tenantId, user.id);
+    if (!await persistCheck(admin, tenantId, user.id, result, result.ok ? "zapier_api_test_succeeded" : "zapier_api_test_failed"))
+      return jsonResponse({ error: "rail_unavailable", connection: await readiness(userClient, tenantId, true) }, 503);
     return jsonResponse({ ok: result.ok, outcome: result.ok ? "succeeded" : "failed", error: result.ok ? undefined : result.code, connection: await readiness(userClient, tenantId, true) });
   }
 

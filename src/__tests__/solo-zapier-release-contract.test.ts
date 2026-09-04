@@ -23,7 +23,7 @@ describe("Solo Zapier API and MCP release contract", () => {
   });
   it("keeps local cleanup available and preserves non-rotating refresh tokens", () => {
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
-    expect(api).toContain('action !== "cancel" && action !== "disconnect"');
+    expect(api).toContain('["cancel", "disconnect", "oauth_refuse", "provision_intake_route"]');
     expect(api).toContain("retainedRefresh");
     expect(api).toContain("String(data.refresh_token)");
   });
@@ -34,10 +34,14 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(api).toContain('admin.rpc("zapier_api_disconnect"');
     expect(sql).toContain("status='exchanging' AND expires_at>clock_timestamp()");
     expect(sql).toContain("FUNCTION public.zapier_api_disconnect");
+    expect(api).toContain('admin.rpc("zapier_api_record_check"');
+    expect(api).toContain('error: "rail_unavailable"');
+    expect(sql).toContain("FUNCTION public.zapier_api_record_check");
   });
   it("binds inbound routes on the server and deduplicates per tenant", () => {
     const intake = read("supabase/functions/zapier-skool-intake/index.ts");
     const sql = read("supabase/migrations/20261201000700_solo_zapier_api_mcp_and_skool_intake.sql");
+    const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
     expect(intake).toContain("route_token_hash");
     expect(intake).not.toMatch(/body\.(tenant_id|tenantId)/);
     expect(intake).toContain("idempotency_key");
@@ -46,6 +50,13 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(sql).toContain("REVOKE ALL");
     expect(sql).toContain("SELECT tm.user_id INTO operator_id");
     expect(sql).toContain("r.tenant_id,operator_id,'integration'");
+    expect(sql).toContain("FUNCTION public.zapier_intake_route_create");
+    expect(sql).toContain("route_token_hash");
+    expect(api).toContain("route_token: routeToken");
+    expect(api).toContain("one_time_secret: true");
+    const ui = read("src/solo/settings-integrations.tsx");
+    expect(ui).not.toContain("route_token");
+    expect(ui).not.toContain("x-paige-route-token");
   });
   it("records bounded outcomes in Rail", () => {
     const sql = read("supabase/migrations/20261201000700_solo_zapier_api_mcp_and_skool_intake.sql");
@@ -69,5 +80,13 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(wrapper).toContain('error: "rail_unavailable"');
     expect(sql).toContain("REVOKE ALL ON FUNCTION public.record_zapier_mcp_connection_test");
     expect(sql).toContain("TO service_role");
+  });
+  it("persists denied OAuth before reporting it", () => {
+    const callback = read("src/pages/ZapierOAuthCallback.tsx");
+    const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
+    const sql = read("supabase/migrations/20261201000700_solo_zapier_api_mcp_and_skool_intake.sql");
+    expect(callback).toContain('action:"oauth_refuse",state');
+    expect(api).toContain('admin.rpc("zapier_api_refuse"');
+    expect(sql).toContain("status='refused'");
   });
 });

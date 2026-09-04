@@ -85,6 +85,46 @@ RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog
 END $$;
 REVOKE ALL ON FUNCTION public.zapier_api_disconnect(uuid,uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.zapier_api_disconnect(uuid,uuid) TO service_role;
+CREATE OR REPLACE FUNCTION public.zapier_api_record_check(_tenant uuid,_actor uuid,_healthy boolean,_state text,_failure text,_count integer,_outcome text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$
+DECLARE event_source uuid;event_revision bigint;now_at timestamptz:=clock_timestamp();
+BEGIN
+ IF _state NOT IN ('connected','needs_attention','authorization_expired','provider_unavailable','capability_unavailable') OR _outcome NOT IN ('zapier_api_connected','zapier_api_test_succeeded','zapier_api_test_failed') THEN RAISE EXCEPTION 'ZAPIER_CHECK_INVALID';END IF;
+ IF (_healthy AND (_state<>'connected' OR _failure IS NOT NULL)) OR (NOT _healthy AND (_state='connected' OR _failure IS NULL)) THEN RAISE EXCEPTION 'ZAPIER_CHECK_INCONSISTENT';END IF;
+ UPDATE public.tenant_zapier_api_connections
+ SET status=_state,failure_code=_failure,accessible_zap_count=CASE WHEN _healthy THEN _count ELSE NULL END,
+  last_checked_at=now_at,last_success_at=CASE WHEN _healthy THEN now_at ELSE last_success_at END,revision=revision+1,updated_at=now_at
+ WHERE tenant_id=_tenant RETURNING generation,revision INTO event_source,event_revision;
+ IF event_source IS NULL THEN RAISE EXCEPTION 'ZAPIER_CONNECTION_NOT_FOUND';END IF;
+ INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
+ VALUES(_tenant,_actor,'zapier_api_connection',event_source,event_revision,_outcome);
+END $$;
+REVOKE ALL ON FUNCTION public.zapier_api_record_check(uuid,uuid,boolean,text,text,integer,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.zapier_api_record_check(uuid,uuid,boolean,text,text,integer,text) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.zapier_api_refuse(_tenant uuid,_actor uuid,_state_hash text)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$ DECLARE attempt_id uuid;BEGIN
+ UPDATE public.tenant_zapier_api_oauth_attempts SET status='refused' WHERE tenant_id=_tenant AND actor_id=_actor AND state_hash=_state_hash AND status IN ('pending','exchanging') RETURNING id INTO attempt_id;
+ IF attempt_id IS NULL THEN RETURN false;END IF;
+ INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
+ VALUES(_tenant,_actor,'oauth_attempt',attempt_id,0,'oauth_refused');
+ RETURN true;END $$;
+REVOKE ALL ON FUNCTION public.zapier_api_refuse(uuid,uuid,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.zapier_api_refuse(uuid,uuid,text) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.zapier_intake_route_create(_tenant uuid,_actor uuid,_label text,_token_hash text)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$ DECLARE route_id uuid;BEGIN
+ IF _tenant IS NULL OR _actor IS NULL OR length(btrim(COALESCE(_label,''))) NOT BETWEEN 1 AND 80 OR length(COALESCE(_token_hash,''))<32 THEN RAISE EXCEPTION 'ZAPIER_ROUTE_INVALID';END IF;
+ IF public.is_tenant_owner(_actor,_tenant) IS DISTINCT FROM true THEN RAISE EXCEPTION 'ZAPIER_ROUTE_FORBIDDEN' USING ERRCODE='42501';END IF;
+ INSERT INTO public.tenant_zapier_intake_routes(tenant_id,route_kind,label,route_token_hash,enabled,created_by)
+ VALUES(_tenant,'skool',btrim(_label),_token_hash,true,_actor) RETURNING id INTO route_id;
+ INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
+ VALUES(_tenant,_actor,'zapier_skool_intake',route_id,0,'zapier_skool_route_created');
+ RETURN route_id;
+END $$;
+REVOKE ALL ON FUNCTION public.zapier_intake_route_create(uuid,uuid,text,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.zapier_intake_route_create(uuid,uuid,text,text) TO service_role;
+
 
 CREATE OR REPLACE FUNCTION public.zapier_api_secret_for_service(_tenant uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$ DECLARE c public.tenant_zapier_api_connections; BEGIN
@@ -122,13 +162,13 @@ ALTER TABLE public.paige_workspace_events ADD CONSTRAINT paige_workspace_events_
 ALTER TABLE public.paige_workspace_events ADD CONSTRAINT paige_workspace_events_outcome_check CHECK(outcome IN (
  'oauth_success','oauth_cancelled','oauth_refused','oauth_expired','oauth_failed','mcp_verified','mcp_unavailable','mcp_disconnected','read_approvals_changed',
  'zapier_api_connected','zapier_api_disconnected','zapier_api_test_succeeded','zapier_api_test_failed','zapier_mcp_verified','zapier_mcp_unavailable','zapier_mcp_disconnected','zapier_tools_changed','zapier_mcp_test_succeeded','zapier_mcp_test_failed',
- 'zapier_skool_intake_received','zapier_skool_intake_duplicate','zapier_skool_intake_failed'));
+ 'zapier_skool_route_created','zapier_skool_intake_received','zapier_skool_intake_duplicate','zapier_skool_intake_failed'));
 ALTER TABLE public.paige_workspace_events ADD CONSTRAINT paige_workspace_event_source CHECK(
  (source_kind='oauth_attempt' AND outcome IN ('oauth_success','oauth_cancelled','oauth_refused','oauth_expired','oauth_failed')) OR
  (source_kind='mcp_connection' AND outcome IN ('mcp_verified','mcp_unavailable','mcp_disconnected','read_approvals_changed')) OR
  (source_kind='zapier_api_connection' AND outcome IN ('zapier_api_connected','zapier_api_disconnected','zapier_api_test_succeeded','zapier_api_test_failed')) OR
  (source_kind='zapier_mcp_connection' AND outcome IN ('zapier_mcp_verified','zapier_mcp_unavailable','zapier_mcp_disconnected','zapier_tools_changed','zapier_mcp_test_succeeded','zapier_mcp_test_failed')) OR
- (source_kind='zapier_skool_intake' AND outcome IN ('zapier_skool_intake_received','zapier_skool_intake_duplicate','zapier_skool_intake_failed')));
+ (source_kind='zapier_skool_intake' AND outcome IN ('zapier_skool_route_created','zapier_skool_intake_received','zapier_skool_intake_duplicate','zapier_skool_intake_failed')));
 
 CREATE OR REPLACE FUNCTION public._zapier_workspace_event_display(_outcome text)
 RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_catalog AS $$ DECLARE title text;summary text;BEGIN CASE _outcome
@@ -143,6 +183,7 @@ RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_catalog AS $$
  WHEN 'zapier_mcp_test_succeeded' THEN title:='Zapier PAIGE tools test succeeded';summary:='Zapier returned a valid MCP tool list for this workspace. No app action was run.';
  WHEN 'zapier_mcp_test_failed' THEN title:='Zapier PAIGE tools test failed';summary:='The MCP provider check did not succeed. No app action was run.';
  WHEN 'zapier_skool_intake_received' THEN title:='Skool intake received';summary:='A tenant-bound Zapier intake was accepted and processed.';
+ WHEN 'zapier_skool_route_created' THEN title:='Skool intake route created';summary:='A tenant-bound Zapier intake route was provisioned. Its secret is not stored in Rail.';
  WHEN 'zapier_skool_intake_duplicate' THEN title:='Skool intake duplicate ignored';summary:='A repeated tenant-bound intake did not create another contact.';
  WHEN 'zapier_skool_intake_failed' THEN title:='Skool intake needs attention';summary:='A tenant-bound intake failed. No cross-workspace fallback was used.';
  ELSE RAISE EXCEPTION 'ZAPIER_RAIL_INVALID_OUTCOME' USING ERRCODE='22023';END CASE;
