@@ -179,7 +179,7 @@ end $$;
 -- NO browser grant. Runtime calls only after the canonical Chat gate claims the
 -- stored crm_import_commit_batch call. Request nonce is a preview-age precondition,
 -- never evidence of approval. Declined consumed confirmations are NOT consulted.
-create function public.commit_contact_import_batch(p_tenant uuid,p_actor uuid,p_batch uuid,p_request_nonce text)
+create or replace function public.commit_contact_import_batch(p_tenant uuid,p_actor uuid,p_batch uuid,p_request_nonce text)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare v_batch public.contact_import_batches; v_run public.contact_import_runs; v_item jsonb; v_row public.contact_import_rows;
  v_patch jsonb; v_client public.clients; v_id uuid; v_identity text; v_external text; v_source public.client_source_records;
@@ -316,7 +316,7 @@ begin
  select jsonb_build_object('total',count(*),'valid',count(*) filter(where jsonb_array_length(coalesce(staged->'errors','[]'))=0),'probableDuplicates',count(*) filter(where jsonb_array_length(coalesce(staged->'matches','[]'))>0 or coalesce(staged->'decisions','[]') ? 'duplicate_in_file'),'missingUsableIdentity',count(*) filter(where coalesce(staged->'decisions','[]') ? 'missing_usable_identity'),'consentRecords',count(*) filter(where staged->'consent'->>'email'<>'unknown' or staged->'consent'->>'sms'<>'unknown'),'optOutRecords',count(*) filter(where staged->'consent'->>'email'='denied' or staged->'consent'->>'sms'='denied'),'requiresDecision',count(*) filter(where jsonb_array_length(coalesce(staged->'decisions','[]'))>0 or jsonb_array_length(coalesce(staged->'errors','[]'))>0),'invalid',count(*) filter(where jsonb_array_length(coalesce(staged->'errors','[]'))>0)),least(100,count(*) filter(where state='pending' and jsonb_array_length(coalesce(staged->'errors','[]'))=0 and jsonb_array_length(coalesce(staged->'decisions','[]'))=0))::integer into v_counts,v_batch from public.contact_import_rows where run_id=p_run and tenant_id=p_tenant;
  return jsonb_build_object('counts',v_counts,'proposedBatchSize',v_batch,'writesPerformed',0,'messagesSent',0,'status','preview');
 end $$;
-create function public.list_contact_imports(p_tenant uuid,p_actor uuid)
+create or replace function public.list_contact_imports(p_tenant uuid,p_actor uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare v_result jsonb;
 begin

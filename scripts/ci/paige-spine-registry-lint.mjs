@@ -34,8 +34,10 @@ function validateN8nTypeScript(chatText, managementText) {
   const declarations=nodes(management,ts.isFunctionDeclaration);
   const executor=declarations.find(n=>n.name?.text==='runN8nManagement');
   const projector=declarations.find(n=>n.name?.text==='project');
+  const transport=declarations.find(n=>n.name?.text==='withN8nTransport');
   requireProof(!!executor?.body&&!!executor.modifiers?.some(m=>m.kind===ts.SyntaxKind.ExportKeyword),'exported executor symbol');
   requireProof(!!projector?.body,'projector symbol');
+  requireProof(!!transport?.body&&!!transport.modifiers?.some(m=>m.kind===ts.SyntaxKind.ExportKeyword),'exported transport symbol');
   const specs=nodes(management,ts.isVariableDeclaration).find(n=>nameOf(n.name)==='specs')?.initializer;
   const tools=new Map();
   if(specs&&ts.isObjectLiteralExpression(specs))for(const p of specs.properties){
@@ -52,12 +54,20 @@ function validateN8nTypeScript(chatText, managementText) {
   const set=nodes(chat,ts.isVariableDeclaration).find(n=>nameOf(n.name)==='N8N_MANAGEMENT_TOOL_NAMES')?.initializer;
   requireProof(normalized(set)==='newSet(N8N_MANAGEMENT_TOOLS.map(tool=>tool.function.name))','routing Set derived from same catalog');
   const calls=nodes(chat,n=>ts.isCallExpression(n)&&normalized(n.expression)==='runN8nManagement');
-  requireProof(calls.length===1,'one executor dispatch');
-  const dispatch=calls[0];const arg=dispatch?.arguments[0];
-  if(arg&&ts.isObjectLiteralExpression(arg)){
+  const callArg=call=>call?.arguments[0]&&ts.isObjectLiteralExpression(call.arguments[0])?call.arguments[0]:null;
+  const dispatches=calls.filter(call=>normalized(fieldValue(callArg(call),'tool'))==='tc.function.name');
+  const verificationReads=calls.filter(call=>normalized(fieldValue(callArg(call),'tool')).replace(/"/g,"'")==="'n8n_get_workflow'");
+  requireProof(calls.length===2&&dispatches.length===1&&verificationReads.length===1,'one verified read and one executor dispatch');
+  const dispatch=dispatches[0];const arg=callArg(dispatch);
+  if(arg){
     const expected={admin:'supabase',userId:'user.id',tenantId:"personaCtx.tenant_id??''",sessionId:'n8nSessionId',tool:'tc.function.name',args:'args',mutationApproved:'approvalChannel.has(tc.id)'};
     for(const [key,value]of Object.entries(expected))requireProof(normalized(fieldValue(arg,key)).replace(/"/g,"'")===value,`dispatch ${key} binding`);
   }else requireProof(false,'executor object argument');
+  const verificationArg=callArg(verificationReads[0]);
+  if(verificationArg){
+    const expected={admin:'supabase',userId:'user.id',tenantId:"personaCtx.tenant_id??''",sessionId:'verifiedN8nSessionId()',tool:"'n8n_get_workflow'",args:'{workflow_id:a?.workflow_id}',mutationApproved:'false'};
+    for(const [key,value]of Object.entries(expected))requireProof(normalized(fieldValue(verificationArg,key)).replace(/"/g,"'")===value,`verification ${key} binding`);
+  }else requireProof(false,'verification object argument');
   let parent=dispatch?.parent,selector=false;
   while(parent){if(ts.isIfStatement(parent)&&normalized(parent.expression)==='N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name)')selector=true;parent=parent.parent;}
   requireProof(selector,'executor inside exact catalog dispatch');
@@ -67,15 +77,19 @@ function validateN8nTypeScript(chatText, managementText) {
   if(executor?.body){
     const calls=nodes(executor.body,ts.isCallExpression);
     requireProof(calls.some(n=>normalized(n)==="rpc('acquire')"),'executor acquires canonical OAuth lease');
-    requireProof(calls.some(n=>normalized(n)==="rpc('check')"),'executor checks lease before provider call');
     requireProof(calls.some(n=>normalized(n)==="rpc('check',{record_success:true})"),'executor checks result commit fence');
+    requireProof(calls.some(n=>normalized(n.expression)==='withN8nTransport'),'executor uses the verified transport');
     requireProof(nodes(executor.body,ts.isObjectLiteralExpression).some(n=>normalized(fieldValue(n,'actor_id'))==='input.userId'&&normalized(fieldValue(n,'tenant_id'))==='input.tenantId'&&normalized(fieldValue(n,'session_id'))==='input.sessionId'),'lease bound to caller tenant and session');
-    requireProof(calls.filter(n=>normalized(n.expression)==='project').length===1&&calls.some(n=>normalized(n)==='project(input.tool,data,secrets,args)'),'actual provider result enters exact projector');
-    requireProof(nodes(executor.body,ts.isVariableDeclaration).some(n=>nameOf(n.name)==='projected'&&normalized(n.initializer)==='project(input.tool,data,secrets,args)'),'projected result captured');
+    requireProof(nodes(executor.body,ts.isVariableDeclaration).some(n=>nameOf(n.name)==='projected'&&normalized(n.initializer).startsWith('awaitcall(input.tool,input.args,')),'projected result captured');
     requireProof(nodes(executor.body,ts.isReturnStatement).some(n=>normalized(n.expression)==='projected'),'projected result returned');
+    requireProof(nodes(executor.body,ts.isIfStatement).some(n=>normalized(n.expression)==='spec.write&&input.mutationApproved!==true'),'executor enforces mutation approval');
+  }
+  if(transport?.body){
+    const calls=nodes(transport.body,ts.isCallExpression);
+    requireProof(calls.some(n=>normalized(n)==="rpc('check')"),'transport checks lease before provider call');
+    requireProof(calls.filter(n=>normalized(n.expression)==='project').length===1&&calls.some(n=>normalized(n)==='project(tool,unwrap(awaitsession.call(spec.provider,args)),secrets,args)'),'actual provider result enters exact projector');
     const providerCallback=calls.find(n=>normalized(n.expression)==='withApprovedCapabilitySession')?.arguments[1];
     requireProof(!!providerCallback&&!nodes(providerCallback,ts.isReturnStatement).some(n=>['data','raw'].includes(normalized(n.expression))),'raw provider result not returned');
-    requireProof(nodes(executor.body,ts.isIfStatement).some(n=>normalized(n.expression)==='spec.write&&input.mutationApproved!==true'),'executor enforces mutation approval');
   }
   return {findings,tools};
 }
@@ -126,9 +140,10 @@ if (process.argv.includes("--self-test")) {
   const negatives=[
     ['wrong import',originalChat.replace("../_shared/n8n-management.ts","../_shared/untrusted.ts"),originalManagement],
     ['unmounted catalog',originalChat.replace('...N8N_MANAGEMENT_TOOLS','...OTHER_TOOLS'),originalManagement],
-    ['caller change',originalChat.replace('userId: user.id','userId: args.user_id'),originalManagement],
-    ['tenant change',originalChat.replace("tenantId: personaCtx.tenant_id ?? ''","tenantId: args.tenant_id"),originalManagement],
+    ['caller change',originalChat.replace('result = await runN8nManagement({ admin: supabase, userId: user.id','result = await runN8nManagement({ admin: supabase, userId: args.user_id'),originalManagement],
+    ['tenant change',originalChat.replace("tenantId: personaCtx.tenant_id ?? '', sessionId: n8nSessionId","tenantId: args.tenant_id, sessionId: n8nSessionId"),originalManagement],
     ['approval bypass',originalChat.replace('mutationApproved: approvalChannel.has(tc.id)','mutationApproved: true'),originalManagement],
+    ['verification bypass',originalChat.replace("tool: 'n8n_get_workflow', args: { workflow_id: a?.workflow_id }, mutationApproved: false","tool: 'n8n_get_workflow', args: { workflow_id: a?.workflow_id }, mutationApproved: true"),originalManagement],
     ['missing executor',originalChat,originalManagement.replace('function runN8nManagement','function missingExecutor')],
     ['missing projector',originalChat,originalManagement.replace('function project(','function missingProjector(')],
     ['projection bypass',originalChat,originalManagement.replace('return projected;','return data;')],
