@@ -98,8 +98,8 @@ BEGIN
     ELSIF r.status = 'sent' THEN
       outcome := origin.id; -- Provider handoff already recorded by sender; do not append.
     ELSE
-      INSERT INTO public.email_send_log (template_name, recipient_email, message_id, status, tenant_id, sender_account, metadata)
-      VALUES (origin.template_name, origin.recipient_email, r.message_id, r.status, origin.tenant_id, 'platform',
+      INSERT INTO public.email_send_log (template_name, recipient_email, message_id, status, tenant_id, sender_account, created_at, metadata)
+      VALUES (origin.template_name, origin.recipient_email, r.message_id, r.status, origin.tenant_id, 'platform', COALESCE(r.event_at, r.received_at),
         jsonb_build_object('via','handle-resend-webhook','event','email.' || r.status,
           'svix_id',r.receipt_id,'invite_id',origin.metadata->>'invite_id','provider_created_at',r.event_at))
       RETURNING id INTO outcome;

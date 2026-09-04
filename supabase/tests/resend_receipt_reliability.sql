@@ -65,7 +65,7 @@ SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_open2','receipt-o
 SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_cross','receipt-wrong-tenant','delivered',NULL)='unresolved','cross-tenant refuses');
 SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_platform','receipt-platform','delivered',NULL)='processed','platform null tenant preserved');
 SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_template','receipt-template','clicked',NULL)='processed','legacy template preserved');
-SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_early','receipt-early','delivered',NULL)='pending','early receipt retained');
+SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_early','receipt-early','delivered',now()-interval '5 minutes')='pending','early receipt retained');
 SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_unknown','receipt-unknown','bounced',NULL)='pending','unknown receipt not delivery failure');
 SELECT pg_temp.check_receipt(public.ingest_resend_receipt('bad id','receipt-origin','delivered',NULL)='invalid','malformed id refuses');
 SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_bad','receipt-origin','invented',NULL)='invalid','unknown status refuses');
@@ -83,10 +83,14 @@ INSERT INTO public.email_send_log(message_id,template_name,recipient_email,statu
 SELECT 'receipt-early',template_name,recipient_email,status,tenant_id,metadata FROM public.email_send_log WHERE message_id='receipt-origin' AND status='sent';
 UPDATE public.resend_receipt_processing SET next_attempt_at=now() WHERE receipt_id='msg_early';
 SET LOCAL ROLE service_role;
+SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_later_open','receipt-early','opened',now()-interval '1 minute')='processed','later event arrives before reconciliation');
 SELECT public.reconcile_resend_receipts();
 RESET ROLE;
 SELECT pg_temp.check_receipt((SELECT state='processed' FROM public.resend_receipt_processing WHERE receipt_id='msg_early'),'early later resolved');
 SELECT pg_temp.check_receipt((SELECT count(*)=1 FROM public.email_send_log WHERE metadata->>'svix_id'='msg_early'),'early exactly one outcome');
+SELECT pg_temp.check_receipt((SELECT l.created_at=p.event_at FROM public.email_send_log l JOIN public.resend_receipt_processing p ON p.outcome_id=l.id WHERE p.receipt_id='msg_early'),'reconciliation preserves provider event time');
+SELECT pg_temp.check_receipt((SELECT early.created_at < later.created_at FROM public.email_send_log early CROSS JOIN public.email_send_log later WHERE early.metadata->>'svix_id'='msg_early' AND later.metadata->>'svix_id'='msg_later_open'),'out-of-order arrival retains lifecycle order');
+SELECT pg_temp.check_receipt((SELECT l.created_at=p.received_at FROM public.email_send_log l JOIN public.resend_receipt_processing p ON p.outcome_id=l.id WHERE p.receipt_id='msg_one'),'missing provider time uses receipt time');
 UPDATE public.resend_receipt_processing SET expires_at=now()-interval '1 second',next_attempt_at=now() WHERE receipt_id='msg_unknown';
 SET LOCAL ROLE service_role;
 SELECT public.reconcile_resend_receipts();
