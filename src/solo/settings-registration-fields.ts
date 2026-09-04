@@ -21,7 +21,13 @@
  * (20261201000700), never typed, so the control here is the person, not four boxes whose
  * answers the server would recompute anyway.
  */
-import { COUNTRY_OPTIONS, type AddressOption } from "./setup-address-options";
+import {
+  COUNTRY_OPTIONS,
+  ENTITY_TYPE_OPTIONS,
+  REGISTRATION_IDENTIFIER_OPTIONS,
+  REPRESENTATIVE_POSITION_OPTIONS,
+  type AddressOption,
+} from "./setup-address-options";
 import type { SoloSetupTextField } from "./settings-setup-contract";
 
 /**
@@ -46,32 +52,6 @@ export type RegistrationField = {
   /** Useful to complete here, but not something the filing is blocked on. */
   optional?: boolean;
 };
-
-/** Kept in the shape Setup uses so a shared descriptor can replace both copies later. */
-export const ENTITY_TYPE_OPTIONS: readonly string[] = [
-  "",
-  "Individual / sole proprietor",
-  "Co-operative",
-  "Corporation",
-  "Limited Liability Company",
-  "Non-profit Corporation",
-  "Partnership",
-  "Trust",
-  "Other legal person",
-];
-
-export const REGISTRATION_IDENTIFIER_OPTIONS: readonly string[] = [
-  "", "EIN", "DUNS", "CBN", "CN", "ACN", "CIN", "VAT", "VATRN", "RN", "OTHER",
-];
-
-export const REPRESENTATIVE_POSITION_OPTIONS: readonly string[] = [
-  "", "Director", "GM", "VP", "CEO", "CFO", "General Counsel", "Other",
-];
-
-/** The five the provider accepts. Anything else is rejected by the save seam, not by us. */
-export const REGION_OPTIONS: readonly string[] = [
-  "USA_AND_CANADA", "AFRICA", "ASIA", "EUROPE", "LATIN_AMERICA",
-];
 
 export const REGISTRATION_BUSINESS_FIELDS: readonly RegistrationField[] = [
   { key: "legalName", label: "Legal business name", carrierColumn: "legal_business_name",

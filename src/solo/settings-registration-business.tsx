@@ -122,6 +122,17 @@ function RegistrationBusinessEditor({ account, missing, open: _open, onOpenChang
     const next = { ...brief, ...edits } as typeof brief;
     // Never echo the masked last four back as if it were the number itself.
     next.businessRegistrationNumber = edits.businessRegistrationNumber ?? "";
+    // The save REFUSES an authorized representative who is not also in the confirmed
+    // representative list — `save_solo_setup_identity` raises "must also be a confirmed
+    // business representative". The picker offers the active Team, so choosing someone new
+    // would otherwise fail on a rule this screen never showed. Naming a person as THE
+    // authorized representative is what confirming them means, so it is recorded here. The
+    // server still re-checks active membership independently, and this editor is Owner-only,
+    // which is the authority that list requires. It creates no Team role and no access.
+    const chosen = next.authorizedRepresentativeUserId;
+    if (chosen && !next.representativeUserIds.includes(chosen)) {
+      next.representativeUserIds = [...next.representativeUserIds, chosen];
+    }
     const result = await context.save({
       brief: next,
       businessOwners: context.businessOwners,
@@ -133,7 +144,14 @@ function RegistrationBusinessEditor({ account, missing, open: _open, onOpenChang
       proposalId: null,
     });
     setSaving(false);
-    if (result.ok === false) { setOutcome({ tone: "bad", message: result.error }); return; }
+    if (result.ok === false) {
+      setOutcome({ tone: "bad", message: result.error });
+      // A conflict means the stored record moved on, and the adapter deliberately does NOT
+      // adopt the server's answer on a refusal — so the revision this editor holds stays
+      // stale and every retry would fail the same way. Re-read, keeping the typing on screen.
+      if (result.kind === "conflict") context.refresh();
+      return;
+    }
     setEdits({});
     setOutcome({ tone: "ok", message: "Saved to your business record. Setup shows the same values." });
     // The shortfall list and every stage above it are the provider's answer, not ours.
@@ -157,7 +175,7 @@ function RegistrationBusinessEditor({ account, missing, open: _open, onOpenChang
     </div>;
   }
 
-  return <div className="ss-reg-business">
+  return <div className="ss-reg-draft">
     <div className="ss-next">
       <strong>Your business record</strong>
       <p>These save to the one business record. {setupLink} shows the same values, and
@@ -173,7 +191,7 @@ function RegistrationBusinessEditor({ account, missing, open: _open, onOpenChang
       <p><button type="button" className="ss-retry" onClick={context.refresh}>Try again</button></p>
     </div>}
 
-    <div className="ss-reg-business-fields">
+    <div className="ss-fields">
       {REGISTRATION_BUSINESS_FIELDS.map((f) => {
         const id = `reg-${f.key}`;
         const last4 = f.secret ? brief.businessRegistrationNumberLast4 : "";
@@ -226,5 +244,8 @@ function RegistrationBusinessEditor({ account, missing, open: _open, onOpenChang
     </div>
 
     <Outcome state={outcome}/>
+    {outcome?.tone === "bad" && <p className="ss-note">
+      <button type="button" className="ss-retry" onClick={context.refresh}>Load the stored version</button>
+    </p>}
   </div>;
 }

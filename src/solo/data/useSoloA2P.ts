@@ -154,13 +154,16 @@ export function useSoloA2P(): SoloA2PData {
 
       const [regRes, legalRes, adminRes] = await Promise.all([
         untyped.from("tenant_a2p_registrations")
-          // The three SIDs are here because `hasLeftPreparation` READS them. A column this
-          // query does not ask for arrives as `undefined`, which that predicate treats as
-          // "no value" by design — so omitting them silently disabled three of the server's
-          // eight immutability conditions on this surface. A carrier-linked row whose
-          // per-leg statuses still read 'pending' was then offered the editor and the PAID
-          // "Draft again with Paige" button, and the server refused the save afterwards.
-          .select("brand_status, campaign_status, status, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at, brand_sid, campaign_sid, messaging_service_sid")
+          // DO NOT add brand_sid / campaign_sid / messaging_service_sid here. `hasLeftPreparation`
+          // reads all three, and it is tempting to select them so its eight conditions all fire —
+          // but 20261201000600 REVOKED select on this table from `authenticated` and re-granted a
+          // column list that deliberately excludes exactly those three. Asking for one returns
+          // `permission denied for column`, which this hook reports as `unreadable`, which blanks
+          // the whole surface for every workspace. The three conditions those columns feed are
+          // recovered in the panel from `has_brand` / `has_campaign` / `has_messaging_service` —
+          // server-computed booleans over the same columns, which is how the browser is meant to
+          // learn this without being trusted with the identifiers themselves.
+          .select("brand_status, campaign_status, status, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at")
           .eq("tenant_id", tenantId).limit(1).maybeSingle(),
         untyped.from("tenant_legal_profile")
           .select("legal_business_name, website_url")

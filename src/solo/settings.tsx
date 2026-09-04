@@ -1266,6 +1266,14 @@ function RegistrationPanel({ a2p, provider, account, status, statusLoading }: {
 
   const providerReg = provider.state.registration;
   const phase = providerReg?.submission_phase ?? "prepared";
+  // `hasLeftPreparation` mirrors the server's eight immutability conditions, but three of them
+  // read provider SIDs this browser is not granted (see useSoloA2P's select). The provider's
+  // own status read already computes them as booleans, so the lock is completed here rather
+  // than by asking for columns the grant refuses. Without this, a carrier-linked registration
+  // whose per-leg statuses still read 'pending' is offered the editor and a PAID model call
+  // the server then refuses.
+  const carrierLinked = Boolean(providerReg?.has_brand || providerReg?.has_campaign || providerReg?.has_messaging_service);
+  const locked = a2p.locked || carrierLinked;
   const startProvider = (action: "start_brand" | "resume_brand" | "start_campaign" | "resume_campaign") => void provider.begin(action);
   const providerControls = <div className="ss-a2p-stages">
     <div className="ss-a2p-stage-list" aria-label="Registration progress">
@@ -1318,7 +1326,7 @@ function RegistrationPanel({ a2p, provider, account, status, statusLoading }: {
       <p><button type="button" className="ss-retry" onClick={a2p.refresh}>Try again</button></p>
     </div>;
     if (!a2p.canManage) return <NotYours what="this business's carrier registration"/>;
-    if (a2p.locked) return <>
+    if (locked) return <>
       <p>This registration has moved past preparation, so its copy is locked. Changes now go through the carrier, not through here.</p>
       <div className="ss-fields">
         <Field label="Status" value={reg?.status ?? null}/>

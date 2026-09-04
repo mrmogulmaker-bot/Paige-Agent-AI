@@ -82,6 +82,7 @@ vi.mock("@/integrations/supabase/client", () => ({
       };
       return {
         select: (columns = "*") => {
+          selects.push({ table, columns: columns.split(",").map((c) => c.trim()).filter((c) => c && c !== "*") });
           const row = { data: project(columns), error: null };
           const leaf = { maybeSingle: async () => row, order: async () => ({ data: [], error: null }), limit: () => leaf, eq: () => leaf };
           return leaf;
@@ -141,6 +142,8 @@ function context(over: Record<string, unknown> = {}) {
   };
 }
 
+const selects: Array<{ table: string; columns: string[] }> = [];
+
 let host: HTMLDivElement;
 async function mount() {
   host = document.createElement("div");
@@ -186,6 +189,7 @@ beforeEach(() => {
   state.isAdmin = true;
   state.legal = { legal_business_name: "Test Workspace LLC", website_url: "https://example.com" };
   state.registration = null;
+  selects.length = 0;
   state.save = vi.fn(async () => ({ ok: true, kind: "saved" }));
   state.refresh = vi.fn();
   state.ctx = context();
@@ -343,6 +347,45 @@ describe("Completing the business record from Registration", () => {
     expect([...(picker?.options ?? [])].some((o) => o.value === "u1")).toBe(true);
   });
 
+  it("confirms the person it lets you name, because the save refuses anyone unconfirmed", async () => {
+    // `save_solo_setup_identity` raises "authorized representative must also be a confirmed
+    // business representative" unless the chosen id is in `representativeUserIds`. The picker
+    // offers the whole active Team, so without this the control would offer people the save
+    // rejects — a box that accepts a choice the server then refuses.
+    await mount();
+    await openEditor();
+    await type("authorizedRepresentativeUserId", "u1");
+    await act(async () => { buttonContaining("Save business record")?.click(); });
+    const brief = saved()?.brief as Record<string, unknown>;
+    expect(brief.authorizedRepresentativeUserId).toBe("u1");
+    expect(brief.representativeUserIds).toContain("u1");
+  });
+
+  it("does not duplicate a representative who is already confirmed", async () => {
+    state.ctx = context({ brief: { ...context().brief, representativeUserIds: ["u1"] } });
+    await mount();
+    await openEditor();
+    await type("authorizedRepresentativeUserId", "u1");
+    await act(async () => { buttonContaining("Save business record")?.click(); });
+    const brief = saved()?.brief as Record<string, unknown>;
+    expect(brief.representativeUserIds).toEqual(["u1"]);
+  });
+
+  it("re-reads the stored record after a conflict, so a retry is not the same failure", async () => {
+    // The adapter deliberately does not adopt the server's answer on a refusal, so the
+    // revision this editor holds stays stale — every retry would fail identically until
+    // something re-reads. The typing stays on screen; only the stored baseline moves.
+    state.save = vi.fn(async () => ({ ok: false, kind: "conflict", error: "This business context changed in another session. Load the stored version before saving again." }));
+    state.ctx = context();
+    await mount();
+    await openEditor();
+    await type("registeredCity", "Indianapolis");
+    state.refresh.mockClear();
+    await act(async () => { buttonContaining("Save business record")?.click(); });
+    expect(state.refresh).toHaveBeenCalled();
+    expect((field("registeredCity") as HTMLInputElement).value).toBe("Indianapolis");
+  });
+
   it("closes the editor without saving when the owner cancels", async () => {
     await mount();
     await openEditor();
@@ -383,18 +426,37 @@ describe("Completing the business record from Registration", () => {
     }
   });
 
-  it("does not offer a PAID draft over a registration the server will refuse", async () => {
-    // `hasLeftPreparation` mirrors the server's eight immutability conditions, but three of
-    // them read `brand_sid`, `campaign_sid` and `messaging_service_sid` — columns the Solo
-    // read did not select. An unselected column arrives as `undefined`, which that predicate
-    // deliberately treats as "no value", so those three conditions were inert here: a
-    // carrier-linked row whose per-leg statuses still read 'pending' was offered the editor
-    // and the paid "Draft again with Paige" button, and the server then refused the save.
-    const reg = { ...LOCKABLE, brand_sid: "BN" + "0".repeat(32) };
-    state.registration = reg;
+  it("does not offer a PAID draft over a carrier-linked registration", async () => {
+    // `hasLeftPreparation` mirrors the server's eight immutability conditions, but three read
+    // provider SIDs the browser is NOT granted — 20261201000600 revoked select on this table
+    // and re-granted a column list excluding them, so asking for one returns permission denied
+    // and blanks the surface. Those three conditions are completed from the provider's own
+    // server-computed booleans instead. Without that, a carrier-linked row whose per-leg
+    // statuses still read 'pending' was offered the editor and a PAID model call.
+    state.registration = LOCKABLE;
+    state.provider = { ...state.provider, registration: { submission_phase: "brand_submitted", brand_status: "pending", campaign_status: "pending", status: "pending", has_brand: true, has_campaign: false, has_messaging_service: false, number_association_status: "not_started", number_registration_status: "not_started" } };
     await mount();
     expect(text()).toContain("locked");
     expect(buttonContaining("Draft again with Paige"), "a paid call must not be offered over a locked row").toBeFalsy();
+  });
+
+  it("never asks the browser for a column the grant refuses", async () => {
+    // The regression this replaced: selecting brand_sid to satisfy the predicate above would
+    // have returned `permission denied for column`, which this hook reports as "unreadable" —
+    // blanking Registration for every workspace. A test double that returns whatever it is
+    // asked for cannot catch that, so the column list is asserted directly.
+    const GRANTED = new Set(["id","tenant_id","brand_status","campaign_status","use_case","campaign_description",
+      "sample_messages","optin_flow","status","submitted_at","approved_at","created_at","updated_at","optin_message",
+      "optout_message","help_message","registration_mode","number_association_status","number_registration_status",
+      "provider_failure_code","provider_failure_reason","privacy_policy_url","terms_and_conditions_url",
+      "message_categories","opt_in_types","has_embedded_links","has_embedded_phone","direct_lending","age_gated",
+      "submission_phase","provider_synced_at","canceled_at"]);
+    await mount();
+    const asked = selects.filter((c) => c.table === "tenant_a2p_registrations").flatMap((c) => c.columns);
+    expect(asked.length).toBeGreaterThan(0);
+    for (const column of asked) {
+      expect(GRANTED.has(column), `${column} is not in the authenticated grant list (20261201000600)`).toBe(true);
+    }
   });
 
   it("does not offer the editor to a workspace we could not resolve", async () => {

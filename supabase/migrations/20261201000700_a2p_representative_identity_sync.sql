@@ -26,6 +26,13 @@
 -- correct for every producer by construction (§18, §37) and cannot fall out of step with
 -- the FK it is derived from.
 --
+-- WHAT MAKES THE MEMBERSHIP CLAIM TRUE. A trigger on `tenant_legal_profile` alone only
+-- re-derives when something writes THAT table. A representative who leaves the Team, or whose
+-- name or email changes, would keep their old identity on the carrier record indefinitely —
+-- which is a claim this migration would otherwise be making and not keeping (§13). A second
+-- trigger therefore re-fires the derivation from `tenant_members` itself, so the departure is
+-- what removes the name rather than the next unrelated Setup save.
+--
 -- SCOPE. Derivation only. This changes no authorization, adds no grant, and creates no new
 -- caller. Who may write `tenant_legal_profile` is unchanged: `save_solo_setup_identity`
 -- (Owner-only, `solo_setup_access_scope() = 'owner_full'`) and
@@ -108,6 +115,40 @@ create trigger trg_sync_a2p_representative_identity
   for each row
   execute function public.sync_a2p_representative_identity();
 
+-- A membership change re-derives the carrier record's representative.
+create or replace function public.resync_a2p_representative_on_membership()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_tenant uuid := coalesce(new.tenant_id, old.tenant_id);
+  v_user uuid := coalesce(new.user_id, old.user_id);
+begin
+  -- Touching the FK column is what re-runs the one derivation above; it is never rewritten
+  -- here, so this cannot change WHO the representative is, only whether their stored name,
+  -- email and title still reflect the Team.
+  update public.tenant_legal_profile
+     set authorized_representative_user_id = authorized_representative_user_id
+   where tenant_id = v_tenant
+     and authorized_representative_user_id = v_user;
+  return null;
+end;
+$$;
+
+comment on function public.resync_a2p_representative_on_membership() is
+  'Re-derives the carrier representative identity when the named member joins, leaves, or changes role. Never changes which member is named.';
+
+revoke all on function public.resync_a2p_representative_on_membership() from public, anon, authenticated;
+
+drop trigger if exists trg_resync_a2p_representative_on_membership on public.tenant_members;
+create trigger trg_resync_a2p_representative_on_membership
+  after insert or update of status, role, is_owner or delete
+  on public.tenant_members
+  for each row
+  execute function public.resync_a2p_representative_on_membership();
+
 -- Backfill. Every workspace that already named a representative has been blocked from
 -- filing since 20261046000000; this is what unblocks the ones that exist today.
 --
@@ -116,11 +157,13 @@ create trigger trg_sync_a2p_representative_identity
 -- assigned, not on the value changing — so the derivation above is the ONE that runs here
 -- too. A backfill that re-implemented the same joins would be a second copy of the logic
 -- this migration exists to stop having copies of, and the first to drift.
+--
+-- It is UNCONDITIONAL over every row that names a representative, deliberately. Filtering on
+-- "some derived column is null" would define stale as absent, and skip the worse case: three
+-- non-null columns describing the WRONG person, left behind by a representative change made
+-- while nothing re-derived them. Re-deriving a row that is already correct costs a write.
 update public.tenant_legal_profile
    set authorized_representative_user_id = authorized_representative_user_id
- where authorized_representative_user_id is not null
-   and (authorized_representative_first_name is null
-     or authorized_representative_email is null
-     or authorized_representative_business_title is null);
+ where authorized_representative_user_id is not null;
 
 commit;
