@@ -352,6 +352,37 @@ describe("Completing the business record from Registration", () => {
     expect(field("registeredCity")).toBeNull();
   });
 
+  it("does not wipe the carrier regions when the owner edits something else", async () => {
+    // `save_solo_setup_identity` treats a blank `regionsOfOperation` as an instruction:
+    // 20261046000000 L648-652 sets `business_regions_of_operation` to '{}' when the key
+    // arrives empty. A partial submit from this screen would therefore delete the regions
+    // and re-block the filing the edit was meant to unblock. The full canonical brief is
+    // submitted every time, so an untouched field carries its stored value.
+    state.ctx = context({ brief: { ...context().brief, regionsOfOperation: "USA_AND_CANADA" } });
+    await mount();
+    await openEditor();
+    await type("registeredCity", "Indianapolis");
+    await act(async () => { buttonContaining("Save business record")?.click(); });
+    const brief = saved()?.brief as Record<string, string>;
+    expect(brief.regionsOfOperation).toBe("USA_AND_CANADA");
+    expect(brief.registeredCity).toBe("Indianapolis");
+  });
+
+  it("submits the WHOLE canonical brief, because an omitted key is written as NULL", async () => {
+    // The upsert assigns all 23 legal columns from `excluded.*`, and each excluded value is
+    // `nullif(btrim(_brief ->> 'X'),'')` — so a key this screen failed to send is not
+    // "unchanged", it is erased. Spreading the loaded brief is what makes a focused editor
+    // safe against a whole-row upsert.
+    await mount();
+    await openEditor();
+    await type("registeredCity", "Indianapolis");
+    await act(async () => { buttonContaining("Save business record")?.click(); });
+    const brief = saved()?.brief as Record<string, string>;
+    for (const key of Object.keys(EMPTY_SOLO_SETUP_BRIEF)) {
+      expect(Object.hasOwn(brief, key), `omitting ${key} would NULL it on the canonical row`).toBe(true);
+    }
+  });
+
   it("does not offer a PAID draft over a registration the server will refuse", async () => {
     // `hasLeftPreparation` mirrors the server's eight immutability conditions, but three of
     // them read `brand_sid`, `campaign_sid` and `messaging_service_sid` — columns the Solo
