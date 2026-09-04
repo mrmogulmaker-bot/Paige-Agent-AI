@@ -28,9 +28,9 @@ async function readiness(userClient: ReturnType<typeof createClient>, tenantId: 
   return error ? null : data;
 }
 
-async function storeGrant(admin: Admin, tenantId: string, actorId: string, token: Record<string, unknown>) {
+async function storeGrant(admin: Admin, tenantId: string, actorId: string, token: Record<string, unknown>, retainedRefresh = "") {
   const access = typeof token.access_token === "string" ? token.access_token : "";
-  const refresh = typeof token.refresh_token === "string" ? token.refresh_token : "";
+  const refresh = typeof token.refresh_token === "string" && token.refresh_token ? token.refresh_token : retainedRefresh;
   const expires = typeof token.expires_in === "number" ? token.expires_in : Number(token.expires_in);
   const scopes = typeof token.scope === "string" ? token.scope.split(/\s+/).filter(Boolean) : READ_ONLY_SCOPES.split(" ");
   if (!access || !refresh || !Number.isFinite(expires) || expires <= 0 || !scopes.includes("profile") || !scopes.includes("zap:account:all")) return false;
@@ -54,7 +54,7 @@ async function currentSecret(admin: Admin, tenantId: string, actorId: string) {
   if (!data || typeof data.access_token !== "string" || typeof data.refresh_token !== "string") return null;
   if (Date.parse(String(data.expires_at)) > Date.now() + 120_000) return data as Record<string, unknown>;
   const next = await exchange(new URLSearchParams({ grant_type: "refresh_token", refresh_token: data.refresh_token }));
-  if (!next || !await storeGrant(admin, tenantId, actorId, next)) return null;
+  if (!next || !await storeGrant(admin, tenantId, actorId, next, String(data.refresh_token))) return null;
   const { data: refreshed } = await admin.rpc("zapier_api_secret_for_service", { _tenant: tenantId });
   return refreshed && typeof refreshed.access_token === "string" ? refreshed as Record<string, unknown> : null;
 }
@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
   const { data: canManage } = await userClient.rpc("is_tenant_owner", { _user_id: user.id, _tenant_id: tenantId });
   if (action === "status") return jsonResponse({ ok: true, connection: await readiness(userClient, tenantId, canManage === true) });
   if (canManage !== true) return jsonResponse({ error: "forbidden" }, 403);
-  if (!configured()) return jsonResponse({ error: "capability_unavailable", connection: await readiness(userClient, tenantId, true) }, 503);
+  if (!configured() && action !== "cancel" && action !== "disconnect") return jsonResponse({ error: "capability_unavailable", connection: await readiness(userClient, tenantId, true) }, 503);
 
   if (action === "cancel") {
     await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "cancelled" }).eq("tenant_id", tenantId).eq("actor_id", user.id).in("status", ["pending", "exchanging"]);

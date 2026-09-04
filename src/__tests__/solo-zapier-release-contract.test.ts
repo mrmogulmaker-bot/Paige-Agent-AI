@@ -21,6 +21,12 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(api).toContain("current_user_tenant_id");
     expect(api).toContain("expected_tenant_id");
   });
+  it("keeps local cleanup available and preserves non-rotating refresh tokens", () => {
+    const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
+    expect(api).toContain('action !== "cancel" && action !== "disconnect"');
+    expect(api).toContain("retainedRefresh");
+    expect(api).toContain("String(data.refresh_token)");
+  });
   it("binds inbound routes on the server and deduplicates per tenant", () => {
     const intake = read("supabase/functions/zapier-skool-intake/index.ts");
     const sql = read("supabase/migrations/20261201000600_solo_zapier_api_mcp_and_skool_intake.sql");
@@ -33,6 +39,8 @@ describe("Solo Zapier API and MCP release contract", () => {
   });
   it("records bounded outcomes in Rail", () => {
     const sql = read("supabase/migrations/20261201000600_solo_zapier_api_mcp_and_skool_intake.sql");
+    expect(sql).toContain("existing.status='failed'");
+    expect(sql).toContain("'ok',false,'outcome','failed'");
     expect(sql).toContain("zapier_api_test_succeeded");
     expect(sql).toContain("zapier_api_test_failed");
     expect(sql).toContain("zapier_mcp_test_succeeded");

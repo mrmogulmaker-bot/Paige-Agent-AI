@@ -171,6 +171,11 @@ BEGIN
  SELECT * INTO existing FROM public.tenant_zapier_intake_events WHERE tenant_id=r.tenant_id AND route_id=r.id AND idempotency_key=_idempotency_key FOR UPDATE;
  IF existing.id IS NOT NULL THEN
   IF existing.payload_hash IS DISTINCT FROM _payload_hash THEN RAISE EXCEPTION 'ZAPIER_INTAKE_IDEMPOTENCY_CONFLICT' USING ERRCODE='23505';END IF;
+  IF existing.status='failed' THEN
+   INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
+    VALUES(r.tenant_id,r.created_by,'zapier_skool_intake',existing.id,1,'zapier_skool_intake_failed') ON CONFLICT DO NOTHING;
+   RETURN jsonb_build_object('ok',false,'outcome','failed','receipt_id',existing.id);
+  END IF;
   INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
    VALUES(r.tenant_id,r.created_by,'zapier_skool_intake',existing.id,1,'zapier_skool_intake_duplicate') ON CONFLICT DO NOTHING;
   RETURN jsonb_build_object('ok',true,'outcome','duplicate','receipt_id',existing.id);
