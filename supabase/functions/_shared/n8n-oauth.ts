@@ -6,7 +6,8 @@
 import { discoverAuthorizationServer, discoverProtectedResource, type AuthorizationServer, type TokenSet } from './mcp-oauth.ts';
 import { safeFetch } from './ssrfGuard.ts';
 import { withApprovedCapabilitySession, type McpSessionOptions } from './mcp-client.ts';
-export const N8N_OAUTH_SCOPES = ['workflow:read','workflow:write'];
+export const N8N_BASE_SCOPES = ['workflow:read','workflow:write'];
+export const N8N_OAUTH_SCOPES = [...N8N_BASE_SCOPES,'workflow:execute','execution:read'];
 export class N8nSafeError extends Error {
   constructor(public readonly code: string) { super(code); }
 }
@@ -25,7 +26,7 @@ export function validateServer(server: AuthorizationServer): void {
     if (url.protocol !== 'https:' || url.username || url.password || url.hash || url.search) throw new N8nSafeError('provider_metadata_refused');
     if (new URL(server.issuer).origin !== url.origin) throw new N8nSafeError('provider_metadata_refused');
   }
-  if (!N8N_OAUTH_SCOPES.every(scope=>server.scopesSupported.includes(scope))) throw new N8nSafeError('required_oauth_scopes_unavailable');
+  if (!N8N_BASE_SCOPES.every(scope=>server.scopesSupported.includes(scope))) throw new N8nSafeError('required_oauth_scopes_unavailable');
 }
 export async function discoverN8n(resource: string): Promise<AuthorizationServer & {responseIssuerRequired:boolean}> {
   const protectedResource = await discoverProtectedResource(resource);
@@ -41,8 +42,8 @@ export async function discoverN8n(resource: string): Promise<AuthorizationServer
   if(record.issuer!==server.issuer)throw new N8nSafeError('provider_metadata_refused');
   return {...server,responseIssuerRequired:record.authorization_response_iss_parameter_supported===true};
 }
-export function assertScopedTokens(tokens: TokenSet): void {
-  if (tokens.scopes.length !== N8N_OAUTH_SCOPES.length || !N8N_OAUTH_SCOPES.every(scope=>tokens.scopes.includes(scope)) || !tokens.accessToken ||
+export function assertScopedTokens(tokens: TokenSet, expectedScopes?: string[]): void {
+  if (new Set(tokens.scopes).size !== tokens.scopes.length || !N8N_BASE_SCOPES.every(scope=>tokens.scopes.includes(scope)) || tokens.scopes.some(scope=>!N8N_OAUTH_SCOPES.includes(scope)) || (expectedScopes !== undefined && (tokens.scopes.length !== expectedScopes.length || !expectedScopes.every(scope=>tokens.scopes.includes(scope)))) || !tokens.accessToken ||
       (tokens.expiresAt !== null && (!Number.isFinite(Date.parse(tokens.expiresAt)) || Date.parse(tokens.expiresAt) <= Date.now()))) {
     throw new N8nSafeError('provider_scope_refused');
   }

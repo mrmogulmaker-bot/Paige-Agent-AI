@@ -160,6 +160,7 @@ const MEMORY_TEXT = "SECRET-CLIENT-MEMORY-CONTENT";
  * must exclude it), FOREIGN is invisible.
  */
 async function drive({
+  authorization = "Bearer test-jwt",
   clientId,
   clientsError = null,
   memoryReadError = null,
@@ -261,7 +262,7 @@ async function drive({
   try {
     const res = await handler(new Request("http://local/paige-ai-chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
+      headers: { "Content-Type": "application/json", Authorization: authorization },
       body: JSON.stringify({
         messages: [{ role: "user", content: text }],
         ...(clientId !== undefined ? { clientId } : {}),
@@ -820,6 +821,17 @@ function makeConfirmStore(seed = []) {
       const excludesNull = filters.some((x) => x[0] === "not" && x[1] === "issued_in_request");
       const fromEarlier = (r) => (!excludesNull || r.issued_in_request != null)
         && (notFrom === undefined || (r.issued_in_request != null && r.issued_in_request !== notFrom));
+
+      // Read-only exact-card lookup. Unlike decline's .in(), this must not consume rows.
+      if (filters.some((x) => x[0] === "select" && x[1] === "fingerprint")) {
+        const submitted = f("in", "fingerprint") ?? [];
+        return rows.filter((r) => submitted.includes(r.fingerprint) && !r.consumed && fromEarlier(r)
+          && ["user_id", "tool_name", "tenant_id", "thread_id", "scoped_client_id"].every((key) => {
+            const eq = f("eq", key); const nil = filters.some((x) => x[0] === "is" && x[1] === key);
+            return eq !== undefined ? r[key] === eq : !nil || r[key] == null;
+          }) && (!r.expires_at || r.expires_at > f("gt", "expires_at")))
+          .slice(0, 2).map((r) => ({ fingerprint: r.fingerprint }));
+      }
 
       // The DECLINE leg: `update(...).in("fingerprint", [...])`. Modelled because without it a
       // cancelled row stays live in the fixture and the check would pass or fail for reasons that
@@ -1873,6 +1885,28 @@ const mirrorConfirms = (st) => (t, row) => {
   assert("18.7 a high-risk act IS approved when a person clicked the card a surface rendered",
     granted(highRiskCard), JSON.stringify(highRiskCard.rec.rpc.map((c) => c.name)));
 
+  // A real clicked card survives model argument drift; only the STORED call runs.
+  const driftStore = makeConfirmStore();
+  await drive({stream:true,extraBody:{threadId:THREAD},toolCall:{name:GRANT_TOOL,args:GRANT_ARGS},...CONFIRM,
+    tablesExtra:{paige_pending_confirmations:driftStore.table,...asAdmin},onInsert:mirrorConfirms(driftStore)});
+  const approvedRow = {...driftStore.rows[0]};
+  const driftArgs = {...GRANT_ARGS, role:"model-changed-role", confirm:true};
+  const driveCard = (store, body={}) => drive({stream:true,extraBody:{threadId:THREAD,approvedConfirmations:[approvedRow.fingerprint],...body},
+    toolCall:{name:GRANT_TOOL,args:driftArgs},...CONFIRM,tablesExtra:{paige_pending_confirmations:store.table,...asAdmin},onInsert:mirrorConfirms(store)});
+  const driftApproved = await driveCard(driftStore);
+  assert("18.7d clicked high-risk card survives model argument drift",granted(driftApproved));
+  assert("18.7e execution uses stored approved arguments, never the drift", !JSON.stringify(driftApproved.rec.rpc).includes("model-changed-role") && driftStore.rows[0].consumed);
+  const replay = await driveCard(driftStore);
+  assert("18.7f drifted card cannot replay a consumed approval",!granted(replay));
+  for (const [label, patch] of Object.entries({wrong_user:{user_id:FOREIGN},wrong_tenant:{tenant_id:OTHER_TENANT},wrong_thread:{thread_id:FOREIGN},wrong_client:{scoped_client_id:FOREIGN},wrong_tool:{tool_name:"n8n_create_workflow"},expired:{expires_at:"2000-01-01T00:00:00Z"},legacy:{issued_in_request:null}})) {
+    const invalidStore=makeConfirmStore([{...approvedRow,...patch,consumed:false}]);
+    const refused=await driveCard(invalidStore);
+    assert("18.7g drifted card refuses " + label,!granted(refused));
+  }
+  const ambiguous=makeConfirmStore([{...approvedRow,consumed:false},{...approvedRow,fingerprint:"f".repeat(16),consumed:false}]);
+  const ambiguousReply=await driveCard(ambiguous,{approvedConfirmations:[approvedRow.fingerprint,"f".repeat(16)]});
+  assert("18.7h ambiguous submitted proposals do not pick an arbitrary call",!granted(ambiguousReply));
+
   // ── 18.7b — OWNER-ONLY IS REFUSED DOWN BOTH CHANNELS, INCLUDING THE CARD. This is the property
   // 18.6/18.7 moved off `automation_set_grant` to make room for. A rendered card is the strongest
   // approval the platform has, and it still must not raise Paige's own autonomy from a chat turn.
@@ -2356,6 +2390,36 @@ const mirrorConfirms = (st) => (t, row) => {
     audit?.action === "crm_add_note" && audit?.target_type === "client_notes"
       && audit?.payload?.authorised_by === "operator_card",
     JSON.stringify(audit ?? "no attribution row"));
+}
+
+
+// Real handler -> real n8n adapter: stored SDK arguments pass validation only after the card.
+{
+  const THREAD="cccccccc-cccc-4ccc-8ccc-cccccccccccc", SESSION="dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const authorization="Bearer h."+Buffer.from(JSON.stringify({session_id:SESSION})).toString("base64url")+".s";
+  const st=makeConfirmStore();
+  const sdk={code:"export default workflow('Approved draft');",name:"Approved draft",versionName:"Draft",versionDescription:"Owner approved design"};
+  const base={stream:true,authorization,extraBody:{threadId:THREAD},rpcOverrides:{
+    resolve_tool_autonomy:{data:"confirm",error:null},get_actor_access:{data:{tier:"tenant"},error:null},
+    get_paige_persona_context:{data:[{tenant_id:CALLER_TENANT,tenant_name:"Workspace",funding_enabled:false}],error:null},
+    n8n_oauth_service:{data:null,error:{message:"N8N_FORBIDDEN"}},
+  },tablesExtra:{paige_pending_confirmations:st.table},onInsert:mirrorConfirms(st)};
+  const proposed=await drive({...base,toolCall:{name:"n8n_create_workflow",args:sdk}});
+  const acquired=r=>r.rec.rpc.filter(c=>c.name==="n8n_oauth_service"&&c.args._operation==="acquire");
+  assert("22.1 n8n never acquires provider credentials before the approval card",acquired(proposed).length===0&&st.rows.length===1);
+  const approved=await drive({...base,extraBody:{threadId:THREAD,approvedConfirmations:[st.rows[0].fingerprint]},toolCall:{name:"n8n_create_workflow",args:{...sdk,code:"",confirm:true}}});
+  assert("22.2 Solo owner without global CRM roles reaches real n8n adapter after clicked card",acquired(approved).length===1);
+  assert("22.3 real adapter validates stored SDK code instead of model's invalid replacement",acquired(approved)[0]?.args._input.session_id===SESSION&&acquired(approved)[0]?.args._input.tenant_id===CALLER_TENANT);
+  const audit=approved.rec.inserts.find(i=>i.table==="paige_audit_log"&&i.row.action==="n8n_create_workflow")?.row;
+  assert("22.4 refused n8n adapter result is audited as failed with safe reason",audit?.payload.outcome==="failed"&&audit?.payload.error==="forbidden",JSON.stringify(audit));
+  assert("22.5 audit excludes SDK code and provider input",!JSON.stringify(audit).includes("export default")&&!JSON.stringify(audit).includes("Owner approved design"));
+  const replay=await drive({...base,extraBody:{threadId:THREAD,approvedConfirmations:[st.rows[0].fingerprint]},toolCall:{name:"n8n_create_workflow",args:{...sdk,code:"",confirm:true}}});
+  assert("22.6 clicked n8n approval cannot acquire again on replay",acquired(replay).length===0);
+  const clientSeat=await drive({...base,rpcOverrides:{...base.rpcOverrides,get_actor_access:{data:{tier:"client"},error:null}},toolCall:{name:"n8n_list_workflows",args:{}}});
+  assert("22.7 client portal seat never reaches n8n owner adapter",acquired(clientSeat).length===0);
+  const executionRead=await drive({...base,toolCall:{name:"n8n_execution_get",args:{workflow_id:"wf1",execution_id:"e1"}}});
+  assert("22.8 registered execution metadata tool reaches adapter without a global CRM role",acquired(executionRead).length===1);
+
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);

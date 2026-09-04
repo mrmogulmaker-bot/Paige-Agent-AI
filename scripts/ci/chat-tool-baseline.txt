@@ -76,17 +76,6 @@ list_subagents
 marketplace_browse
 member_grant_role
 member_revoke_role
-n8n_activate_workflow
-n8n_archive_workflow
-n8n_create_workflow
-n8n_deactivate_workflow
-n8n_delete_workflow
-n8n_execution_get
-n8n_get_executions
-n8n_list_workflows
-n8n_run_workflow
-n8n_update_workflow
-n8n_validate_workflow
 pipeline_archive_preview
 pipeline_catalogue
 pipeline_configure

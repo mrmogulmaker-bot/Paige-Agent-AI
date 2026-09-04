@@ -1,10 +1,11 @@
+import { N8N_MANAGEMENT_CAPABILITIES } from './domains/n8n_management.ts';
 import { SPINE_ACTION_CLASSIFICATIONS, type SpineCapability } from "./contracts.ts";
 import { PIPELINE_DEAL_STAGE_EVIDENCE } from "./domains/pipeline.ts";
 import { BUSINESS_CONTEXT_READINESS } from "./domains/business_context.ts";
 import { TEAM_AUTHORITY } from "./domains/team.ts";
 import { N8N_CONNECTION_READINESS } from "./domains/n8n.ts";
 
-export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, N8N_CONNECTION_READINESS] as const;
+export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES] as const;
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
 const SERVER_SYMBOL_PATTERN = /^public\.[a-z][a-z0-9_]*$/;
@@ -33,7 +34,7 @@ export function validateSpineRegistry(capabilities: readonly SpineCapability[]):
     if (capability.action) {
       const action = capability.action;
       if (!SPINE_ACTION_CLASSIFICATIONS.includes(action.classification)) findings.push(`${capability.key}: unsupported action classification ${action.classification}`);
-      if (!SERVER_SYMBOL_PATTERN.test(action.executor)) findings.push(`${capability.key}: action executor must be an exact public server symbol`);
+      if (!SERVER_SYMBOL_PATTERN.test(action.executor) && !(action.executor === "edge.paige-ai-chat" && N8N_MANAGEMENT_CAPABILITIES.some(entry => entry.key === capability.key && entry.action.chatTool === action.chatTool && entry.action.classification === action.classification && entry.action.riskPolicyKey === action.riskPolicyKey && entry.action.approvalAuthority === action.approvalAuthority))) findings.push(`${capability.key}: action executor must be an exact public server symbol`);
       if (MUTATING.has(action.classification)) {
         if (action.approvalAuthority !== "chat-canonical") findings.push(`${capability.key}: mutating actions require chat-canonical approval authority`);
         if (capability.chatBinding !== "LIVE") findings.push(`${capability.key}: mutating actions require a LIVE Chat binding`);

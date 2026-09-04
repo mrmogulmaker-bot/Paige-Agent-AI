@@ -35,9 +35,9 @@ export function parsePolicy(src) {
 }
 
 /** The tools the handler declares to the model, with the exempt list it honours. */
-export function parseChat(src) {
+export function parseChat(src, importedTools = []) {
   return {
-    declared: [...new Set([...src.matchAll(/\n\s*name: "([a-z0-9_]+)",/g)].map((m) => m[1]))],
+    declared: [...new Set([...src.matchAll(/\n\s*name: "([a-z0-9_]+)",/g)].map((m) => m[1]).concat(importedTools))],
     // The handler must gate on the policy, not on a literal of its own. A re-introduced hand-list
     // is the exact drift the policy replaced, so it fails here rather than being merged and
     // discovered later by a reviewer who happens to look.
@@ -87,7 +87,7 @@ export function findings({ policy, exemptions, chat, verbSourceMatches }) {
     // Containment tombstones are deliberately classified while not being dispatched, so a future
     // accidental re-registration cannot inherit read semantics. They are named here rather than
     // silently tolerated.
-    if (tool === "marketplace_install" || tool === "marketplace_uninstall") continue;
+    if (tool === "marketplace_install" || tool === "marketplace_uninstall" || tool === "n8n_delete_workflow") continue;
     if (!declared.has(tool)) out.push(`${tool} is classified in ${POLICY} but the handler no longer declares it — remove the entry, or the policy fills with lines nobody reads.`);
   }
 
@@ -125,6 +125,9 @@ function selfTest() {
     verbSourceMatches: true,
   };
   let bad = 0;
+  bad += ok("imported catalog mutations are included", parseChat('', ['widget_delete_thing']).declared.includes('widget_delete_thing'));
+  bad += ok("an unclassified imported write fails", findings({...base, chat:{...base.chat, declared:[...base.chat.declared,...parseChat('', ['widget_delete_thing']).declared]}}).some(f=>f.includes('widget_delete_thing')));
+
   bad += ok("a fully classified handler is clean", findings(base).length === 0);
   bad += ok("an unclassified write is caught",
     findings({ ...base, chat: { ...base.chat, declared: [...base.chat.declared, "widget_delete_thing"] } })
@@ -179,7 +182,15 @@ if (!policy || !exemptions) {
   process.exit(1);
 }
 const verbSourceMatches = policySrc.includes(`export const MUTATION_VERB = ${MUTATION_VERB.toString()};`);
-const problems = findings({ policy, exemptions, chat: parseChat(chatSrc), verbSourceMatches });
+// Follow the mounted domain-owned catalog; imported mutations receive the same policy checks.
+let importedTools = [];
+if (chatSrc.includes('...N8N_MANAGEMENT_TOOLS')) {
+  if (!/import\s*\{[^}]*N8N_MANAGEMENT_TOOLS[^}]*\}\s*from\s*['"]\.\.\/_shared\/n8n-management\.ts['"]/.test(chatSrc)) throw new Error('Unresolved n8n catalog import');
+  const source = fs.readFileSync('supabase/functions/_shared/n8n-management.ts', 'utf8');
+  importedTools = [...source.matchAll(/^\s*(n8n_[a-z_]+):\{provider:/gm)].map(m => m[1]);
+  if (!importedTools.length) throw new Error('n8n catalog could not be parsed');
+}
+const problems = findings({ policy, exemptions, chat: parseChat(chatSrc, importedTools), verbSourceMatches });
 
 if (problems.length) {
   console.error(`✗ action-risk-lint: ${problems.length} problem(s).\n`);
