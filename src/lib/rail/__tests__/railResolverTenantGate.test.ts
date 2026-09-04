@@ -29,6 +29,13 @@ const FIX = readFileSync(
   "utf8",
 );
 
+/** Everything from the reader's own CREATE onward — never the whole file. */
+const READER = (() => {
+  const i = FIX.indexOf("CREATE OR REPLACE FUNCTION public.get_solo_rail_activity");
+  if (i < 0) throw new Error("get_solo_rail_activity is not defined in the pinned migration");
+  return FIX.slice(i);
+})();
+
 /**
  * The READER's body alone.
  *
@@ -72,7 +79,10 @@ describe("#794 — the role question is asked about the workspace the rows come 
   });
 
   it("still takes no tenant parameter and still filters by the server-resolved tenant", () => {
-    const signature = FIX.slice(FIX.indexOf("get_solo_rail_activity"), FIX.indexOf("returns table"));
+    // Sliced from READER, not FIX. The migration names this function in its header comment and
+    // defines several others alongside it, so slicing the whole file swept in record_rail_event's
+    // `p_tenant_id` and failed an assertion that is about the READER's signature.
+    const signature = READER.slice(0, READER.indexOf("returns table"));
     expect(signature).toMatch(/p_limit/);
     expect(signature).not.toMatch(/p_tenant/i);
     // The reader now UNIONs two tables inside a subquery aliased `e`, so the scoping predicate
@@ -84,7 +94,7 @@ describe("#794 — the role question is asked about the workspace the rows come 
   });
 
   it("does not widen the projection while fixing the gate", () => {
-    const returns = FIX.slice(FIX.indexOf("returns table"), FIX.indexOf("language plpgsql"));
+    const returns = READER.slice(READER.indexOf("returns table"), READER.indexOf("language plpgsql"));
     for (const forbidden of ["payload", "ref_table", "ref_id", "actor_user_id", "contact_id"]) {
       expect(returns).not.toMatch(new RegExp(`\\b${forbidden}\\b`));
     }
