@@ -934,7 +934,7 @@ Legend as above: **✓** live · **—** not built · **N/A** tier not opened ye
 |---|---|---|---|---|---|---|---|
 | `connections/communications` | **Live business-phone search, purchase, rename and choose-what-you-send-from**, the PAIGE-managed sending identity, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — search/purchase run `comms-search-numbers` / `comms-purchase-number` against the tenant's own Twilio subaccount; rename and set-primary run `tenant_phone_number_rename` / `tenant_phone_number_set_primary`; domains via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect`. **Paige can drive the PHONE half** — eight `comms_*` tools cover search, purchase, rename, set-primary and registration; **domains and the Google sending account stay click-only** and Paige has no tool for either | N/A | N/A | ✓ | N/A | — |
 | `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
-| `connections/registration` | Carrier (10DLC) registration: **PAIGE drafts the regulatory copy**, **the reviewed copy is saved**. The legal identity is SHOWN, not edited — Setup owns it | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce. The grading ladder stays in `communications`; this area holds the acts (§18) | N/A | N/A | ✓ | N/A | — |
+| `connections/registration` | Carrier (10DLC) registration: **PAIGE drafts the regulatory copy**, **the reviewed copy is saved**, and **the business facts blocking the filing are editable here** — a second EDITOR of the one canonical record, not a second record. Setup still owns the full record and its own five-subtab surface | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce. The business-record editor writes through `save_solo_business_context`, the same seam Setup uses, so the two surfaces cannot disagree (§57); it is Owner-only and mounts the canonical adapter only when opened. The four carrier-required representative identity columns are **derived** by `sync_a2p_representative_identity` (20261201000700) — before it, no writer populated them and brand filing could never start. The grading ladder stays in `communications`; this area holds the acts (§18) | N/A | N/A | ✓ | N/A | — |
 | `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
 | `connections/available` | The provider catalogue with per-provider truth badges | **structure-only** — a static catalogue, deliberately | N/A | N/A | ✓ | N/A | — |
 
@@ -1203,6 +1203,47 @@ B's whole tenant Rail — had the table grant not already made the read moot. Th
 active `tenant_members` row **of the resolved workspace** at owner/admin/coach. The policy is
 unchanged and still carries the trap; it is simply unreachable from these four consumers. Other
 direct readers still go through it — the two Analytics surfaces, tracked as **#802**.
+
+#### Agent attribution and workspace-level activity — SHIPS WITH PR #925 (§66)
+
+**Read the marks before the rows. `◻` is not `✓`.**
+
+`◻` means the READ supports it and **nothing writes it yet** — capacity, not behaviour. Every
+tier below therefore sees *nothing* today, and will keep seeing nothing until a producer passes
+an acting agent. Ticking `✓` here would claim a capability the PR body itself says nothing can
+produce, which is the drift §66 exists to stop.
+
+**Recorded as PENDING, not as shipped.** The migration applies to production through
+`deploy-migrations.yml` on merge to `main`; until that runs and `db-live` moves, these rows describe
+what the PR delivers, not what a tenant can do. The §32.a persisted-apply confirmation is owed after
+merge. Ticking these early would be the same lie as a fabricated metric.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Rail history names the ACTING AGENT (`get_solo_rail_activity` gains a 12th column, `actor_agent`) | ◻ (operator) | ◻ | ◻ | ◻ | ◻ (its OWN rail) | — | 403 |
+| …but only where the agent has a tenant-safe name (`paige_subagents.rail_display_name`) | ◻ | ◻ | ◻ | ◻ | ◻ | — | 403 |
+| Sees the name of an agent belonging to ANOTHER workspace | — | — | — | — | — | — | 403 |
+| Rail carries workspace-level work with no contact (`game_plan` · `system_check` · `agent_config` · `agent_run`) | ◻ (operator) | ◻ | ◻ | ◻ | ◻ (its OWN) | — | 403 |
+| Writes a Rail event naming another workspace's agent | — | — | — | — | — | — | 403 |
+
+**Row 2 is the §11 line, and it is deliberate.** `rail_display_name IS NULL` means an agent has no
+name a business owner should read. Ten of the twenty-four enabled agents on production are our own
+build-crew seats — `Review — Compliance Officer`, `Review — Doctrine Sentinel`. Their work is
+recorded by slug for operator audit and shows a business owner nothing. The backfill is written as
+an EXCLUSION, so a NEW platform agent defaults to not being named.
+
+**Rows 3 and 5 need BOTH a write guard and a read guard, which is why they are two rows.**
+`paige_subagents.slug` is globally unique and `tenant_id` is nullable, so a foreign key proves
+existence and not tenancy. The writer refuses a foreign slug with the same error it gives an unknown
+one, so the response cannot be used to enumerate another workspace's agents. The reader re-checks,
+because `tenant_id` is updatable: a platform default later assigned to a tenant would retroactively
+turn legally-written rows foreign, and no write-time check can reach back through history.
+
+**One capability this ship RESTORES rather than adds (§58).** The `surface` CHECK on
+`paige_client_events` never admitted `'form'`, but `growth-process-submission` has always passed it.
+Every Rail write from the form pipeline has failed since that pipeline shipped. Solo and sub-account
+tenants get form-submission events on their Rail for the first time — not a new capability, a
+capability that was specified and never once worked.
 
 **Sub-account row, stated explicitly because §51 exists for exactly this.** `get_solo_rail_activity`
 takes **no tenant argument**; it resolves the workspace server-side. A sub-account therefore reads

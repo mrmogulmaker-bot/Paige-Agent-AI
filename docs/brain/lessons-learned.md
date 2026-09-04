@@ -1771,6 +1771,41 @@ this at L1571 and it was still got wrong 7,400 lines later.
 
 ---
 
+## A test double more generous than the real client cannot catch a grant (2026-09-04, #924)
+
+**Symptom.** A one-line change to a browser `select()` passed 1,454 tests, a clean build and a
+green type ratchet, and would have blanked Solo Settings → Connections → Registration for every
+workspace on deploy.
+
+**Root cause.** `hasLeftPreparation` reads eight columns, three of which (`brand_sid`,
+`campaign_sid`, `messaging_service_sid`) the query never asked for — and its own comment
+deliberately treats an unrequested column's `undefined` as "no value", so three of the server's
+eight immutability conditions were silently inert. The obvious repair is to select them. But
+`20261201000600` REVOKED select on `tenant_a2p_registrations` from `authenticated` and re-granted
+a column list that excludes exactly those three, so PostgREST answers `permission denied for
+column`, which the hook correctly reports as `unreadable`, which renders the whole surface as a
+retry card. Every UI test still passed, because the mock's `select()` ignored its argument and
+returned the whole fixture row.
+
+**Why the proofs could not see it.** A double that returns whatever it is asked for is not a model
+of PostgREST; it is a model of a database with no column privileges. Grants are precisely the class
+of behaviour it erases. The §39 peer-gate caught it by reading the migration, not the test.
+
+*Rule:* **when a fix is "just ask for one more column", check the grant first.** Column-level
+`GRANT SELECT (...)` is used deliberately on this platform to keep identifiers out of the browser,
+and the fix for a predicate that needs them is a server-computed boolean — `comms-a2p-register`
+already returns `has_brand` / `has_campaign` / `has_messaging_service` for this exact reason — not
+a wider select. And when a double stands in for a privilege-bearing client, either make it honour
+the projection or assert the column list directly; `settings.registration-business.test.tsx` now
+does both.
+
+*Second, smaller rule from the same PR:* a shipped capability can be missing a **writer** rather
+than a UI. No function in the product wrote four columns `missingProfile()` requires, so a filing
+was structurally unreachable for every Solo tenant and no screen said so. When a readiness list
+never empties, check that something writes what it is checking.
+
+---
+
 ## Cataloguing a signal by what it holds today, instead of what it can hold
 
 **2026-09-04, Systems Check grounding.** An eleven-agent pass catalogued 101 tenant signals against
