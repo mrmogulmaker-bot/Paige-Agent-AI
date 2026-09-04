@@ -30,7 +30,11 @@ SELECT message_id,template_name,recipient_email,'delivered',tenant_id,
  jsonb_build_object('via','handle-resend-webhook','svix_id','msg_historic','invite_id',metadata->>'invite_id')
 FROM public.email_send_log CROSS JOIN generate_series(1,2) WHERE message_id='receipt-origin' AND status='sent';
 SET LOCAL ROLE service_role;
-SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_portal_null','receipt-portal-12','delivered',NULL)='processed','nullable portal binding preserved');
+DO $$ DECLARE result text; reason text; BEGIN
+  result := public.ingest_resend_receipt('msg_portal_null','receipt-portal-12','delivered',NULL);
+  SELECT p.reason INTO reason FROM public.resend_receipt_processing p WHERE receipt_id='msg_portal_null';
+  PERFORM pg_temp.check_receipt(result='processed','nullable portal binding preserved: ' || result || '/' || coalesce(reason,'none'));
+END $$;
 SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_portal_blank','receipt-portal-13','delivered',NULL)='processed','blank portal binding preserved');
 SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_portal_wrong','receipt-portal-14','delivered',NULL)='unresolved','nonempty portal binding mismatch refused');
 SELECT pg_temp.check_receipt(public.ingest_resend_receipt('msg_historic','receipt-origin','delivered',NULL)='processed','historical identity reused');
