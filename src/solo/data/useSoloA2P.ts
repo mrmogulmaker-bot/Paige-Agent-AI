@@ -154,7 +154,13 @@ export function useSoloA2P(): SoloA2PData {
 
       const [regRes, legalRes, adminRes] = await Promise.all([
         untyped.from("tenant_a2p_registrations")
-          .select("brand_status, campaign_status, status, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at")
+          // The three SIDs are here because `hasLeftPreparation` READS them. A column this
+          // query does not ask for arrives as `undefined`, which that predicate treats as
+          // "no value" by design — so omitting them silently disabled three of the server's
+          // eight immutability conditions on this surface. A carrier-linked row whose
+          // per-leg statuses still read 'pending' was then offered the editor and the PAID
+          // "Draft again with Paige" button, and the server refused the save afterwards.
+          .select("brand_status, campaign_status, status, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at, brand_sid, campaign_sid, messaging_service_sid")
           .eq("tenant_id", tenantId).limit(1).maybeSingle(),
         untyped.from("tenant_legal_profile")
           .select("legal_business_name, website_url")

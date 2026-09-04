@@ -30,6 +30,7 @@ import {
 import { useSoloA2P, type EditDraft } from "./data/useSoloA2P";
 import { useSoloA2PProvider } from "./data/useSoloA2PProvider";
 import { A2PComplianceSession } from "./A2PComplianceSession";
+import { RegistrationBusinessRecord } from "./settings-registration-business";
 import { rememberOAuthReturn } from "./data/oauthReturn";
 import { SoloIntegrationsView } from "./settings-integrations";
 import { SoloTeamWorkspace } from "./team-workspace";
@@ -1200,6 +1201,10 @@ function RegistrationPanel({ a2p, provider, account, status, statusLoading }: {
   status: { tone: string; state: string; detail: string } | null;
   statusLoading: boolean;
 }) {
+  // Opened by the owner, and only then does the canonical business record get mounted —
+  // held here rather than inside the block so a save that empties the shortfall does not
+  // unmount the form mid-edit and take the confirmation with it.
+  const [businessEditor, setBusinessEditor] = useState(false);
   const [legal, setLegal] = useState("");
   const [site, setSite] = useState("");
   const [hint, setHint] = useState("");
@@ -1275,7 +1280,12 @@ function RegistrationPanel({ a2p, provider, account, status, statusLoading }: {
     </div>
     {provider.state.eligible_number ? <div className="ss-fields"><Field label="Eligible workspace number" value={provider.state.eligible_number.phone_number}/><Field label="Number association" value={providerReg?.number_association_status ?? "Not started"}/><Field label="Carrier number status" value={providerReg?.number_registration_status ?? "Not started"}/></div>
       : <div className="ss-next"><strong>No eligible workspace number</strong><p>Add an SMS-capable Twilio number to this workspace before filing.</p></div>}
-    {provider.state.missing_profile_fields.length > 0 && <div className="ss-next"><strong>Complete the business record first</strong><p>Missing: {provider.state.missing_profile_fields.join(", ")}.</p><p><Link to={`/solo/${account}/settings/setup`}>Complete these in Setup</Link>. Tax and registration numbers stay sealed.</p></div>}
+    {/* Was: the shortfall, and a link away. Naming what blocks a filing is not resolving
+        it (§70) — the same facts are now completable here, against the same record. */}
+    <RegistrationBusinessRecord account={account} canManage={a2p.canManage}
+      missing={provider.state.missing_profile_fields}
+      open={businessEditor} onOpenChange={setBusinessEditor}
+      onSaved={() => { void provider.refresh(); a2p.refresh(); }}/>
     {providerReg?.failure_reason && <div className="ss-next" role="alert"><strong>Twilio needs a correction</strong><p>{providerReg.failure_reason}</p></div>}
     <div className="ss-form-actions">
       {!providerReg?.has_brand && !["brand_draft","brand_submitted"].includes(phase) && <button type="button" className="ss-btn" disabled={provider.busy || !draft || provider.state.missing_profile_fields.length > 0 || !provider.state.eligible_number} onClick={() => startProvider("start_brand")}>Start secure brand registration</button>}
