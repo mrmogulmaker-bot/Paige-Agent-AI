@@ -15,6 +15,9 @@ on:
       # Same reason for the removal proof: it must re-run when the seam changes.
       - "supabase/tests/solo_team_removal_authority.sql"
       - "supabase/functions/solo-team-invitations/**"
+      - "supabase/functions/handle-resend-webhook/**"
+      - "supabase/tests/resend_receipt_reliability.sql"
+      - "scripts/proof/resend-receipt-concurrency.mjs"
       - "src/__tests__/paige-spine-*.test.ts"
       - "src/solo/paigeClientScope.ts"
       - "src/solo/paigeClientScope.test.ts"
@@ -37,6 +40,9 @@ on:
       # Same reason for the removal proof: it must re-run when the seam changes.
       - "supabase/tests/solo_team_removal_authority.sql"
       - "supabase/functions/solo-team-invitations/**"
+      - "supabase/functions/handle-resend-webhook/**"
+      - "supabase/tests/resend_receipt_reliability.sql"
+      - "scripts/proof/resend-receipt-concurrency.mjs"
       - "src/__tests__/paige-spine-*.test.ts"
       - "src/solo/paigeClientScope.ts"
       - "src/solo/paigeClientScope.test.ts"
@@ -86,6 +92,10 @@ jobs:
       - run: supabase test db supabase/tests/solo_team_invite_recipient_binding.sql
       - run: supabase test db supabase/tests/solo_team_removal_authority.sql
       - run: supabase test db supabase/tests/solo_team_invite_lifecycle.sql
+      - run: supabase test db supabase/tests/resend_receipt_reliability.sql
+      - run: node scripts/proof/resend-receipt-concurrency.mjs
+        env:
+          RECEIPT_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # The business_context.readiness contract: grant surface, both caller paths, and the role
       # gate that a tenant-isolation-only proof cannot see (a workspace's own client is an
       # authenticated user of that same tenant). Rides this job for the same reason as the two
