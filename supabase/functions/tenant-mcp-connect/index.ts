@@ -113,6 +113,13 @@ Deno.serve(async (req) => {
   }
 
   const admin = createClient(supabaseUrl, serviceKey);
+  // Preserve n8n OAuth from the legacy bearer/admin mutation seam.
+  if (provider === "n8n") {
+    const { data: readiness, error } = await userClient.rpc("get_n8n_connection_readiness");
+    if (error) return jsonResponse({ error: "forbidden" }, 403);
+    if (readiness?.mcp?.auth_kind === "oauth") return jsonResponse({ error: "use_n8n_oauth_owner_flow" }, 409);
+  }
+
 
   if (action === "disconnect") {
     // Authority BEFORE the irreversible part. Revoking at the provider cannot be undone,
