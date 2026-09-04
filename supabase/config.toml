@@ -473,3 +473,12 @@ verify_jwt = true
 [functions.twilio-a2p-events]
 # Twilio Event Streams uses per-registration Basic credentials verified in-function.
 verify_jwt = false
+
+[functions.tenant-zapier-api-connect]
+# Owner JWT is verified by the gateway and tenant identity is resolved server-side.
+verify_jwt = true
+
+[functions.zapier-skool-intake]
+# Zapier cannot present a Supabase JWT. A high-entropy route token resolves one immutable
+# tenant route in-function; no tenant identity is accepted from the body.
+verify_jwt = false

@@ -66,10 +66,12 @@ function deferred<T>() {
 function world(over: {
   n8n?: Record<string, unknown> | null;
   mcp?: Partial<Record<"n8n" | "zapier", Record<string, unknown>>> | null;
+  zapierApi?: Record<string, unknown>;
   admin?: boolean;
   writeError?: { message: string } | null;
 } = {}) {
   let api: Record<string, unknown> = { tenant_id: context.tenantId, can_write: over.admin !== false, label: null, base_url: null, checked_at: null, last_success_at: null, failure_code: over.n8n?.status === "error" ? "authentication_rejected" : null, health: over.n8n?.configured ? over.n8n.status === "error" ? "needs_attention" : "saved_unverified" : "not_configured", configured: false, workflow_count: null, ...over.n8n };
+  const zapierApi = { tenant_id: context.tenantId, can_manage: over.admin !== false, state: "not_connected", failure_code: null, accessible_zap_count: null, last_checked_at: null, last_success_at: null, capabilities: [], limitations: [], ...over.zapierApi };
   rpc.mockImplementation((name: string) => {
     if (name === "get_tenant_n8n_api_readiness") return Promise.resolve({ data: api, error: null });
     if (name === "get_tenant_mcp_connections") return Promise.resolve({ data: over.mcp ?? {}, error: null });
@@ -77,6 +79,7 @@ function world(over: {
     return Promise.resolve({ data: null, error: null });
   });
   invoke.mockImplementation((name: string, options: { body: Record<string, unknown> }) => {
+    if (name === "tenant-zapier-api-connect" && options.body.action === "status") return Promise.resolve({ data: { ok: true, connection: zapierApi }, error: null });
     if (name !== "tenant-n8n-api-connect") return Promise.resolve({ data: { ok: true, status: "connected", toolCount: 4 }, error: null });
     if (over.writeError) return Promise.resolve({ data: { error: over.writeError.message }, error: {} });
     const disconnected = options.body.action === "disconnect";
@@ -215,7 +218,7 @@ describe("Truth boundary", () => {
     const { host } = await render();
     const card = host.querySelector('.ig-card[data-provider="mcp"]');
     expect(card?.textContent).toContain("Zapier");
-    expect(card?.textContent).toContain("MCP connection");
+    expect(card?.textContent).toContain("Automation");
     for (const jargon of ["bridge", "transport", "SSE", "Bearer", "JSON-RPC"]) {
       expect(card?.textContent).not.toContain(jargon);
     }
@@ -561,175 +564,78 @@ describe("Write-error language", () => {
  */
 // The approved n8n tabs replace the static-credential setup flow; coverage lives in settings-integrations.n8n-tabs.test.tsx.
 
-describe("Zapier (its address is its credential)", () => {
-  const zapierSection = (host: HTMLElement) => {
-    const panel = host.querySelector<HTMLElement>(".ig-panel");
-    if (!panel) throw new Error("the Zapier panel is not open");
-    return panel;
-  };
-  const zapierButton = (host: HTMLElement, text: string) =>
-    Array.from(zapierSection(host).querySelectorAll("button")).find((b) => b.textContent?.includes(text));
-
+describe("Zapier API and PAIGE tools are independent", () => {
+  const panel = (host: HTMLElement) => host.querySelector<HTMLElement>(".ig-panel")!;
+  const panelButton = (host: HTMLElement, text: string) => Array.from(panel(host).querySelectorAll("button")).find((b) => b.textContent?.includes(text));
   let assigned: string[] = [];
   beforeEach(() => {
     assigned = [];
-    // jsdom refuses a real navigation, and the assertion is about WHERE we send the
-    // person rather than about navigating, so the call is captured.
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: { ...window.location, assign: (url: string) => assigned.push(url) },
+    Object.defineProperty(window, "location", { configurable: true, value: { ...window.location, assign: (url: string) => assigned.push(url) } });
+  });
+
+  it("shows two independent card states and two manage tabs", async () => {
+    world({ zapierApi: { state: "connected", accessible_zap_count: 3, last_checked_at: "2026-09-04T12:00:00Z", last_success_at: "2026-09-04T12:00:00Z" },
+      mcp: { zapier: { configured: true, enabled: true, status: "error", auth_kind: "oauth" } } });
+    const { host } = await render();
+    const card = host.querySelector('.ig-card[data-provider="mcp"]')!;
+    expect(card.textContent).toContain("API connectionConnected");
+    expect(card.textContent).toContain("Paige tools (MCP)Needs attention");
+    await openCard(host, "mcp");
+    expect(panelButton(host, "API connection")?.getAttribute("aria-selected")).toBe("true");
+    expect(panelButton(host, "Paige tools (MCP)")).toBeTruthy();
+  });
+
+  it("starts the provider API OAuth flow and sends no credential", async () => {
+    world();
+    invoke.mockImplementation((name: string, options: { body: Record<string, unknown> }) => {
+      if (name === "tenant-zapier-api-connect" && options.body.action === "status") return Promise.resolve({ data: { ok: true, connection: { tenant_id: "tenant-a", can_manage: true, state: "not_connected", failure_code: null, accessible_zap_count: null, last_checked_at: null, last_success_at: null, capabilities: [], limitations: [] } }, error: null });
+      if (name === "tenant-zapier-api-connect" && options.body.action === "oauth_begin") return Promise.resolve({ data: { ok: true, authorize_url: "https://api.zapier.com/v2/authorize?state=bound" }, error: null });
+      return Promise.resolve({ data: { ok: true }, error: null });
     });
+    const { host } = await render(); await openCard(host, "mcp"); await click(panelButton(host, "Connect API"));
+    const body = invoke.mock.calls.at(-1)![1].body;
+    expect(body).toEqual({ action: "oauth_begin", expected_tenant_id: "tenant-a" });
+    expect(Object.keys(body).join(",")).not.toMatch(/token|secret|key|verifier/i);
+    expect(assigned).toEqual(["https://api.zapier.com/v2/authorize?state=bound"]);
   });
 
-  // The address Zapier issues carries its own secret in the path, so pasting it IS the
-  // act of authorising. These tests were written when consent was the only path and
-  // asserted there was no field to type into; that is no longer the design, because it
-  // refused the only credential Zapier actually hands its users.
-  const urlInput = (host: HTMLElement) =>
-    zapierSection(host).querySelector<HTMLInputElement>('input[type="url"]')!;
-
-  const ZAPIER_URL = "https://mcp.zapier.com/api/mcp/s/secret-path-segment/mcp";
-
-  it("takes the address, sends only what that shape needs, and does not leave it on screen", async () => {
+  it("starts MCP OAuth from the exact Zapier server and clears it", async () => {
     world();
-    invoke.mockResolvedValue({ data: { ok: true, status: "connected" }, error: null });
-    const { host } = await render();
-    await openCard(host, "mcp");
-
-    const field = urlInput(host);
-    expect(field).toBeTruthy();
-    await type(field, ZAPIER_URL);
-    await click(zapierButton(host, "Connect Zapier"));
-
-    const [, options] = invoke.mock.calls.at(-1)!;
-    // No token, no auth kind, no header, no transport: a shape that has none of those
-    // must not send blanks for them, or the endpoint cannot tell an absent field from an
-    // unfilled one.
-    expect(options.body).toEqual({
-      provider: "zapier",
-      expected_tenant_id: "tenant-a",
-      action: "connect",
-      server_url: ZAPIER_URL,
-      label: "",
-    });
-
-    // The address is a credential. Once stored, it has no business still sitting in the
-    // field or anywhere else in the rendered panel.
-    expect(urlInput(host).value).toBe("");
-    expect(zapierSection(host).textContent).not.toContain("secret-path-segment");
+    invoke.mockResolvedValue({ data: { ok: true, authorize_url: "https://zapier.com/oauth/authorize?state=mcp" }, error: null });
+    const { host } = await render(); await openCard(host, "mcp"); await click(panelButton(host, "Paige tools (MCP)"));
+    const field=panel(host).querySelector<HTMLInputElement>('input[type="url"]')!;const address="https://mcp.zapier.com/api/mcp/s/server-id/mcp";await type(field,address);await submit(host);
+    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider:"zapier",action:"oauth_begin",server_url:address,expected_tenant_id:"tenant-a" });
+    expect(field.value).toBe("");expect(assigned).toEqual(["https://zapier.com/oauth/authorize?state=mcp"]);
   });
 
-  it("keeps the sign-in grant available, and still asks the server where to send the person", async () => {
+  it("keeps MCP disconnect independent from the API connection", async () => {
+    world({ zapierApi: { state:"connected",accessible_zap_count:1,last_checked_at:"2026-09-04T12:00:00Z",last_success_at:"2026-09-04T12:00:00Z" },
+      mcp:{zapier:{configured:true,enabled:true,status:"connected",auth_kind:"oauth",approved_capabilities:[]}} });
+    const {host}=await render();await openCard(host,"mcp");await click(panelButton(host,"Paige tools (MCP)"));await click(panelButton(host,"Disconnect"));await click(panelButton(host,"Disconnect"));
+    expect([...invoke.mock.calls].reverse().find((call)=>call[1].body.action==="disconnect")![1].body).toEqual({provider:"zapier",expected_tenant_id:"tenant-a",action:"disconnect"});
+    expect(invoke.mock.calls.some((c)=>c[0]==="tenant-zapier-api-connect"&&c[1].body.action==="disconnect")).toBe(false);
+  });
+
+  it("uses the same two-tab keyboard behavior as n8n", async () => {
     world();
-    invoke.mockResolvedValue({ data: { ok: true, authorize_url: "https://as.zapier.example/authorize?code_challenge=abc&state=xyz" }, error: null });
-    const { host } = await render();
-    await openCard(host, "mcp");
-    // A workspace already connected by grant keeps working, so the path is demoted, not
-    // deleted (§58).
-    await click(zapierButton(host, "Use Zapier sign-in instead"));
-
-    const [, options] = invoke.mock.calls.at(-1)!;
-    expect(options.body).toEqual({ provider: "zapier", expected_tenant_id: "tenant-a", action: "oauth_begin" });
-    // Everything about the consent URL — the issuer, the client, the challenge — is
-    // discovered and composed server-side. The browser only follows.
-    expect(assigned).toEqual(["https://as.zapier.example/authorize?code_challenge=abc&state=xyz"]);
+    const { host } = await render(); await openCard(host, "mcp");
+    const apiTab = panelButton(host, "API connection")!; apiTab.focus();
+    await act(async () => apiTab.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    expect(panelButton(host, "Paige tools (MCP)")?.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(panelButton(host, "Paige tools (MCP)"));
   });
 
-  it("says so plainly when the sign-in cannot be started", async () => {
-    world();
-    invoke.mockResolvedValue({ data: { error: "oauth_begin_failed", code: "discovery_failed" }, error: null });
-    const { host } = await render();
-    await openCard(host, "mcp");
-    await click(zapierButton(host, "Use Zapier sign-in instead"));
-    expect(zapierSection(host).textContent).toContain("could not be reached");
-    // Nowhere to go is better than somewhere wrong.
-    expect(assigned).toEqual([]);
-  });
-
-  it("does not offer to save an empty address", async () => {
-    world();
-    const { host } = await render();
-    await openCard(host, "mcp");
-    expect(zapierButton(host, "Connect Zapier")?.disabled).toBe(true);
-  });
-
-  it("separates being connected from having approved anything", async () => {
-    // A granted connection lets Paige SEE what exists. It does not let her run any of it,
-    // and a workspace that thinks otherwise has been misled by this screen.
-    world({ mcp: { zapier: { configured: true, enabled: true, status: "connected", auth_token_last4: "aaaa", transport: "http", server_url_host: "mcp.zapier.com", approved_capabilities: [] } } });
-    const { host } = await render();
-    await openCard(host, "mcp");
-    const text = zapierSection(host).textContent ?? "";
-    expect(text).toContain("Connected");
-    expect(text).toContain("She runs nothing until you approve");
-  });
-
-  it("never renders a stored grant as connected before the probe says so", async () => {
-    world({ mcp: { zapier: { configured: true, enabled: true, status: "pending_verification", auth_token_last4: "aaaa", transport: "http", server_url_host: "mcp.zapier.com" } } });
-    const { host } = await render();
-    await openCard(host, "mcp");
-    const text = zapierSection(host).textContent ?? "";
-    expect(text).toContain("Saved, not checked yet");
-    expect(text).not.toContain("Connected");
-  });
-
-  it("re-checks and disconnects without ever sending a credential", async () => {
-    world({ mcp: { zapier: { configured: true, enabled: true, status: "error", auth_token_last4: "aaaa", transport: "http", server_url_host: "mcp.zapier.com" } } });
-    const { host } = await render();
-    await openCard(host, "mcp");
-
-    await click(zapierButton(host, "Check it again"));
-    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider: "zapier", expected_tenant_id: "tenant-a", action: "verify" });
-
-    await click(zapierButton(host, "Disconnect"));
-    await click(zapierButton(host, "Disconnect it"));
-    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider: "zapier", expected_tenant_id: "tenant-a", action: "disconnect" });
-    // No token, no key, no client secret — this browser has never held one.
-    for (const [, options] of invoke.mock.calls) {
-      expect(Object.keys(options.body).join(",")).not.toMatch(/token|secret|key|verifier/i);
-    }
-  });
-
-  it("lets a non-admin see the state but not grant anything", async () => {
-    world({ admin: false, mcp: { zapier: { configured: true, enabled: true, status: "connected", auth_token_last4: "aaaa", transport: "http", server_url_host: "mcp.zapier.com" } } });
-    const { host } = await render();
-    await openCard(host, "mcp");
-    const panel = zapierSection(host);
-    expect(panel.textContent).toContain("Connected");
-    expect(panel.textContent).toContain("Only a workspace admin");
-    expect(zapierButton(host, "Connect Zapier")).toBeUndefined();
-    expect(zapierButton(host, "Disconnect")).toBeUndefined();
-  });
-
-  it("keeps n8n's own connections out of Zapier's panel", async () => {
-    world({ mcp: {
-      n8n: { configured: true, enabled: true, status: "connected", auth_token_last4: "1111", transport: "sse", server_url_host: "acme.app.n8n.cloud" },
-      zapier: { configured: true, enabled: true, status: "error", auth_token_last4: "2222", transport: "http", server_url_host: "mcp.zapier.com" },
-    } });
-    const { host } = await render();
-    await openCard(host, "mcp");
-    const text = zapierSection(host).textContent ?? "";
-    // The address is no longer shown on this panel, so state is the discriminator: the
-    // two rows are in deliberately opposite states, and a panel reading n8n's would say
-    // Connected. It must say Zapier's.
-    expect(text).toContain("Saved, not working");
-    expect(text).not.toContain("Connected");
-    expect(text).not.toContain("acme.app.n8n.cloud");
-    expect(text).not.toContain("1111");
+  it("lets the owner cancel an in-progress API authorization", async () => {
+    world({ zapierApi: { state: "connecting" } });
+    const { host } = await render(); await openCard(host, "mcp");
+    await click(panelButton(host, "Cancel authorization"));
+    expect(invoke.mock.calls.some((call) => call[0] === "tenant-zapier-api-connect" && call[1].body.action === "cancel")).toBe(true);
   });
 });
 
-/**
- * Approving what Paige may run.
- *
- * Connecting is reachability; this is authority. The properties worth holding are the ones
- * that would let authority widen by accident: approving against a stale list, approving a
- * contract nobody looked at, or offering the choice at all against a connection that has
- * never been proven to work.
- */
 describe("Capability approval", () => {
   const connected = (over = {}) => ({
-    zapier: { configured: true, enabled: true, status: "connected", auth_token_last4: "aaaa",
+    zapier: { configured: true, enabled: true, status: "connected", auth_kind: "oauth", auth_token_last4: "aaaa",
               transport: "http", server_url_host: "mcp.zapier.com", approved_capabilities: [], ...over },
   });
   const panel = (host: HTMLElement) => host.querySelector<HTMLElement>(".ig-panel")!;
@@ -749,13 +655,15 @@ describe("Capability approval", () => {
     world({ mcp: connected({ status: "pending_verification" }) });
     const { host } = await render();
     await openCard(host, "mcp");
-    expect(panel(host).querySelector(".ig-caps")).toBeNull();
+    await click(capsButton(host, "Paige tools (MCP)"));
+    expect(panel(host).querySelector(".ig-capability-approval")).toBeNull();
   });
 
   it("says plainly that nothing is approved, and does not call the provider until asked", async () => {
     world({ mcp: connected() });
     const { host } = await render();
     await openCard(host, "mcp");
+    await click(capsButton(host, "Paige tools (MCP)"));
     expect(panel(host).textContent).toContain("Nothing is approved yet");
     // Discovery is an outbound request; it does not happen just because a panel opened.
     expect(invoke.mock.calls.some((c) => c[1].body.action === "discover")).toBe(false);
@@ -772,13 +680,14 @@ describe("Capability approval", () => {
     invoke.mockResolvedValue({ data: { ok: true, tools: TOOLS }, error: null });
     const { host } = await render();
     await openCard(host, "mcp");
+    await click(capsButton(host, "Paige tools (MCP)"));
     await click(capsButton(host, "See what is available"));
 
     await click(capRows(host)[0]);
     invoke.mockResolvedValue({ data: { ok: true, approved_count: 1, pinned_count: 1 }, error: null });
     await click(capsButton(host, "Approve 1 of 2"));
 
-    const body = invoke.mock.calls.at(-1)![1].body;
+    const body = [...invoke.mock.calls].reverse().find((call) => call[1].body.action === "approve")![1].body;
     expect(body.action).toBe("approve");
     expect(body.capabilities).toEqual(["send_email"]);
     // The pin is the fingerprint of the contract on screen. Without it the server has no
@@ -793,6 +702,7 @@ describe("Capability approval", () => {
     invoke.mockResolvedValue({ data: { ok: true, tools: TOOLS.map((t) => ({ ...t, approved: true })) }, error: null });
     const { host } = await render();
     await openCard(host, "mcp");
+    await click(capsButton(host, "Paige tools (MCP)"));
     await click(capsButton(host, "See what is available"));
     expect(capRows(host).every((b) => b.getAttribute("aria-pressed") === "true")).toBe(true);
 
@@ -800,7 +710,7 @@ describe("Capability approval", () => {
     invoke.mockResolvedValue({ data: { ok: true }, error: null });
     await click(capsButton(host, "Approve 1 of 2"));
     // A statement of the whole set, not an addition to it.
-    expect(invoke.mock.calls.at(-1)![1].body.capabilities).toEqual(["send_email"]);
+    expect([...invoke.mock.calls].reverse().find((call) => call[1].body.action === "approve")![1].body.capabilities).toEqual(["send_email"]);
   });
 
   it("refuses to record consent to a list that moved, and reloads it", async () => {
@@ -808,6 +718,7 @@ describe("Capability approval", () => {
     invoke.mockResolvedValue({ data: { ok: true, tools: TOOLS }, error: null });
     const { host } = await render();
     await openCard(host, "mcp");
+    await click(capsButton(host, "Paige tools (MCP)"));
     await click(capsButton(host, "See what is available"));
     await click(capRows(host)[0]);
 
@@ -825,6 +736,7 @@ describe("Capability approval", () => {
     invoke.mockResolvedValue({ data: { ok: true, tools: TOOLS }, error: null });
     const { host } = await render();
     await openCard(host, "mcp");
+    await click(capsButton(host, "Paige tools (MCP)"));
     await click(capsButton(host, "See what is available"));
     expect((capsButton(host, "Approve 0 of 2") as HTMLButtonElement).disabled).toBe(true);
     await click(capRows(host)[0]);
@@ -835,6 +747,7 @@ describe("Capability approval", () => {
     world({ admin: false, mcp: connected() });
     const { host } = await render();
     await openCard(host, "mcp");
-    expect(panel(host).querySelector(".ig-caps")).toBeNull();
+    await click(capsButton(host, "Paige tools (MCP)"));
+    expect(panel(host).querySelector(".ig-capability-approval")).toBeNull();
   });
 });

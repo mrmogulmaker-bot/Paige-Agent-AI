@@ -353,7 +353,7 @@ export type McpTool = { name: string; description: string };
  * deciding what to approve; it must never reach a model. That distinction is the caller's
  * to keep, and `_shared/mcp-outcome.ts` is where it is kept.
  */
-export type McpToolFingerprint = McpTool & { schemaHash: string };
+export type McpToolFingerprint = McpTool & { schemaHash: string; app: string; actionType: string; effects: string[] };
 
 /**
  * Discovery, reduced to identity and purpose. Input schemas are deliberately dropped
@@ -439,10 +439,17 @@ async function fingerprintsOf(tools: unknown): Promise<McpToolFingerprint[]> {
     if (!raw || typeof raw !== "object") continue;
     const t = raw as Record<string, unknown>;
     if (typeof t.name !== "string" || !t.name) continue;
+    const meta=t._meta&&typeof t._meta==="object"&&!Array.isArray(t._meta)?t._meta as Record<string,unknown>:{};
+    const annotations=t.annotations&&typeof t.annotations==="object"&&!Array.isArray(t.annotations)?t.annotations as Record<string,unknown>:{};
+    const explicitEffects=Array.isArray(meta.effects)?meta.effects.filter((v):v is string=>typeof v==="string"&&["read","create","update","send","delete"].includes(v)):[];
+    if(annotations.readOnlyHint===true&&!explicitEffects.includes("read"))explicitEffects.push("read");
     out.push({
       name: t.name.slice(0, 200),
       description: typeof t.description === "string" ? t.description.slice(0, 500) : "",
       schemaHash: await fingerprintSchema(t.inputSchema),
+      app: typeof meta.connected_app==="string"?meta.connected_app.slice(0,100):typeof meta.app_name==="string"?meta.app_name.slice(0,100):"",
+      actionType: typeof meta.action_type==="string"?meta.action_type.slice(0,80):"",
+      effects: explicitEffects,
     });
   }
   return out;

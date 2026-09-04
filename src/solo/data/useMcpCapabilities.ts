@@ -26,6 +26,10 @@ export type DiscoveredCapability = {
   description: string;
   schemaHash: string;
   approved: boolean;
+  connectedApp: string;
+  actionType: string;
+  effects: Array<"read"|"create"|"update"|"send"|"delete">;
+  authority: "ask_first";
 };
 
 export type CapabilitiesState = {
@@ -46,6 +50,10 @@ function readTools(value: unknown): DiscoveredCapability[] {
       description: typeof t.description === "string" ? t.description : "",
       schemaHash: typeof t.schema_hash === "string" ? t.schema_hash : "",
       approved: t.approved === true,
+      connectedApp: typeof t.connected_app === "string" ? t.connected_app : "",
+      actionType: typeof t.action_type === "string" ? t.action_type : "",
+      effects: Array.isArray(t.effects) ? t.effects.filter((v): v is "read"|"create"|"update"|"send"|"delete" => typeof v === "string" && ["read","create","update","send","delete"].includes(v)) : [],
+      authority: "ask_first",
     }));
 }
 

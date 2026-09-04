@@ -4610,7 +4610,7 @@ SPINNING UP A NEW SPECIALIST — only when the roster genuinely lacks the capabi
 
 AUTOMATIONS (n8n) — use current connection evidence and OAuth management tools. API health is independent. Zero approved previews never means zero workflows exist. List/search existing workflows before speculating; a partial result is a subset. Use the existing Needs your OK card for writes and execute its exact stored proposal. Never send the operator to an imaginary approvals queue. Missing execution/history scope means reconnect OAuth for those permissions, not loss of read/write access. A started execution is not completion or proof of delivery. Never automatically retry an unknown write outcome.
 
-ZAPIER — if the workspace has connected a Zapier (MCP) account, you can reach across 9,000+ apps (Slack, Gmail, Google Sheets, HubSpot, Trello, and thousands more) through their Zapier actions. zapier_list_actions shows what THIS workspace has enabled; zapier_run_action RUNS one — resolve the exact tool_name from the list first, then pass the inputs that action expects. Running is doing: you report what Zapier actually returned, never a hoped-for outcome (the same honesty as firing an automation). zapier_run_action follows the propose→confirm rule unless the workspace set it to autopilot. If no Zapier is connected the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it exists or ran. n8n and Zapier are complementary: n8n is their own workflow engine; Zapier is the fast bridge to apps they haven't wired in n8n. Pick whichever the operator already has the automation/app in.
+ZAPIER — Zapier API and Zapier PAIGE tools (MCP) are separate workspace connections. zapier_connection_test performs a contained read-only provider check and records its real outcome in Rail; it never runs or changes a Zap. zapier_list_actions shows only MCP tools THIS workspace approved; zapier_run_action RUNS one after the governed approval. Report returned outcomes, never hoped-for outcomes. If either connection is absent, name the specific missing connection and point to Settings → Integrations.
 
 AUTOMATION HONESTY — report only the returned n8n receipt. A valid SDK check is not a created workflow. A created workflow is unpublished until a separately approved publish succeeds. An execution response with started:true means n8n accepted the run, not that it finished. Read execution status with the returned workflow and execution identifiers; metadata-only status never proves a particular message or customer update was delivered. delivered:null means delivery is unknown. Never invent webhook acceptance, channel outcomes, or provider error details. An unknown write outcome must not be retried automatically because it may already have taken effect.
 
@@ -6275,6 +6275,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 properties: { use_case_hint: { type: "string", description: "One line on what this business texts clients about, e.g. 'appointment reminders and follow-ups'." } },
                 required: []
               }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "zapier_connection_test",
+              description: "Owner only. Run a contained, read-only test of this workspace's Zapier API connection. It reads a bounded workflow inventory response, changes no Zap, records the real success or failure in Rail, and returns only a structured outcome.",
+              parameters: { type: "object", properties: {}, required: [] }
             }
           },
           {
@@ -8834,6 +8842,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "program_list" ||
           tc.function.name === "program_enroll" ||
           N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) ||
+          tc.function.name === "zapier_connection_test" ||
           tc.function.name === "zapier_list_actions" ||
           tc.function.name === "zapier_run_action" ||
           tc.function.name === "crm_log_activity" ||
@@ -10693,6 +10702,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               result = await runN8nManagement({ admin: supabase, userId: user.id,
                 tenantId: personaCtx.tenant_id ?? '', sessionId: n8nSessionId,
                 tool: tc.function.name, args, mutationApproved: approvalChannel.has(tc.id) });
+            } else if (tc.function.name === "zapier_connection_test") {
+              const { data: zapData, error: zapErr } = await supabaseClient.functions.invoke("tenant-zapier-api-connect", { body: { action: "test", expected_tenant_id: personaCtx.tenant_id } });
+              if (zapErr || !zapData || typeof zapData !== "object") result = { success: false, outcome: "failed", error: "provider_unavailable" };
+              else {
+                const c = zapData.connection && typeof zapData.connection === "object" ? zapData.connection : {};
+                result = { success: zapData.ok === true, outcome: zapData.outcome === "succeeded" ? "succeeded" : "failed",
+                  state: typeof c.state === "string" ? c.state : "needs_attention",
+                  accessible_zap_count: typeof c.accessible_zap_count === "number" ? c.accessible_zap_count : null,
+                  error: typeof zapData.error === "string" ? zapData.error : null };
+              }
             } else if (
               tc.function.name === "zapier_list_actions" || tc.function.name === "zapier_run_action"
             ) {
