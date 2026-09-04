@@ -3279,3 +3279,10 @@ least-privilege test tenant specified in #888.
 ### Solo Sales agreement schedule clarity (2026-09-03, PR #895)
 
 The Sales agreement detail now includes the recorded renewal date, or an explicit Not stated / Not applicable value. Start, renewal and end are calendar dates and retain their recorded day across timezones. This is read-only presentation over the existing agreement source; no payment, Catalog, role or cross-workspace change. See `docs/delivery/solo-sales-agreement-schedule.md` for scope, acceptance and separated proof. Authenticated browser and production proof remain owed until recorded.
+
+
+### Solo Sales workbench (2026-09-03)
+
+Current implementation: commercial terms first, a five-row canonical offer finder with server name search/paging and exact selected-offer references, compact payment handling and expandable source-backed form/payment activity. Terms search/status filters explicitly cover the latest 200 loaded records; client identity remains the existing bounded directory, not all-history search. Catalog baseline prices, writes, six Campaigns tabs and Pipeline stay unchanged. No documents/signatures/payment collection added.
+
+Owner superseded competing Sales PR #905; its separate Clients fix remains with that owner. R1 #903 is merged at `c198d8ae` and its production revision was verified; the older pending-release wording describes the pre-release ledger. Workbench release checks and exact deployment evidence: [Sales workbench](delivery/solo-sales-workbench.md). Local Chromium covers all four widths/both themes and simulated 1/80/80000 offers; authenticated persistence and production large-catalog performance remain **Proof Owed**. Broader Sales remains **PARTIAL**.

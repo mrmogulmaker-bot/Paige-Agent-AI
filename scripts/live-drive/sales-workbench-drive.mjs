@@ -1,0 +1,33 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import {resolvePlaywright,buildLaunchOptions} from './live-drive.mjs';
+const {chromium}=await resolvePlaywright();const browser=await chromium.launch(buildLaunchOptions());
+const out='scripts/live-drive/artifacts/sales-workbench';fs.mkdirSync(out,{recursive:true});const evidence=[];
+const rowsEqual=async(page,selector,count)=>{await page.waitForFunction(({selector,count})=>document.querySelectorAll(selector).length===count,{selector,count});assert.equal(await page.locator(selector).count(),count);};
+const catalog=(page,detail)=>page.evaluate(detail=>window.dispatchEvent(new CustomEvent('sales-catalog-harness',{detail})),detail);
+try{
+for(const [width,height]of[[1536,770],[1366,768],[1024,768],[900,1000]])for(const theme of ['light','dark']){
+ const context=await browser.newContext({viewport:{width,height},reducedMotion:'reduce'});const page=await context.newPage();await page.route('https://fonts.googleapis.com/**',r=>r.abort());await page.goto('http://127.0.0.1:5213',{waitUntil:'domcontentloaded'});await page.getByRole('button',{name:'Quick offer',exact:true}).waitFor();if(theme==='dark')await page.locator('[data-theme-toggle]').click();
+ for(const size of [1,80,80000]){
+  await catalog(page,{reset:true,size});const search=page.getByRole('searchbox',{name:'Search Catalog offers'});await search.fill('');await rowsEqual(page,'[aria-label="Offers"] .so-row',Math.min(size,5));
+  if(size>5){await page.getByRole('button',{name:'Next offers',exact:true}).click();await page.getByText('Page 2 · up to 5 offers',{exact:true}).waitFor();await rowsEqual(page,'[aria-label="Offers"] .so-row',5);await search.fill('Catalog item '+size);await page.locator('[aria-label="Offers"]').getByText('Catalog item '+size,{exact:true}).waitFor();await rowsEqual(page,'[aria-label="Offers"] .so-row',1);}
+  await search.fill('no such literal offer');await rowsEqual(page,'[aria-label="Offers"] .so-row',0);await search.fill('');
+  evidence.push({width,height,theme,simulatedCatalog:size,boundedRows:'PASS',searchAndPaging:'PASS'});
+ }
+ await page.getByRole('button',{name:'Record terms',exact:true}).click();const dialog=page.getByRole('dialog');await dialog.getByLabel('Search offers by name').fill('Catalog item 80000');await dialog.getByLabel('Offer',{exact:true}).selectOption('offer-80000');await dialog.getByLabel('Search offers by name').fill('Onboarding');assert.equal(await dialog.getByLabel('Offer',{exact:true}).inputValue(),'offer-80000');await page.keyboard.press('Escape');await page.getByRole('button',{name:'Discard changes'}).click();
+ await catalog(page,{mode:'error'});await page.getByRole('button',{name:'Retry offers'}).click();await page.locator('[aria-label="Offers"]').waitFor();
+ await catalog(page,{mode:'loading'});await page.getByText('Loading Catalog offers…',{exact:true}).waitFor();await rowsEqual(page,'[aria-label="Offers"] .so-row',0);await catalog(page,{mode:'ready'});
+ await page.evaluate(()=>window.dispatchEvent(new CustomEvent('sales-agreements-harness',{detail:{mode:'populated',reset:true}})));
+ await page.getByRole('searchbox',{name:'Find client terms'}).fill('Jordan');await rowsEqual(page,'[aria-label="Commercial terms and retainers"] .so-row',1);
+ await page.getByLabel('Terms status',{exact:true}).selectOption('draft');await rowsEqual(page,'[aria-label="Commercial terms and retainers"] .so-row',0);
+ await page.getByRole('searchbox',{name:'Find client terms'}).fill('');await rowsEqual(page,'[aria-label="Commercial terms and retainers"] .so-row',1);
+ await page.getByLabel('Terms status',{exact:true}).selectOption('all');
+ const bounds=await page.locator('.so-offers').boundingBox();assert(bounds.x>=0 && bounds.x+bounds.width<=width+1);
+ for(const tab of await page.getByRole('tab').all()){const b=await tab.boundingBox();assert(b.x>=0&&b.x+b.width<=width+1);}
+ await page.getByRole('searchbox',{name:'Search Catalog offers'}).focus();assert.equal(await page.evaluate(()=>getComputedStyle(document.activeElement).outlineStyle),'solid');
+ const contrast=await page.getByRole('button',{name:'Quick offer',exact:true}).evaluate(e=>{const s=getComputedStyle(e),ctx=document.createElement('canvas').getContext('2d');function lum(c){ctx.clearRect(0,0,1,1);ctx.fillStyle=c;ctx.fillRect(0,0,1,1);const a=[...ctx.getImageData(0,0,1,1).data].slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return .2126*a[0]+.7152*a[1]+.0722*a[2];}const l=[lum(s.color),lum(s.backgroundColor)].sort((a,b)=>b-a);return (l[0]+.05)/(l[1]+.05);});assert(contrast>=4.5,'Primary action contrast must pass AA');
+ await page.screenshot({path:out+'/'+width+'x'+height+'-'+theme+'.png',fullPage:true});
+ evidence.push({width,height,theme,selectionSurvivesSearch:'PASS',errorRetryLoading:'PASS',focus:'PASS',tabsFit:'PASS',primaryContrast:contrast});await context.close();
+}
+}finally{await browser.close();fs.writeFileSync(out+'/evidence.json',JSON.stringify({environment:'Local real Chromium and mounted UI; simulated source datasets, not production load or authenticated proof',evidence},null,2));}
+console.log('PASS',evidence.length,'workbench scenarios');

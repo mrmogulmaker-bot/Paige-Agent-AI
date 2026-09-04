@@ -383,3 +383,46 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 
 .so-ready-row { padding-top:7px; padding-bottom:7px; }
 .so-band-head small, .so-ready-text small, .so-orient, .so-absent { color:var(--ink-2); }
+/* Approved Sales workbench: compact hierarchy and visible interaction, scoped to Sales. */
+.so-workbench-head { display:flex; align-items:center; justify-content:space-between; padding:4px 2px 14px; }
+.so-eyebrow { color:var(--violet); font:700 10px/1.5 var(--font); letter-spacing:.14em; }
+.so-workbench-head h2 { color:var(--ink); margin:4px 0; font:600 23px/1.2 var(--font); letter-spacing:-.025em; }
+.so-workbench-head p { color:var(--ink-2); margin:0; font-size:12px; }
+.so .so-band { padding:16px; margin-bottom:14px; animation:none; transition:border-color .16s, box-shadow .16s; }
+.so .so-band:hover { border-color:color-mix(in srgb,var(--violet) 40%,var(--line)); }
+.so .so-terms { border-top:3px solid var(--violet); box-shadow:0 4px 18px color-mix(in srgb,var(--violet) 8%,transparent); }
+.so .so-band-head { align-items:center; gap:8px 12px; }
+.so .so-band-head h3 { font-size:15px; font-weight:650; }
+.so .so-terms .so-band-head h3 { flex:1; }
+.so .so-terms .so-band-head small { flex:0 0 100%; max-width:none; }
+.so .so-band-head small { color:var(--ink-2); }
+.so .so-absent { margin:12px 0 2px; max-width:85ch; }
+.so-search { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.so-search > span { color:var(--ink-2); font-size:11px; font-weight:600; }
+.so-search input,.so-search select { min-height:38px; width:100%; padding:8px 11px; border:1px solid var(--line-strong,var(--line)); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; }
+.so-search input::placeholder { color:var(--ink-3); }
+.so-search input:focus-visible,.so-search select:focus-visible { outline:2px solid var(--violet); outline-offset:2px; border-color:var(--violet); }
+.so-offers > .so-search { margin-bottom:12px; }
+.so-filters { display:grid; grid-template-columns:minmax(0,1fr) 160px; gap:8px 12px; margin:12px 0; }
+.so-filters small { grid-column:1/-1; color:var(--ink-2); font-size:11px; }
+.so-page-controls { display:flex; align-items:center; justify-content:flex-end; gap:7px; flex-wrap:wrap; padding-top:10px; }
+.so-page-controls > span { margin-right:auto; color:var(--ink-2); font-size:11px; }
+.so .so-row { border-radius:7px; padding:12px 8px; transition:background .14s,box-shadow .14s; }
+.so .so-row:hover { background:var(--violet-tint); box-shadow:inset 3px 0 var(--violet); }
+.so .so-row:focus-visible { outline:2px solid var(--violet); outline-offset:2px; background:var(--violet-tint); }
+.so .so-cell-name::after { content:' ›'; color:var(--violet); }
+.so .btn:not(:disabled),.so-editor .btn:not(:disabled) { transition:background .14s,box-shadow .14s,transform .14s; }
+.so .btn:not(:disabled):hover,.so-editor .btn:not(:disabled):hover { box-shadow:0 3px 8px color-mix(in srgb,var(--violet) 12%,transparent); }
+.so .btn:not(:disabled):active,.so-editor .btn:not(:disabled):active { transform:translateY(1px); }
+.so .btn:focus-visible,.so-editor .btn:focus-visible { outline:2px solid var(--violet); outline-offset:3px; }
+.so-payment .so-ready-row { border:0; padding-bottom:0; }
+.so-activity summary,.so-form-activity summary { cursor:pointer; color:var(--violet); font-size:12px; padding:8px 0; }
+.so-activity summary:focus-visible,.so-form-activity summary:focus-visible { outline:2px solid var(--violet); outline-offset:3px; }
+.so-form-activity { margin:0 16px 16px; padding:14px 16px; animation:none; }
+.so-form-activity .so-absent { margin:8px 0; }
+@media (max-width:1100px) { .so .so-band { padding:12px; } .so-workbench-head h2 { font-size:20px; } .so-filters { grid-template-columns:minmax(0,1fr) 130px; } }
+@media (prefers-reduced-motion:reduce) { .so *, .so-editor * { animation:none!important; transition:none!important; } }
+/* White action text keeps AA contrast with both theme variants of violet. */
+.paige-solo[data-theme] .so .btn-p,.paige-solo[data-theme] .so-editor .btn-p { background:color-mix(in srgb,var(--violet) 80%,#000); border-color:color-mix(in srgb,var(--violet) 80%,#000); color:#fff; }
+.paige-solo[data-theme] .so .btn-p:hover,.paige-solo[data-theme] .so-editor .btn-p:hover { background:color-mix(in srgb,var(--violet) 70%,#000); border-color:color-mix(in srgb,var(--violet) 70%,#000); color:#fff; }
+.so .pill-n { color:var(--ink-2); background:var(--surface-sunk); border:1px solid var(--line); }

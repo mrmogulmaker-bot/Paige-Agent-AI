@@ -18,21 +18,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-type Call = { table: string; select: string; eq: Array<[string, unknown]>; single: boolean };
+type Call = { table: string; select: string; eq: Array<[string, unknown]>; single: boolean; orders: string[]; filter?: [string,string,string]; range?: number[]; ilike?: [string,string]; inside?: [string,readonly string[]] };
 
 const calls: Call[] = [];
 /** Per-table canned results, keyed by table name. */
 let results: Record<string, { data: unknown; error: unknown }> = {};
 let tenant: { activeTenantId: string | null; accountContextLoading: boolean };
 let currentUserId: string | null;
+let options: import("./useCatalogOffers").CatalogOffersOptions | undefined;
+let respond: ((call: Call) => unknown) | null = null;
 
 function makeChain(table: string) {
-  const call: Call = { table, select: "", eq: [], single: false };
+  const call: Call = { table, select: "", eq: [], single: false, orders: [] };
   const chain: Record<string, unknown> = {};
-  const settle = () => results[table] ?? { data: [], error: null };
+  const settle = () => respond?.(call) ?? results[table] ?? { data: [], error: null };
   chain.select = (cols: string) => { call.select = cols; calls.push(call); return chain; };
   chain.eq = (k: string, v: unknown) => { call.eq.push([k, v]); return chain; };
-  chain.order = () => chain;
+  chain.order = (column: string) => { call.orders.push(column); return chain; };
+  chain.filter = (column: string, operator: string, value: string) => { call.filter = [column, operator, value]; return chain; };
+  chain.range = (from: number,to: number) => { call.range = [from,to]; return chain; };
+  chain.ilike = (column: string,value: string) => { call.ilike = [column,value]; return chain; };
+  chain.in = (column: string,value: readonly string[]) => { call.inside = [column,value]; return chain; };
   chain.limit = () => chain;
   chain.maybeSingle = () => { call.single = true; return Promise.resolve(settle()); };
   // Awaiting the chain itself resolves the query, as supabase-js does.
@@ -58,7 +64,7 @@ let latest: ReturnType<typeof useCatalogOffers> | null = null;
 const renders: Array<ReturnType<typeof useCatalogOffers>> = [];
 
 function Probe() {
-  latest = useCatalogOffers();
+  latest = useCatalogOffers(options);
   // Every render is recorded, not only the last one. `act()` flushes effects before it returns, so
   // a single `latest` read after `act` reflects the state the effect already corrected — which is
   // exactly the paint a synchronous-guard test needs to inspect. The first version of this guard
@@ -79,6 +85,8 @@ async function run() {
 const call = (table: string) => calls.find((c) => c.table === table);
 
 beforeEach(() => {
+  options = undefined;
+  respond = null;
   calls.length = 0;
   renders.length = 0;
   latest = null;
@@ -311,4 +319,111 @@ describe("useCatalogOffers — what it makes of a row", () => {
     expect(latest!.offers[0].prices).toHaveLength(2);
     expect(latest!.offers[0].prices[0].installmentsTotal).toBe(6);
   });
+});
+
+
+const product = (id: string) => ({ id, name: id, status: "draft", product_type: "one_time" });
+describe("optional Sales offer window", () => {
+  it("keeps no-argument Catalog requests and result shape compatible", async () => {
+    await run();
+    expect(call("tenant_products")?.range).toBeUndefined();
+    expect(call("tenant_products")?.orders).toEqual(["name"]);
+    expect(call("tenant_prices")?.inside).toBeUndefined();
+    expect(latest!.hasMore).toBe(false);
+    expect(latest!.referencedOffers).toEqual([]);
+  });
+  it("bounds pages with one sentinel, literal search, exact references and just their prices", async () => {
+    options = { search: "  50%_off\\sale  ", page: 1, pageSize: 2, referenceIds: ["selected", "selected"] };
+    respond = (query) => query.table === "tenant_products"
+      ? { data: query.inside ? [product("selected")] : [product("p1"),product("p2"),product("sentinel")], error: null } : undefined;
+    await run();
+    const page = calls.find(c => c.table === "tenant_products" && !c.inside)!;
+    const refs = calls.find(c => c.table === "tenant_products" && c.inside)!;
+    expect(page.range).toEqual([2,4]);
+    expect(page.orders).toEqual(["name","id"]);
+    expect(page.ilike).toEqual(["name", "%50\\%\\_off\\\\sale%"]);
+    expect(refs.inside).toEqual(["id",["selected"]]);
+    expect(refs.ilike).toBeUndefined();
+    expect(refs.eq).toContainEqual(["tenant_id","tenant-1"]);
+    expect(call("tenant_prices")?.inside).toEqual(["product_id",["p1","p2","selected"]]);
+    expect(latest!.offers.map(o=>o.id)).toEqual(["p1","p2"]);
+    expect(latest!.referencedOffers.map(o=>o.id)).toEqual(["selected"]);
+    expect(latest!.hasMore).toBe(true);
+  });
+  it("skips a price read for an empty optional window", async () => {
+    options = {};
+    await run();
+    expect(call("tenant_prices")).toBeUndefined();
+    expect(latest!.phase).toBe("ready");
+  });
+  it("preserves the exact window and references through missing-column fallback", async () => {
+    options = { search: "alpha", page: 2, pageSize: 5, referenceIds:["selected"] };
+    respond = query => query.table === "tenant_products" ? query.select.includes("summary")
+      ? {data:null,error:{code:"42703"}} : {data:query.inside ? [product("selected")] : [],error:null} : undefined;
+    await run();
+    const pages=calls.filter(c=>c.table === "tenant_products" && !c.inside);
+    expect(pages.map(c=>c.range)).toEqual([[10,15],[10,15]]);
+    expect(pages.map(c=>c.ilike)).toEqual([["name","%alpha%"],["name","%alpha%"]]);
+    expect(latest!.referencedOffers[0].id).toBe("selected");
+    expect(latest!.fieldsUnavailable).toBe(true);
+  });
+  it("suppresses the old query on first paint and ignores its late response", async () => {
+    options={search:"old",pageSize:5};
+    let release!: (value: unknown)=>void;
+    respond=query=>query.table === "tenant_products" && query.ilike?.[1] === "%old%"
+      ? new Promise(resolve=>{release=resolve;}) : query.table === "tenant_products" ? {data:[product("new")],error:null} : undefined;
+    await run();
+    options={search:"new",pageSize:5};renders.length=0;
+    await act(async()=>{root.render(<Probe/>);});
+    expect(renders[0].phase).toBe("loading");expect(renders[0].offers).toEqual([]);
+    await act(async()=>{release({data:[product("old")],error:null});});
+    expect(latest!.offers.map(o=>o.id)).toEqual(["new"]);
+  });
+  it("clears references and authority synchronously while account context resolves", async () => {
+    options={referenceIds:["selected"]};
+    respond=query=>query.table === "tenant_products" ? {data:[product("selected")],error:null} : undefined;
+    await run();renders.length=0;
+    tenant={...tenant,accountContextLoading:true};
+    await act(async()=>{root.render(<Probe/>);});
+    expect(renders[0].phase).toBe("resolving");expect(renders[0].offers).toEqual([]);
+    expect(renders[0].referencedOffers).toEqual([]);expect(renders[0].canManage).toBe(false);
+  });
+});
+
+
+it("removes previously ready offers and references on the first changed-query render", async () => {
+  options={search:"old",referenceIds:["selected"]};
+  respond=query=>query.table === "tenant_products" ? {data:[product(query.inside ? "selected" : "old")],error:null} : undefined;
+  await run();expect(latest!.offers[0].id).toBe("old");
+  options={search:"new",referenceIds:["other"]};
+  respond=query=>query.table === "tenant_products" ? new Promise(()=>{}) : undefined;
+  renders.length=0;
+  await act(async()=>{root.render(<Probe/>);});
+  expect(renders[0].phase).toBe("loading");expect(renders[0].offers).toEqual([]);expect(renders[0].referencedOffers).toEqual([]);
+});
+it("bounds reference inputs and treats equivalent query options as the same read", async () => {
+  const ids=Array.from({length:205},(_,i)=>`ref-${String(i).padStart(3,"0")}`);
+  options={page:-2,pageSize:500,referenceIds:[...ids,...ids]};
+  await run();
+  expect(call("tenant_products")?.range).toEqual([0,50]);
+  expect(calls.find(c=>c.table === "tenant_products" && c.inside)?.inside?.[1]).toHaveLength(200);
+  const before=calls.length;
+  options={page:0,pageSize:50,referenceIds:[...ids].reverse()};
+  await act(async()=>{root.render(<Probe/>);});
+  expect(calls.length).toBe(before);
+});
+it("fails the window honestly if reference lookup fails instead of claiming the selected record is missing", async () => {
+  options={referenceIds:["selected"]};
+  respond=query=>query.table === "tenant_products" && query.inside ? {data:null,error:{code:"42501"}} : undefined;
+  await run();expect(latest!.phase).toBe("error");expect(latest!.referencedOffers).toEqual([]);expect(call("tenant_prices")).toBeUndefined();
+});
+
+it("searches a literal asterisk without PostgREST wildcard expansion or regex injection", async () => {
+  options={search:"A*(B)+[C].?",pageSize:5};
+  await run();
+  const query=call("tenant_products")!;
+  expect(query.ilike).toBeUndefined();
+  expect(query.filter).toEqual(["name","imatch",String.raw`A\*\(B\)\+\[C\]\.\?`]);
+  expect(query.range).toEqual([0,5]);
+  expect(query.eq).toContainEqual(["tenant_id","tenant-1"]);
 });

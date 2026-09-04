@@ -28,7 +28,21 @@ const STORAGE_KEY = "paige-sales-local-fixture:catalog:harness-tenant";
 const listeners = new Set<() => void>();
 let mode: CatalogHarnessMode = "ready";
 const emit = () => listeners.forEach((listener) => listener());
+// Scale fixtures exercise rendering/search/page behavior only, not production query capacity.
+// Large catalogs stay in memory and are never serialized into browser storage.
+let scaleRows: CatalogOffer[] | null = null;
+export type CatalogHarnessQuery = { search?: string; page?: number; pageSize?: number; referenceIds?: readonly string[] };
+type CatalogHarnessState = CatalogOffersState & { hasMore: boolean; referencedOffers: readonly CatalogOffer[] };
+export function setCatalogHarnessSize(size: 1 | 80 | 80000) {
+  if (![1, 80, 80000].includes(size)) return;
+  scaleRows = Array.from({ length: size }, (_, index) => index < OFFERS.length ? OFFERS[index] : {
+    ...OFFERS[1], id: `offer-${index + 1}`, name: `Catalog item ${index + 1}`,
+    category: "Fixture catalog", updatedAt: "2026-09-03T12:00:00Z",
+  });
+  emit();
+}
 function readRows(): CatalogOffer[] {
+  if (scaleRows) return scaleRows;
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -39,7 +53,8 @@ function readRows(): CatalogOffer[] {
   return OFFERS;
 }
 function writeRows(rows: CatalogOffer[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
+  if (scaleRows) scaleRows = rows;
+  else localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
   emit();
 }
 export function setCatalogHarnessMode(next: CatalogHarnessMode) {
@@ -48,6 +63,7 @@ export function setCatalogHarnessMode(next: CatalogHarnessMode) {
   emit();
 }
 export function resetCatalogHarness() {
+  scaleRows = null;
   localStorage.removeItem(STORAGE_KEY);
   mode = "ready";
   emit();
@@ -55,6 +71,7 @@ export function resetCatalogHarness() {
 window.addEventListener("sales-catalog-harness", (event) => {
   const control = (event as CustomEvent).detail;
   if (control?.reset) resetCatalogHarness();
+  if (control?.size) setCatalogHarnessSize(control.size);
   if (control?.mode) setCatalogHarnessMode(control.mode);
 });
 async function writeRefusal(tenantId: string | null): Promise<string | null> {
@@ -106,7 +123,7 @@ async function setOfferStatus(id: string, next: OfferAvailability, expectedUpdat
   catch { return { ok: false, message: "Local fixture storage is unavailable." }; }
   return { ok: true, result: { id, status: next, updated_at: updatedAt } };
 }
-export function useCatalogOffers(): CatalogOffersState {
+export function useCatalogOffers(options?: CatalogHarnessQuery): CatalogHarnessState {
   const React = (globalThis as { __React?: typeof import("react") }).__React!;
   const [, force] = React.useState(0);
   React.useEffect(() => {
@@ -114,9 +131,21 @@ export function useCatalogOffers(): CatalogOffersState {
     listeners.add(listener);
     return () => { listeners.delete(listener); };
   }, []);
+  const hidden = ["empty", "error", "loading"].includes(mode);
+  const rows = hidden ? [] : readRows();
+  const search = (options?.search ?? "").trim().toLocaleLowerCase();
+  const page = Number.isFinite(options?.page) ? Math.max(0, Math.floor(options!.page!)) : 0;
+  const pageSize = Number.isFinite(options?.pageSize) ? Math.min(100, Math.max(1, Math.floor(options!.pageSize!))) : 5;
+  const ordered = options ? rows.filter((row) => row.name.toLocaleLowerCase().includes(search))
+    .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)) : rows;
+  const bounded = !!options || scaleRows !== null;
+  const start = page * pageSize;
+  const references = new Set(options?.referenceIds ?? []);
   return {
     tenantId: "harness-tenant", phase: mode === "error" || mode === "loading" ? mode : "ready",
-    offers: ["empty", "error", "loading"].includes(mode) ? [] : readRows(),
+    offers: bounded ? ordered.slice(start, start + pageSize) : ordered,
+    hasMore: bounded && ordered.length > start + pageSize,
+    referencedOffers: rows.filter((row) => references.has(row.id)),
     canManage: !["readonly", "error", "loading"].includes(mode),
     authorityUnknown: false, fieldsUnavailable: false,
     retry: () => setCatalogHarnessMode("ready"), saveOffer, setOfferStatus,
