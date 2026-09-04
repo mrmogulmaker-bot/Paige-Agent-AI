@@ -1,3 +1,4 @@
+import { SOLO_OPERATION_CAPABILITIES } from './domains/solo_operations.ts';
 import { N8N_MANAGEMENT_CAPABILITIES } from './domains/n8n_management.ts';
 import { SPINE_ACTION_CLASSIFICATIONS, type SpineCapability } from "./contracts.ts";
 import { PIPELINE_DEAL_STAGE_EVIDENCE } from "./domains/pipeline.ts";
@@ -5,7 +6,7 @@ import { BUSINESS_CONTEXT_READINESS } from "./domains/business_context.ts";
 import { TEAM_AUTHORITY } from "./domains/team.ts";
 import { N8N_CONNECTION_READINESS } from "./domains/n8n.ts";
 
-export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES] as const;
+export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES, ...SOLO_OPERATION_CAPABILITIES] as const;
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
 const SERVER_SYMBOL_PATTERN = /^public\.[a-z][a-z0-9_]*$/;

@@ -3244,3 +3244,7 @@ Owner superseded competing Sales PR #905; its separate Clients fix remains with 
 ### 2026-09-04 — Solo A2P preparation authority (candidate)
 
 Solo owners/admins use the existing captured-tenant is_tenant_admin_as helper for preparation and save; the browser uses a current-workspace SELECT policy. Global staff compatibility is preserved. Workspace switches clear registration editing state and stale writes are rejected. This is not carrier registration or messaging readiness. Pending exact-head release and authenticated owner verification; see Master Project's Solo orchestration MVP entry.
+
+### A2P isolation release evidence — 2026-09-04
+
+PR #916 merged as fc8d92922b6b51911d5c9cb8314266f8f178b384 after all checks and independent review passed. Production migration 20261201000500 is applied; comms-a2p-draft v46 and comms-a2p-submit v40 match reviewed source and retain JWT verification. Vercel production is READY at that exact revision on paigeagent.ai and app.paigeagent.ai. A read-only production database-role test passed active-workspace binding and cross-workspace WORKSPACE_CHANGED refusal with rollback and no tenant-record/provider mutations. This is database-role evidence, not authenticated browser proof. Browser runtime startup remains unavailable; rendered workspace-switch proof is owed. Carrier registration remains UNAVAILABLE (submitted:false, a2p_submit_wired:false); preparation is not SMS readiness. The separate Solo Orchestrator implementation resumes from this released revision.

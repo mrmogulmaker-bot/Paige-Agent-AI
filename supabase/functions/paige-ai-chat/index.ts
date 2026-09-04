@@ -1,3 +1,7 @@
+import { CONTACT_IMPORT_TOOLS, CONTACT_IMPORT_TOOL_NAMES, runContactImportTool } from '../_shared/contact-import-tools.ts';
+import { SOLO_ORCHESTRATION_TOOLS, SOLO_ORCHESTRATION_TOOL_NAMES, runSoloOrchestrationTool } from '../_shared/solo-orchestration-tools.ts';
+import { formatSoloOrchestrationConfirmation } from '../_shared/solo-orchestration-confirmation.ts';
+const SOLO_OPERATION_TOOL_NAMES = new Set([...CONTACT_IMPORT_TOOL_NAMES, ...SOLO_ORCHESTRATION_TOOL_NAMES]);
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -704,6 +708,7 @@ serve(async (req) => {
      * about others.
      */
     const approvalChannel = new Map<string, string>();
+    const claimedApprovalReferences = new Map<string, string>();
 
     // ===== CLIENT SCOPE AUTHORIZATION — resolved ONCE, before ANY use of the body id =====
     //
@@ -6169,6 +6174,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
           },
           ...N8N_MANAGEMENT_TOOLS,
+          ...CONTACT_IMPORT_TOOLS,
+          ...SOLO_ORCHESTRATION_TOOLS,
           // ── The business phone line and its carrier registration ──────────────
           // These exist so Paige can DO this, not just describe it. Before them the
           // capability shipped as a surface only a human could click: she could not tell
@@ -6984,7 +6991,37 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       return `${email.slice(0, 120)} (${level})`;
     };
 
-    const describeConfirm = async (name: string, a: any): Promise<string> => {
+    const verifiedN8nSessionId = (): string => {
+      try {
+        // getUser verified this exact bearer JWT before any tool work.
+        const encoded = authHeader.replace(/^Bearer /i, '').split('.')[1];
+        const sessionId = JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/'))).session_id;
+        return typeof sessionId === 'string' ? sessionId : '';
+      } catch { return ''; }
+    };
+
+    const describeConfirm = async (name: string, a: any): Promise<string | null> => {
+      if (CONTACT_IMPORT_TOOL_NAMES.has(name)) {
+        const preview = await runContactImportTool({ admin: supabase, tenantId: personaCtx.tenant_id ?? '', userId: user.id,
+          tool: 'contact_import_list', args: {}, mutationApproved: false });
+        const rows = Array.isArray(preview.imports) ? preview.imports : [];
+        const batch = rows.flatMap((row: any) => Array.isArray(row.batches) ? row.batches : []).find((item: any) => item.batch_id === a?.batch_id);
+        return batch ? `Import the ${batch.selected_count} records in your selected batch, preserving source details, consent and existing contacts. No messages will be sent.`
+          : 'The selected import batch could not be verified. Reopen the import preview before proceeding.';
+      }
+      if (SOLO_ORCHESTRATION_TOOL_NAMES.has(name)) {
+        const operation = name.replace('solo_orchestrator_', '');
+        if (operation === 'activate') {
+          const verifiedWorkflow = await runN8nManagement({ admin: supabase, userId: user.id,
+            tenantId: personaCtx.tenant_id ?? '', sessionId: verifiedN8nSessionId(),
+            tool: 'n8n_get_workflow', args: { workflow_id: a?.workflow_id }, mutationApproved: false });
+          return formatSoloOrchestrationConfirmation({ operation, args: a ?? {}, verifiedWorkflow });
+        }
+        const overviewResult = await runSoloOrchestrationTool({ admin: supabase,
+          tenantId: personaCtx.tenant_id ?? '', userId: user.id, tool: 'solo_orchestrator_list',
+          args: {}, claimedApprovalReference: null });
+        return formatSoloOrchestrationConfirmation({ operation, args: a ?? {}, overview: overviewResult.result });
+      }
       switch (name) {
         // The money one. The number and the fact that it charges have to be IN the
         // sentence — "buy a number?" is not a proposal anyone can actually approve.
@@ -7964,6 +8001,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
 
             if (!approvedArgs) {
               const summary = await describeConfirm(tc.function.name, gateArgs);
+              if (!summary) {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                  success: false,
+                  error: "approval_scope_unavailable",
+                  note: "The exact workflow, process, version, trigger, or job could not be verified from this workspace. Nothing ran and no approval was recorded. Refresh the workspace source data before asking again.",
+                }) });
+                continue;
+              }
               // Persist BEFORE answering, so that when the person does say yes there is something
               // to redeem. If this write fails the gate still refuses, and says so honestly rather
               // than telling them it is pending. Failing closed is the only acceptable direction.
@@ -8002,6 +8047,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // through one seam rather than fifty-one per-tool edits.
             tc.function.arguments = JSON.stringify(approvedArgs);
             approvalChannel.set(tc.id, surfaceApproved ? "operator_card" : "model_asserted");
+            if (surfaceApproved && approvedFingerprint) claimedApprovalReferences.set(tc.id, approvedFingerprint);
           } else {
             // `auto` — the operator's standing decision in their autonomy settings, not an
             // approval given in this conversation. Recorded as what it is, so a later reader can
@@ -8833,7 +8879,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "crm_assign_contact" ||
           tc.function.name === "program_list" ||
           tc.function.name === "program_enroll" ||
-          N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) ||
+          SOLO_OPERATION_TOOL_NAMES.has(tc.function.name) || N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) ||
           tc.function.name === "zapier_list_actions" ||
           tc.function.name === "zapier_run_action" ||
           tc.function.name === "crm_log_activity" ||
@@ -8861,7 +8907,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             .eq("user_id", user.id);
           const roles = (roleRows || []).map((r: any) => r.role);
           // n8n has its own exact owner/session/tenant lease check; global CRM roles are unrelated.
-          const allowed = N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) || roles.includes("admin") || roles.includes("coach");
+          const allowed = SOLO_OPERATION_TOOL_NAMES.has(tc.function.name) || N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) || roles.includes("admin") || roles.includes("coach");
           if (!allowed) {
             toolResults.push({
               tool_call_id: tc.id,
@@ -10683,13 +10729,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 weighted_forecast_cents: Math.round(weightedForecast),
                 stage_rollup: stageRollup,
               };
+            } else if (CONTACT_IMPORT_TOOL_NAMES.has(tc.function.name)) {
+              result = await runContactImportTool({ admin: supabase, tenantId: personaCtx.tenant_id ?? '', userId: user.id,
+                tool: tc.function.name, args, requestNonce, mutationApproved: approvalChannel.get(tc.id) === 'operator_card' });
+            } else if (SOLO_ORCHESTRATION_TOOL_NAMES.has(tc.function.name)) {
+              result = await runSoloOrchestrationTool({ admin: supabase, tenantId: personaCtx.tenant_id ?? '', userId: user.id,
+                tool: tc.function.name, args, claimedApprovalReference: claimedApprovalReferences.get(tc.id) ?? null });
             } else if (N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name)) {
-              let n8nSessionId = '';
-              try {
-                // getUser verified this exact bearer JWT before any tool work.
-                const encoded = authHeader.replace(/^Bearer /i, '').split('.')[1];
-                n8nSessionId = JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/'))).session_id;
-              } catch { /* The adapter rejects a missing verified session. */ }
+              const n8nSessionId = verifiedN8nSessionId();
               result = await runN8nManagement({ admin: supabase, userId: user.id,
                 tenantId: personaCtx.tenant_id ?? '', sessionId: n8nSessionId,
                 tool: tc.function.name, args, mutationApproved: approvalChannel.has(tc.id) });
@@ -11117,6 +11164,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // Values that are deliberately NOT tables are declared as such in that guard, not left to be
       // guessed from context.
       const WRITE_TARGET: Record<string, string> = {
+        contact_import_commit: "contact_import_batches", solo_orchestrator_activate: "paige_workflow_registry", solo_orchestrator_delegate: "paige_workflow_runs",
+        solo_orchestrator_cancel: "paige_workflow_runs", solo_orchestrator_retry: "paige_workflow_runs", solo_orchestrator_revoke: "paige_workflow_registry",
         crm_create_contact: "clients", crm_update_contact: "clients", crm_delete_contact: "clients",
         crm_assign_contact: "clients", crm_assign_coach: "clients", crm_update_pipeline_stage: "clients",
         program_enroll: "clients", update_client_data: "clients",

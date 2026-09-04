@@ -60,6 +60,10 @@ export type DispatchResult = {
 
 export async function dispatchWorkflowRun(opts: DispatchOpts): Promise<DispatchResult> {
   const { runId, provider, payload } = opts;
+  const { data: binding, error: bindingError } = await admin.from('paige_workflow_runs').select('orchestration_binding,orchestration_action_id').eq('id', runId).maybeSingle();
+  if (bindingError || !binding || binding.orchestration_binding !== null || binding.orchestration_action_id !== null) {
+    return { status: 'failed', error: 'Run requires its governed orchestration dispatcher' };
+  }
 
   const baseStamp = {
     last_dispatched_at: new Date().toISOString(),
