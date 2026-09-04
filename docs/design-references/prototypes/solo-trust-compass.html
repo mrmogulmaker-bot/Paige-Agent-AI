@@ -1,0 +1,461 @@
+<title>Trust Compass</title>
+<meta name="description" content="Can I trust this agent to act, in this scope, right now?">
+<style>
+/* Tokens COPIED VERBATIM from src/index.css (Obsidian dark / Mineral light).
+   This is a THROWAWAY review surface. It is deleted or absorbed after approval. */
+:root, [data-pg] {
+  --pg-font-display: "Schibsted Grotesk", "Segoe UI Variable Display", system-ui, sans-serif;
+  --pg-font-ui: "Schibsted Grotesk", "Segoe UI Variable Text", system-ui, sans-serif;
+  --pg-font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --pg-t-label: 11px; --pg-t-body: 13px; --pg-t-lead: 16px; --pg-t-title: 21px;
+  --pg-r-plate: 13px; --pg-r-chip: 9px; --pg-r-seal: 11px; --pg-r-pill: 999px;
+}
+:root {
+  --pg-env: #08070b; --pg-nav: #0d0b11; --pg-canvas: #100e14; --pg-spine: #121017;
+  --pg-workspace: #16131a; --pg-surface: #19161e; --pg-raised: #211d27;
+  --pg-line-soft: rgba(244,237,222,.115); --pg-line: rgba(244,237,222,.195);
+  --pg-line-strong: rgba(244,237,222,.30); --pg-line-authority: rgba(234,213,170,.40);
+  --pg-ink: #f6f2ea; --pg-ink-2: #d6d0c9; --pg-muted: #aca69d; --pg-faint: #969089;
+  --pg-gold-core: #fff0cf; --pg-gold: #ead5aa; --pg-gold-deep: #c7a978;
+  --pg-gold-fill: #d4a752; --pg-gold-bloom: rgba(240,200,106,.28);
+  --pg-graphite: #2a2730; --pg-violet: #9b8de0;
+  --pg-positive: #8fd1ae; --pg-warning: #edc17f; --pg-negative: #eda093;
+  --pg-rim: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.5);
+  --pg-lift-1: inset 0 1px 0 rgba(255,255,255,.055), 0 1px 1px rgba(0,0,0,.3), 0 4px 12px -4px rgba(0,0,0,.42);
+  --pg-lift-2: inset 0 1px 0 rgba(255,255,255,.07), 0 2px 4px rgba(0,0,0,.32), 0 16px 34px -12px rgba(0,0,0,.52);
+  --k-agent: #a99ad6; color-scheme: dark;
+}
+[data-theme="light"] {
+  --pg-env: #e8e5df; --pg-nav: #f4f1eb; --pg-canvas: #fbf9f5; --pg-spine: #f1eee8;
+  --pg-workspace: #f7f4ee; --pg-surface: #f5f2ec; --pg-raised: #fffdf8;
+  --pg-line-soft: rgba(45,40,50,.105); --pg-line: rgba(45,40,50,.185);
+  --pg-line-strong: rgba(45,40,50,.28); --pg-line-authority: rgba(155,120,60,.44);
+  --pg-ink: #201e23; --pg-ink-2: #3d3941; --pg-muted: #67616b; --pg-faint: #6a646e;
+  --pg-gold-core: #6f5636; --pg-gold: #8b7049; --pg-gold-deep: #7a5c2e;
+  --pg-gold-fill: #c9a96a; --pg-gold-bloom: rgba(201,169,106,.30);
+  --pg-graphite: #b9b2a6; --pg-violet: #655a96;
+  --pg-positive: #327458; --pg-warning: #986322; --pg-negative: #a5483d;
+  --pg-rim: inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(45,40,50,.07);
+  --pg-lift-1: inset 0 1px 0 rgba(255,255,255,.9), 0 1px 1px rgba(45,40,50,.055), 0 4px 10px -4px rgba(45,40,50,.12);
+  --pg-lift-2: inset 0 1px 0 rgba(255,255,255,.95), 0 2px 4px rgba(45,40,50,.07), 0 14px 30px -12px rgba(45,40,50,.17);
+  --k-agent: #6f5eb0; color-scheme: light;
+}
+body { background: var(--pg-env); color: var(--pg-ink); font: 400 var(--pg-t-body)/1.55 var(--pg-font-ui); letter-spacing: -.002em; }
+button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
+h1,h2,h3,h4,p,ul,ol,dl,dd { margin: 0; } ul { padding: 0; list-style: none; }
+
+/* ── review chrome — visually separate from the product surface ───────────── */
+.rv { position: sticky; top: 0; z-index: 40; background: var(--pg-nav); border-bottom: 1px solid var(--pg-line);
+      display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 9px 16px; }
+.rv-g { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.rv-l { font: 600 var(--pg-t-label)/1 var(--pg-font-ui); letter-spacing: .09em; text-transform: uppercase; color: var(--pg-faint); margin-right: 3px; }
+.rv-btn { border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); padding: 5px 9px;
+          font-size: var(--pg-t-label); color: var(--pg-muted); background: var(--pg-surface); }
+.rv-btn.on { color: var(--pg-ink); border-color: var(--pg-line-authority); background: var(--pg-raised); box-shadow: var(--pg-rim); }
+.rv-note { margin-left: auto; font-size: var(--pg-t-label); color: var(--pg-faint); }
+
+/* ── the product surface ──────────────────────────────────────────────────── */
+.stage { padding: 22px 16px 60px; display: flex; justify-content: center; }
+.shell { width: 100%; max-width: 1240px; background: var(--pg-canvas); border: 1px solid var(--pg-line-soft);
+         border-radius: var(--pg-r-plate); overflow: hidden; box-shadow: var(--pg-lift-2); }
+.shell[data-vw="tablet"] { max-width: 834px; } .shell[data-vw="mobile"] { max-width: 390px; }
+
+.top { background: var(--pg-spine); border-bottom: 1px solid var(--pg-line); padding: 11px 18px 0; }
+.wsname { font: 600 var(--pg-t-label)/1 var(--pg-font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--pg-faint); }
+.wstitle { font: 600 var(--pg-t-title)/1.15 var(--pg-font-display); letter-spacing: -.022em; margin: 4px 0 10px; }
+.tabs { display: flex; gap: 3px; overflow-x: auto; }
+.tab { padding: 8px 12px; font-size: var(--pg-t-body); color: var(--pg-muted); border-bottom: 2px solid transparent; white-space: nowrap; }
+.tab.on { color: var(--pg-ink); border-bottom-color: var(--pg-gold-fill); font-weight: 550; }
+
+.body { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); }
+.shell[data-vw="mobile"] .body, .shell[data-vw="tablet"] .body { grid-template-columns: minmax(0,1fr); }
+.pane { padding: 18px; min-width: 0; }
+.pane + .pane { border-left: 1px solid var(--pg-line-soft); }
+.shell[data-vw="mobile"] .pane + .pane, .shell[data-vw="tablet"] .pane + .pane { border-left: 0; border-top: 1px solid var(--pg-line-soft); }
+
+.eyebrow { font: 600 var(--pg-t-label)/1 var(--pg-font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--pg-faint); }
+.lead { font: 500 var(--pg-t-lead)/1.35 var(--pg-font-display); letter-spacing: -.014em; margin: 6px 0 2px; }
+.sub { font-size: var(--pg-t-body); color: var(--pg-muted); }
+
+/* ── the compass. NOT a score — each ring is one agent's POSTURE ──────────── */
+.compass { position: relative; margin: 16px auto 6px; width: 100%; max-width: 430px; aspect-ratio: 1; }
+.compass svg { width: 100%; height: 100%; overflow: visible; display: block; }
+.hub { fill: var(--pg-surface); stroke: var(--pg-line-authority); stroke-width: 1.2; }
+.hubT { fill: var(--pg-ink); font: 600 13px var(--pg-font-display); letter-spacing: .12em; text-anchor: middle; }
+.hubS { fill: var(--pg-faint); font: 500 8.5px var(--pg-font-ui); letter-spacing: .1em; text-anchor: middle; }
+.spoke { stroke-width: 1; fill: none; }
+.node { stroke-width: 2; fill: var(--pg-canvas); cursor: pointer; }
+.node.sel { stroke-width: 3.2; }
+.nodeT { font: 550 9.5px var(--pg-font-ui); fill: var(--pg-ink-2); text-anchor: middle; pointer-events: none; }
+.nodeP { font: 500 8px var(--pg-font-ui); fill: var(--pg-faint); text-anchor: middle; pointer-events: none; }
+
+/* Posture colours are SEMANTIC, never the gold accent. Gold is the act moment only. */
+.p-delegate { --pc: var(--pg-positive); }
+.p-monitor  { --pc: var(--pg-violet); }
+.p-ask      { --pc: var(--pg-warning); }
+.p-notready { --pc: var(--pg-graphite); }
+.p-paused   { --pc: var(--pg-muted); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; }
+.lg { display: inline-flex; align-items: center; gap: 6px; font-size: var(--pg-t-label); color: var(--pg-muted); }
+.lg i { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--pc); display: inline-block; }
+
+.pill { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--pg-line);
+        border-radius: var(--pg-r-pill); padding: 2px 9px; font-size: var(--pg-t-label); color: var(--pg-muted); }
+.pill.state { border-color: color-mix(in srgb, var(--pc) 55%, transparent); color: var(--pc); }
+
+.card { background: var(--pg-surface); border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-plate);
+        padding: 13px; box-shadow: var(--pg-lift-1); }
+.card + .card { margin-top: 10px; }
+
+.why { display: grid; gap: 0; margin-top: 10px; }
+.wr { display: grid; grid-template-columns: 132px minmax(0,1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--pg-line-soft); align-items: start; }
+.wr:first-child { border-top: 0; }
+.shell[data-vw="mobile"] .wr { grid-template-columns: minmax(0,1fr); gap: 3px; }
+.wk { font: 600 var(--pg-t-label)/1.4 var(--pg-font-ui); letter-spacing: .07em; text-transform: uppercase; color: var(--pg-faint); }
+.wv { font-size: var(--pg-t-body); color: var(--pg-ink-2); }
+.src { display: block; margin-top: 3px; font: 400 var(--pg-t-label)/1.5 var(--pg-font-data); color: var(--pg-faint); }
+.src b { color: var(--pg-muted); font-weight: 500; }
+
+.link { color: var(--pg-ink); border-bottom: 1px solid var(--pg-line-strong); padding-bottom: 1px; }
+.link:hover { border-bottom-color: var(--pg-gold-fill); }
+
+.acts { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.btn { border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); padding: 7px 12px; font-size: var(--pg-t-body); color: var(--pg-ink-2); background: var(--pg-raised); box-shadow: var(--pg-rim); }
+.btn:disabled { opacity: .42; cursor: not-allowed; }
+/* Gold is spent ONLY on the act/approve moment. */
+.btn-gold { background: var(--pg-gold-fill); border-color: var(--pg-gold-deep); color: #221a08; font-weight: 560; box-shadow: 0 0 0 3px var(--pg-gold-bloom); }
+[data-theme="light"] .btn-gold { color: #fffdf8; }
+
+.owed { border: 1px dashed var(--pg-line); border-radius: var(--pg-r-plate); padding: 11px 13px; background: transparent; }
+.owed .eyebrow { color: var(--pg-warning); }
+
+.empty { text-align: center; padding: 34px 18px; }
+.empty .lead { font-size: var(--pg-t-title); }
+
+.ann { display: none; margin-top: 9px; border-left: 2px solid var(--pg-violet); padding: 7px 0 7px 10px;
+       font-size: var(--pg-t-label); color: var(--pg-muted); background: color-mix(in srgb, var(--pg-violet) 7%, transparent); }
+body.ann-on .ann { display: block; }
+.ann b { color: var(--pg-violet); font-weight: 600; }
+
+.dec { max-width: 1240px; margin: 18px auto 0; padding: 14px 16px; border: 1px solid var(--pg-line);
+       border-radius: var(--pg-r-plate); background: var(--pg-nav); }
+.dec textarea { width: 100%; margin-top: 8px; min-height: 62px; background: var(--pg-surface); color: var(--pg-ink);
+                border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); padding: 8px; font: inherit; resize: vertical; }
+.verdict { margin-top: 9px; font-size: var(--pg-t-body); color: var(--pg-positive); }
+@media (prefers-reduced-motion: no-preference) { .node { transition: stroke-width .18s ease; } }
+</style>
+
+<div class="rv">
+  <div class="rv-g"><span class="rv-l">State</span><span id="states"></span></div>
+  <div class="rv-g"><span class="rv-l">Viewport</span>
+    <button class="rv-btn on" data-vw="desktop">Desktop</button>
+    <button class="rv-btn" data-vw="tablet">Tablet</button>
+    <button class="rv-btn" data-vw="mobile">Mobile</button></div>
+  <div class="rv-g"><span class="rv-l">Theme</span>
+    <button class="rv-btn on" data-theme="dark">Obsidian</button>
+    <button class="rv-btn" data-theme="light">Mineral</button></div>
+  <div class="rv-g"><button class="rv-btn" id="annBtn">Annotations</button></div>
+  <span class="rv-note">Prototype — nothing here writes, sends, pauses or approves.</span>
+</div>
+
+<div class="stage"><div class="shell" id="shell" data-vw="desktop">
+  <div class="top">
+    <div class="wsname" id="ws">Northwind Advisory</div>
+    <h1 class="wstitle">Command Center</h1>
+    <div class="tabs">
+      <div class="tab">Business Game Plan</div><div class="tab">Systems Check</div>
+      <div class="tab">Mind</div><div class="tab on">Trust Compass</div>
+    </div>
+  </div>
+  <div class="body" id="body"></div>
+</div></div>
+
+<div class="dec">
+  <div class="eyebrow">Decision</div>
+  <div class="sub" style="margin-top:4px">Does this answer <em>“can I trust this agent to act, in this scope, right now?”</em> — and is every state truthful about what is not yet wired?</div>
+  <textarea id="notes" placeholder="Notes, revisions, anything that reads wrong…"></textarea>
+  <div class="acts">
+    <button class="btn btn-gold" data-dec="Approved">Approve</button>
+    <button class="btn" data-dec="Revision requested">Request revision</button>
+    <button class="btn" data-dec="Rejected">Reject</button>
+  </div>
+  <div class="verdict" id="verdict"></div>
+</div>
+
+<script>
+/* Every posture below is DERIVED, never scored. `posture` is the effective lane after the
+   §67 clamp min(grant, floor, ceiling); `capped` names which clamp bound it, so a limit is
+   never invisible. Fixtures are labelled — none of this is live data. */
+var POSTURE = {
+  delegate: { k:"p-delegate", label:"Delegate",  gloss:"Acts on its own inside this scope." },
+  monitor:  { k:"p-monitor",  label:"Monitor",   gloss:"Acts, and shows you every result." },
+  ask:      { k:"p-ask",      label:"Ask First", gloss:"Prepares the work and holds for your word." },
+  notready: { k:"p-notready", label:"Not Ready", gloss:"Cannot act — something it depends on is missing." },
+  paused:   { k:"p-paused",   label:"Paused",    gloss:"You stopped it. It takes no new work." }
+};
+
+function agent(n, p, o) { o = o || {}; o.name = n; o.posture = p; return o; }
+
+var OUTCOMES_OWED = {
+  owed: true,
+  note: "The Rail cannot yet say which agent produced a result — every entry still reads as PAIGE, and workspace-level work is not written at all. Per-agent attribution ships in the Rail uplift; until a producer writes it, this panel stays empty rather than inventing history."
+};
+
+var STATES = {
+  empty: {
+    label: "Empty workspace",
+    ws: "Northwind Advisory",
+    headline: "No specialist has been given authority yet.",
+    sub: "Nothing has been delegated, so there is nothing to trust or withhold. This is the honest first-run state, not a failure.",
+    agents: [],
+    emptyCta: "Trust Compass fills in as you switch specialists on. You can do that from Setup, or just ask PAIGE.",
+    emptyHref: "Setup › Your team",
+    ann: "EMPTY. No dial, no zero-score, no greyed-out ring implying a value of zero. A score of nothing is not a low score — it is an absent measurement, and drawing it would be the fabricated dial the brief forbids."
+  },
+  partial: {
+    label: "Partially configured",
+    ws: "Northwind Advisory",
+    headline: "Two specialists are ready. Three are waiting on setup.",
+    sub: "Authority is only half the question — an agent with permission and no working connection still cannot act.",
+    agents: [
+      agent("Follow-Up Drafter","monitor"), agent("Pipeline Scout","monitor"),
+      agent("Email Composer","notready",{ blocker:"Sending identity not verified" }),
+      agent("Scheduling Coordinator","notready",{ blocker:"No calendar connected" }),
+      agent("Campaign Writer","ask")
+    ],
+    sel: 2,
+    ann: "PARTIAL. Not Ready is a distinct posture from Paused, and both differ from Ask First. Collapsing them would tell an owner to go looking in the wrong place."
+  },
+  active: {
+    label: "Active delegated agent",
+    ws: "Northwind Advisory",
+    headline: "Follow-Up Drafter is acting on its own inside your follow-up window.",
+    sub: "Delegated, and every result is on the record.",
+    agents: [
+      agent("Follow-Up Drafter","delegate"), agent("Pipeline Scout","monitor"),
+      agent("Email Composer","monitor"), agent("Campaign Writer","ask"),
+      agent("Scheduling Coordinator","notready",{ blocker:"No calendar connected" })
+    ],
+    sel: 0,
+    ann: "ACTIVE. The detail below answers all five: authority, grounding, readiness, impact, accountability. Accountability is the one this workspace cannot fill yet, and it says so."
+  },
+  approval: {
+    label: "Needs owner approval",
+    ws: "Northwind Advisory",
+    headline: "Campaign Writer has three pieces waiting on your word.",
+    sub: "Held, not sent. Ask First means it prepares the work and stops.",
+    agents: [
+      agent("Campaign Writer","ask",{ pending:3 }), agent("Follow-Up Drafter","delegate"),
+      agent("Pipeline Scout","monitor"), agent("Email Composer","monitor"),
+      agent("Scheduling Coordinator","notready",{ blocker:"No calendar connected" })
+    ],
+    sel: 0,
+    ann: "APPROVAL. Gold appears exactly once on this surface, on the approve control — the act moment. Nowhere else."
+  },
+  paused: {
+    label: "Paused agent",
+    ws: "Northwind Advisory",
+    headline: "You paused Email Composer on 2 September.",
+    sub: "It holds no queue and takes no new work. Nothing was lost.",
+    agents: [
+      agent("Email Composer","paused",{ pausedOn:"2 September, by you" }),
+      agent("Follow-Up Drafter","delegate"), agent("Pipeline Scout","monitor"),
+      agent("Campaign Writer","ask"),
+      agent("Scheduling Coordinator","notready",{ blocker:"No calendar connected" })
+    ],
+    sel: 0,
+    ann: "PAUSED. Pause is an owner act, so it names who did it and when — distinct from Not Ready, which nobody chose."
+  },
+  failure: {
+    label: "Provider failure",
+    ws: "Northwind Advisory",
+    headline: "Two specialists dropped to Not Ready when the automation connection failed.",
+    sub: "Their authority did not change. What they depend on stopped answering.",
+    agents: [
+      agent("Campaign Writer","notready",{ blocker:"Automation connection is not answering" }),
+      agent("Follow-Up Drafter","notready",{ blocker:"Automation connection is not answering" }),
+      agent("Pipeline Scout","monitor"), agent("Email Composer","monitor"),
+      agent("Scheduling Coordinator","notready",{ blocker:"No calendar connected" })
+    ],
+    sel: 0,
+    banner: { kind:"negative", t:"Automation connection is not answering",
+              s:"Last verified 4 September, 06:12. Two retries since, both failed. Your authority settings were not changed.",
+              cta:"Integrations › Automations" },
+    ann: "FAILURE. It separates 'may act' from 'can act'. An owner who reads this as a permissions problem goes to the wrong screen and loses an afternoon."
+  },
+  stale: {
+    label: "Stale evidence",
+    ws: "Northwind Advisory",
+    headline: "Two readiness checks are older than the work depending on them.",
+    sub: "Not a failure — nobody has re-checked. Age is stated so you can judge it.",
+    agents: [
+      agent("Pipeline Scout","monitor",{ stale:"Readiness last verified 11 days ago" }),
+      agent("Follow-Up Drafter","delegate"), agent("Email Composer","monitor"),
+      agent("Campaign Writer","ask"),
+      agent("Scheduling Coordinator","notready",{ blocker:"No calendar connected" })
+    ],
+    sel: 0,
+    banner: { kind:"warning", t:"Some evidence here is stale",
+              s:"Two checks have not re-run since 24 August. They are shown with their age rather than hidden or refreshed silently.",
+              cta:"Systems Check" },
+    ann: "STALE. Stale is not failed and not current. Presenting an 11-day-old check as today's truth is the exact false-green this whole surface exists to prevent."
+  },
+  switch: {
+    label: "Workspace switch",
+    ws: "Harbour Coaching Group",
+    headline: "This workspace has its own team, and its own answer.",
+    sub: "Nothing carries over from the workspace you were just in.",
+    agents: [
+      agent("Onboarding Concierge","monitor"), agent("Retention Sentinel","ask"),
+      agent("Research Scout","notready",{ blocker:"Business knowledge not set up yet" })
+    ],
+    sel: 0,
+    ann: "SWITCH. Different workspace, different roster, different postures. Any row surviving a switch would be a §9 tenant leak — the surface remounts on the active workspace rather than filtering in place."
+  }
+};
+
+var cur = "active", selIdx = 0;
+
+function why(a, st) {
+  var rows = [];
+  rows.push(["Authority",
+    a.posture === "paused"
+      ? "You paused this specialist. Authority is unchanged underneath and returns as it was when you resume."
+      : (a.posture === "notready"
+        ? "Permission is in place. The block is not authority — see readiness below."
+        : POSTURE[a.posture].gloss),
+    "Your setting for this workspace, then narrowed by platform policy. It is never widened."]);
+  rows.push(["Business grounding",
+    st === "switch"
+      ? "This specialist has no business knowledge to work from yet, so it cannot act on anything specific to you."
+      : "Works from your business profile, your services, and the notes on the clients it touches.",
+    "Mind — the sourced knowledge PAIGE holds about your business."]);
+  rows.push(["Connection &amp; readiness",
+    a.blocker ? a.blocker + " — so it cannot act, whatever its permission says."
+              : (a.stale ? a.stale + ". Treat it as unconfirmed rather than current."
+                         : "Everything it depends on answered on its last check."),
+    a.blocker ? "Systems Check — the failing item, with its own next step."
+              : "Systems Check — last verified 4 September, 06:12."]);
+  rows.push(["Impact if it is wrong",
+    a.posture === "delegate"
+      ? "It writes to your records and sends on your behalf. A mistake reaches a client."
+      : (a.posture === "ask"
+        ? "It only prepares. Nothing reaches a client without you pressing approve."
+        : "It writes to your records. Nothing leaves the workspace."),
+    "The action class this specialist is allowed to run."]);
+  rows.push(["Recent accountable outcomes",
+    "<span class='pill'>Not yet available</span>", null, OUTCOMES_OWED.note]);
+  return rows;
+}
+
+function compass(agents) {
+  if (!agents.length) return "";
+  var cx = 210, cy = 210, R = 142, n = agents.length, s = "";
+  agents.forEach(function (a, i) {
+    var ang = (-90 + (360 / n) * i) * Math.PI / 180;
+    var x = cx + R * Math.cos(ang), y = cy + R * Math.sin(ang);
+    var p = POSTURE[a.posture];
+    s += '<g class="' + p.k + '">'
+      + '<line class="spoke" x1="' + (cx + 62 * Math.cos(ang)) + '" y1="' + (cy + 62 * Math.sin(ang)) + '" x2="' + x + '" y2="' + y + '" stroke="var(--pc)" stroke-opacity=".42"'
+      + (a.posture === "notready" || a.posture === "paused" ? ' stroke-dasharray="3 4"' : '') + '/>'
+      + '<circle class="node' + (i === selIdx ? ' sel' : '') + '" data-i="' + i + '" cx="' + x + '" cy="' + y + '" r="15" stroke="var(--pc)"/>'
+      + '<text class="nodeT" x="' + x + '" y="' + (y + 32) + '">' + a.name + '</text>'
+      + '<text class="nodeP" x="' + x + '" y="' + (y + 44) + '">' + p.label + (a.pending ? " · " + a.pending + " waiting" : "") + '</text>'
+      + '</g>';
+  });
+  return '<div class="compass"><svg viewBox="0 0 420 420" role="img" aria-label="Your specialists and the authority each currently holds">'
+    + '<circle cx="' + cx + '" cy="' + cy + '" r="58" class="hub"/>'
+    + '<text class="hubT" x="' + cx + '" y="' + (cy - 2) + '">PAIGE</text>'
+    + '<text class="hubS" x="' + cx + '" y="' + (cy + 14) + '">' + agents.length + ' SPECIALISTS</text>'
+    + s + '</svg></div>';
+}
+
+function render() {
+  var st = STATES[cur], agents = st.agents;
+  if (typeof st.sel === "number" && selIdx >= agents.length) selIdx = st.sel;
+  document.getElementById("ws").textContent = st.ws;
+
+  var left = '<div class="pane">'
+    + '<div class="eyebrow">Your team</div>'
+    + '<h2 class="lead">' + st.headline + '</h2><p class="sub">' + st.sub + '</p>';
+
+  if (!agents.length) {
+    left += '<div class="empty"><p class="sub" style="max-width:34ch;margin:0 auto 14px">' + st.emptyCta + '</p>'
+      + '<button class="btn">' + st.emptyHref + '</button></div>';
+  } else {
+    left += compass(agents)
+      + '<div class="legend">'
+      + Object.keys(POSTURE).map(function (k) {
+          return '<span class="lg ' + POSTURE[k].k + '"><i></i>' + POSTURE[k].label + '</span>'; }).join("")
+      + '</div>';
+  }
+  left += '<div class="ann"><b>' + st.label + '.</b> ' + st.ann.replace(/^[A-Z ]+\.\s*/, "") + '</div></div>';
+
+  var right = '<div class="pane">';
+  if (st.banner) {
+    right += '<div class="card" style="border-color:color-mix(in srgb, var(--pg-' + st.banner.kind + ') 45%, transparent)">'
+      + '<div class="eyebrow" style="color:var(--pg-' + st.banner.kind + ')">Needs attention</div>'
+      + '<div class="lead" style="font-size:var(--pg-t-lead)">' + st.banner.t + '</div>'
+      + '<p class="sub">' + st.banner.s + '</p>'
+      + '<div class="acts"><button class="btn">' + st.banner.cta + '</button></div></div>';
+  }
+  if (!agents.length) {
+    right += '<div class="owed"><div class="eyebrow">Nothing to explain yet</div>'
+      + '<p class="sub" style="margin-top:5px">Once a specialist holds authority, this side explains why — and links to the evidence behind every line.</p></div>';
+  } else {
+    var a = agents[selIdx] || agents[0], p = POSTURE[a.posture];
+    right += '<div class="eyebrow">Why this posture</div>'
+      + '<h3 class="lead">' + a.name + ' <span class="pill state ' + p.k + '" style="vertical-align:middle;margin-left:4px">' + p.label + '</span></h3>'
+      + '<p class="sub">' + (a.pausedOn ? "Paused " + a.pausedOn + "." : p.gloss) + '</p>'
+      + '<div class="why">'
+      + why(a, cur).map(function (r) {
+          return '<div class="wr"><div class="wk">' + r[0] + '</div><div class="wv">' + r[1]
+            + (r[2] ? '<span class="src"><b>Source</b> · ' + r[2] + '</span>' : '')
+            + (r[3] ? '<span class="src" style="color:var(--pg-warning)">' + r[3] + '</span>' : '')
+            + '</div></div>'; }).join("")
+      + '</div>'
+      + '<div class="acts">'
+      + (a.pending ? '<button class="btn btn-gold">Review ' + a.pending + ' waiting on you</button>' : '')
+      + (a.posture === "paused" ? '<button class="btn">Resume this specialist</button>'
+                                : '<button class="btn">Pause this specialist</button>')
+      + '<button class="btn">Open the evidence</button>'
+      + (a.blocker ? '<button class="btn">Go fix this in Systems Check</button>' : '')
+      + '</div>'
+      + '<div class="owed" style="margin-top:14px"><div class="eyebrow">Not wired yet</div>'
+      + '<p class="sub" style="margin-top:5px">' + OUTCOMES_OWED.note + '</p></div>';
+  }
+  right += '</div>';
+  document.getElementById("body").innerHTML = left + right;
+}
+
+var sw = document.getElementById("states");
+sw.innerHTML = Object.keys(STATES).map(function (k) {
+  return '<button class="rv-btn' + (k === cur ? ' on' : '') + '" data-st="' + k + '">' + STATES[k].label + '</button>'; }).join("");
+
+document.addEventListener("click", function (e) {
+  var b = e.target.closest("[data-st]");
+  if (b) { cur = b.dataset.st; selIdx = STATES[cur].sel || 0;
+    sw.querySelectorAll(".rv-btn").forEach(function (x) { x.classList.toggle("on", x === b); }); render(); return; }
+  var v = e.target.closest("[data-vw]");
+  if (v && v.classList.contains("rv-btn")) {
+    document.querySelectorAll(".rv-btn[data-vw]").forEach(function (x) { x.classList.toggle("on", x === v); });
+    document.getElementById("shell").dataset.vw = v.dataset.vw; return; }
+  var t = e.target.closest("[data-theme]");
+  if (t && t.classList.contains("rv-btn")) {
+    document.querySelectorAll(".rv-btn[data-theme]").forEach(function (x) { x.classList.toggle("on", x === t); });
+    document.documentElement.setAttribute("data-theme", t.dataset.theme); return; }
+  if (e.target.id === "annBtn") { document.body.classList.toggle("ann-on");
+    e.target.classList.toggle("on", document.body.classList.contains("ann-on")); return; }
+  var n = e.target.closest(".node");
+  if (n) { selIdx = +n.dataset.i; render(); return; }
+  var d = e.target.closest("[data-dec]");
+  if (d) {
+    var notes = document.getElementById("notes").value.trim();
+    document.getElementById("verdict").textContent =
+      d.dataset.dec + " — recorded in this prototype only. Nothing was sent, paused or approved."
+      + (notes ? " Notes captured." : "");
+  }
+});
+render();
+</script>
