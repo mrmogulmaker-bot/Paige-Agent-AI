@@ -180,6 +180,22 @@ carries `forge_subagent` (`ordinary`), `delegate_to_subagent` (`high`) and the u
 cannot ask PAIGE to stop one of her own agents — the exact dead end §10 exists to prevent. Any
 lifecycle build must add the classified stop action, or "stopping is always allowed" is aspirational.
 
+**Where that stop action belongs, and it already exists (§18).** Do not stand up a new autonomy
+surface for it. `forge_subagent` and `delegate_to_subagent` are **already registered tool keys in the
+tenant-settable autonomy catalogue** — `list_tool_autonomy` seeds them as
+`('delegate_to_subagent', 'Hand work to a specialist', 'Paige''s team')` and
+`('forge_subagent', 'Create a new specialist', 'Paige''s team')`
+(`supabase/migrations/20261040000000_the_catalogue_carries_the_team_tools.sql` L85–86), with the
+per-tenant mode stored in `tenant_tool_autonomy` and written through
+`set_tool_autonomy(text, text, uuid)`, which is `GRANT`ed to `authenticated`
+(`supabase/migrations/20260711154701_paige_tool_autonomy.sql` L23, L73, L191). So creating an agent
+and delegating to one already carry a per-tenant `auto | confirm | off` mode under a group a business
+owner can read — *Paige's team*. **Stopping** one is the member missing from that group, and the
+catalogue is its home. This also corrects a narrower reading in the research that fed this document:
+`delegate_to_subagent` is not an RPC, but it is very much present in the migrations (8 occurrences),
+so "the per-tool autonomy floor is keyed by tool and never by agent" is true of the *mechanism* while
+understating how close the existing catalogue already sits to the registry's autonomy question.
+
 ---
 
 ## 7. Rail — how an agent's work is audited
