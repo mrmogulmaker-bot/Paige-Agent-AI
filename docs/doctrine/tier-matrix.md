@@ -1195,6 +1195,40 @@ paper and reached nobody.
 | A refusal is reported as a refusal, never as an empty feed | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (as "could not be loaded", without naming how access is decided) | 403 |
 | A previous workspace's activity can paint after a switch | — | — | — | — | — | — | 403 |
 
+#### Agent attribution and workspace-level activity — SHIPS WITH PR #925 (§66)
+
+**Recorded here as PENDING, not as shipped.** The migration applies to production through
+`deploy-migrations.yml` on merge to `main`; until that runs and `db-live` moves, these rows describe
+what the PR delivers, not what a tenant can do. The §32.a persisted-apply confirmation is owed after
+merge. Ticking these early would be the same lie as a fabricated metric.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Rail history names the ACTING AGENT (`get_solo_rail_activity` gains a 12th column, `actor_agent`) | ✓ (operator) | ✓ | ✓ | ✓ | ✓ (its OWN rail) | — | 403 |
+| …but only where the agent has a tenant-safe name (`paige_subagents.rail_display_name`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Sees the name of an agent belonging to ANOTHER workspace | — | — | — | — | — | — | 403 |
+| Rail carries workspace-level work with no contact (`game_plan` · `system_check` · `agent_config` · `agent_run`) | ✓ (operator) | ✓ | ✓ | ✓ | ✓ (its OWN) | — | 403 |
+| Writes a Rail event naming another workspace's agent | — | — | — | — | — | — | 403 |
+
+**Row 2 is the §11 line, and it is deliberate.** `rail_display_name IS NULL` means an agent has no
+name a business owner should read. Ten of the twenty-four enabled agents on production are our own
+build-crew seats — `Review — Compliance Officer`, `Review — Doctrine Sentinel`. Their work is
+recorded by slug for operator audit and shows a business owner nothing. The backfill is written as
+an EXCLUSION, so a NEW platform agent defaults to not being named.
+
+**Rows 3 and 5 need BOTH a write guard and a read guard, which is why they are two rows.**
+`paige_subagents.slug` is globally unique and `tenant_id` is nullable, so a foreign key proves
+existence and not tenancy. The writer refuses a foreign slug with the same error it gives an unknown
+one, so the response cannot be used to enumerate another workspace's agents. The reader re-checks,
+because `tenant_id` is updatable: a platform default later assigned to a tenant would retroactively
+turn legally-written rows foreign, and no write-time check can reach back through history.
+
+**One capability this ship RESTORES rather than adds (§58).** The `surface` CHECK on
+`paige_client_events` never admitted `'form'`, but `growth-process-submission` has always passed it.
+Every Rail write from the form pipeline has failed since that pipeline shipped. Solo and sub-account
+tenants get form-submission events on their Rail for the first time — not a new capability, a
+capability that was specified and never once worked.
+
 **The third row is the §59 correction, and it is the only access this ship REMOVES (§58).**
 `pce_staff_read` combines a tenant-agnostic `has_any_role()` with `current_user_tenant_id()`, which
 honours `active_tenant_id` for an active `tenant_members` row at **any** role. A plain member of
