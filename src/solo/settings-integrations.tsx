@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyRound, Link2Off, Plug, RefreshCw, TriangleAlert, Workflow, X, Zap } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SoloAutomationsView } from "./settings-automations";
-import { useN8nConnection } from "./data/useN8nConnection";
+import { useN8nConnection, readN8nReadiness, type N8nConnection } from "./data/useN8nConnection";
 import { useMcpConnection } from "./data/useMcpConnection";
 import { useMcpCapabilities } from "./data/useMcpCapabilities";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,7 +29,7 @@ type IntegrationReadState = {
   loading: boolean;
   error: boolean;
   /** The shipped n8n API-key connection. Separate from n8n's MCP endpoint. */
-  n8n: SafeConnectionStatus | null;
+  n8n: N8nConnection | null;
   /**
    * MCP connections keyed by provider. The registry is provider-scoped: one
    * workspace may hold an n8n MCP endpoint AND a Zapier one at the same time,
@@ -111,17 +111,19 @@ function useIntegrationStatus() {
     setState({ scopeKey: null, tenantId: null, loading: true, error: false, apiError: false, mcpError: false, n8n: null, mcp: {} });
     if (!activeTenantId) { setState({ scopeKey, tenantId: null, loading: false, error: false, apiError: true, mcpError: true, n8n: null, mcp: {} }); return; }
     const results = await Promise.allSettled([
-      supabase.rpc("get_tenant_n8n_connection"),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).rpc("get_tenant_n8n_api_readiness"),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).rpc("get_tenant_mcp_connections"),
     ]);
     if (!gate.current.isCurrent(token) || identity.current !== scopeKey || !mounted.current) return;
     const api = results[0].status === "fulfilled" ? results[0].value : null;
     const mcp = results[1].status === "fulfilled" ? results[1].value : null;
-    const apiError = !api || !!api.error || !api.data || typeof api.data !== "object" || Array.isArray(api.data);
+    const apiConnection = api && !api.error ? readN8nReadiness(api.data, activeTenantId) : null;
+    const apiError = !apiConnection;
     const mcpError = !mcp || !!mcp.error || !mcp.data || typeof mcp.data !== "object" || Array.isArray(mcp.data);
     setState({ scopeKey, tenantId: activeTenantId, loading: false, error: apiError || mcpError, apiError, mcpError,
-      n8n: apiError ? null : sanitizeSafeConnectionStatus(api.data), mcp: mcpError ? {} : sanitizeMcpByProvider(mcp.data) });
+      n8n: apiConnection, mcp: mcpError ? {} : sanitizeMcpByProvider(mcp.data) });
   }, [activeTenantId, scopeKey, tenantLoading]);
   useEffect(() => { const activeGate = gate.current; mounted.current = true; if (!tenantLoading) void load(); return () => { mounted.current = false; activeGate.clear(); }; }, [load, tenantLoading]);
   return { ...state, loading: tenantLoading || state.loading || state.scopeKey !== scopeKey, retry: load };
@@ -186,30 +188,37 @@ function N8nPanelBody({ a, onDirtyChange, onChanged }: { a: ReturnType<typeof us
     if (alive.current && ok) onChanged();
     return alive.current && ok;
   }, [onChanged]);
+  const failureCopy = a.failureCode === "authentication_rejected" || a.failureCode === "request_refused"
+    ? "The saved n8n connection needs attention. Check the API key or its access in n8n, then reconnect."
+    : a.failureCode === "endpoint_not_found" || a.failureCode === "address_rejected"
+      ? "The saved n8n connection needs attention. Check the instance address, then reconnect."
+      : a.failureCode === "inventory_incomplete" || a.failureCode === "response_invalid"
+        ? "The saved n8n connection could not provide a complete workflow list. Its workflow count is unavailable. Check again or reconnect."
+        : "The saved n8n connection could not be checked. Its workflow count is unavailable. Check again or reconnect.";
   return <>
     <p className="ig-lede">Let Paige see the n8n workspace and its available workflows.</p>
     {a.loading ? <p className="ig-state" role="status">Checking the API connection…</p> : a.error ? <div className="ig-state" role="alert"><span>The API connection could not be read. Its status and workflow count are unavailable.</span><button type="button" className="ig-btn" onClick={() => void a.reload()}>Try again</button></div> : <>
       {!editing && <>
         <dl className="ig-facts">
-          <div><dt>API connection</dt><dd>{!a.configured ? "Not connected" : "Needs attention"}</dd></div>
-          <div><dt>Workflow visibility</dt><dd>{a.configured ? "Unavailable until health is verified for this saved configuration" : "Not connected"}</dd></div>
+          <div><dt>API connection</dt><dd>{n8nApiSummary(a, false, false).account}</dd></div>
+          <div><dt>Workflow visibility</dt><dd>{!a.configured ? "Not connected" : a.health === "connected" && a.workflowCount !== null ? `${a.workflowCount} ${a.workflowCount === 1 ? "workflow" : "workflows"} available` : "Unavailable until a complete check succeeds"}</dd></div>
           {a.baseUrl && <div><dt>Instance address</dt><dd className="ig-mono">{a.baseUrl}</dd></div>}
           {a.configured && <div><dt>API key</dt><dd>Stored</dd></div>}
-          {a.lastSyncAt && <div><dt>Recorded check</dt><dd>{safeCheckDate(a.lastSyncAt)} — may predate the saved configuration</dd></div>}
+          {a.checkedAt && <div><dt>Last check</dt><dd>{safeCheckDate(a.checkedAt)}</dd></div>}
+          {a.lastSuccessAt && <div><dt>Last successful check</dt><dd>{safeCheckDate(a.lastSuccessAt)}</dd></div>}
         </dl>
-        {a.configured && <p className="ig-note">{a.status === "error" ? "The API connection is saved, but its recorded health check failed. The workflow count is unavailable." : "The API connection is saved; health has not been verified for this saved configuration."} This does not describe Paige tools access.</p>}
+        {a.configured && <p className="ig-note" role="status">{a.health === "connected" ? "The API connection was verified. Workflow visibility does not grant Paige permission to run tools." : a.health === "needs_attention" ? failureCopy : a.health === "checking" ? "The saved API connection is being checked. Workflow visibility is not confirmed yet." : "The API connection is saved; health has not been verified for this saved configuration."} This does not describe Paige tools access.</p>}
       </>}
-      {a.writeError && <p className="ig-error" role="alert">{a.writeError}</p>}
+      {a.writeError && <div className="ig-error" role="alert"><span>{a.writeError}</span><button type="button" className="ig-btn" disabled={a.saving} onClick={() => void a.reload()}>Refresh status</button></div>}
       {!a.canWrite && <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>}
       {editing && a.canWrite ? <N8nForm a={a} existing={a.configured} onDirtyChange={onDirtyChange} onCommit={commit} onDone={() => { setEditing(false); onDirtyChange(false); }} /> : <div className="ig-actions">
-        {a.canWrite && <><button type="button" className="ig-btn" data-primary disabled={a.saving} onClick={() => setEditing(true)}>{!a.configured ? "Connect API" : a.status === "error" ? "Reconnect API" : "Edit API connection"}</button>{a.configured && <button type="button" className="ig-btn" disabled={a.saving} onClick={() => setConfirmingDisconnect(true)}>Disconnect API</button>}</>}
+        {a.canWrite && <><button type="button" className="ig-btn" data-primary disabled={a.saving || a.health === "checking"} onClick={() => setEditing(true)}>{!a.configured ? "Connect API" : a.health === "needs_attention" ? "Reconnect API" : "Edit API connection"}</button>{a.configured && <><button type="button" className="ig-btn" disabled={a.saving || a.health === "checking"} onClick={() => void commit(a.validate)}>{a.saving ? "Checking…" : "Check again"}</button><button type="button" className="ig-btn" disabled={a.saving} onClick={() => setConfirmingDisconnect(true)}>Disconnect API</button></>}</>}
         <button type="button" className="ig-btn" disabled={a.saving} onClick={() => void a.reload()}>Refresh status</button>
       </div>}
       {confirmingDisconnect && <div className="ig-confirm-close" role="alertdialog" aria-label="Confirm API disconnect"><p>Disconnect the API connection? Paige tools access will stay unchanged.</p><div className="ig-actions"><button type="button" className="ig-btn" data-danger autoFocus disabled={a.saving} onClick={() => { setConfirmingDisconnect(false); void commit(a.disconnect); }}>Confirm disconnect</button><button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep connection</button></div></div>}
     </>}
   </>;
 }
-
 function safeCheckDate(value: string) {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toLocaleString() : "Time unavailable";
@@ -455,9 +464,11 @@ function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
 
 const N8N_OAUTH_UNAVAILABLE = "OAuth setup is temporarily unavailable while the secure connection path is being completed.";
 
-function n8nApiSummary(value: SafeConnectionStatus | null, loading: boolean, error: boolean) {
+function n8nApiSummary(value: N8nConnection | null, loading: boolean, error: boolean) {
   if (loading) return { account: "Checking…", tone: "neutral" };
   if (error || !value || typeof value.configured !== "boolean") return { account: "Status unavailable", tone: "neutral" };
+  if (value.health === "checking") return { account: "Checking…", tone: "neutral" };
+  if (value.health === "connected") return { account: "Connected", tone: "ok" };
   return value.configured ? { account: "Needs attention", tone: "warn" } : { account: "Not connected", tone: "neutral" };
 }
 function n8nMcpSummary(value: SafeConnectionStatus | null, loading: boolean, error: boolean) {
@@ -587,9 +598,10 @@ function N8nForm({
       />
       {nameLocked && <small>A name can be changed here but not removed, so this keeps “{a.label}”.</small>}
     </label>
+    <p className="ig-note">Saving also checks the API key and workflow visibility. It does not enable Paige tools.</p>
     <div className="ig-actions">
       <button type="submit" className="ig-btn" data-primary disabled={!valid || a.saving}>
-        {a.saving ? "Saving…" : "Save API connection"}
+        {a.saving ? "Saving and checking…" : "Save and check connection"}
       </button>
       <button type="button" className="ig-btn" onClick={onDone} disabled={a.saving}>Cancel</button>
     </div>
