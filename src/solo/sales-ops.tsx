@@ -458,7 +458,7 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
             </div>
           </label>
           <fieldset className="so-field">
-            <legend>Charged</legend>
+            <legend>Price cadence</legend>
             <div className="so-pick">
               {[["one_time", "Once"], ["week", "Weekly"], ["month", "Monthly"], ["year", "Yearly"]].map(([key, text]) => (
                 <button key={key} type="button" aria-pressed={interval === key}
@@ -501,6 +501,10 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
   const firstRef = React.useRef(null);
   const [contactId, setContactId] = React.useState(existing?.contactId ?? "");
   const [offerId, setOfferId] = React.useState(existing?.offerId ?? "");
+  const [pickerSearch, setPickerSearch] = React.useState("");
+  const [pickerPage, setPickerPage] = React.useState(0);
+  const picker = useCatalogOffers({ search: pickerSearch, page: pickerPage, pageSize: 5, referenceIds: offerId ? [offerId] : [] });
+  const pickerOffers = [...picker.offers, ...(picker.referencedOffers || [])].filter((offer, index, rows) => rows.findIndex((o) => o.id === offer.id) === index);
   const [term, setTerm] = React.useState(existing?.termKind ?? "one_time");
   const [basis, setBasis] = React.useState(existing?.priceBasis ?? "negotiated");
   const [planId, setPlanId] = React.useState("");
@@ -527,15 +531,15 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
   // holds — never a second query, and never `leadPrice()`, whose "lowest active plan" is a display
   // floor. Writing against the DISPLAYED plan rather than the CHOSEN one is the exact defect
   // `save_solo_offer` had to add `_price_id` to fix.
-  const chosenOffer = offers.offers.find((o) => o.id === offerId) || null;
+  const chosenOffer = pickerOffers.find((o) => o.id === offerId) || null;
   const plans = (chosenOffer?.prices || []).filter((plan) => typeof plan.unitAmount === "number");
   // Changing the offer invalidates a plan chosen from the previous one, and a stale id would be
   // refused by the server ("that price is not a plan on this offer in this workspace").
   React.useEffect(() => { setPlanId(""); }, [offerId]);
   // "At your catalog price" is only offerable when there IS a catalog price to point at.
   React.useEffect(() => {
-    if (!existing && basis === "catalog" && plans.length === 0) setBasis("negotiated");
-  }, [basis, plans.length]);
+    if (!existing && picker.phase === "ready" && basis === "catalog" && plans.length === 0) setBasis("negotiated");
+  }, [basis, plans.length, picker.phase]);
 
   const priced = amount.trim() !== "";
   // `quote_pending` is only legal on a CUSTOM arrangement — the server refuses it otherwise, and
@@ -543,7 +547,7 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
   // while `ready` ignored the term entirely, so choosing "Not quoted yet" from the empty state
   // enabled a Save that could only ever fail, two clicks in.
   const quoting = basis === "quote_pending";
-  const ready = contactId !== "" && offerId !== ""
+  const ready = contactId !== "" && offerId !== "" && (Boolean(existing) || (picker.phase === "ready" && Boolean(chosenOffer)))
     && (quoting ? term === "custom_quote" : (basis === "catalog" ? (Boolean(existing) || planId !== "") : priced));
   const { close, request, confirmation, alive } = useSalesDraftExit({ contactId, offerId, term, basis, planId, amount, currency, cadence, instalments, startsOn, renewsOn, endsOn, notes }, busy, onClose);
 
@@ -618,7 +622,7 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
 
         <div className="so-editor-body" inert={busy ? "" : undefined}>
           {!agreements.clients.length && <div className="so-prerequisite"><strong>Add a client first</strong><p>Create a contact in Clients, then return here to record their terms.</p><button className="btn btn-p" onClick={() => request(onOpenClients)}>Go to Clients</button></div>}
-          {!offers.offers.length && <div className="so-prerequisite"><strong>Add an offer first</strong><p>Catalog keeps the canonical products and services you sell.</p><button className="btn btn-p" onClick={() => request(() => onOpenCatalog(true))}>Go to Catalog</button></div>}
+          {!pickerSearch && !pickerPage && picker.phase === "ready" && !pickerOffers.length && <div className="so-prerequisite"><strong>Add an offer first</strong><p>Catalog keeps the canonical products and services you sell.</p><button className="btn btn-p" onClick={() => request(() => onOpenCatalog(true))}>Go to Catalog</button></div>}
           <label className="so-field">
             <span>Client</span>
             <select aria-label="Client" ref={firstRef} value={contactId} onChange={(e) => setContactId(e.target.value)}>
@@ -629,11 +633,13 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
             </select>
           </label>
 
+          <label className="so-field"><span>Search offers by name</span><input type="search" disabled={Boolean(existing?.catalogSnapshotAt)} value={pickerSearch} onChange={(e) => { setPickerSearch(e.target.value); setPickerPage(0); }} placeholder="Search your Catalog…" /></label>
+          <div className="so-page-controls"><span role="status">{picker.phase === "ready" ? "Offer page " + (pickerPage + 1) : picker.phase === "error" ? "Could not load offers" : "Loading offers…"}</span>{picker.phase === "error" && <button className="btn btn-s" onClick={picker.retry}>Retry offers</button>}<button className="btn btn-s" disabled={!pickerPage || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p - 1)}>Previous</button><button className="btn btn-s" disabled={!picker.hasMore || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p + 1)}>Next</button></div>
           <label className="so-field">
             <span>Offer</span>
             <select aria-label="Offer" disabled={Boolean(existing?.catalogSnapshotAt)} value={offerId} onChange={(e) => setOfferId(e.target.value)}>
               <option value="">Choose one of your offers…</option>
-              {offers.offers.map((offer) => (
+              {pickerOffers.map((offer) => (
                 <option key={offer.id} value={offer.id}>{offer.name}</option>
               ))}
             </select>
@@ -765,8 +771,13 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
  */
 export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCatalog, onOpenClients, truth }) {
   const sales = useSoloSalesOps();
-  const offers = useCatalogOffers();
   const agreements = useSoloAgreements();
+  const [offerSearch, setOfferSearch] = React.useState("");
+  const [offerPage, setOfferPage] = React.useState(0);
+  const [termSearch, setTermSearch] = React.useState("");
+  const [termStatus, setTermStatus] = React.useState("all");
+  const [termPage, setTermPage] = React.useState(0);
+  const offers = useCatalogOffers({ search: offerSearch, page: offerPage, pageSize: 5, referenceIds: agreements.agreements.map((a) => a.offerId) });
   const [editor, setEditor] = React.useState(null);
   const [editing, setEditing] = React.useState(null);
   const [success, setSuccess] = React.useState("");
@@ -782,7 +793,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
   // workspace stays on screen under the next one. Both tenant ids are watched because each hook
   // guards its own synchronously, and the agreements drawer holds the more sensitive draft — a
   // client name bound to a negotiated amount.
-  React.useEffect(() => { setEditor(null); setEditing(null); setSuccess(""); }, [sales.tenantId, agreements.tenantId]);
+  React.useEffect(() => { setEditor(null); setEditing(null); setSuccess(""); setOfferSearch(""); setOfferPage(0); setTermSearch(""); setTermStatus("all"); setTermPage(0); }, [sales.tenantId, agreements.tenantId]);
 
   if (sales.phase === "resolving") {
     return (
@@ -819,51 +830,13 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
     );
   }
 
-  const live = offers.offers.filter((offer) => offer.availability === "active");
-  const awaiting = sales.orders.filter((o) => o.status === "pending" || o.status === "failed");
-  const linkedDeals = deals.length;
-
-  // ── the readiness answers ───────────────────────────────────────────────────────────────────
-  const processorState = sales.processorUnrecognised ? "unknown"
-    : sales.processor === null ? "none"
-    : sales.processor === "not_yet" ? "warn"
-    : "ok";
-
-  const offersState = offers.phase !== "ready" ? "unknown"
-    : live.length > 0 ? "ok"
-    : offers.offers.length > 0 ? "warn"
-    : "none";
-
-  const activityState = !sales.ordersReadable ? "unknown"
-    : awaiting.length > 0 ? "warn"
-    : sales.orders.length > 0 ? "ok"
-    : "none";
-
-  // "Live" is active or paused — a paused retainer is still an arrangement that exists, and
-  // counting it as gone would understate what the business has running.
-  const liveAgreements = agreements.agreements
-    .filter((a) => a.status === "active" || a.status === "paused").length;
-
-  // UNREADABLE is not NONE, and the disjunct order matters: `clientsReadable` is derived from
-  // authority rather than from an error, because a member's denied read on `clients` returns
-  // 200/[]/no error. A caller who cannot read the client book but CAN see agreements is still
-  // shown what they can see, rather than told their successful read failed.
-  const agreementState = agreements.phase !== "ready" ? "unknown"
-    : agreements.agreements.length > 0 ? (liveAgreements > 0 ? "ok" : "warn")
-    : !agreements.agreementsReadable ? "unknown"
-    : "none";
-
-  // The one next step, chosen in the order a business actually gets set up: say what you sell,
-  // then how you get paid for it. It names a real act on this screen — never "get started".
-  const nextStep = offersState === "none"
-    ? "Add what you sell. One name is enough to start."
-    : processorState === "none" || processorState === "warn"
-      ? "Record how your clients pay you."
-      : offersState === "warn"
-        ? "Publish an offer in Catalog so it can be sold."
-        : agreementState === "none"
-          ? "Record what your first client agreed to pay."
-          : "Your commercial setup is recorded.";
+  const matchingTerms = agreements.agreements.filter((row) => {
+    const client = agreements.clients.find((c) => c.id === row.contactId);
+    return (termStatus === "all" || row.status === termStatus)
+      && (client?.name || "").toLowerCase().includes(termSearch.trim().toLowerCase());
+  });
+  const shownTerms = matchingTerms.slice(termPage * 5, termPage * 5 + 5);
+  const processorState = sales.processorUnrecognised ? "unknown" : sales.processor === null ? "none" : sales.processor === "not_yet" ? "warn" : "ok";
 
   // The detail drawer `GrowthHub` already mounts (§18 — no second drawer). It shows the pair the
   // whole snapshot exists for: what this client agreed, beside what the catalog listed when it was
@@ -943,15 +916,154 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
         />
       ) : null}
 
-      {/* ── readiness ─────────────────────────────────────────────────────────────────────── */}
-      <section className="so-band">
+      <header className="so-workbench-head"><div><span className="so-eyebrow">SALES WORKBENCH</span><h2>Your next client starts here</h2><p>Find an offer. Record the terms. Keep the next step clear.</p></div></header>
+      {/* ── what each client pays ─────────────────────────────────────────────────────────── */}
+      <section className="so-band so-terms">
         <div className="so-band-head">
-          <h3>Where this business stands</h3>
-          {truth ? <span className={`campaigns-truth campaigns-truth--${String(truth[0]).toLowerCase()}`}>{truth[0]}</span> : null}
-          <small>Each answer is a record that exists, or honestly does not.</small>
+          <h3>Commercial terms and retainers</h3>
+          {agreements.phase === "ready" && agreements.agreementsReadable && <Pill tone={agreements.agreements.length ? "ok" : "opportunity"}>{agreements.agreements.length ? "Records available" : "Nothing recorded yet"}</Pill>}
+          {truth && <span className={`campaigns-truth campaigns-truth--${String(truth[0]).toLowerCase()}`}>{truth[0]}</span>}
+          {agreements.canManage && <button className="btn btn-s btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>Record terms</button>}
+          {/* Disambiguated in place rather than renamed. "Agreement" already means a SIGNED
+            * DOCUMENT everywhere else in this product — including `clients.agreement_signed_at`
+            * on the very table this reads, and an "Agreements" card on the same client's portal
+            * panel. This sentence is what stops an owner opening this expecting to send a PDF.
+            * It is also §38 statement #1 of exactly two on this band. */}
+          <small>
+            What each client agreed to pay for one of your offers. Recording it bills nobody and
+            sends nothing. No legal document is generated, stored or signed here.
+          </small>
         </div>
-        {truth ? <p className="so-orient">Commercial terms record what clients agree to pay. Payment handling records how you accept money; it does not connect a processor or collect payment.</p> : null}
 
+        {agreements.agreementsReadable && agreements.agreements.length > 0 && <div className="so-filters">
+          <label className="so-search"><span>Find client terms</span><input type="search" value={termSearch} placeholder="Search client name…" onChange={(e) => { setTermSearch(e.target.value); setTermPage(0); }} /></label>
+          <label className="so-search"><span>Status</span><select value={termStatus} onChange={(e) => { setTermStatus(e.target.value); setTermPage(0); }}><option value="all">All statuses</option>{Object.entries(AGREEMENT_STATE).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
+          <small>Searches the latest {agreements.agreements.length} loaded records (up to 200).</small>
+        </div>}
+        {["loading", "resolving"].includes(agreements.phase) ? <p role="status">Loading commercial terms…</p> : agreements.phase === "error" ? (
+          <p className="so-absent">
+            Your client terms could not be read, so this is unknown rather than empty. Nothing was
+            changed.{" "}
+            <button className="btn btn-s" onClick={agreements.retry}>
+              <Ic.arrow size={13} />Retry
+            </button>
+          </p>
+        ) : agreements.phase === "unavailable" ? <p className="so-absent">Client terms need a resolved workspace.</p> : agreements.authorityUnknown ? <p className="so-absent" role="alert">Your access could not be confirmed. <button className="btn btn-s" onClick={agreements.retry}>Retry access</button></p> : !agreements.agreementsReadable && agreements.agreements.length === 0 ? (
+          <p className="so-absent">
+            Client terms are not readable at your access level. That is different from there being
+            none, so nothing is shown rather than an empty list that would read as zero.
+          </p>
+        ) : agreements.agreements.length === 0 ? (
+          // The prerequisites are named plainly, and each points at the surface that fixes it —
+          // never a control that does nothing (§70.1).
+          <p className="so-absent">
+            {agreements.clients.length === 0
+              ? "These terms attach a client to one of your offers, and no clients are recorded in this workspace yet. Add one under Clients first."
+              : (!offerSearch && offerPage === 0 && offers.phase === "ready" && offers.offers.length === 0)
+                ? "These terms attach a client to one of your offers, and nothing is recorded in your catalog yet. Add what you sell above first."
+                : "Nothing recorded yet. Pick a client and one of your offers, then write down what they actually agreed to pay — the amount, how often, and when it starts."}
+          </p>
+        ) : (
+          <div className="so-table" role="table" aria-label="Commercial terms and retainers">
+            <div className="so-tr so-th so-tr-4" role="row">
+              <span role="columnheader">Client</span>
+              <span role="columnheader">State</span>
+              <span role="columnheader">Agreed</span>
+              <span role="columnheader">Terms</span>
+            </div>
+            {shownTerms.map((row) => {
+              const state = AGREEMENT_STATE[row.status] || AGREEMENT_STATE.unrecognised;
+              const client = agreements.clients.find((c) => c.id === row.contactId);
+              const offer = [...offers.offers, ...(offers.referencedOffers || [])].find((o) => o.id === row.offerId);
+              return (
+                <button
+                  className="so-tr so-tr-4 so-row"
+                  role="row"
+                  key={row.id}
+                  onClick={() => openAgreement(row, client, offer)}
+                >
+                  <span role="cell" className="so-cell-name">
+                    {/* A client the caller cannot read is NAMED as unreadable, never blanked into
+                      * an em-dash that would read as "no client". */}
+                    {client?.name || (agreements.clientsReadable ? "Not recorded" : "Not readable here")}
+                  </span>
+                  <span role="cell"><Pill tone={state.tone}>{state.label}</Pill></span>
+                  <span role="cell" className={`so-num so-num--${state.tone}`}>
+                    {row.agreedAmountMinor === null
+                      ? (row.priceBasis === "quote_pending" ? "To be quoted" : "—")
+                      : money(row.agreedAmountMinor, row.agreedCurrency) ?? "—"}
+                  </span>
+                  <span role="cell" className="so-quiet">
+                    {(TERM_LABEL[row.termKind] || "Not stated")}
+                    {row.termKind === "recurring" && row.billingInterval
+                      ? ` · ${CADENCE_LABEL[row.billingInterval] || row.billingInterval}`
+                      : ""}
+                    {row.termKind === "installment" && row.installmentsTotal
+                      ? ` · ${row.installmentsTotal}×`
+                      : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {agreements.agreements.length > 0 && agreements.agreementsReadable && <div className="so-page-controls"><span>{matchingTerms.length === 0 ? "No matching terms" : "Page " + (termPage + 1) + " · " + matchingTerms.length + " matching loaded records"}</span><button className="btn btn-s" disabled={termPage === 0} onClick={() => setTermPage((p) => p - 1)}>Previous terms</button><button className="btn btn-s" disabled={(termPage + 1) * 5 >= matchingTerms.length} onClick={() => setTermPage((p) => p + 1)}>Next terms</button></div>}
+      </section>
+
+      {/* ── what this business sells ──────────────────────────────────────────────────────── */}
+      <section className="so-band so-offers" aria-label="Find an offer">
+        <div className="so-band-head">
+          <h3>Find an offer</h3>
+          <small>What you sell lives in Catalog. Search by name or browse five at a time.</small>
+          <span style={{ flex: 1 }} />
+          {offers.canManage && <button className="btn btn-s btn-p" onClick={() => setEditor("offer")}>Quick offer</button>}
+          {onOpenCatalog ? (
+            <button className="btn btn-s" onClick={() => onOpenCatalog()}>Open Catalog <Ic.arrow size={12} /></button>
+          ) : null}
+        </div>
+
+        {offers.authorityUnknown && <p className="so-absent" role="alert">Offer editing access could not be confirmed. <button className="btn btn-s" onClick={offers.retry}>Retry offer access</button></p>}
+        <label className="so-search"><span>Search Catalog offers</span><input type="search" value={offerSearch} placeholder="Find a product or service…" onChange={(e) => { setOfferSearch(e.target.value); setOfferPage(0); }} /></label>
+        {["loading", "resolving"].includes(offers.phase) ? <p role="status">Loading Catalog offers…</p> : offers.phase === "error" ? (
+          <p className="so-absent" role="alert">
+            Your offers could not be read. Your records were not changed. <button className="btn btn-s" onClick={offers.retry}>Retry offers</button>
+          </p>
+        ) : offers.phase === "unavailable" ? <p className="so-absent">Catalog needs a resolved workspace.</p> : offers.offers.length === 0 ? (
+          <p className="so-absent">
+            {offerSearch || offerPage ? "No offers match this view. Clear your search or go back a page." : "Add your first product or service with Quick offer. Finish its setup in Catalog."}
+          </p>
+        ) : (
+          <div className="so-table" role="table" aria-label="Offers">
+            <div className="so-tr so-th" role="row">
+              <span role="columnheader">Offer</span>
+              <span role="columnheader">Kind</span>
+              <span role="columnheader">State</span>
+              <span role="columnheader">Price</span>
+              <span role="columnheader">Price cadence</span>
+            </div>
+            {offers.offers.map((offer) => {
+              const lead = offer.prices.filter((p) => p.active && typeof p.unitAmount === "number")[0] || null;
+              const state = OFFER_STATE[offer.availability] || OFFER_STATE.unrecognised;
+              return (
+                <button className="so-tr so-row" role="row" key={offer.id} onClick={() => openOffer(offer)}>
+                  <span role="cell" className="so-cell-name">{offer.name || "Untitled offer"}</span>
+                  <span role="cell">{offer.kind === "service" ? "Service" : offer.kind === "product" ? "Product" : "—"}</span>
+                  <span role="cell"><Pill tone={state.tone}>{state.label}</Pill></span>
+                  <span role="cell" className="so-num">
+                    {lead ? (money(lead.unitAmount, lead.currency) ?? "—") : "—"}
+                  </span>
+                  <span role="cell">
+                    {lead && lead.billingInterval ? (CADENCE[lead.billingInterval] || lead.billingInterval) : "—"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div className="so-page-controls"><span>Page {offerPage + 1} · up to 5 offers</span><button className="btn btn-s" disabled={offerPage === 0 || offers.phase !== "ready"} onClick={() => setOfferPage((p) => p - 1)}>Previous offers</button><button className="btn btn-s" disabled={!offers.hasMore || offers.phase !== "ready"} onClick={() => setOfferPage((p) => p + 1)}>Next offers</button></div>
+      </section>
+
+      <section className="so-band so-payment"><div className="so-band-head"><h3>Payment handling</h3><small>Records how you accept payment. No processor connection or money collection.</small></div>
         <ReadyRow
           state={processorState}
           label="How your clients pay you"
@@ -986,222 +1098,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
           )}
         />
 
-        <ReadyRow
-          state={offersState}
-          label="What you sell"
-          detail={
-            offers.phase !== "ready"
-              ? "Your offers could not be read, so this is unknown rather than empty."
-              : offers.offers.length === 0
-                ? "Nothing recorded yet."
-                : `${live.length} live of ${offers.offers.length} recorded.`
-          }
-          action={offers.canManage ? (
-            <button className="btn btn-s btn-p" onClick={() => setEditor("offer")}>Quick offer</button>
-          ) : null}
-        />
-
-        <ReadyRow
-          // §58 — this REPLACES the shipped row that said "Not here". That row's own docstring
-          // gave the reason it could not say more: "this row reads nothing, so it cannot say a
-          // workspace HAS none." It reads something now, so it can. The Command Center caveat it
-          // carried still stands and is why the word "retainer" is not put on a COUNT here:
-          // Command Center counts "Active retainers" from `tenant_service_subscriptions`, a
-          // different table, and two surfaces counting retainers from two sources is a §57
-          // divergence waiting to happen. That reconciliation is its own tracked item.
-          state={agreementState}
-          label="What each client pays you"
-          detail={
-            // `agreementsReadable`, not `clientsReadable`. Proxying off the client read fails for a
-            // coach: their client read succeeds on assigned clients while the agreements read is
-            // row-filtered to the same subset, so a coach in a workspace holding twelve would be
-            // told "Nothing recorded yet."
-            agreements.phase !== "ready" ? "Client terms are loading or unavailable. Retry the source below." : !agreements.agreementsReadable && agreements.agreements.length === 0
-              ? "Client terms are not readable at your access level, so this is unknown rather than empty."
-              : agreements.agreements.length === 0
-                ? "Nothing recorded yet."
-                : liveAgreements > 0
-                  ? `${liveAgreements} live of ${agreements.agreements.length} recorded.`
-                  : `${agreements.agreements.length} recorded, none live yet.`
-          }
-          action={agreements.canManage && agreements.phase === "ready" && offers.phase === "ready" ? (
-            <button className="btn btn-s btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>
-              Record terms
-            </button>
-          ) : (
-            <span className="so-quiet">
-              {agreements.authorityUnknown
-                ? "Whether you can change this could not be read."
-                : "An owner or admin records this."}
-            </span>
-          )}
-        />
-
-        <ReadyRow
-          state={activityState}
-          label="Commercial activity"
-          detail={
-            !sales.ordersReadable
-              ? "Commercial activity is not readable at your access level, so this is unknown rather than empty."
-              : awaiting.length > 0
-                ? `${awaiting.length} awaiting attention of ${sales.orders.length} recent.`
-                : sales.orders.length > 0
-                  ? `${sales.orders.length} recent, none awaiting you.`
-                  : "Nothing recorded yet."
-          }
-        />
-
-        <ReadyRow
-          // The Campaigns snapshot returns `deals: []` for resolving, loading, unavailable AND
-          // error alike, so counting length alone reported "no deals" to a workspace whose deal
-          // read had FAILED. That is the collapse this row's own docstring forbids, and for the
-          // error case it was permanent rather than a first-paint flash.
-          state={dealsPhase !== "ready" ? "unknown" : linkedDeals > 0 ? "ok" : "none"}
-          label="Linked pipeline work"
-          detail={dealsPhase !== "ready"
-            ? "Your pipeline could not be read, so this is unknown rather than empty."
-            : linkedDeals > 0
-              ? `${linkedDeals} deal${linkedDeals === 1 ? "" : "s"} on the board.`
-              : "No deals on the board yet."}
-        />
-
-        <p className="so-next"><b>Next</b> {nextStep}</p>
       </section>
-
-      {/* ── what this business sells ──────────────────────────────────────────────────────── */}
-      <section className="so-band">
-        <div className="so-band-head">
-          <h3>What you sell</h3>
-          <small>Catalog owns these records. Changing one changes it everywhere.</small>
-          <span style={{ flex: 1 }} />
-          {onOpenCatalog ? (
-            <button className="btn btn-s" onClick={() => onOpenCatalog()}>Open Catalog <Ic.arrow size={12} /></button>
-          ) : null}
-        </div>
-
-        {["loading", "resolving"].includes(offers.phase) ? <p role="status">Loading Catalog offers…</p> : offers.phase === "error" ? (
-          <p className="so-absent" role="alert">
-            Your offers could not be read. Your records were not changed. <button className="btn btn-s" onClick={offers.retry}>Retry offers</button>
-          </p>
-        ) : offers.offers.length === 0 ? (
-          <p className="so-absent">
-            Nothing is listed yet. An offer can be a program, a service, a download, a product, a
-            consultation or a retainer — a name is all it needs to start.
-          </p>
-        ) : (
-          <div className="so-table" role="table" aria-label="Offers">
-            <div className="so-tr so-th" role="row">
-              <span role="columnheader">Offer</span>
-              <span role="columnheader">Kind</span>
-              <span role="columnheader">State</span>
-              <span role="columnheader">Price</span>
-              <span role="columnheader">Charged</span>
-            </div>
-            {offers.offers.map((offer) => {
-              const lead = offer.prices.filter((p) => p.active && typeof p.unitAmount === "number")[0] || null;
-              const state = OFFER_STATE[offer.availability] || OFFER_STATE.unrecognised;
-              return (
-                <button className="so-tr so-row" role="row" key={offer.id} onClick={() => openOffer(offer)}>
-                  <span role="cell" className="so-cell-name">{offer.name || "Untitled offer"}</span>
-                  <span role="cell">{offer.kind === "service" ? "Service" : offer.kind === "product" ? "Product" : "—"}</span>
-                  <span role="cell"><Pill tone={state.tone}>{state.label}</Pill></span>
-                  <span role="cell" className="so-num">
-                    {lead ? (money(lead.unitAmount, lead.currency) ?? "—") : "—"}
-                  </span>
-                  <span role="cell">
-                    {lead && lead.billingInterval ? (CADENCE[lead.billingInterval] || lead.billingInterval) : "—"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* ── what each client pays ─────────────────────────────────────────────────────────── */}
-      <section className="so-band">
-        <div className="so-band-head">
-          <h3>Commercial terms and retainers</h3>
-          {/* Disambiguated in place rather than renamed. "Agreement" already means a SIGNED
-            * DOCUMENT everywhere else in this product — including `clients.agreement_signed_at`
-            * on the very table this reads, and an "Agreements" card on the same client's portal
-            * panel. This sentence is what stops an owner opening this expecting to send a PDF.
-            * It is also §38 statement #1 of exactly two on this band. */}
-          <small>
-            What each client agreed to pay for one of your offers. Recording it bills nobody and
-            sends nothing. No legal document is generated, stored or signed here.
-          </small>
-        </div>
-
-        {["loading", "resolving"].includes(agreements.phase) ? <p role="status">Loading commercial terms…</p> : agreements.phase === "error" ? (
-          <p className="so-absent">
-            Your client terms could not be read, so this is unknown rather than empty. Nothing was
-            changed.{" "}
-            <button className="btn btn-s" onClick={agreements.retry}>
-              <Ic.arrow size={13} />Retry
-            </button>
-          </p>
-        ) : !agreements.agreementsReadable && agreements.agreements.length === 0 ? (
-          <p className="so-absent">
-            Client terms are not readable at your access level. That is different from there being
-            none, so nothing is shown rather than an empty list that would read as zero.
-          </p>
-        ) : agreements.agreements.length === 0 ? (
-          // The prerequisites are named plainly, and each points at the surface that fixes it —
-          // never a control that does nothing (§70.1).
-          <p className="so-absent">
-            {agreements.clients.length === 0
-              ? "These terms attach a client to one of your offers, and no clients are recorded in this workspace yet. Add one under Clients first."
-              : offers.offers.length === 0
-                ? "These terms attach a client to one of your offers, and nothing is recorded in your catalog yet. Add what you sell above first."
-                : "Nothing recorded yet. Pick a client and one of your offers, then write down what they actually agreed to pay — the amount, how often, and when it starts."}
-          </p>
-        ) : (
-          <div className="so-table" role="table" aria-label="Commercial terms and retainers">
-            <div className="so-tr so-th so-tr-4" role="row">
-              <span role="columnheader">Client</span>
-              <span role="columnheader">State</span>
-              <span role="columnheader">Agreed</span>
-              <span role="columnheader">Terms</span>
-            </div>
-            {agreements.agreements.map((row) => {
-              const state = AGREEMENT_STATE[row.status] || AGREEMENT_STATE.unrecognised;
-              const client = agreements.clients.find((c) => c.id === row.contactId);
-              const offer = offers.offers.find((o) => o.id === row.offerId);
-              return (
-                <button
-                  className="so-tr so-tr-4 so-row"
-                  role="row"
-                  key={row.id}
-                  onClick={() => openAgreement(row, client, offer)}
-                >
-                  <span role="cell" className="so-cell-name">
-                    {/* A client the caller cannot read is NAMED as unreadable, never blanked into
-                      * an em-dash that would read as "no client". */}
-                    {client?.name || (agreements.clientsReadable ? "Not recorded" : "Not readable here")}
-                  </span>
-                  <span role="cell"><Pill tone={state.tone}>{state.label}</Pill></span>
-                  <span role="cell" className={`so-num so-num--${state.tone}`}>
-                    {row.agreedAmountMinor === null
-                      ? (row.priceBasis === "quote_pending" ? "To be quoted" : "—")
-                      : money(row.agreedAmountMinor, row.agreedCurrency) ?? "—"}
-                  </span>
-                  <span role="cell" className="so-quiet">
-                    {(TERM_LABEL[row.termKind] || "Not stated")}
-                    {row.termKind === "recurring" && row.billingInterval
-                      ? ` · ${CADENCE_LABEL[row.billingInterval] || row.billingInterval}`
-                      : ""}
-                    {row.termKind === "installment" && row.installmentsTotal
-                      ? ` · ${row.installmentsTotal}×`
-                      : ""}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
       {/* ── commercial activity ───────────────────────────────────────────────────────────── */}
       <section className="so-band">
         <div className="so-band-head">
@@ -1216,11 +1113,10 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
           </p>
         ) : sales.orders.length === 0 ? (
           <p className="so-absent">
-            No payments recorded. When money moves through your own processor and reaches this
-            workspace, the payments appear here as recorded — never estimated.
+            No payment records are available here. This surface does not connect your processor or import payments.
           </p>
         ) : (
-          <div className="so-table" role="table" aria-label="Commercial activity">
+          <details className="so-activity"><summary>View {sales.orders.length} recent payment records</summary><div className="so-table" role="table" aria-label="Commercial activity">
             <div className="so-tr so-th so-tr-4" role="row">
               <span role="columnheader">Who</span>
               <span role="columnheader">State</span>
@@ -1242,7 +1138,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
                 </div>
               );
             })}
-          </div>
+          </div></details>
         )}
       </section>
     </div>
