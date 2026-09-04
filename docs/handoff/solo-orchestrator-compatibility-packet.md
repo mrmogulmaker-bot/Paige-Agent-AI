@@ -77,16 +77,32 @@ backfilled.
 | `on_behalf_of_user` | The human whose authority it ran under | Needed to answer "who authorised this" |
 | `tenant_id` | The workspace | See the gap below |
 
-**Two real gaps you will hit, both worth knowing before you design around them:**
+**Three real constraints you will hit. Design around them deliberately rather than discovering them.**
 
-- **`paige_subagent_invocations` has no `tenant_id`.** Run history therefore cannot be tenant-scoped
-  today. Add it on your own rows rather than inheriting the gap; filing the column addition on the
-  shared table is a separate, worthwhile task.
-- **`paige_audit_log` has no `tenant_id` and no agent actor** — only `actor_user_id`, `actor_role`,
-  `action`, `target_type`, `target_id`, `payload`. An agent-performed action currently cannot be
-  attributed to the agent. Until that changes, carry `actor_agent_slug` and `delegated_by` inside
-  `payload` with those exact key names, so a later column migration is a copy rather than a
-  re-derivation.
+**1. The Rail cannot say WHICH agent acted.** `public.paige_client_events` constrains
+`actor_type` to `('owner_staff','client','paige_agent','automation','external')`. Every agent
+collapses to the single value `paige_agent`; there is no agent id, no slug, no VP column.
+`from_department` and `to_department` *are* real FKs to `paige_departments`, so **department**
+attribution works and **agent** attribution does not.
+
+**2. `paige_client_events.contact_id` is `NOT NULL`.** `record_rail_event` raises
+`contact not in tenant`, and the Chat emitter returns early without a contact. **Intake and
+lifecycle work that is not about one specific client therefore has nowhere to file an outcome
+today.** This is the constraint most likely to bite your workstream, because intake frequently
+begins before a `clients` row exists. The workspace-level projection is a Spine Change Request
+(SCR-1) and is **unstarted**; `resolveEvidence.ts` L40 separately rejects any
+`subject_type !== "client"` (SCR-2, unraised). Plan for the Rail write to be **unavailable** for
+pre-contact work, and render it as `unavailable` rather than as an empty feed.
+
+**3. `paige_subagent_invocations` has no `tenant_id`, and `paige_audit_log` has neither
+`tenant_id` nor an agent actor** (only `actor_user_id`, `actor_role`, `action`, `target_type`,
+`target_id`, `payload`).
+
+**What to do meanwhile:** carry `actor_agent_slug`, `delegated_by` and `tenant_id` inside `payload`
+with those exact key names, so a later column migration is a copy rather than a re-derivation. The
+cheapest real fix, when someone gets to it, is `actor_agent_slug text REFERENCES
+paige_subagents(slug)` on `paige_client_events`, beside the two department columns that already
+work.
 
 **And do not read an empty feed as nothing happening.** Owner-visible Solo Rail activity is
 currently **UNAVAILABLE, not empty** — a distinction the Solo surfaces already make with the
@@ -217,3 +233,11 @@ so you can sanity-check the fit, **not** so you can hardcode it now.
 - [ ] Results return the §6 shape to a `conversation_id`
 - [ ] Unavailable is rendered as `unavailable`, never as empty
 - [ ] No department string, no hierarchy field, no second approval channel, no agent name
+
+## 9. One thing to avoid inheriting
+
+`subagent-forge`'s `actionDisable` gates on a **tenant-agnostic** `admin` role and updates
+`paige_subagents` by globally-unique `slug` **with no tenant predicate** — so a tenant-level admin
+can disable any agent, including a platform default, for everyone. It is filed as its own task.
+**Do not model your own stop path on it.** Gate cross-tenant authority on `is_platform_operator()`,
+and always carry a tenant predicate on the write.

@@ -145,6 +145,41 @@ Three rules:
 - **Stopping is always allowed, and never gated.** A brake needs no ceremony. This mirrors §67's
   posture rule, where lowering is any platform operator and only *raising* is super_admin.
 
+**The shipped precedent to extend, rather than invent.** `paige_automations.state` is already
+`CHECK (state IN ('draft','live','paused'))`. An agent lifecycle state should extend that vocabulary,
+not create a fourth one beside `enabled`, `auto_disabled_reason` and the automation state.
+
+### 6.1 Two defects at the agent lifecycle boundary, found and verified
+
+**(a) Agent disable is cross-tenant and gated on a tenant-agnostic role — a live §59 trap.**
+`supabase/functions/subagent-forge/index.ts` `actionDisable` (L366–376) is gated only on
+`caller.isAdmin`, and `getCaller` (L48–58) computes that by reading `user_roles` **with no tenant
+filter**:
+
+```ts
+if (!caller.isAdmin) return fail("Admin only", 403);
+…
+await supabase.from("paige_subagents")
+  .update({ enabled: false, auto_disabled_reason: … })
+  .eq("slug", slug);                      // ← no tenant predicate
+```
+
+`slug` is **globally unique**, so a tenant-level `admin` in *any* workspace can disable *any* agent —
+including a `tenant_id IS NULL` platform default, which would disable it **for every tenant**. This
+is exactly the §59 global-role trap: cross-tenant authority must gate on `is_platform_owner()` /
+`is_platform_operator()`, never on the tenant-level `admin` app_role. `actionApprove` and
+`actionReject` share the same gate.
+
+**This design does not fix it** — the assignment is planning only, and the fix needs a §37 producer
+inventory across all callers. It is recorded here so no lifecycle work is built on top of it, and
+filed as its own task.
+
+**(b) There is no chat or RPC seam for pausing or revoking an agent (§10).** The chat baseline
+carries `forge_subagent` (`ordinary`), `delegate_to_subagent` (`high`) and the unclassified read
+`list_subagents`. **Disable is reachable only by an admin POSTing to the edge function.** So an owner
+cannot ask PAIGE to stop one of her own agents — the exact dead end §10 exists to prevent. Any
+lifecycle build must add the classified stop action, or "stopping is always allowed" is aspirational.
+
 ---
 
 ## 7. Rail — how an agent's work is audited
@@ -158,11 +193,56 @@ The Rail is the **evidence and attribution** layer. Three honest constraints, al
 - **Owner-visible Solo Rail activity is UNAVAILABLE, not empty.** An empty activity feed must never
   be rendered as "nothing happened."
 
-**What every agent action must write, once a Rail write exists:** the acting agent's `slug`, the
-delegator, the tenant, the capability invoked, the inputs' provenance, the outcome, and — for a
-gated action — the proposal id it was executed under. **`paige_subagent_invocations` has no
-`tenant_id`**, so run history cannot be tenant-scoped today. That is a §9 gap in its own right and
-should be filed separately rather than bundled into this design.
+### 7.1 The Rail table, exactly as it ships
+
+`public.paige_client_events` (migration `20260712190000`) — verified column by column:
+
+```sql
+tenant_id       uuid NOT NULL REFERENCES tenants(id)
+contact_id      uuid NOT NULL REFERENCES clients(id)      -- NOT NULL. See 7.2.
+event_kind      text NOT NULL REFERENCES paige_event_kinds(slug)
+surface         text CHECK IN ('your_paige','contact_paige','client_portal','automation','mcp')
+actor_type      text CHECK IN ('owner_staff','client','paige_agent','automation','external')
+actor_user_id   uuid REFERENCES auth.users(id)            -- nullable
+from_department text REFERENCES paige_departments(slug)
+to_department   text REFERENCES paige_departments(slug)
+audience        text CHECK IN ('owner','client','both')
+visibility      text CHECK IN ('owner_internal','client_visible')
+```
+
+**Two facts change what this design can claim.**
+
+**A Rail row cannot name which agent did the work.** `actor_type` collapses every agent to the
+single value `paige_agent`. There is no agent id, no VP column, no sub-agent slug. So "PAIGE
+delegates to accountable specialists and reports back with clear ownership" is, at the Rail layer,
+**not currently expressible** — the row can say *an agent* acted, never *which*.
+
+**Department attribution, by contrast, already exists.** `from_department` and `to_department` are
+real FKs to `paige_departments`. So the cheapest honest first step is not a new attribution model:
+it is `actor_agent_slug text REFERENCES paige_subagents(slug)` on this table, sitting beside the two
+department columns that already work.
+
+### 7.2 An agent whose work is not about one client has nowhere to file it
+
+`contact_id` is `NOT NULL`. `record_rail_event` raises `contact not in tenant`, and the Chat emitter
+returns early when there is no contact. The owner ruled on 2026-09-02 that a Rail event may **not**
+carry a null `contact_id`; the repair is a distinct tenant/workspace-level outcome projection, filed
+as a Spine Change Request (SCR-1) and **unstarted**. `resolveEvidence.ts` L40 independently rejects
+any `subject_type !== "client"` (SCR-2, unraised).
+
+**This lands directly on the Business Game Plan.** The plan is a *workspace-level* artifact — ZION
+sequencing the owner's own business is about no single client. Under today's Rail, that work
+**cannot be filed as an outcome at all**. It is not a gap this design can route around, and it is why
+the prototype renders Rail-backed activity honestly as `unavailable` rather than as an empty feed.
+
+### 7.3 What every agent action must write, once a workspace-level Rail write exists
+
+The acting agent's `slug`, the delegator, the tenant, the capability invoked, the inputs' provenance,
+the outcome, and — for a gated action — the proposal id it was executed under.
+
+**`paige_subagent_invocations` also has no `tenant_id`**, so run history cannot be tenant-scoped
+today either. That is a §9 gap in its own right and should be filed separately rather than bundled
+into this design.
 
 ---
 
@@ -213,6 +293,23 @@ a metered capability until its spend is metered.* Carrying the trace into the me
 prerequisite (§8.4 of the autonomy architecture), and it is not this design's to build — but it is
 this design's to refuse to run ahead of.
 
+**A near miss worth naming:** `paige_subagents` already carries `daily_invocation_cap` and
+`monthly_token_cap` **as columns with defaults — and nothing enforces either.** They read as a budget
+and are not one. Any design that cites them as a spend control would be citing a column, not a limit.
+
+### 9.1 Three classification gaps this design must not paper over
+
+| Gap | Consequence |
+|---|---|
+| **No e-signature or contract action is classified.** Searched `_shared/action-risk.ts` and the chat baseline for `esign`, `docusign`, `signature_request`, `send_for_signature` — no matches. The nearest is `crm_file_document` (`high`). | An agent that executes agreements has **no risk row**, so MERIT's "agreements" remit has no gate behind it. It must be classified before that remit is built. |
+| **There is no `sensitive` risk class.** `action-risk.ts` has exactly three classes and none is about data sensitivity; the closest treatments are inline (e.g. `update_client_data`'s confirm summary names *fields*, never values). | "Sensitive data" from the brief maps onto `high` plus `data_boundaries`, not onto a class that exists. Stated so nobody looks for a class that isn't there. |
+| **There is no tier feature key for agents.** The `Feature` union has 18 members and none is agents / subagents / registry. `TierKey` has five values and no `client` or `anonymous` — those two tiers are denied by the server, never by a feature key. | The registry's `tier_availability` needs a **new** `Feature` member before `hasFeature()` can gate anything agent-shaped (§60). |
+
+**And the governed seam is not yet load-bearing.** `_shared/paige-spine/governedExecution.ts` is
+door-blind across six doors with 13 fail-closed refusal codes — and its **only importer in the whole
+repository is its own test**. Nothing is required to use it. Passing its lint does not mean anything
+is governed.
+
 ---
 
 ## 10. The §68 decay law, applied to agents
@@ -254,6 +351,10 @@ Nothing in this document is built. Specifically, and stated so nobody reads it a
 | `trust_effective_rung()` / `resolve_tool_autonomy()` exist on prod | **Deployed**, verified by catalog query. **Whether either is reached at runtime is UNVERIFIED.** |
 | The Solo Trust Compass dial enforces anything | **No** — in-memory, resets on reload, no server code reads it |
 | Agents carry `reports_to`, `agent_type`, `autonomy_lane`, `schedule`, pause metadata | **None exist.** All are §4.2 proposals |
-| Rail records agent attribution | **Resolver exists; nothing calls it** |
-| Agent spend is metered | **No.** Zero rows in `platform_metered_events`, ever |
+| Rail records **which** agent acted | **No.** `paige_client_events.actor_type` collapses every agent to `paige_agent`; department attribution exists, agent attribution does not |
+| An agent can file a workspace-level outcome | **No.** `contact_id` is `NOT NULL`; SCR-1 unstarted |
+| Autonomy can be resolved for an *agent* | **No.** `tenant_tool_autonomy` is keyed `(tenant_id, tool_key)`; `paige_automations.granted_lane` is per-process; `paige_action_kinds.default_autonomy_lane` is per action kind. Nothing resolves per agent. |
+| An owner can stop an agent from chat | **No.** Disable is an admin POST to `subagent-forge`, and that path is cross-tenant (§6.1a) |
+| Agent spend is metered | **No.** Zero rows in `platform_metered_events`, ever. Cap columns exist and are unenforced |
+| Per-agent or per-tenant §68 decay | **No.** The decay law governs the platform ceiling only; whether tenant grants decay is an open owner ruling |
 | Solo activity feed is empty because nothing happened | **False** — it is UNAVAILABLE, not empty |
