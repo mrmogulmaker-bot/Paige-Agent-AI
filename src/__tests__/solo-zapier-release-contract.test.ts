@@ -131,4 +131,20 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(api).toContain('next.kind === "authorization" ? "authorization_expired"');
     expect(api).toContain('next.kind === "provider" ? "provider_unavailable"');
   });
+  it("clears the cross-tenant contact collision the intake insert would hit", () => {
+    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
+    // The creator-wide index spans tenants, so an operator who already holds this email in
+    // another workspace makes every delivery fail contact_write_failed. The tenant-scoped
+    // uq_clients_tenant_email (20260817010000) keeps same-tenant duplicates blocked.
+    expect(sql).toContain("DROP INDEX IF EXISTS public.clients_created_by_email_unique;");
+    expect(sql).toContain("WHERE c.tenant_id=r.tenant_id AND lower(btrim(c.email))=email");
+  });
+  it("keeps the duplicate-email message once the tenant-scoped index is the one that raises", () => {
+    for (const surface of [
+      "src/components/dashboard/AddInternalClientDialog.tsx",
+      "src/components/dashboard/ClientManagementDashboard.tsx",
+    ]) {
+      expect(read(surface)).toContain('msg.includes("uq_clients_tenant_email")');
+    }
+  });
 });

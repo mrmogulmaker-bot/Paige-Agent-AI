@@ -425,3 +425,18 @@ RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog
 END $$;
 REVOKE ALL ON FUNCTION public.record_zapier_mcp_connection_test(uuid,uuid,boolean) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.record_zapier_mcp_connection_test(uuid,uuid,boolean) TO service_role;
+
+-- The legacy creator-wide uniqueness on public.clients predates multi-tenancy. It is
+-- clients_created_by_email_unique (created_by, lower(email)) from 20260423012456, and it
+-- forbids ONE operator from holding the same contact email in TWO different workspaces --
+-- the ordinary agency/sub-account case. The invariant the product actually wants is
+-- tenant-scoped and already exists as uq_clients_tenant_email (20260817010000).
+--
+-- While both are present, a cross-tenant insert raises on the creator-wide index, and every
+-- tenant-scoped recovery path -- this intake's and create_contact's (20261020010000) alike --
+-- then searches only its own tenant, finds nothing, and re-raises. Skool deliveries for any
+-- multi-workspace operator therefore fail permanently as contact_write_failed.
+--
+-- Drop the superseded index. uq_clients_tenant_email continues to block same-tenant
+-- duplicates, so the real invariant is unchanged; only the cross-tenant false collision goes.
+DROP INDEX IF EXISTS public.clients_created_by_email_unique;
