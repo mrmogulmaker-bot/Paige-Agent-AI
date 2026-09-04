@@ -1,4 +1,7 @@
 -- Shared receipt processing only. No history backfill, sender mutation, or tenant-facing API.
+-- Owner-approved rebuild parity: production already has these service-role privileges.
+-- SELECT resolves the source; UPDATE permits row locking; INSERT appends its proven outcome.
+GRANT SELECT, INSERT, UPDATE ON public.email_send_log TO service_role;
 CREATE TABLE IF NOT EXISTS public.resend_receipt_processing (
   receipt_id text PRIMARY KEY CHECK (receipt_id ~ '^[A-Za-z0-9_-]{1,200}$'),
   message_id text NOT NULL CHECK (message_id ~ '^[A-Za-z0-9_-]{1,200}$'),

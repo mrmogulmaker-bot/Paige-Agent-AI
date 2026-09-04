@@ -1,6 +1,6 @@
 # Shared Resend receipt reliability/security repair
 
-Status: **BLOCKED by full-schema source permission proof. PR #906 open; not merged or released.**
+Status: **Source grant exception approved; full-schema proof rerunning. PR #906 open; not merged or released.**
 
 ## Release attempt, 2026-09-04 UTC
 
@@ -8,7 +8,7 @@ The owner explicitly authorized pushing to `mrmogulmaker-bot/Paige-Agent-AI`, op
 
 The clean Supabase database rebuild and existing Team database suites pass. The new receipt proof fails because `service_role` lacks SELECT on the existing `public.email_send_log` after migration replay. The processing function safely retains the receipt as pending/storage_retry. CI run `33824123655`, job `100873009893`, confirms the missing source read privilege before processing fixtures. Production catalog-only inspection confirms service_role already has SELECT, INSERT and UPDATE on that table, and SELECT/UPDATE on invitation tokens. No production records were queried.
 
-Required scoped decision: allow an additive service-role grant on the existing shared delivery-log table, matching its intended production privileges, to make clean rebuilds preserve the same receipt path. Do not fix this by granting tenant access, switching to SECURITY DEFINER, weakening the test, or changing sender policy. The current approved migration otherwise adds only the receipt journal, processing functions, lookup index and schedule. No merge or deployment has occurred.
+The owner explicitly approved the narrow additive service-role grant on the existing shared delivery-log table. The migration now grants SELECT/INSERT/UPDATE to service_role, matching verified production privileges: read the source, lock it, and append the source-owned outcome. No tenant grants, SECURITY DEFINER conversion, test weakening, or sender-policy changes. Full-schema proof must pass before merge.
 
 Local expanded Team/receipt suite: 237 PASS; build, type ratchet and focused security/schema/regression checks PASS. Clean full-schema receipt proof remains FAIL; production verification remains UNVERIFIED. This supersedes the earlier local-adapter-only evidence below.
 
