@@ -423,6 +423,6 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 @media (max-width:1100px) { .so .so-band { padding:12px; } .so-workbench-head h2 { font-size:20px; } .so-filters { grid-template-columns:minmax(0,1fr) 130px; } }
 @media (prefers-reduced-motion:reduce) { .so *, .so-editor * { animation:none!important; transition:none!important; } }
 /* White action text keeps AA contrast with both theme variants of violet. */
-.paige-solo .so .btn-p,.paige-solo .so-editor .btn-p { background:color-mix(in srgb,var(--violet) 80%,#000); border-color:color-mix(in srgb,var(--violet) 80%,#000); color:#fff; }
-.paige-solo .so .btn-p:hover,.paige-solo .so-editor .btn-p:hover { background:color-mix(in srgb,var(--violet) 70%,#000); border-color:color-mix(in srgb,var(--violet) 70%,#000); color:#fff; }
+.paige-solo[data-theme] .so .btn-p,.paige-solo[data-theme] .so-editor .btn-p { background:color-mix(in srgb,var(--violet) 80%,#000); border-color:color-mix(in srgb,var(--violet) 80%,#000); color:#fff; }
+.paige-solo[data-theme] .so .btn-p:hover,.paige-solo[data-theme] .so-editor .btn-p:hover { background:color-mix(in srgb,var(--violet) 70%,#000); border-color:color-mix(in srgb,var(--violet) 70%,#000); color:#fff; }
 .so .pill-n { color:var(--ink-2); background:var(--surface-sunk); border:1px solid var(--line); }

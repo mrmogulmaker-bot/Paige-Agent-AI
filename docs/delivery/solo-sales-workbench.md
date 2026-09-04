@@ -39,3 +39,4 @@ Verification: focused adapter and UI tests; real Chromium interaction at 1536×7
 3. Record terms: select an existing client, search/select an offer, change the search and confirm the selection remains; save, refresh, open detail and edit.
 4. Confirm Catalog's original list price did not change. No charge, invoice, signature request or client message is sent.
 5. Open each drawer; try X, Cancel and Escape, including a draft requiring Discard/Continue editing. Switch workspace and confirm selections/search/notices clear.
+- Final rendered contrast correction: shared dark-theme button specificity initially overrode the Sales color. A Sales-only selector now wins; actual computed primary contrast is 9.02:1 light / 5.31:1 dark. The browser drive asserts >=4.5:1 in all eight viewport/theme runs.

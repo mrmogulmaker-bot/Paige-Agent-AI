@@ -24,8 +24,9 @@ for(const [width,height]of[[1536,770],[1366,768],[1024,768],[900,1000]])for(cons
  const bounds=await page.locator('.so-offers').boundingBox();assert(bounds.x>=0 && bounds.x+bounds.width<=width+1);
  for(const tab of await page.getByRole('tab').all()){const b=await tab.boundingBox();assert(b.x>=0&&b.x+b.width<=width+1);}
  await page.getByRole('searchbox',{name:'Search Catalog offers'}).focus();assert.equal(await page.evaluate(()=>getComputedStyle(document.activeElement).outlineStyle),'solid');
+ const contrast=await page.getByRole('button',{name:'Quick offer',exact:true}).evaluate(e=>{const s=getComputedStyle(e),ctx=document.createElement('canvas').getContext('2d');function lum(c){ctx.clearRect(0,0,1,1);ctx.fillStyle=c;ctx.fillRect(0,0,1,1);const a=[...ctx.getImageData(0,0,1,1).data].slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return .2126*a[0]+.7152*a[1]+.0722*a[2];}const l=[lum(s.color),lum(s.backgroundColor)].sort((a,b)=>b-a);return (l[0]+.05)/(l[1]+.05);});assert(contrast>=4.5,'Primary action contrast must pass AA');
  await page.screenshot({path:out+'/'+width+'x'+height+'-'+theme+'.png',fullPage:true});
- evidence.push({width,height,theme,selectionSurvivesSearch:'PASS',errorRetryLoading:'PASS',focus:'PASS',tabsFit:'PASS'});await context.close();
+ evidence.push({width,height,theme,selectionSurvivesSearch:'PASS',errorRetryLoading:'PASS',focus:'PASS',tabsFit:'PASS',primaryContrast:contrast});await context.close();
 }
 }finally{await browser.close();fs.writeFileSync(out+'/evidence.json',JSON.stringify({environment:'Local real Chromium and mounted UI; simulated source datasets, not production load or authenticated proof',evidence},null,2));}
 console.log('PASS',evidence.length,'workbench scenarios');
