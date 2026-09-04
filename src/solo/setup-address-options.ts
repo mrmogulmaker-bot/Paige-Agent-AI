@@ -77,3 +77,28 @@ export async function lookupUsZip(
   }
   return result;
 }
+
+/**
+ * Legal-identity option lists, shared by Setup's Business profile and by Registration's
+ * carrier-record editor. They live beside COUNTRY_OPTIONS because both surfaces render the
+ * same facts of the same record, and two copies of an enum is two things to drift.
+ */
+export const ENTITY_TYPE_OPTIONS: readonly string[] = [
+  "",
+  "Individual / sole proprietor",
+  "Co-operative",
+  "Corporation",
+  "Limited Liability Company",
+  "Non-profit Corporation",
+  "Partnership",
+  "Trust",
+  "Other legal person",
+];
+
+export const REGISTRATION_IDENTIFIER_OPTIONS: readonly string[] = [
+  "", "EIN", "DUNS", "CBN", "CN", "ACN", "CIN", "VAT", "VATRN", "RN", "OTHER",
+];
+
+export const REPRESENTATIVE_POSITION_OPTIONS: readonly string[] = [
+  "", "Director", "GM", "VP", "CEO", "CFO", "General Counsel", "Other",
+];
