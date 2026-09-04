@@ -40,8 +40,9 @@ Taken from `src/lib/routing/tierBranches.ts` `SOLO_BRANCHES`, not from memory. A
 
 | Branch | Label shown | Sub-tabs |
 |---|---|---|
-| `command-center` | Command Center | `systems-check` · `mind` |
-| `paige` | Paige | `chat` · `knowledge` · `helpers` · `capabilities` · `trust-compass` |
+| `command-center` | Command Center | `systems-check` · `mind` — **owner-ruled 2026-09-04 to become four:** `game-plan` *(default landing)* · `systems-check` · `mind` · `trust-compass` |
+| `paige` | Paige | `chat` · `knowledge` · `helpers` · `capabilities` |
+| `trust-compass` | Trust Compass | **none** — a top-level branch with no sub-tab strip (`tierBranches.ts` L137–139) |
 | `automations` | Automations | `library` · `runs` · `build` |
 | `clients` | Clients | `people` · `conversations` · `calendar` · `portal` · `pipeline` · `delivery` |
 | `calendar` | Calendar | `week` · `agenda` · `tasks` · `booking-pages` · `availability` · `connections` |
@@ -88,9 +89,21 @@ believed.
 
 **Why the Game Plan belongs at `overview` and not in a new tab (§18).** The address already exists
 and currently redirects away *because it is empty*. Giving it the plan is extending a surface that
-is already addressed, not scaffolding a fourth. It also keeps Command Center at three tabs, which
-matters because `TABS` in `CommandCenter.tsx` L10–13 is a two-item array today — a third entry is a
-one-line change, a fourth is a crowded strip.
+is already addressed, not scaffolding a fourth.
+
+> **SUPERSEDED IN PART, owner ruling 2026-09-04.** This paragraph originally also argued that the
+> Game Plan should keep Command Center at *three* tabs, because a fourth would crowd the strip. The
+> owner has ruled the strip carries **four**: `Business Game Plan` *(default landing)* ·
+> `Systems Check` · `Mind` · `Trust Compass`. The §18 half of the argument stands and is why the
+> Game Plan extends the existing `overview` address rather than claiming a new one; the tab-count
+> half does not. Recorded rather than deleted, so the reasoning that lost is still legible.
+
+**What the fourth tab costs, stated precisely.** `TABS` in `CommandCenter.tsx` L10–13 is a two-item
+array today, and `CommandCenter.tsx` L28–46 carries four redirects that must keep resolving (§58):
+`/command-center` and `/command-center/overview` → `systems-check`, and `/command-center/directory`
+and `/command-center/history` → `mind`. The default landing also **moves** from `systems-check` to
+the Game Plan — a deliberate change to shipped behaviour, and one that must be called out rather
+than absorbed quietly.
 
 ### 3.2 Campaigns — `/solo/:account/growth`
 
@@ -127,7 +140,7 @@ one-line change, a fourth is a crowded strip.
 | Knowledge | `paige/knowledge` | **SCRIBE** (intake, organisation, provenance) · **MENTOR** (readiness) | Source/provenance line per record |
 | Integrations | `settings/integrations`, `settings/connections` | **ZION** (what the business needs) · **Automation Agent** (health, provider readiness) | Health rows; a block names the exact missing connection |
 | Automations | `automations/*` — **but the screen is literally `null`** (`SoloApp.tsx` L182–185 redirects to `settings/integrations`) | **ZION** (which processes should exist) · **Automation Agent** (builds and maintains, never fires) | Owner column on a chain; run rows — **placed at the redirect target, not the empty branch** |
-| Trust Compass | `paige/trust-compass` | **VERA** (governance, permissions, boundaries) · **OATHEN** (held approvals) | Grant + ceiling display; held items link into the conversation |
+| Trust Compass | **`trust-compass`** — a top-level branch (`SoloApp.tsx` L36 lists it third in `NAV`; rendered by `src/solo/compass.tsx`, 572 lines). It is **not** `paige/trust-compass`; the earlier row here was wrong. Owner-ruled 2026-09-04 to become a **Command Center sub-tab**, with the legacy route kept redirect-alive (§58). | **VERA** (governance, permissions, boundaries) · **OATHEN** (held approvals) | Grant + ceiling display; held items link into the conversation |
 | Security & data | `settings/security-data` | **VERA** | Byline on a boundary finding |
 | Team | `settings/team` | **PAIGE** (`people_talent`, per §3.3 of the registry) | Byline |
 | Billing | `settings/billing` | **MERIT** | Byline |
@@ -141,8 +154,11 @@ one-line change, a fourth is a crowded strip.
 | `chat` | `SoloPaigeWorkspace.tsx` | **PAIGE always visible**; specialists contribute inside the current conversation | The one conversation. Nothing here becomes a per-specialist chat. |
 | `helpers` | same | The three registry types, as role classes | Already ships exactly this: *"Current delegations—not a flat permanent roster"*, with **Ephemeral helper**, **Department specialist**, **Durable named leadership** cards |
 | `capabilities` | same | Grant per capability | Reads the floor |
-| `trust-compass` | same | **VERA** · **OATHEN** | Ceiling and held items |
 | `knowledge` | same | **SCRIBE** | Provenance |
+
+*(A `trust-compass` row was listed here and has been removed: it is not a `paige` sub-tab. `paige`
+carries exactly four — `chat` · `knowledge` · `helpers` · `capabilities` — per `tierBranches.ts`
+L126–135. Trust Compass is its own branch; see §3.4.)*
 
 **The shipped Solo constraint that governs this whole column.**
 `src/solo/SoloPaigeWorkspace.contract.test.tsx` L143–150 is a CI guard that **bans**
