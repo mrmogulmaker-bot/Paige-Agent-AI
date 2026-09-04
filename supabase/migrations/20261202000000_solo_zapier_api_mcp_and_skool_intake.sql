@@ -314,8 +314,13 @@ BEGIN
    END IF;
    IF contact IS NULL THEN
     BEGIN
+     -- #10 channel-of-origin: 'import', the established value for a contact that arrived
+     -- from an external system (paige-bridge uses it for the same shape). 'integration' is
+     -- NOT in clients_created_by_channel_type_chk (20260729020000) and would fail the check,
+     -- and 'api' renders as "Paige" in CREATED_VIA_LABEL, which would credit Paige for a
+     -- contact Zapier delivered. Exact provenance is already carried by source and tags.
      INSERT INTO public.clients(first_name,last_name,email,phone,lifecycle_stage,source,tags,current_notes,status,created_by,tenant_id,created_by_channel_type)
-     VALUES(first_name,last_name,email,phone,'new_lead','zapier_skool',ARRAY['skool','zapier'],'Received through the tenant-bound Skool intake route.','active',operator_id,r.tenant_id,'integration')
+     VALUES(first_name,last_name,email,phone,'new_lead','zapier_skool',ARRAY['skool','zapier'],'Received through the tenant-bound Skool intake route.','active',operator_id,r.tenant_id,'import')
      RETURNING id INTO contact;
      INSERT INTO public.audit_logs(user_id,entity,action,entity_id,data)
      VALUES(operator_id,'client','create_contact',contact,jsonb_build_object('tenant_id',r.tenant_id,'email',email,'source','zapier_skool','channel','integration'));

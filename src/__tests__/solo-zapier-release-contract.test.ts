@@ -85,7 +85,9 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(sql).toContain("FORCE ROW LEVEL SECURITY");
     expect(sql).toContain("REVOKE ALL");
     expect(sql).toContain("SELECT tm.user_id INTO operator_id");
-    expect(sql).toContain("operator_id,r.tenant_id,'integration'");
+    // 'import', not 'integration': the latter is outside clients_created_by_channel_type_chk
+    // and every new-contact delivery failed the check. See the channel-of-origin test below.
+    expect(sql).toContain("operator_id,r.tenant_id,'import'");
     expect(sql).not.toContain("contact:=public.create_contact");
     expect(sql).toContain("c.tenant_id=r.tenant_id AND lower(btrim(c.email))=email");
     expect(sql).toContain("INSERT INTO public.clients(first_name,last_name,email,phone");
@@ -176,5 +178,19 @@ describe("Solo Zapier API and MCP release contract", () => {
     // n8n's discovery pin MUST stay schema-only: the probe RPC wipes every approved
     // workflow when it moves, so widening it would revoke n8n approvals platform-wide.
     expect(n8n).toContain("search.schemaHash");
+  });
+  it("creates intake contacts with a channel the clients CHECK constraint actually allows", () => {
+    const sql = readMigration();
+    // clients_created_by_channel_type_chk (20260729020000) bounds this column. A value outside
+    // it fails the insert, the surrounding WHEN OTHERS swallows it, and every delivery for a new
+    // contact is recorded contact_write_failed while the webhook answers 422.
+    const allowed = ["email","sms","whatsapp","instagram","facebook","voice",
+                     "manual","form","import","api","seed","signup","invite"];
+    const written = sql.match(/r\.tenant_id,'([a-z_]+)'\)/)?.[1];
+    expect(written).toBeDefined();
+    expect(allowed).toContain(written);
+    // Not 'api': CREATED_VIA_LABEL maps it to "Paige", which would credit Paige for a contact
+    // that arrived from Zapier.
+    expect(written).not.toBe("api");
   });
 });
