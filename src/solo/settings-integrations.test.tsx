@@ -314,7 +314,7 @@ describe("n8n connection flow", () => {
     expect(panel).toContain("Stored");
     expect(panel).not.toContain("9f2a");
 
-    expect(byText(host, "Edit API connection")).toBeTruthy();
+    expect(byText(host, "Reconnect API")).toBeTruthy();
     expect(byText(host, "Disconnect")).toBeTruthy();
   });
 
@@ -363,7 +363,7 @@ describe("n8n connection flow", () => {
     expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/only a workspace admin/i);
     expect(host.querySelector(".ig-form")).toBeNull();
     expect(byText(host, "Disconnect")).toBeFalsy();
-    expect(byText(host, "Edit API connection")).toBeFalsy();
+    expect(byText(host, "Reconnect API")).toBeFalsy();
   });
 
   it("denies a non-admin the connect form on an unconfigured workspace", async () => {
@@ -405,6 +405,9 @@ describe("n8n connection flow", () => {
     expect(host.innerHTML).not.toContain("FAILEDSECRET");
 
     world();
+    await click(byText(host, "Try again"));
+    await click(byText(host, "Connect API"));
+    await type(fields(host)[0], "https://mine.app.n8n.cloud");
     await type(fields(host)[1], "goodkey");
     await submit(host);
     expect(invoke.mock.calls.some((c) => c[0] === "tenant-n8n-api-connect" && c[1].body.api_key === "goodkey")).toBe(true);
@@ -494,7 +497,7 @@ describe("Review findings", () => {
     const { host } = await render();
     await openCard(host, "n8n");
     if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
-    await click(byText(host, "Edit API connection"));
+    await click(byText(host, "Reconnect API"));
     await type(fields(host)[2], "");
     expect(host.querySelector(".ig-form")?.textContent).toMatch(/changed here but not removed/i);
 
@@ -512,7 +515,7 @@ describe("Review findings", () => {
     const { host } = await render();
     await openCard(host, "n8n");
     if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
-    await click(byText(host, "Edit API connection"));
+    await click(byText(host, "Reconnect API"));
     await type(fields(host)[2], "Ops renamed");
     await click(host.querySelector(".ig-close") ?? undefined);
     expect(host.textContent).toMatch(/unsaved API details/i);

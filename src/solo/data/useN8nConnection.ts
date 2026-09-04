@@ -22,6 +22,7 @@ export type N8nConnection = {
 export type N8nState = N8nConnection & { loading: boolean; error: boolean; saving: boolean; writeError: string | null };
 export type N8nDraft = { baseUrl: string; apiKey: string; label: string };
 const EMPTY: N8nConnection = { tenantId: "", canWrite: false, configured: false, label: null, baseUrl: null, health: "not_configured", failureCode: null, workflowCount: null, checkedAt: null, lastSuccessAt: null };
+const withoutProof = (value: N8nConnection, health: N8nHealth): N8nConnection => ({ ...value, health, failureCode: null, workflowCount: null, checkedAt: null, lastSuccessAt: null });
 const HEALTH = new Set<N8nHealth>(["not_configured", "saved_unverified", "checking", "connected", "needs_attention"]);
 const FAILURES = new Set<N8nFailure>(["authentication_rejected", "request_refused", "endpoint_not_found", "provider_unavailable", "response_invalid", "inventory_incomplete", "address_rejected", "validation_expired"]);
 const date = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
@@ -68,9 +69,9 @@ export function useN8nConnection() {
   const { activeTenantId, activeUserId, loading: tenantLoading } = useTenantContext();
   const gate = useRef(createSettingsRequestGate());
   const scope = `${activeUserId ?? ""}:${activeTenantId ?? ""}:${tenantLoading}`;
-  const scopeRef = useRef(scope), mounted = useRef(false), mutation = useRef(0), pendingMutation = useRef(false);
+  const scopeRef = useRef(scope), mounted = useRef(false), mutation = useRef(0), pendingMutation = useRef(false), pendingCheck = useRef(false);
   const [loadedScope, setLoadedScope] = useState<string | null>(null);
-  if (scopeRef.current !== scope) { scopeRef.current = scope; gate.current.clear(); mutation.current += 1; pendingMutation.current = false; }
+  if (scopeRef.current !== scope) { scopeRef.current = scope; gate.current.clear(); mutation.current += 1; pendingMutation.current = false; pendingCheck.current = false; }
   const [state, setState] = useState<N8nState>({ ...EMPTY, loading: true, error: false, saving: false, writeError: null });
 
   const load = useCallback(async () => {
@@ -82,33 +83,43 @@ export function useN8nConnection() {
     const result = await Promise.resolve((supabase as any).rpc("get_tenant_n8n_api_readiness")).catch(() => ({ data: null, error: true }));
     if (!mounted.current || scopeRef.current !== scope || !gate.current.isCurrent(token)) return;
     setLoadedScope(scope);
-    const connection = result.error ? null : readN8nReadiness(result.data, activeTenantId);
-    setState({ ...(connection ?? EMPTY), loading: false, error: !connection, saving: pendingMutation.current, writeError: null });
+    const connection = !result || result.error ? null : readN8nReadiness(result.data, activeTenantId);
+    setState({ ...(connection && pendingCheck.current ? withoutProof(connection, "checking") : connection ?? EMPTY), loading: false, error: !connection, saving: pendingMutation.current, writeError: null });
   }, [activeTenantId, scope, tenantLoading]);
 
-  useEffect(() => { mounted.current = true; const activeGate = gate.current; if (!tenantLoading) void load(); return () => { mounted.current = false; mutation.current += 1; pendingMutation.current = false; activeGate.clear(); }; }, [load, tenantLoading]);
+  useEffect(() => { mounted.current = true; const activeGate = gate.current; if (!tenantLoading) void load(); return () => { mounted.current = false; mutation.current += 1; pendingMutation.current = false; pendingCheck.current = false; activeGate.clear(); }; }, [load, tenantLoading]);
+
+  // A reopened in-progress check finishes without requiring a manual status read.
+  useEffect(() => {
+    if (state.health !== "checking" || state.saving || state.error) return;
+    let reads = 0;
+    const timer = setInterval(() => { if (++reads >= 16) clearInterval(timer); void load(); }, 2000);
+    return () => clearInterval(timer);
+  }, [state.health, state.saving, state.error, load]);
 
   const write = useCallback(async (action: "save" | "validate" | "disconnect", draft?: N8nDraft) => {
     if (!activeTenantId || tenantLoading || !mounted.current || scopeRef.current !== scope || loadedScope !== scope || !state.canWrite || pendingMutation.current) return false;
     pendingMutation.current = true;
+    const checkingConnection = action !== "disconnect";
+    pendingCheck.current = checkingConnection;
     const request = ++mutation.current;
     gate.current.clear();
     const current = () => mounted.current && scopeRef.current === scope && mutation.current === request;
-    setState(prev => ({ ...prev, saving: true, writeError: null }));
+    setState(prev => ({ ...prev, ...(checkingConnection ? withoutProof(prev, "checking") : {}), saving: true, writeError: null }));
     try {
       const body = { action, expected_tenant_id: activeTenantId, ...(draft ? { base_url: draft.baseUrl.trim(), api_key: draft.apiKey, label: draft.label.trim() || undefined } : {}) };
       const { data, error } = await supabase.functions.invoke("tenant-n8n-api-connect", { body });
       if (!current()) return false;
       if (error || data?.ok !== true) {
         const code = await safeErrorCode(data, error);
-        if (current()) setState(prev => ({ ...prev, saving: false, writeError: n8nWriteMessage(code) }));
+        if (current()) setState(prev => ({ ...prev, ...(checkingConnection ? withoutProof(prev, prev.configured ? "saved_unverified" : "not_configured") : {}), saving: false, error: true, writeError: n8nWriteMessage(code) }));
         return false;
       }
       const connection = readN8nReadiness(data.connection, activeTenantId);
       const completed = connection && (action === "disconnect" ? data.outcome === "disconnected" && !connection.configured : (data.outcome === "connected" && connection.health === "connected") || (data.outcome === "needs_attention" && connection.health === "needs_attention"));
       if (!connection || !completed || (action === "save" && data.saved !== true)) {
         if (connection && data.outcome === "stale") setState(prev => ({ ...prev, ...connection, loading: false, error: false, saving: false, writeError: "This connection changed while it was being checked. Review its current status before trying again." }));
-        else setState(prev => ({ ...prev, saving: false, writeError: n8nWriteMessage(null) }));
+        else setState(prev => ({ ...prev, ...(checkingConnection ? withoutProof(prev, prev.configured ? "saved_unverified" : "not_configured") : {}), saving: false, error: true, writeError: n8nWriteMessage(null) }));
         return false;
       }
       // Invalidate reads started while this write was pending; they cannot
@@ -117,9 +128,9 @@ export function useN8nConnection() {
       setState({ ...connection, loading: false, error: false, saving: false, writeError: null });
       return true; // A persisted refusal completes save; it is not healthy success.
     } catch {
-      if (current()) setState(prev => ({ ...prev, saving: false, writeError: n8nWriteMessage(null) }));
+      if (current()) setState(prev => ({ ...prev, ...(checkingConnection ? withoutProof(prev, prev.configured ? "saved_unverified" : "not_configured") : {}), saving: false, error: true, writeError: n8nWriteMessage(null) }));
       return false;
-    } finally { if (current()) { gate.current.clear(); pendingMutation.current = false; setState(prev => ({ ...prev, saving: false })); } }
+    } finally { if (current()) { gate.current.clear(); pendingMutation.current = false; pendingCheck.current = false; setState(prev => ({ ...prev, saving: false })); } }
   }, [activeTenantId, tenantLoading, scope, loadedScope, state.canWrite]);
 
   const connect = useCallback((draft: N8nDraft) => write("save", draft), [write]);
