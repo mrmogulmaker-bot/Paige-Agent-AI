@@ -32,6 +32,22 @@ which this session has not seen. Where it assumes something about your build, th
 | Prompt leak guard | `system_prompt` stripped before any response leaves | L141 |
 
 **Actions today:** `tool_search` · `tool_invoke` · `list_subagents` · `inspect` · `set_agent_job_kind`.
+`tool_invoke` returns `{ok, subagent, runtime, latency_ms, invocation_id, result}`.
+
+**And a job envelope with a background drainer already ships. Do not build a second one.**
+
+| Piece | What it is | Where |
+|---|---|---|
+| The queue | `paige_actions` + `paige_action_kinds` | `20260711024632_action_bus.sql` |
+| File a job | `file_action()` | same |
+| Claim a batch | `claim_filed_actions()` — atomic, `FOR UPDATE … SKIP LOCKED`, so concurrent workers cannot double-claim | `20260720205343_paige_action_bus_drainer.sql` |
+| Finish / fail | `advance_action()` · `fail_action()` | as above |
+| The drainer | `supabase/functions/paige-action-worker` — a `*/2` `pg_cron` worker, authorized **only** by the exact service-role bearer or a valid Vault cron token (`verify_cron_token`), **fails closed** | — |
+| An intake precedent | `growth-process-submission` — claim → executor map → fire-once ledger | — |
+| Two intake identities that already exist | `onboarding-concierge` · `discovery-interviewer` (platform defaults in `paige_subagents`) | seed migrations |
+
+**Read those two identities before minting a third.** If either already covers your intake step, extend
+it rather than adding a row — §18.
 
 ---
 
@@ -98,11 +114,12 @@ pre-contact work, and render it as `unavailable` rather than as an empty feed.
 `tenant_id` nor an agent actor** (only `actor_user_id`, `actor_role`, `action`, `target_type`,
 `target_id`, `payload`).
 
-**What to do meanwhile:** carry `actor_agent_slug`, `delegated_by` and `tenant_id` inside `payload`
-with those exact key names, so a later column migration is a copy rather than a re-derivation. The
-cheapest real fix, when someone gets to it, is `actor_agent_slug text REFERENCES
-paige_subagents(slug)` on `paige_client_events`, beside the two department columns that already
-work.
+**What to do meanwhile — and follow the convention that already exists.** The repo's established
+pattern is to carry the actor inside `payload` as **`payload->>'actor_kind'`**, which the Spine lens
+already reads (migration `20260902004019`). Extend that key rather than inventing a parallel one,
+and add `delegated_by` and `tenant_id` beside it. The cheapest real fix, when someone gets to it, is
+`actor_agent_slug text REFERENCES paige_subagents(slug)` on `paige_client_events`, beside the two
+department columns that already work.
 
 **And do not read an empty feed as nothing happening.** Owner-visible Solo Rail activity is
 currently **UNAVAILABLE, not empty** — a distinction the Solo surfaces already make with the
@@ -121,17 +138,26 @@ learned the hard way:
 2. **A user caller's `tenant_id` in the body is never trusted.** It is derived server-side from
    `get_paige_persona_context()`, and on error it degrades to platform defaults — *never* widens.
 
-The envelope to build to:
+**For queued work, the envelope is `paige_actions` — use it.** File with `file_action()`, let
+`paige-action-worker` claim it, finish with `advance_action()` or `fail_action()`. You inherit the
+atomic claim, the cron cadence, the fail-closed auth and the retry semantics for free.
+
+**Honest caveat on that envelope:** `paige_resolve_autonomy` currently **returns its third argument
+unchanged**, so `file_action` and `advance_action` clamp against nothing. The envelope gives you
+queueing and atomicity — it does **not** currently give you autonomy enforcement. Do your clamping
+explicitly rather than assuming the bus did it.
+
+**For synchronous dispatch**, the shape `paige-orchestrator` already accepts:
 
 ```jsonc
 {
-  "action": "…",
+  "action": "tool_invoke",
   "slug": "solo-orchestrator",
   "input": { /* your job payload */ },
   "context": {
     "user_id": "…",           // the human
     "contact_id": "…",        // optional
-    "conversation_id": "…",   // REQUIRED where a result must return to a thread — see §6
+    "conversation_id": "…",   // see §6 — and read its blocker before relying on it
     "tenant_id": "…"          // ONLY honoured on the service path, and uuid-validated first
   }
 }
@@ -171,8 +197,37 @@ turn, and the executed target read **from the binding row** — never from a nam
 
 ## 6. Structured result back to PAIGE
 
-A result that does not reach the conversation is invisible, and the owner will conclude nothing
-happened. Return a shape PAIGE can render as a contribution row without re-deriving it:
+> ### Read this before designing the return path — it is a real blocker, not a caution
+>
+> **A background worker cannot currently write into the chat transcript.**
+> `public.paige_chat_turn_append` opens with:
+>
+> ```sql
+> v_uid uuid := auth.uid();
+> …
+> IF v_uid IS NULL THEN RAISE EXCEPTION 'auth required'; END IF;
+> ```
+>
+> A service-role or `pg_cron` caller has a NULL `auth.uid()`, so the append **raises**. There is no
+> service-role path into the transcript today.
+>
+> **Nor can a contactless worker file a Rail outcome:** `record_rail_event` requires a contact in
+> the tenant (§3.2), and `paige_workspace_events` — the obvious alternative — is `CHECK`-locked to
+> n8n `oauth_attempt` / `mcp_connection` sources.
+>
+> **So plan for this explicitly.** Either keep a human-authenticated turn in the loop for anything
+> that must appear in the conversation, or treat the return path as **owed work** and say so in your
+> design rather than discovering it at integration. Do **not** design a headless worker that assumes
+> it can speak in the thread.
+>
+> The same applies to approvals: there is **no shared RPC for redeeming one**. The claim is an
+> inline compare-and-set inside `paige-ai-chat`, bound to `.eq('user_id', user.id)` — a human user
+> id. A headless worker has no callable seam to redeem an approval through, which means **a
+> background job cannot currently execute a gated action on its own.** That is a design constraint,
+> not a gap to route around.
+
+When a result *can* return — from an authenticated turn — use a shape PAIGE can render as a
+contribution row without re-deriving it:
 
 ```jsonc
 {
@@ -232,6 +287,10 @@ so you can sanity-check the fit, **not** so you can hardcode it now.
 - [ ] Every invocable tool classified in `action-risk.ts` with a real reason — and nothing else added
 - [ ] Results return the §6 shape to a `conversation_id`
 - [ ] Unavailable is rendered as `unavailable`, never as empty
+- [ ] Queued work goes through `file_action` / `claim_filed_actions` / `advance_action`, not a second queue
+- [ ] `onboarding-concierge` and `discovery-interviewer` were read before minting a new identity
+- [ ] The return path does not assume a headless worker can write to the chat or redeem an approval
+- [ ] Rail attribution extends `payload->>'actor_kind'`, not a parallel key
 - [ ] No department string, no hierarchy field, no second approval channel, no agent name
 
 ## 9. One thing to avoid inheriting
