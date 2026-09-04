@@ -42,3 +42,9 @@ Canonical Rail is now implemented in additive migration20261201000200. It adds a
 Pinned official n8n2.37.9 tool evidence: commit073ec4552a6675a10f5b212d55bdc00c91d4829b, packages/cli/src/modules/mcp/mcp-scopes.ts and tools/workflow-builder sources. MCP create expects SDKcode; update expects typedoperations, unlike existing REST graph arguments. A governed adapter must bind exact preparedpayload/schema/OAuthgeneration to the existing approval, use server refresh/lease, project bounded outcomes, and classify write timeouts as unknown without automatic replay. Creation also exposes the new workflow in MCP and may assign credentials; the individual creation approval must disclose these effects. No such write is performed at connection.
 
 The action adapter remains follow-through work; this release does not claim OAuth authoring or execution from connection success. Existing read/write consent is preserved. No API-key fallback is introduced.
+
+## Production discovery compatibility repair
+
+Owner attempts at 2026-09-04 03:27 and 03:29 UTC reached mcp_discovery after successful token exchange and scope validation. Safe console diagnostics recorded workflow_inventory_incomplete. Official n8n 2.37.9 search_workflows uses total matching count with at most 200 returned rows and no pagination. A valid partial response must not invalidate OAuth. Preserve partial-list metadata, bounded visible rows, approval pinning, and malformed-response refusal. No workflow execution or provider configuration change.
+
+Base 8e9c2dd; branch codex/n8n-discovery-contract-fix. Existing open chat/Rail/Mind work remains untouched; only the n8n-specific safe chat evidence helper changes. API health is independent. Gateway metadata retention remains the accepted MVP risk. Prior PR912 deployed the safe Spine projection, workspace Rail events, and Mind current-state records; those do not repair provider protocol parsing themselves.

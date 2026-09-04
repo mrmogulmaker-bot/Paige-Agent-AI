@@ -85,3 +85,18 @@ it("drops a late OAuth launch after a same-workspace owner switch", async () => 
  await act(async () => { expect(await start).toBeNull(); });
  expect(value.busy).toBe(false);
 });
+it("keeps partial discovery counts scoped and drops late workspace responses", async () => {
+ await mount(); h.invoke.mockResolvedValueOnce({data:{workflows:[{id:"a",name:"Visible",approved:false}],inventory_complete:false,total_count:350,discovery_id:"snapshot"},error:null});
+ await act(async()=>value.discover()); expect(value.inventory).toEqual({complete:false,totalCount:350});expect(value.workflows).toHaveLength(1);
+ let finish!: (v:unknown)=>void;h.invoke.mockReturnValueOnce(new Promise(resolve=>{finish=resolve;}));let pending!:Promise<void>;act(()=>{pending=value.discover();});expect(value.inventory).toBeNull();
+ h.tenant="tenant-b";await act(async()=>root.render(<Probe/>));finish({data:{workflows:[],inventory_complete:true,total_count:0},error:null});await act(async()=>pending);expect(value.inventory).toBeNull();expect(value.workflows).toBeNull();
+});
+it("never treats absent completeness or malformed count as complete zero",async()=>{
+ await mount();h.invoke.mockResolvedValueOnce({data:{workflows:[],total_count:-1},error:null});await act(async()=>value.discover());expect(value.inventory).toEqual({complete:false,totalCount:null});
+});
+it.each([{workflows:[],total_count:null},{workflows:[{id:"a",name:"A"}],total_count:0},{workflows:null,total_count:0},{workflows:[{}],total_count:1}])("rejects inconsistent complete inventory %#",async(payload)=>{
+ await mount();h.invoke.mockResolvedValueOnce({data:{...payload,inventory_complete:true},error:null});await act(async()=>value.discover());expect(value.inventory?.complete).toBe(false);
+});
+it("a retained old-workspace discover callback cannot clear the new inventory",async()=>{
+ await mount();const previous=value.discover;h.tenant="tenant-b";await act(async()=>root.render(<Probe/>));h.invoke.mockResolvedValueOnce({data:{workflows:[{id:"b",name:"B"}],total_count:1,inventory_complete:true},error:null});await act(async()=>value.discover());const calls=h.invoke.mock.calls.length;await act(async()=>previous());expect(value.workflows?.[0].id).toBe("b");expect(value.inventory).toEqual({complete:true,totalCount:1});expect(h.invoke).toHaveBeenCalledTimes(calls);
+});

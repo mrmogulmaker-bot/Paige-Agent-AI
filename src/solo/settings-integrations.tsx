@@ -506,12 +506,12 @@ function N8nMcpSection({ oauth, suggestedAddress, onDirtyChange, onChanged }: { 
     <p className="ig-lede">Let Paige use the n8n tools and workflows you explicitly authorize.</p>
     <dl className="ig-facts">
       <div><dt>State</dt><dd>{n8nMcpStateWords(r.mcp.state)}</dd></div>
-      <div><dt>Authorization</dt><dd>{r.mcp.authKind === "oauth" ? "OAuth" : r.mcp.authKind ? "Advanced static credential (not OAuth)" : "OAuth authorization needed"}</dd></div>
+      <div><dt>Saved MCP configuration</dt><dd>{r.mcp.authKind === "oauth" ? "OAuth" : r.mcp.authKind === "bearer" || r.mcp.authKind === "header" ? "Legacy static credential (not OAuth)" : "No authorization saved"}</dd></div>
       <div><dt>Approved workflows</dt><dd>{r.mcp.approvedWorkflowCount ?? "Unavailable"}</dd></div>
       <div><dt>Approved tools</dt><dd>{r.mcp.approvedToolCount ?? "Unavailable"}</dd></div>
       <div><dt>Last successful check</dt><dd>{r.mcp.lastSuccessAt ? new Date(r.mcp.lastSuccessAt).toLocaleString() : "No successful check yet"}</dd></div>
     </dl>
-    {r.attemptState && r.attemptState !== "success" && <p className="ig-note" role="status">{n8nMcpStateWords(r.attemptState)}</p>}
+    {r.attemptState && r.attemptState !== "success" && <p className="ig-note" role="status">Latest OAuth attempt: {n8nMcpStateWords(r.attemptState)}</p>}
     <p className="ig-lede">Authorize controlled MCP access through n8n. The optional API connection is separate. Keep n8n auto-expose off and enable only workflows you deliberately approve.</p>
     <p className="ig-note">OAuth authorizes a read/write connection. Connecting does not automatically approve workflow changes or execution. Changes require separate approval through Paige’s governed action flow; this screen verifies read access only.</p>
     {oauth.busy && <p className="ig-state" role="status">Checking Paige tools access…</p>}
@@ -544,8 +544,10 @@ function N8nMcpSection({ oauth, suggestedAddress, onDirtyChange, onChanged }: { 
         {r.mcp.authKind === "oauth" && (confirmingDisconnect ? <span className="ig-confirm"><button className="ig-btn" data-danger disabled={oauth.busy} onClick={() => { setConfirmingDisconnect(false); void commit(oauth.disconnect); }}>Disconnect OAuth</button><button className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep it</button></span> : <button className="ig-btn" disabled={oauth.busy} onClick={() => setConfirmingDisconnect(true)}>Disconnect</button>)}
       </div>
       {connected && r.mcp.authKind === "oauth" && <div className="ig-caps"><h4>Approved read/preview workflows</h4>
+        <p className="ig-note">Saving replaces the current read/preview selection with the workflows selected here. If the discovered inventory changes, review and approve the selection again before read access can continue.</p>
         <button className="ig-btn" disabled={oauth.busy} onClick={() => { setChosen(null); void oauth.discover(); }}>Manage access</button>
-        {oauth.workflows?.length === 0 && <p className="ig-note">No eligible workflows are available. Enable only deliberately approved workflows in n8n, with auto-expose off, then check again.</p>}
+        {oauth.inventory && !oauth.inventory.complete && <p className="ig-note" role="status">Partial workflow list: {oauth.workflows?.length ?? 0} shown{oauth.inventory.totalCount !== null ? ` of ${oauth.inventory.totalCount} reported by n8n` : ""}. This bounded list does not prove that other workflows are unavailable. Only workflows shown here can be selected.</p>}
+        {oauth.workflows?.length === 0 && oauth.inventory?.complete && <p className="ig-note">No eligible workflows are available. Enable only deliberately approved workflows in n8n, with auto-expose off, then check again.</p>}
         {!!oauth.workflows?.length && <><ul className="ig-caplist">{oauth.workflows.map(workflow => <li key={workflow.id}><button type="button" aria-pressed={selection.includes(workflow.id)} disabled={oauth.busy} onClick={() => setChosen(selection.includes(workflow.id) ? selection.filter(id => id !== workflow.id) : [...selection, workflow.id])}><span className="ig-cap-name">{workflow.name}</span></button>{workflow.approved && <button className="ig-btn" type="button" disabled={oauth.busy} onClick={() => void oauth.preview(workflow.id)}>Check approved read access</button>}</li>)}</ul><button className="ig-btn" disabled={chosen === null || oauth.busy} onClick={() => void commit(() => oauth.approve(selection))}>Approve {selection.length} for read/preview only</button></>}
       </div>}
       {oauth.previewName && <p className="ig-note" role="status">Read access verified for {oauth.previewName}. No workflow was executed.</p>}

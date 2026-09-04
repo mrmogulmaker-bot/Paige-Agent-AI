@@ -52,7 +52,7 @@ export async function hashOpaque(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
 }
 export type WorkflowPreview = { id: string; name: string };
-export function parseWorkflowPreviews(value: unknown): { workflows: WorkflowPreview[]; revision: string } {
+export function parseWorkflowPreviews(value: unknown): { workflows: WorkflowPreview[]; revision: string; inventory_complete: boolean; total_count: number } {
   const envelope = value as { isError?: boolean; structuredContent?: unknown; content?: {type?: string;text?: string}[] } | null;
   if (!envelope || envelope.isError) throw new N8nSafeError('provider_unavailable');
   let payload = envelope.structuredContent;
@@ -61,10 +61,12 @@ export function parseWorkflowPreviews(value: unknown): { workflows: WorkflowPrev
     try { payload = JSON.parse(text ?? ''); } catch { throw new N8nSafeError('provider_unavailable'); }
   }
   const data = payload as {data?: unknown[];count?: number;error?:unknown};
-  if (!data || data.error || !Array.isArray(data.data) || !Number.isInteger(data.count) || data.count! < 0 || data.count! > data.data.length || data.data.length > 200) {
-    // n8n search has a 200-item cap, no cursor. Never claim a truncated set is complete.
+  if (!data || data.error || !Array.isArray(data.data) || !Number.isSafeInteger(data.count) || data.count! < data.data.length || data.data.length > 200) {
+    // n8n 2.37.9 count is the total matching inventory, not the returned page size.
     throw new N8nSafeError('workflow_inventory_incomplete');
   }
+  const total_count=data.count!;
+  const inventory_complete=total_count===data.data.length;
   const rows: {id:string;name:string;updatedAt:string|null}[]=[];
   for (const item of data.data) {
     const row = item as Record<string,unknown>;
@@ -74,17 +76,17 @@ export function parseWorkflowPreviews(value: unknown): { workflows: WorkflowPrev
     rows.push({id:row.id,name:row.name,updatedAt:typeof row.updatedAt==='string'?row.updatedAt:null});
   }
   rows.sort((a,b)=>a.id.localeCompare(b.id));
-  return {workflows:rows.map(({id,name})=>({id,name})), revision:JSON.stringify(rows)};
+  return {workflows:rows.map(({id,name})=>({id,name})), inventory_complete,total_count,revision:JSON.stringify({rows,inventory_complete,total_count})};
 }
 /** The sole permitted provider call is search_workflows. Even a read-only details
  * response contains workflow internals; previews deliberately return id/name only.
  */
-export async function discoverWorkflowPreviews(options: McpSessionOptions): Promise<{workflows:WorkflowPreview[];pin:string}> {
+export async function discoverWorkflowPreviews(options: McpSessionOptions): Promise<{workflows:WorkflowPreview[];pin:string;inventory_complete:boolean;total_count:number}> {
   return await withApprovedCapabilitySession(options,async session=>{
     const search=session.tools.find(tool=>tool.name==='search_workflows');
     if (!search) throw new N8nSafeError('workflow_discovery_unavailable');
     const preview=parseWorkflowPreviews(await session.call('search_workflows',{limit:200}));
-    return {workflows:preview.workflows,pin:await hashOpaque(search.schemaHash+'\n'+preview.revision)};
+    return {workflows:preview.workflows,inventory_complete:preview.inventory_complete,total_count:preview.total_count,pin:await hashOpaque(search.schemaHash+'\n'+preview.revision)};
   });
 }
 export function validateApproval(ids: unknown, discovered: WorkflowPreview[]): string[] {

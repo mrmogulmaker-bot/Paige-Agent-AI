@@ -29,6 +29,7 @@ export function renderN8nReadinessForChat(evidence: N8nChatEvidence): string {
     `MCP last successful check: ${mcp.lastSuccessfulCheck ?? "not proven"}. Action needed: ${N8N_ACTION_WORDS[mcp.actionNeeded]}.`,
     "Source: current server-resolved connection records. Check timestamps describe historical successful checks, not a new provider check during this conversation. A missing check is unknown freshness.",
     "API visibility and MCP authorization are independent. Zero workflows is a real result, not evidence that nothing is wired. OAuth read/write consent is separate from permission for a particular action. Connection success never approves workflow execution, creation, editing, deletion, or activation; use the existing governed approval path for supported actions.",
+    "Report the recorded readiness directly. Do not guess timeout, handshake, or grant causes when the source does not provide a cause. The n8n_list_workflows adapter uses the separate API connection; an API refusal is not an MCP failure. Do not ask the owner to supply a connection state already present in this evidence.",
     FOOTER].join("\n");
 }
 export async function buildN8nReadinessBlock(client: SpineEvidenceRpcClient, expectedTenantId: string | null, scope?: SpineRequestScope): Promise<string> {
