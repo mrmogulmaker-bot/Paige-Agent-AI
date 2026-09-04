@@ -1,8 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
+
+// Resolved by SUFFIX rather than by a pinned version. This migration has now been renumbered
+// twice as main and a sibling branch took its number in turn, and a hard-coded path turns every
+// renumber into an unrelated red test that says "file not found" instead of anything useful.
+// Exactly one match is asserted, so a duplicate copy of this migration is still caught here
+// rather than at deploy, where a reused version is silently skipped.
+const migrationMatches = readdirSync(resolve(process.cwd(), "supabase/migrations")).filter((name) =>
+  name.endsWith("_solo_zapier_api_mcp_and_skool_intake.sql"),
+);
+const migrationPath = `supabase/migrations/${migrationMatches[0] ?? "__missing__"}`;
+const readMigration = () => {
+  expect(migrationMatches).toHaveLength(1);
+  return read(migrationPath);
+};
 
 describe("Solo Zapier API and MCP release contract", () => {
   it("renders two independent card states and two manage tabs", () => {
@@ -23,7 +37,7 @@ describe("Solo Zapier API and MCP release contract", () => {
   });
   it("keeps local cleanup available and preserves non-rotating refresh tokens", () => {
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
-    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = readMigration();
     expect(api).toContain('["cancel", "disconnect", "oauth_refuse", "provision_intake_route"]');
     expect(api).toContain("retainedRefresh");
     expect(api).toContain("String(data.refresh_token)");
@@ -37,7 +51,7 @@ describe("Solo Zapier API and MCP release contract", () => {
   });
   it("makes OAuth finalization and local disconnect transactional", () => {
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
-    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = readMigration();
     expect(api).toContain('_attempt: attemptId');
     expect(api).toContain('admin.rpc("zapier_api_disconnect"');
     expect(sql).toContain("status='exchanging' AND expires_at>clock_timestamp()");
@@ -59,7 +73,7 @@ describe("Solo Zapier API and MCP release contract", () => {
   });
   it("binds inbound routes on the server and deduplicates per tenant", () => {
     const intake = read("supabase/functions/zapier-skool-intake/index.ts");
-    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = readMigration();
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
     expect(intake).toContain("route_token_hash");
     expect(intake).not.toMatch(/body\.(tenant_id|tenantId)/);
@@ -85,7 +99,7 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(ui).not.toContain("x-paige-route-token");
   });
   it("records bounded outcomes in Rail", () => {
-    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = readMigration();
     expect(sql).toContain("existing.status='failed'");
     expect(sql).toContain("'ok',false,'outcome','failed'");
     expect(sql).toContain("zapier_api_test_succeeded");
@@ -106,7 +120,7 @@ describe("Solo Zapier API and MCP release contract", () => {
   it("routes the PAIGE connection test through the governed existing tool", () => {
     const chat = read("supabase/functions/paige-ai-chat/index.ts");
     const wrapper = read("supabase/functions/call-zapier-action/index.ts");
-    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = readMigration();
     expect(chat).not.toContain('name: "zapier_connection_test"');
     expect(chat).toContain("When the owner asks for a Zapier connection test, use zapier_list_actions");
     expect(wrapper).toContain('admin.rpc("record_zapier_mcp_connection_test"');
@@ -117,7 +131,7 @@ describe("Solo Zapier API and MCP release contract", () => {
   it("persists denied OAuth before reporting it", () => {
     const callback = read("src/pages/ZapierOAuthCallback.tsx");
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
-    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = readMigration();
     expect(callback).toContain('action:"oauth_refuse",state');
     expect(api).toContain('admin.rpc("zapier_api_refuse"');
     expect(sql).toContain("status='refused'");
@@ -132,7 +146,7 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(api).toContain('next.kind === "provider" ? "provider_unavailable"');
   });
   it("clears the cross-tenant contact collision the intake insert would hit", () => {
-    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = readMigration();
     // The creator-wide index spans tenants, so an operator who already holds this email in
     // another workspace makes every delivery fail contact_write_failed. The tenant-scoped
     // uq_clients_tenant_email (20260817010000) keeps same-tenant duplicates blocked.
