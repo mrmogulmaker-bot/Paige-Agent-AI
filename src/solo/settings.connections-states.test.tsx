@@ -126,8 +126,8 @@ describe("Connections renders its real states", () => {
     expect(text).not.toContain("We couldn’t read this account’s setup");
     expect(text).not.toContain("Clearing and resolving this account");
 
-    // The prepared/submitted ceiling and the replies disclosure both survive.
-    expect(text).toContain("prepared, not submitted");
+    // The live registration handoff and the replies disclosure both survive.
+    expect(text).toContain("Carrier filing and returned status are managed in Registration");
     expect(text).toContain("Whether replies are arriving is not reported");
     await cleanup();
   });

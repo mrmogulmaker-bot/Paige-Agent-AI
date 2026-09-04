@@ -16,9 +16,8 @@ import { SoloSettings } from "./settings";
  *   • the row exists but has left preparation, so its copy is locked;
  *   • the save succeeded, which is NOT the same as the registration being filed.
  *
- * The last one is the one that matters most, because filing does not exist in this product
- * at all. A person told their registration is filed stops waiting for the thing that would
- * make texting work.
+ * The last one still matters after provider filing exists: saving reviewed copy alone is
+ * not a provider submission. Only returned Twilio state may move the registration forward.
  */
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -30,6 +29,7 @@ const state = vi.hoisted(() => ({
   registration: null as Record<string, unknown> | null,
   regError: null as { message: string } | null,
   legal: { legal_business_name: "Test Workspace LLC", website_url: "https://example.com" } as Record<string, unknown> | null,
+  provider: {} as Record<string, unknown>,
 }));
 
 const PREPARABLE = {
@@ -145,12 +145,13 @@ const DRAFTED = {
 };
 
 beforeEach(() => {
-  state.invoke = vi.fn(async () => ({ data: DRAFTED, error: null }));
+  state.invoke = vi.fn(async (name: string) => ({ data: name === "comms-a2p-register" ? state.provider : DRAFTED, error: null }));
   state.tenantId = "tenant-1971670";
   state.isAdmin = true;
   state.registration = null;
   state.regError = null;
   state.legal = { legal_business_name: "Test Workspace LLC", website_url: "https://example.com" };
+  state.provider = { registration:null, eligible_number:{ id:"number-a",phone_number:"+14045550123",label:"MMA",is_primary:true }, profile:{ legal_business_name:"Test Workspace LLC",website_url:"https://example.com",registration_number_saved:false,registered_address_complete:true,business_identity_saved:true,business_industry_saved:true,regions_saved:false,authorized_representative_complete:false }, missing_profile_fields:["tax or registration number","regions of operation","authorized representative"] };
   document.body.innerHTML = "";
   vi.restoreAllMocks();
 });
@@ -210,13 +211,14 @@ describe("The four things this surface must never claim", () => {
   });
 
   it("NEVER says a saved registration was filed", async () => {
-    // Filing does not exist. comms-a2p-submit refuses and returns a2p_submit_wired: false.
+    // A reviewed save remains separate from the provider registration stages.
     state.registration = PREPARABLE;
     await mount();
     state.invoke = vi.fn(async () => ({ data: { saved: true, submitted: false, a2p_submit_wired: false }, error: null }));
     await act(async () => { buttonContaining("Save registration")?.click(); });
-    expect(text()).toContain("has not been filed");
-    expect(text()).not.toMatch(/\bfiled with\b(?!.*not)/);
+    expect(text()).toContain("messaging details are saved");
+    expect(text()).toContain("Continue below to file");
+    expect(text()).not.toContain("Submitted to carriers");
     expect(text()).not.toContain("Submitted for review");
   });
 });
@@ -316,5 +318,42 @@ describe("Registration workspace isolation", () => {
     await act(async () => finishSave({ data: { saved: true }, error: null }));
     expect(text()).not.toContain("Your registration is saved.");
     expect(button("Save registration")).toBeUndefined();
+  });
+});
+
+
+describe("Live Twilio registration status", () => {
+  it("shows only the active workspace number and identifies missing sealed profile facts", async () => {
+    await mount();
+    expect(text()).toContain("+14045550123");
+    expect(text()).toContain("tax or registration number");
+    expect(text()).toContain("regions of operation");
+    expect(text()).not.toMatch(/(?:AC|PN|BN|BU|MG)[0-9a-f]{32}/i);
+  });
+
+  it("does not mark messaging live until the carrier number is registered", async () => {
+    state.provider = {
+      ...state.provider,
+      registration: { brand_status:"approved",campaign_status:"approved",status:"approved",submission_phase:"approved",
+        number_association_status:"associated",number_registration_status:"pending",
+        has_brand:true,has_campaign:true,has_messaging_service:true },
+      missing_profile_fields: [],
+    };
+    await mount();
+    expect(text()).toContain("Carrier number registration");
+    expect(text()).toContain("Carrier number status");
+    expect(text()).toContain("pending");
+    expect(text()).toContain("PARTIAL");
+  });
+
+  it("clears the prior workspace number when the active workspace changes", async () => {
+    await mount();
+    expect(text()).toContain("+14045550123");
+    state.tenantId = "tenant-b";
+    state.provider = { ...state.provider, eligible_number:{ id:"number-b",phone_number:"+12125550199",label:"B",is_primary:true } };
+    state.legal = { legal_business_name:"Workspace B LLC",website_url:"https://b.example.com" };
+    await act(async () => renderSettings());
+    expect(text()).not.toContain("+14045550123");
+    expect(text()).toContain("+12125550199");
   });
 });

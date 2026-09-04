@@ -463,3 +463,13 @@ project_id = "xygzykjyynhzqytbqnzu"
 [functions.tenant-n8n-oauth]
 # Callback is public; JWT owner authorization and one-time callback proof are enforced inside.
 verify_jwt = false
+
+
+[functions.comms-a2p-register]
+# Owner-facing Twilio registration. The gateway verifies the user JWT; the function resolves
+# the active tenant server-side and treats the request tenant only as a stale-workspace guard.
+verify_jwt = true
+
+[functions.twilio-a2p-events]
+# Twilio Event Streams uses per-registration Basic credentials verified in-function.
+verify_jwt = false
