@@ -485,6 +485,7 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
   const comms = useSoloComms();
   const numbers = useSoloNumbers();
   const a2p = useSoloA2P();
+  const { activeTenantId: registrationTenant } = useTenantContext();
   const identity = useManagedIdentity();
   // The owner-locked Connections shape, from #660: Communications owns whether a
   // message can send, Calendars owns scheduling configuration, Health reports
@@ -590,7 +591,7 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
               the grading that Communications already carries — two homes for one answer,
               free to disagree the moment either is edited. The panel reports the
               registration's own state as part of doing the work. */}
-          <RegistrationPanel a2p={a2p} account={account}
+          <RegistrationPanel key={registrationTenant ?? "unresolved"} a2p={a2p} account={account}
             status={r ? { tone: registrationStep(r).tone, state: registrationStep(r).state, detail: registrationStep(r).detail } : null}
             statusLoading={readiness.loading}/>
         </div>

@@ -3297,3 +3297,11 @@ The owner superseded the earlier callback zero-log release block for the standar
 Owner follow-up: OAuth must request workflow:read and workflow:write. Initial connection verification remains read-only; no workflow:execute or automatic mutation is granted. Workflow writes remain subject to the governed action path and explicit approval.
 
 - 2026-09-03 n8n owner-pass correction: PR #909 deployed but the first real consent failed before state consumption. The hosted gateway rewrites the runtime callback path/origin; public-URL-only fixtures missed this. Bounded handler repair preserves fixed redirect URI and all state/owner/session guards, fixes the 404 fallback, and is documented in docs/delivery/solo-n8n-oauth-mvp.md. Do not label the tenant connected until fresh owner consent succeeds.
+
+### Solo orchestration MVP — A2P workspace repair, 2026-09-04 (candidate)
+
+Owner direction authorizes implementation through green-gated release for reusable Solo orchestration, imports, external intake and SMS readiness. PAIGE remains the AI COO: read, reason, write, delegate, execute and follow through; preparation-only behavior is an unfinished capability, not a product ceiling.
+
+The first repair closes a confirmed A2P workspace-switch defect. The editor is keyed by workspace, delayed responses are fenced, handlers pass a captured-workspace precondition, prompt context is explicitly tenant-scoped, and the save/insert trigger rejects a changed tenant rather than redirecting the write. Ordinary Solo owners/admins gain the same captured-tenant preparation authority using is_tenant_admin_as and a current-workspace SELECT policy. Carrier submission is still absent; this repair does not make SMS registration ready.
+
+Automated evidence: UI and actual-handler tests with injected database/model ports; isolated PostgreSQL role, replay and lock-wait race tests. Independent adversarial source review passed after two additional races were corrected. Authenticated production owner-flow proof remains owed. No real customer record, workflow, campaign, carrier submission or sender identity was changed to produce proof.
