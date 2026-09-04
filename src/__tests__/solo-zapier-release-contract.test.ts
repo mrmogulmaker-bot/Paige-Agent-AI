@@ -52,6 +52,9 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(sql).toContain("FUNCTION public.set_tenant_zapier_mcp_connection");
     expect(sql).toContain("auth_kind='oauth'");
     expect(sql).toContain("auth_header_name=NULL");
+    expect(sql).toContain("approved_capabilities='[]'::jsonb");
+    expect(sql).toContain("capability_pins='{}'::jsonb");
+    expect(sql).toContain("tools_cache=NULL");
     expect(sql).toContain("'auth_kind','oauth'");
   });
   it("binds inbound routes on the server and deduplicates per tenant", () => {
@@ -68,7 +71,11 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(sql).toContain("FORCE ROW LEVEL SECURITY");
     expect(sql).toContain("REVOKE ALL");
     expect(sql).toContain("SELECT tm.user_id INTO operator_id");
-    expect(sql).toContain("r.tenant_id,operator_id,'integration'");
+    expect(sql).toContain("operator_id,r.tenant_id,'integration'");
+    expect(sql).not.toContain("contact:=public.create_contact");
+    expect(sql).toContain("c.tenant_id=r.tenant_id AND lower(btrim(c.email))=email");
+    expect(sql).toContain("INSERT INTO public.clients(first_name,last_name,email,phone");
+    expect(sql).toContain("EXCEPTION WHEN unique_violation");
     expect(sql).toContain("FUNCTION public.zapier_intake_route_create");
     expect(sql).toContain("route_token_hash");
     expect(api).toContain("route_token: routeToken");

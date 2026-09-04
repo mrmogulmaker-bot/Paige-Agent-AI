@@ -304,8 +304,29 @@ BEGIN
   first_name:=COALESCE(NULLIF(split_part(full_name,' ',1),''),NULLIF(split_part(COALESCE(email,''),'@',1),''),'New');
   last_name:=COALESCE(NULLIF(btrim(substr(COALESCE(full_name,''),length(first_name)+1)),''),'Contact');
   BEGIN
-   contact:=public.create_contact(first_name,last_name,email,phone,NULL,NULL,'new_lead','zapier_skool',ARRAY['skool','zapier'],NULL,
-    'Received through the tenant-bound Skool intake route.',NULL,r.tenant_id,operator_id,'integration');
+   -- The shared create_contact helper deduplicates by creator across every workspace.
+   -- Intake deduplication is tenant-bound instead, with the tenant/email unique index
+   -- closing the concurrent-delivery window.
+   IF email IS NOT NULL THEN
+    SELECT c.id INTO contact FROM public.clients c
+     WHERE c.tenant_id=r.tenant_id AND lower(btrim(c.email))=email
+     ORDER BY c.created_at,c.id LIMIT 1;
+   END IF;
+   IF contact IS NULL THEN
+    BEGIN
+     INSERT INTO public.clients(first_name,last_name,email,phone,lifecycle_stage,source,tags,current_notes,status,created_by,tenant_id,created_by_channel_type)
+     VALUES(first_name,last_name,email,phone,'new_lead','zapier_skool',ARRAY['skool','zapier'],'Received through the tenant-bound Skool intake route.','active',operator_id,r.tenant_id,'integration')
+     RETURNING id INTO contact;
+     INSERT INTO public.audit_logs(user_id,entity,action,entity_id,data)
+     VALUES(operator_id,'client','create_contact',contact,jsonb_build_object('tenant_id',r.tenant_id,'email',email,'source','zapier_skool','channel','integration'));
+    EXCEPTION WHEN unique_violation THEN
+     IF email IS NULL THEN RAISE;END IF;
+     SELECT c.id INTO contact FROM public.clients c
+      WHERE c.tenant_id=r.tenant_id AND lower(btrim(c.email))=email
+      ORDER BY c.created_at,c.id LIMIT 1;
+     IF contact IS NULL THEN RAISE;END IF;
+    END;
+   END IF;
    UPDATE public.tenant_zapier_intake_events SET status='processed',contact_id=contact,processed_at=clock_timestamp() WHERE id=e.id;
    outcome:='zapier_skool_intake_received';
   EXCEPTION WHEN OTHERS THEN
@@ -355,6 +376,9 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalo
   transport='http',
   auth_kind='oauth',
   auth_header_name=NULL,
+  approved_capabilities='[]'::jsonb,
+  capability_pins='{}'::jsonb,
+  tools_cache=NULL,
   enabled=true,
   status='pending_verification',
   last_error=NULL,
