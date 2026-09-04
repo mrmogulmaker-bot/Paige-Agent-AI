@@ -1,0 +1,234 @@
+{
+  "scope": "Real components; synthetic transport, no provider authentication proof.",
+  "checks": [
+    {
+      "label": "light-1536x770 editable tenant address",
+      "pass": true
+    },
+    {
+      "label": "light-1536x770 no credential field",
+      "pass": true
+    },
+    {
+      "label": "light-1536x770 form geometry",
+      "pass": true
+    },
+    {
+      "label": "light-1536x770 reachable connect",
+      "pass": true
+    },
+    {
+      "label": "light-1536x770 reduced motion",
+      "pass": true
+    },
+    {
+      "label": "light-1536x770 dirty MCP protected",
+      "pass": true
+    },
+    {
+      "label": "light-1536x770 returns API",
+      "pass": true
+    },
+    {
+      "label": "light-1366x768 editable tenant address",
+      "pass": true
+    },
+    {
+      "label": "light-1366x768 no credential field",
+      "pass": true
+    },
+    {
+      "label": "light-1366x768 form geometry",
+      "pass": true
+    },
+    {
+      "label": "light-1366x768 reachable connect",
+      "pass": true
+    },
+    {
+      "label": "light-1366x768 reduced motion",
+      "pass": true
+    },
+    {
+      "label": "light-1366x768 dirty MCP protected",
+      "pass": true
+    },
+    {
+      "label": "light-1366x768 returns API",
+      "pass": true
+    },
+    {
+      "label": "light-1024x768 editable tenant address",
+      "pass": true
+    },
+    {
+      "label": "light-1024x768 no credential field",
+      "pass": true
+    },
+    {
+      "label": "light-1024x768 form geometry",
+      "pass": true
+    },
+    {
+      "label": "light-1024x768 reachable connect",
+      "pass": true
+    },
+    {
+      "label": "light-1024x768 reduced motion",
+      "pass": true
+    },
+    {
+      "label": "light-1024x768 dirty MCP protected",
+      "pass": true
+    },
+    {
+      "label": "light-1024x768 returns API",
+      "pass": true
+    },
+    {
+      "label": "light-900x1000 editable tenant address",
+      "pass": true
+    },
+    {
+      "label": "light-900x1000 no credential field",
+      "pass": true
+    },
+    {
+      "label": "light-900x1000 form geometry",
+      "pass": true
+    },
+    {
+      "label": "light-900x1000 reachable connect",
+      "pass": true
+    },
+    {
+      "label": "light-900x1000 reduced motion",
+      "pass": true
+    },
+    {
+      "label": "light-900x1000 dirty MCP protected",
+      "pass": true
+    },
+    {
+      "label": "light-900x1000 returns API",
+      "pass": true
+    },
+    {
+      "label": "dark-1536x770 editable tenant address",
+      "pass": true
+    },
+    {
+      "label": "dark-1536x770 no credential field",
+      "pass": true
+    },
+    {
+      "label": "dark-1536x770 form geometry",
+      "pass": true
+    },
+    {
+      "label": "dark-1536x770 reachable connect",
+      "pass": true
+    },
+    {
+      "label": "dark-1536x770 reduced motion",
+      "pass": true
+    },
+    {
+      "label": "dark-1536x770 dirty MCP protected",
+      "pass": true
+    },
+    {
+      "label": "dark-1536x770 returns API",
+      "pass": true
+    },
+    {
+      "label": "dark-1366x768 editable tenant address",
+      "pass": true
+    },
+    {
+      "label": "dark-1366x768 no credential field",
+      "pass": true
+    },
+    {
+      "label": "dark-1366x768 form geometry",
+      "pass": true
+    },
+    {
+      "label": "dark-1366x768 reachable connect",
+      "pass": true
+    },
+    {
+      "label": "dark-1366x768 reduced motion",
+      "pass": true
+    },
+    {
+      "label": "dark-1366x768 dirty MCP protected",
+      "pass": true
+    },
+    {
+      "label": "dark-1366x768 returns API",
+      "pass": true
+    },
+    {
+      "label": "dark-1024x768 editable tenant address",
+      "pass": true
+    },
+    {
+      "label": "dark-1024x768 no credential field",
+      "pass": true
+    },
+    {
+      "label": "dark-1024x768 form geometry",
+      "pass": true
+    },
+    {
+      "label": "dark-1024x768 reachable connect",
+      "pass": true
+    },
+    {
+      "label": "dark-1024x768 reduced motion",
+      "pass": true
+    },
+    {
+      "label": "dark-1024x768 dirty MCP protected",
+      "pass": true
+    },
+    {
+      "label": "dark-1024x768 returns API",
+      "pass": true
+    },
+    {
+      "label": "dark-900x1000 editable tenant address",
+      "pass": true
+    },
+    {
+      "label": "dark-900x1000 no credential field",
+      "pass": true
+    },
+    {
+      "label": "dark-900x1000 form geometry",
+      "pass": true
+    },
+    {
+      "label": "dark-900x1000 reachable connect",
+      "pass": true
+    },
+    {
+      "label": "dark-900x1000 reduced motion",
+      "pass": true
+    },
+    {
+      "label": "dark-900x1000 dirty MCP protected",
+      "pass": true
+    },
+    {
+      "label": "dark-900x1000 returns API",
+      "pass": true
+    },
+    {
+      "label": "no browser errors",
+      "pass": true
+    }
+  ],
+  "errors": []
+}

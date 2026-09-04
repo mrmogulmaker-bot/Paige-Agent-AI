@@ -3,6 +3,7 @@ import { KeyRound, Link2Off, Plug, RefreshCw, TriangleAlert, Workflow, X, Zap } 
 import { useLocation, useNavigate } from "react-router-dom";
 import { SoloAutomationsView } from "./settings-automations";
 import { useN8nConnection, readN8nReadiness, type N8nConnection } from "./data/useN8nConnection";
+import { useN8nOAuth, n8nMcpStateWords, type N8nReadiness } from "./data/useN8nOAuth";
 import { useMcpConnection } from "./data/useMcpConnection";
 import { useMcpCapabilities } from "./data/useMcpCapabilities";
 import { supabase } from "@/integrations/supabase/client";
@@ -219,6 +220,9 @@ function N8nPanelBody({ a, onDirtyChange, onChanged }: { a: ReturnType<typeof us
       {confirmingDisconnect && <div className="ig-confirm-close" role="alertdialog" aria-label="Confirm API disconnect"><p>Disconnect the API connection? Paige tools access will stay unchanged.</p><div className="ig-actions"><button type="button" className="ig-btn" data-danger autoFocus disabled={a.saving} onClick={() => { setConfirmingDisconnect(false); void commit(a.disconnect); }}>Confirm disconnect</button><button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep connection</button></div></div>}
     </>}
   </>;
+}
+function suggestedMcpAddress(value: string | null) {
+  try { if (!value) return null; const url = new URL(value); if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return null; url.pathname = `${url.pathname.replace(/\/$/, "")}/mcp-server/http`; return url.href; } catch { return null; }
 }
 function safeCheckDate(value: string) {
   const date = new Date(value);
@@ -463,7 +467,7 @@ function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
    same drawer because they belong to the same provider, and in separate
    sections because connecting one says nothing about the other. */
 
-const N8N_OAUTH_UNAVAILABLE = "OAuth setup is temporarily unavailable while the secure connection path is being completed.";
+
 
 function n8nApiSummary(value: N8nConnection | null, loading: boolean, error: boolean) {
   if (loading) return { account: "Checking…", tone: "neutral" };
@@ -472,47 +476,83 @@ function n8nApiSummary(value: N8nConnection | null, loading: boolean, error: boo
   if (value.health === "connected") return { account: "Connected", tone: "ok" };
   return value.configured ? { account: "Needs attention", tone: "warn" } : { account: "Not connected", tone: "neutral" };
 }
-function n8nMcpSummary(value: SafeConnectionStatus | null, loading: boolean, error: boolean) {
+function n8nMcpSummary(value: N8nReadiness | null, loading: boolean, error: boolean) {
   if (loading) return { account: "Checking…", tone: "neutral" };
-  if (error) return { account: "Status unavailable", tone: "neutral" };
-  if (!value || value.configured === false) return { account: "Not connected", tone: "neutral" };
-  if (value.configured !== true || typeof value.enabled !== "boolean") return { account: "Status unavailable", tone: "neutral" };
-  if (value.status === "connected" && value.enabled === true) return { account: "Connected", tone: "ok" };
-  return { account: "OAuth setup unavailable", tone: "warn" };
+  if (!value || error) return { account: "Status unavailable", tone: "neutral" };
+  if (value.attemptState === "consent_in_progress") return { account: "Authorization in progress", tone: "neutral" };
+  if (["connected_no_approved_tools", "connected_approved_tools", "connected"].includes(value.mcp.state)) return { account: "Connected", tone: "ok" };
+  if (["mcp_not_configured", "not_configured", "not_connected"].includes(value.mcp.state)) return { account: "Not connected", tone: "neutral" };
+  return { account: n8nMcpStateWords(value.mcp.state), tone: "warn" };
 }
 function N8nStateLabel({ value }: { value: { account: string; tone: string } }) {
   return <span className="ig-card-state" data-tone={value.tone}><i aria-hidden />{value.account}</span>;
 }
-function N8nMcpSection({ m, onChanged }: { m: ReturnType<typeof useMcpConnection>; onChanged: () => void }) {
-  const [access, setAccess] = useState(false);
+function N8nMcpSection({ oauth, suggestedAddress, onDirtyChange, onChanged }: { suggestedAddress?: string | null; oauth: ReturnType<typeof useN8nOAuth>; onDirtyChange: (dirty: boolean) => void; onChanged: () => void }) {
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [serverUrl, setServerUrl] = useState(oauth.readiness?.mcp.serverUrl ?? suggestedAddress ?? "");
+  const [editing, setEditing] = useState(false);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
-  const alive = useRef(true);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  const disconnect = async () => { const ok = await m.disconnect(); if (alive.current && ok) { setConfirmingDisconnect(false); onChanged(); } };
-  const connected = m.configured && m.enabled && m.status === "connected";
-  const count = (value: number | null) => value === null ? "Unavailable" : value;
+  const [chosen, setChosen] = useState<string[] | null>(null);
+  const r = oauth.readiness;
+  const selection = chosen ?? oauth.workflows?.filter(w => w.approved).map(w => w.id) ?? [];
+  useEffect(() => { onDirtyChange((editing || !r?.mcp.authKind) && serverUrl !== (r?.mcp.serverUrl ?? suggestedAddress ?? "") || chosen !== null); }, [serverUrl, chosen, editing, r?.mcp.authKind, r?.mcp.serverUrl, suggestedAddress, onDirtyChange]);
+  const commit = async (action: () => Promise<boolean>) => { const ok = await action(); if (ok && mounted.current) { setChosen(null); onChanged(); } };
+  if (oauth.loading) return <p className="ig-state" role="status">Checking the n8n MCP connection…</p>;
+  if (!r) return <div className="ig-state" role="alert"><span>The n8n MCP connection could not be read, so nothing is being claimed either way.</span><button className="ig-btn" onClick={() => void oauth.reload()}>Try again</button></div>;
+  const connected = ["connected_no_approved_tools", "connected_approved_tools"].includes(r.mcp.state);
+  const inProgress = r.attemptState === "consent_in_progress";
   return <>
     <p className="ig-lede">Let Paige use the n8n tools and workflows you explicitly authorize.</p>
-    {m.loading ? <p className="ig-state" role="status">Checking Paige tools access…</p> : m.error ? <div className="ig-state" role="alert"><span>Paige tools access could not be read. Connection and approved-tool counts are unavailable.</span><button type="button" className="ig-btn" onClick={() => void m.reload()}>Try again</button></div> : <>
-      <dl className="ig-facts">
-        <div><dt>Paige tools</dt><dd>{n8nMcpSummary(m, false, false).account}</dd></div>
-        <div><dt>Connection method</dt><dd>{!m.configured ? "Not configured" : m.authKind === "oauth" ? "Stored OAuth connection — current authorization unverified" : ["bearer", "header", "url"].includes(m.authKind ?? "") ? "Saved static MCP credential — not OAuth" : "Connection method unavailable"}</dd></div>
-        <div><dt>Approved tools</dt><dd>{count(m.approvedToolCount)}</dd></div>
-        <div><dt>Tools found</dt><dd>{count(m.toolCount)}</dd></div>
-        {m.lastProbedAt && <div><dt>Last recorded check</dt><dd>{safeCheckDate(m.lastProbedAt)}</dd></div>}
-      </dl>
-      {m.configured && m.status === "error" && <p className="ig-error" role="alert">The saved MCP connection is not working. Tools access is unavailable; its credential may have been refused or the provider may be unavailable.</p>}
-      {m.configured && m.status !== "connected" && m.status !== "error" && <p className="ig-note">The saved MCP configuration has not been verified as working.</p>}
-      {connected && <p className="ig-note">This connection passed its recorded MCP check. A connection alone does not authorize every tool. {["bearer", "header", "url"].includes(m.authKind ?? "") && "It uses a static credential, not OAuth."}</p>}
-      {m.writeError && <p className="ig-error" role="alert">{m.writeError}</p>}
-      <div className="ig-actions"><button type="button" className="ig-btn" disabled={m.saving} onClick={() => void m.reload()}>Refresh status</button>{connected && <button type="button" className="ig-btn" onClick={() => setAccess(!access)} aria-expanded={access}>Manage access</button>}{m.configured && m.canWrite && <button type="button" className="ig-btn" disabled={m.saving} onClick={() => setConfirmingDisconnect(true)}>{connected ? "Disconnect Paige tools" : "Remove saved MCP connection"}</button>}</div>
-      {access && connected && <div className="ig-facts ig-n8n-access"><p>Saved approval summary — read-only</p><p>Approved tools: {count(m.approvedToolCount)}</p><p>Pinned approvals: {count(m.pinnedCount)}</p><p>Approved workflow count: unavailable</p><p>No permissions are changed and no workflow will run here.</p></div>}
-      {!m.canWrite && <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>}
-      {confirmingDisconnect && <div className="ig-confirm-close" role="alertdialog" aria-label="Confirm MCP removal"><p>Remove this saved MCP connection? The API connection will stay unchanged.</p><div className="ig-actions"><button type="button" className="ig-btn" data-danger autoFocus disabled={m.saving} onClick={() => void disconnect()}>Confirm removal</button><button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep connection</button></div></div>}
+    <dl className="ig-facts">
+      <div><dt>State</dt><dd>{n8nMcpStateWords(r.mcp.state)}</dd></div>
+      <div><dt>Authorization</dt><dd>{r.mcp.authKind === "oauth" ? "OAuth" : r.mcp.authKind ? "Advanced static credential (not OAuth)" : "OAuth authorization needed"}</dd></div>
+      <div><dt>Approved workflows</dt><dd>{r.mcp.approvedWorkflowCount ?? "Unavailable"}</dd></div>
+      <div><dt>Approved tools</dt><dd>{r.mcp.approvedToolCount ?? "Unavailable"}</dd></div>
+      <div><dt>Last successful check</dt><dd>{r.mcp.lastSuccessAt ? new Date(r.mcp.lastSuccessAt).toLocaleString() : "No successful check yet"}</dd></div>
+    </dl>
+    {r.attemptState && r.attemptState !== "success" && <p className="ig-note" role="status">{n8nMcpStateWords(r.attemptState)}</p>}
+    <p className="ig-lede">Authorize controlled MCP access through n8n. The optional API connection is separate. Keep n8n auto-expose off and enable only workflows you deliberately approve.</p>
+    <p className="ig-note">OAuth authorizes a read/write connection. Connecting does not automatically approve workflow changes or execution. Changes require separate approval through Paige’s governed action flow; this screen verifies read access only.</p>
+    {oauth.busy && <p className="ig-state" role="status">Checking Paige tools access…</p>}
+    {oauth.error && <p className="ig-error" role="alert">{oauth.error}</p>}
+    <button type="button" className="ig-btn" disabled={oauth.busy} onClick={() => void oauth.reload()}>Refresh status</button>
+    {!r.canManage ? <p className="ig-note">Only the workspace owner can authorize or change MCP access. You can see its state here.</p> : <>
+      {!inProgress && (!r.mcp.authKind || editing) && <form className="ig-form" onSubmit={async event => {
+        event.preventDefault(); if (oauth.busy) return;
+        const launch = await oauth.begin(serverUrl);
+        if (launch && mounted.current) {
+          setServerUrl(""); onDirtyChange(false);
+          // Fresh authenticated begin response only. Proof never enters a URL or storage.
+          const form = document.createElement("form");
+          form.method = "POST"; form.action = launch.launchUrl; form.hidden = true;
+          for (const [name, value] of [["launch_ticket", launch.launchTicket], ["launch_proof", launch.launchProof]]) {
+            const input = document.createElement("input"); input.type = "hidden"; input.name = name; input.value = value; form.appendChild(input);
+          }
+          document.body.appendChild(form);
+          try { form.submit(); } finally { form.remove(); }
+        }
+      }}>
+        <label className="ig-field"><span>Instance-level MCP address</span><input type="url" required autoComplete="off" spellCheck={false} placeholder="https://your-instance.app.n8n.cloud/mcp-server/http" value={serverUrl} onChange={event => setServerUrl(event.target.value)} disabled={oauth.busy} /><small>Confirm the HTTPS address from n8n Settings → Instance-level MCP. A suggested address does not grant access.</small></label>
+        {r.mcp.authKind && <p className="ig-note">Your saved connection stays in place until OAuth completes successfully. Completing OAuth replaces MCP authorization only.</p>}
+        <div className="ig-actions"><button className="ig-btn" data-primary disabled={oauth.busy || !/^https:\/\//i.test(serverUrl.trim())}>{oauth.busy ? "Starting authorization…" : "Connect n8n with OAuth"}</button><button type="button" className="ig-btn" disabled={oauth.busy} onClick={() => { setEditing(false); setServerUrl(""); onDirtyChange(false); }}>Cancel</button></div>
+      </form>}
+      <div className="ig-actions">
+        {!inProgress && r.mcp.authKind && !editing && <button type="button" className="ig-btn" data-primary disabled={oauth.busy} onClick={() => { setServerUrl(r.mcp.serverUrl ?? suggestedAddress ?? ""); setEditing(true); }}>Reconnect authorization</button>}
+        {inProgress && <button className="ig-btn" disabled={oauth.busy} onClick={() => void commit(oauth.cancel)}>Cancel authorization</button>}
+        {r.mcp.authKind === "oauth" && <button className="ig-btn" disabled={oauth.busy} onClick={() => void commit(oauth.verify)}>Check it again</button>}
+        {r.mcp.authKind === "oauth" && (confirmingDisconnect ? <span className="ig-confirm"><button className="ig-btn" data-danger disabled={oauth.busy} onClick={() => { setConfirmingDisconnect(false); void commit(oauth.disconnect); }}>Disconnect OAuth</button><button className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep it</button></span> : <button className="ig-btn" disabled={oauth.busy} onClick={() => setConfirmingDisconnect(true)}>Disconnect</button>)}
+      </div>
+      {connected && r.mcp.authKind === "oauth" && <div className="ig-caps"><h4>Approved read/preview workflows</h4>
+        <button className="ig-btn" disabled={oauth.busy} onClick={() => { setChosen(null); void oauth.discover(); }}>Manage access</button>
+        {oauth.workflows?.length === 0 && <p className="ig-note">No eligible workflows are available. Enable only deliberately approved workflows in n8n, with auto-expose off, then check again.</p>}
+        {!!oauth.workflows?.length && <><ul className="ig-caplist">{oauth.workflows.map(workflow => <li key={workflow.id}><button type="button" aria-pressed={selection.includes(workflow.id)} disabled={oauth.busy} onClick={() => setChosen(selection.includes(workflow.id) ? selection.filter(id => id !== workflow.id) : [...selection, workflow.id])}><span className="ig-cap-name">{workflow.name}</span></button>{workflow.approved && <button className="ig-btn" type="button" disabled={oauth.busy} onClick={() => void oauth.preview(workflow.id)}>Check approved read access</button>}</li>)}</ul><button className="ig-btn" disabled={chosen === null || oauth.busy} onClick={() => void commit(() => oauth.approve(selection))}>Approve {selection.length} for read/preview only</button></>}
+      </div>}
+      {oauth.previewName && <p className="ig-note" role="status">Read access verified for {oauth.previewName}. No workflow was executed.</p>}
     </>}
-    <p className="ig-note">{N8N_OAUTH_UNAVAILABLE}</p>
   </>;
 }
+
 
 /**
  * A saved connection and a proven one are different states and are never shown as the
@@ -613,9 +653,8 @@ function N8nForm({
 /* ── The contextual panel ─────────────────────────────────────────────────── */
 
 type N8nTab = "api" | "mcp";
-function N8nDrawer({ a, onClose, onChanged }: { a: ReturnType<typeof useN8nConnection>; onClose: () => void; onChanged: () => void }) {
-  const m = useMcpConnection("n8n");
-  const [tab, setTab] = useState<N8nTab>("api");
+function N8nDrawer({ a, m, initialMcp, onClose, onChanged }: { initialMcp?: boolean; a: ReturnType<typeof useN8nConnection>; m: ReturnType<typeof useN8nOAuth>; onClose: () => void; onChanged: () => void }) {
+  const [tab, setTab] = useState<N8nTab>(initialMcp ? "mcp" : "api");
   const [dirty, setDirty] = useState(false);
   const [savingClose, setSavingClose] = useState(false);
   const [discardTarget, setDiscardTarget] = useState<"close" | N8nTab | null>(null);
@@ -625,10 +664,10 @@ function N8nDrawer({ a, onClose, onChanged }: { a: ReturnType<typeof useN8nConne
   const discard = useRef<HTMLButtonElement>(null);
   const requestLeave = useCallback((target: "close" | N8nTab) => {
     if (target === tab) return;
-    if (a.saving || m.saving) { if (target === "close") setSavingClose(true); return; }
+    if (a.saving || m.busy) { if (target === "close") setSavingClose(true); return; }
     if (dirty) { setDiscardTarget(target); return; }
     if (target === "close") onClose(); else setTab(target);
-  }, [a.saving, m.saving, dirty, onClose, tab]);
+  }, [a.saving, m.busy, dirty, onClose, tab]);
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
     close.current?.focus();
@@ -667,20 +706,20 @@ function N8nDrawer({ a, onClose, onChanged }: { a: ReturnType<typeof useN8nConne
   return <div className="ig-layer" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) requestLeave("close"); }}>
     <aside className="ig-panel ig-n8n-panel" ref={panel} role="dialog" aria-modal="true" aria-labelledby="ig-panel-title">
       <header><span className="ss-provider-mark" data-provider-mark="n8n" aria-hidden>n8n</span><div><h2 id="ig-panel-title">n8n</h2><span>API visibility and Paige tools</span></div><button ref={close} className="ig-close" type="button" aria-label="Close n8n" onClick={() => requestLeave("close")}><X aria-hidden size={16} /></button></header>
-      <div className="ig-n8n-overview"><div className="ig-n8n-summary" aria-label="Independent n8n connection states"><div><span>API connection</span><N8nStateLabel value={n8nApiSummary(a, a.loading, a.error)} /></div><div><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(m, m.loading, m.error)} /></div></div>
-        <div className="ss-segment ig-n8n-tabs" role="tablist" aria-label="n8n connections" onKeyDown={tabKeys}>{(["api", "mcp"] as const).map(value => <button key={value} type="button" id={`ig-n8n-tab-${value}`} role="tab" aria-selected={tab === value} aria-controls={`ig-n8n-panel-${value}`} tabIndex={tab === value ? 0 : -1} disabled={a.saving || m.saving} onClick={() => requestLeave(value)}>{value === "api" ? "API connection" : "Paige tools (MCP)"}</button>)}</div>
+      <div className="ig-n8n-overview"><div className="ig-n8n-summary" aria-label="Independent n8n connection states"><div><span>API connection</span><N8nStateLabel value={n8nApiSummary(a, a.loading, a.error)} /></div><div><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(m.readiness, m.loading, !!m.error)} /></div></div>
+        <div className="ss-segment ig-n8n-tabs" role="tablist" aria-label="n8n connections" onKeyDown={tabKeys}>{(["api", "mcp"] as const).map(value => <button key={value} type="button" id={`ig-n8n-tab-${value}`} role="tab" aria-selected={tab === value} aria-controls={`ig-n8n-panel-${value}`} tabIndex={tab === value ? 0 : -1} disabled={a.saving || m.busy} onClick={() => requestLeave(value)}>{value === "api" ? "API connection" : "Paige tools (MCP)"}</button>)}</div>
       </div>
       <div className="ig-panel-body">
         {savingClose && <div className="ig-confirm-close" role="alertdialog" aria-label="Saving is in progress"><p>Saving is still in progress. Closing will not cancel it.</p><div className="ig-actions"><button type="button" autoFocus className="ig-btn" onClick={onClose}>Close while saving</button><button type="button" className="ig-btn" onClick={() => setSavingClose(false)}>Keep open</button></div></div>}
-        {discardTarget && <div className="ig-confirm-close" role="alertdialog" aria-label="Discard unsaved API details"><p>You have unsaved API details. Discard them {discardTarget === "close" ? "and close" : "and change tabs"}?</p><div className="ig-actions"><button ref={discard} type="button" className="ig-btn" data-danger onClick={() => { const next = discardTarget; setDirty(false); setDiscardTarget(null); setFormEpoch(value => value + 1); if (next === "close") onClose(); else { setTab(next); panel.current?.querySelector<HTMLButtonElement>(`#ig-n8n-tab-${next}`)?.focus(); } }}>Discard changes</button><button type="button" className="ig-btn" onClick={() => { setDiscardTarget(null); panel.current?.querySelector<HTMLInputElement>("input")?.focus(); }}>Keep editing</button></div></div>}
-        {tab === "api" ? <section id="ig-n8n-panel-api" role="tabpanel" aria-labelledby="ig-n8n-tab-api"><N8nPanelBody key={formEpoch} a={a} onDirtyChange={setDirty} onChanged={onChanged} /></section> : <section id="ig-n8n-panel-mcp" role="tabpanel" aria-labelledby="ig-n8n-tab-mcp"><N8nMcpSection m={m} onChanged={onChanged} /></section>}
+        {discardTarget && <div className="ig-confirm-close" role="alertdialog" aria-label="Discard unsaved connection details"><p>You have unsaved {tab === "api" ? "API" : "MCP"} details. Discard them {discardTarget === "close" ? "and close" : "and change tabs"}?</p><div className="ig-actions"><button ref={discard} type="button" className="ig-btn" data-danger onClick={() => { const next = discardTarget; setDirty(false); setDiscardTarget(null); setFormEpoch(value => value + 1); if (next === "close") onClose(); else { setTab(next); panel.current?.querySelector<HTMLButtonElement>(`#ig-n8n-tab-${next}`)?.focus(); } }}>Discard changes</button><button type="button" className="ig-btn" onClick={() => { setDiscardTarget(null); panel.current?.querySelector<HTMLInputElement>("input")?.focus(); }}>Keep editing</button></div></div>}
+        {tab === "api" ? <section id="ig-n8n-panel-api" role="tabpanel" aria-labelledby="ig-n8n-tab-api"><N8nPanelBody key={formEpoch} a={a} onDirtyChange={setDirty} onChanged={onChanged} /></section> : <section id="ig-n8n-panel-mcp" role="tabpanel" aria-labelledby="ig-n8n-tab-mcp"><N8nMcpSection key={formEpoch} oauth={m} suggestedAddress={suggestedMcpAddress(a.baseUrl)} onDirtyChange={setDirty} onChanged={onChanged} /></section>}
       </div>
       <footer><span>API visibility and Paige tools authorization are separate.</span></footer>
     </aside>
   </div>;
 }
-function ProviderPanel(props: { a: ReturnType<typeof useN8nConnection>; row: ProviderRow; onClose: () => void; onChanged: () => void }) {
-  return props.row.id === "n8n" ? <N8nDrawer a={props.a} onClose={props.onClose} onChanged={props.onChanged} /> : <LegacyProviderPanel {...props} />;
+function ProviderPanel(props: { initialMcp?: boolean; m: ReturnType<typeof useN8nOAuth>; a: ReturnType<typeof useN8nConnection>; row: ProviderRow; onClose: () => void; onChanged: () => void }) {
+  return props.row.id === "n8n" ? <N8nDrawer initialMcp={props.initialMcp} m={props.m} a={props.a} onClose={props.onClose} onChanged={props.onChanged} /> : <LegacyProviderPanel {...props} />;
 }
 
 function LegacyProviderPanel({ row, onClose, onChanged }: { row: ProviderRow; onClose: () => void; onChanged: () => void }) {
@@ -786,9 +825,21 @@ export function SoloIntegrationsView() {
   const [leaf, setLeaf] = useIntegrationsLeaf();
   const status = useIntegrationStatus();
   const api = useN8nConnection();
+  const oauth = useN8nOAuth();
   const [category, setCategory] = useState<CatalogueCategory>("all");
-  const [open, setOpen] = useState<{ row: ProviderRow; scope: string } | null>(null);
+  const [open, setOpen] = useState<{ row: ProviderRow; scope: string; initialMcp?: boolean } | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
   useEffect(() => { setOpen(null); }, [scopeKey, tenantLoading]);
+  useEffect(() => {
+    if (tenantLoading || !activeTenantId) return;
+    const params = new URLSearchParams(location.search);
+    const result = params.get("n8n_oauth");
+    if (!result) return;
+    params.delete("n8n_oauth");
+    navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
+    if (["success", "cancelled", "refused", "expired", "failed"].includes(result)) setOpen({ row: PROVIDERS[0], scope: scopeKey, initialMcp: true });
+  }, [location.pathname, location.search, navigate, activeTenantId, tenantLoading, scopeKey]);
   const rows = PROVIDERS.filter(row => category === "all" || row.filter === category);
   const tabs: ReadonlyArray<{ id: IntegrationsLeaf; label: string; Icon: typeof Workflow }> = [
     { id: "catalogue", label: "Integrations", Icon: Plug }, { id: "automations", label: "Automations", Icon: Zap },
@@ -803,11 +854,11 @@ export function SoloIntegrationsView() {
           const live = statusPresentation(row.id === "mcp" ? status.mcp.zapier ?? null : null);
           return <li key={row.id}><button type="button" className="ig-card" data-provider={row.id} data-owner="integrations" onClick={() => setOpen({ row, scope: scopeKey })} aria-haspopup="dialog">
             <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id)}</span><span className="ig-card-title"><strong>{row.name}</strong><small>{row.kind}</small></span>
-            {row.id === "n8n" ? <><span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={n8nApiSummary(api, api.loading, api.error)} /></span><span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(status.mcp.n8n ?? null, false, status.mcpError)} /></span></> : <span className="ig-card-state" data-tone={row.id === "mcp" && status.mcpError ? "neutral" : row.connectable ? live.tone : "neutral"}><i aria-hidden />{row.id === "mcp" && status.mcpError ? "Status unavailable" : row.connectable ? live.account : "Not available"}</span>}
+            {row.id === "n8n" ? <><span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={n8nApiSummary(api, api.loading, api.error)} /></span><span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(oauth.readiness, oauth.loading, !!oauth.error)} /></span></> : <span className="ig-card-state" data-tone={row.id === "mcp" && status.mcpError ? "neutral" : row.connectable ? live.tone : "neutral"}><i aria-hidden />{row.id === "mcp" && status.mcpError ? "Status unavailable" : row.connectable ? live.account : "Not available"}</span>}
           </button></li>;
         })}</ul>
       </>}
     </>}
-    {open && !tenantLoading && open.scope === scopeKey && <ProviderPanel a={api} key={`${scopeKey}:${open.row.id}`} row={open.row} onClose={() => setOpen(null)} onChanged={status.retry} />}
+    {open && !tenantLoading && open.scope === scopeKey && <ProviderPanel initialMcp={open.initialMcp} m={oauth} a={api} key={`${scopeKey}:${open.row.id}`} row={open.row} onClose={() => setOpen(null)} onChanged={status.retry} />}
   </div>;
 }

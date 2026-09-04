@@ -459,3 +459,7 @@ project_id = "xygzykjyynhzqytbqnzu"
   # UNSCHEDULED and UNGATED — never invoked once, and open to anyone who knew the URL.
   [functions.security-canary-probe]
     verify_jwt = false
+
+[functions.tenant-n8n-oauth]
+# Callback is public; JWT owner authorization and one-time callback proof are enforced inside.
+verify_jwt = false

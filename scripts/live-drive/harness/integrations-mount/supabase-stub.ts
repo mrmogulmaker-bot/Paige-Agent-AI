@@ -22,6 +22,7 @@ window.addEventListener('n8n-harness-finish',()=>pending.splice(0).forEach(f=>f(
 const delayed=(run:()=>Record<string,unknown>)=>mode()==='pending'?new Promise(resolve=>pending.push(()=>resolve({data:run(),error:null}))):ok(run());
 export const supabase={
  rpc:(name:string)=>{
+  if(name==='get_n8n_connection_readiness')return mode()==='error'||mode()==='mcp-error'?fail('fixture-read-refused'):ok({tenant_id:currentHarnessTenantId(),can_manage:mode()!=='readonly',api:{},mcp:{state:mcpRow()?.configured?'oauth_needed':'not_configured',auth_kind:mcpRow()?.auth_kind??null,oauth_readiness:'ready',approved_workflow_count:0,approved_tool_count:0,server_url:'https://harness.example.invalid/mcp-server/http'}});
   if(name==='get_tenant_n8n_api_readiness')return mode()==='error'||mode()==='api-error'?fail('fixture-read-refused'):ok(apiRow());
   if(name==='get_tenant_mcp_connections')return mode()==='error'||mode()==='mcp-error'?fail('fixture-read-refused'):ok({n8n:mcpRow(),zapier:none()});
   if(name==='is_current_user_tenant_admin')return ok(mode()!=='readonly');
