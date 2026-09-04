@@ -23,7 +23,7 @@ describe("Solo Zapier API and MCP release contract", () => {
   });
   it("keeps local cleanup available and preserves non-rotating refresh tokens", () => {
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
-    const sql = read("supabase/migrations/20261201000700_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
     expect(api).toContain('["cancel", "disconnect", "oauth_refuse", "provision_intake_route"]');
     expect(api).toContain("retainedRefresh");
     expect(api).toContain("String(data.refresh_token)");
@@ -37,7 +37,7 @@ describe("Solo Zapier API and MCP release contract", () => {
   });
   it("makes OAuth finalization and local disconnect transactional", () => {
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
-    const sql = read("supabase/migrations/20261201000700_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
     expect(api).toContain('_attempt: attemptId');
     expect(api).toContain('admin.rpc("zapier_api_disconnect"');
     expect(sql).toContain("status='exchanging' AND expires_at>clock_timestamp()");
@@ -59,7 +59,7 @@ describe("Solo Zapier API and MCP release contract", () => {
   });
   it("binds inbound routes on the server and deduplicates per tenant", () => {
     const intake = read("supabase/functions/zapier-skool-intake/index.ts");
-    const sql = read("supabase/migrations/20261201000700_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
     expect(intake).toContain("route_token_hash");
     expect(intake).not.toMatch(/body\.(tenant_id|tenantId)/);
@@ -85,7 +85,7 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(ui).not.toContain("x-paige-route-token");
   });
   it("records bounded outcomes in Rail", () => {
-    const sql = read("supabase/migrations/20261201000700_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
     expect(sql).toContain("existing.status='failed'");
     expect(sql).toContain("'ok',false,'outcome','failed'");
     expect(sql).toContain("zapier_api_test_succeeded");
@@ -106,7 +106,7 @@ describe("Solo Zapier API and MCP release contract", () => {
   it("routes the PAIGE connection test through the governed existing tool", () => {
     const chat = read("supabase/functions/paige-ai-chat/index.ts");
     const wrapper = read("supabase/functions/call-zapier-action/index.ts");
-    const sql = read("supabase/migrations/20261201000700_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
     expect(chat).not.toContain('name: "zapier_connection_test"');
     expect(chat).toContain("When the owner asks for a Zapier connection test, use zapier_list_actions");
     expect(wrapper).toContain('admin.rpc("record_zapier_mcp_connection_test"');
@@ -117,7 +117,7 @@ describe("Solo Zapier API and MCP release contract", () => {
   it("persists denied OAuth before reporting it", () => {
     const callback = read("src/pages/ZapierOAuthCallback.tsx");
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
-    const sql = read("supabase/migrations/20261201000700_solo_zapier_api_mcp_and_skool_intake.sql");
+    const sql = read("supabase/migrations/20261201000800_solo_zapier_api_mcp_and_skool_intake.sql");
     expect(callback).toContain('action:"oauth_refuse",state');
     expect(api).toContain('admin.rpc("zapier_api_refuse"');
     expect(sql).toContain("status='refused'");
