@@ -937,7 +937,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
 
         {agreements.agreementsReadable && agreements.agreements.length > 0 && <div className="so-filters">
           <label className="so-search"><span>Find client terms</span><input type="search" value={termSearch} placeholder="Search client name…" onChange={(e) => { setTermSearch(e.target.value); setTermPage(0); }} /></label>
-          <label className="so-search"><span>Status</span><select value={termStatus} onChange={(e) => { setTermStatus(e.target.value); setTermPage(0); }}><option value="all">All statuses</option>{Object.entries(AGREEMENT_STATE).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
+          <label className="so-search"><span>Status</span><select aria-label="Terms status" value={termStatus} onChange={(e) => { setTermStatus(e.target.value); setTermPage(0); }}><option value="all">All statuses</option>{Object.entries(AGREEMENT_STATE).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
           <small>Searches the latest {agreements.agreements.length} loaded records (up to 200).</small>
         </div>}
         {["loading", "resolving"].includes(agreements.phase) ? <p role="status">Loading commercial terms…</p> : agreements.phase === "error" ? (

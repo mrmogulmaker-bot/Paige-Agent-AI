@@ -18,9 +18,9 @@ for(const [width,height]of[[1536,770],[1366,768],[1024,768],[900,1000]])for(cons
  await catalog(page,{mode:'loading'});await page.getByText('Loading Catalog offers…',{exact:true}).waitFor();assert.equal(await page.locator('[aria-label="Offers"] .so-row').count(),0);await catalog(page,{mode:'ready'});
  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('sales-agreements-harness',{detail:{mode:'populated',reset:true}})));
  await page.getByRole('searchbox',{name:'Find client terms'}).fill('Jordan');assert.equal(await page.locator('[aria-label="Commercial terms and retainers"] .so-row').count(),1);
- await page.getByLabel('Status',{exact:true}).selectOption('draft');assert.equal(await page.locator('[aria-label="Commercial terms and retainers"] .so-row').count(),0);
+ await page.getByLabel('Terms status',{exact:true}).selectOption('draft');assert.equal(await page.locator('[aria-label="Commercial terms and retainers"] .so-row').count(),0);
  await page.getByRole('searchbox',{name:'Find client terms'}).fill('');assert.equal(await page.locator('[aria-label="Commercial terms and retainers"] .so-row').count(),1);
- await page.getByLabel('Status',{exact:true}).selectOption('all');
+ await page.getByLabel('Terms status',{exact:true}).selectOption('all');
  const bounds=await page.locator('.so-offers').boundingBox();assert(bounds.x>=0 && bounds.x+bounds.width<=width+1);
  for(const tab of await page.getByRole('tab').all()){const b=await tab.boundingBox();assert(b.x>=0&&b.x+b.width<=width+1);}
  await page.getByRole('searchbox',{name:'Search Catalog offers'}).focus();assert.equal(await page.evaluate(()=>getComputedStyle(document.activeElement).outlineStyle),'solid');
