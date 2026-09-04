@@ -181,6 +181,7 @@ function providerMark(id: ProviderIdentity) {
 function N8nPanelBody({ a, onDirtyChange, onChanged }: { a: ReturnType<typeof useN8nConnection>; onDirtyChange: (dirty: boolean) => void; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+  useEffect(() => { if (a.error) { setEditing(false); setConfirmingDisconnect(false); onDirtyChange(false); } }, [a.error, onDirtyChange]);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const commit = useCallback(async (run: () => Promise<boolean>) => {
@@ -197,7 +198,7 @@ function N8nPanelBody({ a, onDirtyChange, onChanged }: { a: ReturnType<typeof us
         : "The saved n8n connection could not be checked. Its workflow count is unavailable. Check again or reconnect.";
   return <>
     <p className="ig-lede">Let Paige see the n8n workspace and its available workflows.</p>
-    {a.loading ? <p className="ig-state" role="status">Checking the API connection…</p> : a.error ? <div className="ig-state" role="alert"><span>The API connection could not be read. Its status and workflow count are unavailable.</span><button type="button" className="ig-btn" onClick={() => void a.reload()}>Try again</button></div> : <>
+    {a.loading ? <p className="ig-state" role="status">Checking the API connection…</p> : a.error ? <div className="ig-state" role="alert"><span>{a.writeError ?? "The API connection could not be read. Its status and workflow count are unavailable."}</span><button type="button" className="ig-btn" onClick={() => void a.reload()}>Try again</button></div> : <>
       {!editing && <>
         <dl className="ig-facts">
           <div><dt>API connection</dt><dd>{n8nApiSummary(a, false, false).account}</dd></div>
@@ -207,13 +208,13 @@ function N8nPanelBody({ a, onDirtyChange, onChanged }: { a: ReturnType<typeof us
           {a.checkedAt && <div><dt>Last check</dt><dd>{safeCheckDate(a.checkedAt)}</dd></div>}
           {a.lastSuccessAt && <div><dt>Last successful check</dt><dd>{safeCheckDate(a.lastSuccessAt)}</dd></div>}
         </dl>
-        {a.configured && <p className="ig-note" role="status">{a.health === "connected" ? "The API connection was verified. Workflow visibility does not grant Paige permission to run tools." : a.health === "needs_attention" ? failureCopy : a.health === "checking" ? "The saved API connection is being checked. Workflow visibility is not confirmed yet." : "The API connection is saved; health has not been verified for this saved configuration."} This does not describe Paige tools access.</p>}
+        {a.configured && <p className="ig-note" role="status">{a.health === "connected" ? "The API connection was verified. Workflow visibility does not grant Paige permission to run tools." : a.health === "needs_attention" ? failureCopy : a.health === "checking" ? "Checking this saved connection…" : "The API connection is saved; health has not been verified for this saved configuration."} This does not describe Paige tools access.</p>}
       </>}
       {a.writeError && <div className="ig-error" role="alert"><span>{a.writeError}</span><button type="button" className="ig-btn" disabled={a.saving} onClick={() => void a.reload()}>Refresh status</button></div>}
       {!a.canWrite && <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>}
       {editing && a.canWrite ? <N8nForm a={a} existing={a.configured} onDirtyChange={onDirtyChange} onCommit={commit} onDone={() => { setEditing(false); onDirtyChange(false); }} /> : <div className="ig-actions">
-        {a.canWrite && <><button type="button" className="ig-btn" data-primary disabled={a.saving || a.health === "checking"} onClick={() => setEditing(true)}>{!a.configured ? "Connect API" : a.health === "needs_attention" ? "Reconnect API" : "Edit API connection"}</button>{a.configured && <><button type="button" className="ig-btn" disabled={a.saving || a.health === "checking"} onClick={() => void commit(a.validate)}>{a.saving ? "Checking…" : "Check again"}</button><button type="button" className="ig-btn" disabled={a.saving} onClick={() => setConfirmingDisconnect(true)}>Disconnect API</button></>}</>}
-        <button type="button" className="ig-btn" disabled={a.saving} onClick={() => void a.reload()}>Refresh status</button>
+        {a.canWrite && <><button type="button" className="ig-btn" data-primary disabled={a.saving || a.health === "checking"} onClick={() => setEditing(true)}>{!a.configured ? "Connect API" : a.health !== "connected" ? "Reconnect API" : "Edit API connection"}</button>{a.configured && <><button type="button" className="ig-btn" disabled={a.saving} onClick={() => setConfirmingDisconnect(true)}>Disconnect API</button></>}</>}
+        <button type="button" className="ig-btn" disabled={a.saving} onClick={() => void (a.canWrite && a.configured && a.health !== "checking" ? commit(a.validate) : a.reload())}>Refresh status</button>
       </div>}
       {confirmingDisconnect && <div className="ig-confirm-close" role="alertdialog" aria-label="Confirm API disconnect"><p>Disconnect the API connection? Paige tools access will stay unchanged.</p><div className="ig-actions"><button type="button" className="ig-btn" data-danger autoFocus disabled={a.saving} onClick={() => { setConfirmingDisconnect(false); void commit(a.disconnect); }}>Confirm disconnect</button><button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep connection</button></div></div>}
     </>}
@@ -599,6 +600,7 @@ function N8nForm({
       {nameLocked && <small>A name can be changed here but not removed, so this keeps “{a.label}”.</small>}
     </label>
     <p className="ig-note">Saving also checks the API key and workflow visibility. It does not enable Paige tools.</p>
+    {a.saving && <p className="ig-state" role="status">Saving and checking this connection…</p>}
     <div className="ig-actions">
       <button type="submit" className="ig-btn" data-primary disabled={!valid || a.saving}>
         {a.saving ? "Saving and checking…" : "Save and check connection"}
@@ -611,8 +613,7 @@ function N8nForm({
 /* ── The contextual panel ─────────────────────────────────────────────────── */
 
 type N8nTab = "api" | "mcp";
-function N8nDrawer({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
-  const a = useN8nConnection();
+function N8nDrawer({ a, onClose, onChanged }: { a: ReturnType<typeof useN8nConnection>; onClose: () => void; onChanged: () => void }) {
   const m = useMcpConnection("n8n");
   const [tab, setTab] = useState<N8nTab>("api");
   const [dirty, setDirty] = useState(false);
@@ -678,8 +679,8 @@ function N8nDrawer({ onClose, onChanged }: { onClose: () => void; onChanged: () 
     </aside>
   </div>;
 }
-function ProviderPanel(props: { row: ProviderRow; onClose: () => void; onChanged: () => void }) {
-  return props.row.id === "n8n" ? <N8nDrawer onClose={props.onClose} onChanged={props.onChanged} /> : <LegacyProviderPanel {...props} />;
+function ProviderPanel(props: { a: ReturnType<typeof useN8nConnection>; row: ProviderRow; onClose: () => void; onChanged: () => void }) {
+  return props.row.id === "n8n" ? <N8nDrawer a={props.a} onClose={props.onClose} onChanged={props.onChanged} /> : <LegacyProviderPanel {...props} />;
 }
 
 function LegacyProviderPanel({ row, onClose, onChanged }: { row: ProviderRow; onClose: () => void; onChanged: () => void }) {
@@ -784,6 +785,7 @@ export function SoloIntegrationsView() {
   const scopeKey = `${activeUserId ?? ""}:${activeTenantId ?? ""}`;
   const [leaf, setLeaf] = useIntegrationsLeaf();
   const status = useIntegrationStatus();
+  const api = useN8nConnection();
   const [category, setCategory] = useState<CatalogueCategory>("all");
   const [open, setOpen] = useState<{ row: ProviderRow; scope: string } | null>(null);
   useEffect(() => { setOpen(null); }, [scopeKey, tenantLoading]);
@@ -801,11 +803,11 @@ export function SoloIntegrationsView() {
           const live = statusPresentation(row.id === "mcp" ? status.mcp.zapier ?? null : null);
           return <li key={row.id}><button type="button" className="ig-card" data-provider={row.id} data-owner="integrations" onClick={() => setOpen({ row, scope: scopeKey })} aria-haspopup="dialog">
             <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id)}</span><span className="ig-card-title"><strong>{row.name}</strong><small>{row.kind}</small></span>
-            {row.id === "n8n" ? <><span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={n8nApiSummary(status.n8n, false, status.apiError)} /></span><span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(status.mcp.n8n ?? null, false, status.mcpError)} /></span></> : <span className="ig-card-state" data-tone={row.id === "mcp" && status.mcpError ? "neutral" : row.connectable ? live.tone : "neutral"}><i aria-hidden />{row.id === "mcp" && status.mcpError ? "Status unavailable" : row.connectable ? live.account : "Not available"}</span>}
+            {row.id === "n8n" ? <><span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={n8nApiSummary(api, api.loading, api.error)} /></span><span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(status.mcp.n8n ?? null, false, status.mcpError)} /></span></> : <span className="ig-card-state" data-tone={row.id === "mcp" && status.mcpError ? "neutral" : row.connectable ? live.tone : "neutral"}><i aria-hidden />{row.id === "mcp" && status.mcpError ? "Status unavailable" : row.connectable ? live.account : "Not available"}</span>}
           </button></li>;
         })}</ul>
       </>}
     </>}
-    {open && !tenantLoading && open.scope === scopeKey && <ProviderPanel key={`${scopeKey}:${open.row.id}`} row={open.row} onClose={() => setOpen(null)} onChanged={status.retry} />}
+    {open && !tenantLoading && open.scope === scopeKey && <ProviderPanel a={api} key={`${scopeKey}:${open.row.id}`} row={open.row} onClose={() => setOpen(null)} onChanged={status.retry} />}
   </div>;
 }
