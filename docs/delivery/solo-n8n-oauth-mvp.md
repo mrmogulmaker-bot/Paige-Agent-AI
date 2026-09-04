@@ -32,3 +32,13 @@ Implementation and checks in progress. Production deployment and owner consent a
 - Typecheck ratchet PASS (13 existing errors, no increase); build PASS; credential-shadow, action-authority, definer and migration-version checks PASS.
 - Full Windows suite: 3012 PASS / 2 FAIL. Both failures are unchanged platform-dependent baseline tests: missing grep in soloShell.contract and Windows path separators in operatorTarget. Linux CI remains the full-suite release gate. No unrelated auth or shell tests were modified.
 - Independent review: backend reviewed separately from its author; frontend reviewed by backend reviewer. All concrete defects found in this slice repaired. Authenticated production owner consent remains UNVERIFIED until deployed and completed by the owner.
+
+## Production release — PASS, final consent Proof Owed
+
+PR #909 merged as 49b9f33839b20b6e89ed4f8fb66783229b583d3b. Linux CI passed all 212 files / 3,020 tests, build/typecheck, security audit, migration lint and Spine contracts. Deployment workflows 33828694288 (database) and 33828694360 (edge functions) succeeded. Migration 20261201000000 is recorded in production; tenant-n8n-oauth version 1 is ACTIVE and its entrypoint/shared helper exactly match the reviewed source. tenant-mcp-connect version 4 deployed; tenant-n8n-api-connect remains version 1.
+
+Vercel dpl_DES3RJ8r8qjU5Px9PHxpNkw76VPU is READY at the exact merged SHA and serves paigeagent.ai and app.paigeagent.ai. Both public production bundles passed OAuth action, read/write wording, safe readiness, independent states, preserved API save/check, and removed historical blocker-copy checks at 2026-09-04T02:14:55Z.
+
+Production safe probes: permitted app origins return 204 CORS; foreign origin returns 403; unauthenticated begin returns safe 401; callback without authorization returns a no-store safe failure redirect. Database verification confirms the browser cannot call the privileged service or read attempt rows; RLS is forced; authenticated safe readiness is callable. No real authorization code, token or owner credential was used for these probes.
+
+Final owner consent and successful live provider discovery remain UNVERIFIED until the owner authorizes n8n. This is deployed connection readiness, not a claim that a tenant is already connected or that Paige has performed a write. The grant supports read/write; automatic workflow execution was not added. The owner can now open Settings -> Integrations -> n8n -> Paige tools (MCP) -> Connect n8n with OAuth and approve access.

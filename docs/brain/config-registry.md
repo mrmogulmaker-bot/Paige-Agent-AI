@@ -464,8 +464,8 @@ deploy/CI check, not the value.*
 - The platform operator's Twilio Primary Customer Profile belongs to the master account and must not
   be copied into tenant subaccounts. No SID or secret value belongs in this registry.
 
-### Solo n8n OAuth release candidate — 2026-09-03
+### Solo n8n OAuth production release — 2026-09-03
 
 Paige is the AI COO: the n8n connection supports the documented automation-authoring direction in `docs/paige-n8n-orchestrator-brain-doctrine.md`, not a permanent read-only product ceiling. The owner approved `workflow:read` and `workflow:write` for every Solo workspace. Connection-time metadata discovery does not itself create or run workflows. API health remains a separate connection.
 
-The candidate adds `tenant-n8n-oauth`, owner/session/workspace-bound one-time PKCE attempts, encrypted token storage and editable/reconnectable Solo OAuth controls. Hosted gateway callback URL retention is an explicitly accepted MVP risk; additional ingress hardening is deferred. Application logging remains sanitized. No provider setting or webhook change is required by this slice. Candidate proof and release status: `../delivery/solo-n8n-oauth-mvp.md`. Production consent is not yet verified.
+Released PR #909 (49b9f338) adds `tenant-n8n-oauth`, owner/session/workspace-bound one-time PKCE attempts, encrypted token storage and editable/reconnectable Solo OAuth controls. Hosted gateway callback URL retention is an explicitly accepted MVP risk; additional ingress hardening is deferred. Application logging remains sanitized. No provider setting or webhook change is required by this slice. Candidate proof and release status: `../delivery/solo-n8n-oauth-mvp.md`. Production backend, migration and both frontend domains are verified deployed. Final owner consent and authenticated provider discovery are not yet verified.
