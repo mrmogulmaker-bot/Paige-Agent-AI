@@ -1,6 +1,12 @@
 import React from "react";
 import { createPortal } from "react-dom";
 
+type SalesNavigateEvent = Event & { destination: { url: string } };
+type SalesNavigation = {
+  addEventListener(type: "navigate", listener: (event: SalesNavigateEvent) => void): void;
+  removeEventListener(type: "navigate", listener: (event: SalesNavigateEvent) => void): void;
+};
+
 /** Keep Sales editors inside Solo's theme, but outside the inert background. */
 export function SalesDialogPortal({ children }: { children: React.ReactNode }) {
   return createPortal(children, document.querySelector(".solo-campaigns") ?? document.body);
@@ -30,10 +36,10 @@ export function useSalesDraftExit(draft: unknown, busy: boolean, onClose: () => 
     };
     // Browser Back/Forward and same-document navigation in browsers with Navigation API.
     // Full-page exits also retain the standard beforeunload protection.
-    const navigation = (window as any).navigation;
+    const navigation = (window as Window & { navigation?: SalesNavigation }).navigation;
     const openedAccount = location.pathname.split("/").slice(0, 3).join("/");
     const sameAccount = (url: string) => new URL(url, location.href).pathname.split("/").slice(0, 3).join("/") === openedAccount;
-    const navigate = (event: any) => {
+    const navigate = (event: SalesNavigateEvent) => {
       if (!sameAccount(event.destination.url)) return;
       if (bypass.current || !event.cancelable || (!dirty && !busy)) return;
       event.preventDefault();
