@@ -104,13 +104,13 @@ ALTER TABLE public.paige_workspace_events DROP CONSTRAINT IF EXISTS n8n_workspac
 ALTER TABLE public.paige_workspace_events ADD CONSTRAINT paige_workspace_events_source_kind_check CHECK(source_kind IN ('oauth_attempt','mcp_connection','zapier_api_connection','zapier_mcp_connection','zapier_skool_intake'));
 ALTER TABLE public.paige_workspace_events ADD CONSTRAINT paige_workspace_events_outcome_check CHECK(outcome IN (
  'oauth_success','oauth_cancelled','oauth_refused','oauth_expired','oauth_failed','mcp_verified','mcp_unavailable','mcp_disconnected','read_approvals_changed',
- 'zapier_api_connected','zapier_api_disconnected','zapier_api_test_succeeded','zapier_api_test_failed','zapier_mcp_verified','zapier_mcp_unavailable','zapier_mcp_disconnected','zapier_tools_changed',
+ 'zapier_api_connected','zapier_api_disconnected','zapier_api_test_succeeded','zapier_api_test_failed','zapier_mcp_verified','zapier_mcp_unavailable','zapier_mcp_disconnected','zapier_tools_changed','zapier_mcp_test_succeeded','zapier_mcp_test_failed',
  'zapier_skool_intake_received','zapier_skool_intake_duplicate','zapier_skool_intake_failed'));
 ALTER TABLE public.paige_workspace_events ADD CONSTRAINT paige_workspace_event_source CHECK(
  (source_kind='oauth_attempt' AND outcome IN ('oauth_success','oauth_cancelled','oauth_refused','oauth_expired','oauth_failed')) OR
  (source_kind='mcp_connection' AND outcome IN ('mcp_verified','mcp_unavailable','mcp_disconnected','read_approvals_changed')) OR
  (source_kind='zapier_api_connection' AND outcome IN ('zapier_api_connected','zapier_api_disconnected','zapier_api_test_succeeded','zapier_api_test_failed')) OR
- (source_kind='zapier_mcp_connection' AND outcome IN ('zapier_mcp_verified','zapier_mcp_unavailable','zapier_mcp_disconnected','zapier_tools_changed')) OR
+ (source_kind='zapier_mcp_connection' AND outcome IN ('zapier_mcp_verified','zapier_mcp_unavailable','zapier_mcp_disconnected','zapier_tools_changed','zapier_mcp_test_succeeded','zapier_mcp_test_failed')) OR
  (source_kind='zapier_skool_intake' AND outcome IN ('zapier_skool_intake_received','zapier_skool_intake_duplicate','zapier_skool_intake_failed')));
 
 CREATE OR REPLACE FUNCTION public._zapier_workspace_event_display(_outcome text)
@@ -123,6 +123,8 @@ RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_catalog AS $$
  WHEN 'zapier_mcp_unavailable' THEN title:='Zapier PAIGE tools need attention';summary:='The MCP check did not succeed. No tool was run.';
  WHEN 'zapier_mcp_disconnected' THEN title:='Zapier PAIGE tools disconnected';summary:='MCP access was removed. The API connection was not changed.';
  WHEN 'zapier_tools_changed' THEN title:='Zapier tool approvals updated';summary:='The approved tool set changed. Unapproved tools remain unavailable to PAIGE.';
+ WHEN 'zapier_mcp_test_succeeded' THEN title:='Zapier PAIGE tools test succeeded';summary:='Zapier returned a valid MCP tool list for this workspace. No app action was run.';
+ WHEN 'zapier_mcp_test_failed' THEN title:='Zapier PAIGE tools test failed';summary:='The MCP provider check did not succeed. No app action was run.';
  WHEN 'zapier_skool_intake_received' THEN title:='Skool intake received';summary:='A tenant-bound Zapier intake was accepted and processed.';
  WHEN 'zapier_skool_intake_duplicate' THEN title:='Skool intake duplicate ignored';summary:='A repeated tenant-bound intake did not create another contact.';
  WHEN 'zapier_skool_intake_failed' THEN title:='Skool intake needs attention';summary:='A tenant-bound intake failed. No cross-workspace fallback was used.';
@@ -225,3 +227,14 @@ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_cata
  END IF;RETURN NEW;END $$;
 REVOKE ALL ON FUNCTION public._zapier_mcp_rail_event() FROM PUBLIC,anon,authenticated;
 CREATE TRIGGER zapier_mcp_rail_event AFTER INSERT OR UPDATE ON public.tenant_mcp_connections FOR EACH ROW EXECUTE FUNCTION public._zapier_mcp_rail_event();
+
+CREATE OR REPLACE FUNCTION public.record_zapier_mcp_connection_test(_tenant_id uuid,_actor_id uuid,_succeeded boolean)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$ BEGIN
+ IF _tenant_id IS NULL OR _actor_id IS NULL OR _succeeded IS NULL OR NOT EXISTS(
+  SELECT 1 FROM public.tenant_members m WHERE m.tenant_id=_tenant_id AND m.user_id=_actor_id AND m.status='active' AND m.role IN ('owner','admin','coach')
+ ) THEN RAISE EXCEPTION 'ZAPIER_MCP_TEST_FORBIDDEN' USING ERRCODE='42501';END IF;
+ INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
+ VALUES(_tenant_id,_actor_id,'zapier_mcp_connection',gen_random_uuid(),0,CASE WHEN _succeeded THEN 'zapier_mcp_test_succeeded' ELSE 'zapier_mcp_test_failed' END);
+END $$;
+REVOKE ALL ON FUNCTION public.record_zapier_mcp_connection_test(uuid,uuid,boolean) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.record_zapier_mcp_connection_test(uuid,uuid,boolean) TO service_role;
