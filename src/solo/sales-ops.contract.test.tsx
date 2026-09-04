@@ -844,6 +844,10 @@ describe("Sales usability repair", () => {
     act(()=>(host.querySelector('[aria-label="Commercial terms and retainers"] button') as HTMLButtonElement).click());
     act(()=>(buttonSaying("Edit commercial terms") as HTMLButtonElement).click());
     const input=document.querySelector('input[placeholder="Anything you want to remember about this arrangement"]') as HTMLInputElement;
+    act(()=>(buttonSaying("What we agreed") as HTMLButtonElement).click());
+    type(document.querySelector(".so-editor .so-money input") as HTMLInputElement,"-50");
+    act(()=>(buttonSaying("Your catalog price") as HTMLButtonElement).click());
+    expect((document.querySelector(".so-editor .so-money input") as HTMLInputElement).value).toBe("125");
     type(input,"Updated note");
     await act(async ()=>(buttonSaying("Save changes") as HTMLButtonElement).click());
     expect(harness.agreements.saveAgreement).toHaveBeenCalledWith(expect.objectContaining({agreedAmountMinor:12500,agreedCurrency:"usd",catalogPriceId:null,intervalCount:3,paymentSchedule:"custom",title:"Keep title",notes:"Updated note",expectedUpdatedAt:"version-1"}));

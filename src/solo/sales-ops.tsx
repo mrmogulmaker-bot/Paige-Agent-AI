@@ -551,7 +551,7 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
     setBusy(true);
     setNotice("");
     const digits = minorUnitDigits(currency);
-    const major = !quoting && priced ? Number(amount) : null;
+    const major = basis === "negotiated" && priced ? Number(amount) : null;
     if (major !== null && (!Number.isFinite(major) || major < 0)) {
       setBusy(false);
       setNotice("Enter an amount of zero or more.");
