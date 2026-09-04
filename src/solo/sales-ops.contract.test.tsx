@@ -194,8 +194,8 @@ describe("§58 — behaviour that shipped on Sales before this slice and must su
     harness.state.submissions = [UNROUTED];
     renderAt("/solo/42/growth/sales");
     const text = host.textContent ?? "";
-    expect(text).toContain("No routed capture activity");
-    expect(text).toContain("A submission is not treated as a sale");
+    expect(text).toContain("No routed form activity");
+    expect(text).toContain("a submission is not a sale");
   });
 
   it("keeps the six-tab strip in order, with Sales in place", () => {
@@ -235,15 +235,15 @@ describe("Sales operations — what an owner can actually do", () => {
   it("answers the readiness questions from records, and never calls an unread thing empty", () => {
     renderAt("/solo/42/growth/sales");
     const text = host.textContent ?? "";
-    expect(text).toContain("Where this business stands");
+    expect(text).toContain("Your next client starts here");
     expect(text).toContain("How your clients pay you");
     expect(text).toContain("What you sell");
-    expect(text).toContain("What each client pays you");
+    expect(text).toContain("Commercial terms and retainers");
     expect(text).toContain("Commercial activity");
-    expect(text).toContain("Linked pipeline work");
+    expect(text).toContain("Form activity");
     // First use: nothing recorded is stated as such, and the next step names a real act.
     expect(text).toContain("Not recorded yet");
-    expect(text).toContain("Add what you sell");
+    expect(text).toContain("Add your first product or service");
   });
 
   it("distinguishes 'you have none' from 'I could not look' on payments", () => {
@@ -254,7 +254,7 @@ describe("Sales operations — what an owner can actually do", () => {
     renderAt("/solo/42/growth/sales");
     const text = host.textContent ?? "";
     expect(text).toContain("not readable at your access level");
-    expect(text).toContain("Not readable");
+    expect(text).toContain("not readable");
   });
 
   it("reads the declared processor back as words, not as a stored token", () => {
@@ -431,7 +431,7 @@ describe("Sales operations — what an owner can actually do", () => {
     expect(text).toContain("Monthly");
     expect(text).toContain("Live");
     // The readiness row agrees with the table it sits above — one record, one reading.
-    expect(text).toContain("1 live of 1 recorded");
+    expect(text).toContain("Page 1 · up to 5 offers");
 
     act(() => (host.querySelector("button.so-row") as HTMLButtonElement).click());
     const drawer = document.querySelector('[role="dialog"]');
@@ -456,7 +456,7 @@ describe("Sales operations — what an owner can actually do", () => {
     expect(text).not.toContain("$0");
     expect(text).toContain("Not recorded");
     // Readiness counts what is WAITING; it never sums what was paid.
-    expect(text).toContain("1 awaiting attention of 2 recent");
+    expect(text).toContain("View 2 recent payment records");
     // No summed figure anywhere in the activity table. Asserted against the table itself rather
     // than the whole page, because the page legitimately uses the words "revenue", "total" and
     // "forecast" in the sentences that DENY doing any of them — a blanket text ban would have been
@@ -500,7 +500,7 @@ describe("Sales operations — what an owner can actually do", () => {
     // workspace whose deal read had FAILED that it had no deals — permanently, not as a flash.
     harness.state.phase = "error";
     renderAt("/solo/42/growth/sales");
-    expect(host.textContent).toContain("Your pipeline could not be read");
+    expect(host.textContent).toContain("Campaigns could not load");
     expect(host.textContent).not.toContain("No deals on the board yet");
   });
 
@@ -519,7 +519,7 @@ describe("Sales operations — what an owner can actually do", () => {
   it("now reads client terms, and still refuses to count retainers Command Center owns", () => {
     renderAt("/solo/42/growth/sales");
     const text = host.textContent ?? "";
-    expect(text).toContain("What each client pays you");
+    expect(text).toContain("Commercial terms and retainers");
     expect(text).not.toContain("This tab does not hold a per-client agreement record yet");
     expect(text).not.toContain("Not here");
     // Nothing recorded reads as nothing recorded — a claim this tab can now actually make.
@@ -540,7 +540,7 @@ describe("Sales operations — what an owner can actually do", () => {
     const text = host.textContent ?? "";
     expect(text).toContain("not readable at your access level");
     expect(text).toContain("That is different from there being none");
-    expect(text).not.toMatch(/What each client pays you[\s\S]{0,80}Nothing recorded yet/);
+    expect(text).not.toMatch(/Commercial terms and retainers[\s\S]{0,80}Nothing recorded yet/);
   });
 
   it("keeps the money boundary on the terms band, and promises no billing", () => {
@@ -559,10 +559,10 @@ describe("Sales operations — what an owner can actually do", () => {
     const headings = [...host.querySelectorAll("h1,h2,h3")].map((h) => h.textContent?.trim());
     // Before this surface existed the tab had ONE h2, "Routed capture activity". Rebuilding around
     // it must not leave a five-section page whose sections are bold text to a screen reader.
-    expect(headings).toContain("Where this business stands");
-    expect(headings).toContain("What you sell");
+    expect(headings).toContain("Your next client starts here");
+    expect(headings).toContain("Find an offer");
     expect(headings).toContain("Commercial activity");
-    expect(headings).toContain("Routed capture activity");
+    expect(headings).toContain("Form activity");
   });
 
   it("makes its dialogs actually modal, not merely labelled so", async () => {

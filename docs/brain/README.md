@@ -286,3 +286,10 @@ live MCP/Stripe/git recon. If you add or move a doc/route/edge-fn, add its row h
 Sales usability is **PARTIAL**, with R1 implementation in PR #903 and authenticated production proof owed; see `docs/delivery/solo-sales-usability-r1.md`. Legal documents, signatures and sends remain outside this commercial-terms record and require the Release 2 rendered-prototype approval.
 
 Sales schedule detail (PR #895; dates only, not Sales UX closure): `docs/delivery/solo-sales-agreement-schedule.md` records renewal visibility, calendar-date handling, acceptance and proof owed. The Sales-to-Spine disclosure boundary remains `docs/delivery/sales-agreements-source-contract.md`; this change registers no capability.
+
+
+### Solo Sales workbench (2026-09-03)
+
+Current implementation: commercial terms first, a five-row canonical offer finder with server name search/paging and exact selected-offer references, compact payment handling and expandable source-backed form/payment activity. Terms search/status filters explicitly cover the latest 200 loaded records; client identity remains the existing bounded directory, not all-history search. Catalog baseline prices, writes, six Campaigns tabs and Pipeline stay unchanged. No documents/signatures/payment collection added.
+
+Owner superseded competing Sales PR #905; its separate Clients fix remains with that owner. R1 #903 is merged at `c198d8ae` and its production revision was verified; the older pending-release wording describes the pre-release ledger. Workbench release checks and exact deployment evidence: [Sales workbench](../delivery/solo-sales-workbench.md). Local Chromium covers all four widths/both themes and simulated 1/80/80000 offers; authenticated persistence and production large-catalog performance remain **Proof Owed**. Broader Sales remains **PARTIAL**.
