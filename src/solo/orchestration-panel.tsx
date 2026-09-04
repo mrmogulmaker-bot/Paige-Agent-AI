@@ -26,7 +26,7 @@ function BoundPanel({tenantId,openPaige}:{tenantId:string;openPaige?:()=>void}) 
   },[tenantId,version]);
   return <section className="ig-state" aria-label="Workspace orchestration" style={{display:'block'}}>
     <h2>Intake and lifecycle orchestration</h2>
-    <p>PAIGE can coordinate approved work through your workspace’s connected workers. Ask her to configure a process, run a job, cancel work, or inspect its outcome.</p>
+    <p>PAIGE can coordinate approved work through your workspace’s approved workers. Ask her to configure a process, run a job, cancel work, or inspect its outcome.</p>
     {error ? <p role="alert">Orchestration status could not be read. Check your workspace access and try again.</p> : !data ? <p role="status">Loading this workspace’s processes…</p> : <>
       {!data.processes.length ? <p>No process has been approved for this workspace yet.</p> : <ul>{data.processes.map(process=><li key={process.registry_id}>{process.name} — {process.enabled?'Enabled':'Revoked'} · Approved limit: {process.max_runs} runs</li>)}</ul>}
       <h3>Recent jobs</h3>
