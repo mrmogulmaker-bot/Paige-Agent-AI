@@ -8,6 +8,7 @@ import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-e
 import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
+import { readPipelineWorkspace } from "../_shared/pipelineWorkspaceRead.ts";
 import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
 // Wave 3 · Communications — the owner can find out what Paige did with the business
 // phone line. `capability-record` owns HOW a run is written; `comms-capability-outcome`
@@ -5902,7 +5903,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               parameters: {
                 type: "object",
                 properties: {
-                  search: { type: "string", description: "Optional similar-name search or exact PPL reference. Omit to list every pipeline." }
+                  search: { type: "string", description: "Optional similar-name search or exact PPL reference. Omit to list every pipeline." },
+                  pipeline_id: { type: "string", description: "Optional exact pipeline ID from the catalogue. Reads its stages and caller-visible deals, including current versions, before configuring or moving. Never invent an ID." },
+                  pipeline_ref: { type: "string", description: "Optional exact PPL reference for a detailed pipeline read, including empty stages. If also supplying pipeline_id, both must identify the same record. Detailed selection is exact; search is ignored in this mode." }
                 }
               }
             }
@@ -9917,6 +9920,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             } else if (tc.function.name === "pipeline_catalogue") {
               const tenantId = personaCtx?.tenant_id;
+              if (tenantId && (args.pipeline_id !== undefined || args.pipeline_ref !== undefined)) {
+                const detail = await readPipelineWorkspace(
+                  (name, parameters) => supabaseClient.rpc(name, parameters), tenantId,
+                  { pipelineId: args.pipeline_id, pipelineRef: args.pipeline_ref },
+                );
+                result = { success: detail.ok, ...detail };
+              } else {
               if (!tenantId) {
                 result = { success: false, error: "No workspace in context — pick a workspace first." };
               } else {
@@ -9926,6 +9936,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 });
                 if (catalogueError) throw catalogueError;
                 result = { success: true, ...(catalogue as any) };
+              }
               }
             } else if (tc.function.name === "pipeline_archive_preview") {
               const tenantId = personaCtx?.tenant_id;
