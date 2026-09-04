@@ -181,6 +181,23 @@ CREATE OR REPLACE FUNCTION public._workspace_event_display(_source_kind text, _o
 RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_catalog AS $$
 DECLARE title text; summary text; dept text := 'owner_ops';
 BEGIN
+  -- §58. The n8n families keep their EXACT existing envelope, produced by their own projection.
+  -- Re-deriving them here changed `event_kind` from 'n8n_oauth_success' to
+  -- 'oauth_attempt.oauth_success' and `surface` from 'integrations' to 'command_center' — a silent
+  -- regression on a shipped path, for every row already written and every future n8n broadcast,
+  -- and `tests/n8n-oauth/workspace-rail.sql` asserts that envelope by exact key equality.
+  --
+  -- Wrapped, because the n8n projection RAISEs on an unrecognised outcome and this function is
+  -- called through CROSS JOIN LATERAL in the reader. Validation on the way IN stays strict; a bad
+  -- row on the way OUT degrades to the safe default below rather than taking the whole Rail dark.
+  IF _source_kind IN ('oauth_attempt','mcp_connection') THEN
+    BEGIN
+      RETURN public._n8n_workspace_event_display(_outcome);
+    EXCEPTION WHEN OTHERS THEN
+      NULL;  -- fall through to the safe default
+    END;
+  END IF;
+
   CASE _outcome
     WHEN 'oauth_success'            THEN title:='n8n OAuth authorized';               summary:='MCP authorization completed. Workflow actions still require their own approval.'; dept:='technology_automation';
     WHEN 'oauth_cancelled'          THEN title:='n8n authorization cancelled';        summary:='The authorization attempt was cancelled. This attempt did not replace any saved MCP connection.'; dept:='technology_automation';
