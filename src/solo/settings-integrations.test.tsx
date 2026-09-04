@@ -69,14 +69,19 @@ function world(over: {
   admin?: boolean;
   writeError?: { message: string } | null;
 } = {}) {
+  let api: Record<string, unknown> = { tenant_id: context.tenantId, can_write: over.admin !== false, label: null, base_url: null, checked_at: null, last_success_at: null, failure_code: over.n8n?.status === "error" ? "authentication_rejected" : null, health: over.n8n?.configured ? over.n8n.status === "error" ? "needs_attention" : "saved_unverified" : "not_configured", configured: false, workflow_count: null, ...over.n8n };
   rpc.mockImplementation((name: string) => {
-    if (name === "get_tenant_n8n_connection") return Promise.resolve({ data: over.n8n ?? { configured: false, status: "unconfigured" }, error: null });
+    if (name === "get_tenant_n8n_api_readiness") return Promise.resolve({ data: api, error: null });
     if (name === "get_tenant_mcp_connections") return Promise.resolve({ data: over.mcp ?? {}, error: null });
     if (name === "is_current_user_tenant_admin") return Promise.resolve({ data: over.admin !== false, error: null });
-    if (name === "set_tenant_n8n_connection" || name === "clear_tenant_n8n_connection") {
-      return Promise.resolve({ data: null, error: over.writeError ?? null });
-    }
     return Promise.resolve({ data: null, error: null });
+  });
+  invoke.mockImplementation((name: string, options: { body: Record<string, unknown> }) => {
+    if (name !== "tenant-n8n-api-connect") return Promise.resolve({ data: { ok: true, status: "connected", toolCount: 4 }, error: null });
+    if (over.writeError) return Promise.resolve({ data: { error: over.writeError.message }, error: {} });
+    const disconnected = options.body.action === "disconnect";
+    api = { ...api, configured: !disconnected, health: disconnected ? "not_configured" : "connected", failure_code: null, workflow_count: disconnected ? null : 0, checked_at: disconnected ? null : "2026-09-03T12:00:00Z", last_success_at: disconnected ? null : "2026-09-03T12:00:00Z" };
+    return Promise.resolve({ data: { ok: true, saved: options.body.action === "save" ? true : undefined, outcome: disconnected ? "disconnected" : "connected", connection: api }, error: null });
   });
 }
 
@@ -123,7 +128,7 @@ describe("Truth boundary", () => {
   it("calls only server-resolved safe status RPCs, with no tenant argument, and renders no payload", async () => {
     world({ n8n: { configured: true, status: "connected", label: "Workflow bridge", workflow_count: 3, secret: "must-not-survive", raw_payload: "must-not-survive", last_error: "must-not-survive" } });
     const { host } = await render();
-    expect(rpc).toHaveBeenCalledWith("get_tenant_n8n_connection");
+    expect(rpc).toHaveBeenCalledWith("get_tenant_n8n_api_readiness");
     expect(rpc).toHaveBeenCalledWith("get_tenant_mcp_connections");
     // No status read may carry a tenant argument: the seam derives it.
     for (const call of rpc.mock.calls.filter((c) => String(c[0]).startsWith("get_"))) {
@@ -277,10 +282,10 @@ describe("n8n connection flow", () => {
     await type(label, "My instance");
     await submit(host);
 
-    const call = rpc.mock.calls.find((c) => c[0] === "set_tenant_n8n_connection");
-    expect(call?.[1]).toEqual({ _tenant_id: "tenant-a", _base_url: "https://mine.app.n8n.cloud", _api_key: "n8n_api_SUPERSECRET", _label: "My instance" });
+    const call = invoke.mock.calls.find((c) => c[0] === "tenant-n8n-api-connect");
+    expect(call?.[1].body).toEqual({ action: "save", expected_tenant_id: "tenant-a", base_url: "https://mine.app.n8n.cloud", api_key: "n8n_api_SUPERSECRET", label: "My instance" });
     // The write carries no tenant argument: the seam derives and enforces it.
-    expect(call?.[1]?._tenant_id).toBe("tenant-a");
+    expect(call?.[1]?.body.expected_tenant_id).toBe("tenant-a");
     // The key must be gone from the document the moment it is submitted.
     expect(host.innerHTML).not.toContain("SUPERSECRET");
     expect(fields(host).some((f) => f.value.includes("SUPERSECRET"))).toBe(false);
@@ -291,12 +296,12 @@ describe("n8n connection flow", () => {
     const { host } = await render();
     await openCard(host, "n8n");
     if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
-    const connect = byText(host, "Save API connection");
+    const connect = byText(host, "Save and check connection");
     expect((connect as HTMLButtonElement).disabled).toBe(true);
     await type(fields(host)[0], "https://mine.app.n8n.cloud");
-    expect((byText(host, "Save API connection") as HTMLButtonElement).disabled).toBe(true);
+    expect((byText(host, "Save and check connection") as HTMLButtonElement).disabled).toBe(true);
     await type(fields(host)[1], "k");
-    expect((byText(host, "Save API connection") as HTMLButtonElement).disabled).toBe(false);
+    expect((byText(host, "Save and check connection") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("shows an existing connection as stored, never the key", async () => {
@@ -323,7 +328,7 @@ describe("n8n connection flow", () => {
     const [url, key] = fields(host);
     expect(url.value).toBe("https://ops.app.n8n.cloud");
     expect(key.value).toBe("");
-    expect((byText(host, "Save API connection") as HTMLButtonElement).disabled).toBe(true);
+    expect((byText(host, "Save and check connection") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("disconnects only after an explicit confirmation", async () => {
@@ -332,9 +337,9 @@ describe("n8n connection flow", () => {
     await openCard(host, "n8n");
     if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     await click(byText(host, "Disconnect"));
-    expect(rpc.mock.calls.some((c) => c[0] === "clear_tenant_n8n_connection")).toBe(false);
+    expect(invoke.mock.calls.some((c) => c[0] === "tenant-n8n-api-connect" && c[1].body.action === "disconnect")).toBe(false);
     await click(byText(host, "Confirm disconnect"));
-    expect(rpc.mock.calls.some((c) => c[0] === "clear_tenant_n8n_connection")).toBe(true);
+    expect(invoke.mock.calls.some((c) => c[0] === "tenant-n8n-api-connect" && c[1].body.action === "disconnect")).toBe(true);
   });
 
   it("re-reads the connection after a write so the panel reflects what persisted", async () => {
@@ -342,11 +347,11 @@ describe("n8n connection flow", () => {
     const { host } = await render();
     await openCard(host, "n8n");
     if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
-    const before = rpc.mock.calls.filter((c) => c[0] === "get_tenant_n8n_connection").length;
+    const before = rpc.mock.calls.filter((c) => c[0] === "get_tenant_n8n_api_readiness").length;
     await type(fields(host)[0], "https://mine.app.n8n.cloud");
     await type(fields(host)[1], "key");
     await submit(host);
-    const after = rpc.mock.calls.filter((c) => c[0] === "get_tenant_n8n_connection").length;
+    const after = rpc.mock.calls.filter((c) => c[0] === "get_tenant_n8n_api_readiness").length;
     expect(after).toBeGreaterThan(before);
   });
 
@@ -370,7 +375,7 @@ describe("n8n connection flow", () => {
     if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
     expect(host.querySelector(".ig-form")).toBeNull();
     expect(fields(host).length).toBe(0);
-    expect(byText(host, "Save API connection")).toBeFalsy();
+    expect(byText(host, "Save and check connection")).toBeFalsy();
     expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/only a workspace admin/i);
   });
 
@@ -383,12 +388,12 @@ describe("n8n connection flow", () => {
     await type(fields(host)[1], "key");
     await submit(host);
     const panel = host.querySelector('[role="dialog"]')?.textContent ?? "";
-    expect(panel).toMatch(/has to start with https/i);
+    expect(panel).toMatch(/could not confirm the result/i);
     expect(panel).not.toMatch(/SQLSTATE|column "|N8N_INSECURE_URL/);
   });
 
   it("lets the owner retry after a failure, and clears the key on the failed attempt too", async () => {
-    world({ writeError: { message: "N8N_FORBIDDEN: admin required" } });
+    world({ writeError: { message: "forbidden" } });
     const { host } = await render();
     await openCard(host, "n8n");
     if (byText(host, "Connect API")) await click(byText(host, "Connect API"));
@@ -402,7 +407,7 @@ describe("n8n connection flow", () => {
     world();
     await type(fields(host)[1], "goodkey");
     await submit(host);
-    expect(rpc.mock.calls.some((c) => c[0] === "set_tenant_n8n_connection" && (c[1] as Record<string, unknown>)?._api_key === "goodkey")).toBe(true);
+    expect(invoke.mock.calls.some((c) => c[0] === "tenant-n8n-api-connect" && c[1].body.api_key === "goodkey")).toBe(true);
   });
 
   it("asks before discarding half-entered connection details", async () => {
@@ -469,7 +474,7 @@ describe("Review findings", () => {
     await submit(host);
     const after = rpc.mock.calls.filter((c) => c[0] === "get_tenant_mcp_connections").length;
     expect(after).toBeGreaterThan(before);
-    expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Needs attention");
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Connected");
   });
 
   it("refreshes the card grid after a disconnection", async () => {
@@ -529,12 +534,10 @@ describe("Review findings", () => {
 describe("Write-error language", () => {
   it("maps every modelled rejection without leaking its code", () => {
     const cases: Array<[string, RegExp]> = [
-      ["N8N_FORBIDDEN: admin required", /workspace admin/i],
-      ["N8N_INSECURE_URL: must be https", /https/i],
-      ["N8N_NO_URL: required", /address/i],
-      ["N8N_NO_KEY: required", /api key/i],
-      ["N8N_NO_TENANT", /workspace could not be identified/i],
-      ['duplicate key value violates unique constraint "uniq_x"', /did not save/i],
+      ["forbidden", /workspace admin/i], ["unauthorized", /sign in again/i],
+      ["tenant_changed", /workspace changed/i], ["not_configured", /save an n8n api/i],
+      ["validation_busy", /already in progress/i],
+      ['duplicate key value violates unique constraint "uniq_x"', /could not confirm/i],
     ];
     for (const [raw, expected] of cases) {
       const message = n8nWriteMessage(raw);
