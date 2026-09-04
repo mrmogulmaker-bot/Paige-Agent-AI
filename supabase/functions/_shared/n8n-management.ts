@@ -28,7 +28,7 @@ const specs:Record<string,Spec>={
 export const N8N_MANAGEMENT_TOOLS=Object.entries(specs).map(([name,s])=>({type:'function' as const,function:{name,description:s.description,parameters:{type:'object',properties:s.properties,required:s.required,additionalProperties:false}}}));
 class SafeFailure extends Error{constructor(public reason:string){super(reason)}}
 const object=(v:unknown):Obj=>v!==null&&typeof v==='object'&&!Array.isArray(v)?v as Obj:{};
-const fail=(reason:string):never=>{throw new SafeFailure(reason)};
+function fail(reason:string):never{throw new SafeFailure(reason)}
 function parameters(tool:string,args:Obj):Obj{
  const s=specs[tool];if(!s)fail('unsupported_operation');
  if(Object.keys(args).some(k=>!(k in s.properties)))fail('invalid_arguments');
