@@ -473,3 +473,11 @@ Released PR #909 (49b9f338) adds `tenant-n8n-oauth`, owner/session/workspace-bou
 ### n8n callback transport correction — 2026-09-03
 
 First owner consent exposed a hosted runtime URL rewrite missed by public-URL unit fixtures. The exact function path /tenant-n8n-oauth differs from the registered public callback path; the gateway also rewrites origin. Do not compare the runtime origin to the registered redirect URI. Keep registration/exchange fixed to the public redirect and preserve state/session/tenant/browser validation. Source and harmless Boolean probe evidence: docs/delivery/solo-n8n-oauth-mvp.md. Owner consent success still requires a fresh post-repair pass.
+
+### Solo orchestration MVP — A2P workspace repair, 2026-09-04 (candidate)
+
+Owner direction authorizes implementation through green-gated release for reusable Solo orchestration, imports, external intake and SMS readiness. PAIGE remains the AI COO: read, reason, write, delegate, execute and follow through; preparation-only behavior is an unfinished capability, not a product ceiling.
+
+The first repair closes a confirmed A2P workspace-switch defect. The editor is keyed by workspace, delayed responses are fenced, handlers pass a captured-workspace precondition, prompt context is explicitly tenant-scoped, and the save/insert trigger rejects a changed tenant rather than redirecting the write. Ordinary Solo owners/admins gain the same captured-tenant preparation authority using is_tenant_admin_as and a current-workspace SELECT policy. Carrier submission is still absent; this repair does not make SMS registration ready.
+
+Automated evidence: UI and actual-handler tests with injected database/model ports; isolated PostgreSQL role, replay and lock-wait race tests. Independent adversarial source review passed after two additional races were corrected. Authenticated production owner-flow proof remains owed. No real customer record, workflow, campaign, carrier submission or sender identity was changed to produce proof.

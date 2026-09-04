@@ -77,7 +77,7 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 vi.mock("@/hooks/useTenantContext", () => ({
-  useTenantContext: () => ({ activeTenantId: "tenant-1971670", loading: false, activeTenant: { account_number: "1971670" } }),
+  useTenantContext: () => ({ activeTenantId: state.tenantId, loading: false, activeTenant: { account_number: "1971670" } }),
 }));
 vi.mock("@/lib/routing/useSubtabRoute", () => ({ useSubtabRoute: () => ["connections", vi.fn()] }));
 vi.mock("./data/useSoloBusiness", () => ({
@@ -98,15 +98,18 @@ const READINESS = {
 };
 
 let host: HTMLDivElement;
+let renderSettings: () => void;
 async function mount() {
   host = document.createElement("div");
   document.body.appendChild(host);
   await act(async () => {
-    createRoot(host).render(
+    const root = createRoot(host);
+    renderSettings = () => root.render(
       <MemoryRouter initialEntries={["/solo/1971670/settings/connections"]}>
         <Routes><Route path="/solo/:account/settings/*" element={<SoloSettings/>}/></Routes>
       </MemoryRouter>,
     );
+    renderSettings();
   });
   await act(async () => { button("Registration")?.click(); });
 }
@@ -265,5 +268,53 @@ describe("Authority", () => {
     await mount();
     expect(buttonContaining("Draft with Paige")).toBeUndefined();
     expect(text()).toContain("Only a workspace admin can change this business's carrier registration.");
+  });
+});
+
+
+describe("Registration workspace isolation", () => {
+  it("drops A's resumed editor before saving B's registration", async () => {
+    state.registration = { ...PREPARABLE, campaign_description: "Workspace A private registration" };
+    await mount();
+    expect((host.querySelector('textarea') as HTMLTextAreaElement).value).toBe("Workspace A private registration");
+    state.tenantId = "tenant-b";
+    state.registration = { ...PREPARABLE, campaign_description: "Workspace B registration" };
+    state.legal = { legal_business_name: "Workspace B LLC", website_url: "https://b.example.com" };
+    await act(async () => renderSettings());
+    expect(text()).not.toContain("Test Workspace LLC");
+    expect((host.querySelector('textarea') as HTMLTextAreaElement).value).toBe("Workspace B registration");
+    state.invoke = vi.fn(async () => ({ data: { saved: true }, error: null }));
+    await act(async () => button("Save registration")?.click());
+    expect(saveBody()).toMatchObject({ expected_tenant_id: "tenant-b", campaign_description: "Workspace B registration" });
+  });
+
+  it("ignores A's delayed model completion after switching to B", async () => {
+    let resolveDraft!: (value: unknown) => void;
+    state.invoke = vi.fn(() => new Promise((resolve) => { resolveDraft = resolve; }));
+    await mount();
+    await act(async () => button("Draft with Paige")?.click());
+    expect(draftBody().expected_tenant_id).toBe("tenant-1971670");
+    state.tenantId = "tenant-b";
+    state.legal = { legal_business_name: "Workspace B LLC", website_url: "https://b.example.com" };
+    await act(async () => renderSettings());
+    await act(async () => resolveDraft({ data: DRAFTED, error: null }));
+    expect(text()).not.toContain("Test Workspace LLC");
+    expect(button("Save registration")).toBeUndefined();
+    expect(button("Draft with Paige")).toBeTruthy();
+  });
+
+  it("does not render A's save result in B", async () => {
+    state.registration = PREPARABLE;
+    let finishSave!: (value: unknown) => void;
+    state.invoke = vi.fn(() => new Promise((resolve) => { finishSave = resolve; }));
+    await mount();
+    await act(async () => button("Save registration")?.click());
+    state.tenantId = "tenant-b";
+    state.registration = null;
+    state.legal = { legal_business_name: "Workspace B LLC" };
+    await act(async () => renderSettings());
+    await act(async () => finishSave({ data: { saved: true }, error: null }));
+    expect(text()).not.toContain("Your registration is saved.");
+    expect(button("Save registration")).toBeUndefined();
   });
 });
