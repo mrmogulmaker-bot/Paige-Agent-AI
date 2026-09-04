@@ -1,6 +1,6 @@
 # Solo Pipeline empty-deletion hotfix
 
-Status: implemented in draft PR #907; release pending green hosted security check. Owner explicitly authorized this bounded MVP slice through green checks, merge, deployment and read-only production verification on 2026-09-03. No production pipeline may be deleted for proof.
+Status: implemented in [PR #907](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/907); exact merge/deployment state and final check links are recorded there. This ledger records pre-release proof without pre-claiming production acceptance. Owner explicitly authorized this bounded MVP slice through green checks, merge, deployment and read-only production verification on 2026-09-03. No production pipeline may be deleted for proof.
 
 ## Intended usable outcome and ownership
 
@@ -56,7 +56,7 @@ Concurrency: parent/stage locks coordinate FK writers. Changed-reference guards 
 - Rendered browser: 126/126 PASS in real Chromium using actual GrowthHub/PipelineDelete and deterministic adapter: two synthetic tenant contexts, both themes, four required sizes, full/constrained widths. Source `scripts/live-drive/pipeline-delete-drive.mjs`; report/screenshots/video in gitignored `scripts/live-drive/artifacts/pipeline-delete`. Constrained width is NOT actual PAIGE-open shell proof. Enabled button contrast 5.87:1 light, 9.55:1 dark; restoring old selector fails at 1.01:1.
 - Browser review found and repaired two defects before release: catalogue-refresh-before-response dropped success navigation; shared button CSS hid the destructive label. Both now have regression proof. Stale confirmation offers explicit reload; uncertain request retries retain the same operation key.
 - Authenticated production: UNVERIFIED. Browser connector repeatedly fails to launch (Windows sandbox ACL/kernel error); no authorized test-browser credential was available. Local adapters are not authenticated proof. No production owner data is changed by proof.
-- Independent SQL implementation review found no BLOCKER/MAJOR. Separate final proof/UI review and canonical full-shell proof remain pending in draft #907.
+- Independent SQL implementation review found no BLOCKER/MAJOR. Separate final proof/UI review and canonical full-shell results are recorded in the final additions below.
 ### Final proof additions
 
 - SQL suite expanded to 29/29 PASS after matching the live dependency inventory exactly: forms/history have bare UUID references, deals RESTRICT, retained deal relationships CASCADE. The scalar-form writer race passes through the actual new trigger, not an invented FK. Stable generated evidence: `outputs/pipeline-delete-db-proof/latest-proof.json`, `latest-commands.json`, `migration-state.json` (runtime schema fingerprint, applied tracked SQL and recovery findings; explicitly not a production ledger).
