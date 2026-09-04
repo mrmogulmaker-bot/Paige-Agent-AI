@@ -9,8 +9,9 @@ const version = (value: unknown): value is number => Number.isSafeInteger(value)
 const named = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 const unavailable = () => ({ ok: false as const, code: "MOVE_NOT_AVAILABLE", message: "That move is not available in the current workspace. Refresh the pipeline and select the deal and stage again." });
 
-export function preparePipelineMove(snapshot: unknown, selection: { dealId: string; targetStageId: string }) {
-  if (!row(snapshot) || snapshot.ok !== true || snapshot.canManage !== true ||
+export function preparePipelineMove(snapshot: unknown, selection: unknown) {
+  if (!row(selection) || !named(selection.dealId) || !named(selection.targetStageId) ||
+      !row(snapshot) || snapshot.ok !== true || snapshot.canManage !== true ||
       !row(snapshot.pipeline) || !Array.isArray(snapshot.stages) || !Array.isArray(snapshot.deals)) return unavailable();
   const pipeline = snapshot.pipeline;
   if (!named(pipeline.id) || !named(pipeline.shortRef) || !named(pipeline.name) || !named(pipeline.lifecycleStatus) || !["draft", "active", "archived"].includes(pipeline.lifecycleStatus)) return unavailable();
@@ -28,7 +29,7 @@ export function preparePipelineMove(snapshot: unknown, selection: { dealId: stri
   if (deal.stageId === target.id) return { ok: false as const, code: "ALREADY_IN_STAGE", message: "The deal is already in that stage. Nothing changed." };
   return {
     ok: true as const,
-    command: { type: "move-deal" as const, dealId: selection.dealId, targetStageId: selection.targetStageId, expectedVersion: deal.version, expectedTargetVersion: target.version },
+    command: { type: "move-deal" as const, pipelineId: pipeline.id, dealId: selection.dealId, targetStageId: selection.targetStageId, expectedVersion: deal.version, expectedTargetVersion: target.version },
     pipelineId: pipeline.id,
     pipelineRef: pipeline.shortRef,
     pipelineName: pipeline.name,

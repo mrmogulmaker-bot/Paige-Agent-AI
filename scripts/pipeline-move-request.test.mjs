@@ -8,7 +8,7 @@ test('normalizes exact target and version from the read, never invented caller v
   const result=preparePipelineMove(snapshot(),{dealId:'d1',targetStageId:'s2'});
   assert.equal(result.ok,true);
   assert.equal(result.requiresOperatorCard,true);
-  assert.deepEqual(result.command,{type:'move-deal',dealId:'d1',targetStageId:'s2',expectedVersion:4,expectedTargetVersion:3});
+  assert.deepEqual(result.command,{type:'move-deal',pipelineId:'p1',dealId:'d1',targetStageId:'s2',expectedVersion:4,expectedTargetVersion:3});
   assert.equal(result.pipelineRef,'PPL-ABCDE');
   assert.equal(result.expectedTargetVersion,3);
 });

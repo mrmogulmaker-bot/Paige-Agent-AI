@@ -16,6 +16,8 @@ declare
   _reason text;
   _active_tenant uuid;
   _mode text;
+  _rail_sub text;
+  _rail_claims text;
 begin
   if auth.role() is distinct from 'service_role' or _tenant_id is null or _requested_by is null then
     raise exception 'PIPELINE_FORBIDDEN' using errcode='42501';
@@ -98,12 +100,31 @@ begin
       'to_stage_label',_target.label,'actor_kind','paige','reason',_reason,'idempotency_key',_idempotency_key,
       'approval_channel',_approval_channel));
   if _deal.contact_client_id is not null then
+    -- Pipeline authorization above precedes Rail's established service path.
+    -- Clear both subject forms: auth.uid() falls back to the claims JSON.
+    _rail_sub:=current_setting('request.jwt.claim.sub',true);
+    _rail_claims:=current_setting('request.jwt.claims',true);
+    begin
+    perform set_config('request.jwt.claim.sub','',true);
+    perform set_config('request.jwt.claims',(coalesce(nullif(_rail_claims,'')::jsonb,'{}'::jsonb)-'sub')::text,true);
+    if auth.uid() is not null or auth.role() is distinct from 'service_role' then
+      raise exception 'PIPELINE_RAIL_SERVICE_REQUIRED' using errcode='42501';
+    end if;
     -- Durable client Rail failure rolls the move back; never swallow it as success.
+    -- Rail independently checks this exact client belongs to this tenant.
     perform public.record_rail_event(_deal.contact_client_id,'owner.crm_mutation','campaigns_pipeline','paige_agent',
       'Deal moved','Moved from '||_source.label||' to '||_target.label,
       jsonb_build_object('deal_id',_deal.id,'from_stage_id',_source.id,'from_stage_label',_source.label,
-        'to_stage_id',_target.id,'to_stage_label',_target.label,'actor_kind','paige','policy_result','allowed'),
+        'to_stage_id',_target.id,'to_stage_label',_target.label,'actor_kind','paige','policy_result','allowed',
+        'requested_by',_requested_by,'approval_channel',_approval_channel,'idempotency_key',_idempotency_key),
       'deals',_deal.id,'owner_ops',null,now(),true,_tenant_id);
+    perform set_config('request.jwt.claims',coalesce(_rail_claims,''),true);
+    perform set_config('request.jwt.claim.sub',coalesce(_rail_sub,''),true);
+    exception when others then
+      perform set_config('request.jwt.claims',coalesce(_rail_claims,''),true);
+      perform set_config('request.jwt.claim.sub',coalesce(_rail_sub,''),true);
+      raise;
+    end;
   end if;
   _result:=jsonb_build_object('ok',true,'outcome','moved','deal_id',_deal.id,'pipeline_id',_deal.pipeline_id,
     'from_stage_id',_source.id,'to_stage_id',_target.id,'version',_deal.version,'actor_kind','paige',

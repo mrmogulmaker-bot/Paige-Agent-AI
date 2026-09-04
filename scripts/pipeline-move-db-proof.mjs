@@ -5,6 +5,7 @@ import {createServer} from 'node:net';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
+import {preparePipelineMove} from '../supabase/functions/_shared/pipelineMoveRequest.ts';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const bin='C:/Program Files/PostgreSQL/16/bin';
 const migration='supabase/migrations/20260904052832_solo_pipeline_governed_move_executor.sql';
@@ -27,6 +28,7 @@ const service=s=>`set role service_role;set request.jwt.claim.role='service_role
 const snap=()=>json("select jsonb_build_object('deals',(select jsonb_agg(to_jsonb(d)) from deals d),'activities',(select count(*) from deal_activities),'audit',(select count(*) from audit_logs),'rail',(select count(*) from fixture_rail),'commands',(select count(*) from pipeline_command_results));");
 async function seed(){await psql(`truncate deals,pipeline_stages,pipeline_command_results,deal_activities,audit_logs,fixture_rail,fixture_members,fixture_extra_admins,profiles,pipelines cascade;
 insert into fixture_members values('${id(2)}','${id(1)}',true),('${id(3)}','${id(1)}',false),('${id(4)}','${id(5)}',true);
+truncate clients;insert into clients values('${id(40)}','${id(1)}');
 truncate fixture_autonomy;insert into fixture_autonomy values('auto');
 insert into profiles values('${id(2)}','${id(1)}'),('${id(3)}','${id(1)}'),('${id(4)}','${id(5)}');
 insert into pipelines values('${id(10)}','${id(1)}'),('${id(11)}','${id(1)}');
@@ -77,6 +79,40 @@ try{
  await psql(`update fixture_autonomy set mode=${mode===null?'null':q(mode)};`);await denied(service(call(cmd(),'standing_autonomy_setting')));
  });}catch(e){error??=e.message;process.exitCode=1;console.error('EXPECTED RED autonomy '+mode+': '+e.message);}
  }
+ await test('actual proposal command executes unchanged against SQL',async()=>{
+  await psql(`alter table pipelines add column name text default 'Fixture pipeline', add column short_ref text default 'PPL-ABCDE', add column lifecycle_status text default 'active';alter table deals add column title text default 'Fixture deal';`);
+  const snapshot=await json(`select jsonb_build_object('ok',true,'canManage',public.is_tenant_admin('${id(1)}'),
+   'pipeline',(select jsonb_build_object('id',id,'shortRef',short_ref,'name',name,'lifecycleStatus',lifecycle_status) from pipelines where id='${id(10)}'),
+   'stages',(select jsonb_agg(jsonb_build_object('id',id,'pipelineId',pipeline_id,'label',label,'version',version,'movePolicy',move_policy,'archivedAt',archived_at)) from pipeline_stages where pipeline_id='${id(10)}'),
+   'deals',(select jsonb_agg(jsonb_build_object('id',id,'pipelineId',pipeline_id,'stageId',stage_id,'version',version,'title',title,'status',status)) from deals where pipeline_id='${id(10)}'));
+  `.replace('select jsonb_build_object',`set request.jwt.claim.sub='${id(2)}';select jsonb_build_object`));
+  const proposal=preparePipelineMove(snapshot,{dealId:id(30),targetStageId:id(21)});
+  assert.equal(proposal.ok,true);
+  // No spread, patch, fallback or supplementation of proposal.command is allowed.
+  const moved=await json(service(call(proposal.command,'operator_card',id(1),id(2),'actual-seam')));
+  assert.equal(moved.ok,true);assert.equal(moved.version,2);
+  const state=await snap();assert.equal(state.deals[0].stage_id,id(21));assert.equal(state.deals[0].version,2);
+  for(const k of ['activities','audit','rail','commands'])assert.equal(state[k],1);
+ });
+ await test('tenant admin without global role uses service Rail and restores both claims',async()=>{
+ const claims=JSON.stringify({sub:id(98),role:'service_role',fixture:'preserve'});
+ const r=await psql(service(`set fixture.enforce_rail_admin='yes';set request.jwt.claim.sub='${id(99)}';set request.jwt.claims=${q(claims)};${call()} select jsonb_build_object('sub',current_setting('request.jwt.claim.sub',true),'claims',current_setting('request.jwt.claims',true)::jsonb);`));
+ const lines=r.stdout.trim().split(/\r?\n/).map(x=>JSON.parse(x));assert.equal(lines[0].ok,true);assert.equal(lines[1].sub,id(99));assert.deepEqual(lines[1].claims,JSON.parse(claims));
+ const rail=await json('select payload from fixture_rail');assert.equal(rail.requested_by,id(2));assert.equal(rail.approval_channel,'operator_card');assert.equal(rail.idempotency_key,'move');
+ });
+ await test('foreign client fails without partial move',async()=>{
+ await psql(`update clients set tenant_id='${id(5)}' where id='${id(40)}';`);
+ await denied(service(`set fixture.enforce_rail_admin='yes';${call()}`));
+ });
+ await test('service Rail failure rolls back with dual subject claims',async()=>{
+ const claims=JSON.stringify({sub:id(98),role:'service_role'});
+ await denied(service(`set fixture.enforce_rail_admin='yes';set fixture.fail_rail='yes';set request.jwt.claim.sub='${id(99)}';set request.jwt.claims=${q(claims)};${call()}`),'P0001');
+ const before=await snap();
+ await psql(service(`set fixture.enforce_rail_admin='yes';set fixture.fail_rail='yes';set request.jwt.claim.sub='${id(99)}';set request.jwt.claims=${q(claims)};
+ do $$begin begin ${call().replace('select public.','perform public.')} raise exception 'unexpected success';exception when sqlstate 'P0001' then if sqlerrm<>'fixture rail failure' then raise;end if;end;
+ if current_setting('request.jwt.claim.sub',true)<>'${id(99)}' or current_setting('request.jwt.claims',true)::jsonb<>${q(claims)}::jsonb then raise exception 'claims not restored';end if;end$$;`));
+ assert.deepEqual(await snap(),before);
+ });
 }catch(e){error=e.message;process.exitCode=1;console.error(error);}finally{
  let fingerprint=null;try{if(started){const s=await psql("select coalesce(string_agg(table_name||':'||column_name||':'||data_type,E'\\n' order by table_name,ordinal_position),'') from information_schema.columns where table_schema='public';");fingerprint=createHash('sha256').update(s.stdout).digest('hex');}}catch(e){error??=e.message;process.exitCode=1;}
  if(started){const r=await command(join(bin,'pg_ctl.exe'),['-D',cluster,'-m','fast','-w','-t','30','stop'],'',true);stopped=r.code===0;if(!stopped)process.exitCode=1;}

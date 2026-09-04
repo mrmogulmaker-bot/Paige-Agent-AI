@@ -3,8 +3,9 @@ create role authenticated;
 create role anon;
 create role service_role;
 create schema auth;
-create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
-create function auth.role() returns text language sql as $$select current_setting('request.jwt.claim.role',true)$$;
+create function auth.uid() returns uuid language sql as $$select coalesce(nullif(current_setting('request.jwt.claim.sub',true),''),(nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub'))::uuid$$;
+create function auth.role() returns text language sql as $$select coalesce(nullif(current_setting('request.jwt.claim.role',true),''),(nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'role'))$$;
+create table public.clients(id uuid primary key,tenant_id uuid not null);
 create table public.fixture_members(user_id uuid primary key,tenant_id uuid,admin boolean);
 create table public.fixture_autonomy(mode text);
 create function public.resolve_tool_autonomy(t uuid,k text) returns text language sql as $$select mode from public.fixture_autonomy limit 1$$;
@@ -22,6 +23,10 @@ create table public.deal_activities(deal_id uuid,type text,summary text,actor_us
 create table public.audit_logs(user_id uuid,entity text,action text,entity_id uuid,data jsonb);
 create table public.fixture_rail(client_id uuid,tenant_id uuid,payload jsonb);
 create function public.record_rail_event(a uuid,b text,c text,d text,e text,f text,g jsonb,h text,i uuid,j text,k text,l timestamptz,m boolean,n uuid) returns void language plpgsql as $$begin
+if current_setting('fixture.enforce_rail_admin',true)='yes' then
+if auth.uid() is not null or auth.role() is distinct from 'service_role' then raise exception 'fixture global role absent; expected null-UID service branch' using errcode='42501';end if;
+if not exists(select 1 from clients where id=a and tenant_id=n) then raise exception 'fixture foreign client' using errcode='42501';end if;
+end if;
 if current_setting('fixture.fail_rail',true)='yes' then raise exception 'fixture rail failure';end if;
 insert into public.fixture_rail values(a,n,g);end$$;
 create function public.fixture_fail_audit() returns trigger language plpgsql as $$begin if current_setting('fixture.fail_audit',true)='yes' then raise exception 'fixture audit failure';end if;return new;end$$;
