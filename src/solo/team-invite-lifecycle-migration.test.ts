@@ -12,6 +12,8 @@ import { describe, expect, it } from "vitest";
 const MIGRATION = "supabase/migrations/20261105000000_an_invitation_says_what_happened_to_it.sql";
 const ORDERING = "supabase/migrations/20261107000000_the_headline_is_the_furthest_the_email_got.sql";
 const WEBHOOK = "supabase/functions/handle-resend-webhook/index.ts";
+const RECEIPTS = "supabase/migrations/20260903235327_resend_receipt_reliability.sql";
+const PERSISTENCE = "supabase/functions/handle-resend-webhook/handler.ts";
 const SENDER = "supabase/functions/send-portal-invite/index.ts";
 const INVITES = "supabase/functions/solo-team-invitations/index.ts";
 const WORKFLOW = ".github/workflows/paige-spine-contract.yml";
@@ -110,21 +112,22 @@ describe("the webhook is authenticated by its signature", () => {
 
   it("derives tenancy from OUR record, never from the inbound payload", () => {
     // §9. Reading tenant_id from the webhook body would let the payload choose the tenant.
-    expect(ts).toMatch(/tenant_id: origin\.tenant_id/);
+    expect(code(RECEIPTS)).toContain("r.status, origin.tenant_id");
     expect(ts).not.toMatch(/tenant_id: event\./);
   });
 
-  it("ignores an event for a message the platform has no record of sending", () => {
-    expect(ts).toContain("unknown message_id");
+  it("retains an early receipt without inventing a source outcome", () => {
+    expect(code(RECEIPTS)).toContain("reason = 'origin_pending'");
+    expect(code(RECEIPTS)).toContain("RETURN 'pending'");
   });
 
   it("appends rather than updates, so the timeline survives", () => {
-    expect(ts).toMatch(/\.insert\(/);
-    expect(ts).not.toMatch(/email_send_log"\)[\s\S]{0,80}\.update\(/);
+    expect(code(RECEIPTS)).toContain("INSERT INTO public.email_send_log");
+    expect(code(RECEIPTS)).not.toMatch(/UPDATE\s+public\.email_send_log/);
   });
 
   it("answers non-2xx when it fails to record, so the provider retries", () => {
-    expect(ts).toMatch(/could not record event[\s\S]{0,20}500/);
+    expect(code(PERSISTENCE)).toMatch(/if \(result.error\)[^\n]*refusal\(503\)/);
   });
 
   it("is registered as a public function, because the provider carries no bearer token", () => {
@@ -238,35 +241,17 @@ describe("a retried event does not walk the headline backwards", () => {
   });
 });
 
-describe("the webhook survives the two ways it was going to fail in production", () => {
-  const ts = code(WEBHOOK);
-
-  it("retries when the origin lookup ERRORS, instead of acknowledging the event as unknown", () => {
-    // supabase-js returns { data: null, error } — it does not throw. Reading only `data` made a
-    // transient failure look identical to "we never sent this", and the 200 that followed told
-    // Resend never to retry. The event was then lost for ever.
-    expect(ts).toMatch(/data: origin, error: originError/);
-    const guard = ts.slice(ts.indexOf("originError"));
-    expect(guard).toMatch(/if \(originError\)[\s\S]{0,400}500\)/);
-    // And the error branch must come BEFORE the absent-row branch, or it is unreachable.
-    expect(ts.indexOf("if (originError)")).toBeLessThan(ts.indexOf('ignored: "unknown message_id"'));
+describe("the webhook preserves recoverable failures and known sent outcomes", () => {
+  it("durably retries an origin lookup or outcome failure without raw diagnostics", () => {
+    const sql = code(RECEIPTS);
+    expect(sql).toContain("EXCEPTION WHEN OTHERS THEN");
+    expect(sql).toContain("reason = 'storage_retry'");
+    expect(sql).not.toMatch(/SQLERRM/);
+    expect(code(PERSISTENCE)).not.toMatch(/error\.message|error\.details/);
   });
-
-  it("treats the duplicate `sent` row as already-recorded rather than retrying it for ever", () => {
-    // `idx_email_send_log_message_sent_unique` is UNIQUE on message_id WHERE status='sent'. The
-    // sender already writes that row, so an inbound `email.sent` ALWAYS violates it. Answering 500
-    // meant every such event failed permanently and Resend retried it without end — triggered by
-    // the single act of subscribing to `email.*`.
-    expect(ts).toMatch(/error\.code === "23505"/);
-    // BOUNDED to the 23505 branch body. An unbounded slice to end-of-file also caught the
-    // function's final `return json({ ok: true, recorded: status })`, so the assertion passed no
-    // matter what this branch returned — mutation proved it could not fail.
-    const start = ts.indexOf('error.code === "23505"');
-    const dup = ts.slice(start, ts.indexOf("console.error", start));
-    expect(dup).toMatch(/ok: true/);
-    expect(dup).not.toMatch(/\b500\b/);
-    // The 23505 branch must precede the generic 500, or the 500 swallows it first.
-    expect(ts.indexOf('error.code === "23505"')).toBeLessThan(ts.indexOf('"could not record event"'));
+  it("uses the existing sent outcome instead of masking every unique violation", () => {
+    expect(code(RECEIPTS)).toMatch(/ELSIF r.status = 'sent' THEN\s+outcome := origin.id;/);
+    expect(code(WEBHOOK)).not.toContain('error.code === "23505"');
   });
 });
 
