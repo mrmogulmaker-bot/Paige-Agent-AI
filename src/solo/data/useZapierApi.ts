@@ -5,8 +5,8 @@ import { createSettingsRequestGate } from "../settings-contract";
 import { readFunctionErrorBody } from "@/lib/integrations/connectError";
 
 export type ZapierApiStateName = "not_connected"|"connecting"|"connected"|"needs_attention"|"authorization_expired"|"provider_unavailable"|"capability_unavailable";
-export type ZapierApiReadiness = { tenantId: string;canManage:boolean;state:ZapierApiStateName;failureCode:string|null;accessibleZapCount:number|null;lastCheckedAt:string|null;lastSuccessAt:string|null;capabilities:string[];limitations:string[] };
-const EMPTY: ZapierApiReadiness={tenantId:"",canManage:false,state:"not_connected",failureCode:null,accessibleZapCount:null,lastCheckedAt:null,lastSuccessAt:null,capabilities:[],limitations:[]};
+export type ZapierApiReadiness = { tenantId: string;canManage:boolean;state:ZapierApiStateName;failureCode:string|null;accessibleZapCount:number|null;lastCheckedAt:string|null;lastSuccessAt:string|null;hasLocalConnection:boolean;hasPendingAuthorization:boolean;capabilities:string[];limitations:string[] };
+const EMPTY: ZapierApiReadiness={tenantId:"",canManage:false,state:"not_connected",failureCode:null,accessibleZapCount:null,lastCheckedAt:null,lastSuccessAt:null,hasLocalConnection:false,hasPendingAuthorization:false,capabilities:[],limitations:[]};
 const STATES=new Set<ZapierApiStateName>(["not_connected","connecting","connected","needs_attention","authorization_expired","provider_unavailable","capability_unavailable"]);
 const strings=(v:unknown)=>Array.isArray(v)?v.filter((x):x is string=>typeof x==="string").slice(0,8):[];
 export function readZapierApi(value:unknown,tenantId:string):ZapierApiReadiness|null{
@@ -16,6 +16,8 @@ export function readZapierApi(value:unknown,tenantId:string):ZapierApiReadiness|
  if(r.state==="connected"&&(typeof r.last_success_at!=="string"||typeof r.last_checked_at!=="string"))return null;
  return{tenantId,canManage:r.can_manage,state:r.state as ZapierApiStateName,failureCode:typeof r.failure_code==="string"?r.failure_code:null,accessibleZapCount:count,
   lastCheckedAt:typeof r.last_checked_at==="string"?r.last_checked_at:null,lastSuccessAt:typeof r.last_success_at==="string"?r.last_success_at:null,
+  hasLocalConnection:r.has_local_connection===true||(!("has_local_connection" in r)&&["connected","needs_attention","authorization_expired","provider_unavailable"].includes(String(r.state))),
+  hasPendingAuthorization:r.has_pending_authorization===true||(!("has_pending_authorization" in r)&&r.state==="connecting"),
   capabilities:strings(r.capabilities),limitations:strings(r.limitations)};
 }
 export function zapierApiWords(state:ZapierApiStateName){return state==="connected"?"Connected":state==="not_connected"?"Not connected":state==="connecting"?"Connecting":state==="authorization_expired"?"Authorization expired or revoked":state==="provider_unavailable"?"Provider unavailable":state==="capability_unavailable"?"Capability unavailable":"Needs attention";}

@@ -631,7 +631,15 @@ describe("Zapier API and PAIGE tools are independent", () => {
     await click(panelButton(host, "Cancel authorization"));
     expect(invoke.mock.calls.some((call) => call[0] === "tenant-zapier-api-connect" && call[1].body.action === "cancel")).toBe(true);
   });
+  it("keeps cleanup visible when provider authorization is unavailable", async () => {
+    world({ zapierApi: { state: "capability_unavailable", has_local_connection: true, has_pending_authorization: true } });
+    const { host } = await render(); await openCard(host, "mcp");
+    expect(panelButton(host, "Cancel authorization")).toBeTruthy();
+    expect(panelButton(host, "Disconnect API")).toBeTruthy();
+    expect(panelButton(host, "Run safe connection test")).toBeUndefined();
+  });
 });
+
 
 describe("Capability approval", () => {
   const connected = (over = {}) => ({

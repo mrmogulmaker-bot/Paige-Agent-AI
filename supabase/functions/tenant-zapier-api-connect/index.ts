@@ -25,20 +25,22 @@ type DatabaseClient = any;
 type CheckResult = { ok: true; count: number | null } | { ok: false; state: string; code: string };
 
 async function readiness(userClient: DatabaseClient, tenantId: string, canManage: boolean) {
-  if (!configured()) return { tenant_id: tenantId, can_manage: canManage, state: "capability_unavailable", failure_code: "plan_or_api_unavailable", accessible_zap_count: null, last_checked_at: null, last_success_at: null,
-    capabilities: [], limitations: ["Zapier API access requires a published Zapier integration and provider-issued OAuth credentials"] };
   const { data, error } = await userClient.rpc("get_zapier_api_readiness");
-  return error ? null : data;
+  if (error || !data || typeof data !== "object") return null;
+  if (!configured()) return { ...data, tenant_id: tenantId, can_manage: canManage, state: "capability_unavailable", failure_code: "plan_or_api_unavailable",
+    accessible_zap_count: null, capabilities: [],
+    limitations: ["Zapier API access requires a published Zapier integration and provider-issued OAuth credentials"] };
+  return data;
 }
 
-async function storeGrant(admin: DatabaseClient, tenantId: string, actorId: string, token: Record<string, unknown>, retainedRefresh = "") {
+async function storeGrant(admin: DatabaseClient, tenantId: string, actorId: string, token: Record<string, unknown>, retainedRefresh = "", attemptId: string | null = null) {
   const access = typeof token.access_token === "string" ? token.access_token : "";
   const refresh = typeof token.refresh_token === "string" && token.refresh_token ? token.refresh_token : retainedRefresh;
   const expires = typeof token.expires_in === "number" ? token.expires_in : Number(token.expires_in);
   const scopes = typeof token.scope === "string" ? token.scope.split(/\s+/).filter(Boolean) : READ_ONLY_SCOPES.split(" ");
   if (!access || !refresh || !Number.isFinite(expires) || expires <= 0 || !scopes.includes("profile") || !scopes.includes("zap:account:all")) return false;
   const { error } = await admin.rpc("zapier_api_store_grant", { _tenant: tenantId, _actor: actorId, _access: access, _refresh: refresh,
-    _expires: new Date(Date.now() + expires * 1000).toISOString(), _scopes: scopes });
+    _expires: new Date(Date.now() + expires * 1000).toISOString(), _scopes: scopes, _attempt: attemptId });
   return !error;
 }
 
@@ -101,7 +103,9 @@ Deno.serve(async (req) => {
   if (!configured() && action !== "cancel" && action !== "disconnect") return jsonResponse({ error: "capability_unavailable", connection: await readiness(userClient, tenantId, true) }, 503);
 
   if (action === "cancel") {
-    await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "cancelled" }).eq("tenant_id", tenantId).eq("actor_id", user.id).in("status", ["pending", "exchanging"]);
+    const { error: cancelError } = await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "cancelled" })
+      .eq("tenant_id", tenantId).eq("actor_id", user.id).in("status", ["pending", "exchanging"]);
+    if (cancelError) return jsonResponse({ error: "cancel_failed", connection: await readiness(userClient, tenantId, true) }, 503);
     return jsonResponse({ ok: true, outcome: "cancelled", connection: await readiness(userClient, tenantId, true) });
   }
 
@@ -121,13 +125,18 @@ Deno.serve(async (req) => {
     const hash = await digest(state);
     const { data: attempt } = await admin.from("tenant_zapier_api_oauth_attempts").select("id,tenant_id,actor_id,status,expires_at").eq("state_hash", hash).maybeSingle();
     if (!attempt || attempt.actor_id !== user.id || attempt.tenant_id !== tenantId || attempt.status !== "pending" || Date.parse(attempt.expires_at) <= Date.now()) return jsonResponse({ error: "oauth_state_invalid" }, 409);
-    await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "exchanging" }).eq("id", attempt.id).eq("status", "pending");
+    const { data: claimed, error: claimError } = await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "exchanging" })
+      .eq("id", attempt.id).eq("status", "pending").select("id").maybeSingle();
+    if (claimError || !claimed) return jsonResponse({ error: "oauth_state_invalid" }, 409);
     const token = await exchange(new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI }));
-    if (!token || !await storeGrant(admin, tenantId, user.id, token)) {
-      await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "failed" }).eq("id", attempt.id);
+    if (!token) {
+      await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "failed" }).eq("id", attempt.id).eq("status", "exchanging");
       return jsonResponse({ error: "oauth_exchange_failed" }, 502);
     }
-    await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "success" }).eq("id", attempt.id);
+    // The RPC atomically finalizes only an attempt that cancellation has not changed.
+    if (!await storeGrant(admin, tenantId, user.id, token, "", attempt.id)) {
+      return jsonResponse({ error: "oauth_state_invalid" }, 409);
+    }
     const result = await checkProvider(admin, tenantId, user.id);
     const now = new Date().toISOString();
     await admin.from("tenant_zapier_api_connections").update(result.ok ? { status: "connected", failure_code: null, accessible_zap_count: result.count, last_checked_at: now, last_success_at: now }
@@ -147,9 +156,8 @@ Deno.serve(async (req) => {
   if (action === "disconnect") {
     // Zapier documents token deletion through the user's authorized-apps page, not a revocation endpoint.
     // Local access is removed immediately; the UI truthfully tells the owner how to revoke provider-side access.
-    await admin.from("tenant_zapier_api_connections").delete().eq("tenant_id", tenantId);
-    await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "cancelled" }).eq("tenant_id", tenantId).in("status", ["pending", "exchanging"]);
-    await record(admin, tenantId, user.id, "zapier_api_disconnected");
+    const { error: disconnectError } = await admin.rpc("zapier_api_disconnect", { _tenant: tenantId, _actor: user.id });
+    if (disconnectError) return jsonResponse({ error: "local_disconnect_failed", connection: await readiness(userClient, tenantId, true) }, 503);
     return jsonResponse({ ok: true, outcome: "disconnected", provider_revoke_required: true, connection: await readiness(userClient, tenantId, true) });
   }
   return jsonResponse({ error: "unsupported_action" }, 400);
