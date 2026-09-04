@@ -18,17 +18,20 @@ function safeState() { const bytes = crypto.getRandomValues(new Uint8Array(32));
 function configured() { return !!Deno.env.get("ZAPIER_API_CLIENT_ID") && !!Deno.env.get("ZAPIER_API_CLIENT_SECRET"); }
 function tokenAuth() { return `Basic ${btoa(`${Deno.env.get("ZAPIER_API_CLIENT_ID")}:${Deno.env.get("ZAPIER_API_CLIENT_SECRET")}`)}`; }
 
-type Admin = ReturnType<typeof createClient>;
+// The project intentionally uses runtime RPCs that are introduced by the paired
+// migration rather than generated database types. Keep the client boundary
+// untyped here so Deno does not infer every new table and RPC as `never`.
+type DatabaseClient = any;
 type CheckResult = { ok: true; count: number | null } | { ok: false; state: string; code: string };
 
-async function readiness(userClient: ReturnType<typeof createClient>, tenantId: string, canManage: boolean) {
+async function readiness(userClient: DatabaseClient, tenantId: string, canManage: boolean) {
   if (!configured()) return { tenant_id: tenantId, can_manage: canManage, state: "capability_unavailable", failure_code: "plan_or_api_unavailable", accessible_zap_count: null, last_checked_at: null, last_success_at: null,
     capabilities: [], limitations: ["Zapier API access requires a published Zapier integration and provider-issued OAuth credentials"] };
   const { data, error } = await userClient.rpc("get_zapier_api_readiness");
   return error ? null : data;
 }
 
-async function storeGrant(admin: Admin, tenantId: string, actorId: string, token: Record<string, unknown>, retainedRefresh = "") {
+async function storeGrant(admin: DatabaseClient, tenantId: string, actorId: string, token: Record<string, unknown>, retainedRefresh = "") {
   const access = typeof token.access_token === "string" ? token.access_token : "";
   const refresh = typeof token.refresh_token === "string" && token.refresh_token ? token.refresh_token : retainedRefresh;
   const expires = typeof token.expires_in === "number" ? token.expires_in : Number(token.expires_in);
@@ -49,7 +52,7 @@ async function exchange(params: URLSearchParams) {
   } catch { return null; }
 }
 
-async function currentSecret(admin: Admin, tenantId: string, actorId: string) {
+async function currentSecret(admin: DatabaseClient, tenantId: string, actorId: string) {
   const { data } = await admin.rpc("zapier_api_secret_for_service", { _tenant: tenantId });
   if (!data || typeof data.access_token !== "string" || typeof data.refresh_token !== "string") return null;
   if (Date.parse(String(data.expires_at)) > Date.now() + 120_000) return data as Record<string, unknown>;
@@ -59,7 +62,7 @@ async function currentSecret(admin: Admin, tenantId: string, actorId: string) {
   return refreshed && typeof refreshed.access_token === "string" ? refreshed as Record<string, unknown> : null;
 }
 
-async function checkProvider(admin: Admin, tenantId: string, actorId: string): Promise<CheckResult> {
+async function checkProvider(admin: DatabaseClient, tenantId: string, actorId: string): Promise<CheckResult> {
   const secret = await currentSecret(admin, tenantId, actorId);
   if (!secret) return { ok: false, state: "authorization_expired", code: "authorization_expired" };
   try {
@@ -75,7 +78,7 @@ async function checkProvider(admin: Admin, tenantId: string, actorId: string): P
   } catch { return { ok: false, state: "provider_unavailable", code: "provider_unavailable" }; }
 }
 
-async function record(admin: Admin, tenantId: string, actorId: string, outcome: string) {
+async function record(admin: DatabaseClient, tenantId: string, actorId: string, outcome: string) {
   await admin.from("paige_workspace_events").insert({ tenant_id: tenantId, actor_id: actorId, source_kind: "zapier_api_connection", source_id: crypto.randomUUID(), source_revision: 0, outcome });
 }
 
