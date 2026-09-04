@@ -1922,6 +1922,10 @@ implementation begins from it.
 
 ### Solo Campaigns -> Pipeline board (Gate 1 approved 2026-08-31; draft PR, NOT LIVE)
 
+**Later bounded deletion hotfix, 2026-09-03:** current implementation and release evidence lives in `docs/delivery/solo-pipeline-empty-delete.md`, not this historical Gate 1 heading. Solo Owners can explicitly confirm the exact UUID-backed PPL reference for an empty pipeline; server transaction refuses deals, routes, automation, approvals and retained history. No Catalog, billing, client/payment, campaign, survivor, shell, or Chat-write redesign. Owner authorized this bounded slice through green release without another routine gate. No production data deletion is allowed for proof. Future agents must read the linked ledger and `docs/doctrine/surface-cards/pipeline.md` before touching deletion.
+
+
+
 - **Canonical Solo ownership contract (owner-locked 2026-09-01).** There is exactly one Solo shell
   for every current and future Solo tenant. `src/solo/SoloEntry.tsx` dispatches the authenticated
   Solo route, `src/solo/SoloApp.tsx` composes the domain surfaces, and
