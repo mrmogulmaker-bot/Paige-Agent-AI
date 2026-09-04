@@ -1,3 +1,4 @@
+import { getCreatedClients } from "./client-boundary-stub";
 import { getHarnessTenant } from "./useSoloSalesOps-stub";
 // The client-agreements read, stubbed at the NETWORK boundary only.
 //
@@ -93,5 +94,6 @@ export function useSoloAgreements() {
     listeners.add(listener);
     return () => { listeners.delete(listener); window.removeEventListener("sales-harness-tenant",listener); };
   }, []);
-  return { ...snapshot(), tenantId: getHarnessTenant() };
+  const state=snapshot();
+  return { ...state, tenantId: getHarnessTenant(), clients: state.clientsReadable ? [...state.clients,...getCreatedClients(getHarnessTenant()).map(row=>({id:row.id,name:row.name}))] : [] };
 }

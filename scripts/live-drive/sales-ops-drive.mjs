@@ -297,6 +297,56 @@ async function proveDrawerInteractions(page, id) {
   check(new globalThis.URL(page.url()).pathname.endsWith("/growth/sales"), `${id}: Catalog-return dirty Back stays in Sales`);
 }
 
+async function proveCanonicalClientReturn(browser) {
+  const ctx = await browser.newContext({viewport:{width:1366,height:768},reducedMotion:"reduce"});
+  const page = await ctx.newPage(); page.setDefaultTimeout(7000); page.setDefaultNavigationTimeout(20000);
+  const start = async mode => {
+    await open(page);
+    await page.locator('[data-agreements="no-clients"]').click();
+    await page.locator(`[data-client-mode="${mode}"]`).click();
+    await page.getByRole("button",{name:"Record terms",exact:true}).click();
+    await page.getByRole("button",{name:"Create client",exact:true}).click();
+    await page.locator('[data-contact-editor]').waitFor();
+  };
+  const submit = async name => {
+    await page.getByLabel("First name",{exact:true}).fill(name);
+    await page.getByRole("tab",{name:/Relationship & consent/}).click();
+    await page.getByRole("button",{name:"Create contact",exact:true}).click();
+  };
+  try {
+    console.log("INTERACTION canonical Client creation and return");
+    await start("success");
+    await page.getByRole("button",{name:"Cancel",exact:true}).click();
+    await page.locator("aside.so-editor").waitFor();
+    check(await page.getByRole("combobox",{name:"Client",exact:true}).inputValue()==="", "Client cancellation returns without selection");
+    await page.locator("aside.so-editor").getByRole("button",{name:"Cancel",exact:true}).click();
+    await start("failure"); await submit("Canonical retry review");
+    await page.getByText("Client could not be saved. Try again.").first().waitFor();
+    check(await page.locator('[data-contact-editor]').count()===1, "Client failure remains editable with retry");
+    await page.locator('[data-client-mode="success"]').evaluate(el=>el.click());
+    await page.getByRole("button",{name:"Create contact",exact:true}).click();
+    await page.locator("aside.so-editor").waitFor();
+    check(await page.getByRole("combobox",{name:"Client",exact:true}).inputValue()==="review-client-1", "Canonical created client reauthorized and selected on Sales return");
+    check(new globalThis.URL(page.url()).search==="?panel=commercial-terms", "Client return URL contains only allowed panel");
+    check(await page.getByRole("combobox",{name:"Client",exact:true}).locator("option:checked").textContent()==="Canonical retry review", "Returned selection names the canonical source record");
+    await page.locator("aside.so-editor").getByRole("button",{name:"Cancel",exact:true}).click();
+    if(await page.getByRole("button",{name:"Discard changes",exact:true}).count()) await page.getByRole("button",{name:"Discard changes",exact:true}).click();
+    for (const outcome of ["success","failure"]) {
+      await start(`delayed-${outcome}`); await submit("Workspace A pending client");
+      await page.locator('[data-switch-workspace]').evaluate(el=>el.click());
+      await page.locator('[data-contact-editor]').waitFor({state:"detached"});
+      await page.locator('[data-client-finish]').evaluate(el=>el.click());
+      await page.waitForTimeout(150);
+      check(await page.locator('[data-sonner-toast]').count()===0, `Client delayed ${outcome}: no old-workspace toast`);
+      check(!(await page.locator('main').innerText()).includes("Workspace A pending client"), `Client delayed ${outcome}: no old-workspace selection`);
+      check(await page.locator('[data-contact-editor]').count()===0, `Client delayed ${outcome}: no stale editor/pending state`);
+      await page.locator('[data-switch-workspace]').evaluate(el=>el.click());
+      check((await page.locator('main').innerText()).includes("Workspace A pending client") === (outcome==="success"), `Client delayed ${outcome}: return A reads canonical result`);
+      check(await page.locator('[data-contact-editor]').count()===0, `Client delayed ${outcome}: return A never resurrects draft`);
+    }
+  } finally { await ctx.close(); }
+}
+
 async function main() {
   await assertPortFree();
   fs.mkdirSync(OUT, { recursive: true });
@@ -337,6 +387,7 @@ async function main() {
     await settle(warmPage);
     await warm.close();
 
+    if (process.env.SALES_PROOF_HOVER_ONLY !== "1") await proveCanonicalClientReturn(browser);
     for (const theme of ["light", "dark"]) {
       for (const frame of FRAMES) {
         const ctx = await browser.newContext({ reducedMotion: "reduce", viewport: { width: frame.width, height: frame.height } });

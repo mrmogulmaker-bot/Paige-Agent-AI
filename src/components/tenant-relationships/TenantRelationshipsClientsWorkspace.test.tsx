@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   TenantRelationshipsClientsWorkspace,
 } from "./TenantRelationshipsClientsWorkspace";
+import { PeopleContactEditor } from "./PeopleContactEditor";
 import {
   isLegacyRelationshipOwner,
   relationshipWorkspaceVariant,
@@ -208,8 +209,7 @@ describe("tenant Relationships / Clients workspace", () => {
     act(() => root.unmount());
   });
 
-  // Release-blocking proof: PeopleContactEditor needs its separately scoped async
-  // lifecycle guard. Keep active until that approved repair suppresses stale global feedback.
+  // Negative controls failed before the owner-approved canonical editor scope guard.
   it.each(["success", "rejection"] as const)("does not emit a late canonical %s toast after a workspace switch", async (outcome) => {
     let finish!: (id: string) => void;
     let reject!: (error: Error) => void;
@@ -231,9 +231,78 @@ describe("tenant Relationships / Clients workspace", () => {
       expect(host.querySelector("[data-location]")?.textContent).toBe("/solo/42/clients/people");
       expect(toastHarness.success).not.toHaveBeenCalled();
       expect(toastHarness.error).not.toHaveBeenCalled();
+      expect(host.textContent).not.toContain("Saving");
+      expect(host.querySelector('[data-record-selected="true"]')).toBeNull();
+      useTenantContext.mockReturnValue({ activeTenantId: "tenant-solo", activeTenant: { id: "tenant-solo", name: "Original", account_type: "standalone", parent_tenant_id: null }, accountContextLoading: false, refresh: vi.fn() });
+      useTenantRelationshipsData.mockReturnValue({ ...baseData, people: [{ ...baseData.people[0], id: "fresh-record", name: "Fresh server record" }] });
+      await act(async () => root.render(clientReturnTree()));
+      expect(host.textContent).toContain("Fresh server record");
+      expect(host.querySelector("[data-contact-editor]")).toBeNull();
+      expect(host.querySelector('[data-record-selected="true"]')).toBeNull();
+      expect(host.textContent).not.toContain("Saving");
+      expect(host.textContent).not.toContain("Avery");
+      expect(getClientReturn("tenant-solo", "42")).toBe(false);
     } finally {
       act(() => root.unmount()); host.remove();
     }
+  });
+
+  async function submitNewContact(host: HTMLElement) {
+    const firstName = Array.from(host.querySelectorAll<HTMLInputElement>("input")).find(input => input.previousElementSibling?.textContent === "First name");
+    expect(firstName).toBeTruthy();
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(firstName, "Avery"); firstName?.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('.trc-contact-editor-steps [role="tab"]')).find(button => button.textContent?.includes("Relationship & consent"))?.click());
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Create contact")?.click());
+  }
+
+  it.each(["success", "rejection"] as const)("rejects an old %s completion after canonical editor scope changes A to B to A", async (outcome) => {
+    let finish!: (id: string) => void;
+    let reject!: (error: Error) => void;
+    editorHarness.upsert.mockImplementationOnce(() => new Promise<string>((resolve, refuse) => { finish = resolve; reject = refuse; }));
+    const onSaved = vi.fn();
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    const editor = (tenantId: string) => <PeopleContactEditor open tenantId={tenantId} contact={null} onOpenChange={vi.fn()} onSaved={onSaved} />;
+    try {
+      await act(async () => root.render(editor("tenant-a")));
+      await submitNewContact(host);
+      expect(editorHarness.upsert).toHaveBeenCalledTimes(1);
+      await act(async () => root.render(editor("tenant-b")));
+      await act(async () => root.render(editor("tenant-a")));
+      await act(async () => { if (outcome === "success") finish("old-a-contact"); else reject(new Error("Old A failure")); });
+      expect(onSaved).not.toHaveBeenCalled();
+      expect(toastHarness.success).not.toHaveBeenCalled();
+      expect(toastHarness.error).not.toHaveBeenCalled();
+      expect(host.textContent).not.toContain("Saving");
+      expect(host.textContent).not.toContain("Contact saved");
+      const freshName = Array.from(host.querySelectorAll<HTMLInputElement>("input")).find(input => input.previousElementSibling?.textContent === "First name");
+      expect(freshName?.value).toBe("");
+      expect(Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Continue")?.disabled).toBe(false);
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+
+  it("ignores a deferred canonical onSaved refresh after switching workspace", async () => {
+    let finishRefresh!: () => void;
+    const retryPeople = vi.fn(() => new Promise<void>(resolve => { finishRefresh = resolve; }));
+    useTenantRelationshipsData.mockReturnValue({ ...baseData, retryPeople });
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    try {
+      await act(async () => root.render(clientReturnTree()));
+      await act(async () => host.querySelector<HTMLButtonElement>('[data-contact-editor-origin="toolbar-new"]')?.click());
+      await submitNewContact(host);
+      expect(editorHarness.upsert).toHaveBeenCalledTimes(1);
+      expect(retryPeople).toHaveBeenCalledTimes(1);
+      expect(toastHarness.success).not.toHaveBeenCalled();
+      useTenantContext.mockReturnValue({ activeTenantId: "tenant-other", activeTenant: { id: "tenant-other", name: "Other", account_type: "standalone", parent_tenant_id: null }, accountContextLoading: false, refresh: vi.fn() });
+      useTenantRelationshipsData.mockReturnValue({ ...baseData, people: [] });
+      await act(async () => root.render(clientReturnTree()));
+      await act(async () => finishRefresh());
+      expect(host.querySelector("[data-location]")?.textContent).toBe("/solo/42/clients/people");
+      expect(host.querySelector("[data-contact-editor]")).toBeNull();
+      expect(host.querySelector('[data-record-selected="true"]')).toBeNull();
+      expect(toastHarness.success).not.toHaveBeenCalled();
+      expect(toastHarness.error).not.toHaveBeenCalled();
+      expect(host.textContent).not.toContain("Saving");
+    } finally { act(() => root.unmount()); host.remove(); }
   });
 
   it("ignores a delayed canonical save after a workspace switch", async () => {
@@ -416,9 +485,13 @@ describe("tenant Relationships / Clients workspace", () => {
     await act(async () => finalStep?.click());
     await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Create contact")?.click());
     await vi.waitFor(() => expect(host.textContent).toContain("Retryable save failure"));
+    expect(toastHarness.error).toHaveBeenCalledWith("Retryable save failure");
+    expect(toastHarness.success).not.toHaveBeenCalled();
     expect(Array.from(host.querySelectorAll<HTMLButtonElement>("button")).some((button) => button.textContent === "Retry save")).toBe(true);
     await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Retry save")?.click());
     await vi.waitFor(() => expect(host.textContent).toContain("Contact saved"));
+    expect(toastHarness.success).toHaveBeenCalledExactlyOnceWith("Contact created");
+    expect(toastHarness.error).toHaveBeenCalledTimes(1);
     expect(editorHarness.upsert).toHaveBeenCalledTimes(2);
     expect(editorHarness.upsert).toHaveBeenLastCalledWith(expect.objectContaining({
       tenantId: "tenant-solo",

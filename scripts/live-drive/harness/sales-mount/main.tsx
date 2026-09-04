@@ -5,6 +5,9 @@ import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { GrowthHub } from "@/solo/growth2";
 import { setSalesHarnessMode, setHarnessTenant, getHarnessTenant, type Mode } from "./useSoloSalesOps-stub";
 import { setAgreementsHarnessMode, type AgreementsMode } from "./useSoloAgreements-stub";
+import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relationships/TenantRelationshipsClientsWorkspace";
+import { setClientSaveMode, finishClientSave } from "./client-boundary-stub";
+import { Toaster } from "sonner";
 import "@/index.css";
 import "@/solo/solo-tokens.css";
 
@@ -41,6 +44,8 @@ function Harness() {
         }}
       >
         <button data-switch-workspace onClick={()=>setHarnessTenant(getHarnessTenant()==="harness-tenant"?"other-tenant":"harness-tenant")}>Switch workspace</button>
+        {["success","failure","delayed-success","delayed-failure"].map(mode=><button key={mode} data-client-mode={mode} onClick={()=>setClientSaveMode(mode)}>client:{mode}</button>)}
+        <button data-client-finish onClick={finishClientSave}>Complete client request</button>
         <strong style={{ marginRight: 6 }}>LOCAL REVIEW · NO LIVE DATA</strong>
         {AGREEMENT_MODES.map((mode) => (
           <button key={mode} data-agreements={mode} onClick={() => setAgreementsHarnessMode(mode)}>
@@ -56,7 +61,7 @@ function Harness() {
       </aside>
       <main className="paige-solo" data-theme={theme} style={{ minHeight: 0, minWidth: 0, overflow: "hidden" }}>
         <BrowserRouter>
-          <Routes><Route path="/solo/:account/*" element={<GrowthHub />} /><Route path="*" element={<Navigate to="/solo/review/growth/sales" replace />} /></Routes>
+          <Toaster/><Routes><Route path="/solo/:account/clients/*" element={<TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={()=>{}} />} /><Route path="/solo/:account/*" element={<GrowthHub />} /><Route path="*" element={<Navigate to="/solo/review/growth/sales" replace />} /></Routes>
         </BrowserRouter>
       </main>
     </div>
