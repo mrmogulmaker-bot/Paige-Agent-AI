@@ -204,41 +204,36 @@ describe("Solo Settings rendered customer copy", () => {
     expect(text).not.toContain("A2P");
   });
 
-  /**
-   * Replaces "places the compact Business phone search first in Connections".
-   *
-   * That test encoded the IA this redesign removes: number search rendered as a
-   * full-width accented panel at the top of Connections, so it read as the whole
-   * feature and pushed registration, sending identity and delivery below the
-   * fold. Business phone is now ONE of four named Communications subsections,
-   * and search is a peer card inside it.
-   */
-  it("presents Communications as four named subsections, not a phone search", () => {
-    const html = renderDestination("connections");
-    const text = renderedText(html);
+  it("keeps Communications focused on communication methods", () => {
+    const text = renderedText(renderDestination("connections"));
 
-    for (const heading of ["Business phone", "Messaging registration", "Sending identity", "Delivery health"]) {
-      expect(text, `missing subsection: ${heading}`).toContain(heading);
-    }
-    // The search subsection is present. The CONTROL itself is authority-gated and
-    // this render is static — `renderToStaticMarkup` runs no effects, so
-    // `is_current_user_tenant_admin` never resolves and the panel correctly shows
-    // its read-only notice. Asserting the button here would either fail or force
-    // the gate open for the test's convenience. It is asserted below, in the test
-    // that actually mounts.
-    expect(text).toContain("Find a number");
+    expect(text).toContain("Business phone");
+    expect(text).toContain("Sending identity");
+    expect(text).not.toContain("Find a number");
+    expect(text).not.toContain("Messaging registration");
+    expect(text).not.toContain("Consent and opt-outs");
+    expect(text).not.toContain("Delivery health");
+    expect(text).not.toContain("Billing for messaging");
   });
 
-  it("does not let number search lead the surface", () => {
-    const html = renderDestination("connections");
-    // The number RECORD still comes before the search form: what this business
-    // HAS is stated before what it could look for. That ordering is the part
-    // worth locking, and it survives the panel going live.
-    expect(html.indexOf("Number on this business")).toBeLessThan(html.indexOf("Find a number"));
-    // The accent treatment is no longer withheld: this panel now performs the
-    // act of the subsection (search and buy), which is what the treatment marks.
-    // Asserting its ABSENCE would now be asserting that the live control looks
-    // inert, which is the opposite of what this surface should say.
+  it("puts number search and the complete messaging-registration area in Registration", () => {
+    testState.tab = "connections";
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/solo/1971670/settings/connections?segment=registration"]}>
+        <Routes>
+          <Route path="/solo/:account/settings/:tab" element={<SoloSettings />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const text = renderedText(html);
+
+    expect(html).toMatch(/aria-selected="true"[^>]*>Registration</);
+    for (const heading of ["Find a number", "Messaging registration", "Carrier registration", "Consent and opt-outs", "Complete registration"]) {
+      expect(text, "missing Registration content: " + heading).toContain(heading);
+    }
+    expect(html.indexOf("Find a number")).toBeLessThan(html.indexOf("Messaging registration"));
+    expect(html.indexOf("Messaging registration")).toBeLessThan(html.indexOf("Complete registration"));
+    expect(text).not.toContain("Number on this business");
   });
 
   /**
@@ -257,6 +252,23 @@ describe("Solo Settings rendered customer copy", () => {
    * that #657 ships a real Integrations destination is the owner's call and
    * that lane's, not this PR's.
    */
+  it("keeps readiness, delivery, and messaging billing under Health", () => {
+    testState.tab = "connections";
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/solo/1971670/settings/connections?segment=health"]}>
+        <Routes>
+          <Route path="/solo/:account/settings/:tab" element={<SoloSettings />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const text = renderedText(html);
+
+    expect(html).toMatch(/aria-selected="true"[^>]*>Health</);
+    expect(text).toContain("Business texting readiness");
+    expect(text).toContain("Delivery health");
+    expect(text).toContain("Billing for messaging");
+  });
+
   it("does not build an Integrations tab inside Connections", () => {
     const text = renderedText(renderDestination("connections"));
     // No Integrations destination of Connections' own — the §18 duplication.
@@ -306,6 +318,9 @@ describe("Solo Settings rendered customer copy", () => {
         </MemoryRouter>,
       );
     });
+
+    const registrationTab = Array.from(host.querySelectorAll("button")).find((c) => (c.textContent ?? "").trim() === "Registration");
+    await act(async () => registrationTab?.click());
 
     const button = Array.from(host.querySelectorAll("button")).find((c) => (c.textContent ?? "").includes("Search numbers"));
     const form = button?.closest("form");

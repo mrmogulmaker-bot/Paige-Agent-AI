@@ -30,6 +30,7 @@ import {
 import { useSoloA2P, type EditDraft } from "./data/useSoloA2P";
 import { useSoloA2PProvider } from "./data/useSoloA2PProvider";
 import { A2PComplianceSession } from "./A2PComplianceSession";
+import { RegistrationBusinessRecord } from "./settings-registration-business";
 import { rememberOAuthReturn } from "./data/oauthReturn";
 import { SoloIntegrationsView } from "./settings-integrations";
 import { SoloTeamWorkspace } from "./team-workspace";
@@ -455,14 +456,10 @@ const PROVIDERS = [
 /**
  * Settings → Connections.
  *
- * Communications owns provider setup and readiness; Integrations is its own
- * top-level area rather than a shelf inside Communications; Health is a
- * SECONDARY projection of the same canonical record, never a competing owner.
- *
- * Business phone is one step among four here. It previously rendered as a
- * full-width accented panel with a search form at the top of the surface, which
- * made number search read as the whole feature and pushed messaging
- * registration, sending identity and delivery below the fold.
+ * Communications owns the methods a workspace uses to communicate; Integrations
+ * is its own top-level area rather than a shelf inside Communications. Number
+ * acquisition and every carrier-registration concern live in Registration;
+ * readiness and delivery reporting live in Health.
  */
 type ConnectionsSegment = "communications" | "calendars" | "registration" | "health" | "available";
 
@@ -490,9 +487,9 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
   const a2pProvider = useSoloA2PProvider();
   const { activeTenantId: registrationTenant } = useTenantContext();
   const identity = useManagedIdentity();
-  // The owner-locked Connections shape, from #660: Communications owns whether a
-  // message can send, Calendars owns scheduling configuration, Health reports
-  // readiness, and Available stays the provider catalogue.
+  // Communications contains communication methods, Registration contains number
+  // acquisition and carrier filing, Calendars contains scheduling configuration,
+  // Health reports readiness, and Available stays the provider catalogue.
   //
   // The initial segment comes from the VALIDATED entry state, so the Calendar's
   // "Manage calendar settings" exit opens calendar settings. Arriving on
@@ -587,13 +584,50 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
     {view === "calendars" && <CalendarsView/>}
 
     {view === "registration" && <div className="ss-sections">
-      <Subsection id="ss-sub-a2p" title="Carrier registration"
-        blurb="Before a carrier will deliver your texts, it needs your business on record and the exact wording of what you send.">
+      {readFailureNotice}
+      <PhoneSetupPanel numbers={numbers} onPurchased={readiness.retry}/>
+
+      <Subsection id="ss-sub-registration" title="Messaging registration"
+        blurb="Carriers require a registered business, and a recorded agreement from each person, before any text can send.">
         <div className="ss-grid">
-          {/* One card, deliberately. A "where this stands" card here would have restated
-              the grading that Communications already carries — two homes for one answer,
-              free to disagree the moment either is edited. The panel reports the
-              registration's own state as part of doing the work. */}
+          <Card title="Carrier registration" icon={Webhook}
+            truth={r ? registrationStep(r).truth : "PARTIAL"}
+            actions={r ? <Status tone={registrationStep(r).tone}>{registrationStep(r).state}</Status> : undefined}>
+            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
+              {r ? <>
+                <p>{registrationStep(r).detail}</p>
+                <StepRows steps={stepByName(r, businessDetailsStep(r).n)}/>
+              </> : noRecord("registration")}
+            </ReadState>
+            {/* These three fields live in SETUP, not here (owner ruling,
+                2026-08-31): the business owner, legal name, address and phone are
+                Setup's, and Connections owns only what we hand the tenant from our
+                own server — the sending domain and the email address on it.
+
+                So this card GRADES them and points at their one home. An earlier
+                revision of this branch put an editor here, which made Connections a
+                second place to type a business name while `SuBusiness` on Setup was
+                already the first — exactly the duplication §18 exists to stop. */}
+            <p className="ss-note">
+              Your legal name, website and business phone live in{" "}
+              <Link to={`/solo/${account}/settings/setup`}>Setup</Link>. Carriers read them from there.
+            </p>
+          </Card>
+          <Card title="Consent and opt-outs" icon={ShieldCheck}
+            truth={r ? consentStep(r).truth : "PARTIAL"}
+            actions={r ? <Status tone={consentStep(r).tone}>{consentStep(r).state}</Status> : undefined}>
+            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
+              {r ? <p>{consentStep(r).detail}</p>
+                 : noRecord("consent")}
+            </ReadState>
+            <p className="ss-note">Consent is recorded when a person replies to confirm. Nothing else on this account writes it.</p>
+          </Card>
+        </div>
+      </Subsection>
+
+      <Subsection id="ss-sub-a2p" title="Complete registration"
+        blurb="Review the required information, file it with Twilio, and follow the returned carrier status.">
+        <div className="ss-grid">
           <RegistrationPanel key={registrationTenant ?? "unresolved"} a2p={a2p} provider={a2pProvider} account={account}
             status={r ? { tone: registrationStep(r).tone, state: registrationStep(r).state, detail: registrationStep(r).detail } : null}
             statusLoading={readiness.loading}/>
@@ -622,55 +656,6 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
               </> : noRecord("number")}
             </ReadState>
           </Card>
-          <PhoneSetupPanel numbers={numbers} onPurchased={readiness.retry}/>
-        </div>
-      </Subsection>
-
-      <Subsection id="ss-sub-registration" title="Messaging registration"
-        blurb="Carriers require a registered business, and a recorded agreement from each person, before any text can send.">
-        <div className="ss-grid">
-          <Card title="Carrier registration" icon={Webhook}
-            truth={r ? registrationStep(r).truth : "PARTIAL"}
-            actions={r ? <Status tone={registrationStep(r).tone}>{registrationStep(r).state}</Status> : undefined}>
-            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
-              {r ? <>
-                <p>{registrationStep(r).detail}</p>
-                <StepRows steps={stepByName(r, businessDetailsStep(r).n)}/>
-              </> : noRecord("registration")}
-            </ReadState>
-            {/* This card GRADES; it does not act. Its previous sentence said a
-                registration could be "prepared and saved here", which stopped being true
-                the moment the editor existed elsewhere — this card has no controls at
-                all. So the sentence now points at the one place the act lives (§18),
-                rather than describing a capability this card does not have (§13). */}
-            <p className="ss-note">
-              Carrier filing and returned status are managed in{" "}
-              <button type="button" className="ss-linklike" onClick={() => changeView("registration")}>Registration</button>,
-              using the active workspace&rsquo;s Twilio connection.
-            </p>
-            {/* These three fields live in SETUP, not here (owner ruling,
-                2026-08-31): the business owner, legal name, address and phone are
-                Setup's, and Connections owns only what we hand the tenant from our
-                own server — the sending domain and the email address on it.
-
-                So this card GRADES them and points at their one home. An earlier
-                revision of this branch put an editor here, which made Connections a
-                second place to type a business name while `SuBusiness` on Setup was
-                already the first — exactly the duplication §18 exists to stop. */}
-            <p className="ss-note">
-              Your legal name, website and business phone live in{" "}
-              <Link to={`/solo/${account}/settings/setup`}>Setup</Link>. Carriers read them from there.
-            </p>
-          </Card>
-          <Card title="Consent and opt-outs" icon={ShieldCheck}
-            truth={r ? consentStep(r).truth : "PARTIAL"}
-            actions={r ? <Status tone={consentStep(r).tone}>{consentStep(r).state}</Status> : undefined}>
-            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
-              {r ? <p>{consentStep(r).detail}</p>
-                 : noRecord("consent")}
-            </ReadState>
-            <p className="ss-note">Consent is recorded when a person replies to confirm. Nothing else on this account writes it.</p>
-          </Card>
         </div>
       </Subsection>
 
@@ -698,6 +683,53 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
               <GoogleSendingAccountPanel comms={comms}/>
             </ReadState>
             <p className="ss-note">Google only. There is no Outlook connection on this platform yet, and none is implied here.</p>
+          </Card>
+        </div>
+      </Subsection>
+
+    </div>}
+
+    {view === "health" && <div className="ss-sections">
+      <Subsection id="ss-sub-health" title="Readiness"
+        blurb="A secondary view of the same records shown above — the ordered path to being operational.">
+        <div className="ss-grid">
+          <Card title="Business texting readiness" icon={Webhook}
+            truth={r ? (r.can_send_sms ? "LIVE" : "PARTIAL") : "PARTIAL"}
+            // `r` alone is the correct guard, and `&& !readFailed` was removed as
+            // dead: `useCommsReadiness` sets `value: error ? null : row`, so a
+            // record and an error can never coexist. A previous commit message
+            // claimed this pill "was populated from a record that had not been
+            // read" — it was not, and the added conjunct could not have changed
+            // anything. Left simple rather than defensively redundant, because a
+            // guard that cannot fire reads as a repair that never happened.
+            actions={r ? (r.can_send_sms ? <Status tone="ok">Ready to text</Status> : <Status tone="warn">Texting is not ready yet</Status>) : undefined}>
+            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
+              {/* "Texting is not ready yet" is a definite claim about the account,
+                  and it used to head the FAILED-READ block — one line above a
+                  sentence saying nothing is being claimed about the account. The
+                  five Communications cards were repaired and this was missed. */}
+              {readFailed ? <div className="ss-next ss-read-failure" role="status">
+                  <strong>We couldn&rsquo;t read this account&rsquo;s setup</strong>
+                  <p>Nothing below is being claimed about it. Try again in a moment.</p>
+                  <p><button type="button" className="ss-retry" onClick={readiness.retry}>Try again</button></p>
+                </div>
+              : r ? <>
+                  {!r.can_send_sms && r.blocked_reason && (
+                    <div className="ss-next">
+                      <strong>{(READINESS_COPY[r.blocked_reason] ?? { headline: "Texting is not ready yet" }).headline}</strong>
+                      <p>{(READINESS_COPY[r.blocked_reason] ?? { next: "Some setup is still outstanding." }).next}</p>
+                    </div>
+                  )}
+                  <ReadinessLadder r={r}/>
+                  <p className="ss-note">Each step reports what its own record says. A step that cannot be checked says so
+                    rather than assuming it passed. This view reflects the workspace&rsquo;s saved setup and provider evidence.</p>
+                </>
+              : notReady("We don\u2019t have a setup to read for this account yet.")}
+            </ReadState>
+          </Card>
+          <Card title="Supported failure states" icon={TriangleAlert} truth="PARTIAL">
+            <div className="ss-state-list"><Status tone="warn">DNS pending</Status><Status tone="bad">DNS failure</Status><Status tone="bad">Token expired / revoked</Status><Status tone="bad">Webhook failure</Status><Status tone="warn">A2P pending</Status><Status tone="bad">A2P rejected</Status><Status tone="ok">A2P approved</Status><Status>Disconnected</Status></div>
+            <p className="ss-note">These are display states this surface supports. They are <strong>not</strong> claims about this account.</p>
           </Card>
         </div>
       </Subsection>
@@ -738,52 +770,6 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
       </Subsection>
     </div>}
 
-    {view === "health" && <div className="ss-sections">
-      <Subsection id="ss-sub-health" title="Readiness"
-        blurb="A secondary view of the same records shown above — the ordered path to being operational.">
-        <div className="ss-grid">
-          <Card title="Business texting readiness" icon={Webhook}
-            truth={r ? (r.can_send_sms ? "LIVE" : "PARTIAL") : "PARTIAL"}
-            // `r` alone is the correct guard, and `&& !readFailed` was removed as
-            // dead: `useCommsReadiness` sets `value: error ? null : row`, so a
-            // record and an error can never coexist. A previous commit message
-            // claimed this pill "was populated from a record that had not been
-            // read" — it was not, and the added conjunct could not have changed
-            // anything. Left simple rather than defensively redundant, because a
-            // guard that cannot fire reads as a repair that never happened.
-            actions={r ? (r.can_send_sms ? <Status tone="ok">Ready to text</Status> : <Status tone="warn">Texting is not ready yet</Status>) : undefined}>
-            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
-              {/* "Texting is not ready yet" is a definite claim about the account,
-                  and it used to head the FAILED-READ block — one line above a
-                  sentence saying nothing is being claimed about the account. The
-                  five Communications cards were repaired and this was missed. */}
-              {readFailed ? <div className="ss-next ss-read-failure" role="status">
-                  <strong>We couldn&rsquo;t read this account&rsquo;s setup</strong>
-                  <p>Nothing below is being claimed about it. Try again in a moment.</p>
-                  <p><button type="button" className="ss-retry" onClick={readiness.retry}>Try again</button></p>
-                </div>
-              : r ? <>
-                  {!r.can_send_sms && r.blocked_reason && (
-                    <div className="ss-next">
-                      <strong>{(READINESS_COPY[r.blocked_reason] ?? { headline: "Texting is not ready yet" }).headline}</strong>
-                      <p>{(READINESS_COPY[r.blocked_reason] ?? { next: "Some setup is still outstanding." }).next}</p>
-                    </div>
-                  )}
-                  <ReadinessLadder r={r}/>
-                  <p className="ss-note">Each step reports what its own record says. A step that cannot be checked says so
-                    rather than assuming it passed. Setup lives under Communications; this view only reflects it.</p>
-                </>
-              : notReady("We don\u2019t have a setup to read for this account yet.")}
-            </ReadState>
-          </Card>
-          <Card title="Supported failure states" icon={TriangleAlert} truth="PARTIAL">
-            <div className="ss-state-list"><Status tone="warn">DNS pending</Status><Status tone="bad">DNS failure</Status><Status tone="bad">Token expired / revoked</Status><Status tone="bad">Webhook failure</Status><Status tone="warn">A2P pending</Status><Status tone="bad">A2P rejected</Status><Status tone="ok">A2P approved</Status><Status>Disconnected</Status></div>
-            <p className="ss-note">These are display states this surface supports. They are <strong>not</strong> claims about this account.</p>
-          </Card>
-        </div>
-      </Subsection>
-    </div>}
-
     {/* #660's provider catalogue, preserved verbatim. This branch had deleted it
         and disclosed the resulting visibility gap under §58; #657 then shipped a
         real top-level Integrations owner, and #660 annotated Available as part of
@@ -795,12 +781,11 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
 }
 
 /**
- * Business phone provisioning — a PEER of the number record, not the surface.
+ * Phone-number acquisition for Registration.
  *
- * Previously this rendered full-width with an accent rail at the top of
- * Connections, so number search visually replaced the whole feature. It is now
- * one card inside the Business phone subsection, and it still states its own
- * ceiling: no provider search runs from here.
+ * The active number remains a communication method under Communications.
+ * Searching and buying are setup operations, so this panel lives with the
+ * workspace&rsquo;s registration journey.
  */
 /* ---------------------------------------------------------------------------
  * Editable Connections controls.
@@ -1216,6 +1201,10 @@ function RegistrationPanel({ a2p, provider, account, status, statusLoading }: {
   status: { tone: string; state: string; detail: string } | null;
   statusLoading: boolean;
 }) {
+  // Opened by the owner, and only then does the canonical business record get mounted —
+  // held here rather than inside the block so a save that empties the shortfall does not
+  // unmount the form mid-edit and take the confirmation with it.
+  const [businessEditor, setBusinessEditor] = useState(false);
   const [legal, setLegal] = useState("");
   const [site, setSite] = useState("");
   const [hint, setHint] = useState("");
@@ -1277,6 +1266,14 @@ function RegistrationPanel({ a2p, provider, account, status, statusLoading }: {
 
   const providerReg = provider.state.registration;
   const phase = providerReg?.submission_phase ?? "prepared";
+  // `hasLeftPreparation` mirrors the server's eight immutability conditions, but three of them
+  // read provider SIDs this browser is not granted (see useSoloA2P's select). The provider's
+  // own status read already computes them as booleans, so the lock is completed here rather
+  // than by asking for columns the grant refuses. Without this, a carrier-linked registration
+  // whose per-leg statuses still read 'pending' is offered the editor and a PAID model call
+  // the server then refuses.
+  const carrierLinked = Boolean(providerReg?.has_brand || providerReg?.has_campaign || providerReg?.has_messaging_service);
+  const locked = a2p.locked || carrierLinked;
   const startProvider = (action: "start_brand" | "resume_brand" | "start_campaign" | "resume_campaign") => void provider.begin(action);
   const providerControls = <div className="ss-a2p-stages">
     <div className="ss-a2p-stage-list" aria-label="Registration progress">
@@ -1291,7 +1288,12 @@ function RegistrationPanel({ a2p, provider, account, status, statusLoading }: {
     </div>
     {provider.state.eligible_number ? <div className="ss-fields"><Field label="Eligible workspace number" value={provider.state.eligible_number.phone_number}/><Field label="Number association" value={providerReg?.number_association_status ?? "Not started"}/><Field label="Carrier number status" value={providerReg?.number_registration_status ?? "Not started"}/></div>
       : <div className="ss-next"><strong>No eligible workspace number</strong><p>Add an SMS-capable Twilio number to this workspace before filing.</p></div>}
-    {provider.state.missing_profile_fields.length > 0 && <div className="ss-next"><strong>Complete the business record first</strong><p>Missing: {provider.state.missing_profile_fields.join(", ")}.</p><p><Link to={`/solo/${account}/settings/setup`}>Complete these in Setup</Link>. Tax and registration numbers stay sealed.</p></div>}
+    {/* Was: the shortfall, and a link away. Naming what blocks a filing is not resolving
+        it (§70) — the same facts are now completable here, against the same record. */}
+    <RegistrationBusinessRecord account={account} canManage={a2p.canManage}
+      missing={provider.state.missing_profile_fields}
+      open={businessEditor} onOpenChange={setBusinessEditor}
+      onSaved={() => { void provider.refresh(); a2p.refresh(); }}/>
     {providerReg?.failure_reason && <div className="ss-next" role="alert"><strong>Twilio needs a correction</strong><p>{providerReg.failure_reason}</p></div>}
     <div className="ss-form-actions">
       {!providerReg?.has_brand && !["brand_draft","brand_submitted"].includes(phase) && <button type="button" className="ss-btn" disabled={provider.busy || !draft || provider.state.missing_profile_fields.length > 0 || !provider.state.eligible_number} onClick={() => startProvider("start_brand")}>Start secure brand registration</button>}
@@ -1324,7 +1326,7 @@ function RegistrationPanel({ a2p, provider, account, status, statusLoading }: {
       <p><button type="button" className="ss-retry" onClick={a2p.refresh}>Try again</button></p>
     </div>;
     if (!a2p.canManage) return <NotYours what="this business's carrier registration"/>;
-    if (a2p.locked) return <>
+    if (locked) return <>
       <p>This registration has moved past preparation, so its copy is locked. Changes now go through the carrier, not through here.</p>
       <div className="ss-fields">
         <Field label="Status" value={reg?.status ?? null}/>
@@ -1581,7 +1583,7 @@ function SoloSettingsContent({ openPaige }: { openPaige?: () => void }) {
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
   const view = tab === "team" ? <TeamView openPaige={openPaige}/> : tab === "connections" ? <ConnectionsView initialSegment={segment} onSegmentChange={resetSettingsScroll}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <SoloBillingView/> : <SoloBusinessContextSetup account={account}/>;
   return <div ref={rootRef} className="solo-settings">
-    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "setup" ? "The owner-confirmed business truth Paige may use to understand and support this workspace." : current.key === "connections" ? "Communications owns whether a message can send. Calendars owns scheduling, links, routing and notification rules." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
+    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "setup" ? "The owner-confirmed business truth Paige may use to understand and support this workspace." : current.key === "connections" ? "Communication methods, registration, schedules, and verified status for this workspace." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}
     {current.key === "setup" && <SettingsMoveNotice key={account}/>}
     <div className="ss-content" data-settings-tab={tab} data-tab-count={tabs.length}>{view}</div>

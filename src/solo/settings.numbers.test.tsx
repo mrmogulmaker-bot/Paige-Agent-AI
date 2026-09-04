@@ -115,6 +115,11 @@ async function mount() {
   });
 }
 const text = () => host.textContent ?? "";
+async function openRegistration() {
+  const tab = [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === "Registration") as HTMLButtonElement | undefined;
+  expect(tab, "Registration tab should render").toBeTruthy();
+  await act(async () => { tab!.click(); });
+}
 function button(label: string): HTMLButtonElement | undefined {
   return [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(label)) as HTMLButtonElement | undefined;
 }
@@ -159,6 +164,7 @@ beforeEach(() => {
 describe("Finding a number actually searches", () => {
   it("reaches the real seam instead of reporting that it cannot", async () => {
     await mount();
+    await openRegistration();
     await search();
     expect(state.invoke.mock.calls.some((c) => c[0] === "comms-search-numbers")).toBe(true);
     // The old panel's copy must be gone, not merely outvoted by new copy.
@@ -167,6 +173,7 @@ describe("Finding a number actually searches", () => {
 
   it("renders a result with its price and what it can do", async () => {
     await mount();
+    await openRegistration();
     await search();
     expect(text()).toContain("+14045550123");
     expect(text()).toContain("Atlanta, GA");
@@ -180,6 +187,7 @@ describe("Finding a number actually searches", () => {
     // reported the type as priced — so the row said "—" with no explanation and the
     // purchase confirm called a known amount "an unlisted monthly price".
     await mount();
+    await openRegistration();
     await search();
     expect(text()).toContain("$1.20/mo");
     expect(text()).not.toContain("pricing pending");
@@ -191,12 +199,14 @@ describe("Finding a number actually searches", () => {
       error: null,
     }));
     await mount();
+    await openRegistration();
     await search();
     expect(text()).toContain("no price on file yet");
   });
 
   it("passes the state, city and starts-with filters through", async () => {
     await mount();
+    await openRegistration();
     type("404", "404");
     type("GA", "GA");
     type("Atlanta", "Atlanta");
@@ -209,6 +219,7 @@ describe("Finding a number actually searches", () => {
 
   it("searches toll-free WITHOUT an area code, because the prefix is the area code", async () => {
     await mount();
+    await openRegistration();
     type("404", "404");
     selectKind("tollfree");
     await search();
@@ -222,6 +233,7 @@ describe("Finding a number actually searches", () => {
     // numbers matched" would blame the search for something it did not do.
     state.invoke = vi.fn(async () => ({ data: { needs_config: true, message: "Messaging isn't set up yet.", numbers: [] }, error: null }));
     await mount();
+    await openRegistration();
     await search();
     expect(text()).toContain("can't buy a number yet");
     expect(text()).toContain("Messaging isn't set up yet.");
@@ -231,6 +243,7 @@ describe("Finding a number actually searches", () => {
   it("distinguishes a genuinely empty result from a setup gap", async () => {
     state.invoke = vi.fn(async () => ({ data: { numbers: [], needs_config: false, price_configured: true }, error: null }));
     await mount();
+    await openRegistration();
     await search();
     expect(text()).toContain("No numbers matched");
     expect(text()).not.toContain("can't buy a number yet");
@@ -240,6 +253,7 @@ describe("Finding a number actually searches", () => {
 describe("Buying a number spends money, and says so honestly", () => {
   it("asks before it charges, and does not buy when refused", async () => {
     await mount();
+    await openRegistration();
     await search();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     await act(async () => { button("Buy")?.click(); });
@@ -250,6 +264,7 @@ describe("Buying a number spends money, and says so honestly", () => {
 
   it("buys through the existing seam once confirmed", async () => {
     await mount();
+    await openRegistration();
     await search();
     vi.spyOn(window, "confirm").mockReturnValue(true);
     state.invoke = vi.fn(async () => ({ data: { purchased: true, phone_number: "+14045550123", twilio_sid: "PN4045550123" }, error: null }));
@@ -271,6 +286,7 @@ describe("Buying a number spends money, and says so honestly", () => {
     // Telling someone they own a number they do not is the worst outcome on this
     // surface: they stop looking, and nothing was bought.
     await mount();
+    await openRegistration();
     await search();
     vi.spyOn(window, "confirm").mockReturnValue(true);
     state.invoke = vi.fn(async () => ({ data: { error: "number_unavailable" }, error: null }));
@@ -281,6 +297,7 @@ describe("Buying a number spends money, and says so honestly", () => {
 
   it("treats needs_config on a purchase as a failure, not a purchase", async () => {
     await mount();
+    await openRegistration();
     await search();
     vi.spyOn(window, "confirm").mockReturnValue(true);
     state.invoke = vi.fn(async () => ({ data: { needs_config: true, error: "twilio_subaccount_not_provisioned" }, error: null }));
@@ -366,6 +383,7 @@ describe("Authority", () => {
     // hidden the capability from a coach the server permits.
     state.isAdmin = false;
     await mount();
+    await openRegistration();
     expect(button("Search numbers")).toBeUndefined();
     expect(text()).toContain("Only a workspace admin can change the numbers on this business");
   });

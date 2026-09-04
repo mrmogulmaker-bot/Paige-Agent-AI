@@ -60,6 +60,9 @@ import { settingsScrollOwner } from "./settings-scroll-owner";
 import {
   ADDRESS_AUTOCOMPLETE,
   COUNTRY_OPTIONS,
+  ENTITY_TYPE_OPTIONS,
+  REGISTRATION_IDENTIFIER_OPTIONS,
+  REPRESENTATIVE_POSITION_OPTIONS,
   US_STATE_OPTIONS,
   lookupUsZip,
   type AddressOption,
@@ -128,17 +131,7 @@ const profileFields: Field[] = [
   {
     key: "entityType",
     label: "Entity type",
-    options: [
-      "",
-      "Individual / sole proprietor",
-      "Co-operative",
-      "Corporation",
-      "Limited Liability Company",
-      "Non-profit Corporation",
-      "Partnership",
-      "Trust",
-      "Other legal person",
-    ],
+    options: [...ENTITY_TYPE_OPTIONS],
   },
   {
     key: "stateOfFormation",
@@ -148,19 +141,7 @@ const profileFields: Field[] = [
   {
     key: "businessRegistrationIdentifier",
     label: "Registration identifier",
-    options: [
-      "",
-      "EIN",
-      "DUNS",
-      "CBN",
-      "CN",
-      "ACN",
-      "CIN",
-      "VAT",
-      "VATRN",
-      "RN",
-      "OTHER",
-    ],
+    options: [...REGISTRATION_IDENTIFIER_OPTIONS],
   },
   {
     key: "businessRegistrationNumber",
@@ -213,16 +194,7 @@ const representativeFields: Field[] = [
   {
     key: "authorizedRepresentativeJobPosition",
     label: "Representative position",
-    options: [
-      "",
-      "Director",
-      "GM",
-      "VP",
-      "CEO",
-      "CFO",
-      "General Counsel",
-      "Other",
-    ],
+    options: [...REPRESENTATIVE_POSITION_OPTIONS],
   },
 ];
 const legacyVoiceFields: Field[] = [
