@@ -1195,19 +1195,35 @@ paper and reached nobody.
 | A refusal is reported as a refusal, never as an empty feed | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (as "could not be loaded", without naming how access is decided) | 403 |
 | A previous workspace's activity can paint after a switch | — | — | — | — | — | — | 403 |
 
+**The third row is the §59 correction, and it is the only access this ship REMOVES (§58).**
+`pce_staff_read` combines a tenant-agnostic `has_any_role()` with `current_user_tenant_id()`, which
+honours `active_tenant_id` for an active `tenant_members` row at **any** role. A plain member of
+workspace B holding a global `coach`/`admin` role earned in workspace A could therefore have read
+B's whole tenant Rail — had the table grant not already made the read moot. The resolver requires an
+active `tenant_members` row **of the resolved workspace** at owner/admin/coach. The policy is
+unchanged and still carries the trap; it is simply unreachable from these four consumers. Other
+direct readers still go through it — the two Analytics surfaces, tracked as **#802**.
+
 #### Agent attribution and workspace-level activity — SHIPS WITH PR #925 (§66)
 
-**Recorded here as PENDING, not as shipped.** The migration applies to production through
+**Read the marks before the rows. `◻` is not `✓`.**
+
+`◻` means the READ supports it and **nothing writes it yet** — capacity, not behaviour. Every
+tier below therefore sees *nothing* today, and will keep seeing nothing until a producer passes
+an acting agent. Ticking `✓` here would claim a capability the PR body itself says nothing can
+produce, which is the drift §66 exists to stop.
+
+**Recorded as PENDING, not as shipped.** The migration applies to production through
 `deploy-migrations.yml` on merge to `main`; until that runs and `db-live` moves, these rows describe
 what the PR delivers, not what a tenant can do. The §32.a persisted-apply confirmation is owed after
 merge. Ticking these early would be the same lie as a fabricated metric.
 
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
-| Rail history names the ACTING AGENT (`get_solo_rail_activity` gains a 12th column, `actor_agent`) | ✓ (operator) | ✓ | ✓ | ✓ | ✓ (its OWN rail) | — | 403 |
-| …but only where the agent has a tenant-safe name (`paige_subagents.rail_display_name`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Rail history names the ACTING AGENT (`get_solo_rail_activity` gains a 12th column, `actor_agent`) | ◻ (operator) | ◻ | ◻ | ◻ | ◻ (its OWN rail) | — | 403 |
+| …but only where the agent has a tenant-safe name (`paige_subagents.rail_display_name`) | ◻ | ◻ | ◻ | ◻ | ◻ | — | 403 |
 | Sees the name of an agent belonging to ANOTHER workspace | — | — | — | — | — | — | 403 |
-| Rail carries workspace-level work with no contact (`game_plan` · `system_check` · `agent_config` · `agent_run`) | ✓ (operator) | ✓ | ✓ | ✓ | ✓ (its OWN) | — | 403 |
+| Rail carries workspace-level work with no contact (`game_plan` · `system_check` · `agent_config` · `agent_run`) | ◻ (operator) | ◻ | ◻ | ◻ | ◻ (its OWN) | — | 403 |
 | Writes a Rail event naming another workspace's agent | — | — | — | — | — | — | 403 |
 
 **Row 2 is the §11 line, and it is deliberate.** `rail_display_name IS NULL` means an agent has no
@@ -1228,15 +1244,6 @@ turn legally-written rows foreign, and no write-time check can reach back throug
 Every Rail write from the form pipeline has failed since that pipeline shipped. Solo and sub-account
 tenants get form-submission events on their Rail for the first time — not a new capability, a
 capability that was specified and never once worked.
-
-**The third row is the §59 correction, and it is the only access this ship REMOVES (§58).**
-`pce_staff_read` combines a tenant-agnostic `has_any_role()` with `current_user_tenant_id()`, which
-honours `active_tenant_id` for an active `tenant_members` row at **any** role. A plain member of
-workspace B holding a global `coach`/`admin` role earned in workspace A could therefore have read
-B's whole tenant Rail — had the table grant not already made the read moot. The resolver requires an
-active `tenant_members` row **of the resolved workspace** at owner/admin/coach. The policy is
-unchanged and still carries the trap; it is simply unreachable from these four consumers. Other
-direct readers still go through it — the two Analytics surfaces, tracked as **#802**.
 
 **Sub-account row, stated explicitly because §51 exists for exactly this.** `get_solo_rail_activity`
 takes **no tenant argument**; it resolves the workspace server-side. A sub-account therefore reads

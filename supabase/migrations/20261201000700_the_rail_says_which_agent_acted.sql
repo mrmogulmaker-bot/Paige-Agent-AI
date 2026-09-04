@@ -82,6 +82,29 @@ UPDATE public.paige_subagents
  WHERE tenant_id IS NOT NULL
    AND rail_display_name IS NULL;
 
+-- The backfill fixes the rows that exist. This fixes the ones that do not yet, and it lives in the
+-- database rather than in `subagent-forge` because the forge is not the only writer and a rule that
+-- has to be REMEMBERED at each call site is a rule that eventually is not. Without it, every agent
+-- a tenant forges after this migration would be nameless on their own Rail.
+--
+-- Platform agents are deliberately NOT defaulted: a new one stays unnamed until someone decides it
+-- is fit for a business owner to read. Unnamed is the safe direction, and it is the direction a
+-- forgotten decision falls in.
+CREATE OR REPLACE FUNCTION public._paige_subagent_rail_name()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_catalog AS $$
+BEGIN
+  IF NEW.tenant_id IS NOT NULL AND NEW.rail_display_name IS NULL THEN
+    NEW.rail_display_name := NEW.name;
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public._paige_subagent_rail_name() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS paige_subagent_rail_name ON public.paige_subagents;
+CREATE TRIGGER paige_subagent_rail_name
+  BEFORE INSERT OR UPDATE OF name, tenant_id ON public.paige_subagents
+  FOR EACH ROW EXECUTE FUNCTION public._paige_subagent_rail_name();
+
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- 2. THE CONTACT RAIL CARRIES THE ACTING AGENT
@@ -92,11 +115,14 @@ ALTER TABLE public.paige_client_events
   ADD COLUMN IF NOT EXISTS actor_agent_slug  text,
   ADD COLUMN IF NOT EXISTS actor_agent_label text;
 
-ALTER TABLE public.paige_client_events
-  DROP CONSTRAINT IF EXISTS paige_client_events_actor_agent_fk;
-ALTER TABLE public.paige_client_events
-  ADD  CONSTRAINT paige_client_events_actor_agent_fk
-       FOREIGN KEY (actor_agent_slug) REFERENCES public.paige_subagents(slug) ON DELETE SET NULL;
+-- DELIBERATELY NO FOREIGN KEY. `ON DELETE SET NULL` would null this column on every historical
+-- row when an agent is retired, and the reader withholds a label whose slug is null — so deleting
+-- one agent would erase its attribution from history. That is the exact retroactive-erasure failure
+-- this design rejects a read-time join for; reintroducing it through a delete rule would be the same
+-- bug wearing a constraint. The write guard already proves the slug existed and was in scope at the
+-- moment it was written, which is what an append-only record needs. Referential tidiness is not
+-- worth a record that changes after the fact.
+ALTER TABLE public.paige_client_events DROP CONSTRAINT IF EXISTS paige_client_events_actor_agent_fk;
 
 CREATE INDEX IF NOT EXISTS paige_client_events_actor_agent
   ON public.paige_client_events(actor_agent_slug) WHERE actor_agent_slug IS NOT NULL;
@@ -125,11 +151,14 @@ ALTER TABLE public.paige_workspace_events
   ADD COLUMN IF NOT EXISTS actor_agent_slug  text,
   ADD COLUMN IF NOT EXISTS actor_agent_label text;
 
-ALTER TABLE public.paige_workspace_events
-  DROP CONSTRAINT IF EXISTS paige_workspace_events_actor_agent_fk;
-ALTER TABLE public.paige_workspace_events
-  ADD  CONSTRAINT paige_workspace_events_actor_agent_fk
-       FOREIGN KEY (actor_agent_slug) REFERENCES public.paige_subagents(slug) ON DELETE SET NULL;
+-- DELIBERATELY NO FOREIGN KEY. `ON DELETE SET NULL` would null this column on every historical
+-- row when an agent is retired, and the reader withholds a label whose slug is null — so deleting
+-- one agent would erase its attribution from history. That is the exact retroactive-erasure failure
+-- this design rejects a read-time join for; reintroducing it through a delete rule would be the same
+-- bug wearing a constraint. The write guard already proves the slug existed and was in scope at the
+-- moment it was written, which is what an append-only record needs. Referential tidiness is not
+-- worth a record that changes after the fact.
+ALTER TABLE public.paige_workspace_events DROP CONSTRAINT IF EXISTS paige_workspace_events_actor_agent_fk;
 
 -- CHECK constraints compose by AND, so a second OR'd constraint cannot widen an existing one.
 -- The originals must be replaced. Every DROP is IF EXISTS because ALTER ... ADD CONSTRAINT
@@ -289,10 +318,16 @@ BEGIN
   IF event_id IS NULL THEN RETURN; END IF;
 
   BEGIN
+    -- §58. `actor_agent` is added ONLY when an agent actually acted. Adding it unconditionally
+    -- grew the n8n envelope from 12 keys to 13 — a shape change on a shipped path, pinned by
+    -- `tests/n8n-oauth/workspace-rail.sql:47` with an exact key-array equality. That test is not
+    -- wired into any CI workflow, so nothing would have caught it: a null-valued key is still a
+    -- key, and "the values are identical" is not the same claim as "the envelope is unchanged".
     PERFORM realtime.send(
-      display || jsonb_build_object(
-        'id', event_id, 'tenant_id', _tenant, 'occurred_at', occurred,
-        'actor_agent', v_label),
+      display
+        || jsonb_build_object('id', event_id, 'tenant_id', _tenant, 'occurred_at', occurred)
+        || CASE WHEN _agent_slug IS NULL THEN '{}'::jsonb
+                ELSE jsonb_build_object('actor_agent', v_label) END,
       'rail_event', 'rail:tenant:'||_tenant::text, true);
   EXCEPTION WHEN OTHERS THEN
     -- Durable event remains authoritative; no raw transport exception is logged.
@@ -457,8 +492,9 @@ BEGIN
         'audience', v_audience, 'visibility', v_visibility,
         'from_department', v_from_dept, 'to_department', p_to_department,
         'title', p_title, 'summary', p_summary, 'payload', COALESCE(p_payload, '{}'::jsonb),
-        'occurred_at', v_occurred, 'actor_agent', v_agent_label
-      ),
+        'occurred_at', v_occurred
+      ) || CASE WHEN p_actor_agent_slug IS NULL THEN '{}'::jsonb
+                ELSE jsonb_build_object('actor_agent', v_agent_label) END,
       'rail_event', 'rail:tenant:' || v_tenant::text, true
     );
 
@@ -481,8 +517,9 @@ BEGIN
         'id', v_id, 'tenant_id', v_tenant, 'contact_id', p_contact_id,
         'event_kind', p_event_kind, 'surface', p_surface, 'actor_type', p_actor_type,
         'audience', v_audience, 'visibility', v_visibility,
-        'title', p_title, 'occurred_at', v_occurred, 'actor_agent', v_agent_label
-      ),
+        'title', p_title, 'occurred_at', v_occurred
+      ) || CASE WHEN p_actor_agent_slug IS NULL THEN '{}'::jsonb
+                ELSE jsonb_build_object('actor_agent', v_agent_label) END,
       'rail_event', 'rail:platform', true
     );
   EXCEPTION WHEN others THEN
@@ -577,7 +614,16 @@ begin
           -- with a correct writer: paige_subagents.tenant_id is updatable, so a platform default
           -- that is later assigned to a tenant would retroactively turn legally-written rows into
           -- foreign ones, and no write-time guard can reach back through history.
+          -- Three cases, and collapsing them loses either history or tenancy.
+          --   gone      -> show the snapshot. A retired agent has no current owner, so there is
+          --                nothing to leak, and the work still happened.
+          --   in scope  -> show the snapshot.
+          --   elsewhere -> withhold. The agent exists and belongs to another workspace, which is
+          --                the re-tenanting case a write-time guard cannot reach back and fix.
           case when c.actor_agent_slug is null then null
+               when not exists (select 1 from public.paige_subagents s
+                                 where s.slug = c.actor_agent_slug)
+               then c.actor_agent_label
                when exists (select 1 from public.paige_subagents s
                              where s.slug = c.actor_agent_slug
                                and (s.tenant_id is null or s.tenant_id = v_tenant))
@@ -589,6 +635,9 @@ begin
    union all
    select w.id, d.value->>'event_kind', d.value->>'surface', d.value->>'actor_type',
           case when w.actor_agent_slug is null then null
+               when not exists (select 1 from public.paige_subagents s
+                                 where s.slug = w.actor_agent_slug)
+               then w.actor_agent_label
                when exists (select 1 from public.paige_subagents s
                              where s.slug = w.actor_agent_slug
                                and (s.tenant_id is null or s.tenant_id = v_tenant))
