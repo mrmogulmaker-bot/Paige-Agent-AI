@@ -67,6 +67,19 @@ Concurrency: parent/stage locks coordinate FK writers. Changed-reference guards 
 
 - Release evidence will be recorded on PR #907: exact merged head, required CI, persisted migration and production deployment. This source document does not pre-claim deployment.
 
+## MVP release remainder — owner-requested record, 2026-09-03
+
+This is a Pipeline-only release checklist, not a platform-wide MVP audit. No additional Pipeline redesign is required for this hotfix. Owner approval to merge and deploy is already granted; do not ask another routine approval question.
+
+- **PASS — implemented and checked:** exact empty-pipeline deletion, canonical Solo Owner authorization, tenant isolation, dependency refusal, atomic rollback/retry, duplicate preservation, and responsive confirmation states. Latest tested product head: `b9ca5b83402cd09836a927a93681395e933aee5e`. Local manifest and all four hosted workflows passed; SQL29 and browser238 checks are separate isolated/deterministic evidence, not authenticated production acceptance.
+- **BLOCKED — finish preview database validation:** approved recovery failed before migrations during the public Supabase lifecycle incident. Wait for provider recovery, then verify real preview schema/migration state rather than trusting a healthy status badge. Incident: https://status.supabase.com/incidents/m2r2sgmsnw2g . Do not reset production or loop preview lifecycle operations during the incident.
+- **REQUIRED — release exact verified code:** recheck current main and collisions, preserve green checks, merge PR907, verify the production migration is persisted and the matching Vercel deployment is Ready on the live domain. These steps are not yet completed.
+- **UNVERIFIED — signed-in owner flow:** verify Manage -> exact-reference confirmation -> Cancel on two different Solo contexts, with both themes and required viewports/PAIGE states. Destructive end-to-end proof needs an authorized disposable non-production environment; no production fixture or owner-pipeline deletion is allowed for proof. Existing local browser evidence does not close this gap.
+- **OWNER ACTION AFTER RELEASE:** select the unwanted duplicate by its stable PPL reference and compare name, stage/deal counts and date. Delete only after confirming the exact unwanted empty record. Preserve the correct Catalog service and surviving pipeline; refusal means dependencies must be resolved first.
+- **SEPARATE FOLLOW-UP, NOT ADDED TO THIS HOTFIX:** cross-pipeline deal migration/bulk handling, PAIGE Chat deletion, governance/write-bridge repair, and future portal invites/activity. None is implied delivered or required to widen this empty-pipeline deletion slice. Other departments' MVP readiness must be assessed by their owners, not inferred here.
+
+Discovery: the existing Brain index links this delivery ledger; Pipeline surface/tier contracts retain the bounded deletion exception. This update is documentation only and does not change the tested product code.
+
 ## Owner test map after verified release
 
 Open Campaigns -> Pipeline, choose the unwanted duplicate by PPL reference, select Manage, compare its name/stages/deals/date, then Delete pipeline. First use Cancel to check the record without change. Reopen only after confirming it is the unwanted zero-deal duplicate; enter the shown PPL reference and deliberately select Delete this pipeline. Verify the correct survivor and Catalog service remain. If deals or other dependencies are reported, stop and resolve them; do not guess which duplicate is safe.
