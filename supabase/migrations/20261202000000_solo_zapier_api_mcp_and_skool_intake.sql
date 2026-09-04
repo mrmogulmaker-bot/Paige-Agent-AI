@@ -189,17 +189,35 @@ REVOKE ALL ON FUNCTION public.get_zapier_api_readiness() FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.get_zapier_api_readiness() TO authenticated,service_role;
 
 -- Zapier Rail extension follows.
+--
+-- These three constraints are REPLACED, not widened in place, so each list here must be the
+-- UNION of every family. #925 (20261201000800) added game_plan, system_check, agent_config and
+-- agent_run while this branch was open; dropping and re-adding with only the n8n and Zapier
+-- kinds would have silently made every one of its writers fail at INSERT (§58). Anything added
+-- to either side has to be added here too.
 ALTER TABLE public.paige_workspace_events DROP CONSTRAINT IF EXISTS paige_workspace_events_outcome_check;
 ALTER TABLE public.paige_workspace_events DROP CONSTRAINT IF EXISTS paige_workspace_events_source_kind_check;
 ALTER TABLE public.paige_workspace_events DROP CONSTRAINT IF EXISTS n8n_workspace_event_source;
-ALTER TABLE public.paige_workspace_events ADD CONSTRAINT paige_workspace_events_source_kind_check CHECK(source_kind IN ('oauth_attempt','mcp_connection','zapier_api_oauth','zapier_api_connection','zapier_mcp_connection','zapier_skool_intake'));
+ALTER TABLE public.paige_workspace_events DROP CONSTRAINT IF EXISTS paige_workspace_event_source;
+ALTER TABLE public.paige_workspace_events ADD CONSTRAINT paige_workspace_events_source_kind_check CHECK(source_kind IN (
+ 'oauth_attempt','mcp_connection',
+ 'game_plan','system_check','agent_config','agent_run',
+ 'zapier_api_oauth','zapier_api_connection','zapier_mcp_connection','zapier_skool_intake'));
 ALTER TABLE public.paige_workspace_events ADD CONSTRAINT paige_workspace_events_outcome_check CHECK(outcome IN (
  'oauth_success','oauth_cancelled','oauth_refused','oauth_expired','oauth_failed','mcp_verified','mcp_unavailable','mcp_disconnected','read_approvals_changed',
+ 'plan_drafted','plan_updated','plan_step_completed','plan_blocked',
+ 'check_completed','check_failed','check_finding_resolved',
+ 'agent_enabled','agent_disabled','agent_authority_changed',
+ 'run_completed','run_failed','run_refused','run_awaiting_approval',
  'zapier_api_oauth_refused','zapier_api_connected','zapier_api_disconnected','zapier_api_test_succeeded','zapier_api_test_failed','zapier_mcp_verified','zapier_mcp_unavailable','zapier_mcp_disconnected','zapier_tools_changed','zapier_mcp_test_succeeded','zapier_mcp_test_failed',
  'zapier_skool_route_created','zapier_skool_intake_received','zapier_skool_intake_duplicate','zapier_skool_intake_failed'));
 ALTER TABLE public.paige_workspace_events ADD CONSTRAINT paige_workspace_event_source CHECK(
  (source_kind='oauth_attempt' AND outcome IN ('oauth_success','oauth_cancelled','oauth_refused','oauth_expired','oauth_failed')) OR
  (source_kind='mcp_connection' AND outcome IN ('mcp_verified','mcp_unavailable','mcp_disconnected','read_approvals_changed')) OR
+ (source_kind='game_plan' AND outcome IN ('plan_drafted','plan_updated','plan_step_completed','plan_blocked')) OR
+ (source_kind='system_check' AND outcome IN ('check_completed','check_failed','check_finding_resolved')) OR
+ (source_kind='agent_config' AND outcome IN ('agent_enabled','agent_disabled','agent_authority_changed')) OR
+ (source_kind='agent_run' AND outcome IN ('run_completed','run_failed','run_refused','run_awaiting_approval')) OR
  (source_kind='zapier_api_oauth' AND outcome='zapier_api_oauth_refused') OR
  (source_kind='zapier_api_connection' AND outcome IN ('zapier_api_connected','zapier_api_disconnected','zapier_api_test_succeeded','zapier_api_test_failed')) OR
  (source_kind='zapier_mcp_connection' AND outcome IN ('zapier_mcp_verified','zapier_mcp_unavailable','zapier_mcp_disconnected','zapier_tools_changed','zapier_mcp_test_succeeded','zapier_mcp_test_failed')) OR
@@ -226,23 +244,84 @@ RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_catalog AS $$
  RETURN jsonb_build_object('event_kind',_outcome,'surface','integrations','actor_type','system','audience','owner','visibility','owner_internal','from_department','technology_automation','to_department',NULL,'title',title,'summary',summary);END $$;
 REVOKE ALL ON FUNCTION public._zapier_workspace_event_display(text) FROM PUBLIC,anon,authenticated;
 
-CREATE OR REPLACE FUNCTION public._solo_workspace_event_display(_source text,_outcome text)
-RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_catalog AS $$ BEGIN
- IF _source IN ('zapier_api_oauth','zapier_api_connection','zapier_mcp_connection','zapier_skool_intake') THEN RETURN public._zapier_workspace_event_display(_outcome);END IF;
- RETURN public._n8n_workspace_event_display(_outcome);END $$;
-REVOKE ALL ON FUNCTION public._solo_workspace_event_display(text,text) FROM PUBLIC,anon,authenticated;
+-- #925 (20261201000800) generalised _solo_workspace_event_display into _workspace_event_display
+-- and rewrote get_solo_rail_activity to carry actor_agent. This migration originally redefined
+-- BOTH with their pre-#925 shapes: the reader failed 42P13 on apply because the return type no
+-- longer matched, and had it applied it would have stripped the acting-agent column #925 had
+-- just shipped (§58).
+--
+-- So the reader is left entirely alone and only the display projection is extended. The body
+-- below is #925's VERBATIM; the only difference is the branch marked "Zapier's four families".
+-- _solo_workspace_event_display is not redefined here either -- after #925 nothing calls it.
+CREATE OR REPLACE FUNCTION public._workspace_event_display(_source_kind text, _outcome text)
+RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_catalog AS $$
+DECLARE title text; summary text; dept text := 'owner_ops';
+BEGIN
+  -- Zapier's four families, dispatched exactly as the n8n families are above. Without this they
+  -- fall through to the generic ELSE and render as "Recorded activity", losing the copy this
+  -- release wrote for them. The Zapier projection never raises, so it needs no wrapper.
+  IF _source_kind IN ('zapier_api_oauth','zapier_api_connection','zapier_mcp_connection','zapier_skool_intake') THEN
+    RETURN public._zapier_workspace_event_display(_outcome);
+  END IF;
 
-CREATE OR REPLACE FUNCTION public.get_solo_rail_activity(p_limit integer default 50)
-RETURNS TABLE(id uuid,event_kind text,surface text,actor_type text,audience text,visibility text,from_department text,to_department text,title text,summary text,occurred_at timestamptz)
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public AS $$ DECLARE v_uid uuid:=auth.uid();v_tenant uuid;v_owner boolean;v_limit integer:=least(greatest(coalesce(p_limit,50),1),200);BEGIN
- IF v_uid IS NULL THEN RAISE EXCEPTION USING errcode='42501',message='RAIL_FORBIDDEN';END IF;v_owner:=public.is_platform_owner();v_tenant:=public.current_user_tenant_id();
- IF v_tenant IS NULL OR (NOT v_owner AND NOT EXISTS(SELECT 1 FROM public.tenant_members m WHERE m.user_id=v_uid AND m.tenant_id=v_tenant AND m.status='active' AND m.role IN ('owner','admin','coach'))) THEN RAISE EXCEPTION USING errcode='42501',message='RAIL_FORBIDDEN';END IF;
- RETURN QUERY SELECT e.id,e.event_kind,e.surface,e.actor_type,e.audience,e.visibility,e.from_department,e.to_department,e.title,e.summary,e.occurred_at FROM(
-  SELECT c.id,c.event_kind,c.surface,c.actor_type,c.audience,c.visibility,c.from_department,c.to_department,c.title,c.summary,c.occurred_at FROM public.paige_client_events c WHERE c.tenant_id=v_tenant
-  UNION ALL SELECT w.id,d.value->>'event_kind',d.value->>'surface',d.value->>'actor_type',d.value->>'audience',d.value->>'visibility',d.value->>'from_department',d.value->>'to_department',d.value->>'title',d.value->>'summary',w.occurred_at
-  FROM public.paige_workspace_events w CROSS JOIN LATERAL(SELECT public._solo_workspace_event_display(w.source_kind,w.outcome)value)d WHERE w.tenant_id=v_tenant)e ORDER BY e.occurred_at DESC LIMIT v_limit;END $$;
-REVOKE ALL ON FUNCTION public.get_solo_rail_activity(integer) FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.get_solo_rail_activity(integer) TO authenticated,service_role;
+  -- §58. The n8n families keep their EXACT existing envelope, produced by their own projection.
+  -- Re-deriving them here changed `event_kind` from 'n8n_oauth_success' to
+  -- 'oauth_attempt.oauth_success' and `surface` from 'integrations' to 'command_center' — a silent
+  -- regression on a shipped path, for every row already written and every future n8n broadcast,
+  -- and `tests/n8n-oauth/workspace-rail.sql` asserts that envelope by exact key equality.
+  --
+  -- Wrapped, because the n8n projection RAISEs on an unrecognised outcome and this function is
+  -- called through CROSS JOIN LATERAL in the reader. Validation on the way IN stays strict; a bad
+  -- row on the way OUT degrades to the safe default below rather than taking the whole Rail dark.
+  IF _source_kind IN ('oauth_attempt','mcp_connection') THEN
+    BEGIN
+      RETURN public._n8n_workspace_event_display(_outcome);
+    EXCEPTION WHEN invalid_parameter_value THEN
+      -- ONLY the n8n projection's own 'unrecognised outcome' raise (22023) is absorbed. A bare
+      -- WHEN OTHERS would also swallow a permission or search_path failure and quietly render the
+      -- fallback, which looks like missing copy rather than a broken function.
+      NULL;
+    END;
+  END IF;
+
+  CASE _outcome
+    -- The nine n8n outcomes are DELIBERATELY ABSENT. The cross-CHECK guarantees the two n8n
+    -- source kinds only ever carry them, so the delegation above always returns first and any copy
+    -- here would be dead. It would also be WRONG copy — it is what produced the 12-to-13-key
+    -- envelope change — so an n8n outcome that somehow reached this CASE should fall to the honest
+    -- ELSE rather than render a plausible-but-incorrect n8n envelope.
+    WHEN 'plan_drafted'             THEN title:='Business game plan drafted';         summary:='A plan was prepared for your review. Nothing in it has been acted on.';
+    WHEN 'plan_updated'             THEN title:='Business game plan updated';         summary:='The plan changed. Steps already completed were not altered.';
+    WHEN 'plan_step_completed'      THEN title:='A plan step was completed';          summary:='One step of the plan finished.';
+    WHEN 'plan_blocked'             THEN title:='A plan step is blocked';             summary:='A step cannot continue until something is resolved.';
+
+    WHEN 'check_completed'          THEN title:='System check completed';             summary:='A check finished and its result was recorded.';
+    WHEN 'check_failed'             THEN title:='System check did not complete';      summary:='A check could not finish. Its previous result still stands and is not current.';
+    WHEN 'check_finding_resolved'   THEN title:='A setup issue was resolved';         summary:='Something the last check flagged is no longer outstanding.';
+
+    WHEN 'agent_enabled'            THEN title:='A specialist was switched on';       summary:='This specialist may now be given work in this workspace.'; dept:='operations_pmo';
+    WHEN 'agent_disabled'           THEN title:='A specialist was switched off';      summary:='This specialist will not be given new work until it is switched back on.'; dept:='operations_pmo';
+    WHEN 'agent_authority_changed'  THEN title:='A specialist''s authority changed';  summary:='How much this specialist may do on its own was changed.'; dept:='operations_pmo';
+
+    WHEN 'run_completed'            THEN title:='Delegated work finished';            summary:='Work handed to a specialist completed.';
+    WHEN 'run_failed'               THEN title:='Delegated work did not finish';      summary:='Work handed to a specialist stopped before completing. Nothing was left half-sent.';
+    WHEN 'run_refused'              THEN title:='Delegated work was refused';         summary:='A specialist declined this work because it sits outside what it is allowed to do.';
+    WHEN 'run_awaiting_approval'    THEN title:='Delegated work is waiting on you';   summary:='A specialist prepared this and is holding it for your word.';
+
+    -- Never raise. An unrecognised outcome is a gap in this projection, not a reason to take
+    -- the whole Rail dark. It reports itself honestly and the row still renders (§13/§32).
+    ELSE title:='Recorded activity'; summary:='This activity was recorded but has no description yet.';
+  END CASE;
+
+  RETURN jsonb_build_object(
+    'event_kind', COALESCE(_source_kind,'workspace') || '.' || COALESCE(_outcome,'unknown'),
+    'surface','command_center','actor_type','system',
+    'audience','owner','visibility','owner_internal',
+    'from_department', dept, 'to_department', NULL,
+    'title', title, 'summary', summary
+  );
+END $$;
+REVOKE ALL ON FUNCTION public._workspace_event_display(text,text) FROM PUBLIC,anon,authenticated;
 
 CREATE OR REPLACE FUNCTION public.get_zapier_rail_activity(p_limit integer DEFAULT 5)
 RETURNS TABLE(id uuid,event_kind text,surface text,actor_type text,audience text,visibility text,from_department text,to_department text,title text,summary text,occurred_at timestamptz)
