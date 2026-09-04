@@ -1,0 +1,410 @@
+<title>Trust Compass</title>
+<meta name="description" content="Can this agent be trusted to act, in this scope, right now?">
+<style>
+/* THROWAWAY review surface. Deleted or absorbed after approval.
+   Palette follows the owner's reference: forest ground, parchment cards, gold on the act. */
+:root {
+  --f-display:"Schibsted Grotesk","Segoe UI Variable Display",system-ui,sans-serif;
+  --f-ui:"Schibsted Grotesk","Segoe UI Variable Text",system-ui,sans-serif;
+  --f-serif:"Gambetta","Newsreader","Iowan Old Style",Baskerville,serif;
+  --t-label:11px; --t-body:13px; --t-lead:16px; --t-title:21px; --t-hero:30px;
+  --r-plate:14px; --r-chip:9px; --r-pill:999px;
+  --band:#123f30; --band-2:#0d2f24; --band-ink:#f2efe6;
+  --env:#eceae2; --card:#fbfaf6; --card-2:#f4f2ea; --raised:#ffffff;
+  --line:rgba(24,48,38,.16); --line-soft:rgba(24,48,38,.09); --line-strong:rgba(24,48,38,.30);
+  --ink:#17231d; --ink-2:#38473f; --muted:#5d6b63; --faint:#7b877f;
+  --green:#2f7d5a; --green-deep:#1d5c40; --green-soft:rgba(47,125,90,.16);
+  --gold:#96701f; --gold-fill:#d5a63c; --gold-bloom:rgba(213,166,60,.30);
+  --amber:#8a5d13; --red:#8f382f; --blue:#3c6b99; --slate:#7d8b83;
+  --lift:0 1px 1px rgba(24,48,38,.05),0 6px 16px -8px rgba(24,48,38,.18);
+  --lift-2:0 2px 4px rgba(24,48,38,.07),0 18px 40px -16px rgba(24,48,38,.26);
+  --rim:inset 0 1px 0 rgba(255,255,255,.9);
+  color-scheme:light;
+}
+:root[data-theme="dark"] {
+  --band:#0b241c; --band-2:#071a14; --band-ink:#e8e4d8;
+  --env:#0a0f0d; --card:#121a16; --card-2:#0e1512; --raised:#18211c;
+  --line:rgba(226,240,232,.17); --line-soft:rgba(226,240,232,.10); --line-strong:rgba(226,240,232,.32);
+  --ink:#eef3ef; --ink-2:#cfd8d2; --muted:#a4b2a9; --faint:#8b9990;
+  --green:#68c295; --green-deep:#68c295; --green-soft:rgba(104,194,149,.15);
+  --gold:#e2c07c; --gold-fill:#d5a63c; --gold-bloom:rgba(213,166,60,.24);
+  --amber:#e0b06a; --red:#e69a91; --blue:#8ab4dd; --slate:#75837b;
+  --lift:0 1px 1px rgba(0,0,0,.4),0 6px 16px -8px rgba(0,0,0,.5);
+  --lift-2:0 2px 4px rgba(0,0,0,.35),0 18px 40px -16px rgba(0,0,0,.55);
+  --rim:inset 0 1px 0 rgba(255,255,255,.06);
+  color-scheme:dark;
+}
+body{background:var(--env);color:var(--ink);font:400 var(--t-body)/1.55 var(--f-ui);}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;}
+h1,h2,h3,h4,p,ul{margin:0;} ul{padding:0;list-style:none;}
+
+.rv{position:sticky;top:0;z-index:40;background:var(--band-2);color:var(--band-ink);
+    display:flex;flex-wrap:wrap;gap:13px;align-items:center;padding:9px 16px;}
+.rv-l{font:600 var(--t-label)/1 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;opacity:.6;}
+.rv-g{display:flex;gap:5px;align-items:center;flex-wrap:wrap;}
+.rv-btn{border:1px solid rgba(255,255,255,.22);border-radius:var(--r-chip);padding:5px 9px;
+        font-size:var(--t-label);color:var(--band-ink);opacity:.72;}
+.rv-btn.on{opacity:1;border-color:var(--gold-fill);background:rgba(213,166,60,.16);}
+.rv-note{margin-left:auto;font-size:var(--t-label);opacity:.55;}
+
+.stage{padding:20px 16px 56px;display:flex;justify-content:center;}
+.shell{width:100%;max-width:1240px;background:var(--card);border-radius:var(--r-plate);
+       overflow:hidden;box-shadow:var(--lift-2);border:1px solid var(--line-soft);}
+.shell[data-vw="tablet"]{max-width:834px;} .shell[data-vw="mobile"]{max-width:390px;}
+
+.band{background:linear-gradient(180deg,var(--band) 0%,var(--band-2) 100%);color:var(--band-ink);padding:15px 20px 0;}
+.band-top{display:flex;align-items:center;gap:13px;flex-wrap:wrap;}
+.mark{width:38px;height:38px;flex:0 0 auto;}
+.brand h1{font:500 var(--t-hero)/1.05 var(--f-serif);letter-spacing:-.01em;}
+.brand .kicker{font:600 var(--t-label)/1 var(--f-ui);letter-spacing:.2em;text-transform:uppercase;opacity:.6;margin-top:5px;}
+.band-right{margin-left:auto;display:flex;align-items:center;gap:14px;}
+.acct{border:1px solid rgba(255,255,255,.2);border-radius:var(--r-chip);padding:7px 13px;background:rgba(255,255,255,.05);}
+.acct b{display:block;font:550 var(--t-body)/1.2 var(--f-ui);}
+.acct span{font:500 var(--t-label)/1 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;opacity:.58;}
+.freshness{font-size:var(--t-label);opacity:.66;text-align:right;line-height:1.45;}
+.tabs{display:flex;gap:3px;margin-top:14px;overflow-x:auto;}
+.tab{padding:8px 12px;font-size:var(--t-body);opacity:.62;border-bottom:2px solid transparent;white-space:nowrap;}
+.tab.on{opacity:1;border-bottom-color:var(--gold-fill);font-weight:550;}
+
+.head{padding:18px 20px 4px;display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;}
+.head h2{font:500 var(--t-title)/1.15 var(--f-serif);letter-spacing:-.012em;}
+.head p{color:var(--muted);margin-top:3px;}
+.head .aside{margin-left:auto;max-width:34ch;text-align:right;font:400 var(--t-body)/1.45 var(--f-serif);
+             font-style:italic;color:var(--muted);}
+.shell[data-vw="mobile"] .head .aside{margin-left:0;text-align:left;}
+
+.floor{display:grid;grid-template-columns:1fr minmax(290px,1.05fr) 1fr;gap:14px;padding:12px 20px 18px;align-items:start;}
+.shell[data-vw="tablet"] .floor{grid-template-columns:1fr 1fr;}
+.shell[data-vw="mobile"] .floor{grid-template-columns:1fr;}
+.col{display:flex;flex-direction:column;gap:11px;min-width:0;}
+.shell[data-vw="tablet"] .hub-col,.shell[data-vw="mobile"] .hub-col{order:-1;}
+
+.knob{background:var(--card-2);border:1px solid var(--line-soft);border-radius:var(--r-plate);
+      padding:12px 13px;display:grid;grid-template-columns:1fr 78px;gap:11px;box-shadow:var(--lift);}
+.knob.right{grid-template-columns:78px 1fr;}
+.knob.right .kmeta{order:2;}
+.kname{font:600 var(--t-label)/1.25 var(--f-ui);letter-spacing:.09em;text-transform:uppercase;}
+.kdesc{font-size:var(--t-label);color:var(--muted);margin-top:4px;line-height:1.45;}
+.klane{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font:600 var(--t-label)/1 var(--f-ui);
+       letter-spacing:.05em;text-transform:uppercase;color:var(--kc);}
+.klane i{width:7px;height:7px;border-radius:50%;background:var(--kc);}
+.kcap{display:block;margin-top:5px;font-size:var(--t-label);color:var(--amber);line-height:1.4;}
+.kdial{width:78px;align-self:center;}
+.kdial svg{width:78px;height:78px;display:block;}
+.kface{fill:var(--raised);stroke:var(--line);stroke-width:1;}
+.kscale{fill:none;stroke:var(--line-soft);stroke-width:5;stroke-linecap:round;}
+.kfill{fill:none;stroke:var(--kc);stroke-width:5;stroke-linecap:round;}
+.kceil{fill:none;stroke:var(--slate);stroke-width:5;stroke-linecap:round;opacity:.6;}
+.kpin{stroke:var(--ink);stroke-width:2.4;stroke-linecap:round;}
+.kends{display:flex;justify-content:space-between;font:600 9px var(--f-ui);letter-spacing:.09em;
+       text-transform:uppercase;color:var(--faint);margin-top:1px;}
+
+.l-delegate{--kc:var(--green);} .l-monitor{--kc:var(--blue);} .l-ask{--kc:var(--amber);}
+.l-notready{--kc:var(--slate);} .l-paused{--kc:var(--muted);}
+
+.hub{background:var(--card-2);border:1px solid var(--line-soft);border-radius:var(--r-plate);
+     padding:14px;text-align:center;box-shadow:var(--lift);}
+.hub-mode{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--r-pill);
+          padding:6px 14px;background:var(--raised);font:600 var(--t-label)/1 var(--f-ui);
+          letter-spacing:.12em;text-transform:uppercase;box-shadow:var(--rim);}
+.hub-state{margin-top:7px;font:600 var(--t-label)/1 var(--f-ui);letter-spacing:.16em;text-transform:uppercase;color:var(--kc);}
+.rose{width:100%;max-width:286px;margin:8px auto 2px;}
+.rose svg{width:100%;height:auto;display:block;}
+.hub h3{font:500 var(--t-lead)/1.2 var(--f-serif);letter-spacing:.03em;margin-top:6px;}
+.hub p{color:var(--muted);font-size:var(--t-body);margin-top:5px;}
+.hub .acts{justify-content:center;}
+
+.acts{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px;}
+.btn{border:1px solid var(--line);border-radius:var(--r-chip);padding:7px 12px;font-size:var(--t-body);
+     background:var(--raised);box-shadow:var(--rim);}
+.btn-gold{background:var(--gold-fill);border-color:var(--gold);color:#241a06;font-weight:560;
+          box-shadow:0 0 0 3px var(--gold-bloom);}
+
+.rule{border-top:1px solid var(--line-soft);margin:4px 20px 0;}
+.three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:15px 20px 18px;}
+.shell[data-vw="mobile"] .three{grid-template-columns:1fr;gap:14px;}
+.three>div+div{border-left:1px solid var(--line-soft);padding-left:18px;margin-left:18px;}
+.shell[data-vw="mobile"] .three>div+div{border-left:0;padding-left:0;margin-left:0;border-top:1px solid var(--line-soft);padding-top:14px;}
+.three h4{font:500 var(--t-lead)/1.2 var(--f-serif);color:var(--tc);}
+.three p{color:var(--muted);font-size:var(--t-body);margin-top:4px;max-width:40ch;}
+.t-insight{--tc:var(--green-deep);} .t-opp{--tc:var(--gold);} .t-watch{--tc:var(--red);}
+
+.owed{border:1px dashed var(--line);border-radius:var(--r-plate);padding:11px 13px;margin:0 20px 18px;}
+.owed b{color:var(--amber);font:600 var(--t-label)/1 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;}
+.owed p{color:var(--muted);margin-top:5px;font-size:var(--t-body);}
+
+.empty{text-align:center;padding:40px 20px;}
+.empty h3{font:500 var(--t-title)/1.2 var(--f-serif);}
+.empty p{color:var(--muted);margin:8px auto 0;max-width:40ch;}
+
+.ann{display:none;margin:0 20px 16px;border-left:2px solid var(--green);padding:8px 0 8px 11px;
+     font-size:var(--t-label);color:var(--muted);background:var(--green-soft);}
+body.ann-on .ann{display:block;}
+.ann b{color:var(--green-deep);}
+
+.dec{max-width:1240px;margin:16px auto 0;padding:14px 16px;border:1px solid var(--line);
+     border-radius:var(--r-plate);background:var(--card);}
+.dec textarea{width:100%;margin-top:8px;min-height:58px;background:var(--raised);color:var(--ink);
+              border:1px solid var(--line);border-radius:var(--r-chip);padding:8px;font:inherit;resize:vertical;}
+.verdict{margin-top:9px;color:var(--green-deep);font-size:var(--t-body);}
+@media (prefers-reduced-motion:no-preference){.kfill,.kpin{transition:all .22s cubic-bezier(.2,.7,.3,1);}}
+</style>
+
+<div class="rv">
+  <div class="rv-g"><span class="rv-l">State</span><span id="states"></span></div>
+  <div class="rv-g"><span class="rv-l">Viewport</span>
+    <button class="rv-btn on" data-vw="desktop">Desktop</button>
+    <button class="rv-btn" data-vw="tablet">Tablet</button>
+    <button class="rv-btn" data-vw="mobile">Mobile</button></div>
+  <div class="rv-g"><span class="rv-l">Theme</span>
+    <button class="rv-btn on" data-theme="light">Parchment</button>
+    <button class="rv-btn" data-theme="dark">Forest</button></div>
+  <div class="rv-g"><button class="rv-btn" id="annBtn">Annotations</button></div>
+  <span class="rv-note">Prototype — turning a knob here writes nothing.</span>
+</div>
+
+<div class="stage"><div class="shell" id="shell" data-vw="desktop">
+  <div class="band">
+    <div class="band-top">
+      <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
+        <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+        <circle cx="24" cy="24" r="15" fill="none" stroke="currentColor" stroke-opacity=".25"/>
+        <path d="M24 5 L28 20 L43 24 L28 28 L24 43 L20 28 L5 24 L20 20 Z" fill="currentColor" fill-opacity=".9"/>
+        <circle cx="24" cy="24" r="3.2" fill="var(--band)"/>
+      </svg>
+      <div class="brand"><h1>Trust Compass</h1>
+        <div class="kicker">Authority · Grounding · Readiness · Impact · Accountability</div></div>
+      <div class="band-right">
+        <div class="acct"><b id="ws">Northwind Advisory</b><span>Solo workspace</span></div>
+        <div class="freshness" id="fresh"></div>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab">Business Game Plan</div><div class="tab">Systems Check</div>
+      <div class="tab">Mind</div><div class="tab on">Trust Compass</div>
+    </div>
+  </div>
+  <div id="body"></div>
+</div></div>
+
+<div class="dec">
+  <div class="rv-l" style="color:var(--faint)">Decision</div>
+  <p style="margin-top:4px;color:var(--muted)">Does this answer <em>&ldquo;can I trust this agent to act, in this scope, right now?&rdquo;</em> &mdash; in the treatment you asked for, without a number that isn't real?</p>
+  <textarea id="notes" placeholder="Notes, revisions, anything that reads wrong…"></textarea>
+  <div class="acts">
+    <button class="btn btn-gold" data-dec="Approved">Approve</button>
+    <button class="btn" data-dec="Revision requested">Request revision</button>
+    <button class="btn" data-dec="Rejected">Reject</button>
+  </div>
+  <div class="verdict" id="verdict"></div>
+</div>
+
+<script>
+/* WHAT A KNOB IS BOUND TO, AND WHY IT IS NOT PER-AGENT.
+   `list_tool_autonomy(tenant)` returns (tool_key, label, category, mode, is_default, updated_at);
+   `set_tool_autonomy(tool_key, mode, tenant)` writes it; `resolve_tool_autonomy(tenant, tool_key)`
+   returns the EFFECTIVE mode after the platform clamp. All three are live and granted to
+   `authenticated`, so a knob bound to a capability group is a REAL control.
+   A knob bound to one AGENT is not: `allowed_tools` exists on `paige_skills`, not on
+   `paige_subagents`, so there is no agent-to-tool mapping to bind to.
+
+   Three detents, not a hundred points. `auto | confirm | off` is what the database stores and
+   enforces. A 0-100 dial would have to invent ninety-seven positions that mean nothing. */
+var LANE = {
+  delegate:{k:"l-delegate",pos:2,  label:"Delegate", gloss:"Runs on its own inside this scope."},
+  monitor: {k:"l-monitor", pos:1.5,label:"Monitor",  gloss:"Runs, and shows you every result."},
+  ask:     {k:"l-ask",     pos:1,  label:"Ask First",gloss:"Prepares the work and holds for your word."},
+  notready:{k:"l-notready",pos:0,  label:"Not Ready",gloss:"Cannot run — something it depends on is missing."},
+  paused:  {k:"l-paused",  pos:0,  label:"Paused",   gloss:"You stopped it. It takes no new work."}
+};
+function cap(name, lane, o){ o=o||{}; o.name=name; o.lane=lane; return o; }
+var RAIL_OWED = "The Rail cannot yet name which specialist produced a result — every entry still reads as PAIGE, and workspace-level work is not recorded at all. Per-agent attribution ships in the Rail uplift; until a producer writes it, this stays empty rather than showing history nobody can trace.";
+
+var STATES = {
+  empty:{label:"Empty workspace",ws:"Northwind Advisory",fresh:"No settings recorded yet",
+    h:"Nothing has been delegated yet.",s:"No capability holds authority in this workspace, so there is nothing to trust or withhold.",
+    caps:[],hub:{state:"notready",t:"Nothing delegated",p:"This fills in as you give a capability authority. You can do that from Setup, or just ask PAIGE."},three:null,
+    ann:"No dial is drawn. A score of nothing is not a low score — it is an absent measurement, and a ring sitting at zero would be the fabricated dial the brief forbids."},
+
+  partial:{label:"Partly configured",ws:"Northwind Advisory",fresh:"Settings last changed<br>2 September",
+    h:"Two capabilities are ready. Three are waiting on setup.",s:"Authority is only half the question — permission with no working connection still cannot run.",
+    caps:[cap("Paige's team","monitor"),cap("Client file","monitor"),cap("Messaging","notready",{blocker:"Sending identity not verified"}),
+          cap("Calendar","notready",{blocker:"No calendar connected"}),cap("Studio","ask"),cap("Action bus","ask")],
+    hub:{state:"ask",t:"Ask first",p:"Everything prepares and holds. Nothing runs unattended while setup is incomplete."},
+    three:{i:"Delegation and client records run with every result shown to you.",o:"Verifying your sending identity would move messaging off Ask First.",w:"Two capabilities cannot run at all until their connection is fixed."},
+    ann:"Not Ready is a different posture from Paused, and both differ from Ask First. Collapsing them sends an owner to the wrong screen."},
+
+  active:{label:"Delegated and running",ws:"Northwind Advisory",fresh:"Settings last changed<br>4 September",
+    h:"Delegation is running on its own.",s:"Inside the scope you set, and every result is on the record.",
+    caps:[cap("Paige's team","delegate"),cap("Client file","monitor"),cap("Messaging","monitor"),
+          cap("Studio","ask"),cap("Action bus","monitor"),cap("Calendar","notready",{blocker:"No calendar connected"})],
+    hub:{state:"delegate",t:"Delegate",p:"Paige hands work to her specialists without asking first, within the scope you set."},
+    three:{i:"Delegation has run unattended since 2 September with no refusals.",o:"Client records could move to Delegate on the same evidence.",w:"Scheduling still cannot run — no calendar is connected."},
+    ann:"All five explanations answer in place: the knob is Authority, the capability is Impact, the blocker line is Readiness, the freshness stamp is Grounding, and Accountability is the panel below saying what it cannot yet show."},
+
+  approval:{label:"Waiting on you",ws:"Northwind Advisory",fresh:"Settings last changed<br>4 September",
+    h:"Three pieces are held for your word.",s:"Ask First means Paige prepares the work and stops. Nothing has been sent.",
+    caps:[cap("Studio","ask",{pending:3}),cap("Paige's team","delegate"),cap("Client file","monitor"),
+          cap("Messaging","monitor"),cap("Action bus","monitor"),cap("Calendar","notready",{blocker:"No calendar connected"})],
+    hub:{state:"ask",t:"Three waiting",p:"Held, not sent. Approving releases them; nothing goes out on its own."},
+    three:{i:"Everything else is running as configured.",o:"Approving these three closes the queue.",w:"Nothing has been sent while they wait."},
+    ann:"Gold appears exactly once on this surface — the approve control. That is the act moment."},
+
+  paused:{label:"Paused",ws:"Northwind Advisory",fresh:"Paused 2 September, by you",
+    h:"You paused messaging on 2 September.",s:"It holds no queue and takes no new work. Nothing was lost, and its authority is unchanged underneath.",
+    caps:[cap("Messaging","paused",{pausedOn:"2 September, by you"}),cap("Paige's team","delegate"),cap("Client file","monitor"),
+          cap("Studio","ask"),cap("Action bus","monitor"),cap("Calendar","notready",{blocker:"No calendar connected"})],
+    hub:{state:"paused",t:"One paused",p:"A pause is yours and it is remembered. Resuming returns the authority exactly as it was."},
+    three:{i:"Five capabilities are unaffected by the pause.",o:"Resume returns messaging to Monitor, where it was.",w:"Nothing queued while paused — work is declined, not stored."},
+    ann:"Pause names who did it and when. Not Ready does not, because nobody chose it."},
+
+  failure:{label:"Connection failed",ws:"Northwind Advisory",fresh:"Last verified 4 September, 06:12",
+    h:"Two capabilities dropped to Not Ready.",s:"Their authority did not change. What they depend on stopped answering.",
+    caps:[cap("Studio","notready",{blocker:"Automation connection is not answering"}),
+          cap("Action bus","notready",{blocker:"Automation connection is not answering"}),
+          cap("Paige's team","delegate"),cap("Client file","monitor"),cap("Messaging","monitor"),
+          cap("Calendar","notready",{blocker:"No calendar connected"})],
+    hub:{state:"notready",t:"Degraded",p:"Two capabilities cannot run. This is a connection failure, not a permissions change."},
+    three:{i:"Delegation, records and messaging are unaffected.",o:"Reconnecting the automation provider restores both at their previous authority.",w:"Two retries since 06:12, both failed. Your settings were not changed."},
+    ann:"It separates may-act from can-act. An owner who reads this as a permissions problem goes to the wrong screen and loses an afternoon."},
+
+  stale:{label:"Stale evidence",ws:"Northwind Advisory",fresh:"Some checks last verified<br>24 August — 11 days ago",
+    h:"Two readiness checks are older than the work relying on them.",s:"Not a failure — nobody has re-checked. The age is shown so you can judge it.",
+    caps:[cap("Client file","monitor",{stale:"Readiness last verified 11 days ago"}),cap("Paige's team","delegate"),
+          cap("Messaging","monitor"),cap("Studio","ask"),cap("Action bus","monitor"),
+          cap("Calendar","notready",{blocker:"No calendar connected"})],
+    hub:{state:"monitor",t:"Unconfirmed",p:"Running, on evidence nobody has re-checked since 24 August. Treat it as unconfirmed rather than current."},
+    three:{i:"Nothing has failed — the checks simply have not re-run.",o:"Running Systems Check would make this current in about a minute.",w:"Two checks are eleven days old, shown with their age rather than refreshed silently."},
+    ann:"Stale is neither failed nor current. Presenting an eleven-day-old check as today's truth is the false-green this surface exists to prevent."},
+
+  clamped:{label:"Limited by policy",ws:"Northwind Advisory",fresh:"Settings last changed<br>4 September",
+    h:"You asked for Delegate. Two are held at Monitor.",s:"Your setting is unchanged and applies the moment the limit lifts. The platform narrows it, never widens it.",
+    caps:[cap("Paige's team","monitor",{capped:"You set Delegate — held at Monitor by platform policy"}),
+          cap("Messaging","monitor",{capped:"You set Delegate — held at Monitor by platform policy"}),
+          cap("Client file","monitor"),cap("Studio","ask"),cap("Action bus","monitor"),
+          cap("Calendar","notready",{blocker:"No calendar connected"})],
+    hub:{state:"monitor",t:"Limited",p:"A platform limit is holding two capabilities below what you asked for. It is temporary and it expires."},
+    three:{i:"Your own settings are untouched and resume automatically.",o:"Nothing for you to do — the limit lifts on its own.",w:"Two capabilities are running one step below what you chose."},
+    ann:"The clamp is DRAWN, not merely true: the grey arc is the ceiling and the pointer visibly cannot pass it. A limit nobody can see is indistinguishable from a bug. The REASON is deliberately absent — a tenant learns the effect on their own tools, never the platform's posture."},
+
+  switch:{label:"Workspace switch",ws:"Harbour Coaching Group",fresh:"Settings last changed<br>28 August",
+    h:"This workspace has its own answer.",s:"Nothing carries over from the workspace you were just in.",
+    caps:[cap("Client file","monitor"),cap("Paige's team","ask"),cap("Messaging","notready",{blocker:"Business knowledge not set up yet"})],
+    hub:{state:"ask",t:"Ask first",p:"A newer workspace, with less settled evidence behind it."},
+    three:{i:"Records run with results shown to you.",o:"Setting up business knowledge would unblock messaging.",w:"Nothing here is inherited from another workspace."},
+    ann:"Different workspace, different capabilities, different postures. A row surviving a switch would be a tenant leak — the surface remounts on the active workspace rather than filtering in place."}
+};
+
+var cur = "active";
+
+function dial(lane, capped){
+  var L = LANE[lane], cx = 39, cy = 39, r = 27, A0 = 140, A1 = 400;
+  function pt(a, rr){ var t = a*Math.PI/180; return [cx+rr*Math.cos(t), cy+rr*Math.sin(t)]; }
+  function arc(f, t, cls){
+    var a = pt(f, r), b = pt(t, r);
+    return '<path class="'+cls+'" d="M'+a[0].toFixed(1)+' '+a[1].toFixed(1)+' A'+r+' '+r+' 0 '+((t-f)>180?1:0)+' 1 '+b[0].toFixed(1)+' '+b[1].toFixed(1)+'"/>';
+  }
+  var frac = L.pos/2, ang = A0+(A1-A0)*frac, p = pt(ang, r-9), c = pt(ang, 9);
+  var s = arc(A0, A1, "kscale");
+  if (capped) s += arc(ang, A1, "kceil");
+  if (frac > 0) s += arc(A0, ang, "kfill");
+  return '<div class="kdial"><svg viewBox="0 0 78 78" aria-hidden="true">'+s
+    +'<circle class="kface" cx="'+cx+'" cy="'+cy+'" r="17"/>'
+    +'<line class="kpin" x1="'+c[0].toFixed(1)+'" y1="'+c[1].toFixed(1)+'" x2="'+p[0].toFixed(1)+'" y2="'+p[1].toFixed(1)+'"/>'
+    +'</svg><div class="kends"><span>Ask</span><span>Delegate</span></div></div>';
+}
+
+function knobEl(c, side){
+  var L = LANE[c.lane];
+  return '<div class="knob '+L.k+(side==="right"?" right":"")+'">'
+    +'<div class="kmeta"><div class="kname">'+c.name+'</div>'
+    +'<div class="kdesc">'+L.gloss+'</div>'
+    +'<div class="klane"><i></i>'+L.label+(c.pending?" · "+c.pending+" waiting":"")+'</div>'
+    +(c.blocker ?'<span class="kcap">'+c.blocker+'</span>':'')
+    +(c.capped  ?'<span class="kcap">'+c.capped+'</span>':'')
+    +(c.stale   ?'<span class="kcap">'+c.stale+'</span>':'')
+    +(c.pausedOn?'<span class="kcap">Paused '+c.pausedOn+'</span>':'')
+    +'</div>'+dial(c.lane, !!c.capped)+'</div>';
+}
+
+function rose(state){
+  var on = state === "delegate" || state === "monitor";
+  var ring = on ? "var(--green)" : "var(--slate)";
+  var pts = ["N","E","S","W"].map(function(d,i){
+    var a = (-90+i*90)*Math.PI/180, x = 120+89*Math.cos(a), y = 120+89*Math.sin(a)+4;
+    return '<text x="'+x.toFixed(0)+'" y="'+y.toFixed(0)+'" text-anchor="middle" font-size="11" font-weight="600" fill="var(--faint)">'+d+'</text>';
+  }).join("");
+  return '<div class="rose"><svg viewBox="0 0 240 240" role="img" aria-label="Workspace autonomy posture">'
+    +'<circle cx="120" cy="120" r="112" fill="none" stroke="var(--line-soft)"/>'
+    +'<circle cx="120" cy="120" r="98" fill="var(--band)" opacity=".05"/>'
+    +'<circle cx="120" cy="120" r="98" fill="none" stroke="var(--line)"/>'
+    +'<circle cx="120" cy="120" r="80" fill="none" stroke="var(--gold)" stroke-opacity=".4" stroke-dasharray="1.5 7"/>'
+    +pts
+    +'<circle cx="120" cy="120" r="56" fill="none" stroke="'+ring+'" stroke-width="7" stroke-opacity="'+(on?".85":".42")+'"/>'
+    +'<circle cx="120" cy="120" r="46" fill="var(--raised)" stroke="var(--line)"/>'
+    +'<path d="M120 74 L127 116 L120 128 L113 116 Z" fill="var(--gold-fill)"/>'
+    +'<circle cx="120" cy="120" r="6" fill="var(--card-2)" stroke="var(--line-strong)"/>'
+    +'</svg></div>';
+}
+
+function render(){
+  var st = STATES[cur];
+  document.getElementById("ws").textContent = st.ws;
+  document.getElementById("fresh").innerHTML = st.fresh;
+
+  var h = '<div class="head"><div><h2>'+st.h+'</h2><p>'+st.s+'</p></div>'
+    +'<div class="aside">Authority is set here, narrowed by what the platform allows, and never widened by it.</div></div>';
+
+  if (!st.caps.length){
+    h += '<div class="empty"><h3>'+st.hub.t+'</h3><p>'+st.hub.p+'</p>'
+      +'<div class="acts" style="justify-content:center"><button class="btn">Setup › Your team</button></div></div>';
+  } else {
+    var half = Math.ceil(st.caps.length/2), L = st.caps.slice(0,half), R = st.caps.slice(half), H = LANE[st.hub.state];
+    h += '<div class="floor">'
+      +'<div class="col">'+L.map(function(c){return knobEl(c);}).join("")+'</div>'
+      +'<div class="col hub-col"><div class="hub '+H.k+'">'
+      +'<div class="hub-mode">◉ Autonomy</div>'
+      +'<div class="hub-state">'+H.label+'</div>'
+      +rose(st.hub.state)
+      +'<h3>'+st.hub.t+'</h3><p>'+st.hub.p+'</p>'
+      +'<div class="acts">'
+      +(cur==="approval"?'<button class="btn btn-gold">Review the three waiting</button>':'')
+      +'<button class="btn">Open the evidence</button></div>'
+      +'</div></div>'
+      +'<div class="col">'+R.map(function(c){return knobEl(c,"right");}).join("")+'</div>'
+      +'</div>';
+  }
+  if (st.three){
+    h += '<div class="rule"></div><div class="three">'
+      +'<div class="t-insight"><h4>What is working</h4><p>'+st.three.i+'</p></div>'
+      +'<div class="t-opp"><h4>What would help</h4><p>'+st.three.o+'</p></div>'
+      +'<div class="t-watch"><h4>Watch point</h4><p>'+st.three.w+'</p></div>'
+      +'</div>';
+  }
+  h += '<div class="owed"><b>Not wired yet</b><p>'+RAIL_OWED+'</p></div>'
+    +'<div class="ann"><b>'+st.label+'.</b> '+st.ann+'</div>';
+  document.getElementById("body").innerHTML = h;
+}
+
+var sw = document.getElementById("states");
+sw.innerHTML = Object.keys(STATES).map(function(k){
+  return '<button class="rv-btn'+(k===cur?" on":"")+'" data-st="'+k+'">'+STATES[k].label+'</button>';}).join("");
+
+document.addEventListener("click", function(e){
+  var b = e.target.closest("[data-st]");
+  if (b){ cur = b.dataset.st; sw.querySelectorAll(".rv-btn").forEach(function(x){x.classList.toggle("on", x===b);}); render(); return; }
+  var v = e.target.closest(".rv-btn[data-vw]");
+  if (v){ document.querySelectorAll(".rv-btn[data-vw]").forEach(function(x){x.classList.toggle("on", x===v);});
+    document.getElementById("shell").dataset.vw = v.dataset.vw; return; }
+  var t = e.target.closest(".rv-btn[data-theme]");
+  if (t){ document.querySelectorAll(".rv-btn[data-theme]").forEach(function(x){x.classList.toggle("on", x===t);});
+    document.documentElement.setAttribute("data-theme", t.dataset.theme); return; }
+  if (e.target.id === "annBtn"){ document.body.classList.toggle("ann-on");
+    e.target.classList.toggle("on", document.body.classList.contains("ann-on")); return; }
+  var d = e.target.closest("[data-dec]");
+  if (d){ var n = document.getElementById("notes").value.trim();
+    document.getElementById("verdict").textContent = d.dataset.dec
+      +" — recorded in this prototype only. No authority was changed."+(n?" Notes captured.":""); }
+});
+render();
+</script>

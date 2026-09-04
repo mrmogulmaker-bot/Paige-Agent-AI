@@ -1803,3 +1803,38 @@ does both.
 than a UI. No function in the product wrote four columns `missingProfile()` requires, so a filing
 was structurally unreachable for every Solo tenant and no screen said so. When a readiness list
 never empties, check that something writes what it is checking.
+
+---
+
+## Cataloguing a signal by what it holds today, instead of what it can hold
+
+**2026-09-04, Systems Check grounding.** An eleven-agent pass catalogued 101 tenant signals against
+live production and recorded a status for each. It was careful, sourced, and wrong in a way no
+amount of care would have caught, because the method itself was the defect: **each signal was
+classified by the value one workspace happened to hold on the day it was read**, not by the set of
+states the signal can occupy.
+
+The tell was that two words in an eight-word closed vocabulary — `PENDING PROVIDER` and `PAUSED` —
+came back unused. That reads like the vocabulary is too big. It is not. Both had real, reachable
+sources, and one was **occupied on production at the moment of the read**: the only
+`tenant_email_domains` row sat at `status='verifying'`, with a live provider id and three DNS records
+written. That workspace had done its part and the provider had not answered. The catalogue recorded
+it `NOT_CONNECTED` — which tells an owner to go and do something they have already done.
+
+Two further consequences only a state-space read surfaces:
+
+- The persisted finding store is CHECK-constrained to `pass | fail | skip | error`, so **no signal
+  read from it can ever express `PENDING PROVIDER` or `PAUSED`.** Those two words must come from the
+  live source table that actually holds the state. Nothing in a per-signal snapshot reveals this.
+- `suspended` is a live CHECK value on six tables, written by Twilio, by a platform operator, and by
+  an agency admin — a capability switched off **by someone who is not the owner**. Zero rows sit in
+  it today, so a value-based catalogue cannot see it at all, and none of the eight words fits it.
+
+*Rule:* **when you catalogue a status, read the source's own CHECK constraint or enum, not the row.**
+The row tells you where one tenant is standing. The constraint tells you where anyone can stand, and
+that is what a status vocabulary has to cover. A vocabulary word that comes back unused is a prompt
+to go looking for its source, never evidence that the word is surplus.
+
+*Corollary:* an unoccupied-but-reachable state is a real finding and belongs in the record with its
+occupancy stated honestly — "reachable, zero rows today" — so the next session knows it was
+considered rather than missed.
