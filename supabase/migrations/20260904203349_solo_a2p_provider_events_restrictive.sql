@@ -1,0 +1,1 @@
+-- Production history bridge: the canonical, dependency-safe implementation is 20261201000620_solo_a2p_provider_events_restrictive.sql.
