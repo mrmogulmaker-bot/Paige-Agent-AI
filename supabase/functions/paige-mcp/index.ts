@@ -3563,10 +3563,26 @@ mcp.tool("propose_subagent", {
         );
       }
     }
+    // §9/§59 — stamp the ACTOR's workspace, the same way every other tool here does.
+    // Without it the forge received no tenant and minted a PLATFORM DEFAULT: an agent
+    // every workspace on the fleet receives. X-Orchestrator-Call marks this agent-origin,
+    // so the per-tenant proposal cap always applies (D-1).
+    const proposeTenantId = await actorTenantId();
+    if (!proposeTenantId) return err("tenant_not_resolved");
     const r = await fetch(`${SUPABASE_URL}/functions/v1/subagent-forge`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY },
-      body: JSON.stringify({ action: "propose", ...args, proposed_by_agent: "paige-mcp" }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY,
+        "X-Orchestrator-Call": "1",
+      },
+      body: JSON.stringify({
+        action: "propose",
+        ...args,
+        proposed_by_agent: "paige-mcp",
+        tenant_id: proposeTenantId,
+        actor_user_id: currentActor().user_id ?? undefined,
+      }),
     });
     const body = await r.json().catch(() => ({}));
     await audit("propose_subagent", "subagent_proposal", args.slug, { runtime: args.runtime, status: r.status });
@@ -3581,10 +3597,19 @@ mcp.tool("list_subagent_proposals", {
     status: z.enum(["proposed","approved","rejected","generated","live","failed"]).optional(),
   }),
   handler: async ({ status }) => {
+    // §9 — scoped to the actor's workspace. This previously sent no tenant at all, and
+    // the forge's list ran on the service-role client (RLS bypassed), so it returned every
+    // workspace's proposals to any MCP caller.
+    const listTenantId = await actorTenantId();
+    if (!listTenantId) return err("tenant_not_resolved");
     const r = await fetch(`${SUPABASE_URL}/functions/v1/subagent-forge`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY },
-      body: JSON.stringify({ action: "list", status }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY,
+        "X-Orchestrator-Call": "1",
+      },
+      body: JSON.stringify({ action: "list", status, tenant_id: listTenantId }),
     });
     const body = await r.json().catch(() => ({}));
     if (r.status >= 300) return err(typeof body === "object" ? JSON.stringify(body) : String(body));

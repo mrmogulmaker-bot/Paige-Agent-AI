@@ -7,11 +7,14 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { looksLikeFinanceAgent } from "../_shared/finance-gate.ts";
+import { decideSubagentAuthority } from "../_shared/subagent-authority.ts";
 import { isJobKind, DEFAULT_SUBAGENT_JOB_KIND } from "../_shared/model-router.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
@@ -45,17 +48,71 @@ function fail(error: string, status = 400, details?: unknown) {
   });
 }
 
-async function getCaller(req: Request) {
+export interface Caller {
+  userId: string | null;
+  /** TENANT-LEVEL `admin` app_role. `user_roles` is GLOBAL and carries no tenant, so this
+   *  alone is authority over NOTHING outside the caller's own workspace (§59). */
+  isAdmin: boolean;
+  /** §53 platform-operator tier — super_admin OR platform_admin. The ONLY authority that
+   *  crosses a tenant boundary. */
+  isOperator: boolean;
+  /** The caller's active workspace, derived SERVER-SIDE. Never read from the body. */
+  tenantId: string | null;
+}
+
+const ANON_CALLER: Caller = { userId: null, isAdmin: false, isOperator: false, tenantId: null };
+
+async function getCaller(req: Request): Promise<Caller> {
   const auth = req.headers.get("Authorization");
-  if (!auth?.startsWith("Bearer ")) return { userId: null as string | null, isAdmin: false };
+  if (!auth?.startsWith("Bearer ")) return { ...ANON_CALLER };
   const { data } = await supabase.auth.getUser(auth.slice(7));
   const userId = data.user?.id ?? null;
-  if (!userId) return { userId: null, isAdmin: false };
+  if (!userId) return { ...ANON_CALLER };
+
   const { data: roles } = await supabase
     .from("user_roles").select("role").eq("user_id", userId);
   const isAdmin = (roles ?? []).some((r: { role: string }) => r.role === "admin");
-  return { userId, isAdmin };
+
+  // `is_platform_operator()` and `current_user_tenant_id()` are SECURITY DEFINER over
+  // `auth.uid()`, which is NULL on the service-role client — calling them with `supabase`
+  // would silently answer "not an operator, no tenant" for everyone. They must be asked
+  // through the CALLER's own JWT, which is also what makes the answer unspoofable.
+  const authed = createClient(SUPABASE_URL, ANON_KEY, {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: auth } },
+  });
+
+  let isOperator = false;
+  let tenantId: string | null = null;
+  try {
+    const [{ data: op }, { data: tid }] = await Promise.all([
+      authed.rpc("is_platform_operator"),
+      authed.rpc("current_user_tenant_id"),
+    ]);
+    isOperator = op === true;
+    tenantId = typeof tid === "string" && UUID_RE.test(tid) ? tid : null;
+  } catch (e) {
+    // Fail CLOSED: an unresolved caller is the least-privileged caller, never a wider one.
+    console.error("[subagent-forge] caller authority resolution failed:", (e as Error).message);
+    isOperator = false;
+    tenantId = null;
+  }
+
+  return { userId, isAdmin, isOperator, tenantId };
 }
+
+/** Thin adapter: the rule itself lives in `_shared/subagent-authority.ts` (§18 one home,
+ *  and it is unit-tested there against the full §51 tier matrix). This turns its decision
+ *  into the HTTP refusal this function speaks. */
+function denyIfNotAuthorized(
+  caller: Caller,
+  rowTenantId: string | null,
+  noun: string,
+): Response | null {
+  const d = decideSubagentAuthority(caller, rowTenantId, noun);
+  return d.allowed ? null : fail(d.reason, d.status);
+}
+
 
 // Quota is PER-TENANT (D-5): one tenant can't exhaust the factory for everyone.
 // tenant_id NULL = the platform/operator lane.
@@ -185,11 +242,22 @@ function financeGate(
 
 async function actionPropose(
   body: Record<string, unknown>,
-  caller: { userId: string | null; isAdmin: boolean },
+  caller: Caller,
   ctx: { tenantId: string | null; fundingEnabled: boolean; agentOrigin: boolean },
 ) {
   const { slug, runtime, errors } = validateProposal(body);
   if (errors.length) return fail("Validation failed", 422, errors);
+
+  // A null tenant mints a PLATFORM DEFAULT — an agent every workspace receives, and one
+  // a soft proposal may auto-ship. Creating one is "altering platform-default agents",
+  // so it answers to the operator tier, exactly like disabling one. `ctx.tenantId` is
+  // resolved server-side in the dispatcher; this is the second lock on the same door.
+  if (ctx.tenantId === null && !caller.isOperator) {
+    return fail(
+      "Only the platform operator can create a platform-default agent. Propose it inside your own workspace instead.",
+      403,
+    );
+  }
 
   // §2 finance gate — before anything is written.
   const financeErr = financeGate(body, { fundingEnabled: ctx.fundingEnabled, tenantId: ctx.tenantId });
@@ -325,22 +393,35 @@ async function routeForApproval(proposalId: string, actorId: string | null) {
   });
 }
 
-async function actionApprove(body: Record<string, unknown>, caller: { userId: string | null; isAdmin: boolean }) {
-  if (!caller.isAdmin) return fail("Admin only", 403);
+async function actionApprove(body: Record<string, unknown>, caller: Caller) {
   const id = String(body.proposal_id ?? "");
   if (!id) return fail("proposal_id required", 400);
   const { data: p } = await supabase
-    .from("paige_subagent_proposals").select("*").eq("id", id).single();
+    .from("paige_subagent_proposals").select("*").eq("id", id).maybeSingle();
   if (!p) return fail("Not found", 404);
+
+  // Approving SHIPS an agent, so it answers to the same authority rule as disabling one:
+  // a platform-default proposal is the operator's, a tenant proposal is that tenant's.
+  const denied = denyIfNotAuthorized(caller, p.tenant_id ?? null, "proposal");
+  if (denied) return denied;
+
   if (p.status === "live") return ok({ ok: true, message: "Already live" });
   return await shipProposal(id, caller.userId);
 }
 
-async function actionReject(body: Record<string, unknown>, caller: { userId: string | null; isAdmin: boolean }) {
-  if (!caller.isAdmin) return fail("Admin only", 403);
+async function actionReject(body: Record<string, unknown>, caller: Caller) {
   const id = String(body.proposal_id ?? "");
   if (!id) return fail("proposal_id required", 400);
-  const { error } = await supabase
+
+  const { data: p, error: readErr } = await supabase
+    .from("paige_subagent_proposals").select("id, tenant_id").eq("id", id).maybeSingle();
+  if (readErr) return fail(readErr.message, 500);
+  if (!p) return fail("Not found", 404);
+
+  const denied = denyIfNotAuthorized(caller, p.tenant_id ?? null, "proposal");
+  if (denied) return denied;
+
+  let q = supabase
     .from("paige_subagent_proposals")
     .update({
       status: "rejected",
@@ -348,28 +429,68 @@ async function actionReject(body: Record<string, unknown>, caller: { userId: str
       reviewed_at: new Date().toISOString(),
       review_notes: String(body.notes ?? ""),
     }).eq("id", id);
+  if (!caller.isOperator) q = q.eq("tenant_id", caller.tenantId);
+
+  const { error } = await q;
   if (error) return fail(error.message, 500);
   return ok({ ok: true });
 }
 
-async function actionList(body: Record<string, unknown>) {
+async function actionList(
+  body: Record<string, unknown>,
+  caller: Caller,
+  ctx: { tenantId: string | null },
+) {
   const status = body.status ? String(body.status) : null;
   let q = supabase.from("paige_subagent_proposals")
     .select("*").order("created_at", { ascending: false }).limit(50);
   if (status) q = q.eq("status", status);
+
+  // This runs on the service-role client, which BYPASSES RLS — so the tenant filter has to
+  // be here, or one workspace reads every other workspace's proposals (§9). The operator
+  // sees the fleet; every other caller sees exactly the workspace the dispatcher resolved
+  // for them (their own, or the one an agent-origin caller had stamped upstream).
+  if (!caller.isOperator) {
+    if (!ctx.tenantId) {
+      return ok({ ok: true, proposals: [], quota: await quotaToday(null), cap: DAILY_PROPOSAL_CAP, scope: "none" });
+    }
+    q = q.eq("tenant_id", ctx.tenantId);
+  }
+
   const { data, error } = await q;
   if (error) return fail(error.message, 500);
-  const quota = await quotaToday(body.tenant_id ? String(body.tenant_id) : null);
-  return ok({ ok: true, proposals: data ?? [], quota, cap: DAILY_PROPOSAL_CAP });
+  const quota = await quotaToday(ctx.tenantId);
+  return ok({
+    ok: true,
+    proposals: data ?? [],
+    quota,
+    cap: DAILY_PROPOSAL_CAP,
+    scope: caller.isOperator ? "fleet" : "workspace",
+  });
 }
 
-async function actionDisable(body: Record<string, unknown>, caller: { userId: string | null; isAdmin: boolean }) {
-  if (!caller.isAdmin) return fail("Admin only", 403);
+async function actionDisable(body: Record<string, unknown>, caller: Caller) {
   const slug = String(body.slug ?? "");
   if (!slug) return fail("slug required", 400);
-  const { error } = await supabase.from("paige_subagents")
+
+  // Read the target FIRST: `slug` is globally unique, so the row decides the authority
+  // question. Without this the update reached every workspace's agents by name alone.
+  const { data: target, error: readErr } = await supabase
+    .from("paige_subagents").select("slug, tenant_id").eq("slug", slug).maybeSingle();
+  if (readErr) return fail(readErr.message, 500);
+  if (!target) return fail("Not found", 404);
+
+  const denied = denyIfNotAuthorized(caller, target.tenant_id ?? null, "agent");
+  if (denied) return denied;
+
+  let q = supabase.from("paige_subagents")
     .update({ enabled: false, auto_disabled_reason: String(body.reason ?? "manual disable") })
     .eq("slug", slug);
+  // The write repeats the scope the check just granted, so a row that changes owner
+  // between the read and the write cannot widen the blast radius (TOCTOU).
+  if (!caller.isOperator) q = q.eq("tenant_id", caller.tenantId);
+
+  const { error } = await q;
   if (error) return fail(error.message, 500);
   return ok({ ok: true });
 }
@@ -393,16 +514,26 @@ Deno.serve(async (req) => {
   const agentOrigin = req.headers.get("X-Orchestrator-Call") === "1";
   if (agentOrigin) {
     caller.isAdmin = false;
+    // An agent never holds OPERATOR authority either. In practice getCaller already
+    // resolves both to false on the service-role token, but D-1 is a structural
+    // invariant and is asserted here so no future auth refactor can hand Paige the
+    // one tier that crosses a tenant boundary.
+    caller.isOperator = false;
     if (typeof body.actor_user_id === "string") caller.userId = body.actor_user_id;
     if (action === "approve" || action === "reject") {
       return fail("Agent-originated calls cannot approve or reject proposals — that's a human-only action.", 403);
     }
   }
-  // Tenant + funding context: agent-origin calls pass them explicitly (stamped by
-  // paige-ai-chat from personaCtx). A direct admin call proposes a PLATFORM default
-  // (tenant_id null) only if it doesn't pass tenant_id.
+  // Tenant + funding context. The body's tenant_id is HONOURED ONLY where it is already
+  // trustworthy: an agent-origin call had it stamped by paige-ai-chat from a server-resolved
+  // persona, and the platform operator may legitimately target any workspace (or null, for a
+  // platform default). Every other caller is pinned to their OWN active workspace, so passing
+  // someone else's tenant_id — or omitting it to mint a fleet-wide default — does nothing.
+  const bodyTenant = typeof body.tenant_id === "string" && UUID_RE.test(body.tenant_id)
+    ? body.tenant_id
+    : null;
   const ctx = {
-    tenantId: (typeof body.tenant_id === "string" ? body.tenant_id : null) as string | null,
+    tenantId: (agentOrigin || caller.isOperator) ? bodyTenant : caller.tenantId,
     fundingEnabled: body.funding_enabled === true,
     agentOrigin,
   };
@@ -412,7 +543,7 @@ Deno.serve(async (req) => {
       case "propose":  return await actionPropose(body, caller, ctx);
       case "approve":  return await actionApprove(body, caller);
       case "reject":   return await actionReject(body, caller);
-      case "list":     return await actionList(body);
+      case "list":     return await actionList(body, caller, ctx);
       case "disable":  return await actionDisable(body, caller);
       default: return fail(`Unknown action: ${action}`, 400);
     }
