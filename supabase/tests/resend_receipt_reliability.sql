@@ -3,6 +3,11 @@ BEGIN;
 SELECT '1..1';
 CREATE FUNCTION pg_temp.check_receipt(ok boolean, label text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN IF ok IS DISTINCT FROM true THEN RAISE EXCEPTION 'receipt contract failed: %', label; END IF; END $$;
+SELECT pg_temp.check_receipt(has_table_privilege('service_role','public.email_send_log','SELECT'),'source read privilege');
+SELECT pg_temp.check_receipt(has_table_privilege('service_role','public.email_send_log','INSERT'),'outcome insert privilege');
+SELECT pg_temp.check_receipt(has_table_privilege('service_role','public.email_send_log','UPDATE'),'source lock privilege');
+SELECT pg_temp.check_receipt(has_table_privilege('service_role','public.tenant_invite_tokens','SELECT'),'invitation read privilege');
+SELECT pg_temp.check_receipt(has_table_privilege('service_role','public.tenant_invite_tokens','UPDATE'),'invitation lock privilege');
 INSERT INTO public.tenants(id,slug,name,status,account_type,account_number_prefix,account_number,features) VALUES
 ('fa900000-0000-0000-0000-000000000001','receipt-test-a','Receipt test A','active','standalone','RTA',9447001,'{}'),
 ('fa900000-0000-0000-0000-000000000002','receipt-test-b','Receipt test B','active','standalone','RTB',9447002,'{}');
