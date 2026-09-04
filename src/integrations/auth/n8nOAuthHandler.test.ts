@@ -2,7 +2,7 @@
 // @vitest-environment node
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
-import {describe,it,expect,vi} from 'vitest';
+import {describe,it,expect,vi,afterEach} from 'vitest';
 // Execute the real Deno handler with injectable network/DB ports, not a rewritten model.
 function load(source:string,ports:Record<string,unknown>,deno?:unknown):any{
  const exports={};
@@ -14,14 +14,15 @@ const server={issuer:'https://n8n.example',authorizationEndpoint:'https://n8n.ex
 const callback='https://fixture.supabase.co/functions/v1/tenant-n8n-oauth';
 const payload={server,client:{clientId:'fixture-client',clientSecret:null},resource:'https://n8n.example/mcp-server/http',redirect_uri:callback,verifier:'fixture-verifier'};
 const tokens={accessToken:'secret-access',refreshToken:'secret-refresh',expiresAt:'2099-01-01T00:00:00Z',scopes:['workflow:read','workflow:write']};
-function harness(options:{owner?:boolean;rpc?:(op:string,input:any)=>any;expired?:boolean;workflows?:unknown[];tokens?:any}={}){
+function harness(options:{owner?:boolean;rpc?:(op:string,input:any)=>any;expired?:boolean;workflows?:unknown[];tokens?:any;exchangeError?:Error;discoveryError?:Error}={}){
  const calls:{op:string,input:any}[]=[];
  const readiness={tenant_id:'tenant-a',can_manage:options.owner??true,api:{state:'api_connected_zero'},mcp:{state:'connected_no_approved_tools',auth_kind:'oauth'}};
- const oauth={createPkce:async()=>({verifier:'verifier',challenge:'challenge'}),createState:()=> 's'.repeat(43),registerClient:async()=>payload.client,buildAuthorizationUrl:()=>server.authorizationEndpoint,
-  exchangeCode:vi.fn(async()=>options.tokens??tokens),refreshTokens:vi.fn(async()=>options.tokens??tokens),revokeToken:vi.fn(async()=>true),isExpired:()=>options.expired??false,
+ class OAuthError extends Error {constructor(public code:string,public httpStatus?:number){super(code)}}
+ const oauth={OAuthError,createPkce:async()=>({verifier:'verifier',challenge:'challenge'}),createState:()=> 's'.repeat(43),registerClient:async()=>payload.client,buildAuthorizationUrl:()=>server.authorizationEndpoint,
+  exchangeCode:vi.fn(async()=>{if(options.exchangeError)throw options.exchangeError;return options.tokens??tokens;}),refreshTokens:vi.fn(async()=>options.tokens??tokens),revokeToken:vi.fn(async()=>true),isExpired:()=>options.expired??false,
   discoverAuthorizationServer:async()=>server,discoverProtectedResource:async()=>({resource:payload.resource,authorizationServers:[server.issuer]})};
  class McpError extends Error{}
- const client={McpError,withApprovedCapabilitySession:async(_opts:any,body:any)=>body({tools:[{name:'search_workflows',schemaHash:'schema'}],call:async()=>({structuredContent:{data:options.workflows??[],count:options.workflows?.length??0}})})};
+ const client={McpError,withApprovedCapabilitySession:async(_opts:any,body:any)=>{if(options.discoveryError)throw options.discoveryError;return body({tools:[{name:'search_workflows',schemaHash:'schema'}],call:async()=>({structuredContent:{data:options.workflows??[],count:options.workflows?.length??0}})});}};
  const helper=load('supabase/functions/_shared/n8n-oauth.ts',{'./mcp-oauth.ts':oauth,'./mcp-client.ts':client,'./ssrfGuard.ts':{safeFetch:async()=>({status:200,truncated:false,body:JSON.stringify({issuer:server.issuer,authorization_response_iss_parameter_supported:true})})}});
  const admin={rpc:async(_name:string,args:any)=>{
   calls.push({op:args._operation,input:args._input});
@@ -41,6 +42,7 @@ function harness(options:{owner?:boolean;rpc?:(op:string,input:any)=>any;expired
  const consent=(query='code=fixture-code')=>handler(new Request(`${callback}?state=${'s'.repeat(43)}&${query}`,{headers:{cookie:`__Host-paige-n8n-oauth=${'s'.repeat(43)}`}}));
  return {handler,post,consent,calls,oauth,helper};
 }
+afterEach(()=>vi.restoreAllMocks());
 describe('n8n owner OAuth executed handler',()=>{
  it.each(['https://paigeagent.ai','https://app.paigeagent.ai'])('allows preflight for %s',async origin=>{const h=harness();const res=await h.handler(new Request(callback,{method:'OPTIONS',headers:{origin,'access-control-request-method':'POST','access-control-request-headers':'authorization,content-type'}}));expect(res.status).toBe(204);expect(res.headers.get('access-control-allow-origin')).toBe(origin)});
  it('refuses hostile preflight',async()=>{const h=harness();const res=await h.handler(new Request(callback,{method:'OPTIONS',headers:{origin:'https://evil.example'}}));expect(res.status).toBe(403);expect(res.headers.get('access-control-allow-origin')).toBeNull()});
@@ -66,3 +68,9 @@ describe('n8n owner OAuth executed handler',()=>{
  it('rejects truncated inventory instead of reporting false zero',()=>{expect(()=>harness().helper.parseWorkflowPreviews({structuredContent:{count:201,data:[]}})).toThrow('workflow_inventory_incomplete')});
  it('rejects unknown workflow approval',()=>{expect(()=>harness().helper.validateApproval(['other'],[{id:'one',name:'One'}])).toThrow('approval_changed')});
 });
+
+it('logs only closed diagnostic fields for a secret-bearing exchange exception',async()=>{const log=vi.spyOn(console,'warn').mockImplementation(()=>{});const secret='canary-code-token-provider-payload';const h=harness({exchangeError:Object.assign(new Error(secret),{code:secret,httpStatus:401,request:{headers:secret},response:secret})});await h.consent();expect(log).toHaveBeenCalledWith('n8n_oauth_callback_failed',{stage:'token_exchange',reason:'unexpected_failure'});expect(JSON.stringify(log.mock.calls)).not.toContain(secret)});
+it('records scope failure without token values',async()=>{const log=vi.spyOn(console,'warn').mockImplementation(()=>{});const h=harness({tokens:{...tokens,accessToken:'canary-access-token',refreshToken:'canary-refresh-token',scopes:[]}});await h.consent();expect(log).toHaveBeenCalledWith('n8n_oauth_callback_failed',{stage:'scope_validation',reason:'provider_scope_refused'});expect(JSON.stringify(log.mock.calls)).not.toContain('canary')});
+it('records discovery and commit stages without raw provider errors',async()=>{const log=vi.spyOn(console,'warn').mockImplementation(()=>{});await harness({discoveryError:new Error('canary-provider-payload')}).consent();expect(log).toHaveBeenCalledWith('n8n_oauth_callback_failed',{stage:'mcp_discovery',reason:'unexpected_failure'});await harness({rpc:op=>op==='finish'?{error:{message:'canary-private-database-message'}}:undefined}).consent();expect(log).toHaveBeenCalledWith('n8n_oauth_callback_failed',{stage:'credential_commit',reason:'operation_refused'});expect(JSON.stringify(log.mock.calls)).not.toContain('canary')});
+
+it.each([401,999])('logs only bounded numeric HTTP status %s',async status=>{const log=vi.spyOn(console,'warn').mockImplementation(()=>{});const h=harness();const error=Object.assign(new h.oauth.OAuthError('token_exchange_failed',status),{message:'canary-message',detail:'canary-response'});h.oauth.exchangeCode.mockRejectedValueOnce(error);await h.consent();expect(log).toHaveBeenCalledWith('n8n_oauth_callback_failed',{stage:'token_exchange',reason:'token_exchange_failed',...(status===401?{http_status:401}:{})});expect(JSON.stringify(log.mock.calls)).not.toContain('canary')});

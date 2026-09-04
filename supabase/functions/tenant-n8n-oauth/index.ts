@@ -1,7 +1,7 @@
 // Dedicated n8n OAuth boundary. GET handles launch and callback entirely server-side.
 // POST authenticates a JWT; tenant expectations can refuse, never select a workspace.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-import { createPkce,createState,registerClient,buildAuthorizationUrl,exchangeCode,refreshTokens,revokeToken,isExpired,discoverAuthorizationServer, type AuthorizationServer, type ClientRegistration, type TokenSet } from '../_shared/mcp-oauth.ts';
+import { OAuthError,createPkce,createState,registerClient,buildAuthorizationUrl,exchangeCode,refreshTokens,revokeToken,isExpired,discoverAuthorizationServer, type AuthorizationServer, type ClientRegistration, type TokenSet } from '../_shared/mcp-oauth.ts';
 import { N8N_OAUTH_SCOPES,N8nSafeError,validateN8nResource,discoverN8n,validateServer,assertScopedTokens,hashOpaque,discoverWorkflowPreviews,validateApproval } from '../_shared/n8n-oauth.ts';
 import { McpError } from '../_shared/mcp-client.ts';
 const SUPABASE_URL=Deno.env.get('SUPABASE_URL')!;
@@ -12,6 +12,15 @@ const COOKIE='__Host-paige-n8n-oauth';
 const HEADERS={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Access-Control-Allow-Headers':'authorization,apikey,content-type,x-client-info','Access-Control-Allow-Methods':'POST,GET,OPTIONS','Vary':'Origin'};
 
 
+// Closed diagnostic vocabulary only: never serialize an exception or request.
+type CallbackStage='callback_validation'|'token_exchange'|'scope_validation'|'mcp_discovery'|'credential_commit';
+const CALLBACK_REASONS=new Set(['invalid_callback','expired','provider_scope_refused','provider_unavailable','workflow_inventory_incomplete','workflow_discovery_unavailable','token_exchange_failed','malformed_token_response','mcp_http_error','mcp_malformed_response','mcp_protocol_error','request_timed_out','request_failed','response_too_large','url_redirect_refused','url_host_unresolvable','url_resolves_to_private_address','url_host_not_allowed','operation_refused','forbidden','tenant_changed','stale_operation','busy']);
+function logCallbackFailure(stage:CallbackStage,error:unknown):void {
+ const known=error instanceof OAuthError||error instanceof N8nSafeError||error instanceof McpError;
+ const reason=known&&CALLBACK_REASONS.has(error.code)?error.code:'unexpected_failure';
+ const status=error instanceof OAuthError||error instanceof McpError?error.httpStatus:undefined;
+ console.warn('n8n_oauth_callback_failed',{stage,reason,...(typeof status==='number'&&Number.isInteger(status)&&status>=100&&status<=599?{http_status:status}:{})});
+}
 const clearCookie=`${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`;
 const landing=(account:string|undefined,state:string)=>`${PUBLIC_BASE}${account&&/^\d+$/.test(account)?`/solo/${account}/settings/integrations`:'/choose-account'}?n8n_oauth=${state}`;
 type Payload={server:AuthorizationServer & {responseIssuerRequired?:boolean};client:ClientRegistration;resource:string;verifier:string;redirect_uri:string;authorization_url:string};
@@ -52,6 +61,7 @@ Deno.serve(async req=>{
   }catch{return json({error:'launch_refused'},403);}
  }
  if(req.method==='GET'){
+  let stage:CallbackStage='callback_validation';
   let account:string|undefined;
   let attemptId:string|undefined;
   let pendingGrant:{server:AuthorizationServer;client:ClientRegistration;tokens:TokenSet}|undefined;
@@ -80,16 +90,21 @@ Deno.serve(async req=>{
    }
    const code=url.searchParams.get('code');
    if(!code||code.length>4096) throw new N8nSafeError('invalid_callback');
+   stage='token_exchange';
    const tokens=await exchangeCode({server:payload.server,...payload.client,redirectUri:CALLBACK,code,verifier:payload.verifier,resource:payload.resource});
    pendingGrant={server:payload.server,client:payload.client,tokens};
+   stage='scope_validation';
    assertScopedTokens(tokens);
    // Prove the scoped grant actually reaches n8n before replacing a saved working credential.
+   stage='mcp_discovery';
    await discoverWorkflowPreviews({serverUrl:payload.resource,auth:{kind:'bearer',token:tokens.accessToken}});
+   stage='credential_commit';
    const completed=await rpc('finish',{attempt_id:attemptId,outcome:'success',tokens});
    if(completed.expired) throw new N8nSafeError('expired');
    pendingGrant=undefined;
    return redirect(landing(account,'success'),clearCookie);
   }catch(error){
+   logCallbackFailure(stage,error);
    if(pendingGrant) await revokeToken({server:pendingGrant.server,...pendingGrant.client,token:pendingGrant.tokens.refreshToken??pendingGrant.tokens.accessToken,tokenTypeHint:pendingGrant.tokens.refreshToken?'refresh_token':'access_token'});
    if(attemptId) await rpc('finish',{attempt_id:attemptId,outcome:'failed'}).catch(()=>undefined);
    return redirect(landing(account,error instanceof N8nSafeError&&error.code==='expired'?'expired':'failed'),clearCookie);

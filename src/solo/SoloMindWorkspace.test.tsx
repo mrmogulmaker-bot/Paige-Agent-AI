@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const harness = vi.hoisted(() => ({ knowledge: vi.fn(), systems: vi.fn(), command: vi.fn() }));
+const harness = vi.hoisted(() => ({ knowledge: vi.fn(), systems: vi.fn(), command: vi.fn(), n8n: vi.fn() }));
 const approvalHook = vi.hoisted(() => {
   const pending: Array<{ tenant: string | null; resolve: (value: { data: unknown[]; error: null }) => void }> = [];
   const state = { tenant: "tenant-a" as string | null };
@@ -20,6 +20,7 @@ const approvalHook = vi.hoisted(() => {
   });
   return { pending, state, from };
 });
+vi.mock("./data/useN8nSpineReadiness", () => ({ useN8nSpineReadiness: () => harness.n8n() }));
 vi.mock("./data/useSoloKnowledge", () => ({ useSoloKnowledge: () => harness.knowledge() }));
 vi.mock("@/hooks/useSystemsCheck", () => ({ useSystemsCheck: () => harness.systems() }));
 vi.mock("./data/useCommandCenter", () => ({ useCommandCenter: () => harness.command() }));
@@ -80,6 +81,7 @@ beforeEach(() => {
   harness.knowledge.mockReturnValue(knowledge);
   harness.systems.mockReturnValue(systems);
   harness.command.mockReturnValue(command);
+  harness.n8n.mockReturnValue({data:null,loading:false,error:false,refresh:vi.fn()});
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -502,3 +504,18 @@ describe("Solo Mind workspace", () => {
   });
 });
 
+
+
+describe("Mind n8n current-state projection",()=>{
+ const ready=()=>({api:{state:"api_connected_zero",workflowCount:0,lastSuccessfulCheck:null,actionNeeded:"none"},mcp:{state:"connected_no_approved_tools",oauthReadiness:"authorized",approvedWorkflowCount:0,approvedToolCount:0,lastSuccessfulCheck:"2026-09-03T12:00:00.000Z",actionNeeded:"approve_named_workflows"}});
+ it("maps two independent source-backed records with no invented Rail history",()=>{
+  harness.n8n.mockReturnValue({data:ready(),loading:false,error:false,refresh:vi.fn()});render();
+  expect(host.querySelectorAll('[data-mind-record]')).toHaveLength(6);expect(button("n8n API connection")).toBeTruthy();expect(button("n8n Paige tools (MCP)")).toBeTruthy();
+  act(()=>button("n8n API connection")!.click());expect(host.textContent).toContain("Workflow count: 0");expect(host.textContent).toContain("No successful check proven");expect(host.textContent).toContain("Current-state evidence, not Rail history.");expect(host.textContent).not.toContain("rail:");
+ });
+ it("clears selected n8n evidence when its source fails and uses existing partial warning",()=>{
+  harness.n8n.mockReturnValue({data:ready(),loading:false,error:false,refresh:vi.fn()});render();act(()=>button("n8n Paige tools (MCP)")!.click());
+  harness.n8n.mockReturnValue({data:null,loading:false,error:true,refresh:vi.fn()});render();expect(button("n8n Paige tools (MCP)")).toBeUndefined();expect(host.textContent).toContain("Mind has partial coverage");expect(host.textContent).not.toContain("Approved workflows:");
+ });
+ it("refreshes n8n through the existing read-only Refresh records action",()=>{const refresh=vi.fn();harness.n8n.mockReturnValue({data:null,loading:false,error:true,refresh});render();act(()=>button("Refresh records")!.click());expect(refresh).toHaveBeenCalledOnce();});
+});

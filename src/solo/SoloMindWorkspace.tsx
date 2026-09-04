@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BrainCircuit, ChevronLeft, ExternalLink, Maximize2, Minimize2, Pause, Play, RefreshCw, Rotate3D, X } from "lucide-react";
 import { useSystemsCheck, type SystemsCheckFinding } from "@/hooks/useSystemsCheck";
+import { useN8nSpineReadiness } from "./data/useN8nSpineReadiness";
+import { N8N_ACTION_WORDS, N8N_API_WORDS, N8N_MCP_WORDS } from "../../supabase/functions/_shared/paige-spine/domains/n8nReadiness";
 import { useCommandCenter } from "./data/useCommandCenter";
 import { useSoloKnowledge, type SoloKnowledgeDoc } from "./data/useSoloKnowledge";
 import {
@@ -82,8 +84,10 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   const knowledge = useSoloKnowledge();
   const systems = useSystemsCheck("tenant");
   const command = useCommandCenter();
+  const n8n = useN8nSpineReadiness();
   const [category, setCategory] = useState<Category | "all">("all");
-  const [selected, setSelected] = useState<MindRecord | null>(null);
+  const [selectedValue, setSelected] = useState<MindRecord | null>(null);
+  const selected = selectedValue?.id.startsWith("n8n-readiness:") && !n8n.data ? null : selectedValue;
   const [expanded, setExpanded] = useState(false);
   const [rotation, setRotation] = useState({ x: -0.12, y: 0.18, zoom: 1 });
   const [pulse, setPulse] = useState<Pulse | null>(null);
@@ -102,6 +106,10 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   const drawerRef = useRef<HTMLElement>(null);
 
   const records = useMemo<MindRecord[]>(() => [
+    ...(n8n.data ? [
+      { id: "n8n-readiness:api", category: "recall" as const, title: "n8n API connection", summary: N8N_API_WORDS[n8n.data.api.state], source: "Integrations · current connection record", when: n8n.data.api.lastSuccessfulCheck ? `Last successful check: ${n8n.data.api.lastSuccessfulCheck}` : "No successful check proven", truth: "LIVE SOURCE" as const, color: "#D4AD62", evidence: `Workflow count: ${n8n.data.api.workflowCount ?? "unavailable"}. ${N8N_ACTION_WORDS[n8n.data.api.actionNeeded]}. API visibility does not grant MCP authority. Current-state evidence, not Rail history.`, owner: "Solo Integrations" },
+      { id: "n8n-readiness:mcp", category: "recall" as const, title: "n8n Paige tools (MCP)", summary: N8N_MCP_WORDS[n8n.data.mcp.state], source: "Integrations · current authorization record", when: n8n.data.mcp.lastSuccessfulCheck ? `Last successful check: ${n8n.data.mcp.lastSuccessfulCheck}` : "No successful check proven", truth: "LIVE SOURCE" as const, color: "#D4AD62", evidence: `Approved workflows: ${n8n.data.mcp.approvedWorkflowCount ?? "unavailable"}. Approved tools: ${n8n.data.mcp.approvedToolCount ?? "unavailable"}. ${N8N_ACTION_WORDS[n8n.data.mcp.actionNeeded]}. OAuth consent is not approval to execute or change workflows. Current-state evidence, not Rail history.`, owner: "Solo Integrations" },
+    ] : []),
     ...knowledge.docs.map(knowledgeRecord),
     ...systems.findings.map(findingRecord),
     ...command.approvals.map((approval) => ({
@@ -110,11 +118,15 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
       source: "Waiting on you", when: approval.aging, truth: "LIVE SOURCE" as const, color: "#7596C8",
       evidence: `${approval.dept}${approval.type ? ` · ${approval.type}` : ""} · current pending item`, owner: "Systems Check decision queue",
     })),
-  ], [command.approvals, knowledge.docs, systems.findings]);
+  ], [command.approvals, knowledge.docs, systems.findings, n8n.data]);
+
+  useEffect(() => {
+    setSelected(current => current?.id.startsWith("n8n-readiness:") ? records.find(record => record.id === current.id) ?? null : current);
+  }, [records]);
 
   const visible = useMemo(() => category === "all" ? records : records.filter((record) => record.category === category), [category, records]);
-  const loading = knowledge.loading || systems.loading || command.loading;
-  const partial = !!knowledge.error || systems.isError || command.isError;
+  const loading = knowledge.loading || systems.loading || command.loading || n8n.loading;
+  const partial = !!knowledge.error || systems.isError || command.isError || n8n.error;
 
   useEffect(() => {
     const ids = new Set(records.map((record) => record.id));
@@ -304,7 +316,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   };
 
   const closeInspector = () => { setSelected(null); setExpanded(false); requestAnimationFrame(() => launcherRef.current?.focus()); };
-  const refresh = () => { knowledge.refresh(); systems.refresh(); command.refresh(); setAnnouncement("Refreshing the current record sources. This is not a scan."); };
+  const refresh = () => { knowledge.refresh(); systems.refresh(); command.refresh(); void n8n.refresh(); setAnnouncement("Refreshing the current record sources. This is not a scan."); };
   const openExistingPaige = () => {
     const command = document.querySelector<HTMLElement>("[data-tenant-paige-command]");
     setSelected(null); setExpanded(false); setPulse(null); setPaused(false);
