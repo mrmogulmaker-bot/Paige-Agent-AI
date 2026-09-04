@@ -44,6 +44,8 @@ tier that customizes on top of its (Agency) baseline. Owner-locked cells (2026-0
 - **`growth` + `studio` (Vibe Studio + Campaigns) = Solo · Sub-account · Enterprise · God — NOT Agency**
 - **Solo Campaigns -> Pipeline (Gate 1 approved; draft, not live as of 2026-08-31):** follows the existing Growth exception: Solo + Sub-account + Enterprise + God, not Agency. The base capability is tenant-owned multiple pipelines, explicit stage lifecycle management, board-first deal context, and compact focused-stage operation. Read-only members receive the projection but not stage/pipeline writes. This row remains **DRAFT / UNVERIFIED** until Gate 2, merge, persisted migration apply, and authenticated owner-flow proof; it must not be represented as shipped beforehand.
 
+- **Bounded empty-pipeline deletion (2026-09-03):** the new `delete_empty_pipeline` exception is narrower than general Growth access: active canonical Owner of the server-resolved top-level standalone Solo tenant only. Admin-only/member, child/sub-account, Agency, Enterprise and Operator contexts receive no new deletion capability. `get_pipeline_workspace.can_delete` is server-proven. Existing Pipeline catalogue/configure permissions are unchanged. See `docs/delivery/solo-pipeline-empty-delete.md` for proof/release status; rendered fixtures do not prove authenticated production access.
+
   (#125; agency manages sub-accounts, not its own campaign book; god dogfoods per §35). Route-gated via
   `RequireFeature` (`/admin/campaigns`, `/admin/studio`), not nav-only.
 - **`subaccount_management` = Agency + Enterprise; `fleet_console` = God** only.

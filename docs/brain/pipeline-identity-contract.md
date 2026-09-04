@@ -4,6 +4,10 @@ Status: **implementation draft — not deployed**. This document records the con
 
 ## Identity
 
+### Later bounded Owner-deletion contract (2026-09-03)
+
+The historical identity-slice status above is not a current deployment assertion. The separately authorized [empty-deletion hotfix](../delivery/solo-pipeline-empty-delete.md) adds only `delete_empty_pipeline` for the server-resolved, active canonical Solo Owner. It requires exact UUID/PPL/version/total-stage confirmation, refuses deals and retained dependencies, and atomically records outcome. No Chat hard-delete capability or new approval bridge is added. Read that delivery ledger and the Pipeline surface card before changing any deletion caller. Never use `tenants.owner_user_id` or a role-name string as authority; use active `is_tenant_owner` membership. The shared Solo shell is unchanged.
+
 - `pipelines.id` is the immutable internal UUID primary key. New writes must omit it; the server creates it.
 - `pipelines.short_ref` is a server-generated, immutable, tenant-scoped human reference in the form `PPL-XXXXX`.
 - One unattributed V1 global pipeline remains quarantined rather than being assigned to an invented tenant. It receives an immutable reference but is excluded from every tenant catalogue; all new pipelines require a real tenant.
