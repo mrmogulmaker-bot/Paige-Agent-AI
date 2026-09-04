@@ -1,0 +1,803 @@
+<title>Systems Check</title>
+<meta name="description" content="Can the business systems actually do what the plan asks?">
+<style>
+/* THROWAWAY review surface. Deleted or absorbed after approval.
+   Chrome is deliberately IDENTICAL to solo-trust-compass.html — the four sub-tabs are four parts
+   of one machine (§6 continuity), so this reuses that shell rather than inventing a second one.
+   The radial belongs to Trust Compass by owner ruling; nothing here is a dial, a score, or a
+   percentage. */
+:root{
+  --f-display:"Schibsted Grotesk","Segoe UI Variable Display",system-ui,sans-serif;
+  --f-ui:"Schibsted Grotesk","Segoe UI Variable Text",system-ui,sans-serif;
+  --f-serif:"Gambetta","Newsreader","Iowan Old Style",Baskerville,serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --t-micro:10px; --t-label:11px; --t-body:13px; --t-lead:15px; --t-title:19px; --t-hero:30px;
+  --r-plate:14px; --r-chip:9px; --r-pill:999px;
+  --band:#123f30; --band-2:#0d2f24; --band-ink:#f2efe6;
+  --env:#eceae2; --card:#fbfaf6; --card-2:#f4f2ea; --raised:#ffffff;
+  --line:rgba(24,48,38,.16); --line-soft:rgba(24,48,38,.09); --line-strong:rgba(24,48,38,.30);
+  --ink:#17231d; --ink-2:#38473f; --muted:#5d6b63; --faint:#7b877f;
+  --green:#2f7d5a; --green-deep:#1d5c40; --green-soft:rgba(47,125,90,.14);
+  --gold:#96701f; --gold-fill:#d5a63c; --gold-bloom:rgba(213,166,60,.30);
+  --amber:#8a5d13; --amber-soft:rgba(138,93,19,.13);
+  --red:#8f382f; --red-soft:rgba(143,56,47,.12);
+  --blue:#3c6b99; --blue-soft:rgba(60,107,153,.12);
+  --slate:#6f7d75; --slate-soft:rgba(111,125,117,.13);
+  --violet:#6b5391; --violet-soft:rgba(107,83,145,.13);
+  --lift:0 1px 1px rgba(24,48,38,.05),0 6px 16px -8px rgba(24,48,38,.18);
+  --lift-2:0 2px 4px rgba(24,48,38,.07),0 18px 40px -16px rgba(24,48,38,.26);
+  --rim:inset 0 1px 0 rgba(255,255,255,.9);
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --band:#0b241c; --band-2:#071a14; --band-ink:#e8e4d8;
+  --env:#0a0f0d; --card:#121a16; --card-2:#0e1512; --raised:#18211c;
+  --line:rgba(226,240,232,.17); --line-soft:rgba(226,240,232,.10); --line-strong:rgba(226,240,232,.32);
+  --ink:#eef3ef; --ink-2:#cfd8d2; --muted:#a4b2a9; --faint:#8b9990;
+  --green:#68c295; --green-deep:#68c295; --green-soft:rgba(104,194,149,.14);
+  --gold:#e2c07c; --gold-fill:#d5a63c; --gold-bloom:rgba(213,166,60,.24);
+  --amber:#e0b06a; --amber-soft:rgba(224,176,106,.14);
+  --red:#e69a91; --red-soft:rgba(230,154,145,.13);
+  --blue:#8ab4dd; --blue-soft:rgba(138,180,221,.13);
+  --slate:#9aa8a0; --slate-soft:rgba(154,168,160,.13);
+  --violet:#b3a0d6; --violet-soft:rgba(179,160,214,.14);
+  --lift:0 1px 1px rgba(0,0,0,.4),0 6px 16px -8px rgba(0,0,0,.5);
+  --lift-2:0 2px 4px rgba(0,0,0,.35),0 18px 40px -16px rgba(0,0,0,.55);
+  --rim:inset 0 1px 0 rgba(255,255,255,.06);
+  color-scheme:dark;
+}
+body{background:var(--env);color:var(--ink);font:400 var(--t-body)/1.55 var(--f-ui);}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;}
+h1,h2,h3,h4,p,ul{margin:0;} ul{padding:0;list-style:none;}
+*:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px;}
+
+/* ---------- review harness (not product) ---------- */
+.rv{position:sticky;top:0;z-index:40;background:var(--band-2);color:var(--band-ink);
+    display:flex;flex-wrap:wrap;gap:13px;align-items:center;padding:9px 16px;}
+.rv-l{font:600 var(--t-label)/1 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;opacity:.6;}
+.rv-g{display:flex;gap:5px;align-items:center;flex-wrap:wrap;}
+.rv-btn{border:1px solid rgba(255,255,255,.22);border-radius:var(--r-chip);padding:5px 9px;
+        font-size:var(--t-label);color:var(--band-ink);opacity:.72;}
+.rv-btn.on{opacity:1;border-color:var(--gold-fill);background:rgba(213,166,60,.16);}
+.rv-note{margin-left:auto;font-size:var(--t-label);opacity:.55;}
+
+.stage{padding:20px 16px 56px;display:flex;justify-content:center;}
+.shell{width:100%;max-width:1240px;background:var(--card);border-radius:var(--r-plate);
+       overflow:hidden;box-shadow:var(--lift-2);border:1px solid var(--line-soft);}
+.shell[data-vw="tablet"]{max-width:834px;} .shell[data-vw="mobile"]{max-width:390px;}
+
+.band{background:linear-gradient(180deg,var(--band) 0%,var(--band-2) 100%);color:var(--band-ink);padding:15px 20px 0;}
+.band-top{display:flex;align-items:center;gap:13px;flex-wrap:wrap;}
+.mark{width:38px;height:38px;flex:0 0 auto;}
+.brand h1{font:500 var(--t-hero)/1.05 var(--f-serif);letter-spacing:-.01em;}
+.brand .kicker{font:600 var(--t-label)/1 var(--f-ui);letter-spacing:.2em;text-transform:uppercase;opacity:.6;margin-top:5px;}
+.band-right{margin-left:auto;display:flex;align-items:center;gap:14px;}
+.acct{text-align:right;line-height:1.3;} .acct b{display:block;font-size:var(--t-body);font-weight:650;}
+.acct span{font-size:var(--t-label);opacity:.62;}
+.tabs{display:flex;gap:4px;margin-top:14px;}
+.tab{padding:8px 12px;font-size:var(--t-label);font-weight:650;opacity:.55;border-bottom:2px solid transparent;}
+.tab.on{opacity:1;border-bottom-color:var(--gold-fill);}
+.shell[data-vw="mobile"] .tabs{overflow-x:auto;} .shell[data-vw="mobile"] .brand h1{font-size:23px;}
+.shell[data-vw="mobile"] .band-right{margin-left:0;width:100%;}
+</style>
+<style>
+/* ---------- product body ---------- */
+.body{padding:18px 20px 24px;display:flex;flex-direction:column;gap:18px;}
+.shell[data-vw="mobile"] .body{padding:14px 13px 20px;}
+
+/* freshness strip — the one place a count may appear, and only from a real summary */
+.fresh{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;
+       background:var(--card-2);border:1px solid var(--line-soft);border-radius:var(--r-chip);
+       padding:11px 13px;box-shadow:var(--rim);}
+.fresh-l{min-width:0;flex:1 1 300px;}
+.fresh-h{font:650 var(--t-body)/1.4 var(--f-ui);}
+.fresh-s{font-size:var(--t-label);color:var(--muted);margin-top:3px;}
+.fresh-s b{font-weight:650;color:var(--ink-2);font-variant-numeric:tabular-nums;}
+.fresh-a{display:flex;gap:7px;flex-wrap:wrap;}
+.btn{border:1px solid var(--line);border-radius:var(--r-chip);padding:7px 12px;
+     font:650 var(--t-label)/1 var(--f-ui);background:var(--raised);box-shadow:var(--rim);white-space:nowrap;}
+.btn:hover{border-color:var(--line-strong);}
+.btn-gold{background:var(--gold-fill);border-color:var(--gold);color:#231a06;box-shadow:0 1px 0 var(--gold-bloom);}
+.btn[disabled]{opacity:.45;cursor:default;}
+.btn-sm{padding:5px 9px;font-size:var(--t-micro);}
+.spin{display:inline-block;width:9px;height:9px;border-radius:50%;border:1.5px solid currentColor;
+      border-top-color:transparent;margin-right:5px;vertical-align:-1px;animation:sp .9s linear infinite;}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none;opacity:.6}}
+
+/* section furniture */
+.sec{display:flex;flex-direction:column;gap:9px;}
+.sec-h{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;}
+.sec-h h2{font:650 var(--t-lead)/1.25 var(--f-ui);letter-spacing:-.01em;}
+.sec-h .n{font:650 var(--t-label)/1 var(--f-ui);color:var(--muted);font-variant-numeric:tabular-nums;}
+.sec-h .why{margin-left:auto;font-size:var(--t-label);color:var(--faint);}
+
+/* status pill — CLOSED SET, eight words, each carrying its reason */
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:var(--r-pill);
+      padding:2px 8px;font:700 var(--t-micro)/1.5 var(--f-ui);letter-spacing:.07em;
+      text-transform:uppercase;white-space:nowrap;border:1px solid transparent;}
+.pill i{width:5px;height:5px;border-radius:50%;background:currentColor;flex:0 0 auto;}
+.p-live{color:var(--green-deep);background:var(--green-soft);border-color:rgba(47,125,90,.28);}
+.p-partial{color:var(--blue);background:var(--blue-soft);border-color:rgba(60,107,153,.28);}
+.p-notconnected{color:var(--slate);background:var(--slate-soft);border-color:rgba(111,125,117,.3);}
+.p-attention{color:var(--amber);background:var(--amber-soft);border-color:rgba(138,93,19,.3);}
+.p-provider{color:var(--violet);background:var(--violet-soft);border-color:rgba(107,83,145,.3);}
+.p-unavailable{color:var(--faint);background:transparent;border-color:var(--line);border-style:dashed;}
+.p-proof{color:var(--faint);background:transparent;border-color:var(--line);border-style:dashed;}
+.p-paused{color:var(--slate);background:transparent;border-color:var(--line-strong);}
+.why-c{font-size:var(--t-label);color:var(--muted);}
+
+/* attention list */
+.att{display:flex;flex-direction:column;gap:8px;}
+.item{background:var(--raised);border:1px solid var(--line-soft);border-left:3px solid var(--line);
+      border-radius:var(--r-chip);padding:11px 13px;box-shadow:var(--lift);}
+.item.sev-block{border-left-color:var(--red);}
+.item.sev-high{border-left-color:var(--amber);}
+.item.sev-wait{border-left-color:var(--violet);}
+.item-t{display:flex;gap:9px;align-items:flex-start;flex-wrap:wrap;}
+.item-t h3{font:650 var(--t-body)/1.4 var(--f-ui);flex:1 1 260px;min-width:0;}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:4px 16px;margin-top:8px;}
+.shell[data-vw="mobile"] .meta{grid-template-columns:1fr;}
+.m{min-width:0;}
+.m dt{font:700 var(--t-micro)/1.5 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);}
+.m dd{margin:0;font-size:var(--t-label);color:var(--ink-2);overflow-wrap:anywhere;}
+.m dd.src{font-family:var(--f-mono);font-size:var(--t-micro);color:var(--muted);}
+.item-a{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:10px;}
+.route{font-family:var(--f-mono);font-size:var(--t-micro);color:var(--faint);overflow-wrap:anywhere;}
+
+/* ready list */
+.ready{display:flex;flex-direction:column;gap:0;background:var(--raised);
+       border:1px solid var(--line-soft);border-radius:var(--r-chip);box-shadow:var(--lift);overflow:hidden;}
+.ready li{display:flex;gap:10px;align-items:flex-start;padding:9px 13px;border-top:1px solid var(--line-soft);}
+.ready li:first-child{border-top:0;}
+.ready .tick{color:var(--green);flex:0 0 auto;margin-top:2px;}
+.ready p{font-size:var(--t-body);}
+.ready small{display:block;font-size:var(--t-micro);color:var(--faint);font-family:var(--f-mono);margin-top:2px;}
+
+/* nine operating areas — collapsed rows, expand to the seven-field contract */
+.areas{background:var(--raised);border:1px solid var(--line-soft);border-radius:var(--r-chip);
+       box-shadow:var(--lift);overflow:hidden;}
+.area{border-top:1px solid var(--line-soft);} .area:first-child{border-top:0;}
+.area-b{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:10px 13px;}
+.area-b:hover{background:var(--card-2);}
+.area-n{font:650 var(--t-body)/1.35 var(--f-ui);flex:0 0 auto;}
+.area-k{font-size:var(--t-label);color:var(--muted);flex:1 1 auto;min-width:0;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.shell[data-vw="mobile"] .area-b{flex-wrap:wrap;} .shell[data-vw="mobile"] .area-k{flex-basis:100%;white-space:normal;}
+.chev{flex:0 0 auto;color:var(--faint);transition:transform .18s ease;}
+.area[aria-expanded="true"] .chev{transform:rotate(90deg);}
+@media (prefers-reduced-motion:reduce){.chev{transition:none}}
+.area-d{padding:2px 13px 13px;background:var(--card-2);border-top:1px solid var(--line-soft);}
+.grid7{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px 18px;margin-top:10px;}
+.shell[data-vw="mobile"] .grid7{grid-template-columns:1fr;}
+
+/* recent verification — the Rail */
+.rail{background:var(--raised);border:1px solid var(--line-soft);border-radius:var(--r-chip);
+      box-shadow:var(--lift);overflow:hidden;}
+.rail li{display:flex;gap:11px;align-items:baseline;padding:9px 13px;border-top:1px solid var(--line-soft);}
+.rail li:first-child{border-top:0;}
+.rail .when{font-family:var(--f-mono);font-size:var(--t-micro);color:var(--faint);flex:0 0 84px;}
+.rail .who{font-size:var(--t-micro);font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+           color:var(--violet);flex:0 0 auto;}
+.rail .who.none{color:var(--faint);font-weight:600;letter-spacing:0;text-transform:none;font-style:italic;}
+.rail .what{font-size:var(--t-label);color:var(--ink-2);flex:1 1 auto;min-width:0;}
+.shell[data-vw="mobile"] .rail li{flex-wrap:wrap;gap:4px 9px;}
+
+/* owner decisions — three buckets */
+.dec3{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:11px;}
+.buck{background:var(--raised);border:1px solid var(--line-soft);border-radius:var(--r-chip);
+      padding:11px 13px;box-shadow:var(--lift);}
+.buck h3{font:700 var(--t-micro)/1.5 var(--f-ui);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);}
+.buck ul{margin-top:7px;display:flex;flex-direction:column;gap:6px;}
+.buck li{font-size:var(--t-label);color:var(--ink-2);padding-left:12px;position:relative;}
+.buck li:before{content:"";position:absolute;left:0;top:7px;width:4px;height:4px;border-radius:50%;background:var(--line-strong);}
+.buck.you li:before{background:var(--gold-fill);}
+.buck.paige li:before{background:var(--green);}
+.buck.wait li:before{background:var(--violet);}
+.buck .none{font-style:italic;color:var(--faint);padding-left:0;} .buck .none:before{display:none;}
+
+/* honest absences */
+.note{background:var(--card-2);border:1px dashed var(--line);border-radius:var(--r-chip);
+      padding:10px 13px;font-size:var(--t-label);color:var(--muted);}
+.note b{color:var(--ink-2);font-weight:650;}
+.empty{text-align:center;padding:34px 20px;background:var(--raised);
+       border:1px solid var(--line-soft);border-radius:var(--r-chip);box-shadow:var(--lift);}
+.empty h3{font:500 var(--t-title)/1.3 var(--f-serif);}
+.empty p{font-size:var(--t-body);color:var(--muted);max-width:46ch;margin:7px auto 0;}
+
+/* annotations */
+.ann{display:none;font-size:var(--t-micro);color:var(--blue);border-left:2px solid var(--blue);
+     padding:3px 0 3px 8px;margin-top:6px;font-family:var(--f-mono);line-height:1.5;}
+body.ann-on .ann{display:block;}
+
+/* decision surface */
+.dec{max-width:1240px;margin:0 auto;padding:0 16px 46px;}
+.dec textarea{width:100%;min-height:64px;margin-top:8px;padding:9px 11px;border:1px solid var(--line);
+              border-radius:var(--r-chip);background:var(--raised);color:var(--ink);font:inherit;resize:vertical;}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;}
+.verdict{margin-top:9px;font-size:var(--t-label);color:var(--green-deep);min-height:1.4em;}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}
+</style>
+
+<div class="rv">
+  <div class="rv-g"><span class="rv-l">State</span><span id="states"></span></div>
+  <div class="rv-g"><span class="rv-l">Viewport</span>
+    <button class="rv-btn on" data-vw="desktop">Desktop</button>
+    <button class="rv-btn" data-vw="tablet">Tablet</button>
+    <button class="rv-btn" data-vw="mobile">Mobile</button></div>
+  <div class="rv-g"><span class="rv-l">Theme</span>
+    <button class="rv-btn on" data-theme="light">Parchment</button>
+    <button class="rv-btn" data-theme="dark">Forest</button></div>
+  <div class="rv-g"><button class="rv-btn" id="annBtn">Annotations</button></div>
+  <span class="rv-note">Prototype — pressing anything here checks nothing and writes nothing.</span>
+</div>
+
+<div class="stage"><div class="shell" id="shell" data-vw="desktop">
+  <div class="band">
+    <div class="band-top">
+      <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
+        <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".38"/>
+        <circle cx="24" cy="24" r="14.5" fill="none" stroke="currentColor" stroke-width=".8" opacity=".22"/>
+        <path d="M19 33V15h6.6a5.4 5.4 0 0 1 0 10.8H19" fill="none" stroke="currentColor"
+              stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="brand"><h1>Systems Check</h1>
+        <div class="kicker">Can the business systems do what the plan asks?</div></div>
+      <div class="band-right">
+        <div class="acct"><b id="ws">Northwind Advisory</b><span id="wsSub">Solo workspace · 3855</span></div>
+      </div>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Command Center sections">
+      <div class="tab" role="tab" aria-selected="false">Business Game Plan</div>
+      <div class="tab on" role="tab" aria-selected="true">Systems Check</div>
+      <div class="tab" role="tab" aria-selected="false">Mind</div>
+      <div class="tab" role="tab" aria-selected="false">Trust Compass</div>
+    </div>
+  </div>
+  <div class="body" id="body"></div>
+</div></div>
+
+<div class="dec">
+  <div class="rv-l" style="color:var(--faint)">Decision</div>
+  <p style="font-size:13px;color:var(--muted);margin-top:5px">Gate 1 — appearance and intended function. Nothing ships to the production surface before this is answered.</p>
+  <textarea id="notes" placeholder="Notes, revisions, anything that reads wrong…"></textarea>
+  <div class="acts">
+    <button class="btn btn-gold" data-dec="Approved">Approve</button>
+    <button class="btn" data-dec="Revision requested">Request revision</button>
+    <button class="btn" data-dec="Rejected">Reject</button>
+  </div>
+  <div class="verdict" id="verdict" role="status" aria-live="polite"></div>
+</div>
+<span class="sr" id="live" role="status" aria-live="polite"></span>
+
+<script>
+/* Every route below was verified to exist against src/lib/routing/tierBranches.ts. Where a
+   destination does NOT exist, the item says so rather than linking somewhere that merely
+   resolves — /solo/* has no catch-all, so a wrong slug silently renders Command Center with the
+   wrong URL still in the bar. A bad link would LOOK like it worked. */
+var ACC = "3855";
+var R = {
+  profile:  "/solo/"+ACC+"/settings/setup/business-profile",
+  people:   "/solo/"+ACC+"/clients/people",
+  team:     "/solo/"+ACC+"/settings/team",
+  know:     "/solo/"+ACC+"/paige/knowledge",
+  compass:  "/solo/"+ACC+"/trust-compass",
+  autom:    "/solo/"+ACC+"/settings/integrations/automations",
+  comms:    "/solo/"+ACC+"/settings/connections?segment=communications",
+  reg:      "/solo/"+ACC+"/settings/connections?segment=registration",
+  cals:     "/solo/"+ACC+"/settings/connections?segment=calendars",
+  camp:     "/solo/"+ACC+"/growth/overview",
+  catalog:  "/solo/"+ACC+"/growth/catalog",
+  pipeline: "/solo/"+ACC+"/growth/pipeline",
+  sales:    "/solo/"+ACC+"/growth/sales",
+  billing:  "/solo/"+ACC+"/settings/billing",
+  brief:    "/solo/"+ACC+"/analytics/brief"
+};
+
+/* The CLOSED SET. Eight, and never a ninth. No percentage, no score, no aggregate roll-up. */
+var S = {
+  live:         {k:"p-live",         t:"Live"},
+  partial:      {k:"p-partial",      t:"Partial"},
+  notconnected: {k:"p-notconnected", t:"Not connected"},
+  attention:    {k:"p-attention",    t:"Needs attention"},
+  provider:     {k:"p-provider",     t:"Pending provider"},
+  unavailable:  {k:"p-unavailable",  t:"Unavailable"},
+  proof:        {k:"p-proof",        t:"Proof owed"},
+  paused:       {k:"p-paused",       t:"Paused"}
+};
+function pill(s, why){
+  var d = S[s]; if(!d) return "";
+  return '<span class="pill '+d.k+'"><i></i>'+d.t+'</span>'
+    + (why ? '<span class="why-c">'+why+'</span>' : '');
+}
+function esc(x){ return String(x).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+/* ---- the nine operating areas, in the owner's plain business language ---- */
+/* Each carries the seven fields §3.3 requires: status · what we know · source + last verified ·
+   what PAIGE can do now · what is blocked · owner or responsible agent · exact next action.  */
+function AREAS(){ return [
+ { n:"Business setup and identity", s:"partial",
+   why:"name and playbook on file; website, phone, industry and legal name are not",
+   know:"Your business name and what you do are recorded. Your website, business phone, industry, registered legal name and business address are not — and the last two are what a carrier asks for before it will let you text.",
+   src:"Setup check <code>company_info_populated</code> and the <code>tenant_legal_profile</code> row",
+   ver:"3 Sep, 06:12", can:"Paige has drafted the profile fields she can infer and is holding them for you to accept or dismiss.",
+   blocked:"Nothing. This is entirely in your hands.", own:"You", act:"Setup › Business profile", route:R.profile },
+
+ { n:"People and CRM", s:"attention",
+   why:"the numbers are real, but the last full check ran 36 hours ago",
+   know:"42 people on file. 7 added in the last 30 days. 9 have had nothing recorded against them in 21 days. 4 have no email and no phone, so nothing can reach them.",
+   src:"Live counts from <code>contacts</code>; the 21-day figure from the last recorded run",
+   ver:"3 Sep, 06:12", can:"Paige can draft a re-engagement note for the 9 who have gone quiet, and hold each for your approval.",
+   blocked:"Your relationship stages are still the platform starter set. Where each person sits on the ladder was filled in automatically and nobody has confirmed it.",
+   own:"You, with Paige drafting", act:"Clients › People", route:R.people },
+
+ { n:"Sales and commercial operations", s:"notconnected",
+   why:"nothing has been written down yet — not the pipeline, not what you sell, not how you get paid",
+   know:"No pipeline stages. No offers recorded, so there is nothing a client can be signed up to. No record of how your clients pay you or what they have agreed to.",
+   src:"Empty <code>tenant_products</code>, <code>tenant_prices</code> and pipeline-stage tables",
+   ver:"3 Sep, 06:12", can:"Nothing yet. Paige cannot draft an offer until she knows what you sell.",
+   blocked:"Money your clients have actually paid you cannot be reported at all — there is no source for it in this workspace today.",
+   own:"You", act:"Campaigns › Catalog", route:R.catalog },
+
+ { n:"Email, phone and SMS readiness", s:"partial",
+   why:"email sends today; texting is not switched on and calls are not recorded",
+   know:"Email goes out from a Paige-hosted address, and replies land back here. Your own business domain has not been verified for sending. Texting is not switched on for this business.",
+   src:"Setup check <code>comms_configured</code>, plus the live sender record",
+   ver:"3 Sep, 06:12", can:"Paige can send email on your behalf now, within the limits you set in Trust Compass.",
+   blocked:"Whether the emails you sent were delivered, bounced or opened — nothing verifies that yet, so it is not claimed.",
+   own:"You, then your domain host", act:"Connections › Communications", route:R.comms },
+
+ { n:"Campaigns, social and advertising", s:"partial",
+   why:"two pages and a form are live; six enquiries never finished processing",
+   know:"2 published pages and 1 active intake form, each with the date it went live. 14 enquiries captured in 30 days, 8 of which became a person in your client list.",
+   src:"Live page, funnel and form records; submission rows",
+   ver:"3 Sep, 06:12", can:"Paige can retry the 6 stalled enquiries and file each result for you.",
+   blocked:"Social accounts cannot be reported at all — there is no way to record them in this workspace, so their absence is not evidence of anything.",
+   own:"Paige, then you", act:"Campaigns › Overview", route:R.camp },
+
+ { n:"Integrations and automations", s:"attention",
+   why:"n8n is connected but Paige is permitted to run none of it",
+   know:"Your n8n workspace is connected. Paige has permission to run 0 of your workflows, so nothing there can fire. Zapier has nothing saved for it.",
+   src:"<code>n8n_approved_workflow_ids</code> (empty) and the connection record",
+   ver:"3 Sep, 06:12", can:"Nothing, until you name which workflows she may run.",
+   blocked:"The workflow list Paige can see was last refreshed on 11 July. Those counts are two months old and have never been re-checked against your account.",
+   own:"You", act:"Settings › Integrations › Automations", route:R.autom },
+
+ { n:"Paige's team and delegated work", s:"partial",
+   why:"eight items are open, and every one of them is a setup fix",
+   know:"8 items Paige is holding for you, all of them setup fixes from the daily check. Her background drafting runs every two minutes and has never produced a draft in this workspace.",
+   src:"<code>paige_actions</code> open rows for this workspace",
+   ver:"3 Sep, 06:14", can:"Six of the eight she can complete on her own the moment you allow it.",
+   blocked:"This workspace cannot yet set how much Paige does on her own — that control is not exposed here.",
+   own:"Paige, waiting on you", act:"Trust Compass", route:R.compass },
+
+ { n:"Business knowledge — the Mind", s:"partial",
+   why:"she can search your documents; she cannot yet remember your conversations",
+   know:"18 documents Paige can search when she answers you, and where each came from. Your business facts — website, phone, industry, business email — are recorded and she is allowed to state them.",
+   src:"<code>rag_documents</code> and the business-context record",
+   ver:"3 Sep, 06:12", can:"Answer from your documents, and stage a suggestion about your business facts for you to accept.",
+   blocked:"The voice examples and way-of-working profile you wrote in Setup do not reach Paige yet. She does not remember between conversations what you have told her.",
+   own:"You, with Paige drafting", act:"Paige › Knowledge", route:R.know },
+
+ { n:"Security, permissions and governance", s:"attention",
+   why:"two-step sign-in is off on your own account",
+   know:"Who can get in, at what access level, and who owns this workspace. When platform support last entered, and when they left. 1 seat has never signed in.",
+   src:"Live membership and access records",
+   ver:"3 Sep, 06:12", can:"Nothing here without you — access changes are yours alone.",
+   blocked:"Part of what Paige is allowed to do here is set by the platform, and that part is not published to this workspace.",
+   own:"You", act:"Settings › Team", route:R.team }
+]; }
+
+/* ---- the eight states the owner required ---- */
+/* Counts in `fresh` are only ever what a run summary actually returned. A count that no run
+   produced does not appear. */
+var STATES = {
+
+ partial: { label:"Partial", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  fresh:{ h:"Last recorded run · 3 Sep, 06:12",
+    s:"<b>10</b> checks · <b>3</b> passed · <b>6</b> need attention · <b>1</b> could not be evaluated",
+    mode:"idle" },
+  ann:"The real current picture for a working Solo workspace, from the 101 grounded signals. Six areas partial or worse is the truth, not a failure of the surface.",
+  att:[
+   {sev:"high", h:"Your business profile is missing the details Paige needs", s:"attention",
+    why:"website, business phone and industry are blank",
+    own:"You", src:"Setup check <code>company_info_populated</code>", ver:"3 Sep, 06:12",
+    act:"Setup › Business profile", route:R.profile,
+    extra:"Paige has drafted what she can infer. Accepting it is one press."},
+   {sev:"high", h:"Paige can run none of your n8n workflows", s:"attention",
+    why:"0 of 4 workflows have been approved, so nothing there can fire",
+    own:"You", src:"<code>n8n_approved_workflow_ids</code> — empty", ver:"3 Sep, 06:12",
+    act:"Settings › Integrations › Automations", route:R.autom},
+   {sev:"high", h:"Six enquiries were captured and never finished processing", s:"attention",
+    why:"someone filled in your form and nothing happened after it",
+    own:"Paige can retry these", src:"Submission rows with no recorded completion", ver:"3 Sep, 06:12",
+    act:"Campaigns › Overview", route:R.camp},
+   {sev:"high", h:"Two-step sign-in is off on your own account", s:"attention",
+    why:"the owner seat is the one that can change everything else",
+    own:"You", src:"Your account's sign-in factors", ver:"3 Sep, 06:12",
+    act:"Settings › Team", route:R.team},
+   {sev:"high", h:"The workflow list Paige can see was last refreshed on 11 July", s:"attention",
+    why:"two months old, and never re-checked against your account since",
+    own:"Paige can refresh it", src:"<code>n8n_workflow_catalog.refreshed_at</code>", ver:"11 Jul, 09:41",
+    act:"Settings › Integrations › Automations", route:R.autom},
+   {sev:"high", h:"Text messaging is not switched on for this business", s:"notconnected",
+    why:"nothing has been filed with a carrier yet — this is the first step, not a wait",
+    own:"You", src:"No messaging account and no registration on file", ver:"3 Sep, 06:12",
+    act:"Connections › Registration", route:R.reg,
+    extra:"Once filed this becomes a wait on the carrier. It is not one yet."}
+  ],
+  ready:[
+   {p:"Email sending works — Paige can send on your behalf, and replies land back here.", s:"Live sender record and reply routing, 3 Sep 06:12"},
+   {p:"42 people are on file, 7 of them added in the last 30 days.", s:"Live count from your client list"},
+   {p:"Paige can search 18 of your documents when she answers you.", s:"Live document index, 3 Sep 06:12"},
+   {p:"Two pages and one intake form are live right now.", s:"Live page and form records"},
+   {p:"You can see who has access here, at what level, and who owns the workspace.", s:"Live membership records"},
+   {p:"You can see when platform support last entered this workspace, and when they left.", s:"Support access log — no entry in 90 days"}
+  ],
+  rail:[
+   {when:"3 Sep 06:14", who:null, what:"Setup check completed — 10 checks, 6 needing attention"},
+   {when:"3 Sep 06:14", who:null, what:"Eight fixes drafted and filed for your approval"},
+   {when:"2 Sep 17:02", who:null, what:"Business profile saved"},
+   {when:"1 Sep 11:26", who:null, what:"Form submitted — became a person in your client list"}
+  ],
+  railNote:"Every line above says <b>Paige</b>, because until an agent records its own name on the Rail nothing can say which specialist did the work. The column exists as of today; nothing writes to it yet. This section will stay thin until it does — that is a real gap, not a display choice.",
+  dec:{ you:["Fill in website, business phone and industry","Approve which n8n workflows Paige may run","Turn on two-step sign-in","Start the carrier registration for texting"],
+        paige:["Retry the six stalled enquiries","Refresh the n8n workflow list","Draft a re-engagement note for the nine quiet contacts"],
+        wait:[] } },
+
+ empty: { label:"Empty", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  fresh:{ h:"No check has finished yet", s:"Nothing has been recorded for this workspace.", mode:"first" },
+  ann:"A workspace whose first check has not landed. No area may show a status, because no source has answered. The one honest thing to offer is to start the check.",
+  emptyState:{ t:"Nothing has been checked yet", p:"Systems Check reads what your business systems actually report. None of them has answered for this workspace yet, so there is nothing here to show you — and nothing here is a claim that anything is wrong." },
+  att:[], ready:[], rail:[], areas:"suppress",
+  dec:{ you:["Run the first check"], paige:[], wait:[] } },
+
+ ready: { label:"Ready", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  fresh:{ h:"Last recorded run · 3 Sep, 06:12",
+    s:"<b>10</b> checks · <b>9</b> passed · <b>0</b> need attention · <b>1</b> deliberately paused", mode:"idle" },
+  ann:"Every area either answers Live or is off by your own choice. Note that even here there is no score and no roll-up — 'ready' is the absence of an attention list, not a number.",
+  att:[], attEmpty:"Nothing needs you right now. Every check that ran came back clean, and the one thing that is off is off because you switched it off.",
+  ready:[
+   {p:"Email sends from your own verified business domain.", s:"Domain verified 28 Aug, re-checked 3 Sep 06:12"},
+   {p:"Texting is switched on and your carrier registration is approved.", s:"Carrier approval recorded 22 Aug"},
+   {p:"Paige can run four of your n8n workflows, and has run three this week.", s:"Approved workflow list, 3 Sep 06:12"},
+   {p:"What you sell is written down, and your pipeline stages are your own.", s:"Live offer and stage records"},
+   {p:"Paige can search 63 of your documents, all of them fully indexed.", s:"Live document index, 3 Sep 06:12"},
+   {p:"Two-step sign-in is on for every seat that can change access.", s:"Live sign-in factor records"}
+  ],
+  overrides:{0:{s:"live"},1:{s:"live"},2:{s:"live"},3:{s:"live"},4:{s:"live"},5:{s:"live"},6:{s:"live"},7:{s:"live"},8:{s:"live"}},
+  pausedIdx:4, pausedWhy:"you switched paid-ad tracking off on 14 Aug",
+  rail:[
+   {when:"3 Sep 06:14", who:null, what:"Setup check completed — 10 checks, none needing attention"},
+   {when:"2 Sep 09:31", who:null, what:"Email sent to 12 people"},
+   {when:"1 Sep 14:08", who:null, what:"Workflow run completed"}
+  ],
+  dec:{ you:[], paige:["Nothing waiting"], wait:[] } },
+
+ blocked: { label:"Blocked", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  fresh:{ h:"Last recorded run · 3 Sep, 06:12",
+    s:"<b>10</b> checks · <b>1</b> passed · <b>8</b> need attention · <b>1</b> could not be evaluated", mode:"idle" },
+  ann:"One blocking failure sits underneath several areas at once. The surface says which areas it holds up and why, rather than showing eight unrelated red rows.",
+  att:[
+   {sev:"block", h:"Your sending identity was rejected, and it holds up four other things", s:"attention",
+    why:"until this is fixed, no email, no campaign follow-up and no client invitation can leave this workspace",
+    own:"You, then your domain host", src:"Setup check <code>comms_configured</code> — failed, blocking", ver:"3 Sep, 06:12",
+    act:"Connections › Communications", route:R.comms,
+    extra:"Holds up: Email readiness · Campaigns · People and CRM invitations · Paige's delegated work",
+    blocking:true},
+   {sev:"high", h:"Paige is holding eight drafts she cannot deliver", s:"attention",
+    why:"each of them ends in an email, and nothing can send",
+    own:"Paige, blocked by the above", src:"<code>paige_actions</code> open rows", ver:"3 Sep, 06:14",
+    act:"Trust Compass", route:R.compass}
+  ],
+  ready:[
+   {p:"42 people are on file and reachable by phone.", s:"Live count from your client list"},
+   {p:"You can see who has access here, at what level, and who owns the workspace.", s:"Live membership records"}
+  ],
+  overrides:{3:{s:"attention",why:"sending identity rejected — nothing can leave this workspace"},
+             4:{s:"attention",why:"held up by the sending identity"},
+             1:{s:"attention",why:"invitations cannot be sent while sending is down"},
+             6:{s:"attention",why:"eight drafts are waiting on a channel that cannot send"}},
+  rail:[
+   {when:"3 Sep 06:12", who:null, what:"Sending identity check failed — rejected by the provider"},
+   {when:"3 Sep 06:12", who:null, what:"Eight deliveries held rather than attempted"}
+  ],
+  dec:{ you:["Fix the sending identity — everything else is waiting on it"], paige:[],
+        wait:["Your domain host, once the record is added"] } },
+
+ provider: { label:"Pending provider", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  fresh:{ h:"Last recorded run · 3 Sep, 06:12",
+    s:"<b>10</b> checks · <b>5</b> passed · <b>3</b> need attention · <b>2</b> waiting on someone outside", mode:"idle" },
+  ann:"The only state where PENDING PROVIDER may appear. It requires that something was genuinely filed — 'not started' is NOT CONNECTED, and conflating the two is how a surface starts telling people to wait for a thing nobody submitted. The domain case below is not hypothetical: one tenant_email_domains row on production sits at status='verifying' right now, with a real provider id and three DNS records written. The spec currently calls that row NOT CONNECTED, which is wrong, and is corrected in the same commit as this prototype. The third item below is the vocabulary HOLE — read its annotation.",
+  att:[
+   {sev:"wait", h:"Your carrier registration is filed and under review", s:"provider",
+    why:"submitted 29 Aug; carriers typically answer within 5 to 10 business days",
+    own:"The carrier — nothing is needed from you", src:"Registration record, submitted 29 Aug 14:20", ver:"3 Sep, 06:12",
+    act:"Connections › Registration", route:R.reg,
+    extra:"Texting stays off until they answer. Paige will record the outcome here either way, including a rejection."},
+   {sev:"wait", h:"Your domain is verified with us and waiting on your DNS to propagate", s:"provider",
+    why:"the record was added 2 Sep; propagation is out of everyone's hands",
+    own:"Your domain host", src:"Domain verification record", ver:"3 Sep, 06:12",
+    act:"Connections › Communications", route:R.comms},
+   {sev:"high", h:"Two-step sign-in is off on your own account", s:"attention",
+    why:"nothing outside is holding this up — it is yours to switch on",
+    own:"You", src:"Your account's sign-in factors", ver:"3 Sep, 06:12",
+    act:"Settings › Team", route:R.team},
+   {sev:"wait", h:"Your messaging account was suspended by the carrier", s:"attention",
+    why:"it was working, and it was taken away — you did not switch this off",
+    own:"The carrier. There may be nothing you can do inside Paige.",
+    src:"Messaging account status — <code>suspended</code>", ver:"3 Sep, 06:12",
+    act:"Connections › Registration", route:R.reg,
+    extra:"GAP — read the state note. None of the eight words fits this, and the pill above is the least wrong of them.",
+    gap:true}
+  ],
+  ready:[
+   {p:"Email sends today from a Paige-hosted address, while your own domain finishes.", s:"Live sender record"},
+   {p:"Paige can run four of your n8n workflows.", s:"Approved workflow list, 3 Sep 06:12"},
+   {p:"42 people on file, 7 added in the last 30 days.", s:"Live count from your client list"}
+  ],
+  overrides:{3:{s:"provider",why:"registration filed 29 Aug, under carrier review"}},
+  rail:[
+   {when:"29 Aug 14:20", who:null, what:"Carrier registration submitted"},
+   {when:"2 Sep 10:05", who:null, what:"Domain record added — verification pending"}
+  ],
+  dec:{ you:["Turn on two-step sign-in"], paige:[],
+        wait:["The carrier, on your texting registration — filed 29 Aug","Your domain host, on DNS propagation — added 2 Sep"] } },
+
+ failure: { label:"Check failed", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  fresh:{ h:"The last check did not finish", s:"Started 3 Sep, 06:12 · stopped after 4 of 10 checks", mode:"failed",
+    err:"The check stopped partway through. Six checks were never evaluated, so nothing below covers them." },
+  ann:"The run itself broke. The critical rule: the four checks that DID complete are shown as their own real result, and the six that never ran are UNAVAILABLE — not passed, not failed, and not quietly omitted.",
+  att:[
+   {sev:"block", h:"Six of your ten checks were never evaluated", s:"unavailable",
+    why:"the check stopped after the fourth one and did not resume",
+    own:"Paige — this is ours, not yours", src:"Run record, no completion time", ver:"3 Sep, 06:12",
+    act:"Re-run the checks", route:null,
+    extra:"Nothing below claims anything about Sales, Campaigns, Integrations, Paige's team, the Mind, or Security. They were not looked at."}
+  ],
+  ready:[
+   {p:"Of the four that did complete: email sending works, and replies land back here.", s:"Live sender record, 3 Sep 06:12"},
+   {p:"42 people on file — this one completed before the run stopped.", s:"Live count, 3 Sep 06:12"}
+  ],
+  overrides:{2:{s:"unavailable",why:"never evaluated in this run"},4:{s:"unavailable",why:"never evaluated in this run"},
+             5:{s:"unavailable",why:"never evaluated in this run"},6:{s:"unavailable",why:"never evaluated in this run"},
+             7:{s:"unavailable",why:"never evaluated in this run"},8:{s:"unavailable",why:"never evaluated in this run"}},
+  rail:[{when:"3 Sep 06:12", who:null, what:"Setup check started"},
+        {when:"3 Sep 06:12", who:null, what:"Check stopped after 4 of 10 — no completion recorded"}],
+  dec:{ you:[], paige:["Re-run the check"], wait:[] } },
+
+ retry: { label:"Re-checking", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  fresh:{ h:"A check is running now — started 3 Sep, 08:41", s:"Everything below is the <b>last recorded</b> result, from 3 Sep 06:12. It has not been replaced yet.", mode:"running" },
+  ann:"Real in-flight state, not a timer: a run row exists with no completion time. Note the values below are explicitly labelled last-recorded rather than dimmed and left ambiguous.",
+  att:"inherit", ready:"inherit", overrides:"inherit", rail:"inherit",
+  staleBanner:"These are the results from <b>3 Sep, 06:12</b>. The check running now has not replaced them.",
+  dec:{ you:["Wait for the check to finish, or carry on — it will not interrupt you"], paige:["Running your checks now"], wait:[] } },
+
+ switch: { label:"Workspace switch", ws:"Harbour & Fen", sub:"Solo workspace · 4102",
+  fresh:{ h:"Reading this workspace's checks…", s:"Nothing from the previous workspace is shown here.", mode:"switching" },
+  ann:"The account changed mid-read. Nothing from the prior workspace may survive the switch — not a row, not a count, not a cached status. The surface goes to its own honest loading state rather than showing the last workspace's numbers under a new name.",
+  emptyState:{ t:"Reading Harbour & Fen", p:"You switched workspace. Nothing from the last one is carried over — its counts, statuses and open items belong to it, not to this one." },
+  att:[], ready:[], rail:[], areas:"suppress",
+  dec:{ you:[], paige:[], wait:[] } }
+};
+
+/* ---------------- render ---------------- */
+var cur = "partial";
+var open = {};
+
+function ann(t){ return t ? '<div class="ann">'+t+'</div>' : ""; }
+
+function resolve(key){
+  var st = STATES[key]; var out = {};
+  for (var k in st) out[k] = st[k];
+  if (key === "retry"){                        /* retry shows partial's last recorded result */
+    var base = STATES.partial;
+    ["att","ready","overrides","rail","railNote"].forEach(function(f){
+      if (out[f] === "inherit" || out[f] === undefined) out[f] = base[f];
+    });
+  }
+  return out;
+}
+
+function freshEl(st){
+  var f = st.fresh, m = f.mode;
+  var acts = "";
+  if (m === "running"){
+    acts = '<button class="btn" disabled><span class="spin"></span>Re-running all 10 checks…</button>'
+         + '<button class="btn btn-sm" disabled>Refresh current data</button>';
+  } else if (m === "switching"){
+    acts = '<button class="btn" disabled><span class="spin"></span>Loading…</button>';
+  } else if (m === "first"){
+    acts = '<button class="btn btn-gold">Run the first check</button>';
+  } else if (m === "failed"){
+    acts = '<button class="btn btn-gold">Re-run the checks</button>'
+         + '<button class="btn btn-sm">Refresh current data</button>';
+  } else {
+    acts = '<button class="btn btn-gold">Re-run the checks</button>'
+         + '<button class="btn btn-sm">Refresh current data</button>';
+  }
+  return '<div class="fresh"><div class="fresh-l">'
+    + '<div class="fresh-h">'+f.h+'</div>'
+    + '<div class="fresh-s">'+f.s+'</div>'
+    + (f.err ? '<div class="fresh-s" style="color:var(--red);margin-top:5px">'+f.err+'</div>' : "")
+    + ann("Re-run the checks = invoke systems-check-run-onboarding with the tenant's own session; "
+        + "it runs the full 10-check catalog server-side and returns a real summary. Available today, "
+        + "zero backend change. Refresh current data = re-read the last recorded run, and it says so. "
+        + "The two are never the same button.")
+    + '</div><div class="fresh-a">'+acts+'</div></div>'
+    + (st.staleBanner ? '<div class="note">'+st.staleBanner+'</div>' : "");
+}
+
+function attEl(st){
+  if (st.emptyState) return "";
+  var items = st.att || [];
+  var head = '<div class="sec-h"><h2>What needs you now</h2>'
+    + (items.length ? '<span class="n">'+items.length+'</span>' : "")
+    + '<span class="why">Ordered by what holds up the most, not by area</span></div>';
+  if (!items.length){
+    return '<section class="sec">'+head
+      + '<div class="note">'+(st.attEmpty || "Nothing needs you right now.")+'</div>'
+      + ann("An empty attention list is a real state and must read as calm, not as an error or a blank.")
+      + '</section>';
+  }
+  var body = items.map(function(it){
+    return '<article class="item sev-'+it.sev+'">'
+      + '<div class="item-t"><h3>'+it.h+'</h3>'+pill(it.s)+'</div>'
+      + '<div class="why-c" style="margin-top:3px">'+it.why+'</div>'
+      + (it.extra ? '<div class="why-c" style="margin-top:6px;color:var(--ink-2)">'+it.extra+'</div>' : "")
+      + '<div class="meta">'
+      +   '<div class="m"><dt>Owner</dt><dd>'+it.own+'</dd></div>'
+      +   '<div class="m"><dt>Source</dt><dd class="src">'+it.src+'</dd></div>'
+      +   '<div class="m"><dt>Verified</dt><dd>'+it.ver+'</dd></div>'
+      + '</div>'
+      + '<div class="item-a">'
+      +   (it.route ? '<button class="btn btn-sm">'+it.act+' &rarr;</button><span class="route">'+esc(it.route)+'</span>'
+                    : '<button class="btn btn-sm btn-gold">'+it.act+'</button>')
+      + '</div>'
+      + (it.gap ? ann("VOCABULARY HOLE, for the owner to rule on. 'suspended' is a live CHECK value on six "
+          + "tables and is written by real shipped code — Twilio maps its own subaccount status straight "
+          + "through; a platform operator can freeze a tenant; an agency admin can suspend a seat. None of the "
+          + "eight words fits: PAUSED says YOU switched it off, NOT CONNECTED says it never was, UNAVAILABLE "
+          + "means no source exists, and NEEDS ATTENTION implies an action the owner may not have. Zero rows "
+          + "sit in any suspended state on production today, so this is reachable-but-unoccupied — a hole, not "
+          + "a bug you can see. It becomes visible the first time a carrier suspends someone. Either a ninth "
+          + "word, or a ruling that NEEDS ATTENTION absorbs it with the sentence carrying who switched it off.") : "")
+      + ann(it.route ? "Route verified against tierBranches.ts. /solo/* has no catch-all, so a wrong slug would silently render Command Center with the wrong URL still in the bar — a bad link would look like it worked."
+                     : "No route: this action is the re-check itself, not a destination.")
+      + '</article>';
+  }).join("");
+  return '<section class="sec">'+head+'<div class="att">'+body+'</div></section>';
+}
+
+function readyEl(st){
+  if (st.emptyState) return "";
+  var r = st.ready || [];
+  if (!r.length) return "";
+  return '<section class="sec"><div class="sec-h"><h2>What is ready to operate</h2>'
+    + '<span class="why">Only what a real source answers for. Nothing here is inferred.</span></div>'
+    + '<ul class="ready">' + r.map(function(x){
+        return '<li><svg class="tick" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">'
+          + '<path d="M2.6 7.4l2.8 2.8L11.4 4" fill="none" stroke="currentColor" stroke-width="1.8" '
+          + 'stroke-linecap="round" stroke-linejoin="round"/></svg>'
+          + '<div><p>'+x.p+'</p><small>'+x.s+'</small></div></li>';
+      }).join("") + '</ul>'
+    + ann("Each line names its own source and time. A capability with no source does not appear here at all — it appears in its area as Not connected, Unavailable or Proof owed.")
+    + '</section>';
+}
+
+function areasEl(st){
+  if (st.areas === "suppress") return "";
+  var list = AREAS();
+  var ov = st.overrides || {};
+  return '<section class="sec"><div class="sec-h"><h2>Your operating areas</h2>'
+    + '<span class="n">9</span>'
+    + '<span class="why">Each one carries its own status. There is deliberately no total.</span></div>'
+    + '<div class="areas">' + list.map(function(a, i){
+        var o = ov[i] || {};
+        var s = o.s || a.s;
+        var why = (o.why !== undefined) ? o.why : a.why;
+        if (st.pausedIdx === i){ s = "paused"; why = st.pausedWhy; }
+        var isOpen = !!open[i];
+        return '<div class="area" aria-expanded="'+isOpen+'">'
+          + '<button class="area-b" data-area="'+i+'" aria-expanded="'+isOpen+'">'
+          +   '<svg class="chev" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">'
+          +   '<path d="M4 2.5L7.5 5.5 4 8.5" fill="none" stroke="currentColor" stroke-width="1.6" '
+          +   'stroke-linecap="round" stroke-linejoin="round"/></svg>'
+          + '<span class="area-n">'+a.n+'</span>'+pill(s)
+          + '<span class="area-k">'+why+'</span></button>'
+          + (isOpen ? '<div class="area-d"><div class="grid7">'
+              + '<div class="m"><dt>What we know</dt><dd>'+a.know+'</dd></div>'
+              + '<div class="m"><dt>Source</dt><dd class="src">'+a.src+'</dd></div>'
+              + '<div class="m"><dt>Last verified</dt><dd>'+a.ver+'</dd></div>'
+              + '<div class="m"><dt>What Paige can do now</dt><dd>'+a.can+'</dd></div>'
+              + '<div class="m"><dt>What is blocked</dt><dd>'+a.blocked+'</dd></div>'
+              + '<div class="m"><dt>Owner</dt><dd>'+a.own+'</dd></div>'
+              + '</div><div class="item-a"><button class="btn btn-sm">'+a.act+' &rarr;</button>'
+              + '<span class="route">'+esc(a.route)+'</span></div>'
+              + ann("Seven fields, every one required by the owner's structure. An area that cannot fill one says so in that field rather than dropping it.")
+              + '</div>' : "")
+          + '</div>';
+      }).join("") + '</div>'
+    + ann("Nine rows, collapsed. The 101 grounded signals live inside these — revealed on expand, never all at once. That is what keeps this off a scroll-wall.")
+    + '</section>';
+}
+
+function railEl(st){
+  var rows = st.rail || [];
+  if (!rows.length && !st.emptyState) return "";
+  if (!rows.length) return "";
+  return '<section class="sec"><div class="sec-h"><h2>What has actually been verified</h2>'
+    + '<span class="why">Real recorded events only</span></div>'
+    + '<ul class="rail">' + rows.map(function(r){
+        return '<li><span class="when">'+r.when+'</span>'
+          + '<span class="who'+(r.who?"":" none")+'">'+(r.who || "Paige")+'</span>'
+          + '<span class="what">'+r.what+'</span></li>';
+      }).join("") + '</ul>'
+    + (st.railNote ? '<div class="note">'+st.railNote+'</div>' : "")
+    + ann("Reads the Rail. The workspace holds 9 client events and 6 workspace events across three tenants today, and nothing writes an agent name yet — so this section is honestly thin rather than padded.")
+    + '</section>';
+}
+
+function decEl(st){
+  var d = st.dec || {you:[],paige:[],wait:[]};
+  function b(cls, title, items, none){
+    return '<div class="buck '+cls+'"><h3>'+title+'</h3><ul>'
+      + (items && items.length ? items.map(function(x){return '<li>'+x+'</li>';}).join("")
+                               : '<li class="none">'+none+'</li>')
+      + '</ul></div>';
+  }
+  return '<section class="sec"><div class="sec-h"><h2>Who does what next</h2></div>'
+    + '<div class="dec3">'
+    + b("you","Only you can do these", d.you, "Nothing waiting on you")
+    + b("paige","Paige can finish these", d.paige, "Nothing she can take on right now")
+    + b("wait","Waiting on someone outside", d.wait, "Nobody outside is holding anything up")
+    + '</div>'
+    + ann("Three buckets, because the owner's question is 'what is mine' — not 'what is broken'. An empty bucket says so plainly rather than disappearing.")
+    + '</section>';
+}
+
+function render(){
+  var st = resolve(cur);
+  document.getElementById("ws").textContent = st.ws;
+  document.getElementById("wsSub").textContent = st.sub;
+  var h = freshEl(st);
+  if (st.emptyState){
+    h += '<div class="empty"><h3>'+st.emptyState.t+'</h3><p>'+st.emptyState.p+'</p></div>';
+  }
+  h += attEl(st) + readyEl(st) + areasEl(st) + railEl(st) + decEl(st);
+  h += '<div class="note" style="border-style:solid;border-color:var(--line-soft)">'
+     + '<b>State note.</b> '+st.ann+'</div>';
+  document.getElementById("body").innerHTML = h;
+  document.getElementById("live").textContent = st.label + " state shown.";
+}
+
+/* ---- harness wiring ---- */
+var sw = document.getElementById("states");
+sw.innerHTML = Object.keys(STATES).map(function(k){
+  return '<button class="rv-btn'+(k===cur?" on":"")+'" data-state="'+k+'">'+STATES[k].label+'</button>';
+}).join("");
+
+document.addEventListener("click", function(e){
+  var t = e.target.closest("button"); if(!t) return;
+  if (t.dataset.state){ cur = t.dataset.state; open = {};
+    [].forEach.call(sw.children, function(b){ b.classList.toggle("on", b.dataset.state===cur); });
+    render(); return; }
+  if (t.dataset.vw){ document.getElementById("shell").dataset.vw = t.dataset.vw;
+    [].forEach.call(t.parentNode.children, function(b){ if(b.dataset) b.classList.toggle("on", b===t); }); return; }
+  if (t.dataset.theme){ document.documentElement.dataset.theme = t.dataset.theme;
+    [].forEach.call(t.parentNode.children, function(b){ if(b.dataset) b.classList.toggle("on", b===t); }); return; }
+  if (t.id === "annBtn"){ document.body.classList.toggle("ann-on");
+    t.classList.toggle("on", document.body.classList.contains("ann-on")); return; }
+  if (t.dataset.area !== undefined){ var i = t.dataset.area; open[i] = !open[i]; render();
+    requestAnimationFrame(function(){
+      var el = document.querySelector('[data-area="'+i+'"]'); if (el) el.focus();
+    }); return; }
+  if (t.dataset.dec){
+    document.getElementById("verdict").textContent =
+      t.dataset.dec + " — " + STATES[cur].label + " state. "
+      + (document.getElementById("notes").value.trim() || "No notes.");
+    return; }
+});
+
+render();
+</script>

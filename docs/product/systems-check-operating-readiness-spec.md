@@ -71,6 +71,22 @@ evidence, or owner decisions. Every item carries four things, without exception:
 - a **direct next action** — deep-linked into the real owning surface (Setup, Integrations, Sales,
   Campaigns, Clients, Billing, Command Center). *Not* a generic "open PAIGE for more".
 
+> **A wrong link here does not 404 — it silently lies.** `/solo/*` is a splat with no catch-all. An
+> unknown branch slug resolves to `branchBySlug(...) ?? "home"` and renders **Command Center** while the
+> wrong URL stays in the address bar; an unknown third or fourth segment falls back to the branch's
+> default. So a mistyped destination *looks like it worked*. Every link this surface emits is built
+> through `subtabPath("solo", account, branch, subtab)` or `setupSubtabPath(account, tab)`, never a
+> hand-written string.
+>
+> Four destinations a check would want **do not exist**, and an item that needs one says so rather than
+> pointing at something that merely resolves: there is **no forms home** (`forms` is an alias of
+> Campaigns → Catalog, and form authoring has no URL at all — the Studio opens on a window event);
+> **no social-account connect action** (the route resolves to a declared-unavailable panel); **no
+> working `automations` branch** (declared with three sub-tabs, all unreachable — use
+> `settings/integrations/automations`); and **no roles destination under Security** (`security-data` has
+> no controls; permissions live in `settings/team`). Sending identity, carrier registration and calendar
+> connection are `?segment=` **queries**, not paths — written as a path they land on Communications.
+
 ### 3.2 What is ready to operate
 Only capabilities with source-backed evidence. Stated plainly, in the owner's own register:
 
@@ -122,6 +138,69 @@ Nothing outside this list may render, ever:
 
 No percentage. No score. No aggregate roll-up over an incomplete picture.
 
+### 4.1 The store cannot express two of the eight words
+
+`paige_systems_check_finding.status` is CHECK-constrained to `pass | fail | skip | error`
+(`_shared/systems-check-runner.ts:48`, and `:319` rewrites anything else to `error`). So **no signal
+sourced from a persisted finding can ever render `PENDING PROVIDER` or `PAUSED`.** Those two words
+have to be derived from the live source that actually holds the state — `tenant_email_domains.status`,
+`tenant_a2p_registrations.*`, `paige_automations.state`, `tenant_tool_autonomy.mode` — or the runner's
+four-value vocabulary has to widen.
+
+This is a real architectural constraint on the port and it is invisible from the §8 tables. Whoever
+wires a `PENDING PROVIDER` or `PAUSED` signal is reading a different table from the one every other
+signal reads, and the surface must not pretend otherwise.
+
+### 4.2 The genuine hole: switched off by someone who is not the owner — OWNER RULING NEEDED
+
+`suspended` is a live CHECK value on six tables and is written by real shipped code: Twilio maps its
+own subaccount status straight through (`provision-tenant-twilio/index.ts:73-76`); a platform operator
+can freeze a tenant (`paige-mcp/index.ts:3897-3900`); an agency admin can suspend a seat
+(`AgencyTeamPanel.tsx:175-180`); a carrier can suspend a registration.
+
+**None of the eight words fits.**
+
+- `PAUSED` is actively wrong — it tells the owner *you* switched this off, when Twilio or the platform did.
+- `NOT CONNECTED` is wrong — it *was* connected, and it was taken away.
+- `UNAVAILABLE` means, by this document's own gloss, that there is no source at all. Here there is a
+  source and it is saying something definite and severe.
+- `NEEDS ATTENTION` is the least wrong, and it fails §3.1's "direct next action" requirement whenever
+  the answer is *there is nothing you can do inside Paige*.
+
+**Honest scope.** Zero rows sit in any `suspended` state on production today, so this is
+reachable-but-unoccupied — a hole, not a defect anyone can see right now. It becomes visible the first
+time a carrier suspends a workspace's messaging account.
+
+**The decision is the owner's**: either a ninth word, or a ruling that `NEEDS ATTENTION` absorbs it
+with the owner-facing sentence carrying the *who switched it off* fact. The prototype renders it the
+second way and annotates the compromise, so the cost is visible rather than argued.
+
+### 4.3 A live `PROOF OWED` that is firing right now
+
+The platform's own §68 clamp is in the capped state as this is written: `ceiling 3`,
+`attested_at 2026-08-24`, and rung 3 requires both `operator_cross_tenant_canary` and
+`operator_rls_coverage` to pass. The canary passed at 2026-09-04 23:00:03; `operator_rls_coverage`
+**failed** in the same run. So `requested = 3`, `effective = 2`, `capped_by = 'proof'`.
+
+That is an unfabricated `PROOF OWED`. It is also **platform state, and a Solo workspace must never
+learn it** (§9) — the tenant surface may say only that something is further limited by platform
+policy, without disclosing the platform's posture, ceiling, attestation or the reason.
+
+### 4.4 Two data defects found while grounding the vocabulary
+
+**`automation_wired` is filed under `domain = 'payments_ops'`** (`20260816000000_systems_check_layer1.sql:270`,
+live-verified). An automation check therefore renders under the **Payments Ops** node. The L2 §38
+correction fixed its sibling's `runner_key` and never touched the domain. This is a mis-file, not a
+naming preference.
+
+**Eight of the ten tenant check names are engineering vocabulary**, and "configured" appears in four of
+them: `Comms configured across the board` · `Website connected or detected` · `External automation
+solution wired` · `Company info populated` · `Customers present in CRM` · `Sales pipeline scoped and
+configured` · `Sales revenue tracking configured` · `Payment method options configured`. The four
+node labels an owner sees are the raw `domain` enum title-cased by `label()`
+(`SoloSystemsCheckWorkspace.tsx:27-28`) — which is why "Data Product" and "Payments Ops" read internal.
+Both are registry-content fixes, not surface fixes.
+
 ## 5. The Refresh contract
 
 Refresh must be real. It either:
@@ -133,6 +212,76 @@ Refresh must be real. It either:
 
 A signal that cannot be re-checked on demand says so, and says why. Every re-runnable check must
 name its callable seam, and the seam must be invocable by a Solo owner/admin/coach under RLS.
+
+### 5.1 What the seam actually supports — grounded, not assumed
+
+**A genuine on-demand re-check exists today and needs no backend change.** Invoking
+`systems-check-run-onboarding` from the browser with the workspace's own session runs the full
+ten-check catalog and returns a real summary. `verify_jwt` is false at the gateway, but the function
+falls through to `resolveTenantFromJwt`, which verifies the JWT and derives the tenant **server-side**;
+a browser holds neither the service-role key nor the cron token, so it can never reach the trusted
+branch, and `body.tenant_id` is honoured only for a platform owner. A workspace cannot re-check
+another workspace.
+
+**Today's `refresh()` is not that.** It calls `qc.invalidateQueries` and re-reads the same persisted
+run (`useSystemsCheck.ts:151-153`). That is a legitimate action with a legitimate label — *"Re-read
+the last recorded run. Nothing was re-checked."* — and it is the exact thing that must never be
+labelled a re-check. **The two are different buttons and always will be.**
+
+**Three costs of the real re-check, which the surface says out loud rather than hiding:**
+
+1. `paige_systems_check_run.scan_flavor` is CHECK-constrained to
+   `('onboarding','scheduled','change_triggered')`, so a human-requested run is recorded as an
+   *onboarding* scan. The audit trail will not say a person asked for it until a migration widens it.
+2. Both browser-reachable flavors use `actionFiling: "all"`, and `file_action` has no dedupe. Pressing
+   twice against eight failures files sixteen remediation actions and burns sixteen model calls.
+3. It is one blocking POST — every check and every drafted fix completes before the response returns.
+   There is no progress stream.
+
+### 5.2 An honest in-flight state is available, and our own comment denies it
+
+The run row is inserted **before** the first check runs (`systems-check-runner.ts:277-291`) and
+`completed_at` is patched at the end (`:469-477`). So a run in progress is readable right now as the
+latest run with `completed_at IS NULL`, and the snapshot RPC already returns that column. The surface
+can say *"A check is running now — started 08:41"* from real state rather than from a timer.
+
+`useSystemsCheck.ts:64` asserts the opposite — *"the scan writes its run only on completion"*. That
+comment is false, and it is why the honest in-flight state looks impossible. Correcting it is part of
+the wiring work.
+
+### 5.3 The structural fix that unblocks the rest
+
+`systems_check_snapshot` returns **only the latest run's** findings
+(`20260822000000_systems_check_snapshot_rpc.sql:52-61` and `:113`). Three consequences compound:
+
+- **A partial scan erases the whole picture.** `rescanBusinessContext.ts` fires three
+  `change`-triggered scans in parallel after a Setup save; each writes a run row with
+  `check_count` of one or two, and whichever finishes last becomes *the* latest run. After any Setup
+  save, this surface's entire reading collapses to a one-check scan. That is live behaviour today.
+- **Remediation filed against an older run is invisible.** Paige has eight actions filed for the pilot
+  workspace, three of them against checks that are still failing, and none of them can be reached from
+  this surface.
+- **Per-check re-run can never be made safe** while a single-check run replaces the view.
+
+The fix is one function replacement and no table change: `DISTINCT ON (f.check_id) … ORDER BY
+f.check_id, f.created_at DESC` in place of `WHERE f.run_id = v_run_id` — latest-per-check rather than
+latest-run. It is a semantics change and needs its own §37 consumer walk, because `run.check_count`,
+`pass_count` and `fail_count` would no longer describe the finding set on screen.
+
+**Sequence: this first, then the on-demand scan flavor and caller-supplied `actionFiling` together,
+then per-check re-run.**
+
+### 5.4 The exact labels
+
+| What the button does | Label | Result line |
+|---|---|---|
+| Re-reads the persisted run | **Refresh current data** | *"Re-read the last recorded run. Nothing was re-checked."* |
+| Runs the full catalog and awaits the summary | **Re-run the checks** | From the returned summary only: *"Re-ran 10 checks — 3 passed, 6 need attention, 1 could not be evaluated."* |
+| A run is in flight | — | *"A check is running now — started 08:41."* Everything shown is labelled last-recorded. |
+| The run failed | — | *"The re-check did not run: {error}. The result below is still the last recorded run from {time}."* |
+
+A count that no run produced never appears. A check that did not execute is `UNAVAILABLE` — not
+passed, not failed, and never quietly omitted.
 
 ## 6. Scope boundaries
 
@@ -178,13 +327,24 @@ Step 2 is the §69 Gate 1 approval point. No production UI ships before it.
 | Status today | Signals |
 |---|---|
 | `LIVE` | 28 |
-| `NOT_CONNECTED` | 27 |
+| `NOT_CONNECTED` | 26 |
+| `PENDING PROVIDER` | 1 |
 | `PARTIAL` | 27 |
 | `PROOF_OWED` | 9 |
 | `NEEDS_ATTENTION` | 7 |
 | `UNAVAILABLE` | 3 |
 
 > **Read the status column before the signal.** `LIVE` means a real source answers it now. `PARTIAL` means the source exists but does not cover the whole claim. `PROOF_OWED` means something asserts it and nothing has verified it. `UNAVAILABLE` means there is no source at all. Only `LIVE` may render without a qualifier.
+
+> **And read it as a snapshot, not as the signal's nature.** Each status below is the value **one
+> workspace held on 2026-09-04**, not the set of states that signal can occupy. That distinction
+> caused a real error: the sending-domain row was recorded `NOT_CONNECTED` because no tenant was
+> mid-verification when the first pass ran. A second pass found the only `tenant_email_domains` row
+> on production sitting at `status='verifying'` — created 2026-09-04 20:51, updated 22:43, carrying a
+> real provider id and three DNS records. That workspace had done its part and the provider had not
+> answered. The row is corrected to `PENDING PROVIDER` above. Anyone wiring a signal must read its
+> **state space** from the source's own CHECK constraint or enum, never from whatever value happened
+> to be there the day it was catalogued.
 
 
 ### 8.1 Business setup and identity
@@ -253,7 +413,7 @@ Step 2 is the §69 Gate 1 approval point. No production UI ships before it.
 |---|---|---|---|---|---|
 | Your emails go out from a Paige-hosted address, not from your own business domain. | `PARTIAL` | RPC public.resolve_tenant_domain_identity(p_tenant_id uuid) -> default_email_sender / default_email_domain / default_email_kind / default_email_status. Defined… | Business owner (must own the DNS for their domain). Provider… | /solo/{account}/settings/connections?segment=communications — the sending-domain panel. Segment is a validated… | Nothing technical. Requires the owner to add a domain and publish DNS records. |
 | When someone replies to an email you sent, the reply lands back in this workspace. | `PARTIAL` | Same RPC public.resolve_tenant_domain_identity() -> default_email_status: 'outbound_ready' is emitted only when an ACTIVE email connector exists on the resolved… | PAIGE / platform. The managed connector is provisioned serve… | /solo/{account}/settings/connections?segment=communications. HONEST CAVEAT: there is no owner-operable control… | For a 'reserved' sub-account: no in-app control exists to provision the managed email conn… |
-| Your own business domain has not been verified for sending. | `NOT_CONNECTED` | public.tenant_email_domains — columns status ('pending'\|'verifying'\|'verified'\|'failed'), verified_at, dns_records, is_default, resend_domain_id. Created sup… | Business owner (publishes DNS records) then external provide… | /solo/{account}/settings/connections?segment=communications — add / refresh / set-default, all reusing the man… | Owner action (DNS) plus provider verification. Nothing in the platform is blocking. |
+| Your own business domain has not been verified for sending. | `PENDING PROVIDER` | public.tenant_email_domains — columns status ('pending'\|'verifying'\|'verified'\|'failed'), verified_at, dns_records, is_default, resend_domain_id. Created sup… | Business owner (publishes DNS records) then external provide… | /solo/{account}/settings/connections?segment=communications — add / refresh / set-default, all reusing the man… | Owner action (DNS) plus provider verification. Nothing in the platform is blocking. |
 | Emails this workspace has actually sent, and when the last one went out. | `PARTIAL` | public.messages WHERE channel_type='email' AND direction='outbound' — status, sent_at, provider_message_id. Table created supabase/migrations/20260726190000_com… | Business owner (nothing to fix — this is activity, not confi… | /solo/{account}/clients/conversations — the inbox that reads these same rows (src/pages/admin/ClientsConversat… | Nothing. |
 | We cannot yet confirm whether the emails you sent were delivered, bounced, or opened. | `PROOF_OWED` | The absence is measurable, and the measurement is the source. public.messages.status for email never advances past 'sent': the only writers to messages are supa… | PAIGE / platform engineering — the Resend receipt path exist… | NONE EXISTS for the business owner. There is no in-app control that turns on delivery confirmation. This is a… | Nothing writes a delivery/bounce receipt against messages sent by send-message. Whether th… |
 | People who have asked you to stop emailing them, and whether that is being honoured. | `PARTIAL` | public.paige_suppressions WHERE channel='email'. Table created supabase/migrations/20260726210000_comms_c2_twilio_a2p_suppression_foundation.sql:157+. Writer: s… | PAIGE / platform for the bounce-to-suppression gap; nobody f… | NONE EXISTS as a dedicated surface. Suppressions are enforced server-side and have no owner-facing management… | No owner-facing suppression surface, and no bounce/complaint -> suppression writer. |
