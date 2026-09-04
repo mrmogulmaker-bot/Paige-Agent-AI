@@ -65,6 +65,15 @@ export interface SoloActivityItem {
   summary: string | null;
   /** True when Paige performed it; false when a person did. LIVE from actor_type. */
   byPaige: boolean;
+  /**
+   * WHICH specialist acted, by its tenant-safe name, or null.
+   *
+   * `byPaige` above answers "was this Paige or a person"; this answers "which of her team". Null is
+   * a real answer and does NOT mean PAIGE: no agent acted, the agent has no name a business owner
+   * should read, or it belongs to another workspace. The server decides; render the absence rather
+   * than substituting a generic label, which would restore the collapse this field exists to end.
+   */
+  actorAgent: string | null;
   /** The §16 department slug the event names, or null when it names none. */
   departmentSlug: string | null;
   occurredAt: string;
@@ -166,6 +175,10 @@ export function toActivityItem(raw: unknown): SoloActivityItem | null {
     // Anything that is not explicitly Paige is reported as a person. The safe direction:
     // over-crediting Paige for a person's work is the misattribution that matters here.
     byPaige: r.actor_type === "paige_agent",
+    // This coercion is a WHITELIST — it builds a new object rather than spreading — so a column the
+    // resolver starts returning is dropped here until it is named. That is how the first version of
+    // this change shipped attribution the RPC returned and no Solo surface could render.
+    actorAgent: typeof r.actor_agent === "string" && r.actor_agent.trim() ? r.actor_agent : null,
     departmentSlug: departmentSlugOf(r as { to_department?: string | null; from_department?: string | null }),
     occurredAt: typeof r.occurred_at === "string" ? r.occurred_at : new Date().toISOString(),
   };

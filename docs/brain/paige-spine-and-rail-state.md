@@ -140,6 +140,29 @@ independently.
 
 Four properties of the shipped code decide eligibility. They are constraints, not preferences:
 
+> ### ⚠ SUPERSEDED IN PART BY PR #925 — read this before the three claims below (§BRAIN.3)
+>
+> PR #925 (`20261201000800_the_rail_says_which_agent_acted.sql`) changes three things this section
+> states as current. It is **not yet applied to production**; until `deploy-migrations.yml` runs on
+> merge and `db-live` moves, everything below is still true of the live database. After it applies:
+>
+> 1. **"A workspace-level outcome has nowhere to go" ceases to be true.** `paige_workspace_events`
+>    gains four families — `game_plan`, `system_check`, `agent_config`, `agent_run` — and
+>    `get_solo_rail_activity` unions them alongside contact events. `contact_id` on
+>    `paige_client_events` is unchanged and still `NOT NULL`; the repair is the distinct
+>    workspace-level projection this section itself predicted, not a relaxation of that column.
+> 2. **The projection is 11 fields, not 12.** It gains `actor_agent` — the acting agent's
+>    tenant-safe display name, snapshot at write time. The "no tenant, client, actor or source-record
+>    identifier" claim SURVIVES: the name is not an identifier, the internal slug is never returned,
+>    and a name is withheld entirely when the agent has none fit for a business owner to read or
+>    belongs to another workspace.
+> 3. **`actor_type` no longer collapses every agent to `paige_agent`.** That column is unchanged and
+>    still carries five values; `actor_agent` answers *which* specialist beside it.
+>
+> **What has NOT changed, and is the honest state:** nothing writes an acting agent yet, and no
+> producer emits a workspace-level event. The capacity ships; the behaviour does not. Do not read
+> these rows as evidence that Rail history can attribute work today — it cannot.
+
 1. **The Rail is per-client, at three independent layers** — `paige_client_events.contact_id` is
    `NOT NULL REFERENCES clients(id)`; `record_rail_event` raises `contact not in tenant`; and the Chat
    emitter returns early at `if (!contactId) return`. A workspace-level outcome has nowhere to go.
