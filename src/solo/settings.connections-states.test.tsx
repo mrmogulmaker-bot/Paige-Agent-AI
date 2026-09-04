@@ -94,6 +94,13 @@ async function mountConnections() {
   return { host, cleanup: async () => { await act(async () => root.unmount()); host.remove(); } };
 }
 
+async function openArea(host: HTMLDivElement, label: string) {
+  const tab = Array.from(host.querySelectorAll('button[role="tab"]'))
+    .find((button) => button.textContent === label) as HTMLButtonElement | undefined;
+  expect(tab, label + " tab should render").toBeTruthy();
+  await act(async () => { tab!.click(); });
+}
+
 describe("Connections renders its real states", () => {
   beforeEach(() => { rpcState.readiness = { data: null, error: null }; });
 
@@ -117,18 +124,22 @@ describe("Connections renders its real states", () => {
   it("reports the account when the read SUCCEEDS (non-vacuity for the case above)", async () => {
     rpcState.readiness = { data: READY, error: null };
     const { host, cleanup } = await mountConnections();
-    const text = host.textContent ?? "";
+    const communications = host.textContent ?? "";
 
-    // Without this the failure assertions could pass on a surface that renders
-    // nothing at all in either state.
-    expect(text).toContain("+15550001111");
-    expect(text).toContain("4 of 5 delivered");
-    expect(text).not.toContain("We couldn’t read this account’s setup");
-    expect(text).not.toContain("Clearing and resolving this account");
+    // Communications proves the active method while keeping setup and health out.
+    expect(communications).toContain("+15550001111");
+    expect(communications).not.toContain("4 of 5 delivered");
+    expect(communications).not.toContain("Messaging registration");
+    expect(communications).not.toContain("We couldn’t read this account’s setup");
+    expect(communications).not.toContain("Clearing and resolving this account");
 
-    // The live registration handoff and the replies disclosure both survive.
-    expect(text).toContain("Carrier filing and returned status are managed in Registration");
-    expect(text).toContain("Whether replies are arriving is not reported");
+    await openArea(host, "Health");
+    expect(host.textContent ?? "").toContain("4 of 5 delivered");
+    expect(host.textContent ?? "").toContain("Whether replies are arriving is not reported");
+
+    await openArea(host, "Registration");
+    expect(host.textContent ?? "").toContain("Messaging registration");
+    expect(host.textContent ?? "").toContain("Consent and opt-outs");
     await cleanup();
   });
 
@@ -140,7 +151,8 @@ describe("Connections renders its real states", () => {
         .filter((el) => el.querySelector(".ss-step-name strong")?.textContent === name)
         .map((el) => el.querySelector(".ss-step-idx")?.textContent);
 
-    // The card's lone step, on the default view.
+    // The registration summary card carries the same numbered step.
+    await openArea(host, "Registration");
     const inCard = numbersFor("Business details");
     expect(inCard).toEqual(["2"]);
 
@@ -148,10 +160,7 @@ describe("Connections renders its real states", () => {
     // test never switched, so the ladder was never in the DOM and the whole
     // component could be deleted with the test still green — it asserted a
     // cross-rendering agreement while only ever seeing one rendering.
-    const health = Array.from(host.querySelectorAll('button[role="tab"]'))
-      .find((b) => b.textContent === "Health") as HTMLButtonElement | undefined;
-    expect(health).toBeTruthy();
-    await act(async () => { health!.click(); });
+    await openArea(host, "Health");
 
     const inLadder = numbersFor("Business details");
     expect(inLadder).toEqual(["2"]);
@@ -167,6 +176,7 @@ describe("Connections renders its real states", () => {
     // one-record-two-answers the conditional was added to remove.
     rpcState.readiness = { data: { ...READY, delivery: { ...READY.delivery, inbound_reporting: "available" } }, error: null };
     const { host, cleanup } = await mountConnections();
+    await openArea(host, "Health");
     const text = host.textContent ?? "";
     expect(text).not.toContain("Replies and webhook health are");
     expect(text).not.toContain("Whether replies are arriving is not reported");
@@ -178,6 +188,7 @@ describe("Connections renders its real states", () => {
   it("DOES say replies are unrecorded while the resolver says so (non-vacuity)", async () => {
     rpcState.readiness = { data: READY, error: null };   // inbound_reporting absent = unavailable
     const { host, cleanup } = await mountConnections();
+    await openArea(host, "Health");
     expect(host.textContent ?? "").toContain("Replies and webhook health are");
     await cleanup();
   });
