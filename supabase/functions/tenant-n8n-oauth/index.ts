@@ -13,7 +13,7 @@ const HEADERS={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Con
 
 
 const clearCookie=`${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`;
-const landing=(account:string|undefined,state:string)=>`${PUBLIC_BASE}${account&&/^\d+$/.test(account)?`/solo/${account}/settings/integrations`:'/settings/integrations'}?n8n_oauth=${state}`;
+const landing=(account:string|undefined,state:string)=>`${PUBLIC_BASE}${account&&/^\d+$/.test(account)?`/solo/${account}/settings/integrations`:'/choose-account'}?n8n_oauth=${state}`;
 type Payload={server:AuthorizationServer & {responseIssuerRequired?:boolean};client:ClientRegistration;resource:string;verifier:string;redirect_uri:string;authorization_url:string};
 type ServiceResult={expired?:boolean;account_number?:string;authorization_url:string;attempt_id:string;payload:Payload;pin:string;discovery_id:string;revoke?:{token:string;issuer:string;client_id:string;client_secret:string|null;token_type:'access_token'|'refresh_token'}};
 type Lease={lease:string;generation:string;approved_ids:string[];discovery_pin:string|null;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null};
@@ -57,7 +57,9 @@ Deno.serve(async req=>{
   let pendingGrant:{server:AuthorizationServer;client:ClientRegistration;tokens:TokenSet}|undefined;
   try{
    const url=new URL(req.url);
-   if(url.origin+url.pathname!==CALLBACK)throw new N8nSafeError('invalid_callback');
+   // Hosted gateway rewrites the public URL to this exact function path.
+   // The fixed public CALLBACK remains authoritative for registration and exchange.
+   if(![new URL(CALLBACK).pathname,'/tenant-n8n-oauth'].includes(url.pathname))throw new N8nSafeError('invalid_callback');
    // Every parameter is cardinality-checked. No browser JavaScript receives the code.
    for(const key of ['state','code','error','iss']) if(url.searchParams.getAll(key).length>1) throw new N8nSafeError('invalid_callback');
    if([...url.searchParams.keys()].some(key=>!['state','code','error','error_description','error_uri','iss'].includes(key))) throw new N8nSafeError('invalid_callback');
