@@ -1,0 +1,1 @@
+-- Production history bridge: the canonical, dependency-safe implementation is 20261201000600_solo_a2p_registration_product.sql.
