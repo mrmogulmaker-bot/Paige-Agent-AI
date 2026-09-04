@@ -71,3 +71,6 @@ Verification recorded before the final blocker tests: 168 combined tests passed;
 
 
 Latest complete fixture Chromium run: 1,780/1,784 checks passed across the four viewports and both persistent themes. Drawer controls, focus, dirty browser history including repeated Back, direct/invalid URLs, Catalog return, workspace switching, negative inert ancestry/pointer controls, scroll ownership and Sales resting contrast passed. The four failures were the same dark-theme hover contrast (3.92:1). A scoped hover foreground/background fix has been applied; its targeted rerun is recorded separately. This runtime evidence still excludes real canonical Client creation, authenticated tenants and persistence.
+
+
+Targeted hover verification after the fix: **8/8 PASS**, all four required viewports in light and dark. Evidence is `scripts/live-drive/artifacts/sales-ops/hover-results.json`; the full interaction evidence remains `interaction-results.json` with the original four now-resolved hover failures preserved. The two canonical late-toast regressions remain active failures. Product implementation snapshot: local commit `86718095`; no release performed.
