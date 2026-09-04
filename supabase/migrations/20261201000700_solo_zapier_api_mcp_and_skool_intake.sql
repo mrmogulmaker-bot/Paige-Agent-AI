@@ -59,21 +59,30 @@ ALTER TABLE public.tenant_zapier_intake_events FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON public.tenant_zapier_intake_events FROM PUBLIC,anon,authenticated;
 GRANT ALL ON public.tenant_zapier_intake_events TO service_role;
 
-CREATE OR REPLACE FUNCTION public.zapier_api_store_grant(_tenant uuid,_actor uuid,_access text,_refresh text,_expires timestamptz,_scopes text[],_attempt uuid DEFAULT NULL)
+CREATE OR REPLACE FUNCTION public.zapier_api_store_grant(_tenant uuid,_actor uuid,_access text,_refresh text,_expires timestamptz,_scopes text[],_attempt uuid DEFAULT NULL,_expected_generation uuid DEFAULT NULL)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$ BEGIN
  IF _tenant IS NULL OR _actor IS NULL OR NULLIF(_access,'') IS NULL OR NULLIF(_refresh,'') IS NULL THEN RAISE EXCEPTION 'ZAPIER_GRANT_INVALID'; END IF;
+ IF _attempt IS NOT NULL AND _expected_generation IS NOT NULL THEN RAISE EXCEPTION 'ZAPIER_GRANT_AMBIGUOUS';END IF;
  IF _attempt IS NOT NULL THEN
   UPDATE public.tenant_zapier_api_oauth_attempts SET status='success' WHERE id=_attempt AND tenant_id=_tenant AND actor_id=_actor AND status='exchanging' AND expires_at>clock_timestamp();
   IF NOT FOUND THEN RAISE EXCEPTION 'ZAPIER_OAUTH_NOT_ACTIVE' USING ERRCODE='40001';END IF;
  END IF;
- INSERT INTO public.tenant_zapier_api_connections(tenant_id,updated_by,access_token_ct,refresh_token_ct,access_token_expires_at,oauth_scopes,status)
- VALUES(_tenant,_actor,public.platform_encrypt(_access),public.platform_encrypt(_refresh),_expires,_scopes,'needs_attention')
- ON CONFLICT(tenant_id) DO UPDATE SET updated_by=_actor,access_token_ct=public.platform_encrypt(_access),refresh_token_ct=public.platform_encrypt(_refresh),
- access_token_expires_at=_expires,oauth_scopes=_scopes,status='needs_attention',failure_code=NULL,accessible_zap_count=NULL,last_checked_at=NULL,last_success_at=NULL,
- generation=gen_random_uuid(),revision=tenant_zapier_api_connections.revision+1,updated_at=clock_timestamp();
+ IF _expected_generation IS NOT NULL THEN
+  UPDATE public.tenant_zapier_api_connections SET updated_by=_actor,access_token_ct=public.platform_encrypt(_access),refresh_token_ct=public.platform_encrypt(_refresh),
+   access_token_expires_at=_expires,oauth_scopes=_scopes,status='needs_attention',failure_code=NULL,accessible_zap_count=NULL,last_checked_at=NULL,last_success_at=NULL,
+   generation=gen_random_uuid(),revision=revision+1,updated_at=clock_timestamp()
+  WHERE tenant_id=_tenant AND generation=_expected_generation;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ZAPIER_GRANT_STALE' USING ERRCODE='40001';END IF;
+ ELSE
+  INSERT INTO public.tenant_zapier_api_connections(tenant_id,updated_by,access_token_ct,refresh_token_ct,access_token_expires_at,oauth_scopes,status)
+  VALUES(_tenant,_actor,public.platform_encrypt(_access),public.platform_encrypt(_refresh),_expires,_scopes,'needs_attention')
+  ON CONFLICT(tenant_id) DO UPDATE SET updated_by=_actor,access_token_ct=public.platform_encrypt(_access),refresh_token_ct=public.platform_encrypt(_refresh),
+   access_token_expires_at=_expires,oauth_scopes=_scopes,status='needs_attention',failure_code=NULL,accessible_zap_count=NULL,last_checked_at=NULL,last_success_at=NULL,
+   generation=gen_random_uuid(),revision=tenant_zapier_api_connections.revision+1,updated_at=clock_timestamp();
+ END IF;
 END $$;
-REVOKE ALL ON FUNCTION public.zapier_api_store_grant(uuid,uuid,text,text,timestamptz,text[],uuid) FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.zapier_api_store_grant(uuid,uuid,text,text,timestamptz,text[],uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.zapier_api_store_grant(uuid,uuid,text,text,timestamptz,text[],uuid,uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.zapier_api_store_grant(uuid,uuid,text,text,timestamptz,text[],uuid,uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.zapier_api_disconnect(_tenant uuid,_actor uuid)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$ BEGIN

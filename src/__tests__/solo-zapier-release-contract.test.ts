@@ -26,6 +26,9 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(api).toContain('["cancel", "disconnect", "oauth_refuse", "provision_intake_route"]');
     expect(api).toContain("retainedRefresh");
     expect(api).toContain("String(data.refresh_token)");
+    expect(api).toContain("_expected_generation: expectedGeneration");
+    expect(api).toContain("null, String(data.generation)");
+    expect(api).toContain('.eq("tenant_id", tenantId).in("status", ["pending", "exchanging"])');
   });
   it("makes OAuth finalization and local disconnect transactional", () => {
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
@@ -39,6 +42,8 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(api).toContain('error: "rail_unavailable"');
     expect(sql).toContain("FUNCTION public.zapier_api_record_check");
     expect(sql).toContain("tenant_id=_tenant AND generation=_generation");
+    expect(sql).toContain("tenant_id=_tenant AND generation=_expected_generation");
+    expect(sql).toContain("ZAPIER_GRANT_STALE");
   });
   it("binds inbound routes on the server and deduplicates per tenant", () => {
     const intake = read("supabase/functions/zapier-skool-intake/index.ts");
@@ -47,6 +52,9 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(intake).toContain("route_token_hash");
     expect(intake).not.toMatch(/body\.(tenant_id|tenantId)/);
     expect(intake).toContain("idempotency_key");
+    expect(intake).toContain("req.body.getReader()");
+    expect(intake).toContain("total > MAX_BYTES");
+    expect(intake).not.toContain("await req.text()");
     expect(sql).toMatch(/UNIQUE\s*\(tenant_id,\s*route_id,\s*idempotency_key\)/i);
     expect(sql).toContain("FORCE ROW LEVEL SECURITY");
     expect(sql).toContain("REVOKE ALL");
@@ -96,7 +104,8 @@ describe("Solo Zapier API and MCP release contract", () => {
   });
   it("distinguishes refresh rejection from transient provider failure", () => {
     const api = read("supabase/functions/tenant-zapier-api-connect/index.ts");
-    expect(api).toContain('response.status === 400 || response.status === 401');
+    expect(api).toContain('oauthError === "invalid_grant"');
+    expect(api).toContain('oauthError === "invalid_client" ? "configuration"');
     expect(api).toContain('response.status === 429 || response.status >= 500');
     expect(api).toContain('next.kind === "authorization" ? "authorization_expired"');
     expect(api).toContain('next.kind === "provider" ? "provider_unavailable"');

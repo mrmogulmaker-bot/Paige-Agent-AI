@@ -23,7 +23,7 @@ function tokenAuth() { return `Basic ${btoa(`${Deno.env.get("ZAPIER_API_CLIENT_I
 // untyped here so Deno does not infer every new table and RPC as `never`.
 type DatabaseClient = any;
 type CheckResult = ({ ok: true; count: number | null } | { ok: false; state: string; code: string }) & { generation: string };
-type ExchangeResult = { ok: true; token: Record<string, unknown> } | { ok: false; kind: "authorization" | "provider" | "response" };
+type ExchangeResult = { ok: true; token: Record<string, unknown> } | { ok: false; kind: "authorization" | "configuration" | "provider" | "response" };
 
 async function readiness(userClient: DatabaseClient, tenantId: string, canManage: boolean) {
   const { data, error } = await userClient.rpc("get_zapier_api_readiness");
@@ -34,14 +34,14 @@ async function readiness(userClient: DatabaseClient, tenantId: string, canManage
   return data;
 }
 
-async function storeGrant(admin: DatabaseClient, tenantId: string, actorId: string, token: Record<string, unknown>, retainedRefresh = "", attemptId: string | null = null) {
+async function storeGrant(admin: DatabaseClient, tenantId: string, actorId: string, token: Record<string, unknown>, retainedRefresh = "", attemptId: string | null = null, expectedGeneration: string | null = null) {
   const access = typeof token.access_token === "string" ? token.access_token : "";
   const refresh = typeof token.refresh_token === "string" && token.refresh_token ? token.refresh_token : retainedRefresh;
   const expires = typeof token.expires_in === "number" ? token.expires_in : Number(token.expires_in);
   const scopes = typeof token.scope === "string" ? token.scope.split(/\s+/).filter(Boolean) : READ_ONLY_SCOPES.split(" ");
   if (!access || !refresh || !Number.isFinite(expires) || expires <= 0 || !scopes.includes("profile") || !scopes.includes("zap:account:all")) return false;
   const { error } = await admin.rpc("zapier_api_store_grant", { _tenant: tenantId, _actor: actorId, _access: access, _refresh: refresh,
-    _expires: new Date(Date.now() + expires * 1000).toISOString(), _scopes: scopes, _attempt: attemptId });
+    _expires: new Date(Date.now() + expires * 1000).toISOString(), _scopes: scopes, _attempt: attemptId, _expected_generation: expectedGeneration });
   return !error;
 }
 
@@ -49,9 +49,13 @@ async function exchange(params: URLSearchParams): Promise<ExchangeResult> {
   try {
     const response = await fetch(TOKEN_URL, { method: "POST", redirect: "error", signal: AbortSignal.timeout(10_000),
       headers: { Authorization: tokenAuth(), "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body: params });
-    if (response.status === 400 || response.status === 401) return { ok: false, kind: "authorization" };
     if (response.status === 429 || response.status >= 500) return { ok: false, kind: "provider" };
-    if (!response.ok) return { ok: false, kind: "response" };
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => null) as { error?: unknown } | null;
+      const oauthError = typeof errorBody?.error === "string" ? errorBody.error.slice(0, 64) : "";
+      if (oauthError === "invalid_grant") return { ok: false, kind: "authorization" };
+      return { ok: false, kind: oauthError === "invalid_client" ? "configuration" : "response" };
+    }
     const data = await response.json().catch(() => null);
     return data && typeof data === "object" && !Array.isArray(data) ? { ok: true, token: data as Record<string, unknown> } : { ok: false, kind: "response" };
   } catch { return { ok: false, kind: "provider" }; }
@@ -63,10 +67,10 @@ async function currentSecret(admin: DatabaseClient, tenantId: string, actorId: s
   if (Date.parse(String(data.expires_at)) > Date.now() + 120_000) return { ok: true as const, secret: data as Record<string, unknown> & { generation: string } };
   const next = await exchange(new URLSearchParams({ grant_type: "refresh_token", refresh_token: data.refresh_token }));
   if (!next.ok) return { ok: false as const,
-    state: next.kind === "authorization" ? "authorization_expired" : next.kind === "provider" ? "provider_unavailable" : "needs_attention",
-    code: next.kind === "authorization" ? "authorization_expired" : next.kind === "provider" ? "provider_unavailable" : "response_invalid",
+    state: next.kind === "authorization" ? "authorization_expired" : next.kind === "configuration" ? "capability_unavailable" : next.kind === "provider" ? "provider_unavailable" : "needs_attention",
+    code: next.kind === "authorization" ? "authorization_expired" : next.kind === "configuration" ? "plan_or_api_unavailable" : next.kind === "provider" ? "provider_unavailable" : "response_invalid",
     generation: String(data.generation) };
-  if (!await storeGrant(admin, tenantId, actorId, next.token, String(data.refresh_token))) return { ok: false as const, state: "needs_attention", code: "response_invalid", generation: String(data.generation) };
+  if (!await storeGrant(admin, tenantId, actorId, next.token, String(data.refresh_token), null, String(data.generation))) return { ok: false as const, state: "needs_attention", code: "response_invalid", generation: String(data.generation) };
   const { data: refreshed } = await admin.rpc("zapier_api_secret_for_service", { _tenant: tenantId });
   return refreshed && typeof refreshed.access_token === "string" && typeof refreshed.generation === "string"
     ? { ok: true as const, secret: refreshed as Record<string, unknown> & { generation: string } }
@@ -121,7 +125,7 @@ Deno.serve(async (req) => {
 
   if (action === "cancel") {
     const { error: cancelError } = await admin.from("tenant_zapier_api_oauth_attempts").update({ status: "cancelled" })
-      .eq("tenant_id", tenantId).eq("actor_id", user.id).in("status", ["pending", "exchanging"]);
+      .eq("tenant_id", tenantId).in("status", ["pending", "exchanging"]);
     if (cancelError) return jsonResponse({ error: "cancel_failed", connection: await readiness(userClient, tenantId, true) }, 503);
     return jsonResponse({ ok: true, outcome: "cancelled", connection: await readiness(userClient, tenantId, true) });
   }
