@@ -210,6 +210,47 @@ export async function twilioRequest<T = Record<string, unknown>>(
 }
 
 // -----------------------------------------------------------------------------
+/** JSON request variant for Twilio Compliance Embeddable. */
+export async function twilioJsonRequest<T = Record<string, unknown>>(
+  creds: TwilioCreds,
+  url: string,
+  method: "GET" | "POST" = "POST",
+  payload?: Record<string, unknown>,
+): Promise<TwilioResult<T>> {
+  const user = creds.apiKeySid || creds.accountSid;
+  if (!user || !creds.authToken || !/^https:\/\/(trusthub|messaging)\.twilio\.com\//i.test(url)) {
+    return { ok: false, status: 0, error: "twilio_invalid_compliance_request", data: null };
+  }
+  const attempt = async (): Promise<TwilioResult<T>> => {
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: {
+          Authorization: "Basic " + btoa(`${user}:${creds.authToken}`),
+          ...(payload ? { "Content-Type": "application/json" } : {}),
+        },
+        body: payload ? JSON.stringify(payload) : undefined,
+      });
+      const raw = await res.text();
+      let parsed: unknown = null;
+      try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
+      if (!res.ok) {
+        const message = parsed && typeof parsed === "object" && "message" in parsed
+          ? String((parsed as Record<string, unknown>).message) : `twilio_http_${res.status}`;
+        return { ok: false, status: res.status, error: `twilio_${res.status}: ${message.slice(0, MAX_ERROR_BODY)}`, data: null };
+      }
+      return { ok: true, status: res.status, error: null, data: parsed as T };
+    } catch (error) {
+      return { ok: false, status: 0, error: `twilio_network: ${String((error as Error).message).slice(0, MAX_ERROR_BODY)}`, data: null };
+    }
+  };
+  let result = await attempt();
+  if (!result.ok && (result.status === 0 || result.status === 429 || result.status >= 500)) {
+    await sleep(result.status === 429 ? 1000 : 400);
+    result = await attempt();
+  }
+  return result;
+}
 // Master (platform) credentials — env only (D2/D3)
 // -----------------------------------------------------------------------------
 
@@ -272,7 +313,9 @@ export function masterBasicAuthHeader(): string | null {
  */
 // deno-lint-ignore no-explicit-any
 export type SupabaseAdminLike = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   from: (table: string) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rpc: (fn: string, args?: Record<string, unknown>) => any;
 };
 

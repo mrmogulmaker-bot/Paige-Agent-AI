@@ -369,3 +369,15 @@
   .ss-form-row { grid-template-columns: 1fr; }
   .ss-list > div { flex-wrap: wrap; }
 }
+
+/* Twilio's compliance form stays inside the scrolling Settings surface. */
+.ss-a2p-stages { display: grid; gap: 14px; margin-top: 16px; }
+.ss-a2p-stage-list { display: grid; gap: 7px; }
+.ss-a2p-stage { display: grid; grid-template-columns: 20px minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--ss-line); border-radius: 10px; }
+.ss-a2p-stage > span { color: var(--ss-accent); font-weight: 800; }
+.ss-a2p-embed { min-height: 620px; overflow: hidden; border: 1px solid var(--ss-line); border-radius: 14px; background: #fff; }
+.ss-a2p-embed__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--ss-line); background: var(--ss-surface); }
+.ss-a2p-embed__bar > div { display: grid; gap: 2px; }
+.ss-a2p-embed__bar span { color: var(--ss-muted); font-size: 12px; }
+.ss-a2p-embed iframe { display: block; width: 100%; min-height: 560px; border: 0; }
+@media (max-width: 700px) { .ss-a2p-embed__bar { align-items: flex-start; flex-direction: column; } }

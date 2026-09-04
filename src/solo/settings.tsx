@@ -28,6 +28,8 @@ import {
   type NumberSearchFilters, type SearchOutcome,
 } from "./data/useSoloNumbers";
 import { useSoloA2P, type EditDraft } from "./data/useSoloA2P";
+import { useSoloA2PProvider } from "./data/useSoloA2PProvider";
+import { A2PComplianceSession } from "./A2PComplianceSession";
 import { rememberOAuthReturn } from "./data/oauthReturn";
 import { SoloIntegrationsView } from "./settings-integrations";
 import { SoloTeamWorkspace } from "./team-workspace";
@@ -485,6 +487,7 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
   const comms = useSoloComms();
   const numbers = useSoloNumbers();
   const a2p = useSoloA2P();
+  const a2pProvider = useSoloA2PProvider();
   const { activeTenantId: registrationTenant } = useTenantContext();
   const identity = useManagedIdentity();
   // The owner-locked Connections shape, from #660: Communications owns whether a
@@ -591,7 +594,7 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
               the grading that Communications already carries — two homes for one answer,
               free to disagree the moment either is edited. The panel reports the
               registration's own state as part of doing the work. */}
-          <RegistrationPanel key={registrationTenant ?? "unresolved"} a2p={a2p} account={account}
+          <RegistrationPanel key={registrationTenant ?? "unresolved"} a2p={a2p} provider={a2pProvider} account={account}
             status={r ? { tone: registrationStep(r).tone, state: registrationStep(r).state, detail: registrationStep(r).detail } : null}
             statusLoading={readiness.loading}/>
         </div>
@@ -641,10 +644,9 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
                 all. So the sentence now points at the one place the act lives (§18),
                 rather than describing a capability this card does not have (§13). */}
             <p className="ss-note">
-              Filing with a carrier is not something this product can do yet. Preparing and
-              saving a registration happens in{" "}
+              Carrier filing and returned status are managed in{" "}
               <button type="button" className="ss-linklike" onClick={() => changeView("registration")}>Registration</button>,
-              where it stops at <strong>prepared, not submitted</strong>.
+              using the active workspace&rsquo;s Twilio connection.
             </p>
             {/* These three fields live in SETUP, not here (owner ruling,
                 2026-08-31): the business owner, legal name, address and phone are
@@ -1127,12 +1129,10 @@ function PhoneSetupPanel({ numbers, onPurchased }: {
 /**
  * Carrier registration, where a Solo tenant can actually reach it.
  *
- * THE CEILING IS STATED, NOT IMPLIED (§13). Filing with a carrier does not exist in this
- * product: `comms-a2p-submit` refuses submission and returns `a2p_submit_wired: false`.
- * So this surface offers exactly the two acts that ARE real — Paige drafts the regulatory
- * copy, and the reviewed copy is saved — and says plainly that the filing step is not one
- * of them. A "Submit to carriers" button here would be a control that cannot do the thing
- * it names, which is the failure this whole surface was rebuilt to stop.
+ * SAVING REVIEWED COPY IS DISTINCT FROM PROVIDER SUBMISSION (section 13). Paige drafts
+ * the regulatory copy, the owner reviews it, and the tenant-bound provider seam starts or
+ * resumes Twilio's secure Brand and Campaign inquiries. Returned carrier state remains the
+ * authority for submitted, approved, rejected, and sender-ready claims.
  *
  * Drafting is a PAID model call that OVERWRITES saved copy, so it is offered only where
  * there is nothing to lose: no saved registration, or an explicit re-draft the person
@@ -1208,8 +1208,9 @@ function OwnedNumbers({ numbers }: { numbers: ReturnType<typeof useSoloNumbers> 
   </>;
 }
 
-function RegistrationPanel({ a2p, account, status, statusLoading }: {
+function RegistrationPanel({ a2p, provider, account, status, statusLoading }: {
   a2p: ReturnType<typeof useSoloA2P>;
+  provider: ReturnType<typeof useSoloA2PProvider>;
   account: string;
   /** Graded by the readiness ladder, passed in rather than re-derived (§57). */
   status: { tone: string; state: string; detail: string } | null;
@@ -1258,7 +1259,7 @@ function RegistrationPanel({ a2p, account, status, statusLoading }: {
     setSaving(false);
     setOutcome(res.ok
       // Saying "saved" and stopping would let someone read it as filed. It is not.
-      ? { tone: "ok", message: "Your registration is saved. It has not been filed with any carrier — nothing here can do that yet." }
+      ? { tone: "ok", message: "Your messaging details are saved. Continue below to file the brand registration with Twilio." }
       : { tone: "bad", message: res.error ?? "That save didn't complete." });
   };
 
@@ -1272,6 +1273,38 @@ function RegistrationPanel({ a2p, account, status, statusLoading }: {
   const reg = a2p.read.state === "ok" ? a2p.read.registration : null;
   const canSave = Boolean(draft && legal.trim() && draft.use_case.trim() && draft.campaign_description.trim()
     && draft.samples.some((s) => s.text.trim()));
+
+
+  const providerReg = provider.state.registration;
+  const phase = providerReg?.submission_phase ?? "prepared";
+  const startProvider = (action: "start_brand" | "resume_brand" | "start_campaign" | "resume_campaign") => void provider.begin(action);
+  const providerControls = <div className="ss-a2p-stages">
+    <div className="ss-a2p-stage-list" aria-label="Registration progress">
+      {[
+        ["Business profile", provider.state.missing_profile_fields.length === 0],
+        ["Brand", providerReg?.brand_status === "approved"],
+        ["Campaign", providerReg?.campaign_status === "approved"],
+        ["Number association", providerReg?.number_association_status === "associated"],
+        ["Carrier number registration", providerReg?.number_registration_status === "registered"],
+        ["Messaging ready", providerReg?.status === "approved" && providerReg?.number_registration_status === "registered"],
+      ].map(([label, done]) => <div key={String(label)} className="ss-a2p-stage"><span aria-hidden>{done ? "✓" : "○"}</span><strong>{label}</strong><Status tone={done ? "ok" : "neutral"}>{done ? "Complete" : "Waiting"}</Status></div>)}
+    </div>
+    {provider.state.eligible_number ? <div className="ss-fields"><Field label="Eligible workspace number" value={provider.state.eligible_number.phone_number}/><Field label="Number association" value={providerReg?.number_association_status ?? "Not started"}/><Field label="Carrier number status" value={providerReg?.number_registration_status ?? "Not started"}/></div>
+      : <div className="ss-next"><strong>No eligible workspace number</strong><p>Add an SMS-capable Twilio number to this workspace before filing.</p></div>}
+    {provider.state.missing_profile_fields.length > 0 && <div className="ss-next"><strong>Complete the business record first</strong><p>Missing: {provider.state.missing_profile_fields.join(", ")}.</p><p><Link to={`/solo/${account}/settings/setup`}>Complete these in Setup</Link>. Tax and registration numbers stay sealed.</p></div>}
+    {providerReg?.failure_reason && <div className="ss-next" role="alert"><strong>Twilio needs a correction</strong><p>{providerReg.failure_reason}</p></div>}
+    <div className="ss-form-actions">
+      {!providerReg?.has_brand && !["brand_draft","brand_submitted"].includes(phase) && <button type="button" className="ss-btn" disabled={provider.busy || !draft || provider.state.missing_profile_fields.length > 0 || !provider.state.eligible_number} onClick={() => startProvider("start_brand")}>Start secure brand registration</button>}
+      {phase === "brand_draft" && <button type="button" className="ss-btn" disabled={provider.busy} onClick={() => startProvider("resume_brand")}>Continue brand registration</button>}
+      {phase === "action_needed" && providerReg?.brand_status === "rejected" && <button type="button" className="ss-btn" disabled={provider.busy} onClick={() => startProvider("resume_brand")}>Correct brand registration</button>}
+      {providerReg?.brand_status === "approved" && !providerReg.has_campaign && phase !== "campaign_draft" && <button type="button" className="ss-btn" disabled={provider.busy} onClick={() => startProvider("start_campaign")}>Start campaign registration</button>}
+      {(phase === "campaign_draft" || (phase === "action_needed" && providerReg?.campaign_status === "rejected")) && <button type="button" className="ss-btn" disabled={provider.busy} onClick={() => startProvider("resume_campaign")}>Continue or correct campaign</button>}
+      {providerReg && ["brand_submitted","campaign_submitted","brand_approved","approved","action_needed","failed"].includes(phase) && <button type="button" className="ss-btn ss-btn--quiet" disabled={provider.busy} onClick={() => void provider.refresh()}>{provider.busy ? "Checking…" : "Check Twilio status"}</button>}
+      {["brand_draft","campaign_draft","prepared"].includes(phase) && providerReg && <button type="button" className="ss-btn ss-btn--quiet" disabled={provider.busy} onClick={() => void provider.cancel()}>Cancel this draft</button>}
+    </div>
+    {provider.error && <Outcome state={{ tone:"bad",message:provider.error }}/>}
+    {provider.session && <A2PComplianceSession session={provider.session} onSubmitted={(kind) => void provider.embeddedSubmitted(kind)} onClose={provider.closeSession} onError={() => provider.closeSession()}/>}
+  </div>;
 
   const body = () => {
     // The two unknown states come FIRST, and deliberately outrank the authority check.
@@ -1393,21 +1426,15 @@ function RegistrationPanel({ a2p, account, status, statusLoading }: {
     <header>
       <span className="ss-card-icon"><ShieldCheck aria-hidden/></span>
       <div className="ss-phone-heading"><h2 id="ss-reg-title" className="ss-phone-title">Prepare your registration</h2></div>
-      <Truth value={a2p.locked ? "PARTIAL" : "LIVE"}/>
+      <Truth value={providerReg?.status === "approved" && providerReg?.number_registration_status === "registered" ? "LIVE" : "PARTIAL"}/>
     </header>
     <div className="ss-card-body">
-      <p className="ss-phone-contract">
-        Carriers require a registered business before any text sends. Paige writes the regulatory
-        copy for you; you review it and save it.
-      </p>
+      <p className="ss-phone-contract">Carriers require a registered business before any text sends. Paige prepares the regulatory copy; you review it, then complete the secure Twilio brand and campaign filing here.</p>
       {!statusLoading && status && <p className="ss-note"><Status tone={status.tone}>{status.state}</Status> {status.detail}</p>}
-      <ReadState loading={a2p.loading} error={null} retry={a2p.refresh}>{body()}</ReadState>
+      <ReadState loading={a2p.loading} error={null} retry={() => { a2p.refresh(); void provider.refresh(); }}>{body()}</ReadState>
+      {a2p.canManage && providerControls}
       {/* Stated once, where the acts are, rather than only in a status card further up. */}
-      <p className="ss-note">
-        <strong>Filing is the step this product does not have yet.</strong> Saving prepares the
-        registration; sending it to a carrier is separate work that has not been built, so nothing
-        here will ever report your registration as filed.
-      </p>
+      <p className="ss-note"><strong>Carrier filing runs here.</strong> Twilio collects the final compliance answers securely, returns the real review status, and keeps rejected registrations available for correction.</p>
     </div>
   </section>;
 }
