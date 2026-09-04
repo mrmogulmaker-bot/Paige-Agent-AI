@@ -109,6 +109,9 @@ async function mount() {
   });
 }
 const text = () => host.textContent ?? "";
+async function openRegistration() {
+  await act(async () => { findButton("Registration").click(); });
+}
 function findButton(label: string): HTMLButtonElement {
   const el = [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(label));
   if (!el) throw new Error(`no button matching ${JSON.stringify(label)}. Buttons: ${[...host.querySelectorAll("button")].map((b) => b.textContent).join(" | ")}`);
@@ -128,6 +131,7 @@ beforeEach(() => { state.comms = comms(); state.readinessRetry = vi.fn(); docume
 describe("Business details are graded here, but owned by Setup", () => {
   it("still reports what carriers are missing", async () => {
     await mount();
+    await openRegistration();
     expect(text()).toContain("business name");
     expect(text()).toContain("still missing");
   });
@@ -145,6 +149,7 @@ describe("Business details are graded here, but owned by Setup", () => {
 
   it("points at the one place those fields are edited", async () => {
     await mount();
+    await openRegistration();
     expect(text()).toContain("live in Setup");
     const link = [...host.querySelectorAll("a")].find((a) => (a.textContent ?? "").includes("Setup"));
     expect(link?.getAttribute("href")).toContain("/settings/setup");
