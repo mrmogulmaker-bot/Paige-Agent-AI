@@ -133,7 +133,7 @@ function RegistrationBusinessEditor({ account, missing, open: _open, onOpenChang
       proposalId: null,
     });
     setSaving(false);
-    if (!result.ok) { setOutcome({ tone: "bad", message: result.error }); return; }
+    if (result.ok === false) { setOutcome({ tone: "bad", message: result.error }); return; }
     setEdits({});
     setOutcome({ tone: "ok", message: "Saved to your business record. Setup shows the same values." });
     // The shortfall list and every stage above it are the provider's answer, not ours.

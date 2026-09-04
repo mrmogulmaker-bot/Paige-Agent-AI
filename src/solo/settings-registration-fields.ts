@@ -24,10 +24,15 @@
 import { COUNTRY_OPTIONS, type AddressOption } from "./setup-address-options";
 import type { SoloSetupTextField } from "./settings-setup-contract";
 
-/** `businessRegistrationNumber` is write-only: it leaves for the Vault and comes back masked. */
+/**
+ * `businessRegistrationNumber` is write-only: it leaves for the Vault and comes back masked.
+ * `authorizedRepresentativeUserId` is not a text fact either — it is the Team member whose
+ * name, email and title the server derives, so the control for it is a person picker.
+ */
 export type RegistrationEditableField =
   | SoloSetupTextField
-  | "businessRegistrationNumber";
+  | "businessRegistrationNumber"
+  | "authorizedRepresentativeUserId";
 
 export type RegistrationField = {
   key: RegistrationEditableField;

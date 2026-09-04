@@ -379,7 +379,7 @@ describe("Completing the business record from Registration", () => {
     await act(async () => { buttonContaining("Save business record")?.click(); });
     const brief = saved()?.brief as Record<string, string>;
     for (const key of Object.keys(EMPTY_SOLO_SETUP_BRIEF)) {
-      expect(Object.hasOwn(brief, key), `omitting ${key} would NULL it on the canonical row`).toBe(true);
+      expect(key in brief, `omitting ${key} would NULL it on the canonical row`).toBe(true);
     }
   });
 

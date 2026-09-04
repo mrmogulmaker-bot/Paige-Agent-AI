@@ -1,0 +1,26 @@
+{
+  "what": "20261201000700_a2p_representative_identity_sync.sql exercised against a real PostgreSQL 16 cluster",
+  "why": "A rollback proof shows the SQL parses. It does not show the trigger derives the right values, refuses the wrong ones, or that the backfill unblocks a workspace that is blocked today (CLAUDE.md §32).",
+  "engine": "PostgreSQL 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1), disposable local cluster, destroyed after the run",
+  "harness": "Minimal real dependency tables (auth.users, public.profiles, public.tenant_members, public.tenant_legal_profile subset) plus the supabase roles. Not a production clone: RLS policies, the full column set and the surrounding Setup RPCs are NOT present, so this proves the trigger and backfill only.",
+  "apply": { "first_run": "clean", "second_run": "clean — idempotent replay" },
+  "behaviour": [
+    { "check": "derives first name, last name, email and business title on insert from the named active Team member", "result": "PASS" },
+    { "check": "splits a single stored full name into the first and last the carrier asks for", "result": "PASS" },
+    { "check": "refuses a representative who belongs to another tenant — derived identity is nulled, not carried", "result": "PASS" },
+    { "check": "refuses a representative whose membership is no longer active", "result": "PASS" },
+    { "check": "clears all four derived columns when the representative is removed, leaving no stale person on a carrier record", "result": "PASS" },
+    { "check": "an unrelated column update does not disturb the derived identity", "result": "PASS" }
+  ],
+  "backfill": {
+    "setup": "trigger dropped, then a row inserted with a representative and NULL derived columns — reproducing the shape every affected workspace is in on main today",
+    "before": "authorized_representative_first_name, _email and _business_title all NULL — missingProfile() can never empty, brand filing can never start",
+    "after_migration": "all four populated from the active Team member",
+    "result": "PASS"
+  },
+  "not_proven_here": [
+    "Persisted apply on production (§32.a) — owed to the deploy-migrations pipeline on merge, and to a schema_migrations + object query afterwards.",
+    "RLS behaviour, the surrounding Setup RPCs, and the real column set — this harness carries a subset.",
+    "Authenticated runtime on the deployed surface (§32.c) — this session has no browser and could not drive it."
+  ]
+}
