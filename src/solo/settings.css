@@ -337,13 +337,13 @@
    so they get the full width and a taller box than `.ss-form-row` gives. */
 .ss-reg-draft { display: grid; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--pg-line); }
 .ss-field-block { display: grid; gap: 5px; min-width: 0; color: var(--pg-muted); font-size: 9px; font-weight: 650; }
-.ss-field-block > input, .ss-field-block textarea {
+.ss-field-block > input, .ss-field-block > select, .ss-field-block textarea {
   width: 100%; min-width: 0;
   border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip);
   padding: 8px 10px; color: var(--pg-ink); background: var(--pg-lift);
   font: 400 11px/1.5 inherit; resize: vertical;
 }
-.ss-field-block > input { height: 34px; padding: 0 10px; }
+.ss-field-block > input, .ss-field-block > select { height: 34px; padding: 0 10px; }
 .ss-field-block :disabled { opacity: .55; cursor: not-allowed; }
 .ss-sample-row { display: flex; gap: 6px; align-items: center; }
 .ss-sample-row input { flex: 1 1 auto; }

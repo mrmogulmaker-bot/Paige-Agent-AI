@@ -2165,3 +2165,30 @@ merged reality.
 Owed: §32.c authenticated live-drive at the required viewports/themes (no browser-driving tool in
 this session — flagged, not claimed); the release report format the task brief requires (owner's
 one-minute test, Proof Owed, which source contract is ready for Sales/Spine).
+
+**2026-09-04 — #924 Registration becomes a second EDITOR of the one canonical business record.**
+Solo Settings → Connections → Registration could name the facts blocking a carrier filing and not
+resolve them. It now edits them through `save_solo_business_context` — the same seam Setup uses, so
+there is one record and two editors, never two records (§57). Owner-only; the canonical adapter
+mounts only when the editor is opened, so the ordinary Registration view is behaviourally unchanged.
+
+Underneath it, a **shipped capability had silently regressed (§58)**: `20261046000000` replaced
+`save_solo_setup_identity` with a version whose upsert omits `authorized_representative_first_name`,
+`_last_name`, `_email` and `_business_title`, and nothing else in the product wrote them. Because
+`comms-a2p-register`'s `missingProfile()` requires three of them, `missing_profile_fields` could
+never empty and **"Start secure brand registration" was permanently disabled for every Solo
+workspace**. `20261201000700` derives all four from the named active Team member at the table — one
+derivation for every writer — with a second trigger on `tenant_members` so a departure removes the
+name rather than the next unrelated Setup save. Backfilled unconditionally.
+
+`docs/doctrine/tier-matrix.md` updated in the same commit (§66): the `connections/registration` row
+previously asserted "the legal identity is SHOWN, not edited", which the merge makes false.
+
+The §39 peer-gate returned BLOCK twice and was right both times — most seriously on a browser
+`select()` for three columns `20261201000600` deliberately excludes from the `authenticated` grant,
+which would have blanked Registration for every workspace while every test stayed green. Recorded in
+`lessons-learned.md`.
+
+Owed and NOT claimed: §32.c authenticated live-drive (no browser in this session), §32.a persisted
+apply on prod (merge-time), and a governed PAIGE read/write seam for these fields — which does not
+exist and is a slice of its own, not a bolt-on.
