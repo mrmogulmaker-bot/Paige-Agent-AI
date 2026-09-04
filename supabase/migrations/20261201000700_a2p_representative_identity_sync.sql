@@ -26,12 +26,19 @@
 -- correct for every producer by construction (§18, §37) and cannot fall out of step with
 -- the FK it is derived from.
 --
--- WHAT MAKES THE MEMBERSHIP CLAIM TRUE. A trigger on `tenant_legal_profile` alone only
--- re-derives when something writes THAT table. A representative who leaves the Team, or whose
--- name or email changes, would keep their old identity on the carrier record indefinitely —
--- which is a claim this migration would otherwise be making and not keeping (§13). A second
--- trigger therefore re-fires the derivation from `tenant_members` itself, so the departure is
--- what removes the name rather than the next unrelated Setup save.
+-- WHAT KEEPS THE DERIVED IDENTITY TRUE, AND WHAT DOES NOT (§13). A trigger on
+-- `tenant_legal_profile` alone only re-derives when something writes THAT table, so a
+-- representative could leave the Team and keep their name on a carrier record indefinitely.
+-- Two further triggers close the cases that are ours to close: `tenant_members` (join, leave,
+-- role change, deletion) and `profiles` (the stored name). Between them, a departure is what
+-- removes the name rather than the next unrelated Setup save.
+--
+-- ONE CASE IS DELIBERATELY NOT COVERED, and saying so is the point: a change to
+-- `auth.users.email` re-derives NOTHING. That table is managed by the auth service and this
+-- migration does not attach triggers to it. A representative who changes their sign-in email
+-- keeps the previous address on the carrier record until the next membership change, profile
+-- edit, or Setup save re-derives it. That is a real staleness window, not an oversight, and it
+-- is written here rather than left for someone to discover in a rejected filing.
 --
 -- SCOPE. Derivation only. This changes no authorization, adds no grant, and creates no new
 -- caller. Who may write `tenant_legal_profile` is unchanged: `save_solo_setup_identity`
@@ -148,6 +155,34 @@ create trigger trg_resync_a2p_representative_on_membership
   on public.tenant_members
   for each row
   execute function public.resync_a2p_representative_on_membership();
+
+-- A stored name change re-derives it too. Scoped to rows that actually name this person, so
+-- an ordinary profile edit touches nothing in the common case.
+create or replace function public.resync_a2p_representative_on_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.tenant_legal_profile
+     set authorized_representative_user_id = authorized_representative_user_id
+   where authorized_representative_user_id = new.user_id;
+  return null;
+end;
+$$;
+
+comment on function public.resync_a2p_representative_on_profile() is
+  'Re-derives the carrier representative identity when the named person''s stored name changes. Never changes which member is named.';
+
+revoke all on function public.resync_a2p_representative_on_profile() from public, anon, authenticated;
+
+drop trigger if exists trg_resync_a2p_representative_on_profile on public.profiles;
+create trigger trg_resync_a2p_representative_on_profile
+  after update of first_name, last_name, full_name
+  on public.profiles
+  for each row
+  execute function public.resync_a2p_representative_on_profile();
 
 -- Backfill. Every workspace that already named a representative has been blocked from
 -- filing since 20261046000000; this is what unblocks the ones that exist today.

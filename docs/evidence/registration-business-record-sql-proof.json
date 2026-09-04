@@ -47,6 +47,18 @@
     {
       "check": "deleting the membership row clears the carrier name",
       "result": "PASS"
+    },
+    {
+      "check": "a representative whose profile carries no name derives nothing \u2014 Registration keeps reporting them missing, which is true",
+      "result": "PASS"
+    },
+    {
+      "check": "setting that name later, from Settings, re-derives it \u2014 nothing writes tenant_legal_profile",
+      "result": "PASS"
+    },
+    {
+      "check": "another person's profile edit is a no-op for this row",
+      "result": "PASS"
     }
   ],
   "backfill": {
@@ -59,7 +71,8 @@
   "not_proven_here": [
     "Persisted apply on production (\u00a732.a) \u2014 owed to the deploy-migrations pipeline on merge, and to a schema_migrations + object query afterwards.",
     "RLS behaviour, the surrounding Setup RPCs, and the real column set \u2014 this harness carries a subset.",
-    "Authenticated runtime on the deployed surface (\u00a732.c) \u2014 this session has no browser and could not drive it."
+    "Authenticated runtime on the deployed surface (\u00a732.c) \u2014 this session has no browser and could not drive it.",
+    "A change to auth.users.email re-derives nothing \u2014 that table is managed by the auth service and this migration attaches no trigger to it. A representative who changes their sign-in email keeps the previous address on the carrier record until the next membership change, profile edit, or Setup save. Stated in the migration header rather than left to be discovered in a rejected filing."
   ],
   "peer_gate": "Two independent reviewers returned BLOCK on the first pass (\u00a739). Both caught a representative picker offering people the save refuses; one caught a select for three columns the browser's grant excludes, which would have blanked Registration for every workspace. Both are fixed and re-proven here; the second was invisible to the UI tests because the test double does not enforce column grants."
 }

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { workspaceRootForTenant } from "@/lib/auth/workspaceEntry";
+import { decideWorkspaceEntry, workspaceRootForTenant } from "@/lib/auth/workspaceEntry";
 
 /**
  * Registration may only offer an editor to workspaces the canonical Setup seam will serve.
@@ -32,6 +32,24 @@ describe("Registration's editor and the Setup contract admit the same workspaces
     const sql = readFileSync(CANONICAL_SQL, "utf8");
     expect(sql).toContain("solo_setup_assert_canonical_tenant");
     expect(sql).toContain("account_type::text='standalone' and t.parent_tenant_id is null");
+  });
+
+  it("admits only that set at the /solo route the editor actually mounts under", () => {
+    // `workspaceRootForTenant` answers "where does this person LAND". The gate that decides
+    // whether SoloApp — and therefore SoloSettings, Registration and this editor — mounts at
+    // /solo/:account/* is `decideWorkspaceEntry({root:"solo"})`. Asserting only the landing
+    // resolver would prove an adjacent thing, so the mount gate is asserted directly.
+    const entry = (over: Record<string, unknown> = {}) =>
+      decideWorkspaceEntry({
+        root: "solo",
+        classification: { account_type: "standalone", parent_tenant_id: null, isPlatformStaff: false, ...over },
+        accountNumber: 1971670,
+      }).kind;
+    expect(entry()).toBe("allow");
+    expect(entry({ parent_tenant_id: "parent-1" })).not.toBe("allow");
+    expect(entry({ account_type: "agency" })).not.toBe("allow");
+    expect(entry({ account_type: "enterprise" })).not.toBe("allow");
+    expect(entry({ account_type: "sub_account" })).not.toBe("allow");
   });
 
   it("mounts the Solo shell for exactly that set, and for nobody else", () => {

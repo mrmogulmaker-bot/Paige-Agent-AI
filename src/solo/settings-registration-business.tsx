@@ -158,6 +158,23 @@ function RegistrationBusinessEditor({ account, missing, open: _open, onOpenChang
     onSaved();
   };
 
+  // A FAILED READ IS NOT A LACK OF AUTHORITY, and this branch order is the whole reason
+  // that distinction survives. `canEditLegal` is false whenever the read errored, because
+  // the adapter derives it from a scope it never received — so testing authority first
+  // would tell an Owner whose read failed that the record belongs to someone else. That is
+  // a confident claim made out of ignorance, and it is the same failure the two unknown
+  // states upstream in this panel exist to prevent. Unreadable is handled below, first.
+  if (!readable && !context.loading) {
+    return <div className="ss-next" role="status">
+      <strong>Your business record could not be read</strong>
+      <p>Nothing is being claimed about who may change it until that read succeeds.</p>
+      <div className="ss-form-actions">
+        <button type="button" className="ss-retry" onClick={context.refresh}>Try again</button>
+        <button type="button" className="ss-btn ss-btn--quiet" onClick={close}>Close</button>
+      </div>
+    </div>;
+  }
+
   // Setup's server split, asked of the server rather than guessed: an Admin may keep the
   // operating brief current, but the legal identity is the Owner's. Rendering boxes an
   // Admin can type into that the server will then refuse is the same lie as a read-only
@@ -185,10 +202,9 @@ function RegistrationBusinessEditor({ account, missing, open: _open, onOpenChang
     </div>
 
     {!readable && <div className="ss-next" role="status">
-      <strong>Your business record could not be read</strong>
-      <p>Nothing is being saved until it loads, because saving over a record we have not
-        read is how the rest of your business context would get lost.</p>
-      <p><button type="button" className="ss-retry" onClick={context.refresh}>Try again</button></p>
+      <strong>Loading your business record</strong>
+      <p>Nothing is saved until it loads, because saving over a record we have not read is
+        how the rest of your business context would get lost.</p>
     </div>}
 
     <div className="ss-fields">

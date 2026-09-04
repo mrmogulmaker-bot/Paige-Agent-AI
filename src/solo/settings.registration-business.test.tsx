@@ -386,6 +386,18 @@ describe("Completing the business record from Registration", () => {
     expect((field("registeredCity") as HTMLInputElement).value).toBe("Indianapolis");
   });
 
+  it("does not tell an Owner whose read failed that the record is someone else's", async () => {
+    // `canEditLegal` is false whenever the read errored, because the adapter derives it from
+    // a scope it never received. Testing authority before readability would therefore answer
+    // a question we cannot answer — the same confident-claim-out-of-ignorance the two unknown
+    // states upstream in this panel exist to prevent.
+    state.ctx = context({ error: "Couldn't load this business's context.", canEdit: false, canEditLegal: false, accessScope: "read_only" });
+    await mount();
+    await openEditor();
+    expect(text()).toContain("could not be read");
+    expect(text(), "authority must not be asserted from a failed read").not.toContain("Only the workspace Owner");
+  });
+
   it("closes the editor without saving when the owner cancels", async () => {
     await mount();
     await openEditor();
