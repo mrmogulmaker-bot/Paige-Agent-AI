@@ -80,11 +80,33 @@ Deno.serve(async (req) => {
   }
   if (!authorized) return json({ error: "unauthorized" }, 401);
 
+  // One approved operational job per tick. Its durable claim and tenant-owned
+  // process authorize execution independently of the owner's browser session.
+  const { data: jobs, error: jobClaimError } = await admin.rpc('solo_orchestration_service', { _operation: 'claim', _input: { limit: 1 } });
+  const operational: Array<{ outcome: string }> = [];
+  if (jobClaimError) return json({ error: 'orchestration_claim_failed' }, 500);
+  for (const job of Array.isArray(jobs?.runs) ? jobs.runs : []) {
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 85_000);
+    try {
+      const response = await fetch(ORCHESTRATOR_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+        body: JSON.stringify({ action: 'run_job', tenant_id: job.tenant_id, run_id: job.run_id, claim_token: job.claim_token }),
+        signal: controller.signal,
+      });
+      const result = await response.json().catch(() => ({}));
+      operational.push({ outcome: response.ok && result.ok === true ? String(result.outcome ?? 'pending') : 'needs_reconciliation' });
+    } catch {
+      // A timed-out network call is not permission to repeat an external effect.
+      // The persisted dispatch state controls the next claim/reconciliation.
+      operational.push({ outcome: 'needs_reconciliation' });
+    } finally { clearTimeout(deadline); }
+  }
   // -- 1. Atomically claim a batch of draft-eligible filed actions (self-heals stale claims). --
   const { data: claim, error: claimErr } = await admin.rpc("claim_filed_actions", { p_limit: BATCH_LIMIT });
   if (claimErr) return json({ error: "claim_failed", detail: claimErr.message }, 500);
   const claimed: ClaimedAction[] = Array.isArray(claim?.claimed) ? claim.claimed : [];
-  if (claimed.length === 0) return json({ ok: true, claimed: 0, drafted: 0, failed: 0 }, 200);
+  if (claimed.length === 0) return json({ ok: true, claimed: 0, drafted: 0, failed: 0, operational }, 200);
 
   const drafted: string[] = [];
   const failed: Array<{ id: string; error: string }> = [];
@@ -163,5 +185,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ ok: true, claimed: claimed.length, drafted: drafted.length, failed: failed.length, failures: failed }, 200);
+  return json({ ok: true, claimed: claimed.length, drafted: drafted.length, failed: failed.length, failures: failed, operational }, 200);
 });

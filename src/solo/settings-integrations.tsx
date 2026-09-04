@@ -1,3 +1,4 @@
+import { OrchestrationPanel } from './orchestration-panel';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyRound, Link2Off, Plug, RefreshCw, TriangleAlert, Workflow, X, Zap } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -821,7 +822,7 @@ function useIntegrationsLeaf(): [IntegrationsLeaf, (next: IntegrationsLeaf) => v
   return [leaf, setLeaf];
 }
 
-export function SoloIntegrationsView() {
+export function SoloIntegrationsView({ openPaige }: { openPaige?: () => void } = {}) {
   const { activeTenantId, activeUserId, loading: tenantLoading } = useTenantContext();
   const scopeKey = `${activeUserId ?? ""}:${activeTenantId ?? ""}`;
   const [leaf, setLeaf] = useIntegrationsLeaf();
@@ -861,6 +862,7 @@ export function SoloIntegrationsView() {
         })}</ul>
       </>}
     </>}
+    <OrchestrationPanel openPaige={openPaige}/>
     {open && !tenantLoading && open.scope === scopeKey && <ProviderPanel initialMcp={open.initialMcp} m={oauth} a={api} key={`${scopeKey}:${open.row.id}`} row={open.row} onClose={() => setOpen(null)} onChanged={status.retry} />}
   </div>;
 }

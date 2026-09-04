@@ -1,3 +1,4 @@
+import { runN8nJob } from '../_shared/n8n-job-execution.ts';
 // Paige Orchestrator — Section 18 doctrine
 // Tool-deferral pattern: exposes tool_search + tool_invoke to Paige.
 // Routes invocations to local Edge Functions or to LangGraph via paige-bridge.
@@ -87,10 +88,12 @@ async function resolveTenantScope(req: Request, payload: OrchestratorRequest): P
   return { tenantId, fundingEnabled, callerId, isService: false };
 }
 
-type Action = "tool_search" | "tool_invoke" | "list_subagents" | "inspect" | "set_agent_job_kind";
+type Action = "run_job" | "tool_search" | "tool_invoke" | "list_subagents" | "inspect" | "set_agent_job_kind";
 
 interface OrchestratorRequest {
   action: Action;
+  run_id?: string;
+  claim_token?: string;
   query?: string;
   domain?: string;
   slug?: string;
@@ -512,7 +515,16 @@ Deno.serve(async (req) => {
   const scope = await resolveTenantScope(req, payload);
   if ("error" in scope) return fail(scope.error, scope.status);
   const { tenantId, fundingEnabled, callerId, isService } = scope;
-  const ctx = { ...payload.context, user_id: payload.context?.user_id ?? callerId ?? undefined };
+  if (payload.action === "run_job") {
+    if (!isService || !UUID_RE.test(payload.run_id ?? '') || !UUID_RE.test(payload.claim_token ?? '')) return fail('Not permitted to execute this job', 403);
+    // The job RPC derives all authority from the claimed durable run; request context
+    // cannot supply a workflow, tenant credential, or executable input.
+    const result = await runN8nJob({ admin: supabase, runId: payload.run_id!, claimToken: payload.claim_token! });
+    if (result.ok !== true) await supabase.rpc('n8n_job_service', { _run_id: payload.run_id, _claim_token: payload.claim_token,
+      _operation: 'fail_claim', _input: { reason: 'authority_unavailable' } });
+    return ok(result);
+  }
+  const ctx = { ...payload.context, user_id: isService ? payload.context?.user_id : callerId ?? undefined };
 
   try {
     if (payload.action === "list_subagents" || payload.action === "tool_search") {

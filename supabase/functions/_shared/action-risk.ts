@@ -100,6 +100,12 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["n8n_create_workflow", "high", "writes to the operator's provider account"],
   ["n8n_update_workflow", "high", "writes to the operator's provider account"],
   ["n8n_run_workflow", "high", "fires an external automation with real effects"],
+  ["contact_import_commit", "high", "writes the owner-selected contact migration batch"],
+  ["solo_orchestrator_activate", "high", "authorizes a bounded background process"],
+  ["solo_orchestrator_delegate", "high", "delegates an external workflow execution"],
+  ["solo_orchestrator_cancel", "high", "changes a delegated job lifecycle"],
+  ["solo_orchestrator_retry", "high", "retries a previously refused job"],
+  ["solo_orchestrator_revoke", "high", "revokes process authority"],
   ["n8n_archive_workflow", "high", "acts on the operator's provider account"],
   ["zapier_run_action", "high", "runs an action in a third-party app"],
   ["calendar_book_meeting", "high", "books a real event with a real person"],
@@ -228,6 +234,7 @@ const REASON_BY_TOOL: ReadonlyMap<string, string> = new Map(RISK.map(([t, , why]
 // asked. The send it proposes is what carries the risk, and the send is gated. Exempting it is a
 // decision on the record — which is the point of this list existing at all.
 const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([
+  ["contact_import_list", "Reads stored preview counts and selected batches; persists nothing and exposes no raw contact fields."],
   ["growth_page_generate", "drafts a page in memory and returns it; saving is growth_page_save"],
   ["growth_funnel_generate", "drafts a funnel in memory; building it is growth_funnel_build"],
   ["propose_action", "files a request for the operator's decision and sends nothing; the send it proposes is the gated act"],

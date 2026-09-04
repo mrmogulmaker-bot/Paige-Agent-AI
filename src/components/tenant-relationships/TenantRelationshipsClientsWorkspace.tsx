@@ -35,6 +35,8 @@ import {
 } from "./workspaceModel";
 import { TenantCanonicalCalendarWorkspace } from "@/components/tenant-calendar/TenantCanonicalCalendarWorkspace";
 import { PeopleContactEditor } from "./PeopleContactEditor";
+import { ContactImportDialog } from "./ContactImportDialog";
+import { supabase } from "@/integrations/supabase/client";
 import "./tenant-relationships-clients-workspace.css";
 
 const CanonicalConversations = lazy(() => import("@/pages/admin/ClientsConversations"));
@@ -310,6 +312,18 @@ function SoloPeopleView({
   const [search, setSearch] = useState("");
   const [editorContact, setEditorContact] = useState<ReturnType<typeof useTenantRelationshipsData>["people"][number] | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [canImport, setCanImport] = useState(false);
+  useEffect(() => {
+    let current = true;
+    setCanImport(false);
+    // Existing owner authority helper is not in generated client types yet.
+    const ownerRpc = supabase.rpc.bind(supabase) as unknown as (name: string) => Promise<{ data: unknown; error: unknown }>;
+    void ownerRpc("is_current_user_tenant_admin").then(({ data, error }) => {
+      if (current) setCanImport(!error && data === true);
+    }).catch(() => { if (current) setCanImport(false); });
+    return () => { current = false; };
+  }, [activeTenantId]);
   const [recordLayout, setRecordLayout] = useState<"docked" | "overlay">("docked");
   const workspaceRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<HTMLElement | null>(null);
@@ -496,12 +510,15 @@ function SoloPeopleView({
           <input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, company, email, phone, tag…" />
         </label>
         <span className="trc-people-actions">
+          {canImport && <button type="button" onClick={() => setImportOpen(true)}>Import contacts</button>}
           {search && <button type="button" onClick={() => setSearch("")}>Clear search</button>}
           <RoleGate allow={["admin", "super_admin", "coach"]} fallback={<ProofPill>Read only</ProofPill>}>
             <button type="button" data-contact-editor-origin="toolbar-new" onClick={openNewContact}><Plus aria-hidden /> New contact</button>
           </RoleGate>
         </span>
       </header>
+
+      <ContactImportDialog key={activeTenantId} open={importOpen} onOpenChange={setImportOpen} tenantId={activeTenantId} openPaige={openPaige} />
 
       {staleDeepLink && (
         <div className="trc-record-notice" role="status">

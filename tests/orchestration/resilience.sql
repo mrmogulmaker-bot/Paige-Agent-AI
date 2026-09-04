@@ -1,0 +1,37 @@
+\set ON_ERROR_STOP on
+begin;
+set request.jwt.claims='{"role":"service_role"}';
+do $$declare base jsonb:='{"tenant_id":"00000000-0000-4000-8000-000000000001","actor_id":"00000000-0000-4000-8000-000000000011"}'; x jsonb; d jsonb; c jsonb; l jsonb; rid uuid; tok uuid;
+begin
+ x:=solo_orchestration_service('activate',base||'{"workflow_id":"wf1","version_id":"v1","execution_mode":"manual","approval_ref":"test","max_runs":3}');
+ d:=solo_orchestration_service('delegate',base||x||'{"idempotency_key":"crash"}');
+ c:=solo_orchestration_service('claim','{"limit":1}')->'runs'->0; rid:=(c->>'run_id')::uuid;tok:=(c->>'claim_token')::uuid;
+ l:=n8n_job_service(rid,tok,'acquire');
+ perform n8n_job_service(rid,tok,'dispatch_intent',l||'{"verified_workflow_id":"wf1","verified_version_id":"v1"}');
+ update paige_workflow_runs set job_claim_until=clock_timestamp()-interval '1 minute' where id=rid;
+ if jsonb_array_length(solo_orchestration_service('claim')->'runs')<>0 then raise exception 'FAIL uncertain re-dispatch'; end if;
+ if (select job_dispatch_state from paige_workflow_runs where id=rid)<>'unknown' then raise exception 'FAIL unknown missing'; end if;
+ begin perform solo_orchestration_service('retry',base||jsonb_build_object('run_id',rid)); raise exception 'FAIL uncertain retry'; exception when raise_exception then if sqlerrm<>'ORCHESTRATION_RETRY_UNSAFE' then raise; end if; end;
+ perform n8n_job_service(rid,tok,'release',l);
+ d:=solo_orchestration_service('delegate',base||x||'{"idempotency_key":"safe-failure"}');
+ c:=solo_orchestration_service('claim','{"limit":1}')->'runs'->0;rid:=(c->>'run_id')::uuid;tok:=(c->>'claim_token')::uuid;
+ perform n8n_job_service(rid,tok,'fail_claim');
+ perform solo_orchestration_service('retry',base||jsonb_build_object('run_id',rid));
+ c:=solo_orchestration_service('claim','{"limit":1}')->'runs'->0;tok:=(c->>'claim_token')::uuid;
+ l:=n8n_job_service(rid,tok,'acquire');
+ perform n8n_job_service(rid,tok,'dispatch_intent',l||'{"verified_workflow_id":"wf1","verified_version_id":"v1"}');
+ perform n8n_job_service(rid,tok,'settle',l||'{"outcome":"started","execution_id":"ex2","receipt":{"workflow_id":"wf1","execution_id":"ex2"}}');
+ perform n8n_job_service(rid,tok,'release',l);
+ perform solo_orchestration_service('cancel',base||jsonb_build_object('run_id',rid));
+ perform solo_orchestration_service('revoke',base||x);
+ update paige_workflow_runs set job_claim_until=clock_timestamp()-interval '1 minute' where id=rid;
+ c:=solo_orchestration_service('claim','{"limit":1}')->'runs'->0;tok:=(c->>'claim_token')::uuid;
+ if (c->>'run_id')::uuid is distinct from rid then raise exception 'FAIL cancelled polling'; end if;
+ l:=n8n_job_service(rid,tok,'acquire');
+ perform n8n_job_service(rid,tok,'check',l);
+ perform n8n_job_service(rid,tok,'settle',l||'{"outcome":"succeeded","execution_id":"ex2","receipt":{"workflow_id":"wf1","execution_id":"ex2","version_id":"v1","status":"success"}}');
+ perform n8n_job_service(rid,tok,'settle',l||'{"outcome":"failed","execution_id":"ex2"}');
+ if (select status from paige_workflow_runs where id=rid)<>'succeeded' then raise exception 'FAIL terminal overwritten'; end if;
+ raise notice 'PASS: intent crash unknown, no unsafe retry, safe pre-dispatch retry, cancelled/revoked read reconciliation, duplicate terminal immunity';
+end $$;
+rollback;

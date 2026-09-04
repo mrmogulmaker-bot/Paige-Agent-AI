@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
   const { data: queuedRows, error: queuedErr } = await admin
     .from("paige_workflow_runs")
     .select("id, registry_id, status, payload, retry_count, created_at, last_dispatched_at")
-    .eq("status", "queued")
+    .eq("status", "queued").is("orchestration_binding", null).is("orchestration_action_id", null)
     .lt("created_at", queuedCutoff)
     .lt("retry_count", MAX_RETRIES)
     .order("created_at", { ascending: true })
@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
   const { data: bridgeRunning, error: bridgeErr } = await admin
     .from("paige_workflow_runs")
     .select("id, registry_id, status, payload, n8n_execution_id, langgraph_thread_id, retry_count, last_dispatched_at, paige_workflow_registry!inner(provider, label, tenant_id)")
-    .eq("status", "running")
+    .eq("status", "running").is("orchestration_binding", null).is("orchestration_action_id", null)
     .eq("paige_workflow_registry.provider", "langgraph_bridge")
     .lt("last_dispatched_at", bridgePollCutoff)
     .order("last_dispatched_at", { ascending: true })
@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
   const { data: otherStalled, error: stalledErr } = await admin
     .from("paige_workflow_runs")
     .select("id, registry_id, status, payload, retry_count, last_dispatched_at, paige_workflow_registry!inner(provider)")
-    .eq("status", "running")
+    .eq("status", "running").is("orchestration_binding", null).is("orchestration_action_id", null)
     .neq("paige_workflow_registry.provider", "langgraph_bridge")
     .lt("last_dispatched_at", runningStallCutoff)
     .lt("retry_count", MAX_RETRIES)
@@ -351,7 +351,7 @@ Deno.serve(async (req) => {
   const { data: exhausted, error: exhaustedErr } = await admin
     .from("paige_workflow_runs")
     .select("id")
-    .eq("status", "queued")
+    .eq("status", "queued").is("orchestration_binding", null).is("orchestration_action_id", null)
     .gte("retry_count", MAX_RETRIES)
     .limit(MAX_TOTAL_WORK);
   if (!exhaustedErr) {
@@ -360,7 +360,7 @@ Deno.serve(async (req) => {
         status: "failed",
         error: `dead_letter: retry_count >= ${MAX_RETRIES}`,
         completed_at: new Date().toISOString(),
-      }).eq("id", row.id).eq("status", "queued");
+      }).eq("id", row.id).eq("status", "queued").is("orchestration_binding", null).is("orchestration_action_id", null);
       results.push({ run_id: row.id, mode: "dead_letter", status: "failed" });
     }
   }

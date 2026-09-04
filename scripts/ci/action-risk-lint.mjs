@@ -190,6 +190,18 @@ if (chatSrc.includes('...N8N_MANAGEMENT_TOOLS')) {
   importedTools = [...source.matchAll(/^\s*(n8n_[a-z_]+):\{provider:/gm)].map(m => m[1]);
   if (!importedTools.length) throw new Error('n8n catalog could not be parsed');
 }
+for (const [symbol, file, pattern] of [
+  ['CONTACT_IMPORT_TOOLS', 'contact-import-tools', /name:\s*'([a-z0-9_]+)'/g],
+  ['SOLO_ORCHESTRATION_TOOLS', 'solo-orchestration-tools', /^\s*(solo_orchestrator_[a-z_]+):\s*\{/gm],
+]) {
+  if (!chatSrc.includes(`...${symbol}`)) continue;
+  const importPattern = new RegExp(`import\\s*\\{[^}]*${symbol}[^}]*\\}\\s*from\\s*['"]\\.\\.\\/_shared\\/${file}\\.ts['"]`);
+  if (!importPattern.test(chatSrc)) throw new Error(`Unresolved ${symbol} catalog import`);
+  const source = fs.readFileSync(`supabase/functions/_shared/${file}.ts`, 'utf8');
+  const names = [...source.matchAll(pattern)].map(match => match[1]);
+  if (!names.length) throw new Error(`${symbol} catalog could not be parsed`);
+  importedTools.push(...names);
+}
 const problems = findings({ policy, exemptions, chat: parseChat(chatSrc, importedTools), verbSourceMatches });
 
 if (problems.length) {

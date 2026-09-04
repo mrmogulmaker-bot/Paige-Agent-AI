@@ -463,3 +463,6 @@ project_id = "xygzykjyynhzqytbqnzu"
 [functions.tenant-n8n-oauth]
 # Callback is public; JWT owner authorization and one-time callback proof are enforced inside.
 verify_jwt = false
+
+[functions.solo-contact-import]
+verify_jwt = true

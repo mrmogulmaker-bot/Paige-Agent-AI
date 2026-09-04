@@ -5,7 +5,7 @@ import { discoverAuthorizationServer, refreshTokens, revokeToken, isExpired, typ
 import { validateN8nResource, validateServer } from './n8n-oauth.ts';
 type Obj=Record<string,unknown>;
 type Admin={rpc:(name:string,args:Obj)=>PromiseLike<{data:unknown;error:{message?:string}|null}>};
-type Lease={lease:string;generation:string;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null;oauth_scopes:string[]};
+export type N8nLease={lease:string;generation:string;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null;oauth_scopes:string[]};
 type Spec={provider:string;scope:string;write:boolean;description:string;properties:Obj;required:string[]};
 const id={type:'string',minLength:1,maxLength:100};
 const text={type:'string',maxLength:200};
@@ -98,31 +98,15 @@ function project(tool:string,p:Obj,secrets:string[],expected:Obj):Obj{
 export async function runN8nManagement(input:{admin:Admin;userId:string;tenantId:string;sessionId:string;tool:string;args:Obj;mutationApproved:boolean}):Promise<Obj>{
  const spec=specs[input.tool];if(!spec)return {ok:false,error:'unsupported_operation'};
  if(spec.write&&input.mutationApproved!==true)return {ok:false,error:'owner_approval_required'};
- let lease:Lease|undefined;let attempted=false;let bound:Obj={actor_id:input.userId,tenant_id:input.tenantId,session_id:input.sessionId};
+ let lease:N8nLease|undefined;let attempted=false;let bound:Obj={actor_id:input.userId,tenant_id:input.tenantId,session_id:input.sessionId};
  const rpc=async(operation:string,extra:Obj={}):Promise<unknown>=>{const {data,error}=await input.admin.rpc('n8n_oauth_service',{_operation:operation,_input:{...bound,...extra}});if(error){const known=['N8N_OAUTH_NEEDED','N8N_BUSY','N8N_FORBIDDEN','N8N_TENANT_CHANGED','N8N_STALE_OPERATION'];const found=known.find(k=>error.message?.includes(k));fail(found?found.toLowerCase().replace('n8n_',''):'operation_refused')}return data};
  try{
-  const args=parameters(input.tool,input.args);
+  parameters(input.tool,input.args);
   if(!/^[0-9a-f-]{36}$/i.test(input.sessionId)||!input.userId||!input.tenantId)fail('forbidden');
-  lease=await rpc('acquire') as Lease;bound={...bound,lease:lease.lease,generation:lease.generation};
+  lease=await rpc('acquire') as N8nLease;bound={...bound,lease:lease.lease,generation:lease.generation};
   if(!Array.isArray(lease.oauth_scopes)||!lease.oauth_scopes.includes(spec.scope))return {ok:false,error:'authorization_needed',required_scope:spec.scope};
-  validateN8nResource(lease.server_url);
-  let access=lease.access_token;
-  const secrets=[access,lease.refresh_token,lease.client_secret].filter((s):s is string=>!!s);
-  if(isExpired(lease.expires_at)){
-   if(!lease.refresh_token)fail('token_expired');
-   const server=await discoverAuthorizationServer(lease.issuer);validateServer(server);
-   const tokens:TokenSet=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url});
-   try{
-    if(tokens.scopes.length!==lease.oauth_scopes.length||!tokens.scopes.every(s=>lease!.oauth_scopes.includes(s))||new Set(tokens.scopes).size!==tokens.scopes.length||!tokens.accessToken||isExpired(tokens.expiresAt))fail('provider_scope_refused');
-    await rpc('rotate',{tokens});access=tokens.accessToken;secrets.push(access);if(tokens.refreshToken)secrets.push(tokens.refreshToken);
-   }catch(error){await revokeToken({server,clientId:lease.client_id,clientSecret:lease.client_secret,token:tokens.refreshToken??tokens.accessToken,tokenTypeHint:tokens.refreshToken?'refresh_token':'access_token'}).catch(()=>false);throw error}
-  }
-  return await withApprovedCapabilitySession({serverUrl:lease.server_url,auth:{kind:'bearer',token:access},timeoutMs:30000,maxBytes:1048576},async session=>{
-   if(!session.tools.some(t=>t.name===spec.provider))return {ok:false,error:'provider_tool_unavailable'};
-   await rpc('check');
-   attempted=spec.write;
-   const data=unwrap(await session.call(spec.provider,args));
-   const projected=project(input.tool,data,secrets,args);
+  return await withN8nTransport(lease,rpc,async call=>{
+   const projected=await call(input.tool,input.args,async()=>{attempted=spec.write;});
    await rpc('check',{record_success:true});
    return projected;
   });
@@ -131,3 +115,33 @@ export async function runN8nManagement(input:{admin:Admin;userId:string;tenantId
   return {ok:false,error:error instanceof SafeFailure?error.reason:'provider_unavailable',...(spec.write?{retry_safe:false}:{})};
  }finally{if(lease)await rpc('release').catch(()=>undefined)}
 }
+
+/** Internal transport shared by interactive actions and durable jobs. Authority lives
+ * in each caller's RPC; credentials never leave this server-only module. */
+export async function withN8nTransport<T>(lease:N8nLease,rpc:(operation:string,extra?:Obj)=>Promise<unknown>,body:(call:(tool:string,args:Obj,beforeWrite?:()=>Promise<void>)=>Promise<Obj>)=>Promise<T>,beforeRefresh?:()=>Promise<void>):Promise<T>{
+  validateN8nResource(lease.server_url);
+  let access=lease.access_token;
+  const secrets=[access,lease.refresh_token,lease.client_secret].filter((s):s is string=>!!s);
+  if(isExpired(lease.expires_at)){
+   await beforeRefresh?.();
+   if(!lease.refresh_token)fail('token_expired');
+   const server=await discoverAuthorizationServer(lease.issuer);validateServer(server);
+   const tokens:TokenSet=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url});
+   try{
+    if(tokens.scopes.length!==lease.oauth_scopes.length||!tokens.scopes.every(s=>lease.oauth_scopes.includes(s))||new Set(tokens.scopes).size!==tokens.scopes.length||!tokens.accessToken||isExpired(tokens.expiresAt))fail('provider_scope_refused');
+    await rpc('rotate',{tokens});access=tokens.accessToken;secrets.push(access);if(tokens.refreshToken)secrets.push(tokens.refreshToken);
+   }catch(error){await revokeToken({server,clientId:lease.client_id,clientSecret:lease.client_secret,token:tokens.refreshToken??tokens.accessToken,tokenTypeHint:tokens.refreshToken?'refresh_token':'access_token'}).catch(()=>false);throw error}
+  }
+
+  return await withApprovedCapabilitySession({serverUrl:lease.server_url,auth:{kind:'bearer',token:access},timeoutMs:30000,maxBytes:1048576},async session=>body(async(tool,input,beforeWrite)=>{
+    const spec=specs[tool];if(!spec)fail('unsupported_operation');
+    if(!Array.isArray(lease.oauth_scopes)||!lease.oauth_scopes.includes(spec.scope))fail('authorization_needed');
+    const args=parameters(tool,input);
+    if(!session.tools.some(t=>t.name===spec.provider))fail('provider_tool_unavailable');
+    await rpc('check');
+    if(spec.write)await beforeWrite?.();
+    return project(tool,unwrap(await session.call(spec.provider,args)),secrets,args);
+  }));
+}
+/** Bounded reason only: never surface provider or credential-bearing error text. */
+export function n8nFailureReason(error:unknown):string{return error instanceof SafeFailure?error.reason:'provider_unavailable'}
