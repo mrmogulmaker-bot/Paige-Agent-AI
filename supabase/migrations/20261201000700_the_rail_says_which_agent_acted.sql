@@ -134,13 +134,21 @@ COMMENT ON COLUMN public.paige_client_events.actor_agent_label IS
 -- never admitted 'form', but growth-process-submission has always passed p_surface => 'form'
 -- (supabase/functions/growth-process-submission/index.ts:522). Every rail write from the form
 -- pipeline has therefore failed since it shipped — which is part of why this table holds 9 rows.
+--
+-- CONSEQUENCE WORTH STATING (§58/§13): `client.intake_answer` is seeded audience 'both',
+-- visibility 'client_visible', and that caller passes p_narrow_to_owner false. So once these writes
+-- succeed, record_rail_event also broadcasts to rail:client:<contact> and the submission appears on
+-- the CLIENT's own portal timeline. That is not a leak — a client sees their own submission, and
+-- the client envelope carries no payload and no agent attribution — but it is a visible change on a
+-- surface this PR is not otherwise about, and the first person to notice new lines there should be
+-- able to find the reason here.
 ALTER TABLE public.paige_client_events
   DROP CONSTRAINT IF EXISTS paige_client_events_surface_check;
 ALTER TABLE public.paige_client_events
   ADD  CONSTRAINT paige_client_events_surface_check
        CHECK (surface = ANY (ARRAY[
          'your_paige','contact_paige','client_portal','automation','mcp',
-         'campaigns_pipeline','form','command_center'
+         'campaigns_pipeline','form'
        ]));
 
 
@@ -222,22 +230,20 @@ BEGIN
   IF _source_kind IN ('oauth_attempt','mcp_connection') THEN
     BEGIN
       RETURN public._n8n_workspace_event_display(_outcome);
-    EXCEPTION WHEN OTHERS THEN
-      NULL;  -- fall through to the safe default
+    EXCEPTION WHEN invalid_parameter_value THEN
+      -- ONLY the n8n projection's own 'unrecognised outcome' raise (22023) is absorbed. A bare
+      -- WHEN OTHERS would also swallow a permission or search_path failure and quietly render the
+      -- fallback, which looks like missing copy rather than a broken function.
+      NULL;
     END;
   END IF;
 
   CASE _outcome
-    WHEN 'oauth_success'            THEN title:='n8n OAuth authorized';               summary:='MCP authorization completed. Workflow actions still require their own approval.'; dept:='technology_automation';
-    WHEN 'oauth_cancelled'          THEN title:='n8n authorization cancelled';        summary:='The authorization attempt was cancelled. This attempt did not replace any saved MCP connection.'; dept:='technology_automation';
-    WHEN 'oauth_refused'            THEN title:='n8n authorization refused';          summary:='Consent was refused. This attempt did not replace any saved MCP connection.'; dept:='technology_automation';
-    WHEN 'oauth_expired'            THEN title:='n8n authorization expired';          summary:='The authorization attempt expired. Reconnect to try again.'; dept:='technology_automation';
-    WHEN 'oauth_failed'             THEN title:='n8n authorization did not complete'; summary:='The attempt failed. This attempt did not replace any saved MCP connection.'; dept:='technology_automation';
-    WHEN 'mcp_verified'             THEN title:='n8n MCP connection verified';        summary:='The MCP connection passed its check. API health remains separate.'; dept:='technology_automation';
-    WHEN 'mcp_unavailable'          THEN title:='n8n MCP needs attention';            summary:='The MCP check did not succeed. Check or reconnect the authorization.'; dept:='technology_automation';
-    WHEN 'mcp_disconnected'         THEN title:='n8n MCP disconnected';               summary:='MCP access was disconnected. The API connection was not changed.'; dept:='technology_automation';
-    WHEN 'read_approvals_changed'   THEN title:='n8n read access updated';            summary:='Named workflow read approvals changed. No workflow was executed.'; dept:='technology_automation';
-
+    -- The nine n8n outcomes are DELIBERATELY ABSENT. The cross-CHECK guarantees the two n8n
+    -- source kinds only ever carry them, so the delegation above always returns first and any copy
+    -- here would be dead. It would also be WRONG copy — it is what produced the 12-to-13-key
+    -- envelope change — so an n8n outcome that somehow reached this CASE should fall to the honest
+    -- ELSE rather than render a plausible-but-incorrect n8n envelope.
     WHEN 'plan_drafted'             THEN title:='Business game plan drafted';         summary:='A plan was prepared for your review. Nothing in it has been acted on.';
     WHEN 'plan_updated'             THEN title:='Business game plan updated';         summary:='The plan changed. Steps already completed were not altered.';
     WHEN 'plan_step_completed'      THEN title:='A plan step was completed';          summary:='One step of the plan finished.';
@@ -512,6 +518,10 @@ BEGIN
       );
     END IF;
 
+    -- God firehose. EVERY event is surfaced to the platform owner's cross-tenant stream (§9 God
+    -- reads everything). Compact envelope only — NO full payload; the platform stream is a
+    -- cross-tenant index, and omitting the payload limits blast radius. Subscribable ONLY by God
+    -- (see can_access_rail_topic).
     PERFORM realtime.send(
       jsonb_build_object(
         'id', v_id, 'tenant_id', v_tenant, 'contact_id', p_contact_id,

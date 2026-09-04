@@ -14,13 +14,35 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+/**
+ * REPOINTED 2026-09-04 to the migration that actually defines the live reader.
+ *
+ * This fence used to read 20261043000000. Two migrations have redefined
+ * `get_solo_rail_activity` since — 20261201000200 (workspace events) and 20261201000700
+ * (agent attribution) — so it was guarding a file that no longer ships, which is the
+ * failure mode its own header warns about: a fence that fences nothing still passes.
+ *
+ * It now reads the CURRENT definition. Repoint it again whenever that moves.
+ */
 const FIX = readFileSync(
-  "supabase/migrations/20261043000000_the_rail_reader_checks_the_right_tenant.sql",
+  "supabase/migrations/20261201000700_the_rail_says_which_agent_acted.sql",
   "utf8",
 );
 
-/** The function body, so assertions cannot be satisfied by prose in the header comment. */
-const BODY = FIX.slice(FIX.indexOf("as $$"), FIX.lastIndexOf("$$;"));
+/**
+ * The READER's body alone.
+ *
+ * This file defines several functions, and slicing from the first `$$` to the last would
+ * span all of them — `record_rail_event` legitimately calls `has_any_role`, so a whole-file
+ * slice would trip the very first assertion below for the wrong reason. Anchor on the
+ * reader's own CREATE and take the body that follows it.
+ */
+const READER_START = FIX.indexOf("CREATE OR REPLACE FUNCTION public.get_solo_rail_activity");
+const BODY = (() => {
+  if (READER_START < 0) throw new Error("get_solo_rail_activity is not defined in the pinned migration");
+  const after = FIX.slice(READER_START);
+  return after.slice(after.indexOf("as $$"), after.indexOf("$$;") + 3);
+})();
 
 describe("#794 — the role question is asked about the workspace the rows come from", () => {
   it("no longer consults the tenant-agnostic global role helper", () => {
@@ -53,7 +75,12 @@ describe("#794 — the role question is asked about the workspace the rows come 
     const signature = FIX.slice(FIX.indexOf("get_solo_rail_activity"), FIX.indexOf("returns table"));
     expect(signature).toMatch(/p_limit/);
     expect(signature).not.toMatch(/p_tenant/i);
-    expect(BODY).toMatch(/e\.tenant_id\s*=\s*v_tenant/i);
+    // The reader now UNIONs two tables inside a subquery aliased `e`, so the scoping predicate
+    // sits on each half rather than on the alias. Assert BOTH halves — strictly stronger than
+    // the single `e.tenant_id` check this replaces, because a union can leak by forgetting
+    // either one, and only one of them is about contacts.
+    expect(BODY).toMatch(/c\.tenant_id\s*=\s*v_tenant/i);
+    expect(BODY).toMatch(/w\.tenant_id\s*=\s*v_tenant/i);
   });
 
   it("does not widen the projection while fixing the gate", () => {
