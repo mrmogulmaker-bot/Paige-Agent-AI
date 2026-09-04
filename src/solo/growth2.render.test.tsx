@@ -108,7 +108,7 @@ describe("Solo Campaigns rendered flows", () => {
     expect(host.textContent).toContain("Add a stage");
     expect(host.textContent).toContain("Archive");
     expect(host.textContent).not.toContain("Delete stage");
-    expect(host.textContent).not.toContain("Delete pipeline");
+    expect([...host.querySelectorAll("button")].find(button => button.textContent === "Delete pipeline")?.disabled).toBe(true); // no server owner-delete capability in this fixture
   });
 
   it("filters and organizes exact pipelines without changing the board", async () => {

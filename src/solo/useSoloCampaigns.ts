@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -52,10 +52,11 @@ export type PipelineStage = { id: string; pipelineId: string; label: string; des
 export type PipelineDeal = { id: string; title: string; pipelineId: string; stageId: string; clientId: string | null; clientName: string; owner: string; status: string; source: string; nextAction: string; updatedAt: string; version: number; history: { summary: string; createdAt: string }[] };
 export type PipelineFolder = { id: string; name: string; lifecycleStatus: "active" | "archived"; version: number; pipelineCount: number };
 export type PipelineRecord = { id: string; shortRef: string; folderId: string | null; folderName: string | null; name: string; description: string; isDefault: boolean; lifecycleStatus: "draft" | "active" | "archived"; version: number; createdAt: string; updatedAt: string; createdThrough: "owner" | "team_member" | "paige" | "approved_automation" | null; createdByName: string | null; requestedByName: string | null; stageCount: number; dealCount: number };
-export type PipelineWorkspace = { canManage: boolean; canArchiveFolders: boolean; folders: PipelineFolder[]; pipelines: PipelineRecord[]; stages: PipelineStage[]; deals: PipelineDeal[] };
+export type PipelineWorkspace = { canManage: boolean; canArchiveFolders: boolean; canDelete?: boolean; folders: PipelineFolder[]; pipelines: PipelineRecord[]; stages: PipelineStage[]; deals: PipelineDeal[] };
 export type PipelineStageDraft = { label: string; description: string; movePolicy: "direct" | "approval" };
 type CommandBase = { idempotencyKey?: string };
 export type PipelineAction =
+  | (CommandBase & { type: "delete-empty-pipeline"; pipelineId: string; pipelineRef: string; expectedVersion: number; expectedStageCount: number })
   | (CommandBase & { type: "create-pipeline"; name: string; description: string; stages: PipelineStageDraft[] })
   | (CommandBase & { type: "update-pipeline"; pipelineId: string; name: string; description: string; expectedVersion: number })
   | (CommandBase & { type: "archive-pipeline"; pipelineId: string; pipelineRef: string; confirmedReference: string; expectedVersion: number })
@@ -101,6 +102,7 @@ type RoutingEvidencePayload = { routes?: RoutingEvidenceRow[] };
 type PipelineWorkspacePayload = {
   can_manage?: boolean;
   can_archive_folders?: boolean;
+  can_delete?: boolean;
   folders?: { id: string; name: string; lifecycle_status?: "active" | "archived"; version?: number; pipeline_count?: number }[];
   pipelines?: { id: string; short_ref: string; folder_id?: string | null; folder_name?: string | null; name: string; description?: string | null; is_default?: boolean; lifecycle_status?: "draft" | "active" | "archived"; version?: number; created_at: string; updated_at: string; created_through?: "owner" | "team_member" | "paige" | "approved_automation" | null; created_by_name?: string | null; requested_by_name?: string | null; stage_count?: number; deal_count?: number }[];
   stages?: { id: string; pipeline_id: string; label: string; description?: string | null; order_index: number; archived_at?: string | null; move_policy?: "direct" | "approval"; version?: number }[];
@@ -112,6 +114,10 @@ const empty = { campaigns: [], artifacts: [], submissions: [], pipelineWorkspace
 
 export function useSoloCampaigns(): SoloCampaignsState {
   const { activeTenantId, activeTenant, accountContextLoading } = useTenantContext();
+  const deletionContext = useRef({ tenantId: activeTenantId, loading: accountContextLoading });
+  if (deletionContext.current.tenantId !== activeTenantId || deletionContext.current.loading !== accountContextLoading) {
+    deletionContext.current = { tenantId: activeTenantId, loading: accountContextLoading };
+  }
   const [refreshKey, setRefreshKey] = useState(0);
   const [state, setState] = useState<Omit<SoloCampaignsState, "retry" | "pipelineAction">>({
     tenantId: activeTenantId ?? null,
@@ -121,6 +127,26 @@ export function useSoloCampaigns(): SoloCampaignsState {
   const retry = useCallback(() => setRefreshKey((key) => key + 1), []);
   const pipelineAction = useCallback(async (action: PipelineAction) => {
     if (!activeTenantId) return { ok: false, message: "No tenant workspace is selected." };
+    if (action.type === "delete-empty-pipeline") {
+      const context = deletionContext.current;
+      if (context.tenantId !== activeTenantId || context.loading) return { ok: false, message: "Workspace changed. Reopen the pipeline before deleting." };
+      const { data, error } = await supabase.rpc("delete_empty_pipeline" as never, {
+        _expected_tenant_id: activeTenantId, _pipeline_id: action.pipelineId, _pipeline_ref: action.pipelineRef,
+        _expected_version: action.expectedVersion, _expected_stage_count: action.expectedStageCount,
+        _idempotency_key: action.idempotencyKey ?? crypto.randomUUID(),
+      } as never);
+      if (context !== deletionContext.current) return { ok: false, message: "Workspace changed. Reopen the pipeline list to check the result." };
+      if (error) {
+        const detail = String(error.message || "");
+        const message = /FORBIDDEN|OWNER|TENANT|CONTEXT/.test(detail) ? "Deletion is not allowed for this workspace and role. Nothing was deleted."
+          : /VERSION|STALE|STAGE_COUNT|REFERENCE|NOT_FOUND/.test(detail) ? "This pipeline changed or is no longer available. Reload and review its exact reference before trying again."
+          : "Deletion could not be confirmed. Retry the same request safely, or reload the pipeline list to check its current state.";
+        return { ok: false, message };
+      }
+      const payload = (data ?? {}) as Record<string, unknown>;
+      // The tenant-keyed workspace refreshes after it owns the success transition.
+      return { ok: payload.ok === true, message: typeof payload.message === "string" ? payload.message : "Deletion was not confirmed. Reload the pipeline list.", data: payload };
+    }
     const { idempotencyKey, ...command } = action;
     const name = "configure_tenant_pipeline";
     const args = { _tenant_id: activeTenantId, _command: command, _idempotency_key: idempotencyKey ?? crypto.randomUUID(), _actor_kind: "human" };
@@ -239,6 +265,7 @@ export function useSoloCampaigns(): SoloCampaignsState {
         const pipelineWorkspace: PipelineWorkspace = {
           canManage: rawPipeline.can_manage === true,
           canArchiveFolders: rawPipeline.can_archive_folders === true,
+          canDelete: rawPipeline.can_delete === true,
           folders: (rawPipeline.folders ?? []).map((row) => ({ id: row.id, name: row.name, lifecycleStatus: row.lifecycle_status ?? "active", version: row.version ?? 1, pipelineCount: row.pipeline_count ?? 0 })),
           pipelines: (rawPipeline.pipelines ?? []).map((row) => ({ id: row.id, shortRef: row.short_ref, folderId: row.folder_id ?? null, folderName: row.folder_name ?? null, name: row.name, description: row.description ?? "", isDefault: row.is_default === true, lifecycleStatus: row.lifecycle_status ?? "active", version: row.version ?? 1, createdAt: row.created_at, updatedAt: row.updated_at, createdThrough: row.created_through ?? null, createdByName: row.created_by_name ?? null, requestedByName: row.requested_by_name ?? null, stageCount: row.stage_count ?? 0, dealCount: row.deal_count ?? 0 })),
           stages: (rawPipeline.stages ?? []).map((row) => ({ id: row.id, pipelineId: row.pipeline_id, label: row.label, description: row.description ?? "", orderIndex: row.order_index, archivedAt: row.archived_at ?? null, movePolicy: row.move_policy ?? "direct", version: row.version ?? 1 })),
