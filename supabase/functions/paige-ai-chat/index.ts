@@ -1,9 +1,11 @@
+import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
+const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { checkedWrite, writeOutcome } from "../_shared/checked-write.ts";
 import { classifyAction, mutatingTools, riskReason, unclassifiedWriteReason } from "../_shared/action-risk.ts";
 import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
-import { projectN8nForModel, projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
+import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
 import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
@@ -4593,17 +4595,11 @@ ACTION BUS — you run the business's departments and route work between them on
 YOUR TEAM — you are the brain, you never grind alone. You conduct a team of specialist sub-agents across the business's departments: Owner Ops (works for the coach/consultant/agency — pipeline, follow-ups, retention, retainers, campaigns, the daily brief) and Client Experience (works for each client — onboarding, discovery, answers, nurture), plus the specialist desks (marketing, sales, product/curriculum, technology, finance, people, legal, operations) and a shared bench (research, design, scheduling). When a real job arrives, FIRST call list_subagents to see who you already have, then delegate_to_subagent to the right specialist. Delegate by default; you integrate the results — you don't do the heavy lift yourself.
 SPINNING UP A NEW SPECIALIST — only when the roster genuinely lacks the capability, use forge_subagent to create one designed to do that one thing at a high level. Describe it in this practice's own domain terms using ARCHETYPES ("a client", "the contact", "their business") — never a real person's or company's name. A soft agent is definable purely from a system prompt over tools the team already has — it joins the team immediately. A hard agent needs brand-new backend capability — it's filed for an admin in the Approvals Hub and does NOT go live from this chat. REPORT HONESTLY: if it came back soft-shipped, say it's ready and what it does; if it's a hard proposal, say it's queued for approval and will join once approved — never call a pending agent "ready." Never speak a slug or internal name to the operator. Keep the platform's default team coaching/consulting/agency-generic — never forge or describe a credit/funding/lending specialist unless THIS tenant has that offer enabled; if they haven't and they ask, tell them it's an offer they can turn on, don't force it.
 
-AUTOMATIONS (n8n) — use the current N8N CONNECTION READINESS evidence for connection questions. A saved API connection, healthy API, and authorized MCP connection are separate facts. Zero workflows is a valid result, never "not wired". A read/write OAuth grant is not approval for an individual action. Existing n8n tools support these operations only when their own authenticated adapter and governed action checks succeed: list, get, executions, run, execution_get, validate, create, update, activate, deactivate, archive, delete. n8n_list_workflows shows what exists; n8n_get_executions shows a workflow's run history. n8n_run_workflow FIRES a workflow that has a webhook trigger. Firing is not sending — the tool tells you both, separately, and you never blur them (see AUTOMATION HONESTY below): pass the workflow_id (or its webhook_path) and a payload the workflow expects. So when the operator says "send my workflow list to Telegram" and they have a Telegram-send workflow in n8n, you CAN fire it — but you report what came back, not what you hoped. You can VERIFY a run with n8n_execution_get, DRY-CHECK a design with n8n_validate_workflow before building, turn automations on/off (n8n_activate_workflow / n8n_deactivate_workflow), author or edit them (n8n_create_workflow / n8n_update_workflow — created OFF until activated), and lifecycle-manage with n8n_archive_workflow (reversible, your default) or n8n_delete_workflow (permanent, only on an explicit "delete"). All mutating actions follow the propose→confirm rule unless the workspace set them to autopilot — then you act without the pause, but honesty is NOT autopilot-exempt: even acting on your own you report the true outcome, never a hoped-for one. Validate before you build so a malformed graph gives you specifics to self-repair, not a dead end. The workflow must be active for its webhook to respond; if it's off, offer to turn it on first. If no n8n is connected, the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it ran.
+AUTOMATIONS (n8n) — use current connection evidence and OAuth management tools. API health is independent. Zero approved previews never means zero workflows exist. List/search existing workflows before speculating; a partial result is a subset. Use the existing Needs your OK card for writes and execute its exact stored proposal. Never send the operator to an imaginary approvals queue. Missing execution/history scope means reconnect OAuth for those permissions, not loss of read/write access. A started execution is not completion or proof of delivery. Never automatically retry an unknown write outcome.
 
 ZAPIER — if the workspace has connected a Zapier (MCP) account, you can reach across 9,000+ apps (Slack, Gmail, Google Sheets, HubSpot, Trello, and thousands more) through their Zapier actions. zapier_list_actions shows what THIS workspace has enabled; zapier_run_action RUNS one — resolve the exact tool_name from the list first, then pass the inputs that action expects. Running is doing: you report what Zapier actually returned, never a hoped-for outcome (the same honesty as firing an automation). zapier_run_action follows the propose→confirm rule unless the workspace set it to autopilot. If no Zapier is connected the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it exists or ran. n8n and Zapier are complementary: n8n is their own workflow engine; Zapier is the fast bridge to apps they haven't wired in n8n. Pick whichever the operator already has the automation/app in.
 
-AUTOMATION HONESTY — say what you can SEE, not what you hope. When you fire an automation you get back two separate truths, and you never let them blur into one: fired = n8n accepted the webhook and the workflow started; delivered = the workflow actually reported the send going out (true, false, or null). null means unknown — you have not seen it happen, and unknown is NEVER a yes. The rule you run on:
-1. "I fired it" — allowed when fired:true. The webhook was accepted and the flow kicked off. That is all a fire claims; do not upgrade it.
-2. "Sent / delivered / it went out" — allowed ONLY when delivered:true (or an n8n_execution_get shows the channel true with no errors). Nothing less earns that word.
-3. delivered:null → say so straight and offer to check. The fire went through, the result is unconfirmed. Tell the operator exactly that and offer to read the execution (n8n_execution_get on execution_id, or executions on the workflow). Do NOT pick "sent" because it probably worked.
-4. delivered:false or errors[] populated → lead with the miss. Say it did not send, give the reason from errors (e.g. no link preset resolved a URL, so the SMS was skipped), then the fix.
-5. Never claim a send you can't see. No "Done — SMS sent" off a bare fire. When in doubt, run n8n_execution_get and report what's actually there.
-How it sounds — Good: "Fired the send-message webhook — n8n took it. It came back without confirming the SMS went out (delivery unknown), and that workflow only sends when a link preset resolves a URL, which this bare test didn't. I wouldn't call it delivered. Want me to pull the execution, or resend with a link attached?" Good: "Confirmed from the execution — SMS went out to that number, no errors. That one's live." Bad: "Firing the GHL SMS now… Done — SMS sent." (Claimed delivery off a fire you never verified — the exact miss we killed.)
+AUTOMATION HONESTY — report only the returned n8n receipt. A valid SDK check is not a created workflow. A created workflow is unpublished until a separately approved publish succeeds. An execution response with started:true means n8n accepted the run, not that it finished. Read execution status with the returned workflow and execution identifiers; metadata-only status never proves a particular message or customer update was delivered. delivered:null means delivery is unknown. Never invent webhook acceptance, channel outcomes, or provider error details. An unknown write outcome must not be retried automatically because it may already have taken effect.
 
 LOOKUP HONESTY — an empty or errored search is NOT proof a record doesn't exist. The same "say what you can SEE, not what you hope" rule runs in reverse for every lookup tool (crm_search_contacts, crm_get_contact_summary, deal/document/approval lookups): a tool that returns zero results, or comes back with success:false / an error, tells you your SEARCH found nothing — it does NOT tell you the person, deal, or record isn't there. Three distinct outcomes, never collapsed into "no record":
 1. Results returned → act on them.
@@ -4611,9 +4607,9 @@ LOOKUP HONESTY — an empty or errored search is NOT proof a record doesn't exis
 3. Error / success:false → say you hit a snag pulling it up and offer to retry: "I hit an error looking that up — let me try again." NEVER convert a tool error into a statement of fact about the record. An error means you don't know, and unknown is never "it doesn't exist."
 The anchor miss (2026-08-11): a contact search returned nothing for a full name whose first/last live in separate columns, and Paige told the operator "no contact record on file yet" — a false negative that contradicted an approval already sitting in the queue for that same person. When a lookup comes back empty for someone the operator clearly expects to exist, assume the SEARCH missed, not the record — loosen and retry before you ever say it's not there.
 
-BUILDING AUTOMATIONS — BE THE ARCHITECT, NOT A FORM. Assume the operator doesn't know how to build a good automation; your job is to design an effective one for how they manage clients. NEVER silently build. First ask a SHORT set of questions (at most these, infer the rest): (1) what should be true after it runs (the outcome)? (2) what triggers it — a form/new contact, an inbound message, or a schedule (daily/weekly)? (3) same play for everyone, or does it change by client type (new lead vs paying client vs going quiet)? (4) should you draft-and-wait for their OK, or send on your own for the safe stuff (default: draft-and-wait). Then PROPOSE a named design in plain English (trigger → what the brain decides → what happens → what gets logged), say you'll build it switched OFF so they can review, and build only on "yes".
+BUILDING AUTOMATIONS — read the n8n SDK reference tool before authoring SDK code; validate the exact code before creating. Update workflows with typed operations. Follow the tool schemas rather than REST nodes JSON. Build the design the operator requested; do not insert unnecessary agents into a simple test. Creation is separate from publishing and running. Explain that n8n enables created workflows for MCP and may assign matching credentials before the owner approves creation. Report only the actual receipt; never invent success.
 
-DEFAULT PATTERN = an ORCHESTRATOR "BRAIN". When you create an automation with n8n_create_workflow, default to: one trigger → one AI Agent "brain" (n8n node type "@n8n/n8n-nodes-langchain.agent" v3.1) wired to a chat model ("@n8n/n8n-nodes-langchain.lmChatAnthropic" v1.5, model value "claude-sonnet-4-6"), plus memory ("@n8n/n8n-nodes-langchain.memoryBufferWindow" v1.4) when it's per-client/conversational, plus a structured output parser ("@n8n/n8n-nodes-langchain.outputParserStructured" v1.3) when the brain must ROUTE — then a fan-out that ACTS (draft), NOTIFIES the coach for approval on anything high-stakes, and LOGS. Triggers: "n8n-nodes-base.formTrigger" (form), "n8n-nodes-base.webhook" (inbound), or "n8n-nodes-base.scheduleTrigger" (a 30/60/90-day nurture). CRITICAL JSON rules: AI sub-nodes connect IN REVERSE — keyed by the sub-node's name with connection type ai_languageModel / ai_memory / ai_tool / ai_outputParser pointing INTO the agent; only trigger→brain→downstream use type "main". Send only {name, nodes, connections, settings} — never active/tags/pinData. ORGANIZE WHAT YOU BUILD: name every automation you author with the stable prefix "Paige · " so it's instantly clear which workflows are yours (e.g. "Paige · New-Lead Welcome [DRAFT]"), end drafts in "[DRAFT]", and offer to file it in a folder for the tenant so their n8n stays tidy — never dump loose, mystery-named workflows into their account. It's created OFF; activating is a separate step after they approve.
+N8N AUTHORING — read n8n_get_sdk_reference before writing Workflow SDK code. Validate the exact code with n8n_validate_workflow, then propose that code through n8n_create_workflow with its version name and description. The Approve card authorizes the stored design, not a newly regenerated version. For updates use the supported operation array, not REST nodes/connections JSON. Create an unpublished draft; publishing and execution each require their own approval. Name drafts clearly with the Paige prefix and [DRAFT] suffix. Do not claim a workflow exists until the create receipt supplies its identifier.
 
 ADD SUB-AGENTS INTELLIGENTLY — one brain by default (give it tools, not more brains). Add a specialist sub-agent ("@n8n/n8n-nodes-langchain.agentTool") only when the work genuinely splits: a distinct expertise/persona is needed, two audiences at once (a Client-Experience agent for the client + an Owner-Ops agent for the coach — the action bus §8), more than ~6-8 tools on one agent, a stage needs its own memory/loop, or a long-horizon 90-day workflow (orchestrator decides "who's due today", a content sub-agent personalizes each touch). Tell the operator plainly: "one brain that can act, unless the work splits into different jobs or two audiences — then I give the brain a specialist teammate." Keep every generated automation coaching-generic (never funding/credit content in a default).
 
@@ -6159,158 +6155,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "n8n_list_workflows",
-              description: "Admin only. List the automation workflows in this workspace's connected n8n account (id, name, whether active, tags). Use to see what automations exist before running, editing, or building one. Returns an error asking the operator to connect n8n if none is configured.",
-              parameters: { type: "object", properties: {}, required: [] }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "n8n_get_executions",
-              description: "Admin only. Show recent run history (executions) for one n8n workflow — status, started/stopped times. Resolve the workflow id via n8n_list_workflows first.",
-              parameters: {
-                type: "object",
-                properties: {
-                  workflow_id: { type: "string", description: "The n8n workflow id (from n8n_list_workflows)." },
-                  limit: { type: "number", description: "How many recent runs (default 10, max 50)." }
-                },
-                required: ["workflow_id"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "n8n_activate_workflow",
-              description: "Admin only. Turn ON an n8n workflow so its trigger runs live. Governed by the workspace autonomy policy: unless set to auto, PROPOSE first and call again with confirm:true once the operator approves. Resolve the id via n8n_list_workflows.",
-              parameters: {
-                type: "object",
-                properties: { workflow_id: { type: "string", description: "The n8n workflow id." } },
-                required: ["workflow_id"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "n8n_deactivate_workflow",
-              description: "Admin only. Turn OFF an n8n workflow so its trigger stops running. Propose first and call again with confirm:true unless the workspace set this to auto.",
-              parameters: {
-                type: "object",
-                properties: { workflow_id: { type: "string", description: "The n8n workflow id." } },
-                required: ["workflow_id"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "n8n_run_workflow",
-              description: "Admin only. FIRE / trigger an n8n workflow that has a WEBHOOK trigger — this is how the operator's automations actually run (e.g. a Telegram/Slack/GHL send workflow). Pass the workflow_id (Paige resolves its webhook) or an explicit webhook_path, plus an optional payload object the workflow expects. The workflow must be active. IMPORTANT: many automations are reusable SUB-workflows (trigger type executeWorkflowTrigger) that are CALLED by other workflows and have NO webhook — those can't be fired directly; if the tool returns not_webhook_triggered, tell the operator plainly and OFFER to build a small webhook-trigger wrapper (webhook → Execute Workflow → the sub-workflow) with n8n_create_workflow, then fire that. Use this when the operator asks you to SEND something through, kick off, or trigger an automation. Governed by the autonomy policy: unless set to auto, propose first and call again with confirm:true.",
-              parameters: {
-                type: "object",
-                properties: {
-                  workflow_id: { type: "string", description: "n8n workflow id to fire (its webhook is resolved automatically)." },
-                  webhook_path: { type: "string", description: "Explicit webhook path if known (e.g. 'send', 'campaign-control'). Overrides workflow_id resolution." },
-                  payload: { type: "object", description: "JSON body to POST to the webhook (whatever the workflow expects, e.g. { message: '…' })." },
-                  method: { type: "string", enum: ["POST", "GET", "PUT"], description: "HTTP method, default POST." }
-                },
-                required: []
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "n8n_create_workflow",
-              description: "Admin only. Create a new automation workflow in the workspace's n8n account, defaulting to the ORCHESTRATOR-BRAIN pattern (trigger → an AI Agent brain → act/notify/log; add sub-agents only when the work splits — see the BUILDING AUTOMATIONS guidance). It is created INACTIVE and named ending in [DRAFT] (never auto-live) — activate separately after review. Provide a valid n8n workflow: name plus nodes (array) and connections (object, with AI sub-nodes connected in reverse via ai_languageModel/ai_memory/ai_tool/ai_outputParser). ALWAYS propose the design in plain English first and call again with confirm:true once the operator approves.",
-              parameters: {
-                type: "object",
-                properties: {
-                  name: { type: "string", description: "Workflow name." },
-                  nodes: { type: "array", description: "n8n nodes array (valid n8n node objects).", items: { type: "object" } },
-                  connections: { type: "object", description: "n8n connections object wiring the nodes together." },
-                  settings: { type: "object", description: "Optional n8n workflow settings." }
-                },
-                required: ["name", "nodes"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "n8n_update_workflow",
-              description: "Admin only. Update an existing n8n workflow's name, nodes, connections, or settings. Only pass what changes. Propose first and call again with confirm:true unless the workspace set this to auto. Resolve the id via n8n_list_workflows.",
-              parameters: {
-                type: "object",
-                properties: {
-                  workflow_id: { type: "string", description: "The n8n workflow id to update." },
-                  name: { type: "string" },
-                  nodes: { type: "array", items: { type: "object" } },
-                  connections: { type: "object" },
-                  settings: { type: "object" }
-                },
-                required: ["workflow_id"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "n8n_execution_get",
-              description: "Read the real result of a specific n8n run to VERIFY what actually happened — use this to confirm a send after firing (a fire is not proof of delivery). Returns status, delivered (true/false/null), which channels sent (sms/email), errors, and a per-node trace. Pass the execution_id from a run response's execution_id, or from n8n_get_executions. This is a read — no confirm needed.",
-              parameters: {
-                type: "object",
-                properties: { execution_id: { type: "string", description: "The n8n execution id to inspect." } },
-                required: ["execution_id"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "n8n_validate_workflow",
-              description: "Dry-check a workflow graph BEFORE you build it — returns valid/errors/warnings and whether it's webhook-fireable, with no network call. Run this on your drafted nodes/connections so a malformed graph gives you specifics to self-repair instead of a dead-end error. This is a read — no confirm needed.",
-              parameters: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  nodes: { type: "array", items: { type: "object" } },
-                  connections: { type: "object" },
-                  settings: { type: "object" }
-                },
-                required: ["nodes"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "n8n_archive_workflow",
-              description: "Admin only. Archive an n8n workflow — deactivates it and tags it [archived]. REVERSIBLE, and your default over deleting. Propose first and call again with confirm:true unless the workspace set this to auto.",
-              parameters: {
-                type: "object",
-                properties: { workflow_id: { type: "string", description: "The n8n workflow id to archive." } },
-                required: ["workflow_id"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "n8n_delete_workflow",
-              description: "Admin only. PERMANENTLY delete an n8n workflow — irreversible. Only use when the operator explicitly says delete permanently; otherwise prefer n8n_archive_workflow. Propose first and call again with confirm:true unless the workspace set this to auto.",
-              parameters: {
-                type: "object",
-                properties: { workflow_id: { type: "string", description: "The n8n workflow id to delete permanently." } },
-                required: ["workflow_id"]
-              }
-            }
-          },
+          ...N8N_MANAGEMENT_TOOLS,
           // ── The business phone line and its carrier registration ──────────────
           // These exist so Paige can DO this, not just describe it. Before them the
           // capability shipped as a surface only a human could click: she could not tell
@@ -7310,7 +7155,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         case "n8n_deactivate_workflow":
           return `Turn OFF the n8n automation ${a?.workflow_id || ""}.`;
         case "n8n_create_workflow":
-          return `Create a new n8n automation "${a?.name || "Untitled"}"${Array.isArray(a?.nodes) ? ` (${a.nodes.length} step${a.nodes.length === 1 ? "" : "s"})` : ""}. It starts OFF until you activate it.`;
+          return `Create a new n8n automation "${a?.name || "Untitled"}"${Array.isArray(a?.nodes) ? ` (${a.nodes.length} step${a.nodes.length === 1 ? "" : "s"})` : ""}. It starts unpublished. n8n enables it for MCP and may assign matching credentials; publishing and running are separate actions.`;
         case "n8n_update_workflow":
           return `Edit the n8n automation ${a?.workflow_id || ""}${a?.name ? ` (rename to "${a.name}")` : ""}.`;
         case "n8n_run_workflow":
@@ -8019,13 +7864,31 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // CHANNEL 1 — a human demonstrably clicked. A surface that renders a real confirm card
             // (the Solo chat) echoes the fingerprint of what it actually DISPLAYED, in the request
             // body. The model cannot put anything in the request body, so this cannot be forged.
-            const surfaceApproved = approvedConfirmations.has(fp);
+            let approvedFingerprint: string | undefined = approvedConfirmations.has(fp) ? fp : undefined;
+            // The card approves the stored call, not a model's byte-identical reconstruction.
+            // Resolve only fingerprints the human submitted; never broaden to all pending calls.
+            if (!approvedFingerprint && approvedConfirmations.size > 0) {
+              try {
+                let lookup = supabaseClient.from("paige_pending_confirmations")
+                  .select("fingerprint").eq("user_id", user.id).eq("tool_name", tc.function.name)
+                  .in("fingerprint", [...approvedConfirmations]).is("consumed_at", null)
+                  .gt("expires_at", new Date().toISOString())
+                  .neq("issued_in_request", requestNonce).not("issued_in_request", "is", null);
+                lookup = personaCtx?.tenant_id ? lookup.eq("tenant_id", personaCtx.tenant_id) : lookup.is("tenant_id", null);
+                lookup = payloadThreadId ? lookup.eq("thread_id", payloadThreadId) : lookup.is("thread_id", null);
+                lookup = scopedClientId ? lookup.eq("scoped_client_id", scopedClientId) : lookup.is("scoped_client_id", null);
+                const { data: matches, error: lookupError } = await lookup.limit(2);
+                if (!lookupError && matches?.length === 1 && typeof matches[0]?.fingerprint === "string"
+                  && approvedConfirmations.has(matches[0].fingerprint)) approvedFingerprint = matches[0].fingerprint;
+              } catch { /* A failed lookup cannot approve an action. */ }
+            }
+            const surfaceApproved = approvedFingerprint !== undefined;
             // CHANNEL 2 — the model's word that the operator said yes. Necessary, because five of
             // the six surfaces render no card and a rule only one caller can obey is not a rule,
             // it is an outage. Refused outright when the policy classifies the action `high`.
             const modelAsserted = gateArgs.confirm === true;
             const claimBy: string | null | undefined = surfaceApproved
-              ? fp                                    // exact: the card said precisely this
+              ? approvedFingerprint                   // exact stored call the card displayed
               : (modelAsserted && !highRisk)
                 ? null                                // by scope: tolerate the model's drift
                 : undefined;                          // nothing to redeem
@@ -8055,7 +7918,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 requires_operator_approval: highRisk,
                 confirm_summary: summary,
                 note: refusedSelfApproval
-                  ? "This action cannot be approved by you saying it was approved — it is irreversible, changes permissions, reaches outside this platform, or spends money, so it needs the operator to approve it where it can actually be shown to them. Read confirm_summary back to them, tell them plainly it needs their approval in the workspace, and do NOT call this again in this reply."
+                  ? "This action cannot be approved by you saying it was approved — it is irreversible, changes permissions, reaches outside this platform, or spends money, so it needs the operator to click Approve on the Needs your OK card in this conversation. A typed yes alone does not submit that approval. Read confirm_summary back, point to that card, and do NOT call this again in this reply."
                   : changed
                     ? "Not approved. Either you set confirm before actually hearing back from the operator — in which case you cannot approve on their behalf, so STOP and ask them — or the approval is spent, expired, or the action has changed since. Read the NEW confirm_summary back to them and wait for their answer."
                     : recorded === "exists"
@@ -8903,13 +8766,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "crm_assign_contact" ||
           tc.function.name === "program_list" ||
           tc.function.name === "program_enroll" ||
-          tc.function.name === "n8n_list_workflows" ||
-          tc.function.name === "n8n_get_executions" ||
-          tc.function.name === "n8n_activate_workflow" ||
-          tc.function.name === "n8n_deactivate_workflow" ||
-          tc.function.name === "n8n_create_workflow" ||
-          tc.function.name === "n8n_update_workflow" ||
-          tc.function.name === "n8n_run_workflow" ||
+          N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) ||
           tc.function.name === "zapier_list_actions" ||
           tc.function.name === "zapier_run_action" ||
           tc.function.name === "crm_log_activity" ||
@@ -8936,7 +8793,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             .select("role")
             .eq("user_id", user.id);
           const roles = (roleRows || []).map((r: any) => r.role);
-          const allowed = roles.includes("admin") || roles.includes("coach");
+          // n8n has its own exact owner/session/tenant lease check; global CRM roles are unrelated.
+          const allowed = N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) || roles.includes("admin") || roles.includes("coach");
           if (!allowed) {
             toolResults.push({
               tool_call_id: tc.id,
@@ -10758,39 +10616,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 weighted_forecast_cents: Math.round(weightedForecast),
                 stage_rollup: stageRollup,
               };
-            } else if (
-              tc.function.name === "n8n_list_workflows" || tc.function.name === "n8n_get_executions" ||
-              tc.function.name === "n8n_activate_workflow" || tc.function.name === "n8n_deactivate_workflow" ||
-              tc.function.name === "n8n_create_workflow" || tc.function.name === "n8n_update_workflow" ||
-              tc.function.name === "n8n_run_workflow" || tc.function.name === "n8n_execution_get" ||
-              tc.function.name === "n8n_validate_workflow" || tc.function.name === "n8n_archive_workflow" ||
-              tc.function.name === "n8n_delete_workflow"
-            ) {
-              // Route every n8n tool through the paige-n8n edge function with the
-              // caller's JWT (it resolves the tenant and pulls the tenant's own
-              // encrypted n8n creds server-side). Mutating n8n tools already
-              // cleared the autonomy gate above; `confirm` is not an n8n param.
-              const n8nBody: Record<string, unknown> =
-                tc.function.name === "n8n_list_workflows" ? { action: "list" }
-                : tc.function.name === "n8n_get_executions" ? { action: "executions", workflow_id: args.workflow_id, limit: args.limit }
-                : tc.function.name === "n8n_activate_workflow" ? { action: "activate", workflow_id: args.workflow_id }
-                : tc.function.name === "n8n_deactivate_workflow" ? { action: "deactivate", workflow_id: args.workflow_id }
-                : tc.function.name === "n8n_create_workflow" ? { action: "create", name: args.name, nodes: args.nodes, connections: args.connections ?? {}, settings: args.settings }
-                : tc.function.name === "n8n_run_workflow" ? { action: "run", workflow_id: args.workflow_id, webhook_path: args.webhook_path, payload: args.payload, method: args.method }
-                : tc.function.name === "n8n_execution_get" ? { action: "execution_get", execution_id: args.execution_id }
-                : tc.function.name === "n8n_validate_workflow" ? { action: "validate", name: args.name, nodes: args.nodes, connections: args.connections ?? {}, settings: args.settings }
-                : tc.function.name === "n8n_archive_workflow" ? { action: "archive_workflow", workflow_id: args.workflow_id }
-                : tc.function.name === "n8n_delete_workflow" ? { action: "delete_workflow", workflow_id: args.workflow_id }
-                : { action: "update", workflow_id: args.workflow_id, name: args.name, nodes: args.nodes, connections: args.connections, settings: args.settings };
-              const { data: n8nData, error: n8nErr } = await supabaseClient.functions.invoke("paige-n8n", { body: n8nBody });
-              if (n8nErr) throw n8nErr;
-              // Same boundary as the Zapier lane below, and for the same reason: a
-              // workspace's n8n instance is a third-party host, and everything it says
-              // arrives here as untrusted input on its way into a model's context.
-              // Spreading the response wholesale, as this once did, carried the webhook's
-              // own body (4000 characters of whatever the workflow chose to return) and
-              // every provider error body straight through.
-              result = projectN8nForModel(n8nData);
+            } else if (N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name)) {
+              let n8nSessionId = '';
+              try {
+                // getUser verified this exact bearer JWT before any tool work.
+                const encoded = authHeader.replace(/^Bearer /i, '').split('.')[1];
+                n8nSessionId = JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/'))).session_id;
+              } catch { /* The adapter rejects a missing verified session. */ }
+              result = await runN8nManagement({ admin: supabase, userId: user.id,
+                tenantId: personaCtx.tenant_id ?? '', sessionId: n8nSessionId,
+                tool: tc.function.name, args, mutationApproved: approvalChannel.has(tc.id) });
             } else if (
               tc.function.name === "zapier_list_actions" || tc.function.name === "zapier_run_action"
             ) {
@@ -11336,7 +11171,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           let out: any = {}; try { out = JSON.parse(res?.content ?? "{}"); } catch { /* ignore */ }
           // A proposal or a switched-off tool did not run.
           if (out?.needs_confirm === true || out?.disabled === true) return;
-          const failed = out?.success === false;
+          const n8nOutcome = N8N_MANAGEMENT_TOOL_NAMES.has(name);
+          const failed = n8nOutcome ? out?.ok !== true : out?.success === false;
+          const outcome = n8nOutcome && out?.error === "outcome_unknown" ? "outcome_unknown"
+            : failed ? "failed" : n8nOutcome && out?.started === true ? "started" : "succeeded";
+          const n8nSafeErrors = new Set(["outcome_unknown", "authorization_needed", "owner_approval_required", "provider_tool_unavailable", "unsupported_operation", "forbidden", "invalid_arguments", "provider_refused", "provider_response_invalid", "provider_scope_refused", "token_expired", "oauth_needed", "busy", "tenant_changed", "stale_operation", "operation_refused"]);
           // `Promise.resolve` around the builder, not `void builder.then?.()`: a postgrest builder
           // is a THENABLE, not a Promise, so it has no `.catch` — and an audit write whose own
           // rejection path is unreachable is precisely the silent failure this row exists to stop.
@@ -11355,10 +11194,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // Which authority let this run. `standing_autonomy_setting` is the operator's earlier
               // decision, not a yes given in this conversation, and the two must not read alike.
               authorised_by: approvalChannel.get(tc.id) ?? "standing_autonomy_setting",
-              outcome: failed ? "failed" : "succeeded",
+              outcome,
               // The tool's own error text, capped. Never the arguments: they can carry a client's
               // details, and an audit row is read by more people than the conversation was.
-              error: failed ? String(out?.error ?? "").slice(0, 300) : null,
+              error: failed ? n8nOutcome ? n8nSafeErrors.has(out?.error) ? out.error : "operation_refused" : String(out?.error ?? "").slice(0, 300) : null,
               thread_id: payloadThreadId ?? null,
               scoped_client_id: scopedClientId ?? null,
             },

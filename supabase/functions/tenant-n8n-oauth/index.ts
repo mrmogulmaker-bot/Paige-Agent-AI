@@ -23,7 +23,7 @@ function logCallbackFailure(stage:CallbackStage,error:unknown):void {
 }
 const clearCookie=`${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`;
 const landing=(account:string|undefined,state:string)=>`${PUBLIC_BASE}${account&&/^\d+$/.test(account)?`/solo/${account}/settings/integrations`:'/choose-account'}?n8n_oauth=${state}`;
-type Payload={server:AuthorizationServer & {responseIssuerRequired?:boolean};client:ClientRegistration;resource:string;verifier:string;redirect_uri:string;authorization_url:string};
+type Payload={server:AuthorizationServer & {responseIssuerRequired?:boolean};client:ClientRegistration;resource:string;verifier:string;redirect_uri:string;authorization_url:string;requested_scopes?:string[]};
 type ServiceResult={expired?:boolean;account_number?:string;authorization_url:string;attempt_id:string;payload:Payload;pin:string;discovery_id:string;revoke?:{token:string;issuer:string;client_id:string;client_secret:string|null;token_type:'access_token'|'refresh_token'}};
 type Lease={lease:string;generation:string;approved_ids:string[];discovery_pin:string|null;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null};
 Deno.serve(async req=>{
@@ -94,7 +94,7 @@ Deno.serve(async req=>{
    const tokens=await exchangeCode({server:payload.server,...payload.client,redirectUri:CALLBACK,code,verifier:payload.verifier,resource:payload.resource});
    pendingGrant={server:payload.server,client:payload.client,tokens};
    stage='scope_validation';
-   assertScopedTokens(tokens);
+   assertScopedTokens(tokens,payload.requested_scopes??['workflow:read','workflow:write']);
    // Prove the scoped grant actually reaches n8n before replacing a saved working credential.
    stage='mcp_discovery';
    await discoverWorkflowPreviews({serverUrl:payload.resource,auth:{kind:'bearer',token:tokens.accessToken}});
@@ -134,10 +134,11 @@ Deno.serve(async req=>{
    if(typeof sessionId!=='string'||! /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId))return json({error:'unauthorized'},401);
    const resource=validateN8nResource(body.server_url);
    const server=await discoverN8n(resource);
+   const requestedScopes=N8N_OAUTH_SCOPES.filter(scope=>server.scopesSupported.includes(scope));
    const client=await registerClient({server,redirectUri:CALLBACK,clientName:'Paige n8n governed access'});
    const pkce=await createPkce(); const state=createState(); const launch=createState(); const launchProof=createState();
-   const authorizationUrl=buildAuthorizationUrl({server,clientId:client.clientId,redirectUri:CALLBACK,state,challenge:pkce.challenge,scopes:N8N_OAUTH_SCOPES,resource});
-   await rpc('begin',{...context,session_id:sessionId,state_hash:await hashOpaque(state),launch_hash:await hashOpaque(launch),launch_proof_hash:await hashOpaque(launchProof),payload:{server,client,resource,verifier:pkce.verifier,redirect_uri:CALLBACK,authorization_url:authorizationUrl}});
+   const authorizationUrl=buildAuthorizationUrl({server,clientId:client.clientId,redirectUri:CALLBACK,state,challenge:pkce.challenge,scopes:requestedScopes,resource});
+   await rpc('begin',{...context,session_id:sessionId,requested_scopes:requestedScopes,state_hash:await hashOpaque(state),launch_hash:await hashOpaque(launch),launch_proof_hash:await hashOpaque(launchProof),payload:{server,client,resource,requested_scopes:requestedScopes,verifier:pkce.verifier,redirect_uri:CALLBACK,authorization_url:authorizationUrl}});
    return json({launch_url:CALLBACK,launch_ticket:launch,launch_proof:launchProof});
   }
   if(body.action==='cancel'){await rpc('cancel',context);return json(await fresh());}
