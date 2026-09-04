@@ -1,6 +1,6 @@
 # Solo Sales workbench — bounded offer discovery
 
-Status: IMPLEMENTING. Owner approved the compact workbench and production delivery. Branch `codex/solo-sales-workbench`, base `c198d8ae` (released #903).
+Status: **IMPLEMENTED IN PR #908**. Exact-head CI, merge and deployed revision are recorded on that PR. Owner approved the compact workbench and production delivery. Branch `codex/solo-sales-workbench`, base `c198d8ae` (released #903).
 
 ## Approved scope and collisions
 
