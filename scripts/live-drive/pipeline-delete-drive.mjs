@@ -15,7 +15,7 @@ let browser;
 const snap=p=>p.evaluate(()=>window.pipelineHarness.snapshot());
 const setup=async p=>{await p.goto('http://127.0.0.1:5237/solo/local/growth/pipeline');await p.getByRole('button',{name:'Manage',exact:true}).waitFor();};
 const open=async p=>{await p.getByRole('button',{name:'Manage',exact:true}).click();await p.getByRole('button',{name:'Delete pipeline',exact:true}).click();await p.locator('dialog[open]').waitFor();};
-const contrast=page=>page.locator('.pipeline-delete-confirm').evaluate(el=>{const s=getComputedStyle(el);const lum=color=>{const a=color.match(/[\\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;});return .2126*a[0]+.7152*a[1]+.0722*a[2];};const a=lum(s.color),b=lum(s.backgroundColor);return{foreground:s.color,background:s.backgroundColor,ratio:(Math.max(a,b)+.05)/(Math.min(a,b)+.05),enabled:!el.disabled};});
+const contrast=page=>page.locator('.pipeline-delete-confirm').evaluate(el=>{const s=getComputedStyle(el);const lum=color=>{const a=color.match(/[0-9.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;});return .2126*a[0]+.7152*a[1]+.0722*a[2];};const a=lum(s.color),b=lum(s.backgroundColor);return{foreground:s.color,background:s.backgroundColor,ratio:(Math.max(a,b)+.05)/(Math.min(a,b)+.05),enabled:!el.disabled};});
 try{
  let ready=false;for(let i=0;i<60&&!ready;i++){ready=await new Promise(r=>{const req=http.get('http://127.0.0.1:5237',res=>{res.resume();r(res.statusCode===200)});req.on('error',()=>r(false));});if(!ready)await new Promise(r=>setTimeout(r,500));}if(!ready)throw Error(logs);
  const {chromium}=await resolvePlaywright();browser=await chromium.launch(buildLaunchOptions());

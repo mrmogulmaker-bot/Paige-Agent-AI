@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "persistent_data": true,
+  "commands": [
+    {"name":"tests","argv":["node","node_modules/vitest/vitest.mjs","run","src/solo/PipelineDelete.test.tsx","src/solo/useSoloCampaigns.delete.test.tsx","src/solo/growth2.render.test.tsx","src/solo/growth2.contract.test.tsx"],"definition_file":"package.json"},
+    {"name":"types","argv":["node","scripts/ci/tsc-ratchet.mjs"],"definition_file":"scripts/ci/tsc-ratchet.mjs"},
+    {"name":"lint","argv":["node","node_modules/eslint/bin/eslint.js","src/solo/PipelineDelete.tsx","src/solo/PipelineDelete.test.tsx","src/solo/useSoloCampaigns.delete.test.tsx","src/solo/useSoloCampaigns.ts","src/solo/growth2.tsx"],"definition_file":"package.json"},
+    {"name":"security","argv":["node","scripts/ci/definer-fn-lint.mjs"],"definition_file":"scripts/ci/definer-fn-lint.mjs"},
+    {"name":"build","argv":["node","node_modules/vite/bin/vite.js","build"],"definition_file":"package.json"},
+    {"name":"runtime-proof","argv":["node","scripts/pipeline-delete-runtime-proof.mjs"],"definition_file":"scripts/pipeline-delete-runtime-proof.mjs"}
+  ],
+  "evidence": [
+    {"path":"outputs/pipeline-delete-db-proof/latest-proof.json","produced_by":"runtime-proof","kind":"runtime","max_age_hours":24},
+    {"path":"scripts/live-drive/artifacts/pipeline-delete/canonical-shell/report.json","produced_by":"runtime-proof","kind":"runtime","max_age_hours":24},
+    {"path":"outputs/pipeline-delete-db-proof/migration-state.json","produced_by":"runtime-proof","kind":"migration-state","max_age_hours":24},
+    {"path":"scripts/live-drive/artifacts/pipeline-delete/report.json","produced_by":"runtime-proof","kind":"runtime","max_age_hours":24}
+  ]
+}

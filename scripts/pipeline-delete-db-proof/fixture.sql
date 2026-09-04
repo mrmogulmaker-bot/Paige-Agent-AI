@@ -15,13 +15,13 @@ create function public.agency_team_role(uuid,uuid) returns text language sql sta
 create function public.is_platform_admin(uuid) returns boolean language sql stable as $$ select false $$;
 create table public.pipelines(id uuid primary key,tenant_id uuid not null references public.tenants(id),short_ref text not null,name text,description text,is_default boolean default false,lifecycle_status text default 'draft',version bigint default 1,created_at timestamptz default now(),updated_at timestamptz default now(),unique(tenant_id,short_ref));
 create table public.pipeline_stages(id uuid primary key,tenant_id uuid not null,pipeline_id uuid references public.pipelines(id) on delete cascade,label text,archived_at timestamptz,version bigint default 1);
-create table public.deals(id uuid primary key,tenant_id uuid,pipeline_id uuid references public.pipelines(id) on delete set null,stage_id uuid references public.pipeline_stages(id) on delete set null,title text);
+create table public.deals(id uuid primary key,tenant_id uuid,pipeline_id uuid references public.pipelines(id) on delete restrict,stage_id uuid references public.pipeline_stages(id) on delete restrict,title text);
 create table public.growth_form_automations(id uuid primary key,tenant_id uuid,form_id uuid,config_json jsonb default '{}');
 create table public.stage_automation_events(id uuid primary key,tenant_id uuid,from_stage_id uuid,to_stage_id uuid);
-create table public.growth_forms(id uuid primary key,tenant_id uuid,pipeline_id uuid references public.pipelines(id) on delete set null,stage_id uuid references public.pipeline_stages(id) on delete set null,routing jsonb default '{}');
+create table public.growth_forms(id uuid primary key,tenant_id uuid,pipeline_id uuid,stage_id uuid,routing jsonb default '{}');
 create table public.stage_automation_rules(id uuid primary key,tenant_id uuid,pipeline_id uuid references public.pipelines(id) on delete cascade,from_stage_id uuid references public.pipeline_stages(id) on delete cascade,to_stage_id uuid references public.pipeline_stages(id) on delete cascade);
-create table public.pipeline_move_approvals(id uuid primary key,tenant_id uuid,deal_id uuid references public.deals(id),from_stage_id uuid references public.pipeline_stages(id) on delete restrict,to_stage_id uuid references public.pipeline_stages(id) on delete restrict);
-create table public.deal_activities(id uuid primary key,deal_id uuid references public.deals(id),payload jsonb default '{}');
+create table public.pipeline_move_approvals(id uuid primary key,tenant_id uuid,deal_id uuid references public.deals(id) on delete cascade,from_stage_id uuid references public.pipeline_stages(id) on delete restrict,to_stage_id uuid references public.pipeline_stages(id) on delete restrict);
+create table public.deal_activities(id uuid primary key,deal_id uuid references public.deals(id) on delete cascade,payload jsonb default '{}');
 create table public.pipeline_archive_confirmations(token uuid primary key default gen_random_uuid(),tenant_id uuid,pipeline_id uuid references public.pipelines(id) on delete cascade);
 create table public.pipeline_command_results(tenant_id uuid,idempotency_key text,command_hash text,actor_user_id uuid,actor_kind text,result jsonb,created_at timestamptz default now(),primary key(tenant_id,idempotency_key));
 create table public.audit_logs(id uuid primary key default gen_random_uuid(),user_id uuid,entity text,action text,entity_id uuid,data jsonb);

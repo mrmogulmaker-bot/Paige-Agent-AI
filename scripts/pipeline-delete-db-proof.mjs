@@ -18,6 +18,8 @@ const out = mkdtempSync(join(outputRoot, 'run-'));
 const cluster = join(out, 'cluster');
 if (!resolve(cluster).startsWith(resolve(outputRoot) + sep)) throw new Error('Unsafe cluster path');
 const results = [], transcript = [];
+const appliedMigrations = [];
+let priorError = null;
 let port, started = false, stopped = false;
 const id = (kind, n) => `${kind}0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const tid = n => id('2', n), uid = n => id('1', n), pid = n => id('3', n), sid = n => id('4', n);
@@ -78,21 +80,28 @@ try {
   await command(join(bin, 'pg_ctl.exe'), ['-D', cluster, '-l', join(out, 'postgres.log'), '-w', '-t', '30', '-o', `-h 127.0.0.1 -p ${port} -c max_connections=20`, 'start']);
   await psql(read('scripts/pipeline-delete-db-proof/fixture.sql'));
   await psql(helpers.map(([path, name]) => extract(path, name)).join('\n'));
-  await test('actual migration applies twice on isolated PostgreSQL', async () => { await psql(sql); await psql(sql); });
+  await test('actual migration applies twice on isolated PostgreSQL', async () => { await psql(sql); appliedMigrations.push({path:migration,sha256:createHash('sha256').update(sql).digest('hex')}); await psql(sql); });
   const { executeCases } = await import('./pipeline-delete-db-proof/cases.mjs');
   await executeCases({ root, sql, read, psql, asUser, json, assert, test, denied, call, snapshot, quote, tid, uid, pid, sid });
   const { concurrencyCases } = await import('./pipeline-delete-db-proof/concurrency.mjs');
   await concurrencyCases({ psql, asUser, json, assert, test, call, tid, pid, sid, uid });
 } catch (error) {
+  priorError = error.message;
   console.error(error.message);
   process.exitCode = 1;
 } finally {
+  const { captureMigrationState } = await import('./pipeline-delete-db-proof/migration-state.mjs');
+  const migrationState = await captureMigrationState({ json, migration, sql, appliedMigrations, out, outputRoot, priorError });
+  if (migrationState.status !== 'PASS') process.exitCode = 1;
   if (started) {
     const result = await command(join(bin, 'pg_ctl.exe'), ['-D', cluster, '-m', 'fast', '-w', '-t', '30', 'stop'], '', true);
     stopped = result.code === 0;
     if (!stopped) process.exitCode = 1;
   }
   writeFileSync(join(out, 'commands.json'), JSON.stringify(transcript, null, 2));
-  writeFileSync(join(out, 'proof.json'), JSON.stringify({ generatedAt: new Date().toISOString(), evidenceClass: 'isolated PostgreSQL runtime, synthetic dependency schema; not authenticated production or full-history replay', migration, migrationSha256: createHash('sha256').update(sql).digest('hex'), helpers: helpers.map(([path, name]) => ({ path, name, sha256: createHash('sha256').update(extract(path, name)).digest('hex') })), results, clusterStopped: stopped }, null, 2));
+  const proof = { generatedAt: new Date().toISOString(), status: !process.exitCode && results.length > 0 ? 'PASS' : 'FAIL', evidenceClass: 'isolated PostgreSQL runtime, synthetic dependency schema; not authenticated production or full-history replay', migration, migrationSha256: createHash('sha256').update(sql).digest('hex'), helpers: helpers.map(([path, name]) => ({ path, name, sha256: createHash('sha256').update(extract(path, name)).digest('hex') })), results, clusterStopped: stopped, runDirectory: out, commandsPath: join(out,'commands.json'), migrationStatePath: join(out,'migration-state.json') };
+  writeFileSync(join(out, 'proof.json'), JSON.stringify(proof, null, 2));
+  writeFileSync(join(outputRoot, 'latest-proof.json'), JSON.stringify(proof, null, 2));
+  writeFileSync(join(outputRoot, 'latest-commands.json'), JSON.stringify({ generatedAt: proof.generatedAt, commandsPath: proof.commandsPath, status: proof.status }, null, 2));
   console.log(`Evidence: ${out}; cluster stopped: ${stopped}`);
 }
