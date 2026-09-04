@@ -2192,3 +2192,18 @@ which would have blanked Registration for every workspace while every test staye
 Owed and NOT claimed: §32.c authenticated live-drive (no browser in this session), §32.a persisted
 apply on prod (merge-time), and a governed PAIGE read/write seam for these fields — which does not
 exist and is a slice of its own, not a bolt-on.
+
+**2026-09-04 — #924 MERGED AND LIVE (`a8862ee`), under the owner's MVP-authority instruction.**
+§32.a confirmed against prod rather than assumed: `schema_migrations` 958 → 959, `max(version)`
+`20261201000700`, three triggers present, `deploy-migrations` run 197 success including its own
+persisted-apply verify step. Vercel production `READY` on the merge commit. `deploy-edge-functions`
+correctly did not run — no `supabase/functions/**` changed.
+
+The backfill's effect was measured on prod, before and after: **1** workspace had named a
+representative and **1** was blocked from filing; after the apply, **0** blocked. That workspace's
+remaining shortfall is now exactly three items an owner can complete on the Registration screen —
+tax or registration number, representative phone, regions of operation — where before it also
+carried three that no code path could ever have cleared.
+
+Still owed: §32.c authenticated live-drive of the deployed surface. Nothing about a green pipeline
+proves an owner can finish the job.

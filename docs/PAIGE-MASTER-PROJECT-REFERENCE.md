@@ -1234,6 +1234,40 @@ Grouped:
 - ✅ **`tenant_workflows_registry`**, **`tenant_email_identity_registry`**, **`tenant_n8n_connections`**, **`tenant_service_agreement`**
 - ✅ **`tenant_revenue_classification`** (operator-only revenue axis — #29, PR #412) — paid/promotional/internal_test, RLS `is_platform_owner()`-only + FORCE
 
+### Solo carrier registration — the business record is editable where it blocks the filing (#924, LIVE 2026-09-04)
+
+- ✅ **Registration is a second EDITOR of the one canonical business record.** Solo Settings →
+  Connections → Registration could name the facts blocking a carrier filing and not resolve them.
+  It now edits the carrier-required subset through `save_solo_business_context` — the SAME seam
+  Setup uses, so one record with two editors, never two records (§57). Owner-only; the canonical
+  adapter mounts only when the editor is opened, so the ordinary Registration view is unchanged.
+  Reachable by top-level standalone Solo tenants only, which is exactly the set
+  `solo_setup_assert_canonical_tenant()` admits — pinned by a contract test so the two gates
+  cannot silently drift apart (§51/§56).
+- ✅ **`20261201000700` — the representative identity nobody was writing.** §32.a CONFIRMED on prod
+  (ref `xygzykjyynhzqytbqnzu`): `schema_migrations` advanced **958 → 959**, `max(version)` =
+  `20261201000700`, all **three** triggers present. Before it, NO function in the product wrote
+  `authorized_representative_first_name` / `_last_name` / `_email` / `_business_title` —
+  `20261046000000` replaced `save_solo_setup_identity` with an upsert omitting all four — so
+  `missingProfile()` could never empty and **brand filing was structurally impossible for every
+  Solo workspace**. Now derived at the table from the named active Team member, with sibling
+  triggers on `tenant_members` and `profiles` so a departure or a later name change re-derives.
+  **Backfill measured on prod: 1 workspace named a representative and 1 was blocked; after the
+  apply, 0 blocked.** Honest limit recorded in the migration header: a change to
+  `auth.users.email` re-derives nothing (that table is the auth service's), so the address can be
+  stale until the next membership change, profile edit or Setup save.
+- ✅ **A grant-boundary regression caught before it shipped (§39).** The peer-gate found a browser
+  `select()` for the three provider SIDs `20261201000600` deliberately excludes from the
+  `authenticated` grant — it would have made Registration `unreadable` for every workspace while
+  every test stayed green. Lockedness now comes from `comms-a2p-register`'s server-computed
+  `has_brand`/`has_campaign`/`has_messaging_service`. Recorded in `docs/brain/lessons-learned.md`.
+- 🟡 **OWED — §32.c authenticated live-drive.** Frontend is live (Vercel production `READY` on
+  `a8862ee`) and the schema is persisted, but NO ONE has driven the deployed surface. A green
+  pipeline proves the code runs; it does not prove an owner can finish the registration.
+- ❌ **NOT built — a governed PAIGE seam for these fields.** `business_context.readiness` exposes
+  status + provenance for four fields and never a raw value; nothing lets Paige write any of them.
+  A write tool needs the one-approval-gate contract, an action-risk classification and Rail events.
+
 ---
 
 ## 5. Current focus + known gaps
