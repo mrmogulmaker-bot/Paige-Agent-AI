@@ -309,7 +309,7 @@ async function proveCanonicalClientReturn(browser) {
     await page.locator('[data-contact-editor]').waitFor();
   };
   const submit = async name => {
-    await page.getByLabel("First name",{exact:true}).fill(name);
+    await page.locator("[data-contact-editor] label").filter({hasText:/^First name$/}).locator("..").locator("input").fill(name);
     await page.getByRole("tab",{name:/Relationship & consent/}).click();
     await page.getByRole("button",{name:"Create contact",exact:true}).click();
   };
@@ -323,8 +323,10 @@ async function proveCanonicalClientReturn(browser) {
     await start("failure"); await submit("Canonical retry review");
     await page.getByText("Client could not be saved. Try again.").first().waitFor();
     check(await page.locator('[data-contact-editor]').count()===1, "Client failure remains editable with retry");
+    await page.mouse.move(50,50);
+    await page.locator("[data-sonner-toast]").waitFor({state:"detached",timeout:12000});
     await page.locator('[data-client-mode="success"]').evaluate(el=>el.click());
-    await page.getByRole("button",{name:"Create contact",exact:true}).click();
+    await page.getByRole("button",{name:"Retry save",exact:true}).click();
     await page.locator("aside.so-editor").waitFor();
     check(await page.getByRole("combobox",{name:"Client",exact:true}).inputValue()==="review-client-1", "Canonical created client reauthorized and selected on Sales return");
     check(new globalThis.URL(page.url()).search==="?panel=commercial-terms", "Client return URL contains only allowed panel");

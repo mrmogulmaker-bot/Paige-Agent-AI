@@ -1,8 +1,8 @@
 # Solo Sales Release 1 usability repair
 
-**Status: FAIL / repair in progress / NOT RELEASED.**
+**Status: implementation complete; final verification in progress / NOT RELEASED.**
 
-This record describes the working branch `codex/solo-sales-release1-usability`, grounded on main `12e495a99ef9e2e951732bf511feeaa18e8bdcfd`. It is not a claim that the repair has merged, deployed, or passed an authenticated owner test. Final exact-head checks and production evidence must be recorded before that status changes.
+This record describes the working branch `codex/solo-sales-release1-usability`, re-grounded on main `bd32fd629079e59257fdf939b4ae250e2de9e005`. It is not a claim that the repair has merged, deployed, or passed an authenticated owner test. Final exact-head checks and production evidence must be recorded before that status changes.
 
 ## Intended usable outcome
 
@@ -19,6 +19,7 @@ Current implementation files:
 - `src/solo/sales-navigation.ts`: allowlisted panel enum and fixed internal paths; one-use tenant/account-bound Client continuation held only in module memory.
 - `src/solo/useSoloSalesOps.ts`, `src/solo/useSoloAgreements.ts`: delayed mutation completion guards and bounded diagnostic handling.
 - `src/components/tenant-relationships/TenantRelationshipsClientsWorkspace.tsx`: Solo-only return from canonical creation; successful new contact passed as a candidate in memory, never added to the public URL by this continuation. Ordinary canonical contact editing remains separate.
+- `src/components/tenant-relationships/PeopleContactEditor.tsx`: owner-approved completion scope guard; no mutation or permission contract change.
 - Relevant Sales, navigation, adapter and Clients tests; `scripts/live-drive/sales-ops-drive.mjs` and its Sales mount fixtures.
 
 No database migration, provider mechanics, payment collection, Platform Billing behavior, legal documents, e-signatures, Marketplace templates, or new Spine capability registration is part of this release. The locked six Campaign tabs and Pipeline behavior remain protected regression boundaries.
@@ -36,41 +37,27 @@ No database migration, provider mechanics, payment collection, Platform Billing 
 
 The public panel address contains only a small allowlisted enum. Form values, contact identifiers, offer identifiers, payment details and provider state are not serialized into these navigation hints. Unsaved fields are not reconstructed on reload. The Client continuation disappears on reload; a return candidate is re-read against Sales' authorized tenant client list and manage/readability state before selection.
 
-## Proof record — in progress
+## Approved Client completion guard
 
-| Evidence class | Current record | Limit |
-|---|---|---|
-| Automated | Latest individually reported runs: 83 Sales tests; 44 Clients tests; 41 Growth/navigation tests passing | Root must refresh the combined exact-head results before release; these are not browser or provider proof |
-| Focused static checks | Clients wrapper/test ESLint passed; full release checks remain with root | Does not prove runtime interaction or deployment |
-| Chromium with fixtures | Root is running the project-owned real Chromium drive against production components with fixture adapters | Fixture persistence/roles are not authenticated production evidence; final counts, viewport/theme/motion coverage and negative-control results are not yet recorded |
-| Authenticated owner | UNVERIFIED for this release | Requires real authorized Solo account and canonical operations, with safe test records where authorized |
-| Production | NOT RELEASED; deployment and production persistence unchanged by this branch | A merge or started build is not a Ready serving deployment or a successful live flow |
+The owner approved the narrowly prepared `PeopleContactEditor.tsx` exception on 2026-09-03. Before application, the patch was checked to touch only that production file; focused tests and browser adapters provide its evidence. A layout-effect generation binds completions to tenant, contact identity and open/unmount lifetime. Checks after the canonical mutation, after `onSaved`, and before error/finally feedback discard departed-context presentation. The existing server save contract and authorization are unchanged; an accepted save may still persist in its initiating workspace.
 
-Required Chromium matrix: 1536×770, 1366×768, 1024×768 and 900×1000; both themes; reduced motion; actual scroll ownership; keyboard navigation, focus trap/restoration; drawer not beneath inert ancestry; background remains inaccessible. Negative controls must fail for inert-parent drawers and stale panel state on workspace switch. Existing unit/DOM and historical rendered counts do not replace these interaction checks.
+Two active regression tests failed before this guard (late success and error toasts after departure) and pass with it. Returning to A reads the canonical source; A-to-B-to-A cannot revive the original attempt. Normal in-place success, failure and retry remain covered. The Sales continuation selects a newly created client only after the destination's tenant-filtered client source and permission/readability checks accept it.
 
-## Adjacent confirmed defect and unapplied exception
+## Evidence and release status
 
-`PeopleContactEditor.tsx` awaits its canonical mutation and `onSaved` callback, then emits a global success toast and updates editor state. Its error branch likewise emits a global error toast. That editor-owned lifecycle lacks a save-scope/unmount guard, so a delayed result can surface a toast after a workspace switch even though the authorized wrapper prevents stale selection and navigation.
+- Automated: **174/174 focused tests PASS** across seven Sales, navigation, GrowthHub and canonical Clients suites after merging current main `bd32fd629079e59257fdf939b4ae250e2de9e005`. Includes dirty history, scope cleanup, failure/retry, same-context feedback, delayed success/rejection, return-A source refresh and negative regression controls.
+- Independent review: no material blocker found in the approved guard or complete Sales diff. This is code review, not authenticated proof.
+- Chromium: final complete interaction matrix in progress. Production components use deterministic fixture adapters; this is actual browser interaction, not production authorization or persistence proof.
+- Build/type/lint: final release gates in progress.
+- Production: not yet merged or deployed. Ready deployment, exact commit and serving asset verification must be recorded separately.
+- Authenticated owner and production canonical persistence: **Proof Owed**. The owner explicitly authorized release without holding for this proof.
 
-The file is outside the explicitly named shared-file exception. It has **not been modified**. A review-only minimal patch is prepared in the owner's task outputs as `people-contact-editor-scope-guard-proposal.patch`. It proposes a layout-effect generation scoped to tenant, contact identity and open/unmount lifecycle, with checks after mutation, after `onSaved`, and before error/finally updates. The patch is not applied or verified product code. Root must resolve this exception before declaring the full workspace-switch experience complete.
+The browser matrix covers 1536x770, 1366x768, 1024x768 and 900x1000, both themes and reduced motion. It exercises X, Cancel, Escape, focus entry/trap/restoration, dirty abandonment, URL/Back/direct/invalid navigation, Catalog round trip, workspace cleanup, true scroll ownership and negative inert ancestry/pointer controls. The canonical Client adapter additionally exercises cancellation, failure/retry/success return, delayed successful/failed saves during a workspace switch and canonical refresh on return.
 
-If approved, verification must cover delayed success and rejection after tenant switch, unmount and close/reopen; a delayed `onSaved` callback; and unchanged same-scope success, failure and retry. A guard suppresses stale presentation; it does not undo an already authorized server mutation.
+The existing canonical Client editor has visible field captions that are not programmatically associated with their inputs. Browser automation targets the caption's adjacent input rather than claiming accessible-label coverage for that existing editor. The approved completion guard preserves its focus behavior; this release does not claim a general Client accessibility redesign.
 
-## Release documentation and owner test map owed
+## One-minute owner test map
 
-Before a released capability claim, update the current Sales section in the master reference, the tier matrix and Brain index with exact release evidence and remaining Proof Owed. Historical release notes must stay attributable to their original evidence; do not turn prior fixture counts into authenticated claims.
+After Ready production is verified: Campaigns -> Sales -> open each of Quick Offer, Payment Handling and Commercial Terms -> type/edit -> Cancel/discard -> reopen empty -> test X, Escape and Back -> open a direct panel URL -> try Quick Offer -> Catalog -> Return to Sales and Commercial Terms -> Create Client -> return with the authorized new client selected. Switch workspace while a flow or save is pending; no prior-workspace draft, selection, pending state or toast should appear. Return to the original workspace and refresh from the canonical source.
 
-Owner map after a verified Ready deployment: Campaigns → Sales → open each of Quick Offer, Payment Handling and Commercial Terms → type/edit → Cancel/discard → reopen empty → test X, Escape and Back → open a direct panel URL → try Catalog return and canonical Create Client return → switch workspace during an open flow. Only authorized persistence is a successful save. No charge, provider action or legal-document lifecycle is implied.
-
-
-## Release-blocking regression captured
-
-Two active tests in `TenantRelationshipsClientsWorkspace.test.tsx` exercise the real canonical editor with a deferred mutation. Both currently fail: after the workspace switches and the editor unmounts, delayed success still emits `Contact created`, and delayed rejection still emits the old workspace error. The production editor file is unchanged. A review-only patch adds an attempt scope generation guard before callbacks, state updates and toasts after each asynchronous boundary. Applying it requires the additional `PeopleContactEditor.tsx` shared-file exception.
-
-Verification recorded before the final blocker tests: 168 combined tests passed; the subsequent retry-retention regression increased the independently passing Sales suites to 84. The TypeScript ratchet passed (13 existing baseline errors, 13 current), focused lint passed with the existing GrowthHub fast-refresh warning, and a production build passed. The initial browser run passed 1,464 checks; a stricter rerun then found contrast issues and drove further Sales-local fixes. That earlier browser count is not final exact-head proof. The final complete browser matrix, canonical Client browser return and authenticated production/persistence remain Proof Owed. No PR merge, deployment, provider call or production data mutation occurred.
-
-
-Latest complete fixture Chromium run: 1,780/1,784 checks passed across the four viewports and both persistent themes. Drawer controls, focus, dirty browser history including repeated Back, direct/invalid URLs, Catalog return, workspace switching, negative inert ancestry/pointer controls, scroll ownership and Sales resting contrast passed. The four failures were the same dark-theme hover contrast (3.92:1). A scoped hover foreground/background fix has been applied; its targeted rerun is recorded separately. This runtime evidence still excludes real canonical Client creation, authenticated tenants and persistence.
-
-
-Targeted hover verification after the fix: **8/8 PASS**, all four required viewports in light and dark. Evidence is `scripts/live-drive/artifacts/sales-ops/hover-results.json`; the full interaction evidence remains `interaction-results.json` with the original four now-resolved hover failures preserved. The two canonical late-toast regressions remain active failures. Product implementation snapshot: local commit `86718095`; no release performed.
+No charge, provider action, plan change or legal-document lifecycle is implied. The locked Campaign navigation and existing Pipeline work remain unchanged.
