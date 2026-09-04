@@ -44,6 +44,7 @@ export function useN8nOAuth() {
   const [error, setError] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string | null>(null);
   const discoveryId = useRef<string | null>(null);
+  const [inventory, setInventory] = useState<{ complete: boolean; totalCount: number | null } | null>(null);
   const [workflows, setWorkflows] = useState<N8nApprovedWorkflow[] | null>(null);
   const current = useCallback((tenant: string | null, ticket: number) => mounted.current && ownerIdentity.current === scopeKey && identity.current === tenant && epoch.current === ticket, [scopeKey]);
   const reload = useCallback(async () => {
@@ -61,7 +62,7 @@ export function useN8nOAuth() {
   }, [activeTenantId, tenantLoading, current, scopeKey]);
   useEffect(() => {
     const readEpoch = epoch, writeEpoch = mutation;
-    mounted.current = true; setReadiness(null); setWorkflows(null); setPreviewName(null); discoveryId.current = null; setBusy(false); inFlight.current = false; setError(null); void reload();
+    mounted.current = true; setReadiness(null); setWorkflows(null); setInventory(null); setPreviewName(null); discoveryId.current = null; setBusy(false); inFlight.current = false; setError(null); void reload();
     return () => { mounted.current = false; ++readEpoch.current; ++writeEpoch.current; };
   }, [reload]);
   const request = useCallback(async (action: string, fields: Record<string, unknown> = {}) => {
@@ -74,7 +75,7 @@ export function useN8nOAuth() {
       if (!current(tenant, ticket) || mutation.current !== operation) return null;
       const result = row(data);
       if (failure || result.error || result.ok === false) {
-        inFlight.current = false; setBusy(false); setWorkflows(null); setPreviewName(null);
+        inFlight.current = false; setBusy(false); setWorkflows(null); setInventory(null); setPreviewName(null);
         await reload();
         if (mounted.current && ownerIdentity.current === scopeKey && identity.current === tenant) setError(FAILURE);
         return null;
@@ -93,16 +94,21 @@ export function useN8nOAuth() {
   const perform = useCallback(async (action: string, fields?: Record<string, unknown>) => {
     const tenant = identity.current;
     if (!await request(action, fields) || !mounted.current || ownerIdentity.current !== scopeKey || identity.current !== tenant) return false;
-    setWorkflows(null); setPreviewName(null); discoveryId.current = null; await reload(); return true;
+    setWorkflows(null); setInventory(null); setPreviewName(null); discoveryId.current = null; await reload(); return true;
   }, [request, reload, scopeKey]);
   const discover = useCallback(async () => {
+    if (!mounted.current || ownerIdentity.current !== scopeKey || identity.current !== activeTenantId) return;
     const tenant = identity.current;
+    setWorkflows(null); setInventory(null); discoveryId.current = null;
     const result = await request("discover"); if (!result || !mounted.current || ownerIdentity.current !== scopeKey || identity.current !== tenant) return;
+    const totalCount = count(result.total_count);
+    const validList = Array.isArray(result.workflows) && result.workflows.every((value: unknown) => { const w = row(value); return typeof w.id === "string" && typeof w.name === "string"; });
+    setInventory({ complete: result.inventory_complete === true && validList && totalCount !== null && totalCount >= (Array.isArray(result.workflows) ? result.workflows.length : 0), totalCount });
     discoveryId.current = typeof result.discovery_id === "string" ? result.discovery_id : null;
     setWorkflows(Array.isArray(result.workflows) ? result.workflows.flatMap((value: unknown) => {
       const w = row(value); return typeof w.id === "string" && typeof w.name === "string" ? [{ id: w.id, name: w.name.slice(0, 160), approved: w.approved === true }] : [];
     }) : []);
-  }, [request, scopeKey]);
+  }, [request, scopeKey, activeTenantId]);
   const preview = useCallback(async (workflowId: string) => {
     const tenant = identity.current;
     setPreviewName(null);
@@ -115,6 +121,6 @@ export function useN8nOAuth() {
     setPreviewName(workflow.name.slice(0, 160)); return true;
   }, [request, scopeKey]);
   const scoped = resolvedScope === scopeKey && readiness?.tenantId === activeTenantId ? readiness : null;
-  return { readiness: scoped, loading: loading || tenantLoading || !!activeTenantId && !scoped && !error, busy, error, workflows: scoped ? workflows : null, previewName: scoped ? previewName : null, reload, begin, discover, preview,
+  return { readiness: scoped, loading: loading || tenantLoading || !!activeTenantId && !scoped && !error, busy, error, workflows: scoped ? workflows : null, inventory: scoped ? inventory : null, previewName: scoped ? previewName : null, reload, begin, discover, preview,
     cancel: () => perform("cancel"), verify: () => perform("verify"), disconnect: () => perform("disconnect"), approve: (workflowIds: string[]) => discoveryId.current ? perform("approve", { workflow_ids: workflowIds, discovery_id: discoveryId.current }) : Promise.resolve(false) };
 }

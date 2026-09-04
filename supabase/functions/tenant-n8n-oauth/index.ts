@@ -176,7 +176,7 @@ Deno.serve(async req=>{
    await rpc('probe',{...bound,state:'connected',pin:preview.pin});
    if(body.action==='discover'){
     const snapshot=await rpc('snapshot',{...bound,payload:preview});
-    return json({workflows:preview.workflows.map(row=>({...row,approved:lease.discovery_pin===preview.pin&&lease.approved_ids.includes(row.id)})),discovery_id:snapshot.discovery_id});
+    return json({workflows:preview.workflows.map(row=>({...row,approved:lease.discovery_pin===preview.pin&&lease.approved_ids.includes(row.id)})),discovery_id:snapshot.discovery_id,inventory_complete:preview.inventory_complete,total_count:preview.total_count});
    }
    if(body.action==='approve'){
     if(typeof body.discovery_id!=='string') throw new N8nSafeError('discovery_expired');

@@ -80,10 +80,19 @@ it("shows verified zero-workflow health independently of blocked MCP", async()=>
 it("shows connected OAuth without approving or running workflows",async()=>{
  h.mcp={auth_kind:"oauth",oauth_state:"connected_no_approved_tools"};await mount();await open();await click(button("Paige tools (MCP)"));
  expect(host.textContent).toContain("Connected, with no approved workflows or tools");expect(button("Manage access")).toBeTruthy();expect(h.invoke).not.toHaveBeenCalled();
- await click(button("Manage access"));expect(h.invoke.mock.calls.at(-1)?.[1].body.action).toBe("discover");expect(host.textContent).toContain("No eligible workflows");
+ h.invoke.mockResolvedValueOnce({data:{workflows:[],inventory_complete:true,total_count:0},error:null});await click(button("Manage access"));expect(h.invoke.mock.calls.at(-1)?.[1].body.action).toBe("discover");expect(host.textContent).toContain("No eligible workflows");
 });
 it("suggests only the active workspace API address for a new OAuth connection",async()=>{
  h.api.base_url="https://another-owner.example";h.mcp={configured:false,oauth_state:"not_configured"};
  const ordinary=h.rpc.getMockImplementation()!;h.rpc.mockImplementation((name:string)=>name==="get_n8n_connection_readiness"?Promise.resolve({data:{tenant_id:h.tenant,can_manage:true,api:{},mcp:{state:"not_configured",oauth_readiness:"ready"}},error:null}):ordinary(name));
  await mount();await open();await click(button("Paige tools (MCP)"));expect(host.querySelector<HTMLInputElement>('input[type="url"]')?.value).toBe("https://another-owner.example/mcp-server/http");expect(h.invoke).not.toHaveBeenCalled();
+});
+it.each([0,1])("labels bounded partial inventory with %s shown without claiming global zero",async(length)=>{
+ h.mcp={auth_kind:"oauth",oauth_state:"connected_no_approved_tools"};await mount();await open();await click(button("Paige tools (MCP)"));
+ h.invoke.mockResolvedValueOnce({data:{workflows:length?[{id:"visible",name:"Approved candidate",approved:false}]:[],inventory_complete:false,total_count:350,discovery_id:"snapshot"},error:null});await click(button("Manage access"));
+ expect(host.textContent).toContain(`Partial workflow list: ${length} shown of 350 reported by n8n`);expect(host.textContent).not.toContain("No eligible workflows are available");
+});
+it("distinguishes saved legacy credentials from a failed replacement OAuth attempt",async()=>{
+ const ordinary=h.rpc.getMockImplementation()!;h.rpc.mockImplementation(async(name:string)=>{const result=await ordinary(name);if(name==="get_n8n_connection_readiness")result.data.attempt_state="failed";return result;});
+ await mount();await open();await click(button("Paige tools (MCP)"));expect(host.textContent).toContain("Saved MCP configurationLegacy static credential (not OAuth)");expect(host.textContent).toContain("Latest OAuth attempt: Authorization failed");expect(button("Reconnect authorization")).toBeTruthy();
 });
