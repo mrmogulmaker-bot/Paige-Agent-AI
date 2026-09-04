@@ -161,4 +161,20 @@ describe("Solo Zapier API and MCP release contract", () => {
       expect(read(surface)).toContain('msg.includes("uq_clients_tenant_email")');
     }
   });
+  it("pins the authority a capability was approved with, not only its input schema", () => {
+    const client = read("supabase/functions/_shared/mcp-client.ts");
+    const outcome = read("supabase/functions/_shared/mcp-outcome.ts");
+    const connect = read("supabase/functions/tenant-mcp-connect/index.ts");
+    const n8n = read("supabase/functions/_shared/n8n-oauth.ts");
+    expect(client).toContain("export async function fingerprintAuthority");
+    expect(client).toContain("export async function fingerprintCapability");
+    // Effects are a SET the provider happens to order; reordering must not read as drift.
+    expect(client).toContain("[...new Set(a.effects)].sort()");
+    expect(outcome).toContain("current.pin !== pinned");
+    expect(outcome).not.toContain("current.schemaHash !== pinned");
+    expect(connect).toContain("[t.name, t.pin]");
+    // n8n's discovery pin MUST stay schema-only: the probe RPC wipes every approved
+    // workflow when it moves, so widening it would revoke n8n approvals platform-wide.
+    expect(n8n).toContain("search.schemaHash");
+  });
 });

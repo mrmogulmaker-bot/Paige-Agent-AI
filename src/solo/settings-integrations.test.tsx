@@ -653,8 +653,11 @@ describe("Capability approval", () => {
     Array.from(panel(host).querySelectorAll<HTMLButtonElement>(".ig-caplist button"));
 
   const TOOLS = [
-    { name: "send_email", description: "Send an email", schema_hash: "a".repeat(64), approved: false },
-    { name: "delete_row", description: "Delete a row", schema_hash: "b".repeat(64), approved: false },
+    // `pin` and `schema_hash` deliberately DISAGREE: the pin covers the authority as well as
+    // the schema, so a regression that sent the schema hash would be caught here rather than
+    // passing because the two happened to match.
+    { name: "send_email", description: "Send an email", pin: "c".repeat(64), schema_hash: "a".repeat(64), approved: false },
+    { name: "delete_row", description: "Delete a row", pin: "d".repeat(64), schema_hash: "b".repeat(64), approved: false },
   ];
 
   it("is not offered until the connection has been PROVEN", async () => {
@@ -700,7 +703,7 @@ describe("Capability approval", () => {
     expect(body.capabilities).toEqual(["send_email"]);
     // The pin is the fingerprint of the contract on screen. Without it the server has no
     // way to tell the provider changed between looking and approving.
-    expect(body.pins).toEqual({ send_email: "a".repeat(64) });
+    expect(body.pins).toEqual({ send_email: "c".repeat(64) });
     // And nothing was approved that was never ticked.
     expect(body.capabilities).not.toContain("delete_row");
   });

@@ -2207,3 +2207,62 @@ carried three that no code path could ever have cleared.
 
 Still owed: §32.c authenticated live-drive of the deployed surface. Nothing about a green pipeline
 proves an owner can finish the job.
+
+**2026-09-04 — #919 Zapier Solo release: three defects the release-drive found, none of them the
+one it was sent to fix.** The session was handed a migration ledger collision and standing authority
+to complete the release. The collision was real — main added `20261201000700_a2p_representative_identity_sync.sql`
+while this branch already held `20261201000700_solo_zapier_api_mcp_and_skool_intake.sql`, and
+`supabase start` failed on a duplicate `schema_migrations` key. What the repair uncovered matters more
+than the repair.
+
+**The guard for this exact failure was structurally blind.** `ci.yml` ran `lint:migration-versions`
+with `BASE_REF` set to the MERGE BASE, so it compared against main as it was when the branch forked —
+a migration main adds after the fork is invisible to it. Verified rather than argued: main's A2P file
+is absent at the merge base (`5fef0c9`) and present at the tip. Now compares against
+`github.event.pull_request.base.sha`. Only `baseFiles` changes; the added-file set already resolves
+through the merge base via `${base}...HEAD`.
+
+**"The next free version" was not free either.** `20261201000800` is claimed by open PR #917
+(`20261201000800_solo_operations_catalogue.sql`). Whichever merged second would have been silently
+skipped — the same failure one slot over. Picking a version by looking only at main is the same narrow
+check that caused the bug; the FLEET is the comparison set. Moved to `20261202000000`, free across every
+remote branch. The contract test now resolves the migration by filename SUFFIX, matching
+`catalog-offers.contract.test.tsx`, so the next renumber does not produce a red test that says
+"file not found".
+
+**`clients_created_by_email_unique` was a platform-wide latent defect, not an intake bug.** The index
+`(created_by, lower(email))` from `20260423012456` predates multi-tenancy and spans tenants, so one
+operator cannot hold the same contact email in two workspaces — the ordinary agency/sub-account case.
+`uq_clients_tenant_email` (`20260817010000`) already carries the invariant the product wants, more
+strictly inside a tenant. A §37 walk found ELEVEN producers insert into `public.clients`, six resolving
+`created_by` to the tenant owner, and NOT ONE assumes creator-wide semantics — so there was no consumer
+of the old invariant to break. Dropping it also repairs a signup-breaking path (`complete-signup`) and a
+silent CRM-linkage loss in `public-booking`. Proven on PostgreSQL 16.13: with the index the cross-tenant
+insert fails and the route-tenant recovery returns 0 rows; without it the insert succeeds and same-tenant
+duplicates still raise. Postgres reports the lower-OID index when both are violated, which is the legacy
+one, so two dashboards matched its name for a shipped toast — both widened to `uq_clients_tenant_email`
+so the message did not silently regress (§58).
+
+**Approval pins recorded the schema but not the authority.** `schemaHash` covered `inputSchema` alone,
+while `connected_app`, `action_type` and `effects` were shown to the owner at approval and never pinned —
+so a provider could keep a tool's name and inputs, move it to a different connected account or turn a read
+into a send, and the old approval still ran. Fixed by ADDING `authorityHash` and a combined `pin`, never by
+widening `schemaHash`: `_shared/n8n-oauth.ts` derives `n8n_discovery_pin` from `schemaHash`, and
+`20261201000300` wipes `n8n_approved_workflow_ids` when that pin moves — widening it in place would have
+silently revoked every n8n workspace's approved workflows, the exact n8n behaviour change this release
+forbids. Effects sort before hashing (a set, not a sequence); schema arrays keep their order (`required`
+and `enum` are contracts). Value-invariance of `fingerprintSchema` proven across five shapes.
+
+**The production failure the owner hit mid-session was this PR's, already fixed in it.** `/oauth/mcp/callback`
+returned "That did not connect". Prod carries a `zapier` row with `auth_kind='url'` from the retired
+connect-by-URL path; `20261016000000` forbids a URL-kind row that also stores a token; main's setter writes
+token ciphertext without converting `auth_kind`, so the RPC errors and the function returns
+`oauth_store_failed` as a 500 — which `McpOAuthCallback.tsx` has no case for, hence the generic copy. Edge
+logs show `POST | 500` at 23:15:29 and 23:16:22, matching both attempts. This branch's setter converts the
+row to `auth_kind='oauth'` atomically in its conflict branch. Nothing on main unblocks it.
+
+Owed and NOT claimed: §32.c authenticated live-drive of the deployed surface, a live Zapier provider
+authorization (`ZAPIER_API_CLIENT_ID`/`_SECRET` absent on prod, so the API tab renders capability
+unavailable truthfully), and a real Skool payload proof. A cross-PR hazard is filed rather than fixed:
+#919 and #925 both DROP+ADD the same three `paige_workspace_events` CHECK constraints with disjoint
+allowed values, so whichever merges second silently clobbers the other's source kinds.

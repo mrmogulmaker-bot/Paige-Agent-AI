@@ -24,7 +24,8 @@ export type DiscoveredCapability = {
   name: string;
   /** Provider-written text. Shown to a HUMAN choosing; never sent to a model. */
   description: string;
-  schemaHash: string;
+  /** Schema AND authority, together — what the approval is pinned to. */
+  pin: string;
   approved: boolean;
   connectedApp: string;
   actionType: string;
@@ -48,7 +49,7 @@ function readTools(value: unknown): DiscoveredCapability[] {
     .map((t) => ({
       name: String(t.name),
       description: typeof t.description === "string" ? t.description : "",
-      schemaHash: typeof t.schema_hash === "string" ? t.schema_hash : "",
+      pin: typeof t.pin === "string" ? t.pin : typeof t.schema_hash === "string" ? t.schema_hash : "",
       approved: t.approved === true,
       connectedApp: typeof t.connected_app === "string" ? t.connected_app : "",
       actionType: typeof t.action_type === "string" ? t.action_type : "",
@@ -134,7 +135,7 @@ export function useMcpCapabilities(provider: McpProvider) {
     const token = gate.current.begin();
     setState((prev) => ({ ...prev, saving: true, error: null }));
     const pins: Record<string, string> = {};
-    for (const tool of state.tools ?? []) if (names.includes(tool.name) && tool.schemaHash) pins[tool.name] = tool.schemaHash;
+    for (const tool of state.tools ?? []) if (names.includes(tool.name) && tool.pin) pins[tool.name] = tool.pin;
 
     const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
       body: { provider, action: "approve", capabilities: names, pins, expected_tenant_id: activeTenantId },

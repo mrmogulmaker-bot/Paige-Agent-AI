@@ -212,7 +212,11 @@ Deno.serve(async (req) => {
         tools: tools.map((t) => ({
           name: t.name,
           description: t.description,
-          schema_hash: t.schemaHash,
+          pin: t.pin,
+          // Deprecated alias, same VALUE as `pin`. A browser bundle deployed before this
+          // change reads this key, and the frontend and this function do not deploy
+          // atomically. Remove one release after this ships.
+          schema_hash: t.pin,
           approved: approved.has(t.name),
           connected_app: t.app,
           action_type: t.actionType,
@@ -256,7 +260,7 @@ Deno.serve(async (req) => {
     } catch {
       return jsonResponse({ error: "discovery_failed" }, 502);
     }
-    const liveByName = new Map(live.map((t) => [t.name, t.schemaHash]));
+    const liveByName = new Map(live.map((t) => [t.name, t.pin]));
 
     const { verified, stale } = verifyApprovalPins(requested, liveByName, pins);
 

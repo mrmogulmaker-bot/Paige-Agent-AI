@@ -87,6 +87,10 @@ export async function discoverWorkflowPreviews(options: McpSessionOptions): Prom
     const search=session.tools.find(tool=>tool.name==='search_workflows');
     if (!search) throw new N8nSafeError('workflow_discovery_unavailable');
     const preview=parseWorkflowPreviews(await session.call('search_workflows',{limit:200}));
+    // `search.schemaHash` is schema-only ON PURPOSE, and must stay that way. This value is
+    // stored as `n8n_discovery_pin`, and the probe RPC (20261201000300) wipes
+    // `n8n_approved_workflow_ids` whenever it moves. Swapping it for the widened `.pin`
+    // would silently revoke every n8n workspace's approved workflows.
     return {workflows:preview.workflows,inventory_complete:preview.inventory_complete,total_count:preview.total_count,pin:await hashOpaque(search.schemaHash+'\n'+preview.revision)};
   });
 }
