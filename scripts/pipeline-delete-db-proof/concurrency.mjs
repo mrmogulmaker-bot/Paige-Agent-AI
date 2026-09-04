@@ -38,6 +38,7 @@ export async function concurrencyCases({ psql, asUser, json, assert, test, call,
   });
   for (const [label,n,insert] of [
     ['deal',18,`insert into public.deals(id,tenant_id,pipeline_id,stage_id) values ('60000000-0000-4000-8000-000000000098','${tid(1)}','${pid(18)}','${sid(181)}')`],
+    ['scalar form route',24,`insert into public.growth_forms(id,tenant_id,pipeline_id,stage_id) values ('70000000-0000-4000-8000-000000000096','${tid(1)}','${pid(24)}','${sid(241)}')`],
     ['JSON route',19,`insert into public.growth_form_automations(id,tenant_id,config_json) values ('70000000-0000-4000-8000-000000000098','${tid(1)}','{"pipeline_id":"${pid(19)}"}')`],
   ]) await test(`delete wins race against new ${label}: writer fails without orphan`,async()=>{
     const name=`pipeline-proof-delete-${n}`;

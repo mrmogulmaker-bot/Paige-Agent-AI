@@ -1,6 +1,6 @@
 # Solo Pipeline empty-deletion hotfix
 
-Status: implementation in progress; not released. Owner explicitly authorized this bounded MVP slice through green checks, merge, deployment and read-only production verification on 2026-09-03. No production pipeline may be deleted for proof.
+Status: implemented in draft PR #907; release pending green hosted security check. Owner explicitly authorized this bounded MVP slice through green checks, merge, deployment and read-only production verification on 2026-09-03. No production pipeline may be deleted for proof.
 
 ## Intended usable outcome and ownership
 
@@ -50,12 +50,22 @@ Concurrency: parent/stage locks coordinate FK writers. Changed-reference guards 
 
 ## Evidence ledger
 
-- Automated: 48 focused component/adapter/Pipeline tests passed during implementation. Final exact-head checks pending.
-- Static/build: final type, lint, build, secrets and dependency checks pending.
-- Database runtime: isolated PostgreSQL proof in progress; uses actual migration and caller roles, never owner production data.
-- Rendered browser: real-component deterministic harness in progress; not authenticated production proof.
-- Authenticated production: UNVERIFIED. Browser connector launcher currently fails with Windows sandbox ACL error. Local browser fallback must not be mislabeled authenticated proof.
-- Independent review/release: pending. Nothing merged or deployed by this hotfix yet.
+- Automated: 48 focused component/adapter/Pipeline tests PASS. `node scripts/pipeline-delete-verify.mjs` captures per-command logs and tested product hashes in `outputs/pipeline-delete-verification/command-transcript.json` and `BUILD_STATE.json`.
+- Static/build: production build, TypeScript ratchet (13 existing baseline errors, no new), focused ESLint, security-definer lint, committed-diff regression lint and migration-version collision check PASS. No dependency changes. Local npm audit could not contact its endpoint; hosted Security Audit is the release check, not a substituted local PASS.
+- Database runtime: 28/28 PASS in isolated PostgreSQL16, actual migration twice, canonical tenant/owner helpers, actual caller roles, dependencies, rollback/retry and locking races. Removing owner/context/object guards makes denial assertions fail. Evidence `outputs/pipeline-delete-db-proof/run-sCWOPp/proof.json`; migration SHA256 `e446a8e6b8dc3d0fdffe0e3d24d90df588e19003049034a1b69ee8b0cc9806aa`. Minimal surrounding schema is not full-history replay; Catalog sentinel is synthetic. Production uses PostgreSQL17.
+- Rendered browser: 126/126 PASS in real Chromium using actual GrowthHub/PipelineDelete and deterministic adapter: two synthetic tenant contexts, both themes, four required sizes, full/constrained widths. Source `scripts/live-drive/pipeline-delete-drive.mjs`; report/screenshots/video in gitignored `scripts/live-drive/artifacts/pipeline-delete`. Constrained width is NOT actual PAIGE-open shell proof. Enabled button contrast 5.87:1 light, 9.55:1 dark; restoring old selector fails at 1.01:1.
+- Browser review found and repaired two defects before release: catalogue-refresh-before-response dropped success navigation; shared button CSS hid the destructive label. Both now have regression proof. Stale confirmation offers explicit reload; uncertain request retries retain the same operation key.
+- Authenticated production: UNVERIFIED. Browser connector repeatedly fails to launch (Windows sandbox ACL/kernel error); no authorized test-browser credential was available. Local adapters are not authenticated proof. No production owner data is changed by proof.
+- Independent SQL implementation review found no BLOCKER/MAJOR. Separate final proof/UI review and canonical full-shell proof remain pending in draft #907.
+### Final proof additions
+
+- SQL suite expanded to 29/29 PASS after matching the live dependency inventory exactly: forms/history have bare UUID references, deals RESTRICT, retained deal relationships CASCADE. The scalar-form writer race passes through the actual new trigger, not an invented FK. Stable generated evidence: `outputs/pipeline-delete-db-proof/latest-proof.json`, `latest-commands.json`, `migration-state.json` (runtime schema fingerprint, applied tracked SQL and recovery findings; explicitly not a production ledger).
+- Actual canonical shell proof: 112/112 PASS using `TenantCommandCenterShell`, `SoloPaigeWorkspace` and `PaigeAIChat`, not copied markup. Two deterministic contexts, both themes, all four viewports, PAIGE closed/open. On compact screens the existing PAIGE overlay intentionally blocks underlying Pipeline; Fold PAIGE restores reachability before deletion. Runner `scripts/live-drive/pipeline-delete/shell-drive.mjs`; report and 40 frames under `scripts/live-drive/artifacts/pipeline-delete/canonical-shell/`. Authenticated backend is still UNVERIFIED.
+- Two independent review passes found no remaining BLOCKER/MAJOR; test authors did not approve their own implementation. Main also visually inspected screenshots. Mutation-control claim is denial-test sensitivity, not a claim every vulnerable variant physically deleted despite downstream dependency checks.
+- Hosted CI, migration lint and PAIGE Spine contracts passed on initial head. Security Audit failed on npm audit endpoint error after timeout (not a vulnerability finding); it must pass on the release head before merge. No lockfile change or check bypass is authorized by this slice.
+- `BUILD_VERIFICATION.json` is the project-owned reproducible evidence manifest. `node scripts/pipeline-delete-verify.mjs` executes it, records command outputs plus revision/source hashes, and reconstructs `BUILD_STATE.json`; runtime proof produces fresh database and browser evidence. Generated outputs are not product source and must not be confused with production acceptance.
+
+- Release evidence will be recorded on PR #907: exact merged head, required CI, persisted migration and production deployment. This source document does not pre-claim deployment.
 
 ## Owner test map after verified release
 
