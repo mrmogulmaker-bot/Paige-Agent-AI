@@ -36,7 +36,7 @@ import { buildTenantTeamContextBlock } from "../_shared/team-context.ts";
 import { loadSpineEvidenceForChat } from "../_shared/paige-spine/chatEvidence.ts";
 import { buildBusinessContextReadinessBlock } from "../_shared/paige-spine/domains/businessContextChatEvidence.ts";
 import { buildTeamAuthorityBlock } from "../_shared/paige-spine/domains/teamAuthorityChatEvidence.ts";
-import { buildN8nReadinessBlock } from "../_shared/paige-spine/domains/n8nChatEvidence.ts";
+import { loadN8nReadinessForChat, renderN8nReadinessForChat } from "../_shared/paige-spine/domains/n8nChatEvidence.ts";
 // #292 / #343 U1 — the Studio design-agent system-prompt WRAPPER (identity + operating core + the
 // generative-UI choice-card rule), externalized so it lives in one editable home (§9/§12/§18).
 import { buildStudioWhereYouAre, STUDIO_OPERATING_CORE } from "../_shared/design-agent-prompt.ts";
@@ -4152,8 +4152,10 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       }
     }
 
-    const n8nReadinessBlock = personaCtx.tenant_id ? await buildN8nReadinessBlock(supabaseClient, personaCtx.tenant_id) : "";
-    if (n8nReadinessBlock) markProtectedLate("n8n_readiness");
+    const n8nEvidence = personaCtx.tenant_id ? await loadN8nReadinessForChat(supabaseClient, personaCtx.tenant_id) : null;
+    const n8nReadinessBlock = n8nEvidence ? renderN8nReadinessForChat(n8nEvidence) : "";
+    // A fixed unavailable notice carries no workspace facts; verified evidence does.
+    if (n8nEvidence?.status === "available") markProtectedLate("n8n_readiness");
 
     // PAIGE VOICE — the platform-DEFAULT "how you talk" block (persona-layer-1 voice fix).
     // It sits RIGHT AFTER the tenant persona and BEFORE the operating core so the model
