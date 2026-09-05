@@ -13,7 +13,9 @@ import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
  * into visible copy (owner corrections #3/#4, 2026-09-05).
  */
 
-const hooked = vi.hoisted(() => ({ view: null as any }));
+import type { SoloGamePlanView } from "./data/useSoloGamePlan";
+
+const hooked = vi.hoisted(() => ({ view: null as SoloGamePlanView | null }));
 vi.mock("./data/useSoloGamePlan", () => ({ useSoloGamePlan: () => hooked.view }));
 
 import { SoloGamePlanWorkspace } from "./SoloGamePlanWorkspace";
@@ -51,7 +53,7 @@ function clickText(tag: string, text: string) {
   return el;
 }
 
-const groundedView = () => ({
+const groundedView = (): SoloGamePlanView => ({
   loading: false, error: false, empty: false,
   greeting: { name: "Jordan", dateLabel: "Thursday, September 3", salutation: "Good afternoon" },
   narrative: "Foundations are set and work is moving.",
@@ -69,7 +71,7 @@ const groundedView = () => ({
     { key: "offers", label: "Offers", status: "needs-input", note: "No offer yet", destination: "catalog" },
     { key: "sender", label: "Sending identity", status: "grounded", note: "Email set up", destination: "connections" },
   ],
-  coverage: { grounded: 3, partial: 1, total: 5, caption: "Three grounded." },
+  coverage: { grounded: 3, partial: 1, degraded: 0, total: 5, caption: "Three grounded." },
   motion: { status: "ready", items: [], freshness: "No recorded work yet" },
   firstRun: [],
   refresh: vi.fn(),
@@ -137,7 +139,7 @@ describe("SoloGamePlanWorkspace", () => {
       ...v.bestMove, proof: "blocked", title: "Launch the re-engagement sequence",
       blockedReason: "Your sending identity isn't verified, so no email can be sent. Clear it and this move unblocks.",
       destination: "connections", ctaLabel: "Verify sending identity",
-    } as any;
+    };
     hooked.view = v;
     mount();
     expect(container.textContent).toContain("Top move · blocked");

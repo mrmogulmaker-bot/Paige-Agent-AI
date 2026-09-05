@@ -12,9 +12,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * blocking system-check finding produces a blocked best move; a fresh workspace is `empty`.
  */
 
+// Loose test doubles for the composed sub-hooks — the hook consumes the REAL module types (vi.mock
+// swaps the implementation, not the type), so a `Record<string, unknown>` double is enough and
+// keeps the file free of `any` (the CI changed-src eslint gate lints test files too).
+type Loose = Record<string, unknown>;
 const m = vi.hoisted(() => ({
-  cc: {} as any, setup: {} as any, catalog: {} as any, knowledge: {} as any,
-  pending: {} as any, checks: {} as any, activity: {} as any,
+  cc: {} as Loose, setup: {} as Loose, catalog: {} as Loose, knowledge: {} as Loose,
+  pending: {} as Loose, checks: {} as Loose, activity: {} as Loose,
 }));
 
 vi.mock("./useCommandCenter", () => ({ useCommandCenter: () => m.cc }));
