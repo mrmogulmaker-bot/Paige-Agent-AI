@@ -272,8 +272,13 @@ owner ruled: *"we go all the way to Gate B… you just merge it to main or merge
   the loop continues. *"Let me know what I need to go see and confirm for you, and then I'll let you
   know what adjustments we need to make."*
 - **What still stops CC cold, unchanged:** a destructive or hard-to-reverse action — a data-dropping
-  migration, a credential rotation, deleting work CC did not create — and the §00 incompatibility
-  round table. Those are about irreversibility, never about taste or confidence.
+  migration, a credential rotation, deleting work CC did not create — the §00 incompatibility round
+  table, and **every material boundary §69 lists, which this override does NOT touch:** an ownership
+  deadlock, missing authority or a credential, spending money, accepting a licence or other legal
+  term, a destructive real-data action, a material product decision, unbounded scope, a confirmed
+  defect needing an owner choice. Several of those are perfectly reversible and still stop CC —
+  this ruling buys the right to stop asking *"may I merge this?"*, and buys nothing else. What it is
+  never about is taste or confidence.
 - **This flips with the same trigger as the stance above:** the moment real customers onboard, the
   owner says so and the gates come back.
 
@@ -2479,14 +2484,20 @@ a delivery requirement, not process language.
   action. Between them, continue autonomously through ordinary implementation, tests, review, fixes,
   draft PR and verification.
 
-  **The pre-launch override (owner: Antonio, 2026-09-05).** While the platform has no live customers,
-  §4's *"go all the way to main"* ruling outranks both gates and the correct action at each is to
-  **keep going and merge**. Build the prototype where it genuinely helps you get the thing right — that
-  is what it is for — then ship, and tell the owner what to go look at on the LIVE site. A green,
-  verified branch parked behind a request for sign-off is the failure this override exists to stop, and
-  a Vercel preview handed over in place of a merge is not a deliverable. What still stops you is
-  unchanged and is about IRREVERSIBILITY only: a destructive migration, a credential rotation, deleting
-  work you did not create. The gates return the moment real customers onboard.
+  **The pre-launch override (owner: Antonio, 2026-09-05) — it lifts THESE TWO APPROVAL GATES and
+  nothing else.** While the platform has no live customers, §4's *"go all the way to main"* ruling
+  outranks Gate 1's prototype approval and Gate 2's merge/ready-state authorization, and the correct
+  action at each is to **keep going and merge**. Build the prototype where it genuinely helps you get
+  the thing right — that is what it is for — then ship, and tell the owner what to go look at on the
+  LIVE site. A green, verified branch parked behind a request for sign-off is the failure this
+  override exists to stop, and a Vercel preview handed over in place of a merge is not a deliverable.
+  **The material boundaries in the next bullet are NOT lifted — every one of them still stops you,
+  pre-launch included**, and several have nothing to do with reversibility: an ownership deadlock,
+  missing authority or a credential, spending money, accepting a licence or other legal term, a
+  destructive real-data action, a material product decision, unbounded scope, a confirmed defect
+  needing an owner choice. A reversible action you lack the authority or the money to take is still
+  one you do not take. This override buys exactly one thing — the right to stop asking *"may I merge
+  this?"* The two gates return the moment real customers onboard.
 - **Stop only at a material boundary:** ownership deadlock, missing authority or credential, spending,
   legal acceptance, a destructive real-data action, a material product decision, unbounded scope, or a
   confirmed defect needing an owner choice. Consolidate into ONE decision gate.
