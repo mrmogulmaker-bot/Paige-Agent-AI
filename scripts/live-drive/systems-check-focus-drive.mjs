@@ -8,7 +8,10 @@ const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });
 
 try {
   await page.goto(base, { waitUntil: "domcontentloaded" });
-  const trigger = page.locator("button.sc-finding").first();
+  // The finding row moved: the console opens the drawer from the "What was checked" control on an
+  // attention item, not from a .sc-finding row in the old evidence trail. What is being regressed
+  // is unchanged — Escape must clear inert AND return focus to the exact control that opened it.
+  const trigger = page.getByRole("button", { name: "What was checked" }).first();
   await trigger.focus();
   await trigger.click();
   await page.getByRole("dialog", { name: "Finding details" }).waitFor();
@@ -20,7 +23,7 @@ try {
     activeTag: document.activeElement?.tagName || "",
     scrollOwnerInert: document.querySelector(".sc-scroll-owner")?.inert ?? null,
   }));
-  if (proof.activeTag !== "BUTTON" || !proof.activeText.includes("Payment connection needs attention")) {
+  if (proof.activeTag !== "BUTTON" || !proof.activeText.includes("What was checked")) {
     throw new Error(`Escape did not restore focus after inert cleared: ${JSON.stringify(proof)}`);
   }
   if (proof.scrollOwnerInert !== false) {

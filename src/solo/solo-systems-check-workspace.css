@@ -25,3 +25,105 @@
 @media(prefers-reduced-motion:reduce){.sc-read-activity span,.sc-scan-arm,.sc-signal-path,.sc-drawer{animation:none!important}.sc-read-activity span{display:none}.sc-finding:hover{transform:none}}
 @media(forced-colors:active){.sc-proof,.sc-signal,.sc-map-panel,.sc-side-panel,.sc-finding,.sc-button,.sc-icon-button,.sc-next-signal{forced-color-adjust:auto}.sc-finding-mark,.sc-department i,.sc-signal-node{outline:1px solid CanvasText}.sc-filters button[aria-pressed="true"]{outline:2px solid Highlight}[data-tenant-shell][data-paige="open"] #tenant-shell-main nav[aria-label="Command Center sections"] button[aria-current="page"]{border-bottom:3px solid Highlight!important}}
 .sc-proof--resolved{color:var(--pg-muted);border-color:var(--pg-line)}.sc-signal-source--resolved .sc-signal-path,.sc-signal-source--resolved .sc-signal-node{stroke:var(--pg-muted)}.sc-core--resolved circle{stroke:var(--pg-muted);filter:none}.sc-finding--resolved .sc-finding-mark{background:var(--pg-muted);box-shadow:none}
+
+/* ---- operating-readiness console (replaces the radial signal stage) ---------------------------
+   Same token set, same radii, same type scale as the rules above — this is the existing Solo
+   surface reorganised, not a second design system. Status colours are the local --sc-* aliases
+   already declared on .sc-workspace, so light and dark both follow the app's own palette. */
+.sc-console{max-width:1220px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.sc-strip{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;border:1px solid var(--pg-line);background:var(--pg-surface);border-radius:12px;box-shadow:var(--pg-e1);padding:11px 13px}
+.sc-strip-l{flex:1 1 300px;min-width:0}
+.sc-strip-h{font-size:12px;font-weight:750}
+.sc-strip-s{margin-top:3px;font-size:11px;color:var(--pg-muted)}
+.sc-strip-s strong{color:var(--pg-ink-2);font-weight:750;font-variant-numeric:tabular-nums}
+.sc-strip-err{margin-top:5px;font-size:11px;color:var(--sc-critical)}
+.sc-strip-a{display:flex;gap:7px;flex-wrap:wrap}
+.sc-spin{display:inline-block;width:9px;height:9px;border-radius:50%;border:1.5px solid currentColor;border-top-color:transparent;animation:sc-spin .9s linear infinite}
+@keyframes sc-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.sc-spin{animation:none;opacity:.6}}
+
+.sc-block{display:flex;flex-direction:column;gap:9px}
+.sc-block-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.sc-block-head h2{margin:0;font-size:14px;letter-spacing:-.015em}
+.sc-block-head .sc-n{font-size:10px;font-weight:750;color:var(--pg-muted);font-variant-numeric:tabular-nums}
+.sc-block-head .sc-aside{margin-left:auto;font-size:10px;color:var(--pg-faint)}
+
+/* the eight-word closed set — every other status word is a bug */
+.sc-status{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 8px;font-size:8px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;border:1px solid transparent}
+.sc-status i{width:5px;height:5px;border-radius:50%;background:currentColor;flex:0 0 auto}
+.sc-status--live{color:var(--sc-healthy);background:color-mix(in srgb,var(--sc-healthy) 14%,transparent);border-color:color-mix(in srgb,var(--sc-healthy) 34%,transparent)}
+.sc-status--partial{color:var(--sc-paige);background:color-mix(in srgb,var(--sc-paige) 13%,transparent);border-color:color-mix(in srgb,var(--sc-paige) 32%,transparent)}
+.sc-status--attention{color:var(--sc-attention);background:color-mix(in srgb,var(--sc-attention) 14%,transparent);border-color:color-mix(in srgb,var(--sc-attention) 34%,transparent)}
+.sc-status--notconnected{color:var(--pg-muted);background:color-mix(in srgb,var(--pg-muted) 12%,transparent);border-color:var(--pg-line)}
+.sc-status--provider{color:var(--sc-paige);background:transparent;border-color:color-mix(in srgb,var(--sc-paige) 40%,transparent)}
+.sc-status--paused{color:var(--pg-muted);background:transparent;border-color:var(--pg-line-strong)}
+.sc-status--unavailable,.sc-status--proof{color:var(--pg-faint);background:transparent;border:1px dashed var(--pg-line)}
+.sc-why{font-size:11px;color:var(--pg-muted)}
+
+/* what needs you now */
+.sc-items{display:flex;flex-direction:column;gap:8px}
+.sc-item{border:1px solid var(--pg-line);border-left:3px solid var(--pg-line-strong);background:var(--pg-raised);border-radius:10px;padding:11px 13px;box-shadow:var(--pg-e1)}
+.sc-item--blocking{border-left-color:var(--sc-critical)}
+.sc-item--high{border-left-color:var(--sc-attention)}
+.sc-item--medium,.sc-item--low{border-left-color:var(--sc-paige)}
+.sc-item-t{display:flex;gap:9px;align-items:flex-start;flex-wrap:wrap}
+.sc-item-t h3{margin:0;flex:1 1 240px;min-width:0;font-size:12px;font-weight:750;line-height:1.4}
+.sc-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:4px 16px;margin-top:8px}
+.sc-meta dt{margin:0;font-size:8px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--pg-faint)}
+.sc-meta dd{margin:0;font-size:10px;color:var(--pg-ink-2);overflow-wrap:anywhere}
+.sc-meta dd.sc-mono{font-family:var(--pg-font-data);font-size:9px;color:var(--pg-muted)}
+.sc-item-a{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.sc-caveat{font-size:10px;color:var(--sc-attention);flex:1 1 100%}
+
+/* what is ready to operate */
+.sc-ready{border:1px solid var(--pg-line);background:var(--pg-raised);border-radius:12px;box-shadow:var(--pg-e1);overflow:hidden}
+.sc-ready li{display:flex;gap:10px;align-items:flex-start;padding:9px 13px;border-top:1px solid var(--pg-line-soft)}
+.sc-ready li:first-child{border-top:0}
+.sc-ready svg{color:var(--sc-healthy);flex:0 0 auto;margin-top:2px}
+.sc-ready p{margin:0;font-size:11px}
+.sc-ready small{display:block;margin-top:2px;font-size:9px;color:var(--pg-faint);font-family:var(--pg-font-data)}
+
+/* the nine operating areas */
+.sc-areas{border:1px solid var(--pg-line);background:var(--pg-raised);border-radius:12px;box-shadow:var(--pg-e1);overflow:hidden}
+.sc-area{border-top:1px solid var(--pg-line-soft)}
+.sc-area:first-child{border-top:0}
+.sc-area-b{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:10px 13px;background:none;border:0;color:inherit;font:inherit;cursor:pointer}
+.sc-area-b:hover{background:color-mix(in srgb,var(--pg-surface) 70%,var(--pg-canvas))}
+.sc-area-n{font-size:12px;font-weight:750;flex:0 0 auto}
+.sc-area-k{flex:1 1 auto;min-width:0;font-size:10px;color:var(--pg-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-chev{flex:0 0 auto;color:var(--pg-faint);transition:transform .18s ease}
+.sc-area[data-open="true"] .sc-chev{transform:rotate(90deg)}
+@media (prefers-reduced-motion:reduce){.sc-chev{transition:none}}
+.sc-area-d{padding:2px 13px 13px;background:color-mix(in srgb,var(--pg-surface) 80%,var(--pg-canvas));border-top:1px solid var(--pg-line-soft)}
+.sc-area-checks{display:flex;flex-direction:column;gap:6px;margin-top:9px}
+.sc-area-check{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px}
+.sc-area-check strong{font-weight:750}
+
+/* who does what next */
+.sc-buckets{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:11px}
+.sc-bucket{border:1px solid var(--pg-line);background:var(--pg-raised);border-radius:12px;box-shadow:var(--pg-e1);padding:11px 13px}
+.sc-bucket h3{margin:0;font-size:8px;font-weight:900;letter-spacing:.11em;text-transform:uppercase;color:var(--pg-faint)}
+.sc-bucket ul{margin:7px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.sc-bucket li{position:relative;padding-left:12px;font-size:10px;color:var(--pg-ink-2)}
+.sc-bucket li:before{content:"";position:absolute;left:0;top:6px;width:4px;height:4px;border-radius:50%;background:var(--pg-line-strong)}
+.sc-bucket--you li:before{background:var(--pg-gold-fill)}
+.sc-bucket--paige li:before{background:var(--sc-paige)}
+.sc-bucket--outside li:before{background:var(--sc-attention)}
+.sc-bucket .sc-none{padding-left:0;color:var(--pg-faint);font-style:italic}
+.sc-bucket .sc-none:before{display:none}
+
+.sc-note{border:1px dashed var(--pg-line);border-radius:10px;padding:10px 13px;font-size:10px;color:var(--pg-muted);background:color-mix(in srgb,var(--pg-surface) 70%,var(--pg-canvas))}
+.sc-note strong{color:var(--pg-ink-2);font-weight:750}
+.sc-first{text-align:center;padding:30px 20px;border:1px solid var(--pg-line);border-radius:12px;background:var(--pg-raised);box-shadow:var(--pg-e1)}
+.sc-first h3{margin:0;font-size:15px;font-weight:750}
+.sc-first p{margin:7px auto 0;max-width:46ch;font-size:11px;color:var(--pg-muted)}
+
+@container solo-systems-check (max-width:640px){
+  .sc-meta{grid-template-columns:1fr}
+  .sc-area-b{flex-wrap:wrap}
+  .sc-area-k{flex-basis:100%;white-space:normal}
+}
+.sc-bucket-a{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+.sc-bucket-a .sc-button{min-height:26px;padding:4px 8px;font-size:9px}
+.sc-ready-open{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:var(--pg-line-strong);text-underline-offset:2px}
+.sc-ready-open:hover{text-decoration-color:var(--pg-gold)}

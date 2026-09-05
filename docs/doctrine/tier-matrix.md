@@ -1278,6 +1278,34 @@ say which tiers had a SURFACE showing it, and those were different answers:
 | Trust Compass "Working now" · Team → Activity | ✓ | — | — | ✓ | ✓ | — | 403 |
 | **Solo Command Center → Systems Check → "Recent activity"** (new) | ✓ | — | — | **✓** | **✓** | — | 403 |
 
+### Systems Check — the operating-readiness console (SHIPS WITH PR #928, §66)
+
+The radial "evidence moving through the business" treatment is REASSIGNED to Trust Compass by owner
+ruling; Systems Check becomes the five-part console. Same tiers, same reads, same RLS — this changes
+what the surface SAYS, not who may see it.
+
+| Systems Check console | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| The five-part console (attention · ready · nine areas · rail · who-does-what) | — | — | — | ✓ | ✓ | — | 403 |
+| Business-area grouping instead of the raw `domain` enum | — | — | — | ✓ | ✓ | — | 403 |
+| Plain check titles instead of the registry's `check_name` | — | — | — | ✓ | ✓ | — | 403 |
+| Per-item next action into the owning surface | — | — | — | ✓ | ✓ | — | 403 |
+| Approve / dismiss a held approval (unchanged seams) | — | — | — | ✓ | ✓ | — | 403 |
+| Operator lens (`src/operator/surfaces/SystemsCheckSurface.tsx`) | ✓ | — | — | — | — | — | 403 |
+
+**God is `—` on every console row deliberately.** `CommandHub` is the Solo shell; the operator reads
+its own tenant-less lens through `useSystemsCheck("operator")`, which this slice does not touch.
+
+**What did NOT ship here, stated so the ledger is not read as more than it is:** Refresh still
+re-reads the last recorded run and says so — an on-demand re-check is NOT wired. `systems_check_snapshot`
+is still latest-RUN only, so a Setup save still narrows the reading and remediation actions filed
+against older runs remain unreachable on every tier. Only three of the eight status words
+(`LIVE`, `NEEDS ATTENTION`, `UNAVAILABLE`) can be produced from the finding store; `PENDING PROVIDER`
+and `PAUSED` require the provider result contract and are NOT rendered by this surface yet.
+
+**Six of the nine areas are covered by a check; three are not** (Paige's team, the Mind, security).
+Those three render "Not checked" with a reason rather than a status, on every tier that sees them.
+
 `PaigeRailFeed` lives inside `PaigeWorkspace`, which `TenantCommandCenterShell` renders only when
 the Solo workspace is absent — and the Solo shell always supplies it. So a Solo tenant had no
 tenant-wide rail surface at all.
