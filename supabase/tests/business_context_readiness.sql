@@ -10,7 +10,7 @@
 -- the role axis explicitly so that class cannot come back silently.
 BEGIN;
 
-SELECT plan(45);
+SELECT plan(46);
 
 -- ── Grant surface (§59 — the grant is never the guard, but it is still the outer boundary) ──
 SELECT ok(
@@ -302,11 +302,6 @@ SELECT ok(
   (SELECT next_action IS NOT NULL FROM bcr_legacy WHERE field_key = 'website'),
   'legacy_sourced carries a next step — a value nobody confirmed is actionable'
 );
-SELECT ok(
-  (SELECT bool_and(next_action IS NOT NULL) FROM public.get_business_context_readiness()
-     WHERE status = 'needs_confirmation'),
-  'needs_confirmation carries a next step'
-);
 
 -- ── Both readers, same workspace, same second ────────────────────────────────────────────────
 CREATE TEMP TABLE bcr_comms AS SELECT public.tenant_comms_readiness() AS j;
@@ -339,8 +334,29 @@ SELECT is(
 );
 
 -- ── THE REGRESSION ASSERTION ─────────────────────────────────────────────────────────────────
--- Stated over BOTH readers at once. Before migration 20261221000000 this returns 2 for tenant C
--- (website and business_phone), which is precisely the contradiction that opened this work.
+-- Stated over BOTH readers at once, in two directions, because ONE direction of it could pass for
+-- the wrong reason.
+--
+-- The AGREEMENT count comes first and is the one that fails before the fix: it requires exactly two
+-- fields where BOTH readers say a value is on file. Before migration 20261221000000 the row reader
+-- said `needs_confirmation` for both, so this returns 0 and the test goes red. It is also the guard
+-- on the assertion below it — a count of 2 cannot be produced by an empty fixture, so neither
+-- assertion can pass by examining nothing.
+SELECT is(
+  (SELECT count(*)::integer
+     FROM bcr_legacy r, bcr_comms c
+    WHERE (r.field_key = 'website'
+             AND r.status <> 'needs_confirmation'
+             AND (c.j -> 'business' ->> 'has_website') = 'true')
+       OR (r.field_key = 'business_phone'
+             AND r.status <> 'needs_confirmation'
+             AND (c.j -> 'business' ->> 'has_phone') = 'true')),
+  2,
+  'both readers agree a value IS on file for website and phone — the answer that used to be split'
+);
+
+-- And the invariant itself: no field may read as "no value anywhere" in one reader while the other
+-- says a value is on file. That contradiction is what opened this work.
 SELECT is(
   (SELECT count(*)::integer
      FROM bcr_legacy r, bcr_comms c
@@ -370,6 +386,21 @@ SELECT is(
 SELECT ok(
   (SELECT (j -> 'business_provenance' -> 'website' ->> 'source') IS NULL FROM bcr_empty_comms),
   'with no source, because nothing proves it'
+);
+
+-- The next-step half of the contract, asserted HERE rather than on tenant C.
+--
+-- This assertion first ran inside the tenant-C block, where it was VACUOUS and CI caught it: every
+-- one of tenant C's facts lives in the legacy record, so `WHERE status = 'needs_confirmation'`
+-- matched no rows, `bool_and()` over the empty set returned NULL, and pgTAP failed it. That is the
+-- same defect class this whole migration exists to fix — an empty result read as though it were an
+-- answer — so it is fixed the same way rather than loosened: asserted against the workspace that
+-- genuinely HAS the state, and as an exact COUNT, which an empty set can never satisfy.
+SELECT is(
+  (SELECT count(*)::integer FROM public.get_business_context_readiness()
+    WHERE status = 'needs_confirmation' AND next_action IS NOT NULL),
+  4,
+  'a workspace with nothing on file gets four needs_confirmation rows and a next step on every one'
 );
 
 -- ── A refusal still answers every question it is allowed to answer ───────────────────────────
