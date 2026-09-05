@@ -11,7 +11,7 @@ AUTOMATED_EVIDENCE: PASS: Focused Vitest matrix passed 188/188, including delaye
 STATIC_EVIDENCE: PASS: Focused ESLint passed with only 12 pre-existing fast-refresh warnings in settings.tsx; production build passed. Full typecheck is blocked by pre-existing errors outside this diff in StudioShell, PaigeWorkspaceContext, unrelated hooks/libs/pages. Gold lint is blocked by pre-existing BusinessCreditDashboard.tsx:271.
 RENDERED_EVIDENCE: PASS: scripts/live-drive/artifacts/settings-connections-add-channel contains primary and second-context screenshots for 1536x770, 1366x768, 1024x768, 900x1000 in light/dark with PAIGE closed/open, plus report.json.
 BEHAVIORAL_EVIDENCE: PASS: Browser drive proved classification, one gold act, all controls with nonzero boxes, no horizontal overflow, unavailable explanation, drawer initial focus, Escape focus return, primary focus, and one PAIGE workspace in every environment.
-AUTHENTICATED_RUNTIME: UNVERIFIED: The browser matrix uses the real Solo shell/component/styles with synthetic tenant-scoped transports. No signed-in provider account or production tenant was exercised; provider connection, permission grant, write persistence, and production routing remain unclaimed.
+AUTHENTICATED_RUNTIME: UNVERIFIED: Vercel production is READY on merge bc89d79c, all five production aliases resolve to it, the public Connections route returned HTTP 200, and the live Solo bundle contains the release fingerprints. No signed-in provider account or production tenant was exercised; provider connection, permission grant, write persistence, and authenticated tenant behavior remain unclaimed.
 KEYBOARD_FOCUS: PASS: Unit and browser evidence cover drawer initial focus, X/Cancel presence, Escape close, focus return, modal Tab containment implementation, and background inerting.
 ZOOM_REFLOW: PASS: 900x1000 at a 450x500 CSS viewport (200% equivalent reflow) retained no document or screen-owner horizontal overflow.
 REDUCED_MOTION: PASS: At prefers-reduced-motion reduce, the drawer animation computed to 0.00001s and remained operable.
@@ -26,7 +26,7 @@ SOLO_1024X768_PAIGE_CLOSED: PASS: primary and second-context light/dark artifact
 SOLO_1024X768_PAIGE_OPEN: PASS: primary and second-context light/dark artifacts; exactly one PAIGE workspace.
 SOLO_900X1000_PAIGE_CLOSED: PASS: primary and second-context light/dark artifacts; intentional single-column fold, no horizontal overflow.
 SOLO_900X1000_PAIGE_OPEN: PASS: primary and second-context light/dark artifacts; exactly one PAIGE workspace.
-UNVERIFIED: Authenticated provider/OAuth/account behavior, production data truth, production deployment, and owner live acceptance remain unverified. No merge or deployment is authorized by this evidence.
+UNVERIFIED: Authenticated provider/OAuth/account behavior, signed-in production data truth, and owner live acceptance remain unverified. Public deployment and bundle provenance are verified; they do not substitute for an authenticated owner drive.
 
 ## Scope and collisions
 
@@ -34,7 +34,7 @@ UNVERIFIED: Authenticated provider/OAuth/account behavior, production data truth
 - Affected flows: Connections Available becomes Add channel; job selection opens a focused drawer; supported paths continue to Communications, Registration, Calendars, or Health; external tools route once to Integrations.
 - Neighboring regressions: Communications, Registration, Health, Calendars, Integrations, OAuth return, number actions, and Settings scroll policy were included in the 188-test focused suite.
 - Active-owner/file collisions: owner authorized this approved Add-channel workstream to supersede draft PR #674 on 2026-09-05 while preserving its A2P/domain ideas as follow-up scope. Draft PRs #724 and #917 have file-level Settings overlap but no competing Add-channel behavior.
-- Explicit exclusions: no Integrations UI redesign, provider backend, OAuth scope, database, Edge Function, PAIGE tool, subaccount, merge, or deployment change.
+- Explicit exclusions: no Integrations UI redesign, provider backend, OAuth scope, database, Edge Function, PAIGE tool, or subaccount change.
 
 ## User job and state map
 
@@ -54,4 +54,4 @@ Timestamp: 2026-09-05. Artifacts contain only synthetic harness data and no secr
 
 ## Review and limitations
 
-Independent pre-release review found and blocked three material defects before publication: prior-tenant values could paint during a workspace transition, configured resources could be mislabeled operating, and best-next ranking could run before or after failed reads. The repaired hooks mask values synchronously by tenant; the Add-channel presenter uses canonical identity/readiness states; and ranking now resolves or fails closed. Authenticated provider/runtime proof remains owed. Owner approved intended design and authorized this repaired release path; renewed final go-live approval is still required for the exact repaired head.
+Independent pre-release review found and blocked three material defects before publication: prior-tenant values could paint during a workspace transition, configured resources could be mislabeled operating, and best-next ranking could run before or after failed reads. The repaired hooks mask values synchronously by tenant; the Add-channel presenter uses canonical identity/readiness states; and ranking now resolves or fails closed. Owner gave final go-live approval for exact head a1b317d8; PR #967 squash-merged as bc89d79c with an identical tree and deployed READY. Authenticated provider/runtime proof remains owed.
