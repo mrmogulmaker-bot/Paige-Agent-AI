@@ -131,6 +131,39 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### The inbound MCP door — 119 tools, one governed decision, 68 mutations refused (2026-09-05, PR #960)
+
+**Owner ruling:** *"An MCP connection authorizes access to the MCP door; it does not authorize
+consequential action."*
+
+**LIVE.** Every `tools/call` on `paige-mcp` passes one governed chokepoint — after the existing tier
+and scope gate, before dispatch — so a refused act never reaches a handler. Effect was verified by
+reading all 119 handler bodies with `file:line` evidence: **51 reads, 68 mutations**. Reads proceed
+once tenant, tier, scope, actor identity and the server-resolved workspace check out. Mutations
+refuse: **67 `approval_required`, exactly one (`create_tenant`) `owner_only`**. An unmapped tool
+refuses `capability_unmapped`, and CI fails the build before it can ship.
+
+**Do we HAVE MCP governance? Yes, at the caller layer, and this is the honest boundary.** The door
+decides who may ask for what. It does NOT scope the query a handler then runs: thirteen of the 51
+reads have no tenant predicate and return fleet-wide rows (tracked as task #46). No autonomy lane is
+resolved on this surface — the door declares `not_resolved` rather than implying one, and refuses
+every mutation regardless.
+
+**One classifier, extended rather than forked.** `action-risk.ts` gained 49 canonical keys (62 → 111)
+for MCP acts with no Chat twin; eleven MCP acts reuse existing keys. `list_tool_autonomy` gained the
+matching 49 catalogue rows, because a classified act with no catalogue row is governed invisibly.
+
+**Guards:** `lint:mcp-governed-door` (R1 every tool mapped · R2 no stale entries · R3 count parity ·
+R4 the chokepoint still calls the adapter · R5 no second door · R6 no read-declared handler calls out
+· R7 every canonical resolves in the one classifier), plus `lint:action-risk` taught the MCP
+declaring surface and `lint:tool-catalogue` unchanged. 44 assertions over the real catalogue.
+
+**Two deliberate §58 regressions:** 68 tools that worked stop working, and the `mcp.command` Rail feed
+goes to zero because all twenty of its client-acting labels are mutations.
+
+**Next slice (#47):** the approval channel that lets a person's approval, given inside Paige, reach
+the door — which is what turns the refusals back into executions.
+
 ### Solo Campaigns → Social — a business can record the accounts it posts from (2026-09-05)
 
 **What shipped.** `/solo/{account}/growth/social` was one fixed UNAVAILABLE panel. It is now a Social
@@ -2518,6 +2551,26 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+ - **2026-09-05 — I counted the MCP surface from tool NAMES and reported the count as measurement.**
+   The scoping for the governed MCP door (PR #960) opened with *"70 mutations / 49 reads"*, and that
+   number reached the PR body, the seam's own header and a CI comment. It came from matching tool
+   names against a mutation-verb pattern, which is exactly the inference the resulting policy file
+   forbids. Reading all 119 handler bodies gave **51 reads / 68 mutations** — wrong in both
+   directions, and wrong in the expensive one: twenty tools mutate behind read-looking names
+   (`handle_data_subject_request` is a GDPR erasure, `suspend_tenant`, `confirm_proposal`,
+   `append_client_memory`) while four read-only tools carry write-looking ones (`get_workflow_run`,
+   `get_skill_run`, `list_communication_log`, `list_email_send_log`). A name-derived count is not a
+   measurement; the same two comments also said the surface had **117** tools when it has **119**,
+   which is why `MCP_TOOL_COUNT` is now asserted by CI rather than written in a sentence.
+ - **2026-09-05 — the tier matrix said the autonomy lane could not be brought to MCP without
+   breaking every write, and it was right; the owner ruled for that cost anyway.** The matrix
+   recorded, correctly, that `paige-mcp` performed zero autonomy resolution, and argued against
+   closing the gap on the grounds that doing so *"would make every gated MCP write permanently
+   un-executable."* That is precisely what the governed door now does, by explicit owner ruling. The
+   paragraph is kept rather than deleted: its prediction was accurate, and the entry that matters is
+   that the sequence changed rather than the reasoning — the door closes first, the approval channel
+   opens second (#47), and refusing an act nobody approved is the safe half to ship alone.
 
  - **2026-09-03 — I swept for the instance that had just bitten me, not for the class I had just
    learned, and reported it as a sweep.** Commit `eb0dbd83` on #792 was titled *"swept R2 and R3 for

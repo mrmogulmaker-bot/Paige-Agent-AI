@@ -2707,3 +2707,64 @@ pre-existing routing fragility it is.
 **The caveat was NARROWED, not deleted.** PAIGE can set the closing role; the Pipeline page cannot,
 and that control is CD's. A deleted caveat would have sent the owner to a page that still cannot
 finish the job (§70).
+
+---
+
+## 2026-09-05 — All 119 MCP tools pass one governed door; the 68 mutations refuse (task #45, PR #960)
+
+**Owner ruling, verbatim:** *"An MCP connection authorizes access to the MCP door; it does not
+authorize consequential action."* All 119 tools pass one governed execution door. The 51 genuinely
+read-only tools remain available only when tenant, tier, scope, actor identity and the
+server-resolved workspace all check out. The 68 mutation/effectful tools refuse by default until
+they can receive a valid approval through Paige's existing one-approval-gate model — no
+MCP-specific approval mechanism, no parallel confirmation inbox, no caller-supplied approval flag,
+no approval implied by OAuth or an API credential.
+
+**What the split rests on.** All 119 handler bodies were read and their effect recorded with
+`file:line` evidence, never inferred from a name — 51 read, 68 mutate. That correction matters:
+twenty tools mutate behind read-looking names (`handle_data_subject_request` is a GDPR erasure,
+`suspend_tenant`, `confirm_proposal`, `append_client_memory`), and four read-only tools carry
+write-looking names (`get_workflow_run`, `get_skill_run`, `list_communication_log`,
+`list_email_send_log`). An earlier name-based estimate said 70/49 and it was wrong in both
+directions.
+
+**One classifier, not two.** The intersection between `action-risk.ts`'s 62 keys and the 119 MCP
+tool names was exactly ONE (`delegate_to_subagent`), so the surface classified `unclassified` 118
+times. Eleven MCP acts turned out to be acts already named and reuse those keys; forty-nine had no
+twin and were added to `action-risk.ts` itself. Two candidate reuses were REJECTED on evidence
+rather than adopted for tidiness — `add_contact_note` is not `crm_add_note` (different column, and
+`clients.current_notes` IS client-readable), `propose_subagent` is not `forge_subagent` (its
+default `soft` path auto-ships an enabled specialist).
+
+**Why the refusal is structural rather than lane-driven.** Measured on production the same day:
+`resolve_tool_autonomy` returns `COALESCE(_mode,'confirm')`, and `tenant_tool_autonomy` already
+holds six `auto` rows on `n8n_*` canonical keys. All six are `high`, so the clamp catches them
+today — luck, not design. One `auto` row on an `ordinary` canonical would be an external connector
+executing a change with no code change and nothing in CI to notice. The door therefore refuses
+every mutation regardless of lane, declares `not_resolved` rather than implying one, and needs no
+database round trip to decide.
+
+**The seam gained a `principal`.** Four of the six doors `governedExecution.ts` declares
+(`automation`, `agent`, `skill`, `mcp`) routinely have no `auth.uid()`, and its identity check
+demanded one — so every one was refused `unauthenticated` before it could be adopted.
+`GovernedCaller.principal` defaults to `"person"` and buys a verified machine credential exactly one
+thing: reaching the checks. The same change closes the hole it would open —
+`service_principal_may_not_mutate` refuses a machine on the seam's one auto-execute path, placed
+AFTER the `owner_only` check so an act's own ceiling stays the more specific truth.
+
+**Two §58 regressions, both deliberate.** Sixty-eight tools that worked stop working. The
+`mcp.command` Rail feed goes to zero, because all twenty of its client-acting labels are mutations
+and the emitter is never reached — correct, a refusal is not a command, but an operator rail that
+read "External command: added a new client" now shows nothing.
+
+**Blast radius, measured, not guessed.** Zero in-repo producers break: every in-repo path to
+`paige-mcp` is outbound (Paige as MCP *client* to a tenant's own n8n or Zapier), static source
+analysis, or a non-`tools/call` method. The population that feels this is one live external OAuth
+client — "Claude", holding all fourteen scopes including every write scope — plus the two platform
+keys. Neither of the two `tenant_mcp_connections` rows loops back at the platform's own door.
+
+**Filed rather than fixed here:** thirteen of the 51 reads have no tenant predicate and return
+fleet-wide rows (#46 — the door checks the caller, not the query); the approval channel that turns
+the refusals back into executions (#47); splitting arming out of the stage-automation rule tools,
+which can arm unattended sending in one call (#48); four inconsistencies the mapping surfaced in
+existing policy (#49).
