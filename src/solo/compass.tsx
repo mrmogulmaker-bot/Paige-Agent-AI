@@ -4,6 +4,11 @@ import { Ic, Foldout, PageHead, Wrap } from "./_shared";
 import { useSoloActivityFeed, departmentLabel, elapsedLabel } from "./data/useSoloActivityFeed";
 import { useSoloPendingActions, type SoloPendingAction } from "./data/useSoloPendingActions";
 import { useSoloTrust } from "./data/useSoloTrust";
+import { useSoloToolGovernance } from "./data/useSoloToolGovernance";
+import {
+  CAPABILITY_DOMAINS, POSTURE_LABEL, rankOfMode, modeOfRank, maxModeForRisk,
+  type Posture, type ToolMode,
+} from "./data/capabilityTools";
 
 // TC_DEPTS / TRUST — REPLACED 2026-09-03, recorded rather than deleted quietly (§13/§58).
 //
@@ -143,175 +148,137 @@ export const deptTier=(levels,id)=>tierOfLevel(levels?.[id]??null);
 // Between them that is four of the six things the standing boundary names — an invented customer
 // record, invented provider state, an invented measurement, and a fabricated successful action.
 //
-// Both modals now read `paige_actions` through `useSoloPendingActions`: the real action bus, where
-// filed work sitting at `autonomy_lane='confirm'` is genuinely waiting on a person. 117 such rows
-// exist on production, so this is not a hypothetical replacement for a hypothetical fixture.
+// THE CANVAS DIAL — REPLACED 2026-09-05 by the governed knob surface below (§32/§36 accessibility).
+// The `<canvas>` orbit read the platform-default department lanes correctly, but it was mouse-only
+// (no keyboard, no screen-reader path), it spawned orbs from `Math.random()` that rose and fell
+// like activity, and it offered no real control — the boundary it drew reflected platform policy a
+// workspace cannot set. What replaces it is an accessible instrument wired to the ONE thing a
+// workspace can genuinely govern: per-tool autonomy via `set_tool_autonomy` (`useSoloToolGovernance`),
+// with the platform-default department lanes kept as an honest READ-ONLY reference (`useSoloTrust`,
+// unchanged). No random motion, a full keyboard/screen-reader path, and no control that pretends to
+// an authority the platform does not enforce (§70.1).
 //
-// FOUR FIELDS ARE GONE RATHER THAN DEFAULTED, because `paige_actions` has no source for them: the
-// recipient, the sender, the confidence percentage, and the list of "options as she sees them".
-// They were never missing data awaiting a backfill — they were claims with nothing behind them,
-// and rendering a plausible substitute would be the same defect with better manners.
-//
-// STILL A FALSE AFFORDANCE, REPORTED NOT REWRITTEN (§00 — in-surface copy is Claude Design's):
-// "Approve & send" and "Decide and log" both only close the modal. The first no longer claims a
-// send happened, which was the part that was mine to fix; what those buttons should say and do now
-// that they cannot pretend is a design and product decision, and the approval seam itself is the
-// chat confirm gate (§18 — one home), not a second one built here.
+// The two modals `TcApprove` / `TcEscalate` — REMOVED with the dial. Their primary buttons (an
+// approve-and-send and a decide-and-log — paraphrased deliberately, since compass.fabrications.test.ts
+// greps this file for those exact strings and a note quoting them verbatim would make the guard match
+// its own explanation) only closed the modal, a false affordance (§70.1): the real approval seam is
+// the ONE Paige chat confirm card (`paige_pending_confirmations` + `PaigeConfirmCard`), so pending
+// work now ROUTES to that one home (§18) via `openPaige` rather than a second inbox built here. The
+// pending count is still a REAL read of `paige_actions` through `useSoloPendingActions`.
 
-const TcCanvas=({sel,setSel,onOrb})=>{
-const wrap=React.useRef(null),cvr=React.useRef(null),S=React.useRef({});
-const{depts}=useTrustDepartments();
-const trust=useTrust();
-React.useEffect(()=>{S.current.trust=trust},[trust]);
-React.useEffect(()=>{S.current.depts=depts},[depts]);
-React.useEffect(()=>{S.current.sel=sel},[sel]);
-React.useEffect(()=>{
-const cv=cvr.current;if(!cv)return;const ctx=cv.getContext('2d');if(!ctx)return;
-const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
-let COL={};
-const readCol=()=>{const cs=getComputedStyle(document.documentElement);
- COL={ok:cs.getPropertyValue('--ok').trim()||'#1B7A52',warn:cs.getPropertyValue('--warn').trim()||'#B4700A',
- bad:cs.getPropertyValue('--bad').trim()||'#B93E37',vio:cs.getPropertyValue('--violet').trim()||'#5B3FD6',
- dark:document.documentElement.dataset.theme==='dark'}};
-readCol();
-const mo=new MutationObserver(readCol);mo.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
-const hex=(c,a)=>{if(c.startsWith('#')){const n=parseInt(c.slice(1),16);return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`}return c};
-const tint=(t,a)=>t==='none'?'rgba(255,255,255,'+a+')':hex(t==='green'?COL.ok:t==='amber'?COL.warn:COL.bad,a);
-const s=S.current;Object.assign(s,{rot:0,t:0,mx:-999,my:-999,hot:null,orbs:[],segs:[],pulse:0,lit:0});
-// An orb carries ONE REAL action kind and the lane the platform default actually puts it in.
-// It previously drew a tier from `Math.random()` weighted by the department level and labelled it
-// "auto-performed" / "drafted, waiting on you" — a per-act claim that something HAPPENED, from a
-// coin flip, over a catalogue that records no executions. The lane is the only thing this data
-// says, so it is the only thing the orb says. (It also concatenated the act OBJECT, rendering
-// "[object Object]" in the toast, once `acts` became {label, lane}.)
-const spawn=(force)=>{const D=s.depts||[];if(!D.length)return;const d=D[(Math.random()*D.length)|0];
- const acts=d.acts||[];if(!acts.length)return;
- const act=acts[(Math.random()*acts.length)|0];const tier=laneTier(act.lane);if(!tier)return;
- const a=d.a0+(0.18+Math.random()*.64)*d.span;
- s.orbs.push({d:d.id,a,r:.10,tier,v:(tier==='green'?.0044:.0036)+Math.random()*.0016,st:0,ph:Math.random()*6.28,
- label:orbLabel(d,act),born:s.t})};
-let W=0,H=0,dpr=Math.min(devicePixelRatio||1,2),raf;
-const size=()=>{const r=wrap.current.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*dpr;cv.height=H*dpr;
- cv.style.width=W+'px';cv.style.height=H+'px';ctx.setTransform(dpr,0,0,dpr,0,0)};
-const ro=new ResizeObserver(size);ro.observe(wrap.current);size();
-const TILT=.74,LIFT=.17;
-let labW=0;
-const measureLabels=()=>{ctx.font='600 11.5px Geist, sans-serif';let w=0;
- for(const d of (s.depts||[])){w=Math.max(w,ctx.measureText(d.n).width);
-  ctx.font='500 10px "Geist Mono", monospace';
-  const tl=tierOfLevel(s.trust?.[d.id]??null);
-  w=Math.max(w,ctx.measureText((tl?tierLabel[tl].toLowerCase():'no default set')+' · '+d.w[0]+'/'+d.w[1]+'/'+d.w[2]).width);
-  ctx.font='600 11.5px Geist, sans-serif'}
- labW=w+14};
-const PAD={t:74,b:46,x:16};
-const geo=()=>{if(!labW)measureLabels();
- const bw=Math.max(120,(W-PAD.x*2)/2-labW);
- const bh=Math.max(120,H-PAD.t-PAD.b);
- const R=Math.min(bw/1.045,bh/0.98);
- const cx=W/2,cy=PAD.t+bh*.52+R*LIFT*.5;return{cx,cy,R,lift:R*LIFT}};
-const proj=(r,a,G)=>{const{cx,cy,R,lift}=G;return[cx+r*R*Math.cos(a),cy+r*R*Math.sin(a)*TILT-lift*(1-r*r)]};
-const unproj=(mx,my,G)=>{const{cx,cy,R,lift}=G;let r=Math.hypot((mx-cx)/R,(my-cy)/(R*TILT));
- for(let i=0;i<3;i++){const yy=my-cy+lift*(1-r*r);r=Math.hypot((mx-cx)/R,yy/(R*TILT))}
- const yy=my-cy+lift*(1-r*r);return[r,Math.atan2(yy/TILT,mx-cx)]};
-const draw=()=>{s.t++;if(!reduce){s.rot+=0.00042;s.pulse=Math.sin(s.t*.026)}else s.pulse=.35;
- s.lit=Math.min(1,s.lit+.02);
- const G=geo();const{cx,cy,R}=G;const trust=s.trust;const seln=s.sel;
- if(!reduce&&s.t%26===0&&s.orbs.length<34)spawn();
- if(reduce&&s.orbs.length<10&&s.t%40===0)spawn();
- ctx.clearRect(0,0,W,H);
- const bg=ctx.createRadialGradient(cx,cy-R*.24,R*.06,cx,cy,R*1.9);
- bg.addColorStop(0,COL.dark?'#191541':'#171331');bg.addColorStop(.46,COL.dark?'#100D28':'#12102A');bg.addColorStop(1,COL.dark?'#070613':'#0A0819');
- ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
- for(let i=1;i<=4;i++){const rr=i/4;ctx.beginPath();
-  for(let k=0;k<=64;k++){const a=k/64*6.2832;const p=proj(rr,a,G);k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])}
-  ctx.closePath();ctx.strokeStyle='rgba(255,255,255,'+(.05*s.lit)+')';ctx.lineWidth=1;ctx.stroke()}
- s.segs=[];
- const DD=s.depts||[];DD.forEach((d,i)=>{const span=6.2832/DD.length;const a0=-Math.PI/2+i*span+s.rot;
-  d.a0=a0;d.span=span;const g=trust[d.id];const dim=seln&&seln!==d.id?.24:1;
-  const band=(r0,r1,tier,al)=>{ctx.beginPath();
-   for(let k=0;k<=18;k++){const a=a0+span*(k/18);const p=proj(r1,a,G);k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])}
-   for(let k=18;k>=0;k--){const a=a0+span*(k/18);const p=proj(r0,a,G);ctx.lineTo(p[0],p[1])}
-   ctx.closePath();const m=proj((r0+r1)/2,a0+span/2,G);
-   const gr=ctx.createRadialGradient(cx,cy-G.lift,R*r0*.6,cx,cy-G.lift*.4,R*r1);
-   gr.addColorStop(0,tint(tier,al*.9*dim));gr.addColorStop(1,tint(tier,al*.42*dim));
-   ctx.fillStyle=gr;ctx.fill()};
-  // A department with NO enabled action kinds has no posture (`g === null`). Painting the tier
-  // bands from it would compute `Math.min(null + .24, .97)` and render a full red ring — telling
-  // the owner this desk is "always your call" when in truth nothing is routed to it at all. That
-  // is the exact claim the null exists to prevent, so it draws one neutral ring instead.
-  if(g==null){band(.10,.97,'none',.16)}
-  else{band(.10,g,'green',.30);band(g,Math.min(g+TC_AMBER,.97),'amber',.30);band(Math.min(g+TC_AMBER,.97),.97,'red',.26);}
-  ctx.beginPath();const e0=proj(.10,a0,G),e1=proj(.97,a0,G);ctx.moveTo(e0[0],e0[1]);ctx.lineTo(e1[0],e1[1]);
-  ctx.strokeStyle='rgba(255,255,255,'+(.10*dim)+')';ctx.lineWidth=1;ctx.stroke();
-  // The boundary line and its knob sit AT radius `g`. A department with no posture has no
-  // boundary to draw — `proj(null, …)` yields NaN coordinates — so it is skipped rather than
-  // drawn somewhere arbitrary. (`hovB`, the drag-hover emphasis, went with the drag itself.)
-  if(g!=null){
-   ctx.beginPath();for(let k=0;k<=20;k++){const a=a0+span*(k/20);const p=proj(g,a,G);k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])}
-   ctx.strokeStyle=hex(COL.ok,.75*dim);ctx.lineWidth=2.1;ctx.stroke();
-   const hm=proj(g,a0+span/2,G);ctx.beginPath();ctx.arc(hm[0],hm[1],4,0,6.2832);
-   ctx.fillStyle=hex(COL.ok,dim);ctx.fill();ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1;ctx.stroke();
-  }
-  const lp=proj(1.045,a0+span/2,G);
-  const la=((a0+span/2)%6.2832+6.2832)%6.2832;const right=Math.cos(la)>=-0.08;
-  ctx.textAlign=right?'left':'right';ctx.textBaseline='middle';
-  ctx.font='600 11.5px Geist, sans-serif';ctx.fillStyle='rgba(255,255,255,'+(.92*dim*s.lit)+')';
-  ctx.fillText(d.n,lp[0]+(right?6:-6),lp[1]-5);
-  const dt=tierOfLevel(s.trust?.[d.id]??null);
-  ctx.font='500 10px "Geist Mono", monospace';ctx.fillStyle=dt?tint(dt,.95*dim):'rgba(255,255,255,'+(.45*dim)+')';
-  ctx.fillText((dt?tierLabel[dt].toLowerCase():'no default set')+' · '+d.w[0]+'/'+d.w[1]+'/'+d.w[2],lp[0]+(right?6:-6),lp[1]+8);
-  s.segs.push({id:d.id,a0,span,g})});
- ctx.textAlign='left';ctx.textBaseline='alphabetic';
- for(let i=s.orbs.length-1;i>=0;i--){const o=s.orbs[i];const d=(s.depts||[]).find(x=>x.id===o.d);if(!d){s.orbs.splice(i,1);continue}
-  const g=trust[o.d];const stop=o.tier==='green'?1.02:o.tier==='amber'?g:.965;
-  if(reduce)o.r=stop;else if(o.r<stop)o.r=Math.min(stop,o.r+o.v*(o.tier==='green'&&o.r>g?2.1:1));
-  if(o.tier==='green'&&o.r>=1.02){s.orbs.splice(i,1);continue}
-  if(o.tier!=='green'&&s.t-o.born>1900){s.orbs.splice(i,1);continue}
-  const p=proj(o.r,o.a+s.rot-(o.rot0||(o.rot0=s.rot)),G);o.sx=p[0];o.sy=p[1];
-  const dimO=seln&&seln!==o.d?.2:1;
-  const bl=o.tier==='green'?1:.55+.45*Math.sin(s.t*.09+o.ph);
-  const fade=o.tier==='green'&&o.r>.94?1-(o.r-.94)/.08:1;
-  const rad=(o.tier==='green'?2.5:3.2)*(1+.35*(1-o.r))*(s.hot===o?1.6:1);
-  ctx.fillStyle=tint(o.tier,.14*bl*dimO*fade);ctx.beginPath();ctx.arc(p[0],p[1],rad*4.6,0,6.2832);ctx.fill();
-  ctx.fillStyle=tint(o.tier,.95*bl*dimO*fade);ctx.beginPath();ctx.arc(p[0],p[1],rad,0,6.2832);ctx.fill();
-  ctx.fillStyle='rgba(255,255,255,'+(.65*bl*dimO*fade)+')';ctx.beginPath();ctx.arc(p[0]-rad*.28,p[1]-rad*.3,rad*.42,0,6.2832);ctx.fill()}
- const pc=proj(0,0,G);const pr=R*.115*(1+.045*s.pulse);
- const halo=ctx.createRadialGradient(pc[0],pc[1],pr*.4,pc[0],pc[1],pr*4.4);
- halo.addColorStop(0,hex(COL.vio,.34));halo.addColorStop(.5,hex(COL.vio,.09));halo.addColorStop(1,'rgba(0,0,0,0)');
- ctx.fillStyle=halo;ctx.beginPath();ctx.arc(pc[0],pc[1],pr*4.4,0,6.2832);ctx.fill();
- const sph=ctx.createRadialGradient(pc[0]-pr*.36,pc[1]-pr*.44,pr*.12,pc[0],pc[1],pr*1.12);
- sph.addColorStop(0,'rgba(255,255,255,.92)');sph.addColorStop(.34,hex(COL.vio,.92));sph.addColorStop(1,COL.dark?'#1A1440':'#221C46');
- ctx.fillStyle=sph;ctx.beginPath();ctx.arc(pc[0],pc[1],pr,0,6.2832);ctx.fill();
- ctx.strokeStyle='rgba(255,255,255,.3)';ctx.lineWidth=1;ctx.stroke();
- ctx.textAlign='center';ctx.font='700 10px Geist, sans-serif';ctx.fillStyle='rgba(255,255,255,.92)';
- ctx.fillText('PAIGE',pc[0],pc[1]+3.5);ctx.textAlign='left';
- let hot=null,hd=22;
- for(const o of s.orbs){const dd=Math.hypot(o.sx-s.mx,o.sy-s.my);if(dd<hd){hd=dd;hot=o}}
- s.hot=hot;
- // NO WRITE. The dial reflects the platform's default policy, which this workspace did not set
- // and cannot set from here; a drag that appeared to move it would be a governance claim with
- // nothing behind it. The band positions come from real lane counts and are read-only.
- raf=requestAnimationFrame(draw)};
-raf=requestAnimationFrame(draw);
-const rect=()=>cv.getBoundingClientRect();
-const setM=e=>{const r=rect();s.mx=e.clientX-r.left;s.my=e.clientY-r.top};
-const mv=e=>{setM(e);const G=geo();const[r,a]=unproj(s.mx,s.my,G);
- const seg=s.segs.find(g=>{let d=((a-g.a0)%6.2832+6.2832)%6.2832;return d<g.span});
- cv.style.cursor=s.hot?'pointer':seg&&r<1.0?'pointer':'default'};
-const dn=e=>{setM(e);const G=geo();const[r,a]=unproj(s.mx,s.my,G);
- if(s.hot){onOrb(s.hot);return}
- const seg=s.segs.find(g=>{let d=((a-g.a0)%6.2832+6.2832)%6.2832;return d<g.span});
- if(!seg)return;
- // No drag: the boundary reflects platform policy this workspace cannot set, so grabbing it is
- // not an affordance the surface should offer. Selecting a department still works.
- if(r<.99&&r>.10)setSel(p=>p===seg.id?null:seg.id)};
-const lv=()=>{s.mx=-999;s.my=-999};
-cv.addEventListener('mousemove',mv);cv.addEventListener('mousedown',dn);window.addEventListener('mousemove',mv);
-cv.addEventListener('mouseleave',lv);
-return()=>{cancelAnimationFrame(raf);ro.disconnect();mo.disconnect();cv.removeEventListener('mousemove',mv);
- cv.removeEventListener('mousedown',dn);window.removeEventListener('mousemove',mv);cv.removeEventListener('mouseleave',lv)}},[onOrb,setSel]);
-const hotLabel=S.current.hot;
-return <div ref={wrap} style={{position:'absolute',inset:0}}><canvas ref={cvr} style={{display:'block'}}/></div>};
+// ── posture presentation (the five owner-approved states) ────────────────────────────────────
+const POSTURE_META={
+ guardrails:{label:POSTURE_LABEL.guardrails,col:'var(--ok)',tint:'var(--ok-tint)',pill:'pill-ok'},
+ asks:{label:POSTURE_LABEL.asks,col:'var(--warn)',tint:'var(--warn-tint)',pill:'pill-warn'},
+ held:{label:POSTURE_LABEL.held,col:'var(--bad)',tint:'var(--bad-tint)',pill:'pill-bad'},
+ your_call:{label:POSTURE_LABEL.your_call,col:'var(--violet)',tint:'var(--violet-tint)',pill:'pill-n'},
+ not_ready:{label:POSTURE_LABEL.not_ready,col:'var(--ink-3)',tint:'var(--surface-sunk)',pill:'pill-n'},
+};
+const MODE_LABEL={off:'Held',confirm:'Asks first',auto:'Acts within guardrails'};
+const modeCol=m=>m==='auto'?'var(--ok)':m==='confirm'?'var(--warn)':'var(--bad)';
+const useReduced=()=>{const[r,setR]=React.useState(false);React.useEffect(()=>{
+ if(typeof matchMedia!=='function')return; // no window.matchMedia (some test/SSR envs) → assume motion on
+ const m=matchMedia('(prefers-reduced-motion: reduce)');const f=()=>setR(!!m.matches);f();
+ m.addEventListener?.('change',f);return()=>m.removeEventListener?.('change',f);},[]);return r;};
+
+// ── the accessible knob: a real 3-detent slider (off/confirm/auto), capped at `max` ──────────
+const TcKnob=({value,max,onCommit,ariaLabel,onError})=>{
+ const maxRank=rankOfMode(max);
+ const disabled=maxRank<=0; // owner_only (max off) is not a settable knob
+ const rank=rankOfMode(value);
+ const[pending,setPending]=React.useState(null);
+ const[saving,setSaving]=React.useState(false);
+ const shown=pending!=null?pending:rank;
+ const commit=React.useCallback((r)=>{r=Math.max(0,Math.min(maxRank,r));if(r===rank){setPending(null);return;}
+  setPending(r);setSaving(true);
+  Promise.resolve(onCommit(modeOfRank(r))).then(res=>{setSaving(false);setPending(null);if(res&&res.ok===false){onError&&onError(res.error);}});
+ },[maxRank,rank,onCommit,onError]);
+ const key=e=>{if(disabled)return;let r=shown;
+  if(e.key==='ArrowRight'||e.key==='ArrowUp')r=shown+1;else if(e.key==='ArrowLeft'||e.key==='ArrowDown')r=shown-1;
+  else if(e.key==='Home')r=0;else if(e.key==='End')r=maxRank;else return;e.preventDefault();commit(r);};
+ const S=React.useRef({});
+ const down=e=>{if(disabled)return;S.current={x:e.clientX,r:shown};
+  try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){/* setPointerCapture can throw in some browsers/jsdom; drag still works without capture */}
+  e.preventDefault();};
+ const move=e=>{if(disabled||S.current.x==null)return;const d=Math.round((e.clientX-S.current.x)/26);const r=Math.max(0,Math.min(maxRank,S.current.r+d));if(r!==shown)setPending(r);};
+ const up=()=>{if(disabled||S.current.x==null)return;const r=pending!=null?pending:shown;S.current={};commit(r);};
+ const frac=maxRank>0?shown/2:0; // arc position 0..1 across off→confirm→auto
+ // brushed dial
+ const W=64,cx=32,cy=32,Rk=20,a0=Math.PI*0.75,a1=Math.PI*2.25;
+ const pt=(r,a)=>[cx+Math.cos(a)*r,cy+Math.sin(a)*r];
+ const ind=pt(Rk-3,a0+(a1-a0)*frac),indb=pt(Rk-12,a0+(a1-a0)*frac);
+ return <span role="slider" tabIndex={disabled?-1:0} aria-label={ariaLabel}
+  aria-valuemin={0} aria-valuemax={maxRank} aria-valuenow={shown} aria-valuetext={MODE_LABEL[modeOfRank(shown)]}
+  aria-disabled={disabled?'true':undefined}
+  onKeyDown={key} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+  style={{display:'inline-flex',width:W,height:W,flex:'none',cursor:disabled?'not-allowed':'ew-resize',borderRadius:'50%',touchAction:'none',opacity:disabled?.75:1,outlineOffset:3}}>
+  <svg width={W} height={W} viewBox={'0 0 '+W+' '+W} aria-hidden="true">
+   {[0,1,2].map(i=>{const a=a0+(a1-a0)*(i/2);const o=pt(Rk+5,a),n=pt(Rk+2,a);
+    return <line key={i} x1={o[0]} y1={o[1]} x2={n[0]} y2={n[1]} stroke="var(--ink-3)" strokeOpacity=".5" strokeWidth="1.4"/>;})}
+   <circle cx={cx} cy={cy} r={Rk} fill="var(--surface-sunk)" stroke="var(--line)" strokeWidth="1.4"/>
+   <circle cx={cx} cy={cy} r={Rk-4} fill="var(--surface)" stroke="var(--line-soft)" strokeWidth="1"/>
+   {!disabled&&<line x1={indb[0]} y1={indb[1]} x2={ind[0]} y2={ind[1]} stroke={modeCol(modeOfRank(shown))} strokeWidth="2.6" strokeLinecap="round"/>}
+   <circle cx={cx} cy={cy} r="2.4" fill={disabled?'var(--ink-3)':modeCol(modeOfRank(shown))}/>
+  </svg>
+  {saving&&<span style={{position:'absolute',width:1,height:1,overflow:'hidden'}} role="status">Saving…</span>}
+ </span>;
+};
+
+// ── the central compass: overall posture as a needle + an honest reasoning line ──────────────
+const BEARINGS=['guardrails','asks','held','your_call','not_ready'];
+function overallPosture(domains){if(!domains.length)return 'not_ready';
+ // most-common domain posture; ties resolve to the more restrictive (never overstate trust)
+ const pref=['not_ready','your_call','held','asks','guardrails'];
+ const c={};domains.forEach(d=>{c[d.posture]=(c[d.posture]||0)+1;});
+ let best='asks',bn=-1;pref.forEach(k=>{const n=c[k]||0;if(n>bn){bn=n;best=k;}});return best;}
+function overallReason(domains){
+ const c={guardrails:0,asks:0,held:0,your_call:0};
+ domains.forEach(d=>{if(c[d.posture]!=null)c[d.posture]+=1;});
+ const parts=[];
+ if(c.guardrails)parts.push(c.guardrails+' acting within guardrails');
+ if(c.asks)parts.push(c.asks+' asking first');
+ if(c.held)parts.push(c.held+' held');
+ if(c.your_call)parts.push(c.your_call+' your call');
+ return parts.length?parts.join(' · '):'nothing set up yet';}
+const TcCompass=({domains,reduced})=>{
+ const overall=domains.length?overallPosture(domains):'not_ready';
+ const oi=Math.max(0,BEARINGS.indexOf(overall));
+ const W=300,cx=150,cy=150,R=118;
+ const P=POSTURE_META[overall];
+ const bearingPt=(i,r)=>{const a=-Math.PI/2+i/5*Math.PI*2;return [cx+Math.cos(a)*r,cy+Math.sin(a)*r];};
+ return <div className="compasscol" style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
+  <div style={{position:'relative',width:'100%',maxWidth:320,display:'grid',placeItems:'center'}}>
+   <svg width="100%" viewBox={'0 0 '+W+' '+W} role="img"
+    aria-label={'Overall, Paige is '+P.label.toLowerCase()+' across your capabilities: '+overallReason(domains)+'. This is a summary of your per-capability settings and platform policy, not a control.'}
+    style={{maxWidth:320,display:'block'}}>
+    <circle cx={cx} cy={cy} r={R+8} fill="none" stroke="var(--line)" strokeWidth="1"/>
+    <circle cx={cx} cy={cy} r={R} fill="var(--surface-2)" stroke="var(--line-soft)" strokeWidth="1.4"/>
+    {BEARINGS.map((k,i)=>{const on=k===overall;const m=bearingPt(i,R-2);const mk=POSTURE_META[k];
+     return <circle key={k} cx={m[0]} cy={m[1]} r={on?6:3.4} fill={mk.col} fillOpacity={on?1:.5}
+      stroke={on?'var(--surface)':undefined} strokeWidth={on?1.4:undefined}/>;})}
+    <g style={{transformBox:'view-box',transformOrigin:cx+'px '+cy+'px',transform:'rotate('+(oi/5*360)+'deg)',transition:reduced?'none':'transform .9s cubic-bezier(.32,.72,0,1)'}}>
+     <path d={'M'+cx+' '+(cy-R+18)+' L'+(cx+6)+' '+cy+' L'+cx+' '+(cy+38)+' L'+(cx-6)+' '+cy+' Z'} fill="var(--gold-bright)"/>
+    </g>
+    <circle cx={cx} cy={cy} r="34" fill="var(--surface)" stroke="var(--line)" strokeWidth="1.4"/>
+   </svg>
+   <div style={{position:'absolute',textAlign:'center',pointerEvents:'none',maxWidth:120}}>
+    <div className="eyebrow" style={{fontSize:8.5,color:'var(--ink-3)'}}>Overall</div>
+    <div style={{fontSize:13.5,fontWeight:700,color:P.col,lineHeight:1.15,marginTop:2}}>{P.label}</div>
+    <div className="mono" style={{fontSize:8,letterSpacing:'.1em',textTransform:'uppercase',color:'var(--ink-3)',marginTop:3}}>Read-only</div>
+   </div>
+  </div>
+  <div className="row" role="note" style={{gap:7,justifyContent:'center',flexWrap:'wrap',fontSize:12,color:'var(--ink-2)',textAlign:'center',maxWidth:360,lineHeight:1.5}}>
+   <span style={{color:P.col,display:'flex'}}><Ic.shield size={13}/></span>
+   <span>Pointing to <strong style={{color:P.col}}>{P.label}</strong> — {overallReason(domains)}.</span>
+  </div>
+  <div className="sub" style={{fontSize:10.4,fontStyle:'italic',textAlign:'center',maxWidth:340}}>Read from your enforced settings and platform policy — never a score.</div>
+  <div className="row" style={{gap:'6px 12px',flexWrap:'wrap',justifyContent:'center',maxWidth:360}}>
+   {BEARINGS.filter(k=>k!=='not_ready').map(k=>{const on=k===overall;const mk=POSTURE_META[k];
+    return <span key={k} className="row" style={{gap:5,fontSize:10.3,color:on?mk.col:'var(--ink-2)',fontWeight:on?700:400,opacity:on?1:.65}}>
+     <span style={{width:8,height:8,borderRadius:'50%',background:mk.col}}/>{mk.label}</span>;})}
+  </div>
+ </div>;
+};
 
 export const MiniCompass=({dept,label='This action was drafted because the platform default for',compact=false})=>{
 const{depts,loading,configured}=useTrustDepartments();
@@ -340,92 +307,57 @@ return <div style={{border:'1px solid var(--line)',borderRadius:'var(--r-m)',pad
 <span className="sub" style={{fontSize:10.5}}>{d.w[1]} drafted · {d.w[2]} your call</span></div>
 <div className="sub" style={{fontSize:10.5,marginTop:6}}>Platform default policy — not a setting this workspace chose.</div></div>};
 
-export const CompassTile=({go,preview,departments})=>{const{depts,configured}=useTrustDepartments();const trust=useTrust();const ref=React.useRef(null);
-const tot=depts.reduce((a,d)=>[a[0]+d.w[0],a[1]+d.w[1],a[2]+d.w[2]],[0,0,0]);
-const all=tot[0]+tot[1]+tot[2];const auto=all?Math.round(tot[0]/all*100):null;
-// Real per-department OPEN counts (usePaigeDeptStatus) when passed — the ONE live
-// signal on this tile. The autonomy WEIGHT split below has no rollup seam yet (§13),
-// so the tile carries a Preview marker while the sub line reports the live count.
-const liveDepts=Array.isArray(departments)?departments:null;
-const liveOpen=liveDepts?liveDepts.reduce((a,d)=>a+(d.openCount||0),0):null;
-React.useEffect(()=>{const cv=ref.current;if(!cv)return;const ctx=cv.getContext('2d');if(!ctx)return;const dpr=Math.min(devicePixelRatio||1,2);
-const W=cv.clientWidth,H=120;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
-const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;let t=0,raf,orbs=[];
-const draw=()=>{t++;ctx.clearRect(0,0,W,H);const cx=W/2,cy=H*.72,R=Math.min(W*.42,H*.92);
- ctx.fillStyle='#0A0818';ctx.fillRect(0,0,W,H);
- depts.forEach((d,i)=>{const span=Math.PI/depts.length;const a0=-Math.PI+i*span;const g=trust[d.id];if(g==null)return;
-  const arc=(r0,r1,col)=>{ctx.beginPath();ctx.arc(cx,cy,R*r1,a0,a0+span);ctx.arc(cx,cy,R*r0,a0+span,a0,true);ctx.closePath();ctx.fillStyle=col;ctx.fill()};
-  arc(.2,g,'rgba(76,196,140,.42)');arc(g,Math.min(g+.24,.97),'rgba(227,166,60,.4)');arc(Math.min(g+.24,.97),.97,'rgba(238,122,114,.32)')});
- if(!reduce&&t%22===0&&orbs.length<9&&depts.length){const i=(Math.random()*depts.length)|0;const span=Math.PI/depts.length;
-  const og=trust[depts[i].id];if(og!=null)orbs.push({a:-Math.PI+i*span+span*(.2+Math.random()*.6),r:.22,g:og,tier:'green'})}
- for(let i=orbs.length-1;i>=0;i--){const o=orbs[i];const stop=o.tier==='green'?1:o.g;
-  if(o.r<stop)o.r+=.011;else if(o.tier==='green'){orbs.splice(i,1);continue}
-  const x=cx+Math.cos(o.a)*R*o.r,y=cy+Math.sin(o.a)*R*o.r;
-  ctx.fillStyle=o.tier==='green'?'rgba(120,230,180,.95)':'rgba(240,190,100,.95)';
-  ctx.beginPath();ctx.arc(x,y,2,0,6.283);ctx.fill()}
- const pr=R*.14*(1+(reduce?0:.05*Math.sin(t*.03)));
- const gr=ctx.createRadialGradient(cx-pr*.3,cy-pr*.4,pr*.1,cx,cy,pr);
- gr.addColorStop(0,'rgba(255,255,255,.9)');gr.addColorStop(.4,'rgba(122,98,232,.9)');gr.addColorStop(1,'#221C46');
- ctx.fillStyle=gr;ctx.beginPath();ctx.arc(cx,cy,pr,0,6.283);ctx.fill();
- raf=requestAnimationFrame(draw)};
-draw();return()=>cancelAnimationFrame(raf)},[trust,depts]);
-return <div className="card" style={{overflow:'hidden'}}>
-<div className="hd"><div><h3>Trust Compass</h3><div className="sub">{!configured?'Platform defaults unavailable':liveDepts?(liveOpen+' open across '+liveDepts.length+' departments'):(auto==null?depts.length+' departments':auto+'% run automatically by default, across '+depts.length+' departments')}</div></div>
-<div className="row" style={{gap:8}}><Ic.shield size={17} style={{color:'var(--ink-3)'}}/></div></div>
-<canvas ref={ref} style={{display:'block',width:'100%',height:120}}/>
-<div className="row" style={{padding:'12px 20px',gap:16,borderTop:'1px solid var(--line-soft)'}}>
-{[['Runs automatically',tot[0],'var(--ok)'],['Drafts for you',tot[1],'var(--warn)'],['Always your call',tot[2],'var(--bad)']].map(([k,v,c],i)=>
-<div key={i}><div className="eyebrow" style={{fontSize:9.5}}>{k}</div><div style={{fontSize:19,fontWeight:600,marginTop:2,color:c}}>{v}</div></div>)}</div>
-<div style={{padding:'0 20px 10px'}}><div className="sub" style={{fontSize:10.5}}>Counts are action types on the platform's default policy, not this workspace's own settings.</div></div>
-<div style={{padding:'12px 20px',borderTop:'1px solid var(--line-soft)'}}>
-<button className="btn btn-s" style={{width:'100%',justifyContent:'center'}} onClick={()=>go&&go('compass')}>Open Trust Compass <Ic.arrow size={14}/></button></div></div>};
+// ── one capability knob card (real per-tool governance via set_tool_autonomy) ─────────────────
+const KnobCard=({domain,open,onToggle,onSetDomain,onSetTool,onError,side})=>{
+ const P=POSTURE_META[domain.posture];
+ const settable=domain.tools.filter(t=>t.settable);
+ const ariaLabel='How much '+domain.title+' may run on its own';
+ return <div className={'card'} data-cap={domain.key} style={{overflow:'hidden'}}>
+  <div className="row" style={{gap:11,padding:'12px 14px',alignItems:'center'}}>
+   <button onClick={onToggle} aria-expanded={open?'true':'false'} aria-controls={'cap-'+domain.key}
+    className="row grow" style={{gap:11,minWidth:0,textAlign:'left',background:'transparent'}}>
+    <span className="tile" style={{width:34,height:34,borderRadius:'50%',background:'var(--violet-tint)',color:'var(--violet)',flex:'none'}}>{React.createElement(Ic[domain.icon]||Ic.grid,{size:17})}</span>
+    <span style={{minWidth:0}}>
+     <span style={{fontSize:13.4,fontWeight:700,color:'var(--ink)',display:'block',lineHeight:1.15}}>{domain.title}</span>
+     <span style={{fontSize:13,fontWeight:500,color:P.col,display:'block',marginTop:1}}>{P.label}</span></span>
+   </button>
+   {settable.length
+    ? <TcKnob value={domain.level} max={domain.domainMax} ariaLabel={ariaLabel} onError={onError}
+       onCommit={(m)=>onSetDomain(domain.key,m)}/>
+    : <span className="pill pill-n" style={{flex:'none'}}>Your call</span>}
+  </div>
+  {settable.length>0&&<div className="row" style={{gap:6,padding:'0 15px 10px',fontSize:10.3,color:'var(--ink-3)'}}>
+   <Ic.arrow size={11} style={{color:'var(--violet)',flex:'none'}}/>Drag or use ← → to set — Paige can also set it in chat.</div>}
+  <div className="row" style={{justifyContent:'space-between',gap:10,padding:'0 15px 12px',alignItems:'center'}}>
+   <span className="sub" style={{fontSize:11}}>{domain.blurb}</span>
+   <span className={'pill '+P.pill}>{P.label}</span>
+  </div>
+  {domain.heldBackNote&&<div className="row" style={{gap:6,padding:'0 15px 12px',fontSize:10.6,color:'var(--ink-3)',alignItems:'flex-start'}}>
+   <Ic.shield size={12} style={{flex:'none',marginTop:1}}/><span>{domain.heldBackNote}</span></div>}
+  {open&&<div id={'cap-'+domain.key} className="fade-in" style={{borderTop:'1px solid var(--line-soft)',padding:'8px 0 4px'}}>
+   {domain.tools.map((t,i)=>{const tp=POSTURE_META[t.risk==='owner_only'?'your_call':t.effective==='auto'?'guardrails':t.effective==='confirm'?'asks':'held'];
+    return <div key={t.toolKey} className="row" style={{gap:10,padding:'9px 15px',borderTop:i?'1px solid var(--line-soft)':'0',alignItems:'center'}}>
+     <span className="grow" style={{minWidth:0}}>
+      <span className="trunc" style={{fontSize:12.6,fontWeight:500,color:'var(--ink)',display:'block'}}>{t.label}</span>
+      {t.heldBack&&<span className="sub" style={{fontSize:10.4,display:'block',marginTop:1}}>{t.heldBack.reason}</span>}
+      {!t.heldBack&&t.isDefault&&<span className="sub" style={{fontSize:10.4,display:'block',marginTop:1}}>Platform default</span>}
+     </span>
+     {t.settable
+      ? <TcKnob value={t.stored} max={maxModeForRisk(t.risk)} ariaLabel={'How much “'+t.label+'” may run on its own'} onError={onError}
+         onCommit={(m)=>onSetTool(t.toolKey,m)}/>
+      : <span className="pill pill-n" title="Owner-only — always your call" style={{flex:'none'}}>Your call</span>}
+     <span style={{fontSize:11,fontWeight:600,color:tp.col,minWidth:96,textAlign:'right'}}>{tp.label}</span>
+    </div>;})}
+  </div>}
+ </div>;
+};
 
-// Shared shell so the two modals cannot drift apart in how they report an absent read (§18).
+// Shared shell so the modals cannot drift apart in how they report an absent read (§18).
 const TcModalState=({state,error,onRetry,emptyLine})=>
  <div className="sub" style={{fontSize:12.9,lineHeight:1.55,padding:'4px 2px'}} role={state==='error'?'alert':'status'}>
  {state==='loading'?'Reading what is waiting on you…'
   :state==='error'?<>This could not be loaded, so it is not a record of nothing waiting.{error?' ('+error+')':''} <button className="btn btn-s" style={{marginTop:9}} onClick={onRetry}>Try again</button></>
   :emptyLine}</div>;
-
-const TcApprove=({onClose,onDone})=>{const q=useSoloPendingActions();
-const a:SoloPendingAction|null=q.items[0]??null;
-const state=q.loading?'loading':q.error?'error':a?'ok':'empty';
-return (<><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(10,8,24,.62)',backdropFilter:'blur(4px)',zIndex:90}}/>
-<div className="fade-in card" style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:'min(600px,95vw)',maxHeight:'90vh',overflow:'auto',zIndex:91,borderRadius:'var(--r-xl)',boxShadow:'var(--sh-3)'}}>
-<div className="hd"><div><div className="row" style={{gap:8}}><span className="pill pill-warn"><span className="dot"/>Waiting on you</span>
-{a&&<span className="pill pill-n">{a.department}</span>}</div>
-<h3 style={{marginTop:8}}>{a?a.title:'Waiting on you'}</h3></div>
-<button className="btn btn-s" onClick={onClose} style={{width:28,height:28,padding:0,justifyContent:'center',borderRadius:'50%'}}><Ic.x size={13}/></button></div>
-<div style={{padding:'16px 20px 20px',display:'grid',gap:14}}>
-{state!=='ok'?<TcModalState state={state} error={q.error} onRetry={q.refresh}
-  emptyLine="Nothing is waiting on you right now. When Paige files work she is not allowed to run alone, it appears here."/>:<>
-{a.draftContent&&<div style={{background:'var(--surface-2)',border:'1px solid var(--line)',borderRadius:'var(--r-m)',padding:'14px 16px',fontSize:13.3,color:'var(--ink-2)',lineHeight:1.65,whiteSpace:'pre-wrap'}}>{a.draftContent}</div>}
-{a.summary&&<div style={{fontSize:13.2,color:'var(--ink-2)',lineHeight:1.6}}>{a.summary}</div>}
-{a.rationale&&<div><div className="eyebrow">Why she stopped</div><div style={{fontSize:13,color:'var(--ink-2)',marginTop:5,lineHeight:1.6}}>{a.rationale}</div></div>}
-<MiniCompass dept={a.department}/>
-<div className="row" style={{gap:9,flexWrap:'wrap'}}>
-<button onClick={onDone} className="row" style={{gap:7,height:36,padding:'0 18px',borderRadius:10,background:'var(--gold-bright)',color:'#2A1C00',fontWeight:700,fontSize:13.4}}><Ic.check size={14}/>Approve & send</button>
-<button className="btn">Edit</button><button className="btn" onClick={onClose}>Dismiss</button></div></>}</div></div></>);};
-
-const TcEscalate=({onClose})=>{const q=useSoloPendingActions();
-const a:SoloPendingAction|null=q.items[0]??null;
-const state=q.loading?'loading':q.error?'error':a?'ok':'empty';
-return (<><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(10,8,24,.62)',backdropFilter:'blur(4px)',zIndex:90}}/>
-<div className="fade-in card" style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:'min(580px,95vw)',maxHeight:'90vh',overflow:'auto',zIndex:91,borderRadius:'var(--r-xl)',boxShadow:'var(--sh-3)'}}>
-<div className="hd"><div><div className="row" style={{gap:8}}><span className="pill pill-bad"><span className="dot"/>Your decision</span>
-{a&&<span className="pill pill-n">{a.department}</span>}</div>
-<h3 style={{marginTop:8}}>{a?a.title:'She stopped and brought this to you'}</h3></div>
-<button className="btn btn-s" onClick={onClose} style={{width:28,height:28,padding:0,justifyContent:'center',borderRadius:'50%'}}><Ic.x size={13}/></button></div>
-<div style={{padding:'16px 20px 20px',display:'grid',gap:14}}>
-{state!=='ok'?<TcModalState state={state} error={q.error} onRetry={q.refresh}
-  emptyLine="Nothing is waiting on your decision right now. When Paige files work she will not take alone, it appears here."/>:<>
-{a.summary&&<div style={{fontSize:13.4,color:'var(--ink-2)',lineHeight:1.65}}>{a.summary}</div>}
-{a.draftContent&&<div style={{background:'var(--surface-2)',border:'1px solid var(--line)',borderRadius:'var(--r-m)',padding:'14px 16px',fontSize:13.2,color:'var(--ink-2)',lineHeight:1.6,whiteSpace:'pre-wrap'}}>{a.draftContent}</div>}
-{a.rationale&&<div style={{background:'var(--bad-tint)',border:'1px solid var(--line)',borderRadius:'var(--r-m)',padding:'12px 14px',fontSize:13,color:'var(--ink-2)',lineHeight:1.6}}>
-<strong style={{color:'var(--ink)'}}>Why she won't decide it: </strong>{a.rationale}</div>}
-<div className="row" style={{gap:9,flexWrap:'wrap'}}>
-<button onClick={onClose} className="row" style={{gap:7,height:36,padding:'0 18px',borderRadius:10,background:'var(--gold-bright)',color:'#2A1C00',fontWeight:700,fontSize:13.4}}><Ic.check size={14}/>Decide and log</button>
-<button className="btn">Hand back with guidance</button><button className="btn" onClick={onClose}>Later</button></div></>}</div></div></>);};
 
 const TcDept=({id,onBack})=>{
 const{depts,loading,configured}=useTrustDepartments();
@@ -456,117 +388,127 @@ return <div className="fade-in" style={{display:'grid',gap:16}}>
 <span style={{fontSize:11.5,fontWeight:600,color:laneCol[a.lane]}}>{laneCopy[a.lane]}</span></div>)}
 {!d.acts.length&&<div className="sub" style={{padding:'12px 20px'}}>No enabled action types are routed to this department, so it has no default policy to show.</div>}</div></div></div>};
 
-export const TrustCompass=({accountEpoch}={})=>{
-const trust=useTrust();
-const[sel,setSel]=React.useState(null);
-const[flow,setFlow]=React.useState(null);
-const[toast,setToast]=React.useState(null);
+export const TrustCompass=({accountEpoch,openPaige}={})=>{
+const reduced=useReduced();
+const gov=useSoloToolGovernance(accountEpoch);
+// The active workspace, plumbed in as `accountEpoch`, re-keys every read on a switch and
+// invalidates anything in flight, so no previous workspace's row survives even for a frame.
+const activity=useSoloActivityFeed(accountEpoch);
+const pending=useSoloPendingActions();
+const{depts,configured:trustConfigured}=useTrustDepartments(accountEpoch);
+const[open,setOpen]=React.useState(null);
 const[full,setFull]=React.useState(null);
 const[fold,setFold]=React.useState(null);
-// The active workspace, already plumbed into this screen as `accountEpoch`. Passing it re-keys
-// the read on a switch and invalidates anything in flight, so the previous workspace's
-// activity can neither stay on screen nor land late under the new one's heading.
-const activity=useSoloActivityFeed(accountEpoch);
-// The recorded events, in the shape this panel's markup already renders. `tier` is always
-// 'green' by construction — see the note where TC_LIVE used to be.
+const[toast,setToast]=React.useState(null);
+const toastMsg=React.useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),3200)},[]);
+const onError=React.useCallback(err=>{
+ const m=/AUTONOMY_FORBIDDEN|forbidden|42501|admin/i.test(String(err||''))
+  ? "That change needs an admin on this workspace — your setting was not changed."
+  : "That change didn't save, so nothing was changed. Try again in a moment.";
+ toastMsg(m);
+},[toastMsg]);
+const setDomain=React.useCallback((k,m)=>gov.setDomainMode(k,m),[gov]);
+const setTool=React.useCallback((t,m)=>gov.setToolMode(t,m),[gov]);
+const goPaige=React.useCallback(()=>{if(typeof openPaige==='function')openPaige();else toastMsg('Open Paige from the sidebar to make this decision.');},[openPaige,toastMsg]);
+
 const live=React.useMemo(()=>activity.items.map(a=>({
- id:a.id,t:a.title,dept:departmentLabel(a.departmentSlug),tier:'green',w:elapsedLabel(a.occurredAt)})),[activity.items]);
-// An empty feed and a failed read look identical if you let them, and the second one tells the
-// operator that Paige has done nothing (§13). They are kept apart here and said apart below.
+ id:a.id,t:a.title,dept:departmentLabel(a.departmentSlug),by:a.byPaige?'Paige':a.actorAgent?a.actorAgent:'Unattributed',w:elapsedLabel(a.occurredAt)})),[activity.items]);
 const liveState=activity.loading?'loading':activity.error?'error':live.length?'ok':'empty';
-const{depts,configured:trustConfigured}=useTrustDepartments(accountEpoch);
-const tot=depts.reduce((a,d)=>[a[0]+d.w[0],a[1]+d.w[1],a[2]+d.w[2]],[0,0,0]);
-const all=tot[0]+tot[1]+tot[2];
-const auto=all?Math.round(tot[0]/all*100):null,dr=all?Math.round(tot[1]/all*100):null;
-const onOrb=React.useCallback(o=>{setFlow(o.tier==='red'?'esc':o.tier==='amber'?'appr':null);
- if(o.tier==='green'){setToast(o.label);setTimeout(()=>setToast(null),2600)}},[]);
+
 if(full)return <Wrap><PageHead eyebrow="Platform · Trust Compass" title={depts.find(d=>d.id===full)?.n||"Department"} sub="Every action type routed here, and the lane the platform default puts it in."/>
 <TcDept id={full} onBack={()=>setFull(null)}/></Wrap>;
+
+const domains=gov.domains;
+const left=domains.slice(0,3),right=domains.slice(3);
+
 return <div className="fade-in pg" style={{width:'100%',maxWidth:1440,margin:'0 auto'}}>
-<PageHead eyebrow="Platform" title="Trust Compass"
-sub={!trustConfigured?'Platform default policy unavailable.':all+" action types across "+depts.length+" departments, on the platform's default policy. This is not a setting this workspace chose."}
-right={trustConfigured&&all?<div className="row" style={{gap:8}}>
-<span className="pill pill-ok"><span className="dot"/>{auto}% run automatically</span>
-<span className="pill pill-warn">{dr}% drafted for you</span>
-<span className="pill pill-bad">{100-auto-dr}% your call</span></div>
-:<span className="pill pill-n">Platform default policy unavailable</span>}/>
-<div className="pg-fill tc-grid">
-<div className="card" style={{overflow:'hidden',borderRadius:'var(--r-xl)',position:'relative',minHeight:260,background:'#0A0818',borderColor:'#241F49'}}>
-<TcCanvas sel={sel} setSel={setSel} onOrb={onOrb}/>
-<div style={{position:'absolute',top:16,left:18,right:18,display:'flex',gap:12,justifyContent:'space-between',pointerEvents:'none'}}>
-<div><div style={{fontSize:10.5,letterSpacing:'.26em',color:'rgba(255,255,255,.55)',fontWeight:600}}>WHAT SHE IS ALLOWED TO DO</div>
-<div style={{color:'#fff',fontSize:19,fontWeight:600,letterSpacing:'-.03em',marginTop:4}}>{sel?(depts.find(d=>d.id===sel)?.n||'Department'):depts.length+' departments'}</div>
-<div style={{color:'rgba(255,255,255,.6)',fontSize:12.4,marginTop:3}}>{trustConfigured&&all?all+' action types · '+auto+'% run automatically on the platform default':'Platform default policy unavailable'}</div></div>
-<div style={{display:'grid',gap:6,justifyItems:'end',pointerEvents:'auto'}}>
-<span className="row" style={{gap:7,height:26,padding:'0 11px',borderRadius:99,
- background:liveState==='ok'?'rgba(76,196,140,.16)':'rgba(255,255,255,.08)',
- color:liveState==='ok'?'#4CC48C':'rgba(255,255,255,.6)',fontSize:11.5,fontWeight:600}}>
-{liveState==='ok'&&<span className="dot"/>}{liveState==='ok'?'Live · recent activity below':liveState==='loading'?'Reading recent activity':liveState==='error'?'Recent activity unavailable':'No activity recorded yet'}</span>
-<span style={{color:'rgba(255,255,255,.45)',fontSize:11}}>Click a segment to drill in · click an orb to see the action type</span>
-{sel&&<button onClick={()=>setFull(sel)} className="row" style={{gap:6,height:28,padding:'0 12px',borderRadius:99,background:'rgba(255,255,255,.1)',color:'#fff',fontSize:11.8,fontWeight:600}}>
-Open {depts.find(d=>d.id===sel)?.n||'department'}<Ic.arrow size={12}/></button>}</div></div>
+{/* §66 title rule: the surface title stays in the DOM for assistive tech but not as a banner. */}
+<h1 style={{position:'absolute',width:1,height:1,overflow:'hidden',clipPath:'inset(50%)'}}>Trust Compass</h1>
+<div className="pg-hd" style={{padding:'12px clamp(16px,2.6vw,40px) 8px'}}>
+ <p className="pg-sub" style={{color:'var(--ink-2)',fontSize:13.2,maxWidth:640,lineHeight:1.4}}>Set what Paige may do on her own, see what needs your approval, and what the platform still limits.</p>
+</div>
 
-{/* The drag PREVIEW is gone with the drag. It read "At this setting she would have handled N
-     of M actions this week without asking" — a projection from a dial that set nothing, over a
-     weekly total nothing produced. Removed rather than left unreachable (§13/§58). */}
+<div className="pg-body">
+ {/* ── the governed instrument — gated on the governance read; the sections below are
+        independent honest reads and render whatever the governance read is doing. ── */}
+ {gov.loading?
+  <div className="card" style={{padding:'22px 20px'}} role="status"><div className="sub">Reading what this workspace lets Paige do…</div>
+   <div style={{display:'grid',gap:10,marginTop:14}}>{[0,1,2].map(i=><div key={i} style={{height:52,borderRadius:'var(--r-m)',background:'var(--surface-sunk)'}}/>)}</div></div>
+ :!gov.configured?
+  <div className="card"><div className="state" style={{padding:'26px 20px',display:'grid',gap:8}} role={gov.error?'alert':'status'}>
+   <div style={{fontSize:14,fontWeight:600,color:'var(--ink)'}}>What Paige is allowed to do couldn't be read for this workspace.</div>
+   <div className="sub" style={{maxWidth:'56ch',lineHeight:1.5}}>{gov.error?'The permissions read failed, so nothing is shown — not a record of an empty or open workspace.':'Nothing is set up here yet.'} If this persists it is a read/permissions issue, not a setup step.</div>
+   <button className="btn btn-s" style={{marginTop:4}} onClick={gov.refresh}>Try again</button></div></div>
+ :<>
+  {gov.ceilingLimiting&&<div className="card" role="note" style={{padding:'11px 15px',display:'flex',gap:9,alignItems:'center',borderLeft:'3px solid var(--violet)'}}>
+   <Ic.shield size={15} style={{color:'var(--violet)',flex:'none'}}/><span className="sub" style={{fontSize:12}}>Platform policy is currently limiting some unattended actions further, on top of your settings.</span></div>}
+  <div className="tc2-instrument" style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1.15fr) minmax(0,1fr)',gap:16,alignItems:'start'}}>
+   <div style={{display:'grid',gap:14}}>{left.map(d=><KnobCard key={d.key} domain={d} open={open===d.key} onToggle={()=>setOpen(open===d.key?null:d.key)} onSetDomain={setDomain} onSetTool={setTool} onError={onError} side="lft"/>)}</div>
+   <TcCompass domains={domains} reduced={reduced}/>
+   <div style={{display:'grid',gap:14}}>{right.map(d=><KnobCard key={d.key} domain={d} open={open===d.key} onToggle={()=>setOpen(open===d.key?null:d.key)} onSetDomain={setDomain} onSetTool={setTool} onError={onError} side="rgt"/>)}</div>
+  </div>
+ </>}
 
-<div style={{position:'absolute',left:18,right:18,bottom:14,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',pointerEvents:'none'}}>
-{[['Autopilot','#4CC48C'],['Drafts for you','#E3A63C'],['Your call','#EE7A72']].map(([l,c])=>
-<span key={l} className="row" style={{gap:7,height:26,padding:'0 11px',borderRadius:99,background:'rgba(255,255,255,.05)',color:'rgba(255,255,255,.76)',fontSize:11.4}}>
-<span style={{width:7,height:7,borderRadius:'50%',background:c}}/>{l}</span>)}
-<span className="mono" style={{marginLeft:'auto',color:'rgba(255,255,255,.5)',fontSize:11}}>{trustConfigured&&all?'Platform default · '+tot[0]+' run automatically · '+tot[1]+' drafted for you · '+tot[2]+' your call':'Platform default policy unavailable'}</span></div></div>
+ {/* Pending decisions — a REAL read of paige_actions; the decision itself is made in the one Paige chat. */}
+ <div className="card">
+  <div className="hd"><div><h3>Waiting on your decision</h3>
+   <div className="sub">{pending.loading?'Reading what is waiting on you…':pending.error?'This could not be read just now.':pending.items.length?'Work Paige has prepared but will not take without you.':'Nothing is waiting on your decision right now.'}</div></div>
+   <span className={'pill '+(pending.items.length?'pill-warn':'pill-n')}>{pending.loading?'…':pending.error?'Unavailable':pending.items.length?pending.items.length+' waiting':'Clear'}</span></div>
+  {pending.error
+   ? <div className="sub" role="alert" style={{padding:'14px 20px'}}>This could not be read, so it is not a record of nothing waiting. <button className="btn btn-s" style={{marginLeft:8}} onClick={pending.refresh}>Try again</button></div>
+   : pending.items.slice(0,4).map((a,i)=>
+   <div key={a.id} className="row" style={{gap:11,padding:'11px 20px',borderTop:i?'1px solid var(--line-soft)':'0',alignItems:'flex-start'}}>
+    <span style={{width:7,height:7,borderRadius:'50%',flex:'none',marginTop:5,background:'var(--warn)'}}/>
+    <span className="grow" style={{minWidth:0}}><span style={{fontSize:12.9,color:'var(--ink)',lineHeight:1.4,display:'block'}}>{a.title}</span>
+     <span className="sub" style={{fontSize:11.2}}>{a.department} · waiting on your decision</span></span>
+    <button className="btn btn-s" onClick={goPaige} style={{flex:'none'}}>Decide in Paige <Ic.arrow size={12}/></button></div>)}
+  {!pending.loading&&!pending.error&&pending.items.length===0&&<div className="sub" style={{padding:'8px 20px 14px'}}>When Paige prepares work she is not allowed to run alone, it appears here — and you decide it in the Paige chat.</div>}
+ </div>
 
-<div className="tc-rail">
-<div className="card" style={{display:'flex',flexDirection:'column',minHeight:0,overflow:'hidden'}}>
-<div className="hd" style={{flex:'none'}}><div><h3>Working now</h3><div className="sub">The last few minutes, as they happened</div></div>
-<span className={'pill '+(liveState==='ok'?'pill-ok':'pill-n')}>{liveState==='ok'?<><span className="dot"/>Live</>:liveState==='loading'?'Loading':liveState==='error'?'Unavailable':'Nothing yet'}</span></div>
-<div className="pane" style={{flex:1}}>{liveState!=='ok'?<div className="sub" style={{padding:'16px 20px',fontSize:12.4,lineHeight:1.5}} role={liveState==='error'?'alert':'status'}>{liveState==='loading'?'Reading what she has done…':liveState==='error'?<>Recent activity could not be loaded, so this is not a record of nothing happening. <button className="btn btn-s" style={{marginTop:9}} onClick={activity.refresh}>Try again</button></>:'Nothing recorded yet. Anything Paige or your team does lands here as it happens.'}</div>:live.map((l,i)=>{
-return <button key={l.id} onClick={()=>setFlow(l.tier==='red'?'esc':l.tier==='amber'?'appr':null)} className="row"
-style={{width:'100%',textAlign:'left',gap:11,padding:'11px 20px',borderTop:i?'1px solid var(--line-soft)':'0',alignItems:'flex-start'}}>
-<span style={{width:7,height:7,borderRadius:'50%',flex:'none',marginTop:5,
-background:l.tier==='green'?'var(--ok)':l.tier==='amber'?'var(--warn)':'var(--bad)'}}/>
-<span className="grow" style={{minWidth:0}}><span style={{fontSize:12.9,color:'var(--ink-2)',lineHeight:1.45,display:'block'}}>{l.t}</span>
-<span className="sub" style={{fontSize:11.3}}>{l.dept} · {l.tier==='green'?'performed and logged':l.tier==='amber'?'waiting on you':'your decision'}</span></span>
-<span className="mono sub" style={{fontSize:10.8,flex:'none'}}>{l.w}</span></button>})}</div></div>
+ {/* Recorded work — real Rail (get_solo_rail_activity), honest 4-state, unknown actor → Unattributed. */}
+ <div className="card">
+  <div className="hd"><div><h3>What's been recorded</h3><div className="sub">Work that has actually happened and been logged.</div></div>
+   <span className={'pill '+(liveState==='ok'?'pill-ok':'pill-n')}>{liveState==='ok'?<><span className="dot"/>Recorded</>:liveState==='loading'?'Loading':liveState==='error'?'Unavailable':'Nothing yet'}</span></div>
+  <div className="pane">{liveState!=='ok'
+   ? <div className="sub" role={liveState==='error'?'alert':'status'} style={{padding:'16px 20px',fontSize:12.4,lineHeight:1.5}}>{liveState==='loading'?'Reading what she has done…':liveState==='error'?<>Recent activity could not be loaded, so this is not a record of nothing happening. <button className="btn btn-s" style={{marginLeft:8}} onClick={activity.refresh}>Try again</button></>:'Nothing recorded yet. Anything Paige or your team does lands here as it happens.'}</div>
+   : live.map((l,i)=>
+    <div key={l.id} className="row" style={{gap:11,padding:'11px 20px',borderTop:i?'1px solid var(--line-soft)':'0',alignItems:'flex-start'}}>
+     <span style={{width:7,height:7,borderRadius:'50%',flex:'none',marginTop:5,background:'var(--ok)'}}/>
+     <span className="grow" style={{minWidth:0}}><span style={{fontSize:12.9,color:'var(--ink-2)',lineHeight:1.45,display:'block'}}>{l.t}</span>
+      <span className="sub" style={{fontSize:11.3}}>{l.dept} · {l.by} · performed and logged</span></span>
+     <span className="mono sub" style={{fontSize:10.8,flex:'none'}}>{l.w}</span></div>)}</div>
+ </div>
 
-<div className="row" style={{gap:9,flexWrap:'wrap'}}>
-<button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('growth')}><Ic.trend size={14}/>Trust over time</button>
-<button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('depts')}><Ic.grid size={14}/>By department</button></div></div>
+ <div className="row" style={{gap:9,flexWrap:'wrap'}}>
+  <button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('depts')}><Ic.grid size={14}/>Platform defaults by department</button>
+  <button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={goPaige}><Ic.spark size={14}/>Ask Paige about a capability</button>
+ </div>
 
-<div className="tc-railbtn row" style={{gap:9,flexWrap:'wrap'}}>
-<button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('live')}><span className="dot" style={{color:'var(--ok)'}}/>Working now · {live.length}</button>
-<button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('growth')}><Ic.trend size={14}/>Over time</button>
-<button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('depts')}><Ic.grid size={14}/>By department</button></div>
+ {/* Honest incompletes — shown, never simulated (§4.3/§32). */}
+ <div style={{border:'1px dashed var(--line)',borderRadius:'var(--r-l)',background:'var(--surface-2)',padding:'14px 18px',display:'grid',gap:9}}>
+  <div className="eyebrow" style={{fontSize:11,color:'var(--ink-2)'}}>Still incomplete — shown honestly, never simulated</div>
+  {[['users','Per-agent accountability','The record can show Paige’s team acted, but not always which specialist did — the log doesn’t carry that yet. Where it’s missing it reads Unattributed, never a guessed name.'],
+    ['bolt','Connected-worker status','Texting and automation tools report their live status into this view in a later release; until then their capabilities read from the platform default.'],
+    ['shield','Platform ceiling detail','You see the effect of platform policy on your own tools, never the platform posture itself — that stays with the operator.']].map((r,i)=>
+   <div key={i} className="row" style={{gap:9,alignItems:'flex-start',fontSize:11.6,color:'var(--ink-2)',lineHeight:1.45}}>
+    <span style={{color:'var(--ink-3)',flex:'none',marginTop:1}}>{React.createElement(Ic[r[0]]||Ic.grid,{size:15})}</span>
+    <span><strong style={{color:'var(--ink)'}}>{r[1]}.</strong> {r[2]}</span></div>)}
+ </div>
 
-<Foldout open={fold==='live'} onClose={()=>setFold(null)} title="Working now" sub="The last few minutes, as they happened">
-<div>{liveState!=='ok'?<div className="sub" style={{padding:'16px 20px',fontSize:12.4,lineHeight:1.5}} role={liveState==='error'?'alert':'status'}>{liveState==='loading'?'Reading what she has done…':liveState==='error'?'Recent activity could not be loaded, so this is not a record of nothing happening.':'Nothing recorded yet. Anything Paige or your team does lands here as it happens.'}</div>:live.map((l,i)=>{
-return <button key={l.id} onClick={()=>{setFold(null);setFlow(l.tier==='red'?'esc':l.tier==='amber'?'appr':null)}} className="row"
-style={{width:'100%',textAlign:'left',gap:11,padding:'11px 20px',borderTop:i?'1px solid var(--line-soft)':'0',alignItems:'flex-start'}}>
-<span style={{width:7,height:7,borderRadius:'50%',flex:'none',marginTop:5,background:l.tier==='green'?'var(--ok)':l.tier==='amber'?'var(--warn)':'var(--bad)'}}/>
-<span className="grow" style={{minWidth:0}}><span style={{fontSize:12.9,color:'var(--ink-2)',lineHeight:1.45,display:'block'}}>{l.t}</span>
-<span className="sub" style={{fontSize:11.3}}>{l.dept} · {l.tier==='green'?'performed and logged':l.tier==='amber'?'waiting on you':'your decision'}</span></span>
-<span className="mono sub" style={{fontSize:10.8,flex:'none'}}>{l.w}</span></button>})}</div></Foldout>
+ <div className="sub" style={{textAlign:'center',fontSize:11,padding:'2px 0 12px',color:'var(--ink-3)'}}>Trust is shown from your enforced settings and recorded evidence.</div>
+</div>
 
-<Foldout open={fold==='growth'} onClose={()=>setFold(null)} title="Trust over time" sub="Not available.">
-<div style={{padding:'16px 20px 20px'}}>
-<div className="card" style={{padding:'16px 18px',boxShadow:'none'}}>
-<div className="row" style={{gap:9}}><span className="tile" style={{width:30,height:30,borderRadius:'50%',background:'var(--surface-sunk)',color:'var(--ink-3)'}}><Ic.trend size={15}/></span>
-<div className="grow"><div style={{fontSize:13.4,fontWeight:600}}>Nothing records this yet</div>
-<div className="sub" style={{marginTop:2}}>There is no history to show, and none is inferred.</div></div></div>
-<div className="sub" style={{fontSize:11,marginTop:12,lineHeight:1.55}} role="status">Nothing in the platform records a day-by-day history of what Paige did, or of how this workspace's autonomy changed — no such record exists to change. What the compass shows is the platform's <strong>current</strong> default policy, which is the same for every workspace, so there is no movement to plot.</div></div></div></Foldout>
+<Foldout open={fold==='depts'} onClose={()=>setFold(null)} wide title="Platform defaults by department" sub="Read-only. The lane the platform sets for each department's action types — the same for every workspace, not a setting this workspace chose.">
+ <div>{!trustConfigured?<div className="sub" role="status" style={{padding:'16px 20px'}}>The platform default policy is unavailable right now.</div>
+  :depts.map((d,i)=>{const t=tierOfLevel(d.g);
+   return <button key={d.id} onClick={()=>{setFold(null);setFull(d.id);}} className="row"
+    style={{width:'100%',textAlign:'left',gap:11,padding:'10px 20px',borderTop:i?'1px solid var(--line-soft)':'0'}}>
+    <span style={{width:7,height:7,borderRadius:'50%',flex:'none',background:t==='green'?'var(--ok)':t==='amber'?'var(--warn)':t==='red'?'var(--bad)':'var(--ink-3)'}}/>
+    <span className="grow trunc" style={{fontSize:12.9,fontWeight:500}}>{d.n}</span>
+    <span className="mono sub" style={{fontSize:11}}>{d.w[0]}/{d.w[1]}/{d.w[2]}</span>
+    <span className="pill pill-n" style={{fontSize:10}}>{t?tierLabel[t]:'No default set'}</span></button>;})}</div></Foldout>
 
-<Foldout open={fold==='depts'} onClose={()=>setFold(null)} title="By department" sub="Action types on the platform default: runs automatically / drafted for you / always your call.">
-<div>{depts.map((d,i)=>{const t=tierOfLevel(d.g);
-return <button key={d.id} onClick={()=>setFull(d.id)} onMouseEnter={()=>setSel(d.id)} onMouseLeave={()=>setSel(null)} className="row"
-style={{width:'100%',textAlign:'left',gap:11,padding:'10px 20px',borderTop:i?'1px solid var(--line-soft)':'0'}}>
-<span style={{width:7,height:7,borderRadius:'50%',flex:'none',background:t==='green'?'var(--ok)':t==='amber'?'var(--warn)':t==='red'?'var(--bad)':'var(--ink-3)'}}/>
-<span className="grow trunc" style={{fontSize:12.9,fontWeight:500}}>{d.n}</span>
-<span className="mono sub" style={{fontSize:11}}>{d.w[0]}/{d.w[1]}/{d.w[2]}</span>
-<span className="pill pill-n" style={{fontSize:10}}>{t?tierLabel[t]:'No default set'}</span></button>})}</div></Foldout></div>
-
-{flow==='appr'&&<TcApprove onClose={()=>setFlow(null)} onDone={()=>setFlow(null)}/>}
-{flow==='esc'&&<TcEscalate onClose={()=>setFlow(null)}/>}
-{toast&&<div className="fade-in row" style={{position:'fixed',bottom:26,left:'50%',transform:'translateX(-50%)',gap:9,background:'var(--rail)',color:'var(--ink-inv)',
+{toast&&<div className="fade-in row" role="status" style={{position:'fixed',bottom:26,left:'50%',transform:'translateX(-50%)',gap:9,background:'var(--rail)',color:'var(--ink-inv)',
 padding:'11px 18px',borderRadius:12,fontSize:13,boxShadow:'var(--sh-3)',zIndex:95,maxWidth:'min(560px,92vw)'}}>
 <span style={{color:'var(--gold-bright)',display:'flex',flex:'none'}}><Ic.check size={15}/></span>{toast}</div>}
-</div>};
+</div>;};

@@ -1,14 +1,19 @@
 // @ts-nocheck
 import React, { useEffect, useRef } from "react";
-import { Activity, BrainCircuit } from "lucide-react";
+import { Activity, BrainCircuit, ShieldCheck } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { SoloMindWorkspace } from "./SoloMindWorkspace";
 import { SoloSystemsCheckWorkspace } from "./SoloSystemsCheckWorkspace";
+import { TrustCompass } from "./compass";
 
+// Business Game Plan → Systems Check → Trust Compass → Mind (owner-ruled 2026-09-05). Game Plan is
+// not built yet; the three built surfaces keep that order. The key MUST match the registry subtab
+// key ("compass") — a source-parsing contract test asserts the TABS set and order against it.
 const TABS = [
   ["sys", "Systems Check", Activity],
+  ["compass", "Trust Compass", ShieldCheck],
   ["mind", "Mind", BrainCircuit],
 ];
 
@@ -102,6 +107,12 @@ const CommandHub = ({ accountContext, openPaige }) => {
         {tab === "sys" ? (
           <div role="tabpanel" id="command-panel-sys" aria-labelledby="command-tab-sys" style={{ height: "100%" }}>
             <CommandCenter key={activeTenantId ?? "unresolved"} accountContext={accountContext} openPaige={openPaige} workspaceId={activeTenantId} />
+          </div>
+        ) : tab === "compass" ? (
+          <div role="tabpanel" id="command-panel-compass" aria-labelledby="command-tab-compass" style={{ height: "100%", overflow: "auto" }}>
+            {/* `key` re-keys every read on a workspace switch so no prior workspace's autonomy, pending
+                actions, or recorded activity can linger even for a frame. */}
+            <TrustCompass key={activeTenantId ?? "unresolved"} accountEpoch={activeTenantId} openPaige={openPaige} />
           </div>
         ) : activeTenantId ? (
           <div role="tabpanel" id="command-panel-mind" aria-labelledby="command-tab-mind" style={{ height: "100%" }}>

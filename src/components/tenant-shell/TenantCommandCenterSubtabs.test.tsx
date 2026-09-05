@@ -125,14 +125,16 @@ describe("tenant Command Center secondary tabs", () => {
     }
 
     const solo = branchBySlug("solo", "command-center");
+    // Trust Compass became Command Center's third sub-tab (owner-ruled 2026-09-05):
+    // Business Game Plan → Systems Check → Trust Compass → Mind (Game Plan not built yet).
     expect(solo?.subtabs?.map((tab) => tab.label)).toEqual([
-      "Systems Check", "Mind",
+      "Systems Check", "Trust Compass", "Mind",
     ]);
     expect(solo?.subtabs?.[0]).toMatchObject({ slug: "systems-check", key: "sys" });
   });
 
   it.each([
-    ["src/solo/CommandCenter.tsx", ["Systems Check", "Mind"]],
+    ["src/solo/CommandCenter.tsx", ["Systems Check", "Trust Compass", "Mind"]],
     ["src/agency/CommandCenter.tsx", ["Systems Check", "Directory", "History"]],
   ])("renders the ruled secondary labels in %s", (path, labels) => {
     const screen = source(path);

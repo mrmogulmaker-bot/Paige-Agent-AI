@@ -120,6 +120,10 @@ export const SOLO_BRANCHES: Branch[] = [
     // address remains a compatibility alias of the same owner.
     subtabs: [
       { slug: "systems-check", aliases: ["overview"], key: "sys", label: "Systems Check" },
+      // Trust Compass is the third Command Center surface (owner-ruled 2026-09-05):
+      // Business Game Plan → Systems Check → Trust Compass → Mind. Game Plan is not built yet,
+      // so it is not listed; the order of the built surfaces is preserved.
+      { slug: "trust-compass", key: "compass", label: "Trust Compass" },
       { slug: "mind", aliases: ["directory", "history"], key: "mind", label: "Mind" },
     ],
   },
@@ -134,9 +138,10 @@ export const SOLO_BRANCHES: Branch[] = [
       { slug: "capabilities", key: "capabilities", label: "Capabilities" },
     ],
   },
-  // Trust Compass has NO sub-tabs in Solo (full-page department drilldown, no sub-tab strip).
-  // The agency Trust Compass sub-tabs are an AGENCY-ONLY scope switch (§11c).
-  { slug: "trust-compass", key: "compass", label: "Trust Compass", group: "main" },
+  // Trust Compass moved INTO Command Center as its third sub-tab (owner-ruled 2026-09-05); it is no
+  // longer a top-level Solo branch. The legacy address `/solo/{account}/trust-compass` stays alive
+  // via a `replace` redirect in SoloApp.tsx into the canonical Command Center path, so old links do
+  // not break (§58). No duplicate top-level surface remains.
   {
     slug: "automations", key: "auto", label: "Automations", group: "main",
     // Source: src/solo/automations-build.tsx.

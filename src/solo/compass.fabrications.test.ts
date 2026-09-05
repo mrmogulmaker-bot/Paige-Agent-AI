@@ -58,15 +58,23 @@ describe("no fabricated successful action", () => {
   });
 });
 
-describe("the modals read the real action bus", () => {
-  it("CALLS the pending-actions seam in both modals", () => {
-    // Not `toContain("useSoloPendingActions")`. That was the first version and it was vacuous:
-    // the removal note above names the hook, so the assertion passed with every call site
-    // deleted. Mutation caught it — stripping the import left the test green. Counting the actual
-    // invocations is what distinguishes wiring from mentioning it.
+describe("pending decisions read the real action bus and route to the one Paige chat", () => {
+  it("CALLS the pending-actions seam (a real read), and only where it is rendered", () => {
+    // Not `toContain("useSoloPendingActions")` — that was vacuous (the removal notes name the hook,
+    // so it passed with every call site deleted). Counting the actual invocations is what
+    // distinguishes wiring from mentioning it. The two false-affordance modals (TcApprove/TcEscalate)
+    // are gone; the pending count is now read ONCE, on the page, and each item routes to Paige.
     const calls = src.match(/useSoloPendingActions\(\)/g) ?? [];
-    expect(calls.length).toBe(2); // TcApprove and TcEscalate
+    expect(calls.length).toBe(1);
     expect(src).toContain('from "./data/useSoloPendingActions"');
+  });
+
+  it("routes the decision to the one Paige chat, not a second approve button (§18/§70.1)", () => {
+    // The old modals' primary buttons ("Approve & send" / "Decide and log") only closed the modal.
+    // They are gone; the surface offers "Decide in Paige" and never re-adds the false affordance.
+    expect(src).not.toContain("Approve & send");
+    expect(src).not.toContain("Decide and log");
+    expect(src).toContain("Decide in Paige");
   });
 
   it("has no remaining reference to the removed fixtures", () => {
