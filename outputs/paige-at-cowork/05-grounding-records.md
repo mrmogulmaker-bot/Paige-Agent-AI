@@ -32,13 +32,25 @@ gap is **wiring, not schema.**
   `get_pipeline_spine_evidence(...)` (the Mind's Rail lens).
 
 ## RAIL WRITERS TODAY
+> **REFRESH 2026-09-05 (PR #947 merged, `20261220000000` applied on prod) — the F05 pattern to RATIFY & REUSE.**
+> Communications is now wired: `comms_buy_number` · `comms_name_number` · `comms_set_primary_number` ·
+> `comms_draft_registration` write `record_capability_run` via the new **one-home helper
+> `_shared/capability-record.ts`** (HOW: `recordCapabilityRun`, service-role, never throws/fabricates) +
+> `_shared/comms-capability-outcome.ts` (WHAT: the per-executor classifier). It adds a **6th outcome
+> `capability_completed_unrecorded`** ("the act took effect and its record did not"). Load-bearing rule:
+> **record at the EXECUTOR, never at `paige-ai-chat`'s central dispatch hook** — a central hook fails 4 ways,
+> 3 silent (wrong client → 0 rows written / double-record / records-what-never-ran / loses-a-completed-act).
+> **Owner ratified this design 2026-09-05: Paige-chat consequential actions adopt `capability-record.ts`; no
+> second activity log, no duplicate schema, no silent writer.**
 - **Correct (workspace-level `record_capability_run`):** n8n executor (`_shared/n8n-management.ts:145`), Zapier
-  executor (`_shared/mcp-outcome.ts:851`). Connection families also write correctly.
+  executor (`_shared/mcp-outcome.ts:851`), and the 4 comms acts (`_shared/capability-record.ts` +
+  `comms-capability-outcome.ts`). Connection families also write correctly. **11 capabilities now wired.**
 - **Correct (contact-scoped `record_rail_event`) but NONE passes an agent slug (the F05 gap):**
   `mcp-outcome.ts:907`, `railAutomation.ts:103` (+5 callers), `growth-process-submission:519`,
   `handle-inbound-sms:434`, `paige-mcp:5397`, `send-message:1374`, `paige-ai-chat:895` & `:11315`.
 - **SILENT (act but write no Rail row):** `deal_move_stage` (PAIGE's own pipeline tool) + `pipeline_attach`;
-  **~47 of 62 classified actions** write only `paige_audit_log`, which no Solo surface reads.
+  **~43 of the remaining classified actions** (11 now wired: 6 n8n + `zapier_run_action` + 4 comms) write only
+  `paige_audit_log`, which no Solo surface reads.
 
 ## MIND (F06)
 - **There is NO Mind store/table** (grep: no `paige_mind`/`mind_claim`/`rail_provenance`). Mind = a read-only
@@ -51,6 +63,11 @@ gap is **wiring, not schema.**
 - Abandoned prior attempt: PR #644 `get_solo_mind_rail_events()` — owner ruled it must be re-grounded first.
 
 ## BLOCKED-ON — the F05 owner ruling (narrower than the handoff framed it)
+> **RESOLVED 2026-09-05 — owner RATIFIED the merged design.** `actor_type` stays 5 values; specialist identity
+> via `actor_agent_slug`; non-contact events via `paige_workspace_events`; outcomes via the released
+> `_shared/capability-record.ts` pattern (#947). No widening of `actor_type`, no second log. The text below is
+> the pre-ruling analysis, retained for the record.
+
 The code already implemented a **third option** for both halves, so the ruling is *ratify or override*:
 - **Specialist naming:** widen `actor_type` (handoff's Option A) **contradicts the recorded rationale**
   (`20261201000800_…:12-36`: append-only Rail, DEFINER bypass, non-tenant-safe names). The merged design keeps
@@ -61,10 +78,12 @@ So the real owner decision: **ratify the merged design, or override toward a wid
 overrides the recorded reasoning).
 
 ## NEEDS-BUILDING (delta)
-**F05:** (1) pass `p_actor_agent_slug`/`_agent_slug` on the writes — params exist, every caller omits them; each
-executor must know which specialist acted (couples to F03). (2) Non-contact coverage per §37 producer inventory:
-wire the ~47 silent actions + `deal_move_stage` + `pipeline_attach` to `record_capability_run`, each with its
-`capability_key`.
+**F05 (RATIFIED design — reuse `_shared/capability-record.ts`, never a new writer):** (1) pass
+`_agent_slug`/`p_actor_agent_slug` on the writes — params exist, every caller omits them; each executor must know
+which specialist acted (couples to F03 — but do NOT invent a slug that resolves to nothing; gated on the agent
+registry). (2) Non-contact coverage per §37 producer inventory: wire the ~43 remaining silent actions +
+`deal_move_stage` + `pipeline_attach` to `record_capability_run` via the one-home helper, each classifying its own
+outcome at the EXECUTOR (per `comms-capability-outcome.ts`), each with its `capability_key`.
 **F06:** (1) Mind→Rail read contract — add a Rail-sourced records category to `SoloMindWorkspace` reading
 `get_solo_rail_activity` (the chat-side spine Mind is the template). (2) `rail_provenance_refs` array on the Mind
 claim shape (the spine projection proves the one-citation pattern). (3) an "unsourced" flag distinguishing
