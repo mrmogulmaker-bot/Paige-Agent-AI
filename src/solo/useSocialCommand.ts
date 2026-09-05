@@ -50,6 +50,8 @@ export type SocialCommandState = {
    * when it has six is the failure this flag exists to prevent.
    */
   notPermitted: boolean;
+  /** Every returned row was `unavailable` — the record exists or does not, and we were not shown. */
+  handlesUnknown: boolean;
   recordHandles: (draft: Record<string, string>) => Promise<SocialWriteResult>;
   retry: () => void;
 };
@@ -68,7 +70,7 @@ export function useSocialCommand(): SocialCommandState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
   const [refreshKey, setRefreshKey] = useState(0);
   const [state, setState] = useState<
-    Pick<SocialCommandState, "tenantId" | "phase" | "handles" | "canManage" | "recordChangedAt" | "notPermitted">
+    Pick<SocialCommandState, "tenantId" | "phase" | "handles" | "canManage" | "recordChangedAt" | "notPermitted" | "handlesUnknown">
   >({
     tenantId: activeTenantId ?? null,
     phase: accountContextLoading ? "resolving" : "loading",
@@ -76,6 +78,7 @@ export function useSocialCommand(): SocialCommandState {
     canManage: false,
     recordChangedAt: null,
     notPermitted: false,
+    handlesUnknown: false,
   });
 
   // An identity epoch also invalidates a completion after A -> B -> A, so a slow response from the
@@ -94,7 +97,7 @@ export function useSocialCommand(): SocialCommandState {
       return () => { cancelled = true; };
     }
     if (!activeTenantId) {
-      setState({ tenantId: null, phase: "unavailable", handles: [], canManage: false, recordChangedAt: null, notPermitted: false });
+      setState({ tenantId: null, phase: "unavailable", handles: [], canManage: false, recordChangedAt: null, notPermitted: false, handlesUnknown: false });
       return () => { cancelled = true; };
     }
 
@@ -116,7 +119,7 @@ export function useSocialCommand(): SocialCommandState {
       if (cancelled || identity.current !== opened) return;
 
       if (presence.error) {
-        setState({ tenantId: activeTenantId, phase: "error", handles: [], canManage: false, recordChangedAt: null, notPermitted: false });
+        setState({ tenantId: activeTenantId, phase: "error", handles: [], canManage: false, recordChangedAt: null, notPermitted: false, handlesUnknown: false });
         return;
       }
 
@@ -125,11 +128,20 @@ export function useSocialCommand(): SocialCommandState {
       // divergence the Chat adapter guards, arriving here through the same resolver.
       const foreign = rows.some((row) => row.tenant_id && row.tenant_id !== activeTenantId);
       if (foreign) {
-        setState({ tenantId: activeTenantId, phase: "error", handles: [], canManage: false, recordChangedAt: null, notPermitted: false });
+        setState({ tenantId: activeTenantId, phase: "error", handles: [], canManage: false, recordChangedAt: null, notPermitted: false, handlesUnknown: false });
         return;
       }
 
+      // `notPermitted` is the ACCESS case and drives the Channels panel's existing copy, so it stays
+      // keyed on that one reason (§58 — that panel's wording is shipped and correct).
       const refused = rows.length > 0 && rows.every((row) => row.status === "unavailable" && row.reason === REFUSED_REASON);
+      // `unknown` is the wider class the second §39 peer-gate found: the function has THREE refusals
+      // ('not permitted for this account', 'workspace record not readable', 'workspace not
+      // resolved') and every one returns a successful response carrying zero on-record rows. Only
+      // the first was ever surfaced, so the other two reached the page as "this workspace has no
+      // accounts" — an assertion about a record nobody read. Any all-unavailable response is a
+      // record we do not have, whatever its reason.
+      const unreadable = rows.length > 0 && rows.every((row) => row.status === "unavailable");
       const handles: SocialHandle[] = rows
         .filter((row) => row.status === "on_record" && typeof row.handle === "string" && row.handle.trim())
         .map((row) => ({
@@ -148,6 +160,7 @@ export function useSocialCommand(): SocialCommandState {
         canManage: memberRole === "owner" || memberRole === "admin",
         recordChangedAt: rows.find((row) => row.as_of)?.as_of ?? null,
         notPermitted: refused,
+        handlesUnknown: unreadable,
       });
     })();
 

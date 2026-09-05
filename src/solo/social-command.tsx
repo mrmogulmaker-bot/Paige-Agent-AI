@@ -274,9 +274,17 @@ function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles }
           <button type="button" className="btn btn-s" onClick={onAskPaige}>
             <Ic.spark size={13} />Ask PAIGE
           </button>
-          <button type="button" className="btn btn-s btn-g" onClick={onRecord}>
-            <Ic.check size={13} />{hasHandles ? "Update accounts" : "Record accounts"}
-          </button>
+          {/* Offered only to a caller whose save the server will accept. `record_social_handles`
+              refuses a non-admin, so rendering this for everyone put a control on the page that
+              cannot finish the job it names (§70) — and for a member refused sight of the record
+              it also implied the record was empty. The note below already said the true thing; it
+              is now the whole of what a read-only caller is shown, rather than a caption under a
+              button that would fail. Nothing is removed for anyone who could ever use it (§58). */}
+          {canManage && (
+            <button type="button" className="btn btn-s btn-g" onClick={onRecord}>
+              <Ic.check size={13} />{hasHandles ? "Update accounts" : "Record accounts"}
+            </button>
+          )}
         </div>
         {!canManage && (
           <p className="social-hero-permission">Read-only access — an owner or admin records these.</p>
@@ -344,10 +352,12 @@ function ActiveMissionsPanel({ onOpenStudio }) {
  * window, or a repurposing opportunity for this workspace, so none is drawn.
  */
 function PaigeSeesPanel({ items, loading, error, onRetry }) {
+  // `items` survives a failed refresh, so reading the tag off its length alone printed PARTIAL
+  // directly above a body saying the read had not happened. The tag agrees with the body now.
   const growth = items.filter((item) => isGrowthDesk(item.department));
   return (
     <section className="social-panel">
-      <PanelHead glyph="pulse" title="PAIGE sees" state={growth.length ? "PARTIAL" : "UNAVAILABLE"}
+      <PanelHead glyph="pulse" title="PAIGE sees" state={!loading && !error && growth.length ? "PARTIAL" : "UNAVAILABLE"}
         sub="What she has ready for you, from marketing, sales and client work." />
       {loading ? (
         <div className="social-skeleton" role="status" aria-label="Loading what PAIGE has ready"><span /><span /><span /></div>
@@ -534,6 +544,25 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompa
     opener.current?.focus?.({ preventScroll: true });
   }, []);
 
+  /**
+   * NOT SUCCESSFULLY READ — wider than "errored", and the width is the whole point.
+   *
+   * The first fix keyed both flags on the error phase. The second §39 peer-gate showed that fixed
+   * the PREDICATE and not the CLASS: `useSoloCampaigns` returns `{...empty}` for `loading`,
+   * `unavailable` AND `error`, and `useSoloPendingActions` starts `{items: [], loading: true,
+   * error: null}` — so a read still in flight produces the identical all-zeros input, and every
+   * sentence the fix was written to kill came straight back in a sibling phase.
+   *
+   * In flight is the MOST reachable of those states, not the least. `useSoloCampaigns` issues six
+   * round trips where `useSocialCommand` issues two, so on first paint social routinely wins and
+   * the page renders with campaign zeros asserted as facts; and its `visibleState` flips to
+   * `loading` SYNCHRONOUSLY on a tenant switch, so every switch commits at least one such frame.
+   *
+   * `!== "ready"` rather than a list of phases, deliberately: a phase added later is unread until
+   * someone proves otherwise, which is the safe direction for a §13 flag to fail in.
+   */
+  const waitingUnread = Boolean(pending.error) || Boolean(pending.loading);
+
   const input = React.useMemo(() => {
     // The `?? []` lives INSIDE the memo: as a statement outside it, the fallback array is a new
     // identity every render and the memo never holds.
@@ -553,15 +582,22 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompa
       // (both Trust Compass modals), and clearing its list on error changes what they render. That
       // is a §37 producer walk and a behaviour change on a surface this work was not asked to
       // touch, so it is filed separately rather than folded in here.
-      waitingOnYou: pending.error ? 0 : (pending.items ?? []).filter((item) => isGrowthDesk(item.department)).length,
+      waitingOnYou: waitingUnread ? 0 : (pending.items ?? []).filter((item) => isGrowthDesk(item.department)).length,
       // A failed read arrives as an empty list. The tile must not read that as "nothing waiting".
-      waitingUnknown: Boolean(pending.error),
+      waitingUnknown: waitingUnread,
       // The twin, and the one the first pass missed: `useSoloCampaigns` returns `{phase:"error",
       // ...empty}`, so published / approval-gated / repair / captured ALL collapse to zero on a
       // failed read and four sentences asserted an absence off it.
-      campaignsUnknown: campaigns.phase === "error",
+      campaignsUnknown: campaigns.phase !== "ready",
+      // The presence read's own refusals — three of them, every one arriving as a successful
+      // response carrying zero on-record rows, and only one was ever surfaced.
+      handlesUnknown: Boolean(social.handlesUnknown),
     };
-  }, [social.handles, campaigns.artifacts, campaigns.submissions, campaigns.phase, pending.items, pending.error]);
+  }, [
+    social.handles, social.handlesUnknown,
+    campaigns.artifacts, campaigns.submissions, campaigns.phase,
+    pending.items, waitingUnread,
+  ]);
 
   if (social.phase === "resolving" || campaigns.phase === "resolving") {
     return (

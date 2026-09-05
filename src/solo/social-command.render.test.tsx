@@ -403,7 +403,7 @@ describe("a failed read never renders as good news", () => {
 
     expect(said()).not.toContain("Nothing is waiting on you here");
     expect(said()).not.toContain("waiting on your decision");
-    expect(said()).toContain("could not be read");
+    expect(said()).toContain("has not been read");
   });
 
   it("claims nothing about published work, deliveries or approvals when the campaigns read failed", () => {
@@ -417,7 +417,7 @@ describe("a failed read never renders as good news", () => {
     expect(text).not.toContain("No form of yours is waiting on an approval");
     expect(text).not.toContain("No form of yours has a recorded response yet");
     expect(text).not.toContain("Nothing is waiting on you here");
-    expect(text).toContain("could not be read");
+    expect(text).toContain("has not been read");
   });
 
   it("does not offer to rebuild work it could not read", () => {
@@ -426,6 +426,59 @@ describe("a failed read never renders as good news", () => {
     // Branch 4's control. On a failed read `publishedOutputs` is zero like everything else, and
     // "Open Vibe Studio" would send a person to rebuild what they may already own.
     expect(said()).not.toContain("There is nothing published to put in front of anyone");
+  });
+
+  it("says nothing about campaign work that is still being read", () => {
+    // THE SECOND PEER-GATE'S HEADLINE FINDING. `useSoloCampaigns` returns `{...empty}` for loading
+    // and unavailable as well as error, and only error was flagged — so the four sentences came
+    // straight back in a sibling phase. In flight is the MOST reachable of the three: six round
+    // trips against social's two on first paint, and a synchronous flip on every tenant switch.
+    for (const phase of ["loading", "unavailable"]) {
+      harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+      renderAt({ phase, artifacts: [], submissions: [] });
+      const text = said();
+      expect(text, `campaigns.phase="${phase}"`).not.toContain("Every recorded delivery of yours succeeded");
+      expect(text, `campaigns.phase="${phase}"`).not.toContain("You have not published anything yet");
+      expect(text, `campaigns.phase="${phase}"`).not.toContain("No form of yours is waiting on an approval");
+      expect(text, `campaigns.phase="${phase}"`).not.toContain("There is nothing published to put in front of anyone");
+      expect(text, `campaigns.phase="${phase}"`).toContain("has not been read");
+    }
+  });
+
+  it("does not announce an empty queue while that queue is still loading", () => {
+    // `useSoloPendingActions` starts `{items: [], loading: true, error: null}`, so the first paint
+    // had a zero with no error beside it — and the terminal branch called that good news while the
+    // panel that reads the same table was still showing its skeleton.
+    harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+    harness.pending = { items: [], loading: true, error: null, refresh: () => {} };
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active", recentDispatches: {} }] });
+
+    expect(said()).not.toContain("Nothing is waiting on you here");
+    expect(said()).not.toContain("Nothing is waiting on your decision right now");
+  });
+
+  it("claims nothing about a workspace record the caller was refused sight of", () => {
+    // `get_social_presence_evidence` has three refusals and every one returns a successful response
+    // carrying zero on-record rows. Only the access one was surfaced, so an ordinary team member —
+    // not a tenant admin, which is the common case, not an edge — was told PAIGE did not know their
+    // accounts and handed a button they cannot complete (§13 + §70).
+    harness.social = {
+      ...harness.social,
+      handles: [],
+      canManage: false,
+      notPermitted: true,
+      handlesUnknown: true,
+    };
+    renderAt();
+
+    const text = said();
+    expect(text).not.toContain("PAIGE does not know which accounts are yours");
+    expect(text).not.toContain("You have not told PAIGE which accounts are yours yet");
+    expect(text).not.toContain("Nothing is on record yet");
+    expect(text).toContain("has not been read");
+    // And the dead-end control is not offered.
+    const labels = [...host.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(labels.join(" | ")).not.toContain("Record accounts");
   });
 
   it("still shows a real move when only one source failed and the other has work", () => {
@@ -463,11 +516,45 @@ describe("§13 on the rendered page — the hole the builder-only guard could no
    * `continue`, and were never examined at all — the guard skipped precisely the sentences most
    * likely to be a fabrication, because a claim tends to lead with its metric.
    */
-  const METRIC = /\b(followers?|reach|engagement|impressions?|audience|placements?|scheduled?)\b/i;
+  const METRIC = /\b(followers?|reach(?:ed|es)?|engagement|impressions?|audience|placements?|scheduled?|views?|likes?|subscribers?|clicks?|shares?)\b/i;
+
+  /**
+   * Read the page as SEPARATE strings, never as one `textContent`.
+   *
+   * `host.textContent` concatenates adjacent elements with no separator, so a label and the note
+   * beside it really do arrive glued: `"No account is on recordFollowers are up 12%."` — and
+   * `\bfollowers\b` then fails against `recordFollowers`, so the sentence is skipped entirely. The
+   * glue was silently disarming the guard on exactly the boundary where a label meets a claim.
+   * Walking text nodes keeps every string in its own element, which is how a person reads them.
+   */
+  const pageStrings = () => {
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const out: string[] = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const t = (n.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (t) out.push(t);
+    }
+    return out;
+  };
+
+  /**
+   * A LABEL is not a CLAIM, and de-gluing the page surfaced the difference.
+   *
+   * Reading text nodes separately means a tile's own label — "Recorded placements", "Publishing
+   * queue", "Scheduled" — arrives as its own string. Naming a metric in a heading is the entire
+   * point of a tile that then refuses to carry a figure for it, and §58 protects those labels, so
+   * the denial rule must not fire on them. A label is a short noun phrase with no figure and no
+   * full stop; anything carrying a digit, running to sentence length, or punctuated as a sentence
+   * is a claim and gets the rule. (The figures themselves are guarded separately, below, by the
+   * assertion that no `.social-figure` carries a digit on an empty workspace.)
+   */
+  const isLabel = (t: string) =>
+    !/[.!?]$/.test(t.trim()) && !/[0-9]/.test(t) && t.trim().split(/\s+/).length <= 4;
 
   const scan = (label: string) => {
-    const text = (host.textContent ?? "").replace(/\s+/g, " ");
-    for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+    const text = pageStrings().join("\n");
+    for (const sentence of text.split(/\n|(?<=[.!?])\s+/)) {
+      if (isLabel(sentence)) continue;
       if (!METRIC.test(sentence)) continue;
       const lower = sentence.toLowerCase();
       expect(

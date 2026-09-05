@@ -3604,7 +3604,29 @@ turns two rendered-page tests red; stubbing out the unknown branch turns three r
 passes both before and after proves nothing, and this pass had already shipped one of those — the
 builder test asserting where the ladder GOES while never asserting what it SAYS.
 
-**Second-pass proof.** Full suite **3365 passing** (228 files), `ci:tsc` ratchet clean at its 13-error
+**The peer-gate ran again on the fix and blocked it again — the predicate was one operator short of
+the class.** `campaignsUnknown` keyed on `phase === "error"`, but `useSoloCampaigns` returns
+`{...empty}` for `loading` and `unavailable` too, and `useSoloPendingActions` starts
+`{items:[], loading:true, error:null}` — so a read still IN FLIGHT produces the identical all-zeros
+input and every sentence the first fix killed returned in a sibling phase. In flight is the MOST
+reachable of the three: six round trips against social's two on first paint, and a synchronous flip
+to `loading` on every tenant switch. Now `campaigns.phase !== "ready"` and `pending.error ||
+pending.loading`, with the shared note reworded to **"This has not been read"** — true of all three
+states, where "could not be read" was true of one. A THIRD source was found uncovered:
+`get_social_presence_evidence`'s three refusals all return a SUCCESSFUL response carrying zero
+on-record rows, and only one was surfaced, so a team member who is not a tenant admin was told PAIGE
+did not know their accounts and handed a Record accounts button the server would refuse (§13 + §70).
+`handlesUnknown` covers any all-unavailable response, and the hero's record control now renders only
+for a caller whose save will be accepted — §58-clean, since it never worked for anyone else.
+
+**One finding cleared by MEASUREMENT rather than argument.** The read derived from css-contain-2 that
+`container-type: inline-size` would make `.social-page` a containing block for the fixed record
+dialog. Measured in the repo's own Chromium: scrim `0,0 1366×768`, dialog `403,284 560×200`,
+byte-identical with and without `container-type`, both viewport-centred. Chromium does not apply that
+containment for `inline-size`. **Honest limit:** Chromium only — no Gecko or WebKit binary is
+available in this session.
+
+**Second-pass proof.** Full suite **3368 passing** (228 files), `ci:tsc` ratchet clean at its 13-error
 baseline, `vite build` green, and every CI lint green (`lint:views`, `lint:definer-fns`,
 `lint:tier-features`, `lint:skeleton`, `lint:write-targets`, `lint:migration-versions`, `lint:pg-tokens`,
 `lint:shadow-vars`, `ci:regression`, `lint:action-authority`, `lint:no-shadowed-credential`,

@@ -42,17 +42,26 @@ export type SocialValue<T> = { state: SocialTruthState; value: T | null; note: s
 const absent = (note: string): SocialValue<number> => ({ state: "UNAVAILABLE", value: null, note });
 
 /**
- * What a figure says when its SOURCE could not be read.
+ * What a figure says when its SOURCE has not been successfully read.
  *
  * Distinct from `absent()`, and the distinction is the whole §13 point. `absent()` means "no such
  * record exists anywhere in the platform" — a structural truth that does not change between page
- * loads. This means "the record may well exist; the read failed and I am not going to guess." Both
- * render an em-dash, and saying the wrong one is how a broken read becomes good news.
+ * loads. This means "the record may well exist; I do not have it and I am not going to guess."
+ * Both render an em-dash, and saying the wrong one is how a missing read becomes good news.
  *
- * One home for the sentence (§18) because it now appears on six figures across three builders, and
- * a phrasing that drifts between them would read as several different conditions rather than one.
+ * THE WORDING COVERS THREE STATES ON PURPOSE, and the second §39 peer-gate is why. The first fix
+ * here keyed on `phase === "error"` — it fixed the PREDICATE and not the CLASS. A read still in
+ * flight, a workspace whose record the caller may not see, and a read that errored all produce the
+ * identical all-zeros input, and on this surface the in-flight one is the MOST reachable of the
+ * three, not the least: `useSoloCampaigns` issues six round trips to `useSocialCommand`'s two, and
+ * flips itself to `loading` synchronously on every tenant switch. "Has not been read" is true of
+ * all three; "could not be read" was true of only one. Which state it is stays visible where it
+ * belongs — the panel beside the figure shows a skeleton, or an error with a retry.
+ *
+ * One home for the sentence (§18) because it now appears on seven figures across three builders,
+ * and a phrasing that drifts between them would read as several conditions rather than one.
  */
-const UNREAD_NOTE = "This could not be read, so nothing is claimed either way.";
+const UNREAD_NOTE = "This has not been read, so nothing is claimed either way.";
 const unread = (): SocialValue<number> => ({ state: "UNAVAILABLE", value: null, note: UNREAD_NOTE });
 
 /**
@@ -219,6 +228,19 @@ export type SocialCommandInput = {
    * `waitingUnknown` treatment and the half next door did not; this closes it.
    */
   campaignsUnknown?: boolean;
+  /**
+   * The presence read did not return this workspace's accounts — refused, or unreadable.
+   *
+   * The THIRD fallible source, and the one neither original flag covered.
+   * `get_social_presence_evidence` has three distinct refusals ('not permitted for this account',
+   * 'workspace record not readable', 'workspace not resolved'), and all three arrive as a
+   * successful response carrying zero on-record rows. Without this the surface told a team member
+   * who is simply not a tenant admin that "PAIGE does not know which accounts are yours" and
+   * offered them a Record accounts button they cannot complete — an assertion about a record they
+   * were refused sight of, plus a §70 dead end, on a screen whose own Channels panel said the
+   * opposite two panels down.
+   */
+  handlesUnknown?: boolean;
 };
 
 /**
@@ -245,16 +267,20 @@ export function buildKpis(input: SocialCommandInput): SocialKpi[] {
       id: "channels",
       label: "Accounts on record",
       glyph: "users",
-      figure: {
-        state: input.handles.length ? "PARTIAL" : "UNAVAILABLE",
-        value: input.handles.length || null,
-        note: input.handles.length
-          ? "You told PAIGE these are yours. That is a record, not a connection."
-          : "You have not told PAIGE which accounts are yours yet.",
-      },
-      detail: input.handles.length
-        ? `${input.handles.map((h) => h.label).join(" · ")}`
-        : "Name the accounts you post from — PAIGE works from them every time she drafts for you.",
+      figure: input.handlesUnknown
+        ? unread()
+        : {
+            state: input.handles.length ? "PARTIAL" : "UNAVAILABLE",
+            value: input.handles.length || null,
+            note: input.handles.length
+              ? "You told PAIGE these are yours. That is a record, not a connection."
+              : "You have not told PAIGE which accounts are yours yet.",
+          },
+      detail: input.handlesUnknown
+        ? "This part of the workspace record is not yours to see, so nothing here says whether any account is on it."
+        : input.handles.length
+          ? `${input.handles.map((h) => h.label).join(" · ")}`
+          : "Name the accounts you post from — PAIGE works from them every time she drafts for you.",
     },
     {
       id: "queue",
@@ -441,16 +467,17 @@ export function buildBrief(input: SocialCommandInput): { headline: string; body:
   }
 
   const unreadSources = [
+    input.handlesUnknown ? "which accounts are on record" : null,
     input.waitingUnknown ? "what PAIGE is holding for you" : null,
     input.campaignsUnknown ? "your published work" : null,
   ].filter(Boolean) as string[];
   if (unreadSources.length) {
     const named = unreadSources.join(" and ");
     return {
-      headline: "Part of this page could not be read.",
+      headline: "Part of this page has not been read.",
       body: parts.length
-        ? `${parts.join(", ")}. ${named[0].toUpperCase()}${named.slice(1)} could not be read just now, so nothing on this page claims anything about ${unreadSources.length > 1 ? "either of them" : "it"} either way. Nothing was changed.`
-        : `${named[0].toUpperCase()}${named.slice(1)} could not be read just now. That is not the same as having nothing on record, so nothing here is claimed either way. Nothing was changed.`,
+        ? `${parts.join(", ")}. ${named[0].toUpperCase()}${named.slice(1)} has not been read, so nothing on this page claims anything about ${unreadSources.length > 1 ? "any of that" : "it"} either way. Nothing was changed.`
+        : `${named[0].toUpperCase()}${named.slice(1)} has not been read. That is not the same as having nothing on record, so nothing here is claimed either way. Nothing was changed.`,
     };
   }
 
@@ -527,7 +554,11 @@ export function buildNextMove(input: SocialCommandInput): SocialNextMove {
 
   // 3. First use. She cannot reference an account she has never been told about, and this is the
   //    one thing on this page a person can finish today.
-  if (input.handles.length === 0) {
+  //    Gated on the record having been READ: a member who is not a tenant admin is refused sight
+  //    of it, and telling them PAIGE does not know their accounts — then handing them a button they
+  //    cannot complete — is an assertion about a record they were not shown (§13) and a dead end
+  //    (§70).
+  if (input.handles.length === 0 && !input.handlesUnknown) {
     return {
       headline: "PAIGE does not know which accounts are yours.",
       detail:
@@ -555,11 +586,11 @@ export function buildNextMove(input: SocialCommandInput): SocialNextMove {
   //    added to fix, reappearing forty lines below the guard. Caught by the §39 peer-gate, not by
   //    the test written alongside the guard, which asserted where the ladder GOES and never what
   //    it SAYS.
-  if (input.waitingUnknown || input.campaignsUnknown) {
+  if (input.waitingUnknown || input.campaignsUnknown || input.handlesUnknown) {
     return {
-      headline: "Part of this page could not be read.",
+      headline: "Part of this page has not been read.",
       detail:
-        "Nothing was changed and nothing is claimed either way. Reload to try the read again, or ask PAIGE — she reads these from the same records and can tell you what she sees.",
+        "Nothing was changed and nothing is claimed either way. The panel that could not read it says so where it sits. Ask PAIGE — she reads these from the same records and can tell you what she sees.",
       action: { kind: "paige", label: "Ask PAIGE" },
     };
   }

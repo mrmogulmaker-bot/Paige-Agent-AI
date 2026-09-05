@@ -303,7 +303,55 @@ turns two rendered-page tests red, stubbing the unknown branch turns three red. 
 shipped a guard that passed either way (the builder test asserting where the ladder GOES and never
 what it SAYS), which is how F1 survived to the peer-gate.
 
-**Second-pass proof, by class (§13).** Automated: full suite **228 files / 3365 tests passing**.
+### The peer-gate ran again on the fix, and blocked it again
+
+The second read found the fix was correct for the inputs it covered and **one operator short of the
+class**. `campaignsUnknown` keyed on `phase === "error"`, but `useSoloCampaigns` returns `{...empty}`
+for `loading` and `unavailable` too, and `useSoloPendingActions` starts `{items: [], loading: true,
+error: null}`. A read still **in flight** produces the identical all-zeros input — so every sentence
+the first fix killed came straight back in a sibling phase.
+
+**In flight is the most reachable of those states, not the least.** `useSoloCampaigns` issues six
+round trips where `useSocialCommand` issues two, so on first paint social routinely wins and the page
+renders with campaign zeros asserted as facts; and its `visibleState` flips to `loading`
+**synchronously** on a tenant switch, so every switch commits at least one such frame.
+
+- **The predicate is now the class:** `campaigns.phase !== "ready"` and `pending.error || pending.loading`.
+  `!== "ready"` rather than a list of phases, so a phase added later is unread until proven otherwise.
+- **The note had to change with it.** "Could not be read" was true of one state out of three;
+  **"This has not been read, so nothing is claimed either way"** is true of all three. Which state it
+  actually is stays visible where it belongs — the panel beside the figure shows a skeleton, or an
+  error with a retry.
+- **A THIRD fallible source neither flag covered.** `get_social_presence_evidence` has three refusals
+  (`not permitted for this account`, `workspace record not readable`, `workspace not resolved`) and
+  every one returns a *successful* response carrying zero on-record rows. Only the first was
+  surfaced, so the other two reached the page as "this workspace has no accounts". Worse, for the
+  first: an ordinary team member who is not a tenant admin — the common case, not an edge — was told
+  *"PAIGE does not know which accounts are yours"* and handed a **Record accounts** button the server
+  would refuse. `handlesUnknown` now covers any all-unavailable response, and the hero's record
+  button renders only for a caller whose save will be accepted (the read-only note beside it already
+  said exactly this; it is now the whole of what such a caller sees). §58: nothing is removed for
+  anyone who could ever have used it.
+- **Row 8's panel tag agreed with nothing.** `PAIGE sees` printed `PARTIAL` off a list the hook never
+  clears, directly above a body saying the read had not happened.
+- **Two guard weaknesses, both measured rather than argued.** `host.textContent` glues adjacent
+  elements with no separator, so `"No account is on recordFollowers are up 12%."` defeated
+  `\bfollowers\b` and the sentence was skipped — the guard was disarmed precisely where a label meets
+  a claim. It now walks text nodes, with a label rule so a tile heading that names a metric in order
+  to refuse it is not mistaken for a claim. Metric vocabulary gained `views · likes · subscribers ·
+  clicks · shares · reached`. The fixture guard asserts **both** forms, since the module-level anchor
+  had missed an indented `const MISSIONS = [{…}]` the old casing rule caught.
+
+**One finding chased and CLEARED by measurement, not by argument.** The read proposed that
+`container-type: inline-size` makes `.social-page` a containing block for the fixed record dialog
+(css-contain-2 §2.2 via layout containment), which would scroll the dialog with the page. Measured in
+the repo's own Chromium: scrim `0,0 1366×768`, dialog `403,284 560×200` — **byte-identical with and
+without `container-type`**, both viewport-centred (403 = (1366−560)/2, 284 = (768−200)/2). Chromium
+does not apply that containment for `inline-size`. The earlier read had measured the same thing in
+Chromium 141 and agreed. **Honest limit:** Chromium only; no Gecko or WebKit binary is available
+here, so this is not proven cross-browser.
+
+**Second-pass proof, by class (§13).** Automated: full suite **228 files / 3368 tests passing**.
 Static/build: `ci:tsc` clean at its 13-error baseline, `vite build` green, 25 CI lints green.
 `lint:gold` reports one violation in `src/components/dashboard/BusinessCreditDashboard.tsx` — a file
 this branch does not touch, identical to `origin/main`, and not wired into CI; pre-existing, named

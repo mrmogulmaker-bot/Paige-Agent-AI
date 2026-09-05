@@ -31,7 +31,18 @@
   viewport-sized. **Every new guard was proven to fail without its fix**, because this pass had
   already shipped one that passed either way. **Owed, unchanged:** authenticated live drive (§32.c);
   `useSoloPendingActions` not clearing `items` on error is filed separately (two other consumers,
-  §37).
+  §37). **The peer-gate then blocked the FIX too, and was right again:** the predicate keyed on
+  `phase === "error"` when the class is "has not successfully returned" — `loading` and
+  `unavailable` collapse the same counts, and an in-flight read is the MOST reachable of the three
+  (six round trips against two on first paint; a synchronous flip on every tenant switch). Widened
+  to `!== "ready"` plus `pending.loading`, note reworded to "This has not been read" (true of all
+  three states). A THIRD uncovered source surfaced with it: `get_social_presence_evidence`'s three
+  refusals all return a SUCCESSFUL response with zero on-record rows, so a non-admin member was told
+  PAIGE did not know their accounts and given a Record accounts button the server refuses — now
+  `handlesUnknown`, with the hero control gated on the permission its own note already named.
+  **A finding cleared by measurement:** `container-type: inline-size` was argued from spec to
+  contain the fixed dialog; measured in Chromium it does not (scrim and dialog byte-identical with
+  and without it). Chromium only — no Gecko/WebKit binary here.
 
 - **Solo Campaigns → Social becomes Social Command, and gets the first writer `social_handles` ever had
   (2026-09-05, migration `20261210000000`)** — the tab was one fixed UNAVAILABLE panel; it is now a

@@ -208,7 +208,7 @@ describe("the next move — a decision, not a guess", () => {
       expect(said, `an unread source produced: "${move.headline}"`).not.toMatch(
         /nothing is waiting|up to date|nothing published|nothing to put in front/,
       );
-      expect(said).toContain("could not be read");
+      expect(said).toContain("has not been read");
     }
   });
 
@@ -351,6 +351,11 @@ describe("§13 fabrication guard — the shapes this surface must never grow", (
     // constant standing in for data nobody read, so that is what is asserted: no indentation, `m`
     // flag, `export` optional. A function-local array is out of scope by construction.
     expect(body).not.toMatch(/^(export\s+)?const\s+[A-Za-z_$][\w$]*\s*(:[^=]*)?=\s*\[\s*\{/m);
+    // The anchor closed one hole and opened another: an INDENTED `const MISSIONS = [{…}]` used to be
+    // caught by the casing rule and is missed by the module-level one. Both forms are asserted, so
+    // the recalibration is strictly a widening. A function-local array named in ordinary camelCase
+    // stays out of scope; a SCREAMING_CASE one at any depth still reads as a fixture and is caught.
+    expect(body).not.toMatch(/\bconst\s+[A-Z][A-Z0-9_]{2,}\s*(:[^=]*)?=\s*\[\s*\{/);
     expect(body).not.toMatch(/Authority Builder|Workshop Wednesday|Community Growth/);
   });
 
@@ -393,12 +398,12 @@ describe("§13 fabrication guard — the shapes this surface must never grow", (
     for (const stage of buildPipeline(unread)) {
       if (["review", "published", "repair"].includes(stage.id)) {
         expect(stage.figure.value, `${stage.id} carried a value from an unread source`).toBeNull();
-        expect(stage.figure.note).toContain("could not be read");
+        expect(stage.figure.note).toContain("has not been read");
       }
     }
     const captured = buildKpis(unread).find((k) => k.id === "captured")!;
     expect(captured.figure.value).toBeNull();
-    expect(captured.figure.note).toContain("could not be read");
+    expect(captured.figure.note).toContain("has not been read");
   });
 
   it("never quotes a count in the brief from a source that failed", () => {
@@ -413,7 +418,7 @@ describe("§13 fabrication guard — the shapes this surface must never grow", (
     // The stale 4 and the collapsed 2 must both be absent from the sentence a person reads.
     expect(brief.body).not.toMatch(/\b4 items?\b/);
     expect(brief.body).not.toMatch(/\b2 published\b/);
-    expect(`${brief.headline} ${brief.body}`).toContain("could not be read");
+    expect(`${brief.headline} ${brief.body}`).toContain("has not been read");
   });
 
   it("keeps every one of the five non-inferences the replaced panel made", () => {
