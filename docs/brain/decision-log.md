@@ -2789,3 +2789,39 @@ PASS; `package.json` valid; both npm scripts green. Production catalog (`xygzykj
 SELECT denied on both Rail tables; `get_solo_mind_rail_events` absent; `get_pipeline_spine_evidence` present
 and authenticated-executable. Static: dependency-free `.mjs` guard + CI wiring, no new type surface.
 **Supersedes #644.**
+
+## 2026-09-05 — Release C: the governed backend contract for Paige MEMORY (continuity)
+
+**The concept, kept distinct (task framing).** Rail records ACTIVITY, Spine supplies safe CURRENT
+evidence, Mind is curated KNOWLEDGE, **Memory is CONTINUITY** — durable owner-confirmed facts, decisions,
+commitments, corrections, preferences, and scoped agent outcomes/lessons. These are not merged into one
+unbounded store, and Memory is NOT a fifth Command Center tab or a raw event dump.
+
+**No new table (§18, verified on current `main`).** The four memory audiences already have homes:
+WORKSPACE → `paige_owner_memory`; CLIENT → `client_memory` (untouched); and the two homeless types map
+onto `paige_owner_memory`'s OPEN-VOCAB `memory_type` — CONVERSATION → `decision`/`commitment`/`correction`
+(never raw transcript; the rolling summary stays in `paige_chat_threads.summary`), AGENT →
+`agent_outcome`/`agent_lesson` (outcomes + lessons only, never hidden reasoning). What was genuinely
+missing was a GOVERNED, callable seam that stamps all six governance fields and enforces caller scope
+in-body.
+
+**What shipped — migration `20261221000000` (additive, three RPCs):** `record_paige_memory` (governed
+WRITE — source/scope/timestamp/correction via `p_supersede_prior`), `get_paige_memory` (governed READ —
+server-resolved scope + audience filter, own rows only), `forget_paige_memory` (governed DELETION —
+soft-delete). All `SECURITY DEFINER`, `search_path=public`, **anon-revoked**, `authenticated`+`service_role`
+only. Caller scope is resolved IN-BODY (§59/§45): a JWT caller is confined to `auth.uid()` +
+`current_user_tenant_id()` and its `p_user_id`/`p_tenant_id` are IGNORED; `service_role` passes the scope
+it resolved server-side. `IS NOT DISTINCT FROM` on `tenant_id` supports the tenant-less operator without
+the `=`-on-NULL trap. Every memory item carries source · scope · timestamp · visibility · correction ·
+deletion. Contract doc: `docs/brain/paige-memory-contract.md`.
+
+**Proof by class (§13/§32).** Pre-merge `BEGIN..ROLLBACK` on prod (`xygzykjyynhzqytbqnzu`, 2026-09-05):
+DDL executes; `record_paige_memory` is SECURITY DEFINER with pinned `search_path`; **anon cannot EXECUTE**
+(`anon_can_write=false`); `authenticated`/`service_role` can; a JWT caller with no resolvable workspace is
+refused **42501** with its passed ids IGNORED (§59 confinement proven in a role-switched `DO` block);
+`record_not_persisted=true` (rollback held — nothing applied outside the pipeline). Persisted-apply is
+CI's (`deploy-migrations.yml`). **DEFERRED, labeled:** chat-runtime auto-write (slice 4b) is NOT wired —
+the seam ships; a capable caller drives it. **Follow-ups filed:** `match_paige_memory`'s §59 global-role
+trap (client-memory recall, latent, different table/§37 set); GDPR bulk hard-delete via
+`process-data-deletion` (self-serve `forget` ships now); `match_paige_owner_memory`'s NULL-tenant `=`
+filter (latent, unwired operator recall).
