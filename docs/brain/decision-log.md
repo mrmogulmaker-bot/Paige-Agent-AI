@@ -1,5 +1,23 @@
 # Decision Log — chronological one-liners
 
+- **Social Command, round 3: the guard keeps getting written for the case that already worked
+  (2026-09-05, follow-up to PR #945)** — a third §39 peer-gate blocked again, with two HIGH. ①
+  `notPermitted` is a strict SUBSET of `handlesUnknown`, and the Channels panel branched on the
+  subset, so two of the read's three refusals still rendered "No account is on record" three panels
+  under a brief saying it had not been read — the very contradiction the previous fix cited as its
+  motivation, surviving in the panel it named. Every test had set both flags together, i.e. only the
+  case that already worked. ② A FOURTH fallible source: `role.error` was never checked, so a blip in
+  the membership read told a real owner "Read-only access" — and because the previous commit gated
+  the record button on `canManage`, that blip now cost them the only action on the page. **The
+  previous fix made this one worse.** `authorityUnknown` now matches the three sibling Solo hooks
+  that already had it (§18); `canManage` filters `status='active'` to match `is_tenant_admin`, since
+  revocation deliberately leaves `role` intact. Also: the reworded note was defended by a claim
+  ("the panel beside it shows a skeleton or a retry") that driving disproved, and the previous
+  commit had removed the only recovery instruction without naming it (§58). And
+  `useSocialCommand` had NO executed test — reverting its core predicate broke zero tests, so
+  `classifyPresence` was extracted, exported and tested; that revert now breaks three. **The
+  standing lesson: an instance-shaped assertion is what lets an instance-shaped fix look complete.**
+
 - **Social Command converts to an executive command surface without touching a single figure
   (2026-09-05, second pass, no migration)** — owner instruction: *"keep Mineral and Obsidian exactly
   as theme variants, do not change the evidence logic; this pass is purely about converting this from

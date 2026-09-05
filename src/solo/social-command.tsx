@@ -248,7 +248,7 @@ function NextMove({ move, onRecord, onOpenStudio, onOpenCompass, onOpenPipeline,
 
 /* ─────────────────────────── hero ─────────────────────────── */
 
-function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles }) {
+function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles, authorityUnknown, onRetry }) {
   return (
     <header className="social-hero">
       <div className="social-hero-top">
@@ -285,9 +285,20 @@ function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles }
               <Ic.check size={13} />{hasHandles ? "Update accounts" : "Record accounts"}
             </button>
           )}
+          {/* An unknown authority is not a denied one, and the difference costs a real owner their
+              only action on this page. It gets a retry rather than a verdict. */}
+          {!canManage && authorityUnknown && (
+            <button type="button" className="btn btn-s" onClick={onRetry}>
+              <Ic.arrow size={13} />Retry access
+            </button>
+          )}
         </div>
         {!canManage && (
-          <p className="social-hero-permission">Read-only access — an owner or admin records these.</p>
+          <p className="social-hero-permission" role={authorityUnknown ? "alert" : undefined}>
+            {authorityUnknown
+              ? "Your access could not be checked, so no permission is assumed either way. Nothing was changed."
+              : "Read-only access — an owner or admin records these."}
+          </p>
         )}
       </div>
       </div>
@@ -429,12 +440,27 @@ function ContentPipelinePanel({ stages }) {
 
 /* ─────────────────────────── channels ─────────────────────────── */
 
-function ChannelTelemetryPanel({ channels, onRecord, canManage, notPermitted }) {
+function ChannelTelemetryPanel({ channels, onRecord, canManage, notPermitted, handlesUnknown }) {
   return (
     <section className="social-panel">
       <PanelHead glyph="users" title="Channels" state={channels.length ? "PARTIAL" : "UNAVAILABLE"}
         sub="Every account you post from, and exactly what PAIGE knows about it." />
-      {notPermitted ? (
+      {/* `notPermitted` is a STRICT SUBSET of `handlesUnknown` — it names one of the read's three
+          refusals. Branching on the subset alone meant the other two ('workspace not resolved',
+          'workspace record not readable') fell through to "No account is on record", so this panel
+          asserted an empty record three panels below a brief saying the record had not been read.
+          That is verbatim the contradiction the previous commit cited as its own motivation,
+          surviving in the panel it named. The unread branch is checked FIRST because it is the
+          wider truth; the access branch stays because it says something more specific and true. */}
+      {handlesUnknown && !notPermitted ? (
+        <div className="social-empty">
+          <h4>This has not been read</h4>
+          <p>
+            The account list did not come back for this workspace. Nothing here says whether any
+            account is on it — only that it was not read. Nothing was changed.
+          </p>
+        </div>
+      ) : notPermitted ? (
         <div className="social-empty">
           <h4>Not shown at your access level</h4>
           <p>
@@ -652,6 +678,8 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompa
         hasHandles={social.handles.length > 0}
         onRecord={openRecord}
         onAskPaige={onAskPaige}
+        authorityUnknown={Boolean(social.authorityUnknown)}
+        onRetry={social.retry}
       />
 
       <NextMove
@@ -672,6 +700,7 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompa
           onRecord={openRecord}
           canManage={social.canManage}
           notPermitted={social.notPermitted}
+          handlesUnknown={Boolean(social.handlesUnknown)}
         />
       </div>
 
