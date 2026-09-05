@@ -50,6 +50,10 @@ export type SocialCommandState = {
    * when it has six is the failure this flag exists to prevent.
    */
   notPermitted: boolean;
+  /** The membership read failed, or the caller could not be resolved — authority is UNKNOWN. */
+  authorityUnknown: boolean;
+  /** Every returned row was `unavailable` — the record exists or does not, and we were not shown. */
+  handlesUnknown: boolean;
   recordHandles: (draft: Record<string, string>) => Promise<SocialWriteResult>;
   retry: () => void;
 };
@@ -64,11 +68,55 @@ function safeWriteMessage(code?: string): string {
   return "The save could not be confirmed. Reload the page and check what is on record before trying again.";
 }
 
+/**
+ * Classify one presence response. PURE, exported, and tested directly.
+ *
+ * Extracted because the §39 peer-gate proved the previous shape untestable in the way that matters:
+ * `useSocialCommand` had no executed test at all — the contract suite greps it as a SOURCE STRING —
+ * so `unreadable`, the entire basis of the `handlesUnknown` chain, could be reverted to `refused`
+ * and break zero tests. A guard that cannot fail is not a guard. The repo already answers this with
+ * `toPendingAction`: put the decision in a pure function and assert on it.
+ */
+export function classifyPresence(rows: SocialPresenceRow[]): {
+  handles: SocialHandle[];
+  refused: boolean;
+  unreadable: boolean;
+} {
+  // A response that produced NO rows is not a workspace with no accounts. Both predicates below
+  // opened with `rows.length > 0`, which fails in the OPPOSITE direction from `campaignsUnknown`
+  // ("unread until proven otherwise") shipped in the same commit: an unparseable or shape-changed
+  // response coerces to `[]` at the call site, and both flags then read false, so the page said
+  // "No account is on record" about a body nobody could read. An empty response is unknown, not empty.
+  const emptyResponse = rows.length === 0;
+  // `notPermitted` is the ACCESS case and drives the Channels panel's specific copy, so it stays
+  // keyed on that one reason (§58 — that panel's wording is shipped and correct). It is a STRICT
+  // SUBSET of `unreadable`, which is why every consumer must branch on the superset first.
+  //
+  // `every` over a homogeneous set: the function returns one row per network and refuses them
+  // together, never per-network. If it ever refuses partially this must become `some` — the
+  // predicate is only sound because that guarantee holds.
+  const refused = !emptyResponse && rows.every((row) => row.status === "unavailable" && row.reason === REFUSED_REASON);
+  // The wider class: the function has THREE refusals ('not permitted for this account', 'workspace
+  // record not readable', 'workspace not resolved') and every one returns a SUCCESSFUL response
+  // carrying zero on-record rows. Only the first was ever surfaced, so the other two reached the
+  // page as "this workspace has no accounts" — an assertion about a record nobody read.
+  const unreadable = emptyResponse || rows.every((row) => row.status === "unavailable");
+  const handles: SocialHandle[] = rows
+    .filter((row) => row.status === "on_record" && typeof row.handle === "string" && row.handle.trim())
+    .map((row) => ({
+      network: row.network as SocialNetworkKey,
+      label: NETWORK_LABEL.get(row.network) ?? row.network,
+      handle: (row.handle as string).trim(),
+    }));
+
+  return { handles, refused, unreadable };
+}
+
 export function useSocialCommand(): SocialCommandState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
   const [refreshKey, setRefreshKey] = useState(0);
   const [state, setState] = useState<
-    Pick<SocialCommandState, "tenantId" | "phase" | "handles" | "canManage" | "recordChangedAt" | "notPermitted">
+    Pick<SocialCommandState, "tenantId" | "phase" | "handles" | "canManage" | "recordChangedAt" | "notPermitted" | "handlesUnknown" | "authorityUnknown">
   >({
     tenantId: activeTenantId ?? null,
     phase: accountContextLoading ? "resolving" : "loading",
@@ -76,6 +124,8 @@ export function useSocialCommand(): SocialCommandState {
     canManage: false,
     recordChangedAt: null,
     notPermitted: false,
+    handlesUnknown: false,
+    authorityUnknown: false,
   });
 
   // An identity epoch also invalidates a completion after A -> B -> A, so a slow response from the
@@ -94,29 +144,42 @@ export function useSocialCommand(): SocialCommandState {
       return () => { cancelled = true; };
     }
     if (!activeTenantId) {
-      setState({ tenantId: null, phase: "unavailable", handles: [], canManage: false, recordChangedAt: null, notPermitted: false });
+      setState({ tenantId: null, phase: "unavailable", handles: [], canManage: false, recordChangedAt: null, notPermitted: false, handlesUnknown: false, authorityUnknown: false });
       return () => { cancelled = true; };
     }
 
     setState((prev) => ({ ...prev, tenantId: activeTenantId, phase: "loading" }));
 
     void (async () => {
+      // Resolved ONCE, before the pair, and kept. Inlining it as `?? ""` sent an empty string to a
+      // uuid column on any `getUser()` blip — PostgREST 400, `role.data` null, error discarded, and
+      // a real owner rendered as read-only. `callerId` being absent is itself an unknown authority,
+      // not an absence of authority, which is why it feeds the flag below rather than a false.
+      const callerId = (await supabase.auth.getUser()).data.user?.id ?? null;
       const [presence, role] = await Promise.all([
         // No tenant argument: a JWT caller's workspace is server-resolved and the function ignores
         // one anyway (§9/§588). Passing it would only create the illusion that it is honoured.
         supabase.rpc("get_social_presence_evidence" as never, {} as never),
-        supabase
-          .from("tenant_members")
-          .select("role")
-          .eq("tenant_id", activeTenantId)
-          .eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "")
-          .maybeSingle(),
+        callerId
+          ? supabase
+              .from("tenant_members")
+              .select("role")
+              .eq("tenant_id", activeTenantId)
+              .eq("user_id", callerId)
+              // `is_tenant_admin` requires status='active' (migration 20260629175341). Omitting it
+              // here made the client predicate WIDER than the server's: revocation sets
+              // status='revoked' and deliberately leaves `role` intact, so a revoked admin kept
+              // canManage and got a button whose save raises 42501. The two sibling hooks that
+              // carry this same gate both filter on status; this one did not.
+              .eq("status", "active")
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
 
       if (cancelled || identity.current !== opened) return;
 
       if (presence.error) {
-        setState({ tenantId: activeTenantId, phase: "error", handles: [], canManage: false, recordChangedAt: null, notPermitted: false });
+        setState({ tenantId: activeTenantId, phase: "error", handles: [], canManage: false, recordChangedAt: null, notPermitted: false, handlesUnknown: false, authorityUnknown: false });
         return;
       }
 
@@ -125,19 +188,14 @@ export function useSocialCommand(): SocialCommandState {
       // divergence the Chat adapter guards, arriving here through the same resolver.
       const foreign = rows.some((row) => row.tenant_id && row.tenant_id !== activeTenantId);
       if (foreign) {
-        setState({ tenantId: activeTenantId, phase: "error", handles: [], canManage: false, recordChangedAt: null, notPermitted: false });
+        setState({ tenantId: activeTenantId, phase: "error", handles: [], canManage: false, recordChangedAt: null, notPermitted: false, handlesUnknown: false, authorityUnknown: false });
         return;
       }
 
-      const refused = rows.length > 0 && rows.every((row) => row.status === "unavailable" && row.reason === REFUSED_REASON);
-      const handles: SocialHandle[] = rows
-        .filter((row) => row.status === "on_record" && typeof row.handle === "string" && row.handle.trim())
-        .map((row) => ({
-          network: row.network as SocialNetworkKey,
-          label: NETWORK_LABEL.get(row.network) ?? row.network,
-          handle: (row.handle as string).trim(),
-        }));
-
+      const { handles, refused, unreadable } = classifyPresence(rows);
+      if (role.error) {
+        console.error("[social-command] membership read failed; treating authority as unknown", role.error);
+      }
       const memberRole = (role.data as { role?: unknown } | null)?.role;
       setState({
         tenantId: activeTenantId,
@@ -146,8 +204,17 @@ export function useSocialCommand(): SocialCommandState {
         // The same predicate the server's own gate uses (`is_tenant_admin`), so the form is offered
         // to exactly the callers the write will accept rather than to everyone who can see it.
         canManage: memberRole === "owner" || memberRole === "admin",
+        // A FAILED AUTHORITY READ IS NOT A CALLER WITHOUT AUTHORITY.
+        //
+        // `useCatalogOffers`, `useSoloSalesOps` and `useSoloAgreements` all carry this flag; this
+        // hook was the only one of the four without it (§18), and the gap became load-bearing the
+        // moment the record button was made conditional on `canManage`: a blip in the membership
+        // read now costs a genuine owner the one action this surface offers, and tells them
+        // "Read-only access — an owner or admin records these" about their own workspace.
+        authorityUnknown: Boolean(role.error) || !callerId,
         recordChangedAt: rows.find((row) => row.as_of)?.as_of ?? null,
         notPermitted: refused,
+        handlesUnknown: unreadable,
       });
     })();
 

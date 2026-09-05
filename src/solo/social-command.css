@@ -20,6 +20,14 @@
   max-width: 1240px;
   margin: 0 auto;
   min-width: 0;
+  /* THE BREAKPOINTS BELOW MEASURE THIS BOX, NOT THE WINDOW — and the first version of this file
+     measured the window while its own comment claimed otherwise. Solo's docked PAIGE column makes a
+     1366 session give this tab ~685px and ~439px with PAIGE expanded, so at a 1366 viewport NONE of
+     the @media rules ever fired: the two-column grid ran at 352px / 275px and the KPI strip at
+     111px a tile, which is where the truth pill overflowed. `solo-campaigns.css:26-34` records the
+     identical defect in the sibling file and the identical fix. */
+  container-type: inline-size;
+  container-name: social;
   display: grid;
   gap: 14px;
   align-content: start;
@@ -165,6 +173,29 @@
 .social-kpi p { font-size: 11px; line-height: 1.45; color: var(--ink-3); text-wrap: pretty; }
 .social-kpi .social-truth { justify-self: start; }
 
+/* ── the next move ────────────────────────────────────────────────────────── */
+/* Sits between the brief and the panels, and is the only element on the page besides the hero act
+   that carries gold — because it is the only other thing here that is an act. */
+
+.social-next {
+  min-width: 0;
+  display: flex; align-items: center; gap: 14px;
+  padding: 15px 18px;
+  border: 1px solid var(--gold-line);
+  border-radius: var(--r-l);
+  background: linear-gradient(120deg, var(--gold-tint), var(--surface) 62%);
+  box-shadow: var(--sh-1);
+}
+.social-next-glyph {
+  display: grid; place-items: center; flex: none;
+  width: 32px; height: 32px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--gold-line); color: var(--gold);
+}
+.social-next-body { min-width: 0; flex: 1; }
+.social-next-body h2 { margin-top: 4px; font-size: 15.5px; letter-spacing: -.02em; }
+.social-next-body p { margin-top: 4px; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+.social-next-act { flex: none; }
+
 /* ── panels ───────────────────────────────────────────────────────────────── */
 
 .social-grid {
@@ -190,6 +221,14 @@
   padding: 15px 17px;
   border-bottom: 1px solid var(--line-soft);
   background: var(--surface-2);
+}
+.social-panel-head > div { min-width: 0; }
+/* The plate the reference gives every section header. Chrome: it names the section, it claims
+   nothing. Same size and radius as `.social-feed-glyph` so the sheet has one plate, not three. */
+.social-panel-glyph {
+  display: grid; place-items: center; flex: none;
+  width: 28px; height: 28px; border-radius: 9px;
+  background: var(--surface-sunk); color: var(--ink-3);
 }
 .social-panel-head h3 { font-size: 14px; letter-spacing: -.02em; }
 .social-panel-head p { margin-top: 3px; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
@@ -226,7 +265,10 @@
   width: 28px; height: 28px; border-radius: 9px;
   background: var(--violet-tint); color: var(--violet);
 }
-.social-feed h4 { font-size: 12.8px; }
+.social-feed-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.social-feed-age { flex: none; font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.social-feed h4 { font-size: 12.8px; min-width: 0; }
+.social-feed-why { color: var(--ink-3); opacity: .82; }
 .social-feed p { margin-top: 3px; font-size: 12px; line-height: 1.5; color: var(--ink-2); overflow-wrap: anywhere; }
 .social-feed small { display: block; margin-top: 5px; font-size: 11px; color: var(--ink-3); }
 
@@ -260,6 +302,8 @@
    this workspace has actually produced. A stage with no source gets neither. */
 .social-stage--attention:has(.social-figure:not(.social-figure--absent)) { border-color: var(--warn); }
 .social-stage--attention:has(.social-figure:not(.social-figure--absent)) .social-figure { color: var(--warn); }
+.social-stage--failing:has(.social-figure:not(.social-figure--absent)) { border-color: var(--bad); }
+.social-stage--failing:has(.social-figure:not(.social-figure--absent)) .social-figure { color: var(--bad); }
 .social-stage--positive:has(.social-figure:not(.social-figure--absent)) { border-color: var(--ok); }
 .social-stage--positive:has(.social-figure:not(.social-figure--absent)) .social-figure { color: var(--ok); }
 
@@ -389,16 +433,18 @@
 }
 
 /* ── responsive ───────────────────────────────────────────────────────────── */
-/* Plain @media, not @container: `container-type` is declared only on `.campaigns-nav`, so a
-   container query here would never match. The widths track the column this tab actually gets —
-   Solo's docked PAIGE column makes a 1366 session ~685px wide, and ~439px with PAIGE expanded. */
+/* @container, keyed to `.social-page` — see the note on that rule for why @media was wrong here
+   and never fired at the widths this tab actually gets. The thresholds are the COLUMN's width:
+   ~641px is a docked 1366 session and ~395px is one with PAIGE expanded, so both now resolve to a
+   single-column grid instead of two columns at 352px and 275px. */
 
-@media (max-width: 1180px) {
+@container social (max-width: 900px) {
   .social-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .social-pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* The connector joins DOM-adjacent siblings, so once the row wraps it would join the wrong pair. */
   .social-stage + .social-stage::before { display: none; }
 }
-@media (max-width: 1020px) {
+@container social (max-width: 760px) {
   .social-hero-top { grid-template-columns: minmax(0, 1fr); justify-items: start; }
   .social-hero-mark { justify-items: start; }
   .social-quote { text-align: left; }
@@ -407,15 +453,27 @@
   .social-hero-permission { text-align: left; }
   .social-grid { grid-template-columns: minmax(0, 1fr); }
   .social-headline { font-size: 23px; }
+  .social-next { align-items: flex-start; flex-wrap: wrap; }
 }
-@media (max-width: 720px) {
+@container social (max-width: 520px) {
   .social-hero { padding: 18px 16px 16px; }
   .social-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .social-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .social-dialog-fields { grid-template-columns: minmax(0, 1fr); }
   .social-channels li { align-items: flex-start; flex-direction: column; gap: 8px; }
   .social-channel-metric { text-align: left; }
   .social-headline { font-size: 20px; }
+  .social-feed-line { flex-wrap: wrap; }
+}
+
+/* The record dialog stays on @media, and the exception is not an oversight.
+   `.social-dialog` is `position: fixed` and `width: min(560px, 100vw - 32px)` — sized by the
+   VIEWPORT, not by the page column it happens to be a DOM descendant of. Converting its rule to
+   `@container social` along with everything else measured the wrong box: with PAIGE expanded the
+   column is ~395px, so a dialog that is actually 560px wide would have collapsed its six fields
+   into one column with room to spare for two. The container query is right for the page and wrong
+   for the one element that escapes it. */
+@media (max-width: 720px) {
+  .social-dialog-fields { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ── motion + forced colors ───────────────────────────────────────────────── */
@@ -429,7 +487,7 @@
 }
 @media (forced-colors: active) {
   .social-hero, .social-panel, .social-kpi, .social-stage, .social-governance,
-  .social-state, .social-dialog, .social-truth { border: 1px solid CanvasText; }
+  .social-state, .social-dialog, .social-truth, .social-next, .social-panel-glyph { border: 1px solid CanvasText; }
   .social-orb-halo, .social-orb-ring { display: none; }
   .social-scrim { background: Canvas; }
 }
