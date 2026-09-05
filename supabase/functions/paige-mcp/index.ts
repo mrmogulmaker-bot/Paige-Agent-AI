@@ -3216,6 +3216,10 @@ mcp.tool("list_subagents", {
     domain: z.string().optional().describe("Filter by domain (partial match)."),
   }),
   handler: async ({ query, domain }) => {
+    // This is the one read on the surface whose only outbound call is a helper. `tool_search` routes
+    // to the orchestrator's `searchSubagents`, which is a single `.select()` over `paige_subagents`;
+    // the invocation-logging write lives on `tool_invoke`, which is `delegate_to_subagent`'s path.
+    // mcp-read-fetch-exempt: tool_search reaches searchSubagents, one select over paige_subagents
     const r = await callOrchestrator({ action: "tool_search", query, domain });
     if (r.status >= 300) return err(`orchestrator_error_${r.status}`);
     return ok(r.body);
@@ -3630,6 +3634,9 @@ mcp.tool("list_subagent_proposals", {
     // workspace's proposals to any MCP caller.
     const listTenantId = await actorTenantId();
     if (!listTenantId) return err("tenant_not_resolved");
+    // The forge's `list` action is a `.select()` over `paige_subagent_proposals`, ordered and
+    // limited — no insert, update, delete or provider call anywhere on that branch.
+    // mcp-read-fetch-exempt: subagent-forge action list is a select over the proposals table
     const r = await fetch(`${SUPABASE_URL}/functions/v1/subagent-forge`, {
       method: "POST",
       headers: {
@@ -5252,7 +5259,7 @@ async function resolveBearer(presented: string): Promise<ActorCtx | null> {
 async function enforceTierAndScope(
   body: any,
   actor: ActorCtx,
-): Promise<{ ok: true } | { ok: false; status: 403; error: string }> {
+): Promise<{ ok: true } | { ok: false; status: 403; code: string; error: string }> {
   // NOTE: this inspects a single JSON-RPC object's `.method`. A JSON-RPC batch
   // ARRAY has no top-level `.method` and would slip past — that is safe TODAY
   // only because the transport (StreamableHttpTransport, no session adapter)
@@ -5269,9 +5276,9 @@ async function enforceTierAndScope(
   try {
     tier = await actorStore.run(actor, () => deriveTier(actor));
   } catch (e) {
-    if (operatorNotification) return { ok: false, status: 403, error: "This action is unavailable." };
+    if (operatorNotification) return { ok: false, status: 403, code: "unavailable", error: "This action is unavailable." };
     console.error("[paige-mcp] tier resolution failed", (e as Error)?.message);
-    return { ok: false, status: 403, error: "tier_resolution_failed" };
+    return { ok: false, status: 403, code: "tier_resolution_failed", error: "tier_resolution_failed" };
   }
 
   // These legacy operator tools must not emit named denial/audit payloads or
@@ -5279,7 +5286,7 @@ async function enforceTierAndScope(
   if (operatorNotification) {
     return tier === "god" && (actor.kind === "platform" || actor.scopes.includes(TOOL_SCOPE[toolName]))
       ? { ok: true }
-      : { ok: false, status: 403, error: "This action is unavailable." };
+      : { ok: false, status: 403, code: "unavailable", error: "This action is unavailable." };
   }
 
   // ── TIER GATE (audience) ──
@@ -5292,7 +5299,7 @@ async function enforceTierAndScope(
       audit("tier_denied", "mcp_tool", toolName ?? null, { required_tier: requiredTier, caller_tier: tier }))
       .catch(() => {});
     return {
-      ok: false, status: 403,
+      ok: false, status: 403, code: "tier_forbidden",
       error: `tier_forbidden: '${toolName}' requires '${requiredTier}', caller is '${tier}'`,
     };
   }
@@ -5300,9 +5307,9 @@ async function enforceTierAndScope(
   // ── SCOPE GATE (operation) — unchanged semantics ──
   if (actor.kind === "platform") return { ok: true };
   const required = TOOL_SCOPE[toolName];
-  if (!required) return { ok: false, status: 403, error: `unknown_tool:${toolName}` };
+  if (!required) return { ok: false, status: 403, code: "unknown_tool", error: `unknown_tool:${toolName}` };
   if (!actor.scopes.includes(required)) {
-    return { ok: false, status: 403, error: `insufficient_scope: tool '${toolName}' requires '${required}'` };
+    return { ok: false, status: 403, code: "insufficient_scope", error: `insufficient_scope: tool '${toolName}' requires '${required}'` };
   }
   return { ok: true };
 }
@@ -5711,7 +5718,12 @@ app.all("/*", async (c) => {
     if (!gate.ok) {
       return c.json({
         jsonrpc: "2.0", id: peekedBody?.id ?? null,
-        error: { code: -32001, message: gate.error },
+        // `data.refusal_code` is additive and the sentence is unchanged, so no existing consumer
+        // breaks. It exists because the governed door below returns the SAME http 403 and the same
+        // JSON-RPC -32001, and telling the two apart by which one LACKS a `data` key is
+        // discrimination by absence — the kind a consumer gets wrong once and then hard-codes.
+        // A tier denial is about who is asking; a governed refusal is about what was asked for.
+        error: { code: -32001, message: gate.error, data: { refusal_code: gate.code } },
       }, gate.status, CORS);
     }
     // The governed door. `gate.ok` is the access verdict this branch just established — passing it

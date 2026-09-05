@@ -41,7 +41,11 @@ describe("operator notification tools use the real MCP discovery and invocation 
     it.each(["client", "tenant", "agency"])(`${name}: %s cannot discover, invoke, or emit a named denial`, async tier => {
       const h = harness(tier);
       expect(h.visible({ name })).toBe(false);
-      expect(await h.call(name)).toEqual({ ok: false, status: 403, error: "This action is unavailable." });
+      // `code` is asserted alongside the sentence, and it must stay GENERIC for these two: the
+      // whole point of this branch is that a non-operator learns nothing about what exists. A code
+      // of `tier_forbidden` or the tool's own name here would be the named denial this test bans,
+      // moved into a machine-readable field where it is easier to miss.
+      expect(await h.call(name)).toEqual({ ok: false, status: 403, code: "unavailable", error: "This action is unavailable." });
       expect(h.database).not.toHaveBeenCalled();
       expect(h.audit).not.toHaveBeenCalled();
     });
@@ -54,7 +58,7 @@ describe("operator notification tools use the real MCP discovery and invocation 
     it(`${name}: missing operator scope fails safely`, async () => {
       const h = harness("god", []);
       expect(h.visible({ name })).toBe(false);
-      expect(await h.call(name)).toEqual({ ok: false, status: 403, error: "This action is unavailable." });
+      expect(await h.call(name)).toEqual({ ok: false, status: 403, code: "unavailable", error: "This action is unavailable." });
       expect(h.database).not.toHaveBeenCalled();
     });
   }
