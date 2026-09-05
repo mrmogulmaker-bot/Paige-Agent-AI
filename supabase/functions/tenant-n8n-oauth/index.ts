@@ -30,7 +30,7 @@ type ServiceResult={expired?:boolean;account_number?:string;authorization_url:st
 // `oauth_scopes` and this one did not, so reading it compiled there and failed only here.
 // Two declarations of one response is how that happens (§18); unifying them is tracked
 // separately rather than folded into a fix someone is waiting on.
-type Lease={lease:string;generation:string;approved_ids:string[];discovery_pin:string|null;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null;oauth_scopes:string[]};
+type Lease={lease:string;generation:string;approved_ids:string[];approved_marks:Record<string,string>;discovery_pin:string|null;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null;oauth_scopes:string[]};
 Deno.serve(async req=>{
  const origin=req.headers.get('origin');
  const headers={...HEADERS,...(origin&&ALLOWED_ORIGINS.has(origin)?{'Access-Control-Allow-Origin':origin}:{})};
@@ -213,20 +213,26 @@ Deno.serve(async req=>{
    }
    const preview=await discoverWorkflowPreviews({serverUrl:lease.server_url,auth:{kind:'bearer',token:accessToken}});
    if(preview.workflows.some(row=>[accessToken,...activeSecrets].some(secret=>row.name.includes(secret)||row.id.includes(secret))))throw new N8nSafeError('provider_unavailable');
-   await rpc('probe',{...bound,state:'connected',pin:preview.pin});
+   await rpc('probe',{...bound,state:'connected',pin:preview.pin,marks:preview.marks,inventory_complete:preview.inventory_complete});
    if(body.action==='discover'){
     const snapshot=await rpc('snapshot',{...bound,payload:preview});
-    return json({workflows:preview.workflows.map(row=>({...row,approved:lease.discovery_pin===preview.pin&&lease.approved_ids.includes(row.id)})),discovery_id:snapshot.discovery_id,inventory_complete:preview.inventory_complete,total_count:preview.total_count});
+    return json({workflows:preview.workflows.map(row=>({...row,approved:lease.approved_ids.includes(row.id)&&!!lease.approved_marks?.[row.id]&&lease.approved_marks[row.id]===preview.marks[row.id]})),discovery_id:snapshot.discovery_id,inventory_complete:preview.inventory_complete,total_count:preview.total_count});
    }
    if(body.action==='approve'){
     if(typeof body.discovery_id!=='string') throw new N8nSafeError('discovery_expired');
     const snapshot=await rpc('read_snapshot',{...bound,discovery_id:body.discovery_id});
     if(snapshot.pin!==preview.pin) throw new N8nSafeError('discovery_changed');
     const ids=validateApproval(body.workflow_ids,preview.workflows);
-    await rpc('approve',{...bound,discovery_id:body.discovery_id,pin:preview.pin,workflow_ids:ids});
+    await rpc('approve',{...bound,discovery_id:body.discovery_id,pin:preview.pin,workflow_ids:ids,marks:preview.marks});
    }
    if(body.action==='preview'){
-    if(lease.discovery_pin!==preview.pin||typeof body.workflow_id!=='string'||!lease.approved_ids.includes(body.workflow_id)) throw new N8nSafeError('workflow_not_approved');
+    // Judged on THIS workflow's own mark. It used to compare the whole-inventory pin, so a
+    // change to any workflow -- or a brand new unrelated one -- made Paige refuse every
+    // approved workflow as "not approved" before anything had even been revoked.
+    if(typeof body.workflow_id!=='string'
+      ||!lease.approved_ids.includes(body.workflow_id)
+      ||!lease.approved_marks?.[body.workflow_id]
+      ||lease.approved_marks[body.workflow_id]!==preview.marks[body.workflow_id]) throw new N8nSafeError('workflow_not_approved');
     const selected=preview.workflows.find(row=>row.id===body.workflow_id);
     if(!selected) throw new N8nSafeError('workflow_unavailable');
     await fresh();
