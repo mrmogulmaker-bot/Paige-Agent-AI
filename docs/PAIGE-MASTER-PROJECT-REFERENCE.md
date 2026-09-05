@@ -1451,9 +1451,13 @@ read-only scouts (file:line-citable).
   (campaign_brief · HTML email_template · video · social-schedule).
 - **Upload/download & inspect files** — **LIVE** (upload+inspect: `useChatDocumentUpload` 10MB pdf/img/docx,
   read-check + approve-to-apply extraction, `kb-ingest-file`; folder-scoped storage RLS + server-side scope
-  refusal). PARTIAL: no generic chat→file download. **REAL SECURITY GAP:** uploaded file **content is fed to
-  a tool-capable agentic turn with NO prompt-injection fence** (only anti-hallucination guards), though the
-  fence exists elsewhere (team-context/MCP/Zapier) — a first-class slice-2 hardening item.
+  refusal). PARTIAL: no generic chat→file download. **REAL SECURITY GAP:** uploaded file **content is
+  inlined raw with NO prompt-injection fence** (only anti-hallucination guards), though the fence exists
+  elsewhere (team-context/MCP/Zapier) — a first-class slice-2 hardening item. **Accurate threat (Codex P1,
+  verified `paige-ai-chat/index.ts:7451`):** an attachment request takes the direct-stream branch; the
+  tool-executing agentic loop is gated to NON-document turns, so malicious file content can steer the
+  answer/extraction but cannot directly drive Paige's mutating tools on that turn (the fence stays
+  warranted, and is load-bearing once attachments are ever routed into the tool loop).
 - **Write & operate native records** — LIVE (wired: `deal_move_stage` honest outcome S1/S1.1, content/
   document/growth writes) / PARTIAL (~43 consequential actions still write only `paige_audit_log`, not the
   Rail — F05 continuation).
@@ -1465,8 +1469,9 @@ read-only scouts (file:line-citable).
   path exists but not unified across MCP/sub-agent).
 - **Sandbox (isolated untrusted/generated-code exec)** — UNAVAILABLE/greenfield (substrate under files/
   research/advanced actions).
-- **Evidence (Rail/Spine/Mind)** — Rail LIVE (`record_capability_run` 6 outcomes); Mind PARTIAL
-  (`paige_owner_memory` schema LIVE, no tenant writer — F02 handoff dep).
+- **Evidence (Rail/Spine/Mind)** — Rail **PARTIAL/proof-owed** (`record_capability_run` 6 outcomes, RPC
+  deployed + wired via S1/S1.1, but §32.c live-drive OWED — 0 prod rows, end-to-end unproven, Codex P1);
+  Mind PARTIAL (`paige_owner_memory` schema LIVE, no tenant writer — F02 handoff dep).
 
 **Seven owner-sequenced slices (LOCKED):** (1) chat artifact creation + tenant-scoped storage incl image gen
 [LIVE→harden+reach+fill-types] → (2) safe upload/download + inspection [+the injection fence, net-new] → (3)

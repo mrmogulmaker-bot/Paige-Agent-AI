@@ -46,14 +46,14 @@ Each capability area, its current honest state, the contract it needs (see §2),
 |---|---|---|---|---|---|
 | R | **Read & understand** (tenant records, CRM/client, connected data, governed knowledge, files, permitted web) | **LIVE / PARTIAL** | RLS + `current_user_tenant_id()` everywhere; Spine `evidence` signals carry source/freshness/lifecycle; `marketing_content.brief/meta` = provenance | Read contract (provenance-preserving; no cross-tenant / credential / raw-payload / hidden-reasoning leak) | — |
 | A | **Create artifacts in chat** (image · document · copy · page · funnel · form) | **LIVE** (core) / gaps | `generate_image` (4 providers) · `document_generate` (8 types) · `draft_marketing_content`/`content_save` · `growth_*`; durable home `marketing_content` (`status='draft'`); `save_marketing_content` write seam; `chatArtifacts`→`paige_artifact`→`PaigeArtifactCard`; `studio_artifact_versions` | **Artifact contract** + **image-gen contract** | R |
-| U | **Upload / download & inspect files** | **LIVE** (upload+inspect) / **PARTIAL** (download) / **GAP** (injection fence) | `useChatDocumentUpload` (pdf/img/docx, 10MB, inlined) · read-check + approve-to-apply extraction · `kb-ingest-file` OCR · folder-scoped storage RLS + server-side scope refusal | **File-handling contract** | R, Sandbox |
+| U | **Upload / download & inspect files** | **LIVE** (upload+inspect) / **PARTIAL** (download) / **GAP** (injection fence) | `useChatDocumentUpload` (pdf/img/docx, 10MB, inlined) · read-check + approve-to-apply extraction · `kb-ingest-file` OCR · folder-scoped storage RLS + server-side scope refusal | **File-handling contract** | R (bounded ops); Sandbox (untrusted-exec hardening only) |
 | W | **Write & operate native records** (business/client context, notes, briefs, plans, pipeline, tasks, memory) | **LIVE** (wired) / **PARTIAL** (Rail coverage) | `deal_move_stage` (now honest outcome, S1/S1.1) · `content_save`/`document_generate`/`growth_*` · `capability-record.ts` (6 outcomes); ~43 actions still write only `paige_audit_log`, not the Rail | **Native-write contract** | R, approval |
-| Rs | **Research** (bounded web, competitor, crawl, synthesis) | **LIVE / PARTIAL** | `deep_research` (anti-fabrication citation gate) · `web_search` · `browse_public_url` + SSRF-hardened `paige-browser` + `paige_browser_usage`; gaps: FIRECRAWL config, DNS-rebinding #138, two unequal SSRF guards, page-write G5, §32.c live-drive | **Browser-research contract** | R, Sandbox |
+| Rs | **Research** (bounded web, competitor, crawl, synthesis) | **LIVE / PARTIAL** | `deep_research` (anti-fabrication citation gate) · `web_search` · `browse_public_url` + SSRF-hardened `paige-browser` + `paige_browser_usage`; gaps: FIRECRAWL config, DNS-rebinding #138, two unequal SSRF guards, page-write G5, §32.c live-drive | **Browser-research contract** | R (bounded ops); Sandbox (untrusted-exec hardening only) |
 | X | **External execution / integrations** (n8n · Zapier · MCP · provider APIs · browser workers) | **PARTIAL** | Chat path strongly governed (classify→lane→ceiling→approval→dispatch→outcome); `paige-mcp` is tier+scope only (no risk gate); `delegate_to_subagent` runs specialists outside the gate; `decideGovernedExecution` pure module, unwired | **Connected-worker contract** | W, approval |
 | P | **Communications / publishing / spend** (send · post · schedule · media-buy · commit) | **PARTIAL** (approval-gated) | comms tools LIVE; `paige_pending_confirmations`/`_approvals`; §38 money boundary; sending/publishing is a separate approval step | **External-publishing contract** | X, approval |
 | Ap | **One approval path** (the single governing permission gate) | **LIVE** (core) / **PARTIAL** (unify) | `MUTATING_TOOLS` + `action-risk.ts` classify + `resolve_tool_autonomy` + Trust-Compass ceiling clamp + `paige_pending_confirmations` (stored-args, body-fingerprint); NOT applied on the MCP door or sub-agent downstream | cross-cutting (binds W/X/P) | — |
 | Sb | **Sandbox** (isolated untrusted/generated-code/browser/file execution) | **UNAVAILABLE / greenfield** | no untrusted-execution sandbox exists (only read-only Fly Playwright services); no per-worker network isolation | **Sandbox contract** (substrate for U/Rs/X/P) | — |
-| Ev | **Evidence — Rail / Spine / Mind** | **LIVE** (Rail) / **PARTIAL** (Mind) | `record_capability_run` (6 outcomes, live, unexercised) · Spine registry · `paige_owner_memory` schema LIVE but no tenant writer (F02 handoff dep) | cross-cutting (binds every area) | — |
+| Ev | **Evidence — Rail / Spine / Mind** | **PARTIAL** (Rail proof-owed) / **PARTIAL** (Mind) | `record_capability_run` (6 outcomes) — RPC deployed + wired via S1/S1.1, but **§32.c live-drive OWED: 0 prod rows, end-to-end unproven** (Codex P1) · Spine registry · `paige_owner_memory` schema LIVE but no tenant writer (F02 handoff dep) | cross-cutting (binds every area) | — |
 
 ---
 
@@ -83,9 +83,15 @@ artifact/record home** where applicable.
   downloadable files / saves approved artifacts to the correct tenant-scoped home. Uploaded/downloaded
   files are sandboxed, scoped, inspected, and **NEVER treated as trusted instructions merely because
   attached.** LIVE: upload + inspect + folder-scoped RLS + server-side scope refusal. **REAL GAP (the
-  load-bearing slice-2 item):** file **content is inlined raw into a tool-capable agentic turn with no
-  prompt-injection fence** — only anti-hallucination guards — while the same fence exists elsewhere
-  (team-context, MCP, Zapier). Also PARTIAL: no generic chat→file download; xlsx/doc not model-ingestible;
+  slice-2 item):** file **content is inlined raw with no prompt-injection fence** — only
+  anti-hallucination guards — while that fence exists elsewhere (team-context, MCP, Zapier). **ACCURATE
+  THREAT (Codex P1, verified `paige-ai-chat/index.ts:7451`):** an attached-document request takes the
+  DIRECT-STREAM branch; the multi-round tool-executing agentic loop is gated to NON-document turns
+  (`if (!attachedDocument)`), so model-emitted tool calls are NOT consumed on an attachment turn.
+  Malicious file content can therefore **steer the answer/extraction** (a real harm — worth the fence)
+  but **cannot directly drive Paige's mutating tools** on that turn. The fence stays warranted, and it
+  becomes load-bearing the moment attachments are ever routed into the tool loop. Also PARTIAL: no
+  generic chat→file download; xlsx/doc not model-ingestible;
   executable handling is allow-list-only (no content-sniff). Public buckets (`paige-generated`,
   `growth-assets`, `tenant-brand`, `email-assets`, `avatars`) are world-readable by URL — note in the
   safety posture.
@@ -113,6 +119,15 @@ artifact/record home** where applicable.
 > The owner's order LEADS with artifact creation + image gen (slice 1), then upload/download, then
 > native writes, then research — a deliberate reorder of `08`'s research-first framing (§18 reconciled).
 
+**Sandbox dependency, resolved without reordering (Codex P1):** the **bounded** operations of slices 2
+(upload/inspect) and 4 (research) do NOT require the general untrusted-execution sandbox — they run on the
+**existing guarded seams** (folder-scoped storage RLS + server-side scope refusal for files; the
+SSRF-hardened `paige-browser` for research). The **sandbox substrate (Sb) is a prerequisite scheduled
+BEFORE slice 7** and it feeds the *untrusted-execution HARDENING* inside slices 2/4 (safe generated-code/
+file exec, advanced browser) — it does not gate their bounded MVP. So the locked order stands: slices 2/4
+ship their bounded ops on live seams; Sb is provisioned as its own prerequisite ahead of slice 7. The
+matrix "depends-on: Sandbox" for U/Rs is therefore narrowed to "untrusted-exec hardening only."
+
 ### Slice 1 — Chat artifact creation + tenant-scoped storage, incl. image generation · **LARGELY LIVE → harden + reach + fill type-gaps**
 Build on: `generate_image`, `document_generate`, copy, pages/funnels/forms, `marketing_content` home,
 draft-until-applied. Net-new: a **download/export action** on the artifact card; render the artifact
@@ -123,9 +138,11 @@ regular-chat in-place refine. Each new type declares the artifact contract (§2)
 ### Slice 2 — Safe upload/download + file inspection · **LIVE (upload/inspect) + the injection fence is the net-new**
 Build on: `useChatDocumentUpload`, read-check + approve-to-apply extraction, `kb-ingest-file`,
 folder-scoped storage RLS. **NET-NEW (first-class security):** a **prompt-injection fence** so uploaded
-file content reaches the tool-capable model as **untrusted data, not instructions** (reuse the existing
-team-context/MCP fence pattern — §18); a generic chat→file **download** primitive; executable/content
-sniffing beyond the MIME allow-list. Ties to the sandbox contract (Sb).
+file content is treated as **untrusted data, not instructions** (reuse the existing team-context/MCP fence
+pattern — §18). Accurate scope (Codex P1, verified `:7451`): the attachment turn does NOT execute
+model-emitted tool calls, so today the fence guards against *steered answer/extraction*; it becomes
+load-bearing the moment attachments are routed into the tool loop. Also: a generic chat→file **download**
+primitive; executable/content sniffing beyond the MIME allow-list. Untrusted-exec hardening ties to Sb.
 
 ### Slice 3 — Governed native record writes · **LIVE core → continue F05 coverage**
 Build on: `deal_move_stage` (honest outcome, S1/S1.1), `content_save`/`document_generate`/`growth_*`,

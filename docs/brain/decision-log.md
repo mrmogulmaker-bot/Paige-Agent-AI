@@ -11,8 +11,12 @@
   gaps: download button, multi-surface render, campaign routing, missing types (campaign_brief/HTML
   email_template/video/social-schedule); **upload+inspect LIVE** (`useChatDocumentUpload` + read-check +
   `kb-ingest-file`; folder-scoped storage RLS + server-side scope refusal) with a **REAL SECURITY GAP — no
-  prompt-injection fence on uploaded file content** fed to the tool-capable turn (fence exists elsewhere:
-  team-context/MCP/Zapier); native writes LIVE core (~43 still audit-log-only, F05 continuation); research
+  prompt-injection fence on uploaded file content** (fence exists elsewhere: team-context/MCP/Zapier;
+  accurate threat per Codex P1 verified at `paige-ai-chat/index.ts:7451` — the attachment turn takes the
+  direct-stream branch and does NOT execute model-emitted tool calls, so content can steer the
+  answer/extraction but not drive mutating tools on that turn; fence still warranted); Rail is
+  PARTIAL/proof-owed (RPC deployed + wired via S1/S1.1 but §32.c live-drive owed, 0 prod rows); native
+  writes LIVE core (~43 still audit-log-only, F05 continuation); research
   LIVE/PARTIAL; external execution PARTIAL (MCP tier+scope only, sub-agent downstream ungoverned,
   `decideGovernedExecution` unwired); comms/publishing/spend approval-gated; **sandbox UNAVAILABLE/greenfield**.
   7 owner-sequenced slices: artifact-creation+image-gen → upload/download+injection-fence → native writes →
