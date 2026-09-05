@@ -17,6 +17,11 @@ import { classifyCommsRun } from "../_shared/comms-capability-outcome.ts";
 // Phase 2 · S1 — Pipeline write acts (starting deal_move_stage) record an honest outcome
 // through the SAME ratified pattern (#947): capability-record owns HOW, this owns WHICH.
 import { classifyPipelineRun } from "../_shared/pipeline-capability-outcome.ts";
+// Capability System · slice 1 — truthful artifact-creation receipts (§13/§70). A 200 carrying
+// no real artifact (null url, empty drafts, null saved id) must degrade to an honest failure,
+// not a success-shaped receipt. ONE pure home for that decision (§18); handlers wrap their
+// own success shape in it so the model, the status label and the artifact card all inherit it.
+import { artifactProduced, ARTIFACT_ABSENT_ERROR } from "../_shared/artifact-receipt.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -10271,7 +10276,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               if ((cd as any)?.error) throw new Error((cd as any).error);
-              result = { success: true, channel: (cd as any)?.channel, drafts: (cd as any)?.drafts ?? [] };
+              // §13/§70 — a 200 can carry an empty drafts array; that is no artifact, not a success.
+              const _drafts = (cd as any)?.drafts ?? [];
+              result = artifactProduced("draft_list", _drafts)
+                ? { success: true, channel: (cd as any)?.channel, drafts: _drafts }
+                : { success: false, error: ARTIFACT_ABSENT_ERROR.draft_list };
             } else if (tc.function.name === "generate_image") {
               // #292 — reuse the on-canvas image row (stack its versions) ONLY when the model targets
               // the exact image that's actually on the canvas. Any other id → treat as a new asset
@@ -10293,6 +10302,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 result = { success: false, needs_config: true, message: (img as any).error };
               } else if ((img as any)?.error) {
                 throw new Error((img as any).error);
+              } else if (!artifactProduced("file_url", (img as any)?.url)) {
+                // §13/§70 — the edge fn can return 200 with publicUrl=null (generate-image/index.ts:
+                // publicUrl = pub?.publicUrl ?? null). An image with no file is not a success; degrade
+                // to an honest failure so the model, the status label and the artifact card all agree
+                // there's nothing to show. (The §33 regenerate helper already guards `!rimg.url`.)
+                result = { success: false, error: ARTIFACT_ABSENT_ERROR.file_url };
               } else {
                 // content_id is load-bearing for the Studio session link (#292) — without it the
                 // image never reaches the project canvas. Keep it on the result. provider is the one
@@ -10359,7 +10374,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 p_tenant_id: personaCtx?.tenant_id ?? null,
               });
               if (error) throw error;
-              result = { success: true, content_id: cid };
+              // §13/§70 — a 200 with no returned id means the row may not have persisted.
+              result = artifactProduced("saved_id", cid)
+                ? { success: true, content_id: cid }
+                : { success: false, error: ARTIFACT_ABSENT_ERROR.saved_id };
             } else if (tc.function.name === "document_generate") {
               // #119/#292 — the agent authored the whole document as design blocks; persist it as a
               // marketing_content row kind='document' (body = the block JSON). Keep only known block
@@ -10430,7 +10448,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   p_tenant_id: personaCtx?.tenant_id ?? null,
                 });
                 if (error) throw error;
-                result = { success: true, content_id: cid, title: docTitle, doc_type: docType, blocks: blocks.length };
+                // §13/§70 — blocks/placeholder guards above prove the CONTENT is real; this proves it
+                // PERSISTED (a 200 with no returned id means it may not have saved).
+                result = artifactProduced("saved_id", cid)
+                  ? { success: true, content_id: cid, title: docTitle, doc_type: docType, blocks: blocks.length }
+                  : { success: false, error: ARTIFACT_ABSENT_ERROR.saved_id };
               }
             } else if (tc.function.name === "growth_list") {
               // Caller-authed read, EXPLICITLY tenant-pinned (§9). Don't rely on RLS
@@ -10530,7 +10552,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 });
                 if (!fErr) formsCreated.push(fslug);
               }
-              result = { success: true, page_id: (row as any)?.id, slug: (row as any)?.slug, status: (row as any)?.status, forms_created: formsCreated };
+              // §13/§70 — a 200 with no returned row id means the page draft may not have saved.
+              result = artifactProduced("saved_id", (row as any)?.id)
+                ? { success: true, page_id: (row as any)?.id, slug: (row as any)?.slug, status: (row as any)?.status, forms_created: formsCreated }
+                : { success: false, error: ARTIFACT_ABSENT_ERROR.saved_id };
             } else if (tc.function.name === "growth_page_publish") {
               // Going-live action (confirm-gated by the autonomy gate above). The RPC
               // validates the draft (rejects unfilled [PLACEHOLDER]s, §15) and returns the
