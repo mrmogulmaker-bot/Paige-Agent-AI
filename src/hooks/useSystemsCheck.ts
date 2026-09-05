@@ -59,11 +59,23 @@ export interface SystemsCheckSnapshot {
   findings: SystemsCheckFinding[];
   loading: boolean;
   isError: boolean;
-  /** True when a tenant has NO run yet but was created very recently — the first onboarding scan is
-   *  enqueued/running and its row hasn't landed. §13: an HONEST "in progress" signal, never a claim
-   *  that a scan finished. There is no queued row to read (the scan writes its run only on completion),
-   *  so this keys on tenant.created_at recency; after the window it falls back to the honest empty
-   *  state so a genuinely-failed enqueue never shows "running" forever. Tenant scope only. */
+  /** True when a tenant has NO run row at all but was created very recently — the first onboarding
+   *  scan has been enqueued and has not yet written its row. §13: an HONEST "in progress" signal,
+   *  never a claim that a scan finished. Tenant scope only.
+   *
+   *  CORRECTED 2026-09-05. This comment used to justify itself with "the scan writes its run only on
+   *  completion", which is FALSE and was load-bearing in the wrong direction — it told the next reader
+   *  no in-flight row exists to read. The runner inserts the run row UP FRONT, before the first check,
+   *  with check_count already set, and patches only the pass/fail counts at the end
+   *  (`_shared/systems-check-runner.ts:277`). Production carries five rows left behind by scans that
+   *  crashed between those two moments.
+   *
+   *  So an in-flight scan IS directly readable — `completed_at IS NULL` on the latest run — and the
+   *  caller already sees it that way, because a run row existing at all takes the surface down its
+   *  has-a-run path rather than this one. What is left for this flag is the genuinely narrower gap
+   *  BEFORE the row lands: enqueue latency, or an enqueue that failed. Only that window is guessed
+   *  from tenant.created_at, and after it the flag falls back to the honest empty state so a failed
+   *  enqueue never reads as "running" forever. */
   scanPending: boolean;
   refresh: () => void;
 }
