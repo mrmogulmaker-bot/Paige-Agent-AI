@@ -314,7 +314,7 @@ Existing open issues that remain untouched by this program:
 canonical home for this process, superseding the ad-hoc convention previously carried by
 `paige-spine-and-rail-state.md:182-183` and `paige-spine-tool-migration-map.md:353-354`. Its §7 is
 explicit that the GitHub Project itself **has not been created** and that the register is
-`UNAVAILABLE` — not empty — until a session with a Projects v2 capability performs its steps 1–4.
+`UNAVAILABLE` — not empty — until a session with a Projects v2 capability performs its steps 1–6.
 This session has no such capability either, and its §1 one-copy rule is satisfied regardless: the
 register is a *view* over issues, and all four findings below are already issues. Each was written
 to the standard's §2 intake schema, so they can be added to the seed set unchanged the moment the
