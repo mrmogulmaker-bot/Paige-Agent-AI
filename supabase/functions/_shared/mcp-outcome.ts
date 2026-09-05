@@ -882,9 +882,24 @@ export async function fileGovernedOutcome(
     console.error("[mcp] action not filed:", e instanceof Error ? e.message : "unknown");
   }
 
-  // No client in scope: this is a workspace-level act, and it now has somewhere to go.
+  // ALWAYS, and the earlier "only when no contact is in scope" was a real defect.
+  //
+  // The reasoning that produced it was sound about the Command Center feed -- that reader UNIONs
+  // both tables, so writing both showed one act twice -- and wrong about everything else.
+  // `get_zapier_rail_activity`, the ONLY reader behind Settings -> Integrations -> Zapier, reads
+  // `paige_workspace_events` and nothing else. So the commonest Zapier turn there is -- the owner
+  // on a client's screen saying "add them to my list" -- wrote a contact row, no workspace row,
+  // and was invisible on the panel named after Zapier. Permanently. Which is the exact condition
+  // this release widened that reader to end.
+  //
+  // Both rows are TRUE and they answer different questions: the contact row is this client's
+  // history, the workspace row is what PAIGE did to this business. Writing one and calling the
+  // other redundant is what made two surfaces disagree about the same act. A duplicate line in
+  // one feed is a presentation question and belongs to Claude Design (§00); a permanent blind
+  // spot on the integration's own panel is a correctness question and belongs here.
+  await fileWorkspace();
+
   if (!opts.contactId) {
-    await fileWorkspace();
     return { actionFiled, railFiled: false, railSkipped: "no_contact", workspaceFiled };
   }
 
@@ -907,7 +922,9 @@ export async function fileGovernedOutcome(
     console.error("[mcp] rail event not filed:", e instanceof Error ? e.message : "unknown");
   }
 
-  // The contact-scoped row is the one the owner sees for a client-scoped act, and it
-  // already surfaces in the same unified feed. A workspace twin would double it.
+  // Both rows are written by now. `railFiled` says whether the contact-scoped one landed;
+  // `workspaceFiled` says whether the workspace one did. They fail independently, and the
+  // caller is told which -- so "the act happened and nothing recorded it" is distinguishable
+  // from "the act happened and one of its two records is missing".
   return { actionFiled, railFiled, railSkipped: null, workspaceFiled };
 }

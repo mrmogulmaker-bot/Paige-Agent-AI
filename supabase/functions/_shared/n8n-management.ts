@@ -152,7 +152,14 @@ export async function runN8nManagement(input:{admin:Admin;userId:string;tenantId
   const args=parameters(input.tool,input.args);
   if(!/^[0-9a-f-]{36}$/i.test(input.sessionId)||!input.userId||!input.tenantId)fail('forbidden');
   lease=await rpc('acquire') as Lease;fenced=true;bound={...bound,lease:lease.lease,generation:lease.generation};
-  if(!Array.isArray(lease.oauth_scopes)||!lease.oauth_scopes.includes(spec.scope))return {ok:false,error:'authorization_needed',required_scope:spec.scope};
+  // POST-FENCE, so it records. The grant is real and the workspace is real; what is missing is
+  // the scope. Returning here without recording made `RAIL_OUTCOME.authorization_needed` dead
+  // code and left the owner with a refusal they could see in chat and never find again, while
+  // `provider_tool_unavailable` six lines below wrote a row for the same class of refusal.
+  if(!Array.isArray(lease.oauth_scopes)||!lease.oauth_scopes.includes(spec.scope)){
+   const refused={ok:false,error:'authorization_needed',required_scope:spec.scope};
+   await record(refused);return refused;
+  }
   validateN8nResource(lease.server_url);
   let access=lease.access_token;
   const secrets=[access,lease.refresh_token,lease.client_secret].filter((s):s is string=>!!s);

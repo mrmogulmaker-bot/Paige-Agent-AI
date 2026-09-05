@@ -191,9 +191,13 @@ ALTER TABLE public.paige_workspace_events
 -- ═════════════════════════════════════════════════════════════════════════════
 -- 3. THE COPY — one projection, widened by DELEGATION rather than by copying
 -- ═════════════════════════════════════════════════════════════════════════════
--- The 3-arg form carries the whole body. The 2-arg form -- which triggers,
--- `_record_workspace_rail_event` and `get_zapier_rail_activity` all still call --
--- becomes a delegate passing NULL. Nothing that exists today changes shape, and
+-- The 3-arg form carries the whole body; the 2-arg form becomes a delegate passing NULL.
+--
+-- ACCURACY (§13): after this migration NOTHING calls the 2-arg form. Its only two callers were
+-- `_record_workspace_rail_event`'s body and `get_solo_rail_activity`, and both are replaced
+-- below to pass the capability. It is kept as a compatibility shim for anything outside this
+-- repo's migrations that may hold the 2-arg signature, and because dropping a shipped signature
+-- is a §58 removal that buys nothing. Nothing that exists today changes shape, and
 -- the live Zapier and n8n dispatches are inherited rather than re-typed, so the
 -- "rebuilt from the wrong ancestor" regression cannot happen here.
 --
@@ -264,7 +268,17 @@ BEGIN
         summary := 'Paige tried this and it did not go through. Nothing was left half-done.';
       WHEN 'capability_refused' THEN
         title := 'Not allowed to ' || try;
-        summary := 'The connected service declined this, so nothing changed. Its permissions may need a look.';
+        -- DELIBERATELY DOES NOT NAME WHO REFUSED, because this outcome covers both and the row
+        -- does not record which. All four Zapier `denied` states are produced BEFORE any network
+        -- call -- the capability is not on the workspace's approved list, or its recorded contract
+        -- no longer matches -- and n8n routes `provider_tool_unavailable` and `token_expired` here
+        -- too. The earlier copy said "the connected service declined this... its permissions may
+        -- need a look", which is a sentence about the provider for a refusal the provider never
+        -- saw, and it sent the owner to the wrong screen to fix the wrong thing. That is the exact
+        -- collapse `McpDenialReason` was introduced to prevent (`_shared/mcp-outcome.ts:53-58`);
+        -- re-committing it one layer up would undo it. Saying less is the honest option until the
+        -- reason is carried on the row.
+        summary := 'This was refused before it ran, so nothing changed. What PAIGE is approved to do here may need a look.';
       WHEN 'capability_unreachable' THEN
         title := 'Could not reach the service to ' || try;
         summary := 'The service did not answer, so this never ran. Nothing changed.';
@@ -455,9 +469,15 @@ BEGIN
     RAISE EXCEPTION 'CAPABILITY_RUN_FORBIDDEN' USING ERRCODE='42501';
   END IF;
 
-  -- `_run_id` is the run's OWN identity and the revision is fixed at 0, so the
-  -- existing UNIQUE key makes recording idempotent per run: two runs of the same
-  -- capability are two rows, and recording one run twice is one row.
+  -- `_run_id` is the run's OWN identity and the revision is fixed at 0, so the existing UNIQUE
+  -- key collapses two records of the SAME run into one row while keeping two runs of the same
+  -- capability as two rows.
+  --
+  -- ACCURACY (§13): no caller exercises that today. Both shipped callers mint a fresh
+  -- `crypto.randomUUID()` per invocation, so a run id is never re-presented and the de-duplication
+  -- never fires -- a genuinely retried act writes two rows. The key is the seam that MAKES
+  -- idempotence available to a caller that wants it (by passing a stable id), not a property the
+  -- current callers have.
   PERFORM public._record_workspace_rail_event(
     _tenant_id,_actor_id,'capability_run',_run_id,0,_outcome,_agent_slug,_capability_key);
 END $$;
@@ -611,16 +631,32 @@ BEGIN
 
  v_new := CASE WHEN _succeeded THEN 'zapier_mcp_test_succeeded' ELSE 'zapier_mcp_test_failed' END;
 
+ -- THE LOOKUP READS THE WHOLE CONNECTION STORY, not just the previous test.
+ --
+ -- Scoped to the two test outcomes alone, a disconnect could never reset it: succeed -> owner
+ -- disconnects -> owner reconnects -> next check succeeds -> `v_last` is STILL
+ -- `zapier_mcp_test_succeeded`, so the first result confirming the connection came back is
+ -- suppressed and the owner watches it go down and never sees it return. The n8n pattern this
+ -- copies does not have that bug, because `_n8n_rail_revision` bumps on the connection row
+ -- itself. Admitting `zapier_mcp_disconnected` / `zapier_mcp_verified` here reproduces that:
+ -- any connection-state change becomes the new `v_last`, which is never equal to a test
+ -- outcome, so the next test always records.
  SELECT w.outcome INTO v_last
    FROM public.paige_workspace_events w
   WHERE w.tenant_id = _tenant_id
     AND w.source_kind = 'zapier_mcp_connection'
-    AND w.outcome IN ('zapier_mcp_test_succeeded','zapier_mcp_test_failed')
+    AND w.outcome IN ('zapier_mcp_test_succeeded','zapier_mcp_test_failed',
+                      'zapier_mcp_disconnected','zapier_mcp_verified')
   ORDER BY w.occurred_at DESC
   LIMIT 1;
 
  -- Unchanged state is not an event. The first result after a disconnect is, and
  -- so is every flip after it.
+ -- HONEST LIMIT (§13). Two concurrent checks can both read the old value under READ COMMITTED
+ -- and both insert: `source_id` is a fresh uuid, so the UNIQUE key differs by construction and
+ -- cannot collapse them. The worst case is one duplicate line, not a wrong one. Closing it needs
+ -- a stable `source_id` + a state-derived revision (the shape `_n8n_mcp_rail_event` uses), which
+ -- is a larger change than this release's subject; it is written down rather than implied fixed.
  IF v_last IS NOT DISTINCT FROM v_new THEN RETURN; END IF;
 
  PERFORM public._record_workspace_rail_event(_tenant_id,_actor_id,'zapier_mcp_connection',gen_random_uuid(),0,v_new);

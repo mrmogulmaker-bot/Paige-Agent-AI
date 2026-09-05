@@ -2509,3 +2509,47 @@ that exist today and every row this change adds. It needs a rebase whichever ord
 **Owed and NOT claimed:** §32.c authenticated live-drive — this session cannot sign into the
 workspace, so that a capability row RENDERS on the owner's Command Center is unverified until the
 owner or a browser-capable session looks.
+
+### Peer-gate follow-up, same day, before merge (§39)
+
+The §39 adversarial read of the pushed diff returned **no blocking defect and four real ones**,
+each of which the author's own 13 green assertions structurally could not reach. Recorded because
+three of the four were defects in the thing being shipped, not in what surrounded it.
+
+1. **A Zapier action run with a client in scope was invisible on the Zapier panel — permanently.**
+   The workspace row was written only when NO contact was in scope, to avoid a double line in the
+   Command Center feed. But `get_zapier_rail_activity` reads `paige_workspace_events` and nothing
+   else, so the commonest Zapier turn (owner on a client's screen) wrote a contact row, no
+   workspace row, and never appeared on the panel this very release widened to show it. **Both
+   rows are now written.** They answer different questions — the contact row is that client's
+   history, the workspace row is what PAIGE did to this business — and a duplicate line in one
+   feed is a presentation question (§00) where a permanent blind spot is a correctness one.
+2. **A scope refusal after the tenant/session fence recorded nothing**, while a provider-tool
+   refusal did — two refusals of the same act class, one findable and one not. It also made
+   `RAIL_OUTCOME.authorization_needed` dead code. Now records, with a test.
+3. **The health-check fix suppressed the confirming test after a reconnect.** The de-dup lookup
+   read only the two test outcomes, so a disconnect never reset it: succeed → disconnect →
+   reconnect → succeed was silently dropped, and the owner would watch the connection go down and
+   never see it come back. The lookup now reads the connection-state rows too, which is what makes
+   the n8n pattern it copies work. Proven on prod, including the exact sequence.
+4. **A locally-refused capability was reported as the provider refusing it.** All four Zapier
+   `denied` states fire before any network call; the copy said *"the connected service declined
+   this… its permissions may need a look"* and sent the owner to the wrong screen. That is verbatim
+   the collapse `McpDenialReason` exists to prevent, re-committed one layer up. The copy no longer
+   names who refused, because the row does not record it.
+
+**Also corrected: two comments that asserted things the same file made untrue** — that the 2-arg
+display still had callers (it has none after this migration) and that recording is idempotent per
+run (the key makes idempotence *available*; no current caller re-presents a run id, so a genuinely
+retried act writes two rows).
+
+**Left open and written down rather than implied fixed:** two concurrent health checks can both
+insert under READ COMMITTED, because `source_id` is a fresh uuid and the UNIQUE key cannot collapse
+them. Worst case is one duplicate line, not a wrong one; closing it needs a stable source_id plus a
+state-derived revision, which is a larger change than this release's subject.
+
+**The lesson worth keeping:** the peer-gate's value here was not catching sloppiness. Every one of
+the four sat in a decision that was *locally* reasonable — avoid a double line, keep the dedup
+narrow, reuse an existing status word — and wrong once traced to the surface a person actually
+opens. A proof written by the author tests the author's model of the system.
+
