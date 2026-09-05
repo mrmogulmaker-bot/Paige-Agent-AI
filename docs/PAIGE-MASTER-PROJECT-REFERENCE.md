@@ -2543,7 +2543,7 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
    and the workspace Rail (`_workspace_event_display`: "(monthly charge)" + the unrecorded-outcome
    summary "a charge or a change has landed") all asserted a tenant charge that does not exist — a §13
    falsehood on the `audience:'owner'` Rail. Corrected the BACKEND truthfulness layer (paige-ai-chat
-   strings + migration `20261221000000`, which reproduces the Rail function verbatim except the two
+   strings + migration `20261222000000`, which reproduces the Rail function verbatim except the two
    money strings). NO tenant-billing write was created (§38 preserved). The FRONTEND copy
    (`src/solo/settings.tsx`, `NumbersTab.tsx`, `src/lib/integrations/connectError.ts`) carries the same
    claim and is a Claude Design hand-off (§00); the `list_tool_autonomy` toggle label is a parked

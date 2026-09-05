@@ -18,7 +18,7 @@ the buy flow's copy: the PLATFORM is the provider account holder and pays the pr
 wired). So where this map or a surface says a buy "charges the business" / "starts a recurring
 charge" / "(monthly charge)", that names a PROVIDER cost the platform absorbs, not a tenant bill.
 The backend now says so — the `comms_buy_number` tool description, the confirmation prompt, and the
-Rail label (`_workspace_event_display`, migration `20261221000000`). Still carrying the old framing
+Rail label (`_workspace_event_display`, migration `20261222000000`). Still carrying the old framing
 and tracked elsewhere: the frontend copy (`src/solo/settings.tsx`, `NumbersTab.tsx`,
 `src/lib/integrations/connectError.ts` — a Claude Design hand-off) and the `list_tool_autonomy`
 autonomy-toggle label (a follow-up, inside the union function). Not a permanent pricing decision.

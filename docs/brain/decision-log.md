@@ -12,7 +12,7 @@
   owe. Corrected the backend truthfulness layer: the tool description + param + confirmation prompt
   (paige-ai-chat) now say the recurring cost is the PROVIDER's, which the platform covers, the business
   is not billed, and the real caution is a duplicate/unused number is a waste; and migration
-  `20261221000000` reproduces `_workspace_event_display` verbatim except the two Rail strings (diff
+  `20261222000000` reproduces `_workspace_event_display` verbatim except the two Rail strings (diff
   proved: only those + the comment changed). NO tenant-billing write is created or implied
   (`charge_wired:false` unchanged; no billing table touched — the money boundary §38 is preserved, not
   built). `money_already_spent` is NOT renamed (the outcome classifier + contract test key on it; that
