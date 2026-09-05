@@ -11,6 +11,18 @@ section, the stranded-list row for `panel=numbers`, resurfacing items 1 and 6, a
 voice is unchanged — **no tenant can send an SMS**, and a bought number still carries no inbound
 voice route.
 
+**Updated 2026-09-05 (Communications closeout, Slice A — §38).** Money ownership corrected across
+the buy flow's copy: the PLATFORM is the provider account holder and pays the provider cost for MVP;
+**solo tenants are NOT billed for Communications** in this slice (`comms-purchase-number` returns
+`charge_wired:false` on every exit, and its own comment: the tenant-billing charge leg is not
+wired). So where this map or a surface says a buy "charges the business" / "starts a recurring
+charge" / "(monthly charge)", that names a PROVIDER cost the platform absorbs, not a tenant bill.
+The backend now says so — the `comms_buy_number` tool description, the confirmation prompt, and the
+Rail label (`_workspace_event_display`, migration `20261222000000`). Still carrying the old framing
+and tracked elsewhere: the frontend copy (`src/solo/settings.tsx`, `NumbersTab.tsx`,
+`src/lib/integrations/connectError.ts` — a Claude Design hand-off) and the `list_tool_autonomy`
+autonomy-toggle label (a follow-up, inside the union function). Not a permanent pricing decision.
+
 ## Read this distinction first — it has cost us time before
 
 | Term | Means |

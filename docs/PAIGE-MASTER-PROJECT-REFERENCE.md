@@ -2535,6 +2535,20 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ## 10. §13 corrections log
 
+ - **2026-09-05 — the Communications buy flow told the tenant they were being billed; they are not
+   (Slice A).** `comms-purchase-number` returns `charge_wired:false` on every exit — the PLATFORM is
+   the provider account holder and pays the provider cost for MVP; solo tenants are NOT billed for
+   Communications. Yet the `comms_buy_number` tool description ("THIS SPENDS REAL MONEY… the operator
+   IS being billed"), the server confirmation prompt ("This starts a recurring charge of $X/month"),
+   and the workspace Rail (`_workspace_event_display`: "(monthly charge)" + the unrecorded-outcome
+   summary "a charge or a change has landed") all asserted a tenant charge that does not exist — a §13
+   falsehood on the `audience:'owner'` Rail. Corrected the BACKEND truthfulness layer (paige-ai-chat
+   strings + migration `20261222000000`, which reproduces the Rail function verbatim except the two
+   money strings). NO tenant-billing write was created (§38 preserved). The FRONTEND copy
+   (`src/solo/settings.tsx`, `NumbersTab.tsx`, `src/lib/integrations/connectError.ts`) carries the same
+   claim and is a Claude Design hand-off (§00); the `list_tool_autonomy` toggle label is a parked
+   follow-up. Not a permanent pricing decision — "currently platform-provided, no tenant billing
+   applied."
  - **2026-09-03 — I swept for the instance that had just bitten me, not for the class I had just
    learned, and reported it as a sweep.** Commit `eb0dbd83` on #792 was titled *"swept R2 and R3 for
    R1's and R4's blind spot — a NEGATIVE result, asserted"*. The measurement was real and the result
