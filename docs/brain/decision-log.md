@@ -1,5 +1,25 @@
 # Decision Log — chronological one-liners
 
+- **The Paige Capability System — OWNER-LOCKED full-range MVP direction (2026-09-05)** — PAIGE is the
+  tenant's governed operating environment; chat is the front door to a FULL capability range, NOT chat-only/
+  read-only/recommendation-only. ONE Capability System (governed contracts), not unrelated chat widgets.
+  Recorded as a DECISION + dependency-ordered capability matrix (master §5 + plan
+  `outputs/paige-at-cowork/09-paige-capability-system.md`), subsuming the Sandboxed-Research plan (08) as a
+  component (§18). Grounded by 6 read-only scouts. Honest matrix: **artifact creation + image gen is LARGELY
+  LIVE** (`generate_image` 4-provider, `document_generate`, copy, growth studio; durable home
+  `marketing_content` draft-until-applied; `chatArtifacts`/`PaigeArtifactCard`/`studio_artifact_versions`) —
+  gaps: download button, multi-surface render, campaign routing, missing types (campaign_brief/HTML
+  email_template/video/social-schedule); **upload+inspect LIVE** (`useChatDocumentUpload` + read-check +
+  `kb-ingest-file`; folder-scoped storage RLS + server-side scope refusal) with a **REAL SECURITY GAP — no
+  prompt-injection fence on uploaded file content** fed to the tool-capable turn (fence exists elsewhere:
+  team-context/MCP/Zapier); native writes LIVE core (~43 still audit-log-only, F05 continuation); research
+  LIVE/PARTIAL; external execution PARTIAL (MCP tier+scope only, sub-agent downstream ungoverned,
+  `decideGovernedExecution` unwired); comms/publishing/spend approval-gated; **sandbox UNAVAILABLE/greenfield**.
+  7 owner-sequenced slices: artifact-creation+image-gen → upload/download+injection-fence → native writes →
+  browser research → worker dispatch → one approval path → advanced browser/publishing/comms/paid-media/
+  recurring (§67/§68/§64). Each capability declares a contract (tenant isolation/authz/audit-outcome/
+  provenance/safe-failure/durable-home). No capability called live on a static UI/prototype/helper (§13/§32/§70).
+
 - **Sandboxed Research & External Execution — APPROVED MVP DIRECTION, not a live capability (owner-directed
   2026-09-05)** — Paige as an active AI COO/orchestrator: PAIGE is the governed decision layer; native tools
   act inside the tenant platform; n8n/Zapier/MCP/future integrations are controlled external workers, never a

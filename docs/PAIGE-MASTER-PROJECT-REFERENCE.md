@@ -1430,7 +1430,53 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
-### Sandboxed Research & External Execution — APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
+### The Paige Capability System — OWNER-LOCKED full-range MVP direction (2026-09-05; a DECISION + matrix, NOT live capability claims)
+
+Owner-locked: **PAIGE is the tenant's governed operating environment; chat is the front door to a FULL
+range of real capabilities** — do NOT narrow to chat-only / read-only / recommendation-only. This is ONE
+**Paige Capability System** (governed capability contracts), not unrelated chat widgets. Full plan +
+capability contracts + the 7-slice sequencing: `outputs/paige-at-cowork/09-paige-capability-system.md`.
+Every consequential capability is tenant-isolated, authorization-gated, records a Rail outcome, and
+preserves source/provenance; connected workers (n8n/Zapier/MCP/provider APIs/browser) are execution
+workers UNDER Paige's authority, never a bypass; one approval path for send/publish/spend (no chat
+shortcut); no capability called live on a static UI/prototype/helper (§13/§32/§70). Grounded by six
+read-only scouts (file:line-citable).
+
+**Dependency-ordered capability matrix — honest state (2026-09-05):**
+- **Read & understand** — LIVE/PARTIAL (RLS + `current_user_tenant_id()`; Spine `evidence` provenance).
+- **Create artifacts in chat (image·document·copy·page·funnel·form)** — **LIVE core** (`generate_image`
+  4-provider, `document_generate` 8-type, copy, growth studio; durable home `marketing_content`
+  `status='draft'`; `save_marketing_content`; `chatArtifacts`→`PaigeArtifactCard`; `studio_artifact_versions`).
+  GAPS: download button, multi-surface card render, image→campaign routing, missing types
+  (campaign_brief · HTML email_template · video · social-schedule).
+- **Upload/download & inspect files** — **LIVE** (upload+inspect: `useChatDocumentUpload` 10MB pdf/img/docx,
+  read-check + approve-to-apply extraction, `kb-ingest-file`; folder-scoped storage RLS + server-side scope
+  refusal). PARTIAL: no generic chat→file download. **REAL SECURITY GAP:** uploaded file **content is fed to
+  a tool-capable agentic turn with NO prompt-injection fence** (only anti-hallucination guards), though the
+  fence exists elsewhere (team-context/MCP/Zapier) — a first-class slice-2 hardening item.
+- **Write & operate native records** — LIVE (wired: `deal_move_stage` honest outcome S1/S1.1, content/
+  document/growth writes) / PARTIAL (~43 consequential actions still write only `paige_audit_log`, not the
+  Rail — F05 continuation).
+- **Research (bounded web)** — LIVE/PARTIAL (`deep_research` + `web_search` + `browse_public_url`; gaps per §5
+  Sandboxed-Research entry below).
+- **External execution / integrations** — PARTIAL (chat path governed; `paige-mcp` tier+scope only, no risk
+  gate; sub-agent downstream ungoverned; `decideGovernedExecution` unwired).
+- **Communications/publishing/spend** — PARTIAL/approval-gated (comms LIVE; §38 money boundary; one approval
+  path exists but not unified across MCP/sub-agent).
+- **Sandbox (isolated untrusted/generated-code exec)** — UNAVAILABLE/greenfield (substrate under files/
+  research/advanced actions).
+- **Evidence (Rail/Spine/Mind)** — Rail LIVE (`record_capability_run` 6 outcomes); Mind PARTIAL
+  (`paige_owner_memory` schema LIVE, no tenant writer — F02 handoff dep).
+
+**Seven owner-sequenced slices (LOCKED):** (1) chat artifact creation + tenant-scoped storage incl image gen
+[LIVE→harden+reach+fill-types] → (2) safe upload/download + inspection [+the injection fence, net-new] → (3)
+governed native writes [F05 continuation] → (4) bounded browser research → (5) governed worker dispatch → (6)
+one approval path [unify across all doors] → (7) advanced browser automation/publishing/comms/paid-media/
+recurring [PLANNED; §67/§68, §64]. Each capability declares its contract (tenant isolation, authz, audit/
+outcome, provenance, safe-failure, durable home). **Same-slice refresh discipline:** each completed slice
+updates this matrix with shipped/evidence/proof-owed/next-owner/dep-order (§0/§66/§BRAIN.3).
+
+### Sandboxed Research & External Execution — a COMPONENT of the Paige Capability System (above); APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
 
 Owner-directed MVP capability so Paige is an active AI COO/orchestrator, not a chat interface that
 describes what to do. **This is an approved DIRECTION + dependency-ordered plan — no sandbox is "live"
