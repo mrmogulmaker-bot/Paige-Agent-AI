@@ -1306,6 +1306,35 @@ and `PAUSED` require the provider result contract and are NOT rendered by this s
 **Six of the nine areas are covered by a check; three are not** (Paige's team, the Mind, security).
 Those three render "Not checked" with a reason rather than a status, on every tier that sees them.
 
+#### Systems Check + Mind — corrections shipped with PR #933 (§66)
+
+Behaviour and truthfulness only. **No tier availability changes; nothing is added or gated.**
+
+| PR #933 | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Partial-coverage warning states its ACTUAL cause (was a fixed sentence true in no observed case) | — | — | — | ✓ | ✓ | — | 403 |
+| Strip tallies derive from the findings on screen, incl. a `resolved` segment so the parts sum | — | — | — | ✓ | ✓ | — | 403 |
+| Every finding's next action pinned to the real route tree by contract test | — | — | — | ✓ | ✓ | — | 403 |
+| No redundant surface title on **Systems Check** (owner ruling) | — | — | — | ✓ | ✓ | — | 403 |
+| No redundant surface title on **Mind** (owner ruling) | — | — | — | ✓ | ✓ | — | 403 |
+
+**The title rule binds Game Plan and Trust Compass when they land** — the sub-tab strip already
+names the surface. The `h1` is kept in the DOM and taken out of layout, never deleted: on Mind it is
+the `aria-labelledby` target of the whole section. Recorded in
+`docs/product/systems-check-operating-readiness-spec.md` §3.2 and pinned by assertion.
+
+**`NOT CHECKED` is a NINTH status word, outside the owner's closed set of eight** — disclosed in
+spec §4.4a, awaiting an owner ruling. The row above this section already describes it as shipped;
+what is new here is that it is now recorded as an exception rather than passing silently.
+
+**Still NOT shipped, unchanged from #928 and restated so this entry is not read as more than it is:**
+Refresh still re-reads the last recorded run. `systems_check_snapshot` is still latest-RUN only.
+The consequence of that is now precisely characterised rather than merely noted: a change-triggered
+run selects a SUBSET of the registry (`runnerKeys`), so a Setup save can make a one-check run the
+tenant's latest and produce a **false all-clear** on every tier that sees this surface. Zero such
+runs exist on production and the wiring shipped 2026-09-03, so it is a loaded trigger rather than a
+live defect — tracked as its own slice, with latest-result-per-check as the durable fix.
+
 `PaigeRailFeed` lives inside `PaigeWorkspace`, which `TenantCommandCenterShell` renders only when
 the Solo workspace is absent — and the Solo shell always supplies it. So a Solo tenant had no
 tenant-wide rail surface at all.
