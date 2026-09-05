@@ -361,15 +361,31 @@ BEGIN
   LIMIT 1;
  IF existing.id IS NOT NULL THEN
   IF existing.payload_hash IS DISTINCT FROM _payload_hash THEN RAISE EXCEPTION 'ZAPIER_INTAKE_IDEMPOTENCY_CONFLICT' USING ERRCODE='23505';END IF;
-  IF existing.status='failed' THEN
+  IF existing.status<>'failed' THEN
+   PERFORM public._record_workspace_rail_event(r.tenant_id,COALESCE(operator_id,r.created_by),'zapier_skool_intake',existing.id,1,'zapier_skool_intake_duplicate');
+   RETURN jsonb_build_object('ok',true,'outcome','duplicate','receipt_id',existing.id);
+  END IF;
+  -- A failure is only terminal when REPLAYING THE SAME PAYLOAD cannot change the answer.
+  -- payload_invalid is exactly that: the key is bound to one payload hash, so the delivery
+  -- that failed validation will fail it again. Report it and stop.
+  IF existing.failure_code IS DISTINCT FROM 'contact_write_failed' THEN
    PERFORM public._record_workspace_rail_event(r.tenant_id,COALESCE(operator_id,r.created_by),'zapier_skool_intake',existing.id,1,'zapier_skool_intake_failed');
    RETURN jsonb_build_object('ok',false,'outcome','failed','receipt_id',existing.id);
   END IF;
-  PERFORM public._record_workspace_rail_event(r.tenant_id,COALESCE(operator_id,r.created_by),'zapier_skool_intake',existing.id,1,'zapier_skool_intake_duplicate');
-  RETURN jsonb_build_object('ok',true,'outcome','duplicate','receipt_id',existing.id);
+  -- contact_write_failed is NOT terminal. Its subtransaction rolled back, so nothing was
+  -- written, and the causes are transient: a database error, or a moment with no eligible
+  -- tenant operator to attribute the contact to. Replaying the stored failure forever would
+  -- drop the lead permanently even after the condition cleared -- and Zapier's retry is the
+  -- one thing that would otherwise have recovered it. Reprocess THIS receipt instead of
+  -- opening a second one, so the idempotency key still owns exactly one row.
+  e:=existing;
+  UPDATE public.tenant_zapier_intake_events
+     SET status='received',failure_code=NULL,processed_at=NULL,contact_id=NULL
+   WHERE id=e.id;
+ ELSE
+  INSERT INTO public.tenant_zapier_intake_events(tenant_id,route_id,idempotency_key,payload_hash,payload_ct,status)
+   VALUES(r.tenant_id,r.id,_idempotency_key,_payload_hash,public.platform_encrypt(_payload::text),'received') RETURNING * INTO e;
  END IF;
- INSERT INTO public.tenant_zapier_intake_events(tenant_id,route_id,idempotency_key,payload_hash,payload_ct,status)
-  VALUES(r.tenant_id,r.id,_idempotency_key,_payload_hash,public.platform_encrypt(_payload::text),'received') RETURNING * INTO e;
  IF email IS NULL AND full_name IS NULL THEN
   UPDATE public.tenant_zapier_intake_events SET status='failed',failure_code='payload_invalid',processed_at=clock_timestamp() WHERE id=e.id;
   outcome:='zapier_skool_intake_failed';

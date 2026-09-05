@@ -102,7 +102,10 @@ describe("Solo Zapier API and MCP release contract", () => {
   });
   it("records bounded outcomes in Rail", () => {
     const sql = readMigration();
-    expect(sql).toContain("existing.status='failed'");
+    // A stored failure is reported rather than acknowledged as a successful duplicate, but
+    // only a TERMINAL one ends there -- see the retry contract below.
+    expect(sql).toContain("IF existing.status<>'failed' THEN");
+    expect(sql).toContain("IF existing.failure_code IS DISTINCT FROM 'contact_write_failed' THEN");
     expect(sql).toContain("'ok',false,'outcome','failed'");
     expect(sql).toContain("zapier_api_test_succeeded");
     expect(sql).toContain("zapier_api_test_failed");
@@ -222,5 +225,23 @@ describe("Solo Zapier API and MCP release contract", () => {
     const ui = read("src/solo/settings-integrations.tsx");
     expect(ui).toContain('<CapabilityApproval provider="zapier" onChanged={onChanged}/>');
     expect(ui).toContain("setChosen(null); onChanged?.();");
+  });
+  it("retries an intake whose contact write failed, and only that kind of failure", () => {
+    const sql = readMigration();
+    // The contact-write subtransaction rolls back, so a transient database error -- or a
+    // moment with no eligible tenant operator -- wrote nothing. Replaying the stored failure
+    // forever would drop the lead permanently even once the condition cleared, and Zapier's
+    // retry is the one thing that would otherwise have recovered it.
+    expect(sql).toContain("IF existing.failure_code IS DISTINCT FROM 'contact_write_failed' THEN");
+    expect(sql).toContain("e:=existing;");
+    expect(sql).toContain("SET status='received',failure_code=NULL,processed_at=NULL,contact_id=NULL");
+    // A payload that failed validation is bound to this key's one payload hash, so replaying
+    // it cannot change the answer. It stays terminal.
+    expect(sql).toContain("failure_code='payload_invalid'");
+    // A delivery that succeeded is still deduplicated rather than reprocessed.
+    expect(sql).toContain("IF existing.status<>'failed' THEN");
+    expect(sql).toContain("'zapier_skool_intake_duplicate'");
+    // And the receipt is reused, so one idempotency key still owns exactly one row.
+    expect(sql).not.toMatch(/ELSE\s*\n\s*INSERT INTO public\.tenant_zapier_intake_events[\s\S]{0,200}RETURNING \* INTO e;[\s\S]{0,40}INSERT INTO public\.tenant_zapier_intake_events/);
   });
 });
