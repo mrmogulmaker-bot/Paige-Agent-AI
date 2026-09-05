@@ -119,6 +119,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/doctrine/compliance-checklist-template.md` | Tier-matrix compliance checklist to run per crew | Compliance pass on a tenant-scoped surface |
 | `docs/doctrine/producer-inventory-template.md` | §37 × tier producer-inventory worksheet | Hardening/altering any endpoint contract |
 | `docs/doctrine/money-spine-architecture.md` | Full money architecture — Paige-held vs facilitated rails (§38) | Any payment/billing surface |
+| `docs/doctrine/command-center-four-surfaces.md` | The four Command Center sub-tabs as four parts of ONE machine — Game Plan (what should we do) · Systems Check (can the systems do it) · Trust Compass (can I trust the agent) · Mind (what does Paige know) — plus the loop between them, Trust Compass's three-fact status, and the rule that a Solo tenant never learns the platform posture | Any Command Center sub-tab work; before assuming two of them overlap |
 | `docs/doctrine/governed-execution-seam.md` | **The shared governed execution seam** — the one pathway a capability runs through from Chat, an automation, an agent, a skill or MCP, and the door-blindness property that stops a different door meaning more permission. Records why it does NOT wrap the unwired #711 module | Before routing ANY capability through the Spine, or adding a non-Chat caller that performs an action |
 | `docs/doctrine/connections-rail-contract.md` | The Page/Rail/PAIGE/Brain contract for Connections & A2P — what may reach the rail, what PAIGE may read/do, and the 4 missing shared contracts (C-1…C-4) nobody may substitute for | Any provider-setup, readiness, A2P or communications-outcome work |
 | `docs/brain/comms-capability-map.md` | What A2P / numbers / voice actually exist, and the difference between code that exists, is deployed, and is reachable. The stranded-surface backlog and the resurfacing order | "do we have comms X?" · any A2P, number, or voice work |
@@ -212,6 +213,8 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/product/interactive-analytics-ui-spec.md` | LOCKED — interactive analytics UI | Analytics UI build |
 | `docs/product/paige-multichannel-comms-and-deliverable-workflow-spec.md` | LOCKED — multi-channel comms + deliverable workflow | Comms/deliverable build |
 | `docs/product/promo-account-type-spec.md` | LOCKED — promotional account type | Promo-account work |
+| `docs/product/systems-check-operating-readiness-spec.md` | Systems Check as an operating-readiness console — the CLOSED eight-word status vocabulary, why the finding store cannot express two of them, the `suspended` vocabulary hole, the grounded Refresh contract, and 101 signals grounded against live production | Any Systems Check work; before adding ANY status word; before touching `systems_check_snapshot` |
+| `docs/product/provider-result-contract.md` | The shape + rules a provider workstream publishes into Systems Check (A2P, Zapier/n8n, email domain) — and the rule that stops "not started" being reported as "waiting on a provider" | Owning any provider seam that Systems Check reports on |
 
 ## Design references index (docs/design-references/*) — §25 visual source of truth
 
