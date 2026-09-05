@@ -83,6 +83,15 @@ Deno.test("THE HARD RULE: zero deals still passes — tracking correctly and hav
   assertEquals(/will fill in|as you win/i.test(r.interpretation ?? ""), false);
 });
 
+Deno.test("the pass sentence claims only what the read checked — not that a particular pipeline has it", async () => {
+  const r = await run(ctx(fakeAdmin([LIVE], 0)), {} as never);
+  // The read is tenant-wide. "Your pipeline has a stage..." asserted a fact about a specific
+  // pipeline on a tenant that may own several, only one of which has the stage. See PIPELINE SCOPE
+  // in the runner's header for why the read stays tenant-wide and the sentence changed instead.
+  assertEquals(/your pipeline/i.test(r.interpretation ?? ""), false);
+  assertEquals(/marks a deal as won/i.test(r.interpretation ?? ""), true);
+});
+
 Deno.test("an ARCHIVED won stage fails — no deal can enter it, so no revenue can be recorded", async () => {
   const r = await run(ctx(fakeAdmin([ARCHIVED], 0)), {} as never);
   assertEquals(r.status, "fail");

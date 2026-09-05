@@ -42,6 +42,32 @@
 // `pipelines.is_default = false` — the way its sibling does — was measured to agree with
 // `sales_pipeline_configured` on 14 of 14 tenants, i.e. the same check wearing two names.
 //
+// PIPELINE SCOPE — read this before "fixing" the missing pipeline predicate. The §39 peer gate
+// raised it and it is genuinely half right, so the decision is recorded rather than left to be
+// re-argued. The read is tenant-wide: it asks "does this tenant own a live won stage", while a deal
+// is confined to its OWN pipeline's stages (`enforce_deal_tenant_links()` requires
+// `s.pipeline_id = new.pipeline_id`; `move_deal` selects the target with
+// `pipeline_id = _deal.pipeline_id`). Those are different propositions and this check asserts the
+// second from the first.
+//
+// It is NOT narrowed, for three measured reasons:
+//   1. DRAFT pipelines are fully workable — `growth2.tsx` filters only `lifecycleStatus !==
+//      "archived"` — so counting a draft's won stage is correct, not a false pass.
+//   2. An ARCHIVED pipeline's live won stage can still legitimately receive a deal: nothing —
+//      not the trigger, not `move_deal`, not Paige's `deal_create` — reads
+//      `pipelines.lifecycle_status`, and the resulting deal stamps `status='won'`, which
+//      `won_value_cents` counts. Excluding it would produce a FALSE FAIL, trading a rare
+//      over-claim for a rare false alarm. Archiving is also refused while any deal, route,
+//      approval, automation or history exists, so such a pipeline is by construction one the
+//      tenant never worked in.
+//   3. `won_value_cents` — the consumer this check exists to protect — is itself tenant-wide with
+//      no pipeline or lifecycle filter. The runner's granularity matches its consumer's.
+// Production carries zero occurrences: of the tenants holding a won stage, every one sits in an
+// `active` pipeline — zero draft, zero archived, zero orphan (measured 2026-09-05).
+//
+// What the gate WAS right about is fixed: the pass sentence no longer says "your pipeline" in the
+// singular, because on a multi-pipeline tenant that asserted something this read never checked.
+//
 // THE HARD RULE (owner-implied, stated explicitly): a workspace that tracks correctly and has sold
 // NOTHING must PASS. Zero revenue is not a broken setup. Honoured structurally — the verdict never
 // reads the `deals` table at all, so no quantity of revenue, including none, can produce a fail.
@@ -91,8 +117,12 @@ export const run: CheckRunner = async (ctx, _row) => {
         // Says what is TRUE of the setup. Says nothing about what the revenue figure will show, and
         // nothing about the pipeline in general — its sibling check owns that sentence, and on most
         // tenants the two disagree, so a broad claim here would contradict it on the same screen.
+        //
+        // "You have a live stage", not "YOUR PIPELINE has a stage": the read is tenant-wide, so on a
+        // tenant owning several pipelines the singular was asserting something it had not checked —
+        // see the note on pipeline scope in the header.
         interpretation:
-          "Your pipeline has a stage that marks a deal as won, so revenue can be recorded against it.",
+          "You have a live stage that marks a deal as won, so a sale can be recorded against it.",
       };
     }
 
