@@ -180,7 +180,13 @@ BEGIN
       ('ingest_banking_snapshot',           'Record reported account figures on a client''s file', 'Client file'),
       ('ingest_confirm_proposal',           'Confirm a staged change to a client''s file', 'Client file'),
       ('ingest_reject_proposal',            'Discard a staged change to a client''s file', 'Client file'),
-      ('client_log_progress',               'Add a progress note to your own record', 'Client file')
+      ('client_log_progress',               'Add a progress note to your own record', 'Client file'),
+      -- Added in the same branch, after the peer gate refused three reuses that merged different
+      -- acts under one key: two global coach-role writes that are NOT the guarded roster grant, and
+      -- the one send tool that also chooses which address the email appears to come from.
+      ('coach_grant_role_globally',          'Grant the coach role across the platform', 'Team'),
+      ('coach_revoke_role_globally',         'Remove the coach role across the platform', 'Team'),
+      ('comms_send_email_choosing_the_sender', 'Send an email and choose the sending address', 'Comms')
   )
   SELECT
     c.tool_key,
@@ -195,3 +201,11 @@ BEGIN
   ORDER BY c.category, c.label;
 END;
 $$;
+
+-- Re-asserted, as every one of the eight predecessors in this chain does. `CREATE OR REPLACE`
+-- preserves an existing function's ACL, so this changes nothing on a database that already ran
+-- 20260711154701 — which is exactly why it is easy to drop, and why dropping it would leave the
+-- chain non-uniform on a SECURITY DEFINER function whose `auth.uid() IS NULL` branch takes
+-- `_tenant_id` unguarded. Costs two lines; keeps the convention that protects that branch.
+REVOKE ALL ON FUNCTION public.list_tool_autonomy(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.list_tool_autonomy(uuid) TO authenticated, service_role;

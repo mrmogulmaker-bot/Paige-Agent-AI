@@ -138,7 +138,11 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["crm_create_contact", "ordinary", "adds a record the operator can edit or delete"],
   ["crm_update_contact", "ordinary", "edits fields on a record"],
   ["crm_update_pipeline_stage", "ordinary", "moves a client between stages"],
-  ["crm_create_task", "ordinary", "files work on the operator's own queue"],
+  // AMENDED 2026-09-05. The reason used to read "files work on the operator's own queue", which is
+  // true of Chat — it defaults the assignee to the caller — and false of the MCP tool, which
+  // REQUIRES `owner_user_id` and writes it unvalidated. Same act, so the same key; the sentence a
+  // person reads on the card now covers both rather than only the surface it was written for.
+  ["crm_create_task", "ordinary", "files work on somebody's queue in this workspace"],
   ["crm_log_activity", "ordinary", "appends to a client's timeline"],
   // Staff-only by construction — `client_notes` has no client-facing read policy at all — and
   // deletable by its author or a tenant admin. The destination is constrained by the database
@@ -238,6 +242,16 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
 
   // ── high: irreversible, moves authority, reaches outside, spends money, or reaches a client ─
   // add_contact_note
+  // AN INCONSISTENCY THIS ENTRY CREATES, NAMED RATHER THAN LEFT TO BE REDISCOVERED (peer gate,
+  // 2026-09-05). The limb that makes this `high` is "becomes visible to a client", because
+  // `clients.current_notes` is exposed to the client by `clients_linked_self_read`. Three siblings
+  // reach the same column and are `ordinary`: `crm_update_lifecycle_stage` and its deprecated twin
+  // append a caller-supplied reason to it, and `crm_update_contact` accepts the field directly and
+  // REPLACES it whole. The defensible line is that the act here IS writing into that column, while
+  // for the others it is an audit trail alongside a different act — but `crm_update_contact` is a
+  // genuinely weak case for it, and raising that key changes Chat's behaviour, which is a decision
+  // for its own slice rather than a side effect of wiring MCP. Tracked; do not read the silence as
+  // agreement.
   ["crm_append_contact_notes", "high", "writes into a notes field the client can read on their own record"],
   // delete_task
   ["crm_delete_task", "high", "destroys a task with nothing left to restore it from"],
@@ -251,6 +265,17 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["coach_update_profile", "high", "edits another person's profile and whether new clients route to them"],
   // create_team_invitation
   ["team_invite_mint", "high", "mints workspace access and hands back a live invitation link"],
+  // add_coach_role, remove_coach_role
+  //
+  // NOT `member_grant_role` / `member_revoke_role`, and the peer gate was right to refuse that
+  // reuse. Those keys name Chat's act, which runs `grant_tenant_member_role` — a tenant-scoped RPC
+  // that requires `auth.uid()`, gates on operator-or-tenant-admin, blocks the protected roles, and
+  // writes the workspace ROSTER alongside the role. The MCP tools do none of that: they upsert and
+  // delete `user_roles` directly on the service-role client, and `user_roles` carries no
+  // `tenant_id`, so the grant is fleet-global. An approval card reading "grants a staff role" would
+  // describe the guarded act and authorise the unguarded one, which is the reuse hazard exactly.
+  ["coach_grant_role_globally", "high", "grants the coach role across the platform, outside any workspace roster"],
+  ["coach_revoke_role_globally", "high", "removes the coach role across the platform, outside any workspace roster"],
   // upsert_email_template
   ["comms_upsert_email_template", "high", "overwrites a shared template every future send renders from"],
   // send_btf_template_email, send_transactional_email, send_composed_email
@@ -293,6 +318,13 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["comms_set_primary_email_domain", "high", "changes the address every client sees when the tenant emails them"],
   // bulk_send_template_email
   ["comms_send_bulk_email", "high", "puts an email in up to a hundred real inboxes at once"],
+  // send_btf_template_email
+  //
+  // Split out of `comms_send_email` because it can do one thing the other two senders cannot: the
+  // caller picks `from_override`, `from_name` and `reply_to`, bounded only by which domains the
+  // workspace has verified. A shared reason reading "puts an email in a real person's inbox" is
+  // true and incomplete, and the missing half is who the recipient thinks it came from.
+  ["comms_send_email_choosing_the_sender", "high", "sends an email and chooses which address it appears to come from"],
 
   // ── ordinary: reversible in-tenant record work ────────────────────────────────────────────
   // update_contact_stage, update_lifecycle_stage

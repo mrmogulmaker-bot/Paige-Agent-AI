@@ -55,6 +55,35 @@
  * NOTHING HERE IS A QUEUE. A refusal is not a send that will happen later, not a draft, not a
  * pending item, and not an approval request that was filed somewhere. It is a refusal, and the
  * message says so (§13).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────────
+ * THREE EDGES THIS RELEASE DOES NOT CLOSE, NAMED SO THE NEXT SLICE MEETS THEM AS REQUIREMENTS
+ * ─────────────────────────────────────────────────────────────────────────────────────────────────
+ *
+ * **1 — THE ALLOW PATH DISCARDS `decision.args`, AND THAT BECOMES A DEFECT THE DAY A MUTATION CAN
+ * RUN.** The seam states the obligation plainly: run exactly `decision.args`. This adapter returns
+ * `{ kind: "allow" }` with no arguments, and the caller then dispatches the request's own untouched
+ * body. Harmless today for a reason that is a coincidence rather than a design: for a genuine read
+ * the seam returns `requestArgs` unchanged, so the two are the same object, and every mutation
+ * refuses. It stops being harmless the moment a redeemed approval carries STORED arguments — the
+ * whole point of which is that the model cannot restate the call and drift a recipient or an
+ * amount. Whoever opens the approval channel must thread `decision.args` through to dispatch;
+ * "the approved call is the executed call" is not true here until they do.
+ *
+ * **2 — `tools/list` STILL ADVERTISES ALL 68 REFUSED MUTATIONS, DELIBERATELY.** The catalogue is
+ * filtered by tier and by scope and by nothing else, so a connected client shows the operator
+ * sixty-eight capabilities this door will always refuse. Hiding them was considered and rejected:
+ * a tool that silently disappears from a connector is a shipped capability removed with no signal
+ * at all (§58), while a tool that answers with a named refusal and a machine-readable code says
+ * exactly what happened and why. The refusal IS the disclosure. Revisit when the approval channel
+ * lands and the answer stops being permanent.
+ *
+ * **3 — A MACHINE CREDENTIAL HEARS THE DOOR'S REASON, NOT THE SEAM'S.** For a platform key the seam
+ * answers `service_principal_may_not_mutate`, which is truer about the caller; the door reports
+ * `approval_required` like everyone else, because every caller getting a byte-identical answer is
+ * a property worth more than a slightly better sentence — a refusal that varies by actor kind
+ * tells a prober what kind of credential they hold. The seam's own answer is preserved on the
+ * audit row as `seam_refusal_code`, so nothing is lost to whoever is actually investigating.
  */
 
 import {
@@ -257,15 +286,22 @@ export function decideMcpToolCall(
   }
 
   // 2 — THE DOOR RULE. Every mutation, whatever the seam went on to say about lanes and claims.
+  //
+  // THE SENTENCE SPLITS ON WHETHER THE ACT HAS A HOME, and that is not decoration. Sending someone
+  // to Paige for an act Paige cannot perform is a false destination: they go, find nothing, and
+  // conclude the refusal was a bug. Fifty-six of the sixty-seven reached this classifier only
+  // because MCP registered them.
   if (policy.effect === "mutate") {
     return {
       outcome: {
         kind: "refuse",
         status: 403,
         code: "approval_required",
-        message:
-          "This would change data, and a connected app cannot approve that. Nothing was run. " +
-          "Ask Paige to do it, where the workspace owner can approve it.",
+        message: policy.paigeHome
+          ? "This would change data, and a connected app cannot approve that. Nothing was run. " +
+            "Ask Paige to do it, where the workspace owner can approve it."
+          : "This would change data, and a connected app cannot approve that. Nothing was run. " +
+            "There is no approved path for this action yet.",
       },
       audit: record("refuse", "approval_required", "mcp_carries_no_approval_channel"),
     };
@@ -297,12 +333,20 @@ export function decideMcpToolCall(
  *  pure and so this shape is asserted by its own test. */
 export function mcpGovernedAuditRow(audit: McpGovernedAudit): {
   action: string;
+  tenant_id: string | null;
   target_type: string;
   target_id: null;
   payload: Record<string, unknown>;
 } {
   return {
     action: audit.decision === "allow" ? "mcp_governed_allow" : "mcp_governed_refuse",
+    // THE WORKSPACE THE DECISION WAS MADE ABOUT, on the COLUMN rather than in the payload. The
+    // tenant-admin read policy on `paige_audit_log` gates on `tenant_id = current_user_tenant_id()`,
+    // so a row written without it is one the workspace owner cannot read — and the owner is exactly
+    // who the refusal message sends to Paige. A payload key would not satisfy that policy and would
+    // not use the tenant index either. Null only when no workspace resolved, which is itself the
+    // refusal.
+    tenant_id: audit.tenant_id,
     target_type: "mcp_tool",
     // Never the tool name: this column is a uuid, and handing it a name is what silently destroyed
     // this surface's entire audit history. The name travels in the payload.

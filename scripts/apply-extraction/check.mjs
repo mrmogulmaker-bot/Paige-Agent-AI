@@ -41,10 +41,14 @@ const STRUCTURED = {
 
 let syncCalls = [];
 let syncStatus = 200;
+let syncFetchThrows = false;
 globalThis.fetch = async (url, init) => {
   const href = String(url);
   if (href.includes("sync-credit-report-data")) {
     syncCalls.push(JSON.parse(String(init?.body ?? "{}")));
+    // A TRANSPORT REJECTION: the fetch itself throwing before any response (DNS, reset, timeout) —
+    // distinct from a non-2xx response, and the case #729 finding 3 left unhandled.
+    if (syncFetchThrows) throw new TypeError("network error: connection reset");
     return new Response(JSON.stringify(syncStatus === 200 ? { success: true } : { error: "boom" }),
       { status: syncStatus, headers: { "Content-Type": "application/json" } });
   }
@@ -56,8 +60,8 @@ await import("../../supabase/functions/paige-apply-extraction/index.ts");
 const { capturedHandler } = await import("./stub-serve.mjs");
 const handler = capturedHandler();
 
-async function drive({ approved_keys, row = {}, claimReturns, releaseError = null, sync = 200, auth = true }) {
-  syncCalls = []; syncStatus = sync;
+async function drive({ approved_keys, row = {}, claimReturns, releaseError = null, sync = 200, syncThrows = false, auth = true }) {
+  syncCalls = []; syncStatus = sync; syncFetchThrows = syncThrows;
   const rec = fake.setScenario({
     authUser: auth ? { id: USER } : null,
     // `row: null` means the caller CANNOT SEE the upload — RLS returned nothing. Spreading null
@@ -70,12 +74,22 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
     },
     claimReturns, releaseError,
   });
-  const res = await handler(new Request("http://local/paige-apply-extraction", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
-    body: JSON.stringify({ upload_id: UPLOAD, approved_keys }),
-  }));
-  const body = await res.json().catch(() => ({}));
+  let res, body;
+  try {
+    res = await handler(new Request("http://local/paige-apply-extraction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
+      body: JSON.stringify({ upload_id: UPLOAD, approved_keys }),
+    }));
+    body = await res.json().catch(() => ({}));
+  } catch (err) {
+    // Deno's `serve` returns 500 when a handler THROWS. Model that here so an un-caught handler
+    // throw is a testable outcome (status 500, no claim released) rather than a crashed run — which
+    // is exactly the pre-fix behaviour of the transport-rejection path #729 finding 3 names.
+    syncFetchThrows = false;
+    return { rec, status: 500, body: { error: String(err?.message ?? err) }, threw: true, syncCalls: [...syncCalls] };
+  }
+  syncFetchThrows = false;
   return { rec, status: res.status, body, syncCalls: [...syncCalls] };
 }
 
@@ -162,6 +176,23 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
   const r = await drive({ approved_keys: ["negative_items"], sync: 502, releaseError: { message: "denied", code: "42501" } });
   assert("7.4 a release that itself fails is logged, not swallowed",
     r.rec.errors.some((m) => /CLAIM NOT RELEASED/.test(m)), JSON.stringify(r.rec.errors));
+}
+
+// ── 7b. A TRANSPORT REJECTION releases the claim too (#729 finding 3). The fetch THROWING before
+// any response is not the same as a non-2xx response, and only the latter released the claim. This
+// handler has NO outer try/catch around the write (the one at the top only guards body parsing), so
+// a rejection escaped `serve` and left the row `applied` with nothing applied. Fails on pre-fix
+// source: there `drive` reports status 500 (the un-caught throw) and no release update is recorded.
+{
+  const r = await drive({ approved_keys: ["negative_items"], syncThrows: true });
+  const release = r.rec.updates.filter((u) => u.table === "credit_report_uploads").at(-1);
+  assert("7.5 a transport rejection releases the claim (not left `applied` with nothing applied)",
+    !!release && release.row.extraction_review_state === "awaiting_review", JSON.stringify(release?.row));
+  assert("7.6 …conditional on the row still being the one it claimed (no stomping a concurrent decline)",
+    !!release && release.filters.some((f) => f[0] === "eq" && f[1] === "extraction_review_state" && f[2] === "applied"),
+    JSON.stringify(release?.filters));
+  assert("7.7 …and the person is told nothing was changed, not reported success",
+    r.status === 502 && r.body?.ok !== true, `status ${r.status} body ${JSON.stringify(r.body)}`);
 }
 
 // ── 8. AUTHORIZATION happens on the CALLER, not on service role.

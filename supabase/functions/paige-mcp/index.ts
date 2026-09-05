@@ -121,13 +121,26 @@ function currentActor(): ActorCtx {
  *  Any non-UUID identifier now travels as `payload.target_ref`, which is queryable and loses nothing. */
 const AUDIT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function audit(action: string, target_type: string | null, target_id: string | null, payload: Record<string, unknown>) {
+async function audit(
+  action: string,
+  target_type: string | null,
+  target_id: string | null,
+  payload: Record<string, unknown>,
+  // THE WORKSPACE THIS ROW IS ABOUT, optional and defaulting to none. The tenant-admin read policy
+  // on `paige_audit_log` gates on `tenant_id = current_user_tenant_id()`, so a row written without
+  // it is one the workspace owner cannot read — the table's own index misses it too. Every existing
+  // call site keeps its current behaviour by omitting it; the governed door passes the tenant it
+  // already resolved server-side, and the remaining call sites are a tracked follow-up rather than
+  // something to guess at from here.
+  tenantId?: string | null,
+) {
   const a = currentActor();
   const isUuid = typeof target_id === "string" && AUDIT_UUID.test(target_id);
   const { error } = await admin.from("paige_audit_log").insert({
     actor_user_id: a.user_id,
     actor_role: a.kind === "user" ? "mcp:user" : "mcp:platform",
     action,
+    ...(tenantId ? { tenant_id: tenantId } : {}),
     target_type,
     target_id: isUuid ? target_id : null,
     payload: {
@@ -5288,6 +5301,9 @@ async function enforceTierAndScope(
   } catch (e) {
     if (operatorNotification) return { ok: false, status: 403, code: "unavailable", error: "This action is unavailable." };
     console.error("[paige-mcp] tier resolution failed", (e as Error)?.message);
+    await actorStore.run(actor, () => audit("mcp_gate_refuse", "mcp_tool", toolName ?? null, {
+      refusal_code: "tier_resolution_failed", enforcement: "enforced",
+    })).catch(() => {});
     return { ok: false, status: 403, code: "tier_resolution_failed", error: "tier_resolution_failed" };
   }
 
@@ -5317,8 +5333,24 @@ async function enforceTierAndScope(
   // ── SCOPE GATE (operation) — unchanged semantics ──
   if (actor.kind === "platform") return { ok: true };
   const required = TOOL_SCOPE[toolName];
-  if (!required) return { ok: false, status: 403, code: "unknown_tool", error: `unknown_tool:${toolName}` };
+  // THE SCOPE REFUSALS ARE RECORDED TOO, so "did anything try to reach my workspace over MCP" has a
+  // truthful answer rather than one covering only the denials somebody remembered to write down.
+  // The tier branch above already wrote its row; these two did not, and the governed door beyond
+  // them records every attempt — so these were the last two silent exits on the path.
+  //
+  // The `operatorNotification` branches deliberately stay silent, and that is not an oversight: an
+  // audit row naming those two tools would confirm to a non-operator that they exist, which is the
+  // named denial `platform-notification-tool-boundary.test.ts` exists to forbid.
+  if (!required) {
+    await actorStore.run(actor, () => audit("mcp_gate_refuse", "mcp_tool", toolName ?? null, {
+      refusal_code: "unknown_tool", caller_tier: tier, enforcement: "enforced",
+    })).catch(() => {});
+    return { ok: false, status: 403, code: "unknown_tool", error: `unknown_tool:${toolName}` };
+  }
   if (!actor.scopes.includes(required)) {
+    await actorStore.run(actor, () => audit("mcp_gate_refuse", "mcp_tool", toolName ?? null, {
+      refusal_code: "insufficient_scope", required_scope: required, caller_tier: tier, enforcement: "enforced",
+    })).catch(() => {});
     return { ok: false, status: 403, code: "insufficient_scope", error: `insufficient_scope: tool '${toolName}' requires '${required}'` };
   }
   return { ok: true };
@@ -5363,6 +5395,9 @@ async function governMcpToolCall(
   // guarantee that rests on a distant library's current behaviour is not a guarantee. Refused here
   // so it rests on this file instead. No working client is affected: an array never got through.
   if (Array.isArray(body)) {
+    await actorStore.run(actor, () => audit("mcp_gate_refuse", "mcp_tool", null, {
+      refusal_code: "batch_not_governed", enforcement: "enforced",
+    })).catch(() => {});
     return {
       ok: false, status: 403, code: "batch_not_governed",
       message: "Batched calls are not accepted on this connection. Send one request at a time.",
@@ -5400,7 +5435,13 @@ async function governMcpToolCall(
   const row = mcpGovernedAuditRow(record);
   // Awaited, not detached: a governance decision nobody recorded is the state this surface was
   // already in. `audit()` logs loudly on failure and never throws.
-  await actorStore.run(actor, () => audit(row.action, row.target_type, row.target_id, row.payload));
+  //
+  // THE COST, NAMED. This is one insert on every call, reads included, so all 51 reads carry a
+  // database round trip they did not before and the table grows a row per attempt rather than per
+  // write. That is deliberate — "which of my tools did that connector reach, and what did the door
+  // say" is unanswerable from a table that only records the ones that got through — but it is a
+  // real trade, and no retention bound is set on it yet.
+  await actorStore.run(actor, () => audit(row.action, row.target_type, row.target_id, row.payload, row.tenant_id));
 
   if (outcome.kind === "allow") return { ok: true };
   return { ok: false, status: outcome.status, code: outcome.code, message: outcome.message };
