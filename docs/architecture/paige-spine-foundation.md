@@ -55,6 +55,70 @@ store or event bus changed. Approval authority stays `none`; no Chat tool was re
 it by construction. It is the one identifier permitted to cross; it names a record, not a
 person or a deal, and it is asserted to appear only inside the citation and never loose.
 
+### SCR-2026-09-05 — a workspace-level outcome projection
+
+**Raised and approved by the owner, 2026-09-05, in this exchange.** His words, which are the
+request: *"All of that stuff is supposed to be put on the spine and then obviously tracked on
+the rails and recorded in the mind."*
+
+This is the change `docs/architecture/paige-spine-tool-migration-map.md` carries as **SCR-1**,
+recorded there as *"not requested, not started"* and named as the blocker on **47 of 60 actions
+and every wave from 3 onward**. That map's own note says the `SCR-n` labels are shorthand and
+whoever raises them gets a real dated name; this is that name.
+
+**The constraint being lifted (map §2, C1).** `paige_client_events.contact_id` is
+`uuid NOT NULL REFERENCES clients(id)`, `record_rail_event` refuses a contact outside the tenant,
+and the Chat emitter returns early without one. A workspace-level outcome — a phone number bought,
+a role granted, an automation run, a marketplace item installed — had **nowhere to be recorded**.
+
+**Measured on production 2026-09-05 (ref `xygzykjyynhzqytbqnzu`), before the change:**
+
+| | |
+|---|---|
+| `paige_audit_log` rows | **142** |
+| `paige_workspace_events` rows | **10** |
+| distinct `source_kind` among them | `mcp_connection`, `oauth_attempt`, `zapier_mcp_connection` — connections only |
+| `has_table_privilege('authenticated','paige_client_events','SELECT')` | **false** (#746, still open) |
+
+**Bound.** The change is additive and its blast radius is stated rather than assumed:
+
+- ONE new `source_kind`, `capability_run`, with five outcomes of its own. No existing family's
+  vocabulary, copy, envelope or trigger is altered. `agent_run` was rejected as a host because its
+  copy describes handing work to a specialist, which a Zapier action is not; a `zapier_*` family
+  was rejected because `get_zapier_rail_activity` calls a projection that RAISES on an unknown
+  outcome, so one such row would take the whole Zapier panel dark.
+- ONE new column, `capability_key`, constrained present for exactly this family and absent for
+  every other, in both directions.
+- The one writer and the one display projection are widened **by delegation**, not by copying:
+  each gains a wider overload that carries the body, and the existing narrower signature becomes a
+  thin delegate. Nothing that exists today was retyped, so the "rebuilt from the wrong ancestor"
+  regression cannot occur.
+- `record_capability_run` is service-role only and re-enforces caller scope in-body (§59): the
+  actor must be an ACTIVE member of the tenant the row is written for. It deliberately does not
+  re-check role — that is the tool gate's decision, and duplicating it would silently drop the
+  record of a legitimately approved run.
+
+**Not widened.** No registry schema, resolver semantics, safe-field set, lifecycle vocabulary,
+approval authority, projection window, shared store or event bus changed. No capability was
+promoted; no `maturity` or `chatBinding` label moved. Approval authority stays where it is.
+
+**Honest limits (§13).**
+- Reads are deliberately not recorded, so this Rail carries what PAIGE **did**, never what she
+  looked at. Six of the twelve n8n tools are reads.
+- Nothing is recorded before the tenant/session fence passes, so a refusal the model earns
+  (unknown tool, approval missing, bad arguments) leaves no row. That preserves the existing
+  "no outbound call at all" property, which is worth more than the row.
+- Two capabilities are wired as its first consumers. **The other ~47 are not** — each migration
+  wave adds its own `capability_key` copy. Until a wave does, an unmapped capability renders an
+  honest generic line rather than nothing.
+- `capability_outcome_unknown` exists because `runN8nManagement` can dispatch a write and never
+  learn the result. Recording that as a failure would be a lie in the owner's favour.
+
+**Exercised on the domain the map names.** Wave 3's rationale says SCR-1 *"should not start until
+it has been exercised once on a domain that has a fallback."* The MCP integrations are that
+domain: Zapier keeps its action-bus row and n8n keeps its audit row, so nothing shipped regresses
+if the new primitive misbehaves.
+
 ## Spine Change Request
 
 A Spine Change Request is required before changing a shared primitive: registry schema, resolver result semantics, safe signal fields, lifecycle vocabulary, approval authority, Chat adapter contract, or projection-window interpretation.

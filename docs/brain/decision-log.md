@@ -2317,3 +2317,68 @@ claimed the scan writes its run row only on completion; it writes it up front.
 
 **Owed and NOT claimed:** §32.c authenticated live-drive of the deployed surface — this session
 cannot sign into the workspace.
+
+
+## 2026-09-05 · PAIGE's workspace-level acts have somewhere to be recorded (SCR-2026-09-05)
+
+**Decision.** A workspace-level outcome is recorded on `paige_workspace_events` under a new
+`source_kind` of its own, `capability_run`, naming the capability and one of five outcomes. The
+MCP integrations are its first two consumers; the remaining ~47 actions adopt it wave by wave.
+
+**The gap this closes, measured on prod 2026-09-05 (ref xygzykjyynhzqytbqnzu), not inferred:**
+142 rows in `paige_audit_log` — which no Solo surface reads — against **10** rows in
+`paige_workspace_events`, all three of whose source kinds are connection events. So of the 60
+actions PAIGE can perform from Chat, the owner could see the result of **none**: 13 write a
+per-client Rail row whose production `SELECT` is still denied (#746, re-verified false the same
+day), and 47 wrote only the audit log. The migration map states it plainly at :127 — *"Leg 7 —
+owner can see the truthful result — is closed for 100% of PAIGE's writes."*
+
+**What was NOT the problem, and is worth recording because it inverted the plan.** The READ half
+already ships and is live: `get_solo_rail_activity` already UNIONs `paige_client_events` with
+`paige_workspace_events` through `_workspace_event_display`, takes no tenant argument, and
+`authenticated` already holds EXECUTE — all four verified on prod before any code was written.
+There was never a missing window. There was a missing **vocabulary**, so nothing could appear in
+the window that existed.
+
+**Four things the design crew caught that a solo pass would have shipped:**
+1. The live `_workspace_event_display` is the one in `20261202000000`, not `20261201000800`.
+   Rebuilding it from the earlier ancestor would have silently deleted the Zapier dispatch and
+   dropped all eleven Zapier outcomes to "Recorded activity". Avoided entirely by widening
+   through delegation rather than by copying a body.
+2. `actor_type` defaults to `'system'`, and `useSoloActivityFeed` derives `byPaige` from
+   `actor_type === 'paige_agent'`. Left alone, every act PAIGE performed would have rendered as
+   **"Person"** on Systems Check and filed under the People filter — while the same Zapier call's
+   contact-scoped twin already says `paige_agent`. The capability family emits `paige_agent`.
+3. One Zapier call would have produced TWO lines in the unified feed. The workspace row is now
+   skipped when the contact-scoped row was actually written.
+4. `get_zapier_rail_activity` hard-filters four source kinds, so a Zapier run would have been
+   invisible on the one panel named after Zapier. Its filter now admits
+   `capability_key='zapier_run_action'`.
+
+**And one the crew did not find, which prod did.** The cross-check constraint is named
+`paige_workspace_event_source` on production, not `n8n_workspace_event_source` as the original
+migration created it. Dropping only the old name would have left the live constraint standing
+beside a new one — the migration applies GREEN and then every `capability_run` insert is rejected
+forever. Caught by reading `pg_constraint` instead of the migration file. **The lesson generalises:
+a migration that edits a constraint must read the constraint's LIVE name, because a rename leaves
+the file lying.**
+
+**Proof.** Thirteen assertions (A–M) run against prod inside `BEGIN … ROLLBACK` — existing Zapier,
+n8n and `agent_run` copy unchanged; the five new outcomes; idempotence per run id; both directions
+of the family constraint; the non-member and invalid-outcome refusals; and the health-check flood
+collapsing while a real state flip still records. Rollback confirmed afterwards: no
+`capability_key` column and no `record_capability_run` on prod, 10 rows still. Plus 3262 unit
+tests, `tsc`, `deno check` on all three edge modules, and six CI lints.
+
+**Also in this change.** `record_zapier_mcp_connection_test` passed `gen_random_uuid(), 0`, so its
+unique key could never collide and EVERY health check wrote a row. It now records only a CHANGE in
+result, which is the pattern `_n8n_rail_revision` already used.
+
+**Flagged, not fixed:** PR **#776** replaces `get_solo_rail_activity` with a version that reads
+`paige_client_events` only. Merged as-is it deletes the workspace half of the union — the ten rows
+that exist today and every row this change adds. It needs a rebase whichever order the two land in.
+
+**Owed and NOT claimed:** §32.c authenticated live-drive — this session cannot sign into the
+workspace, so that a capability row RENDERS on the owner's Command Center is unverified until the
+owner or a browser-capable session looks.
+

@@ -12,6 +12,50 @@ foundation merged and deployed (#785, then the #794 remediation in #795). The co
 below were re-checked at that commit and are **unchanged** — which is the point of the new section
 that follows: a safe server read now exists, and *nothing calls it yet*.
 
+## UPDATE 2026-09-05 — the workspace Rail can now carry PAIGE's own acts (SCR-2026-09-05)
+
+**Read this before concluding from an empty feed that PAIGE has done nothing.**
+
+Measured on production 2026-09-05 (ref `xygzykjyynhzqytbqnzu`), BEFORE this change:
+
+| Fact | Value |
+|---|---|
+| `paige_audit_log` rows | 142 |
+| `paige_workspace_events` rows | **10** |
+| their distinct `source_kind` | `mcp_connection`, `oauth_attempt`, `zapier_mcp_connection` — connections only |
+| `has_table_privilege('authenticated','paige_client_events','SELECT')` | **false** — #746 still open |
+| `get_solo_rail_activity` unions workspace events | **true** |
+| `authenticated` holds EXECUTE on it | **true** |
+
+**The correction this file most needs to carry:** the read path was never the missing piece. A
+tenant-scoped reader that unions `paige_client_events` with `paige_workspace_events` through
+`_workspace_event_display` was already live and already granted. What did not exist was any row
+shape for *"PAIGE did a thing to this workspace"* — so nothing ever wrote one, and the feed was
+empty for a reason that looked like absence and was actually vocabulary.
+
+`20261203000000_paige_can_show_her_work.sql` adds that shape: `source_kind='capability_run'`,
+a `capability_key` column, five outcomes (`capability_succeeded` · `_failed` · `_refused` ·
+`_unreachable` · `_outcome_unknown`), and `record_capability_run(...)` for service-role callers.
+
+**What is and is NOT wired — do not read this as "PAIGE's work is now visible":**
+
+- **Wired:** the six n8n write tools and `zapier_run_action`. Two capabilities.
+- **Not wired:** the other ~47 classified actions. They still write only `paige_audit_log`, which
+  no Solo surface reads. Each migration wave adds its own `capability_key` copy.
+- **Never recorded:** reads. Six of the twelve n8n tools are reads and none of them writes a row.
+- **Never recorded:** anything refused before the tenant/session fence — unknown tool, approval
+  missing, bad arguments. That preserves the "no outbound call at all" property those refusals
+  already had.
+- **Still true:** `paige_client_events` remains unreadable by `authenticated` in production
+  (#746). This change does not touch that and does not depend on it.
+
+**`capability_outcome_unknown` is not a nicety.** `runN8nManagement` can dispatch a write and never
+learn the result. That state is recorded as itself. If you see it, the automation MAY have run —
+check the service before retrying, and do not report it as a failure.
+
+**Live-drive still owed (§32.c).** That a capability row RENDERS on the owner's Command Center is
+unverified — no session so far has signed in to look.
+
 ## The rule this file exists to enforce: existence ≠ reachability
 
 Three different things get called "verified," and collapsing them is how this repository has twice
