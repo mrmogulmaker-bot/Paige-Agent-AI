@@ -17,7 +17,13 @@
   (separate defect, exact evidence):** `NumbersTab.tsx` (legacy `/admin/comms`) holds local
   `owned`/`results`/`buying` with no `activeTenantId`-keyed reset, so an act-as switch without remount
   renders the prior tenant's numbers (RLS still protects the data; leak is stale render). Not on the
-  primary comms-management path; frontend-lifecycle fix.
+  primary comms-management path; frontend-lifecycle fix. **§39 peer-gate: SHIP** (independent read of
+  `19d85469..7fca5b16`, 8 hunts) — widening exact-match-clean (`platform_admin` stays denied), §9
+  act-as scope clean, tenant-less operator fails closed, the test proven non-vacuous (revert the
+  disjunct in-memory → exactly the failing-first case fails), §51/§37/§58 clean. One non-blocking
+  doc NOTE it raised was closed in the SAME PR: the tier-matrix God row's Rail cell + honest-gap
+  paragraph were tightened to name the pure-operator (`operator_enter_tenant`, no member seat)
+  case whose `capability_run` row is silently dropped — the act happens, only the record is lost.
 
 - **Wave 3 Communications — the §39 peer-gate blocked once and was right (2026-09-05, same PR)** — an
   independent adversarial read of the pushed diff returned BLOCK on one finding and two SHOULD-FIXes,
