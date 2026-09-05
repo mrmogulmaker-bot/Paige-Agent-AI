@@ -499,7 +499,7 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
    * AN UNFINISHED RUN'S COUNTS ARE ZEROS, NOT ANSWERS.
    *
    * `systems-check-runner.ts` inserts the run row BEFORE the first check and patches
-   * check_count / pass_count / fail_count only at the very end. So a run that crashed midway
+   * pass_count / fail_count only at the very end. So a run that crashed midway
    * carries 0/0 on the row while its real findings sit in the table beside it. Production has
    * five such runs right now — one reads `check_count 10, pass 0, fail 0` next to NINE real
    * findings. None is currently the newest for its workspace, so nobody is seeing it today; the
@@ -519,7 +519,14 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
    * identical to the run row, so this changes nothing except the case where the row is stale.
    *
    * `check_count` is the one run column that stays trustworthy throughout, because it is written
-   * at INSERT rather than patched at the end — so it remains the planned total.
+   * at INSERT (`systems-check-runner.ts:283`, `check_count: rows.length`) rather than patched at the
+   * end. An earlier revision of this very comment said all three were patched at the end, which was
+   * false and is corrected here.
+   *
+   * But read it precisely: it is "registry rows THIS RUN SELECTED", not "checks this workspace has".
+   * The runner accepts a `runnerKeys` filter (`:239-240`), and `systems-check-run-change` passes a
+   * single key per changed surface — so such a run legitimately carries check_count 1. Anything that
+   * treats this number as the size of the full sweep is wrong for that flavour.
    */
   const freshDetail = !systems.run
     ? "Nothing has been recorded for this workspace."
