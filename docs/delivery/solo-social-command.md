@@ -178,9 +178,34 @@ channel types, and working Graph API calls that are wired to the wrong identity.
 4. **A `tenant_id` on `paige_social_posts`** plus RLS, before any tenant surface may read or write it.
 5. **Token refresh and revocation handling**, which is where these integrations actually rot.
 
-**The owner decision this needs.** Which networks, and in what order — the effort is per-network and
-mostly gated on the provider's review queue rather than on our code. Meta (Facebook + Instagram) is
-the cheapest first step because the Graph API calls already exist and only their identity is wrong.
+**OWNER RULING, 2026-09-05 — the connections live in Settings › Integrations, and Social reads
+them.** *"As far as the actual backend connection or integration with social media, we have an
+integration section that is inside of our settings on the menu tab. I would add: Facebook,
+Instagram, LinkedIn, TikTok, YouTube. I would add all of those on the backend there. You don't have
+to do that right now… That's how it's going to ultimately wire and connect perfectly inside of
+social."*
+
+So the seam is settled, and it is the right one — it matches where every other provider connection
+already lives (`src/solo/settings-integrations.tsx`, `/solo/{account}/settings/integrations`) and
+the pattern `gmail-oauth-start` / `gmail-oauth-callback` already establishes. **Social does not grow
+its own connect button.** It stays the surface that shows what is on record and what a connection
+would unlock, and reads connection state from the connector rows Integrations owns — one home per
+capability (§18).
+
+Five networks, owner-named: **Facebook · Instagram · LinkedIn · TikTok · YouTube**. Note that
+`channel_connectors`' CHECK currently admits only `email, sms, whatsapp, instagram, facebook, voice`
+— LinkedIn, TikTok and YouTube need that constraint widened, which is a one-line migration and
+should happen in the same slice that adds them rather than being discovered by a failing insert.
+
+**Deliberately NOT built in this slice, at the owner's instruction** ("you don't have to do that
+right now"). When it is built, the declared handles this slice records become the natural
+pre-fill and the reconciliation target: a connected account whose handle disagrees with the record
+is a real finding the surface should show, and it is only expressible because the record exists first.
+
+**Sequencing note for whoever picks it up.** The effort is per-network and mostly gated on the
+provider's review queue rather than on our code. Meta (Facebook + Instagram) is the cheapest first
+step because the Graph API calls already exist in `meta-schedule-post` / `meta-get-insights` and
+only their identity is wrong — they read one platform-wide token where they need a per-tenant one.
 
 **What this slice deliberately did NOT do**, so it is on the record: it did not point the surface at
 the existing Meta functions. Doing so would have made the tiles fill with numbers immediately and
