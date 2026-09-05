@@ -3492,7 +3492,7 @@ and every tile carries its own.
 | Waiting on you (KPI) · PAIGE sees | **PARTIAL** | `paige_actions` at `status='filed'`, `autonomy_lane='confirm'`, filtered to the growth desks, via `useSoloPendingActions` |
 | Captured responses (KPI) · Published outputs · Held for you · Needs repair (pipeline) | **PARTIAL** | `useSoloCampaigns` — `growth_pages`/`_funnels`/`_forms`/`_form_submissions`, all tenant-scoped |
 | Trust Compass lanes | **PARTIAL** | `useSoloTrust` — platform-default lanes, labelled as platform defaults, read-only |
-| Publishing queue · Recorded placements · Scheduled · Ideas · Drafting · Repurposing · every per-channel metric | **UNAVAILABLE** | No tenant-scoped record exists. Each renders an em-dash and the sentence naming what would have to exist |
+| Publishing queue · Recorded placements · Scheduled · Ideas · Drafting · every per-channel metric | **UNAVAILABLE** | No tenant-scoped record exists. Each renders an em-dash and the sentence naming what would have to exist |
 | Active missions | **UNAVAILABLE** | Nothing stores a mission, cadence or progress. `tenant_workflows` mirrors n8n and carries neither a cadence nor a target |
 
 **PAIGE reach (the `paige-brain-wiring-standard.md` five-point checklist).** ① brain updated in this
@@ -3520,6 +3520,43 @@ refusal, the blank-handle omission, and a JWT caller outside the workspace seein
 refused PAIGE's own service-role MCP caller and the Systems Check runner. **Owed:** migration applied
 on production (CI on merge), and an authenticated live drive of the record form (§32.c) — no session
 here holds a browser that can reach the authenticated surface.
+
+**Second pass — executive conversion (owner instruction: "keep Mineral and Obsidian exactly as theme
+variants, do not change the evidence logic; this pass is purely about converting a truthful internal
+status console into a truthful executive AI COO command surface").** No evidence logic changed, no
+theme changed, no figure gained or lost a source. What changed:
+
+| Change | What it is | Why it is not an evidence change |
+|---|---|---|
+| **Next move** band | One ranked instruction at the head of the surface, from `buildNextMove` in `social-truth.ts`, plus the control that acts on it | A pure re-READ of figures the builders already produce, in a fixed precedence: needs-repair → waiting on you → no accounts on record → nothing published → nothing waiting. It computes no number of its own. |
+| KPI ranking | `KPI_ORDER` applied at the end of `buildKpis` — decision first (waiting on you), record second, then the counted work | Ordering only. The same five tiles, the same five sources. |
+| Panel heads | Each panel carries a glyph plate and its own truth label | The label was already computed per module; it is now shown per panel instead of only per surface. |
+| Timestamps on what PAIGE filed | `elapsedLabel` renders `createdAt` as an age, and the rationale takes its own line | `createdAt` was already read from `paige_actions`; it was not being shown. |
+| Container queries | `.social-page` declares `container-type: inline-size; container-name: social`, and every `@media` became `@container social` | A real defect, not a preference: the breakpoints keyed on VIEWPORT width while the surface sits inside the Solo shell's content column, so at a docked 1366 the two-column grid was running its columns at 352px and 275px and the breakpoints never fired. |
+
+**A §66 drift corrected in this same commit.** The row above previously listed a **Repurposing** stage
+among the UNAVAILABLE pipeline modules. No such stage exists or has ever existed on this surface;
+`buildPipeline` returns exactly six — `ideas · drafting · review ("Held for you") · scheduled ·
+published · repair ("Needs repair")`. The ledger named a module the code does not have, which is the
+answer-from-stale-docs failure §66 exists to end, so it is struck here rather than left to be
+discovered.
+
+**Second-pass proof.** Full suite **3336 passing** (227 files), `ci:tsc` ratchet clean at its 13-error
+baseline, `vite build` green, and every CI lint green (`lint:views`, `lint:definer-fns`,
+`lint:tier-features`, `lint:skeleton`, `lint:write-targets`, `lint:migration-versions`, `lint:pg-tokens`,
+`lint:shadow-vars`, `ci:regression`, `lint:action-authority`, `lint:no-shadowed-credential`,
+`lint:user-facing-admin-urls`, `lint:ssrf-fork`, `lint:managed-schema`, `lint:alias-ratchet`,
+`lint:pack-lineage`, `lint:operator-reach`, `lint:tool-catalogue`, `lint:readiness-copy`,
+`lint:action-risk`, `lint:approval-gate`, `lint:chat-tool-registry`, `lint:governed-execution`,
+`lint:mcp-destructive-confirm`, `lint:vector-path`). `lint:gold` reports one violation in
+`src/components/dashboard/BusinessCreditDashboard.tsx`, which this branch does not touch, which is
+identical to `origin/main`, and which is not wired into CI — pre-existing, named here rather than
+quietly absorbed. Two §13 defects the second pass found in its own first draft and fixed: the
+`waiting` KPI asserted "nothing is waiting on your decision" on a FAILED read (the hook returns `[]`
+for both "none" and "could not check", so `waitingUnknown` now separates them), and a rendered-page
+denial guard had to be calibrated to accept denial-by-condition after it fired on the §58-protected
+placement precondition. **Still owed, unchanged:** the authenticated live drive of the record form
+(§32.c) — no session in this work has held a browser that can reach the authenticated surface.
 
 **Live provider connection remains UNAVAILABLE and is unchanged by this slice.** `meta-schedule-post`
 / `meta-get-insights` exist but read a single platform-wide `META_PAGE_ACCESS_TOKEN` and write

@@ -26,6 +26,7 @@ import React from "react";
 import { Ic } from "./_shared";
 import { useSocialCommand } from "./useSocialCommand";
 import { useSoloPendingActions } from "./data/useSoloPendingActions";
+import { elapsedLabel } from "./data/useSoloActivityFeed";
 // useSoloTrust directly rather than compass.tsx's useTrustDepartments: the compass module pulls the
 // whole Trust Compass surface into the Campaigns bundle for two lane labels, and this is the same
 // underlying read either way.
@@ -35,6 +36,7 @@ import {
   buildBrief,
   buildChannels,
   buildKpis,
+  buildNextMove,
   buildPipeline,
   isGrowthDesk,
   LANE_COPY,
@@ -43,6 +45,32 @@ import {
 import "./social-command.css";
 
 /* ─────────────────────────── shared atoms ─────────────────────────── */
+
+/**
+ * A glyph per desk. Plumbing for `Ic[...]`, not a data claim — the same pattern and the same
+ * caveat as `compass.tsx`'s DEPT_ICON. Deliberately NOT a colour: the only accents in this shell
+ * are violet, gold and the three semantic status colours, and spending a status colour on "which
+ * desk raised this" would make a desk read as a severity.
+ */
+const DESK_GLYPH = {
+  marketing: Ic.trend,
+  sales: Ic.store,
+  client_experience: Ic.users,
+  owner_ops: Ic.grid,
+};
+
+function PanelHead({ glyph, title, sub, state }) {
+  return (
+    <div className="social-panel-head">
+      <span className="social-panel-glyph">{React.createElement(Ic[glyph] ?? Ic.grid, { size: 15 })}</span>
+      <div>
+        <h3>{title}</h3>
+        <p>{sub}</p>
+      </div>
+      <Truth state={state} />
+    </div>
+  );
+}
 
 function Truth({ state }) {
   const label = state || "UNAVAILABLE";
@@ -122,7 +150,7 @@ function RecordAccountsForm({ handles, canManage, onSave, onClose }) {
       // Reports the count the SERVER read back, not the length of what was typed.
       setMessage(
         result.recordedCount === 0
-          ? "Saved. No account is on record for this workspace now."
+          ? "Saved. No account is on record now."
           : `Saved. ${result.recordedCount} account${result.recordedCount === 1 ? "" : "s"} on record.`,
       );
       window.setTimeout(onClose, 900);
@@ -146,9 +174,9 @@ function RecordAccountsForm({ handles, canManage, onSave, onClose }) {
         </header>
         <form onSubmit={submit}>
           <p className="social-dialog-note">
-            This records what your accounts <strong>are</strong>. It does not connect them: nothing is
-            authorised to publish, schedule, or read a follower or engagement figure. Leave a field
-            empty to take that account off the record.
+            This tells PAIGE which accounts are yours. It does not connect them — nothing here can publish,
+            schedule, or read a follower or engagement number for you. Clear a field to take that
+            account off your record.
           </p>
           <div className="social-dialog-fields">
             {SOCIAL_NETWORKS.map((network, index) => (
@@ -168,7 +196,7 @@ function RecordAccountsForm({ handles, canManage, onSave, onClose }) {
           </div>
           {!canManage && (
             <p className="social-dialog-status" role="status">
-              You have read-only access here. An owner or admin of this workspace can record these.
+              You can look, not change. An owner or admin of this workspace can record these.
             </p>
           )}
           {message && <p className="social-dialog-status" role="status">{message}</p>}
@@ -184,6 +212,40 @@ function RecordAccountsForm({ handles, canManage, onSave, onClose }) {
   );
 }
 
+/* ─────────────────────────── the next move ─────────────────────────── */
+
+/**
+ * The answer to the one question the surface could not answer before: what should I do?
+ *
+ * It sits directly under the brief because that is the order a person reads in — where I stand,
+ * then what to do about it. The move itself is decided in `buildNextMove` over inputs that already
+ * exist, so this component chooses nothing; it renders a decision and wires it to a control that
+ * was already on the page or a route that already resolves.
+ */
+function NextMove({ move, onRecord, onOpenStudio, onOpenCompass, onOpenPipeline, onAskPaige }) {
+  const run = {
+    record: onRecord,
+    studio: onOpenStudio,
+    compass: onOpenCompass,
+    pipeline: onOpenPipeline,
+    paige: onAskPaige,
+  }[move.action.kind];
+
+  return (
+    <section className="social-next" aria-labelledby="social-next-title">
+      <span className="social-next-glyph"><Ic.bolt size={15} /></span>
+      <div className="social-next-body">
+        <span className="social-eyebrow">Do this next</span>
+        <h2 id="social-next-title">{move.headline}</h2>
+        <p>{move.detail}</p>
+      </div>
+      <button type="button" className="btn btn-s btn-g social-next-act" onClick={run}>
+        <Ic.arrow size={13} />{move.action.label}
+      </button>
+    </section>
+  );
+}
+
 /* ─────────────────────────── hero ─────────────────────────── */
 
 function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles }) {
@@ -196,14 +258,14 @@ function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles }
         <p className="social-hero-body">{brief.body}</p>
         <p className="social-signature">
           <strong>PAIGE</strong>
-          <span>Reporting only what this workspace has on record</span>
+          <span>Your chief of staff. She only tells you what she can prove.</span>
         </p>
       </div>
 
       <div className="social-hero-mark">
         <PaigeOrb />
         <blockquote className="social-quote">
-          A record you can point to<br />beats a number nobody can source.
+          A number nobody can source<br />is worse than no number at all.
         </blockquote>
       </div>
 
@@ -253,20 +315,15 @@ function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles }
 function ActiveMissionsPanel({ onOpenStudio }) {
   return (
     <section className="social-panel">
-      <div className="social-panel-head">
-        <div>
-          <h3>Active missions</h3>
-          <p>Always-on campaigns with a cadence and a target, run for you.</p>
-        </div>
-        <Truth state="UNAVAILABLE" />
-      </div>
+      <PanelHead glyph="trend" title="Active missions" state="UNAVAILABLE"
+        sub="Always-on campaigns with a cadence and a target, run for you." />
       <div className="social-empty">
         <span className="social-empty-glyph"><Ic.trend size={18} /></span>
-        <h4>No mission record exists</h4>
+        <h4>You have no always-on campaign yet</h4>
         <p>
-          Nothing in the platform stores a social mission, its cadence, or its progress, so none is
-          shown and none is inferred. Creative work is authored in Vibe Studio and appears under
-          Published outputs once it exists.
+          Nothing here holds a mission, its cadence, or its progress for you, so none is shown and none
+          is invented. Build the piece in Vibe Studio and it appears under Published outputs the
+          moment you publish it.
         </p>
         <button type="button" className="btn btn-s" data-solo-vibe-studio-launcher onClick={onOpenStudio}>
           <Ic.spark size={13} />Vibe Studio
@@ -290,19 +347,14 @@ function PaigeSeesPanel({ items, loading, error, onRetry }) {
   const growth = items.filter((item) => isGrowthDesk(item.department));
   return (
     <section className="social-panel">
-      <div className="social-panel-head">
-        <div>
-          <h3>PAIGE sees</h3>
-          <p>Work she has prepared from the growth desks and stopped on for you.</p>
-        </div>
-        <Truth state={growth.length ? "PARTIAL" : "UNAVAILABLE"} />
-      </div>
+      <PanelHead glyph="pulse" title="PAIGE sees" state={growth.length ? "PARTIAL" : "UNAVAILABLE"}
+        sub="What she has ready for you, from marketing, sales and client work." />
       {loading ? (
-        <div className="social-skeleton" role="status" aria-label="Loading what PAIGE has filed"><span /><span /><span /></div>
+        <div className="social-skeleton" role="status" aria-label="Loading what PAIGE has ready"><span /><span /><span /></div>
       ) : error ? (
         <div className="social-empty" role="alert">
           <h4>This could not be read</h4>
-          <p>A failed read is not the same as nothing waiting, so nothing is claimed either way.</p>
+          <p>This did not load. That is not the same as nothing waiting, so nothing is claimed either way.</p>
           <button type="button" className="btn btn-s" onClick={onRetry}><Ic.arrow size={13} />Try again</button>
         </div>
       ) : growth.length === 0 ? (
@@ -310,23 +362,27 @@ function PaigeSeesPanel({ items, loading, error, onRetry }) {
           <span className="social-empty-glyph"><Ic.pulse size={18} /></span>
           <h4>Nothing is waiting on you</h4>
           <p>
-            When PAIGE prepares growth work she is not permitted to run unattended, it appears here
-            with the desk that filed it. No trend, posting window, or engagement signal is measured
-            for this workspace, so none is shown.
+            When PAIGE has something ready she should not send on her own, it shows up here with the team
+            that raised it. No trend, posting window, or engagement number is measured for you, so
+            none is shown.
           </p>
         </div>
       ) : (
         <ul className="social-feed">
           {growth.map((item) => (
             <li key={item.id}>
-              <span className="social-feed-glyph"><Ic.bell size={14} /></span>
+              <span className="social-feed-glyph">{React.createElement(DESK_GLYPH[item.department] ?? Ic.bell, { size: 14 })}</span>
               <div>
-                <h4>{item.title}</h4>
+                <div className="social-feed-line">
+                  <h4>{item.title}</h4>
+                  {item.createdAt && <time className="social-feed-age">{elapsedLabel(item.createdAt)}</time>}
+                </div>
                 {item.summary && <p>{item.summary}</p>}
-                <small>
-                  {item.department}
-                  {item.rationale ? ` · ${item.rationale}` : ""}
-                </small>
+                <small>{item.department}</small>
+                {/* Its own line, dimmer. This is the row's RATIONALE — why she stopped — and the
+                    field's contract says exactly that. It is never labelled a recommendation,
+                    because nothing in the row recommends anything. */}
+                {item.rationale && <small className="social-feed-why">{item.rationale}</small>}
               </div>
             </li>
           ))}
@@ -342,13 +398,8 @@ function ContentPipelinePanel({ stages }) {
   const known = stages.filter((stage) => stage.figure.value !== null).length;
   return (
     <section className="social-panel">
-      <div className="social-panel-head">
-        <div>
-          <h3>Content pipeline</h3>
-          <p>From idea to placement — and which of those steps the platform can actually see.</p>
-        </div>
-        <Truth state={known ? "PARTIAL" : "UNAVAILABLE"} />
-      </div>
+      <PanelHead glyph="doc" title="Content pipeline" state={known ? "PARTIAL" : "UNAVAILABLE"}
+        sub="From idea to live — and which of these steps PAIGE can actually see for you." />
       <ol className="social-pipeline">
         {stages.map((stage) => (
           <li key={stage.id} className={`social-stage social-stage--${stage.tone}`}>
@@ -359,8 +410,8 @@ function ContentPipelinePanel({ stages }) {
         ))}
       </ol>
       <p className="social-panel-foot">
-        Published outputs are pages, funnels and forms — eligible for placement, not posts. They
-        appear as placements only once a supported provider records where they went live.
+        Published outputs are your pages, funnels and forms, not posts. They count as placements
+        only once a supported provider records where they went live.
       </p>
     </section>
   );
@@ -371,19 +422,14 @@ function ContentPipelinePanel({ stages }) {
 function ChannelTelemetryPanel({ channels, onRecord, canManage, notPermitted }) {
   return (
     <section className="social-panel">
-      <div className="social-panel-head">
-        <div>
-          <h3>Channels</h3>
-          <p>The accounts on record, and what is known about each.</p>
-        </div>
-        <Truth state={channels.length ? "PARTIAL" : "UNAVAILABLE"} />
-      </div>
+      <PanelHead glyph="users" title="Channels" state={channels.length ? "PARTIAL" : "UNAVAILABLE"}
+        sub="Every account you post from, and exactly what PAIGE knows about it." />
       {notPermitted ? (
         <div className="social-empty">
           <h4>Not shown at your access level</h4>
           <p>
-            This workspace's account record is internal to its owners and admins. Nothing here says
-            whether accounts exist — only that this is not yours to read.
+            Only this business's owners and admins can see its account list. Nothing here says whether any
+            exist — only that this part is not yours to see.
           </p>
         </div>
       ) : channels.length === 0 ? (
@@ -391,8 +437,8 @@ function ChannelTelemetryPanel({ channels, onRecord, canManage, notPermitted }) 
           <span className="social-empty-glyph"><Ic.users size={18} /></span>
           <h4>No account is on record</h4>
           <p>
-            Record the accounts this business posts from. PAIGE reads them when she drafts, and the
-            Systems Check item for social accounts is satisfied by this record.
+            Name the accounts you post from. PAIGE works from them when she drafts, and it ticks the
+            social accounts item on your Systems Check.
           </p>
           <button type="button" className="btn btn-s btn-g" onClick={onRecord} disabled={!canManage}>
             <Ic.plus size={13} />Record accounts
@@ -418,8 +464,8 @@ function ChannelTelemetryPanel({ channels, onRecord, canManage, notPermitted }) 
             ))}
           </ul>
           <p className="social-panel-foot">
-            Declared accounts. No provider is connected, so no audience, engagement or placement
-            figure is read for any of them.
+            These are what you told PAIGE. No provider is connected, so no audience, engagement or
+            placement number exists for any of them.
           </p>
         </>
       )}
@@ -461,8 +507,8 @@ function TrustCompassSocialStatus({ trust }) {
         ))}
       </ul>
       <p>
-        This is the platform default for these desks, the same for every workspace — not a setting
-        this workspace chose. Autonomy is reviewed in Trust Compass, not here.
+        This is the platform default for these desks, the same for every business — nobody here has
+        picked it. Autonomy is reviewed in Trust Compass, not here.
       </p>
     </aside>
   );
@@ -470,7 +516,7 @@ function TrustCompassSocialStatus({ trust }) {
 
 /* ─────────────────────────── the page ─────────────────────────── */
 
-export function SocialCommand({ campaigns, onOpenStudio, onAskPaige }) {
+export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompass, onOpenPipeline }) {
   const social = useSocialCommand();
   // Owned here rather than lifted into GrowthHub: the other five Campaigns tabs would otherwise pay
   // for two reads they never render.
@@ -499,8 +545,10 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige }) {
       formsNeedingRepair: artifacts.filter((artifact) => (artifact.recentDispatches?.failed ?? 0) > 0).length,
       capturedSubmissions: (campaigns.submissions ?? []).length,
       waitingOnYou: (pending.items ?? []).filter((item) => isGrowthDesk(item.department)).length,
+      // A failed read arrives as an empty list. The tile must not read that as "nothing waiting".
+      waitingUnknown: Boolean(pending.error),
     };
-  }, [social.handles, campaigns.artifacts, campaigns.submissions, pending.items]);
+  }, [social.handles, campaigns.artifacts, campaigns.submissions, pending.items, pending.error]);
 
   if (social.phase === "resolving" || campaigns.phase === "resolving") {
     return (
@@ -515,7 +563,7 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige }) {
         <div className="social-state">
           <Truth state="UNAVAILABLE" />
           <h2>Social needs a resolved workspace</h2>
-          <p>No record is read until your account context is confirmed.</p>
+          <p>Nothing loads until PAIGE knows which account you are in.</p>
         </div>
       </div>
     );
@@ -526,7 +574,7 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige }) {
         <div className="social-state" role="alert">
           <Truth state="UNAVAILABLE" />
           <h2>This workspace's social record could not be read</h2>
-          <p>Nothing was changed. A failed read is not an empty record, so nothing is claimed either way.</p>
+          <p>Nothing was changed. This failing to load is not the same as having nothing on record, so nothing is claimed either way.</p>
           <button type="button" className="btn btn-s" onClick={social.retry}><Ic.arrow size={13} />Try again</button>
         </div>
       </div>
@@ -541,6 +589,7 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige }) {
   }
 
   const brief = buildBrief(input);
+  const nextMove = buildNextMove(input);
   const kpis = buildKpis(input);
   const stages = buildPipeline(input);
   const channels = buildChannels(social.handles);
@@ -553,6 +602,15 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige }) {
         canManage={social.canManage}
         hasHandles={social.handles.length > 0}
         onRecord={openRecord}
+        onAskPaige={onAskPaige}
+      />
+
+      <NextMove
+        move={nextMove}
+        onRecord={openRecord}
+        onOpenStudio={onOpenStudio}
+        onOpenCompass={onOpenCompass}
+        onOpenPipeline={onOpenPipeline}
         onAskPaige={onAskPaige}
       />
 

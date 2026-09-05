@@ -137,7 +137,7 @@ export type SocialPipelineStage = {
   figure: SocialValue<number>;
   detail: string;
   /** Which accent the stage carries. Semantic, never decorative. */
-  tone: "neutral" | "attention" | "positive";
+  tone: "neutral" | "attention" | "positive" | "failing";
 };
 
 export type SocialChannelCard = {
@@ -179,6 +179,16 @@ export type SocialCommandInput = {
   capturedSubmissions: number;
   /** Filed actions in `confirm` that name a growth-facing desk. */
   waitingOnYou: number;
+  /**
+   * The read that produces `waitingOnYou` FAILED.
+   *
+   * Without this the tile cannot tell "nothing is waiting" from "I could not look", because both
+   * arrive as a count of zero — and it asserted the first. The PAIGE sees panel beside it has always
+   * drawn that distinction (`useSoloPendingActions` returns `error` precisely so a failed read is
+   * not read as an empty one); the tile did not, so the same surface said two different things about
+   * the same read. A failed read is not an empty result (§13).
+   */
+  waitingUnknown?: boolean;
 };
 
 /**
@@ -189,8 +199,18 @@ export type SocialCommandInput = {
  * one of the five things the panel this replaces explicitly refused to infer — accounts, followers,
  * publishing queue, schedules, placements — and they keep refusing.
  */
+/**
+ * The order the five tiles are READ in, which is not the order they are defined in.
+ *
+ * A command surface leads with what can be acted on. The first three tiles can each carry a real
+ * figure; the last two are structural absences and sit together so they read as one row of things
+ * not yet possible rather than as two failures scattered through the strip. Nothing is hidden
+ * (§58) and nothing about any tile's state, value or note changes — this is the reading order only.
+ */
+const KPI_ORDER = ["waiting", "channels", "captured", "queue", "placements"] as const;
+
 export function buildKpis(input: SocialCommandInput): SocialKpi[] {
-  return [
+  const tiles: SocialKpi[] = [
     {
       id: "channels",
       label: "Accounts on record",
@@ -199,26 +219,26 @@ export function buildKpis(input: SocialCommandInput): SocialKpi[] {
         state: input.handles.length ? "PARTIAL" : "UNAVAILABLE",
         value: input.handles.length || null,
         note: input.handles.length
-          ? "Declared by this workspace. A handle is a record, not a connection."
-          : "No account has been recorded for this workspace yet.",
+          ? "You told PAIGE these are yours. That is a record, not a connection."
+          : "You have not told PAIGE which accounts are yours yet.",
       },
       detail: input.handles.length
         ? `${input.handles.map((h) => h.label).join(" · ")}`
-        : "Record the accounts this business posts from so PAIGE can reference them.",
+        : "Name the accounts you post from — PAIGE works from them every time she drafts for you.",
     },
     {
       id: "queue",
       label: "Publishing queue",
       glyph: "clock",
-      figure: absent("Nothing in the platform holds a queued post for this workspace."),
-      detail: "A queue needs a connected account that can accept a post. None is connected.",
+      figure: absent("No account is connected to publish through, so nothing can be queued for you."),
+      detail: "Connecting an account is what turns this on. No social account can be connected yet.",
     },
     {
       id: "placements",
       label: "Recorded placements",
       glyph: "spark",
-      figure: absent("No supported provider has recorded a placement for this workspace."),
-      detail: "Published work appears here once a provider reports where it went live.",
+      figure: absent("No supported provider has told PAIGE where any of your work went live."),
+      detail: "A connection is what turns this on. No social account can be connected yet.",
     },
     {
       id: "waiting",
@@ -226,12 +246,14 @@ export function buildKpis(input: SocialCommandInput): SocialKpi[] {
       glyph: "bell",
       figure: {
         state: input.waitingOnYou ? "PARTIAL" : "UNAVAILABLE",
-        value: input.waitingOnYou || null,
-        note: input.waitingOnYou
-          ? "Filed work this workspace's autonomy setting will not run unattended."
-          : "Nothing growth-facing is currently held for your decision.",
+        value: input.waitingUnknown ? null : input.waitingOnYou || null,
+        note: input.waitingUnknown
+          ? "This could not be read, so nothing is claimed either way."
+          : input.waitingOnYou
+            ? "PAIGE prepared it and stopped. The default for these desks is to draft, not to send."
+            : "Nothing is waiting on your decision right now.",
       },
-      detail: "Work PAIGE has prepared and stopped on, from the growth and client desks.",
+      detail: "Drafts PAIGE has ready for your call, from marketing, sales, client and owner work.",
     },
     {
       id: "captured",
@@ -241,15 +263,16 @@ export function buildKpis(input: SocialCommandInput): SocialKpi[] {
         state: input.capturedSubmissions ? "PARTIAL" : "UNAVAILABLE",
         value: input.capturedSubmissions || null,
         note: input.capturedSubmissions
-          ? "Form submissions recorded against this workspace."
-          : "No form submission has been recorded for this workspace.",
+          ? "Responses recorded on your forms."
+          : "No form of yours has a recorded response yet.",
       },
       // The single most tempting lie on this surface. `growth_form_submissions.source` holds a
       // capture-mechanism label ('paige_form' / 'external:<provider>'), never a marketing channel,
       // so no count here can be attributed to social. Say that rather than implying attribution.
-      detail: "Not attributed to a channel — no record ties a response to where it came from.",
+      detail: "Nothing records where a response came from, so none of these is credited to social.",
     },
   ];
+  return KPI_ORDER.map((id) => tiles.find((tile) => tile.id === id)!);
 }
 
 /**
@@ -264,15 +287,15 @@ export function buildPipeline(input: SocialCommandInput): SocialPipelineStage[] 
     {
       id: "ideas",
       label: "Ideas",
-      figure: absent("No idea or backlog record exists for this workspace."),
-      detail: "Ideas are worked in Vibe Studio and appear here once they become an output.",
+      figure: absent("Nothing here holds an idea list for you."),
+      detail: "Work an idea up in Vibe Studio and it lands here the moment you publish it.",
       tone: "neutral",
     },
     {
       id: "drafting",
       label: "Drafting",
-      figure: absent("Unpublished Vibe Studio work is not reported to this surface."),
-      detail: "In-progress drafts stay in Vibe Studio until they are published.",
+      figure: absent("Vibe Studio does not tell this page what you have in progress."),
+      detail: "Your drafts stay in Vibe Studio until you publish them, then they show up here.",
       tone: "neutral",
     },
     {
@@ -282,17 +305,17 @@ export function buildPipeline(input: SocialCommandInput): SocialPipelineStage[] 
         state: input.approvalGatedForms ? "PARTIAL" : "UNAVAILABLE",
         value: input.approvalGatedForms || null,
         note: input.approvalGatedForms
-          ? "Published forms whose routing is approval-gated."
-          : "No published form is currently approval-gated.",
+          ? "Published forms set to wait for a person before anything is sent."
+          : "No form of yours is waiting on an approval.",
       },
-      detail: "Routing that will not dispatch until a person approves it.",
+      detail: "Nothing goes out from these until you approve it.",
       tone: "attention",
     },
     {
       id: "scheduled",
       label: "Scheduled",
-      figure: absent("No schedule is inferred. Nothing records a scheduled post here."),
-      detail: "Scheduling needs a connected account. None is connected.",
+      figure: absent("No schedule is inferred. Nothing here holds a scheduled post for you."),
+      detail: "Connect an account and PAIGE can hold a post for a date. None can be connected yet.",
       tone: "neutral",
     },
     {
@@ -302,12 +325,12 @@ export function buildPipeline(input: SocialCommandInput): SocialPipelineStage[] 
         state: input.publishedOutputs ? "PARTIAL" : "UNAVAILABLE",
         value: input.publishedOutputs || null,
         note: input.publishedOutputs
-          ? "Published pages, active funnels and active forms in this workspace."
-          : "This workspace has no published output yet.",
+          ? "Your published pages, active funnels and active forms."
+          : "You have not published anything yet.",
       },
       // Deliberately NOT called social content. These are pages, funnels and forms; presenting them
       // as posts would be the mislabel that makes an honest number dishonest.
-      detail: "Pages, funnels and forms — eligible for placement, not yet placed anywhere.",
+      detail: "Your pages, funnels and forms — ready to be placed, not yet placed anywhere.",
       tone: "positive",
     },
     {
@@ -317,11 +340,11 @@ export function buildPipeline(input: SocialCommandInput): SocialPipelineStage[] 
         state: input.formsNeedingRepair ? "PARTIAL" : "UNAVAILABLE",
         value: input.formsNeedingRepair || null,
         note: input.formsNeedingRepair
-          ? "Published forms with a recorded failed dispatch."
-          : "No form has a recorded failed dispatch.",
+          ? "Your published forms with a delivery that did not succeed."
+          : "Every recorded delivery of yours succeeded.",
       },
-      detail: "A recorded delivery outcome that did not succeed.",
-      tone: "attention",
+      detail: "A response was captured and could not be delivered where you routed it.",
+      tone: "failing",
     },
   ];
 }
@@ -338,7 +361,7 @@ export function buildChannels(handles: SocialHandle[]): SocialChannelCard[] {
     network: handle.network,
     label: handle.label,
     handle: handle.handle,
-    reach: absent("No provider is connected, so no audience or performance figure is read."),
+    reach: absent("No provider is connected to this account, so no audience or performance number reaches you."),
     detail: "On record",
   }));
 }
@@ -377,11 +400,100 @@ export function buildBrief(input: SocialCommandInput): { headline: string; body:
     return {
       headline: "Nothing is on record yet.",
       body:
-        "No social account has been recorded for this business, and no output has been published. Recording the accounts you post from is the first thing that makes this surface work — it is what PAIGE references when she drafts for you.",
+        "PAIGE does not know which accounts are yours, and you have not published anything for her to work with. Name the accounts you post from and she has something to draft against — that is the whole of what this page needs from you today.",
     };
   }
   return {
-    headline: "Here is what is actually on record.",
+    headline: "PAIGE is working from what you have given her.",
     body: `${parts.join(", ")}. No account is connected for publishing, so nothing here reports followers, reach, a queue, a schedule, or where anything went live.`,
+  };
+}
+
+/* ─────────────────────────── the next move ─────────────────────────── */
+
+/**
+ * The one thing to do next, and the control that does it.
+ *
+ * WHY THIS EXISTS. The surface could already answer what is happening, what is working, what needs
+ * attention, what PAIGE is holding, and what it has produced. It could not answer the sixth
+ * question a person actually opens it for — *what should I do?* — and a page that reports five
+ * answers and withholds the sixth is a status console however honest the five are.
+ *
+ * IT INVENTS NOTHING. Every branch is keyed on a field already on `SocialCommandInput`, and every
+ * destination is a control that already exists. There is no scoring, no confidence, no ranking
+ * model — just a fixed precedence over facts, so the same inputs always yield the same move and a
+ * reader can check it by hand. The ladder is TOTAL: the last branch has no condition.
+ *
+ * IT IS DELIBERATELY NOT EXHAUSTIVE. `capturedSubmissions` drives no branch, because any move
+ * derived from it would be an attribution claim — and this file already records why that is the
+ * single most tempting lie available here (see the `captured` tile). A ladder that declines the
+ * move it cannot justify is the point.
+ */
+export type SocialNextAction =
+  | { kind: "record"; label: string }
+  | { kind: "studio"; label: string }
+  | { kind: "compass"; label: string }
+  | { kind: "pipeline"; label: string }
+  | { kind: "paige"; label: string };
+
+export type SocialNextMove = {
+  /** Why this is the move, in one line. */
+  headline: string;
+  /** What doing it changes. */
+  detail: string;
+  action: SocialNextAction;
+};
+
+export function buildNextMove(input: SocialCommandInput): SocialNextMove {
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+  // 1. A response was captured and did not reach you. Everything else can wait behind that.
+  if (input.formsNeedingRepair > 0) {
+    return {
+      headline: `${plural(input.formsNeedingRepair, "form is", "forms are")} not delivering.`,
+      detail:
+        "A response came in and could not be delivered where you routed it. The recorded outcomes are under Pipeline, with the form that produced them.",
+      action: { kind: "pipeline", label: "Open Pipeline" },
+    };
+  }
+
+  // 2. Work she has finished and is not permitted to send on her own. It is yours to release.
+  if (input.waitingOnYou > 0 && !input.waitingUnknown) {
+    return {
+      headline: `PAIGE is holding ${plural(input.waitingOnYou, "draft", "drafts")} for your call.`,
+      detail:
+        "She has prepared them and stopped, because the default for these desks is to draft rather than send. Trust Compass is where you clear them.",
+      action: { kind: "compass", label: "Open Trust Compass" },
+    };
+  }
+
+  // 3. First use. She cannot reference an account she has never been told about, and this is the
+  //    one thing on this page a person can finish today.
+  if (input.handles.length === 0) {
+    return {
+      headline: "PAIGE does not know which accounts are yours.",
+      detail:
+        "Name the accounts you post from and she works from them every time she drafts. It is also what the social accounts item on your Systems Check is asking for.",
+      action: { kind: "record", label: "Record accounts" },
+    };
+  }
+
+  // 4. She knows where you post and has nothing of yours to put there.
+  if (input.publishedOutputs === 0) {
+    return {
+      headline: "There is nothing published to put in front of anyone.",
+      detail:
+        "Build a page, funnel or form in Vibe Studio. It appears here under Published outputs the moment you publish it.",
+      action: { kind: "studio", label: "Open Vibe Studio" },
+    };
+  }
+
+  // 5. Nothing is broken and nothing is waiting. The honest move is the conversation, because the
+  //    surface itself has no further act to offer until a provider connection exists.
+  return {
+    headline: "Nothing is waiting on you here.",
+    detail:
+      "Your accounts are on record and your published work is up to date. Ask PAIGE what to make next — she drafts against the accounts you have named.",
+    action: { kind: "paige", label: "Ask PAIGE" },
   };
 }

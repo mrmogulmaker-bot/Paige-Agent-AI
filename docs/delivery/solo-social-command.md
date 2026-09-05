@@ -33,7 +33,7 @@ tool call.
 | 9 | Publishing queue | — | — | — | — | — | — | **UNAVAILABLE** |
 | 10 | Recorded placements | — | — | — | — | — | — | **UNAVAILABLE** |
 | 11 | Scheduled posts | — | — | — | — | — | — | **UNAVAILABLE** |
-| 12 | Ideas / Drafting / Repurposing | — | — | — | — | — | — | **UNAVAILABLE** |
+| 12 | Ideas / Drafting | — | — | — | — | — | — | **UNAVAILABLE** |
 | 13 | Active missions (cadence, target, progress) | — | — | — | — | — | — | **UNAVAILABLE** |
 | 14 | Per-channel audience / engagement | — | — | — | — | — | — | **UNAVAILABLE** |
 
@@ -223,3 +223,46 @@ a working feature.
 | **Database** | `BEGIN..ROLLBACK` on production `xygzykjyynhzqytbqnzu`, 10 assertions, rollback confirmed clean. **Caught a real defect**: the read's role gate was unguarded on `auth.uid()` and would have refused PAIGE's own service-role caller |
 | **Authenticated runtime** | **NONE.** No session here holds a browser that reaches the authenticated surface |
 | **UNVERIFIED / owed** | Migration applied and persisted on production (CI on merge, §32.a) · authenticated live drive of the record form (§32.c) · the non-master-tenant 5-minute smoke test the PR template asks for |
+
+---
+
+## 7. Second pass — executive conversion (2026-09-05)
+
+**The instruction, verbatim:** *"Keep Mineral and Obsidian exactly as theme variants. Do not change
+the evidence logic. The next pass is purely about converting this from a truthful internal status
+console into a truthful executive AI COO command surface."*
+
+**So the map above is unchanged, and that is the point.** No row gained a source, lost one, or moved
+state. Every figure still comes from the same place, and every absence still names what would have to
+exist. What changed is how a decision is put in front of a person:
+
+| Change | Where | Evidence impact |
+|---|---|---|
+| **Next move** — one ranked instruction and the control that acts on it | `buildNextMove` (`social-truth.ts`), `NextMove` (`social-command.tsx`) | None. A pure re-read of figures the builders already produce, in a fixed precedence: needs-repair → waiting on you → no accounts on record → nothing published → nothing waiting. It computes no number. |
+| KPI ranking — decision first, then record, then counted work | `KPI_ORDER`, applied at the end of `buildKpis` | None. Same five tiles, same five sources, different order. |
+| Per-panel truth label + glyph plate | `PanelHead` | None. The label was already computed per module; it is now shown per panel, not only per surface. |
+| An age on what PAIGE has filed, and the rationale on its own line | `elapsedLabel`, `.social-feed-age`, `.social-feed-why` | None. `createdAt` was already read from `paige_actions` and simply was not shown. |
+| `@media` → `@container social` | `social-command.css` | None, and it fixed a real defect: the breakpoints keyed on VIEWPORT width while this surface sits inside the Solo shell's content column, so at a docked 1366 the two-column grid ran its columns at 352px and 275px and no breakpoint ever fired. |
+
+**Two §13 defects the pass found in its own first draft, recorded because they are the shape that
+recurs.** ① The `waiting` KPI asserted *"nothing is waiting on your decision"* on a FAILED read — the
+hook returns `[]` for both "there are none" and "we could not check", so a broken read was rendering
+as good news. `waitingUnknown` now separates them and the tile says it could not check. ② The
+rendered-page denial guard fired on the §58-protected placement precondition (*"they count as
+placements only once a supported provider records where they went live"*), which is honest — it names
+a metric in order to state the unmet condition. The guard now accepts denial-by-condition
+(`only once|when|after|if`, `until`, `would have to`) as well as denial-by-negation, rather than the
+surface being reworded into vaguer prose to satisfy a guard.
+
+**A drift corrected in the same commit (§66).** Row 12 above, and the matching row in the tier-matrix
+ledger, both named a **Repurposing** stage. No such stage exists or ever existed here; `buildPipeline`
+returns exactly six — `ideas · drafting · review ("Held for you") · scheduled · published · repair
+("Needs repair")`. Struck in both places rather than left for the next session to answer a question
+from.
+
+**Second-pass proof, by class (§13).** Automated: full suite **227 files / 3336 tests passing**.
+Static/build: `ci:tsc` clean at its 13-error baseline, `vite build` green, 25 CI lints green.
+`lint:gold` reports one violation in `src/components/dashboard/BusinessCreditDashboard.tsx` — a file
+this branch does not touch, identical to `origin/main`, and not wired into CI; pre-existing, named
+rather than absorbed. **Authenticated runtime: still NONE**, and still owed — no session in this work
+has held a browser that reaches the authenticated surface.

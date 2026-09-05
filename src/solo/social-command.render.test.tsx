@@ -22,6 +22,8 @@ const harness = vi.hoisted(() => ({
   trust: {} as Record<string, unknown>,
   saved: [] as Array<Record<string, string>>,
   saveResult: { ok: true, recordedCount: 0 } as Record<string, unknown>,
+  went: [] as string[],
+  nav: {} as Record<string, () => void>,
 }));
 
 vi.mock("./useSocialCommand", () => ({ useSocialCommand: () => harness.social }));
@@ -44,7 +46,15 @@ function renderAt(campaigns: Record<string, unknown> = CAMPAIGNS) {
   document.body.appendChild(host);
   root = createRoot(host);
   act(() => {
-    root!.render(<SocialCommand campaigns={campaigns} onOpenStudio={() => {}} onAskPaige={() => {}} />);
+    root!.render(
+      <SocialCommand
+        campaigns={campaigns}
+        onOpenStudio={harness.nav.studio}
+        onAskPaige={harness.nav.paige}
+        onOpenCompass={harness.nav.compass}
+        onOpenPipeline={harness.nav.pipeline}
+      />,
+    );
   });
 }
 
@@ -55,6 +65,13 @@ beforeEach(() => {
   host = document.createElement("div");
   document.body.appendChild(host);
   harness.saved = [];
+  harness.went = [];
+  harness.nav = {
+    studio: () => harness.went.push("studio"),
+    paige: () => harness.went.push("paige"),
+    compass: () => harness.went.push("compass"),
+    pipeline: () => harness.went.push("pipeline"),
+  };
   harness.saveResult = { ok: true, recordedCount: 0 };
   harness.social = {
     tenantId: "tenant-1",
@@ -277,6 +294,155 @@ describe("Trust Compass is reflected, never re-implemented", () => {
   it("renders nothing rather than an empty frame when no lane is readable", () => {
     renderAt();
     expect(host.querySelector(".social-governance")).toBeNull();
+  });
+});
+
+describe("the next move — the question the surface could not answer before", () => {
+  const move = () => host.querySelector(".social-next")?.textContent ?? "";
+
+  it("tells a brand-new workspace to name its accounts, and the button does it", () => {
+    renderAt();
+    expect(move()).toContain("PAIGE does not know which accounts are yours");
+    act(() => (host.querySelector(".social-next-act") as HTMLButtonElement).click());
+    expect(document.querySelector('[role="dialog"]'), "the move must open the record form").toBeTruthy();
+  });
+
+  it("puts a delivery that failed above everything else", () => {
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active", recentDispatches: { failed: 2 } }] });
+    expect(move()).toContain("not delivering");
+    act(() => (host.querySelector(".social-next-act") as HTMLButtonElement).click());
+    expect(harness.went).toEqual(["pipeline"]);
+  });
+
+  it("sends held drafts to Trust Compass, and ranks them below a failure", () => {
+    harness.pending = {
+      loading: false, error: null, refresh: () => {},
+      items: [{ id: "a", title: "Draft", summary: null, department: "marketing", rationale: null, createdAt: "2026-09-04" }],
+    };
+    renderAt();
+    expect(move()).toContain("holding");
+    act(() => (host.querySelector(".social-next-act") as HTMLButtonElement).click());
+    expect(harness.went).toEqual(["compass"]);
+
+    // ...and a failure outranks it.
+    harness.went = [];
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active", recentDispatches: { failed: 1 } }] });
+    expect(move()).toContain("not delivering");
+  });
+
+  it("asks for something to publish once accounts exist but nothing does", () => {
+    harness.social = { ...harness.social, handles: [{ network: "x", label: "X", handle: "@a" }] };
+    renderAt();
+    expect(move()).toContain("nothing published");
+    act(() => (host.querySelector(".social-next-act") as HTMLButtonElement).click());
+    expect(harness.went).toEqual(["studio"]);
+  });
+
+  it("falls through to the conversation when nothing is broken or waiting", () => {
+    harness.social = { ...harness.social, handles: [{ network: "x", label: "X", handle: "@a" }] };
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active", recentDispatches: { failed: 0 } }] });
+    expect(move()).toContain("Nothing is waiting on you here");
+    act(() => (host.querySelector(".social-next-act") as HTMLButtonElement).click());
+    expect(harness.went).toEqual(["paige"]);
+  });
+
+  it("never puts a bare zero in front of a person, in any branch", () => {
+    // The first-use branch is the one that fires on an empty workspace, and it is the branch most
+    // likely to want to say "0 accounts". It may not.
+    renderAt();
+    expect(move()).not.toMatch(/\b0\b/);
+  });
+});
+
+describe("executive chrome", () => {
+  it("gives every section a glyph plate and keeps its heading", () => {
+    renderAt();
+    expect(host.querySelectorAll(".social-panel-glyph")).toHaveLength(4);
+  });
+
+  it("dates what PAIGE is holding, and gives the reason its own line", () => {
+    harness.pending = {
+      loading: false, error: null, refresh: () => {},
+      items: [{
+        id: "a", title: "Draft the launch note", summary: "Ready for your read",
+        department: "marketing", rationale: "Filed for your decision",
+        createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      }],
+    };
+    renderAt();
+    expect(host.querySelector(".social-feed-age")?.textContent).toMatch(/ago$/);
+    // The rationale is its own dimmer line, not concatenated onto the desk name.
+    expect(host.querySelector(".social-feed-why")?.textContent).toBe("Filed for your decision");
+    expect(host.querySelector(".social-feed small")?.textContent).toBe("marketing");
+  });
+});
+
+describe("§13 on the rendered page — the hole the builder-only guard could not see", () => {
+  /**
+   * The contract suite asserts the denial rule over what `social-truth.ts` RETURNS. That is the
+   * right place for it and it is not enough: every sentence written directly into the JSX bypasses
+   * it completely, and a voice pass is precisely when prose gets inlined. So this reads the page a
+   * person actually sees, in several states, and applies the same rule to all of it.
+   */
+  const NEGATED = /\b(no|not|never|nothing|none|cannot|does not|is not|without|neither)\b/;
+  /**
+   * A metric can be denied by CONDITION as well as by negation, and the §58-protected placement
+   * precondition — "they count as placements only once a supported provider records where they
+   * went live" — is exactly that: it names a metric in order to say what would have to exist
+   * before the metric could be claimed. Refusing it would push the surface toward vaguer prose,
+   * which is the opposite of what §13 wants. So conditional denial counts, but only in its
+   * unambiguous forms: a bare `only` is NOT enough ("reach grew only last week" is a claim),
+   * `only once/when/after/if` and `until` are, because each one states the unmet precondition.
+   */
+  const CONDITIONAL = /\bonly (once|when|after|if)\b|\buntil\b|\bwould have to\b/;
+  const METRIC = /\b(followers?|reach|engagement|impressions?|audience|placements?|scheduled?)\b/;
+
+  const scan = (label: string) => {
+    const text = (host.textContent ?? "").replace(/\s+/g, " ");
+    for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+      if (!METRIC.test(sentence)) continue;
+      const lower = sentence.toLowerCase();
+      expect(
+        NEGATED.test(lower) || CONDITIONAL.test(lower),
+        `${label}: a metric is named without being denied — "${sentence.trim().slice(0, 160)}"`,
+      ).toBe(true);
+    }
+  };
+
+  it("names no metric it cannot produce, in any state a person can reach", () => {
+    renderAt();
+    scan("first use");
+
+    harness.social = {
+      ...harness.social,
+      handles: [
+        { network: "instagram", label: "Instagram", handle: "@acme" },
+        { network: "linkedin", label: "LinkedIn", handle: "acme" },
+      ],
+      recordChangedAt: "2026-09-04T10:00:00.000Z",
+    };
+    harness.pending = {
+      loading: false, error: null, refresh: () => {},
+      items: [{ id: "a", title: "Draft the note", summary: "Ready", department: "marketing", rationale: "Filed for your decision", createdAt: "2026-09-04" }],
+    };
+    harness.trust = {
+      loading: false, configured: true, error: null, bySlug: {},
+      departments: [{ slug: "marketing", name: "Marketing", acts: [{ label: "Draft a campaign", lane: "confirm" }] }],
+    };
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active + approval-gated", recentDispatches: { failed: 1 } }], submissions: [{ id: "s" }] });
+    scan("populated");
+  });
+
+  it("shows no number anywhere that a real record did not produce", () => {
+    // Every figure on a first-use page must be the absent mark. A digit here means something
+    // invented one, which is the failure mode this whole surface is built against.
+    renderAt();
+    const figures = [...host.querySelectorAll(".social-figure")];
+    expect(figures.length).toBeGreaterThan(6);
+    for (const figure of figures) {
+      expect(figure.textContent ?? "", "a figure carries a number on an empty workspace")
+        .not.toMatch(/[0-9]/);
+    }
   });
 });
 
