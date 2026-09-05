@@ -119,6 +119,46 @@ describe("useSoloGamePlan derivation", () => {
     expect(view.attention.some((a) => a.label === "1 move blocked")).toBe(true);
   });
 
+  /** All five foundations grounded, so no setup-gap candidate competes with the fallback. */
+  function groundAllFive() {
+    m.setup.brief = { publicName: "Clearpath Advisory", legalName: "Clearpath LLC", industry: "Consulting", website: "clearpath.example", provenance: { website: { source: "owner_confirmed" } } };
+    m.setup.managedSendingEmail = "hello@clearpath.example";
+    m.catalog.offers = [{ availability: "active" }, { availability: "active" }];
+    m.knowledge = { ...m.knowledge, documentsIndexed: 6, empty: false };
+  }
+
+  it("a FAILED systems-check read never reads as all-clear — it says 'couldn't check' honestly (§13)", () => {
+    // Everything grounded, nothing else waiting, but the checks RPC errored. The old bug coerced
+    // checks.findings to [] and fired the all-clear fallback ("Nothing is blocked or waiting").
+    groundAllFive();
+    m.checks = { ...m.checks, findings: [], isError: true };
+    render();
+    expect(view.bestMove?.id).toBe("degraded:signals");
+    expect(view.bestMove?.destination).toBe("systems-check");
+    expect(view.bestMove?.evidence).not.toContain("Nothing is blocked");
+    expect(view.attention.some((a) => a.label === "Couldn't check your systems")).toBe(true);
+    expect(view.narrative).toContain("couldn't fully check");
+  });
+
+  it("a FAILED drafts (pending) read never reads as all-clear (§13)", () => {
+    groundAllFive();
+    m.pending = { ...m.pending, items: [], error: new Error("pending read failed") };
+    render();
+    expect(view.bestMove?.id).toBe("degraded:signals");
+    expect(view.bestMove?.destination).toBe("paige");
+    expect(view.attention.some((a) => a.label === "Couldn't load your drafts")).toBe(true);
+  });
+
+  it("a knowledge READ OUTAGE is not counted as owner work 'to finish' (§13)", () => {
+    m.knowledge = { ...m.knowledge, error: new Error("knowledge read failed"), empty: false };
+    render();
+    const know = view.foundation.find((f) => f.key === "knowledge");
+    expect(know?.degraded).toBe(true);
+    expect(view.coverage.degraded).toBeGreaterThanOrEqual(1);
+    // The caption owns the honesty: the failed read reads "couldn't load", never "to finish".
+    expect(view.coverage.caption).toContain("couldn't load");
+  });
+
   it("surfaces work Paige drafted as an owner-approval move", () => {
     m.pending.items = [{ id: "p1", title: "Draft email", summary: null, draftContent: null, rationale: "Client went quiet.", department: "Client Success", createdAt: "" }];
     render();

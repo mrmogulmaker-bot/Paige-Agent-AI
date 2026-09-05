@@ -56,6 +56,9 @@ export interface FoundationItem {
   status: FoundationStatus;
   note: string;
   destination: GamePlanDestination;
+  /** True when this foundation's status reflects a READ OUTAGE, not owner inaction — so the
+   *  roll-up never counts a failed read as work the owner still has "to finish" (§13). */
+  degraded?: boolean;
 }
 
 export interface GamePlanMove {
@@ -91,6 +94,15 @@ export interface GamePlanMotion {
   freshness: string;
 }
 
+/** Minimal shapes for the loosely-typed fields the composed hooks expose — read-only, only the
+ *  keys this view-model actually consumes, so no `any` reaches the derivation logic. */
+type AttentionLike = { at_risk_clients?: number; follow_ups_due?: number };
+type OfferLike = { availability?: string };
+type BriefLike = {
+  publicName?: string; legalName?: string; dbaName?: string; website?: string; industry?: string;
+  provenance?: Record<string, { source?: string } | undefined>;
+};
+
 export interface SoloGamePlanView {
   loading: boolean;
   error: boolean;
@@ -102,8 +114,9 @@ export interface SoloGamePlanView {
   bestMove: GamePlanMove | null;
   priorities: GamePlanMove[];
   foundation: FoundationItem[];
-  /** Real numerator/denominator over the foundations this hook reads. */
-  coverage: { grounded: number; partial: number; total: number; caption: string };
+  /** Real numerator/denominator over the foundations this hook reads. `degraded` counts foundations
+   *  whose status reflects a read OUTAGE, kept apart from owner-actionable work (§13). */
+  coverage: { grounded: number; partial: number; degraded: number; total: number; caption: string };
   motion: GamePlanMotion;
   /** First-run setup steps, only meaningful in the empty state. */
   firstRun: Array<{ label: string; hint: string; destination: GamePlanDestination }>;
@@ -150,8 +163,8 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
 
   // ── FOUNDATION — five dimensions this hook actually reads, each source-backed ────────────
   const foundation = useMemo<FoundationItem[]>(() => {
-    const brief = setup.brief ?? ({} as Record<string, any>);
-    const prov = (brief.provenance ?? {}) as Record<string, { source?: string } | undefined>;
+    const brief = (setup.brief ?? {}) as BriefLike;
+    const prov = brief.provenance ?? {};
     const items: FoundationItem[] = [];
 
     // 1. Business identity
@@ -187,12 +200,15 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     const offersReady = catalog.phase === "ready";
     const offerCount = Array.isArray(catalog.offers) ? catalog.offers.length : 0;
     const activeOffers = Array.isArray(catalog.offers)
-      ? catalog.offers.filter((o: any) => o.availability === "active").length
+      ? (catalog.offers as OfferLike[]).filter((o) => o.availability === "active").length
       : 0;
     items.push({
       key: "offers",
       label: "Offers",
       status: !offersReady ? "incomplete" : offerCount === 0 ? "needs-input" : "grounded",
+      // `!offersReady` here means the catalog READ errored/is unavailable (loading is gated at the
+      // surface), so this is a read outage, not owner inaction (§13).
+      degraded: !offersReady,
       note: !offersReady
         ? "Offers unavailable right now"
         : offerCount === 0
@@ -220,6 +236,8 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
       key: "knowledge",
       label: "Knowledge",
       status: knowErr ? "incomplete" : docs === 0 ? "needs-input" : docs < 3 ? "incomplete" : "grounded",
+      // A failed knowledge read is a read outage, not owner inaction (§13).
+      degraded: knowErr,
       note: knowErr
         ? "Couldn't load your knowledge right now"
         : docs === 0
@@ -233,15 +251,20 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
 
   const coverage = useMemo(() => {
     const grounded = foundation.filter((f) => f.status === "grounded").length;
-    const partial = foundation.filter((f) => f.status === "incomplete").length;
+    // A read outage ("degraded") is neither grounded nor owner-actionable "to finish" — count it
+    // apart so the caption never blames a failed read on owner inaction (§13, peer-gate finding).
+    const degraded = foundation.filter((f) => f.degraded).length;
+    const partial = foundation.filter((f) => f.status === "incomplete" && !f.degraded).length;
+    const needed = foundation.filter((f) => f.status === "needs-input").length;
     const total = foundation.length;
+    const degradedTail = degraded > 0 ? ` ${degraded} couldn't load right now.` : "";
     const caption =
       grounded === total
         ? "Every foundation is grounded. PAIGE has enough to plan and act with you."
-        : grounded === 0
+        : grounded === 0 && degraded === 0
           ? "PAIGE grounds the plan from what you set up. Start with your Business Context."
-          : `${grounded} grounded, ${partial} to finish, ${total - grounded - partial} still needed. PAIGE plans from what you've set.`;
-    return { grounded, partial, total, caption };
+          : `${grounded} grounded, ${partial} to finish, ${needed} still needed.${degradedTail} PAIGE plans from what you've set.`;
+    return { grounded, partial, degraded, total, caption };
   }, [foundation]);
 
   // ── PRIORITIES — derived from real gaps + findings + waiting work, ranked ────────────────
@@ -333,7 +356,7 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     }
 
     // Attention: clients going quiet / follow-ups — Paige can draft, owner approves.
-    const at: any = cc.attention ?? {};
+    const at = (cc.attention ?? {}) as AttentionLike;
     if ((at.at_risk_clients ?? 0) > 0) {
       const n = at.at_risk_clients as number;
       candidates.push({
@@ -399,20 +422,43 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
 
     candidates.sort((a, b) => a.rank - b.rank);
 
-    // Fallback when nothing is waiting or missing: bring PAIGE a goal (real — opens PAIGE).
+    // The two strongest priority signals — the systems check and the pending-drafts queue — each
+    // has an OUTAGE state distinct from "returned nothing". An all-clear must never be asserted over
+    // a read that failed or hasn't settled (§13, peer-gate MAJOR): a `[]` from an errored
+    // `checks`/`pending` read is "couldn't check", not "nothing is blocked or waiting".
+    //
+    // Fallback when no candidate surfaced.
     let best: GamePlanMove | null = candidates[0] ?? null;
-    if (!best && !cc.loading && !setup.loading) {
-      best = {
-        id: "fallback:paige",
-        title: "Ask PAIGE what to focus on next",
-        why: "Your foundation is set and nothing's blocking. Bring PAIGE a goal and she'll build the plan with you.",
-        owner: "paige",
-        proof: "live",
-        evidence: "Nothing is blocked or waiting right now.",
-        outcome: "PAIGE proposes the next moves for your approval.",
-        destination: "paige",
-        ctaLabel: "Open PAIGE",
-      };
+    if (!best && !cc.loading && !setup.loading && !checks.loading && !pending.loading) {
+      best = (checks.isError || pending.error)
+        // A settled read FAILED and nothing else surfaced — say so honestly and route to the read
+        // that failed; never claim all-clear over a blind signal.
+        ? {
+            id: "degraded:signals",
+            title: "Couldn't fully check what needs you",
+            why: checks.isError
+              ? "PAIGE couldn't read your systems check just now, so she can't confirm what's blocked. Open it to see the latest."
+              : "PAIGE couldn't load your drafts queue just now, so she can't confirm what's waiting. Open PAIGE to check.",
+            owner: "you",
+            proof: "partial",
+            evidence: checks.isError
+              ? "Your systems check didn't respond on this load."
+              : "Your drafts queue didn't respond on this load.",
+            outcome: "Opens the exact place to see the latest; nothing is lost.",
+            destination: checks.isError ? "systems-check" : "paige",
+            ctaLabel: checks.isError ? "Open Systems Check" : "Open PAIGE",
+          }
+        : {
+            id: "fallback:paige",
+            title: "Ask PAIGE what to focus on next",
+            why: "Your foundation is set and nothing's blocking. Bring PAIGE a goal and she'll build the plan with you.",
+            owner: "paige",
+            proof: "live",
+            evidence: "Nothing is blocked or waiting right now.",
+            outcome: "PAIGE proposes the next moves for your approval.",
+            destination: "paige",
+            ctaLabel: "Open PAIGE",
+          };
     }
 
     const rest = candidates
@@ -421,7 +467,11 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
       .map(({ rank: _rank, ...m }) => m);
 
     return { bestMove: best, priorities: rest };
-  }, [checks.findings, foundation, pending.items, cc.attention, cc.loading, setup.loading]);
+  }, [
+    checks.findings, checks.loading, checks.isError,
+    pending.items, pending.loading, pending.error,
+    foundation, cc.attention, cc.loading, setup.loading,
+  ]);
 
   // ── WORK IN MOTION — the recorded Rail feed, four honest states (corr #1) ────────────────
   const motion = useMemo<GamePlanMotion>(() => {
@@ -444,22 +494,26 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
   }, [activity.items, activity.status]);
 
   // ── SURFACE-LEVEL loading / error / empty ───────────────────────────────────────────────
+  // checks + pending are IN the loading gate so the surface never commits a premature all-clear
+  // frame before the two strongest priority signals have settled (§13, peer-gate MAJOR).
   const loading =
-    cc.loading || setup.loading || catalog.phase === "resolving" || catalog.phase === "loading" || knowledge.loading;
+    cc.loading || setup.loading || catalog.phase === "resolving" || catalog.phase === "loading"
+    || knowledge.loading || checks.loading || pending.loading;
   // §13 — a failed read is "couldn't load", never rendered as "you have nothing". Setup is the
   // grounding spine and the command-center is the operating-brief spine; a failure in either makes
   // the surface honestly unreliable (a lone knowledge-read error degrades only its own tile, below).
   const error = !!setup.error || !!cc.isError;
 
   const attentionTotal =
-    ((cc.attention as any)?.at_risk_clients ?? 0) +
-    ((cc.attention as any)?.follow_ups_due ?? 0);
+    ((cc.attention as AttentionLike)?.at_risk_clients ?? 0) +
+    ((cc.attention as AttentionLike)?.follow_ups_due ?? 0);
   // Day-one only when the reads genuinely settled empty — never on a failed read, and deferring to
   // useCommandCenter.empty (which also weighs active clients) so a client-heavy tenant never sees it.
   const empty =
     !loading &&
     !!cc.empty &&
     !knowledge.error &&
+    !pending.error &&
     coverage.grounded === 0 &&
     (Array.isArray(catalog.offers) ? catalog.offers.length : 0) === 0 &&
     (knowledge.documentsIndexed ?? 0) === 0 &&
@@ -481,27 +535,39 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     if (bestMove?.proof === "blocked") chips.push({ label: "1 move blocked", tone: "blocked" });
     const n = cc.counts?.approvals ?? 0;
     if (n > 0) chips.push({ label: `${n} draft${n === 1 ? "" : "s"} waiting`, tone: "live" });
-    const at: any = cc.attention ?? {};
+    const at = (cc.attention ?? {}) as AttentionLike;
     if ((at.at_risk_clients ?? 0) > 0)
       chips.push({ label: `${at.at_risk_clients} client${at.at_risk_clients === 1 ? "" : "s"} at risk`, tone: "partial" });
     if ((at.follow_ups_due ?? 0) > 0)
       chips.push({ label: `${at.follow_ups_due} follow-up${at.follow_ups_due === 1 ? "" : "s"} due`, tone: "live" });
+    // Honest indicator that a priority signal is BLIND — present regardless of what else surfaced,
+    // so a failed read is never invisible behind an otherwise-confident brief (§13, peer-gate).
+    if (checks.isError) chips.push({ label: "Couldn't check your systems", tone: "partial" });
+    if (pending.error) chips.push({ label: "Couldn't load your drafts", tone: "partial" });
     return chips;
-  }, [bestMove?.proof, cc.counts?.approvals, cc.attention]);
+  }, [bestMove?.proof, cc.counts?.approvals, cc.attention, checks.isError, pending.error]);
 
+  const signalsDegraded = !!checks.isError || !!pending.error;
   const narrative = useMemo(() => {
     if (bestMove?.proof === "blocked")
       return "Your plan is ready, but the top move is blocked. Clear the blocker and PAIGE can act.";
     if (coverage.grounded < coverage.total) {
-      const remaining = coverage.total - coverage.grounded;
+      const remaining = coverage.total - coverage.grounded - coverage.degraded;
+      const tail = coverage.degraded > 0 ? " Some readiness reads didn't respond just now." : "";
+      if (remaining <= 0)
+        return `PAIGE has grounded ${coverage.grounded} of ${coverage.total} foundations.${tail} PAIGE plans from what you've set.`;
       return `PAIGE has grounded ${coverage.grounded} of ${coverage.total} foundations. ${
         remaining === 1 ? "One is left" : `${remaining} are left`
-      } — the next move builds from what you set.`;
+      } — the next move builds from what you set.${tail}`;
     }
     if ((cc.counts?.approvals ?? 0) > 0 || attentionTotal > 0)
       return "Foundations are set and work is moving. Here's what needs you and the best move to make now.";
+    // Foundations are set and nothing else surfaced — but only claim all-clear when the priority
+    // reads actually answered; otherwise say plainly that PAIGE couldn't fully check (§13).
+    if (signalsDegraded)
+      return "Your foundations are set, but PAIGE couldn't fully check what needs you just now. Open the flagged item to see the latest.";
     return "Foundations are set. Bring PAIGE a goal and she'll build the next moves with you.";
-  }, [bestMove?.proof, coverage.grounded, coverage.total, cc.counts?.approvals, attentionTotal]);
+  }, [bestMove?.proof, coverage.grounded, coverage.total, coverage.degraded, cc.counts?.approvals, attentionTotal, signalsDegraded]);
 
   const firstRun = useMemo(
     () => [

@@ -17,10 +17,18 @@ const OUT = path.resolve(import.meta.dirname, "artifacts/game-plan");
 fs.mkdirSync(OUT, { recursive: true });
 
 const FRAMES = [
+  // Paige-CLOSED — the four Solo viewports (the panel owns the full content width).
   { name: "1536x770", width: 1536, height: 770 },
   { name: "1366x768", width: 1366, height: 768 },
   { name: "1024x768", width: 1024, height: 768 },
   { name: "900x1000", width: 900, height: 1000 },
+  // Paige-OPEN — the same four viewports minus the ~410px Paige rail, i.e. the narrower content
+  // column the panel actually gets when the Solo Paige dock is open. Proves the panel reflows
+  // without horizontal overflow down to a 490px content column (the narrowest real Solo case).
+  { name: "open-1126x770", width: 1126, height: 770 },
+  { name: "open-956x768", width: 956, height: 768 },
+  { name: "open-614x768", width: 614, height: 768 },
+  { name: "open-490x1000", width: 490, height: 1000 },
 ];
 const MODES = ["grounded", "partial", "empty", "blocked", "owner", "motion", "loading", "error"];
 const THEMES = ["light", "dark"];

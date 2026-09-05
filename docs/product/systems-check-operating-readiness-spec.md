@@ -216,8 +216,9 @@ policy, without disclosing the platform's posture, ceiling, attestation or the r
 
 ### 4.4a `NOT CHECKED` — the ninth word, OWNER-RATIFIED 2026-09-05
 
-**Shipped code renders a word this section says may never render.** `SoloSystemsCheckWorkspace.tsx:692`
-falls back to **`Not checked`** for any operating area whose `coveredBy` list is empty — today that is
+**Shipped code renders a word this section says may never render.** The `areaStatus` memo in
+`SoloSystemsCheckWorkspace.tsx` (`area.coveredBy.length === 0 ? "notchecked" : …`, rendered via the
+area `StatusPill`) falls back to **`Not checked`** for any operating area whose `coveredBy` list is empty — today that is
 *Paige's team and delegated work*, *Business knowledge — the Mind*, and *Security, permissions and
 governance*, all three visible on the live Solo surface.
 

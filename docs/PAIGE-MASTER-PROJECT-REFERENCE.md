@@ -323,6 +323,13 @@ cannot crash the turn.
    decision (§38), not a code fix to make unilaterally.
 2. **God/super_admin cannot reach the four comms tools at all** — the role gate is
    `admin || coach` with no `is_platform_owner()` branch. Owner-routed to its own PR.
+   **RESOLVED 2026-09-05 (Communications closeout, Slice B):** the role gate now admits
+   `super_admin` (`roles.includes("super_admin")`), so a verified God-tier operator can manage a
+   tenant's Communications while acting inside that tenant (`operator_enter_tenant`). Admits
+   super_admin ONLY — NOT `platform_admin` (a distinct role string) — the frozen super_admin grant
+   (§53). Proven by 9 executed per-role assertions against the real handler
+   (`scripts/client-memory-authz/check.mjs` §25), incl. denial-before-provider and
+   caller-supplied-role-ignored.
 
 ### PAIGE Spine — `team.authority`, and both readiness reads bound to their workspace (2026-09-03)
 
@@ -370,6 +377,15 @@ unapplied until the next successful run. Recorded on incident #198.
 
 **Status: RELEASED.** PR #864, merge `7ad98cff`, migration `20261112000000`. The Spine registry now
 carries **two** capabilities, and this is the first **workspace-level** one.
+
+> **Amended 2026-09-05 — PR #958, migration `20261221000000`.** Every fact this capability returns is
+> now derived from **`public.business_identity_readiness`**, one internal resolver
+> `tenant_comms_readiness` also reads, because the two were answering the same question differently
+> for two real workspaces. New state `legacy_sourced` / source `legacy_brand` (present only in the
+> legacy `tenants.brand` record, never confirmed) and a new `next_action` column on every row. The
+> gate, the four `field_key`s and the always-four-rows promise are unchanged; no Systems Check
+> verdict moves. See the §10 entry "Two readiness reads disagree…" and
+> `docs/delivery/canonical-readiness-contract.md`.
 
 **What PAIGE and Systems Check can now accurately know.** For the caller's own workspace, the status
 and provenance of four Setup fields — `website`, `business_phone`, `industry`,
@@ -1344,7 +1360,7 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
 - ✅ **Gap 3 (Tashia live-drive) — approval-Send "no email on file" + headless-approval guard** (PR #464 frontend + PR #465 backend, merged 2026-08-11). Owner live-drive: Send on a queued approval linked to a contact WITH a valid email rendered "Contact has no email on file". §30: `ApprovalDetail.sendDraft` read ONLY `contact?.email`, populated only when `approval.contact_id` is non-null — an approval filed UNLINKED (contact_id NULL, the downstream effect of the #462 contact-search false-miss) always tripped the guard. **#464:** `sendDraft` now mirrors the backend `execute-approval` resolution (snapshot `draft_content.to` → live contact → re-resolve `clients.email` by id), passes `contact_id ?? null` (send-message pins a null-contact send to the caller's tenant, §9). **#465 fast-follow (owner "make sure it never happens again"):** live-prod audit found 4 approvals, 2 orphans, BOTH with no `contact_id` AND no `draft_content.to` AND no recoverable recipient signal → **0 backfillable** (§13, no guessing); the deliverable is the guard — migration `20260825000000` adds a `NOT VALID` CHECK (`category NOT IN ('email','sms') OR contact_id IS NOT NULL OR draft_content->>'to' IS NOT NULL`) grandfathering the 2 legacy rows + enforcing on all new send approvals, plus an app-level clean-error guard in `paige-ai-chat` (no raw constraint error). §32.a rollback-proven (headless blocked · recipient'd allowed · workflow untouched · legacy grandfathered); §37: paige-ai-chat email/sms sends guarded, paige-mcp workflow_run approvals unaffected (category NULL). §32.a persisted-apply via deploy-migrations. §32.c live-drive owed.
 - ✅ **#127 — Paige contact-lookup false-negative + lookup-honesty** (PR #462, merged 2026-08-11). Owner live-drive: Paige told the operator "no contact named Tashia Anderson on file" when the contact existed. **§30 diagnosis found TWO independent defects wearing one face (§13):** (1) the CRM search matched the WHOLE query phrase against EACH single column (`or(first_name.ilike.%Tashia Anderson%, …)`), so a real row with `first_name="Tashia"` + `last_name="Anderson"` (SEPARATE columns) matched 0 rows — every multi-word/full-name lookup false-missed; (2) an UNRELATED nested tool (content-draft/generate-image) 500'd and its error was narrated as if the *lookup* failed — the owner conflated the two symptoms. **Fix (§18 one home):** new `supabase/functions/_shared/contact-search.ts` tokenizes the query — each token ORs across `[first_name,last_name,email,entity_name,phone]`, tokens AND-combine via chained PostgREST `.or()` (`and(or(tok0…),or(tok1…))`); single-token queries are byte-identical to the old one-group behavior (no regression). Wired into all 3 lookup tools: `paige-ai-chat crm_search_contacts` (all-mode), `paige-mcp search_contacts` (all-mode), `paige-mcp search_clients_fuzzy` (any-mode + `city`, preserves the isGod §9 scope branch). Plus a **LOOKUP HONESTY** prompt block: found / found-nothing / could-not-check are three distinct outcomes, NEVER collapsed into "no record." CI regression guard `src/__tests__/contact-search.test.ts` (11 tests, imports the pure helper). **§32.b PROVEN on prod** (old filter 0 hits, new all-mode 1 hit, any-mode 1 hit, single-token 1 hit for the real Tashia Anderson row). tsc 0 · vitest green. §32.c owner live-drive owed (Tashia resolves on MMA + other sub-accounts).
 
-- ✅ **Solo Business Game Plan — the new DEFAULT Command Center landing** (branch `claude/business-game-plan-ui-rxuju3`, owner-approved visual direction 2026-09-05). The Solo Command Center gains a first sub-tab, **Business Game Plan** (`src/solo/SoloGamePlanWorkspace.tsx`), and it becomes the default landing: bare `/command-center` and legacy `/command-center/overview` redirect (`replace`) to `/command-center/business-game-plan` (the `business-game-plan` slug carries `overview` as a `SOLO_BRANCHES` alias). Sub-tab order is now **Business Game Plan → Systems Check → Mind** — three REAL tabs; Trust Compass's slot 3 is reserved for its owner (no dead/placeholder tab, §58). **No new table/RPC/edge/migration/tier-flag** — a §18 composition hook (`src/solo/data/useSoloGamePlan.ts`) over already-released tenant-safe reads (`useCommandCenter`, `useSoloSetupBrief`, `useCatalogOffers`, `useSoloKnowledge`, `useSoloPendingActions`, `useSystemsCheck("tenant")`, `useSoloActivityFeed`), passing **no** client-supplied `tenant_id` (§9). Every visible figure is a real numerator/denominator over five grounding foundations or says "incomplete"/"couldn't load"; an empty recorded feed reads "No recorded work yet" (§13); every primary action routes to a real, authorized surface or opens the one PAIGE conversation (§corr #4); no route string/provider name/internal id reaches visible copy (§corr #3). **§70 fix caught in build:** the kicker read `accountContext?.name` when the resolved prop is `{accountName, accountType, accountTypeLabel}`, so the owner's account name never rendered — now resolves via `resolveTenantAccountContext` and emits the canonical `data-tenant-account-name`/`-tier` shell markers (§65). Tiers: Standalone Solo ✓ · Sub-account ✓ (through the Solo shell it renders) · Agency/God — separate shells (—) · Client/Anonymous 403. **Verified:** full vitest suite green (3416), build green, typecheck-clean typed files, 64/64 headless render drive (all states × light/dark × 4 Solo viewports). **§32.c authenticated owner live-drive OWED** (headless CI sandbox has no browser/auth tool). Tier-matrix Surface ledger updated same-PR (§66).
+- ✅ **Solo Business Game Plan — the new DEFAULT Command Center landing** (branch `claude/business-game-plan-ui-rxuju3`, owner-approved visual direction 2026-09-05). The Solo Command Center gains a first sub-tab, **Business Game Plan** (`src/solo/SoloGamePlanWorkspace.tsx`), and it becomes the default landing: bare `/command-center` and legacy `/command-center/overview` redirect (`replace`) to `/command-center/business-game-plan` (the `business-game-plan` slug carries `overview` as a `SOLO_BRANCHES` alias). Sub-tab order is now **Business Game Plan → Systems Check → Mind** — three REAL tabs; Trust Compass's slot 3 is reserved for its owner (no dead/placeholder tab, §58). **No new table/RPC/edge/migration/tier-flag** — a §18 composition hook (`src/solo/data/useSoloGamePlan.ts`) over already-released tenant-safe reads (`useCommandCenter`, `useSoloSetupBrief`, `useCatalogOffers`, `useSoloKnowledge`, `useSoloPendingActions`, `useSystemsCheck("tenant")`, `useSoloActivityFeed`), passing **no** client-supplied `tenant_id` (§9). Every visible figure is a real numerator/denominator over five grounding foundations or says "incomplete"/"couldn't load"; an empty recorded feed reads "No recorded work yet" (§13); every primary action routes to a real, authorized surface or opens the one PAIGE conversation (§corr #4); no route string/provider name/internal id reaches visible copy (§corr #3). **§70 fix caught in build:** the kicker read `accountContext?.name` when the resolved prop is `{accountName, accountType, accountTypeLabel}`, so the owner's account name never rendered — now resolves via `resolveTenantAccountContext` and emits the canonical `data-tenant-account-name`/`-tier` shell markers (§65). Tiers: Standalone Solo ✓ (default landing) · Sub-account — (sequenced: sub-accounts render via `AgencyApp` at `/business` today, so they still land on the Agency Core; the §60 parity gap closes when `/business` mounts `SoloApp` — a separate §65 slice) · Agency/God — separate shells (—) · Client/Anonymous 403. **Verified:** full vitest suite green (3416), build green, typecheck-clean typed files, 64/64 headless render drive (all states × light/dark × 4 Solo viewports). **§32.c authenticated owner live-drive OWED** (headless CI sandbox has no browser/auth tool). Tier-matrix Surface ledger updated same-PR (§66).
 
 ### Backend seams
 
@@ -3334,6 +3350,48 @@ reads afterwards is not optional and does not need one.
 **The lesson this log exists for:** a fix that is correct against the surface in front of you can
 still be wrong against the platform. `20261160000000` was verified by executing the flags it
 repaired, and never by asking what else already answered the same question.
+
+**RESOLVED 2026-09-05 — PR #958, migration `20261221000000`.** Not by picking a winner. Both reads
+were lossy: two independent facts had been compressed into one field — **A**, does a value exist at
+all (yes, in the legacy record); **B**, did the owner confirm it in Setup (no). Comms answered A and
+dropped B; business_context answered B and dropped A. Choosing between their answers would have
+preserved one true fact by continuing to erase the other, so the canonical state now carries both,
+via the new state `legacy_sourced` / source `legacy_brand` — which **extends** the
+`connection_sourced`/`connections` vs `owner_confirmed`/`setup` distinction this contract already
+made for `primary_business_email` rather than inventing a vocabulary.
+
+Both reads now derive every identity fact from **one internal resolver**,
+`public.business_identity_readiness`, while keeping their **different** caller gates (this one
+tenant-scoped, comms on the §59 global predicate) — making either call the other would have imposed
+one read's authorization on the other's callers. The resolver takes a tenant parameter and is
+therefore unreachable by any caller: `EXECUTE` revoked from `PUBLIC`, `anon`, `authenticated` and
+`service_role`.
+
+**The sweep the contradiction did not announce.** Asking the same question of the neighbouring facts
+found `industry` wrong in exactly the same way for **four** workspaces — twice as many — with no
+second reader to contradict it, and `primary_business_email` defaulting to
+`connection_sourced`/`connections` for **all three** workspaces holding a `support_email` with no
+provenance recorded, naming a connected account as the proof for a value no connection ever wrote.
+
+**The email correction was drafted and then WITHDRAWN by the §39 peer-gate, which is the part worth
+remembering.** A THIRD reader of that same field exists — `get_solo_business_context()` and
+`src/solo/data/useSoloBusinessContext.ts`, rendered as Setup's "Connection-sourced" badge — and it
+makes the same inference. All three agree today, so flipping only the readiness reader would have
+made PAIGE say "never confirmed" while Setup said "Connection-sourced" about one field in the same
+second: the exact defect class being fixed, newly created by the fix. Unbundled into its own slice
+that must move all three together. **Seven rows move in total; `primary_business_email` moves on
+zero; zero Systems Check verdicts and zero comms booleans move**, asserted per tenant across all 14
+production tenants rather than reasoned about. A contradiction is not the
+defect — it is the only symptom loud enough to be seen.
+
+**A further answer is named, not changed:** `get_tenant_a2p_registration_status().profile` echoes
+`tenant_legal_profile` with no brand fallback, so it reports a null website for these workspaces.
+A raw-value echo rather than a readiness contract, zero callers in-repo, A2P out of scope — recorded
+in the contract doc so it is found named rather than re-discovered.
+
+Contract, states, never-infer rules and the measured before/after:
+`docs/delivery/canonical-readiness-contract.md`. Authenticated runtime proof on the deployed
+surfaces is **OWED, not claimed** (§32.c).
 
 ### get_tenant_people(): the resting state is not the capability (2026-09-03)
 
