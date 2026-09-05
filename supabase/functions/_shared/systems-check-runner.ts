@@ -251,10 +251,26 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
     try {
       // Operator runs are tenant-less (tenant_id IS NULL); tenant runs key on the tenant. Use the right
       // predicate for each — `.eq("tenant_id", null)` would NOT match null rows (§13 correctness).
+      //
+      // THE BASELINE MUST BE A FULL SWEEP. A change-triggered run grades ONE check, so using it as
+      // the baseline leaves `prevStatus` with a single entry — and the other nine then read
+      // `undefined !== "fail"`, which is true, so every still-failing check re-forges a draft (an
+      // LLM call) and re-files a duplicate `systems.remediate` action on the next tick. That is the
+      // exact cost-control this delta mode exists to provide, defeated by the same trigger the
+      // full-sweep guard in `systems_check_snapshot` was added for: three change runs fire on every
+      // Solo Setup save, so it would be one over-filing burst per save, per tenant.
+      //
+      // Keyed on the flavour ONLY, deliberately: `selected_runner_keys` is the durable marker used
+      // in SQL, but referencing it here would make this bundle fail against a database that has not
+      // yet taken the migration — the two deploy pipelines have no ordering link. A stale entry for
+      // the one check a change run re-graded is a far smaller error than nine spurious ones.
       let prevQ = admin
         .from("paige_systems_check_run")
         .select("id")
+        .neq("scan_flavor", "change_triggered")
         .order("started_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
         .limit(1);
       prevQ = scope === "operator" ? prevQ.is("tenant_id", null) : prevQ.eq("tenant_id", tenantId as string);
       const { data: prevRun } = await prevQ.maybeSingle();
