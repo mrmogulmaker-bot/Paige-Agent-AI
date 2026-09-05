@@ -481,6 +481,60 @@ describe("a failed read never renders as good news", () => {
     expect(labels.join(" | ")).not.toContain("Record accounts");
   });
 
+  it("does not assert an empty account list in the panel while the brief says it was not read", () => {
+    /**
+     * THE THIRD-ROUND FINDING, and the third time the same shape got through: the guard was
+     * written for the case that already worked. Every earlier test set `notPermitted` and
+     * `handlesUnknown` TOGETHER — only the one refusal `notPermitted` already covered. `refused` is
+     * a strict SUBSET of `unreadable`, so the other two refusals left the Channels panel asserting
+     * "No account is on record" three panels below a brief saying the record had not been read.
+     * That is verbatim the contradiction the fix was written to remove, surviving in the panel it
+     * named. This is the combination no test reached.
+     */
+    harness.social = {
+      ...harness.social,
+      handles: [],
+      canManage: true,
+      notPermitted: false,
+      handlesUnknown: true,
+    };
+    renderAt();
+
+    const text = said();
+    expect(text).not.toContain("No account is on record");
+    expect(text).not.toContain("You have not told PAIGE which accounts are yours yet");
+    expect(text).toContain("has not been read");
+  });
+
+  it("does not tell an owner they are read-only when their access could not be checked", () => {
+    /**
+     * The FOURTH fallible source. `role.error` was never checked, so a blip in the membership read
+     * rendered as "you have no authority" — and once the record button was made conditional on
+     * `canManage`, that blip cost a genuine owner the only action this surface offers.
+     */
+    harness.social = {
+      ...harness.social,
+      handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }],
+      canManage: false,
+      authorityUnknown: true,
+    };
+    renderAt();
+
+    const text = said();
+    expect(text).not.toContain("Read-only access");
+    expect(text).toContain("could not be checked");
+    // And there is a way back, not just a verdict.
+    const labels = [...host.querySelectorAll("button")].map((b) => b.textContent ?? "").join(" | ");
+    expect(labels).toContain("Retry access");
+  });
+
+  it("keeps saying read-only when access WAS checked and the answer was no", () => {
+    // The honest denial must survive; the fix must not turn every denial into an unknown.
+    harness.social = { ...harness.social, canManage: false, authorityUnknown: false };
+    renderAt();
+    expect(said()).toContain("Read-only access");
+  });
+
   it("still shows a real move when only one source failed and the other has work", () => {
     harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
     harness.pending = { loading: false, error: "boom", refresh: () => {}, items: [] };
@@ -538,23 +592,39 @@ describe("§13 on the rendered page — the hole the builder-only guard could no
   };
 
   /**
-   * A LABEL is not a CLAIM, and de-gluing the page surfaced the difference.
+   * A LABEL is not a CLAIM — but which strings are labels is decided by the DOM, not by shape.
    *
-   * Reading text nodes separately means a tile's own label — "Recorded placements", "Publishing
-   * queue", "Scheduled" — arrives as its own string. Naming a metric in a heading is the entire
-   * point of a tile that then refuses to carry a figure for it, and §58 protects those labels, so
-   * the denial rule must not fire on them. A label is a short noun phrase with no figure and no
-   * full stop; anything carrying a digit, running to sentence length, or punctuated as a sentence
-   * is a claim and gets the rule. (The figures themselves are guarded separately, below, by the
-   * assertion that no `.social-figure` carries a digit on an empty workspace.)
+   * The first version inferred it: short, no digits, no full stop. Measured on a populated render
+   * that skipped 46 of 84 text nodes, and the exemption had quietly grown to cover server-supplied
+   * free text — `paige_actions.title`, `.summary`, `.decision_rationale`, and action-kind labels.
+   * So a filed action titled "Followers are climbing" rendered straight into the PAIGE sees panel
+   * and the guard stepped over it, because it happened to be four words with no full stop.
+   *
+   * A label is an element the surface uses AS a label: the tile and stage headings, and the panel
+   * heads. Anything else is prose and gets the rule, however short. Naming a metric in a heading in
+   * order to refuse it a figure is the whole point of those tiles (§58 protects that copy); naming
+   * one anywhere else is a claim.
    */
-  const isLabel = (t: string) =>
-    !/[.!?]$/.test(t.trim()) && !/[0-9]/.test(t) && t.trim().split(/\s+/).length <= 4;
+  const labelNodes = () => {
+    const set = new Set<Node>();
+    for (const el of host.querySelectorAll(
+      ".social-kpi h3, .social-kpi h4, .social-stage h4, .social-panel > header h3, .social-panel-head h3, .social-empty h4",
+    )) {
+      for (const n of el.childNodes) if (n.nodeType === 3) set.add(n);
+    }
+    return set;
+  };
 
   const scan = (label: string) => {
-    const text = pageStrings().join("\n");
-    for (const sentence of text.split(/\n|(?<=[.!?])\s+/)) {
-      if (isLabel(sentence)) continue;
+    const labels = labelNodes();
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const strings: string[] = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (labels.has(n)) continue;
+      const t = (n.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (t) strings.push(t);
+    }
+    for (const sentence of strings.join("\n").split(/\n|(?<=[.!?])\s+/)) {
       if (!METRIC.test(sentence)) continue;
       const lower = sentence.toLowerCase();
       expect(

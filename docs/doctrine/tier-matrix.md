@@ -3640,7 +3640,22 @@ quietly absorbed. Two §13 defects the second pass found in its own first draft 
 `waiting` KPI asserted "nothing is waiting on your decision" on a FAILED read (the hook returns `[]`
 for both "none" and "could not check", so `waitingUnknown` now separates them), and a rendered-page
 denial guard had to be calibrated to accept denial-by-condition after it fired on the §58-protected
-placement precondition. **Still owed, unchanged:** the authenticated live drive of the record form
+placement precondition. **Round 3 (follow-up after merge): two HIGH, one of them worsened by the previous fix.** ①
+`notPermitted` is a strict SUBSET of `handlesUnknown` and the Channels panel branched on the subset,
+so two of the presence read's three refusals still rendered "No account is on record" three panels
+below a brief saying the record had not been read. ② A FOURTH fallible source — `role.error` was
+never checked, so a failed membership read rendered a genuine owner as "Read-only access", and
+because the previous commit had gated the record button on `canManage`, that failure now cost them
+the surface's only action. `authorityUnknown` now matches the three sibling Solo hooks that already
+carried it (§18), and `canManage` filters `status='active'` to match `is_tenant_admin` (revocation
+leaves `role` intact by design, so a revoked admin previously kept the button and got a 42501).
+Also fixed: a removed recovery instruction restored (§58), a render-guard label exemption rescoped
+from shape to actual label ELEMENTS after it was measured skipping 46 of 84 text nodes including
+server-supplied action titles, an empty presence response reclassified as unknown rather than empty,
+and `classifyPresence` extracted + exported + tested — reverting its core predicate previously broke
+zero tests and now breaks three.
+
+**Still owed, unchanged:** the authenticated live drive of the record form
 (§32.c) — no session in this work has held a browser that can reach the authenticated surface.
 
 **Live provider connection remains UNAVAILABLE and is unchanged by this slice.** `meta-schedule-post`

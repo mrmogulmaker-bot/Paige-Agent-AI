@@ -366,3 +366,43 @@ Static/build: `ci:tsc` clean at its 13-error baseline, `vite build` green, 25 CI
 this branch does not touch, identical to `origin/main`, and not wired into CI; pre-existing, named
 rather than absorbed. **Authenticated runtime: still NONE**, and still owed — no session in this work
 has held a browser that reaches the authenticated surface.
+
+
+---
+
+## 8. Third peer-gate — two HIGH defects, one of them made worse by the previous fix
+
+The third independent read blocked again. Recorded in full because three rounds produced the **same
+shape** each time: the guard was written for the case that already worked.
+
+| # | Defect | Consequence |
+|---|---|---|
+| **1 HIGH** | `notPermitted` is a **strict subset** of `handlesUnknown`, and `ChannelTelemetryPanel` branched on the subset | Refusals #1 (`workspace not resolved`) and #3 (`workspace record not readable`) fell through to **"No account is on record"** — three panels below a brief saying the record had not been read. Verbatim the contradiction the previous commit cited as its own motivation, surviving in the panel it named |
+| **2 HIGH** | A **fourth** fallible source: `role.error` was never checked, and `canManage` omitted the `status='active'` the server gate requires | A blip in the membership read rendered a genuine owner as **"Read-only access"** — and because the previous commit made the record button conditional on `canManage`, that blip now costs them the only action this surface offers. The previous fix made this defect worse. Separately, revocation sets `status='revoked'` and deliberately leaves `role` intact, so a revoked admin kept `canManage` and got a button whose save raises 42501 |
+| **3 MED** | The reworded note was defended by "the panel beside the figure shows a skeleton, or an error with a retry" | Driven: a failed campaigns read renders **no** skeleton, **no** alert and **no** retry. The rendered text was not false; the code comment and this document were. The previous commit had also **removed** the one recovery instruction the surface had (*"Reload to try the read again"*) without naming it — a §58 miss |
+| **4 MED** | The render guard's label exemption was inferred from SHAPE (short, no digits, no full stop) | Measured: it skipped **46 of 84** text nodes on a populated render, and had grown to cover server-supplied free text — `paige_actions.title`, `.summary`, `.decision_rationale`. A filed action titled *"Followers are climbing"* rendered into the page and the guard stepped over it |
+| **5 LOW** | Both presence predicates opened with `rows.length > 0` | Failed in the **opposite** direction from `campaignsUnknown` in the same commit: an unparseable response coerces to `[]`, both flags read false, and the page said "No account is on record" about a body nobody could read |
+| **6 LOW** | `useSocialCommand` had **no executed test at all** | The contract suite greps it as a source string. `unreadable` — the whole basis of the `handlesUnknown` chain — could be reverted to `refused` and break **zero** tests |
+
+**The fixes.**
+- `ChannelTelemetryPanel` branches on the superset first; the access branch stays because it says
+  something more specific and true.
+- `authorityUnknown` joins the three sibling Solo hooks that already carry it (`useCatalogOffers`,
+  `useSoloSalesOps`, `useSoloAgreements`) — this was the only one of four without it (§18). An
+  unknown authority renders a **Retry access** control and a sentence that assumes no permission
+  either way, not a verdict. `canManage` now filters `status='active'`, matching `is_tenant_admin`.
+- The recovery instruction is restored, and the false claim about the neighbouring panel is gone
+  from both the code comment and this document.
+- The label exemption is scoped to elements the surface uses **as** labels (tile/stage/panel
+  headings), not inferred from shape. Verified by planting `"Followers are climbing"` as a filed
+  action title: the guard now fails on it, where before it skipped it.
+- `classifyPresence` is **extracted, exported and tested directly** (the `toPendingAction` pattern).
+  Reverting `unreadable` → `refused` previously broke zero tests; it now breaks three.
+- An empty response is unknown, not empty.
+
+**Cleared by the same read:** all 512 builder combinations produce no same-source assertion under an
+unread flag; `useSoloTrust` is a fifth fallible source but renders `null` rather than a claim, so it
+asserts nothing; hiding the record button from a platform owner is correct, not a §58 regression,
+because `record_social_handles` never admitted one.
+
+**Still owed, unchanged:** authenticated live drive (§32.c) and the non-master-tenant smoke test.
