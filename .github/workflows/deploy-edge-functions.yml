@@ -60,9 +60,12 @@ jobs:
         if: steps.affected.outputs.count != '0'
         uses: supabase/setup-cli@v1
         with:
-          # `latest` keeps us current; pin to a specific version here if a CLI
-          # release ever regresses the deploy path.
-          version: latest
+          # PINNED -- this file already anticipated pinning "if a CLI release ever
+          # regresses the deploy path". The reason turned out to be different: `latest`
+          # is a rate-limited network lookup, and it took down the migration deploy on
+          # 2026-09-05 before that job reached any Supabase call. 2.116.0 is what
+          # `latest` resolved to at pin time, so behaviour is unchanged.
+          version: 2.116.0
 
       - name: Deploy affected functions
         if: steps.affected.outputs.count != '0'
