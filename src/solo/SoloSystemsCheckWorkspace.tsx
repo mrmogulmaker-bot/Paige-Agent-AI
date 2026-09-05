@@ -289,11 +289,43 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
   const confirmedFindings = currentFindings.filter((finding) => evidenceFilter(finding) === "confirmed");
   const completedAt = systems.run?.completed_at ? new Date(systems.run.completed_at) : null;
   const hasCompletedRun = !!completedAt && !Number.isNaN(completedAt.getTime());
-  const isPartial = !!systems.run && (
-    !hasCompletedRun ||
-    currentFindings.some((finding) => finding.status === "skip" || finding.status === "error") ||
-    (systems.run.check_count ?? currentFindings.length) > currentFindings.length
-  );
+  /**
+   * WHY the picture is incomplete, computed BEFORE the flag that announces it — because the flag
+   * used to be the only thing computed, and the sentence beside it was written for just one of the
+   * three causes. A completed run whose single defect was one unevaluable check therefore rendered
+   * "recorded 10 checks but only 10 results are readable here", which is self-contradictory and was
+   * reported from the live surface. A reason that argues with itself is worse than no reason, so
+   * the banner now states whichever causes are actually true, and the PARTIAL badge is derived from
+   * the same list rather than from a parallel condition that could drift away from it.
+   */
+  const incompleteReasons = useMemo<string[]>(() => {
+    if (!systems.run) return [];
+    if (currentFindings.length === 0) return ["The last run left no readable results at all."];
+    const reasons: string[] = [];
+    const recorded = systems.run.check_count ?? currentFindings.length;
+    if (!hasCompletedRun) {
+      reasons.push("The last check did not finish, so what is below is only as far as it got.");
+    }
+    if (recorded > currentFindings.length) {
+      reasons.push(
+        `It recorded ${recorded} check${recorded === 1 ? "" : "s"} but only ${currentFindings.length} result${currentFindings.length === 1 ? " is" : "s are"} readable here.`,
+      );
+    }
+    // Deliberately the RAW skip/error count, matching the condition that raises the flag, so the
+    // number in the sentence can never disagree with the reason it was shown. A later-resolved
+    // skip still could not be evaluated when the run went through, which is what this says.
+    const unevaluated = currentFindings.filter(
+      (finding) => finding.status === "skip" || finding.status === "error",
+    ).length;
+    if (unevaluated > 0) {
+      reasons.push(
+        `${unevaluated} of the ${recorded} check${recorded === 1 ? "" : "s"} could not be evaluated, so ${unevaluated === 1 ? "that area is" : "those areas are"} unanswered.`,
+      );
+    }
+    return reasons;
+  }, [systems.run, currentFindings, hasCompletedRun]);
+
+  const isPartial = incompleteReasons.length > 0;
 
   const isStale = hasCompletedRun && Date.now() - completedAt.getTime() > 24 * 60 * 60 * 1000;
   const selectedEvidence = projectEvidence(selected?.evidence ?? null);
@@ -485,21 +517,18 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
         );
       })();
 
-  /**
-   * Business attention, kept SEPARATE from setup findings on purpose. A failing check says a system
-   * cannot do its job; these say the book itself needs the owner. Collapsing them would let a
-   * clean setup read imply an empty desk. Only figures that are actually present are shown — a
-   * missing count is omitted rather than rendered as zero, because zero is a claim.
-   */
-  /** A run with nothing readable is as incomplete as a partial one — it answers nothing. */
-  const incomplete = !!systems.run && (isPartial || currentFindings.length === 0);
-
   /** Fixed work is working work. Kept reachable rather than dropped off the surface entirely. */
   const resolvedFindings = useMemo(
     () => currentFindings.filter((f) => isResolved(f)),
     [currentFindings],
   );
 
+  /**
+   * Business attention, kept SEPARATE from setup findings on purpose. A failing check says a system
+   * cannot do its job; these say the book itself needs the owner. Collapsing them would let a
+   * clean setup read imply an empty desk. Only figures that are actually present are shown — a
+   * missing count is omitted rather than rendered as zero, because zero is a claim.
+   */
   const businessAttention = useMemo<Array<[string, number]>>(() => ([
     ["Clients at risk", command.attention?.at_risk_clients],
     ["Follow-ups due", command.attention?.follow_ups_due],
@@ -560,19 +589,16 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
             not wired to this surface yet, so nothing here is newer than the time above.
           </p>
 
-          {/* The run's own summary and the findings we can read are two different numbers, and when
-              they disagree neither one describes the whole picture. Saying so here is what stops the
-              strip claiming "1 needs attention" while the section below says nothing does — the run
-              counted checks whose results are not in this response. Overall health is not inferred
-              from the half that came back. */}
-          {incomplete && (
+          {/* Three separate things can make this reading incomplete: the run never finished, it
+              returned fewer results than it recorded, or a check it did return could not reach a
+              verdict. This used to announce all three with the sentence written for the second,
+              which on a finished, fully-returned run read "recorded 10 checks but only 10 results
+              are readable here". It now states whichever are actually true, and shows at all only
+              when at least one of them is. Overall health is never inferred from a partial read. */}
+          {isPartial && (
             <div className="sc-note" role="status">
               <strong>The picture is incomplete.</strong>{" "}
-              {currentFindings.length === 0
-                ? <>The last run left no readable results at all.</>
-                : <>The last run recorded {systems.run?.check_count} check
-                    {systems.run?.check_count === 1 ? "" : "s"} but only {currentFindings.length} result
-                    {currentFindings.length === 1 ? " is" : "s are"} readable here.</>}
+              {incompleteReasons.join(" ")}
               {" "}Overall health cannot be inferred from what came back, so nothing below is being
               reported as a complete answer.
             </div>

@@ -324,6 +324,47 @@ describe("Solo Systems Check workspace", () => {
     expect(host.textContent).not.toContain("Available checks are clear");
   });
 
+  // THE SHAPE THAT SHIPPED THE DEFECT. Every fixture above either withholds findings or leaves the
+  // run unfinished, so the count-mismatch sentence happened to be true in all of them. On the live
+  // surface the run had FINISHED and returned ALL ten of its results, one of which had errored —
+  // and the banner still printed the count sentence, reading "recorded 10 checks but only 10
+  // results are readable here". The flag was right; the reason beside it was not.
+  it("names the real reason when a finished, fully-returned run has a check it could not evaluate", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      findings: [
+        { ...baseSystems.findings[1] },
+        { ...finding, id: "finding-3", check_id: "revenue_tracking", check_name: "Revenue tracking is set up", status: "error" },
+      ],
+    });
+    render();
+    expect(host.textContent).toContain("The picture is incomplete");
+    expect(host.textContent).toContain("1 of the 2 checks could not be evaluated, so that area is unanswered");
+    // The self-contradiction itself: the same number on both sides of "but only".
+    expect(host.textContent).not.toMatch(/recorded (\d+) checks? but only \1 results? (is|are) readable/);
+  });
+
+  it("still reports a genuine count mismatch, and reports both causes when both are true", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      run: { ...baseSystems.run, completed_at: null, check_count: 5 },
+      findings: [
+        { ...baseSystems.findings[1] },
+        { ...finding, id: "finding-4", check_id: "revenue_tracking", status: "skip" },
+      ],
+    });
+    render();
+    expect(host.textContent).toContain("The last check did not finish");
+    expect(host.textContent).toContain("It recorded 5 checks but only 2 results are readable here");
+    expect(host.textContent).toContain("1 of the 5 checks could not be evaluated");
+  });
+
+  it("raises no partial warning at all when the run finished, returned everything, and evaluated everything", () => {
+    render();
+    expect(host.textContent).not.toContain("The picture is incomplete");
+    expect(host.textContent).not.toContain("PARTIAL COVERAGE");
+  });
+
   it("shows owner-facing remediation content instead of an internal drafting brief", () => {
     harness.systems.mockReturnValue({
       ...baseSystems,
