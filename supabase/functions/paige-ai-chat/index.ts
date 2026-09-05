@@ -8990,7 +8990,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // A tenant-less refusal ("no workspace in context") has no tenant to attribute
           // to, so recordCapabilityRun no-ops it — correct: there is no filed act.
           const recordPipelineRun = async (
-            input: { result?: unknown; thrown?: unknown; threw?: boolean },
+            input: { result?: unknown; thrown?: unknown; threw?: boolean; writeAttempted?: boolean },
           ): Promise<void> => {
             try {
               const outcome: CapabilityOutcome | null = classifyPipelineRun({
@@ -9008,6 +9008,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               console.error("[paige] pipeline capability run not recorded:", (e as Error)?.message);
             }
           };
+          // Pre/post-write boundary for the pipeline capability recorder (Codex P2, 2026-09-05):
+          // set TRUE immediately before a pipeline write act dispatches its external UPDATE, so a
+          // throw caught below is classified honestly — a pre-write throw (parse/client/lookup)
+          // is `capability_failed` (nothing changed), only a post-write throw is `outcome_unknown`.
+          let pipelineWriteAttempted = false;
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
             const admin = createClient(supabaseUrl, supabaseServiceKey);
@@ -9822,8 +9827,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (!tenantId) {
                 result = { success: false, error: "No workspace in context — pick a workspace first." };
               } else {
-                const { data: stage } = await admin.from("pipeline_stages")
+                const { data: stage, error: stageErr } = await admin.from("pipeline_stages")
                   .select("id, stage_type, label, pipeline_id").eq("id", args.stage_id).eq("tenant_id", tenantId).is("archived_at", null).maybeSingle();
+                // Distinguish an OPERATIONAL lookup failure (PostgREST outage, malformed-UUID
+                // 22P02) from a genuine "not in your workspace" (Codex P2, 2026-09-05). A thrown
+                // query error is a PRE-WRITE failure → recorded as capability_failed, never a false
+                // `refused` ("Not allowed"). Only a clean null-with-no-error is the real guard
+                // rejection handled below.
+                if (stageErr) throw stageErr;
                 if (!stage) {
                   result = { success: false, error: "That stage isn't in your workspace." };
                 } else {
@@ -9832,6 +9843,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   // Keep pipeline_id in lockstep with the stage: if the target stage lives in a
                   // different pipeline of the same tenant, the deal moves to THAT pipeline — never a
                   // row whose stage_id and pipeline_id disagree (which would vanish off the board).
+                  // Mark the external write as dispatched: a throw AT OR AFTER this point may have
+                  // applied → capability_outcome_unknown; any earlier throw stays capability_failed.
+                  pipelineWriteAttempted = true;
                   const { data: moved, error: merr } = await admin.from("deals")
                     .update({ stage_id: stage.id, pipeline_id: stage.pipeline_id, status, actual_close_date: status === "open" ? null : today })
                     .eq("id", args.deal_id).eq("tenant_id", tenantId)
@@ -10966,7 +10980,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // instead, so `NUMBER_NOT_ACTIVE` reaches the Rail as a refusal even though
             // the model is told only that something went wrong.
             await recordCommsRun({ thrown: err, threw: true });
-            await recordPipelineRun({ thrown: err, threw: true });
+            await recordPipelineRun({ thrown: err, threw: true, writeAttempted: pipelineWriteAttempted });
 
             toolResults.push({
               tool_call_id: tc.id,
