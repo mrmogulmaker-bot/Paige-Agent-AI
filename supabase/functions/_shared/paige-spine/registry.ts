@@ -4,8 +4,9 @@ import { PIPELINE_DEAL_STAGE_EVIDENCE } from "./domains/pipeline.ts";
 import { BUSINESS_CONTEXT_READINESS } from "./domains/business_context.ts";
 import { TEAM_AUTHORITY } from "./domains/team.ts";
 import { N8N_CONNECTION_READINESS } from "./domains/n8n.ts";
+import { SOCIAL_PRESENCE } from "./domains/social.ts";
 
-export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES] as const;
+export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, SOCIAL_PRESENCE, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES] as const;
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
 const SERVER_SYMBOL_PATTERN = /^public\.[a-z][a-z0-9_]*$/;

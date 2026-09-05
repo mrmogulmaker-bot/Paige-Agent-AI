@@ -1,5 +1,21 @@
 # Decision Log — chronological one-liners
 
+- **Solo Campaigns → Social becomes Social Command, and gets the first writer `social_handles` ever had
+  (2026-09-05, migration `20261210000000`)** — the tab was one fixed UNAVAILABLE panel; it is now a
+  surface where every tile names its source or its absence, and where an owner can RECORD the accounts
+  the business posts from. Closes the gap `docs/product/systems-check-operating-readiness-spec.md:414`
+  records in its own words ("NONE EXISTS. Verified: no route writes tenants.features.social_handles"),
+  which made Systems Check #3 structurally unpassable for every tenant since the day it shipped.
+  **Spine capability `social.presence`** (registry now 17) with a live per-turn Chat block, plus
+  `get_social_accounts`/`record_social_accounts` in `paige-mcp` so PAIGE reads and writes the same
+  field the surface does. **No Rail signal, deliberately:** `record_rail_event` is contact-scoped and
+  this fact is workspace-scoped — the same evidence class as `business_context.readiness`.
+  **The `BEGIN..ROLLBACK` proof earned its keep:** it caught the read's role gate being unguarded on
+  `auth.uid()`, which would have refused PAIGE's own service-role MCP caller and the Systems Check
+  runner while looking correct in review. **Owed:** CI-applied migration, authenticated live drive.
+  **NOT shipped and not implied:** a live per-tenant provider connection — `meta-schedule-post` uses a
+  single platform-wide token and writes a table with no `tenant_id`.
+
 - **RELEASED to production: `tenant_comms_readiness()` reads Setup (2026-09-03, PR #878, merge `8689df61`, migration `20261160000000`)** —
   the FOURTH consumer of the pointer #864 fixed, found only by enumerating what functions READ rather
   than what they are named. Solo Settings → Connections was telling Mogul Maker Academy its website

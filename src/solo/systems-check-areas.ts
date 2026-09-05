@@ -209,8 +209,15 @@ export const CHECK_DESTINATIONS: Record<SystemsCheckId, CheckDestination> = {
     area: "campaigns",
     label: "Campaigns › Social",
     path: (a) => `/solo/${acct(a)}/growth/social`,
+    // The caveat that stood here until 2026-09-05 said this page "has no way to connect an account
+    // yet, so this cannot be finished there today." It was true, and it is not any more: Campaigns
+    // › Social now records the accounts a business posts from, through
+    // public.record_social_handles — the first writer tenants.features->social_handles has had, and
+    // the field this check reads. What the page still cannot do is CONNECT an account for
+    // publishing, which this check has never asked for: it is a §38 capture-only check by owner
+    // ruling (see the registry row in 20260816000000_systems_check_layer1.sql).
     caveat:
-      "That page can show what is on record but has no way to connect an account yet, so this cannot be finished there today.",
+      "Recording the accounts is what this check asks for. Connecting one for publishing is a separate capability and is not available yet.",
   },
   automation_wired: {
     title: "An outside automation tool is connected",
