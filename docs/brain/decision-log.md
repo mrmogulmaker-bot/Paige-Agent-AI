@@ -2872,6 +2872,26 @@ the seam ships; a capable caller drives it. **Follow-ups filed:** `match_paige_m
 trap (client-memory recall, latent, different table/§37 set); GDPR bulk hard-delete via
 `process-data-deletion` (self-serve `forget` ships now); `match_paige_owner_memory`'s NULL-tenant `=`
 filter (latent, unwired operator recall).
+
+**Peer-review hardening (Codex, PR #956, before merge — §39 layered defense).** The repo's automated
+reviewer returned 5 valid findings on the pushed seam; all fixed in the same PR and re-proven by a
+re-run `BEGIN..ROLLBACK` behavioral proof on prod (all green, non-persistence confirmed
+`memory_fns_on_prod=[]`): **(P1)** `forget_paige_memory`'s service path had a `v_is_service` wildcard
+branch that bypassed the tenant predicate — a service caller could soft-delete a multi-tenant user's
+row in ANY of their tenants; fixed by adding `p_tenant_id` and pinning the delete to
+`m.tenant_id IS NOT DISTINCT FROM v_tenant` (proven: cross-tenant forget no-ops, same-tenant deletes).
+**(P2)** the service write stamped `created_by = subject uid`; corrected to `NULL` per the
+`paige_owner_memory.created_by` "NULL for the service/system seam" convention (`20260810120000`).
+**(P2)** the rail-browser-grant-lint regex matched only a single-table object and required `TO`/`FROM`
+immediately after it, so a MULTI-TABLE grant naming a protected Rail table alongside others
+(`GRANT SELECT ON public.paige_client_events, public.plans TO authenticated;`) slipped through;
+rewritten to parse the full comma-separated object list (self-test 10/10 incl. two new multi-table
+cases; full corpus stays clean). **(P2)** `get_paige_memory` omitted `metadata`, so a reader could not
+see `confirmation_state`/provenance — added to the RETURNS TABLE. **(P2)** `record_paige_memory` had no
+confirmation-state field — added `p_confirmation_state ∈ {proposed,confirmed,corrected,retired}`
+(default `proposed`, validated, merged LAST into `metadata`) so an inference is never stored as
+canonical truth (Relationship Context contract Layer 2). None had a runtime producer (auto-write
+deferred), so the signature changes broke no caller (§37).
 ## 2026-09-05 · One canonical meaning for "is this business fact on file" (Spine #40, PR #958)
 
 **The contradiction, and why it was not a choice between two answers.** For two real workspaces

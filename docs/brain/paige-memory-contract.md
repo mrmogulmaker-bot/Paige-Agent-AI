@@ -39,27 +39,35 @@ All three are `SECURITY DEFINER`, `search_path=public`, **anon-revoked**, `authe
 
 | Function | Purpose | Governance fields it realizes |
 |---|---|---|
-| `record_paige_memory(p_memory_type, p_content, p_source_thread_id?, p_metadata?, p_supersede_prior?, [p_user_id, p_tenant_id]*)` | governed WRITE | source (`source_thread_id`+`created_by`), scope (server-resolved `tenant_id`+`user_id`), timestamp (`created_at`), visibility (RLS + `memory_type` audience), **correction** (`p_supersede_prior` marks prior active rows of the same (scope,type) inactive) |
-| `get_paige_memory(p_memory_types?, p_limit?, [p_user_id, p_tenant_id]*)` | governed READ — server-resolved scope + audience filter, own rows only | scope, visibility. Semantic recall stays `match_paige_owner_memory`. |
-| `forget_paige_memory(p_id, [p_user_id]*)` | governed DELETION — soft-delete (`is_active=false`) of the caller's OWN row | **deletion/retention** |
+| `record_paige_memory(p_memory_type, p_content, p_source_thread_id?, p_metadata?, p_supersede_prior?, p_confirmation_state?, [p_user_id, p_tenant_id]*)` | governed WRITE | source (`source_thread_id` + `created_by`, which is **NULL for the service/system seam**, never the subject), scope (server-resolved `tenant_id`+`user_id`), timestamp (`created_at`), visibility (RLS + `memory_type` audience), **correction** (`p_supersede_prior` marks prior active rows of the same (scope,type) inactive), **confirmation** (`p_confirmation_state ∈ {proposed,confirmed,corrected,retired}`, default `proposed`, merged into `metadata` so an inference is never stored as truth) |
+| `get_paige_memory(p_memory_types?, p_limit?, [p_user_id, p_tenant_id]*)` | governed READ — server-resolved scope + audience filter, own rows only | scope, visibility. **Returns `metadata`** so `confirmation_state`/provenance are readable. Semantic recall stays `match_paige_owner_memory`. |
+| `forget_paige_memory(p_id, [p_user_id, p_tenant_id]*)` | governed DELETION — soft-delete (`is_active=false`) of the caller's OWN row, scoped to its resolved `(user, tenant)` | **deletion/retention** — a `service_role` caller passes both and CANNOT wildcard across the tenants a user belongs to |
 
 `*` = honored only for `service_role`. Uses `IS NOT DISTINCT FROM` on `tenant_id` so a tenant-less
 operator's NULL-tenant rows match (avoiding the `=`-on-NULL trap `match_paige_owner_memory` documents).
 
-## Every memory item carries the six governance fields
+## Every memory item carries the six governance fields (+ confirmation)
 
 source · scope · timestamp/freshness · visibility · correction path · deletion/retention — realized
-as the table above maps them. A memory write that skips the seam and hand-builds a row (raw INSERT
-via the RLS policy) is legal but bypasses the vocab + correction discipline; prefer the seam.
+as the table above maps them — PLUS a confidence/**confirmation** field (`metadata.confirmation_state`,
+the Relationship Context contract Layer 2 field that keeps an inference from masquerading as truth).
+A memory write that skips the seam and hand-builds a row (raw INSERT via the RLS policy) is legal but
+bypasses the vocab + correction + confirmation discipline; prefer the seam.
 
 ## Proof + honest state (§13/§32)
 
-- **Migration `20261222000000` — pre-merge `BEGIN..ROLLBACK` proof on prod (`xygzykjyynhzqytbqnzu`, 2026-09-05):**
-  DDL executes; `record_paige_memory` is `SECURITY DEFINER` with `search_path=public`; **anon cannot
-  EXECUTE**; `authenticated`/`service_role` can; a JWT caller with no resolvable workspace is refused
-  **42501** (its passed `p_user_id`/`p_tenant_id` ignored — §59 confinement). Non-persistence confirmed
-  (`record_not_persisted = true`). The **persisted-apply is CI's** (`deploy-migrations.yml` on merge →
-  `migration list` verify → `db-live`); do not hand-apply (§24/§32.a).
+- **Migration `20261222000000` — pre-merge `BEGIN..ROLLBACK` behavioral proof on prod
+  (`xygzykjyynhzqytbqnzu`, re-run 2026-09-05 after the Codex peer-review fixes):** DDL executes;
+  `record_paige_memory` is `SECURITY DEFINER` with `search_path=public`; **anon cannot EXECUTE** any
+  of the three, `authenticated`/`service_role` can. Behaviorally proven end-to-end (all green,
+  then rolled back): a service write stamps `confirmation_state='proposed'` by default and
+  `created_by=NULL`; an explicit `confirmed` is honored and an invalid state is rejected;
+  `get_paige_memory` returns `metadata` carrying `confirmation_state`; `forget_paige_memory` from a
+  service caller with a MISMATCHED tenant does NOT delete (P1) while the matching tenant does; a JWT
+  caller's spoofed `p_user_id`/`p_tenant_id` are ignored and `created_by` is stamped to the actor
+  (§59); a JWT caller with no resolvable workspace is refused **42501**. Non-persistence confirmed
+  (`memory_fns_on_prod=[]`, `proof_test_rows_persisted=0`). The **persisted-apply is CI's**
+  (`deploy-migrations.yml` on merge → `migration list` verify → `db-live`); do not hand-apply (§24/§32.a).
 - **DEFERRED, labeled not delivered:** the chat-runtime AUTO-WRITE of conversation/agent memory (slice
   4b) is NOT wired — this ships the seam it will call; a capable caller (Paige's MCP agent) can drive it
   now. Semantic recall of the new types via `match_paige_owner_memory` is available but unwired into chat.

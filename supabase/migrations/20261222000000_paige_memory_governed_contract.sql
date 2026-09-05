@@ -35,7 +35,12 @@
 --                 audience marker; these DEFINER seams read/write only the caller's own scope.
 --   correction  → record_paige_memory(p_supersede_prior) marks prior active rows of the same
 --                 (scope, type) is_active=false, so the newest fact wins without deleting history.
---   deletion    → forget_paige_memory soft-deletes (is_active=false), the table's retention model.
+--   deletion    → forget_paige_memory soft-deletes (is_active=false), scoped to the caller's OWN
+--                 (user, tenant) — a service_role caller passes both and cannot wildcard tenants.
+-- PLUS a confidence/confirmation field (Relationship Context contract Layer 2): record_paige_memory
+--   stamps metadata.confirmation_state ∈ {proposed,confirmed,corrected,retired}, defaulting to
+--   'proposed' so an inference is never stored as canonical truth; get_paige_memory returns metadata
+--   so a reader can see it. created_by is NULL for the service/system seam (never the subject uid).
 --
 -- SCOPE / caller model — mirrors match_paige_owner_memory (§45): a JWT caller is CONFINED to
 -- auth.uid() + current_user_tenant_id() and its p_user_id/p_tenant_id arguments are IGNORED; a
@@ -54,13 +59,14 @@
 
 -- ── record_paige_memory — the governed WRITE seam (§10). ────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.record_paige_memory(
-  p_memory_type      text,
-  p_content          text,
-  p_source_thread_id uuid    DEFAULT NULL,
-  p_metadata         jsonb   DEFAULT '{}'::jsonb,
-  p_supersede_prior  boolean DEFAULT false,
-  p_user_id          uuid    DEFAULT NULL,   -- honored ONLY for service_role (server-resolved)
-  p_tenant_id        uuid    DEFAULT NULL    -- honored ONLY for service_role (server-resolved)
+  p_memory_type        text,
+  p_content            text,
+  p_source_thread_id   uuid    DEFAULT NULL,
+  p_metadata           jsonb   DEFAULT '{}'::jsonb,
+  p_supersede_prior    boolean DEFAULT false,
+  p_confirmation_state text    DEFAULT 'proposed', -- governance field: proposed|confirmed|corrected|retired
+  p_user_id            uuid    DEFAULT NULL,   -- honored ONLY for service_role (server-resolved)
+  p_tenant_id          uuid    DEFAULT NULL    -- honored ONLY for service_role (server-resolved)
 )
 RETURNS uuid
 LANGUAGE plpgsql
@@ -69,9 +75,11 @@ SET search_path TO 'public'
 AS $function$
 DECLARE
   v_is_service boolean := auth.role() = 'service_role';
-  v_uid    uuid;
-  v_tenant uuid;
-  v_new_id uuid;
+  v_uid        uuid;
+  v_tenant     uuid;
+  v_created_by uuid;
+  v_metadata   jsonb;
+  v_new_id     uuid;
 BEGIN
   -- Caller scope, resolved in-body — never trusted from a JWT caller's arguments (§59/§9).
   IF v_is_service THEN
@@ -91,6 +99,11 @@ BEGIN
       RAISE EXCEPTION 'PAIGE_MEMORY_NO_WORKSPACE' USING ERRCODE = '42501';
     END IF;
   END IF;
+
+  -- Actor attribution (source field): a JWT caller IS the human actor; a service/system write has
+  -- NO human actor, so created_by is NULL — the convention paige_owner_memory.created_by documents
+  -- ("actor stamp; NULL for the service/system seam", 20260810120000). Never stamp the subject uid.
+  v_created_by := CASE WHEN v_is_service THEN NULL ELSE v_uid END;
 
   -- Governed vocab (§10) — the four memory audiences, enumerated as the contract. An unknown type
   -- is refused so this seam cannot become a raw event dump.
@@ -118,6 +131,18 @@ BEGIN
     RAISE EXCEPTION 'PAIGE_MEMORY_CONTENT_REQUIRED' USING ERRCODE = '22023';
   END IF;
 
+  -- Confirmation state (the governance field that keeps an inference from masquerading as truth,
+  -- per the Relationship Context & Governed Memory contract Layer 2): a memory is 'proposed' by
+  -- default and only 'confirmed' through an explicit path. The validated argument is authoritative
+  -- and is merged LAST so it wins over any confirmation_state a caller also put in p_metadata.
+  IF p_confirmation_state IS NULL
+     OR p_confirmation_state NOT IN ('proposed','confirmed','corrected','retired') THEN
+    RAISE EXCEPTION 'PAIGE_MEMORY_CONFIRMATION_STATE_INVALID: %', p_confirmation_state
+      USING ERRCODE = '22023';
+  END IF;
+  v_metadata := COALESCE(p_metadata, '{}'::jsonb)
+                || jsonb_build_object('confirmation_state', p_confirmation_state);
+
   -- Correction path: supersede prior active rows of the same (scope, type). IS NOT DISTINCT FROM so
   -- a tenant-less operator's rows match on NULL (the '=' trap match_paige_owner_memory documents).
   IF p_supersede_prior THEN
@@ -132,16 +157,15 @@ BEGIN
   INSERT INTO public.paige_owner_memory
     (tenant_id, user_id, memory_type, content, source_thread_id, metadata, created_by)
   VALUES
-    (v_tenant, v_uid, p_memory_type, p_content, p_source_thread_id,
-     COALESCE(p_metadata, '{}'::jsonb), v_uid)
+    (v_tenant, v_uid, p_memory_type, p_content, p_source_thread_id, v_metadata, v_created_by)
   RETURNING id INTO v_new_id;
 
   RETURN v_new_id;
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.record_paige_memory(text,text,uuid,jsonb,boolean,uuid,uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.record_paige_memory(text,text,uuid,jsonb,boolean,uuid,uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.record_paige_memory(text,text,uuid,jsonb,boolean,text,uuid,uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.record_paige_memory(text,text,uuid,jsonb,boolean,text,uuid,uuid) TO authenticated, service_role;
 
 -- ── get_paige_memory — the governed READ seam (server-resolved scope + audience filter). ─────────
 CREATE OR REPLACE FUNCTION public.get_paige_memory(
@@ -150,7 +174,7 @@ CREATE OR REPLACE FUNCTION public.get_paige_memory(
   p_user_id      uuid    DEFAULT NULL,   -- honored ONLY for service_role
   p_tenant_id    uuid    DEFAULT NULL    -- honored ONLY for service_role
 )
-RETURNS TABLE(id uuid, memory_type text, content text, source_thread_id uuid, created_at timestamptz, updated_at timestamptz)
+RETURNS TABLE(id uuid, memory_type text, content text, source_thread_id uuid, metadata jsonb, created_at timestamptz, updated_at timestamptz)
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
@@ -179,7 +203,7 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT m.id, m.memory_type, m.content, m.source_thread_id, m.created_at, m.updated_at
+  SELECT m.id, m.memory_type, m.content, m.source_thread_id, m.metadata, m.created_at, m.updated_at
   FROM public.paige_owner_memory m
   WHERE m.is_active = true
     AND m.user_id = v_uid
@@ -195,8 +219,9 @@ GRANT EXECUTE ON FUNCTION public.get_paige_memory(text[],integer,uuid,uuid) TO a
 
 -- ── forget_paige_memory — the governed DELETION seam (soft-delete; the table's retention model). ─
 CREATE OR REPLACE FUNCTION public.forget_paige_memory(
-  p_id      uuid,
-  p_user_id uuid DEFAULT NULL   -- honored ONLY for service_role
+  p_id        uuid,
+  p_user_id   uuid DEFAULT NULL,   -- honored ONLY for service_role (server-resolved)
+  p_tenant_id uuid DEFAULT NULL    -- honored ONLY for service_role (server-resolved)
 )
 RETURNS boolean
 LANGUAGE plpgsql
@@ -211,7 +236,7 @@ DECLARE
 BEGIN
   IF v_is_service THEN
     v_uid := p_user_id;
-    v_tenant := NULL;  -- service scopes by the (id, user_id) it resolved; tenant is not re-derived
+    v_tenant := p_tenant_id;  -- the trusted server resolved BOTH; deletion is scoped to that (user,tenant)
     IF v_uid IS NULL THEN
       RAISE EXCEPTION 'PAIGE_MEMORY_SERVICE_USER_REQUIRED' USING ERRCODE = '22023';
     END IF;
@@ -220,19 +245,22 @@ BEGIN
     IF v_uid IS NULL THEN
       RAISE EXCEPTION 'PAIGE_MEMORY_UNAUTHENTICATED' USING ERRCODE = '42501';
     END IF;
+    -- p_tenant_id is IGNORED for a JWT caller; scope is the caller's own resolved workspace.
     v_tenant := public.current_user_tenant_id();
   END IF;
 
-  -- Only the caller's OWN memory can be forgotten. A JWT caller is additionally pinned to its
-  -- resolved workspace (or, for the operator, its tenant-less rows); a service_role caller is
-  -- pinned to the user it named. A row that is not the caller's is untouched → returns false.
+  -- Only the caller's OWN memory can be forgotten, AND only within its resolved workspace. A
+  -- service_role caller is pinned to the (user, tenant) it named — it can no longer wildcard across
+  -- every tenant a user belongs to (a multi-tenant user's other-workspace rows are untouched). The
+  -- operator branch lets a platform owner forget their tenant-less rows even if they also resolve a
+  -- tenant; it never fires for service_role (auth.uid() is NULL there, so is_platform_owner()=false).
+  -- A row that is not the caller's (user AND tenant) is untouched → returns false.
   UPDATE public.paige_owner_memory m
      SET is_active = false
    WHERE m.id = p_id
      AND m.user_id = v_uid
      AND (
-       v_is_service
-       OR m.tenant_id IS NOT DISTINCT FROM v_tenant
+       m.tenant_id IS NOT DISTINCT FROM v_tenant
        OR (public.is_platform_owner() AND m.tenant_id IS NULL)
      );
   GET DIAGNOSTICS v_rows = ROW_COUNT;
@@ -240,15 +268,19 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.forget_paige_memory(uuid,uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.forget_paige_memory(uuid,uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.forget_paige_memory(uuid,uuid,uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.forget_paige_memory(uuid,uuid,uuid) TO authenticated, service_role;
 
-COMMENT ON FUNCTION public.record_paige_memory(text,text,uuid,jsonb,boolean,uuid,uuid) IS
+COMMENT ON FUNCTION public.record_paige_memory(text,text,uuid,jsonb,boolean,text,uuid,uuid) IS
   'Governed WRITE seam for durable Paige memory (§10). Server-resolves (tenant,user) in-body; a JWT '
-  'caller''s p_user_id/p_tenant_id are IGNORED (§59). Stamps source/scope/timestamp/actor; '
-  'p_supersede_prior realizes the correction path. Vocab: workspace/conversation/agent memory types.';
+  'caller''s p_user_id/p_tenant_id are IGNORED (§59). Stamps source (created_by NULL for the '
+  'service/system seam), scope, timestamp; p_supersede_prior realizes the correction path; '
+  'p_confirmation_state (proposed|confirmed|corrected|retired) is merged into metadata so an '
+  'inference is stored ''proposed'', never as canonical truth. Vocab: workspace/conversation/agent.';
 COMMENT ON FUNCTION public.get_paige_memory(text[],integer,uuid,uuid) IS
   'Governed READ seam for durable Paige memory: server-resolved (tenant,user), own rows only, '
-  'optional memory_type audience filter. Semantic recall stays match_paige_owner_memory.';
-COMMENT ON FUNCTION public.forget_paige_memory(uuid,uuid) IS
-  'Governed DELETION seam (soft-delete via is_active) for the caller''s OWN memory row.';
+  'optional memory_type audience filter. Returns metadata (confirmation_state/provenance readable). '
+  'Semantic recall stays match_paige_owner_memory.';
+COMMENT ON FUNCTION public.forget_paige_memory(uuid,uuid,uuid) IS
+  'Governed DELETION seam (soft-delete via is_active) for the caller''s OWN memory row, scoped to '
+  'its resolved (user,tenant); a service_role caller passes both and cannot wildcard across tenants.';

@@ -27,10 +27,13 @@
  * inline bypass comment a busy migration can carry by accident.
  *
  * SCOPE (honest, §13): it parses GRANT/REVOKE statements that NAME a protected table (with or
- * without the `public.` qualifier and an optional `TABLE` keyword). It does NOT model blanket
- * `GRANT ... ON ALL TABLES IN SCHEMA public` — verified 2026-09-05 that no such browser-role
- * blanket grant exists in this repo; if one is ever added, extend this guard. Dependency-free
- * and regex-based so it runs anywhere `node` runs.
+ * without the `public.` qualifier and an optional `TABLE` keyword), INCLUDING multi-table object
+ * lists — `GRANT SELECT ON public.paige_client_events, public.plans TO authenticated;` grants the
+ * protected table just as surely as a single-table statement, so the full comma-separated object
+ * list is parsed and every protected table in it is applied (the single-table regex missed these).
+ * It does NOT model blanket `GRANT ... ON ALL TABLES IN SCHEMA public` — verified 2026-09-05 that no
+ * such browser-role blanket grant exists in this repo; if one is ever added, extend this guard.
+ * Dependency-free and regex-based so it runs anywhere `node` runs.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -44,16 +47,32 @@ const MIGRATIONS_DIR = join(REPO_ROOT, "supabase", "migrations");
 export const PROTECTED_TABLES = new Set(["paige_client_events", "paige_workspace_events"]);
 const BROWSER_ROLES = new Set(["authenticated", "anon", "public"]);
 
-// GRANT|REVOKE <privs> ON [TABLE] [public.]<ident> TO|FROM <roles>;
+// GRANT|REVOKE <privs> ON [TABLE] <object-list> TO|FROM <roles>;
 // Privileges are a comma/space word list ("SELECT", "INSERT, UPDATE, DELETE", "ALL", "ALL PRIVILEGES").
+// <object-list> is one or more comma-separated table refs, each optionally schema-qualified and/or
+// quoted — captured whole (group 3) and split by parseObjects, so a multi-table grant that names a
+// protected table alongside others is NOT missed. `[\s\S]+?` is non-greedy and bounded by the first
+// ` TO `/` FROM ` (a table identifier can never contain whitespace-delimited `to`/`from`).
 const STMT_RE =
-  /\b(grant|revoke)\s+([a-z ,]+?)\s+on\s+(?:table\s+)?(?:(?:"?public"?)\s*\.\s*)?("?)([a-z_][a-z0-9_$]*)\3\s+(to|from)\s+([^;]+);/gi;
+  /\b(grant|revoke)\s+([a-z ,]+?)\s+on\s+(?:table\s+)?([\s\S]+?)\s+(to|from)\s+([^;]+);/gi;
 
 function parseRoles(roleList) {
   return roleList
     .split(",")
     .map((r) => r.trim().replace(/"/g, "").toLowerCase())
     .filter((r) => BROWSER_ROLES.has(r));
+}
+
+// Split a GRANT/REVOKE object list into bare table names: strip any schema qualifier (take the last
+// dotted segment), quotes, and whitespace, lowercased. `public.paige_client_events, "plans"` → ["paige_client_events","plans"].
+function parseObjects(objList) {
+  return objList
+    .split(",")
+    .map((o) => {
+      const seg = o.trim().split(".");
+      return seg[seg.length - 1].trim().replace(/"/g, "").toLowerCase();
+    })
+    .filter(Boolean);
 }
 
 function privSet(privString) {
@@ -81,33 +100,38 @@ export function auditRailBrowserGrants(migrations) {
   for (const { file, text } of migrations) {
     for (const m of text.matchAll(STMT_RE)) {
       const op = m[1].toLowerCase();
-      const table = m[4].toLowerCase();
-      if (!PROTECTED_TABLES.has(table)) continue;
-      const direction = m[5].toLowerCase(); // to | from
+      const direction = m[4].toLowerCase(); // to | from
       // A GRANT uses TO; a REVOKE uses FROM. A malformed pairing is ignored rather than guessed.
       if (op === "grant" && direction !== "to") continue;
       if (op === "revoke" && direction !== "from") continue;
 
-      const roles = parseRoles(m[6]);
+      // Every protected table named in the object list — a multi-table statement counts once per
+      // protected table it touches (unprotected tables in the same list are ignored).
+      const tables = parseObjects(m[3]).filter((t) => PROTECTED_TABLES.has(t));
+      if (tables.length === 0) continue;
+
+      const roles = parseRoles(m[5]);
       if (roles.length === 0) continue; // no browser role named
       const privs = privSet(m[2]);
-      const perRole = state.get(table);
 
-      for (const role of roles) {
-        const cur = perRole.get(role) ?? { privs: new Set(), grantedIn: null };
-        if (op === "grant") {
-          for (const p of privs) cur.privs.add(p);
-          if (cur.privs.size > 0) cur.grantedIn = file;
-          perRole.set(role, cur);
-        } else {
-          // REVOKE
-          if (privs.has("ALL")) {
-            cur.privs.clear();
+      for (const table of tables) {
+        const perRole = state.get(table);
+        for (const role of roles) {
+          const cur = perRole.get(role) ?? { privs: new Set(), grantedIn: null };
+          if (op === "grant") {
+            for (const p of privs) cur.privs.add(p);
+            if (cur.privs.size > 0) cur.grantedIn = file;
+            perRole.set(role, cur);
           } else {
-            for (const p of privs) cur.privs.delete(p);
+            // REVOKE
+            if (privs.has("ALL")) {
+              cur.privs.clear();
+            } else {
+              for (const p of privs) cur.privs.delete(p);
+            }
+            if (cur.privs.size === 0) cur.grantedIn = null;
+            perRole.set(role, cur);
           }
-          if (cur.privs.size === 0) cur.grantedIn = null;
-          perRole.set(role, cur);
         }
       }
     }
@@ -214,6 +238,23 @@ function runSelfTest() {
   // 7. A grant to a DIFFERENT (unprotected) table is ignored.
   const otherTable = audit([{ file: "20270101000005_x.sql", text: "GRANT SELECT ON public.knowledge_base TO authenticated;" }]);
   check("7 a grant on an unprotected table is ignored", otherTable.offenders.length === 0, JSON.stringify(otherTable.offenders));
+
+  // 8. THE CODEX GAP: a MULTI-TABLE grant naming a protected table alongside others FAILS.
+  const multiGrant = audit([{ file: "20270101000006_regression.sql", text: "GRANT SELECT ON public.paige_client_events, public.plans TO authenticated;" }]);
+  check("8 a multi-table GRANT naming a protected table is caught", multiGrant.offenders.length === 1
+    && multiGrant.offenders[0].table === "paige_client_events"
+    && multiGrant.offenders[0].role === "authenticated", JSON.stringify(multiGrant.offenders));
+
+  // 8b. Multi-table with the protected table NOT first, mixed qualification/quoting.
+  const multiGrant2 = audit([{ file: "20270101000007_x.sql", text: 'GRANT INSERT, UPDATE ON plans, TABLE "public"."paige_workspace_events" TO anon;' }]);
+  check("8b a multi-table GRANT (protected table second, quoted) is caught", multiGrant2.offenders.some((o) => o.table === "paige_workspace_events" && o.role === "anon"), JSON.stringify(multiGrant2.offenders));
+
+  // 9. A multi-table REVOKE clears a protected table's prior grant → NET clean.
+  const multiRevoke = audit([
+    { file: "20270101000008_a.sql", text: "GRANT SELECT ON public.paige_client_events TO authenticated;" },
+    { file: "20270101000008_b.sql", text: "REVOKE SELECT ON public.paige_client_events, public.plans FROM authenticated;" },
+  ]);
+  check("9 a multi-table REVOKE clears a protected table's prior grant", multiRevoke.offenders.length === 0, JSON.stringify(multiRevoke.offenders));
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);

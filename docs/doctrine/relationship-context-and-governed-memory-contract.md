@@ -113,8 +113,11 @@ correctable*, not as a canonical fact.
 
 - **People/Clients owns canonical; Mind/Memory owns governed context. Neither writes the other's store.**
   Memory proposes; promotion to canonical is People/Clients' write path + the Layer-3 confirmation gate.
-- **Extend, never fork (§18).** Layer 2 is the Release C seam + `client_memory` + (a future addition)
-  the `confirmation_state`/`confidence`/`provenance` metadata convention — not a new memory store.
+- **Extend, never fork (§18).** Layer 2 is the Release C seam + `client_memory`. The seam already
+  realizes `confirmation_state` as a validated `record_paige_memory` argument merged into `metadata`
+  (default `proposed`), readable back via `get_paige_memory`'s `metadata`; `confidence` and a
+  `provenance`/`source` marker remain `metadata` conventions the ingestion layer will populate — not a
+  new memory store.
   Layer 1 is §202 (`clients`/`tenant_entity_relationships`/`corporate_entity_registry`) extended with the
   person-vs-org, primary-contact, role, and decision-authority fields — not a parallel CRM schema.
 - **Ingestion depends on** the conversation store (`messages`), the confirmation gate (§16 / one-approval-gate),
