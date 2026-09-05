@@ -51,11 +51,6 @@ import { verifyApprovalPins } from "../_shared/mcp-outcome.ts";
 const CONNECTABLE = new Set(["n8n"]);
 /** Providers that connect by an authorization grant. No credential is ever pasted. */
 const OAUTH_PROVIDERS = new Set(["zapier"]);
-// Providers connected by pasting an address that CARRIES its own credential. Kept separate
-// from CONNECTABLE because the request shape differs: no token, no auth kind, no header,
-// no transport choice. Zapier appears here as well as in OAUTH_PROVIDERS because a
-// workspace may hold either shape -- the grant path is not removed by the paste path.
-const URL_CONNECTABLE = new Set(["zapier"]);
 
 const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai").replace(/\/$/, "");
 /**
@@ -64,9 +59,6 @@ const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai")
  * caller can influence is an open redirect and an authorization-code interception at once.
  */
 const REDIRECT_URI = `${PUBLIC_BASE}/oauth/mcp/callback`;
-
-/** Zapier's MCP endpoint. Discovery decides everything else about the connection. */
-const ZAPIER_MCP_URL = Deno.env.get("ZAPIER_MCP_URL") ?? "https://mcp.zapier.com/api/mcp/mcp";
 
 type ProbeOutcome = { status: "connected"; toolCount: number } | { status: "error"; code: McpErrorCode };
 
@@ -156,7 +148,7 @@ Deno.serve(async (req) => {
     // with `provider: "zapier"` fell through to the n8n setter below and overwrote the
     // workspace's n8n row with whatever the caller sent, from a surface that never offers
     // that combination and therefore never gets tested with it.
-    if (!CONNECTABLE.has(provider) && !URL_CONNECTABLE.has(provider)) {
+    if (!CONNECTABLE.has(provider)) {
       return jsonResponse({ error: "not_directly_connectable", provider }, 400);
     }
     const serverUrl = typeof body.server_url === "string" ? body.server_url.trim() : "";
@@ -174,22 +166,6 @@ Deno.serve(async (req) => {
     // The setter validates shape and enforces tenant-admin in its own body, and writes
     // `pending_verification`. Running it as the USER is what makes that check apply.
     //
-    // A URL-credential provider takes only an address: the secret is a path segment of it,
-    // so there is no token, kind, header or transport for the caller to choose. Its setter
-    // pins the host, so this cannot be pointed anywhere but the provider it names.
-    if (URL_CONNECTABLE.has(provider)) {
-      const { error: urlErr } = await userClient.rpc("set_tenant_zapier_mcp_url_connection", {
-        _server_url: serverUrl,
-        _label: label || undefined,
-      });
-      if (urlErr) {
-        const code = writeCode(urlErr.message);
-        return jsonResponse({ error: "write_failed", code }, code === "MCP_FORBIDDEN" ? 403 : 400);
-      }
-      const probed = await probeAndRecord(admin, tenantId, provider);
-      return jsonResponse({ ok: true, ...probed });
-    }
-
     const { error } = await userClient.rpc("set_tenant_n8n_mcp_connection", {
       _server_url: serverUrl,
       _auth_token: authToken,
@@ -236,8 +212,16 @@ Deno.serve(async (req) => {
         tools: tools.map((t) => ({
           name: t.name,
           description: t.description,
-          schema_hash: t.schemaHash,
+          pin: t.pin,
+          // Deprecated alias, same VALUE as `pin`. A browser bundle deployed before this
+          // change reads this key, and the frontend and this function do not deploy
+          // atomically. Remove one release after this ships.
+          schema_hash: t.pin,
           approved: approved.has(t.name),
+          connected_app: t.app,
+          action_type: t.actionType,
+          effects: t.effects,
+          authority: "ask_first",
         })),
       });
     } catch (e) {
@@ -276,7 +260,7 @@ Deno.serve(async (req) => {
     } catch {
       return jsonResponse({ error: "discovery_failed" }, 502);
     }
-    const liveByName = new Map(live.map((t) => [t.name, t.schemaHash]));
+    const liveByName = new Map(live.map((t) => [t.name, t.pin]));
 
     const { verified, stale } = verifyApprovalPins(requested, liveByName, pins);
 
@@ -307,7 +291,9 @@ Deno.serve(async (req) => {
     const { data: isAdmin } = await userClient.rpc("is_current_user_tenant_admin");
     if (isAdmin !== true) return jsonResponse({ error: "forbidden" }, 403);
     try {
-      const { server, resource } = await resolveZapierAuthority();
+      const serverUrl = typeof body.server_url === "string" ? body.server_url.trim() : "";
+      if (!isZapierMcpAddress(serverUrl)) return jsonResponse({ error: "address_rejected" }, 400);
+      const { server, resource } = await resolveZapierAuthority(serverUrl);
       const registration = await registerClient({
         server, redirectUri: REDIRECT_URI, clientName: "Paige",
       });
@@ -401,7 +387,7 @@ Deno.serve(async (req) => {
 
       const { error } = await admin.rpc("set_tenant_zapier_mcp_connection", {
         _tenant_id: flowTenant,
-        _server_url: ZAPIER_MCP_URL,
+        _server_url: String(pending.resource),
         _access_token: tokens.accessToken,
         _refresh_token: tokens.refreshToken,
         _expires_at: tokens.expiresAt,
@@ -428,8 +414,12 @@ Deno.serve(async (req) => {
  * Zapier's authority, discovered from Zapier. Nothing about the flow is hardcoded beyond
  * the MCP endpoint itself, so a change on their side is followed rather than broken.
  */
-async function resolveZapierAuthority(): Promise<{ server: AuthorizationServer; resource: string }> {
-  const pr = await discoverProtectedResource(ZAPIER_MCP_URL);
+function isZapierMcpAddress(value: string): boolean {
+  try { const u=new URL(value);return u.protocol==="https:"&&u.hostname==="mcp.zapier.com"&&!u.username&&!u.password&&!u.search&&!u.hash&&u.pathname.startsWith("/api/mcp/"); }
+  catch { return false; }
+}
+async function resolveZapierAuthority(serverUrl: string): Promise<{ server: AuthorizationServer; resource: string }> {
+  const pr = await discoverProtectedResource(serverUrl);
   // The first advertised authorization server. Its metadata still has to name itself as
   // the issuer, so accepting the advertisement is not the same as trusting it.
   const server = await discoverAuthorizationServer(pr.authorizationServers[0]);

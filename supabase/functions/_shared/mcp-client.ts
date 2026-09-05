@@ -353,7 +353,23 @@ export type McpTool = { name: string; description: string };
  * deciding what to approve; it must never reach a model. That distinction is the caller's
  * to keep, and `_shared/mcp-outcome.ts` is where it is kept.
  */
-export type McpToolFingerprint = McpTool & { schemaHash: string };
+export type McpToolFingerprint = McpTool & {
+  /** SHA-256 of the tool's INPUT SCHEMA only. Its value is FROZEN: n8n's discovery pin
+   *  (`_shared/n8n-oauth.ts`) is derived from it, and the probe RPC wipes a workspace's
+   *  approved workflows when that pin moves. Widening THIS field would silently revoke
+   *  every n8n workspace's approvals. Widen `pin` instead. */
+  schemaHash: string;
+  /** SHA-256 of the AUTHORITY the tool claims: which connected account it acts on, what
+   *  kind of action it is, and what it is able to do. */
+  authorityHash: string;
+  /** What an approval is pinned to: the schema AND the authority, together. This is the
+   *  value shown at approval, echoed back by the browser, stored in `capability_pins`,
+   *  and compared before anything runs. */
+  pin: string;
+  app: string;
+  actionType: string;
+  effects: string[];
+};
 
 /**
  * Discovery, reduced to identity and purpose. Input schemas are deliberately dropped
@@ -439,10 +455,27 @@ async function fingerprintsOf(tools: unknown): Promise<McpToolFingerprint[]> {
     if (!raw || typeof raw !== "object") continue;
     const t = raw as Record<string, unknown>;
     if (typeof t.name !== "string" || !t.name) continue;
+    const meta=t._meta&&typeof t._meta==="object"&&!Array.isArray(t._meta)?t._meta as Record<string,unknown>:{};
+    const annotations=t.annotations&&typeof t.annotations==="object"&&!Array.isArray(t.annotations)?t.annotations as Record<string,unknown>:{};
+    const explicitEffects=Array.isArray(meta.effects)?meta.effects.filter((v):v is string=>typeof v==="string"&&["read","create","update","send","delete"].includes(v)):[];
+    if(annotations.readOnlyHint===true&&!explicitEffects.includes("read"))explicitEffects.push("read");
+    // ONE representation of the effect set, used for the hash AND for what the operator is
+    // shown, so the thing pinned is exactly the thing read.
+    const effects = [...new Set(explicitEffects)].sort();
+    const app = typeof meta.connected_app==="string"?meta.connected_app.slice(0,100):typeof meta.app_name==="string"?meta.app_name.slice(0,100):"";
+    const actionType = typeof meta.action_type==="string"?meta.action_type.slice(0,80):"";
+    // Hash the TRUNCATED values, because those are the ones that reached the screen.
+    const schemaHash = await fingerprintSchema(t.inputSchema);
+    const authorityHash = await fingerprintAuthority({ app, actionType, effects });
     out.push({
       name: t.name.slice(0, 200),
       description: typeof t.description === "string" ? t.description.slice(0, 500) : "",
-      schemaHash: await fingerprintSchema(t.inputSchema),
+      schemaHash,
+      authorityHash,
+      pin: await fingerprintCapability(schemaHash, authorityHash),
+      app,
+      actionType,
+      effects,
     });
   }
   return out;
@@ -461,9 +494,47 @@ async function fingerprintsOf(tools: unknown): Promise<McpToolFingerprint[]> {
  * changed.
  */
 export async function fingerprintSchema(schema: unknown): Promise<string> {
-  const canonical = canonicalJson(schema === undefined || schema === null ? {} : schema);
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  return await sha256Hex(canonicalJson(schema === undefined || schema === null ? {} : schema));
+}
+
+/** Domain tag, so a pin produced under a future scheme can never be mistaken for one
+ *  produced under this one. */
+const PIN_SCHEME = "mcp-pin/v1";
+
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * A stable hash of the AUTHORITY a tool claims — the connected account it acts on, the kind
+ * of action it is, and the effects it declares. Approving used to record none of this, so a
+ * provider could keep a tool's name and inputs while moving it to a different connected
+ * account, or turn a read into a send, and the old approval still ran.
+ *
+ * WHY EFFECTS SORT AND A SCHEMA'S ARRAYS DO NOT. `effects` is a SET the provider happens to
+ * serialise in some order; `["send","read"]` and `["read","send"]` are the same authority,
+ * and failing a working integration closed because a provider reordered its own list is
+ * noise, not drift. A schema's `required` and `enum` are SEQUENCES whose order IS the
+ * contract, so `canonicalJson` leaves them alone. The asymmetry is deliberate.
+ */
+export async function fingerprintAuthority(
+  a: { app: string; actionType: string; effects: readonly string[] },
+): Promise<string> {
+  return await sha256Hex(canonicalJson({
+    app: a.app,
+    actionType: a.actionType,
+    effects: [...new Set(a.effects)].sort(),
+  }));
+}
+
+/**
+ * What an approval is actually pinned to. Both inputs are fixed-width 64-hex digests, so the
+ * join is unambiguous by construction: no provider-supplied string reaches this
+ * concatenation, and no field can be shifted into another by a value containing a separator.
+ */
+export async function fingerprintCapability(schemaHash: string, authorityHash: string): Promise<string> {
+  return await sha256Hex(`${PIN_SCHEME}\n${schemaHash}\n${authorityHash}`);
 }
 
 function canonicalJson(value: unknown): string {

@@ -1097,6 +1097,24 @@ four `comms_configured` seams and never asserted here, and it is only readable f
 tenant — an operator or agency acting as another account gets `outOfScope`, which the surface states
 as "not readable from here" rather than as a negative.
 
+### The Solo shell — Settings › Integrations › Automations, `/solo/{account}/settings/integrations/automations`
+
+**A separate destination from Connections.** `SoloSettings` defines Connections and Integrations as
+distinct surfaces (`settings.tsx:1454,1584`), and the Zapier view is a leaf of the Integrations
+sub-tab (`settings-integrations.tsx:728-744`), reached at `/settings/integrations/automations`. The
+retired standalone `/settings/automations` page redirects here rather than 404ing
+(`SoloApp.tsx:177-184`), so an existing bookmark keeps working. Recording it under Connections would
+name a route that does not exist.
+
+Same Solo-shell reasoning as the Connections section above: sub-accounts reach their workspace
+through `AgencyApp`, so the sub-account column reads N/A as a routing fact, not a tier exclusion.
+
+Legend as above: **✓** live · **—** not built · **N/A** tier not opened yet.
+
+| Segment | What it is | State | Operator | Agency | Solo | Sub-account | Client |
+|---|---|---|---|---|---|---|---|
+| `integrations/automations` (Zapier) | **Two independent connections behind one card**, on the accepted n8n tab pattern: an **API connection** (owner OAuth to Zapier's own API, read-only scopes) and **Paige tools (MCP)** (owner OAuth to Zapier's MCP server, per-tool approval, revocation, Zapier-scoped recent activity), plus a tenant-bound **Skool intake route** | **wired, and truthfully unavailable in part** — `tenant-zapier-api-connect` and `tenant-mcp-connect` both run; MCP tools are invisible to PAIGE until specifically approved, and an approval pins the tool's input schema **and** its authority (connected app, action type, effects), so a provider that moves a tool to a different account or turns a read into a send fails closed until re-approved. PAIGE drives it through the governed `zapier_list_actions` / `zapier_run_action` seam with Rail attribution; unknown effects fail closed as write authority. Intake resolves its tenant **only** from the route token, stores the payload encrypted and the token as a hash, and refuses a changed-payload key reuse. **The API tab renders `capability unavailable` on production** because `ZAPIER_API_CLIENT_ID`/`_SECRET` are not configured there — that is the honest state, not a failure. A live provider authorization and a real Skool payload proof are still owed (§32.c) | N/A | N/A | ✓ | N/A | — |
+
 ### PAIGE Chat — the document proposal seam, `/solo/{account}/paige/chat`
 
 **§66, same commit as the ship.** A document dropped into PAIGE Chat now ends in a PROPOSAL a
