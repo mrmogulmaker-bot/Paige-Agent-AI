@@ -1838,3 +1838,31 @@ to go looking for its source, never evidence that the word is surplus.
 *Corollary:* an unoccupied-but-reachable state is a real finding and belongs in the record with its
 occupancy stated honestly — "reachable, zero rows today" — so the next session knows it was
 considered rather than missed.
+
+## An OMITTED field is not an EMPTY one (OAuth `scope`, 2026-09-05)
+
+`postToken` read a token response's scope as `str(body.scope)?.split(...) ?? []`, so a response
+that simply did not carry `scope` produced ZERO scopes. RFC 6749 §5.1 makes `scope` OPTIONAL
+"if identical to the scope requested by the client", and a `refresh_token` grant sends no scope,
+so servers commonly omit it. Silence meant "unchanged"; we read it as "nothing".
+
+The cost was not a bad label. Every downstream scope assertion failed, the caller **revoked the
+token it had just been issued**, and the provider had already invalidated the old refresh token by
+rotating it. The grant became unrecoverable and the only way back was a full re-authorization —
+once per token lifetime, indefinitely. It presented to the owner as "we get disconnected from our
+tools every time the platform updates", which pointed at deploys and was nothing to do with them.
+
+*Rule:* **when a protocol says a field is optional, decide explicitly what its ABSENCE means, and
+write that meaning down at the parse site.** `?? []` is a default, not a decision, and it silently
+asserts the most restrictive possible reading of silence.
+
+*Corollary, found by reading the fix's own diff:* the first repair used
+`typeof body.scope === "string" ? parse : requested`, which also swallowed a present-but-MALFORMED
+value and read it as agreement. The RFC gives meaning to an omitted field; it gives none to a
+broken one. Absent → the requested set. Present → parsed strictly, and refused if it disagrees.
+
+*Diagnostic note (§13):* a failed refresh left NO trace — `last_error` stayed `NULL` and no Rail
+row was written, because the verify path throws before it reaches `probe`. Four `oauth_success`
+events in twenty hours were the only visible evidence that anything was wrong. A failure path that
+records nothing is why this took a live report to find.
+
