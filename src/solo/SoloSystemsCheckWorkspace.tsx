@@ -695,8 +695,6 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
                     <span><strong>Start here:</strong> <a className="sc-brief-link" href={topTodoDest.path(account)}>{topTodoDest.label} <ChevronRight size={11} aria-hidden="true" /></a> — the first item under &ldquo;What needs you now&rdquo;.</span>
                   ) : topTodo ? (
                     <span><strong>Start here:</strong> the first item under &ldquo;What needs you now&rdquo; below.</span>
-                  ) : attentionFindings.length > 0 ? (
-                    <span><strong>Start here:</strong> review the {attentionFindings.length} draft{attentionFindings.length === 1 ? "" : "s"} Paige is holding for you.</span>
                   ) : (
                     <span>Nothing from the last check needs you right now.</span>
                   )}
