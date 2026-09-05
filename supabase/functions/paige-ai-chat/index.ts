@@ -9,6 +9,11 @@ import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
 import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
+// Wave 3 · Communications — the owner can find out what Paige did with the business
+// phone line. `capability-record` owns HOW a run is written; `comms-capability-outcome`
+// owns WHICH of the six outcomes these four acts landed in (§18: one home each).
+import { recordCapabilityRun, type CapabilityOutcome } from "../_shared/capability-record.ts";
+import { classifyCommsRun } from "../_shared/comms-capability-outcome.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -8889,6 +8894,82 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             });
             continue;
           }
+          // ── WAVE 3 · COMMUNICATIONS — the owner can find out what Paige did ──────
+          //
+          // Owner ruling, 2026-09-05: "Every real-money external action MUST record
+          // capability_run before it can be delegated at any autonomy tier above 'Ask
+          // first.'" `comms_buy_number` starts a recurring Twilio charge, so it is the
+          // first act this wave covers.
+          //
+          // DECLARED HERE, ABOVE THE `try`, ON PURPOSE. Both `admin` and `crmTenantId`
+          // are block-scoped INSIDE that try, so neither exists in its catch — and the
+          // catch is where `comms_name_number` and `comms_set_primary_number` land every
+          // single refusal, because they use `if (e) throw e`. Recording only from the
+          // success path would have covered one of the four acts and none of the
+          // refusals, while looking complete.
+          //
+          // `supabase` (L598) is the SERVICE-ROLE client and it has to be:
+          // `record_capability_run` is `REVOKE ALL … FROM anon, authenticated` +
+          // `GRANT EXECUTE … TO service_role`. Handed `supabaseClient` (anon + caller
+          // JWT) every call returns `permission denied` as an `{error}` object rather
+          // than throwing, so the feature would ship with every gate green and not one
+          // row ever written. That is the whole reason this is wired at the executor.
+          //
+          // NO `agentSlug`. `_record_workspace_rail_event` resolves it against
+          // `paige_subagents` for a label, and no subagent owns these four acts today.
+          // Named-agent attribution is the owner's next layer; inventing a slug now
+          // would put a name on the Rail that resolves to nothing.
+          //
+          // IT CANNOT FAIL THE TURN. The classification AND the write both run inside this
+          // one try, so an unwritable Rail — or an unexpected shape reaching the classifier —
+          // never turns a phone number that WAS bought into a crashed request. (Declared above
+          // the dispatch `try` on purpose: `comms_name_number`/`_set_primary_number` throw every
+          // refusal, and the catch is block-scoped away from `admin`/`crmTenantId`.)
+          //
+          // RECORDED AGAINST THE TENANT THE SEAM ACTUALLY ACTED ON, not `personaCtx.tenant_id`
+          // (§39 peer-gate, 2026-09-05). Each comms seam derives its own workspace server-side
+          // from `current_user_tenant_id()` on the caller's JWT; `personaCtx.tenant_id` resolves
+          // the `clients.linked_user_id` branch FIRST and can therefore name a DIFFERENT tenant
+          // than the one the purchase hit. Recording against the persona tenant would show one
+          // workspace's owner an act that happened in another. So resolve the caller's own tenant
+          // the same way the seam did, and attribute the row to that. Resolved lazily, ONLY on a
+          // real comms act — the outcome is classified first, and a non-comms tool (or a comms
+          // read) returns before the round-trip. `commsActorTenant` is declared per tool-call
+          // iteration and `recordCommsRun` runs at most once per iteration (result XOR catch), so
+          // the `undefined`-sentinel guard is a correctness belt (never resolve twice, never treat
+          // a real `null` as unresolved), not a cross-call cache — there is no second call in an
+          // iteration for it to save.
+          let commsActorTenant: string | null | undefined;
+          const resolveCommsActorTenant = async (): Promise<string | null> => {
+            if (commsActorTenant !== undefined) return commsActorTenant;
+            const { data, error } = await supabaseClient.rpc("current_user_tenant_id");
+            if (error) {
+              console.error("[paige] comms capability tenant resolve failed:", error.message);
+              commsActorTenant = null;
+            } else {
+              commsActorTenant = (data as string | null) ?? null;
+            }
+            return commsActorTenant;
+          };
+          const recordCommsRun = async (
+            input: { result?: unknown; thrown?: unknown; threw?: boolean },
+          ): Promise<void> => {
+            try {
+              const outcome: CapabilityOutcome | null = classifyCommsRun({
+                capability: tc.function.name,
+                ...input,
+              });
+              if (!outcome) return;
+              await recordCapabilityRun(supabase, {
+                tenantId: await resolveCommsActorTenant(),
+                actorId: user.id,
+                capabilityKey: tc.function.name,
+                outcome,
+              });
+            } catch (e) {
+              console.error("[paige] comms capability run not recorded:", (e as Error)?.message);
+            }
+          };
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
             const admin = createClient(supabaseUrl, supabaseServiceKey);
@@ -10807,8 +10888,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
 
+            // The result the model is about to be handed is the same evidence the owner
+            // gets. Classified inside the recorder from the seam's OWN codes, not `success:false`.
+            await recordCommsRun({ result });
+
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
           } catch (err) {
+            // A PostgREST error is a PLAIN OBJECT, not an `Error`, so the line below
+            // reports "Unknown error" for every `RAISE` the two phone RPCs make.
+            // `classifyCommsRun` reads `.code`/`.message`/`.hint` off the thrown value
+            // instead, so `NUMBER_NOT_ACTIVE` reaches the Rail as a refusal even though
+            // the model is told only that something went wrong.
+            await recordCommsRun({ thrown: err, threw: true });
+
             toolResults.push({
               tool_call_id: tc.id,
               role: "tool",

@@ -35,6 +35,14 @@ function kindChip(kind: string): { label: string; tone: "paige" | "client" | "au
       return { label: "Message", tone: "comms" };
     case "mcp":
       return { label: "External", tone: "system" };
+    // A capability run IS Paige acting, and the row says so itself: the projection stamps
+    // `actor_type: 'paige_agent'`, so this chip agrees with the row rather than deciding
+    // anything about it. Without the case these fall to the default, which derives the chip
+    // from the namespace and puts the literal backend source kind — "Capability run" — in
+    // front of an owner. §11 forbids backend names in visible copy, and it would read as a
+    // different kind of thing from the `owner.*` lines beside it, which are the same act.
+    case "capability_run":
+      return { label: "Paige", tone: "paige" };
     default:
       return { label: ns ? ns.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) : "Event", tone: "system" };
   }

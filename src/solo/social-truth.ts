@@ -55,8 +55,13 @@ const absent = (note: string): SocialValue<number> => ({ state: "UNAVAILABLE", v
  * identical all-zeros input, and on this surface the in-flight one is the MOST reachable of the
  * three, not the least: `useSoloCampaigns` issues six round trips to `useSocialCommand`'s two, and
  * flips itself to `loading` synchronously on every tenant switch. "Has not been read" is true of
- * all three; "could not be read" was true of only one. Which state it is stays visible where it
- * belongs — the panel beside the figure shows a skeleton, or an error with a retry.
+ * all three; "could not be read" was true of only one.
+ *
+ * It does lose the failed-vs-in-flight-vs-refused distinction, and an earlier version of this
+ * comment defended that by claiming the panel beside the figure carried it. Driven, it did not: a
+ * failed campaigns read renders no skeleton, no alert and no retry anywhere on the page. So this
+ * sentence carries the whole weight, and it is written to be true on its own rather than to lean
+ * on a neighbour that was not there.
  *
  * One home for the sentence (§18) because it now appears on seven figures across three builders,
  * and a phrasing that drifts between them would read as several conditions rather than one.
@@ -589,8 +594,14 @@ export function buildNextMove(input: SocialCommandInput): SocialNextMove {
   if (input.waitingUnknown || input.campaignsUnknown || input.handlesUnknown) {
     return {
       headline: "Part of this page has not been read.",
+      // "Reload to try the read again" was REMOVED here in the previous commit and replaced with a
+      // claim that the panel beside the figure carries the detail. The peer-gate drove it: on a
+      // failed campaigns read there is no skeleton, no alert and no retry anywhere on the page, so
+      // the replacement was false AND it dropped the only recovery instruction the surface had
+      // (§58 — a shipped affordance removed without being named). Restored, and the false claim
+      // about the neighbouring panel is gone.
       detail:
-        "Nothing was changed and nothing is claimed either way. The panel that could not read it says so where it sits. Ask PAIGE — she reads these from the same records and can tell you what she sees.",
+        "Nothing was changed and nothing is claimed either way. Reload the page to try the read again, or ask PAIGE — she reads these from the same records and can tell you what she sees.",
       action: { kind: "paige", label: "Ask PAIGE" },
     };
   }
