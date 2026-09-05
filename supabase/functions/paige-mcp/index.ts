@@ -111,20 +111,34 @@ function currentActor(): ActorCtx {
   return actorStore.getStore() ?? { kind: "platform", user_id: null, client_id: null, scopes: [] };
 }
 
+/** `paige_audit_log.target_id` is a UUID column. Anything else Postgres rejects with 22P02, and this
+ *  helper used to hand it whatever the call site had — a template_key, a slug, a TOOL NAME — and then
+ *  swallow the error. That is why this surface has no audit history: not because nothing happened, but
+ *  because the writer threw and said nothing. Proven against production: inserting
+ *  target_id='create_contact' returns `22P02 invalid input syntax for type uuid`. The `tier_denied`
+ *  rows the chokepoint has written since it shipped went the same way.
+ *
+ *  Any non-UUID identifier now travels as `payload.target_ref`, which is queryable and loses nothing. */
+const AUDIT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function audit(action: string, target_type: string | null, target_id: string | null, payload: Record<string, unknown>) {
-  try {
-    const a = currentActor();
-    await admin.from("paige_audit_log").insert({
-      actor_user_id: a.user_id,
-      actor_role: a.kind === "user" ? "mcp:user" : "mcp:platform",
-      action,
-      target_type,
-      target_id,
-      payload: { ...payload, ...(a.client_id ? { mcp_client_id: a.client_id } : {}) },
-    });
-  } catch (e) {
-    console.error("[paige-mcp] audit failed", (e as Error).message);
-  }
+  const a = currentActor();
+  const isUuid = typeof target_id === "string" && AUDIT_UUID.test(target_id);
+  const { error } = await admin.from("paige_audit_log").insert({
+    actor_user_id: a.user_id,
+    actor_role: a.kind === "user" ? "mcp:user" : "mcp:platform",
+    action,
+    target_type,
+    target_id: isUuid ? target_id : null,
+    payload: {
+      ...payload,
+      ...(a.client_id ? { mcp_client_id: a.client_id } : {}),
+      ...(!isUuid && target_id ? { target_ref: target_id } : {}),
+    },
+  });
+  // Loud, not swallowed (§32). An audit write that fails silently turns every later question about
+  // what happened into a guess, which is the state this helper was in for the life of the surface.
+  if (error) console.error(`[paige-mcp] AUDIT WRITE FAILED action=${action}:`, error.message);
 }
 
 // Workflow dispatcher lives in _shared so the pg_cron sweeper
