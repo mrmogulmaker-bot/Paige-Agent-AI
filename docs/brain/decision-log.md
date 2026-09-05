@@ -3116,7 +3116,8 @@ directions.
 
 **One classifier, not two.** The intersection between `action-risk.ts`'s 62 keys and the 119 MCP
 tool names was exactly ONE (`delegate_to_subagent`), so the surface classified `unclassified` 118
-times. Eleven MCP acts turned out to be acts already named and reuse those keys; forty-nine had no
+times. Eleven MCP tools turned out to perform acts already named and reuse nine of those keys; the
+rest had no
 twin and were added to `action-risk.ts` itself. Two candidate reuses were REJECTED on evidence
 rather than adopted for tidiness — `add_contact_note` is not `crm_add_note` (different column, and
 `clients.current_notes` IS client-readable), `propose_subagent` is not `forge_subagent` (its

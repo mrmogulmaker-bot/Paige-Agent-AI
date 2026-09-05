@@ -149,9 +149,11 @@ reads have no tenant predicate and return fleet-wide rows (tracked as task #46).
 resolved on this surface — the door declares `not_resolved` rather than implying one, and refuses
 every mutation regardless.
 
-**One classifier, extended rather than forked.** `action-risk.ts` gained 49 canonical keys (62 → 111)
+**One classifier, extended rather than forked.** `action-risk.ts` gained 52 canonical keys (62 → 114)
 for MCP acts with no Chat twin; eleven MCP acts reuse existing keys. `list_tool_autonomy` gained the
-matching 49 catalogue rows, because a classified act with no catalogue row is governed invisibly.
+matching catalogue rows AND the matching `WRITE_TARGET` entries, because a classified act with no
+catalogue row is governed invisibly and one with no attribution target files a row saying only that
+something happened. Classifying an act is a membership in three registries, not a label.
 
 **Guards:** `lint:mcp-governed-door` (R1 every tool mapped · R2 no stale entries · R3 count parity ·
 R4 the chokepoint still calls the adapter · R5 no second door · R6 no read-declared handler calls out

@@ -216,7 +216,7 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // indistinguishable from never having looked.
   //
   // Eleven MCP acts turned out to BE acts already named above and reuse those keys; the
-  // forty-nine below had no twin and are named here, in this file, so there is still one
+  // fifty-two below had no twin and are named here, in this file, so there is still one
   // classifier and one vocabulary. `_shared/paige-mcp/capability-policy.ts` is the tool-name →
   // key mapping and holds no classification of its own.
   //

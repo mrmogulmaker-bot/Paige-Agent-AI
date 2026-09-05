@@ -1,8 +1,8 @@
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
--- The catalogue carries the forty-nine acts the MCP door names.
+-- The catalogue carries the fifty-two acts the MCP door names.
 --
 -- WHY THIS MIGRATION EXISTS AT ALL. Wiring `paige-mcp` to the shared governed seam meant naming
--- its acts in `action-risk.ts`, the one classifier. Forty-nine had no twin among the keys Chat
+-- its acts in `action-risk.ts`, the one classifier. Fifty-two had no twin among the keys Chat
 -- already declared, so they were added there — and the moment a key is classified it is GATED at
 -- runtime, while `list_tool_autonomy` is the only place a tenant can see or change what Paige may
 -- do alone. A key in the first list and not the second is governed INVISIBLY: permanently
@@ -12,10 +12,10 @@
 --
 -- READ 20261034000000's HEADER BEFORE EDITING THIS. The function is declared with a literal row
 -- list, so a CREATE OR REPLACE that omits a row DELETES it and looks identical to an addition. The
--- list below is 20261040000000's sixty-four rows, verbatim and unreordered, plus forty-nine.
+-- list below is 20261040000000's sixty-four rows, verbatim and unreordered, plus fifty-two.
 -- Nothing was removed; the previous file is the diff base if you would rather check than trust.
 --
--- WHAT A TENANT CAN ACTUALLY CHOOSE HERE TODAY, STATED PLAINLY (§13). These forty-nine acts are
+-- WHAT A TENANT CAN ACTUALLY CHOOSE HERE TODAY, STATED PLAINLY (§13). These fifty-two acts are
 -- reachable only through the inbound MCP door, and that door currently REFUSES every mutation —
 -- an MCP connection authorizes access to the door, not consequential action, and it carries no
 -- way for a person to approve anything. So the mode on these rows changes nothing right now. The
