@@ -32,7 +32,7 @@ repo's own guards on 2026-09-02, with the capability count re-measured 2026-09-0
 
 | Measure | Value | How |
 |---|---|---|
-| Registered Spine capabilities | **2** | `node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs` → `PASS (2 capability)` |
+| Registered Spine capabilities | ~~**2**~~ → **17** (2026-09-05) | `node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs` → `PASS (17 capability)`. The count moved with the n8n management family and, on 2026-09-05, `social.presence` |
 | Inline Chat tools | **105** | `node scripts/ci/chat-tool-registry-lint.mjs` → `105 tool(s) inline, none added (baseline 105)` |
 | Classified actions | **62** — 32 `ordinary`, 28 `high`, 2 `owner_only`, 5 exempt, 0 unclassified writes | `npm run lint:action-risk` |
 
@@ -72,6 +72,26 @@ one revoked. That is Team's to fix; this capability declines to shadow it.
 single string would mean membership and ownership at once. Measured on production: all 13 active members
 have the two agreeing (7 owner/is_owner=true, 6 admin/is_owner=false, zero divergent rows), so this
 changes no answer today and stops a future divergence from becoming a wrong one.
+
+The fourth is **`social.presence`** (2026-09-05, migration `20261210000000`) — for each of six
+networks, whether the workspace has RECORDED an account it posts from, and the declared handle if so.
+Adapter `public.get_social_presence_evidence(uuid)`. Same evidence class as the two above: a live
+stateless read over the workspace's own current record, no Rail signal, `chatBinding`/`mindBinding`
+`PARTIAL` (a per-turn block in `paige-ai-chat`, unit-tested, no authenticated drive yet).
+
+**Two things about it are worth reading before adding a fifth.** It returns the raw handle where
+`business_context.readiness` withholds its raw values — a difference in kind, not a relaxation: a
+social handle is a PUBLIC identifier the business publishes on purpose and PAIGE cannot reference an
+account in a draft without it, whereas a business phone is not that. And its role gate is guarded on
+`auth.uid() IS NOT NULL`, because `is_tenant_admin()` keys on `auth.uid()` and an unguarded gate
+refuses the service-role callers the function exists to serve — PAIGE's own MCP agent and the Systems
+Check runner. A `BEGIN..ROLLBACK` proof caught that; static review had not. The same guard, for the
+same reason, is at `get_business_context_readiness` (20261170000000).
+
+**It also has a WRITE half, which the other three do not.** `public.record_social_handles` — reached
+by the surface with the caller's JWT and by PAIGE through `paige-mcp` (`record_social_accounts`,
+`crm.write`), never as an inline Chat tool, since that baseline may only descend. The Spine entry
+declares the READ only; the write is a §10 callable seam with its own in-body gate.
 
 **Billing-notice eligibility is deliberately NOT in it.** That is a Platform Billing fact about a team
 member, and Billing publishes its own Spine read (`get_billing_spine_evidence`, live via

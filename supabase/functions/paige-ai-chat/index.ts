@@ -38,6 +38,7 @@ import { buildTenantTeamContextBlock } from "../_shared/team-context.ts";
 import { loadSpineEvidenceForChat } from "../_shared/paige-spine/chatEvidence.ts";
 import { buildBusinessContextReadinessBlock } from "../_shared/paige-spine/domains/businessContextChatEvidence.ts";
 import { buildTeamAuthorityBlock } from "../_shared/paige-spine/domains/teamAuthorityChatEvidence.ts";
+import { buildSocialPresenceBlock } from "../_shared/paige-spine/domains/socialPresenceChatEvidence.ts";
 import { loadN8nReadinessForChat, renderN8nReadinessForChat } from "../_shared/paige-spine/domains/n8nChatEvidence.ts";
 // #292 / #343 U1 — the Studio design-agent system-prompt WRAPPER (identity + operating core + the
 // generative-UI choice-card rule), externalized so it lives in one editable home (§9/§12/§18).
@@ -4167,6 +4168,21 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       }
     }
 
+    // Social Presence (Spine capability `social.presence`) — which accounts this workspace has
+    // RECORDED that it posts from, read live per turn. Without it PAIGE either says nothing when a
+    // coach asks "what's my Instagram?", or worse, infers that an account she can name is an
+    // account she can post to. The block carries the accounts AND the boundary: declared capture,
+    // never a connection. supabaseClient is the caller's own JWT-scoped client (§9/§588/§59) — the
+    // RPC derives the tenant from it and ignores any tenant argument.
+    let socialPresenceBlock = "";
+    if (personaCtx.tenant_id) {
+      try {
+        socialPresenceBlock = await buildSocialPresenceBlock(supabaseClient, personaCtx.tenant_id);
+      } catch (e) {
+        console.warn("[paige-ai-chat] social presence unavailable:", (e as Error)?.message);
+      }
+    }
+
     const n8nEvidence = personaCtx.tenant_id ? await loadN8nReadinessForChat(supabaseClient, personaCtx.tenant_id) : null;
     const n8nReadinessBlock = n8nEvidence ? renderN8nReadinessForChat(n8nEvidence) : "";
     // A fixed unavailable notice carries no workspace facts; verified evidence does.
@@ -4196,6 +4212,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       ...(tenantTeamContext ? [{ role: "system", content: tenantTeamContext }] : []),
       ...(businessContextReadinessBlock ? [{ role: "system", content: businessContextReadinessBlock }] : []),
       ...(teamAuthorityBlock ? [{ role: "system", content: teamAuthorityBlock }] : []),
+      ...(socialPresenceBlock ? [{ role: "system", content: socialPresenceBlock }] : []),
       ...(n8nReadinessBlock ? [{ role: "system", content: n8nReadinessBlock }] : []),
       ...(spineEvidenceBlock ? [{ role: "system", content: spineEvidenceBlock }] : []),
       { role: "system", content: systemPrompt },

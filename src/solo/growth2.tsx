@@ -7,6 +7,7 @@ import { Ic, PageHead } from "./_shared";
 import { useSoloCampaigns } from "./useSoloCampaigns";
 import { CatalogOffers } from "./catalog-offers";
 import { SalesOps } from "./sales-ops";
+import { SocialCommand } from "./social-command";
 import "./solo-campaigns.css";
 
 // Vibe Studio still imports this project-only fixture. Campaigns never renders it;
@@ -25,7 +26,7 @@ const TRUTH = {
   offers: ["PARTIAL", "Offers are read from this workspace’s own product records. Defining and editing them arrives on this screen next; nothing here is a checkout."],
   sales: ["PARTIAL", "Offers, declared payment handling and recorded payments are read from this workspace’s own records. Commercial terms record the arrangement with a client; they are not signed documents. No order names a campaign, so revenue is never attributed to one."],
   pipeline: ["PROPOSED", "Only explicit form routing configuration and recorded outcomes are shown."],
-  social: ["UNAVAILABLE", "A customer-facing social provider connection is not ready."],
+  social: ["PARTIAL", "The accounts this workspace has recorded that it posts from, and its published Vibe Studio outputs, are read from tenant-scoped records. A customer-facing social provider connection is still not ready, so no follower, reach, publishing queue, schedule, or placement figure is available."],
   performance: ["PROPOSED", "Source coverage is visible; cross-source campaign analytics are not yet canonical."],
 };
 
@@ -278,8 +279,23 @@ function PipelineSurface({ data, setDetail }) {
   </StateFrame>{foldersOpen&&<PipelineFolderOrganizer workspace={workspace} run={data.pipelineAction} onClose={()=>setFoldersOpen(false)}/>}</section>;
 }
 
-function Social() {
-  return <section className="campaigns-surface"><SurfaceHead truthKey="social" title="Social placements" description="Published Vibe Studio artifacts will appear here only after a supported provider records their placement."/><div className="campaigns-state"><TruthTag state="UNAVAILABLE"/><h2>Social provider not ready</h2><p>No accounts, followers, publishing queue, schedules, or placements are inferred. Manage creative work in Vibe Studio while this connection remains unavailable.</p></div></section>;
+// Social is now its own surface (./social-command.tsx) rather than a fixed panel here.
+//
+// WHAT CHANGED AND WHY (§58 — recorded, not silently dropped). The panel this replaces was one
+// UNAVAILABLE state making five explicit non-inferences: no accounts, followers, publishing queue,
+// schedules, or placements. Every one of those is still made, now attached to the specific tile
+// that would otherwise imply it, and the surface gained the thing the old panel could not do — an
+// owner can RECORD the accounts the business posts from. That write is the first one
+// `tenants.features->social_handles` has ever had, and Systems Check #3 has pointed at this page
+// since it shipped while admitting the page could not finish the job.
+//
+// Kept verbatim in the new surface: the placements precondition (published work appears as a
+// placement only once a supported provider records it) and the Vibe Studio redirect for creative
+// work. `Performance()` below keeps its own "Social performance" UNAVAILABLE card, and the two do
+// not contradict each other — neither claims a provider figure.
+function Social({ data }) {
+  const askPaige = React.useCallback(() => window.dispatchEvent(new CustomEvent("paige:open", { detail: { prompt: "Using only the social accounts on record for this workspace, tell me which are recorded and which are not. Do not report followers, reach, engagement, a publishing queue, a schedule, or where anything went live — none of those exist here. If nothing is recorded, say so." } })), []);
+  return <SocialCommand campaigns={data} onOpenStudio={openStudio} onAskPaige={askPaige}/>;
 }
 
 function Performance({ data }) {
@@ -388,7 +404,7 @@ export const GrowthHub=()=>{
   else if(tab==="catalog") body=<Catalog data={data} setDetail={setDetail} initialType={requestedType}/>;
   else if(tab==="sales") body=<Sales data={data} setDetail={setDetail} onOpenCatalog={openCatalogOffers} onOpenClients={openClients}/>;
   else if(tab==="pipeline") body=<PipelineSurface data={data} setDetail={setDetail}/>;
-  else if(tab==="social") body=<Social/>;
+  else if(tab==="social") body=<Social data={data}/>;
   else if(tab==="performance") body=<Performance data={data}/>;
   return <div className="solo-campaigns" data-campaigns-view={tab}><h1 className="campaigns-sr-only">Campaigns</h1><CampaignTabs tabs={tabs} current={tab} setCurrent={setTab}/><div id="campaigns-tabpanel" role="tabpanel" aria-labelledby={`campaigns-tab-${tab}`} className="campaigns-scroll">{legacy?<PageHead eyebrow="Campaigns" title={LEGACY[legacy].label}/>:null}{tab==="catalog" && query.get("origin")==="sales" && !workspaceChanged && data.tenantId && data.phase!=="resolving" && <div className="so-source-return"><button type="button" className="btn btn-s btn-p" onClick={()=>navigate(`${subtabPath("solo",params.account,"growth","sales")}${query.get("resume")==="terms" ? "?resume=terms" : ""}`)}>{query.get("resume")==="terms" ? "Return to commercial terms" : "Return to Sales"}</button><span>Finish offer setup here in Catalog, then return when ready.</span></div>}{body}</div><DetailDrawer detail={detail} onClose={closeDetail}/></div>;
 };
