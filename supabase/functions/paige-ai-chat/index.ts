@@ -9,6 +9,11 @@ import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
 import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
+// Wave 3 · Communications — the owner can find out what Paige did with the business
+// phone line. `capability-record` owns HOW a run is written; `comms-capability-outcome`
+// owns WHICH of the six outcomes these four acts landed in (§18: one home each).
+import { recordCapabilityRun, type CapabilityOutcome } from "../_shared/capability-record.ts";
+import { classifyCommsRun } from "../_shared/comms-capability-outcome.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -8889,6 +8894,48 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             });
             continue;
           }
+          // ── WAVE 3 · COMMUNICATIONS — the owner can find out what Paige did ──────
+          //
+          // Owner ruling, 2026-09-05: "Every real-money external action MUST record
+          // capability_run before it can be delegated at any autonomy tier above 'Ask
+          // first.'" `comms_buy_number` starts a recurring Twilio charge, so it is the
+          // first act this wave covers.
+          //
+          // DECLARED HERE, ABOVE THE `try`, ON PURPOSE. Both `admin` and `crmTenantId`
+          // are block-scoped INSIDE that try, so neither exists in its catch — and the
+          // catch is where `comms_name_number` and `comms_set_primary_number` land every
+          // single refusal, because they use `if (e) throw e`. Recording only from the
+          // success path would have covered one of the four acts and none of the
+          // refusals, while looking complete.
+          //
+          // `supabase` (L598) is the SERVICE-ROLE client and it has to be:
+          // `record_capability_run` is `REVOKE ALL … FROM anon, authenticated` +
+          // `GRANT EXECUTE … TO service_role`. Handed `supabaseClient` (anon + caller
+          // JWT) every call returns `permission denied` as an `{error}` object rather
+          // than throwing, so the feature would ship with every gate green and not one
+          // row ever written. That is the whole reason this is wired at the executor.
+          //
+          // NO `agentSlug`. `_record_workspace_rail_event` resolves it against
+          // `paige_subagents` for a label, and no subagent owns these four acts today.
+          // Named-agent attribution is the owner's next layer; inventing a slug now
+          // would put a name on the Rail that resolves to nothing.
+          //
+          // IT CANNOT FAIL THE TURN. `recordCapabilityRun` never throws and this wraps
+          // it anyway: an unwritable Rail must never turn a phone number that WAS bought
+          // into a crashed request.
+          const recordCommsRun = async (outcome: CapabilityOutcome | null): Promise<void> => {
+            if (!outcome) return;
+            try {
+              await recordCapabilityRun(supabase, {
+                tenantId: personaCtx.tenant_id,
+                actorId: user.id,
+                capabilityKey: tc.function.name,
+                outcome,
+              });
+            } catch (e) {
+              console.error("[paige] comms capability run not recorded:", (e as Error)?.message);
+            }
+          };
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
             const admin = createClient(supabaseUrl, supabaseServiceKey);
@@ -10807,8 +10854,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
 
+            // The result the model is about to be handed is the same evidence the owner
+            // gets. Classified from the seam's OWN codes, not from `success:false`.
+            await recordCommsRun(classifyCommsRun({ capability: tc.function.name, result }));
+
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
           } catch (err) {
+            // A PostgREST error is a PLAIN OBJECT, not an `Error`, so the line below
+            // reports "Unknown error" for every `RAISE` the two phone RPCs make.
+            // `classifyCommsRun` reads `.code`/`.message`/`.hint` off the thrown value
+            // instead, so `NUMBER_NOT_ACTIVE` reaches the Rail as a refusal even though
+            // the model is told only that something went wrong.
+            await recordCommsRun(classifyCommsRun({ capability: tc.function.name, thrown: err, threw: true }));
+
             toolResults.push({
               tool_call_id: tc.id,
               role: "tool",

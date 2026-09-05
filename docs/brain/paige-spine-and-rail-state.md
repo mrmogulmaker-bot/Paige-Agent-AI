@@ -37,11 +37,26 @@ empty for a reason that looked like absence and was actually vocabulary.
 a `capability_key` column, five outcomes (`capability_succeeded` · `_failed` · `_refused` ·
 `_unreachable` · `_outcome_unknown`), and `record_capability_run(...)` for service-role callers.
 
+`20261220000000_an_act_that_landed_but_was_not_recorded.sql` adds a **sixth**,
+`capability_completed_unrecorded`, and the four Communications capability keys. The sixth exists
+because `comms_buy_number` has two exits where Twilio has **charged the tenant** and the
+`tenant_phone_numbers` row did not write. None of the original five can say that: `failed`
+promises "nothing was left half-done", `succeeded` claims a row exists, `outcome_unknown` says no
+result came back when one came back and said the charge landed. It is deliberately NOT
+money-specific — "the act took effect and its record did not" is a state every later wave with
+external effects will reach.
+
 **What is and is NOT wired — do not read this as "PAIGE's work is now visible":**
 
-- **Wired:** the six n8n write tools and `zapier_run_action`. Two capabilities.
-- **Not wired:** the other ~47 classified actions. They still write only `paige_audit_log`, which
+- **Wired:** the six n8n write tools, `zapier_run_action`, and the four Communications write acts
+  (`comms_buy_number` · `comms_name_number` · `comms_set_primary_number` ·
+  `comms_draft_registration`). Eleven capabilities.
+- **Not wired:** the other ~43 classified actions. They still write only `paige_audit_log`, which
   no Solo surface reads. Each migration wave adds its own `capability_key` copy.
+- **Zero rows exist in production as of 2026-09-05.** Measured, not assumed:
+  `select count(*) from paige_workspace_events where source_kind='capability_run'` returns **0**.
+  The mechanism is live; nothing has exercised it yet, because no n8n or Zapier write has been run
+  through chat since it shipped. An empty feed here is not evidence the seam is broken.
 - **Never recorded:** reads. Six of the twelve n8n tools are reads and none of them writes a row.
 - **Never recorded:** anything refused before the tenant/session fence — unknown tool, approval
   missing, bad arguments. That preserves the "no outbound call at all" property those refusals
@@ -54,7 +69,19 @@ learn the result. That state is recorded as itself. If you see it, the automatio
 check the service before retrying, and do not report it as a failure.
 
 **Live-drive still owed (§32.c).** That a capability row RENDERS on the owner's Command Center is
-unverified — no session so far has signed in to look.
+unverified — no session so far has signed in to look. What HAS been proven, in a rolled-back
+transaction on prod (2026-09-05): reading as the authenticated member through
+`get_solo_rail_activity(50)` — the same RPC the Command Center calls — returns all four
+Communications acts with their intended copy. That is one class short of a browser drive: it proves
+the data reaches the reader, not that the component paints it.
+
+**The chip needed a case, and did not have one.** `PaigeRailFeed.kindChip()` switches on the
+`event_kind` namespace (`owner` · `client` · `automation` · `comms` · `mcp`). `capability_run.*`
+fell to the default, which derives the label from the namespace and would have put the literal
+backend source kind — "Capability run" — in front of an owner (§11 forbids backend names in visible
+copy). It now returns `{ label: "Paige", tone: "paige" }`, agreeing with the row's own
+`actor_type: 'paige_agent'`. `ClientActivityFeed` needs no case: `get_client_rail` reads
+`paige_client_events` only, so a workspace-scoped capability row cannot reach it.
 
 ## The rule this file exists to enforce: existence ≠ reachability
 

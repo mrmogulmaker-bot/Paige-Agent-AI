@@ -6,6 +6,38 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 0a. A service_role-only RPC called from the anon+JWT seam writes NOTHING, and every gate stays green (2026-09-05)
+
+- **Symptom (caught in design, before it shipped).** The obvious way to make PAIGE's acts visible was
+  to record once at `paige-ai-chat`'s single tool-dispatch seam, which every executed tool result
+  already passes through. A crew took the design apart and found it would have produced a feature
+  that compiled, type-checked, passed review, deployed — and wrote **zero rows, forever**.
+- **Root cause.** `record_capability_run` is `REVOKE ALL … FROM PUBLIC, anon, authenticated` +
+  `GRANT EXECUTE … TO service_role`. The dispatch seam holds `supabaseClient` — the **anon key plus
+  the caller's JWT**. supabase-js returns `permission denied for function record_capability_run` as
+  an `{error}` **value, not a throw**, so the seam logs one console line and carries on. Nothing is
+  red. Nothing is missing. The rows simply never exist.
+- **Three more defects in the same design, all silent.** (2) **Double-recording** — n8n and Zapier
+  already record inside their own executors AND pass through that seam; each mints a fresh run id,
+  so the UNIQUE key cannot collapse the duplicate, and the Zapier one renders twice on the
+  Integrations panel. (3) **Records what never ran** — `executed.push(tc)` sits ABOVE the
+  client-seat gate, the quote guard and the role gate, so a refusal that never reached a provider
+  would render "Did not buy a phone number" for a call that could not have spent a cent.
+  (4) **Loses a completed act** — a batch aborted by `scopeInvalidated` breaks BEFORE the audit
+  loop, so a tool that already ran with real effects never reaches it.
+- **Rule.** Record a capability run **at the executor**, never at a central dispatch hook. The
+  executor holds the service-role client, the provider's own error taxonomy, and the knowledge that
+  the act actually reached a provider. `_shared/capability-record.ts` supplies the mechanism so each
+  executor does not re-implement it; `_shared/comms-capability-outcome.ts` is the per-executor
+  taxonomy for Communications. **This is written down because at least three future adoption waves
+  will reach for the same central seam and hit the same invisible failure.**
+- **The generalisation, which is the part worth carrying:** whenever a new caller is wired to an
+  existing RPC, check the GRANT against the CLIENT the caller actually holds. A permission error
+  that arrives as a value rather than an exception is indistinguishable from success at every gate
+  we run — it is the §32 "compiles but does nothing" shape wearing a database's clothes.
+
+---
+
 ## 0b. A tenant-isolation proof cannot see a ROLE leak — the caller inside the tenant (2026-09-03)
 
 - **Symptom:** `get_business_context_readiness` passed a six-scenario local Postgres proof, including

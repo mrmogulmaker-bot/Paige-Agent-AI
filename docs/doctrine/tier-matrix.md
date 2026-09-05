@@ -353,11 +353,46 @@ restated, not a new one.
 | **Client** | — never reaches the executors | **403** — reader raises `RAIL_FORBIDDEN` for a non-staff seat, and the rows are `visibility: owner_internal` | **403** |
 | **Anonymous** | — | **403** — `REVOKE ALL … FROM PUBLIC, anon` | **403** |
 
-**Recorded honestly (§13):** two capabilities are wired — `n8n_*` writes and `zapier_run_action`.
-The other ~47 classified actions still write only `paige_audit_log`; each migration wave adds its
-own copy. An unmapped capability renders a generic line rather than nothing. **Reads are never
-recorded.** The §32.c authenticated live-drive — that a row actually RENDERS for the owner — is
-**owed**, not claimed.
+**Recorded honestly (§13):** eleven capabilities are wired — `n8n_*` writes, `zapier_run_action`,
+and (2026-09-05) the four Communications write acts. The other ~43 classified actions still write
+only `paige_audit_log`; each migration wave adds its own copy. An unmapped capability renders a
+generic line rather than nothing. **Reads are never recorded.** The §32.c authenticated live-drive —
+that a row actually RENDERS for the owner — is **owed**, not claimed.
+
+#### Wave 3 — Communications, and a sixth outcome (2026-09-05, migration `20261220000000`)
+
+Owner-sequenced first, under the ruling *"every real-money external action MUST record
+capability_run before it can be delegated at any autonomy tier above 'Ask first.'"*
+`comms_buy_number` · `comms_name_number` · `comms_set_primary_number` · `comms_draft_registration`
+now record. Reads on the same surface (`comms_list_numbers`, `comms_search_numbers`,
+`comms_registration_status`, `comms_overview`) still record nothing, deliberately.
+
+**A sixth outcome, `capability_completed_unrecorded`.** `comms_buy_number` has two exits where
+Twilio has CHARGED the tenant and the `tenant_phone_numbers` row did not write. `capability_failed`
+promises "nothing was left half-done" and `capability_succeeded` claims a row exists — both false
+there, on the one capability where being wrong costs money twice.
+
+**No route, gate or tier permission changed here either.** The four acts sit behind the SAME
+admin/coach role gate they already had, and a row can only be written for the caller's own
+workspace (`record_capability_run` requires an ACTIVE `tenant_members` seat for the actor —
+re-proved 2026-09-05: a non-member actor raises `CAPABILITY_RUN_FORBIDDEN`).
+
+| Tier | Can trigger a comms `capability_run` row | Sees it on the Solo Rail |
+|---|---|---|
+| **God / Super Admin** | **—** and this is a KNOWN GAP, not a decision: the four comms tools' role gate is `roles.includes('admin') \|\| roles.includes('coach')` with **no `is_platform_owner()` branch**, so an operator cannot reach the tools at all. Owner-routed to its own PR | ✓ when acting inside a tenant |
+| **Agency** (agency-as-tenant) | ✓ admin/coach of the active workspace | ✓ |
+| **Standalone Solo** | ✓ same gate | ✓ |
+| **Sub-account** | ✓ same gate, its own tenant only | ✓ its own only |
+| **Client** | — never reaches the executors | **403** — `owner_internal` |
+| **Anonymous** | — | **403** |
+
+**Proven, and to what standard (§13).** A rolled-back transaction on production, 2026-09-05, 20
+assertions: all four keys write rows; the sixth outcome survives both CHECKs and the RPC's in-body
+guard; reading as the **authenticated member** through `get_solo_rail_activity(50)` — the same RPC
+the Command Center calls — returns all four with their intended copy; the five original outcomes and
+the n8n/Zapier delegations are unchanged (§58). What that does NOT prove is that the component
+paints them: **the browser drive is still owed.** Zero `capability_run` rows exist on production as
+of this commit — measured, not assumed; the seam is live and nothing has run through it yet.
 
 ### The operator console — `/operator/{slot}/{view}`, six slots × thirty-three views
 
