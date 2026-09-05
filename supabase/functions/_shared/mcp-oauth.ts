@@ -42,8 +42,34 @@ export type OAuthErrorCode =
   | "malformed_metadata"
   | "malformed_token_response";
 
+/**
+ * RFC 6749 §5.2's error codes. This is an allowlist ON PURPOSE: `error` is a short fixed
+ * enum, but `error_description` beside it is free text where servers put tokens and user
+ * identifiers, so the code is carried and everything else in the body is dropped.
+ *
+ * The distinction it buys is the one that matters for whether a connection SURVIVES:
+ * `invalid_grant` means the grant is genuinely gone -- the user revoked us at the provider
+ * -- and reconnecting is the only answer. Every other failure is ours or the network's, and
+ * must leave the connection intact to be retried. Without this they were indistinguishable,
+ * so a momentary fault was handled as though the user had revoked us.
+ */
+const PROVIDER_ERRORS = new Set([
+  "invalid_request", "invalid_client", "invalid_grant",
+  "unauthorized_client", "unsupported_grant_type", "invalid_scope",
+]);
+
+/** True only when the provider itself says the grant is gone. */
+export function isGrantWithdrawn(error: unknown): boolean {
+  return error instanceof OAuthError && error.providerError === "invalid_grant";
+}
+
 export class OAuthError extends Error {
-  constructor(public readonly code: OAuthErrorCode, public readonly httpStatus?: number) {
+  constructor(
+    public readonly code: OAuthErrorCode,
+    public readonly httpStatus?: number,
+    /** RFC 6749 §5.2 code only, allowlisted. NEVER `error_description`. */
+    public readonly providerError?: string,
+  ) {
     super(code);
     this.name = "OAuthError";
   }
@@ -277,8 +303,18 @@ async function postToken(
     }, { timeoutMs: TOKEN_TIMEOUT_MS, maxBytes: 262_144 });
   } catch { throw new OAuthError(failure); }
   // The body is not carried into the error: it is where an authorization server puts
-  // detail, and detail here means tokens.
-  if (res.status < 200 || res.status >= 300) throw new OAuthError(failure, res.status);
+  // detail, and detail here means tokens. The one exception is RFC 6749 §5.2's `error`,
+  // a short fixed enum, and only when it is one we recognise -- because `invalid_grant`
+  // is how a provider says the user revoked us, and without it a stumble and a revocation
+  // look identical, so a connection gets thrown away for a network blip.
+  if (res.status < 200 || res.status >= 300) {
+    let providerError: string | undefined;
+    try {
+      const parsed = JSON.parse(res.body) as { error?: unknown };
+      if (typeof parsed.error === "string" && PROVIDER_ERRORS.has(parsed.error)) providerError = parsed.error;
+    } catch { /* an unparseable error body tells us nothing; the status still does */ }
+    throw new OAuthError(failure, res.status, providerError);
+  }
   let body: Record<string, unknown>;
   try { body = JSON.parse(res.body); } catch { throw new OAuthError("malformed_token_response"); }
   const accessToken = str(body.access_token);
