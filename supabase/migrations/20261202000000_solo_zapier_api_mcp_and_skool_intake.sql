@@ -469,7 +469,11 @@ GRANT EXECUTE ON FUNCTION public.set_tenant_zapier_mcp_connection(uuid,text,text
 CREATE OR REPLACE FUNCTION public._zapier_mcp_rail_revision()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_catalog AS $$ BEGIN
  IF NEW.provider='zapier' AND (OLD.status IS DISTINCT FROM NEW.status OR OLD.enabled IS DISTINCT FROM NEW.enabled OR OLD.auth_kind IS DISTINCT FROM NEW.auth_kind OR
-  (OLD.auth_token_ct IS NULL) IS DISTINCT FROM (NEW.auth_token_ct IS NULL) OR OLD.approved_capabilities IS DISTINCT FROM NEW.approved_capabilities) THEN
+  (OLD.auth_token_ct IS NULL) IS DISTINCT FROM (NEW.auth_token_ct IS NULL) OR OLD.approved_capabilities IS DISTINCT FROM NEW.approved_capabilities OR
+  -- Re-approving the SAME names after a tool's schema or authority moved rewrites
+  -- capability_pins and leaves approved_capabilities untouched. Keying the revision on
+  -- names alone made that materially different authorization invisible to the Rail.
+  OLD.capability_pins IS DISTINCT FROM NEW.capability_pins) THEN
   NEW.zapier_rail_revision:=OLD.zapier_rail_revision+1;
  ELSE NEW.zapier_rail_revision:=OLD.zapier_rail_revision;END IF;RETURN NEW;END $$;
 REVOKE ALL ON FUNCTION public._zapier_mcp_rail_revision() FROM PUBLIC,anon,authenticated;
@@ -486,7 +490,7 @@ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_cata
  ELSIF TG_OP='UPDATE' AND OLD.enabled AND (NOT NEW.enabled OR NEW.auth_token_ct IS NULL) THEN
   PERFORM public._record_workspace_rail_event(NEW.tenant_id,NEW.updated_by,'zapier_mcp_connection',NEW.zapier_generation,NEW.zapier_rail_revision,'zapier_mcp_disconnected');
  END IF;
- IF TG_OP='UPDATE' AND NEW.approved_capabilities IS DISTINCT FROM OLD.approved_capabilities THEN
+ IF TG_OP='UPDATE' AND (NEW.approved_capabilities IS DISTINCT FROM OLD.approved_capabilities OR NEW.capability_pins IS DISTINCT FROM OLD.capability_pins) THEN
   PERFORM public._record_workspace_rail_event(NEW.tenant_id,NEW.updated_by,'zapier_mcp_connection',NEW.zapier_generation,NEW.zapier_rail_revision,'zapier_tools_changed');
  END IF;RETURN NEW;END $$;
 REVOKE ALL ON FUNCTION public._zapier_mcp_rail_event() FROM PUBLIC,anon,authenticated;
@@ -516,3 +520,27 @@ GRANT EXECUTE ON FUNCTION public.record_zapier_mcp_connection_test(uuid,uuid,boo
 -- Drop the superseded index. uq_clients_tenant_email continues to block same-tenant
 -- duplicates, so the real invariant is unchanged; only the cross-tenant false collision goes.
 DROP INDEX IF EXISTS public.clients_created_by_email_unique;
+
+-- An approval made before this release pinned the tool's INPUT SCHEMA alone. Every tool now
+-- fingerprints its schema AND the authority it claims -- which connected account it acts on,
+-- what kind of action it is, what it can do -- so a pin written under the old scheme matches
+-- nothing and every previously approved action would be refused the moment this deploys.
+--
+-- Worse than the refusal is how it would LOOK. Discovery marks a tool approved by NAME, so the
+-- list would show the owner's tools still ticked while every run was denied for contract drift,
+-- and the unchanged set offers no obvious way to re-save. Silent, and indistinguishable from
+-- the integration having broken itself.
+--
+-- So the stale approvals are cleared rather than carried. The owner sees an honestly empty list
+-- and re-approves deliberately, having been shown the account and effects the old pin never
+-- recorded. Old pins are deliberately NOT honoured: accepting them would keep exactly the
+-- authority-substitution this release exists to close.
+--
+-- Scoped to zapier. n8n's approvals are untouched, and its discovery pin is derived from the
+-- schema hash, whose value this release does not move.
+UPDATE public.tenant_mcp_connections
+   SET approved_capabilities = '[]'::jsonb,
+       capability_pins       = '{}'::jsonb
+ WHERE provider = 'zapier'
+   AND (approved_capabilities IS DISTINCT FROM '[]'::jsonb
+     OR capability_pins IS DISTINCT FROM '{}'::jsonb);

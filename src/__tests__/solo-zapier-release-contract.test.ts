@@ -200,4 +200,27 @@ describe("Solo Zapier API and MCP release contract", () => {
     // that arrived from Zapier.
     expect(written).not.toBe("api");
   });
+  it("does not leave a pre-release approval pinned to a contract it no longer matches", () => {
+    const sql = readMigration();
+    const connect = read("supabase/functions/tenant-mcp-connect/index.ts");
+    // A pin written before this release covered the input schema alone. Discovery marks a tool
+    // approved by NAME, so carrying those pins would show the owner's tools still ticked while
+    // every run was denied for drift -- silent, and indistinguishable from a broken integration.
+    expect(sql).toContain("UPDATE public.tenant_mcp_connections");
+    expect(sql).toMatch(/SET approved_capabilities = '\[\]'::jsonb,\s*\n\s*capability_pins\s*= '\{\}'::jsonb/);
+    expect(sql).toContain("WHERE provider = 'zapier'");
+    expect(connect).toContain("approved: approved.has(t.name)");
+  });
+  it("shows a pin-only re-approval in the Rail", () => {
+    const sql = readMigration();
+    // Re-approving the same names after a tool's authority moved rewrites capability_pins and
+    // leaves approved_capabilities alone, so a names-only predicate never fired.
+    expect(sql).toContain("OLD.capability_pins IS DISTINCT FROM NEW.capability_pins");
+    expect(sql).toContain("NEW.capability_pins IS DISTINCT FROM OLD.capability_pins");
+  });
+  it("advances the drawer refresh when approvals are saved", () => {
+    const ui = read("src/solo/settings-integrations.tsx");
+    expect(ui).toContain('<CapabilityApproval provider="zapier" onChanged={onChanged}/>');
+    expect(ui).toContain("setChosen(null); onChanged?.();");
+  });
 });

@@ -246,7 +246,7 @@ function safeCheckDate(value: string) {
    Paige may do everything on it. Nothing is approved until somebody says so
    here, and until then every call is refused. */
 
-function CapabilityApproval({ provider }: { provider: "n8n" | "zapier" }) {
+function CapabilityApproval({ provider, onChanged }: { provider: "n8n" | "zapier"; onChanged?: () => void }) {
   const { activeTenantId } = useTenantContext();
   const caps = useMcpCapabilities(provider);
   const [chosen, setChosen] = useState<string[] | null>(null);
@@ -312,7 +312,7 @@ function CapabilityApproval({ provider }: { provider: "n8n" | "zapier" }) {
       </p>
       <div className="ig-actions">
         <button type="button" className="ig-btn" data-primary disabled={!dirty || caps.saving}
-          onClick={() => void caps.approve(selection).then((ok) => { if (ok) setChosen(null); })}>
+          onClick={() => void caps.approve(selection).then((ok) => { if (ok) { setChosen(null); onChanged?.(); } })}>
           {caps.saving ? "Saving…" : `Approve ${selection.length} of ${caps.tools.length}`}
         </button>
         {dirty && <button type="button" className="ig-btn" onClick={() => setChosen(null)} disabled={caps.saving}>Cancel</button>}
@@ -347,7 +347,7 @@ function ZapierMcpPanel({ m, onChanged }: { m: ReturnType<typeof useMcpConnectio
  return <><p className="ig-lede">Connect PAIGE to the narrow Zapier MCP server and app actions you approve.</p><dl className="ig-facts"><div><dt>PAIGE tools (MCP)</dt><dd>{mcpStateWords(m.status)}</dd></div><div><dt>Authorization</dt><dd>{oauth?"Granted through Zapier OAuth":m.configured?"Legacy connection — reconnect with OAuth":"Not authorized"}</dd></div><div><dt>Approved tools</dt><dd>{m.approvedToolCount??"Unavailable"}</dd></div><div><dt>Last health check</dt><dd>{m.lastProbedAt?safeCheckDate(m.lastProbedAt):"No successful check yet"}</dd></div></dl>
   <p className="ig-note">Create a Zapier MCP server, add only the app actions this workspace needs, then paste its HTTPS server address to begin Zapier’s authorization. The address is cleared immediately and credentials are never shown.</p>
   {m.canWrite&&(!m.configured||editing)&&<form className="ig-form" onSubmit={e=>{e.preventDefault();void begin();}}><label className="ig-field"><span>Zapier MCP server address</span><input type="url" required autoComplete="off" spellCheck={false} placeholder="https://mcp.zapier.com/api/mcp/s/…" value={serverUrl} onChange={e=>setServerUrl(e.target.value)} disabled={starting||m.saving}/><small>From the MCP server you created at Zapier. Connecting does not approve every action.</small></label><div className="ig-actions"><button type="submit" className="ig-btn" data-primary disabled={starting||m.saving||!serverUrl.startsWith("https://mcp.zapier.com/api/mcp/")}>{starting?"Opening Zapier…":oauth?"Reconnect OAuth":"Connect PAIGE tools with OAuth"}</button>{m.configured&&<button type="button" className="ig-btn" onClick={()=>{setServerUrl("");setEditing(false);}}>Cancel</button>}</div></form>}
-  {oauth&&m.status==="connected"&&m.canWrite&&<CapabilityApproval provider="zapier"/>}
+  {oauth&&m.status==="connected"&&m.canWrite&&<CapabilityApproval provider="zapier" onChanged={onChanged}/>}
   {(message||m.writeError)&&<p className="ig-error" role="alert">{message??m.writeError}</p>}
   {!m.canWrite?<p className="ig-note">Only a workspace admin can change PAIGE tools access.</p>:m.configured&&<div className="ig-actions"><button type="button" className="ig-btn" data-primary disabled={m.saving||starting} onClick={()=>setEditing(true)}>Reconnect authorization</button><button type="button" className="ig-btn" disabled={m.saving} onClick={()=>void m.verify().then(onChanged)}>Check it again</button>{confirming?<span className="ig-confirm"><button type="button" className="ig-btn" data-danger disabled={m.saving} onClick={()=>{setConfirming(false);void m.disconnect().then(onChanged);}}>Disconnect</button><button type="button" className="ig-btn" onClick={()=>setConfirming(false)}>Keep it</button></span>:<button type="button" className="ig-btn" onClick={()=>setConfirming(true)}><Link2Off aria-hidden size={14}/>Disconnect</button>}</div>}
  </>;
