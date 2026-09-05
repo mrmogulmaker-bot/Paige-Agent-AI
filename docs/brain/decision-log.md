@@ -18,7 +18,20 @@
   live") rather than the surface being reworded into vaguer prose to satisfy it. **§66 drift struck
   in the same commit:** both the tier-matrix ledger and the delivery map named a **Repurposing**
   pipeline stage that has never existed — `buildPipeline` returns six (`ideas · drafting · review ·
-  scheduled · published · repair`). **Owed, unchanged:** authenticated live drive (§32.c).
+  scheduled · published · repair`). **The §39 peer-gate BLOCKED this pass and was right:** the
+  headline `waitingUnknown` fix was contradicted forty lines below itself by an unconditional
+  "Nothing is waiting on you here", and the identical defect sat untouched on the read next door —
+  `campaigns.phase === "error"` was never gated, so `useSoloCampaigns`' `{phase:"error", ...empty}`
+  collapsed four counts to zero and the surface asserted **"Every recorded delivery of yours
+  succeeded"** on a read that never happened, the one sentence here with a real business cost.
+  Fixed as ONE concept — `campaignsUnknown` joins `waitingUnknown` behind a shared `unread()` and a
+  single `UNREAD_NOTE` (§18) — plus two guards that were weaker than they read (a case-sensitive
+  `METRIC` regex that skipped every sentence LEADING with a metric; a fixture regex that caught only
+  SCREAMING_CASE) and a dialog rule that had been converted to `@container` when its box is
+  viewport-sized. **Every new guard was proven to fail without its fix**, because this pass had
+  already shipped one that passed either way. **Owed, unchanged:** authenticated live drive (§32.c);
+  `useSoloPendingActions` not clearing `items` on error is filed separately (two other consumers,
+  §37).
 
 - **Solo Campaigns → Social becomes Social Command, and gets the first writer `social_handles` ever had
   (2026-09-05, migration `20261210000000`)** — the tab was one fixed UNAVAILABLE panel; it is now a

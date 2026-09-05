@@ -42,6 +42,20 @@ export type SocialValue<T> = { state: SocialTruthState; value: T | null; note: s
 const absent = (note: string): SocialValue<number> => ({ state: "UNAVAILABLE", value: null, note });
 
 /**
+ * What a figure says when its SOURCE could not be read.
+ *
+ * Distinct from `absent()`, and the distinction is the whole §13 point. `absent()` means "no such
+ * record exists anywhere in the platform" — a structural truth that does not change between page
+ * loads. This means "the record may well exist; the read failed and I am not going to guess." Both
+ * render an em-dash, and saying the wrong one is how a broken read becomes good news.
+ *
+ * One home for the sentence (§18) because it now appears on six figures across three builders, and
+ * a phrasing that drifts between them would read as several different conditions rather than one.
+ */
+const UNREAD_NOTE = "This could not be read, so nothing is claimed either way.";
+const unread = (): SocialValue<number> => ({ state: "UNAVAILABLE", value: null, note: UNREAD_NOTE });
+
+/**
  * The networks this workspace can record.
  *
  * The set is the UNION of the two places the platform already names networks in tenant-visible
@@ -189,6 +203,22 @@ export type SocialCommandInput = {
    * the same read. A failed read is not an empty result (§13).
    */
   waitingUnknown?: boolean;
+  /**
+   * The read that produces `publishedOutputs`, `approvalGatedForms`, `formsNeedingRepair` and
+   * `capturedSubmissions` FAILED.
+   *
+   * The twin of `waitingUnknown`, and it was missed on the first pass — which is exactly why the
+   * §39 peer-gate exists. `useSoloCampaigns` returns `{ phase: "error", ...empty }`, so ALL FOUR of
+   * those counts collapse to zero on a failed read, and four different sentences then asserted an
+   * absence: "every recorded delivery of yours succeeded", "you have not published anything yet",
+   * "no form of yours is waiting on an approval", "no form of yours has a recorded response yet".
+   *
+   * The first of those is the one that would actually cost someone something. A captured lead can
+   * be failing to deliver at this moment and the surface would report every delivery as a success —
+   * a §13 lie with a real business consequence, not a cosmetic one. Half this surface got the
+   * `waitingUnknown` treatment and the half next door did not; this closes it.
+   */
+  campaignsUnknown?: boolean;
 };
 
 /**
@@ -244,28 +274,30 @@ export function buildKpis(input: SocialCommandInput): SocialKpi[] {
       id: "waiting",
       label: "Waiting on you",
       glyph: "bell",
-      figure: {
-        state: input.waitingOnYou ? "PARTIAL" : "UNAVAILABLE",
-        value: input.waitingUnknown ? null : input.waitingOnYou || null,
-        note: input.waitingUnknown
-          ? "This could not be read, so nothing is claimed either way."
-          : input.waitingOnYou
-            ? "PAIGE prepared it and stopped. The default for these desks is to draft, not to send."
-            : "Nothing is waiting on your decision right now.",
-      },
+      figure: input.waitingUnknown
+        ? unread()
+        : {
+            state: input.waitingOnYou ? "PARTIAL" : "UNAVAILABLE",
+            value: input.waitingOnYou || null,
+            note: input.waitingOnYou
+              ? "PAIGE prepared it and stopped. The default for these desks is to draft, not to send."
+              : "Nothing is waiting on your decision right now.",
+          },
       detail: "Drafts PAIGE has ready for your call, from marketing, sales, client and owner work.",
     },
     {
       id: "captured",
       label: "Captured responses",
       glyph: "doc",
-      figure: {
-        state: input.capturedSubmissions ? "PARTIAL" : "UNAVAILABLE",
-        value: input.capturedSubmissions || null,
-        note: input.capturedSubmissions
-          ? "Responses recorded on your forms."
-          : "No form of yours has a recorded response yet.",
-      },
+      figure: input.campaignsUnknown
+        ? unread()
+        : {
+            state: input.capturedSubmissions ? "PARTIAL" : "UNAVAILABLE",
+            value: input.capturedSubmissions || null,
+            note: input.capturedSubmissions
+              ? "Responses recorded on your forms."
+              : "No form of yours has a recorded response yet.",
+          },
       // The single most tempting lie on this surface. `growth_form_submissions.source` holds a
       // capture-mechanism label ('paige_form' / 'external:<provider>'), never a marketing channel,
       // so no count here can be attributed to social. Say that rather than implying attribution.
@@ -301,13 +333,15 @@ export function buildPipeline(input: SocialCommandInput): SocialPipelineStage[] 
     {
       id: "review",
       label: "Held for you",
-      figure: {
-        state: input.approvalGatedForms ? "PARTIAL" : "UNAVAILABLE",
-        value: input.approvalGatedForms || null,
-        note: input.approvalGatedForms
-          ? "Published forms set to wait for a person before anything is sent."
-          : "No form of yours is waiting on an approval.",
-      },
+      figure: input.campaignsUnknown
+        ? unread()
+        : {
+            state: input.approvalGatedForms ? "PARTIAL" : "UNAVAILABLE",
+            value: input.approvalGatedForms || null,
+            note: input.approvalGatedForms
+              ? "Published forms set to wait for a person before anything is sent."
+              : "No form of yours is waiting on an approval.",
+          },
       detail: "Nothing goes out from these until you approve it.",
       tone: "attention",
     },
@@ -321,13 +355,15 @@ export function buildPipeline(input: SocialCommandInput): SocialPipelineStage[] 
     {
       id: "published",
       label: "Published outputs",
-      figure: {
-        state: input.publishedOutputs ? "PARTIAL" : "UNAVAILABLE",
-        value: input.publishedOutputs || null,
-        note: input.publishedOutputs
-          ? "Your published pages, active funnels and active forms."
-          : "You have not published anything yet.",
-      },
+      figure: input.campaignsUnknown
+        ? unread()
+        : {
+            state: input.publishedOutputs ? "PARTIAL" : "UNAVAILABLE",
+            value: input.publishedOutputs || null,
+            note: input.publishedOutputs
+              ? "Your published pages, active funnels and active forms."
+              : "You have not published anything yet.",
+          },
       // Deliberately NOT called social content. These are pages, funnels and forms; presenting them
       // as posts would be the mislabel that makes an honest number dishonest.
       detail: "Your pages, funnels and forms — ready to be placed, not yet placed anywhere.",
@@ -336,13 +372,18 @@ export function buildPipeline(input: SocialCommandInput): SocialPipelineStage[] 
     {
       id: "repair",
       label: "Needs repair",
-      figure: {
-        state: input.formsNeedingRepair ? "PARTIAL" : "UNAVAILABLE",
-        value: input.formsNeedingRepair || null,
-        note: input.formsNeedingRepair
-          ? "Your published forms with a delivery that did not succeed."
-          : "Every recorded delivery of yours succeeded.",
-      },
+      // "Every recorded delivery of yours succeeded" is the highest-consequence sentence on this
+      // page: a lead can be failing to reach someone right now, and on a failed read all four
+      // campaign counts arrive as zero. It says nothing rather than the opposite of the truth.
+      figure: input.campaignsUnknown
+        ? unread()
+        : {
+            state: input.formsNeedingRepair ? "PARTIAL" : "UNAVAILABLE",
+            value: input.formsNeedingRepair || null,
+            note: input.formsNeedingRepair
+              ? "Your published forms with a delivery that did not succeed."
+              : "Every recorded delivery of yours succeeded.",
+          },
       detail: "A response was captured and could not be delivered where you routed it.",
       tone: "failing",
     },
@@ -389,11 +430,28 @@ export function buildBrief(input: SocialCommandInput): { headline: string; body:
         .join(", ")})`,
     );
   }
-  if (input.publishedOutputs) {
+  // A count whose read failed is not a count. The brief led with "4 items waiting on your decision"
+  // off a stale list while the tile beside it said the read had failed — one surface, two answers
+  // about one read, which is the failure this whole page is built against.
+  if (input.publishedOutputs && !input.campaignsUnknown) {
     parts.push(`${input.publishedOutputs} published output${input.publishedOutputs === 1 ? "" : "s"}`);
   }
-  if (input.waitingOnYou) {
+  if (input.waitingOnYou && !input.waitingUnknown) {
     parts.push(`${input.waitingOnYou} item${input.waitingOnYou === 1 ? "" : "s"} waiting on your decision`);
+  }
+
+  const unreadSources = [
+    input.waitingUnknown ? "what PAIGE is holding for you" : null,
+    input.campaignsUnknown ? "your published work" : null,
+  ].filter(Boolean) as string[];
+  if (unreadSources.length) {
+    const named = unreadSources.join(" and ");
+    return {
+      headline: "Part of this page could not be read.",
+      body: parts.length
+        ? `${parts.join(", ")}. ${named[0].toUpperCase()}${named.slice(1)} could not be read just now, so nothing on this page claims anything about ${unreadSources.length > 1 ? "either of them" : "it"} either way. Nothing was changed.`
+        : `${named[0].toUpperCase()}${named.slice(1)} could not be read just now. That is not the same as having nothing on record, so nothing here is claimed either way. Nothing was changed.`,
+    };
   }
 
   if (!parts.length) {
@@ -479,7 +537,10 @@ export function buildNextMove(input: SocialCommandInput): SocialNextMove {
   }
 
   // 4. She knows where you post and has nothing of yours to put there.
-  if (input.publishedOutputs === 0) {
+  //    Gated on the read having SUCCEEDED: on a failed campaigns read `publishedOutputs` is zero
+  //    like everything else, and this branch would send a person to Vibe Studio to rebuild work
+  //    they may already have. A next move computed from an unread source is worse than none.
+  if (input.publishedOutputs === 0 && !input.campaignsUnknown) {
     return {
       headline: "There is nothing published to put in front of anyone.",
       detail:
@@ -488,7 +549,22 @@ export function buildNextMove(input: SocialCommandInput): SocialNextMove {
     };
   }
 
-  // 5. Nothing is broken and nothing is waiting. The honest move is the conversation, because the
+  // 5. A read failed, so there is no honest instruction to give. This branch exists because the
+  //    ladder used to fall straight through to branch 6 and assert an empty queue on exactly the
+  //    read branch 2 had just refused to speak for — the same defect the `waitingUnknown` guard was
+  //    added to fix, reappearing forty lines below the guard. Caught by the §39 peer-gate, not by
+  //    the test written alongside the guard, which asserted where the ladder GOES and never what
+  //    it SAYS.
+  if (input.waitingUnknown || input.campaignsUnknown) {
+    return {
+      headline: "Part of this page could not be read.",
+      detail:
+        "Nothing was changed and nothing is claimed either way. Reload to try the read again, or ask PAIGE — she reads these from the same records and can tell you what she sees.",
+      action: { kind: "paige", label: "Ask PAIGE" },
+    };
+  }
+
+  // 6. Nothing is broken and nothing is waiting. The honest move is the conversation, because the
   //    surface itself has no further act to offer until a provider connection exists.
   return {
     headline: "Nothing is waiting on you here.",

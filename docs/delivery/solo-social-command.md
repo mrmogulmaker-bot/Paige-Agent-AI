@@ -260,7 +260,50 @@ returns exactly six — `ideas · drafting · review ("Held for you") · schedul
 ("Needs repair")`. Struck in both places rather than left for the next session to answer a question
 from.
 
-**Second-pass proof, by class (§13).** Automated: full suite **227 files / 3336 tests passing**.
+### The §39 peer-gate blocked this pass, and was right
+
+An independent adversarial read of the pushed diff found the pass's own headline fix contradicted on
+the same screen, plus the identical defect untouched on the read next door. Recorded because the
+shape recurs and the map above is what a future session will answer "is this figure trustworthy?"
+from.
+
+- **F1 — `buildNextMove` announced "Nothing is waiting on you here." on a FAILED read.** Branch 2
+  correctly refused to speak for an unknown queue; the terminal branch had no condition at all and
+  said the opposite forty lines below the guard. Compounded by `useSoloPendingActions` never clearing
+  `items` on error, so the page rendered *"4 items waiting on your decision"* and *"Nothing is waiting
+  on you here"* at once.
+- **F2 — `campaigns.phase === "error"` was never gated.** `useSoloCampaigns` returns
+  `{phase:"error", ...empty}`, so rows 4–7 of the map above (captured / published / held / repair) all
+  collapse to zero on a failed read, and four sentences asserted an absence off it.
+  **"Every recorded delivery of yours succeeded"** is the costly one — a captured lead can be failing
+  to deliver at that exact moment. Branch 4 also offered *"Open Vibe Studio"* to rebuild work the
+  person may already own.
+- **F3/F4 — both new guards were weaker than they read.** The rendered-copy `METRIC` regex lacked `i`
+  while its denial partners ran lowercased, so any sentence LEADING with a metric was skipped
+  entirely; the fixture regex promised "whatever it is called" and caught only SCREAMING_CASE.
+- **F5 — the dialog's field grid was querying the wrong box.** `.social-dialog` is `position: fixed`
+  at `min(560px, 100vw - 32px)`, sized by the viewport, so converting its rule to `@container social`
+  measured the page column instead. Back on `@media`.
+
+**The fix is one concept, not five patches.** `campaignsUnknown` joins `waitingUnknown` as the second
+half of one idea — **a read that FAILED is not a result that is EMPTY** — feeding a shared `unread()`
+figure and a single `UNREAD_NOTE` (§18: the sentence now appears on six figures across three builders).
+`buildBrief` quotes no count from a failed source; `buildNextMove` gained an unknown branch placed
+BELOW the failing-delivery branch so a real, successfully-read problem is never swallowed by the other
+half's failure.
+
+**Deliberately NOT fixed here, and filed instead:** `useSoloPendingActions` does not clear `items` on
+error. The honest fix is in the hook, but it has two other consumers (both Trust Compass modals) and
+changing it alters what they render — a §37 producer walk and a behaviour change on a surface this
+work was not asked to touch. This surface zeroes the stale count at its own call site; the hook-level
+fix is a separate slice.
+
+**Every new guard was proven to fail without its fix** — reverting the `campaignsUnknown` threading
+turns two rendered-page tests red, stubbing the unknown branch turns three red. This pass had already
+shipped a guard that passed either way (the builder test asserting where the ladder GOES and never
+what it SAYS), which is how F1 survived to the peer-gate.
+
+**Second-pass proof, by class (§13).** Automated: full suite **228 files / 3365 tests passing**.
 Static/build: `ci:tsc` clean at its 13-error baseline, `vite build` green, 25 CI lints green.
 `lint:gold` reports one violation in `src/components/dashboard/BusinessCreditDashboard.tsx` — a file
 this branch does not touch, identical to `origin/main`, and not wired into CI; pre-existing, named

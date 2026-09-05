@@ -377,6 +377,67 @@ describe("executive chrome", () => {
   });
 });
 
+/**
+ * A FAILED READ IS NOT AN EMPTY RESULT — driven on the page, in both halves.
+ *
+ * These are the §39 peer-gate's F1 and F2 as standing tests. Both were reproducible on the rendered
+ * page while every builder-level assertion was green, because the builder tests checked where the
+ * next-move ladder GOES and the campaigns half had no unknown flag at all. The distinguishing
+ * property of this suite is that it reads the sentences a person actually sees, with a hook in its
+ * error state, which is the only place the two halves of the surface can be caught disagreeing.
+ */
+describe("a failed read never renders as good news", () => {
+  const said = () => (host.textContent ?? "").replace(/\s+/g, " ");
+
+  it("does not announce an empty queue when the pending read failed", () => {
+    harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+    // The hook does NOT clear `items` on error, so a stale count outlives the read. Both must be
+    // survived: the failure flag, and the stale number underneath it.
+    harness.pending = {
+      loading: false,
+      error: "boom",
+      refresh: () => {},
+      items: [{ id: "a", title: "t", summary: "s", department: "marketing", rationale: "r", createdAt: "2026-09-04" }],
+    };
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "No route", recentDispatches: {} }] });
+
+    expect(said()).not.toContain("Nothing is waiting on you here");
+    expect(said()).not.toContain("waiting on your decision");
+    expect(said()).toContain("could not be read");
+  });
+
+  it("claims nothing about published work, deliveries or approvals when the campaigns read failed", () => {
+    harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+    renderAt({ phase: "error", artifacts: [], submissions: [] });
+
+    const text = said();
+    // The highest-consequence sentence on this surface: a lead can be failing to deliver right now.
+    expect(text).not.toContain("Every recorded delivery of yours succeeded");
+    expect(text).not.toContain("You have not published anything yet");
+    expect(text).not.toContain("No form of yours is waiting on an approval");
+    expect(text).not.toContain("No form of yours has a recorded response yet");
+    expect(text).not.toContain("Nothing is waiting on you here");
+    expect(text).toContain("could not be read");
+  });
+
+  it("does not offer to rebuild work it could not read", () => {
+    harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+    renderAt({ phase: "error", artifacts: [], submissions: [] });
+    // Branch 4's control. On a failed read `publishedOutputs` is zero like everything else, and
+    // "Open Vibe Studio" would send a person to rebuild what they may already own.
+    expect(said()).not.toContain("There is nothing published to put in front of anyone");
+  });
+
+  it("still shows a real move when only one source failed and the other has work", () => {
+    harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+    harness.pending = { loading: false, error: "boom", refresh: () => {}, items: [] };
+    // A failing delivery is real, read successfully, and must not be swallowed by the other half's
+    // failure — the unknown branch sits BELOW it in the ladder for exactly this reason.
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active", recentDispatches: { failed: 2 } }] });
+    expect(said()).toContain("not delivering");
+  });
+});
+
 describe("§13 on the rendered page — the hole the builder-only guard could not see", () => {
   /**
    * The contract suite asserts the denial rule over what `social-truth.ts` RETURNS. That is the
@@ -395,7 +456,14 @@ describe("§13 on the rendered page — the hole the builder-only guard could no
    * `only once/when/after/if` and `until` are, because each one states the unmet precondition.
    */
   const CONDITIONAL = /\bonly (once|when|after|if)\b|\buntil\b|\bwould have to\b/;
-  const METRIC = /\b(followers?|reach|engagement|impressions?|audience|placements?|scheduled?)\b/;
+  /**
+   * `i` is load-bearing, and its absence made this guard weaker than it looked. `NEGATED` and
+   * `CONDITIONAL` are tested against `sentence.toLowerCase()`; `METRIC` was tested against the RAW
+   * sentence, so "Reach keeps climbing." and "Followers are up this week." did not match, hit the
+   * `continue`, and were never examined at all — the guard skipped precisely the sentences most
+   * likely to be a fabrication, because a claim tends to lead with its metric.
+   */
+  const METRIC = /\b(followers?|reach|engagement|impressions?|audience|placements?|scheduled?)\b/i;
 
   const scan = (label: string) => {
     const text = (host.textContent ?? "").replace(/\s+/g, " ");

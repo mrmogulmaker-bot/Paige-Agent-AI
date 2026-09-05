@@ -3577,7 +3577,34 @@ published · repair ("Needs repair")`. The ledger named a module the code does n
 answer-from-stale-docs failure §66 exists to end, so it is struck here rather than left to be
 discovered.
 
-**Second-pass proof.** Full suite **3336 passing** (227 files), `ci:tsc` ratchet clean at its 13-error
+**The §39 peer-gate BLOCKED the second pass, and was right.** An independent adversarial read of the
+pushed diff — not the author, not a re-run of the author's own assertions — found the pass's headline
+fix contradicted on the same screen, plus the identical defect untouched on the read next door:
+
+| # | Defect | Consequence |
+|---|---|---|
+| F1 | `buildNextMove`'s terminal branch announced **"Nothing is waiting on you here."** with no condition, so a `waitingUnknown` read that branch 2 correctly refused to speak for fell straight through to the opposite claim | With `useSoloPendingActions` never clearing `items` on error, the page rendered *"4 items waiting on your decision"* and *"Nothing is waiting on you here"* simultaneously — one surface, two answers, one read |
+| F2 | `campaigns.phase === "error"` was never gated. `useSoloCampaigns` returns `{phase:"error", ...empty}`, so published / approval-gated / repair / captured **all** collapse to zero | Four sentences asserted an absence off a failed read. **"Every recorded delivery of yours succeeded"** is the one with a real cost: a captured lead can be failing to deliver at that moment. Branch 4 also offered *"Open Vibe Studio"* to rebuild work the person may already own |
+| F3 | The new rendered-copy `METRIC` regex lacked `i` while its denial partners ran on a lowercased string | Any sentence STARTING with a metric word — *"Reach keeps climbing."*, *"Followers are up this week."* — was skipped entirely, i.e. the guard missed exactly the sentences most likely to be a fabrication |
+| F4 | The widened fixture regex claimed "whatever it is called" but caught only SCREAMING_CASE ≥4 chars | `const Missions = [{…}]` walked through. Now anchored to module level (`m` flag, no indentation), which is what a fixture structurally IS — a function-local working array is out of scope by construction |
+| F5 | `.social-dialog-fields` was converted to `@container social` with everything else | `.social-dialog` is `position: fixed` at `min(560px, 100vw - 32px)` — sized by the VIEWPORT, not the page column it descends from. Its rule is back on `@media`; the container query is right for the page and wrong for the one element that escapes it |
+
+**The fix, and why it is one concept rather than five patches.** `campaignsUnknown` joins `waitingUnknown`
+as the second half of one idea: a read that FAILED is not a result that is EMPTY. Both feed a shared
+`unread()` figure and a single `UNREAD_NOTE` (§18 — the sentence now appears on six figures across
+three builders and must not drift between them). `buildBrief` quotes no count from a failed source,
+`buildNextMove` gained an unknown branch that sits BELOW the failing-delivery branch so a real,
+successfully-read problem is never swallowed by the other half's failure, and the stale pending count
+is zeroed at this call site rather than in `useSoloPendingActions` — that hook has two other consumers
+(both Trust Compass modals) and clearing its list on error is a §37 producer walk plus a behaviour
+change on a surface this work was not asked to touch. Filed separately.
+
+**Every new guard was proven to fail without its fix.** Reverting the `campaignsUnknown` threading
+turns two rendered-page tests red; stubbing out the unknown branch turns three red. A guard that
+passes both before and after proves nothing, and this pass had already shipped one of those — the
+builder test asserting where the ladder GOES while never asserting what it SAYS.
+
+**Second-pass proof.** Full suite **3365 passing** (228 files), `ci:tsc` ratchet clean at its 13-error
 baseline, `vite build` green, and every CI lint green (`lint:views`, `lint:definer-fns`,
 `lint:tier-features`, `lint:skeleton`, `lint:write-targets`, `lint:migration-versions`, `lint:pg-tokens`,
 `lint:shadow-vars`, `ci:regression`, `lint:action-authority`, `lint:no-shadowed-credential`,

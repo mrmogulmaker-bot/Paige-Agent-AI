@@ -544,11 +544,24 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompa
       approvalGatedForms: artifacts.filter((artifact) => String(artifact.routingState || "").includes("approval-gated")).length,
       formsNeedingRepair: artifacts.filter((artifact) => (artifact.recentDispatches?.failed ?? 0) > 0).length,
       capturedSubmissions: (campaigns.submissions ?? []).length,
-      waitingOnYou: (pending.items ?? []).filter((item) => isGrowthDesk(item.department)).length,
+      // `useSoloPendingActions` does NOT clear `items` when a refresh fails, so a stale non-zero
+      // count outlives the read that produced it. Trusting it is how the brief announced "4 items
+      // waiting on your decision" beside a tile saying the read had failed. Zero here, and the
+      // unknown flag below is what actually speaks.
+      //
+      // Fixed at THIS layer rather than in the hook deliberately: the hook has two other consumers
+      // (both Trust Compass modals), and clearing its list on error changes what they render. That
+      // is a §37 producer walk and a behaviour change on a surface this work was not asked to
+      // touch, so it is filed separately rather than folded in here.
+      waitingOnYou: pending.error ? 0 : (pending.items ?? []).filter((item) => isGrowthDesk(item.department)).length,
       // A failed read arrives as an empty list. The tile must not read that as "nothing waiting".
       waitingUnknown: Boolean(pending.error),
+      // The twin, and the one the first pass missed: `useSoloCampaigns` returns `{phase:"error",
+      // ...empty}`, so published / approval-gated / repair / captured ALL collapse to zero on a
+      // failed read and four sentences asserted an absence off it.
+      campaignsUnknown: campaigns.phase === "error",
     };
-  }, [social.handles, campaigns.artifacts, campaigns.submissions, pending.items, pending.error]);
+  }, [social.handles, campaigns.artifacts, campaigns.submissions, campaigns.phase, pending.items, pending.error]);
 
   if (social.phase === "resolving" || campaigns.phase === "resolving") {
     return (

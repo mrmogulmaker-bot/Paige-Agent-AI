@@ -459,11 +459,21 @@
   .social-hero { padding: 18px 16px 16px; }
   .social-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .social-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .social-dialog-fields { grid-template-columns: minmax(0, 1fr); }
   .social-channels li { align-items: flex-start; flex-direction: column; gap: 8px; }
   .social-channel-metric { text-align: left; }
   .social-headline { font-size: 20px; }
   .social-feed-line { flex-wrap: wrap; }
+}
+
+/* The record dialog stays on @media, and the exception is not an oversight.
+   `.social-dialog` is `position: fixed` and `width: min(560px, 100vw - 32px)` — sized by the
+   VIEWPORT, not by the page column it happens to be a DOM descendant of. Converting its rule to
+   `@container social` along with everything else measured the wrong box: with PAIGE expanded the
+   column is ~395px, so a dialog that is actually 560px wide would have collapsed its six fields
+   into one column with room to spare for two. The container query is right for the page and wrong
+   for the one element that escapes it. */
+@media (max-width: 720px) {
+  .social-dialog-fields { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ── motion + forced colors ───────────────────────────────────────────────── */
