@@ -1,11 +1,15 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 import {
-  AlertTriangle, ArrowUpRight, Bot, ChevronRight, Clock3, RefreshCw, X,
+  AlertTriangle, ArrowUpRight, Bot, ChevronRight, RefreshCw, X,
 } from "lucide-react";
 import { useSystemsCheck, type SystemsCheckFinding } from "@/hooks/useSystemsCheck";
 import { resolveTenantAccountContext, type TenantAccountContext } from "@/components/tenant-shell/tenantShellRoutes";
 import { useCommandCenter, type CommandApproval } from "./data/useCommandCenter";
 import { useSoloActivityFeed, departmentLabel, elapsedLabel } from "./data/useSoloActivityFeed";
+import {
+  SYSTEMS_CHECK_AREAS, destinationForCheck, areaForCheck,
+} from "./systems-check-areas";
 import "./solo-systems-check-workspace.css";
 
 interface Props {
@@ -29,8 +33,7 @@ const label = (value: string | null | undefined) =>
 
 const isUnavailable = (finding: SystemsCheckFinding) => finding.status === "skip" || finding.status === "error";
 const isResolved = (finding: SystemsCheckFinding) => Boolean(finding.resolved_at);
-type EvidenceFilter = "all" | "attention" | "confirmed" | "unavailable" | "resolved";
-type EvidenceState = Exclude<EvidenceFilter, "all">;
+type EvidenceState = "attention" | "confirmed" | "unavailable" | "resolved";
 
 const evidenceFilter = (finding: SystemsCheckFinding): EvidenceState => {
   if (isResolved(finding)) return "resolved";
@@ -83,13 +86,6 @@ const projectEvidence = (evidence: SystemsCheckFinding["evidence"]) => {
   });
   return { rows, hasSuppressed: rows.length < Object.keys(evidence).length };
 };
-
-const signalPositions = [
-  { path: "M350 190 C280 145 210 92 105 82", x: 102, y: 82, textX: 128, textY: 76, anchor: "start" as const },
-  { path: "M350 190 C433 140 506 88 600 92", x: 603, y: 92, textX: 577, textY: 86, anchor: "end" as const },
-  { path: "M350 190 C281 240 218 292 112 302", x: 109, y: 302, textX: 135, textY: 296, anchor: "start" as const },
-  { path: "M350 190 C425 242 495 298 602 292", x: 605, y: 292, textX: 579, textY: 286, anchor: "end" as const },
-];
 
 function Proof({ children, tone = "partial" }: { children: React.ReactNode; tone?: string }) {
   return <span className={`sc-proof sc-proof--${tone}`}>{children}</span>;
@@ -162,12 +158,112 @@ function RailActivityPanel({ activity }: { activity: ReturnType<typeof useSoloAc
   );
 }
 
+/**
+ * THE CLOSED STATUS SET (owner ruling). Eight words, and never a ninth:
+ *   LIVE · PARTIAL · NOT CONNECTED · NEEDS ATTENTION · PENDING PROVIDER · UNAVAILABLE · PROOF OWED · PAUSED
+ *
+ * Only THREE of them can be produced from a persisted finding, and that is a structural fact
+ * rather than an omission: `paige_systems_check_finding.status` is CHECK-constrained to
+ * `pass | fail | skip | error`. PENDING PROVIDER and PAUSED in particular can never come from
+ * this store — they have to be published by the workstream that owns the provider, through the
+ * result contract (docs/product/provider-result-contract.md).
+ *
+ * So this surface renders what it can actually derive and says so, rather than inferring the
+ * other five from evidence shapes. A `fail` is NEEDS ATTENTION whether the thing was never set up
+ * or was set up wrongly; the item's own sentence carries which, because guessing "not connected"
+ * from a `has_x: false` would be the surface inventing a status the runner never recorded.
+ */
+type StatusWord = "live" | "attention" | "unavailable";
+
+const STATUS_TEXT: Record<StatusWord, string> = {
+  live: "Live",
+  attention: "Needs attention",
+  unavailable: "Unavailable",
+};
+
+function statusOf(finding: SystemsCheckFinding): StatusWord {
+  if (isResolved(finding)) return "live";
+  if (finding.status === "pass") return "live";
+  if (isUnavailable(finding)) return "unavailable";
+  return "attention";
+}
+
+function StatusPill({ state }: { state: StatusWord }) {
+  return <span className={`sc-status sc-status--${state}`}><i />{STATUS_TEXT[state]}</span>;
+}
+
+/** The owner-facing title. Falls back to the registry name so an unmapped check stays visible. */
+const findingTitle = (finding: SystemsCheckFinding) =>
+  destinationForCheck(finding.check_id)?.title
+  || finding.check_name
+  || label(finding.check_id);
+
+const SEVERITY_RANK: Record<string, number> = { blocking: 0, high: 1, medium: 2, low: 3 };
+
+/**
+ * One thing that needs the owner. Carries all four things the brief requires without exception:
+ * an owner, a source, a freshness date, and a direct next action into the surface that owns it.
+ */
+function AttentionItem({
+  finding, account, recordedAt, onInspect,
+}: {
+  finding: SystemsCheckFinding;
+  account: string | null;
+  recordedAt: string;
+  onInspect: (finding: SystemsCheckFinding, origin: HTMLElement) => void;
+}) {
+  const dest = destinationForCheck(finding.check_id);
+  const severity = finding.severity_at_finding || "medium";
+  const drafted = draftedFixText(finding.paige_drafted_fix);
+  // Paige owns it only when she has actually drafted something AND filed an action for it.
+  // A drafted fix with no filed action is still the owner's to act on, so it does not claim her.
+  const paigeHasIt = Boolean(drafted && finding.resolution_action_id);
+
+  return (
+    <article className={`sc-item sc-item--${severity}`}>
+      <div className="sc-item-t">
+        <h3>{findingTitle(finding)}</h3>
+        <StatusPill state={statusOf(finding)} />
+      </div>
+      {finding.paige_interpretation && <p className="sc-why" style={{ margin: "3px 0 0" }}>{finding.paige_interpretation}</p>}
+      <dl className="sc-meta">
+        <div>
+          <dt>Owner</dt>
+          <dd>{paigeHasIt ? "Paige has drafted a fix for you to approve" : "You"}</dd>
+        </div>
+        <div>
+          <dt>Source</dt>
+          <dd className="sc-mono">Setup check &middot; {finding.check_id}</dd>
+        </div>
+        <div>
+          <dt>Verified</dt>
+          <dd>{recordedAt}</dd>
+        </div>
+      </dl>
+      <div className="sc-item-a">
+        {dest && account && (
+          <a className="sc-button" href={dest.path(account)}>{dest.label}<ChevronRight size={14} aria-hidden="true" /></a>
+        )}
+        <button
+          type="button"
+          className="sc-button sc-button--quiet"
+          onClick={(event) => onInspect(finding, event.currentTarget)}
+        >
+          What was checked
+        </button>
+        {dest?.caveat && <span className="sc-caveat">{dest.caveat}</span>}
+      </div>
+    </article>
+  );
+}
+
 export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspaceId }: Props) {
   const command = useCommandCenter();
   const activity = useSoloActivityFeed(workspaceId);
   const systems = useSystemsCheck("tenant");
   const resolvedAccount = resolveTenantAccountContext(accountContext);
-  const [filter, setFilter] = useState<EvidenceFilter>("all");
+  const account = useParams().account ?? "";
+  const [openArea, setOpenArea] = useState<string | null>(null);
   const [selected, setSelected] = useState<SystemsCheckFinding | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [proposal, setProposal] = useState(false);
@@ -188,35 +284,9 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
     () => systems.findings.filter((finding) => !systems.run || finding.run_id === systems.run.id),
     [systems.findings, systems.run],
   );
-  const visibleFindings = filter === "all"
-    ? currentFindings
-    : currentFindings.filter((finding) => evidenceFilter(finding) === filter);
   const unavailableFindings = currentFindings.filter((finding) => evidenceFilter(finding) === "unavailable");
   const attentionFindings = currentFindings.filter((finding) => evidenceFilter(finding) === "attention");
   const confirmedFindings = currentFindings.filter((finding) => evidenceFilter(finding) === "confirmed");
-  const resolvedFindings = currentFindings.filter((finding) => evidenceFilter(finding) === "resolved");
-  const domainGroups = useMemo(() => {
-    const groups = new Map<string, SystemsCheckFinding[]>();
-    currentFindings.forEach((finding) => {
-      const domain = finding.domain || "other";
-      groups.set(domain, [...(groups.get(domain) ?? []), finding]);
-    });
-    return [...groups.entries()]
-      .map(([domain, findings]) => {
-        const state: EvidenceState = findings.some((finding) => evidenceFilter(finding) === "attention")
-          ? "attention"
-          : findings.some((finding) => evidenceFilter(finding) === "unavailable")
-            ? "unavailable"
-            : findings.some((finding) => evidenceFilter(finding) === "confirmed")
-              ? "confirmed"
-              : "resolved";
-        return { domain, findings, state };
-      })
-      .sort((a, b) => {
-        const rank = { attention: 0, unavailable: 1, confirmed: 2, resolved: 3 };
-        return rank[a.state] - rank[b.state] || a.domain.localeCompare(b.domain);
-      });
-  }, [currentFindings]);
   const completedAt = systems.run?.completed_at ? new Date(systems.run.completed_at) : null;
   const hasCompletedRun = !!completedAt && !Number.isNaN(completedAt.getTime());
   const isPartial = !!systems.run && (
@@ -224,12 +294,11 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
     currentFindings.some((finding) => finding.status === "skip" || finding.status === "error") ||
     (systems.run.check_count ?? currentFindings.length) > currentFindings.length
   );
-  const hasCompleteEvidence = currentFindings.length > 0 && !isPartial;
+
   const isStale = hasCompletedRun && Date.now() - completedAt.getTime() > 24 * 60 * 60 * 1000;
   const selectedEvidence = projectEvidence(selected?.evidence ?? null);
 
   useEffect(() => {
-    setFilter("all");
     setSelected(null);
     setExpanded(false);
     setProposal(false);
@@ -344,174 +413,350 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
     decisionReturnFocus.current?.focus();
   };
 
-  const isReading = systems.loading || command.loading || systems.scanPending;
-  const status = systems.isError
-    ? { title: "Systems Check is unavailable", detail: "No account status is being inferred. Retry the current data read.", tone: "unavailable", pill: "Unavailable" }
-    : systems.loading || command.loading || systems.scanPending
-      ? { title: "Reading operating signals…", detail: "PAIGE is refreshing the available sources. No category progress is being inferred.", tone: "scanning", pill: "Reading" }
-      : !systems.run
-        ? { title: "No persisted Systems Check yet", detail: "A current result is unavailable. Nothing is being reported as healthy without evidence.", tone: "empty", pill: "No findings" }
-        : resolvedFindings.length > 0 && attentionFindings.length === 0 && unavailableFindings.length === 0 && confirmedFindings.length === 0
-          ? { title: "No active findings need attention", detail: "Resolved findings remain in the evidence trail; no current checks are being inferred as clear.", tone: "resolved", pill: "Resolved history" }
-        : !hasCompleteEvidence
-          ? { title: "The picture is incomplete", detail: "Overall health cannot be inferred from the available findings.", tone: "partial", pill: "Partial coverage" }
-          : attentionFindings.length === 0
-          ? { title: "Available checks are clear", detail: `${currentFindings.length} persisted finding${currentFindings.length === 1 ? "" : "s"} verified.`, tone: "confirmed", pill: "Confirmed" }
-          : { title: `${attentionFindings.length} finding${attentionFindings.length === 1 ? " needs" : "s need"} attention`, detail: "Review the evidence and choose the next safe action.", tone: "attention", pill: "Needs attention" };
-  const nextFinding = attentionFindings[0] ?? unavailableFindings[0] ?? null;
-  const emergingSignalDetail = systems.run
-    ? "are unavailable from this persisted run."
-    : systems.isError
-      ? "are unavailable because the current evidence read failed."
-      : "are unavailable until a persisted Systems Check run exists.";
+  /**
+   * Ordering. Severity first (blocking before high before medium before low), then the registry's
+   * own priority. A finding with no recorded severity sorts as medium rather than to the top or the
+   * bottom — inventing an order for it would be a claim the runner never made.
+   */
+  const orderedAttention = useMemo(
+    () => [...attentionFindings].sort((a, b) => {
+      const sa = SEVERITY_RANK[a.severity_at_finding ?? "medium"] ?? 2;
+      const sb = SEVERITY_RANK[b.severity_at_finding ?? "medium"] ?? 2;
+      if (sa !== sb) return sa - sb;
+      return (a.priority ?? 99) - (b.priority ?? 99);
+    }),
+    [attentionFindings],
+  );
 
+  /** Failing checks with no drafted-and-filed fix behind them: genuinely the owner's move. */
+  const ownerTodo = useMemo(
+    () => orderedAttention.filter(
+      (f) => !(draftedFixText(f.paige_drafted_fix) && f.resolution_action_id),
+    ),
+    [orderedAttention],
+  );
+
+  /**
+   * The freshness line. Counts come from the RUN's own summary where it has one — never from a
+   * tally this component computed and then presented as the check's result. When the run carries
+   * no counts the finding set is counted instead, and the wording says which is being shown.
+   */
+  const freshHeading = systems.isError
+    ? "The last check could not be read"
+    : !systems.run
+      ? (systems.scanPending ? "Your first check is running" : "No check has finished yet")
+      : hasCompletedRun
+        ? `Last checked ${completedAt.toLocaleString()}`
+        : `A check started ${new Date(systems.run.started_at).toLocaleString()} and has not finished`;
+
+  const freshDetail = !systems.run
+    ? "Nothing has been recorded for this workspace."
+    : (() => {
+        const total = systems.run.check_count ?? currentFindings.length;
+        const passed = systems.run.pass_count ?? confirmedFindings.length;
+        const failed = systems.run.fail_count ?? attentionFindings.length;
+        const unread = unavailableFindings.length;
+        return (
+          <>
+            <strong>{total}</strong> check{total === 1 ? "" : "s"} &middot;{" "}
+            <strong>{passed}</strong> passed &middot;{" "}
+            <strong>{failed}</strong> need{failed === 1 ? "s" : ""} attention
+            {unread > 0 ? <> &middot; <strong>{unread}</strong> could not be evaluated</> : null}
+          </>
+        );
+      })();
+
+  /**
+   * Business attention, kept SEPARATE from setup findings on purpose. A failing check says a system
+   * cannot do its job; these say the book itself needs the owner. Collapsing them would let a
+   * clean setup read imply an empty desk. Only figures that are actually present are shown — a
+   * missing count is omitted rather than rendered as zero, because zero is a claim.
+   */
+  const businessAttention = useMemo<Array<[string, number]>>(() => ([
+    ["Clients at risk", command.attention?.at_risk_clients],
+    ["Follow-ups due", command.attention?.follow_ups_due],
+    ["Tasks due", command.attention?.tasks_due],
+  ] as Array<[string, number | undefined | null]>)
+    .filter((entry): entry is [string, number] => typeof entry[1] === "number" && entry[1] > 0),
+  [command.attention]);
+
+  const isReading = systems.loading || command.loading || systems.scanPending;
   return (
     <main className="sc-workspace" aria-label="Solo Systems Check">
       <div ref={scrollOwnerRef} className="sc-scroll-owner" aria-hidden={Boolean(selected || proposal || decision) || undefined}>
         <header className="sc-heading">
           <div>
             <h1>Systems Check</h1>
-            <p>Your current operating evidence, coverage gaps, and next signal to inspect.</p>
+            <p>What your business systems can actually do right now, and what is stopping the rest.</p>
             <span className="sc-sr-only"><span data-tenant-account-name>{resolvedAccount.accountName}</span>, <span data-tenant-account-tier>{resolvedAccount.accountTypeLabel}</span>, {command.greeting.dateLabel}. {command.greeting.name}: {command.loading ? "operating sources are still loading." : command.isError ? "some operating sources are unavailable." : command.greeting.summary}</span>
           </div>
           <div className="sc-heading-actions">
             {isStale && <Proof tone="stale">STALE EVIDENCE</Proof>}
             {isPartial && <Proof>PARTIAL COVERAGE</Proof>}
             {command.isError && <Proof tone="attention">OPERATING DATA UNAVAILABLE</Proof>}
-            <button className="sc-button sc-button--quiet" type="button" onClick={refresh} aria-label="Refresh current data">
-              <RefreshCw size={15} aria-hidden="true" />
-              Refresh current data
-            </button>
           </div>
         </header>
 
         {command.isError && <div className="sc-source-warning" role="status"><AlertTriangle size={16} /> Some business operating sources could not be read. No empty state is being treated as healthy; refresh current data to retry.</div>}
 
-        <section className="sc-signal" data-operating-signal="true" aria-label="Current operating signal">
-          <div className="sc-signal-stage" data-state={status.tone}>
-            <div className="sc-signal-stage-head">
-              <div><span className="sc-kicker">Operating signal</span><h2>Evidence moving through the business</h2></div>
-              <span>{systems.run ? `${currentFindings.length} persisted finding${currentFindings.length === 1 ? "" : "s"}` : "No persisted run"}</span>
+        <div className="sc-console">
+          <div className="sc-strip">
+            <div className="sc-strip-l">
+              <div className="sc-strip-h">{freshHeading}</div>
+              <div className="sc-strip-s">{freshDetail}</div>
+              {systems.isError && (
+                <div className="sc-strip-err" role="alert">
+                  The last read failed. Nothing below is being reported as healthy.
+                </div>
+              )}
             </div>
-            {isReading && <div className="sc-read-activity" role="status"><span /> Reading available systems — no category progress is reported</div>}
-            <svg className="sc-signal-map" viewBox="0 0 700 380" role="img" aria-labelledby="operating-signal-title operating-signal-description">
-              <title id="operating-signal-title">Current Systems Check operating signal</title>
-              <desc id="operating-signal-description">Persisted evidence groups connect to PAIGE. Their labels state confirmed, needs attention, or unavailable without inferring missing health.</desc>
-              <circle className="sc-orbit sc-orbit--outer" cx="350" cy="190" r="152" />
-              <circle className="sc-orbit" cx="350" cy="190" r="116" />
-              {domainGroups.slice(0, 4).map((group, index) => {
-                const position = signalPositions[index];
-                const stateLabel = evidenceStateLabel(group.state);
-                const groupFinding = group.findings.find((finding) => evidenceFilter(finding) === group.state) ?? group.findings[0];
-                return (
-                  <g
-                    key={group.domain}
-                    className={`sc-signal-source sc-signal-source--${group.state}`}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${label(group.domain)}, ${stateLabel}`}
-                    onClick={(event) => openFinding(groupFinding, event.currentTarget as unknown as HTMLElement)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        openFinding(groupFinding, event.currentTarget as unknown as HTMLElement);
-                      }
-                    }}
-                  >
-                    <path className="sc-signal-path" d={position.path} />
-                    <circle className="sc-signal-node" cx={position.x} cy={position.y} r="10" />
-                    <text className="sc-signal-label" x={position.textX} y={position.textY} textAnchor={position.anchor}>{label(group.domain)}</text>
-                    <text className="sc-signal-state-label" x={position.textX} y={position.textY + 18} textAnchor={position.anchor}>{stateLabel}</text>
-                  </g>
-                );
-              })}
-              <g className="sc-scan-arm" aria-hidden="true"><line x1="350" y1="190" x2="350" y2="78" /><circle cx="350" cy="78" r="4" /></g>
-              <g className={`sc-core sc-core--${status.tone}`}>
-                <circle cx="350" cy="190" r="73" />
-                <text x="350" y="184" textAnchor="middle">PAIGE</text>
-                <text className="sc-core-state" x="350" y="208" textAnchor="middle">{status.pill.toUpperCase()}</text>
-              </g>
-            </svg>
+            <div className="sc-strip-a">
+              <button
+                type="button"
+                className="sc-button sc-button--quiet"
+                onClick={refresh}
+                title="Re-reads the last recorded check. It does not run the checks again."
+              >
+                {isReading ? <span className="sc-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />}
+                Refresh current data
+              </button>
+            </div>
           </div>
 
-          <aside className="sc-signal-summary" aria-live="polite">
-            <div className="sc-signal-summary-head"><span className="sc-kicker">Coverage read</span><Proof tone={status.tone}>{status.pill.toUpperCase()}</Proof></div>
-            <h2>{status.title}</h2>
-            <p>{status.detail}</p>
-            <div className="sc-signal-counts" aria-label="Finding totals">
-              <div><strong>{confirmedFindings.length}</strong>{" "}<span>confirmed</span></div>
-              <div><strong>{attentionFindings.length}</strong>{" "}<span>needs attention</span></div>
-              <div><strong>{unavailableFindings.length}</strong>{" "}<span>unavailable</span></div>
-            </div>
-            <p className="sc-coverage-note"><strong>Emerging signals</strong> {emergingSignalDetail}</p>
-            {nextFinding && (
-              <button type="button" className="sc-next-signal" onClick={(event) => openFinding(nextFinding, event.currentTarget)}>
-                <span>Next signal to inspect</span>
-                <strong>{nextFinding.check_name || label(nextFinding.check_id)}</strong>
-                <small>{nextFinding.paige_interpretation || "No PAIGE interpretation is attached to this persisted finding."}</small>
-                <ChevronRight size={17} aria-hidden="true" />
-              </button>
-            )}
-            {openPaige && <button type="button" className="sc-button sc-button--paige sc-rundown-button" onClick={openPaige}><Bot size={16} aria-hidden="true" /> Open PAIGE for the fuller rundown</button>}
-            {hasCompletedRun && <span className="sc-freshness"><Clock3 size={13} aria-hidden="true" /> Last result {completedAt.toLocaleString()}</span>}
-            {systems.isError && <button type="button" className="sc-button" onClick={systems.refresh}>Retry current data</button>}
-          </aside>
-        </section>
+          {/* The owner's brief allows exactly two honest Refresh behaviours: perform the checks, or
+              say plainly that it cannot. This button does the second, and says so, rather than
+              re-reading a stale run under a label that implies a re-check. */}
+          <p className="sc-note">
+            <strong>This re-reads the last recorded check.</strong> Running the checks again on demand is
+            not wired to this surface yet, so nothing here is newer than the time above.
+          </p>
 
-        <div className="sc-layout">
-          <section className="sc-map-panel" aria-labelledby="system-map-title">
-            <div className="sc-section-heading">
-              <div><span className="sc-kicker">Evidence trail</span><h2 id="system-map-title">What supports this read</h2></div>
-              <span>{currentFindings.length} current</span>
+          {/* The run's own summary and the findings we can read are two different numbers, and when
+              they disagree neither one describes the whole picture. Saying so here is what stops the
+              strip claiming "1 needs attention" while the section below says nothing does — the run
+              counted checks whose results are not in this response. Overall health is not inferred
+              from the half that came back. */}
+          {isPartial && (
+            <div className="sc-note" role="status">
+              <strong>The picture is incomplete.</strong> The last run recorded{" "}
+              {systems.run?.check_count} check{systems.run?.check_count === 1 ? "" : "s"} but only{" "}
+              {currentFindings.length} result{currentFindings.length === 1 ? " is" : "s are"} readable
+              here. Overall health cannot be inferred from the part that came back, so nothing below
+              is being reported as a complete answer.
             </div>
-            <div className="sc-filters" aria-label="Filter findings by result">
-              <button type="button" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>All</button>
-              <button type="button" aria-pressed={filter === "attention"} onClick={() => setFilter("attention")}>Needs attention</button>
-              <button type="button" aria-pressed={filter === "confirmed"} onClick={() => setFilter("confirmed")}>Confirmed</button>
-              <button type="button" aria-pressed={filter === "unavailable"} onClick={() => setFilter("unavailable")}>Unavailable</button>
-              <button type="button" aria-pressed={filter === "resolved"} onClick={() => setFilter("resolved")}>Resolved</button>
+          )}
+
+          {!systems.run && !systems.loading && !systems.isError && (
+            <div className="sc-first">
+              <h3>{systems.scanPending ? "Your first check is running" : "Nothing has been checked yet"}</h3>
+              <p>
+                {systems.scanPending
+                  ? "It started when this workspace was created. Nothing is shown until it finishes, because a partial answer would read as a whole one."
+                  : "Systems Check reads what your business systems actually report. None of them has answered for this workspace yet — and that is not a claim that anything is wrong."}
+              </p>
             </div>
-            <div className="sc-findings">
-              {visibleFindings.map((finding) => (
-                <button key={finding.id} type="button" className={`sc-finding sc-finding--${evidenceFilter(finding)}`} onClick={(event) => openFinding(finding, event.currentTarget)}>
-                  <span className="sc-finding-mark" aria-hidden="true" />
-                  <span><small>{label(finding.domain)}</small><strong>{finding.check_name || label(finding.check_id)}</strong></span>
-                  <span className="sc-finding-state">{evidenceStateLabel(evidenceFilter(finding))}<ChevronRight size={15} /></span>
-                </button>
-              ))}
-              {!visibleFindings.length && !systems.loading && <div className="sc-empty-inline">No persisted findings match this filter.</div>}
+          )}
+
+          {/* 1 — what needs you now */}
+          {Boolean(systems.run) && (
+            <section className="sc-block" aria-labelledby="sc-attention-title">
+              <div className="sc-block-head">
+                <h2 id="sc-attention-title">What needs you now</h2>
+                {attentionFindings.length > 0 && <span className="sc-n">{attentionFindings.length}</span>}
+                <span className="sc-aside">Most serious first</span>
+              </div>
+              {businessAttention.length > 0 && (
+                <div className="sc-note" style={{ borderStyle: "solid" }}>
+                  <strong>From your book right now:</strong>{" "}
+                  {businessAttention.map(([name, value], i) => (
+                    <span key={name}>{i > 0 ? " · " : ""}{value} {name.toLowerCase()}</span>
+                  ))}
+                  {". "}
+                  These come from your live client records, not from the setup check.
+                </div>
+              )}
+              {attentionFindings.length === 0 ? (
+                <div className="sc-note">
+                  Nothing from the last check needs you. That covers the {currentFindings.length} thing
+                  {currentFindings.length === 1 ? "" : "s"} it looked at, not your whole business.
+                </div>
+              ) : (
+                <div className="sc-items">
+                  {orderedAttention.map((finding) => (
+                    <AttentionItem
+                      key={finding.id}
+                      finding={finding}
+                      account={account || null}
+                      recordedAt={new Date(finding.created_at).toLocaleString()}
+                      onInspect={openFinding}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 2 — what is ready to operate */}
+          {confirmedFindings.length > 0 && (
+            <section className="sc-block" aria-labelledby="sc-ready-title">
+              <div className="sc-block-head">
+                <h2 id="sc-ready-title">What is ready to operate</h2>
+                <span className="sc-n">{confirmedFindings.length}</span>
+                <span className="sc-aside">Each one names the check that answered for it</span>
+              </div>
+              <ul className="sc-ready">
+                {confirmedFindings.map((finding) => (
+                  <li key={finding.id}>
+                    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                      <path d="M2.6 7.4l2.8 2.8L11.4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <div>
+                      <p>{findingTitle(finding)}</p>
+                      <small>Setup check &middot; {new Date(finding.created_at).toLocaleString()}</small>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {command.metrics.length > 0 && (
+                <ul className="sc-ready">
+                  {command.metrics.map((metric) => (
+                    <li key={metric.k}>
+                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                        <path d="M2.6 7.4l2.8 2.8L11.4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      <div>
+                        <p>{metric.k}: <strong>{metric.v}</strong></p>
+                        <small>
+                          {command.isError
+                            ? "Last available — the current read failed, so this may not be today's number"
+                            : "Live read from your own records"}
+                        </small>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+
+          {/* 3 — the nine operating areas */}
+          <section className="sc-block" aria-labelledby="sc-areas-title">
+            <div className="sc-block-head">
+              <h2 id="sc-areas-title">Your operating areas</h2>
+              <span className="sc-n">{SYSTEMS_CHECK_AREAS.length}</span>
+              <span className="sc-aside">Each carries its own status. There is deliberately no total.</span>
+            </div>
+            <div className="sc-areas">
+              {SYSTEMS_CHECK_AREAS.map((area) => {
+                const inArea = currentFindings.filter((f) => areaForCheck(f.check_id) === area.id);
+                const open = openArea === area.id;
+                const worst = inArea.some((f) => statusOf(f) === "attention")
+                  ? "attention"
+                  : inArea.some((f) => statusOf(f) === "unavailable")
+                    ? "unavailable"
+                    : inArea.length ? "live" : null;
+                return (
+                  <div className="sc-area" key={area.id} data-open={open}>
+                    <button
+                      type="button"
+                      className="sc-area-b"
+                      aria-expanded={open}
+                      onClick={() => setOpenArea(open ? null : area.id)}
+                    >
+                      <ChevronRight className="sc-chev" size={11} aria-hidden="true" />
+                      <span className="sc-area-n">{area.name}</span>
+                      {worst ? <StatusPill state={worst} /> : <span className="sc-status sc-status--unavailable"><i />Not checked</span>}
+                      <span className="sc-area-k">{area.scope}</span>
+                    </button>
+                    {open && (
+                      <div className="sc-area-d">
+                        {inArea.length === 0 ? (
+                          <p className="sc-why" style={{ margin: "9px 0 0" }}>
+                            {area.uncovered
+                              || "No check in the current run covers this area, so nothing here is being reported either way."}
+                          </p>
+                        ) : (
+                          <div className="sc-area-checks">
+                            {inArea.map((finding) => {
+                              const dest = destinationForCheck(finding.check_id);
+                              return (
+                                <div className="sc-area-check" key={finding.id}>
+                                  <StatusPill state={statusOf(finding)} />
+                                  <strong>{findingTitle(finding)}</strong>
+                                  {dest && account && (
+                                    <a className="sc-button sc-button--quiet" href={dest.path(account)}>{dest.label}</a>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
 
-          <aside className="sc-side-stack" aria-label="Operating context">
-            <section className="sc-side-panel">
-              <div className="sc-section-heading"><div><span className="sc-kicker">Decision queue</span><h2>Waiting on you</h2></div><strong>{command.approvals.length}</strong></div>
-              {command.approvals.slice(0, 3).map((item) => (
-                <article className="sc-approval" key={item.id}><span>{item.dept} · {item.aging}</span><h3>{item.title}</h3><p>{item.preview}</p><div><button type="button" onClick={(event) => openDecision(item, "approve", event.currentTarget)}>Review approval</button><button type="button" onClick={(event) => openDecision(item, "decline", event.currentTarget)}>Review dismissal</button></div></article>
-              ))}
-              {!command.approvals.length && <p className="sc-muted">No approval records are waiting.</p>}
-              <p className="sc-decision-feedback" role="status" aria-live="polite">{decisionMessage}</p>
-            </section>
-            <section className="sc-side-panel">
-              <div className="sc-section-heading"><div><span className="sc-kicker">Operating pulse</span><h2>Departments</h2></div><Proof>PARTIAL</Proof></div>
-              {command.departments.map((department) => (
-                <div className="sc-department" key={department.slug}><span><i />{department.name}</span><strong>Status totals unavailable here</strong></div>
-              ))}
-              {command.departments.length ? <p className="sc-muted">Department names are connected. Open-work totals are not independently verified by this surface.</p> : <p className="sc-muted">No department status is available.</p>}
-            </section>
-            <section className="sc-side-panel">
-              <div className="sc-section-heading"><div><span className="sc-kicker">Business attention</span><h2>Current signals</h2></div></div>
-              {[ ["Clients at risk", command.attention?.at_risk_clients], ["Follow-ups due", command.attention?.follow_ups_due], ["Tasks due", command.attention?.tasks_due] ].filter(([, value]) => typeof value === "number").map(([name, value]) => <div className="sc-department" key={String(name)}><span>{name}</span><strong>{value}</strong></div>)}
-              {!command.attention && <p className="sc-muted">No attention summary is available.</p>}
-            </section>
-            <section className="sc-side-panel">
-              <div className="sc-section-heading"><div><span className="sc-kicker">Business signals</span><h2>Grounded totals</h2></div></div>
-              {command.metrics.length ? command.metrics.map((metric) => (
-                <div className="sc-business-signal" key={metric.k}><span>{metric.k}</span><strong>{metric.v}</strong>{command.isError ? <Proof>LAST AVAILABLE · PARTIAL</Proof> : <Proof tone="live">LIVE READ</Proof>}</div>
-              )) : <p className="sc-muted">No grounded headline metrics are available.</p>}
-            </section>
-            <RailActivityPanel activity={activity} />
-          </aside>
+          {/* 4 — what has actually been verified (the Rail) */}
+          <RailActivityPanel activity={activity} />
+
+          {/* 5 — who does what next */}
+          <section className="sc-block" aria-labelledby="sc-next-title">
+            <div className="sc-block-head"><h2 id="sc-next-title">Who does what next</h2></div>
+            <div className="sc-buckets">
+              <div className="sc-bucket sc-bucket--you">
+                <h3>Only you can do these</h3>
+                <ul>
+                  {ownerTodo.length
+                    ? ownerTodo.map((f) => <li key={f.id}>{findingTitle(f)}</li>)
+                    : <li className="sc-none">Nothing from the last check is waiting on you</li>}
+                </ul>
+              </div>
+              {/* Approving and dismissing has to stay REACHABLE here. The panel it used to live in
+                  went with the radial, and listing the same items without their controls would have
+                  quietly removed a capability that already shipped (§58) — the owner could act on
+                  these from this page, and still can. Same seams, same modal, same focus return. */}
+              <div className="sc-bucket sc-bucket--paige">
+                <h3>Paige is holding these for you</h3>
+                <ul>
+                  {command.approvals.length
+                    ? command.approvals.slice(0, 5).map((item) => (
+                      <li key={item.id}>
+                        {item.title}
+                        <span className="sc-bucket-a">
+                          <button
+                            type="button"
+                            className="sc-button sc-button--quiet"
+                            onClick={(event) => openDecision(item, "approve", event.currentTarget)}
+                          >
+                            Review approval
+                          </button>
+                          <button
+                            type="button"
+                            className="sc-button sc-button--quiet"
+                            onClick={(event) => openDecision(item, "decline", event.currentTarget)}
+                          >
+                            Review dismissal
+                          </button>
+                        </span>
+                      </li>
+                    ))
+                    : <li className="sc-none">Nothing she can take on right now</li>}
+                </ul>
+                <p className="sc-decision-feedback" role="status" aria-live="polite">{decisionMessage}</p>
+              </div>
+              <div className="sc-bucket sc-bucket--outside">
+                <h3>Could not be checked</h3>
+                <ul>
+                  {unavailableFindings.length
+                    ? unavailableFindings.map((f) => <li key={f.id}>{findingTitle(f)}</li>)
+                    : <li className="sc-none">Everything the check looked at returned an answer</li>}
+                </ul>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 
