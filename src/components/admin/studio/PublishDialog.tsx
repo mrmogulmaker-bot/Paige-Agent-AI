@@ -100,6 +100,12 @@ export function PublishDialog({
 
   // ── after the act: report what actually happened, with the server's own URL ──────────
   if (publishedUrl) {
+    // #178 — surface WHICH domain the page went live on, straight from the canonical URL the
+    // resolver returned. A host that isn't the platform wildcard is the tenant's own custom
+    // domain (honest, derived — no separate flag to drift, §13).
+    let liveHost: string | null = null;
+    try { liveHost = publishedUrl.startsWith("http") ? new URL(publishedUrl).host : null; } catch { liveHost = null; }
+    const onCustomDomain = !!liveHost && !liveHost.endsWith(".paigeagent.ai");
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className={cn("sm:max-w-lg", className)}>
@@ -110,7 +116,13 @@ export function PublishDialog({
                   button is gone by now, so this is the single gold mark on this view. */}
               <StatePill state="on">Live</StatePill>
             </DialogTitle>
-            <DialogDescription>Anyone with the link can see this page now.</DialogDescription>
+            <DialogDescription>
+              {liveHost
+                ? onCustomDomain
+                  ? <>Live on your domain <span className="font-medium text-foreground">{liveHost}</span>. Anyone with the link can see it now.</>
+                  : <>Live at <span className="font-medium text-foreground">{liveHost}</span>. Connect a custom domain in settings to publish under your own address.</>
+                : "Anyone with the link can see this page now."}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">

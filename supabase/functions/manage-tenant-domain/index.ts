@@ -1,3 +1,7 @@
+// Tenant domain management — EMAIL sender domains (Resend) + WEBSITE custom domains (#178).
+//
+// EMAIL verbs:  list | add | refresh | set_default | remove   (Resend sender-domain registry)
+// WEB verbs:    web_list | web_add | web_verify | web_set_default | web_remove   (#178 publishing spine)
 // Tenant EMAIL sender-domain management (Resend).
 //
 // Verbs: list | add | refresh | set_default | remove   (the Resend sender-domain registry)
@@ -5,6 +9,10 @@
 // §9 (fixed): the caller's tenant is SERVER-DERIVED. A non-owner admin is pinned to their OWN
 // active tenant and can NEVER target another tenant via body.tenant_id (that was a live
 // cross-tenant BIND/IDOR — any global-admin could register/delete a VICTIM tenant's domain).
+// Only is_platform_owner() may pass an explicit body.tenant_id. Every by-id operation is
+// tenant-scoped so a row from another tenant can't be read/mutated/deleted by id. Web-domain
+// WRITES go through SECURITY DEFINER RPCs (web_domain_claim / web_domain_mark_verified) called
+// with the USER's JWT, so those RPCs re-derive the tenant themselves — never a forgeable body.
 // Only is_platform_owner() may pass an explicit body.tenant_id (a fleet operation). Every by-id
 // operation is tenant-scoped so a row from another tenant can't be read/mutated/deleted by id.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -38,6 +46,36 @@ function mapStatus(s: string | undefined): string {
   if (k === "verified") return "verified";
   if (k === "failed" || k === "temporary_failure") return "failed";
   return "verifying";
+}
+
+// Attach a verified custom host to the Vercel project so it actually resolves at the edge.
+// Env-gated + honest degrade (§13): if Vercel isn't configured, the domain is still VERIFIED —
+// attachment is reported as pending, never faked, and never fails the verify.
+async function vercelAttach(host: string): Promise<{ attached: boolean; vercel_domain_id: string | null; note?: string }> {
+  const token = Deno.env.get("VERCEL_API_TOKEN");
+  const projectId = Deno.env.get("VERCEL_PROJECT_ID");
+  if (!token || !projectId) {
+    return { attached: false, vercel_domain_id: null, note: "vercel_not_configured" };
+  }
+  const teamId = Deno.env.get("VERCEL_TEAM_ID");
+  const qs = teamId ? `?teamId=${encodeURIComponent(teamId)}` : "";
+  try {
+    const res = await fetch(`https://api.vercel.com/v10/projects/${projectId}/domains${qs}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: host }),
+    });
+    const j = await res.json().catch(() => ({}));
+    // 409 = already attached to this project → treat as success (idempotent).
+    if (res.ok || res.status === 409) {
+      return { attached: true, vercel_domain_id: (j?.uid || j?.id || host) as string };
+    }
+    console.error(`[manage-tenant-domain] vercel attach ${res.status} for ${host}: ${JSON.stringify(j).slice(0, 200)}`);
+    return { attached: false, vercel_domain_id: null, note: `vercel_${res.status}` };
+  } catch (e) {
+    console.error(`[manage-tenant-domain] vercel attach threw for ${host}: ${(e as Error).message}`);
+    return { attached: false, vercel_domain_id: null, note: "vercel_error" };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -115,6 +153,7 @@ Deno.serve(async (req) => {
   };
 
   try {
+    // ───────────────────────────── EMAIL sender domains (Resend) ─────────────────────────────
     if (verb === "list") {
       const { data } = await admin.from("tenant_email_domains").select("*").eq("tenant_id", tenantId).order("created_at");
       return json({ domains: data ?? [] });
@@ -214,6 +253,90 @@ Deno.serve(async (req) => {
       await writeDomainAudit("comms:sending_domain_removed", id, {
         domain: row.domain, was_default: row.is_default === true, status: row.status,
       });
+      return json({ ok: true });
+    }
+
+    // ───────────────────────────── WEBSITE custom domains (#178) ─────────────────────────────
+    if (verb === "web_list") {
+      const { data } = await admin.from("tenant_web_domains").select("*").eq("tenant_id", tenantId).order("created_at");
+      return json({ domains: data ?? [] });
+    }
+
+    if (verb === "web_add") {
+      // web_domain_claim is SECURITY DEFINER + JWT-derived tenant → call with the USER's client so
+      // it derives the tenant itself (owner fleet-targeting isn't supported for web claims by design).
+      const host = String(body.host || "").trim().toLowerCase();
+      if (!host) return json({ error: "host_required" }, 400);
+      const { data, error } = await userClient.rpc("web_domain_claim", { p_host: host });
+      if (error) return json({ error: error.message }, 400);
+      const token = data?.verification_token as string | undefined;
+      return json({
+        domain: data,
+        challenge: token
+          ? { type: "dns_txt", name: `_paige-verify.${data.host}`, value: `paige-verify=${token}` }
+          : null,
+      });
+    }
+
+    if (verb === "web_verify") {
+      const host = String(body.host || "").trim().toLowerCase();
+      if (!host) return json({ error: "host_required" }, 400);
+      // Read the tenant's DNS TXT challenge. Loud-log + fail closed on any lookup error (§32) —
+      // a resolver failure marks the row failed, never a false "verified".
+      let observed: string[] = [];
+      try {
+        const records = await Deno.resolveDns(`_paige-verify.${host}`, "TXT");
+        observed = records.flat().map((r) => r.trim())
+          .filter((r) => r.startsWith("paige-verify="))
+          .map((r) => r.slice("paige-verify=".length));
+      } catch (e) {
+        console.error(`[manage-tenant-domain] DNS TXT lookup failed for _paige-verify.${host}: ${(e as Error).message}`);
+      }
+      // Pass each OBSERVED token to the SECURITY DEFINER RPC (it compares to the stored token +
+      // re-derives the tenant from the JWT). First match → verified; none → the RPC marks failed.
+      let row: any = null;
+      const candidates = observed.length ? observed : [null];
+      for (const tok of candidates) {
+        const { data, error } = await userClient.rpc("web_domain_mark_verified", { p_host: host, p_observed_token: tok });
+        if (error) {
+          // 23505 = another tenant already verified this exact host (globally-unique verified host).
+          if ((error as any).code === "23505" || /uq_tenant_web_domains_verified_host/.test(error.message)) {
+            return json({ error: "host_claimed_by_other_workspace" }, 409);
+          }
+          return json({ error: error.message }, 400);
+        }
+        row = data;
+        if (row?.status === "verified") break;
+      }
+      // On genuine verification, attach to Vercel so the host resolves. Honest degrade if unconfigured.
+      let attach: Awaited<ReturnType<typeof vercelAttach>> | null = null;
+      if (row?.status === "verified") {
+        attach = await vercelAttach(host);
+        if (attach.attached && attach.vercel_domain_id) {
+          const { data: updated } = await userClient.from("tenant_web_domains")
+            .update({ vercel_domain_id: attach.vercel_domain_id }).eq("id", row.id).select().maybeSingle();
+          if (updated) row = updated;
+        }
+      }
+      return json({ domain: row, attach });
+    }
+
+    if (verb === "web_set_default") {
+      const id = String(body.id);
+      // RLS ("Tenant admins manage own web domains") scopes these writes to the caller's tenant.
+      const { data: target } = await userClient.from("tenant_web_domains")
+        .select("id,status").eq("id", id).maybeSingle();
+      if (!target) return json({ error: "not_found" }, 404);
+      if (target.status !== "verified") return json({ error: "not_verified" }, 400);
+      await userClient.from("tenant_web_domains").update({ is_default: false }).eq("tenant_id", tenantId);
+      await userClient.from("tenant_web_domains").update({ is_default: true }).eq("id", id);
+      return json({ ok: true });
+    }
+
+    if (verb === "web_remove") {
+      const id = String(body.id);
+      const { error } = await userClient.from("tenant_web_domains").delete().eq("id", id);
+      if (error) return json({ error: error.message }, 400);
       return json({ ok: true });
     }
 

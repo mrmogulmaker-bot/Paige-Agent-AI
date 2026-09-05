@@ -1716,7 +1716,10 @@ export function StudioShell({
         ...s,
         publishing: false,
         status: "published",
-        publishedUrl: result.url,
+        // #178 — show the ONE canonical absolute URL (verified custom domain if the tenant has
+        // one, else the Paige subdomain). Resolved fresh at publish, so a later custom-domain
+        // verification flips this with no republish. Never client-concatenated (§13/§18).
+        publishedUrl: result.canonicalUrl,
         dirty: false,
         error: null,
       }));

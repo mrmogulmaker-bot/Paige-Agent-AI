@@ -1,7 +1,11 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   computeHostRedirect,
   computeTenantHostRedirect,
+  RESERVED_TENANT_SUBDOMAINS,
   tenantSlugFromHostname,
 } from "./hostRouting";
 
@@ -57,5 +61,35 @@ describe("tenant wildcard host routing", () => {
     expect(computeHostRedirect("acme.paigeagent.ai", "/", "", "")).toBe("/portal/acme");
     expect(computeHostRedirect("acme.paigeagent.ai", "/admin", "", "")).toBe("/portal/acme");
     expect(computeHostRedirect("paigeagent.ai", "/admin", "", "")).toBeNull();
+  });
+});
+
+// #178 publishing spine — the SQL resolver `resolve_tenant_web_host` re-implements the
+// reserved-label exclusion server-side. If the two lists drift, a slug rejected in one
+// layer resolves in the other (the exact operator/dashboard/setup bug this fixes). This
+// guard fails the moment they diverge, so a future edit to either must touch both.
+describe("reserved-subdomain parity: hostRouting.ts <-> SQL resolve_tenant_web_host", () => {
+  it("the newest SQL definition's reserved array equals RESERVED_TENANT_SUBDOMAINS", () => {
+    const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "../../supabase/migrations");
+    // The canonical definition is in the NEWEST migration that (re)defines the resolver.
+    const defining = readdirSync(migrationsDir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .filter((f) =>
+        readFileSync(join(migrationsDir, f), "utf8").includes(
+          "FUNCTION public.resolve_tenant_web_host",
+        ),
+      );
+    expect(defining.length).toBeGreaterThan(0);
+    const sql = readFileSync(join(migrationsDir, defining[defining.length - 1]), "utf8");
+
+    // Extract the reserved-label ARRAY[...] literal used in the `c.slug <> ALL (ARRAY[...])` clause.
+    const match = sql.match(/c\.slug\s*<>\s*ALL\s*\(ARRAY\[([\s\S]*?)\]\)/);
+    expect(match, "resolve_tenant_web_host must exclude reserved slugs via ARRAY[...]").toBeTruthy();
+    const sqlReserved = new Set(
+      (match![1].match(/'([^']+)'/g) ?? []).map((s) => s.slice(1, -1)),
+    );
+
+    expect([...sqlReserved].sort()).toEqual([...RESERVED_TENANT_SUBDOMAINS].sort());
   });
 });

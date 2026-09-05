@@ -1189,8 +1189,16 @@ export interface PublishPageResult {
   tenantSlug: string;
   status: string;
   publishedAt: string | null;
-  /** The REAL URL the server resolved. Never concatenated on the client (§13). */
+  /** The REAL relative path the server resolved. Never concatenated on the client (§13). */
   url: string;
+  /** #178 — the ONE canonical absolute URL from resolve_publish_target: the tenant's verified
+   *  custom domain if they have one, else <slug>.paigeagent.ai. Resolved at read time, so a
+   *  later custom-domain verification changes this with no republish. */
+  canonicalUrl: string;
+  /** The host the canonical URL points at (custom domain or the Paige subdomain). */
+  host: string | null;
+  /** True when a verified custom domain is winning. */
+  isCustomDomain: boolean;
 }
 
 interface PublishRpcRow {
@@ -1200,6 +1208,59 @@ interface PublishRpcRow {
   status: string;
   published_at: string | null;
   url: string;
+}
+
+// #178 — the ONE publishing resolver, called from the client AFTER a publish/save so every
+// artifact type surfaces the same canonical URL. Additive: it does NOT change any publish RPC's
+// contract (§37) — the RPCs still return their relative `url`; this resolves the host on top.
+export type PublishArtifactType = "page" | "funnel" | "form" | "image";
+
+export interface PublishTarget {
+  tenantSlug: string;
+  host: string | null;
+  path: string;
+  canonicalUrl: string;
+  isCustomDomain: boolean;
+  isExternalAsset: boolean;
+}
+
+interface PublishTargetRow {
+  tenant_slug: string;
+  host: string | null;
+  path: string;
+  canonical_url: string;
+  is_custom_domain: boolean;
+  is_external_asset: boolean;
+}
+
+/**
+ * Resolve the canonical public URL for an artifact through the one spine (resolve_publish_target).
+ * Tenant is SERVER-DERIVED from the caller's JWT — never passed from the client (§9). Returns null
+ * only if the resolver is unreachable; callers keep the RPC's own relative `url` as a fallback (§13).
+ */
+export async function resolvePublishTarget(
+  type: PublishArtifactType,
+  ref: string,
+): Promise<PublishTarget | null> {
+  try {
+    const rows = await rpc<PublishTargetRow[] | null>(
+      "resolve_publish_target",
+      { p_artifact_type: type, p_artifact_ref: ref },
+      "PUBLISH_FAILED",
+    );
+    const r = Array.isArray(rows) ? rows[0] : (rows as unknown as PublishTargetRow | null);
+    if (!r?.canonical_url) return null;
+    return {
+      tenantSlug: r.tenant_slug,
+      host: r.host,
+      path: r.path,
+      canonicalUrl: r.canonical_url,
+      isCustomDomain: !!r.is_custom_domain,
+      isExternalAsset: !!r.is_external_asset,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -1225,6 +1286,9 @@ export async function publishPage(input: PublishPageInput): Promise<PublishPageR
   );
 
   if (!row?.url) throw studioError("PUBLISH_FAILED", row);
+  // #178 — resolve the canonical host on top of the RPC's relative path. If the resolver is
+  // unreachable, fall back to the RPC's own relative url (§13) so publish never breaks on it.
+  const target = await resolvePublishTarget("page", row.slug);
   return {
     id: row.id,
     slug: row.slug,
@@ -1232,6 +1296,9 @@ export async function publishPage(input: PublishPageInput): Promise<PublishPageR
     status: row.status,
     publishedAt: row.published_at ?? null,
     url: row.url,
+    canonicalUrl: target?.canonicalUrl ?? row.url,
+    host: target?.host ?? null,
+    isCustomDomain: target?.isCustomDomain ?? false,
   };
 }
 
@@ -1923,7 +1990,9 @@ export async function saveFunnel(input: SaveFunnelInput): Promise<SavedFunnel> {
 /** Go live — growth_funnel_publish is the ONLY path to status='active'; it enforces the
  *  lead-capture guards (pages published, forms active) so a live funnel never renders a
  *  blank or dead step. Never flip the status column directly. */
-export async function publishFunnel(input: { tenantId: string; id: string }): Promise<{ url: string | null }> {
+export async function publishFunnel(
+  input: { tenantId: string; id: string },
+): Promise<{ url: string | null; canonicalUrl: string | null; host: string | null; isCustomDomain: boolean }> {
   requireTenant(input.tenantId);
   if (!input.id) throw studioError("NO_DRAFT");
   const row = await rpc<{ url?: string } | null>(
@@ -1931,7 +2000,16 @@ export async function publishFunnel(input: { tenantId: string; id: string }): Pr
     { p_tenant_id: null, p_id: input.id },
     "PUBLISH_FAILED",
   );
-  return { url: row?.url ?? null };
+  const relUrl = row?.url ?? null;
+  // #178 — the RPC returns the relative /f/<tenant>/<slug>; the last segment is the funnel slug.
+  const slug = relUrl ? relUrl.split("/").filter(Boolean).pop() ?? null : null;
+  const target = slug ? await resolvePublishTarget("funnel", slug) : null;
+  return {
+    url: relUrl,
+    canonicalUrl: target?.canonicalUrl ?? relUrl,
+    host: target?.host ?? null,
+    isCustomDomain: target?.isCustomDomain ?? false,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
