@@ -8885,7 +8885,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             .eq("user_id", user.id);
           const roles = (roleRows || []).map((r: any) => r.role);
           // n8n has its own exact owner/session/tenant lease check; global CRM roles are unrelated.
-          const allowed = N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) || roles.includes("admin") || roles.includes("coach");
+          //
+          // `super_admin` is admitted so a verified God-tier operator can manage a tenant's CRM/
+          // Communications while acting inside that tenant (operator_enter_tenant → the tools then
+          // resolve that tenant via current_user_tenant_id()); at rest, tenant-less, the read tools
+          // still answer `tenant_not_resolved`, which is correct. This is the frozen super_admin-only
+          // grant (§53) — NOT `is_platform_operator()`, which would also admit `platform_admin`; the
+          // role string here is the same one `is_platform_owner()`/`is_super_admin()` gate on, and
+          // `platform_admin` is a DISTINCT string that stays denied. Server-derived from the JWT
+          // (user.id) — a caller-supplied role can never reach this array.
+          const allowed = N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) || roles.includes("admin") || roles.includes("coach") || roles.includes("super_admin");
           if (!allowed) {
             toolResults.push({
               tool_call_id: tc.id,
@@ -9126,6 +9135,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // DIRECT table read here (`comms_list_numbers`) does not get that for free and is
             // filtered explicitly — see the note on that branch (§9/§18).
             if (tc.function.name === "comms_connection_summary") {
+              // A tenant-less operator (a super_admin at rest, before entering a workspace via
+              // operator_enter_tenant) has no tenant to read. `tenant_comms_readiness()` would then
+              // RAISE `COMMS_READINESS_NO_TENANT`, and because a PostgREST error is a plain object the
+              // shared catch below reports it as an opaque "Unknown error" — NOT the `tenant_not_resolved`
+              // these reads promise at rest. Answer that plainly here, the same guard
+              // `comms_list_numbers` uses. (§13 — the surfaced state must be the true one.)
+              if (!crmTenantId) {
+                toolResults.push({
+                  tool_call_id: tc.id,
+                  role: "tool",
+                  content: JSON.stringify({ success: false, error: "tenant_not_resolved" }),
+                });
+                continue;
+              }
               // Point 3 of the owner's brief: a tenant-scoped, SAFE capability summary.
               //
               // Safe is a construction here, not an intention. It reads two seams that hold no
@@ -9297,6 +9320,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (e) throw e;
               result = { success: true, number: d };
             } else if (tc.function.name === "comms_registration_status") {
+              // Same at-rest guard as comms_connection_summary / comms_list_numbers: a tenant-less
+              // operator gets the documented `tenant_not_resolved`, never an opaque "Unknown error"
+              // from the `tenant_comms_readiness()` RAISE. (§13)
+              if (!crmTenantId) {
+                toolResults.push({
+                  tool_call_id: tc.id,
+                  role: "tool",
+                  content: JSON.stringify({ success: false, error: "tenant_not_resolved" }),
+                });
+                continue;
+              }
               const { data: d, error: e } = await supabaseClient.rpc("tenant_comms_readiness");
               if (e) throw e;
               const r = (d ?? {}) as Record<string, unknown>;

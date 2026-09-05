@@ -1,5 +1,39 @@
 # Decision Log — chronological one-liners
 
+- **Communications closeout, Slice B — a verified Super Admin can reach the platform Communications
+  tools (2026-09-05, no migration, edge-only)** — the `paige-ai-chat` role gate that guards the eight
+  `comms_*` tools (and the CRM operator tools) was `admin || coach`; a God-tier `super_admin` is
+  neither, so every comms tool refused "restricted to admins and coaches" (the KNOWN GAP flagged on
+  #947). Fix is one additive disjunct: `|| roles.includes("super_admin")`. Admits super_admin ONLY —
+  NOT `platform_admin` (distinct role string) — the frozen super_admin grant (§53); deliberately not
+  `is_platform_operator()`, which would widen. Coherence: a super_admin is tenant-less at rest, so
+  the tools are usable only while **acting inside a tenant** (the existing `operator_enter_tenant`
+  act-as seam resolves `current_user_tenant_id()`); at rest the reads correctly say
+  `tenant_not_resolved`. Authority is server-derived from the JWT — a caller-supplied role/tenant
+  can't reach the gate. **Proven** by 9 executed per-role assertions against the REAL handler
+  (`scripts/client-memory-authz/check.mjs` §25, in CI): super_admin admitted; platform_admin/member/
+  client/no-role denied; admin/coach unchanged; denial precedes the provider invoke; body-supplied
+  `role:'super_admin'`/`isAdmin` ignored. tsc 13→13, deno identical to base, 3399 vitest. **Parked
+  (separate defect, exact evidence):** `NumbersTab.tsx` (legacy `/admin/comms`) holds local
+  `owned`/`results`/`buying` with no `activeTenantId`-keyed reset, so an act-as switch without remount
+  renders the prior tenant's numbers (RLS still protects the data; leak is stale render). Not on the
+  primary comms-management path; frontend-lifecycle fix. **§39 peer-gate: SHIP** (independent read of
+  `19d85469..7fca5b16`, 8 hunts) — widening exact-match-clean (`platform_admin` stays denied), §9
+  act-as scope clean, tenant-less operator fails closed, the test proven non-vacuous (revert the
+  disjunct in-memory → exactly the failing-first case fails), §51/§37/§58 clean. One non-blocking
+  doc NOTE it raised was closed in the SAME PR: the tier-matrix God row's Rail cell + honest-gap
+  paragraph were tightened to name the pure-operator (`operator_enter_tenant`, no member seat)
+  case whose `capability_run` row is silently dropped — the act happens, only the record is lost.
+  **Codex (repo's automated reviewer) then caught a real P2 the peer-gate's security lens missed
+  (§39 — layered, none sufficient alone):** the newly-admitted tenant-less super_admin hitting
+  `comms_connection_summary`/`comms_registration_status` got an opaque "Unknown error", not the
+  documented `tenant_not_resolved` — `tenant_comms_readiness()` RAISEs `COMMS_READINESS_NO_TENANT`
+  and a PostgREST error is a plain object the shared catch can't stringify. Fixed with the same
+  `!crmTenantId` at-rest guard `comms_list_numbers` already uses, on both read tools; failing-first
+  §25.10/§25.11 (without the guard exactly those two fail; with it 265/0). Not a security change —
+  it fails closed either way; a §13/§36 honesty/state-label fix that makes the reads' documented
+  at-rest behavior true.
+
 - **Flow-by-Flow governs EVERY phase of the PAIGE-at-Cowork-Level program (owner-ruled 2026-09-05, LOCKED)**
   — owner directive, verbatim: *"I need to make sure that there's a mandatory rule in place that you use the
   flow-by-flow skills throughout every phase of this process."* Binding: every phase of that program —

@@ -379,7 +379,7 @@ re-proved 2026-09-05: a non-member actor raises `CAPABILITY_RUN_FORBIDDEN`).
 
 | Tier | Can trigger a comms `capability_run` row | Sees it on the Solo Rail |
 |---|---|---|
-| **God / Super Admin** | **—** and this is a KNOWN GAP, not a decision: the four comms tools' role gate is `roles.includes('admin') \|\| roles.includes('coach')` with **no `is_platform_owner()` branch**, so an operator cannot reach the tools at all. Owner-routed to its own PR | ✓ when acting inside a tenant |
+| **God / Super Admin** | ✓ **when acting inside a tenant** (operator_enter_tenant) — the role gate now admits `super_admin` (Slice B, 2026-09-05); at rest, tenant-less, the read tools answer `tenant_not_resolved`. Admits super_admin ONLY, NOT platform_admin (a distinct role string) — frozen super_admin grant, §53 | ✓ **when acting inside a tenant they hold a `tenant_members` seat in**; a pure operator act-as (`operator_enter_tenant`, no member seat) still drives the act but its Rail row is silently dropped — see the honest gap below |
 | **Agency** (agency-as-tenant) | ✓ admin/coach of the active workspace | ✓ |
 | **Standalone Solo** | ✓ same gate | ✓ |
 | **Sub-account** | ✓ same gate, its own tenant only | ✓ its own only |
@@ -388,11 +388,12 @@ re-proved 2026-09-05: a non-member actor raises `CAPABILITY_RUN_FORBIDDEN`).
 
 **One honest gap in the recorder itself (§39 peer-gate, 2026-09-05).** Each row above is the caller
 acting on a workspace they are an active **member** of. A cross-tenant *manager* — an agency owner
-reaching DOWN into a child via `agency_can_manage_child`, or a `platform_admin` who also holds a
-global `admin` role — can drive these tools (the role gate is global) and the seam acts on the
-child, but `record_capability_run` requires the ACTOR to hold an active `tenant_members` seat in
-that child and raises `CAPABILITY_RUN_FORBIDDEN` otherwise, so **the row is silently dropped** (the
-act still happens; only the record is lost). This is inherited unchanged from the merged SCR-1 and
+reaching DOWN into a child via `agency_can_manage_child`, a `platform_admin` who also holds a
+global `admin` role, or (as of Slice B, 2026-09-05) a `super_admin` act-as'd into a tenant via
+`operator_enter_tenant` without a member seat — can drive these tools (the role gate is global) and
+the seam acts on the child, but `record_capability_run` requires the ACTOR to hold an active
+`tenant_members` seat in that child and raises `CAPABILITY_RUN_FORBIDDEN` otherwise, so **the row is
+silently dropped** (the act still happens; only the record is lost). This is inherited unchanged from the merged SCR-1 and
 is identical for the n8n and Zapier executors — the recorder's member-seat gate is narrower than the
 `current_user_tenant_id()` authority the seams themselves honour. It is **latent** for comms
 (agency-managing-a-child through the comms tools; zero such prod rows today) and pre-launch.

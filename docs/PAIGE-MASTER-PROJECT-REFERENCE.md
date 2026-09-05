@@ -323,6 +323,13 @@ cannot crash the turn.
    decision (§38), not a code fix to make unilaterally.
 2. **God/super_admin cannot reach the four comms tools at all** — the role gate is
    `admin || coach` with no `is_platform_owner()` branch. Owner-routed to its own PR.
+   **RESOLVED 2026-09-05 (Communications closeout, Slice B):** the role gate now admits
+   `super_admin` (`roles.includes("super_admin")`), so a verified God-tier operator can manage a
+   tenant's Communications while acting inside that tenant (`operator_enter_tenant`). Admits
+   super_admin ONLY — NOT `platform_admin` (a distinct role string) — the frozen super_admin grant
+   (§53). Proven by 9 executed per-role assertions against the real handler
+   (`scripts/client-memory-authz/check.mjs` §25), incl. denial-before-provider and
+   caller-supplied-role-ignored.
 
 ### PAIGE Spine — `team.authority`, and both readiness reads bound to their workspace (2026-09-03)
 
