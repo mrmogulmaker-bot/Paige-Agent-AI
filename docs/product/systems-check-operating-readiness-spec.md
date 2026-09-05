@@ -186,6 +186,36 @@ That is an unfabricated `PROOF OWED`. It is also **platform state, and a Solo wo
 learn it** (§9) — the tenant surface may say only that something is further limited by platform
 policy, without disclosing the platform's posture, ceiling, attestation or the reason.
 
+### 4.4a A NINTH WORD IS ALREADY RENDERING — `NOT CHECKED`, disclosed rather than quietly kept
+
+**Shipped code renders a word this section says may never render.** `SoloSystemsCheckWorkspace.tsx:692`
+falls back to **`Not checked`** for any operating area whose `coveredBy` list is empty — today that is
+*Paige's team and delegated work*, *Business knowledge — the Mind*, and *Security, permissions and
+governance*, all three visible on the live Solo surface.
+
+That is a direct contradiction of this section's own "nothing outside this list may render, ever", and
+it is recorded here rather than left for someone to discover, because a spec that disagrees with the
+code it governs is worse than no spec (§13 · §66).
+
+**Why none of the eight was used.** The closed set has no term for *no check exists for this area at
+all*, which is a different fact from every word it does carry:
+
+- `UNAVAILABLE` is the near miss and is still wrong. By §4.2's own gloss it means a source was
+  consulted and could not answer. Here nothing was consulted, because nothing is wired to consult.
+- `NOT CONNECTED` asserts a connection that is absent. These areas are not connections.
+- `PROOF OWED` implies a proof is pending. Nothing is pending; no check has been written.
+- `NEEDS ATTENTION` is a claim that something is wrong. Nothing is known to be wrong, and saying so
+  would be the exact fabrication §13 forbids — an absent check is never evidence of a fault.
+
+**The distinction is load-bearing, not pedantic.** "We looked and could not tell" and "we have never
+looked" are different promises to the owner, and only one of them implies a defect somewhere. Collapsing
+them would make the surface less truthful, which is why the ninth word was used.
+
+**The decision is the owner's**, in the same shape as §4.2: either ratify `NOT CHECKED` as a ninth
+member of the closed set, or rule that one of the eight absorbs it and accept the implication that word
+carries. Until then the surface renders the truthful word and this section records that it is outside
+the ruled set.
+
 ### 4.4 Two data defects found while grounding the vocabulary
 
 **`automation_wired` is filed under `domain = 'payments_ops'`** (`20260816000000_systems_check_layer1.sql:270`,
