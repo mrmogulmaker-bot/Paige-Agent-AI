@@ -6,6 +6,7 @@ import { useN8nConnection, readN8nReadiness, type N8nConnection } from "./data/u
 import { useN8nOAuth, n8nMcpStateWords, type N8nReadiness } from "./data/useN8nOAuth";
 import { useMcpConnection } from "./data/useMcpConnection";
 import { useMcpCapabilities } from "./data/useMcpCapabilities";
+import { useZapierApi, readZapierApi, zapierApiWords, type ZapierApiReadiness } from "./data/useZapierApi";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate, type SettingsTruth } from "./settings-contract";
@@ -31,6 +32,8 @@ type IntegrationReadState = {
   error: boolean;
   /** The shipped n8n API-key connection. Separate from n8n's MCP endpoint. */
   n8n: N8nConnection | null;
+  zapierApi: ZapierApiReadiness | null;
+  zapierApiError: boolean;
   /**
    * MCP connections keyed by provider. The registry is provider-scoped: one
    * workspace may hold an n8n MCP endpoint AND a Zapier one at the same time,
@@ -105,26 +108,34 @@ function useIntegrationStatus() {
   const gate = useRef(createSettingsRequestGate());
   const identity = useRef(scopeKey); identity.current = scopeKey;
   const mounted = useRef(false);
-  const [state, setState] = useState<IntegrationReadState>({ scopeKey: null, tenantId: null, loading: true, error: false, apiError: false, mcpError: false, n8n: null, mcp: {} });
+  const [state, setState] = useState<IntegrationReadState>({ scopeKey: null, tenantId: null, loading: true, error: false, apiError: false, mcpError: false, n8n: null, zapierApi:null, zapierApiError:false, mcp: {} });
   const load = useCallback(async () => {
     if (!mounted.current || identity.current !== scopeKey || tenantLoading) return;
     const token = gate.current.begin();
-    setState({ scopeKey: null, tenantId: null, loading: true, error: false, apiError: false, mcpError: false, n8n: null, mcp: {} });
-    if (!activeTenantId) { setState({ scopeKey, tenantId: null, loading: false, error: false, apiError: true, mcpError: true, n8n: null, mcp: {} }); return; }
+    setState({ scopeKey: null, tenantId: null, loading: true, error: false, apiError: false, mcpError: false, n8n: null, zapierApi:null, zapierApiError:false, mcp: {} });
+    if (!activeTenantId) { setState({ scopeKey, tenantId: null, loading: false, error: false, apiError: true, mcpError: true, n8n: null, zapierApi:null, zapierApiError:true, mcp: {} }); return; }
     const results = await Promise.allSettled([
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).rpc("get_tenant_n8n_api_readiness"),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).rpc("get_tenant_mcp_connections"),
+      // Some isolated catalogue harnesses intentionally provide an RPC-only client.
+      // Treat a missing function transport as an unavailable Zapier status, never as an
+      // unhandled render failure; the production client always supplies this transport.
+      supabase.functions?.invoke
+        ? supabase.functions.invoke("tenant-zapier-api-connect", { body: { action: "status", expected_tenant_id: activeTenantId } })
+        : Promise.resolve({ data: null, error: { message: "transport_unavailable" } }),
     ]);
     if (!gate.current.isCurrent(token) || identity.current !== scopeKey || !mounted.current) return;
     const api = results[0].status === "fulfilled" ? results[0].value : null;
     const mcp = results[1].status === "fulfilled" ? results[1].value : null;
+    const zapier = results[2].status === "fulfilled" ? results[2].value : null;
     const apiConnection = api && !api.error ? readN8nReadiness(api.data, activeTenantId) : null;
     const apiError = !apiConnection;
     const mcpError = !mcp || !!mcp.error || !mcp.data || typeof mcp.data !== "object" || Array.isArray(mcp.data);
-    setState({ scopeKey, tenantId: activeTenantId, loading: false, error: apiError || mcpError, apiError, mcpError,
-      n8n: apiConnection, mcp: mcpError ? {} : sanitizeMcpByProvider(mcp.data) });
+    const zapierApi=zapier&&!zapier.error?readZapierApi(zapier.data?.connection,activeTenantId):null;const zapierApiError=!zapierApi;
+    setState({ scopeKey, tenantId: activeTenantId, loading: false, error: apiError || mcpError || zapierApiError, apiError, mcpError,zapierApiError,
+      n8n: apiConnection,zapierApi, mcp: mcpError ? {} : sanitizeMcpByProvider(mcp.data) });
   }, [activeTenantId, scopeKey, tenantLoading]);
   useEffect(() => { const activeGate = gate.current; mounted.current = true; if (!tenantLoading) void load(); return () => { mounted.current = false; activeGate.clear(); }; }, [load, tenantLoading]);
   return { ...state, loading: tenantLoading || state.loading || state.scopeKey !== scopeKey, retry: load };
@@ -155,7 +166,7 @@ const PROVIDERS: ReadonlyArray<ProviderRow> = [
   // The Zapier slot. It can only ever hold Zapier: the setter writes that provider and
   // that endpoint, and the registry's CHECK refuses a Zapier row that is not OAuth. So
   // the card is named for what it is rather than for the protocol underneath it.
-  { id: "mcp", name: "Zapier", kind: "MCP connection", filter: "developer", connectable: true,
+  { id: "mcp", name: "Zapier", kind: "Automation", filter: "automation", connectable: true,
     note: "" },
   { id: "quickbooks", name: "QuickBooks", kind: "Financial tools", filter: "financial", connectable: false,
     note: "The sync seams exist, but nothing yet proves a connection belongs to this workspace, so no setup is offered." },
@@ -235,7 +246,7 @@ function safeCheckDate(value: string) {
    Paige may do everything on it. Nothing is approved until somebody says so
    here, and until then every call is refused. */
 
-function CapabilityApproval({ provider }: { provider: "n8n" | "zapier" }) {
+function CapabilityApproval({ provider, onChanged }: { provider: "n8n" | "zapier"; onChanged?: () => void }) {
   const { activeTenantId } = useTenantContext();
   const caps = useMcpCapabilities(provider);
   const [chosen, setChosen] = useState<string[] | null>(null);
@@ -257,7 +268,7 @@ function CapabilityApproval({ provider }: { provider: "n8n" | "zapier" }) {
   const toggle = (name: string) =>
     setChosen(selection.includes(name) ? selection.filter((n) => n !== name) : [...selection, name]);
 
-  return <div className="ig-caps">
+  return <div className="ig-caps ig-capability-approval">
     <h4>What Paige may run</h4>
 
     {caps.tools === null && !caps.loading && <>
@@ -289,6 +300,8 @@ function CapabilityApproval({ provider }: { provider: "n8n" | "zapier" }) {
                   travels on the path that reaches a model, where provider prose is an
                   instruction surface rather than a description. */}
               {tool.description && <span className="ig-cap-desc">{tool.description}</span>}
+              {provider === "zapier" && <span className="ig-cap-meta">App: {tool.connectedApp || "Not reported by Zapier"} · Action: {tool.actionType || "Not reported"} · Authority: Ask first</span>}
+              {provider === "zapier" && <span className="ig-cap-meta">Effects: {tool.effects.length ? tool.effects.join(", ") : "read/create/update/send/delete not reported — treat as a write"}</span>}
             </button>
           </li>;
         })}
@@ -299,7 +312,7 @@ function CapabilityApproval({ provider }: { provider: "n8n" | "zapier" }) {
       </p>
       <div className="ig-actions">
         <button type="button" className="ig-btn" data-primary disabled={!dirty || caps.saving}
-          onClick={() => void caps.approve(selection).then((ok) => { if (ok) setChosen(null); })}>
+          onClick={() => void caps.approve(selection).then((ok) => { if (ok) { setChosen(null); onChanged?.(); } })}>
           {caps.saving ? "Saving…" : `Approve ${selection.length} of ${caps.tools.length}`}
         </button>
         {dirty && <button type="button" className="ig-btn" onClick={() => setChosen(null)} disabled={caps.saving}>Cancel</button>}
@@ -308,157 +321,83 @@ function CapabilityApproval({ provider }: { provider: "n8n" | "zapier" }) {
   </div>;
 }
 
-/* ── Zapier: connected by consent, never by a pasted credential ────────────
-   Zapier runs an authorization server, so a workspace grants access instead of
-   handing over a key. There is no form here on purpose: nothing this surface
-   could collect would be a credential worth having, and asking for one would
-   invite somebody to paste a long-lived token that cannot be rotated. */
+function ZapierApiPanel({ api, onChanged }: { api: ReturnType<typeof useZapierApi>; onChanged: () => void }) {
+  const[confirming,setConfirming]=useState(false);
+  const begin=async()=>{const url=await api.begin();if(url)window.location.assign(url);};
+  if(api.loading)return <p className="ig-state" role="status">Checking the Zapier API connection…</p>;
+  if(api.error)return <div className="ig-state" role="alert"><span>{api.message}</span><button className="ig-btn" onClick={()=>void api.reload()}>Try again</button></div>;
+  return <><p className="ig-lede">Connect the workspace’s Zapier account for provider-supported, read-only workflow visibility.</p>
+   <dl className="ig-facts"><div><dt>API connection</dt><dd>{zapierApiWords(api.state)}</dd></div><div><dt>Accessible workflows</dt><dd>{api.state==="connected"&&api.accessibleZapCount!==null?api.accessibleZapCount:"Unavailable until a complete check succeeds"}</dd></div><div><dt>Authority</dt><dd>Read workflows and run a safe connection check</dd></div>{api.lastCheckedAt&&<div><dt>Last check</dt><dd>{safeCheckDate(api.lastCheckedAt)}</dd></div>}</dl>
+   <p className="ig-note">This connection does not list workflow contents here and cannot edit, activate, deactivate, archive, delete, or run Zaps. PAIGE tools are authorized separately.</p>
+   {api.message&&<p className="ig-error" role="alert">{api.message}</p>}
+   {!api.canManage?<p className="ig-note">Only the workspace owner can authorize or remove this API connection.</p>:<div className="ig-actions">
+    <button type="button" className="ig-btn" data-primary disabled={api.busy||api.state==="capability_unavailable"} onClick={()=>void begin()}><KeyRound aria-hidden size={14}/>{api.state==="capability_unavailable"?"Provider authorization unavailable":api.busy?"Opening Zapier…":api.state==="not_connected"?"Connect API":"Reconnect API"}</button>
+    {api.hasPendingAuthorization&&<button type="button" className="ig-btn" disabled={api.busy} onClick={()=>void api.cancel().then(onChanged)}>Cancel authorization</button>}
+    {api.hasLocalConnection&&!api.hasPendingAuthorization&&api.state!=="capability_unavailable"&&<button type="button" className="ig-btn" disabled={api.busy} onClick={()=>void api.test().then(onChanged)}><RefreshCw aria-hidden size={14}/>Run safe connection test</button>}
+    {api.hasLocalConnection&&(confirming?<span className="ig-confirm"><button type="button" className="ig-btn" data-danger disabled={api.busy} onClick={()=>{setConfirming(false);void api.disconnect().then(onChanged);}}>Disconnect API</button><button type="button" className="ig-btn" onClick={()=>setConfirming(false)}>Keep it</button></span>:<button type="button" className="ig-btn" onClick={()=>setConfirming(true)}>Disconnect API</button>)}
+   </div>}</>;
+}
 
-function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
-  const { activeTenantId } = useTenantContext();
-  const m = useMcpConnection("zapier");
-  const [starting, setStarting] = useState(false);
-  const [startError, setStartError] = useState<string | null>(null);
-  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
-  const [serverUrl, setServerUrl] = useState("");
-  const [label, setLabel] = useState("");
+function ZapierMcpPanel({ m, onChanged }: { m: ReturnType<typeof useMcpConnection>; onChanged: () => void }) {
+ const{activeTenantId}=useTenantContext();const[serverUrl,setServerUrl]=useState("");const[starting,setStarting]=useState(false);const[message,setMessage]=useState<string|null>(null);const[confirming,setConfirming]=useState(false);const[editing,setEditing]=useState(false);
+ const begin=async()=>{setStarting(true);setMessage(null);const{data,error}=await supabase.functions.invoke("tenant-mcp-connect",{body:{provider:"zapier",action:"oauth_begin",server_url:serverUrl.trim(),expected_tenant_id:activeTenantId}});const url=data?.authorize_url;setServerUrl("");if(error||typeof url!=="string"){setStarting(false);setMessage("Zapier did not offer a compatible authorization flow for that MCP server. Confirm the server address and try again.");return;}window.location.assign(url);};
+ if(m.loading)return <p className="ig-state" role="status">Checking PAIGE tools access…</p>;
+ if(m.error)return <div className="ig-state" role="alert"><span>The PAIGE tools connection could not be read, so no state is being claimed.</span><button className="ig-btn" onClick={()=>void m.reload()}>Try again</button></div>;
+ const oauth=m.authKind==="oauth";
+ return <><p className="ig-lede">Connect PAIGE to the narrow Zapier MCP server and app actions you approve.</p><dl className="ig-facts"><div><dt>PAIGE tools (MCP)</dt><dd>{mcpStateWords(m.status)}</dd></div><div><dt>Authorization</dt><dd>{oauth?"Granted through Zapier OAuth":m.configured?"Legacy connection — reconnect with OAuth":"Not authorized"}</dd></div><div><dt>Approved tools</dt><dd>{m.approvedToolCount??"Unavailable"}</dd></div><div><dt>Last health check</dt><dd>{m.lastProbedAt?safeCheckDate(m.lastProbedAt):"No successful check yet"}</dd></div></dl>
+  <p className="ig-note">Create a Zapier MCP server, add only the app actions this workspace needs, then paste its HTTPS server address to begin Zapier’s authorization. The address is cleared immediately and credentials are never shown.</p>
+  {m.canWrite&&(!m.configured||editing)&&<form className="ig-form" onSubmit={e=>{e.preventDefault();void begin();}}><label className="ig-field"><span>Zapier MCP server address</span><input type="url" required autoComplete="off" spellCheck={false} placeholder="https://mcp.zapier.com/api/mcp/s/…" value={serverUrl} onChange={e=>setServerUrl(e.target.value)} disabled={starting||m.saving}/><small>From the MCP server you created at Zapier. Connecting does not approve every action.</small></label><div className="ig-actions"><button type="submit" className="ig-btn" data-primary disabled={starting||m.saving||!serverUrl.startsWith("https://mcp.zapier.com/api/mcp/")}>{starting?"Opening Zapier…":oauth?"Reconnect OAuth":"Connect PAIGE tools with OAuth"}</button>{m.configured&&<button type="button" className="ig-btn" onClick={()=>{setServerUrl("");setEditing(false);}}>Cancel</button>}</div></form>}
+  {oauth&&m.status==="connected"&&m.canWrite&&<CapabilityApproval provider="zapier" onChanged={onChanged}/>}
+  {(message||m.writeError)&&<p className="ig-error" role="alert">{message??m.writeError}</p>}
+  {!m.canWrite?<p className="ig-note">Only a workspace admin can change PAIGE tools access.</p>:m.configured&&<div className="ig-actions"><button type="button" className="ig-btn" data-primary disabled={m.saving||starting} onClick={()=>setEditing(true)}>Reconnect authorization</button><button type="button" className="ig-btn" disabled={m.saving} onClick={()=>void m.verify().then(onChanged)}>Check it again</button>{confirming?<span className="ig-confirm"><button type="button" className="ig-btn" data-danger disabled={m.saving} onClick={()=>{setConfirming(false);void m.disconnect().then(onChanged);}}>Disconnect</button><button type="button" className="ig-btn" onClick={()=>setConfirming(false)}>Keep it</button></span>:<button type="button" className="ig-btn" onClick={()=>setConfirming(true)}><Link2Off aria-hidden size={14}/>Disconnect</button>}</div>}
+ </>;
+}
 
-  // The address is cleared on save whether or not the probe succeeded: it has been stored
-  // either way, and leaving a secret-bearing URL sitting in a field after it is no longer
-  // needed is one more place for it to be seen or captured.
-  const save = useCallback(async () => {
-    const ok = await m.connectByUrl(serverUrl, label);
-    setServerUrl("");
-    onChanged();
-    return ok;
-  }, [m, serverUrl, label, onChanged]);
+// `epoch` advances on every mutation in this drawer. Without it the effect depended only on
+// activeTenantId, so a test, disconnect, verify or approval change wrote a new Rail row and
+// this list kept showing the history from before the action until the drawer was reopened.
+function ZapierRecentActivity({epoch}:{epoch:number}){const{activeTenantId}=useTenantContext();const[rows,setRows]=useState<Array<{id:string;title:string;summary:string;occurred_at:string}>|null>(null);const[failed,setFailed]=useState(false);
+ useEffect(()=>{let live=true;setRows(null);setFailed(false);if(!activeTenantId)return()=>{live=false;};void (async()=>{
+  // Generated types follow production migrations and do not include this additive RPC yet.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const{data,error}=await (supabase as any).rpc("get_zapier_rail_activity",{p_limit:5});if(!live)return;if(error||!Array.isArray(data)){setFailed(true);return;}setRows(data.map((r:Record<string,unknown>)=>({id:String(r.id),title:String(r.title??"Zapier activity"),summary:String(r.summary??""),occurred_at:String(r.occurred_at??"")})));})();return()=>{live=false;};},[activeTenantId,epoch]);
+ return <div className="ig-caps"><h4>Recent safe activity</h4>{rows===null&&!failed?<p className="ig-state" role="status">Loading recent Zapier activity…</p>:failed?<p className="ig-note">Recent activity is unavailable. Connection states above are unchanged.</p>:rows.length===0?<p className="ig-note">No Zapier activity has been recorded for this workspace.</p>:<ul className="ig-activity-list">{rows.map(r=><li key={r.id}><strong>{r.title}</strong><span>{r.summary}</span><time>{r.occurred_at?safeCheckDate(r.occurred_at):"Time unavailable"}</time></li>)}</ul>}</div>;
+}
+function zapierMcpSummary(value: ReturnType<typeof useMcpConnection>) {
+ if(value.loading)return{account:"Checking…",tone:"neutral"};
+ if(value.error)return{account:"Status unavailable",tone:"neutral"};
+ if(!value.configured)return{account:"Not connected",tone:"neutral"};
+ if(value.status==="connected"&&value.authKind==="oauth")return{account:"Connected",tone:"ok"};
+ if(value.authKind!=="oauth")return{account:"Needs attention",tone:"warn"};
+ return{account:mcpStateWords(value.status),tone:"warn"};
+}
 
-  const begin = useCallback(async () => {
-    setStarting(true);
-    setStartError(null);
-    // Starting a grant is a write too: it registers a single-use flow against a workspace.
-    // Sent for the same reason as every other call here — the server resolves the tenant
-    // and this only lets it refuse if the person has since moved somewhere else.
-    const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
-      body: { provider: "zapier", expected_tenant_id: activeTenantId, action: "oauth_begin" },
-    });
-    const url = (data as { authorize_url?: string })?.authorize_url;
-    if (error || !url) {
-      setStarting(false);
-      setStartError("Zapier could not be reached to start the connection. Try again in a moment.");
-      return;
-    }
-    // A full navigation, not a popup: consent belongs in the address bar where the
-    // person can see whose sign-in page they are on.
-    window.location.assign(url);
-  }, [activeTenantId]);
-
-  if (m.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking this workspace…</p>;
-
-  if (m.error) {
-    return <div className="ig-state" role="alert">
-      <TriangleAlert aria-hidden />
-      <span>The connection could not be read, so nothing is being claimed either way.</span>
-      <button type="button" className="ig-btn" onClick={() => void m.reload()}>Try again</button>
-    </div>;
-  }
-
-  return <>
-    {m.configured && <dl className="ig-facts">
-      <div><dt>State</dt><dd>{mcpStateWords(m.status)}</dd></div>
-      {/* The address is deliberately not shown here. For Zapier it is always the same
-          endpoint, so it tells an owner nothing they need — and any label for it either
-          reads as a claim that the connection is live ("Connected to …") or is a
-          technical detail this card exists to keep off the screen. The state row above
-          is the one honest answer, and it is the probe's, not the grant's. */}
-      <div><dt>Access</dt><dd>{m.authKind === "url"
-        ? "The address you saved. Stored encrypted and never shown again."
-        : "Granted by you on Zapier. No key is stored here."}</dd></div>
-    </dl>}
-
-    {!m.configured && <p className="ig-lede">
-      Paste the MCP server address from your Zapier account. Zapier gives each account its own address,
-      and that address is what authorises the connection, so it is stored encrypted and is never shown
-      again after you save it.
-    </p>}
-
-    {m.canWrite && <div className="ig-form">
-      <label className="ig-field">
-        <span>Server address</span>
-        <input
-          type="url"
-          inputMode="url"
-          autoComplete="off"
-          spellCheck={false}
-          value={serverUrl}
-          onChange={(e) => setServerUrl(e.target.value)}
-          placeholder="https://mcp.zapier.com/api/mcp/s/…"
-          disabled={m.saving}
-        />
-        <small>From Zapier, under your MCP server. It has to be on mcp.zapier.com.</small>
-      </label>
-      <label className="ig-field">
-        <span>Name <em>optional</em></span>
-        <input
-          type="text"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="What you call this account"
-          disabled={m.saving}
-        />
-      </label>
-      <div className="ig-actions">
-        <button type="button" className="ig-btn" data-primary
-          disabled={m.saving || serverUrl.trim() === ""}
-          onClick={() => void save()}>
-          <Plug aria-hidden size={14} />
-          {m.saving ? "Connecting…" : m.configured ? "Replace the address" : "Connect Zapier"}
-        </button>
-      </div>
-    </div>}
-
-    {/* Approving the connection and approving what Paige may RUN are separate acts, and
-        a workspace that has done only the first should know the second is still owed. */}
-    {m.configured && <p className="ig-note">
-      Connecting lets Paige see what is available. She runs nothing until you approve the specific
-      actions you want her to be able to take.
-    </p>}
-
-    {/* Only once the connection is PROVEN. Offering an approval list against a connection
-        that does not work would show a list that cannot be loaded, or worse, record
-        approvals for a provider we have never successfully reached. */}
-    {m.configured && m.status === "connected" && m.canWrite && <CapabilityApproval provider="zapier" />}
-
-    {(startError || m.writeError) && <p className="ig-error" role="alert">
-      <TriangleAlert aria-hidden size={14} />{startError ?? m.writeError}
-    </p>}
-
-    {!m.canWrite
-      ? <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>
-      : <div className="ig-actions">
-          {/* The grant path is kept rather than removed: a workspace already connected that
-              way keeps working, and an account whose Zapier offers sign-in can still use it.
-              It is no longer the primary act, because it is not the shape Zapier hands most
-              people. */}
-          <button type="button" className="ig-btn" disabled={starting || m.saving} onClick={() => void begin()}>
-            <KeyRound aria-hidden size={14} />
-            {starting ? "Opening Zapier…" : "Use Zapier sign-in instead"}
-          </button>
-          {m.configured && <button type="button" className="ig-btn" disabled={m.saving}
-            onClick={() => void m.verify().then(onChanged)}>
-            <RefreshCw aria-hidden size={14} />{m.saving ? "Checking…" : "Check it again"}
-          </button>}
-          {m.configured && (confirmingDisconnect ? <span className="ig-confirm">
-            <button type="button" className="ig-btn" data-danger disabled={m.saving}
-              onClick={() => { setConfirmingDisconnect(false); void m.disconnect().then(onChanged); }}>
-              Disconnect it
-            </button>
-            <button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep it</button>
-          </span> : <button type="button" className="ig-btn" disabled={m.saving} onClick={() => setConfirmingDisconnect(true)}>
-            <Link2Off aria-hidden size={14} />Disconnect
-          </button>)}
-        </div>}
-  </>;
+function ZapierDrawer({onClose,onChanged}:{onClose:()=>void;onChanged:()=>void}){
+ // Every mutation in this drawer writes a Rail row. `changed` advances the activity epoch as
+ // well as telling the parent to re-read connection status, so the list below reflects the
+ // action the owner just took rather than the state before it.
+ const[activityEpoch,setActivityEpoch]=useState(0);
+ const api=useZapierApi();const m=useMcpConnection("zapier");const[tab,setTab]=useState<"api"|"mcp">("api");
+ // A mutation here moves three things that are read independently: the outer catalogue (via
+ // the parent), the Rail list below, and this drawer's OWN connection row -- which is where
+ // the approved-tool count is read from. Refreshing only the first two left that count showing
+ // its pre-save value until the drawer was reopened. `reload` re-reads the row; it does not
+ // re-probe the provider, so this costs no outbound request.
+ const mReload=m.reload;
+ const changed=useCallback(()=>{setActivityEpoch(n=>n+1);void mReload();onChanged();},[mReload,onChanged]);const panel=useRef<HTMLElement>(null);const close=useRef<HTMLButtonElement>(null);
+ useEffect(()=>{const opener=document.activeElement as HTMLElement|null;close.current?.focus();return()=>{if(opener&&document.contains(opener))opener.focus();};},[]);
+ useEffect(()=>{const onKey=(event:KeyboardEvent)=>{const root=panel.current;if(!root)return;if(event.key==="Escape"){event.preventDefault();onClose();return;}if(event.key!=="Tab")return;const items=Array.from(root.querySelectorAll<HTMLElement>('button,input,select,textarea,a[href],[tabindex="0"]')).filter(item=>!item.hasAttribute("disabled")&&item.tabIndex!==-1&&item.offsetParent!==null);if(!items.length)return;if(!root.contains(document.activeElement)){event.preventDefault();items[0].focus();}else if(event.shiftKey&&document.activeElement===items[0]){event.preventDefault();items[items.length-1].focus();}else if(!event.shiftKey&&document.activeElement===items[items.length-1]){event.preventDefault();items[0].focus();}};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[onClose]);
+ const choose=(next:"api"|"mcp")=>{setTab(next);panel.current?.querySelector<HTMLButtonElement>(`#ig-zapier-tab-${next}`)?.focus();};
+ const tabKeys=(event:React.KeyboardEvent)=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;event.preventDefault();choose(event.key==="Home"?"api":event.key==="End"?"mcp":tab==="api"?"mcp":"api");};
+ const apiSummary=api.loading?{account:"Checking…",tone:"neutral"}:api.error?{account:"Status unavailable",tone:"neutral"}:{account:zapierApiWords(api.state),tone:api.state==="connected"?"ok":api.state==="not_connected"?"neutral":"warn"};
+ return <div className="ig-layer" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)onClose();}}><aside className="ig-panel ig-n8n-panel" ref={panel} role="dialog" aria-modal="true" aria-labelledby="ig-panel-title">
+  <header><span className="ss-provider-mark" data-provider-mark="mcp" aria-hidden>zap</span><div><h2 id="ig-panel-title">Zapier</h2><span>API visibility and Paige tools</span></div><button ref={close} className="ig-close" type="button" aria-label="Close Zapier" onClick={onClose}><X aria-hidden size={16}/></button></header>
+  <div className="ig-n8n-overview"><div className="ig-n8n-summary" aria-label="Independent Zapier connection states"><div><span>API connection</span><N8nStateLabel value={apiSummary}/></div><div><span>Paige tools (MCP)</span><N8nStateLabel value={zapierMcpSummary(m)}/></div></div>
+   <div className="ss-segment ig-n8n-tabs" role="tablist" aria-label="Zapier connections" onKeyDown={tabKeys}>{(["api","mcp"] as const).map(value=><button key={value} type="button" id={`ig-zapier-tab-${value}`} role="tab" aria-selected={tab===value} aria-controls={`ig-zapier-panel-${value}`} tabIndex={tab===value?0:-1} onClick={()=>choose(value)}>{value==="api"?"API connection":"Paige tools (MCP)"}</button>)}</div>
+  </div>
+  <div className="ig-panel-body">{tab==="api"?<section id="ig-zapier-panel-api" role="tabpanel" aria-labelledby="ig-zapier-tab-api"><ZapierApiPanel api={api} onChanged={changed}/></section>:<section id="ig-zapier-panel-mcp" role="tabpanel" aria-labelledby="ig-zapier-tab-mcp"><ZapierMcpPanel m={m} onChanged={changed}/></section>}<ZapierRecentActivity epoch={activityEpoch}/></div>
+  <footer><span>API visibility and Paige tools authorization are separate.</span></footer>
+ </aside></div>;
 }
 
 /* ── n8n's tool bridge: the same provider, a second connection ─────────────
@@ -721,7 +660,7 @@ function N8nDrawer({ a, m, initialMcp, onClose, onChanged }: { initialMcp?: bool
   </div>;
 }
 function ProviderPanel(props: { initialMcp?: boolean; m: ReturnType<typeof useN8nOAuth>; a: ReturnType<typeof useN8nConnection>; row: ProviderRow; onClose: () => void; onChanged: () => void }) {
-  return props.row.id === "n8n" ? <N8nDrawer initialMcp={props.initialMcp} m={props.m} a={props.a} onClose={props.onClose} onChanged={props.onChanged} /> : <LegacyProviderPanel {...props} />;
+  return props.row.id === "n8n" ? <N8nDrawer initialMcp={props.initialMcp} m={props.m} a={props.a} onClose={props.onClose} onChanged={props.onChanged} /> : props.row.id === "mcp" ? <ZapierDrawer onClose={props.onClose} onChanged={props.onChanged}/> : <LegacyProviderPanel {...props} />;
 }
 
 function LegacyProviderPanel({ row, onClose, onChanged }: { row: ProviderRow; onClose: () => void; onChanged: () => void }) {
@@ -789,10 +728,8 @@ function LegacyProviderPanel({ row, onClose, onChanged }: { row: ProviderRow; on
           </div>
         </div>}
 
-        {row.id === "mcp"
-          ? <ZapierPanelBody onChanged={onChanged} />
-          : <><p className="ig-lede">{row.note}</p>
-              <p className="ig-note">Setting this up is not offered here yet, rather than offered and quietly not working.</p></>}
+        <><p className="ig-lede">{row.note}</p>
+              <p className="ig-note">Setting this up is not offered here yet, rather than offered and quietly not working.</p></>
       </div>
 
       <footer><span>No credentials or provider payloads are shown here.</span></footer>
@@ -856,7 +793,7 @@ export function SoloIntegrationsView() {
           const live = statusPresentation(row.id === "mcp" ? status.mcp.zapier ?? null : null);
           return <li key={row.id}><button type="button" className="ig-card" data-provider={row.id} data-owner="integrations" onClick={() => setOpen({ row, scope: scopeKey })} aria-haspopup="dialog">
             <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id)}</span><span className="ig-card-title"><strong>{row.name}</strong><small>{row.kind}</small></span>
-            {row.id === "n8n" ? <><span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={n8nApiSummary(api, api.loading, api.error)} /></span><span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(oauth.readiness, oauth.loading, !!oauth.error)} /></span></> : <span className="ig-card-state" data-tone={row.id === "mcp" && status.mcpError ? "neutral" : row.connectable ? live.tone : "neutral"}><i aria-hidden />{row.id === "mcp" && status.mcpError ? "Status unavailable" : row.connectable ? live.account : "Not available"}</span>}
+             {row.id === "n8n" ? <><span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={n8nApiSummary(api, api.loading, api.error)} /></span><span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(oauth.readiness, oauth.loading, !!oauth.error)} /></span></> : row.id === "mcp" ? <><span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={status.zapierApiError||!status.zapierApi?{account:"Status unavailable",tone:"neutral"}:{account:zapierApiWords(status.zapierApi.state),tone:status.zapierApi.state==="connected"?"ok":status.zapierApi.state==="not_connected"?"neutral":"warn"}}/></span><span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={status.mcpError?{account:"Status unavailable",tone:"neutral"}:live}/></span></> : <span className="ig-card-state" data-tone="neutral"><i aria-hidden />Not available</span>}
           </button></li>;
         })}</ul>
       </>}

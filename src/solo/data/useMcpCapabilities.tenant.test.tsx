@@ -29,7 +29,7 @@ import { useMcpCapabilities } from "./useMcpCapabilities";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const tools = (names: string[]) => ({
-  data: { ok: true, tools: names.map((n) => ({ name: n, description: "", schema_hash: "a".repeat(64), approved: false })) },
+  data: { ok: true, tools: names.map((n) => ({ name: n, description: "", pin: "a".repeat(64), approved: false })) },
   error: null,
 });
 

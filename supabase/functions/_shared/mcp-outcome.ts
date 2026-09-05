@@ -253,7 +253,10 @@ export async function callApprovedCapability(opts: {
           };
           return undefined;
         }
-        if (current.schemaHash !== pinned) {
+        // The FULL pin: schema AND authority. Comparing the schema alone let a provider keep
+        // a tool's name and inputs while moving it to a different connected account, or
+        // turning a read into a send, and the old approval still ran.
+        if (current.pin !== pinned) {
           denial = {
             outcome: outcomeOf(provider, capability, "denied",
               "That capability has changed since it was approved, so it was not run. Review and approve it again.",

@@ -58,6 +58,7 @@ import Auth from "./pages/Auth";
 const OperatorEntry = lazyWithReload(() => import("@/operator/OperatorEntry"));
 const JoinPlatform = lazyWithReload(() => import("./pages/JoinPlatform"));
 const McpOAuthCallback = lazyWithReload(() => import("./pages/McpOAuthCallback"));
+const ZapierOAuthCallback = lazyWithReload(() => import("./pages/ZapierOAuthCallback"));
 const BookingPage = lazyWithReload(() => import("./pages/BookingPage"));
 const ManageBooking = lazyWithReload(() => import("./pages/ManageBooking"));
 const PaigeHome = lazyWithReload(() => import("./pages/PaigeHome"));
@@ -244,6 +245,7 @@ const App = () => (
                 and compared by it on every exchange, so it is fixed rather than derived
                 from anything a caller can influence. */}
             <Route path="/oauth/mcp/callback" element={<PageSuspense><McpOAuthCallback /></PageSuspense>} />
+            <Route path="/oauth/zapier/callback" element={<PageSuspense><ZapierOAuthCallback /></PageSuspense>} />
             <Route path="/book/:slug" element={<PageSuspense><BookingPage /></PageSuspense>} />
             <Route path="/booking/manage" element={<PageSuspense><ManageBooking /></PageSuspense>} />
             <Route path="/signup" element={<SignupRedirect />} />
