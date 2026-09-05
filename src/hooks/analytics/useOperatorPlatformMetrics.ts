@@ -77,6 +77,14 @@ export function useOperatorPlatformMetrics(
           .select("wholesale_cost_usd")
           .gte("occurred_at", startIso)
           .lte("occurred_at", endIso)
+          // Priced rows only. wholesale_cost_usd is nullable as of 20261002000000, and NULL means
+          // "not recorded here" — for ai_inference the real figure lives in paige_llm_cost_ledger.
+          // Filtering server-side does two things at once: `meteredRows.length > 0` below becomes a
+          // correct availability predicate again (it counts PRICED rows, not merely rows), and the
+          // unordered 50k page stops being a truncation risk, because the unpriced rows that would
+          // otherwise dominate this table are never fetched. Doing it in JS instead would leave the
+          // availability flag reading an arbitrary truncated page.
+          .not("wholesale_cost_usd", "is", null)
           .limit(50000),
       ]);
 
