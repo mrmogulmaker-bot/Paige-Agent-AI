@@ -1,5 +1,22 @@
 # Decision Log — chronological one-liners
 
+- **Sandboxed Research & External Execution — APPROVED MVP DIRECTION, not a live capability (owner-directed
+  2026-09-05)** — Paige as an active AI COO/orchestrator: PAIGE is the governed decision layer; native tools
+  act inside the tenant platform; n8n/Zapier/MCP/future integrations are controlled external workers, never a
+  bypass; a sandbox is the contained workbench for untrusted/generated-code/browser/file execution. Recorded
+  as a DECISION + dependency-ordered plan (`outputs/paige-at-cowork/08-sandboxed-research-external-execution.md`
+  + master §5), NOT shipped (§13/§32/§70 — no sandbox called live on a design). Grounded by 4 read-only scouts:
+  the **research half is largely LIVE/PARTIAL** (`deep_research` w/ anti-fabrication citation gate + `web_search`
+  are live chat tools; `browse_public_url` + SSRF-hardened `paige-browser` + `paige_browser_usage` rail; browse
+  is read-only by construction) → harden+reach, not build (§18); the **sandbox half is greenfield/UNAVAILABLE**
+  (exhaustive grep found no untrusted-execution sandbox; `delegate_to_subagent` runs specialists outside the
+  risk gate; `paige-mcp` is tier+scope only; `decideGovernedExecution` is a pure unwired module; no per-worker
+  net isolation; budget/Trust-Compass consult on the exec path is why `trigger-workflow` is fail-closed off).
+  Five dep-ordered slices: browser research MVP → governed worker dispatch → sandboxed file/code/data →
+  advanced browser automation → recurring autonomous (§67/§68, cloud-native §64). Outcomes reuse
+  `capability-record.ts` (6 outcomes); Spine/Mind retain scoped sourced facts (F02 handoff dep). Same-slice
+  refresh discipline: each completed slice updates master §5 with shipped/evidence/proof-owed/next-owner/dep-order.
+
 - **Phase 2 · S1.1 — deal_move_stage records an outcome that is TRUE about what happened (2026-09-05,
   edge-only, fast-follow on merged #962)** — Codex (the repo's automated reviewer) posted 3 P2 findings
   AFTER #962 merged; all 3 verified against source (§39 — the peer-gate + my §39 pass + Codex are
