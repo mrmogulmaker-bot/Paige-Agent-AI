@@ -181,30 +181,30 @@ describe("useSoloGamePlan derivation", () => {
 
   it("greets the signed-in person by name ONLY when they own the active workspace (§57 identity)", () => {
     // Owner case (default fixture): a NON-staff viewer with an active workspace is in their own HQ.
-    m.cc.greeting = { name: "Antonio" };
+    m.cc.greeting = { name: "Riley" };
     render();
-    expect(view.greeting.name).toBe("Antonio");
+    expect(view.greeting.name).toBe("Riley");
   });
 
   it("does NOT paste the viewer's name over a workspace they do not own — greets neutrally (§57)", () => {
     // A super-admin / operator viewing a tenant via act-as: platform staff, so NOT their own HQ.
-    m.cc.greeting = { name: "Antonio" };
-    m.tenant = { isPlatformStaff: true, activeTenantId: "t-mma", activeTenant: { name: "Mogul Maker Academy" } };
+    m.cc.greeting = { name: "Riley" };
+    m.tenant = { isPlatformStaff: true, activeTenantId: "t2", activeTenant: { name: "Northwind Advisory" } };
     render();
     expect(view.greeting.name).toBe("there");
-    expect(view.greeting.name).not.toBe("Antonio");
+    expect(view.greeting.name).not.toBe("Riley");
   });
 
   it("greets neutrally when the only name available is the business-name fallback — even for the owner (§57/§13)", () => {
     // useCommandCenter's greeting.name resolves to `authName || activeTenant.name || "there"`, so an
     // OWNER with no auth display name (unset on prod for sub-accounts + some solo tenants) gets the
-    // WORKSPACE name here. It must never be voiced as a person ("Good evening, Mogul") — a name equal
-    // to the workspace name is treated as "no personal name" and the greeting stays neutral.
-    m.cc.greeting = { name: "Mogul Maker Academy" };
-    m.tenant = { isPlatformStaff: false, activeTenantId: "t-mma", activeTenant: { name: "Mogul Maker Academy" } };
+    // WORKSPACE name here. It must never be voiced as a person ("Good evening, Northwind") — a name
+    // equal to the workspace name is treated as "no personal name" and the greeting stays neutral.
+    m.cc.greeting = { name: "Northwind Advisory" };
+    m.tenant = { isPlatformStaff: false, activeTenantId: "t2", activeTenant: { name: "Northwind Advisory" } };
     render();
     expect(view.greeting.name).toBe("there");
-    expect(view.greeting.name).not.toBe("Mogul");
+    expect(view.greeting.name).not.toBe("Northwind");
   });
 
   it("a failing check's TITLE describes the real state, never an unachieved goal (payment, §13)", () => {

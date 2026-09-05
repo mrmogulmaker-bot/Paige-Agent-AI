@@ -173,7 +173,7 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
   // §57 identity: the personal greeting belongs to the person WHOSE workspace this is. The
   // signed-in user's name is only theirs to show when the active workspace is genuinely their own —
   // otherwise an operator/super-admin viewing a tenant would see their OWN name pasted over someone
-  // else's HQ (the exact "Antonio over Mogul Maker Academy" mislabel).
+  // else's HQ (the exact operator-name-over-another-tenant's-workspace mislabel the owner flagged).
   //
   // The reliable signal is NOT `owner_user_id`: it is NULL on prod for every sub-account and for
   // some solo tenants, so keying on it would greet real owners "there" on their own workspace.
@@ -567,10 +567,10 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     //  (1) they own this active workspace (viewerOwnsWorkspace), AND
     //  (2) the name is a GENUINE personal name — not the business-name fallback.
     // `cc.greeting.name` (useCommandCenter) resolves to `authName || activeTenant.name || "there"`, so
-    // when the signed-in owner has no display name it silently becomes the WORKSPACE name. Pasting that
-    // over the greeting ("Good evening, Mogul") is the same identity mislabel the owner flagged — so a
-    // name equal to the workspace name (or the neutral "there") is treated as "no personal name" and we
-    // greet neutrally rather than voice a business name as a person.
+    // when the signed-in owner has no display name it silently becomes the WORKSPACE name. Voicing the
+    // business name as if it were a person ("Good evening, <business>") is the same identity mislabel —
+    // so a name equal to the workspace name (or the neutral "there") is treated as "no personal name"
+    // and we greet neutrally rather than voice a business name as a person.
     const ccName = (cc.greeting?.name || "").trim();
     const workspaceName = (activeTenant?.name || "").trim();
     const nameIsPersonal = !!ccName && ccName !== "there" && ccName !== workspaceName;
