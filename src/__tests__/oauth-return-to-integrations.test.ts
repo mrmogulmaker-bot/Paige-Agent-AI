@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { armOAuthReturn, takeOAuthReturn, isSafeReturnPath } from "@/solo/data/oauthReturn";
 
-const readSrc = (p: string) => require("node:fs").readFileSync(require("node:path").join(process.cwd(), p), "utf8");
+const readSrc = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
 describe("a finished connection returns to where it started", () => {
   beforeEach(() => { try { window.sessionStorage.clear(); } catch { /* ignore */ } });
@@ -49,16 +51,16 @@ describe("there is ONE return-address store, not one per integration", () => {
     ]) {
       expect(readSrc(f)).toMatch(/from "(@\/solo|\.)\/data\/oauthReturn"/);
     }
-    expect(require("node:fs").existsSync("src/lib/integrations/oauthReturn.ts")).toBe(false);
+    expect(existsSync("src/lib/integrations/oauthReturn.ts")).toBe(false);
   });
 
   it("a connected callback returns instead of stopping on an interstitial", () => {
     const mcp = readSrc("src/pages/McpOAuthCallback.tsx");
-    expect(mcp).toContain('phase.connected && back.current) navigate(back.current, { replace: true })');
+    expect(mcp).toContain('phase.connected && back) navigate(back, { replace: true })');
     // The old destination was "/" -- the PUBLIC marketing page, not a workspace.
     expect(mcp).not.toContain('navigate("/")}>Back to your workspace');
     const zap = readSrc("src/pages/ZapierOAuthCallback.tsx");
-    expect(zap).toContain('phase.healthy&&back.current)navigate(back.current,{replace:true})');
+    expect(zap).toContain('phase.healthy&&back)navigate(back,{replace:true})');
     expect(zap).not.toContain('onClick={()=>navigate("/")}');
   });
 
