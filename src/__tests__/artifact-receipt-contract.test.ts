@@ -26,7 +26,7 @@ function load() {
   return out;
 }
 
-const { artifactProduced, ARTIFACT_ABSENT_ERROR } = load();
+const { artifactProduced, ARTIFACT_ABSENT_ERROR, usableDrafts, IMAGE_NOT_FILED_ERROR } = load();
 
 describe("artifactProduced — a real artifact vs a 200-with-empty-payload (§13/§70)", () => {
   describe("file_url (images — the artifact is a stored file)", () => {
@@ -95,12 +95,48 @@ describe("ARTIFACT_ABSENT_ERROR — honest, non-leaky failure copy (§11/§13)",
   });
 });
 
+describe("usableDrafts — a non-empty array is not proof of usable copy (§13/§70, Codex P2)", () => {
+  it("keeps drafts with non-whitespace content", () => {
+    expect(usableDrafts([{ title: "a", content: "real copy" }])).toHaveLength(1);
+    expect(usableDrafts([{ content: "x" }, { content: "y" }])).toHaveLength(2);
+  });
+  it("drops a content-less item normalized to {content:''} — the exact content-draft path", () => {
+    expect(usableDrafts([{ title: "Draft", content: "" }])).toHaveLength(0);
+    expect(usableDrafts([{ title: "Draft" }])).toHaveLength(0); // missing content
+  });
+  it("drops whitespace-only content and keeps only the real ones in a mixed batch", () => {
+    const out = usableDrafts([{ content: "   " }, { content: "keep me" }, { content: "" }]);
+    expect(out).toHaveLength(1);
+    expect((out[0] as any).content).toBe("keep me");
+  });
+  it("returns [] for a non-array or null", () => {
+    expect(usableDrafts(null)).toEqual([]);
+    expect(usableDrafts(undefined)).toEqual([]);
+    expect(usableDrafts("nope" as any)).toEqual([]);
+  });
+  it("composes with artifactProduced: an all-empty batch degrades to an honest failure", () => {
+    expect(artifactProduced("draft_list", usableDrafts([{ content: "" }, { title: "x" }]))).toBe(false);
+    expect(artifactProduced("draft_list", usableDrafts([{ content: "real" }]))).toBe(true);
+  });
+});
+
+describe("IMAGE_NOT_FILED_ERROR — honest Studio-only partial copy (§13/§70, Codex P2)", () => {
+  it("is a non-empty, non-leaky string", () => {
+    expect(typeof IMAGE_NOT_FILED_ERROR).toBe("string");
+    expect(IMAGE_NOT_FILED_ERROR.trim().length).toBeGreaterThan(0);
+    expect(IMAGE_NOT_FILED_ERROR).not.toMatch(/marketing_content|content_id|save_marketing_content|studio_artifact|paige_/i);
+    expect(IMAGE_NOT_FILED_ERROR.toLowerCase()).not.toContain("success");
+  });
+});
+
 describe("WIRING — each creation handler wraps its success in the honesty guard (§13/§70)", () => {
   const src = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
 
   it("imports the honesty module", () => {
     expect(src).toMatch(/import\s*\{[^}]*artifactProduced[^}]*\}\s*from\s*["']\.\.\/_shared\/artifact-receipt\.ts["']/);
     expect(src).toContain("ARTIFACT_ABSENT_ERROR");
+    expect(src).toContain("usableDrafts");
+    expect(src).toContain("IMAGE_NOT_FILED_ERROR");
   });
 
   // Each handler must reference the guard for the artifact shape it produces. These assert the
@@ -108,7 +144,15 @@ describe("WIRING — each creation handler wraps its success in the honesty guar
   it("generate_image guards the file url", () => {
     expect(src).toMatch(/artifactProduced\(\s*["']file_url["']/);
   });
-  it("draft_marketing_content guards the drafts list", () => {
+  it("generate_image requires content_id in a Studio session (Codex P2 — canvas linkage)", () => {
+    // The Studio-only final guard: when studioSessionId is set, an unfiled image (no content_id)
+    // is not a usable success (the canvas linkage needs the persisted id). Tolerant of the
+    // intervening `.success` check between the studio gate and the saved_id guard.
+    expect(src).toMatch(/studioSessionId[\s\S]{0,140}!artifactProduced\(\s*["']saved_id["']/);
+    expect(src).toContain("IMAGE_NOT_FILED_ERROR");
+  });
+  it("draft_marketing_content filters to usable drafts before guarding (Codex P2)", () => {
+    expect(src).toMatch(/usableDrafts\(/);
     expect(src).toMatch(/artifactProduced\(\s*["']draft_list["']/);
   });
   it("content_save, document_generate and growth_page_save guard the saved id", () => {

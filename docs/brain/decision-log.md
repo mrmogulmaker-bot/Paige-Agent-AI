@@ -1,5 +1,17 @@
 # Decision Log — chronological one-liners
 
+- **Capability System slice 1.1 — two Codex P2 receipt edge-cases folded forward (2026-09-05, after #972 merged)** —
+  Codex's post-merge review of #972 (the third layer after the §39 + §5 reviews both SHIPped) caught two
+  real honesty edge-cases the same class the slice fixes — the documented §39 "layered defenses, none alone
+  sufficient" pattern. (P2#1) A **Studio-session** `generate_image` where the file uploaded (url present) but
+  the best-effort `save_marketing_content` returned no `content_id` reported success while the canvas linkage
+  (which needs `content_id`) silently got nothing; now a Studio image with no filed id degrades to an honest
+  `IMAGE_NOT_FILED_ERROR` — checked AFTER the §33 critique loop so a rescue regeneration that DID file still
+  counts, and Studio-only (regular chat keeps a null-content_id url as a usable success, since the URL is a
+  real downloadable file). (P2#2) `content-draft` normalizes a content-less model item to `{ content: "" }`,
+  so a non-empty drafts array was not proof of usable copy; a new pure `usableDrafts()` filters to drafts
+  carrying non-whitespace `content` and the guard fails honestly if none remain. **Proof:** 24 contract tests
+  (7 new, falsifiable); 174 green across the source-asserting suite; §50 clean; transpiles clean.
 - **Capability System slice 1 · increment 1 — truthful artifact-creation receipts (2026-09-05, PR #972)** —
   five chat artifact-creation handlers (`generate_image`, `draft_marketing_content`, `content_save`,
   `document_generate`, `growth_page_save`) could emit a `success:true` receipt when the edge fn / RPC

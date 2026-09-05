@@ -63,3 +63,30 @@ export const ARTIFACT_ABSENT_ERROR: Record<ArtifactShape, string> = {
   saved_id:
     "That finished but didn't return a saved item, so it may not have saved. Try it again.",
 };
+
+/**
+ * Filter a content-draft `drafts` array to the entries that carry usable copy — a
+ * non-whitespace string `content` field. `content-draft` normalizes a content-less model
+ * item to `{ content: "" }` (`content-draft/index.ts` maps `content: String(d?.content ?? "")`),
+ * so a NON-EMPTY array is not proof of usable copy: `[{ title: "Draft" }]` becomes
+ * `[{ content: "" }]` and would otherwise pass `artifactProduced("draft_list", …)` with zero
+ * words (§13/§70, Codex P2). Pass this result to `artifactProduced("draft_list", …)` so a
+ * batch of empty drafts degrades to an honest failure. Non-array input → `[]`.
+ */
+export function usableDrafts(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (d) => d != null && typeof (d as { content?: unknown }).content === "string" &&
+      ((d as { content: string }).content).trim().length > 0,
+  );
+}
+
+/**
+ * A generated image that uploaded (a real URL) but whose best-effort save returned no
+ * `content_id` is a usable success in REGULAR chat (the URL is a real, downloadable file) but
+ * NOT in a STUDIO session: the canvas linkage requires the persisted id, so a created-but-unfiled
+ * image would report success while nothing reaches the canvas (§13/§70, Codex P2). This is the
+ * honest failure copy for that Studio-only partial.
+ */
+export const IMAGE_NOT_FILED_ERROR =
+  "The image was created but couldn't be saved to your project, so it can't be added to the canvas. Try generating it again.";
