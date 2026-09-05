@@ -1,0 +1,78 @@
+{
+  "what": "20261201000700_a2p_representative_identity_sync.sql exercised against a real PostgreSQL 16 cluster",
+  "why": "A rollback proof shows the SQL parses. It does not show the trigger derives the right values, refuses the wrong ones, or that the backfill unblocks a workspace that is blocked today (CLAUDE.md \u00a732).",
+  "engine": "PostgreSQL 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1), disposable local cluster, destroyed after the run",
+  "harness": "Minimal real dependency tables (auth.users, public.profiles, public.tenant_members, public.tenant_legal_profile subset) plus the supabase roles. Not a production clone: RLS policies, the full column set and the surrounding Setup RPCs are NOT present, so this proves the trigger and backfill only.",
+  "apply": {
+    "first_run": "clean",
+    "second_run": "clean \u2014 idempotent replay"
+  },
+  "behaviour": [
+    {
+      "check": "derives first name, last name, email and business title on insert from the named active Team member",
+      "result": "PASS"
+    },
+    {
+      "check": "splits a single stored full name into the first and last the carrier asks for",
+      "result": "PASS"
+    },
+    {
+      "check": "refuses a representative who belongs to another tenant \u2014 derived identity is nulled, not carried",
+      "result": "PASS"
+    },
+    {
+      "check": "refuses a representative whose membership is no longer active",
+      "result": "PASS"
+    },
+    {
+      "check": "clears all four derived columns when the representative is removed, leaving no stale person on a carrier record",
+      "result": "PASS"
+    },
+    {
+      "check": "an unrelated column update does not disturb the derived identity",
+      "result": "PASS"
+    },
+    {
+      "check": "a departure re-derives from tenant_members itself \u2014 the carrier name is cleared without anything writing tenant_legal_profile",
+      "result": "PASS"
+    },
+    {
+      "check": "rejoining the Team restores the derived identity",
+      "result": "PASS"
+    },
+    {
+      "check": "an unrelated member changing role is a no-op for this row",
+      "result": "PASS"
+    },
+    {
+      "check": "deleting the membership row clears the carrier name",
+      "result": "PASS"
+    },
+    {
+      "check": "a representative whose profile carries no name derives nothing \u2014 Registration keeps reporting them missing, which is true",
+      "result": "PASS"
+    },
+    {
+      "check": "setting that name later, from Settings, re-derives it \u2014 nothing writes tenant_legal_profile",
+      "result": "PASS"
+    },
+    {
+      "check": "another person's profile edit is a no-op for this row",
+      "result": "PASS"
+    }
+  ],
+  "backfill": {
+    "setup": "trigger dropped, then a row inserted with a representative and NULL derived columns \u2014 reproducing the shape every affected workspace is in on main today",
+    "before": "authorized_representative_first_name, _email and _business_title all NULL \u2014 missingProfile() can never empty, brand filing can never start",
+    "after_migration": "all four populated from the active Team member",
+    "result": "PASS",
+    "scope": "UNCONDITIONAL over every row naming a representative. Filtering on 'some derived column is null' would define stale as absent and skip the worse case: three non-null columns describing the WRONG person."
+  },
+  "not_proven_here": [
+    "Persisted apply on production (\u00a732.a) \u2014 owed to the deploy-migrations pipeline on merge, and to a schema_migrations + object query afterwards.",
+    "RLS behaviour, the surrounding Setup RPCs, and the real column set \u2014 this harness carries a subset.",
+    "Authenticated runtime on the deployed surface (\u00a732.c) \u2014 this session has no browser and could not drive it.",
+    "A change to auth.users.email re-derives nothing \u2014 that table is managed by the auth service and this migration attaches no trigger to it. A representative who changes their sign-in email keeps the previous address on the carrier record until the next membership change, profile edit, or Setup save. Stated in the migration header rather than left to be discovered in a rejected filing."
+  ],
+  "peer_gate": "Two independent reviewers returned BLOCK on the first pass (\u00a739). Both caught a representative picker offering people the save refuses; one caught a select for three columns the browser's grant excludes, which would have blanked Registration for every workspace. Both are fixed and re-proven here; the second was invisible to the UI tests because the test double does not enforce column grants."
+}

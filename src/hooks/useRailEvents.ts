@@ -13,6 +13,16 @@ export type RailEvent = {
   event_kind: string;
   surface: string;
   actor_type: string;
+  /**
+   * The acting agent's tenant-safe display name, or null.
+   *
+   * Null is a real answer with three distinct meanings, and none of them is "PAIGE did it":
+   * no agent acted; an agent acted but has no name a business owner should be shown (an
+   * internal build-crew seat); or the agent is no longer in scope for this workspace. The
+   * server withholds the label in each case. Render the absence — never substitute a
+   * generic label, which would re-create exactly the collapse this field exists to end.
+   */
+  actor_agent?: string | null;
   audience: string;
   visibility: string;
   title: string;
@@ -94,6 +104,11 @@ export function coerceRailEvent(raw: unknown): RailEvent | null {
     event_kind: p.event_kind,
     surface: typeof p.surface === "string" ? p.surface : "",
     actor_type: typeof p.actor_type === "string" ? p.actor_type : "",
+    // This coercion is a WHITELIST — it builds a new object rather than spreading — so a
+    // field the server starts sending is dropped silently until it is named here. That is
+    // the half-changed response contract §37 warns about: the write lands, the read looks
+    // healthy, and the value never arrives.
+    actor_agent: typeof p.actor_agent === "string" && p.actor_agent.length > 0 ? p.actor_agent : null,
     audience: typeof p.audience === "string" ? p.audience : "",
     visibility: typeof p.visibility === "string" ? p.visibility : "",
     title: typeof p.title === "string" ? p.title : "",

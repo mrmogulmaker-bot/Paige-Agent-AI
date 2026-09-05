@@ -1,7 +1,7 @@
 // Dedicated n8n OAuth boundary. GET handles launch and callback entirely server-side.
 // POST authenticates a JWT; tenant expectations can refuse, never select a workspace.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-import { OAuthError,createPkce,createState,registerClient,buildAuthorizationUrl,exchangeCode,refreshTokens,revokeToken,isExpired,discoverAuthorizationServer, type AuthorizationServer, type ClientRegistration, type TokenSet } from '../_shared/mcp-oauth.ts';
+import { OAuthError,createPkce,createState,registerClient,buildAuthorizationUrl,exchangeCode,refreshTokens,revokeToken,isExpired,isGrantWithdrawn,discoverAuthorizationServer, type AuthorizationServer, type ClientRegistration, type TokenSet } from '../_shared/mcp-oauth.ts';
 import { N8N_OAUTH_SCOPES,N8nSafeError,validateN8nResource,discoverN8n,validateServer,assertScopedTokens,hashOpaque,discoverWorkflowPreviews,validateApproval } from '../_shared/n8n-oauth.ts';
 import { McpError } from '../_shared/mcp-client.ts';
 const SUPABASE_URL=Deno.env.get('SUPABASE_URL')!;
@@ -25,7 +25,12 @@ const clearCookie=`${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax
 const landing=(account:string|undefined,state:string)=>`${PUBLIC_BASE}${account&&/^\d+$/.test(account)?`/solo/${account}/settings/integrations`:'/choose-account'}?n8n_oauth=${state}`;
 type Payload={server:AuthorizationServer & {responseIssuerRequired?:boolean};client:ClientRegistration;resource:string;verifier:string;redirect_uri:string;authorization_url:string;requested_scopes?:string[]};
 type ServiceResult={expired?:boolean;account_number?:string;authorization_url:string;attempt_id:string;payload:Payload;pin:string;discovery_id:string;revoke?:{token:string;issuer:string;client_id:string;client_secret:string|null;token_type:'access_token'|'refresh_token'}};
-type Lease={lease:string;generation:string;approved_ids:string[];discovery_pin:string|null;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null};
+// The shape n8n_oauth_service's `acquire` returns. _shared/n8n-management.ts declares its
+// OWN copy of this for the same RPC, and the two had drifted: that one carried
+// `oauth_scopes` and this one did not, so reading it compiled there and failed only here.
+// Two declarations of one response is how that happens (§18); unifying them is tracked
+// separately rather than folded into a fix someone is waiting on.
+type Lease={lease:string;generation:string;approved_ids:string[];approved_marks:Record<string,string>;discovery_pin:string|null;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null;oauth_scopes:string[]};
 Deno.serve(async req=>{
  const origin=req.headers.get('origin');
  const headers={...HEADERS,...(origin&&ALLOWED_ORIGINS.has(origin)?{'Access-Control-Allow-Origin':origin}:{})};
@@ -37,7 +42,7 @@ Deno.serve(async req=>{
  const rpc=async<T=ServiceResult>(operation:string,input:Record<string,unknown>):Promise<T>=>{
   const {data,error}=await admin.rpc('n8n_oauth_service',{_operation:operation,_input:input});
   if(error){
-   const known=['N8N_BUSY','N8N_OAUTH_NEEDED','N8N_DISCOVERY_EXPIRED','N8N_DISCOVERY_CHANGED','N8N_STALE_OPERATION','N8N_TENANT_CHANGED','N8N_FORBIDDEN'];
+   const known=['N8N_BUSY','N8N_OAUTH_NEEDED','N8N_DISCOVERY_EXPIRED','N8N_DISCOVERY_CHANGED','N8N_GRANT_GONE','N8N_STALE_OPERATION','N8N_TENANT_CHANGED','N8N_FORBIDDEN'];
    const code=known.find(code=>error.message.includes(code));
    throw new N8nSafeError(code?.toLowerCase().replace(/^n8n_/,'')??'operation_refused');
   }
@@ -91,7 +96,7 @@ Deno.serve(async req=>{
    const code=url.searchParams.get('code');
    if(!code||code.length>4096) throw new N8nSafeError('invalid_callback');
    stage='token_exchange';
-   const tokens=await exchangeCode({server:payload.server,...payload.client,redirectUri:CALLBACK,code,verifier:payload.verifier,resource:payload.resource});
+   const tokens=await exchangeCode({server:payload.server,...payload.client,redirectUri:CALLBACK,code,verifier:payload.verifier,resource:payload.resource,requestedScopes:payload.requested_scopes??['workflow:read','workflow:write']});
    pendingGrant={server:payload.server,client:payload.client,tokens};
    stage='scope_validation';
    assertScopedTokens(tokens,payload.requested_scopes??['workflow:read','workflow:write']);
@@ -159,35 +164,75 @@ Deno.serve(async req=>{
   try{
    if(isExpired(lease.expires_at)){
     if(!lease.refresh_token) throw new N8nSafeError('token_expired');
-    let rotated:{server:AuthorizationServer;tokens:TokenSet}|undefined;
+    // REVOKING IS FOR A GRANT WE REFUSE, NEVER FOR ONE WE FAILED TO WRITE DOWN.
+    //
+    // Rotation is destructive: the moment n8n issues the new refresh token the old one is
+    // dead. Every failure after that point used to take the same path -- revoke the token
+    // just issued -- so a database blip, or a lease that ran out while the provider was
+    // slow, destroyed a working connection and the workspace had to reconnect. That is
+    // what "we get disconnected every time you update" actually was.
+    //
+    // The two cases are now separated, because they are opposites:
+    //   WE reject the tokens (wrong scopes)  -> revoking what we will not use is correct.
+    //   We cannot RECORD them                -> the grant is legitimate and the old token
+    //                                           is already gone; revoking guarantees the
+    //                                           reconnect instead of leaving it retryable.
+    const server=await discoverAuthorizationServer(lease.issuer);validateServer(server);
+    let tokens:TokenSet;
     try{
-     const server=await discoverAuthorizationServer(lease.issuer);validateServer(server);
-     const tokens=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url});
-     rotated={server,tokens};assertScopedTokens(tokens);
-     await rpc('rotate',{...bound,tokens});accessToken=tokens.accessToken;
-     if(tokens.refreshToken)activeSecrets.push(tokens.refreshToken);
-     rotated=undefined;
-    }catch{
-     if(rotated)await revokeToken({server:rotated.server,clientId:lease.client_id,clientSecret:lease.client_secret,token:rotated.tokens.refreshToken??rotated.tokens.accessToken,tokenTypeHint:rotated.tokens.refreshToken?'refresh_token':'access_token'});
-     throw new N8nSafeError('token_expired');
+     tokens=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url,grantedScopes:lease.oauth_scopes});
+    }catch(error){
+     // Only the provider saying invalid_grant means the grant is really gone (the owner
+     // revoked us at n8n). Anything else is transient and must leave the row untouched so
+     // the next attempt can simply try again.
+     console.error('[tenant-n8n-oauth] refresh failed',{withdrawn:isGrantWithdrawn(error)});
+     throw new N8nSafeError(isGrantWithdrawn(error)?'token_expired':'provider_unavailable');
     }
+    try{ assertScopedTokens(tokens); }
+    catch(error){
+     await revokeToken({server,clientId:lease.client_id,clientSecret:lease.client_secret,token:tokens.refreshToken??tokens.accessToken,tokenTypeHint:tokens.refreshToken?'refresh_token':'access_token'}).catch(()=>false);
+     throw error;
+    }
+    try{
+     await rpc('rotate',{...bound,tokens});
+    }catch(error){
+     // N8N_GRANT_GONE means the workspace DISCONNECTED (or re-authorized) while this
+     // refresh was in flight. The token just issued is then an orphan at n8n, and leaving
+     // it live would mean someone pressed Disconnect and still has a working grant there.
+     // That one case revokes. Every other refusal is someone else mid-operation or a
+     // database blip, and the grant must survive it.
+     const gone=error instanceof N8nSafeError&&error.code==='grant_gone';
+     if(gone) await revokeToken({server,clientId:lease.client_id,clientSecret:lease.client_secret,token:tokens.refreshToken??tokens.accessToken,tokenTypeHint:tokens.refreshToken?'refresh_token':'access_token'}).catch(()=>false);
+     // Loud either way: this path recorded NOTHING before -- last_error stayed NULL and no
+     // Rail row was written -- so a workspace losing its connection left no trace at all.
+     console.error('[tenant-n8n-oauth] rotation not recorded',{grantGone:gone});
+     throw new N8nSafeError(gone?'token_expired':'provider_unavailable');
+    }
+    accessToken=tokens.accessToken;
+    if(tokens.refreshToken)activeSecrets.push(tokens.refreshToken);
    }
    const preview=await discoverWorkflowPreviews({serverUrl:lease.server_url,auth:{kind:'bearer',token:accessToken}});
    if(preview.workflows.some(row=>[accessToken,...activeSecrets].some(secret=>row.name.includes(secret)||row.id.includes(secret))))throw new N8nSafeError('provider_unavailable');
-   await rpc('probe',{...bound,state:'connected',pin:preview.pin});
+   await rpc('probe',{...bound,state:'connected',pin:preview.pin,marks:preview.marks,inventory_complete:preview.inventory_complete});
    if(body.action==='discover'){
     const snapshot=await rpc('snapshot',{...bound,payload:preview});
-    return json({workflows:preview.workflows.map(row=>({...row,approved:lease.discovery_pin===preview.pin&&lease.approved_ids.includes(row.id)})),discovery_id:snapshot.discovery_id,inventory_complete:preview.inventory_complete,total_count:preview.total_count});
+    return json({workflows:preview.workflows.map(row=>({...row,approved:lease.approved_ids.includes(row.id)&&!!lease.approved_marks?.[row.id]&&lease.approved_marks[row.id]===preview.marks[row.id]})),discovery_id:snapshot.discovery_id,inventory_complete:preview.inventory_complete,total_count:preview.total_count});
    }
    if(body.action==='approve'){
     if(typeof body.discovery_id!=='string') throw new N8nSafeError('discovery_expired');
     const snapshot=await rpc('read_snapshot',{...bound,discovery_id:body.discovery_id});
     if(snapshot.pin!==preview.pin) throw new N8nSafeError('discovery_changed');
     const ids=validateApproval(body.workflow_ids,preview.workflows);
-    await rpc('approve',{...bound,discovery_id:body.discovery_id,pin:preview.pin,workflow_ids:ids});
+    await rpc('approve',{...bound,discovery_id:body.discovery_id,pin:preview.pin,workflow_ids:ids,marks:preview.marks});
    }
    if(body.action==='preview'){
-    if(lease.discovery_pin!==preview.pin||typeof body.workflow_id!=='string'||!lease.approved_ids.includes(body.workflow_id)) throw new N8nSafeError('workflow_not_approved');
+    // Judged on THIS workflow's own mark. It used to compare the whole-inventory pin, so a
+    // change to any workflow -- or a brand new unrelated one -- made Paige refuse every
+    // approved workflow as "not approved" before anything had even been revoked.
+    if(typeof body.workflow_id!=='string'
+      ||!lease.approved_ids.includes(body.workflow_id)
+      ||!lease.approved_marks?.[body.workflow_id]
+      ||lease.approved_marks[body.workflow_id]!==preview.marks[body.workflow_id]) throw new N8nSafeError('workflow_not_approved');
     const selected=preview.workflows.find(row=>row.id===body.workflow_id);
     if(!selected) throw new N8nSafeError('workflow_unavailable');
     await fresh();

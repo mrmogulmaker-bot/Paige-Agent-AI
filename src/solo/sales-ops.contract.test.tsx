@@ -57,6 +57,23 @@ const harness = vi.hoisted(() => ({
   agreements: {} as Record<string, unknown>,
 }));
 
+// Campaigns › Social mounts its own adapters (social-command.tsx). This suite renders every one of
+// the six tabs, so without these stubs a Sales test fails inside a Social surface: useSocialCommand
+// and useSoloPendingActions both reach useTenantContext, which THROWS outside a TenantProvider
+// (useTenantContext.tsx:544-550), and no suite here wraps GrowthHub in one.
+vi.mock("./useSocialCommand", () => ({
+  useSocialCommand: () => ({
+    tenantId: "tenant-1", phase: "ready", handles: [], canManage: true,
+    recordChangedAt: null, notPermitted: false,
+    recordHandles: async () => ({ ok: true, recordedCount: 0 }), retry() {},
+  }),
+}));
+vi.mock("./data/useSoloPendingActions", () => ({
+  useSoloPendingActions: () => ({ items: [], loading: false, error: null, refresh() {} }),
+}));
+vi.mock("./data/useSoloTrust", () => ({
+  useSoloTrust: () => ({ loading: false, configured: true, departments: [], bySlug: {}, error: null }),
+}));
 vi.mock("./useSoloCampaigns", () => ({ useSoloCampaigns: () => harness.state }));
 vi.mock("./useCatalogOffers", () => ({ useCatalogOffers: () => harness.offers }));
 // The Sales-operations adapter is mocked HERE so this file proves the SURFACE. What the adapter

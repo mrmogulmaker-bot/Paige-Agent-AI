@@ -118,6 +118,7 @@ function parseJwtClaims(token: string): Record<string, unknown> | null {
 const SAVE_REFUSAL_STATUS: Record<string, number> = {
   UNAUTHENTICATED: 401,
   NO_TENANT: 403,
+  WORKSPACE_CHANGED: 409,
   FORBIDDEN: 403,
   TENANT_REQUIRED: 400,
   UNKNOWN_TENANT: 400,
@@ -204,19 +205,24 @@ Deno.serve(async (req: Request) => {
       // 403 HERE rather than an opaque RLS rejection surfacing as a 500 at the upsert. The platform
       // owner still passes via is_platform_owner() even if their only role is super_admin.
       const { data: ownerFlag } = await authed.rpc("is_platform_owner");
-      const canWrite = ownerFlag === true || roles.some((r: string) => r === "admin" || r === "coach");
-      if (!canWrite) {
-        return fail(403, "FORBIDDEN", "Admin or coach access required.");
-      }
       const { data: resolved, error: tErr } = await authed.rpc("current_user_tenant_id");
       if (tErr) {
         console.error("comms-a2p-submit: tenant resolve failed:", tErr);
         return fail(500, "INTERNAL", `Could not resolve your workspace: ${tErr.message}`);
       }
       tenantId = str(resolved) || null;
-      // JWT path: write through the caller's own JWT so RLS applies AND the trigger derives tenant_id
+      const { data: tenantAdmin } = await createClient(supabaseUrl, supabaseServiceKey)
+        .rpc("is_tenant_admin_as", { _actor: user.id, _tenant: tenantId });
+      const canWrite = tenantAdmin === true || ownerFlag === true || roles.some((r: string) => r === "admin" || r === "coach");
+      if (!canWrite) return fail(403, "FORBIDDEN", "Workspace owner or administrator access required.");
+      // JWT path: write through the caller's own JWT; the save RPC derives tenant_id
       // from current_user_tenant_id() — the body can never widen scope (§9).
       writeClient = authed;
+    }
+
+    // This is a precondition, never authority to select a workspace.
+    if (body.expected_tenant_id !== undefined && body.expected_tenant_id !== tenantId) {
+      return fail(409, "WORKSPACE_CHANGED", "Your workspace changed. Reopen registration and try again.");
     }
 
     if (!tenantId) {
@@ -249,7 +255,7 @@ Deno.serve(async (req: Request) => {
       p_optin_message: optinMessage ?? null,
       p_optout_message: optoutMessage ?? null,
       p_help_message: helpMessage ?? null,
-      ...(isServiceRole ? { p_tenant_id: tenantId } : {}),
+      p_tenant_id: tenantId, // atomic workspace precondition for JWT; selector only for service role
     });
     if (saveErr) {
       const code = (saveErr.hint || "").trim() || "SAVE_FAILED";

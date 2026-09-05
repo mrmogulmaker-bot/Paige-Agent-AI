@@ -1,5 +1,21 @@
 # Decision Log — chronological one-liners
 
+- **Solo Campaigns → Social becomes Social Command, and gets the first writer `social_handles` ever had
+  (2026-09-05, migration `20261210000000`)** — the tab was one fixed UNAVAILABLE panel; it is now a
+  surface where every tile names its source or its absence, and where an owner can RECORD the accounts
+  the business posts from. Closes the gap `docs/product/systems-check-operating-readiness-spec.md:414`
+  records in its own words ("NONE EXISTS. Verified: no route writes tenants.features.social_handles"),
+  which made Systems Check #3 structurally unpassable for every tenant since the day it shipped.
+  **Spine capability `social.presence`** (registry now 17) with a live per-turn Chat block, plus
+  `get_social_accounts`/`record_social_accounts` in `paige-mcp` so PAIGE reads and writes the same
+  field the surface does. **No Rail signal, deliberately:** `record_rail_event` is contact-scoped and
+  this fact is workspace-scoped — the same evidence class as `business_context.readiness`.
+  **The `BEGIN..ROLLBACK` proof earned its keep:** it caught the read's role gate being unguarded on
+  `auth.uid()`, which would have refused PAIGE's own service-role MCP caller and the Systems Check
+  runner while looking correct in review. **Owed:** CI-applied migration, authenticated live drive.
+  **NOT shipped and not implied:** a live per-tenant provider connection — `meta-schedule-post` uses a
+  single platform-wide token and writes a table with no `tenant_id`.
+
 - **RELEASED to production: `tenant_comms_readiness()` reads Setup (2026-09-03, PR #878, merge `8689df61`, migration `20261160000000`)** —
   the FOURTH consumer of the pointer #864 fixed, found only by enumerating what functions READ rather
   than what they are named. Solo Settings → Connections was telling Mogul Maker Academy its website
@@ -2165,3 +2181,411 @@ merged reality.
 Owed: §32.c authenticated live-drive at the required viewports/themes (no browser-driving tool in
 this session — flagged, not claimed); the release report format the task brief requires (owner's
 one-minute test, Proof Owed, which source contract is ready for Sales/Spine).
+
+**2026-09-04 — #924 Registration becomes a second EDITOR of the one canonical business record.**
+Solo Settings → Connections → Registration could name the facts blocking a carrier filing and not
+resolve them. It now edits them through `save_solo_business_context` — the same seam Setup uses, so
+there is one record and two editors, never two records (§57). Owner-only; the canonical adapter
+mounts only when the editor is opened, so the ordinary Registration view is behaviourally unchanged.
+
+Underneath it, a **shipped capability had silently regressed (§58)**: `20261046000000` replaced
+`save_solo_setup_identity` with a version whose upsert omits `authorized_representative_first_name`,
+`_last_name`, `_email` and `_business_title`, and nothing else in the product wrote them. Because
+`comms-a2p-register`'s `missingProfile()` requires three of them, `missing_profile_fields` could
+never empty and **"Start secure brand registration" was permanently disabled for every Solo
+workspace**. `20261201000700` derives all four from the named active Team member at the table — one
+derivation for every writer — with a second trigger on `tenant_members` so a departure removes the
+name rather than the next unrelated Setup save. Backfilled unconditionally.
+
+`docs/doctrine/tier-matrix.md` updated in the same commit (§66): the `connections/registration` row
+previously asserted "the legal identity is SHOWN, not edited", which the merge makes false.
+
+The §39 peer-gate returned BLOCK twice and was right both times — most seriously on a browser
+`select()` for three columns `20261201000600` deliberately excludes from the `authenticated` grant,
+which would have blanked Registration for every workspace while every test stayed green. Recorded in
+`lessons-learned.md`.
+
+Owed and NOT claimed: §32.c authenticated live-drive (no browser in this session), §32.a persisted
+apply on prod (merge-time), and a governed PAIGE read/write seam for these fields — which does not
+exist and is a slice of its own, not a bolt-on.
+
+**2026-09-04 — #924 MERGED AND LIVE (`a8862ee`), under the owner's MVP-authority instruction.**
+§32.a confirmed against prod rather than assumed: `schema_migrations` 958 → 959, `max(version)`
+`20261201000700`, three triggers present, `deploy-migrations` run 197 success including its own
+persisted-apply verify step. Vercel production `READY` on the merge commit. `deploy-edge-functions`
+correctly did not run — no `supabase/functions/**` changed.
+
+The backfill's effect was measured on prod, before and after: **1** workspace had named a
+representative and **1** was blocked from filing; after the apply, **0** blocked. That workspace's
+remaining shortfall is now exactly three items an owner can complete on the Registration screen —
+tax or registration number, representative phone, regions of operation — where before it also
+carried three that no code path could ever have cleared.
+
+Still owed: §32.c authenticated live-drive of the deployed surface. Nothing about a green pipeline
+proves an owner can finish the job.
+
+**2026-09-04 — #919 Zapier Solo release: three defects the release-drive found, none of them the
+one it was sent to fix.** The session was handed a migration ledger collision and standing authority
+to complete the release. The collision was real — main added `20261201000700_a2p_representative_identity_sync.sql`
+while this branch already held `20261201000700_solo_zapier_api_mcp_and_skool_intake.sql`, and
+`supabase start` failed on a duplicate `schema_migrations` key. What the repair uncovered matters more
+than the repair.
+
+**The guard for this exact failure was structurally blind.** `ci.yml` ran `lint:migration-versions`
+with `BASE_REF` set to the MERGE BASE, so it compared against main as it was when the branch forked —
+a migration main adds after the fork is invisible to it. Verified rather than argued: main's A2P file
+is absent at the merge base (`5fef0c9`) and present at the tip. Now compares against
+`github.event.pull_request.base.sha`. Only `baseFiles` changes; the added-file set already resolves
+through the merge base via `${base}...HEAD`.
+
+**"The next free version" was not free either.** `20261201000800` is claimed by open PR #917
+(`20261201000800_solo_operations_catalogue.sql`). Whichever merged second would have been silently
+skipped — the same failure one slot over. Picking a version by looking only at main is the same narrow
+check that caused the bug; the FLEET is the comparison set. Moved to `20261202000000`, free across every
+remote branch. The contract test now resolves the migration by filename SUFFIX, matching
+`catalog-offers.contract.test.tsx`, so the next renumber does not produce a red test that says
+"file not found".
+
+**`clients_created_by_email_unique` was a platform-wide latent defect, not an intake bug.** The index
+`(created_by, lower(email))` from `20260423012456` predates multi-tenancy and spans tenants, so one
+operator cannot hold the same contact email in two workspaces — the ordinary agency/sub-account case.
+`uq_clients_tenant_email` (`20260817010000`) already carries the invariant the product wants, more
+strictly inside a tenant. A §37 walk found ELEVEN producers insert into `public.clients`, six resolving
+`created_by` to the tenant owner, and NOT ONE assumes creator-wide semantics — so there was no consumer
+of the old invariant to break. Dropping it also repairs a signup-breaking path (`complete-signup`) and a
+silent CRM-linkage loss in `public-booking`. Proven on PostgreSQL 16.13: with the index the cross-tenant
+insert fails and the route-tenant recovery returns 0 rows; without it the insert succeeds and same-tenant
+duplicates still raise. Postgres reports the lower-OID index when both are violated, which is the legacy
+one, so two dashboards matched its name for a shipped toast — both widened to `uq_clients_tenant_email`
+so the message did not silently regress (§58).
+
+**Approval pins recorded the schema but not the authority.** `schemaHash` covered `inputSchema` alone,
+while `connected_app`, `action_type` and `effects` were shown to the owner at approval and never pinned —
+so a provider could keep a tool's name and inputs, move it to a different connected account or turn a read
+into a send, and the old approval still ran. Fixed by ADDING `authorityHash` and a combined `pin`, never by
+widening `schemaHash`: `_shared/n8n-oauth.ts` derives `n8n_discovery_pin` from `schemaHash`, and
+`20261201000300` wipes `n8n_approved_workflow_ids` when that pin moves — widening it in place would have
+silently revoked every n8n workspace's approved workflows, the exact n8n behaviour change this release
+forbids. Effects sort before hashing (a set, not a sequence); schema arrays keep their order (`required`
+and `enum` are contracts). Value-invariance of `fingerprintSchema` proven across five shapes.
+
+**The production failure the owner hit mid-session was this PR's, already fixed in it.** `/oauth/mcp/callback`
+returned "That did not connect". Prod carries a `zapier` row with `auth_kind='url'` from the retired
+connect-by-URL path; `20261016000000` forbids a URL-kind row that also stores a token; main's setter writes
+token ciphertext without converting `auth_kind`, so the RPC errors and the function returns
+`oauth_store_failed` as a 500 — which `McpOAuthCallback.tsx` has no case for, hence the generic copy. Edge
+logs show `POST | 500` at 23:15:29 and 23:16:22, matching both attempts. This branch's setter converts the
+row to `auth_kind='oauth'` atomically in its conflict branch. Nothing on main unblocks it.
+
+Owed and NOT claimed: §32.c authenticated live-drive of the deployed surface, a live Zapier provider
+authorization (`ZAPIER_API_CLIENT_ID`/`_SECRET` absent on prod, so the API tab renders capability
+unavailable truthfully), and a real Skool payload proof. A cross-PR hazard is filed rather than fixed:
+#919 and #925 both DROP+ADD the same three `paige_workspace_events` CHECK constraints with disjoint
+allowed values, so whichever merges second silently clobbers the other's source kinds.
+
+---
+
+## 2026-09-05 · Systems Check + Mind · PR #933 · one owner ruling, two decisions owed
+
+**OWNER RULING — no redundant surface title on a Command Center sub-tab.** *"When people are inside
+of Systems Check, they already understand that they're in there. I don't think we need a
+banner-sized word saying 'Systems Check'."* And, on Mind: *"Keep that same consistency with the two
+new tabs as well. We don't need redundant words if we have a word right at the top inside of the
+menu bar and it says it."*
+
+Binding on all four sub-tabs — Systems Check and Mind now, **Game Plan and Trust Compass when they
+land.** The `h1` is kept in the DOM and taken out of layout rather than deleted: removing it takes
+the document's only `h1`, and on Mind it is the `aria-labelledby` target of the whole section.
+Recorded in `docs/product/systems-check-operating-readiness-spec.md` §3.2, pinned by assertion in
+`SoloMindWorkspace.test.tsx`.
+
+**TWO DECISIONS OWED BY THE OWNER, both surfaced by this work and neither taken here:**
+
+1. **`NOT CHECKED` is a ninth status word** outside the closed set of eight, and it is already
+   rendering on the three uncovered operating areas. None of the eight fits: `UNAVAILABLE` means, by
+   the spec's own gloss, that a source was consulted and could not answer — here nothing was
+   consulted. *"We looked and could not tell"* and *"we have never looked"* are different promises,
+   and only one implies a defect. Ratify it, or rule which of the eight absorbs it. Spec §4.4a.
+2. **An operator-only check makes every tenant permanently PARTIAL.**
+   `revenue_tracking_configured` resolves through `operator_revenue_integrity_audit`, which is
+   `is_platform_owner()`-gated, so it returns `skip` for every tenant on every run by design — its
+   own evidence says so. All 15 tenants therefore carry an unresolvable warning, and a warning that
+   can never clear trains the reader to ignore warnings. The registry already carries `scope` and
+   `tier_scope`; the question is whether the check belongs in the tenant sweep at all. Task #23.
+
+**A LOADED FALSE ALL-CLEAR, found by the crew, filed rather than fixed here (task #24).** The runner
+accepts a `runnerKeys` filter, and `systems-check-run-change` passes ONE key per changed surface, so
+such a run's `check_count` is 1. `rescanBusinessContext` fires three of them on **every successful
+Solo Setup save** (`useSoloSetupBrief.ts:187`). Because the console reads the latest RUN, that
+one-check run would become the tenant's whole picture: `SystemsCheckTile` renders "1 of 1 passed"
+with a StatePill reading **"All clear"**, nine checks hidden, and no incomplete banner — because
+`recorded(1) > readable(1)` is false.
+
+Production carries **zero** `change_triggered` runs (937 scheduled, 4 onboarding). The wiring is not
+broken — all three surface names are valid `SURFACE_TO_RUNNERS` keys and all three runner keys exist
+in the registry — it shipped 2026-09-03 (`bd9b882d`) and simply has not been pulled. **A loaded
+trigger, not a live defect.** Latest-result-per-check (task #19) is the durable fix.
+
+**§13 corrections recorded in the same PR:** two comments claimed the runner patches `check_count` at
+the end of a scan — it is written at INSERT (`systems-check-runner.ts:283`), and read precisely it
+means "registry rows THIS RUN selected", which is what makes the subset case dangerous. A third
+claimed the scan writes its run row only on completion; it writes it up front.
+
+**Owed and NOT claimed:** §32.c authenticated live-drive of the deployed surface — this session
+cannot sign into the workspace.
+
+---
+
+## 2026-09-05 · `NOT CHECKED` ratified as the ninth status word, with an obligation attached
+
+**OWNER RULING.** *"As far as the 'not checked' that you haven't checked yet, that's fine… I don't
+mind having it."* The Systems Check status vocabulary is now **nine** words, not eight.
+
+It means one thing: **no check has ever looked at this area.** Distinct from `UNAVAILABLE`, which
+means a source was consulted and could not answer. An absent check is never evidence of a fault,
+and collapsing the two would have shown three faults on every account where none exist.
+
+**The ruling came with an instruction, and that is the substantive part:** *"Just write something on
+the backend for other agents to be able to refer to, so they know that when they're wiring into
+those areas… they need to address those first."*
+
+So the word is a **marker of unfinished backend work**, not a resting state, and the reference lives
+at the code an engineer will actually open — a header block in `src/solo/systems-check-areas.ts`
+with the four steps that finish an area (registry row → tenant-scoped runner → destination map →
+move the id into `coveredBy` and delete the `uncovered` string), plus a pointer on each affected
+row. Mirrored in `docs/product/systems-check-operating-readiness-spec.md` §4 and §4.4a.
+
+The failure it prevents is specific and quiet: someone builds the Mind, ships it, and the console
+goes on saying NOT CHECKED about something that now works — with nothing failing and no test
+complaining. The header names the trap explicitly, including the service-role one that broke the
+revenue check (a runner cannot resolve its tenant from `current_user_tenant_id()`).
+
+Carrying it today: **Paige's team and delegated work · Business knowledge — the Mind · Security,
+permissions and governance.**
+
+---
+
+## 2026-09-05 · The Systems Check console now reads the last FULL sweep, not the newest run
+
+Behaviour change worth finding later, because the obvious question — *"why is my console showing
+yesterday's scan?"* — has a deliberate answer.
+
+**Why.** `_shared/systems-check-runner.ts` accepts a `runnerKeys` filter and
+`systems-check-run-change` passes ONE key per changed surface, so such a run carries
+`check_count = 1`. The console read the newest run, so a one-check run became the tenant's whole
+picture — tile showing "1 of 1 passed · All clear" with nine checks, including real failures,
+absent, and no incomplete banner because `recorded(1) > readable(1)` is false.
+`rescanBusinessContext` fires three of those on **every successful Solo Setup save**. Zero such
+runs existed on prod and the wiring shipped 2026-09-03: a loaded trigger, not a live defect.
+
+**What changed.** Migration `20261203000000` adds `paige_systems_check_run.selected_runner_keys`
+and guards the run-select in BOTH `systems_check_snapshot` and `approve_systems_check_finding` with
+`selected_runner_keys IS NULL AND scan_flavor <> 'change_triggered'`. The runner's delta baseline
+(a fourth "latest run" resolver, found by the peer gate) takes the flavour clause too — using a
+one-check run as the baseline left nine checks reading `undefined !== "fail"`, re-forging an LLM
+draft and re-filing a duplicate action for each, once per Setup save.
+
+**Two clauses, not one.** The column is written from the same `opts.runnerKeys` that drives the
+filter, so a future partial flavour records itself with no SQL change. The flavour clause makes the
+migration effective on its own — without it the guard would be dark until the edge bundle deployed,
+and the two CI pipelines have no ordering link.
+
+**The cost, so nobody rediscovers it as a bug.** The console reads a sweep ~17h old on average.
+Inside that window a tenant can make a check *worse* and still see the older passing result, with
+STALE EVIDENCE silent until 24h. A loud flattering lie traded for a quiet stale one. Reading the
+newest result PER CHECK removes both and is the durable fix.
+
+**Conditional on cron coverage.** Approvals need a full sweep under 24h. `systems-check-run-scheduled`
+pages with `DEFAULT_BATCH = 15` ordered `created_at ASC` with no cursor, so from tenant 16 the newest
+are never swept — such a workspace would be pinned to its onboarding sweep with approvals dead. 14
+tenants today.
+
+**Verified byte-clean.** The migration reproduces both function bodies to replace them; the peer gate
+pulled the live `prosrc` from prod and confirmed `md5` on both before diffing, so the only changes
+are the intended ones.
+
+---
+
+## 2026-09-05 — Revenue tracking on Systems Check is the TENANT's sales revenue (owner ruling)
+
+**Owner, verbatim:** *"The revenue tracking is not from the platform admin. I don't know where you
+got that from. The revenue tracking should be for the particular tenant... The platform admin bills
+the clients... As far as all of the sales revenue that sits inside the campaigns and tracks
+throughout the metrics and all the data, that should be something that Systems Check is looking at.
+That has to do with the revenue that the actual customer is making."*
+
+And the scope boundary that goes with it: *"all of the work we're doing is isolated for the Solo
+tenant shell and Solo tenant shell only... I don't want you guys to worry about anything that has to
+do with the platform operator account. That's totally out of scope right now."*
+
+**What was wrong.** `revenue_tracking_configured` called `operator_revenue_integrity_audit` — a
+platform-billing chain gated on `is_platform_owner()`. The scan runs as service-role with no user
+identity, so `auth.uid()` is NULL and the RPC raised 42501 on every tenant, every run, since
+2026-08-10. Prod: **315 findings, all `skip`, all with a NULL drafted fix.** Every workspace carried
+a PARTIAL badge it could never clear. Shipped in PR #935.
+
+**A correction worth recording (§13).** CC's own recommendation had been to pull the check OUT of the
+tenant sweep as operator-only. That was wrong, and the owner corrected it. The error was inferring
+INTENT from IMPLEMENTATION: the check was correctly named and correctly placed, and had simply been
+pointed at the wrong data. "What the code does" is not evidence of "what it was for."
+
+## 2026-09-05 — Two gaps found while wiring that check, both filed rather than folded in
+
+**#26 — a Solo tenant cannot mark a stage as closing.** Not defaulted; unreachable. `growth2.tsx`
+has zero references to `stage_type`; the `pipeline_configure` tool schema has no such field on
+create-pipeline, create-stage or update-stage; the governed RPC inserts a hardcoded `'open'` and
+never updates it. So the revenue check names a next action the owner cannot complete — Paige would
+report success and create an open stage. Stated in the finding's `caveat` until #26 lands (§70).
+Owner's direction on the shape: a drop target at the bottom of the board. `deals.stage_id` is NOT
+NULL, so whatever it looks like it must be backed by a real won-typed stage — which keeps the check's
+predicate the right one.
+
+**#27 — the Sales Pipeline sub-agent is scoped by OWNER, not by workspace.**
+`subagent-sales-pipeline` runs service-role and filters `deals` on `owner_user_id` with no
+`tenant_id`, and reads `pipeline_stages` with no filter at all. Not an anonymous IDOR — the caller's
+id is real and JWT-derived — but a multi-tenant user gets their workspaces blended into one answer.
+The file header claims "Tenant-scoped via the deal owner," which is how it survived review. Same
+class as #588.
+
+## 2026-09-05 · PAIGE's workspace-level acts have somewhere to be recorded (SCR-2026-09-05)
+
+**Decision.** A workspace-level outcome is recorded on `paige_workspace_events` under a new
+`source_kind` of its own, `capability_run`, naming the capability and one of five outcomes. The
+MCP integrations are its first two consumers; the remaining ~47 actions adopt it wave by wave.
+
+**The gap this closes, measured on prod 2026-09-05 (ref xygzykjyynhzqytbqnzu), not inferred:**
+142 rows in `paige_audit_log` — which no Solo surface reads — against **10** rows in
+`paige_workspace_events`, all three of whose source kinds are connection events. So of the 60
+actions PAIGE can perform from Chat, the owner could see the result of **none**: 13 write a
+per-client Rail row whose production `SELECT` is still denied (#746, re-verified false the same
+day), and 47 wrote only the audit log. The migration map states it plainly at :127 — *"Leg 7 —
+owner can see the truthful result — is closed for 100% of PAIGE's writes."*
+
+**What was NOT the problem, and is worth recording because it inverted the plan.** The READ half
+already ships and is live: `get_solo_rail_activity` already UNIONs `paige_client_events` with
+`paige_workspace_events` through `_workspace_event_display`, takes no tenant argument, and
+`authenticated` already holds EXECUTE — all four verified on prod before any code was written.
+There was never a missing window. There was a missing **vocabulary**, so nothing could appear in
+the window that existed.
+
+**Four things the design crew caught that a solo pass would have shipped:**
+1. The live `_workspace_event_display` is the one in `20261202000000`, not `20261201000800`.
+   Rebuilding it from the earlier ancestor would have silently deleted the Zapier dispatch and
+   dropped all eleven Zapier outcomes to "Recorded activity". Avoided entirely by widening
+   through delegation rather than by copying a body.
+2. `actor_type` defaults to `'system'`, and `useSoloActivityFeed` derives `byPaige` from
+   `actor_type === 'paige_agent'`. Left alone, every act PAIGE performed would have rendered as
+   **"Person"** on Systems Check and filed under the People filter — while the same Zapier call's
+   contact-scoped twin already says `paige_agent`. The capability family emits `paige_agent`.
+3. One Zapier call would have produced TWO lines in the unified feed. The workspace row is now
+   skipped when the contact-scoped row was actually written.
+4. `get_zapier_rail_activity` hard-filters four source kinds, so a Zapier run would have been
+   invisible on the one panel named after Zapier. Its filter now admits
+   `capability_key='zapier_run_action'`.
+
+**And one the crew did not find, which prod did.** The cross-check constraint is named
+`paige_workspace_event_source` on production, not `n8n_workspace_event_source` as the original
+migration created it. Dropping only the old name would have left the live constraint standing
+beside a new one — the migration applies GREEN and then every `capability_run` insert is rejected
+forever. Caught by reading `pg_constraint` instead of the migration file. **The lesson generalises:
+a migration that edits a constraint must read the constraint's LIVE name, because a rename leaves
+the file lying.**
+
+**Proof.** Thirteen assertions (A–M) run against prod inside `BEGIN … ROLLBACK` — existing Zapier,
+n8n and `agent_run` copy unchanged; the five new outcomes; idempotence per run id; both directions
+of the family constraint; the non-member and invalid-outcome refusals; and the health-check flood
+collapsing while a real state flip still records. Rollback confirmed afterwards: no
+`capability_key` column and no `record_capability_run` on prod, 10 rows still. Plus 3262 unit
+tests, `tsc`, `deno check` on all three edge modules, and six CI lints.
+
+**Also in this change.** `record_zapier_mcp_connection_test` passed `gen_random_uuid(), 0`, so its
+unique key could never collide and EVERY health check wrote a row. It now records only a CHANGE in
+result, which is the pattern `_n8n_rail_revision` already used.
+
+**Flagged, not fixed:** PR **#776** replaces `get_solo_rail_activity` with a version that reads
+`paige_client_events` only. Merged as-is it deletes the workspace half of the union — the ten rows
+that exist today and every row this change adds. It needs a rebase whichever order the two land in.
+
+**Owed and NOT claimed:** §32.c authenticated live-drive — this session cannot sign into the
+workspace, so that a capability row RENDERS on the owner's Command Center is unverified until the
+owner or a browser-capable session looks.
+
+### Peer-gate follow-up, same day, before merge (§39)
+
+The §39 adversarial read of the pushed diff returned **no blocking defect and four real ones**,
+each of which the author's own 13 green assertions structurally could not reach. Recorded because
+three of the four were defects in the thing being shipped, not in what surrounded it.
+
+1. **A Zapier action run with a client in scope was invisible on the Zapier panel — permanently.**
+   The workspace row was written only when NO contact was in scope, to avoid a double line in the
+   Command Center feed. But `get_zapier_rail_activity` reads `paige_workspace_events` and nothing
+   else, so the commonest Zapier turn (owner on a client's screen) wrote a contact row, no
+   workspace row, and never appeared on the panel this very release widened to show it. **Both
+   rows are now written.** They answer different questions — the contact row is that client's
+   history, the workspace row is what PAIGE did to this business — and a duplicate line in one
+   feed is a presentation question (§00) where a permanent blind spot is a correctness one.
+2. **A scope refusal after the tenant/session fence recorded nothing**, while a provider-tool
+   refusal did — two refusals of the same act class, one findable and one not. It also made
+   `RAIL_OUTCOME.authorization_needed` dead code. Now records, with a test.
+3. **The health-check fix suppressed the confirming test after a reconnect.** The de-dup lookup
+   read only the two test outcomes, so a disconnect never reset it: succeed → disconnect →
+   reconnect → succeed was silently dropped, and the owner would watch the connection go down and
+   never see it come back. The lookup now reads the connection-state rows too, which is what makes
+   the n8n pattern it copies work. Proven on prod, including the exact sequence.
+4. **A locally-refused capability was reported as the provider refusing it.** All four Zapier
+   `denied` states fire before any network call; the copy said *"the connected service declined
+   this… its permissions may need a look"* and sent the owner to the wrong screen. That is verbatim
+   the collapse `McpDenialReason` exists to prevent, re-committed one layer up. The copy no longer
+   names who refused, because the row does not record it.
+
+**Also corrected: two comments that asserted things the same file made untrue** — that the 2-arg
+display still had callers (it has none after this migration) and that recording is idempotent per
+run (the key makes idempotence *available*; no current caller re-presents a run id, so a genuinely
+retried act writes two rows).
+
+**Left open and written down rather than implied fixed:** two concurrent health checks can both
+insert under READ COMMITTED, because `source_id` is a fresh uuid and the UNIQUE key cannot collapse
+them. Worst case is one duplicate line, not a wrong one; closing it needs a stable source_id plus a
+state-derived revision, which is a larger change than this release's subject.
+
+**The lesson worth keeping:** the peer-gate's value here was not catching sloppiness. Every one of
+the four sat in a decision that was *locally* reasonable — avoid a double line, keep the dedup
+narrow, reuse an existing status word — and wrong once traced to the surface a person actually
+opens. A proof written by the author tests the author's model of the system.
+
+
+---
+
+## 2026-09-05 — Closing a deal, and marking a stage closing (PRs #941 + the #26 slice)
+
+**#941 — the Solo board recorded no revenue.** Three paths move a deal into a won stage; PAIGE's
+`deal_move_stage` and the legacy /admin board both stamped `status` and `actual_close_date`, and the
+governed board that `/solo` and `/business` use stamped neither. Period revenue keys on the close
+date, so a deal closed on the Solo board never counted. Because the all-time sums carry no date
+predicate the symptom was a DIVERGENCE, not a clean zero — harder to notice. Proven on prod in a
+rollback: a $2,500 deal recorded $0 before and $2,500 after, and clears again on reopen.
+
+**The #26 slice — a stage can be marked closing.** `stage_type` is now settable through
+`configure_tenant_pipeline_core_identity` (the one function both the board and PAIGE reach) and
+readable through the workspace projection. Absent preserves today's behaviour; an unrecognised value
+RAISES rather than coercing, because unlike `movePolicy` this column has no safe fallback direction.
+
+**The camelCase trap, recorded because it would have been invisible.** `useSoloCampaigns` forwards
+the command object verbatim with no serializer, and every key the RPC reads is camelCase. Reading
+`stage_type` instead of `stageType` would evaluate to NULL, fall through the absent-value rule, and
+write 'open' while the UI reported a successful save. The sibling `create_pipeline_with_stages` DOES
+read snake_case — the exact line someone copies. Pinned by four assertions in
+`growth2.contract.test.tsx`, and demonstrated in the prod proof rather than described.
+
+**A guard planned and killed by the §39 pass, which is the entry worth keeping.** The plan carried a
+refusal on any command leaving a pipeline with zero live open stages. It was wrong four ways: it
+would refuse the shipped "Create blank pipeline" button; it would refuse a plain rename on a state
+already reachable; it would not hold the invariant because `archive_stage` is uncovered; and its
+rationale was false, since PAIGE's `deal_create` picks a stage with no stage_type filter so such a
+pipeline receives deals fine. Measured on prod before deciding: zero `growth_forms` route to any
+pipeline, and one of 17 pipelines already sits at zero open stages. Dropped, and filed as the
+pre-existing routing fragility it is.
+
+**The caveat was NARROWED, not deleted.** PAIGE can set the closing role; the Pipeline page cannot,
+and that control is CD's. A deleted caveat would have sent the owner to a page that still cannot
+finish the job (§70).

@@ -427,6 +427,22 @@ Values intentionally omitted.
 - **Observability:** Sentry (`SENTRY_DSN`), PostHog (`POSTHOG_API_KEY`/`POSTHOG_HOST`).
 - **Zapier bridge:** `call-zapier-action` edge fn (Paige→Zapier). Platform/bridge keys:
   `PAIGE_MCP_PLATFORM_KEY`, `PAIGE_BRIDGE_API_KEY`, `PAIGE_OS_CLAUDE_PLATFORM_KEY`.
+- **Zapier MCP server address (verified live 2026-09-05):** the address a tenant pastes is
+  **`https://mcp.zapier.com/api/v1/connect`** — OAuth, HTTP transport, and the copy-to-clipboard
+  form carries a query string. The older `/api/mcp/s/<secret>/mcp` shape is token-auth and still
+  valid for servers created before the move, so BOTH prefixes are accepted
+  (`tenant-mcp-connect` `isZapierMcpAddress`, mirrored in `settings-integrations`
+  `zapierMcpAddressProblem`). Accepting only the legacy prefix rejected the address Zapier issues
+  today and the connection could not be started at all. Verified against the live endpoints:
+  `/.well-known/oauth-protected-resource/api/v1/connect` → resource + `authorization_servers:
+  ["https://mcp.zapier.com"]`; `/.well-known/oauth-authorization-server` → authorize
+  `/oauth/authorize`, token `/api/v1/oauth/token`, register `/api/v1/oauth/register`, S256,
+  `authorization_code` + `refresh_token`. The HOST is the security boundary; path and query are
+  shape checks only. A fragment is still refused.
+- **n8n OAuth access-token lifetime (measured on prod 2026-09-05):** **59m59s**. Refresh is LAZY —
+  there is no cron; it happens inside `tenant-n8n-oauth` verify and `_shared/n8n-management` when
+  the lease reports the token expired. So a refresh defect does not surface until roughly an hour
+  of idle time, which is why it read as "disconnected after an update".
 - **Misc app config:** `APP_PUBLIC_URL`, `PUBLIC_SITE_URL`, `PAIGE_APP_ORIGIN`,
   `EVAL_COST_CAP_USD`/`EVAL_MAX_CASES` (§34 L2 evals), `SLA_WATCHER_CRON_SECRET`,
   `COMMS_LEGACY_DUAL_WRITE`.
@@ -473,3 +489,11 @@ Released PR #909 (49b9f338) adds `tenant-n8n-oauth`, owner/session/workspace-bou
 ### n8n callback transport correction — 2026-09-03
 
 First owner consent exposed a hosted runtime URL rewrite missed by public-URL unit fixtures. The exact function path /tenant-n8n-oauth differs from the registered public callback path; the gateway also rewrites origin. Do not compare the runtime origin to the registered redirect URI. Keep registration/exchange fixed to the public redirect and preserve state/session/tenant/browser validation. Source and harmless Boolean probe evidence: docs/delivery/solo-n8n-oauth-mvp.md. Owner consent success still requires a fresh post-repair pass.
+
+### Solo orchestration MVP — A2P workspace repair, 2026-09-04 (candidate)
+
+Owner direction authorizes implementation through green-gated release for reusable Solo orchestration, imports, external intake and SMS readiness. PAIGE remains the AI COO: read, reason, write, delegate, execute and follow through; preparation-only behavior is an unfinished capability, not a product ceiling.
+
+The first repair closes a confirmed A2P workspace-switch defect. The editor is keyed by workspace, delayed responses are fenced, handlers pass a captured-workspace precondition, prompt context is explicitly tenant-scoped, and the save/insert trigger rejects a changed tenant rather than redirecting the write. Ordinary Solo owners/admins gain the same captured-tenant preparation authority using is_tenant_admin_as and a current-workspace SELECT policy. Carrier submission is still absent; this repair does not make SMS registration ready.
+
+Automated evidence: UI and actual-handler tests with injected database/model ports; isolated PostgreSQL role, replay and lock-wait race tests. Independent adversarial source review passed after two additional races were corrected. Authenticated production owner-flow proof remains owed. No real customer record, workflow, campaign, carrier submission or sender identity was changed to produce proof.

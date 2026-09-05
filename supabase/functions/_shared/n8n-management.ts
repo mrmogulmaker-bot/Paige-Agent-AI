@@ -95,39 +95,98 @@ function project(tool:string,p:Obj,secrets:string[],expected:Obj):Obj{
  if(tool==='n8n_archive_workflow'&&p.archived!==true)fail('provider_response_invalid');
  return {ok:true,...row(p),executed:false,...(tool==='n8n_update_workflow'?{skipped_operation_count:Array.isArray(p.skippedOperations)?p.skippedOperations.length:0}:{}),...(tool==='n8n_activate_workflow'?{published:true}:tool==='n8n_deactivate_workflow'?{published:false}:{})};
 }
+/** SCR-2026-09-05. Which Rail outcome each terminal state means, and nothing inferred.
+ *
+ * `outcome_unknown` is the reason this is a map and not a boolean. A write that was
+ * DISPATCHED and never answered is not a failure -- the automation may well have run --
+ * so it is recorded as its own state and the owner is told to check before retrying.
+ * Collapsing it into `capability_failed` would be the platform telling him nothing
+ * happened when something may have, which is the exact class of lie the Rail exists to
+ * end. Anything not named here is a plain failure.
+ */
+const RAIL_OUTCOME:Record<string,string>={
+ outcome_unknown:'capability_outcome_unknown',
+ provider_refused:'capability_refused',
+ provider_tool_unavailable:'capability_refused',
+ provider_scope_refused:'capability_refused',
+ authorization_needed:'capability_refused',
+ token_expired:'capability_refused',
+ provider_unavailable:'capability_unreachable',
+};
 export async function runN8nManagement(input:{admin:Admin;userId:string;tenantId:string;sessionId:string;tool:string;args:Obj;mutationApproved:boolean}):Promise<Obj>{
  const spec=specs[input.tool];if(!spec)return {ok:false,error:'unsupported_operation'};
  if(spec.write&&input.mutationApproved!==true)return {ok:false,error:'owner_approval_required'};
- let lease:Lease|undefined;let attempted=false;let bound:Obj={actor_id:input.userId,tenant_id:input.tenantId,session_id:input.sessionId};
- const rpc=async(operation:string,extra:Obj={}):Promise<unknown>=>{const {data,error}=await input.admin.rpc('n8n_oauth_service',{_operation:operation,_input:{...bound,...extra}});if(error){const known=['N8N_OAUTH_NEEDED','N8N_BUSY','N8N_FORBIDDEN','N8N_TENANT_CHANGED','N8N_STALE_OPERATION'];const found=known.find(k=>error.message?.includes(k));fail(found?found.toLowerCase().replace('n8n_',''):'operation_refused')}return data};
+ let lease:Lease|undefined;let attempted=false;let fenced=false;let bound:Obj={actor_id:input.userId,tenant_id:input.tenantId,session_id:input.sessionId};
+ const runId=crypto.randomUUID();
+ /** Records that PAIGE performed this capability, and how it turned out.
+  *
+  * THREE PROPERTIES, EACH DELIBERATE.
+  *
+  * 1. READS ARE NOT RECORDED. Six of the twelve tools are reads PAIGE may call freely
+  *    while thinking; recording them would bury the Rail in her own note-taking. The
+  *    Rail carries what she DID to the workspace.
+  * 2. NOTHING IS RECORDED BEFORE THE FENCE. `fenced` turns true only once `acquire`
+  *    has succeeded -- the owner/session/tenant check. Every refusal before that point
+  *    (unknown tool, approval missing, bad arguments, forbidden) writes nothing, which
+  *    keeps `refuses mutation before any secret lookup` and `rejects permanent deletion
+  *    without outbound calls` true as stated: they assert NO rpc call at all, and that
+  *    property is worth more than a row saying the model asked for something it could
+  *    not have.
+  * 3. IT CANNOT FAIL THE RUN. The rpc client returns `{error}` rather than throwing, and
+  *    the whole call is wrapped anyway. A Rail that is unavailable must never turn a
+  *    completed automation into a reported failure -- the run happened, and saying
+  *    otherwise is the lie this record was built to prevent (the same guarantee
+  *    `fileGovernedOutcome` carries, `_shared/mcp-outcome.ts:806-812`).
+  */
+ const record=async(result:Obj):Promise<void>=>{
+  if(!spec.write||!fenced)return;
+  const outcome=result.ok===true?'capability_succeeded':(RAIL_OUTCOME[String(result.error)]??'capability_failed');
+  try{
+   const {error}=await input.admin.rpc('record_capability_run',{_tenant_id:input.tenantId,_actor_id:input.userId,
+    _capability_key:input.tool,_outcome:outcome,_run_id:runId});
+   if(error)console.error('[n8n-management] capability run not recorded',{tool:input.tool,outcome});
+  }catch{console.error('[n8n-management] capability run not recorded',{tool:input.tool,outcome});}
+ };
+ const rpc=async(operation:string,extra:Obj={}):Promise<unknown>=>{const {data,error}=await input.admin.rpc('n8n_oauth_service',{_operation:operation,_input:{...bound,...extra}});if(error){const known=['N8N_OAUTH_NEEDED','N8N_BUSY','N8N_FORBIDDEN','N8N_TENANT_CHANGED','N8N_GRANT_GONE','N8N_STALE_OPERATION'];const found=known.find(k=>error.message?.includes(k));fail(found?found.toLowerCase().replace('n8n_',''):'operation_refused')}return data};
  try{
   const args=parameters(input.tool,input.args);
   if(!/^[0-9a-f-]{36}$/i.test(input.sessionId)||!input.userId||!input.tenantId)fail('forbidden');
-  lease=await rpc('acquire') as Lease;bound={...bound,lease:lease.lease,generation:lease.generation};
-  if(!Array.isArray(lease.oauth_scopes)||!lease.oauth_scopes.includes(spec.scope))return {ok:false,error:'authorization_needed',required_scope:spec.scope};
+  lease=await rpc('acquire') as Lease;fenced=true;bound={...bound,lease:lease.lease,generation:lease.generation};
+  // POST-FENCE, so it records. The grant is real and the workspace is real; what is missing is
+  // the scope. Returning here without recording made `RAIL_OUTCOME.authorization_needed` dead
+  // code and left the owner with a refusal they could see in chat and never find again, while
+  // `provider_tool_unavailable` six lines below wrote a row for the same class of refusal.
+  if(!Array.isArray(lease.oauth_scopes)||!lease.oauth_scopes.includes(spec.scope)){
+   const refused={ok:false,error:'authorization_needed',required_scope:spec.scope};
+   await record(refused);return refused;
+  }
   validateN8nResource(lease.server_url);
   let access=lease.access_token;
   const secrets=[access,lease.refresh_token,lease.client_secret].filter((s):s is string=>!!s);
   if(isExpired(lease.expires_at)){
    if(!lease.refresh_token)fail('token_expired');
    const server=await discoverAuthorizationServer(lease.issuer);validateServer(server);
-   const tokens:TokenSet=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url});
+   const tokens:TokenSet=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url,grantedScopes:lease.oauth_scopes});
    try{
     if(tokens.scopes.length!==lease.oauth_scopes.length||!tokens.scopes.every(s=>lease!.oauth_scopes.includes(s))||new Set(tokens.scopes).size!==tokens.scopes.length||!tokens.accessToken||isExpired(tokens.expiresAt))fail('provider_scope_refused');
     await rpc('rotate',{tokens});access=tokens.accessToken;secrets.push(access);if(tokens.refreshToken)secrets.push(tokens.refreshToken);
    }catch(error){await revokeToken({server,clientId:lease.client_id,clientSecret:lease.client_secret,token:tokens.refreshToken??tokens.accessToken,tokenTypeHint:tokens.refreshToken?'refresh_token':'access_token'}).catch(()=>false);throw error}
   }
   return await withApprovedCapabilitySession({serverUrl:lease.server_url,auth:{kind:'bearer',token:access},timeoutMs:30000,maxBytes:1048576},async session=>{
-   if(!session.tools.some(t=>t.name===spec.provider))return {ok:false,error:'provider_tool_unavailable'};
+   if(!session.tools.some(t=>t.name===spec.provider)){const refused={ok:false,error:'provider_tool_unavailable'};await record(refused);return refused;}
    await rpc('check');
    attempted=spec.write;
    const data=unwrap(await session.call(spec.provider,args));
    const projected=project(input.tool,data,secrets,args);
    await rpc('check',{record_success:true});
+   await record(projected);
    return projected;
   });
  }catch(error){
-  if(attempted&&!(error instanceof SafeFailure&&error.reason==='provider_refused'))return {ok:false,error:'outcome_unknown',retry_safe:false};
-  return {ok:false,error:error instanceof SafeFailure?error.reason:'provider_unavailable',...(spec.write?{retry_safe:false}:{})};
+  const failure:Obj=attempted&&!(error instanceof SafeFailure&&error.reason==='provider_refused')
+   ?{ok:false,error:'outcome_unknown',retry_safe:false}
+   :{ok:false,error:error instanceof SafeFailure?error.reason:'provider_unavailable',...(spec.write?{retry_safe:false}:{})};
+  await record(failure);
+  return failure;
  }finally{if(lease)await rpc('release').catch(()=>undefined)}
 }

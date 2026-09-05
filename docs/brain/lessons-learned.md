@@ -1768,3 +1768,206 @@ letting a green result imply coverage it does not have.
 `current_user_tenant_id`, `get_paige_persona_context` — must be called on `supabaseClient` (L577,
 carries the caller's Authorization header), never `supabase` (L589, service-role). The file states
 this at L1571 and it was still got wrong 7,400 lines later.
+
+---
+
+## A test double more generous than the real client cannot catch a grant (2026-09-04, #924)
+
+**Symptom.** A one-line change to a browser `select()` passed 1,454 tests, a clean build and a
+green type ratchet, and would have blanked Solo Settings → Connections → Registration for every
+workspace on deploy.
+
+**Root cause.** `hasLeftPreparation` reads eight columns, three of which (`brand_sid`,
+`campaign_sid`, `messaging_service_sid`) the query never asked for — and its own comment
+deliberately treats an unrequested column's `undefined` as "no value", so three of the server's
+eight immutability conditions were silently inert. The obvious repair is to select them. But
+`20261201000600` REVOKED select on `tenant_a2p_registrations` from `authenticated` and re-granted
+a column list that excludes exactly those three, so PostgREST answers `permission denied for
+column`, which the hook correctly reports as `unreadable`, which renders the whole surface as a
+retry card. Every UI test still passed, because the mock's `select()` ignored its argument and
+returned the whole fixture row.
+
+**Why the proofs could not see it.** A double that returns whatever it is asked for is not a model
+of PostgREST; it is a model of a database with no column privileges. Grants are precisely the class
+of behaviour it erases. The §39 peer-gate caught it by reading the migration, not the test.
+
+*Rule:* **when a fix is "just ask for one more column", check the grant first.** Column-level
+`GRANT SELECT (...)` is used deliberately on this platform to keep identifiers out of the browser,
+and the fix for a predicate that needs them is a server-computed boolean — `comms-a2p-register`
+already returns `has_brand` / `has_campaign` / `has_messaging_service` for this exact reason — not
+a wider select. And when a double stands in for a privilege-bearing client, either make it honour
+the projection or assert the column list directly; `settings.registration-business.test.tsx` now
+does both.
+
+*Second, smaller rule from the same PR:* a shipped capability can be missing a **writer** rather
+than a UI. No function in the product wrote four columns `missingProfile()` requires, so a filing
+was structurally unreachable for every Solo tenant and no screen said so. When a readiness list
+never empties, check that something writes what it is checking.
+
+---
+
+## Cataloguing a signal by what it holds today, instead of what it can hold
+
+**2026-09-04, Systems Check grounding.** An eleven-agent pass catalogued 101 tenant signals against
+live production and recorded a status for each. It was careful, sourced, and wrong in a way no
+amount of care would have caught, because the method itself was the defect: **each signal was
+classified by the value one workspace happened to hold on the day it was read**, not by the set of
+states the signal can occupy.
+
+The tell was that two words in an eight-word closed vocabulary — `PENDING PROVIDER` and `PAUSED` —
+came back unused. That reads like the vocabulary is too big. It is not. Both had real, reachable
+sources, and one was **occupied on production at the moment of the read**: the only
+`tenant_email_domains` row sat at `status='verifying'`, with a live provider id and three DNS records
+written. That workspace had done its part and the provider had not answered. The catalogue recorded
+it `NOT_CONNECTED` — which tells an owner to go and do something they have already done.
+
+Two further consequences only a state-space read surfaces:
+
+- The persisted finding store is CHECK-constrained to `pass | fail | skip | error`, so **no signal
+  read from it can ever express `PENDING PROVIDER` or `PAUSED`.** Those two words must come from the
+  live source table that actually holds the state. Nothing in a per-signal snapshot reveals this.
+- `suspended` is a live CHECK value on six tables, written by Twilio, by a platform operator, and by
+  an agency admin — a capability switched off **by someone who is not the owner**. Zero rows sit in
+  it today, so a value-based catalogue cannot see it at all, and none of the eight words fits it.
+
+*Rule:* **when you catalogue a status, read the source's own CHECK constraint or enum, not the row.**
+The row tells you where one tenant is standing. The constraint tells you where anyone can stand, and
+that is what a status vocabulary has to cover. A vocabulary word that comes back unused is a prompt
+to go looking for its source, never evidence that the word is surplus.
+
+*Corollary:* an unoccupied-but-reachable state is a real finding and belongs in the record with its
+occupancy stated honestly — "reachable, zero rows today" — so the next session knows it was
+considered rather than missed.
+
+## An OMITTED field is not an EMPTY one (OAuth `scope`, 2026-09-05)
+
+`postToken` read a token response's scope as `str(body.scope)?.split(...) ?? []`, so a response
+that simply did not carry `scope` produced ZERO scopes. RFC 6749 §5.1 makes `scope` OPTIONAL
+"if identical to the scope requested by the client", and a `refresh_token` grant sends no scope,
+so servers commonly omit it. Silence meant "unchanged"; we read it as "nothing".
+
+The cost was not a bad label. Every downstream scope assertion failed, the caller **revoked the
+token it had just been issued**, and the provider had already invalidated the old refresh token by
+rotating it. The grant became unrecoverable and the only way back was a full re-authorization —
+once per token lifetime, indefinitely. It presented to the owner as "we get disconnected from our
+tools every time the platform updates", which pointed at deploys and was nothing to do with them.
+
+*Rule:* **when a protocol says a field is optional, decide explicitly what its ABSENCE means, and
+write that meaning down at the parse site.** `?? []` is a default, not a decision, and it silently
+asserts the most restrictive possible reading of silence.
+
+*Corollary, found by reading the fix's own diff:* the first repair used
+`typeof body.scope === "string" ? parse : requested`, which also swallowed a present-but-MALFORMED
+value and read it as agreement. The RFC gives meaning to an omitted field; it gives none to a
+broken one. Absent → the requested set. Present → parsed strictly, and refused if it disagrees.
+
+*Diagnostic note (§13):* a failed refresh left NO trace — `last_error` stayed `NULL` and no Rail
+row was written, because the verify path throws before it reaches `probe`. Four `oauth_success`
+events in twenty hours were the only visible evidence that anything was wrong. A failure path that
+records nothing is why this took a live report to find.
+
+
+---
+
+## Asserting that a warning APPEARED, without asserting what it SAID
+
+**2026-09-05 · Systems Check partial-coverage banner · PR #933**
+
+The owner photographed his own console showing:
+
+> **The picture is incomplete.** The last run recorded **10** checks but only **10** results are
+> readable here.
+
+Ten and ten. The sentence contradicts itself, and it was doing so on **all 15 tenants**, on every
+scan. Across 941 runs since 2026-08-10 the condition that sentence describes had occurred five
+times, and every one of those five was *also* a run that never finished — a state the sentence never
+mentions. So the one message the component could print **had never once been true while displayed.**
+
+The mechanism was ordinary: three independent conditions raised one flag, and the render branched on
+whether the finding list was empty rather than on *which* condition fired, so every non-empty case
+printed the sentence written for one of them.
+
+**The part worth keeping is why the test suite did not catch it.** The obvious diagnosis — "no
+fixture had that shape" — is wrong, and I shipped that diagnosis in a commit message before checking
+it. Two fixtures already had the exact shape, and rendering the pre-fix component against them
+prints the contradictory sentence, twice, inside a green suite. What was missing was any assertion
+that read the message. Every test asserted `toContain("The picture is incomplete")` — the first four
+words, the part that is identical no matter which branch produced it — and then stopped.
+
+*Rule:* **asserting that a message appeared is not asserting that the message is right.** For any
+text that varies by branch, assert the varying part, and add a negative assertion for the specific
+wrong output — the one here is `not.toMatch(/recorded (\d+) checks? but only \1 /)`, which catches
+the identical-number form generally rather than one instance of it. A fixture cannot catch what
+nothing asserts on, so "we need a test for that case" is usually the wrong repair; the case is often
+already covered by a test that is not looking.
+
+*Corollary, found the same night:* two assertions in that file — `not.toContain("All available
+checks are clear")` and a sibling — named strings that appear **nowhere in the component**. They
+could never fail. A negative assertion against a string that does not exist reads as a guard and is
+one, of nothing. Grep the string before trusting a `not.toContain`.
+
+---
+
+## A summary and the list beneath it must be derived from the same place
+
+**2026-09-05 · Systems Check strip vs. sections · PR #933, three reviewers**
+
+The same surface carried a header strip ("10 checks · 6 passed · 3 need attention") above sections
+listing those findings. The strip read the run row; the sections read the findings. They agree right
+up until the two sources diverge — and they diverge on ordinary, reachable states:
+
+- **A resolved failure.** `fail_count` records what the scan saw *at scan time*; resolving a finding
+  afterwards does not rewrite it. The strip said "1 needs attention" directly above a section saying
+  "Nothing from the last check needs you", with nothing to explain the gap.
+- **A crashed run.** Counts are patched at the end, so the row reads 0/0 beside real findings.
+- **A resolved *unevaluable* finding.** The banner counted raw status, the strip counted through a
+  filter that reclassifies resolved — zero and one, for one quantity, forty lines apart.
+
+*Rule:* **derive every figure in a summary from the collection the reader can see, not from a stored
+tally that describes it.** A stored count is a snapshot of a different moment; the list is now.
+
+*And the corollary that cost a second round:* once the tallies derive from the list, **every member
+of the list needs a bucket**, or the summary stops adding up. Removing the wrong number that used to
+fill the hole left "1 check · 0 passed · 0 need attention" — accounting for none of the one check it
+claimed. Codex caught that; I had spotted it an hour earlier and reasoned my way out on the grounds
+that "no number claims to be the total of the others," which is false whenever one of them is
+`total`.
+
+*Process note worth its own line:* three review layers ran on this change — an adversarial crew on
+the pushed diff, Codex on the PR, and my own re-read — and **each caught a different defect that the
+other two missed.** The crew found the wrong denominator and a test that pinned the bug; Codex found
+the summary hole the crew's fix opened; the re-read found a comment asserting the opposite of the
+truth. None was redundant.
+
+---
+
+## A test double that discards its arguments is not a test — it is decoration (2026-09-05)
+
+Writing the tenant revenue-check runner, CC shipped seven tests that all passed and proved nothing
+about the query. The double declared `eq() { return builder; }` — arguments thrown away — and
+resolved on the table NAME alone. Mutation proof under CI's exact flags: with **both**
+`.eq("tenant_id", tenantId)` calls **and** the `.eq("stage_type", "won")` predicate deleted from the
+runner, **7 of 7 passed**.
+
+This matters more here than in most code. A systems-check runner executes as **service-role**, so
+there is no RLS underneath it to catch a missing tenant filter — the test is the only thing standing
+between an omitted `tenant_id` and a cross-tenant read. The four most expensive bugs in this
+codebase (#86, #130, #172, #588) are all that omission.
+
+**The rule:** when a test double stands in for a query, it records what was asked for, and at least
+one test asserts it. Verdict assertions test what the code CONCLUDES; only filter assertions test
+what it ASKED. A suite with no assertion in the second class cannot fail on the defect class that
+actually costs money here.
+
+**And the meta-lesson, which is the third time this session:** the vacuity was invisible to its
+author and obvious to three independent reviewers, who found it separately. CC had explicitly
+resolved *earlier in the same session* not to ship another vacuous assertion, and then did. A
+resolution is not a control; the mutation run is. Mutate the thing under test and watch the suite go
+red — if it does not, the suite is decoration, whatever its count says.
+
+*Also from the same gate, worth its own line:* two independent refuters reached **opposite verdicts**
+on the same finding, and both were partly right — one measured production (zero occurrences today),
+the other traced the mechanism (reachable by real shipped callers). The resolution was neither
+verdict but a third reading: the proposed fix would have introduced a false FAIL, so only the honest
+half — an over-claiming sentence — was changed, and the reasoning was written into the module header
+so the next session does not re-argue it.

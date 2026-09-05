@@ -298,7 +298,7 @@ export function A2PTab() {
     const { data, error: regErr } = await untyped
       .from("tenant_a2p_registrations")
       .select(
-        "brand_status, campaign_status, status, brand_sid, campaign_sid, messaging_service_sid, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at",
+        "brand_status, campaign_status, status, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at",
       )
       .eq("tenant_id", tenantId)
       .limit(1)

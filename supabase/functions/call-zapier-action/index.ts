@@ -76,6 +76,19 @@ Deno.serve(async (req) => {
   // NEVER trust a client-supplied tenant_id for the secret read (§9).
   const { data: tenantId, error: tErr } = await userClient.rpc("current_user_tenant_id");
   if (tErr || !tenantId) return jsonResponse({ error: "no_tenant" }, 400);
+  const fileConnectionTest = async (succeeded: boolean) => {
+    if (!isList) return true;
+    const { error } = await admin.rpc("record_zapier_mcp_connection_test", {
+      _tenant_id: tenantId,
+      _actor_id: user.id,
+      _succeeded: succeeded,
+    });
+    if (error) {
+      console.error("[call-zapier-action] connection test outcome not recorded:", error.message);
+      return false;
+    }
+    return true;
+  };
 
   // 2. Pull the tenant's decrypted MCP creds (service-role-only RPC), scoped to the
   //    caller's OWN resolved tenant. Honest degrade if not configured/enabled (§13) —
@@ -86,11 +99,13 @@ Deno.serve(async (req) => {
     _tenant_id: tenantId,
     _provider: "zapier",
   });
-  if (sErr) return jsonResponse({ error: "secret_lookup_failed" }, 500);
+  if (sErr) { await fileConnectionTest(false); return jsonResponse({ error: "secret_lookup_failed" }, 500); }
   if (!secret?.configured) {
+    await fileConnectionTest(false);
     return jsonResponse({ ok: false, error: "not_connected", detail: "This workspace hasn't connected a Zapier/MCP account yet. Connect one in Settings → Integrations → Zapier." });
   }
   if (secret.enabled === false) {
+    await fileConnectionTest(false);
     return jsonResponse({ ok: false, error: "connection_disabled", detail: "This workspace's Zapier/MCP connection is turned off. Re-enable it in Settings → Integrations → Zapier." });
   }
   const serverUrl: string = secret.server_url;
@@ -188,9 +203,13 @@ Deno.serve(async (req) => {
       discovered = await mcpListTools({ serverUrl, auth });
     } catch {
       // The provider's failure reason is not carried; an empty, honest answer is.
+      await fileConnectionTest(false);
       return jsonResponse({ ok: false, error: "discovery_unavailable", actions: [], approved_count: 0 });
     }
     const projected = projectDiscovery(discovered, approved);
+    if (!await fileConnectionTest(true)) {
+      return jsonResponse({ ok: false, error: "rail_unavailable", actions: [], approved_count: 0 }, 500);
+    }
     return jsonResponse({
       ok: true,
       // `actions` is kept as the key so the existing consumer keeps working, but it now
@@ -235,7 +254,7 @@ Deno.serve(async (req) => {
   //    is contact-scoped by construction, so it is written only when this turn genuinely
   //    has a contact; `contact_id` is taken from the caller's request rather than invented.
   const contactId = typeof body.contact_id === "string" && body.contact_id ? body.contact_id : null;
-  await fileGovernedOutcome(admin, { tenantId, outcome, contactId });
+  await fileGovernedOutcome(admin, { tenantId, outcome, contactId, actorId: user.id });
 
   return jsonResponse({ ok: outcome.status === "ok", ...outcome });
 });

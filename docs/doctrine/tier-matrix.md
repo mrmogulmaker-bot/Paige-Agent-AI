@@ -333,6 +333,32 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
+### The Rail records what PAIGE DID, not only what was connected (SCR-2026-09-05, 2026-09-05)
+
+`paige_workspace_events` gained one `source_kind`, `capability_run`, so a workspace-level act — an
+automation run, a connected-app action — is recorded where the owner can read it. Before this the
+table held **10 rows on production, every one a connection event**, while `paige_audit_log` held
+142 acts no Solo surface reads.
+
+**No route, gate or tier permission changed.** This is content appearing in a reader that already
+shipped and was already granted; the per-tier answer below is the reader's existing authority
+restated, not a new one.
+
+| Tier | Can trigger a `capability_run` row | Sees it on the Solo Rail | Sees a Zapier run on Settings → Integrations |
+|---|---|---|---|
+| **God / Super Admin** | — (tenant-less; both executors refuse an empty `tenant_id`) | ✓ when acting inside a tenant (`is_platform_owner()` branch) | ✓ same |
+| **Agency** (agency-as-tenant) | ✓ n8n: tenant OWNER only · Zapier: `has_role(admin)` | ✓ `get_solo_rail_activity` (owner/admin/coach) | ✓ `get_zapier_rail_activity` |
+| **Standalone Solo** | ✓ same gates | ✓ | ✓ |
+| **Sub-account** | ✓ same gates, scoped to its own tenant | ✓ its own only | ✓ its own only |
+| **Client** | — never reaches the executors | **403** — reader raises `RAIL_FORBIDDEN` for a non-staff seat, and the rows are `visibility: owner_internal` | **403** |
+| **Anonymous** | — | **403** — `REVOKE ALL … FROM PUBLIC, anon` | **403** |
+
+**Recorded honestly (§13):** two capabilities are wired — `n8n_*` writes and `zapier_run_action`.
+The other ~47 classified actions still write only `paige_audit_log`; each migration wave adds its
+own copy. An unmapped capability renders a generic line rather than nothing. **Reads are never
+recorded.** The §32.c authenticated live-drive — that a row actually RENDERS for the owner — is
+**owed**, not claimed.
+
 ### The operator console — `/operator/{slot}/{view}`, six slots × thirty-three views
 
 **§66 debt, paid LATE — recorded rather than backfilled quietly.** PR #571 (`24482d15`, *Operator
@@ -934,7 +960,7 @@ Legend as above: **✓** live · **—** not built · **N/A** tier not opened ye
 |---|---|---|---|---|---|---|---|
 | `connections/communications` | **Live business-phone search, purchase, rename and choose-what-you-send-from**, the PAIGE-managed sending identity, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — search/purchase run `comms-search-numbers` / `comms-purchase-number` against the tenant's own Twilio subaccount; rename and set-primary run `tenant_phone_number_rename` / `tenant_phone_number_set_primary`; domains via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect`. **Paige can drive the PHONE half** — eight `comms_*` tools cover search, purchase, rename, set-primary and registration; **domains and the Google sending account stay click-only** and Paige has no tool for either | N/A | N/A | ✓ | N/A | — |
 | `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
-| `connections/registration` | Carrier (10DLC) registration: **PAIGE drafts the regulatory copy**, **the reviewed copy is saved**. The legal identity is SHOWN, not edited — Setup owns it | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce. The grading ladder stays in `communications`; this area holds the acts (§18) | N/A | N/A | ✓ | N/A | — |
+| `connections/registration` | Carrier (10DLC) registration: **PAIGE drafts the regulatory copy**, **the reviewed copy is saved**, and **the business facts blocking the filing are editable here** — a second EDITOR of the one canonical record, not a second record. Setup still owns the full record and its own five-subtab surface | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce. The business-record editor writes through `save_solo_business_context`, the same seam Setup uses, so the two surfaces cannot disagree (§57); it is Owner-only and mounts the canonical adapter only when opened. The four carrier-required representative identity columns are **derived** by `sync_a2p_representative_identity` (20261201000700) — before it, no writer populated them and brand filing could never start. The grading ladder stays in `communications`; this area holds the acts (§18) | N/A | N/A | ✓ | N/A | — |
 | `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
 | `connections/available` | The provider catalogue with per-provider truth badges | **structure-only** — a static catalogue, deliberately | N/A | N/A | ✓ | N/A | — |
 
@@ -1097,6 +1123,24 @@ four `comms_configured` seams and never asserted here, and it is only readable f
 tenant — an operator or agency acting as another account gets `outOfScope`, which the surface states
 as "not readable from here" rather than as a negative.
 
+### The Solo shell — Settings › Integrations › Automations, `/solo/{account}/settings/integrations/automations`
+
+**A separate destination from Connections.** `SoloSettings` defines Connections and Integrations as
+distinct surfaces (`settings.tsx:1454,1584`), and the Zapier view is a leaf of the Integrations
+sub-tab (`settings-integrations.tsx:728-744`), reached at `/settings/integrations/automations`. The
+retired standalone `/settings/automations` page redirects here rather than 404ing
+(`SoloApp.tsx:177-184`), so an existing bookmark keeps working. Recording it under Connections would
+name a route that does not exist.
+
+Same Solo-shell reasoning as the Connections section above: sub-accounts reach their workspace
+through `AgencyApp`, so the sub-account column reads N/A as a routing fact, not a tier exclusion.
+
+Legend as above: **✓** live · **—** not built · **N/A** tier not opened yet.
+
+| Segment | What it is | State | Operator | Agency | Solo | Sub-account | Client |
+|---|---|---|---|---|---|---|---|
+| `integrations/automations` (Zapier) | **Two independent connections behind one card**, on the accepted n8n tab pattern: an **API connection** (owner OAuth to Zapier's own API, read-only scopes) and **Paige tools (MCP)** (owner OAuth to Zapier's MCP server, per-tool approval, revocation, Zapier-scoped recent activity), plus a tenant-bound **Skool intake route** | **wired, and truthfully unavailable in part** — `tenant-zapier-api-connect` and `tenant-mcp-connect` both run; MCP tools are invisible to PAIGE until specifically approved, and an approval pins the tool's input schema **and** its authority (connected app, action type, effects), so a provider that moves a tool to a different account or turns a read into a send fails closed until re-approved. PAIGE drives it through the governed `zapier_list_actions` / `zapier_run_action` seam with Rail attribution; unknown effects fail closed as write authority. Intake resolves its tenant **only** from the route token, stores the payload encrypted and the token as a hash, and refuses a changed-payload key reuse. **The API tab renders `capability unavailable` on production** because `ZAPIER_API_CLIENT_ID`/`_SECRET` are not configured there — that is the honest state, not a failure. A live provider authorization and a real Skool payload proof are still owed (§32.c) | N/A | N/A | ✓ | N/A | — |
+
 ### PAIGE Chat — the document proposal seam, `/solo/{account}/paige/chat`
 
 **§66, same commit as the ship.** A document dropped into PAIGE Chat now ends in a PROPOSAL a
@@ -1204,6 +1248,47 @@ active `tenant_members` row **of the resolved workspace** at owner/admin/coach. 
 unchanged and still carries the trap; it is simply unreachable from these four consumers. Other
 direct readers still go through it — the two Analytics surfaces, tracked as **#802**.
 
+#### Agent attribution and workspace-level activity — SHIPS WITH PR #925 (§66)
+
+**Read the marks before the rows. `◻` is not `✓`.**
+
+`◻` means the READ supports it and **nothing writes it yet** — capacity, not behaviour. Every
+tier below therefore sees *nothing* today, and will keep seeing nothing until a producer passes
+an acting agent. Ticking `✓` here would claim a capability the PR body itself says nothing can
+produce, which is the drift §66 exists to stop.
+
+**Recorded as PENDING, not as shipped.** The migration applies to production through
+`deploy-migrations.yml` on merge to `main`; until that runs and `db-live` moves, these rows describe
+what the PR delivers, not what a tenant can do. The §32.a persisted-apply confirmation is owed after
+merge. Ticking these early would be the same lie as a fabricated metric.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Rail history names the ACTING AGENT (`get_solo_rail_activity` gains a 12th column, `actor_agent`) | ◻ (operator) | ◻ | ◻ | ◻ | ◻ (its OWN rail) | — | 403 |
+| …but only where the agent has a tenant-safe name (`paige_subagents.rail_display_name`) | ◻ | ◻ | ◻ | ◻ | ◻ | — | 403 |
+| Sees the name of an agent belonging to ANOTHER workspace | — | — | — | — | — | — | 403 |
+| Rail carries workspace-level work with no contact (`game_plan` · `system_check` · `agent_config` · `agent_run`) | ◻ (operator) | ◻ | ◻ | ◻ | ◻ (its OWN) | — | 403 |
+| Writes a Rail event naming another workspace's agent | — | — | — | — | — | — | 403 |
+
+**Row 2 is the §11 line, and it is deliberate.** `rail_display_name IS NULL` means an agent has no
+name a business owner should read. Ten of the twenty-four enabled agents on production are our own
+build-crew seats — `Review — Compliance Officer`, `Review — Doctrine Sentinel`. Their work is
+recorded by slug for operator audit and shows a business owner nothing. The backfill is written as
+an EXCLUSION, so a NEW platform agent defaults to not being named.
+
+**Rows 3 and 5 need BOTH a write guard and a read guard, which is why they are two rows.**
+`paige_subagents.slug` is globally unique and `tenant_id` is nullable, so a foreign key proves
+existence and not tenancy. The writer refuses a foreign slug with the same error it gives an unknown
+one, so the response cannot be used to enumerate another workspace's agents. The reader re-checks,
+because `tenant_id` is updatable: a platform default later assigned to a tenant would retroactively
+turn legally-written rows foreign, and no write-time check can reach back through history.
+
+**One capability this ship RESTORES rather than adds (§58).** The `surface` CHECK on
+`paige_client_events` never admitted `'form'`, but `growth-process-submission` has always passed it.
+Every Rail write from the form pipeline has failed since that pipeline shipped. Solo and sub-account
+tenants get form-submission events on their Rail for the first time — not a new capability, a
+capability that was specified and never once worked.
+
 **Sub-account row, stated explicitly because §51 exists for exactly this.** `get_solo_rail_activity`
 takes **no tenant argument**; it resolves the workspace server-side. A sub-account therefore reads
 ITS OWN Rail and can never receive the parent agency's aggregate, and there is no parameter through
@@ -1218,6 +1303,167 @@ say which tiers had a SURFACE showing it, and those were different answers:
 | `PaigeRailFeed` ("Across your clients — live") | ✓ | ✓ | ✓ | **—** (shell never mounts it) | ✓ | — | 403 |
 | Trust Compass "Working now" · Team → Activity | ✓ | — | — | ✓ | ✓ | — | 403 |
 | **Solo Command Center → Systems Check → "Recent activity"** (new) | ✓ | — | — | **✓** | **✓** | — | 403 |
+
+### Systems Check — the operating-readiness console (SHIPS WITH PR #928, §66)
+
+The radial "evidence moving through the business" treatment is REASSIGNED to Trust Compass by owner
+ruling; Systems Check becomes the five-part console. Same reads, same RLS — this changes what the
+surface SAYS, not who may see the underlying data.
+
+**CORRECTED 2026-09-05 — the Sub-account column was wrong on five rows.** It read `✓`, and the
+paragraph above it read "same tiers", which together asserted that a sub-account reaches the
+five-part console. It does not. `SoloSystemsCheckWorkspace` has exactly one non-test mount
+(`src/solo/CommandCenter.tsx:19`), reached only through `/solo/*`, and `ROUTE_TIERS` in
+`src/lib/auth/workspaceEntry.ts:124-126` maps `solo: ["solo"]` and `business: ["sub_account"]` — a
+sub-account is redirected off `/solo/*`. `/business/*` mounts `AgencyApp`
+(`src/business/BusinessEntry.tsx:2`), whose `systems` tab renders `<SystemsCheckTile scope="tenant">`
+(`src/agency/CommandCenter.tsx:74`); two tests pin that split
+(`TenantCommandCenterSubtabs.test.tsx:184,192`).
+
+So a sub-account sees the SAME tenant-scoped findings through a DIFFERENT surface. The rows below now
+say that. The correction matters beyond tidiness: this is the row a §56 pre-build check reads, and as
+written it would have authorised "the console already covers Solo and Sub-account" for the on-demand
+rescan work — the §99 availability-by-accident shape. Found by the §39 adversarial pass on that task,
+not by a surface survey.
+
+Reading the table below: `— (tile)` means the tier does not get that console treatment but does see
+the same findings through `SystemsCheckTile`, which has its own row. The Approve row is `✓` for
+Sub-account because it genuinely can approve — through the tile (`SystemsCheckTile.tsx:168`, the only
+caller of `approve_systems_check_finding` in the repo), not through the console, whose approve is the
+action-bus path (`SoloSystemsCheckWorkspace.tsx:456`).
+
+| Systems Check console | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| The five-part console (attention · ready · nine areas · rail · who-does-what) | — | — | — | ✓ | — (tile) | — | 403 |
+| Business-area grouping instead of the raw `domain` enum | — | — | — | ✓ | — (tile) | — | 403 |
+| Plain check titles instead of the registry's `check_name` | — | — | — | ✓ | — (tile) | — | 403 |
+| Per-item next action into the owning surface | — | — | — | ✓ | — (tile) | — | 403 |
+| Approve / dismiss a held approval (unchanged seams) | — | — | — | ✓ | ✓ | — | 403 |
+| `SystemsCheckTile` (the compact panel: latest run, findings, approve) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Operator lens (`src/operator/surfaces/SystemsCheckSurface.tsx`) | ✓ | — | — | — | — | — | 403 |
+
+**God is `—` on every FIVE-PART-CONSOLE row deliberately** (the first five). `CommandHub` is the Solo
+shell; the operator reads its own tenant-less lens through `useSystemsCheck("operator")`. It is `✓`
+on the tile row because the tile renders at operator scope in `OperatorCommandCenter.tsx:623` and at
+tenant scope whenever the operator is acting inside a tenant.
+
+**The tile is `✓` for Solo, and that correction is itself a correction.** A first pass at this block
+put `—` there on the reasoning that Solo gets the console instead. Wrong: `PracticeOverview.tsx:265`
+mounts `<SystemsCheckTile scope="tenant" />` UNCONDITIONALLY, above the empty/non-empty split, and
+its own comment says it renders "for EVERY tenant tier (God-tenant-context, solo, sub-account,
+agency-as-tenant)". `resolveLandingRoute.ts` contains zero `/solo` branches, so a solo owner lands on
+`/admin` → `PracticeOverview` unless `workspaceEntry.ts:158-159` sends them to `/solo/{n}/command-center`
+— which it does only when `solo_shell_enabled === true` AND `account_type='standalone'`. So a solo
+tenant reaches the CONSOLE through the shell flag and the TILE through the default landing; both rows
+are `✓` and neither excludes the other. Recorded at length because a ledger correction that
+introduces a new wrong cell is worse than the drift it fixes.
+
+**What did NOT ship here, stated so the ledger is not read as more than it is:** Refresh still
+re-reads the last recorded run and says so — an on-demand re-check is NOT wired. `systems_check_snapshot`
+is still latest-RUN only, so a Setup save still narrows the reading and remediation actions filed
+against older runs remain unreachable on every tier. Only three of the eight status words
+(`LIVE`, `NEEDS ATTENTION`, `UNAVAILABLE`) can be produced from the finding store; `PENDING PROVIDER`
+and `PAUSED` require the provider result contract and are NOT rendered by this surface yet.
+
+**Six of the nine areas are covered by a check; three are not** (Paige's team, the Mind, security).
+Those three render "Not checked" with a reason rather than a status, on every tier that sees them.
+
+#### Systems Check — the console reads the last FULL sweep (PR #935, §66)
+
+Backend behaviour. **No tier availability changes; nothing added or gated.**
+
+| PR #935 | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Console reads the latest FULL sweep, not the newest run | ✓ (operator lens) | — | — | ✓ | ✓ | — | 403 |
+| Approve resolves "latest" the same way, so the two cannot disagree | ✓ | — | — | ✓ | ✓ | — | 403 |
+| Delta baseline skips partial runs, so nine checks stop re-filing per save | ✓ | — | — | ✓ | ✓ | — | 403 |
+
+A Setup save fires three one-check scans; the console read the newest run, so one of those became
+the whole picture — "1 of 1 passed · All clear" over nine hidden checks. Zero such runs exist on
+prod and the wiring shipped 2026-09-03, so it was a loaded trigger rather than a live defect.
+
+**Stated so the ledger is not read as more than it is:** the console is now up to ~17h stale by
+design, and a tenant outside the scheduled batch (`DEFAULT_BATCH = 15`, no cursor) would be pinned
+to its onboarding sweep with approvals dead. Latest-result-per-check is the durable fix for both.
+
+#### Systems Check — the revenue check answers for the first time (PR #935, §66)
+
+Owner ruling 2026-09-05: revenue tracking on Systems Check is the **tenant's own sales revenue**,
+never platform billing and never the operator account.
+
+| PR #935 | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| `revenue_tracking_configured` reads the tenant's own pipeline, not `operator_revenue_integrity_audit` | — (tenant-scope check) | — | — | ✓ | ✓ | — | 403 |
+| Its drafted fix matches what it measures | — | — | — | ✓ | ✓ | — | 403 |
+| Its next action points at Pipeline, where a stage is authored | — | — | — | ✓ | ✓ | — | 403 |
+
+**What actually changes for a tenant.** The check called an `is_platform_owner()`-gated audit while
+the scan runs as service-role with no user identity, so it raised 42501 on every tenant, every run.
+Prod carries **315 findings for it, every one `skip`, every one with a NULL drafted fix** — so every
+workspace has carried a PARTIAL badge it could never clear since 2026-08-10. It now returns a real
+pass or fail: **12 of 14 tenants pass**, and the two that fail hold zero pipeline stages.
+
+**Stated so the ledger is not read as more than it is:** a failing tenant **cannot act on it on the
+Solo tier**. Nothing there sets a stage's closing role — `growth2.tsx` has no notion of stage type,
+the `pipeline_configure` tool has no field for it, and the governed RPC hardcodes `'open'`. The
+finding says so in its `caveat` rather than naming an impossible next action (§70). Task #26 removes
+the gap and the caveat together; until it lands this row is honest, not finished.
+
+#### Pipeline — a stage can be marked closing, by PAIGE (PR #941 + #26 slice, §66)
+
+| | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Closing a deal records `status` + `actual_close_date` (PR #941) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| A stage's closing role is settable **by PAIGE** | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| A stage's closing role is settable **on the Pipeline page** | — | — | — | **not yet** | **not yet** | — | 403 |
+
+Two migrations, sequenced deliberately. `20261204000000` made a governed move into a won stage stamp
+the close — without it the second would let a tenant create a closing stage, watch the Systems Check
+turn green, close a deal and still see zero revenue. `20261205000000` then made `stage_type`
+settable through the one governed RPC both the board and PAIGE reach, and readable through the
+workspace projection.
+
+**Stated so the row is not read as more than it is:** the Campaigns › Pipeline PAGE still cannot set
+it — `growth2.tsx` has no notion of stage type, and that control is Claude Design's to draw (§00).
+The `revenue_tracking_configured` caveat was therefore NARROWED to name the route that works
+("ask Paige"), not deleted. Deleting it would have pointed the owner at a page that still cannot
+finish the job the check names.
+
+**A guard that was planned and deliberately not shipped:** a refusal on any command leaving a
+pipeline with zero live open stages. The §39 pass established it would break the shipped "Create
+blank pipeline" button, refuse a plain rename on a state already reachable, and fail to hold the
+invariant anyway because `archive_stage` is uncovered. Measured on prod: zero forms route to any
+pipeline, and one pipeline already sits at zero open stages. Pre-existing routing fragility, filed
+rather than answered by a guard that breaks a working button.
+
+#### Systems Check + Mind — corrections shipped with PR #933 (§66)
+
+Behaviour and truthfulness only. **No tier availability changes; nothing is added or gated.**
+
+| PR #933 | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Partial-coverage warning states its ACTUAL cause (was a fixed sentence true in no observed case) | — | — | — | ✓ | ✓ | — | 403 |
+| Strip tallies derive from the findings on screen, incl. a `resolved` segment so the parts sum | — | — | — | ✓ | ✓ | — | 403 |
+| Every finding's next action pinned to the real route tree by contract test | — | — | — | ✓ | ✓ | — | 403 |
+| No redundant surface title on **Systems Check** (owner ruling) | — | — | — | ✓ | ✓ | — | 403 |
+| No redundant surface title on **Mind** (owner ruling) | — | — | — | ✓ | ✓ | — | 403 |
+
+**The title rule binds Game Plan and Trust Compass when they land** — the sub-tab strip already
+names the surface. The `h1` is kept in the DOM and taken out of layout, never deleted: on Mind it is
+the `aria-labelledby` target of the whole section. Recorded in
+`docs/product/systems-check-operating-readiness-spec.md` §3.2 and pinned by assertion.
+
+**`NOT CHECKED` is a NINTH status word, outside the owner's closed set of eight** — disclosed in
+spec §4.4a, awaiting an owner ruling. The row above this section already describes it as shipped;
+what is new here is that it is now recorded as an exception rather than passing silently.
+
+**Still NOT shipped, unchanged from #928 and restated so this entry is not read as more than it is:**
+Refresh still re-reads the last recorded run. `systems_check_snapshot` is still latest-RUN only.
+The consequence of that is now precisely characterised rather than merely noted: a change-triggered
+run selects a SUBSET of the registry (`runnerKeys`), so a Setup save can make a one-check run the
+tenant's latest and produce a **false all-clear** on every tier that sees this surface. Zero such
+runs exist on production and the wiring shipped 2026-09-03, so it is a loaded trigger rather than a
+live defect — tracked as its own slice, with latest-result-per-check as the durable fix.
 
 `PaigeRailFeed` lives inside `PaigeWorkspace`, which `TenantCommandCenterShell` renders only when
 the Solo workspace is absent — and the Solo shell always supplies it. So a Solo tenant had no
@@ -3240,3 +3486,79 @@ See `docs/delivery/solo-sales-usability-r1.md` for flows and evidence: local eig
 Current implementation: commercial terms first, a five-row canonical offer finder with server name search/paging and exact selected-offer references, compact payment handling and expandable source-backed form/payment activity. Terms search/status filters explicitly cover the latest 200 loaded records; client identity remains the existing bounded directory, not all-history search. Catalog baseline prices, writes, six Campaigns tabs and Pipeline stay unchanged. No documents/signatures/payment collection added.
 
 Owner superseded competing Sales PR #905; its separate Clients fix remains with that owner. R1 #903 is merged at `c198d8ae` and its production revision was verified; the older pending-release wording describes the pre-release ledger. Workbench release checks and exact deployment evidence: [Sales workbench](../delivery/solo-sales-workbench.md). Local Chromium covers all four widths/both themes and simulated 1/80/80000 offers; authenticated persistence and production large-catalog performance remain **Proof Owed**. Broader Sales remains **PARTIAL**.
+
+### 2026-09-04 — Solo A2P preparation authority (candidate)
+
+Solo owners/admins use the existing captured-tenant is_tenant_admin_as helper for preparation and save; the browser uses a current-workspace SELECT policy. Global staff compatibility is preserved. Workspace switches clear registration editing state and stale writes are rejected. This is not carrier registration or messaging readiness. Pending exact-head release and authenticated owner verification; see Master Project's Solo orchestration MVP entry.
+
+### Campaigns → Social, `/solo/{account}/growth/social` (Social Command)
+
+**§66, same commit as the change.** What is LIVE is recorded below. The migration's applied state on
+production is marked **owed**, not claimed: CI applies it on merge, and a `BEGIN..ROLLBACK` proof is
+necessary and explicitly not sufficient (§32.a).
+
+**What the change is.** The tab was one fixed UNAVAILABLE panel — "Social provider not ready" — which
+was true and stayed true no matter what the workspace did. It is now a Social Command surface: an
+executive brief composed only from figures with a source, five KPI tiles, a content pipeline, the
+accounts on record, what PAIGE has filed and stopped on, and the Trust Compass lanes reflected
+read-only. It also gained the thing the old panel could not do — **an owner can RECORD the accounts
+the business posts from**, which is the first writer `tenants.features->'social_handles'` has ever had.
+
+**Systems Check #3 is now completable where it points.** `social_accounts_connected` has pointed at
+this page since it shipped while carrying a caveat that it "has no way to connect an account yet, so
+this cannot be finished there today." That caveat is replaced in the same commit; what the page still
+cannot do — connect an account for publishing — is what the check has never asked for, since it is a
+§38 capture-only check by owner ruling.
+
+| Tier | Sees Social Command | Why |
+|---|---|---|
+| Platform operator (God) | ✓ **only with a tenant selected** | `growth` is carried for §35 dogfooding, but this surface reads the ACTIVE tenant: an operator with none selected has `activeTenantId === null`, which the adapter maps to `phase: "unavailable"` and the surface renders "Social needs a resolved workspace". Operator scope has its own `SocialSurface` (ledger row `/operator/campaigns/social`); this row is the Solo shell's. |
+| Agency | ✗ | `growth` excludes Agency entirely (owner ruling 2026-08-11, §61 preserved exception). No new feature key is introduced, so the existing route gate decides — **§61 default: no exception**, and per §61's behavioural rule this was not put to the owner. |
+| Enterprise | ✓ via `growth` | Inherits the Solo baseline. |
+| Solo | ✓ via `growth` | The tier this slice is built for. |
+| Sub-account | ✓ via `growth` | Identical to Solo (§60). |
+| Client / Anonymous | ✗ | No client or anonymous route reaches `/solo/*`. Both new functions additionally revoke `anon` EXECUTE, and the read's role gate refuses a non-staff JWT caller with six `unavailable` rows rather than an empty one — a workspace's own clients are authenticated users of that same tenant, so an ungated read would hand them the coach's internal setup record. |
+
+**What is LIVE, per module, and what is not.** The surface-level label moved `UNAVAILABLE → PARTIAL`,
+and every tile carries its own.
+
+| Module | State | Source |
+|---|---|---|
+| Accounts on record (KPI + Channels + the record form) | **LIVE** | `public.get_social_presence_evidence` / `public.record_social_handles` over `tenants.features->'social_handles'` |
+| Waiting on you (KPI) · PAIGE sees | **PARTIAL** | `paige_actions` at `status='filed'`, `autonomy_lane='confirm'`, filtered to the growth desks, via `useSoloPendingActions` |
+| Captured responses (KPI) · Published outputs · Held for you · Needs repair (pipeline) | **PARTIAL** | `useSoloCampaigns` — `growth_pages`/`_funnels`/`_forms`/`_form_submissions`, all tenant-scoped |
+| Trust Compass lanes | **PARTIAL** | `useSoloTrust` — platform-default lanes, labelled as platform defaults, read-only |
+| Publishing queue · Recorded placements · Scheduled · Ideas · Drafting · Repurposing · every per-channel metric | **UNAVAILABLE** | No tenant-scoped record exists. Each renders an em-dash and the sentence naming what would have to exist |
+| Active missions | **UNAVAILABLE** | Nothing stores a mission, cadence or progress. `tenant_workflows` mirrors n8n and carries neither a cadence nor a target |
+
+**PAIGE reach (the `paige-brain-wiring-standard.md` five-point checklist).** ① brain updated in this
+commit; ② callable seam is the two RPCs, not a React handler; ③a CONTEXT — Spine capability
+`social.presence` is injected into every tenant Chat turn as a live per-turn block
+(`socialPresenceChatEvidence.ts`), so she knows the accounts without a tool call, and the block states
+the one wrong conclusion the rows would otherwise permit (that an account on record is one she can
+post to); ③b TOOLS — `get_social_accounts` (`crm.read`) and `record_social_accounts` (`crm.write`) in
+`paige-mcp`, so she can read AND write, deliberately not inline Chat tools (the baseline may only
+descend); ④ tier via `growth`, no new declaration; ⑤ honest when it cannot answer — a failed read
+renders "I can't check", never "not set up".
+
+**Rail: deliberately none, and this is the documented distinction not an omission.**
+`record_rail_event` writes `paige_client_events`, which is CONTACT-scoped; a business's own account
+list names no contact. Same evidence class as `business_context.readiness` and `team.authority` — a
+live stateless read over the workspace's own current record, which buys none of the Rail's properties
+(no history, no citation, no attribution, no freshness boundary). See
+`docs/brain/paige-spine-and-rail-state.md`.
+
+**Proof.** Unit + render + contract: 53 new assertions (`social-command.contract.test.ts`,
+`social-command.render.test.tsx`), full suite 3303 passing. `BEGIN..ROLLBACK` on production
+(`xygzykjyynhzqytbqnzu`) drove ten assertions including sibling-feature-key survival, the nested-shape
+refusal, the blank-handle omission, and a JWT caller outside the workspace seeing zero accounts —
+**and it caught a real defect**: the read's role gate was unguarded on `auth.uid()`, which would have
+refused PAIGE's own service-role MCP caller and the Systems Check runner. **Owed:** migration applied
+on production (CI on merge), and an authenticated live drive of the record form (§32.c) — no session
+here holds a browser that can reach the authenticated surface.
+
+**Live provider connection remains UNAVAILABLE and is unchanged by this slice.** `meta-schedule-post`
+/ `meta-get-insights` exist but read a single platform-wide `META_PAGE_ACCESS_TOKEN` and write
+`paige_social_posts`, a table with **no `tenant_id`**. Pointing a tenant surface at them would publish
+every workspace's post to one shared page. Per-tenant publishing needs per-tenant OAuth (provider app
+review, per-tenant tokens) and a tenant column on that table.

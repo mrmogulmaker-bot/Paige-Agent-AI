@@ -249,6 +249,42 @@ moment real customers start onboarding** — the owner will say so, and shipping
 preview-first + explicit approval before each production merge. Always verify before the
 merge regardless of stance.
 
+**THE PROTOTYPE GATE DOES NOT OUTRANK THIS — GO ALL THE WAY TO MAIN (owner: Antonio, 2026-09-05).**
+His words, and note the weariness in them: *"I have to explain this every single time to every new
+agent that comes on the team."* So it is written here, where it reloads, instead of being explained
+again.
+
+§69's flow-by-flow gates — Gate 1 (approve the prototype before production UI) and Gate 2 (authorize
+before ready-state/merge) — read as a licence to stop and wait. **Pre-launch they are not.** The
+owner ruled: *"we go all the way to Gate B… you just merge it to main or merge it live on prod."*
+
+- **Build through to merge and MERGE, on every substantive slice, without asking.** Prototype where a
+  prototype genuinely helps you get it right — then keep going. Do not park a green, verified branch
+  behind a request for sign-off.
+- **A Vercel preview link is NOT a deliverable.** *"I can't log into every Vercel login and check for
+  those updates."* Previews are for CC's own self-check. What the owner reviews is **live**.
+- **The MVP facts that make this safe, and that keep getting re-litigated:** no active clients, no
+  live customer data, every account promotional, nobody outside the team on the platform. The blast
+  radius of a wrong pixel is a follow-up commit. The cost of holding is his time, which is the
+  scarcer thing.
+- **What CC owes INSTEAD of a permission request:** merge, then say plainly **what to go look at and
+  where** — the surface, the route, and the specific thing to judge. He replies with adjustments and
+  the loop continues. *"Let me know what I need to go see and confirm for you, and then I'll let you
+  know what adjustments we need to make."*
+- **What still stops CC cold, unchanged:** a destructive or hard-to-reverse action — a data-dropping
+  migration, a credential rotation, deleting work CC did not create — the §00 incompatibility round
+  table, and **every material boundary §69 lists, which this override does NOT touch:** an ownership
+  deadlock, missing authority or a credential, spending money, accepting a licence or other legal
+  term, a destructive real-data action, a material product decision, unbounded scope, a confirmed
+  defect needing an owner choice. Several of those are perfectly reversible and still stop CC —
+  this ruling buys the right to stop asking *"may I merge this?"*, and buys nothing else. What it is
+  never about is taste or confidence.
+- **This flips with the same trigger as the stance above:** the moment real customers onboard, the
+  owner says so and the gates come back.
+
+*The test: "Is this verified and non-destructive? Then it is merged, and my next message names what
+he should go look at — not a question about whether I may."*
+
 **Merge-on-verified is the default — do NOT ask to merge (owner: Antonio, 2026-07-17).**
 If work was designed/built and *verified*, merge it to `main`. Full stop. Do not open a
 question, a poll, or an AskUserQuestion asking whether to merge something we already spent
@@ -2441,11 +2477,27 @@ a delivery requirement, not process language.
 - **Flow coverage — not file completion — is the definition of done.** A green build, a rendered
   screenshot, or a seeded fixture is not proof that the actor can reach their goal. Prove first-use and
   the central action, not only the populated happy path.
-- **The two owner gates bind.** Gate 1 is approval of appearance and intended function, via a
-  `flow-prototype` surface for any major UI/UX change — no post-hoc approval, and an unanswered
-  question is not approval. Gate 2 is explicit authorization immediately before ready-state, merge,
-  deployment, or any other irreversible production action. Between them, continue autonomously through
-  ordinary implementation, tests, review, fixes, draft PR and verification.
+- **The two owner gates bind — EXCEPT pre-launch, where §4 overrides them. Read §4 before you stop.**
+  Gate 1 is approval of appearance and intended function, via a `flow-prototype` surface for any major
+  UI/UX change — no post-hoc approval, and an unanswered question is not approval. Gate 2 is explicit
+  authorization immediately before ready-state, merge, deployment, or any other irreversible production
+  action. Between them, continue autonomously through ordinary implementation, tests, review, fixes,
+  draft PR and verification.
+
+  **The pre-launch override (owner: Antonio, 2026-09-05) — it lifts THESE TWO APPROVAL GATES and
+  nothing else.** While the platform has no live customers, §4's *"go all the way to main"* ruling
+  outranks Gate 1's prototype approval and Gate 2's merge/ready-state authorization, and the correct
+  action at each is to **keep going and merge**. Build the prototype where it genuinely helps you get
+  the thing right — that is what it is for — then ship, and tell the owner what to go look at on the
+  LIVE site. A green, verified branch parked behind a request for sign-off is the failure this
+  override exists to stop, and a Vercel preview handed over in place of a merge is not a deliverable.
+  **The material boundaries in the next bullet are NOT lifted — every one of them still stops you,
+  pre-launch included**, and several have nothing to do with reversibility: an ownership deadlock,
+  missing authority or a credential, spending money, accepting a licence or other legal term, a
+  destructive real-data action, a material product decision, unbounded scope, a confirmed defect
+  needing an owner choice. A reversible action you lack the authority or the money to take is still
+  one you do not take. This override buys exactly one thing — the right to stop asking *"may I merge
+  this?"* The two gates return the moment real customers onboard.
 - **Stop only at a material boundary:** ownership deadlock, missing authority or credential, spending,
   legal acceptance, a destructive real-data action, a material product decision, unbounded scope, or a
   confirmed defect needing an owner choice. Consolidate into ONE decision gate.

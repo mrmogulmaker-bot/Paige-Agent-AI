@@ -125,6 +125,7 @@ function buildBusinessBlock(pb: unknown): string {
 const SAVE_REFUSAL_STATUS: Record<string, number> = {
   UNAUTHENTICATED: 401,
   NO_TENANT: 403,
+  WORKSPACE_CHANGED: 409,
   FORBIDDEN: 403,
   TENANT_REQUIRED: 400,
   UNKNOWN_TENANT: 400,
@@ -185,16 +186,21 @@ Deno.serve(async (req: Request) => {
       // super_admin drafts copy and then hits a 403/RLS wall at submit. The owner passes via
       // is_platform_owner() even when super_admin is their only role.
       const { data: ownerFlag } = await authed.rpc("is_platform_owner");
-      const canDraft = ownerFlag === true || roles.some((r: string) => r === "admin" || r === "coach");
-      if (!canDraft) {
-        return fail(403, "FORBIDDEN", "Admin or coach access required.");
-      }
       const { data: resolved, error: tErr } = await authed.rpc("current_user_tenant_id");
       if (tErr) {
         console.error("comms-a2p-draft: tenant resolve failed:", tErr);
         return fail(500, "INTERNAL", `Could not resolve your workspace: ${tErr.message}`);
       }
       tenantId = str(resolved) || null;
+      const { data: tenantAdmin } = await createClient(supabaseUrl, supabaseServiceKey)
+        .rpc("is_tenant_admin_as", { _actor: user.id, _tenant: tenantId });
+      const canDraft = tenantAdmin === true || ownerFlag === true || roles.some((r: string) => r === "admin" || r === "coach");
+      if (!canDraft) return fail(403, "FORBIDDEN", "Workspace owner or administrator access required.");
+    }
+
+    // This is a precondition, never authority to select a workspace.
+    if (body.expected_tenant_id !== undefined && body.expected_tenant_id !== tenantId) {
+      return fail(409, "WORKSPACE_CHANGED", "Your workspace changed. Reopen registration and try again.");
     }
 
     // ── 4. Brand + Playbook (truthful, §13; IDOR-safe reads on the tenant WE resolved) ──
@@ -218,17 +224,11 @@ Deno.serve(async (req: Request) => {
         console.warn("comms-a2p-draft: brand lookup threw, continuing:", (e as Error)?.message);
       }
       try {
-        let pb: unknown = null;
-        if (isServiceRole) {
-          const { data: trow } = await admin.from("tenants").select("features").eq("id", tenantId).maybeSingle();
-          const f = ((trow as { features?: Record<string, unknown> } | null)?.features ?? {}) as Record<string, unknown>;
-          pb = f.playbook_config ?? null;
-        } else {
-          const authed2 = createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
-          const { data: pc } = await authed2.rpc("get_paige_persona_context");
-          const row = Array.isArray(pc) ? pc[0] : pc;
-          if (row) pb = (row as Record<string, unknown>).playbook_config ?? null;
-        }
+        // Use the captured, authorized tenant for every part of the prompt.
+        // Persona context can resolve a linked client or a newly switched workspace.
+        const { data: trow } = await admin.from("tenants").select("features").eq("id", tenantId).maybeSingle();
+        const f = ((trow as { features?: Record<string, unknown> } | null)?.features ?? {}) as Record<string, unknown>;
+        const pb = f.playbook_config ?? null;
         businessBlock = buildBusinessBlock(pb);
       } catch (e) {
         console.warn("comms-a2p-draft: persona lookup failed, brand-only:", (e as Error)?.message);
@@ -389,7 +389,7 @@ OUTPUT — return ONLY a single JSON object, no prose, no markdown fences:
       p_optin_message: draft.optin_message || null,
       p_optout_message: draft.optout_message || null,
       p_help_message: draft.help_message || null,
-      ...(isServiceRole ? { p_tenant_id: tenantId } : {}),
+      p_tenant_id: tenantId, // atomic workspace precondition for JWT; selector only for service role
     });
     if (saveErr) {
       // `hint` is the RPC's stable machine code; the message is already

@@ -12,6 +12,50 @@ foundation merged and deployed (#785, then the #794 remediation in #795). The co
 below were re-checked at that commit and are **unchanged** — which is the point of the new section
 that follows: a safe server read now exists, and *nothing calls it yet*.
 
+## UPDATE 2026-09-05 — the workspace Rail can now carry PAIGE's own acts (SCR-2026-09-05)
+
+**Read this before concluding from an empty feed that PAIGE has done nothing.**
+
+Measured on production 2026-09-05 (ref `xygzykjyynhzqytbqnzu`), BEFORE this change:
+
+| Fact | Value |
+|---|---|
+| `paige_audit_log` rows | 142 |
+| `paige_workspace_events` rows | **10** |
+| their distinct `source_kind` | `mcp_connection`, `oauth_attempt`, `zapier_mcp_connection` — connections only |
+| `has_table_privilege('authenticated','paige_client_events','SELECT')` | **false** — #746 still open |
+| `get_solo_rail_activity` unions workspace events | **true** |
+| `authenticated` holds EXECUTE on it | **true** |
+
+**The correction this file most needs to carry:** the read path was never the missing piece. A
+tenant-scoped reader that unions `paige_client_events` with `paige_workspace_events` through
+`_workspace_event_display` was already live and already granted. What did not exist was any row
+shape for *"PAIGE did a thing to this workspace"* — so nothing ever wrote one, and the feed was
+empty for a reason that looked like absence and was actually vocabulary.
+
+`20261212000000_paige_can_show_her_work.sql` adds that shape: `source_kind='capability_run'`,
+a `capability_key` column, five outcomes (`capability_succeeded` · `_failed` · `_refused` ·
+`_unreachable` · `_outcome_unknown`), and `record_capability_run(...)` for service-role callers.
+
+**What is and is NOT wired — do not read this as "PAIGE's work is now visible":**
+
+- **Wired:** the six n8n write tools and `zapier_run_action`. Two capabilities.
+- **Not wired:** the other ~47 classified actions. They still write only `paige_audit_log`, which
+  no Solo surface reads. Each migration wave adds its own `capability_key` copy.
+- **Never recorded:** reads. Six of the twelve n8n tools are reads and none of them writes a row.
+- **Never recorded:** anything refused before the tenant/session fence — unknown tool, approval
+  missing, bad arguments. That preserves the "no outbound call at all" property those refusals
+  already had.
+- **Still true:** `paige_client_events` remains unreadable by `authenticated` in production
+  (#746). This change does not touch that and does not depend on it.
+
+**`capability_outcome_unknown` is not a nicety.** `runN8nManagement` can dispatch a write and never
+learn the result. That state is recorded as itself. If you see it, the automation MAY have run —
+check the service before retrying, and do not report it as a failure.
+
+**Live-drive still owed (§32.c).** That a capability row RENDERS on the owner's Command Center is
+unverified — no session so far has signed in to look.
+
 ## The rule this file exists to enforce: existence ≠ reachability
 
 Three different things get called "verified," and collapsing them is how this repository has twice
@@ -32,7 +76,7 @@ repo's own guards on 2026-09-02, with the capability count re-measured 2026-09-0
 
 | Measure | Value | How |
 |---|---|---|
-| Registered Spine capabilities | **2** | `node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs` → `PASS (2 capability)` |
+| Registered Spine capabilities | ~~**2**~~ → **17** (2026-09-05) | `node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs` → `PASS (17 capability)`. The count moved with the n8n management family and, on 2026-09-05, `social.presence` |
 | Inline Chat tools | **105** | `node scripts/ci/chat-tool-registry-lint.mjs` → `105 tool(s) inline, none added (baseline 105)` |
 | Classified actions | **62** — 32 `ordinary`, 28 `high`, 2 `owner_only`, 5 exempt, 0 unclassified writes | `npm run lint:action-risk` |
 
@@ -72,6 +116,26 @@ one revoked. That is Team's to fix; this capability declines to shadow it.
 single string would mean membership and ownership at once. Measured on production: all 13 active members
 have the two agreeing (7 owner/is_owner=true, 6 admin/is_owner=false, zero divergent rows), so this
 changes no answer today and stops a future divergence from becoming a wrong one.
+
+The fourth is **`social.presence`** (2026-09-05, migration `20261210000000`) — for each of six
+networks, whether the workspace has RECORDED an account it posts from, and the declared handle if so.
+Adapter `public.get_social_presence_evidence(uuid)`. Same evidence class as the two above: a live
+stateless read over the workspace's own current record, no Rail signal, `chatBinding`/`mindBinding`
+`PARTIAL` (a per-turn block in `paige-ai-chat`, unit-tested, no authenticated drive yet).
+
+**Two things about it are worth reading before adding a fifth.** It returns the raw handle where
+`business_context.readiness` withholds its raw values — a difference in kind, not a relaxation: a
+social handle is a PUBLIC identifier the business publishes on purpose and PAIGE cannot reference an
+account in a draft without it, whereas a business phone is not that. And its role gate is guarded on
+`auth.uid() IS NOT NULL`, because `is_tenant_admin()` keys on `auth.uid()` and an unguarded gate
+refuses the service-role callers the function exists to serve — PAIGE's own MCP agent and the Systems
+Check runner. A `BEGIN..ROLLBACK` proof caught that; static review had not. The same guard, for the
+same reason, is at `get_business_context_readiness` (20261170000000).
+
+**It also has a WRITE half, which the other three do not.** `public.record_social_handles` — reached
+by the surface with the caller's JWT and by PAIGE through `paige-mcp` (`record_social_accounts`,
+`crm.write`), never as an inline Chat tool, since that baseline may only descend. The Spine entry
+declares the READ only; the write is a §10 callable seam with its own in-body gate.
 
 **Billing-notice eligibility is deliberately NOT in it.** That is a Platform Billing fact about a team
 member, and Billing publishes its own Spine read (`get_billing_spine_evidence`, live via
@@ -139,6 +203,29 @@ independently.
 ### Why most departments cannot simply be added
 
 Four properties of the shipped code decide eligibility. They are constraints, not preferences:
+
+> ### ⚠ SUPERSEDED IN PART BY PR #925 — read this before the three claims below (§BRAIN.3)
+>
+> PR #925 (`20261201000800_the_rail_says_which_agent_acted.sql`) changes three things this section
+> states as current. It is **not yet applied to production**; until `deploy-migrations.yml` runs on
+> merge and `db-live` moves, everything below is still true of the live database. After it applies:
+>
+> 1. **"A workspace-level outcome has nowhere to go" ceases to be true.** `paige_workspace_events`
+>    gains four families — `game_plan`, `system_check`, `agent_config`, `agent_run` — and
+>    `get_solo_rail_activity` unions them alongside contact events. `contact_id` on
+>    `paige_client_events` is unchanged and still `NOT NULL`; the repair is the distinct
+>    workspace-level projection this section itself predicted, not a relaxation of that column.
+> 2. **The projection is 11 fields, not 12.** It gains `actor_agent` — the acting agent's
+>    tenant-safe display name, snapshot at write time. The "no tenant, client, actor or source-record
+>    identifier" claim SURVIVES: the name is not an identifier, the internal slug is never returned,
+>    and a name is withheld entirely when the agent has none fit for a business owner to read or
+>    belongs to another workspace.
+> 3. **`actor_type` no longer collapses every agent to `paige_agent`.** That column is unchanged and
+>    still carries five values; `actor_agent` answers *which* specialist beside it.
+>
+> **What has NOT changed, and is the honest state:** nothing writes an acting agent yet, and no
+> producer emits a workspace-level event. The capacity ships; the behaviour does not. Do not read
+> these rows as evidence that Rail history can attribute work today — it cannot.
 
 1. **The Rail is per-client, at three independent layers** — `paige_client_events.contact_id` is
    `NOT NULL REFERENCES clients(id)`; `record_rail_event` raises `contact not in tenant`; and the Chat

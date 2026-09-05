@@ -79,6 +79,8 @@ function str(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
+const WORKSPACE_CHANGED = { ok: false, draft: null, error: "Your workspace changed. Reopen registration and try again." };
+
 let sampleSeq = 0;
 /** The drafted copy, shaped for the editor. Sample rows carry ids so React can key them. */
 function draftFromResponse(raw: unknown): EditDraft {
@@ -109,8 +111,8 @@ export function useSoloA2P(): SoloA2PData {
   // `useSoloNumbers` already guarded exactly this; the hook that writes REGULATORY PROSE
   // did not.
   const { activeTenantId, loading: tenantLoading } = useTenantContext();
-  // The SERVER's gate, mirrored — `comms-a2p-draft` and `comms-a2p-submit` admit
-  // `is_platform_owner() OR global admin OR global coach`, which `isStaff` is exactly.
+  // Tenant owner/admin authority comes from the server helper below; retain the
+  // existing global admin/coach compatibility gate as well.
   const { isStaff } = useUserRoles();
   const [loading, setLoading] = useState(true);
   const [read, setRead] = useState<A2PReadState>({ state: "ok", registration: null });
@@ -121,17 +123,28 @@ export function useSoloA2P(): SoloA2PData {
   const gate = useRef(createSettingsRequestGate());
   /** The workspace the state on screen belongs to. A ref, so it is not a `load` dependency. */
   const loadedRef = useRef<string | null>(null);
+  // Advance during render so even a completion before effects cannot cross a switch.
+  const workspace = useRef({ tenant: activeTenantId, epoch: 0, loading: tenantLoading });
+  if (workspace.current.tenant !== activeTenantId || workspace.current.loading !== tenantLoading) {
+    workspace.current = { tenant: activeTenantId, epoch: workspace.current.epoch + 1, loading: tenantLoading };
+  }
+  const currentMutation = (epoch: number, tenant: string) =>
+    workspace.current.epoch === epoch && !workspace.current.loading && workspace.current.tenant === tenant;
+  useEffect(() => () => { workspace.current.epoch += 1; }, []);
 
   const load = useCallback(async () => {
     const token = gate.current.begin();
     setLoading(true);
+    if (loadedRef.current !== workspace.current.tenant) {
+      setRead({ state: "unidentified" }); setResumed(null); setLegal(""); setWebsite(""); setCanManage(false);
+    }
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- these tables and RPCs are not in the generated types (repo-wide pattern)
       const untyped = supabase as any;
       const { data: resolved, error: tenantErr } = await untyped.rpc("current_user_tenant_id");
       const tenantId = typeof resolved === "string" ? resolved : null;
       if (!gate.current.isCurrent(token)) return;
-      if (!tenantId) {
+      if (!tenantId || tenantId !== activeTenantId || tenantId !== workspace.current.tenant) {
         // Distinction 1. Reporting "no registration" here would invite a person whose
         // registration EXISTS into a paid re-draft that overwrites it.
         console.error("useSoloA2P: could not resolve the caller's workspace:", tenantErr?.message ?? "no tenant returned");
@@ -141,7 +154,16 @@ export function useSoloA2P(): SoloA2PData {
 
       const [regRes, legalRes, adminRes] = await Promise.all([
         untyped.from("tenant_a2p_registrations")
-          .select("brand_status, campaign_status, status, brand_sid, campaign_sid, messaging_service_sid, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at")
+          // DO NOT add brand_sid / campaign_sid / messaging_service_sid here. `hasLeftPreparation`
+          // reads all three, and it is tempting to select them so its eight conditions all fire —
+          // but 20261201000600 REVOKED select on this table from `authenticated` and re-granted a
+          // column list that deliberately excludes exactly those three. Asking for one returns
+          // `permission denied for column`, which this hook reports as `unreadable`, which blanks
+          // the whole surface for every workspace. The three conditions those columns feed are
+          // recovered in the panel from `has_brand` / `has_campaign` / `has_messaging_service` —
+          // server-computed booleans over the same columns, which is how the browser is meant to
+          // learn this without being trusted with the identifiers themselves.
+          .select("brand_status, campaign_status, status, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at")
           .eq("tenant_id", tenantId).limit(1).maybeSingle(),
         untyped.from("tenant_legal_profile")
           .select("legal_business_name, website_url")
@@ -201,14 +223,19 @@ export function useSoloA2P(): SoloA2PData {
   const refresh = useCallback(() => { void load(); }, [load]);
 
   const draftWithPaige = useCallback(async (input: { legalBusinessName: string; website: string; useCaseHint: string }) => {
+    const tenant = loadedRef.current;
+    const epoch = workspace.current.epoch;
+    if (!tenant || !currentMutation(epoch, tenant) || !canManage) return WORKSPACE_CHANGED;
     try {
       const { data, error: fnError } = await supabase.functions.invoke("comms-a2p-draft", {
         body: {
+          expected_tenant_id: tenant,
           legal_business_name: input.legalBusinessName.trim() || undefined,
           website: input.website.trim() || undefined,
           use_case_hint: input.useCaseHint.trim() || undefined,
         },
       });
+      if (!currentMutation(epoch, tenant)) return WORKSPACE_CHANGED;
       const rec = asRecord(data);
       // needs_config is an honest degrade, not a draft. Shaping it as one would put empty
       // regulatory copy in front of someone as though Paige had written it.
@@ -221,16 +248,21 @@ export function useSoloA2P(): SoloA2PData {
       if (str(rec.website)) setWebsite(str(rec.website));
       setResumed(draft);
       await load();
+      if (!currentMutation(epoch, tenant)) return WORKSPACE_CHANGED;
       return { ok: true, draft, error: null };
     } catch (e) {
       return { ok: false, draft: null, error: e instanceof Error ? e.message : "That draft didn't run." };
     }
-  }, [load]);
+  }, [load, canManage]);
 
   const saveReviewed = useCallback(async (input: { legalBusinessName: string; website: string; draft: EditDraft }) => {
+    const tenant = loadedRef.current;
+    const epoch = workspace.current.epoch;
+    if (!tenant || !currentMutation(epoch, tenant) || !canManage) return WORKSPACE_CHANGED;
     try {
       const { data, error: fnError } = await supabase.functions.invoke("comms-a2p-submit", {
         body: {
+          expected_tenant_id: tenant,
           legal_business_name: input.legalBusinessName.trim(),
           website: input.website.trim() || undefined,
           use_case: input.draft.use_case,
@@ -244,6 +276,7 @@ export function useSoloA2P(): SoloA2PData {
           help_message: input.draft.help_message,
         },
       });
+      if (!currentMutation(epoch, tenant)) return WORKSPACE_CHANGED;
       const rec = asRecord(data);
       // `saved` is the only success this seam can report. `submitted` is false by
       // construction today, and treating its absence as failure would tell someone their
@@ -253,16 +286,22 @@ export function useSoloA2P(): SoloA2PData {
         return { ok: false, error: message };
       }
       await load();
+      if (!currentMutation(epoch, tenant)) return WORKSPACE_CHANGED;
       return { ok: true, error: null };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "That save didn't complete." };
     }
-  }, [load]);
+  }, [load, canManage]);
 
   const locked = read.state === "ok" && read.registration ? hasLeftPreparation(read.registration) : false;
 
   return useMemo(() => ({
-    loading: loading || tenantLoading, read, resumed, locked, legalBusinessName, website, canManage,
+    loading: loading || tenantLoading || (loadedRef.current !== activeTenantId && read.state === "ok"),
+    read: loadedRef.current === activeTenantId || read.state !== "ok" ? read : { state: "unidentified" } as A2PReadState,
+    resumed: loadedRef.current === activeTenantId ? resumed : null,
+    locked, legalBusinessName: loadedRef.current === activeTenantId ? legalBusinessName : "",
+    website: loadedRef.current === activeTenantId ? website : "",
+    canManage: loadedRef.current === activeTenantId && !tenantLoading && canManage,
     refresh, draftWithPaige, saveReviewed,
-  }), [loading, tenantLoading, read, resumed, locked, legalBusinessName, website, canManage, refresh, draftWithPaige, saveReviewed]);
+  }), [activeTenantId, loading, tenantLoading, read, resumed, locked, legalBusinessName, website, canManage, refresh, draftWithPaige, saveReviewed]);
 }

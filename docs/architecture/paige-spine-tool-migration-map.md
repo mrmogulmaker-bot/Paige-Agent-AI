@@ -145,7 +145,7 @@ is the right ordering and a domain boundary should not smuggle a `high` action i
 | **#746** — Context Rail history read cannot execute in production | OPEN, RELEASE-BLOCKING | Leg 7 for all 13 Rail-emitting tools. Until it lands, a migrated capability's outcome is invisible and `LIVE` would be a false claim |
 | **#729** — repair of the five unresolved review findings on Spine #728 | OPEN PR, blocked from Gate 2 by #746 | first owner flow on the Spine |
 | **#735** — PR #644 revokes the SELECT the Rail read depends on | OPEN | the grant-vs-RPC seam decision must be made *with* #644, not around it |
-| **SCR-1 — workspace-level outcome projection** | **not requested, not started** | C1. Required by 47 of 60 actions and by every wave from 3 onward |
+| **SCR-1 — workspace-level outcome projection** | **RAISED, APPROVED AND BUILT as `SCR-2026-09-05`** (2026-09-05) — see `paige-spine-foundation.md`. Exercised on the MCP integrations, the fallback-carrying domain Wave 3's rationale names. The other ~47 actions still need their own `capability_key` copy, wave by wave. | C1. Required by 47 of 60 actions and by every wave from 3 onward |
 | **SCR-2 — non-client subject types in the resolver** | **not requested, not started** | C2/C4. Required by every read capability and every workspace-subject act |
 | **SCR-3 — a record/list evidence shape** | **not requested, not started** | C3. Without it no read tool can ever migrate |
 | **Ratchet hardening** (section 5) | partially shipped | the existing guard freezes the count; it does not yet prevent the four bypasses named in section 5 |

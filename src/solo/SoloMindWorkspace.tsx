@@ -384,7 +384,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
     <section className="mind-workspace" aria-labelledby="mind-title">
       <div className="mind-scroll-owner" {...(expanded ? { inert: "" } : {})} aria-hidden={expanded ? true : undefined}>
         <header className="mind-heading">
-          <div><p className="mind-eyebrow">{accountContext?.accountName || "Solo account"} · Solo · Governed records</p><h1 id="mind-title">Mind</h1><p>Your durable business records, decisions, knowledge, and source provenance—without hidden reasoning.</p></div>
+          <div><p className="mind-eyebrow">{accountContext?.accountName || "Solo account"} · Solo · Governed records</p><h1 id="mind-title" className="mind-sr-only">Mind</h1><p>Your durable business records, decisions, knowledge, and source provenance—without hidden reasoning.</p></div>
           <div className="mind-actions"><span className="mind-truth mind-truth--proposed">PROPOSED IA</span><button type="button" className="mind-button" onClick={refresh}><RefreshCw size={14} aria-hidden="true" />Refresh records</button><button type="button" className="mind-button mind-button--paige" onClick={openExistingPaige}>✦ Open PAIGE</button></div>
         </header>
         <p className="mind-paige-note" role="note">PARTIAL · Opening PAIGE uses the one existing workspace. No Mind context was attached or prepared.</p>

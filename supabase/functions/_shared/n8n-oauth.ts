@@ -53,7 +53,7 @@ export async function hashOpaque(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
 }
 export type WorkflowPreview = { id: string; name: string };
-export function parseWorkflowPreviews(value: unknown): { workflows: WorkflowPreview[]; revision: string; inventory_complete: boolean; total_count: number } {
+export function parseWorkflowPreviews(value: unknown): { workflows: WorkflowPreview[]; rows: {id:string;name:string;updatedAt:string|null}[]; revision: string; inventory_complete: boolean; total_count: number } {
   const envelope = value as { isError?: boolean; structuredContent?: unknown; content?: {type?: string;text?: string}[] } | null;
   if (!envelope || envelope.isError) throw new N8nSafeError('provider_unavailable');
   let payload = envelope.structuredContent;
@@ -77,17 +77,51 @@ export function parseWorkflowPreviews(value: unknown): { workflows: WorkflowPrev
     rows.push({id:row.id,name:row.name,updatedAt:typeof row.updatedAt==='string'?row.updatedAt:null});
   }
   rows.sort((a,b)=>a.id.localeCompare(b.id));
-  return {workflows:rows.map(({id,name})=>({id,name})), inventory_complete,total_count,revision:JSON.stringify({rows,inventory_complete,total_count})};
+  return {workflows:rows.map(({id,name})=>({id,name})), inventory_complete,total_count,rows,revision:JSON.stringify({rows,inventory_complete,total_count})};
 }
 /** The sole permitted provider call is search_workflows. Even a read-only details
  * response contains workflow internals; previews deliberately return id/name only.
  */
-export async function discoverWorkflowPreviews(options: McpSessionOptions): Promise<{workflows:WorkflowPreview[];pin:string;inventory_complete:boolean;total_count:number}> {
+/**
+ * ONE WORKFLOW'S IDENTITY, not the whole inventory's.
+ *
+ * Consent is given per workflow, so it must be withdrawn per workflow. A single hash over
+ * every row means editing workflow C revokes the approval you gave workflow A -- and worse,
+ * the run-time gate compared that same whole-inventory hash, so ANY change anywhere made
+ * Paige refuse EVERY approved workflow with "not approved" before anything was even cleared.
+ *
+ * A mark covers exactly what a person consented to about one workflow: which workflow it is,
+ * and the version of it they were looking at. Editing something else does not move it.
+ *
+ * IT COVERS THE SAME FIELDS THE INVENTORY REVISION DID -- id, name and updatedAt -- just
+ * scoped to one row. An earlier draft hashed id + updatedAt only, which was strictly WEAKER
+ * than what it replaced: n8n may omit `updatedAt` (it is normalised to null), and the mark
+ * then degenerated to a constant per id that no edit could ever move, so a renamed or
+ * rewritten workflow kept its approval. Raised by Codex on this PR. Narrowing consent's
+ * granularity must not also narrow what consent is ABOUT.
+ */
+export async function workflowMark(row: {id:string;name:string;updatedAt:string|null}): Promise<string> {
+  return await hashOpaque(JSON.stringify({id:row.id,name:row.name,updatedAt:row.updatedAt ?? null}));
+}
+
+export async function workflowMarks(rows: {id:string;name:string;updatedAt:string|null}[]): Promise<Record<string,string>> {
+  const marks: Record<string,string> = {};
+  for (const row of rows) marks[row.id] = await workflowMark(row);
+  return marks;
+}
+
+export async function discoverWorkflowPreviews(options: McpSessionOptions): Promise<{workflows:WorkflowPreview[];pin:string;marks:Record<string,string>;inventory_complete:boolean;total_count:number}> {
   return await withApprovedCapabilitySession(options,async session=>{
     const search=session.tools.find(tool=>tool.name==='search_workflows');
     if (!search) throw new N8nSafeError('workflow_discovery_unavailable');
     const preview=parseWorkflowPreviews(await session.call('search_workflows',{limit:200}));
-    return {workflows:preview.workflows,inventory_complete:preview.inventory_complete,total_count:preview.total_count,pin:await hashOpaque(search.schemaHash+'\n'+preview.revision)};
+    // `search.schemaHash` is schema-only ON PURPOSE, and must stay that way. This value is
+    // stored as `n8n_discovery_pin`, and the probe RPC (20261201000300) wipes
+    // `n8n_approved_workflow_ids` whenever it moves. Swapping it for the widened `.pin`
+    // would silently revoke every n8n workspace's approved workflows.
+    return {workflows:preview.workflows,inventory_complete:preview.inventory_complete,total_count:preview.total_count,
+      pin:await hashOpaque(search.schemaHash+'\n'+preview.revision),
+      marks:await workflowMarks(preview.rows)};
   });
 }
 export function validateApproval(ids: unknown, discovered: WorkflowPreview[]): string[] {

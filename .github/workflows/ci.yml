@@ -222,10 +222,16 @@ jobs:
       # signal (CI, the db-live tag, the preview badge) stays green while the migration never
       # reaches production. The Supabase preview reports only the FIRST duplicate key, so it cannot
       # be relied on to enumerate them.
+      # Compared against the base branch TIP, not the merge base. The merge base is main as it
+      # was when this branch forked, so a version main adds AFTER the fork is invisible to the
+      # check -- which is exactly how 20261201000700 was reused here and stayed green until
+      # `supabase start` failed on a duplicate schema_migrations key. Only `baseFiles` is
+      # affected: the added-file set is computed with `${base}...HEAD`, which git already
+      # resolves through the merge base, so it is identical either way.
       - name: No migration reuses a version (a reused version is silently skipped, never applied)
         if: ${{ !cancelled() }}
         env:
-          BASE_REF: ${{ steps.mergebase.outputs.mb }}
+          BASE_REF: ${{ github.event.pull_request.base.sha || steps.mergebase.outputs.mb }}
         run: npm run lint:migration-versions
 
       - name: Migration-version guard catches what it claims to
@@ -462,6 +468,13 @@ jobs:
         run: |
           node --import ./scripts/client-memory-authz/register.mjs --test scripts/billing-payment-setup.test.mjs supabase/functions/_shared/payment-setup-reconciliation.test.ts
           deno test --allow-import=esm.sh,deno.land --deny-net --deny-env --deny-read --deny-write --deny-run --deny-ffi --deny-sys supabase/functions/_shared/stripe-webhook-signature.test.ts
+          # --no-check here and NOT on the line above, deliberately. This module's import graph
+          # reaches `systems-check-runner.ts` -> `prompt-forge.ts`, which carries three PRE-EXISTING
+          # type errors (TS2769 x2, TS2345). Typechecking that graph is `deno-edge-ratchet`'s job and
+          # it holds a baseline for exactly those; this line's job is to run the behaviour. Without
+          # the flag the step fails on errors this PR did not introduce and cannot fix here — which
+          # is why the sibling `_business-context-readiness.test.ts` was written and never wired in.
+          deno test --no-check --allow-import=esm.sh,deno.land --deny-net --deny-env --deny-read --deny-write --deny-run --deny-ffi --deny-sys supabase/functions/_shared/systems-check-runners/revenue_tracking_configured.test.ts
 
       - name: Test
         if: ${{ !cancelled() }}

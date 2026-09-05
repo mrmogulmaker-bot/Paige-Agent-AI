@@ -131,6 +131,35 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Solo Campaigns → Social — a business can record the accounts it posts from (2026-09-05)
+
+**What shipped.** `/solo/{account}/growth/social` was one fixed UNAVAILABLE panel. It is now a Social
+Command surface — an executive brief composed only from figures that have a source, five KPI tiles, a
+six-stage content pipeline, the accounts on record, what PAIGE has filed and stopped on, and the Trust
+Compass lanes reflected read-only — and it carries the **first writer** `tenants.features->'social_handles'`
+has ever had (`public.record_social_handles`, migration `20261210000000`). Systems Check #3
+(`social_accounts_connected`) has pointed at this page since it shipped while admitting the page could
+not finish the job; that caveat is gone in the same commit.
+
+**PAIGE can now see AND change it.** New Spine capability `social.presence`
+(`public.get_social_presence_evidence`), injected as a live per-turn block into every tenant Chat turn,
+plus `get_social_accounts` / `record_social_accounts` in `paige-mcp`. The surface and PAIGE read the
+same function, so they cannot describe the accounts differently.
+
+**What is still UNAVAILABLE, and this narrows §5 rather than closing it.** A declared handle is a
+§38 CAPTURE, not a connection. No follower, reach, engagement, publishing-queue, schedule or placement
+figure exists for a tenant anywhere, and every tile that would imply one renders an em-dash plus the
+sentence naming what would have to exist. **A live per-tenant social connection is NOT shipped:**
+`meta-schedule-post`/`meta-get-insights` read a single platform-wide `META_PAGE_ACCESS_TOKEN` and
+write `paige_social_posts`, a table with no `tenant_id` — so per-tenant publishing needs per-tenant
+OAuth (provider app review, per-tenant tokens) and a tenant column on that table. Owner decision owed.
+
+**Proof.** 53 new assertions, full suite 3303 passing, typecheck/build/lints green, and a production
+`BEGIN..ROLLBACK` proof of ten assertions that **caught a real defect before merge** (the read's role
+gate was unguarded on `auth.uid()` and would have refused PAIGE's own service-role caller).
+**Proof owed:** migration applied on production (CI on merge) and an authenticated live drive (§32.c).
+Full ledger: `docs/doctrine/tier-matrix.md` → "Campaigns → Social".
+
 ### Solo n8n MCP OAuth read/write connection — 2026-09-03
 
 PR #909 merged as 49b9f338. Frontend production deployment is READY on paigeagent.ai and app.paigeagent.ai; dedicated tenant-n8n-oauth version 1 and migration 20261201000000 are deployed and verified. Every Solo workspace owner can connect, edit, reconnect and disconnect through OAuth requesting workflow:read and workflow:write. API health remains independent. 3,020 Linux tests and all ordinary checks passed; rendered evidence covers four viewports and both themes. Final owner consent and real provider discovery are still Proof Owed. Hosted gateway callback URL retention is an accepted MVP residual risk, not a release blocker. See docs/delivery/solo-n8n-oauth-mvp.md.
@@ -180,6 +209,40 @@ exist as columns and are not yet reachable from the editor.
 `user_roles`, which carries no `tenant_id` — so an admin of any tenant who is also a member of
 another can read that other tenant's client book and, through the `EXISTS`, its agreements. A
 `clients`-owned defect, not one this table introduced. Re-check per release.
+
+### PAIGE Rail — a workspace-level outcome record exists (SCR-2026-09-05, 2026-09-05)
+
+**Status: PR open**, migration `20261212000000_paige_can_show_her_work.sql`. This is **SCR-1** from
+`docs/architecture/paige-spine-tool-migration-map.md`, raised and approved by the owner on
+2026-09-05 and recorded as `SCR-2026-09-05` in `docs/architecture/paige-spine-foundation.md`. The
+map named it as the blocker on **47 of 60 actions and every wave from 3 onward**.
+
+**Answer "can the owner see what PAIGE did?" from HERE, not from memory.** Measured on prod
+2026-09-05 before the change: `paige_audit_log` 142 rows · `paige_workspace_events` **10** rows,
+all connection events · `has_table_privilege('authenticated','paige_client_events','SELECT')` =
+**false** (#746 open). So the result of **zero** of PAIGE's 60 Chat actions was owner-visible.
+
+**What shipped.** One new `source_kind` (`capability_run`) with five outcomes, one new column
+(`capability_key`), one service-role RPC (`record_capability_run`, actor must be an active member
+of the tenant, §59), and the writer + display projection widened by delegation so no existing
+family's body was retyped. `get_solo_rail_activity` passes the capability through;
+`get_zapier_rail_activity` now also admits `capability_key='zapier_run_action'` so a Zapier run is
+visible on the Zapier card. Also fixed: `record_zapier_mcp_connection_test` wrote a row on EVERY
+health check (`gen_random_uuid(), 0` defeated its own de-dup key) and now records only a change.
+
+**The READ half was already live and is NOT part of this** — `get_solo_rail_activity` already
+unioned workspace events and `authenticated` already held EXECUTE (verified on prod). The gap was
+vocabulary, not visibility.
+
+**Wired so far: TWO capabilities** — the six n8n writes and `zapier_run_action`. The remaining ~47
+still write only `paige_audit_log`; each wave adds its own copy. **Reads are never recorded.**
+
+**Evidence.** Thirteen assertions against prod inside `BEGIN … ROLLBACK`, rollback confirmed; 3262
+unit tests; `tsc`; `deno check` on all three edge modules; six CI lints. **UNVERIFIED and owed:**
+§32.c authenticated live-drive that a row renders on the owner's Command Center.
+
+**Flagged:** PR #776 replaces `get_solo_rail_activity` with a client-events-only version and would
+delete the workspace half of the union; it needs a rebase whichever order the two land in.
 
 ### PAIGE Spine — `team.authority`, and both readiness reads bound to their workspace (2026-09-03)
 
@@ -1234,6 +1297,40 @@ Grouped:
 - ✅ **`tenant_workflows_registry`**, **`tenant_email_identity_registry`**, **`tenant_n8n_connections`**, **`tenant_service_agreement`**
 - ✅ **`tenant_revenue_classification`** (operator-only revenue axis — #29, PR #412) — paid/promotional/internal_test, RLS `is_platform_owner()`-only + FORCE
 
+### Solo carrier registration — the business record is editable where it blocks the filing (#924, LIVE 2026-09-04)
+
+- ✅ **Registration is a second EDITOR of the one canonical business record.** Solo Settings →
+  Connections → Registration could name the facts blocking a carrier filing and not resolve them.
+  It now edits the carrier-required subset through `save_solo_business_context` — the SAME seam
+  Setup uses, so one record with two editors, never two records (§57). Owner-only; the canonical
+  adapter mounts only when the editor is opened, so the ordinary Registration view is unchanged.
+  Reachable by top-level standalone Solo tenants only, which is exactly the set
+  `solo_setup_assert_canonical_tenant()` admits — pinned by a contract test so the two gates
+  cannot silently drift apart (§51/§56).
+- ✅ **`20261201000700` — the representative identity nobody was writing.** §32.a CONFIRMED on prod
+  (ref `xygzykjyynhzqytbqnzu`): `schema_migrations` advanced **958 → 959**, `max(version)` =
+  `20261201000700`, all **three** triggers present. Before it, NO function in the product wrote
+  `authorized_representative_first_name` / `_last_name` / `_email` / `_business_title` —
+  `20261046000000` replaced `save_solo_setup_identity` with an upsert omitting all four — so
+  `missingProfile()` could never empty and **brand filing was structurally impossible for every
+  Solo workspace**. Now derived at the table from the named active Team member, with sibling
+  triggers on `tenant_members` and `profiles` so a departure or a later name change re-derives.
+  **Backfill measured on prod: 1 workspace named a representative and 1 was blocked; after the
+  apply, 0 blocked.** Honest limit recorded in the migration header: a change to
+  `auth.users.email` re-derives nothing (that table is the auth service's), so the address can be
+  stale until the next membership change, profile edit or Setup save.
+- ✅ **A grant-boundary regression caught before it shipped (§39).** The peer-gate found a browser
+  `select()` for the three provider SIDs `20261201000600` deliberately excludes from the
+  `authenticated` grant — it would have made Registration `unreadable` for every workspace while
+  every test stayed green. Lockedness now comes from `comms-a2p-register`'s server-computed
+  `has_brand`/`has_campaign`/`has_messaging_service`. Recorded in `docs/brain/lessons-learned.md`.
+- 🟡 **OWED — §32.c authenticated live-drive.** Frontend is live (Vercel production `READY` on
+  `a8862ee`) and the schema is persisted, but NO ONE has driven the deployed surface. A green
+  pipeline proves the code runs; it does not prove an owner can finish the registration.
+- ❌ **NOT built — a governed PAIGE seam for these fields.** `business_context.readiness` exposes
+  status + provenance for four fields and never a raw value; nothing lets Paige write any of them.
+  A write tool needs the one-approval-gate contract, an action-risk classification and Rail events.
+
 ---
 
 ## 5. Current focus + known gaps
@@ -2231,7 +2328,7 @@ B-i ✅ → B-iv ✅ (posture verify pending) → B-ii (in flight) → B-Platfor
 
 - Before ANY claim about the codebase (what exists, what's wired, what's shipped): grep first, check Section 4 second, memory NEVER
 - Before ANY paste that references a table/function/file: verify it exists
-- **A finding discovered outside the current assignment's scope becomes a GitHub issue immediately, and is not started.** GitHub Issues are the authoritative individual work records; the PAIGE Attention Register is the one owner-facing view over them. This doc holds material platform truth — its legacy in-file ledger (Section 6) is not extended, and a new finding goes to Issues, never here. The standard — the five records, the register's nine fields and six views, the live lists that already exist, and the honest record that the register's board does not exist yet — is `docs/doctrine/paige-attention-register.md`.
+- **A finding discovered outside the current assignment's scope becomes a GitHub issue immediately, and is not started.** GitHub Issues are the authoritative individual work records; the PAIGE Attention Register is the one owner-facing view over them. This doc holds material platform truth — its legacy in-file ledger (Section 6) is not extended, and a new finding goes to Issues, never here. The standard — the five records, the register's nine fields and eight views, its eleven delivery statuses, the live lists that already exist, and the honest record that the register's board does not exist yet — is `docs/doctrine/paige-attention-register.md`.
 - **CC's code check is authoritative** — Cowork's sandbox agents can miss recently-shipped migrations or files; when CC disagrees with Section 4 or Section 10, CC's finding wins
 
 ### Session end (any agent that shipped work)
@@ -2815,6 +2912,9 @@ Things Cowork/CC/Codex have claimed that the codebase disagrees with. **Never re
 - **2026-08-10 · Operator-scope handler naming pattern (§9/§12 convention):** `paige-operator-<action>` (`paige-operator-sms-inbound`, `paige-operator-sms-send`) + "Paige Operator <Product>" in the Twilio console. Extend this pattern for future operator-scope handlers (RCS, WhatsApp, Voice AI) — keeps the §9 operator/tenant seam obvious.
 - **2026-08-10 · Overclaimed "Fleet Comms parity done" on #431 merge (§13, owner-caught live):** the last Twilio handoff + prior Section 4 update marked Fleet Comms parity COMPLETE. PREMATURE. #431 shipped the operator-side rich three-column SHELL + phone-in-thread WIRING, but the actual product capability — Super Admin auto-populated with real contacts + conversations synced from completed tenant onboardings, inline call records, immediate operator-side email/SMS against real data — is NOT there. Antonio live-drove Super Admin and confirmed the EMPTY state. **Correction:** Section 4 entry rewritten from "✅ COMPLETE" to "🟡 shell+wiring shipped, parity NOT complete"; real completion filed as **Fleet Comms Slice 4 (task #97 / doc #15)**, sequenced behind #9 (depends on the People/Pipeline foundation). Do not re-mark parity closed until Slice 4 actually ships. Lesson: a shipped SHELL/wiring is not shipped CAPABILITY — verify the real end-to-end product behavior (§32.c) before writing "complete" in SHIPPED.
 - **2026-08-10 · Featherless "model=null" was a TRACE artifact, not a config-unset bug (§30 diagnose, task #19/#103; owner-side plan closed):** the LLM-failover handoff hypothesized the cheap tier passes `model=null` (config unset OR a non-existent slug). **CC live-prod check disagrees:** `paige_llm_trace` last 48h = 50 featherless rows, ALL `status=error`, ALL `job_kind=text:open-flexible`, error `"Featherless call failed or returned no choice"`, last at 09:00 UTC (BEFORE the plan activated). The `model=null` in the trace is a **fidelity artifact** of `emit(provider, null, "error")` logging the null response object — NOT the slug actually sent. Both router seams already pass a **valid, allow-listed** slug and are already env-overridable; there was **no null-slug code bug**. Real root cause = pre-plan reachability (free tier couldn't serve the model). **Owner-side closed:** Antonio subscribed Featherless **"Feather Per-Request" DEVELOPER** ($50/mo credit, per-request billing, NO model-size cap) on 2026-08-10 — §34 cheap-tier economics restored. **Code close-loop (PR #438, MERGED 2026-08-10):** `_shared/model-router.ts` — open-flexible default upgraded 8B→`meta-llama/Llama-3.3-70B-Instruct` (owner's ranked #1, already allow-listed + already used for `internal_first_draft`), env name `FEATHERLESS_DEFAULT_MODEL` added as the §10 primary override (back-compat alias `FEATHERLESS_CHEAP_MODEL`), stale "15B cap on Basic / flat-rate by size tier" comment corrected to the per-request DEVELOPER reality; `config-registry.md` updated (§BRAIN.3). Complementary to **HOTFIX A / PR #436** (the callModel→Claude rescue for this exact path lives there, NOT in this PR — both need to be live for the full §34 no-single-provider guarantee). §32.b headless-proven (env-precedence resolver + regression-lint GREEN); **reachability of the 70B on the paid plan is NOT verifiable headless (no key value, no operator JWT, no browser) → OWED to owner §32.c live-drive** (fresh operator Systems Check scan → `operator_llm_failover` returns to `pass`). **Post-merge §32 GREEN:** `deploy-edge-functions` CI succeeded on the #438 merge commit (`830842b1`) — the router change is live on prod. Section 4 SHIPPED entry added on merge (per the Fleet-Comms lesson — no "shipped" before the merge).
+- **2026-09-04 · A carrier registration no Solo tenant could ever file (§58 silent regression + §70, found while building #924):** `comms-a2p-register`'s `missingProfile()` blocks brand filing until eighteen `tenant_legal_profile` columns are populated, four of which are the authorized representative's first name, last name, email and business title. Migration `20261020020000` derived all four from the named Team member. Migration `20261046000000` then **replaced** `save_solo_setup_identity` with a version whose INSERT and ON CONFLICT lists omit all four, and `save_tenant_legal_profile_owner` never wrote them either — so **no code path in the product wrote them at all**. Verified by grep across every migration and all of `src/`: zero writers. Consequence: `missing_profile_fields` could never empty, the "Business profile" stage read *Waiting* forever, and **"Start secure brand registration" was permanently disabled for every Solo workspace**. The capability regressed silently in a persistence-repair PR and no screen said so; the owner reported it as "these fields have no Add/Edit/Save path", which was the visible half of a deeper break. **Fix (#924):** `20261201000700` derives the four at the table from the named active Team member, so every writer is correct by construction rather than each carrying a copy of the derivation — which is exactly how they were lost — plus a second trigger on `tenant_members` so a departure removes the name rather than the next unrelated Setup save. Backfilled unconditionally. **Lesson, filed in `docs/brain/lessons-learned.md`:** when a readiness list never empties, check that something actually WRITES what it is checking — a capability can be missing a writer rather than a UI, and no surface will say so.
+- **2026-09-04 · Corrects a premise that reached the owner: Setup and Registration were NEVER two records that could drift (§13, #924).** A plan put to the owner proposed unifying "two copies". There is already ONE canonical record: `save_solo_business_context` → `save_solo_setup_context` → `save_solo_setup_identity` writes `public.tenant_legal_profile` in the same transaction as the Setup relations, and that is the exact row `comms-a2p-register` reads. Nothing needed unifying. Registration needed to become a second **editor** of a record that was already single — which is what shipped. Related correction: Setup's business-profile fields (`sicCode`, `naicsCode`, regions, suite line, the sealed tax number) **do** have real edit controls; they sit behind the "Edit business context" toggle, so a screenshot in read mode shows "Not provided" with no visible control. The missing path was in Registration.
+- **2026-09-04 · A wider `select()` is not a safe fix when column grants are in play (§39 peer-gate catch, #924).** `hasLeftPreparation` reads three provider SIDs the Solo query never selected, so three of the server's eight immutability conditions were inert and a carrier-linked registration could be offered an editor and a PAID model call the server would refuse. The obvious repair — select the three columns — would have been a **total outage**: `20261201000600` revoked `select` on `tenant_a2p_registrations` from `authenticated` and re-granted a column list excluding exactly those three, so the read returns `permission denied for column`, which `useSoloA2P` reports as `unreadable`, which blanks Registration for **every** workspace. 1,454 tests, a clean build and a green type ratchet all passed, because the test double ignored its `select()` argument. Fixed by recovering the three conditions from `comms-a2p-register`'s server-computed `has_brand`/`has_campaign`/`has_messaging_service` booleans, and by asserting the requested column list against the real grant in test. **Lesson:** column-level grants are deliberate on this platform; a doubled client that answers any select is a model of a database with no privileges, and erases exactly this class of bug.
 
 ---
 
@@ -3297,3 +3397,11 @@ The owner superseded the earlier callback zero-log release block for the standar
 Owner follow-up: OAuth must request workflow:read and workflow:write. Initial connection verification remains read-only; no workflow:execute or automatic mutation is granted. Workflow writes remain subject to the governed action path and explicit approval.
 
 - 2026-09-03 n8n owner-pass correction: PR #909 deployed but the first real consent failed before state consumption. The hosted gateway rewrites the runtime callback path/origin; public-URL-only fixtures missed this. Bounded handler repair preserves fixed redirect URI and all state/owner/session guards, fixes the 404 fallback, and is documented in docs/delivery/solo-n8n-oauth-mvp.md. Do not label the tenant connected until fresh owner consent succeeds.
+
+### Solo orchestration MVP — A2P workspace repair, 2026-09-04 (candidate)
+
+Owner direction authorizes implementation through green-gated release for reusable Solo orchestration, imports, external intake and SMS readiness. PAIGE remains the AI COO: read, reason, write, delegate, execute and follow through; preparation-only behavior is an unfinished capability, not a product ceiling.
+
+The first repair closes a confirmed A2P workspace-switch defect. The editor is keyed by workspace, delayed responses are fenced, handlers pass a captured-workspace precondition, prompt context is explicitly tenant-scoped, and the save/insert trigger rejects a changed tenant rather than redirecting the write. Ordinary Solo owners/admins gain the same captured-tenant preparation authority using is_tenant_admin_as and a current-workspace SELECT policy. Carrier submission is still absent; this repair does not make SMS registration ready.
+
+Automated evidence: UI and actual-handler tests with injected database/model ports; isolated PostgreSQL role, replay and lock-wait race tests. Independent adversarial source review passed after two additional races were corrected. Authenticated production owner-flow proof remains owed. No real customer record, workflow, campaign, carrier submission or sender identity was changed to produce proof.

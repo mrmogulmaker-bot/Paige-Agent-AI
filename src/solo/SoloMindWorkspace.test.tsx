@@ -439,7 +439,11 @@ describe("Solo Mind workspace", () => {
     const source = readFileSync(resolve(process.cwd(), "src/solo/SoloMindWorkspace.tsx"), "utf8");
     expect(source.match(/<h1\b/g)).toHaveLength(1);
     expect(source).toContain('<section className="mind-workspace" aria-labelledby="mind-title">');
-    expect(source).toContain('<h1 id="mind-title">Mind</h1>');
+    // OWNER RULING 2026-09-05: the sub-tab strip already says "Mind", so the word is not repeated
+    // at banner size. The h1 stays in the DOM — it is the aria-labelledby target of the section
+    // above and the document's only h1 (asserted on the line above) — but takes no layout.
+    expect(source).toContain('<h1 id="mind-title" className="mind-sr-only">Mind</h1>');
+    expect(css).toContain(".mind-sr-only{position:absolute;width:1px;height:1px");
     expect(source).toContain('className="mind-eyebrow"');
     expect(source).toContain("Your durable business records, decisions, knowledge, and source provenance");
     expect(css).toContain(".mind-heading h1{font-size:clamp(18px,1.35vw,22px)");

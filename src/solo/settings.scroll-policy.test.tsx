@@ -216,7 +216,7 @@ describe("Settings gets one visible, usable scroll owner", () => {
     expect(settingsTsx).toMatch(/function ConnectionsView\(\{ initialSegment, onSegmentChange \}/);
     expect(settingsTsx).toMatch(/const changeView = useCallback[\s\S]*setView\(nextView\);[\s\S]*useEffect\(\(\) => \{[\s\S]*onSegmentChange\?\.\(\)[\s\S]*\}, \[view, onSegmentChange\]\)/);
     expect(settingsTsx).toMatch(/onClick=\{\(\) => changeView\(key\)\}/);
-    expect(settingsTsx).toMatch(/onClick=\{\(\) => changeView\("registration"\)\}/);
+    expect(settingsTsx).toMatch(/view === "registration"/);
     expect(settingsTsx).toMatch(/<ConnectionsView initialSegment=\{segment\} onSegmentChange=\{resetSettingsScroll\}/);
     expect(settingsTsx).toMatch(/scrollOwner\.scrollTop = 0/);
   });

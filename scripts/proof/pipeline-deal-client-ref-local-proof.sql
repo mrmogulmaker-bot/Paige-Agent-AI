@@ -42,7 +42,12 @@ CREATE TABLE public.pipelines (
 );
 CREATE TABLE public.pipeline_stages (
   id uuid PRIMARY KEY, tenant_id uuid, pipeline_id uuid, label text, description text,
-  order_index int, archived_at timestamptz, move_policy text DEFAULT 'direct', version bigint DEFAULT 1
+  order_index int, archived_at timestamptz, move_policy text DEFAULT 'direct',
+  -- Added with 20261205000000, which emits stage_type from the stages projection. Without the
+  -- column the proof dies at the FIRST call, not at CREATE FUNCTION: plpgsql bodies are not
+  -- column-resolved until execution.
+  stage_type text DEFAULT 'open',
+  version bigint DEFAULT 1
 );
 CREATE TABLE public.deals (
   id uuid PRIMARY KEY, tenant_id uuid, title text, pipeline_id uuid, stage_id uuid,
@@ -70,8 +75,14 @@ $$;
 CREATE FUNCTION public.is_tenant_admin(_tenant uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
 CREATE FUNCTION public.is_assigned_to_client(_user uuid, _client uuid, _role text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
 
--- The real migration file, applied verbatim.
+-- The real migration files, applied verbatim and IN ORDER.
+--
+-- The second one matters more than it looks. If this proof kept pointing only at 20261041000000
+-- it would stay GREEN while no longer covering the live read path at all — a false green, and the
+-- schema twin of "it compiled but did not render". Repoint this whenever the read function is
+-- replaced again.
 \ir ../../supabase/migrations/20261041000000_pipeline_deal_carries_its_client_reference.sql
+\ir ../../supabase/migrations/20261205000000_a_stage_can_be_marked_closing.sql
 
 INSERT INTO auth.users (id, email) VALUES
   ('a0000000-0000-4000-8000-000000000001','admin@tests.invalid'),

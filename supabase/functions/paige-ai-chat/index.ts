@@ -38,6 +38,7 @@ import { buildTenantTeamContextBlock } from "../_shared/team-context.ts";
 import { loadSpineEvidenceForChat } from "../_shared/paige-spine/chatEvidence.ts";
 import { buildBusinessContextReadinessBlock } from "../_shared/paige-spine/domains/businessContextChatEvidence.ts";
 import { buildTeamAuthorityBlock } from "../_shared/paige-spine/domains/teamAuthorityChatEvidence.ts";
+import { buildSocialPresenceBlock } from "../_shared/paige-spine/domains/socialPresenceChatEvidence.ts";
 import { loadN8nReadinessForChat, renderN8nReadinessForChat } from "../_shared/paige-spine/domains/n8nChatEvidence.ts";
 // #292 / #343 U1 — the Studio design-agent system-prompt WRAPPER (identity + operating core + the
 // generative-UI choice-card rule), externalized so it lives in one editable home (§9/§12/§18).
@@ -4167,6 +4168,21 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       }
     }
 
+    // Social Presence (Spine capability `social.presence`) — which accounts this workspace has
+    // RECORDED that it posts from, read live per turn. Without it PAIGE either says nothing when a
+    // coach asks "what's my Instagram?", or worse, infers that an account she can name is an
+    // account she can post to. The block carries the accounts AND the boundary: declared capture,
+    // never a connection. supabaseClient is the caller's own JWT-scoped client (§9/§588/§59) — the
+    // RPC derives the tenant from it and ignores any tenant argument.
+    let socialPresenceBlock = "";
+    if (personaCtx.tenant_id) {
+      try {
+        socialPresenceBlock = await buildSocialPresenceBlock(supabaseClient, personaCtx.tenant_id);
+      } catch (e) {
+        console.warn("[paige-ai-chat] social presence unavailable:", (e as Error)?.message);
+      }
+    }
+
     const n8nEvidence = personaCtx.tenant_id ? await loadN8nReadinessForChat(supabaseClient, personaCtx.tenant_id) : null;
     const n8nReadinessBlock = n8nEvidence ? renderN8nReadinessForChat(n8nEvidence) : "";
     // A fixed unavailable notice carries no workspace facts; verified evidence does.
@@ -4196,6 +4212,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       ...(tenantTeamContext ? [{ role: "system", content: tenantTeamContext }] : []),
       ...(businessContextReadinessBlock ? [{ role: "system", content: businessContextReadinessBlock }] : []),
       ...(teamAuthorityBlock ? [{ role: "system", content: teamAuthorityBlock }] : []),
+      ...(socialPresenceBlock ? [{ role: "system", content: socialPresenceBlock }] : []),
       ...(n8nReadinessBlock ? [{ role: "system", content: n8nReadinessBlock }] : []),
       ...(spineEvidenceBlock ? [{ role: "system", content: spineEvidenceBlock }] : []),
       { role: "system", content: systemPrompt },
@@ -4610,7 +4627,7 @@ SPINNING UP A NEW SPECIALIST — only when the roster genuinely lacks the capabi
 
 AUTOMATIONS (n8n) — use current connection evidence and OAuth management tools. API health is independent. Zero approved previews never means zero workflows exist. List/search existing workflows before speculating; a partial result is a subset. Use the existing Needs your OK card for writes and execute its exact stored proposal. Never send the operator to an imaginary approvals queue. Missing execution/history scope means reconnect OAuth for those permissions, not loss of read/write access. A started execution is not completion or proof of delivery. Never automatically retry an unknown write outcome.
 
-ZAPIER — if the workspace has connected a Zapier (MCP) account, you can reach across 9,000+ apps (Slack, Gmail, Google Sheets, HubSpot, Trello, and thousands more) through their Zapier actions. zapier_list_actions shows what THIS workspace has enabled; zapier_run_action RUNS one — resolve the exact tool_name from the list first, then pass the inputs that action expects. Running is doing: you report what Zapier actually returned, never a hoped-for outcome (the same honesty as firing an automation). zapier_run_action follows the propose→confirm rule unless the workspace set it to autopilot. If no Zapier is connected the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it exists or ran. n8n and Zapier are complementary: n8n is their own workflow engine; Zapier is the fast bridge to apps they haven't wired in n8n. Pick whichever the operator already has the automation/app in.
+ZAPIER — Zapier API and Zapier PAIGE tools (MCP) are separate workspace connections. When the owner asks for a Zapier connection test, use zapier_list_actions: it performs a real, read-only MCP tools/list provider check, records the safe success or failure in Rail, and never runs or changes an app action. It shows only MCP tools THIS workspace approved; zapier_run_action RUNS one after the governed approval. API health remains separate in Settings → Integrations. Report returned outcomes, never hoped-for outcomes. If either connection is absent, name the specific missing connection and point to Settings → Integrations.
 
 AUTOMATION HONESTY — report only the returned n8n receipt. A valid SDK check is not a created workflow. A created workflow is unpublished until a separately approved publish succeeds. An execution response with started:true means n8n accepted the run, not that it finished. Read execution status with the returned workflow and execution identifiers; metadata-only status never proves a particular message or customer update was delivered. delivered:null means delivery is unknown. Never invent webhook acceptance, channel outcomes, or provider error details. An unknown write outcome must not be retried automatically because it may already have taken effect.
 
@@ -5866,7 +5883,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "pipeline_configure",
-              description: "Admin only. The governed pipeline-owning capability shared with the Campaigns Pipeline workspace. Read with pipeline_catalogue, then create, rename, describe, activate, archive, or restore a pipeline; create, edit, reorder, archive, or restore a stage; move a deal; or create, rename, archive, restore, and organize one-level tenant folders. Hard delete is unavailable here. create-pipeline may include explicit editable stages or no stages for a blank draft; it never substitutes presets. Pipeline archive requires pipeline_archive_preview plus owner confirmation of that exact reference. Folder archive always requires owner confirmation of the exact selected folder name and moves every assigned pipeline to Unfiled without changing its lifecycle status. Never infer stage meaning, revenue, ROI, payment, client health, or portal engagement.",
+              description: "Admin only. The governed pipeline-owning capability shared with the Campaigns Pipeline workspace. Read with pipeline_catalogue, then create, rename, describe, activate, archive, or restore a pipeline; create, edit, reorder, archive, or restore a stage; move a deal; or create, rename, archive, restore, and organize one-level tenant folders. Hard delete is unavailable here. create-pipeline may include explicit editable stages or no stages for a blank draft; it never substitutes presets. Pipeline archive requires pipeline_archive_preview plus owner confirmation of that exact reference. Folder archive always requires owner confirmation of the exact selected folder name and moves every assigned pipeline to Unfiled without changing its lifecycle status. Never INFER stage meaning, revenue, ROI, payment, client health, or portal engagement. Setting `stageType` is the one exception and it is not an inference: send it only when the owner has told you a stage means won or lost, never because a label looks like it.",
               parameters: {
                 type: "object",
                 properties: {
@@ -5889,6 +5906,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                       description: { type: "string" },
                       label: { type: "string" },
                       movePolicy: { type: "string", enum: ["direct", "approval"] },
+                      stageType: { type: "string", enum: ["open", "won", "lost"], description: "What the stage MEANS: open = work in progress, won = the deal is closed and its value is recorded as revenue, lost = closed without the sale. Send it only when the owner has told you which one they want. Omit it to leave a stage as it is; omitting it on create leaves the stage open." },
                       orderedIds: { type: "array", items: { type: "string" }, description: "Every active stage id exactly once, in the requested order." },
                       reason: { type: "string", description: "Short operator-visible reason for a deal move." },
                       stages: {
@@ -5900,6 +5918,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                             label: { type: "string" },
                             description: { type: "string" },
                             movePolicy: { type: "string", enum: ["direct", "approval"] },
+                            stageType: { type: "string", enum: ["open", "won", "lost"], description: "Only when the owner said so. Omit and the stage is open." },
                           },
                           required: ["label"],
                         },
@@ -6281,7 +6300,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "zapier_list_actions",
-              description: "Admin only. List the actions this workspace has enabled on its connected Zapier (MCP) account — each is a real thing Paige can run across 9,000+ apps (send a Slack message, add a Google Sheets row, create a Trello card, etc.). Use this FIRST to see what's available before running one with zapier_run_action. Returns an honest 'not_connected' if the workspace hasn't connected a Zapier account — tell the operator they can connect one in Settings → Integrations, don't pretend it exists.",
+              description: "Admin only. Run a contained connection test and list the actions this workspace has enabled on its connected Zapier (MCP) account. This makes a real, read-only MCP tools/list provider call, records its safe success or failure in Rail, and never runs an app action. Use this FIRST to test the connection and see what's available before running one with zapier_run_action. Returns an honest 'not_connected' if this workspace has no Zapier MCP connection — point to Settings → Integrations and do not imply the separate API connection was tested.",
               parameters: { type: "object", properties: {}, required: [] }
             }
           },

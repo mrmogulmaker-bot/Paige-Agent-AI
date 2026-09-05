@@ -53,21 +53,27 @@ const bundle = async (entry, name) => {
 };
 const mcp = await bundle("supabase/functions/_shared/mcp-client.ts", "client.mjs");
 const outcomeMod = BASELINE ? null : await bundle("supabase/functions/_shared/mcp-outcome.ts", "outcome.mjs");
-// The fingerprint is computed by the SHIPPED hasher, so a pin cannot pass by being
-// derived the same wrong way on both sides of the comparison.
-const outcome = outcomeMod ? { ...outcomeMod, fingerprintOf: mcp.fingerprintSchema } : null;
+// The fingerprint is computed by the SHIPPED hashers, so a pin cannot pass by being
+// derived the same wrong way on both sides of the comparison. An approval pins the schema
+// AND the authority the tool claims, so a schema-only helper here would have quietly gone
+// on approving what execution no longer accepts.
+const EMPTY_AUTHORITY = { app: "", actionType: "", effects: [] };
+const outcome = outcomeMod ? { ...outcomeMod,
+  fingerprintOf: async (schema, authority = EMPTY_AUTHORITY) =>
+    await mcp.fingerprintCapability(await mcp.fingerprintSchema(schema), await mcp.fingerprintAuthority(authority)),
+} : null;
 
 /**
  * Serves one canned `tools/call` result — and the `tools/list` the call path now needs,
  * because a capability is verified against the provider's CURRENT contract before it runs.
  * `schema` lets a case declare a different live contract than the one that was pinned.
  */
-function serve(route, resultBody, schema = DEFAULT_SCHEMA) {
+function serve(route, resultBody, schema = DEFAULT_SCHEMA, meta = null) {
   // The live schema is read at request time, so a case can change what the provider
   // currently offers without re-registering the route. Reading it from a mutable holder
   // is what makes the drift cases actually drift — a fixed capture here silently served
   // the default to every case and made three assertions pass for the wrong reason.
-  const state = { schema };
+  const state = { schema, meta };
   liveSchemas.set(route, state);
   routes.set(route, (req, res) => {
     // Terminating a session is a DELETE with no body.
@@ -107,7 +113,8 @@ function serve(route, resultBody, schema = DEFAULT_SCHEMA) {
       sessionLog.push({ method: body.method, session });
 
       const result = body.method === "tools/list"
-        ? { tools: [{ name: CAPABILITY, description: "d", inputSchema: state.schema }] }
+        ? { tools: [{ name: CAPABILITY, description: "d", inputSchema: state.schema,
+                      ...(state.meta ? { _meta: state.meta } : {}) }] }
         : resultBody;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }));
@@ -126,6 +133,8 @@ const DEFAULT_SCHEMA_MARKER = Symbol("default");
 const DEFAULT_SCHEMA = { type: "object", properties: { to: { type: "string" } }, required: ["to"] };
 
 const TENANT = "tenant-a";
+const ACTOR = "00000000-0000-4000-8000-0000000000a1";
+const CONTACT = "00000000-0000-4000-8000-0000000000c1";
 const CAPABILITY = "gmail_send_email";
 
 /**
@@ -135,9 +144,10 @@ const CAPABILITY = "gmail_send_email";
  * result. The other branch is the projection. Both are stringified the same way the chat
  * function stringifies them, so the assertions read real egress, not an approximation.
  */
-async function egress(route, { capability = CAPABILITY, approved = [CAPABILITY], pins, schema } = {}) {
+async function egress(route, { capability = CAPABILITY, approved = [CAPABILITY], pins, schema, meta } = {}) {
   // What the provider offers RIGHT NOW, for the cases that change it after approval.
   if (schema !== undefined && liveSchemas.has(route)) liveSchemas.get(route).schema = schema;
+  if (meta !== undefined && liveSchemas.has(route)) liveSchemas.get(route).meta = meta;
   if (BASELINE) {
     // The shipped shape was `{ok:true, result: <the whole JSON-RPC envelope>}`. The
     // envelope accessor it used has been removed along with the path it served, so the
@@ -471,6 +481,37 @@ if (!BASELINE) {
   }));
   check("a reordered `required` array IS drift", reorderedArray.status === "denied");
 
+  // An approval records the AUTHORITY the operator was shown -- which connected account the
+  // tool acts on, what kind of action it is, what it can do -- not only its inputs. A
+  // provider that keeps the name and the schema while moving the tool to another account, or
+  // turning a read into a send, is the substitution these cases exist to catch.
+  const appMoved = JSON.parse(await egress("/pinned", {
+    pins: { [CAPABILITY]: await outcome.fingerprintOf(DEFAULT_SCHEMA, { app: "Gmail", actionType: "write", effects: ["send"] }) },
+    schema: DEFAULT_SCHEMA,
+    meta: { connected_app: "Outlook", action_type: "write", effects: ["send"] },
+  }));
+  check("a capability whose connected APP changed since approval is refused", appMoved.status === "denied");
+
+  const becameWrite = JSON.parse(await egress("/pinned", {
+    pins: { [CAPABILITY]: await outcome.fingerprintOf(DEFAULT_SCHEMA, { app: "Gmail", actionType: "read", effects: ["read"] }) },
+    schema: DEFAULT_SCHEMA,
+    meta: { connected_app: "Gmail", action_type: "write", effects: ["send"] },
+  }));
+  check("a capability approved as read-only that became a send is refused", becameWrite.status === "denied");
+
+  // Effects are a SET the provider happens to serialise in some order. Failing a working
+  // integration closed over that ordering would be noise, not drift.
+  const reorderedEffects = JSON.parse(await egress("/pinned", {
+    pins: { [CAPABILITY]: await outcome.fingerprintOf(DEFAULT_SCHEMA, { app: "Gmail", actionType: "write", effects: ["send", "read"] }) },
+    schema: DEFAULT_SCHEMA,
+    meta: { connected_app: "Gmail", action_type: "write", effects: ["read", "send"] },
+  }));
+  check("an effects array the provider reordered is NOT drift", reorderedEffects.status === "ok");
+
+  // A pin merely aliased to the schema hash would satisfy every case above.
+  check("the pin is not the schema hash",
+    (await outcome.fingerprintOf(DEFAULT_SCHEMA)) !== (await mcp.fingerprintSchema(DEFAULT_SCHEMA)));
+
   // Asserted on the REASON, not only the refusal. An unpinned name also fails the drift
   // comparison (nothing matches an absent pin), so a status check alone stays green even
   // when the pin check itself is gone — and a guard that cannot notice its own removal is
@@ -548,13 +589,38 @@ if (!BASELINE) {
     Object.keys(payload).sort().join(",") === "at,authorization,capability,evidence_ref,provider,status",
     Object.keys(payload).sort().join(","));
 
-  // The rail cannot represent a call that is not about a client, and inventing one would
-  // put a fabricated association in front of an operator.
+  // The CLIENT rail cannot represent a call that is not about a client, and inventing a contact
+  // to satisfy its NOT NULL column would put a fabricated association in front of an operator.
+  // The WORKSPACE rail has no such requirement, and since SCR-2026-09-05 that is where an act
+  // about the business rather than about one client is recorded.
   calls.length = 0;
-  const noContact = await outcomeMod.fileGovernedOutcome(admin, { tenantId: TENANT, outcome: result.outcome, contactId: null });
+  const noContact = await outcomeMod.fileGovernedOutcome(admin, { tenantId: TENANT, outcome: result.outcome, contactId: null, actorId: ACTOR });
   check("with no contact in scope the action is still filed", calls.some((c) => c.fn === "file_action"));
-  check("...but no rail event is invented for a client that was never involved",
+  check("...but no CLIENT rail event is invented for a client that was never involved",
     !calls.some((c) => c.fn === "record_rail_event") && noContact.railSkipped === "no_contact");
+  check("...and the workspace record is written instead, so the act is not invisible",
+    calls.some((c) => c.fn === "record_capability_run") && noContact.workspaceFiled === true);
+
+  // THE DEFECT THE PEER-GATE FOUND, pinned so it cannot come back. The workspace row used to be
+  // written ONLY when no contact was in scope -- but `get_zapier_rail_activity`, the only reader
+  // behind Settings -> Integrations -> Zapier, reads the workspace table and nothing else. So the
+  // commonest Zapier turn (the owner on a client's screen) was invisible on the panel named after
+  // Zapier, permanently. Both records are written now: the contact row is that client's history,
+  // the workspace row is what PAIGE did to this business.
+  calls.length = 0;
+  const withContact = await outcomeMod.fileGovernedOutcome(admin, { tenantId: TENANT, outcome: result.outcome, contactId: CONTACT, actorId: ACTOR });
+  check("with a contact in scope BOTH records are written, not one",
+    calls.some((c) => c.fn === "record_rail_event") && calls.some((c) => c.fn === "record_capability_run"));
+  check("...and each reports its own success independently",
+    withContact.railFiled === true && withContact.workspaceFiled === true && withContact.railSkipped === null);
+
+  // Provenance must never fail the action it is describing.
+  calls.length = 0;
+  const railDown = await outcomeMod.fileGovernedOutcome(
+    { rpc: async (fn) => { calls.push({ fn }); return { data: null, error: { message: "down" } }; } },
+    { tenantId: TENANT, outcome: result.outcome, contactId: CONTACT, actorId: ACTOR });
+  check("a recording failure is reported, never thrown",
+    railDown.actionFiled === false && railDown.railFiled === false && railDown.workspaceFiled === false);
 
   // A refusal is the record most worth being able to find later.
   calls.length = 0;

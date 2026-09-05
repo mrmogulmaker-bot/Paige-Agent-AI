@@ -42,8 +42,34 @@ export type OAuthErrorCode =
   | "malformed_metadata"
   | "malformed_token_response";
 
+/**
+ * RFC 6749 §5.2's error codes. This is an allowlist ON PURPOSE: `error` is a short fixed
+ * enum, but `error_description` beside it is free text where servers put tokens and user
+ * identifiers, so the code is carried and everything else in the body is dropped.
+ *
+ * The distinction it buys is the one that matters for whether a connection SURVIVES:
+ * `invalid_grant` means the grant is genuinely gone -- the user revoked us at the provider
+ * -- and reconnecting is the only answer. Every other failure is ours or the network's, and
+ * must leave the connection intact to be retried. Without this they were indistinguishable,
+ * so a momentary fault was handled as though the user had revoked us.
+ */
+const PROVIDER_ERRORS = new Set([
+  "invalid_request", "invalid_client", "invalid_grant",
+  "unauthorized_client", "unsupported_grant_type", "invalid_scope",
+]);
+
+/** True only when the provider itself says the grant is gone. */
+export function isGrantWithdrawn(error: unknown): boolean {
+  return error instanceof OAuthError && error.providerError === "invalid_grant";
+}
+
 export class OAuthError extends Error {
-  constructor(public readonly code: OAuthErrorCode, public readonly httpStatus?: number) {
+  constructor(
+    public readonly code: OAuthErrorCode,
+    public readonly httpStatus?: number,
+    /** RFC 6749 §5.2 code only, allowlisted. NEVER `error_description`. */
+    public readonly providerError?: string,
+  ) {
     super(code);
     this.name = "OAuthError";
   }
@@ -236,10 +262,37 @@ export function buildAuthorizationUrl(opts: {
   return url.toString();
 }
 
+/**
+ * RFC 6749 §5.1 gives meaning to an OMITTED `scope` -- "identical to the scope requested by
+ * the client" -- and gives none to a malformed one. So the KEY'S ABSENCE is what inherits,
+ * and nothing else does. An explicit `null`, a number or an array is a broken response, and
+ * reading a provider's bug as agreement would record privileges nothing ever established.
+ *
+ * A present EMPTY string is a server genuinely saying "none": it parses to [] and is still
+ * refused downstream, which is the pre-existing behaviour and stays that way.
+ */
+function resolveScopes(body: Record<string, unknown>, requestedScopes?: string[]): string[] {
+  if (!("scope" in body)) return requestedScopes ?? [];
+  if (typeof body.scope !== "string") throw new OAuthError("malformed_token_response");
+  return body.scope.split(/\s+/).filter(Boolean);
+}
+
 async function postToken(
   server: AuthorizationServer,
   form: Record<string, string>,
   failure: OAuthErrorCode,
+  /**
+   * What the client asked for. RFC 6749 §5.1 makes `scope` OPTIONAL in a token response
+   * "if identical to the scope requested by the client" -- so an ABSENT scope means the
+   * grant is exactly this, and reading it as NO scopes is simply wrong.
+   *
+   * That misreading is not cosmetic. A refresh whose response omits `scope` produced
+   * `[]`, which then failed every scope assertion downstream; the caller revoked the
+   * freshly-issued token, while the provider had already invalidated the old refresh
+   * token by rotating it. The connection was then unrecoverable and the only way back
+   * was a full re-authorization -- one per token lifetime, forever.
+   */
+  requestedScopes?: string[],
 ): Promise<TokenSet> {
   let res;
   try {
@@ -250,8 +303,18 @@ async function postToken(
     }, { timeoutMs: TOKEN_TIMEOUT_MS, maxBytes: 262_144 });
   } catch { throw new OAuthError(failure); }
   // The body is not carried into the error: it is where an authorization server puts
-  // detail, and detail here means tokens.
-  if (res.status < 200 || res.status >= 300) throw new OAuthError(failure, res.status);
+  // detail, and detail here means tokens. The one exception is RFC 6749 §5.2's `error`,
+  // a short fixed enum, and only when it is one we recognise -- because `invalid_grant`
+  // is how a provider says the user revoked us, and without it a stumble and a revocation
+  // look identical, so a connection gets thrown away for a network blip.
+  if (res.status < 200 || res.status >= 300) {
+    let providerError: string | undefined;
+    try {
+      const parsed = JSON.parse(res.body) as { error?: unknown };
+      if (typeof parsed.error === "string" && PROVIDER_ERRORS.has(parsed.error)) providerError = parsed.error;
+    } catch { /* an unparseable error body tells us nothing; the status still does */ }
+    throw new OAuthError(failure, res.status, providerError);
+  }
   let body: Record<string, unknown>;
   try { body = JSON.parse(res.body); } catch { throw new OAuthError("malformed_token_response"); }
   const accessToken = str(body.access_token);
@@ -261,7 +324,7 @@ async function postToken(
     accessToken,
     refreshToken: str(body.refresh_token),
     expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
-    scopes: str(body.scope)?.split(/\s+/).filter(Boolean) ?? [],
+    scopes: resolveScopes(body, requestedScopes),
   };
 }
 
@@ -273,6 +336,8 @@ export function exchangeCode(opts: {
   code: string;
   verifier: string;
   resource: string;
+  /** The scopes this authorization requested; used when the response omits `scope`. */
+  requestedScopes?: string[];
 }): Promise<TokenSet> {
   return postToken(opts.server, {
     grant_type: "authorization_code",
@@ -282,7 +347,7 @@ export function exchangeCode(opts: {
     code_verifier: opts.verifier,
     resource: opts.resource,
     ...(opts.clientSecret ? { client_secret: opts.clientSecret } : {}),
-  }, "token_exchange_failed");
+  }, "token_exchange_failed", opts.requestedScopes);
 }
 
 /**
@@ -296,6 +361,12 @@ export function refreshTokens(opts: {
   clientSecret: string | null;
   refreshToken: string;
   resource: string;
+  /**
+   * The scopes this grant already holds. A refresh_token grant sends no `scope`, so the
+   * server has nothing to echo and commonly omits it; the grant is unchanged, and this is
+   * what "unchanged" means. Pass the stored scopes wherever the caller asserts on them.
+   */
+  grantedScopes?: string[];
 }): Promise<TokenSet> {
   return postToken(opts.server, {
     grant_type: "refresh_token",
@@ -303,7 +374,7 @@ export function refreshTokens(opts: {
     client_id: opts.clientId,
     resource: opts.resource,
     ...(opts.clientSecret ? { client_secret: opts.clientSecret } : {}),
-  }, "refresh_failed");
+  }, "refresh_failed", opts.grantedScopes);
 }
 
 /**
