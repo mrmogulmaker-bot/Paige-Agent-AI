@@ -16,9 +16,9 @@ function grounded() {
     greeting: { name: "Jordan", dateLabel: "Thursday, September 3", salutation: "Good afternoon" },
     narrative: "Foundations are set and work is moving. Here's what needs you and the best move to make now.",
     attention: [
-      { label: "3 drafts waiting", tone: "live" },
-      { label: "2 clients at risk", tone: "partial" },
-      { label: "5 follow-ups due", tone: "live" },
+      { label: "3 drafts waiting", tone: "live", destination: "paige" },
+      { label: "2 clients at risk", tone: "partial", destination: "clients" },
+      { label: "5 follow-ups due", tone: "live", destination: "clients" },
     ],
     bestMove: {
       id: "attn:atrisk", title: "Re-engage 2 clients before they lapse",

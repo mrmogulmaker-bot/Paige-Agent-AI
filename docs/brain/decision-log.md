@@ -1,5 +1,32 @@
 # Decision Log — chronological one-liners
 
+- **Business Game Plan — live-data corrections against authenticated prod (2026-09-05, follow-up to #952)** —
+  the owner reviewed the shipped Solo default landing on real data (Mogul Maker Academy) and flagged five
+  items; verified via authenticated Supabase queries (project xygzykjyynhzqytbqnzu) and fixed in the Game
+  Plan's own files only (no shared seam touched). (1) **Greeting identity (§57):** `useCommandCenter`
+  resolved the greeting name from the GLOBAL signed-in user's auth metadata, never re-scoped to the active
+  workspace — so an operator/super-admin viewing a tenant would see their OWN name over that tenant's HQ.
+  MMA is owned by `mogulmakeracademy@gmail.com` (metadata "Antonio"), so the owner's own login was
+  coincidentally correct, but the SOURCE was wrong. Fixed IN `useSoloGamePlan` (not the shared
+  `useCommandCenter`, to leave Systems Check untouched): the personal name shows only when
+  `activeUserId === activeTenant.owner_user_id`, else a neutral greeting — no borrowed/fabricated identity.
+  (2) **Drill-able claims (§36):** the summary chips ("N clients at risk / drafts waiting / 1 move blocked /
+  follow-ups due") were dead labels; each now carries a real `destination` and renders as a button that
+  opens the backing surface (Clients / PAIGE / Systems Check). (3) **Payment-processor title (§13/§38):** a
+  blocked check titled itself "You can take payment" (the CHECK_DESTINATIONS goal-state) — false on a
+  BLOCKED move; now titled from the honest STATE clause of `paige_interpretation` ("No payment processor
+  declared yet"), with the declare-oriented copy kept as the reason. MMA genuinely has no processor declared
+  (`payment_processor_declared` null) and the runner copy was already §38-clean ("declare which processor",
+  never "can't take payment"). (4) **Work-in-motion:** rows can't open their underlying record —
+  `get_solo_rail_activity` deliberately strips the per-row ref and the Rail RPC is out of scope — so the
+  caveat now states the source (recorded workspace activity) + freshness honestly instead of implying a
+  drill. The "Zapier PAIGE tools test succeeded" row is a REAL event (zapier_mcp_connection, 2026-09-05
+  14:08). (5) **Trust Compass** stays OUT — 3 real tabs, slot reserved, no dead tab (§58). Full suite 3456
+  green, build green, 128/128 render drive, §39 peer-gate. §32.c authenticated browser render still owed;
+  the DATA layer is verified against prod. **Lesson: a headless session CAN do authenticated verification —
+  by querying the real database, not only by driving the browser; the owner's live look surfaced an
+  identity SOURCE bug whose displayed value happened to be right.**
+
 - **The Paige Capability System — OWNER-LOCKED full-range MVP direction (2026-09-05)** — PAIGE is the
   tenant's governed operating environment; chat is the front door to a FULL capability range, NOT chat-only/
   read-only/recommendation-only. ONE Capability System (governed contracts), not unrelated chat widgets.

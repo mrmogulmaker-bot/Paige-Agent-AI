@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type Loose = Record<string, unknown>;
 const m = vi.hoisted(() => ({
   cc: {} as Loose, setup: {} as Loose, catalog: {} as Loose, knowledge: {} as Loose,
-  pending: {} as Loose, checks: {} as Loose, activity: {} as Loose,
+  pending: {} as Loose, checks: {} as Loose, activity: {} as Loose, tenant: {} as Loose,
 }));
 
 vi.mock("./useCommandCenter", () => ({ useCommandCenter: () => m.cc }));
@@ -27,6 +27,7 @@ vi.mock("../useCatalogOffers", () => ({ useCatalogOffers: () => m.catalog }));
 vi.mock("./useSoloKnowledge", () => ({ useSoloKnowledge: () => m.knowledge }));
 vi.mock("./useSoloPendingActions", () => ({ useSoloPendingActions: () => m.pending }));
 vi.mock("@/hooks/useSystemsCheck", () => ({ useSystemsCheck: () => m.checks }));
+vi.mock("@/hooks/useTenantContext", () => ({ useTenantContext: () => m.tenant }));
 vi.mock("./useSoloActivityFeed", () => ({
   useSoloActivityFeed: () => m.activity,
   elapsedLabel: () => "1m ago",
@@ -56,6 +57,8 @@ function resetEmpty() {
   m.pending = { items: [], loading: false, error: null, refresh: vi.fn() };
   m.checks = { run: null, findings: [], loading: false, isError: false, scanPending: false, refresh: vi.fn() };
   m.activity = { items: [], loading: false, status: "loading", error: null, refresh: vi.fn() };
+  // Default: the signed-in user OWNS the active workspace (the normal Solo case).
+  m.tenant = { activeUserId: "owner-1", activeTenant: { owner_user_id: "owner-1" } };
 }
 
 beforeEach(() => {
@@ -170,5 +173,50 @@ describe("useSoloGamePlan derivation", () => {
     expect(move).toBeTruthy();
     expect(move?.owner).toBe("paige");
     expect(move?.destination).toBe("paige");
+  });
+
+  // ── owner corrections 2026-09-05 (authenticated live-data verification) ───────────────────
+
+  it("greets the signed-in person by name ONLY when they own the active workspace (§57 identity)", () => {
+    // Owner case (default fixture): activeUserId === activeTenant.owner_user_id.
+    m.cc.greeting = { name: "Antonio" };
+    render();
+    expect(view.greeting.name).toBe("Antonio");
+  });
+
+  it("does NOT paste the viewer's name over a workspace they do not own — greets neutrally (§57)", () => {
+    // A super-admin / operator viewing a tenant: viewer id ≠ the workspace owner id.
+    m.cc.greeting = { name: "Antonio" };
+    m.tenant = { activeUserId: "operator-9", activeTenant: { owner_user_id: "owner-1" } };
+    render();
+    expect(view.greeting.name).toBe("there");
+    expect(view.greeting.name).not.toBe("Antonio");
+  });
+
+  it("a failing check's TITLE describes the real state, never an unachieved goal (payment, §13)", () => {
+    // The payment-processor check overstated as 'You can take payment' on a BLOCKED move; the honest
+    // title is the STATE clause of paige_interpretation.
+    m.checks.findings = [{
+      id: "pp", check_id: "payment_processor_connected", status: "fail", severity_at_finding: "blocking",
+      paige_interpretation: "No payment processor declared yet — tell Paige which processor the business uses (Stripe, PayPal, Square, a bank merchant account, QuickBooks Payments, or manual).",
+    }];
+    render();
+    const move = [view.bestMove, ...view.priorities].find((x) => x?.id === "check:pp");
+    expect(move?.title).toBe("No payment processor declared yet");
+    expect(move?.title).not.toContain("You can take payment");
+    // The full declare-oriented copy is preserved as the reason (§38: declare, not "can't take payment").
+    expect(move?.blockedReason).toContain("tell Paige which processor");
+    expect(move?.blockedReason).not.toContain("can't take payment");
+  });
+
+  it("every summary chip carries a real destination so it can be opened (§36 drill-down)", () => {
+    m.cc = { ...m.cc, counts: { approvals: 2 }, attention: { at_risk_clients: 3, follow_ups_due: 1 } };
+    render();
+    const byLabel = (needle: string) => view.attention.find((a) => a.label.includes(needle));
+    expect(byLabel("drafts waiting")?.destination).toBe("paige");
+    expect(byLabel("clients at risk")?.destination).toBe("clients");
+    expect(byLabel("follow-up")?.destination).toBe("clients");
+    // Every chip has SOME real destination — none is a dead label.
+    expect(view.attention.every((a) => typeof a.destination === "string" && a.destination.length > 0)).toBe(true);
   });
 });
