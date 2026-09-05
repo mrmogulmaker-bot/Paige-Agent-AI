@@ -353,11 +353,14 @@ function ZapierMcpPanel({ m, onChanged }: { m: ReturnType<typeof useMcpConnectio
  </>;
 }
 
-function ZapierRecentActivity(){const{activeTenantId}=useTenantContext();const[rows,setRows]=useState<Array<{id:string;title:string;summary:string;occurred_at:string}>|null>(null);const[failed,setFailed]=useState(false);
+// `epoch` advances on every mutation in this drawer. Without it the effect depended only on
+// activeTenantId, so a test, disconnect, verify or approval change wrote a new Rail row and
+// this list kept showing the history from before the action until the drawer was reopened.
+function ZapierRecentActivity({epoch}:{epoch:number}){const{activeTenantId}=useTenantContext();const[rows,setRows]=useState<Array<{id:string;title:string;summary:string;occurred_at:string}>|null>(null);const[failed,setFailed]=useState(false);
  useEffect(()=>{let live=true;setRows(null);setFailed(false);if(!activeTenantId)return()=>{live=false;};void (async()=>{
   // Generated types follow production migrations and do not include this additive RPC yet.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const{data,error}=await (supabase as any).rpc("get_zapier_rail_activity",{p_limit:5});if(!live)return;if(error||!Array.isArray(data)){setFailed(true);return;}setRows(data.map((r:Record<string,unknown>)=>({id:String(r.id),title:String(r.title??"Zapier activity"),summary:String(r.summary??""),occurred_at:String(r.occurred_at??"")})));})();return()=>{live=false;};},[activeTenantId]);
+  const{data,error}=await (supabase as any).rpc("get_zapier_rail_activity",{p_limit:5});if(!live)return;if(error||!Array.isArray(data)){setFailed(true);return;}setRows(data.map((r:Record<string,unknown>)=>({id:String(r.id),title:String(r.title??"Zapier activity"),summary:String(r.summary??""),occurred_at:String(r.occurred_at??"")})));})();return()=>{live=false;};},[activeTenantId,epoch]);
  return <div className="ig-caps"><h4>Recent safe activity</h4>{rows===null&&!failed?<p className="ig-state" role="status">Loading recent Zapier activity…</p>:failed?<p className="ig-note">Recent activity is unavailable. Connection states above are unchanged.</p>:rows.length===0?<p className="ig-note">No Zapier activity has been recorded for this workspace.</p>:<ul className="ig-activity-list">{rows.map(r=><li key={r.id}><strong>{r.title}</strong><span>{r.summary}</span><time>{r.occurred_at?safeCheckDate(r.occurred_at):"Time unavailable"}</time></li>)}</ul>}</div>;
 }
 function zapierMcpSummary(value: ReturnType<typeof useMcpConnection>) {
@@ -370,6 +373,11 @@ function zapierMcpSummary(value: ReturnType<typeof useMcpConnection>) {
 }
 
 function ZapierDrawer({onClose,onChanged}:{onClose:()=>void;onChanged:()=>void}){
+ // Every mutation in this drawer writes a Rail row. `changed` advances the activity epoch as
+ // well as telling the parent to re-read connection status, so the list below reflects the
+ // action the owner just took rather than the state before it.
+ const[activityEpoch,setActivityEpoch]=useState(0);
+ const changed=useCallback(()=>{setActivityEpoch(n=>n+1);onChanged();},[onChanged]);
  const api=useZapierApi();const m=useMcpConnection("zapier");const[tab,setTab]=useState<"api"|"mcp">("api");const panel=useRef<HTMLElement>(null);const close=useRef<HTMLButtonElement>(null);
  useEffect(()=>{const opener=document.activeElement as HTMLElement|null;close.current?.focus();return()=>{if(opener&&document.contains(opener))opener.focus();};},[]);
  useEffect(()=>{const onKey=(event:KeyboardEvent)=>{const root=panel.current;if(!root)return;if(event.key==="Escape"){event.preventDefault();onClose();return;}if(event.key!=="Tab")return;const items=Array.from(root.querySelectorAll<HTMLElement>('button,input,select,textarea,a[href],[tabindex="0"]')).filter(item=>!item.hasAttribute("disabled")&&item.tabIndex!==-1&&item.offsetParent!==null);if(!items.length)return;if(!root.contains(document.activeElement)){event.preventDefault();items[0].focus();}else if(event.shiftKey&&document.activeElement===items[0]){event.preventDefault();items[items.length-1].focus();}else if(!event.shiftKey&&document.activeElement===items[items.length-1]){event.preventDefault();items[0].focus();}};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[onClose]);
@@ -381,7 +389,7 @@ function ZapierDrawer({onClose,onChanged}:{onClose:()=>void;onChanged:()=>void})
   <div className="ig-n8n-overview"><div className="ig-n8n-summary" aria-label="Independent Zapier connection states"><div><span>API connection</span><N8nStateLabel value={apiSummary}/></div><div><span>Paige tools (MCP)</span><N8nStateLabel value={zapierMcpSummary(m)}/></div></div>
    <div className="ss-segment ig-n8n-tabs" role="tablist" aria-label="Zapier connections" onKeyDown={tabKeys}>{(["api","mcp"] as const).map(value=><button key={value} type="button" id={`ig-zapier-tab-${value}`} role="tab" aria-selected={tab===value} aria-controls={`ig-zapier-panel-${value}`} tabIndex={tab===value?0:-1} onClick={()=>choose(value)}>{value==="api"?"API connection":"Paige tools (MCP)"}</button>)}</div>
   </div>
-  <div className="ig-panel-body">{tab==="api"?<section id="ig-zapier-panel-api" role="tabpanel" aria-labelledby="ig-zapier-tab-api"><ZapierApiPanel api={api} onChanged={onChanged}/></section>:<section id="ig-zapier-panel-mcp" role="tabpanel" aria-labelledby="ig-zapier-tab-mcp"><ZapierMcpPanel m={m} onChanged={onChanged}/></section>}<ZapierRecentActivity/></div>
+  <div className="ig-panel-body">{tab==="api"?<section id="ig-zapier-panel-api" role="tabpanel" aria-labelledby="ig-zapier-tab-api"><ZapierApiPanel api={api} onChanged={changed}/></section>:<section id="ig-zapier-panel-mcp" role="tabpanel" aria-labelledby="ig-zapier-tab-mcp"><ZapierMcpPanel m={m} onChanged={changed}/></section>}<ZapierRecentActivity epoch={activityEpoch}/></div>
   <footer><span>API visibility and Paige tools authorization are separate.</span></footer>
  </aside></div>;
 }

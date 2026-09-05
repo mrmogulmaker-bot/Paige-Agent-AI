@@ -114,8 +114,7 @@ RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog
  IF _tenant IS NULL OR _actor IS NULL THEN RAISE EXCEPTION 'ZAPIER_DISCONNECT_INVALID';END IF;
  DELETE FROM public.tenant_zapier_api_connections WHERE tenant_id=_tenant;
  UPDATE public.tenant_zapier_api_oauth_attempts SET status='cancelled' WHERE tenant_id=_tenant AND status IN ('pending','exchanging');
- INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
- VALUES(_tenant,_actor,'zapier_api_connection',gen_random_uuid(),0,'zapier_api_disconnected');
+ PERFORM public._record_workspace_rail_event(_tenant,_actor,'zapier_api_connection',gen_random_uuid(),0,'zapier_api_disconnected');
 END $$;
 REVOKE ALL ON FUNCTION public.zapier_api_disconnect(uuid,uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.zapier_api_disconnect(uuid,uuid) TO service_role;
@@ -130,8 +129,7 @@ BEGIN
   last_checked_at=now_at,last_success_at=CASE WHEN _healthy THEN now_at ELSE last_success_at END,revision=revision+1,updated_at=now_at
  WHERE tenant_id=_tenant AND generation=_generation RETURNING generation,revision INTO event_source,event_revision;
  IF event_source IS NULL THEN RAISE EXCEPTION 'ZAPIER_CONNECTION_STALE';END IF;
- INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
- VALUES(_tenant,_actor,'zapier_api_connection',event_source,event_revision,_outcome);
+ PERFORM public._record_workspace_rail_event(_tenant,_actor,'zapier_api_connection',event_source,event_revision,_outcome);
 END $$;
 REVOKE ALL ON FUNCTION public.zapier_api_record_check(uuid,uuid,boolean,text,text,integer,text,uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.zapier_api_record_check(uuid,uuid,boolean,text,text,integer,text,uuid) TO service_role;
@@ -140,8 +138,7 @@ CREATE OR REPLACE FUNCTION public.zapier_api_refuse(_tenant uuid,_actor uuid,_st
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$ DECLARE attempt_id uuid;BEGIN
  UPDATE public.tenant_zapier_api_oauth_attempts SET status='refused' WHERE tenant_id=_tenant AND actor_id=_actor AND state_hash=_state_hash AND status IN ('pending','exchanging') RETURNING id INTO attempt_id;
  IF attempt_id IS NULL THEN RETURN false;END IF;
- INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
- VALUES(_tenant,_actor,'zapier_api_oauth',attempt_id,0,'zapier_api_oauth_refused');
+ PERFORM public._record_workspace_rail_event(_tenant,_actor,'zapier_api_oauth',attempt_id,0,'zapier_api_oauth_refused');
  RETURN true;END $$;
 REVOKE ALL ON FUNCTION public.zapier_api_refuse(uuid,uuid,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.zapier_api_refuse(uuid,uuid,text) TO service_role;
@@ -152,8 +149,7 @@ RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog
  IF public.is_tenant_owner(_actor,_tenant) IS DISTINCT FROM true THEN RAISE EXCEPTION 'ZAPIER_ROUTE_FORBIDDEN' USING ERRCODE='42501';END IF;
  INSERT INTO public.tenant_zapier_intake_routes(tenant_id,route_kind,label,route_token_hash,enabled,created_by)
  VALUES(_tenant,'skool',btrim(_label),_token_hash,true,_actor) RETURNING id INTO route_id;
- INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
- VALUES(_tenant,_actor,'zapier_skool_intake',route_id,0,'zapier_skool_route_created');
+ PERFORM public._record_workspace_rail_event(_tenant,_actor,'zapier_skool_intake',route_id,0,'zapier_skool_route_created');
  RETURN route_id;
 END $$;
 REVOKE ALL ON FUNCTION public.zapier_intake_route_create(uuid,uuid,text,text) FROM PUBLIC,anon,authenticated;
@@ -366,12 +362,10 @@ BEGIN
  IF existing.id IS NOT NULL THEN
   IF existing.payload_hash IS DISTINCT FROM _payload_hash THEN RAISE EXCEPTION 'ZAPIER_INTAKE_IDEMPOTENCY_CONFLICT' USING ERRCODE='23505';END IF;
   IF existing.status='failed' THEN
-   INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
-    VALUES(r.tenant_id,COALESCE(operator_id,r.created_by),'zapier_skool_intake',existing.id,1,'zapier_skool_intake_failed') ON CONFLICT DO NOTHING;
+   PERFORM public._record_workspace_rail_event(r.tenant_id,COALESCE(operator_id,r.created_by),'zapier_skool_intake',existing.id,1,'zapier_skool_intake_failed');
    RETURN jsonb_build_object('ok',false,'outcome','failed','receipt_id',existing.id);
   END IF;
-  INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
-   VALUES(r.tenant_id,COALESCE(operator_id,r.created_by),'zapier_skool_intake',existing.id,1,'zapier_skool_intake_duplicate') ON CONFLICT DO NOTHING;
+  PERFORM public._record_workspace_rail_event(r.tenant_id,COALESCE(operator_id,r.created_by),'zapier_skool_intake',existing.id,1,'zapier_skool_intake_duplicate');
   RETURN jsonb_build_object('ok',true,'outcome','duplicate','receipt_id',existing.id);
  END IF;
  INSERT INTO public.tenant_zapier_intake_events(tenant_id,route_id,idempotency_key,payload_hash,payload_ct,status)
@@ -418,8 +412,7 @@ BEGIN
    outcome:='zapier_skool_intake_failed';
   END;
  END IF;
- INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
-  VALUES(r.tenant_id,COALESCE(operator_id,r.created_by),'zapier_skool_intake',e.id,0,outcome) ON CONFLICT DO NOTHING;
+ PERFORM public._record_workspace_rail_event(r.tenant_id,COALESCE(operator_id,r.created_by),'zapier_skool_intake',e.id,0,outcome);
  RETURN jsonb_build_object('ok',outcome='zapier_skool_intake_received','outcome',CASE WHEN outcome='zapier_skool_intake_received' THEN 'processed' ELSE 'failed' END,'receipt_id',e.id);
 END $$;
 REVOKE ALL ON FUNCTION public.process_zapier_skool_intake(text,text,text,jsonb) FROM PUBLIC,anon,authenticated;
@@ -487,14 +480,14 @@ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_cata
  IF NEW.provider<>'zapier' THEN RETURN NEW;END IF;
  IF TG_OP='UPDATE' AND NEW.zapier_rail_revision=OLD.zapier_rail_revision THEN RETURN NEW;END IF;
  IF NEW.auth_kind='oauth' AND NEW.enabled AND NEW.status='connected' AND (TG_OP='INSERT' OR OLD.status IS DISTINCT FROM NEW.status OR OLD.auth_kind IS DISTINCT FROM NEW.auth_kind) THEN
-  INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome) VALUES(NEW.tenant_id,NEW.updated_by,'zapier_mcp_connection',NEW.zapier_generation,NEW.zapier_rail_revision,'zapier_mcp_verified') ON CONFLICT DO NOTHING;
+  PERFORM public._record_workspace_rail_event(NEW.tenant_id,NEW.updated_by,'zapier_mcp_connection',NEW.zapier_generation,NEW.zapier_rail_revision,'zapier_mcp_verified');
  ELSIF NEW.auth_kind='oauth' AND NEW.enabled AND NEW.status='error' AND (TG_OP='INSERT' OR OLD.status IS DISTINCT FROM NEW.status) THEN
-  INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome) VALUES(NEW.tenant_id,NEW.updated_by,'zapier_mcp_connection',NEW.zapier_generation,NEW.zapier_rail_revision,'zapier_mcp_unavailable') ON CONFLICT DO NOTHING;
+  PERFORM public._record_workspace_rail_event(NEW.tenant_id,NEW.updated_by,'zapier_mcp_connection',NEW.zapier_generation,NEW.zapier_rail_revision,'zapier_mcp_unavailable');
  ELSIF TG_OP='UPDATE' AND OLD.enabled AND (NOT NEW.enabled OR NEW.auth_token_ct IS NULL) THEN
-  INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome) VALUES(NEW.tenant_id,NEW.updated_by,'zapier_mcp_connection',NEW.zapier_generation,NEW.zapier_rail_revision,'zapier_mcp_disconnected') ON CONFLICT DO NOTHING;
+  PERFORM public._record_workspace_rail_event(NEW.tenant_id,NEW.updated_by,'zapier_mcp_connection',NEW.zapier_generation,NEW.zapier_rail_revision,'zapier_mcp_disconnected');
  END IF;
  IF TG_OP='UPDATE' AND NEW.approved_capabilities IS DISTINCT FROM OLD.approved_capabilities THEN
-  INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome) VALUES(NEW.tenant_id,NEW.updated_by,'zapier_mcp_connection',NEW.zapier_generation,NEW.zapier_rail_revision,'zapier_tools_changed') ON CONFLICT DO NOTHING;
+  PERFORM public._record_workspace_rail_event(NEW.tenant_id,NEW.updated_by,'zapier_mcp_connection',NEW.zapier_generation,NEW.zapier_rail_revision,'zapier_tools_changed');
  END IF;RETURN NEW;END $$;
 REVOKE ALL ON FUNCTION public._zapier_mcp_rail_event() FROM PUBLIC,anon,authenticated;
 CREATE TRIGGER zapier_mcp_rail_event AFTER INSERT OR UPDATE ON public.tenant_mcp_connections FOR EACH ROW EXECUTE FUNCTION public._zapier_mcp_rail_event();
@@ -504,8 +497,7 @@ RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog
  IF _tenant_id IS NULL OR _actor_id IS NULL OR _succeeded IS NULL OR NOT EXISTS(
   SELECT 1 FROM public.tenant_members m WHERE m.tenant_id=_tenant_id AND m.user_id=_actor_id AND m.status='active' AND m.role IN ('owner','admin','coach')
  ) THEN RAISE EXCEPTION 'ZAPIER_MCP_TEST_FORBIDDEN' USING ERRCODE='42501';END IF;
- INSERT INTO public.paige_workspace_events(tenant_id,actor_id,source_kind,source_id,source_revision,outcome)
- VALUES(_tenant_id,_actor_id,'zapier_mcp_connection',gen_random_uuid(),0,CASE WHEN _succeeded THEN 'zapier_mcp_test_succeeded' ELSE 'zapier_mcp_test_failed' END);
+ PERFORM public._record_workspace_rail_event(_tenant_id,_actor_id,'zapier_mcp_connection',gen_random_uuid(),0,CASE WHEN _succeeded THEN 'zapier_mcp_test_succeeded' ELSE 'zapier_mcp_test_failed' END);
 END $$;
 REVOKE ALL ON FUNCTION public.record_zapier_mcp_connection_test(uuid,uuid,boolean) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.record_zapier_mcp_connection_test(uuid,uuid,boolean) TO service_role;
