@@ -127,6 +127,31 @@ per-agent attribution the Rail can only say "PAIGE", which cannot answer "who ow
 Make obvious what the owner must do, what PAIGE can complete autonomously, and what is awaiting an
 external provider or platform response.
 
+### 3.2 No redundant surface title — OWNER RULING 2026-09-05 (applies to all four sub-tabs)
+
+> *"When people are inside of Systems Check, they already understand that they're in there. I don't
+> think we need a banner-sized word saying 'Systems Check'."* … *"Keep that same consistency with the
+> two new tabs as well. We don't need redundant words if we have a word right at the top inside of
+> the menu bar and it says it. They know exactly where they are."* — Antonio
+
+The Command Center sub-tab strip already names the active surface. A page heading repeating that word
+tells the reader nothing they cannot already see and spends vertical space, which on these surfaces is
+the scarce resource (§11).
+
+**The rule, binding on all four Command Center sub-tabs:** Systems Check · Mind · and Game Plan and
+Trust Compass when they land. No visible surface-title heading. The descriptive line under it stays.
+
+**How it is implemented, and why not by deletion.** The `h1` remains in the DOM and is moved out of
+the layout (`.sc-sr-only` / `.mind-sr-only`). Deleting it would take the document's only `h1` with it,
+and on Mind it would break `aria-labelledby="mind-title"` on the whole section. A sighted reader loses
+a redundant word; a screen-reader user loses nothing.
+
+Pinned by assertion on both surfaces so a later pass cannot quietly restore it:
+`SoloMindWorkspace.test.tsx` asserts the exact hidden-heading markup and the CSS rule behind it.
+
+*This is a cross-surface ruling recorded here because this is the doc that exists today. It belongs in
+the four-surfaces architecture contract (task #9) and should move there when that lands.*
+
 ## 4. Status vocabulary — CLOSED SET
 
 Nothing outside this list may render, ever:

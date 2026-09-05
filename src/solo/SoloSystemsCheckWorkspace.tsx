@@ -566,7 +566,12 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
       <div ref={scrollOwnerRef} className="sc-scroll-owner" aria-hidden={Boolean(selected || proposal || decision) || undefined}>
         <header className="sc-heading">
           <div>
-            <h1>Systems Check</h1>
+            {/* OWNER RULING 2026-09-05: the sub-tab strip directly above already reads "Systems
+                Check", so a banner-sized repeat of the word tells the reader nothing they cannot
+                see and costs vertical space. Kept in the DOM, out of the layout: a screen reader
+                still gets the page heading, and the document keeps its h1. Same rule applies to
+                Mind, and to Game Plan and Trust Compass when they land. */}
+            <h1 className="sc-sr-only">Systems Check</h1>
             <p>What your business systems can actually do right now, and what is stopping the rest.</p>
             <span className="sc-sr-only"><span data-tenant-account-name>{resolvedAccount.accountName}</span>, <span data-tenant-account-tier>{resolvedAccount.accountTypeLabel}</span>, {command.greeting.dateLabel}. {command.greeting.name}: {command.loading ? "operating sources are still loading." : command.isError ? "some operating sources are unavailable." : command.greeting.summary}</span>
           </div>
