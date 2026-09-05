@@ -6242,12 +6242,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "comms_buy_number",
-              description: "Admin only. BUY a phone number for this business. THIS SPENDS REAL MONEY — a monthly charge that starts immediately — so always show the number and its exact monthly price from comms_search_numbers and get a clear yes before calling with confirm:true. Never buy a number the operator did not name. Provider inventory goes stale between a search and a buy, so a refusal here is normal and final for that number: pick another rather than retrying the same one. If the reply says the number was bought but could not be recorded, the operator IS being billed for it — tell them so and do NOT buy a replacement.",
+              description: "Admin only. BUY a phone number for this business. This provisions a REAL number from the provider at a recurring monthly cost — the platform currently covers that cost, so the business is NOT billed for it, but a wrong or duplicate number is still a real waste, so always show the number and its exact monthly price from comms_search_numbers and get a clear yes before calling with confirm:true. Never buy a number the operator did not name. Provider inventory goes stale between a search and a buy, so a refusal here is normal and final for that number: pick another rather than retrying the same one. If the reply says the number was bought but could not be recorded, a real number was provisioned that the platform cannot see — do NOT buy a replacement (that would provision a second one); tell the operator to check the provider before trying again.",
               parameters: {
                 type: "object",
                 properties: {
                   phone_number: { type: "string", description: "E.164, exactly as comms_search_numbers returned it, e.g. +14045550123." },
-                  monthly_cents: { type: "integer", description: "The exact monthly_cents comms_search_numbers returned for THIS number. It is shown to the operator in the approval prompt and verified against the real price before anything is bought, so a number you did not get from a search will be refused rather than charged." },
+                  monthly_cents: { type: "integer", description: "The exact monthly_cents comms_search_numbers returned for THIS number — its recurring monthly cost at the provider (which the platform currently covers; the business is not billed for it). It is shown to the operator in the approval prompt and verified against the real price before anything is bought, so a number you did not get from a search will be refused rather than bought." },
                   friendly_name: { type: "string", description: "Optional label, e.g. 'Intake line'." }
                 },
                 required: ["phone_number", "monthly_cents"]
@@ -7026,10 +7026,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // read as an approvable proposal — an earlier revision said "an amount Paige could
           // not quote", which invited a yes to a purchase with no number in it.
           const cents = typeof a?.monthly_cents === "number" ? a.monthly_cents : null;
-          const price = cents !== null
-            ? `$${(cents / 100).toFixed(2)}/month`
-            : "an unquoted amount — this will be refused; run a search first";
-          return `Buy ${a?.phone_number || "that number"} for this business${a?.friendly_name ? ` and label it "${a.friendly_name}"` : ""}. This starts a recurring charge of ${price}.`;
+          const label = a?.friendly_name ? ` and label it "${a.friendly_name}"` : "";
+          const buy = `Buy ${a?.phone_number || "that number"} for this business${label}.`;
+          // §38: the number has a real recurring cost AT THE PROVIDER, which the platform
+          // currently covers — the business is NOT billed for it in this slice. The caution
+          // kept here is the true one: a duplicate or unused number is a real waste, not a bill.
+          return cents !== null
+            ? `${buy} It costs $${(cents / 100).toFixed(2)}/month at the provider, which the platform currently covers — the business isn't billed for it, but buy it deliberately: a duplicate or unused number is a real waste.`
+            : `${buy} You've passed an unquoted amount, so this will be refused — run a search first so the real monthly price can be shown.`;
         }
         case "comms_name_number":
           return String(a?.friendly_name ?? "").trim()

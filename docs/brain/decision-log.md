@@ -1,5 +1,32 @@
 # Decision Log — chronological one-liners
 
+- **Communications closeout, Slice A — Twilio cost ownership: the buy flow stops claiming the tenant
+  is billed (2026-09-05, edge + one migration)** — the PLATFORM is the provider account holder and
+  pays the provider cost for MVP; solo tenants are NOT billed for Communications
+  (`comms-purchase-number` returns `charge_wired:false` on every exit — the tenant-billing charge leg
+  is not wired). But the buy flow said the opposite: the `comms_buy_number` tool description ("THIS
+  SPENDS REAL MONEY… the operator IS being billed"), the server confirmation prompt ("This starts a
+  recurring charge of $X/month"), the `monthly_cents` param desc, and the Rail (`_workspace_event_display`:
+  "Bought a phone number (monthly charge)" + the `capability_completed_unrecorded` summary "a charge or
+  a change has landed"). A §13 falsehood on the audience:'owner' Rail — an owner read it as a bill they
+  owe. Corrected the backend truthfulness layer: the tool description + param + confirmation prompt
+  (paige-ai-chat) now say the recurring cost is the PROVIDER's, which the platform covers, the business
+  is not billed, and the real caution is a duplicate/unused number is a waste; and migration
+  `20261221000000` reproduces `_workspace_event_display` verbatim except the two Rail strings (diff
+  proved: only those + the comment changed). NO tenant-billing write is created or implied
+  (`charge_wired:false` unchanged; no billing table touched — the money boundary §38 is preserved, not
+  built). `money_already_spent` is NOT renamed (the outcome classifier + contract test key on it; that
+  is the Billing rebuild the owner ruled out) — its meaning is corrected in the tool description; the
+  `capability_completed_unrecorded` mapping is correct and stays. **Frontend is a Claude Design hand-off
+  (§00):** `src/solo/settings.tsx`, `NumbersTab.tsx` ("charges your business"), and
+  `src/lib/integrations/connectError.ts` ("IS being billed") + their tests carry the same false claim —
+  CC did not touch them; backend goes truthful now, frontend converges on CD's track (temporary
+  cross-layer copy inconsistency, §6-flagged). **Escalated to owner:** the "Billing for messaging"
+  usage-metering card in settings.tsx (generic-Billing-rebuild boundary — flagged, not touched).
+  **Parked (follow-up):** the `list_tool_autonomy` toggle label "Buy a phone number (monthly charge)"
+  (inside the large union function — the #776-hazard surface; disproportionate to reproduce for one
+  label suffix; pre-existing, my Rail fix does not worsen it).
+
 - **Communications closeout, Slice B — a verified Super Admin can reach the platform Communications
   tools (2026-09-05, no migration, edge-only)** — the `paige-ai-chat` role gate that guards the eight
   `comms_*` tools (and the CRM operator tools) was `admin || coach`; a God-tier `super_admin` is
