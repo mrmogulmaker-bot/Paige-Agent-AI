@@ -449,3 +449,38 @@ wired to the unified `messages`/`threads` substrate — a separate gap, not a ke
 - **#145 §63 doctrine** (PR #493): owner's real accounts off-limits as agent example/default targets; audit found zero example-misuse to scrub.
 - **#149 §32.c finding #2** (PR #494 + 1.56.1→1.62.1 reconciliation): live-drive #2/#3 named a Playwright/Docker mismatch — caret `^1.48.0` drifted npm to 1.62 while the base stayed 1.48 (which lacks the `chromium-headless-shell` PW 1.55+ needs). Fixed: EXACT-pin `1.62.1` = `v1.62.1-jammy` across both Fly services + root (§18). §13 corrections logged (healthz≠container-version over-claim; my 1.56.1 merge reconciled UP to proven-live 1.62.1).
 - **§32.c GREEN:** owner drove `paigeagent.ai` through `verify_deployed_surface` → real live content (hero/pricing/security/CTAs). The owner-owed-live-walk pattern is dead — Paige self-verifies her own deployed surfaces. **Slice 3 (public-web browsing) GREENLIT.**
+
+## Systems Check reappropriation wave — completed slices (2026-09-04 → 2026-09-05)
+
+Archived from the live task list per §24 (a completed item reloads into context every turn; keep the
+runway, not the graveyard). Each line is the shipped outcome, not the plan.
+
+- **#1 Agent role definitions reconciled** across docs and code — one vocabulary, one registry.
+- **#2 Canonical Agent Registry specification** written.
+- **#3 Solo organization chart + tenant-agent placement** produced.
+- **#4 Agent placement mapped** across every Solo surface.
+- **#5 Business Game Plan interactive prototype** built (`flow-prototype`, nine states, desktop + mobile).
+- **#6 Agent lifecycle and autonomy model** designed (§67/§68-aligned).
+- **#7 Current-Orchestrator compatibility packet** written.
+- **#8 Cross-tenant sub-agent disable patch** shipped to production (§9 leak closed).
+- **#10 Generic A2P and Zapier result-handoff contracts** defined — truthful result contracts only; no
+  provider functionality taken over (both remain separate active workstreams, per the standing brief).
+- **#12 Registry + placement map** updated for the settled Command Center IA.
+- **#13 Bounded Rail agent-attribution and workspace-event uplift** shipped.
+- **#14 Every Systems Check signal grounded in a real source** — no fixtures, no stale persisted counts,
+  no fabricated "confirmed" states.
+- **#16 Radial dial design language reassigned to Trust Compass** — the Systems Check radial was not
+  preserved merely because it existed.
+- **#20 False in-flight comment in `useSystemsCheck.ts` corrected** (twice — the correction was itself
+  wrong the first time, §13).
+- **#23 Revenue check repointed** at the tenant's own sales revenue, not platform billing (PR #941).
+- **#24 False all-clear a Setup save could put on the Systems Check** closed — three change-triggered
+  runs fire per Solo Setup save; the snapshot now requires a full sweep (PR #935 + #943 + #944).
+- **#26 Solo tier can mark a pipeline stage as closing** (PR #942, migration `20261205000000`).
+- **#29 Closing a deal on the Solo board now records revenue** (migration `20261204000000`).
+
+**§32.a persisted-apply confirmed on prod (2026-09-05)** for `20261213000000`
+(`a_run_that_never_finished_is_not_the_latest_reading`): `schema_migrations` row present;
+`systems_check_snapshot` and `approve_systems_check_finding` re-read from prod carry every intended
+clause; both still `SECURITY DEFINER` with `authenticated=X` and `anon` absent; `db-live` and
+`edge-live` both at `d89856ed` — zero drift.
