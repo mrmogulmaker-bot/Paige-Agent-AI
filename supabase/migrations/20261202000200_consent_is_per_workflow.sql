@@ -191,18 +191,37 @@ BEGIN
     --
     -- A missing marks payload means the caller could not compute them; leave approvals
     -- alone rather than reading absence as "everything changed".
+    -- ABSENCE ONLY MEANS DELETED WHEN THE WHOLE INVENTORY WAS SEEN.
+    --
+    -- search_workflows returns at most 200 rows and reports the true total, so a workspace
+    -- with more than that yields a PARTIAL page and inventory_complete=false. Treating a
+    -- missing mark as proof of deletion would then revoke approvals for workflows that were
+    -- merely displaced off the page by unrelated additions or a reordering -- reintroducing
+    -- exactly the collateral revocation this migration exists to end. Raised by Codex.
+    --
+    -- present and equal     -> keep
+    -- present and different -> revoke, the approved workflow itself changed
+    -- absent, complete      -> revoke, it is genuinely gone
+    -- absent, incomplete    -> keep, we simply did not see it
     n8n_approved_workflow_ids=CASE
       WHEN _input->>'state'<>'connected' OR _input->'marks' IS NULL THEN n8n_approved_workflow_ids
       ELSE ARRAY(SELECT id FROM unnest(n8n_approved_workflow_ids) AS id
-                  WHERE n8n_approved_workflow_marks->>id IS NOT NULL
-                    AND n8n_approved_workflow_marks->>id = _input->'marks'->>id)
+                  WHERE CASE
+                    WHEN _input->'marks' ? id
+                      THEN n8n_approved_workflow_marks->>id IS NOT NULL
+                       AND n8n_approved_workflow_marks->>id = _input->'marks'->>id
+                    ELSE _input->'inventory_complete' IS DISTINCT FROM 'true'::jsonb
+                  END)
     END,
     n8n_approved_workflow_marks=CASE
       WHEN _input->>'state'<>'connected' OR _input->'marks' IS NULL THEN n8n_approved_workflow_marks
       ELSE COALESCE((SELECT jsonb_object_agg(id, n8n_approved_workflow_marks->>id)
                        FROM unnest(n8n_approved_workflow_ids) AS id
                       WHERE n8n_approved_workflow_marks->>id IS NOT NULL
-                        AND n8n_approved_workflow_marks->>id = _input->'marks'->>id),'{}'::jsonb)
+                        AND CASE
+                          WHEN _input->'marks' ? id THEN n8n_approved_workflow_marks->>id = _input->'marks'->>id
+                          ELSE _input->'inventory_complete' IS DISTINCT FROM 'true'::jsonb
+                        END),'{}'::jsonb)
     END,
     last_probed_at=clock_timestamp(),n8n_last_success_at=CASE WHEN _input->>'state'='connected' THEN clock_timestamp() ELSE n8n_last_success_at END
     WHERE tenant_id=t AND provider='n8n';

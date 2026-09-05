@@ -213,7 +213,7 @@ Deno.serve(async req=>{
    }
    const preview=await discoverWorkflowPreviews({serverUrl:lease.server_url,auth:{kind:'bearer',token:accessToken}});
    if(preview.workflows.some(row=>[accessToken,...activeSecrets].some(secret=>row.name.includes(secret)||row.id.includes(secret))))throw new N8nSafeError('provider_unavailable');
-   await rpc('probe',{...bound,state:'connected',pin:preview.pin,marks:preview.marks});
+   await rpc('probe',{...bound,state:'connected',pin:preview.pin,marks:preview.marks,inventory_complete:preview.inventory_complete});
    if(body.action==='discover'){
     const snapshot=await rpc('snapshot',{...bound,payload:preview});
     return json({workflows:preview.workflows.map(row=>({...row,approved:lease.approved_ids.includes(row.id)&&!!lease.approved_marks?.[row.id]&&lease.approved_marks[row.id]===preview.marks[row.id]})),discovery_id:snapshot.discovery_id,inventory_complete:preview.inventory_complete,total_count:preview.total_count});

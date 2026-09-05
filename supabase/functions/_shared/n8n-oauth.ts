@@ -92,12 +92,19 @@ export function parseWorkflowPreviews(value: unknown): { workflows: WorkflowPrev
  *
  * A mark covers exactly what a person consented to about one workflow: which workflow it is,
  * and the version of it they were looking at. Editing something else does not move it.
+ *
+ * IT COVERS THE SAME FIELDS THE INVENTORY REVISION DID -- id, name and updatedAt -- just
+ * scoped to one row. An earlier draft hashed id + updatedAt only, which was strictly WEAKER
+ * than what it replaced: n8n may omit `updatedAt` (it is normalised to null), and the mark
+ * then degenerated to a constant per id that no edit could ever move, so a renamed or
+ * rewritten workflow kept its approval. Raised by Codex on this PR. Narrowing consent's
+ * granularity must not also narrow what consent is ABOUT.
  */
-export async function workflowMark(row: {id:string;updatedAt:string|null}): Promise<string> {
-  return await hashOpaque(`${row.id}\n${row.updatedAt ?? ''}`);
+export async function workflowMark(row: {id:string;name:string;updatedAt:string|null}): Promise<string> {
+  return await hashOpaque(JSON.stringify({id:row.id,name:row.name,updatedAt:row.updatedAt ?? null}));
 }
 
-export async function workflowMarks(rows: {id:string;updatedAt:string|null}[]): Promise<Record<string,string>> {
+export async function workflowMarks(rows: {id:string;name:string;updatedAt:string|null}[]): Promise<Record<string,string>> {
   const marks: Record<string,string> = {};
   for (const row of rows) marks[row.id] = await workflowMark(row);
   return marks;

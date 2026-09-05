@@ -80,13 +80,15 @@ describe('n8n owner OAuth executed handler',()=>{
  // the workspace changed, reported as "not approved".
  //
  // A mark is hash(id + "\n" + updatedAt), which is what `workflowMark` computes.
- const marked=async(h:ReturnType<typeof harness>,id:string,updatedAt:string|null)=>
-   await h.helper.workflowMark({id,updatedAt});
+ // A mark covers id + name + updatedAt -- the same fields the inventory revision covered,
+ // scoped to one row.
+ const marked=async(h:ReturnType<typeof harness>,id:string,name:string,updatedAt:string|null)=>
+   await h.helper.workflowMark({id,name,updatedAt});
 
  it('runs an approved workflow that has not changed',async()=>{
   const wf=[{id:'wf1',name:'Lead intake',availableInMCP:true,updatedAt:'2026-09-01T10:00:00Z'}];
   const probe=harness({workflows:wf});
-  const mark=await marked(probe,'wf1','2026-09-01T10:00:00Z');
+  const mark=await marked(probe,'wf1','Lead intake','2026-09-01T10:00:00Z');
   const h=harness({workflows:wf,rpc:(op:string)=>op==='acquire'?{lease:'lease',generation:'generation',approved_ids:['wf1'],approved_marks:{wf1:mark},discovery_pin:'stale-pin',server_url:payload.resource,access_token:tokens.accessToken,refresh_token:tokens.refreshToken,expires_at:tokens.expiresAt,issuer:server.issuer,client_id:'client',client_secret:null,oauth_scopes:['workflow:read','workflow:write']}:undefined});
   // discovery_pin is deliberately WRONG here: it must no longer matter.
   expect((await h.post({action:'preview',expected_tenant_id:'tenant-a',workflow_id:'wf1'})).status).toBe(200);
@@ -94,7 +96,7 @@ describe('n8n owner OAuth executed handler',()=>{
 
  it('still runs an approved workflow after an UNRELATED one is edited',async()=>{
   const before=[{id:'wf1',name:'Lead intake',availableInMCP:true,updatedAt:'2026-09-01T10:00:00Z'}];
-  const mark=await marked(harness({workflows:before}),'wf1','2026-09-01T10:00:00Z');
+  const mark=await marked(harness({workflows:before}),'wf1','Lead intake','2026-09-01T10:00:00Z');
   // wf2 is new and wf3 was just edited. Neither was ever approved.
   const after=[...before,
     {id:'wf2',name:'Something new',availableInMCP:true,updatedAt:'2026-09-04T23:00:00Z'},
@@ -104,7 +106,7 @@ describe('n8n owner OAuth executed handler',()=>{
  });
 
  it('refuses an approved workflow that ITSELF changed',async()=>{
-  const mark=await marked(harness(),'wf1','2026-09-01T10:00:00Z');
+  const mark=await marked(harness(),'wf1','Lead intake','2026-09-01T10:00:00Z');
   const edited=[{id:'wf1',name:'Lead intake',availableInMCP:true,updatedAt:'2026-09-04T23:45:00Z'}];
   const h=harness({workflows:edited,rpc:(op:string)=>op==='acquire'?{lease:'lease',generation:'generation',approved_ids:['wf1'],approved_marks:{wf1:mark},discovery_pin:'pin',server_url:payload.resource,access_token:tokens.accessToken,refresh_token:tokens.refreshToken,expires_at:tokens.expiresAt,issuer:server.issuer,client_id:'client',client_secret:null,oauth_scopes:['workflow:read','workflow:write']}:undefined});
   const res=await h.post({action:'preview',expected_tenant_id:'tenant-a',workflow_id:'wf1'});
@@ -120,11 +122,37 @@ describe('n8n owner OAuth executed handler',()=>{
   expect((await h.post({action:'preview',expected_tenant_id:'tenant-a',workflow_id:'wf1'})).status).toBe(400);
  });
 
+ // Both raised by Codex on this PR, and both real.
+ it('refuses an approved workflow that was RENAMED, even with no updatedAt',async()=>{
+  // n8n may omit updatedAt entirely -- the parser normalises it to null. A mark of
+  // id + updatedAt alone would then be a constant no edit could move, so a rename kept
+  // its approval. The old whole-inventory hash DID cover name; narrowing the granularity
+  // must not narrow what consent is about.
+  const mark=await marked(harness(),'wf1','Lead intake',null);
+  const renamed=[{id:'wf1',name:'Lead intake (v2)',availableInMCP:true}];
+  const h=harness({workflows:renamed,rpc:(op:string)=>op==='acquire'?{lease:'lease',generation:'generation',approved_ids:['wf1'],approved_marks:{wf1:mark},discovery_pin:'pin',server_url:payload.resource,access_token:tokens.accessToken,refresh_token:tokens.refreshToken,expires_at:tokens.expiresAt,issuer:server.issuer,client_id:'client',client_secret:null,oauth_scopes:['workflow:read','workflow:write']}:undefined});
+  const res=await h.post({action:'preview',expected_tenant_id:'tenant-a',workflow_id:'wf1'});
+  expect(res.status).toBe(400);
+  expect(await res.text()).toContain('workflow_not_approved');
+ });
+
+ it('tells probe whether the inventory was COMPLETE, so absence is not read as deletion',async()=>{
+  // search_workflows caps at 200 rows and reports the true total. Past that the page is
+  // partial, and an approved workflow displaced off it must not be treated as deleted.
+  const h=harness({workflowCount:201,workflows:[{id:'wf1',name:'A',availableInMCP:true,updatedAt:'2026-09-01T10:00:00Z'}]});
+  await h.post({action:'discover',expected_tenant_id:'tenant-a'});
+  expect(h.calls.find(c=>c.op==='probe')?.input?.inventory_complete).toBe(false);
+
+  const whole=harness({workflows:[{id:'wf1',name:'A',availableInMCP:true,updatedAt:'2026-09-01T10:00:00Z'}]});
+  await whole.post({action:'discover',expected_tenant_id:'tenant-a'});
+  expect(whole.calls.find(c=>c.op==='probe')?.input?.inventory_complete).toBe(true);
+ });
+
  it('hands the live marks to probe, so revocation can be judged per workflow',async()=>{
   const h=harness({workflows:[{id:'wf1',name:'A',availableInMCP:true,updatedAt:'2026-09-01T10:00:00Z'}]});
   await h.post({action:'discover',expected_tenant_id:'tenant-a'});
   const probe=h.calls.find(c=>c.op==='probe');
-  expect(probe?.input?.marks?.wf1).toBe(await marked(h,'wf1','2026-09-01T10:00:00Z'));
+  expect(probe?.input?.marks?.wf1).toBe(await marked(h,'wf1','A','2026-09-01T10:00:00Z'));
  });
 
  it.each(['id','name'])('rejects token echo in workflow %s',async field=>{const h=harness({workflows:[{id:'wf1',name:'Preview',availableInMCP:true,[field]:'secret-access'}]});const res=await h.post({action:'discover',expected_tenant_id:'tenant-a'});expect(res.status).toBe(400);expect(await res.text()).not.toContain('secret-access');expect(h.calls.some(c=>c.op==='snapshot')).toBe(false)});
