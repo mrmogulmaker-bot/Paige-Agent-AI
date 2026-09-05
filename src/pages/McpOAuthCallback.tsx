@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { readFunctionErrorBody } from "@/lib/integrations/connectError";
+import { takeOAuthReturn } from "@/solo/data/oauthReturn";
 import "./McpOAuthCallback.css";
 
 type Phase =
@@ -97,6 +98,28 @@ export default function McpOAuthCallback() {
     void complete(code, state);
   }, [complete, params, setParams]);
 
+  // NOT during render. takeOAuthReturn clears as it reads, and StrictMode replays the
+  // render with fresh hook state -- so a read in the body is consumed by the throwaway pass
+  // and the committed one sees nothing. Measured, not assumed: the first render returned
+  // the path and the committed render returned null, which in development left every
+  // successful connection stranded on the interstitial with its button falling back to "/".
+  // Raised by Codex on this PR.
+  //
+  // Effects run only after a commit, so this ref is on an instance React has kept and it
+  // survives the cleanup-and-rerun that StrictMode performs.
+  const [back, setBack] = useState<string | null>(null);
+  const took = useRef(false);
+  useEffect(() => { if (took.current) return; took.current = true; setBack(takeOAuthReturn()); }, []);
+  const goBack = useCallback(() => navigate(back ?? "/"), [navigate, back]);
+
+  // A CONNECTED result has nothing left to tell anyone: the surface it came from shows the
+  // state, the Rail records it, and stopping here made the owner read a page, press a
+  // button, and land on the public marketing site. Success returns straight to where the
+  // connection was started. A FAILURE still stops, because the reason is only on this page.
+  useEffect(() => {
+    if (phase.kind === "done" && phase.connected && back) navigate(back, { replace: true });
+  }, [phase, navigate, back]);
+
   return (
     <main className="mcp-cb" role="status" aria-live="polite">
       <div className="mcp-cb-card">
@@ -112,13 +135,13 @@ export default function McpOAuthCallback() {
               ? "Zapier is connected. Paige can see the tools you approve for her."
               : "The connection was stored, but the check did not succeed. Open it in Integrations to try again."}
           </p>
-          <button type="button" className="mcp-cb-btn" onClick={() => navigate("/")}>Back to your workspace</button>
+          <button type="button" className="mcp-cb-btn" onClick={goBack}>Back to Integrations</button>
         </>}
 
         {phase.kind === "failed" && <>
           <h1>That did not connect</h1>
           <p>{phase.message}</p>
-          <button type="button" className="mcp-cb-btn" onClick={() => navigate("/")}>Back to your workspace</button>
+          <button type="button" className="mcp-cb-btn" onClick={goBack}>Back to Integrations</button>
         </>}
       </div>
     </main>

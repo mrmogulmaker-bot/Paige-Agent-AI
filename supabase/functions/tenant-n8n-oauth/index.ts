@@ -1,7 +1,7 @@
 // Dedicated n8n OAuth boundary. GET handles launch and callback entirely server-side.
 // POST authenticates a JWT; tenant expectations can refuse, never select a workspace.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-import { OAuthError,createPkce,createState,registerClient,buildAuthorizationUrl,exchangeCode,refreshTokens,revokeToken,isExpired,discoverAuthorizationServer, type AuthorizationServer, type ClientRegistration, type TokenSet } from '../_shared/mcp-oauth.ts';
+import { OAuthError,createPkce,createState,registerClient,buildAuthorizationUrl,exchangeCode,refreshTokens,revokeToken,isExpired,isGrantWithdrawn,discoverAuthorizationServer, type AuthorizationServer, type ClientRegistration, type TokenSet } from '../_shared/mcp-oauth.ts';
 import { N8N_OAUTH_SCOPES,N8nSafeError,validateN8nResource,discoverN8n,validateServer,assertScopedTokens,hashOpaque,discoverWorkflowPreviews,validateApproval } from '../_shared/n8n-oauth.ts';
 import { McpError } from '../_shared/mcp-client.ts';
 const SUPABASE_URL=Deno.env.get('SUPABASE_URL')!;
@@ -42,7 +42,7 @@ Deno.serve(async req=>{
  const rpc=async<T=ServiceResult>(operation:string,input:Record<string,unknown>):Promise<T>=>{
   const {data,error}=await admin.rpc('n8n_oauth_service',{_operation:operation,_input:input});
   if(error){
-   const known=['N8N_BUSY','N8N_OAUTH_NEEDED','N8N_DISCOVERY_EXPIRED','N8N_DISCOVERY_CHANGED','N8N_STALE_OPERATION','N8N_TENANT_CHANGED','N8N_FORBIDDEN'];
+   const known=['N8N_BUSY','N8N_OAUTH_NEEDED','N8N_DISCOVERY_EXPIRED','N8N_DISCOVERY_CHANGED','N8N_GRANT_GONE','N8N_STALE_OPERATION','N8N_TENANT_CHANGED','N8N_FORBIDDEN'];
    const code=known.find(code=>error.message.includes(code));
    throw new N8nSafeError(code?.toLowerCase().replace(/^n8n_/,'')??'operation_refused');
   }
@@ -164,18 +164,52 @@ Deno.serve(async req=>{
   try{
    if(isExpired(lease.expires_at)){
     if(!lease.refresh_token) throw new N8nSafeError('token_expired');
-    let rotated:{server:AuthorizationServer;tokens:TokenSet}|undefined;
+    // REVOKING IS FOR A GRANT WE REFUSE, NEVER FOR ONE WE FAILED TO WRITE DOWN.
+    //
+    // Rotation is destructive: the moment n8n issues the new refresh token the old one is
+    // dead. Every failure after that point used to take the same path -- revoke the token
+    // just issued -- so a database blip, or a lease that ran out while the provider was
+    // slow, destroyed a working connection and the workspace had to reconnect. That is
+    // what "we get disconnected every time you update" actually was.
+    //
+    // The two cases are now separated, because they are opposites:
+    //   WE reject the tokens (wrong scopes)  -> revoking what we will not use is correct.
+    //   We cannot RECORD them                -> the grant is legitimate and the old token
+    //                                           is already gone; revoking guarantees the
+    //                                           reconnect instead of leaving it retryable.
+    const server=await discoverAuthorizationServer(lease.issuer);validateServer(server);
+    let tokens:TokenSet;
     try{
-     const server=await discoverAuthorizationServer(lease.issuer);validateServer(server);
-     const tokens=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url,grantedScopes:lease.oauth_scopes});
-     rotated={server,tokens};assertScopedTokens(tokens);
-     await rpc('rotate',{...bound,tokens});accessToken=tokens.accessToken;
-     if(tokens.refreshToken)activeSecrets.push(tokens.refreshToken);
-     rotated=undefined;
-    }catch{
-     if(rotated)await revokeToken({server:rotated.server,clientId:lease.client_id,clientSecret:lease.client_secret,token:rotated.tokens.refreshToken??rotated.tokens.accessToken,tokenTypeHint:rotated.tokens.refreshToken?'refresh_token':'access_token'});
-     throw new N8nSafeError('token_expired');
+     tokens=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url,grantedScopes:lease.oauth_scopes});
+    }catch(error){
+     // Only the provider saying invalid_grant means the grant is really gone (the owner
+     // revoked us at n8n). Anything else is transient and must leave the row untouched so
+     // the next attempt can simply try again.
+     console.error('[tenant-n8n-oauth] refresh failed',{withdrawn:isGrantWithdrawn(error)});
+     throw new N8nSafeError(isGrantWithdrawn(error)?'token_expired':'provider_unavailable');
     }
+    try{ assertScopedTokens(tokens); }
+    catch(error){
+     await revokeToken({server,clientId:lease.client_id,clientSecret:lease.client_secret,token:tokens.refreshToken??tokens.accessToken,tokenTypeHint:tokens.refreshToken?'refresh_token':'access_token'}).catch(()=>false);
+     throw error;
+    }
+    try{
+     await rpc('rotate',{...bound,tokens});
+    }catch(error){
+     // N8N_GRANT_GONE means the workspace DISCONNECTED (or re-authorized) while this
+     // refresh was in flight. The token just issued is then an orphan at n8n, and leaving
+     // it live would mean someone pressed Disconnect and still has a working grant there.
+     // That one case revokes. Every other refusal is someone else mid-operation or a
+     // database blip, and the grant must survive it.
+     const gone=error instanceof N8nSafeError&&error.code==='grant_gone';
+     if(gone) await revokeToken({server,clientId:lease.client_id,clientSecret:lease.client_secret,token:tokens.refreshToken??tokens.accessToken,tokenTypeHint:tokens.refreshToken?'refresh_token':'access_token'}).catch(()=>false);
+     // Loud either way: this path recorded NOTHING before -- last_error stayed NULL and no
+     // Rail row was written -- so a workspace losing its connection left no trace at all.
+     console.error('[tenant-n8n-oauth] rotation not recorded',{grantGone:gone});
+     throw new N8nSafeError(gone?'token_expired':'provider_unavailable');
+    }
+    accessToken=tokens.accessToken;
+    if(tokens.refreshToken)activeSecrets.push(tokens.refreshToken);
    }
    const preview=await discoverWorkflowPreviews({serverUrl:lease.server_url,auth:{kind:'bearer',token:accessToken}});
    if(preview.workflows.some(row=>[accessToken,...activeSecrets].some(secret=>row.name.includes(secret)||row.id.includes(secret))))throw new N8nSafeError('provider_unavailable');

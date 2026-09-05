@@ -99,7 +99,7 @@ export async function runN8nManagement(input:{admin:Admin;userId:string;tenantId
  const spec=specs[input.tool];if(!spec)return {ok:false,error:'unsupported_operation'};
  if(spec.write&&input.mutationApproved!==true)return {ok:false,error:'owner_approval_required'};
  let lease:Lease|undefined;let attempted=false;let bound:Obj={actor_id:input.userId,tenant_id:input.tenantId,session_id:input.sessionId};
- const rpc=async(operation:string,extra:Obj={}):Promise<unknown>=>{const {data,error}=await input.admin.rpc('n8n_oauth_service',{_operation:operation,_input:{...bound,...extra}});if(error){const known=['N8N_OAUTH_NEEDED','N8N_BUSY','N8N_FORBIDDEN','N8N_TENANT_CHANGED','N8N_STALE_OPERATION'];const found=known.find(k=>error.message?.includes(k));fail(found?found.toLowerCase().replace('n8n_',''):'operation_refused')}return data};
+ const rpc=async(operation:string,extra:Obj={}):Promise<unknown>=>{const {data,error}=await input.admin.rpc('n8n_oauth_service',{_operation:operation,_input:{...bound,...extra}});if(error){const known=['N8N_OAUTH_NEEDED','N8N_BUSY','N8N_FORBIDDEN','N8N_TENANT_CHANGED','N8N_GRANT_GONE','N8N_STALE_OPERATION'];const found=known.find(k=>error.message?.includes(k));fail(found?found.toLowerCase().replace('n8n_',''):'operation_refused')}return data};
  try{
   const args=parameters(input.tool,input.args);
   if(!/^[0-9a-f-]{36}$/i.test(input.sessionId)||!input.userId||!input.tenantId)fail('forbidden');
