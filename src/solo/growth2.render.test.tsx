@@ -42,6 +42,19 @@ type PipelineWorkspaceFixture = {
 
 vi.mock("./useSoloCampaigns", () => ({ useSoloCampaigns: () => harness.state }));
 
+// Overview is now the Campaign Command Desk, which reads owner briefs through its own tenant-scoped
+// adapter (`useSoloCampaignBriefs`). This file proves the shell (tab order, error/unavailable
+// identity), which the campaigns loop-source read (`harness.state`) drives via the desk's composite
+// phase — so the briefs read is stubbed ready/empty here. The write seam + brief flows have their
+// own proof in `campaign-briefs.contract.test.tsx`.
+vi.mock("./useSoloCampaignBriefs", () => ({
+  useSoloCampaignBriefs: () => ({
+    tenantId: harness.state.tenantId, phase: "ready", briefs: [], archivedCount: 0, canManage: true,
+    retry: () => {}, saveBrief: async () => ({ ok: true, message: "" }),
+    transitionBrief: async () => ({ ok: true, message: "" }), archiveBrief: async () => ({ ok: true, message: "" }),
+  }),
+}));
+
 // Slice 2A — Catalog now opens on Offers, which reads through its own tenant-scoped adapter
 // (`useCatalogOffers`). This file proves the VIBE-OWNED half of the tab, so the offer read is
 // stubbed empty here and the two published-output tests below address that half explicitly by
