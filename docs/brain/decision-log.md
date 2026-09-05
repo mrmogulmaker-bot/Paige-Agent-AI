@@ -2317,3 +2317,32 @@ claimed the scan writes its run row only on completion; it writes it up front.
 
 **Owed and NOT claimed:** §32.c authenticated live-drive of the deployed surface — this session
 cannot sign into the workspace.
+
+---
+
+## 2026-09-05 · `NOT CHECKED` ratified as the ninth status word, with an obligation attached
+
+**OWNER RULING.** *"As far as the 'not checked' that you haven't checked yet, that's fine… I don't
+mind having it."* The Systems Check status vocabulary is now **nine** words, not eight.
+
+It means one thing: **no check has ever looked at this area.** Distinct from `UNAVAILABLE`, which
+means a source was consulted and could not answer. An absent check is never evidence of a fault,
+and collapsing the two would have shown three faults on every account where none exist.
+
+**The ruling came with an instruction, and that is the substantive part:** *"Just write something on
+the backend for other agents to be able to refer to, so they know that when they're wiring into
+those areas… they need to address those first."*
+
+So the word is a **marker of unfinished backend work**, not a resting state, and the reference lives
+at the code an engineer will actually open — a header block in `src/solo/systems-check-areas.ts`
+with the four steps that finish an area (registry row → tenant-scoped runner → destination map →
+move the id into `coveredBy` and delete the `uncovered` string), plus a pointer on each affected
+row. Mirrored in `docs/product/systems-check-operating-readiness-spec.md` §4 and §4.4a.
+
+The failure it prevents is specific and quiet: someone builds the Mind, ships it, and the console
+goes on saying NOT CHECKED about something that now works — with nothing failing and no test
+complaining. The header names the trap explicitly, including the service-role one that broke the
+revenue check (a runner cannot resolve its tenant from `current_user_tenant_id()`).
+
+Carrying it today: **Paige's team and delegated work · Business knowledge — the Mind · Security,
+permissions and governance.**
