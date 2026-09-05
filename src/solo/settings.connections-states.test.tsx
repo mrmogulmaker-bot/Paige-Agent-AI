@@ -35,6 +35,9 @@ import { SoloSettings } from "./settings";
  */
 const rpcState = vi.hoisted(() => ({
   readiness: { data: null as unknown, error: null as { message: string } | null },
+  tenantId: "tenant-1971670",
+  userId: "u1",
+  tenantLoading: false,
 }));
 
 vi.mock("@/hooks/useUserRoles", () => ({
@@ -50,9 +53,10 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 vi.mock("@/hooks/useTenantContext", () => ({
   useTenantContext: () => ({
-    activeTenantId: "tenant-1971670",
-    loading: false,
-    activeTenant: { account_number: "1971670" },
+    activeTenantId: rpcState.tenantId,
+    activeUserId: rpcState.userId,
+    loading: rpcState.tenantLoading,
+    activeTenant: { account_number: rpcState.tenantId === "tenant-1971670" ? "1971670" : "2000000" },
   }),
 }));
 vi.mock("@/lib/routing/useSubtabRoute", () => ({ useSubtabRoute: () => ["connections", vi.fn()] }));
@@ -91,7 +95,7 @@ async function mountConnections() {
       </MemoryRouter>,
     );
   });
-  return { host, cleanup: async () => { await act(async () => root.unmount()); host.remove(); } };
+  return { host, root, cleanup: async () => { await act(async () => root.unmount()); host.remove(); } };
 }
 
 async function openArea(host: HTMLDivElement, label: string) {
@@ -102,7 +106,7 @@ async function openArea(host: HTMLDivElement, label: string) {
 }
 
 describe("Connections renders its real states", () => {
-  beforeEach(() => { rpcState.readiness = { data: null, error: null }; });
+  beforeEach(() => { rpcState.readiness = { data: null, error: null }; rpcState.tenantId = "tenant-1971670"; rpcState.userId = "u1"; rpcState.tenantLoading = false; });
 
   it("says the READ failed — it does not report an empty account", async () => {
     rpcState.readiness = { data: null, error: { message: "COMMS_READINESS_FORBIDDEN" } };
@@ -218,6 +222,41 @@ describe("Connections renders its real states", () => {
     await act(async () => { health!.click(); });
     // READY has `can_send_sms: false`, so the claim is true here and must appear.
     expect(host.textContent ?? "").toContain("Texting is not ready yet");
+    await cleanup();
+  });
+
+  it("opens a focused setup drawer and returns focus after Escape", async () => {
+    rpcState.readiness = { data: READY, error: null };
+    const { host, cleanup } = await mountConnections();
+    await openArea(host, "Add channel");
+    const trigger = host.querySelector<HTMLButtonElement>('[data-channel-option="sending"] .ss-add-option-action')!;
+    trigger.focus();
+    await act(async () => { trigger.click(); });
+
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+    expect(dialog?.textContent).toContain("Set up a sending identity");
+    expect(dialog?.querySelector('[aria-label="Close setup"]')).toBeTruthy();
+    expect(dialog?.querySelector('button[data-initial-focus]')).toBe(document.activeElement);
+
+    await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(document.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    await cleanup();
+  });
+
+  it("clears setup state when the active workspace changes", async () => {
+    rpcState.readiness = { data: READY, error: null };
+    const { host, root, cleanup } = await mountConnections();
+    await openArea(host, "Add channel");
+    const trigger = host.querySelector<HTMLButtonElement>('[data-channel-option="phone"] .ss-add-option-action')!;
+    await act(async () => { trigger.click(); });
+    expect(document.querySelector('[role="dialog"][aria-modal="true"]')).toBeTruthy();
+
+    rpcState.tenantId = "tenant-2000000";
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/solo/1971670/settings/connections"]}><Routes><Route path="/solo/:account/settings/:tab" element={<SoloSettings />} /></Routes></MemoryRouter>);
+    });
+    expect(document.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull();
     await cleanup();
   });
 });
