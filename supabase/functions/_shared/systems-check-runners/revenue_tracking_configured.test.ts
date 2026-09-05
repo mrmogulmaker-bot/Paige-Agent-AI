@@ -15,14 +15,35 @@ import { run } from "./revenue_tracking_configured.ts";
 
 type Row = { id: string; archived_at: string | null };
 
-/** Minimal chainable stand-in for the two reads this runner makes. No I/O. */
+/**
+ * Chainable stand-in for the two reads this runner makes. No I/O.
+ *
+ * IT RECORDS THE FILTERS, and that is the whole point of it. The first version of this double
+ * declared `eq() { return builder; }` — arguments discarded — and `then()` branched only on the
+ * table name. Every one of the seven tests below passed with BOTH `.eq("tenant_id", tenantId)`
+ * calls AND `.eq("stage_type", "won")` deleted from the runner: proven by mutation, 7/7 green,
+ * under CI's exact flags. A suite that cannot fail on a deleted §9 tenant filter is not a test of
+ * this runner, and the §39 peer gate caught it — three reviewers independently.
+ *
+ * So: `eq()` captures, and `calls` is asserted. Anything that reads tenant data and is not scoped
+ * by tenant_id is the single most expensive mistake this codebase makes (#86, #130, #172, #588),
+ * and a service-role runner has no RLS underneath it to catch the omission.
+ */
+type Recorded = { table: string; filters: Array<[string, unknown]> };
+
 // deno-lint-ignore no-explicit-any
-function fakeAdmin(stages: Row[], dealCount: number, opts?: { stagesError?: unknown }): any {
+function fakeAdmin(
+  stages: Row[],
+  dealCount: number,
+  opts?: { stagesError?: unknown; calls?: Recorded[] },
+): any {
   return {
     from(table: string) {
+      const record: Recorded = { table, filters: [] };
+      opts?.calls?.push(record);
       const builder = {
         select() { return builder; },
-        eq() { return builder; },
+        eq(column: string, value: unknown) { record.filters.push([column, value]); return builder; },
         then(resolve: (v: unknown) => void) {
           if (table === "pipeline_stages") {
             resolve({ data: stages, error: opts?.stagesError ?? null });
@@ -35,6 +56,13 @@ function fakeAdmin(stages: Row[], dealCount: number, opts?: { stagesError?: unkn
     },
   };
 }
+
+/** Every read the runner made against `table`, as [column, value] pairs. */
+const filtersOn = (calls: Recorded[], table: string): Array<[string, unknown]> =>
+  calls.filter((c) => c.table === table).flatMap((c) => c.filters);
+
+const hasFilter = (calls: Recorded[], table: string, column: string, value: unknown): boolean =>
+  filtersOn(calls, table).some(([c, v]) => c === column && v === value);
 
 // deno-lint-ignore no-explicit-any
 const ctx = (admin: any): any => ({ admin, tenantId: "tenant-1", scope: "tenant" });
@@ -89,4 +117,33 @@ Deno.test("a db error fails LOUD as 'error', never a silent pass (§32)", async 
 Deno.test("the verdict never reads the deals table — a huge deal count cannot rescue a missing stage", async () => {
   const r = await run(ctx(fakeAdmin([], 9999)), {} as never);
   assertEquals(r.status, "fail");
+});
+
+// ─── The query shape itself. Everything above asserts what the runner CONCLUDES; these assert what
+// it ASKED FOR, which is the half that was untested and the half where §9 lives. ────────────────
+
+Deno.test("§9: EVERY read is scoped to the caller's tenant — the scan is service-role, so nothing else is", async () => {
+  const calls: Recorded[] = [];
+  await run(ctx(fakeAdmin([LIVE], 4, { calls })), {} as never);
+
+  // Both tables, explicitly. The runner runs with the service-role key and therefore bypasses RLS
+  // entirely: an unscoped read here returns every tenant's rows, and nothing downstream would say so.
+  assertEquals(hasFilter(calls, "pipeline_stages", "tenant_id", "tenant-1"), true);
+  assertEquals(hasFilter(calls, "deals", "tenant_id", "tenant-1"), true);
+
+  // And no read may reach a table this check has no business in.
+  assertEquals(
+    calls.map((c) => c.table).filter((t, i, a) => a.indexOf(t) === i).sort(),
+    ["deals", "pipeline_stages"],
+  );
+});
+
+Deno.test("the stage read asks the database for won stages — it does not fetch everything and sort it out here", async () => {
+  const calls: Recorded[] = [];
+  await run(ctx(fakeAdmin([LIVE], 0, { calls })), {} as never);
+
+  // Deleting this predicate would make every open stage count as a closing stage, and every tenant
+  // with any pipeline at all would pass. The fixtures alone cannot catch that — they only ever
+  // contain won stages, because the double answers by table name.
+  assertEquals(hasFilter(calls, "pipeline_stages", "stage_type", "won"), true);
 });
