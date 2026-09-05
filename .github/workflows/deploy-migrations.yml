@@ -110,7 +110,16 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # PINNED, not `latest`. `latest` is resolved over the network on every run, and
+          # that lookup is rate-limited: on 2026-09-05 this job died 20s in with
+          #   Failed to resolve latest Supabase CLI release: rate limit exceeded
+          # before it had touched the database at all. The merge looked complete, the
+          # migration was not on prod, and it took a re-run to notice -- the §32.a
+          # merged-but-never-applied shape, caused by nothing in our own code.
+          #
+          # 2.116.0 is what `latest` resolved to when this was pinned, so this is the
+          # version already running, minus the lookup. Bump it deliberately.
+          version: 2.116.0
 
       - name: Push migrations to prod
         env:
