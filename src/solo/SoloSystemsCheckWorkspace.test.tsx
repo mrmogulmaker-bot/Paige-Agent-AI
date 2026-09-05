@@ -294,6 +294,25 @@ describe("Solo Systems Check workspace", () => {
     expect(host.textContent).not.toContain("All available checks are clear");
   });
 
+  it("does not print an unfinished run's zeroed counts over findings that exist", () => {
+    // Production carries five runs shaped exactly like this: the runner inserts the row before the
+    // first check and patches the counts only at the end, so a crash leaves 0/0 beside real
+    // findings. Reading the row regardless would print "0 need attention" above a list of things
+    // needing attention.
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      run: { ...baseSystems.run, completed_at: null, check_count: 10, pass_count: 0, fail_count: 0 },
+    });
+    render();
+    expect(host.textContent).not.toContain("0 passed");
+    expect(host.textContent).not.toContain("0 needs attention");
+    // Derived from the findings actually on screen — the one denominator that cannot disagree
+    // with the list beneath it — and labelled as partial rather than as the run's verdict.
+    expect(host.textContent).toContain("2 results so far");
+    expect(host.textContent).toContain("1 passed");
+    expect(host.textContent).toContain("1 needs attention");
+  });
+
   it("never infers clear coverage from an unfinished persisted run", () => {
     harness.systems.mockReturnValue({
       ...baseSystems,

@@ -451,16 +451,33 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
         ? `Last checked ${completedAt.toLocaleString()}`
         : `A check started ${new Date(systems.run.started_at).toLocaleString()} and has not finished`;
 
+  /**
+   * AN UNFINISHED RUN'S COUNTS ARE ZEROS, NOT ANSWERS.
+   *
+   * `systems-check-runner.ts` inserts the run row BEFORE the first check and patches
+   * check_count / pass_count / fail_count only at the very end. So a run that crashed midway
+   * carries 0/0 on the row while its real findings sit in the table beside it. Production has
+   * five such runs right now — one reads `check_count 10, pass 0, fail 0` next to NINE real
+   * findings. None is currently the newest for its workspace, so nobody is seeing it today; the
+   * moment a run crashes and is the newest, they would.
+   *
+   * Reading the row regardless would print "0 passed · 0 need attention" directly above a list of
+   * things needing attention. So the counts come from the run ONLY once the run finished, and are
+   * derived from the findings actually on screen otherwise — which is the one denominator that
+   * cannot disagree with the list under it.
+   */
   const freshDetail = !systems.run
     ? "Nothing has been recorded for this workspace."
     : (() => {
-        const total = systems.run.check_count ?? currentFindings.length;
-        const passed = systems.run.pass_count ?? confirmedFindings.length;
-        const failed = systems.run.fail_count ?? attentionFindings.length;
+        const trustRun = hasCompletedRun;
+        const total = trustRun ? (systems.run.check_count ?? currentFindings.length) : currentFindings.length;
+        const passed = trustRun ? (systems.run.pass_count ?? confirmedFindings.length) : confirmedFindings.length;
+        const failed = trustRun ? (systems.run.fail_count ?? attentionFindings.length) : attentionFindings.length;
         const unread = unavailableFindings.length;
         return (
           <>
-            <strong>{total}</strong> check{total === 1 ? "" : "s"} &middot;{" "}
+            <strong>{total}</strong> {trustRun ? "check" : "result"}{total === 1 ? "" : "s"}
+            {trustRun ? null : " so far"} &middot;{" "}
             <strong>{passed}</strong> passed &middot;{" "}
             <strong>{failed}</strong> need{failed === 1 ? "s" : ""} attention
             {unread > 0 ? <> &middot; <strong>{unread}</strong> could not be evaluated</> : null}
