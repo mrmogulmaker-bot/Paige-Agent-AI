@@ -1,5 +1,24 @@
 # Decision Log — chronological one-liners
 
+- **Wave 3 Communications — the §39 peer-gate blocked once and was right (2026-09-05, same PR)** — an
+  independent adversarial read of the pushed diff returned BLOCK on one finding and two SHOULD-FIXes,
+  all three real. ① **BLOCKER:** `number_purchase_failed` was mapped to `capability_unreachable`
+  ("nothing changed"), but traced to source it is reachable ONLY on a Twilio **2xx with an empty
+  body** — the purchase POST was accepted and the tenant may already be billed — so "nothing changed"
+  was a false reassurance on a possible charge, on the money capability. Now falls to
+  `capability_outcome_unknown` ("check the service before running it again"). The test that locked the
+  wrong mapping in was titled "Twilio not answering" — Twilio *did* answer. ② **Recorded tenant:** the
+  row now attributes to `current_user_tenant_id()` (the tenant the seam acted on) instead of
+  `personaCtx.tenant_id`, which resolves the linked-client branch first and could name a different
+  workspace than the purchase hit. ③ **Documented, not silently fixed:** the recorder's
+  `tenant_members`-seat gate drops the row for a cross-tenant manager (agency-managing-a-child,
+  platform_admin) — inherited from SCR-1, identical for n8n/Zapier, latent, and left to its own
+  security-reviewed slice rather than widened inside a feature PR; the gap is now in the tier matrix.
+  Also: classification moved INSIDE the recorder's try so "cannot fail the turn" is literally true,
+  and `twilio_missing_credentials` joined the refusal set. **The standing lesson: a green 20-assertion
+  proof tests the author's model of the failure; the peer tests what the author did not think of — the
+  BLOCKER sat in a set-membership the author hand-wrote and never doubted.**
+
 - **Social Command, round 3: the guard keeps getting written for the case that already worked
   (2026-09-05, follow-up to PR #945)** — a third §39 peer-gate blocked again, with two HIGH. ①
   `notPermitted` is a strict SUBSET of `handlesUnknown`, and the Channels panel branched on the
@@ -61,6 +80,30 @@
   **A finding cleared by measurement:** `container-type: inline-size` was argued from spec to
   contain the fixed dialog; measured in Chromium it does not (scrim and dialog byte-identical with
   and without it). Chromium only — no Gecko/WebKit binary here.
+- **Wave 3 — Communications records what PAIGE did, and a sixth outcome for "the charge landed, the
+  record did not" (2026-09-05, migration `20261220000000`)** — owner-sequenced first under the ruling
+  *"every real-money external action MUST record capability_run before it can be delegated at any
+  autonomy tier above 'Ask first.'"* The four Communications write acts (`comms_buy_number` ·
+  `comms_name_number` · `comms_set_primary_number` · `comms_draft_registration`) now write a
+  workspace Rail row classified from each seam's OWN error taxonomy, not from `success:false`.
+  **The sixth outcome, `capability_completed_unrecorded`, exists because none of the five could
+  honestly describe `comms_buy_number`'s two money exits** — Twilio charges, the row does not write,
+  and `capability_failed`'s "nothing was left half-done" is precisely, catastrophically wrong there.
+  **Recorded at the EXECUTOR, not at a central dispatch hook:** the hook design would have shipped
+  green and written zero rows forever (service_role-only RPC + anon+JWT dispatch client → permission
+  denied as a value, not a throw) — filed as lesson 0a. **Proven on prod** in a rolled-back
+  transaction, 20 assertions, including reading as the authenticated member through
+  `get_solo_rail_activity(50)` — the same RPC the Command Center calls — which returned all four
+  acts with their intended copy. **§58 checked explicitly:** the five original outcomes, the n8n and
+  Zapier delegations, and every non-capability event kind are byte-identical after the change.
+  **`PaigeRailFeed.kindChip()` gained a `capability_run` case** — without it these rows fell to the
+  default and showed the literal backend source kind to an owner. **Zero capability_run rows exist
+  in production** (measured): the seam is live and nothing has exercised it yet. **Owed:** CI-applied
+  migration, and an authenticated browser drive that a row actually paints.
+  **Flagged, NOT touched, owner-routed:** the revenue leak on `comms-purchase-number`
+  (`charge_wired:false` on every success — PAIGE pays Twilio, the tenant is not billed) is the
+  owner's money decision; the missing super_admin branch on the four comms tools' role gate is its
+  own PR.
 
 - **Solo Campaigns → Social becomes Social Command, and gets the first writer `social_handles` ever had
   (2026-09-05, migration `20261210000000`)** — the tab was one fixed UNAVAILABLE panel; it is now a

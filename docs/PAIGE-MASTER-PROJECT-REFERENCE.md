@@ -212,7 +212,9 @@ another can read that other tenant's client book and, through the `EXISTS`, its 
 
 ### PAIGE Rail — a workspace-level outcome record exists (SCR-2026-09-05, 2026-09-05)
 
-**Status: PR open**, migration `20261212000000_paige_can_show_her_work.sql`. This is **SCR-1** from
+**Status: MERGED and LIVE on prod** (`c5034b91`; `schema_migrations` row for `20261212000000`
+present, `edge-live` and `db-live` both moved, zero drift). Migration
+`20261212000000_paige_can_show_her_work.sql`. This is **SCR-1** from
 `docs/architecture/paige-spine-tool-migration-map.md`, raised and approved by the owner on
 2026-09-05 and recorded as `SCR-2026-09-05` in `docs/architecture/paige-spine-foundation.md`. The
 map named it as the blocker on **47 of 60 actions and every wave from 3 onward**.
@@ -234,15 +236,85 @@ health check (`gen_random_uuid(), 0` defeated its own de-dup key) and now record
 unioned workspace events and `authenticated` already held EXECUTE (verified on prod). The gap was
 vocabulary, not visibility.
 
-**Wired so far: TWO capabilities** — the six n8n writes and `zapier_run_action`. The remaining ~47
-still write only `paige_audit_log`; each wave adds its own copy. **Reads are never recorded.**
+**Wired so far: ELEVEN capabilities** — the six n8n writes, `zapier_run_action`, and (Wave 3, below)
+the four Communications write acts. The remaining ~43 still write only `paige_audit_log`; each wave
+adds its own copy. **Reads are never recorded.**
 
 **Evidence.** Thirteen assertions against prod inside `BEGIN … ROLLBACK`, rollback confirmed; 3262
 unit tests; `tsc`; `deno check` on all three edge modules; six CI lints. **UNVERIFIED and owed:**
 §32.c authenticated live-drive that a row renders on the owner's Command Center.
 
-**Flagged:** PR #776 replaces `get_solo_rail_activity` with a client-events-only version and would
-delete the workspace half of the union; it needs a rebase whichever order the two land in.
+**Measured 2026-09-05, after the merge:** `select count(*) from paige_workspace_events where
+source_kind='capability_run'` returns **0**. The seam is live and nothing has exercised it — no n8n
+or Zapier write has been run through Chat since it shipped. Read an empty feed here as "not yet
+used", never as "broken".
+
+**Flagged — a live cross-PR hazard, escalated to the owner 2026-09-05.** Open PR #776
+(`claude/spine-w0-rail-recovery-746`, head `318f1dbd`) does `CREATE OR REPLACE
+public.get_solo_rail_activity(integer)` at migration version **`20261042000000`** with a body that
+reads **`paige_client_events` ONLY** — no workspace union. That version sorts BELOW the live
+`20261212000000`, so it is invisible on a fresh `db reset` (CI stays green, live def wins) but on
+**production** the deploy pipeline runs `db push --include-all` (`deploy-migrations.yml:153`), which
+applies a behind-version migration LAST — its `CREATE OR REPLACE` then overwrites the live union and
+**deletes every `capability_run` row's visibility**: n8n runs, `zapier_run_action`, and #947's four
+Communications acts (§58 silent-removal, exactly the class §776's own PR body says it is guarding
+against). A GitHub comment on #776 was **attempted and refused (403 — this integration cannot comment
+on that PR)**, so the flag lives here and was raised to the owner directly instead. Resolution is the
+#776 author's call: renumber above `20261213000000` and rebuild the body from the live definition
+with their §59 guard, OR keep the version and add the `paige_workspace_events` union +
+`capability_key` pass-through so out-of-order apply is idempotent. Their column allowlist and the
+union return identical display columns, so option 2 discloses nothing extra.
+
+### PAIGE Rail — Wave 3, Communications, and the outcome the five could not express (2026-09-05)
+
+**Status: PR open**, migration `20261220000000_an_act_that_landed_but_was_not_recorded.sql`.
+Owner-sequenced ahead of everything else in the adoption plan, under the ruling: *"Every real-money
+external action MUST record capability_run before it can be delegated at any autonomy tier above
+'Ask first.'"*
+
+**What shipped.** The four Communications acts that CHANGE something — `comms_buy_number` ·
+`comms_name_number` · `comms_set_primary_number` · `comms_draft_registration` — record a workspace
+Rail row, classified from each seam's OWN error taxonomy rather than from `success:false`. Plus a
+**sixth outcome**, `capability_completed_unrecorded`, and its projection copy.
+
+**Why a sixth outcome and not a near-miss.** `comms_buy_number` has two exits where Twilio has
+charged the tenant and the `tenant_phone_numbers` row did not write. `capability_failed` promises
+*"Nothing was left half-done"*; `capability_succeeded` claims a row exists; `capability_outcome_unknown`
+says no result came back when one came back and said the charge landed. All three are false on the
+one capability where being wrong makes someone buy the same number twice. The new outcome is
+deliberately NOT money-specific — "the act took effect and its record did not" is a state every
+later wave with external effects will reach.
+
+**Recorded at the EXECUTOR, never at a central dispatch hook.** The hook design was taken apart
+before it shipped: `record_capability_run` is service_role-only and the dispatch seam holds the
+anon+JWT client, which returns `permission denied` as a **value, not a throw** — the feature would
+have shipped with every gate green and written zero rows forever. Filed as lesson 0a in
+`docs/brain/lessons-learned.md` so the next three adoption waves do not rediscover it.
+
+**Evidence.** 20 assertions against prod inside `BEGIN … ROLLBACK`, rollback confirmed (0 rows, 0
+migration rows, prod head still `20261213000000`) — including reading as the **authenticated
+member** through `get_solo_rail_activity(50)`, the same RPC the Command Center calls, which returned
+all four acts with their intended copy. 3358 unit tests (18 new); `tsc` ratchet 13→13 with none in
+the changed files; `deno check` on the changed edge graph produced a diagnostic set **identical** to
+`origin/main`'s (14 inherited on both legs); production build; nine CI lints. **UNVERIFIED and
+owed:** the §32.c authenticated browser drive that a row actually paints.
+
+**§39 peer-gate — blocked once, and it was right.** An independent adversarial read of the pushed
+diff caught a false reassurance my own 20-assertion proof could not: `number_purchase_failed` was
+classified `capability_unreachable` ("nothing changed"), but it is reachable only on a Twilio **2xx
+with an empty body** — the charge may have landed — so it now falls to `capability_outcome_unknown`.
+Two more, both fixed or documented: the row now records against the tenant the seam acted on
+(`current_user_tenant_id()`), not the persona tenant that can diverge; and the recorder's member-seat
+gate dropping cross-tenant-manager actors is documented in the tier matrix as an inherited, latent
+gap for its own slice rather than widened here. Classification moved inside the recorder's try so it
+cannot crash the turn.
+
+**Flagged to the owner, deliberately NOT touched in this PR:**
+1. **Revenue leak** — `comms-purchase-number` returns `charge_wired: false` on every success path.
+   PAIGE pays Twilio for the number; the tenant is not billed for it. That is the owner's money
+   decision (§38), not a code fix to make unilaterally.
+2. **God/super_admin cannot reach the four comms tools at all** — the role gate is
+   `admin || coach` with no `is_platform_owner()` branch. Owner-routed to its own PR.
 
 ### PAIGE Spine — `team.authority`, and both readiness reads bound to their workspace (2026-09-03)
 
