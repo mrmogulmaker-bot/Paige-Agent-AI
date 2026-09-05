@@ -25,6 +25,19 @@
   paragraph were tightened to name the pure-operator (`operator_enter_tenant`, no member seat)
   case whose `capability_run` row is silently dropped — the act happens, only the record is lost.
 
+- **Flow-by-Flow governs EVERY phase of the PAIGE-at-Cowork-Level program (owner-ruled 2026-09-05, LOCKED)**
+  — owner directive, verbatim: *"I need to make sure that there's a mandatory rule in place that you use the
+  flow-by-flow skills throughout every phase of this process."* Binding: every phase of that program —
+  Grounding · Planning · each Execution slice · Verification · Ship · Post-deploy · Records · Retro — runs
+  **through `flow-by-flow` (v2.0.1)** as orchestrator, and **`flow-prototype` (v2.0.1)** for any major UI/UX
+  wave (Trust Compass Week 3). Root-law backing: **§69** (Flow-by-Flow mandatory on every software task) +
+  §1/§14 crew + §5/§39 review + §32 verification + §70 usability. Self-catch (mirrors §69): naming the skill
+  without running its routed references, pre-edit packet, flow-coverage proof and gates does NOT satisfy it.
+  Skill install integrity confirmed: Gate 5 PASS (both skills present, same version). Durability is four
+  reloading layers: this decision-log entry (§BRAIN.1) + CLAUDE.md §69 (every session) + the program charter
+  `outputs/paige-at-cowork/00-program-charter.md` §0 (LOCKED) + PR #948. Only the owner unfreezes §0. A
+  fifth, harness-enforced layer (a SessionStart hook) is offered pending owner opt-in (repo-wide effect).
+
 - **Wave 3 Communications — the §39 peer-gate blocked once and was right (2026-09-05, same PR)** — an
   independent adversarial read of the pushed diff returned BLOCK on one finding and two SHOULD-FIXes,
   all three real. ① **BLOCKER:** `number_purchase_failed` was mapped to `capability_unreachable`
