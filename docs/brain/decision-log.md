@@ -1,5 +1,29 @@
 # Decision Log — chronological one-liners
 
+- **The Paige Capability System — OWNER-LOCKED full-range MVP direction (2026-09-05)** — PAIGE is the
+  tenant's governed operating environment; chat is the front door to a FULL capability range, NOT chat-only/
+  read-only/recommendation-only. ONE Capability System (governed contracts), not unrelated chat widgets.
+  Recorded as a DECISION + dependency-ordered capability matrix (master §5 + plan
+  `outputs/paige-at-cowork/09-paige-capability-system.md`), subsuming the Sandboxed-Research plan (08) as a
+  component (§18). Grounded by 6 read-only scouts. Honest matrix: **artifact creation + image gen is LARGELY
+  LIVE** (`generate_image` 4-provider, `document_generate`, copy, growth studio; durable home
+  `marketing_content` draft-until-applied; `chatArtifacts`/`PaigeArtifactCard`/`studio_artifact_versions`) —
+  gaps: download button, multi-surface render, campaign routing, missing types (campaign_brief/HTML
+  email_template/video/social-schedule); **upload+inspect LIVE** (`useChatDocumentUpload` + read-check +
+  `kb-ingest-file`; folder-scoped storage RLS + server-side scope refusal) with a **REAL SECURITY GAP — no
+  prompt-injection fence on uploaded file content** (fence exists elsewhere: team-context/MCP/Zapier;
+  accurate threat per Codex P1 verified at `paige-ai-chat/index.ts:7451` — the attachment turn takes the
+  direct-stream branch and does NOT execute model-emitted tool calls, so content can steer the
+  answer/extraction but not drive mutating tools on that turn; fence still warranted); Rail is
+  PARTIAL/proof-owed (RPC deployed + wired via S1/S1.1 but §32.c live-drive owed, 0 prod rows); native
+  writes LIVE core (~43 still audit-log-only, F05 continuation); research
+  LIVE/PARTIAL; external execution PARTIAL (MCP tier+scope only, sub-agent downstream ungoverned,
+  `decideGovernedExecution` unwired); comms/publishing/spend approval-gated; **sandbox UNAVAILABLE/greenfield**.
+  7 owner-sequenced slices: artifact-creation+image-gen → upload/download+injection-fence → native writes →
+  browser research → worker dispatch → one approval path → advanced browser/publishing/comms/paid-media/
+  recurring (§67/§68/§64). Each capability declares a contract (tenant isolation/authz/audit-outcome/
+  provenance/safe-failure/durable-home). No capability called live on a static UI/prototype/helper (§13/§32/§70).
+
 - **Business Game Plan is the DEFAULT Solo Command Center landing, and a §70 identity bug hid behind a
   green build (2026-09-05, branch `claude/business-game-plan-ui-rxuju3`)** — the Solo Command Center
   gains a first sub-tab, **Business Game Plan** (`SoloGamePlanWorkspace`), made the default landing
