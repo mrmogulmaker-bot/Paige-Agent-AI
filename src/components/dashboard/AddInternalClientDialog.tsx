@@ -73,7 +73,7 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
       });
     } catch (error: any) {
       const msg = (error?.message || "").toLowerCase();
-      if (msg.includes("clients_created_by_email_unique") || msg.includes("uq_clients_tenant_email")) {
+      if (msg.includes("clients_created_by_email_unique")) {
         toast.error("A client with this email already exists in your list");
       } else if (msg.includes("clients_linked_user_id_unique")) {
         toast.error("This portal user is already linked to another client record");

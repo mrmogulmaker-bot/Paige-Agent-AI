@@ -380,7 +380,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
     } catch (err: any) {
       console.error("Error moving to internal:", err);
       const msg = (err?.message || "").toLowerCase();
-      if (msg.includes("clients_created_by_email_unique") || msg.includes("uq_clients_tenant_email")) {
+      if (msg.includes("clients_created_by_email_unique")) {
         toast.error("A client with this email already exists in your list");
       } else {
         toast.error(err.message || "Failed to move client");

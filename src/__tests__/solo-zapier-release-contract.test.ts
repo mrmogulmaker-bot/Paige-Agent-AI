@@ -155,12 +155,19 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(sql).toContain("DROP INDEX IF EXISTS public.clients_created_by_email_unique;");
     expect(sql).toContain("WHERE c.tenant_id=r.tenant_id AND lower(btrim(c.email))=email");
   });
-  it("keeps the duplicate-email message once the tenant-scoped index is the one that raises", () => {
+  it("stays inside the Solo shell and leaves the Admin dialogs alone", () => {
+    // Dropping clients_created_by_email_unique is table-level and cannot be scoped to one
+    // shell, and the pull was to follow it into the Admin dialogs that match that index by
+    // name. They are deliberately untouched. The case their message fired on -- one operator
+    // holding the same email in two workspaces -- stops erroring entirely once the index is
+    // gone, so there is nothing left to report there; and the one remaining path already
+    // showed the generic error before this release. Reaching into the Admin shell would have
+    // widened a Solo release for no behavioural gain.
     for (const surface of [
       "src/components/dashboard/AddInternalClientDialog.tsx",
       "src/components/dashboard/ClientManagementDashboard.tsx",
     ]) {
-      expect(read(surface)).toContain('msg.includes("uq_clients_tenant_email")');
+      expect(read(surface)).not.toContain("uq_clients_tenant_email");
     }
   });
   it("pins the authority a capability was approved with, not only its input schema", () => {
