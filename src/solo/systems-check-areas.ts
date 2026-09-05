@@ -213,8 +213,18 @@ export const CHECK_DESTINATIONS: Record<SystemsCheckId, CheckDestination> = {
   revenue_tracking_configured: {
     title: "Revenue tracking is set up",
     area: "sales",
-    label: "Campaigns › Sales",
-    path: (a) => `/solo/${acct(a)}/growth/sales`,
+    // Stages are authored on Pipeline, not Sales. Sales is where the revenue SHOWS; sending someone
+    // there to add a closing stage sends them to the result rather than to the fix.
+    label: "Campaigns › Pipeline",
+    path: (a) => `/solo/${acct(a)}/growth/pipeline`,
+    // Verified 2026-09-05, and this caveat is why: on Solo there is currently NO path — surface or
+    // Paige — that sets a stage's closing role. `growth2.tsx` never mentions stage_type; the
+    // `pipeline_configure` tool schema has no such field; and the governed RPC inserts a hardcoded
+    // 'open' and never updates it. Without this line the check names a next action the owner cannot
+    // complete, and Paige would report success while creating an open stage (§70). Task #26 removes
+    // both the gap and this caveat together.
+    caveat:
+      "Stages are added there, but the closing role that revenue counts against cannot be set on that page or by Paige yet, so this cannot be finished today.",
   },
   payment_processor_connected: {
     title: "You can take payment",
