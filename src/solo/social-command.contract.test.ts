@@ -44,6 +44,9 @@ const css = read("src/solo/social-command.css");
 const migration = read(
   "supabase/migrations/20261210000000_a_business_can_record_the_accounts_it_posts_from.sql",
 );
+const grantFix = read(
+  "supabase/migrations/20261211000000_paige_can_write_the_social_accounts_she_can_read.sql",
+);
 const spine = read("supabase/functions/_shared/paige-spine/domains/social.ts");
 const chatEvidence = read(
   "supabase/functions/_shared/paige-spine/domains/socialPresenceChatEvidence.ts",
@@ -290,6 +293,48 @@ describe("§9 / §59 — scope is enforced where it has to be", () => {
     expect(body).toMatch(/REVOKE ALL ON FUNCTION public\.record_social_handles\(uuid, jsonb\) FROM PUBLIC/);
     expect(body).toMatch(/GRANT EXECUTE ON FUNCTION public\.record_social_handles\(uuid, jsonb\) TO authenticated/);
     expect(body).not.toMatch(/GRANT EXECUTE ON FUNCTION public\.record_social_handles[^;]*anon/);
+  });
+
+  it("grants EXECUTE to every caller the write is DESIGNED for, not just the one that was written", () => {
+    // THE REGRESSION THIS EXISTS FOR, and it shipped. 20261210000000 granted the reader to
+    // `authenticated, service_role` and the writer to `authenticated` alone — while the writer
+    // carries a deliberate trusted arm whose ONLY caller is paige-mcp, which builds its client with
+    // SUPABASE_SERVICE_ROLE_KEY. So PAIGE could read the accounts and not write them, and the
+    // rollback proof could not see it: it ran as the migration's own superuser connection, where
+    // every grant is satisfied. Found by querying has_function_privilege on production.
+    //
+    // Asserted as REACHABILITY per caller rather than as a line of SQL: a body a caller cannot
+    // enter is not a capability, however correct the body is.
+    const grants = strip(migration) + strip(grantFix);
+    const reaches = (fn: string, role: string) =>
+      new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${fn}\\([^)]*\\)[^;]*\\b${role}\\b`).test(grants);
+
+    // The surface (JWT arm) and PAIGE (trusted arm) must BOTH reach the write.
+    expect(reaches("record_social_handles", "authenticated"), "the surface must reach the write").toBe(true);
+    expect(reaches("record_social_handles", "service_role"), "PAIGE via paige-mcp must reach the write").toBe(true);
+    // And both must reach the read.
+    expect(reaches("get_social_presence_evidence", "authenticated")).toBe(true);
+    expect(reaches("get_social_presence_evidence", "service_role")).toBe(true);
+    // anon reaches neither, and the fix migration re-asserts the REVOKE rather than assuming it.
+    expect(reaches("record_social_handles", "anon")).toBe(false);
+    expect(reaches("get_social_presence_evidence", "anon")).toBe(false);
+    expect(strip(grantFix)).toMatch(/REVOKE ALL ON FUNCTION public\.record_social_handles\(uuid, jsonb\) FROM anon/);
+  });
+
+  it("keeps PAIGE's write path pointed at the RPC, not at a direct table update", () => {
+    // LINE comments only. `strip`'s block-comment regex is unsafe on this particular file: a `/*`
+    // inside a string literal pairs with a far-later `*/` and swallows the entire 235KB source, so
+    // `strip(paige-mcp)` returns almost nothing and every assertion over it silently passes or
+    // vacuously fails. Verified: `strip(raw).indexOf("record_social_accounts")` is -1 while the raw
+    // index is 235401.
+    const mcp = read("supabase/functions/paige-mcp/index.ts").replace(/^\s*\/\/.*$/gm, "");
+    const at = mcp.indexOf('mcp.tool("record_social_accounts"');
+    expect(at, "the write tool must be registered in paige-mcp").toBeGreaterThan(-1);
+    const body = mcp.slice(at, mcp.indexOf('mcp.tool(', at + 10));
+    expect(body).toContain('rpc("record_social_handles"');
+    // A direct features update here would clobber sibling flags exactly as a client-side one would.
+    expect(body).not.toMatch(/from\(["']tenants["']\)/);
+    expect(body).toContain("_expected_tenant_id: tenant_id");
   });
 
   it("merges one key so sibling feature flags survive the write", () => {
