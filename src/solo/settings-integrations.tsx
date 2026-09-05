@@ -8,6 +8,7 @@ import { useMcpConnection } from "./data/useMcpConnection";
 import { useMcpCapabilities } from "./data/useMcpCapabilities";
 import { useZapierApi, readZapierApi, zapierApiWords, type ZapierApiReadiness } from "./data/useZapierApi";
 import { supabase } from "@/integrations/supabase/client";
+import { armOAuthReturn } from "./data/oauthReturn";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate, type SettingsTruth } from "./settings-contract";
 import "./settings-integrations.css";
@@ -323,7 +324,7 @@ function CapabilityApproval({ provider, onChanged }: { provider: "n8n" | "zapier
 
 function ZapierApiPanel({ api, onChanged }: { api: ReturnType<typeof useZapierApi>; onChanged: () => void }) {
   const[confirming,setConfirming]=useState(false);
-  const begin=async()=>{const url=await api.begin();if(url)window.location.assign(url);};
+  const begin=async()=>{const url=await api.begin();if(url){armOAuthReturn(`${window.location.pathname}${window.location.search}`);window.location.assign(url);}};
   if(api.loading)return <p className="ig-state" role="status">Checking the Zapier API connection…</p>;
   if(api.error)return <div className="ig-state" role="alert"><span>{api.message}</span><button className="ig-btn" onClick={()=>void api.reload()}>Try again</button></div>;
   return <><p className="ig-lede">Connect the workspace’s Zapier account for provider-supported, read-only workflow visibility.</p>
@@ -366,7 +367,7 @@ export function zapierMcpAddressProblem(raw: string): string | null {
 
 function ZapierMcpPanel({ m, onChanged }: { m: ReturnType<typeof useMcpConnection>; onChanged: () => void }) {
  const{activeTenantId}=useTenantContext();const[serverUrl,setServerUrl]=useState("");const[starting,setStarting]=useState(false);const[message,setMessage]=useState<string|null>(null);const[confirming,setConfirming]=useState(false);const[editing,setEditing]=useState(false);
- const begin=async()=>{setStarting(true);setMessage(null);const{data,error}=await supabase.functions.invoke("tenant-mcp-connect",{body:{provider:"zapier",action:"oauth_begin",server_url:serverUrl.trim(),expected_tenant_id:activeTenantId}});const url=data?.authorize_url;setServerUrl("");if(error||typeof url!=="string"){setStarting(false);setMessage("Zapier did not offer a compatible authorization flow for that MCP server. Confirm the server address and try again.");return;}window.location.assign(url);};
+ const begin=async()=>{setStarting(true);setMessage(null);const{data,error}=await supabase.functions.invoke("tenant-mcp-connect",{body:{provider:"zapier",action:"oauth_begin",server_url:serverUrl.trim(),expected_tenant_id:activeTenantId}});const url=data?.authorize_url;setServerUrl("");if(error||typeof url!=="string"){setStarting(false);setMessage("Zapier did not offer a compatible authorization flow for that MCP server. Confirm the server address and try again.");return;}armOAuthReturn(`${window.location.pathname}${window.location.search}`);window.location.assign(url);};
  if(m.loading)return <p className="ig-state" role="status">Checking PAIGE tools access…</p>;
  if(m.error)return <div className="ig-state" role="alert"><span>The PAIGE tools connection could not be read, so no state is being claimed.</span><button className="ig-btn" onClick={()=>void m.reload()}>Try again</button></div>;
  const oauth=m.authKind==="oauth";const addressProblem=zapierMcpAddressProblem(serverUrl);

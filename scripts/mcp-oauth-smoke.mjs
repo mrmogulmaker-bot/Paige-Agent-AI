@@ -266,9 +266,40 @@ routes.set("as.example/token", (_q, res) => json(res, { error: "invalid_grant", 
   let thrown;
   try { await oauth.refreshTokens({ server, clientId: "c", clientSecret: null, refreshToken: "rt-1", resource: RESOURCE_SERVER }); }
   catch (e) { thrown = e; }
-  const surface = `${thrown?.message}|${thrown?.stack}|${JSON.stringify(thrown)}`;
+  const surface = `${thrown?.message}|${thrown?.stack}|${JSON.stringify(thrown)}|${thrown?.providerError}`;
   check("no token or user identifier from the error body survives into the thrown error",
     !surface.includes("rt-1") && !surface.includes("bob@corp"));
+
+  // ...but the RFC 6749 5.2 CODE does, and only the code. Without it, "the user revoked
+  // us at the provider" and "the network hiccuped" are the same event, so a connection
+  // gets discarded for a stumble. That is the whole reason connections did not stick.
+  check("the provider's own error CODE survives, so a revocation is distinguishable",
+    thrown?.providerError === "invalid_grant" && oauth.isGrantWithdrawn(thrown));
+  check("...and the free-text description beside it does not",
+    thrown?.providerError === "invalid_grant" && !surface.includes("token rt-1 for user"));
+}
+
+{
+  // An error code we do not recognise is not carried at all: the allowlist is what keeps
+  // this from becoming a second, quieter channel for provider prose.
+  routes.set("as.example/token", (_q, res) => json(res, { error: "please email admin@corp for token rt-9", error_description: "x" }, 400));
+  const server = await oauth.discoverAuthorizationServer(ISSUER);
+  let thrown;
+  try { await oauth.refreshTokens({ server, clientId: "c", clientSecret: null, refreshToken: "rt-1", resource: RESOURCE_SERVER }); }
+  catch (e) { thrown = e; }
+  check("an unrecognised error code is dropped rather than carried as prose",
+    thrown?.providerError === undefined);
+  check("...and none of it reaches the thrown error",
+    !`${thrown?.message}|${JSON.stringify(thrown)}|${thrown?.providerError}`.includes("rt-9"));
+  check("...and a dropped code is NOT read as a withdrawn grant",
+    oauth.isGrantWithdrawn(thrown) === false);
+
+  // A transient failure must never be mistaken for a revocation.
+  routes.set("as.example/token", (_q, res) => json(res, {}, 503));
+  let blip;
+  try { await oauth.refreshTokens({ server, clientId: "c", clientSecret: null, refreshToken: "rt-1", resource: RESOURCE_SERVER }); }
+  catch (e) { blip = e; }
+  check("a 503 with no body is not a withdrawn grant", oauth.isGrantWithdrawn(blip) === false);
 }
 
 routes.set("as.example/token", (_q, res) => json(res, { refresh_token: "rt-3" }));
