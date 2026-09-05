@@ -200,6 +200,141 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // So this is reversible in-tenant record work, and it belongs here rather than beside the
   // permission change it deliberately cannot become.
   ["team_set_work_profile", "ordinary", "edits how a teammate's work is described, never their access"],
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // THE INBOUND MCP DOOR'S ACTS, added 2026-09-05 when `paige-mcp` was first wired to this file.
+  //
+  // ONE NAMESPACE, NOT A SECOND ONE. `paige-mcp` registers 119 tools under its own names —
+  // `create_contact` where Chat says `crm_create_contact`, `bulk_delete_contacts` where Chat says
+  // `crm_delete_contact`. The intersection with the keys above was exactly ONE
+  // (`delegate_to_subagent`), so running that surface through `classifyAction` unchanged answered
+  // `unclassified` for 118 of 119 tools: refuse-by-design, correct as a default, and
+  // indistinguishable from never having looked.
+  //
+  // Eleven MCP acts turned out to BE acts already named above and reuse those keys; the
+  // forty-nine below had no twin and are named here, in this file, so there is still one
+  // classifier and one vocabulary. `_shared/paige-mcp/capability-policy.ts` is the tool-name →
+  // key mapping and holds no classification of its own.
+  //
+  // THE REUSES WERE CHECKED, NOT ASSUMED, and two candidates were REJECTED on evidence rather
+  // than adopted for tidiness — each would have made an MCP act inherit a class whose stated
+  // reason is false for it:
+  //   · `add_contact_note` is NOT `crm_add_note`. That entry is ordinary because `client_notes`
+  //     "has no client-facing read policy at all", which is true of `client_notes` and NOT of
+  //     `clients.current_notes`, which is where the MCP tool writes and which
+  //     `clients_linked_self_read` exposes to the client themselves.
+  //   · `propose_subagent` is NOT `forge_subagent`. That entry is ordinary because "approval is a
+  //     separate act", and on this tool's default path it is not: a `soft` proposal auto-ships and
+  //     lands an enabled specialist.
+  //
+  // WHAT A CLASS HERE DOES AND DOES NOT DO TODAY. The MCP door refuses every mutation regardless
+  // of class, because that channel carries no approval (see the capability policy's header). So
+  // these classes are not currently what stops anything — they are what will decide how much
+  // proof each act needs once an approval can reach that door. They are written to be right then.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // ── owner_only: the operator's decision, in their settings ────────────────────────────────
+  // create_tenant
+  ["tenant_create", "owner_only", "stands up a whole new workspace and records who agreed to its terms"],
+
+  // ── high: irreversible, moves authority, reaches outside, spends money, or reaches a client ─
+  // add_contact_note
+  ["crm_append_contact_notes", "high", "writes into a notes field the client can read on their own record"],
+  // delete_task
+  ["crm_delete_task", "high", "destroys a task with nothing left to restore it from"],
+  // run_workflow
+  ["workflow_run", "high", "fires a registered automation with real effects outside the platform"],
+  // decide_pending_approval
+  ["approval_decide", "high", "records a sign-off and emails everyone waiting on it"],
+  // create_approval
+  ["approval_create", "high", "files a review item that emails the reviewers"],
+  // update_coach_profile
+  ["coach_update_profile", "high", "edits another person's profile and whether new clients route to them"],
+  // create_team_invitation
+  ["team_invite_mint", "high", "mints workspace access and hands back a live invitation link"],
+  // upsert_email_template
+  ["comms_upsert_email_template", "high", "overwrites a shared template every future send renders from"],
+  // send_btf_template_email, send_transactional_email, send_composed_email
+  ["comms_send_email", "high", "puts an email in a real person's inbox"],
+  // cancel_workflow_run
+  ["workflow_cancel_run", "high", "acts on the operator's provider account to stop a run"],
+  // register_workflow
+  ["workflow_register", "high", "defines a new automation and where firing it points"],
+  // send_invoice
+  ["billing_send_invoice", "high", "emails a real person a bill and a link to pay it"],
+  // run_skill
+  ["skill_run", "high", "runs a recipe that can email, scrape and write on its own"],
+  // verify_business
+  ["business_verify", "high", "sends a company's details to outside registries and scrapers"],
+  // propose_subagent
+  ["subagent_create", "high", "can put a new specialist live without a separate approval"],
+  // approve_subagent_proposal
+  ["subagent_approve_proposal", "high", "puts a specialist live with the prompt and code it was proposed with"],
+  // create_subaccount
+  ["agency_create_subaccount", "high", "provisions a whole new workspace under the agency"],
+  // switch_into_subaccount
+  ["agency_enter_subaccount", "high", "grants the caller admin standing inside a child workspace"],
+  // create_stage_automation_rule
+  ["automation_rule_create", "high", "can arm unattended sending on every future stage change"],
+  // update_stage_automation_rule
+  ["automation_rule_update", "high", "can arm or disarm unattended sending on an existing rule"],
+  // delete_stage_automation_rule
+  ["automation_rule_delete", "high", "permanently deletes an automation rule"],
+  // handle_data_subject_request
+  ["privacy_handle_request", "high", "erases or discloses a person's whole record, and erasure cannot be undone"],
+  // approve_readiness_proposal
+  ["readiness_approve_proposal", "high", "tells the client their readiness item was approved"],
+  // suspend_tenant
+  ["tenant_set_status", "high", "freezes or retires a whole workspace and everyone in it"],
+  // update_tenant_features
+  ["tenant_set_features", "high", "turns capabilities on or off for a whole workspace"],
+  // add_email_domain
+  ["comms_add_email_domain", "high", "registers a sending identity and can take over the address clients see"],
+  // set_default_email_domain
+  ["comms_set_primary_email_domain", "high", "changes the address every client sees when the tenant emails them"],
+  // bulk_send_template_email
+  ["comms_send_bulk_email", "high", "puts an email in up to a hundred real inboxes at once"],
+
+  // ── ordinary: reversible in-tenant record work ────────────────────────────────────────────
+  // update_contact_stage, update_lifecycle_stage
+  ["crm_update_lifecycle_stage", "ordinary", "moves a client between lifecycle stages on their own record"],
+  // update_task, complete_task, reopen_task
+  ["crm_update_task", "ordinary", "edits a task on the workspace's own queue"],
+  // claim_approval
+  ["approval_claim", "ordinary", "takes ownership of a review item somebody else could have handled"],
+  // comment_on_approval
+  ["approval_comment", "ordinary", "adds a comment to a review thread"],
+  // create_admin_notification, broadcast_system_announcement
+  ["platform_post_notification", "ordinary", "posts a notice on the operator's own alert surface"],
+  // create_invoice
+  ["billing_create_invoice", "ordinary", "raises a draft bill; sending it is the separate high-risk act"],
+  // propose_client_update
+  ["crm_propose_contact_update", "ordinary", "stages a change the operator approves before it applies"],
+  // ingest_credit_scores
+  ["ingest_credit_scores", "ordinary", "records credit figures on a person's record"],
+  // ingest_banking_snapshot
+  ["ingest_banking_snapshot", "ordinary", "stages banking figures for the operator to confirm"],
+  // append_client_memory
+  ["ingest_client_memory", "ordinary", "adds a remembered fact to a client's record"],
+  // confirm_proposal
+  ["ingest_confirm_proposal", "ordinary", "commits a staged change to a client's record"],
+  // reject_proposal
+  ["ingest_reject_proposal", "ordinary", "discards a staged change nobody committed"],
+  // compose_email
+  ["comms_draft_email", "ordinary", "asks one fixed specialist for a draft and sends nothing"],
+  // exit_subaccount
+  ["agency_exit_subaccount", "ordinary", "returns the caller to their own workspace"],
+  // me_update_business
+  ["business_update", "ordinary", "edits a business the caller owns"],
+  // me_create_business
+  ["business_create", "ordinary", "adds a business the caller owns"],
+  // me_log_progress_update
+  ["client_log_progress", "ordinary", "adds the caller's own progress note to their record"],
+  // reject_readiness_proposal
+  ["readiness_reject_proposal", "ordinary", "closes a readiness item without telling the client"],
+  // record_social_accounts
+  ["update_social_accounts", "ordinary", "records the accounts the workspace posts from, replacing the whole set"],
+  // advance_contact_journey_stage
+  ["crm_advance_journey_stage", "ordinary", "moves a client along their journey and records the step"],
 ];
 
 /**

@@ -28,13 +28,22 @@
  *
  * WHY THE RULE LIVES HERE AND NOT IN THE LANE. The seam will execute an `ordinary` mutation on an
  * `auto` lane with no claim, correctly — that is a workspace's standing grant to Paige, given
- * inside Paige. Measured on production 2026-09-05: `resolve_tool_autonomy` defaults to `'confirm'`
- * and no `tenant_tool_autonomy` row exists for any MCP tool name, so every mutation resolves to
- * `confirm` today and the seam would refuse them all anyway. **Leaning on that would be leaning on
- * a table's current contents.** One inserted row would open sixty-seven mutations to an external
- * connector, silently, with no code change and nothing in CI to notice. The refusal is therefore
- * structural, and the lane is not consulted at all — which is also why this decision needs no
- * database round trip and cannot be affected by one failing.
+ * inside Paige. A lane-driven door would therefore be as safe as a table's current contents, and
+ * the contents are not reassuring. Measured on production 2026-09-05:
+ *
+ *   - `resolve_tool_autonomy` returns `COALESCE(_mode, 'confirm')`, so an unset tool is `confirm`.
+ *   - `tenant_tool_autonomy` holds nine rows across nine keys, and SIX of them are `auto`:
+ *     `n8n_activate_workflow`, `n8n_archive_workflow`, `n8n_create_workflow`,
+ *     `n8n_deactivate_workflow`, `n8n_run_workflow`, `n8n_update_workflow`.
+ *
+ * No row names an MCP tool — but that is not the reassurance it sounds like, because this map
+ * points MCP tools at CANONICAL keys and canonical keys are exactly what those rows are keyed on.
+ * All six happen to be `high`, so today the clamp would force `confirm` and the seam would refuse
+ * them anyway. That is luck, not design: one `auto` row on an `ordinary` canonical is an external
+ * connector executing a change, with no code change and nothing in CI to notice.
+ *
+ * So the refusal is structural and the lane is not consulted at all — which is also why this
+ * decision needs no database round trip and cannot be affected by one failing.
  *
  * WHAT THE CALLER IS TOLD, AND WHY THE TWO CASES ARE DIFFERENT. Sixty-seven mutations refuse
  * `approval_required` — the act is named, prepared and not run, and a person can go and approve it
