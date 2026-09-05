@@ -25,6 +25,7 @@ import {
   buildBrief,
   buildChannels,
   buildKpis,
+  buildNextMove,
   buildPipeline,
   isGrowthDesk,
   readSocialHandles,
@@ -161,6 +162,91 @@ describe("handle shape — the surface and Systems Check must agree on the count
   });
 });
 
+describe("the next move — a decision, not a guess", () => {
+  const base = { ...EMPTY, handles: [{ network: "x" as const, label: "X", handle: "@a" }], publishedOutputs: 3 };
+
+  it("is total — every input yields a move, including the empty one", () => {
+    for (const input of [EMPTY, base, { ...base, waitingOnYou: 2 }, { ...base, formsNeedingRepair: 1 }]) {
+      const move = buildNextMove(input);
+      expect(move.headline.trim().length).toBeGreaterThan(0);
+      expect(move.detail.trim().length).toBeGreaterThan(0);
+      expect(move.action.label.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("ranks a failed delivery above work merely waiting", () => {
+    const both = { ...base, waitingOnYou: 4, formsNeedingRepair: 1 };
+    expect(buildNextMove(both).action.kind).toBe("pipeline");
+    expect(buildNextMove({ ...both, formsNeedingRepair: 0 }).action.kind).toBe("compass");
+  });
+
+  it("does not send anyone to clear a queue it could not read", () => {
+    // `waitingOnYou` is 0 on a failed read too, so the ladder has to know the difference.
+    const unread = { ...base, waitingOnYou: 3, waitingUnknown: true };
+    expect(buildNextMove(unread).action.kind).not.toBe("compass");
+  });
+
+  /**
+   * THE ASSERTION-SHAPED BLIND SPOT, named because this suite had it.
+   *
+   * The test above checks where the ladder does not GO. It never checked what the ladder SAYS —
+   * and the §39 peer-gate found that with both reads guarded, the ladder fell all the way through
+   * to a terminal branch that announced "Nothing is waiting on you here." on the exact read the
+   * guard forty lines above had just refused to speak for. A guard and a claim, on one screen,
+   * about one read. Every assertion below is on the SENTENCE.
+   */
+  it("never announces an empty queue on a read that failed", () => {
+    for (const unread of [
+      { ...base, waitingUnknown: true },
+      { ...base, waitingOnYou: 3, waitingUnknown: true },
+      { ...base, campaignsUnknown: true },
+      { ...base, publishedOutputs: 0, campaignsUnknown: true },
+      { ...base, waitingUnknown: true, campaignsUnknown: true },
+    ]) {
+      const move = buildNextMove(unread);
+      const said = `${move.headline} ${move.detail}`.toLowerCase();
+      expect(said, `an unread source produced: "${move.headline}"`).not.toMatch(
+        /nothing is waiting|up to date|nothing published|nothing to put in front/,
+      );
+      expect(said).toContain("has not been read");
+    }
+  });
+
+  it("does not send anyone to rebuild work it could not read", () => {
+    // Branch 4 fires on `publishedOutputs === 0`, and a failed campaigns read produces exactly
+    // that — so without its guard the move is "Open Vibe Studio" and build what you may already own.
+    const unread = { ...base, publishedOutputs: 0, campaignsUnknown: true };
+    expect(buildNextMove(unread).action.kind).not.toBe("studio");
+  });
+
+  it("still gives a real move when only ONE source failed and the other has work", () => {
+    // The unknown branch must not swallow a genuinely actionable failing delivery.
+    const repair = { ...base, formsNeedingRepair: 2, waitingUnknown: true };
+    expect(buildNextMove(repair).action.kind).toBe("pipeline");
+  });
+
+  it("only ever points at a control that exists on this page or a route that resolves", () => {
+    const kinds = new Set(
+      [EMPTY, base, { ...base, waitingOnYou: 1 }, { ...base, formsNeedingRepair: 1 }, { ...base, publishedOutputs: 0 }]
+        .map((input) => buildNextMove(input).action.kind),
+    );
+    for (const kind of kinds) expect(["record", "studio", "compass", "pipeline", "paige"]).toContain(kind);
+  });
+
+  it("claims no metric and quotes no number it was not given", () => {
+    const move = buildNextMove({ ...base, waitingOnYou: 2 });
+    expect(move.headline).toContain("2");
+    // The count came from the input. Nothing else numeric may appear.
+    expect(`${move.headline} ${move.detail}`.replace(/\b2\b/g, "")).not.toMatch(/[0-9]/);
+  });
+
+  it("declines the move it cannot justify", () => {
+    // Captured responses carry no channel attribution, so no branch may be keyed on them.
+    const many = { ...base, capturedSubmissions: 500 };
+    expect(buildNextMove(many)).toEqual(buildNextMove(base));
+  });
+});
+
 describe("growth desks", () => {
   it("names the desks whose filed work belongs on a growth surface", () => {
     expect(isGrowthDesk("marketing")).toBe(true);
@@ -235,10 +321,41 @@ describe("§13 fabrication guard — the shapes this surface must never grow", (
   });
 
   it("declares no seeded mission, insight or channel fixture", () => {
-    const body = strip(projection) + strip(surface);
     // The fixture shape, not a phrase: a literal array of named objects is how the ten invented
     // departments entered compass.tsx, and it is what must never appear here.
-    expect(body).not.toMatch(/const\s+(MISSIONS|INSIGHTS|CHANNELS|TELEMETRY|SAMPLE|DEMO|SEED)[A-Z_]*\s*(:[^=]*)?=\s*\[/);
+    // Widened after a read of this guard showed it named only seven identifiers: `const FEED = [`,
+    // `const KPIS = [`, `const MISSION_ROWS = [` all sailed through it. The shape that matters is a
+    // module-level array of literals standing in for data, whatever it is called.
+    //
+    // ONE constant legitimately has that shape and is not data: `SOCIAL_NETWORKS`, the catalogue of
+    // networks a person can type a handle into — a label and a placeholder hint per row, the form's
+    // own vocabulary. Exempting it by name would open exactly the hole this guard closes, so the
+    // exemption is paid for below: the constant is lifted out, then asserted to carry no figure of
+    // any kind. The moment someone adds a count, a percent or a metric-shaped key to it, it stops
+    // being form vocabulary and this fails.
+    const catalogue = /export const SOCIAL_NETWORKS = \[[\s\S]*?\] as const;/.exec(strip(projection));
+    expect(catalogue, "SOCIAL_NETWORKS is exempted by shape; it must still be findable").not.toBeNull();
+    expect(catalogue![0]).not.toMatch(/[0-9]/);
+    expect(catalogue![0]).not.toMatch(/\b(count|total|value|figure|followers?|reach|engagement)\b/i);
+
+    const body = strip(projection).replace(catalogue![0], "") + strip(surface);
+    // Any identifier, any casing, at MODULE level. Two calibrations, both learned the hard way:
+    //
+    // The previous form required SCREAMING_CASE of four or more characters, so `const Missions =
+    // [{…}]`, `const seedFeed = [{…}]` and `const KP = [{…}]` all walked through a guard whose own
+    // comment promised "whatever it is called".
+    //
+    // But dropping the casing rule without anchoring caught `const tiles: SocialKpi[] = [` inside
+    // `buildKpis` — a builder's own working array, assembled FROM the input, which is the opposite
+    // of a fixture. The property that actually distinguishes a fixture is that it is a module-level
+    // constant standing in for data nobody read, so that is what is asserted: no indentation, `m`
+    // flag, `export` optional. A function-local array is out of scope by construction.
+    expect(body).not.toMatch(/^(export\s+)?const\s+[A-Za-z_$][\w$]*\s*(:[^=]*)?=\s*\[\s*\{/m);
+    // The anchor closed one hole and opened another: an INDENTED `const MISSIONS = [{…}]` used to be
+    // caught by the casing rule and is missed by the module-level one. Both forms are asserted, so
+    // the recalibration is strictly a widening. A function-local array named in ordinary camelCase
+    // stays out of scope; a SCREAMING_CASE one at any depth still reads as a fixture and is caught.
+    expect(body).not.toMatch(/\bconst\s+[A-Z][A-Z0-9_]{2,}\s*(:[^=]*)?=\s*\[\s*\{/);
     expect(body).not.toMatch(/Authority Builder|Workshop Wednesday|Community Growth/);
   });
 
@@ -248,7 +365,60 @@ describe("§13 fabrication guard — the shapes this surface must never grow", (
     // on a count, which is where an unsourced number would be born.
     expect(view).not.toMatch(/Math\.(round|floor|ceil|random)/);
     expect(view).not.toMatch(/toFixed\(/);
-    expect(view).not.toMatch(/%["`]/);
+    // Single quotes were missing from the first version, so `pct + '%'` passed a guard written to
+    // stop exactly that.
+    expect(view).not.toMatch(/%["'`]/);
+  });
+
+  /**
+   * The §39 peer-gate's F2, as a standing guard.
+   *
+   * `useSoloCampaigns` returns `{ phase: "error", ...empty }`, so published / approval-gated /
+   * repair / captured ALL arrive as zero on a failed read, and four sentences asserted an absence
+   * off it. "Every recorded delivery of yours succeeded" is the one that could cost someone real
+   * money: a captured lead can be failing to deliver at that exact moment.
+   */
+  it("asserts no absence about campaign work whose read failed", () => {
+    const unread: SocialCommandInput = {
+      ...EMPTY,
+      handles: [{ network: "x", label: "X", handle: "@a" }],
+      campaignsUnknown: true,
+    };
+    const notes = [
+      ...buildPipeline(unread).map((stage) => stage.figure.note),
+      ...buildKpis(unread).map((kpi) => kpi.figure.note),
+    ].join(" ").toLowerCase();
+
+    expect(notes).not.toContain("every recorded delivery of yours succeeded");
+    expect(notes).not.toContain("you have not published anything yet");
+    expect(notes).not.toContain("no form of yours is waiting on an approval");
+    expect(notes).not.toContain("no form of yours has a recorded response yet");
+
+    // And every campaign-sourced figure is the absent mark, not a zero.
+    for (const stage of buildPipeline(unread)) {
+      if (["review", "published", "repair"].includes(stage.id)) {
+        expect(stage.figure.value, `${stage.id} carried a value from an unread source`).toBeNull();
+        expect(stage.figure.note).toContain("has not been read");
+      }
+    }
+    const captured = buildKpis(unread).find((k) => k.id === "captured")!;
+    expect(captured.figure.value).toBeNull();
+    expect(captured.figure.note).toContain("has not been read");
+  });
+
+  it("never quotes a count in the brief from a source that failed", () => {
+    const brief = buildBrief({
+      ...EMPTY,
+      handles: [{ network: "x", label: "X", handle: "@a" }],
+      waitingOnYou: 4,
+      waitingUnknown: true,
+      publishedOutputs: 2,
+      campaignsUnknown: true,
+    });
+    // The stale 4 and the collapsed 2 must both be absent from the sentence a person reads.
+    expect(brief.body).not.toMatch(/\b4 items?\b/);
+    expect(brief.body).not.toMatch(/\b2 published\b/);
+    expect(`${brief.headline} ${brief.body}`).toContain("has not been read");
   });
 
   it("keeps every one of the five non-inferences the replaced panel made", () => {

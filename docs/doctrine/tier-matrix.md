@@ -3528,7 +3528,7 @@ and every tile carries its own.
 | Waiting on you (KPI) · PAIGE sees | **PARTIAL** | `paige_actions` at `status='filed'`, `autonomy_lane='confirm'`, filtered to the growth desks, via `useSoloPendingActions` |
 | Captured responses (KPI) · Published outputs · Held for you · Needs repair (pipeline) | **PARTIAL** | `useSoloCampaigns` — `growth_pages`/`_funnels`/`_forms`/`_form_submissions`, all tenant-scoped |
 | Trust Compass lanes | **PARTIAL** | `useSoloTrust` — platform-default lanes, labelled as platform defaults, read-only |
-| Publishing queue · Recorded placements · Scheduled · Ideas · Drafting · Repurposing · every per-channel metric | **UNAVAILABLE** | No tenant-scoped record exists. Each renders an em-dash and the sentence naming what would have to exist |
+| Publishing queue · Recorded placements · Scheduled · Ideas · Drafting · every per-channel metric | **UNAVAILABLE** | No tenant-scoped record exists. Each renders an em-dash and the sentence naming what would have to exist |
 | Active missions | **UNAVAILABLE** | Nothing stores a mission, cadence or progress. `tenant_workflows` mirrors n8n and carries neither a cadence nor a target |
 
 **PAIGE reach (the `paige-brain-wiring-standard.md` five-point checklist).** ① brain updated in this
@@ -3556,6 +3556,92 @@ refusal, the blank-handle omission, and a JWT caller outside the workspace seein
 refused PAIGE's own service-role MCP caller and the Systems Check runner. **Owed:** migration applied
 on production (CI on merge), and an authenticated live drive of the record form (§32.c) — no session
 here holds a browser that can reach the authenticated surface.
+
+**Second pass — executive conversion (owner instruction: "keep Mineral and Obsidian exactly as theme
+variants, do not change the evidence logic; this pass is purely about converting a truthful internal
+status console into a truthful executive AI COO command surface").** No evidence logic changed, no
+theme changed, no figure gained or lost a source. What changed:
+
+| Change | What it is | Why it is not an evidence change |
+|---|---|---|
+| **Next move** band | One ranked instruction at the head of the surface, from `buildNextMove` in `social-truth.ts`, plus the control that acts on it | A pure re-READ of figures the builders already produce, in a fixed precedence: needs-repair → waiting on you → no accounts on record → nothing published → nothing waiting. It computes no number of its own. |
+| KPI ranking | `KPI_ORDER` applied at the end of `buildKpis` — decision first (waiting on you), record second, then the counted work | Ordering only. The same five tiles, the same five sources. |
+| Panel heads | Each panel carries a glyph plate and its own truth label | The label was already computed per module; it is now shown per panel instead of only per surface. |
+| Timestamps on what PAIGE filed | `elapsedLabel` renders `createdAt` as an age, and the rationale takes its own line | `createdAt` was already read from `paige_actions`; it was not being shown. |
+| Container queries | `.social-page` declares `container-type: inline-size; container-name: social`, and every `@media` became `@container social` | A real defect, not a preference: the breakpoints keyed on VIEWPORT width while the surface sits inside the Solo shell's content column, so at a docked 1366 the two-column grid was running its columns at 352px and 275px and the breakpoints never fired. |
+
+**A §66 drift corrected in this same commit.** The row above previously listed a **Repurposing** stage
+among the UNAVAILABLE pipeline modules. No such stage exists or has ever existed on this surface;
+`buildPipeline` returns exactly six — `ideas · drafting · review ("Held for you") · scheduled ·
+published · repair ("Needs repair")`. The ledger named a module the code does not have, which is the
+answer-from-stale-docs failure §66 exists to end, so it is struck here rather than left to be
+discovered.
+
+**The §39 peer-gate BLOCKED the second pass, and was right.** An independent adversarial read of the
+pushed diff — not the author, not a re-run of the author's own assertions — found the pass's headline
+fix contradicted on the same screen, plus the identical defect untouched on the read next door:
+
+| # | Defect | Consequence |
+|---|---|---|
+| F1 | `buildNextMove`'s terminal branch announced **"Nothing is waiting on you here."** with no condition, so a `waitingUnknown` read that branch 2 correctly refused to speak for fell straight through to the opposite claim | With `useSoloPendingActions` never clearing `items` on error, the page rendered *"4 items waiting on your decision"* and *"Nothing is waiting on you here"* simultaneously — one surface, two answers, one read |
+| F2 | `campaigns.phase === "error"` was never gated. `useSoloCampaigns` returns `{phase:"error", ...empty}`, so published / approval-gated / repair / captured **all** collapse to zero | Four sentences asserted an absence off a failed read. **"Every recorded delivery of yours succeeded"** is the one with a real cost: a captured lead can be failing to deliver at that moment. Branch 4 also offered *"Open Vibe Studio"* to rebuild work the person may already own |
+| F3 | The new rendered-copy `METRIC` regex lacked `i` while its denial partners ran on a lowercased string | Any sentence STARTING with a metric word — *"Reach keeps climbing."*, *"Followers are up this week."* — was skipped entirely, i.e. the guard missed exactly the sentences most likely to be a fabrication |
+| F4 | The widened fixture regex claimed "whatever it is called" but caught only SCREAMING_CASE ≥4 chars | `const Missions = [{…}]` walked through. Now anchored to module level (`m` flag, no indentation), which is what a fixture structurally IS — a function-local working array is out of scope by construction |
+| F5 | `.social-dialog-fields` was converted to `@container social` with everything else | `.social-dialog` is `position: fixed` at `min(560px, 100vw - 32px)` — sized by the VIEWPORT, not the page column it descends from. Its rule is back on `@media`; the container query is right for the page and wrong for the one element that escapes it |
+
+**The fix, and why it is one concept rather than five patches.** `campaignsUnknown` joins `waitingUnknown`
+as the second half of one idea: a read that FAILED is not a result that is EMPTY. Both feed a shared
+`unread()` figure and a single `UNREAD_NOTE` (§18 — the sentence now appears on six figures across
+three builders and must not drift between them). `buildBrief` quotes no count from a failed source,
+`buildNextMove` gained an unknown branch that sits BELOW the failing-delivery branch so a real,
+successfully-read problem is never swallowed by the other half's failure, and the stale pending count
+is zeroed at this call site rather than in `useSoloPendingActions` — that hook has two other consumers
+(both Trust Compass modals) and clearing its list on error is a §37 producer walk plus a behaviour
+change on a surface this work was not asked to touch. Filed separately.
+
+**Every new guard was proven to fail without its fix.** Reverting the `campaignsUnknown` threading
+turns two rendered-page tests red; stubbing out the unknown branch turns three red. A guard that
+passes both before and after proves nothing, and this pass had already shipped one of those — the
+builder test asserting where the ladder GOES while never asserting what it SAYS.
+
+**The peer-gate ran again on the fix and blocked it again — the predicate was one operator short of
+the class.** `campaignsUnknown` keyed on `phase === "error"`, but `useSoloCampaigns` returns
+`{...empty}` for `loading` and `unavailable` too, and `useSoloPendingActions` starts
+`{items:[], loading:true, error:null}` — so a read still IN FLIGHT produces the identical all-zeros
+input and every sentence the first fix killed returned in a sibling phase. In flight is the MOST
+reachable of the three: six round trips against social's two on first paint, and a synchronous flip
+to `loading` on every tenant switch. Now `campaigns.phase !== "ready"` and `pending.error ||
+pending.loading`, with the shared note reworded to **"This has not been read"** — true of all three
+states, where "could not be read" was true of one. A THIRD source was found uncovered:
+`get_social_presence_evidence`'s three refusals all return a SUCCESSFUL response carrying zero
+on-record rows, and only one was surfaced, so a team member who is not a tenant admin was told PAIGE
+did not know their accounts and handed a Record accounts button the server would refuse (§13 + §70).
+`handlesUnknown` covers any all-unavailable response, and the hero's record control now renders only
+for a caller whose save will be accepted — §58-clean, since it never worked for anyone else.
+
+**One finding cleared by MEASUREMENT rather than argument.** The read derived from css-contain-2 that
+`container-type: inline-size` would make `.social-page` a containing block for the fixed record
+dialog. Measured in the repo's own Chromium: scrim `0,0 1366×768`, dialog `403,284 560×200`,
+byte-identical with and without `container-type`, both viewport-centred. Chromium does not apply that
+containment for `inline-size`. **Honest limit:** Chromium only — no Gecko or WebKit binary is
+available in this session.
+
+**Second-pass proof.** Full suite **3368 passing** (228 files), `ci:tsc` ratchet clean at its 13-error
+baseline, `vite build` green, and every CI lint green (`lint:views`, `lint:definer-fns`,
+`lint:tier-features`, `lint:skeleton`, `lint:write-targets`, `lint:migration-versions`, `lint:pg-tokens`,
+`lint:shadow-vars`, `ci:regression`, `lint:action-authority`, `lint:no-shadowed-credential`,
+`lint:user-facing-admin-urls`, `lint:ssrf-fork`, `lint:managed-schema`, `lint:alias-ratchet`,
+`lint:pack-lineage`, `lint:operator-reach`, `lint:tool-catalogue`, `lint:readiness-copy`,
+`lint:action-risk`, `lint:approval-gate`, `lint:chat-tool-registry`, `lint:governed-execution`,
+`lint:mcp-destructive-confirm`, `lint:vector-path`). `lint:gold` reports one violation in
+`src/components/dashboard/BusinessCreditDashboard.tsx`, which this branch does not touch, which is
+identical to `origin/main`, and which is not wired into CI — pre-existing, named here rather than
+quietly absorbed. Two §13 defects the second pass found in its own first draft and fixed: the
+`waiting` KPI asserted "nothing is waiting on your decision" on a FAILED read (the hook returns `[]`
+for both "none" and "could not check", so `waitingUnknown` now separates them), and a rendered-page
+denial guard had to be calibrated to accept denial-by-condition after it fired on the §58-protected
+placement precondition. **Still owed, unchanged:** the authenticated live drive of the record form
+(§32.c) — no session in this work has held a browser that can reach the authenticated surface.
 
 **Live provider connection remains UNAVAILABLE and is unchanged by this slice.** `meta-schedule-post`
 / `meta-get-insights` exist but read a single platform-wide `META_PAGE_ACCESS_TOKEN` and write

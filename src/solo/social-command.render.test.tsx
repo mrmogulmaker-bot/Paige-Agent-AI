@@ -22,6 +22,8 @@ const harness = vi.hoisted(() => ({
   trust: {} as Record<string, unknown>,
   saved: [] as Array<Record<string, string>>,
   saveResult: { ok: true, recordedCount: 0 } as Record<string, unknown>,
+  went: [] as string[],
+  nav: {} as Record<string, () => void>,
 }));
 
 vi.mock("./useSocialCommand", () => ({ useSocialCommand: () => harness.social }));
@@ -44,7 +46,15 @@ function renderAt(campaigns: Record<string, unknown> = CAMPAIGNS) {
   document.body.appendChild(host);
   root = createRoot(host);
   act(() => {
-    root!.render(<SocialCommand campaigns={campaigns} onOpenStudio={() => {}} onAskPaige={() => {}} />);
+    root!.render(
+      <SocialCommand
+        campaigns={campaigns}
+        onOpenStudio={harness.nav.studio}
+        onAskPaige={harness.nav.paige}
+        onOpenCompass={harness.nav.compass}
+        onOpenPipeline={harness.nav.pipeline}
+      />,
+    );
   });
 }
 
@@ -55,6 +65,13 @@ beforeEach(() => {
   host = document.createElement("div");
   document.body.appendChild(host);
   harness.saved = [];
+  harness.went = [];
+  harness.nav = {
+    studio: () => harness.went.push("studio"),
+    paige: () => harness.went.push("paige"),
+    compass: () => harness.went.push("compass"),
+    pipeline: () => harness.went.push("pipeline"),
+  };
   harness.saveResult = { ok: true, recordedCount: 0 };
   harness.social = {
     tenantId: "tenant-1",
@@ -277,6 +294,310 @@ describe("Trust Compass is reflected, never re-implemented", () => {
   it("renders nothing rather than an empty frame when no lane is readable", () => {
     renderAt();
     expect(host.querySelector(".social-governance")).toBeNull();
+  });
+});
+
+describe("the next move — the question the surface could not answer before", () => {
+  const move = () => host.querySelector(".social-next")?.textContent ?? "";
+
+  it("tells a brand-new workspace to name its accounts, and the button does it", () => {
+    renderAt();
+    expect(move()).toContain("PAIGE does not know which accounts are yours");
+    act(() => (host.querySelector(".social-next-act") as HTMLButtonElement).click());
+    expect(document.querySelector('[role="dialog"]'), "the move must open the record form").toBeTruthy();
+  });
+
+  it("puts a delivery that failed above everything else", () => {
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active", recentDispatches: { failed: 2 } }] });
+    expect(move()).toContain("not delivering");
+    act(() => (host.querySelector(".social-next-act") as HTMLButtonElement).click());
+    expect(harness.went).toEqual(["pipeline"]);
+  });
+
+  it("sends held drafts to Trust Compass, and ranks them below a failure", () => {
+    harness.pending = {
+      loading: false, error: null, refresh: () => {},
+      items: [{ id: "a", title: "Draft", summary: null, department: "marketing", rationale: null, createdAt: "2026-09-04" }],
+    };
+    renderAt();
+    expect(move()).toContain("holding");
+    act(() => (host.querySelector(".social-next-act") as HTMLButtonElement).click());
+    expect(harness.went).toEqual(["compass"]);
+
+    // ...and a failure outranks it.
+    harness.went = [];
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active", recentDispatches: { failed: 1 } }] });
+    expect(move()).toContain("not delivering");
+  });
+
+  it("asks for something to publish once accounts exist but nothing does", () => {
+    harness.social = { ...harness.social, handles: [{ network: "x", label: "X", handle: "@a" }] };
+    renderAt();
+    expect(move()).toContain("nothing published");
+    act(() => (host.querySelector(".social-next-act") as HTMLButtonElement).click());
+    expect(harness.went).toEqual(["studio"]);
+  });
+
+  it("falls through to the conversation when nothing is broken or waiting", () => {
+    harness.social = { ...harness.social, handles: [{ network: "x", label: "X", handle: "@a" }] };
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active", recentDispatches: { failed: 0 } }] });
+    expect(move()).toContain("Nothing is waiting on you here");
+    act(() => (host.querySelector(".social-next-act") as HTMLButtonElement).click());
+    expect(harness.went).toEqual(["paige"]);
+  });
+
+  it("never puts a bare zero in front of a person, in any branch", () => {
+    // The first-use branch is the one that fires on an empty workspace, and it is the branch most
+    // likely to want to say "0 accounts". It may not.
+    renderAt();
+    expect(move()).not.toMatch(/\b0\b/);
+  });
+});
+
+describe("executive chrome", () => {
+  it("gives every section a glyph plate and keeps its heading", () => {
+    renderAt();
+    expect(host.querySelectorAll(".social-panel-glyph")).toHaveLength(4);
+  });
+
+  it("dates what PAIGE is holding, and gives the reason its own line", () => {
+    harness.pending = {
+      loading: false, error: null, refresh: () => {},
+      items: [{
+        id: "a", title: "Draft the launch note", summary: "Ready for your read",
+        department: "marketing", rationale: "Filed for your decision",
+        createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      }],
+    };
+    renderAt();
+    expect(host.querySelector(".social-feed-age")?.textContent).toMatch(/ago$/);
+    // The rationale is its own dimmer line, not concatenated onto the desk name.
+    expect(host.querySelector(".social-feed-why")?.textContent).toBe("Filed for your decision");
+    expect(host.querySelector(".social-feed small")?.textContent).toBe("marketing");
+  });
+});
+
+/**
+ * A FAILED READ IS NOT AN EMPTY RESULT — driven on the page, in both halves.
+ *
+ * These are the §39 peer-gate's F1 and F2 as standing tests. Both were reproducible on the rendered
+ * page while every builder-level assertion was green, because the builder tests checked where the
+ * next-move ladder GOES and the campaigns half had no unknown flag at all. The distinguishing
+ * property of this suite is that it reads the sentences a person actually sees, with a hook in its
+ * error state, which is the only place the two halves of the surface can be caught disagreeing.
+ */
+describe("a failed read never renders as good news", () => {
+  const said = () => (host.textContent ?? "").replace(/\s+/g, " ");
+
+  it("does not announce an empty queue when the pending read failed", () => {
+    harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+    // The hook does NOT clear `items` on error, so a stale count outlives the read. Both must be
+    // survived: the failure flag, and the stale number underneath it.
+    harness.pending = {
+      loading: false,
+      error: "boom",
+      refresh: () => {},
+      items: [{ id: "a", title: "t", summary: "s", department: "marketing", rationale: "r", createdAt: "2026-09-04" }],
+    };
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "No route", recentDispatches: {} }] });
+
+    expect(said()).not.toContain("Nothing is waiting on you here");
+    expect(said()).not.toContain("waiting on your decision");
+    expect(said()).toContain("has not been read");
+  });
+
+  it("claims nothing about published work, deliveries or approvals when the campaigns read failed", () => {
+    harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+    renderAt({ phase: "error", artifacts: [], submissions: [] });
+
+    const text = said();
+    // The highest-consequence sentence on this surface: a lead can be failing to deliver right now.
+    expect(text).not.toContain("Every recorded delivery of yours succeeded");
+    expect(text).not.toContain("You have not published anything yet");
+    expect(text).not.toContain("No form of yours is waiting on an approval");
+    expect(text).not.toContain("No form of yours has a recorded response yet");
+    expect(text).not.toContain("Nothing is waiting on you here");
+    expect(text).toContain("has not been read");
+  });
+
+  it("does not offer to rebuild work it could not read", () => {
+    harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+    renderAt({ phase: "error", artifacts: [], submissions: [] });
+    // Branch 4's control. On a failed read `publishedOutputs` is zero like everything else, and
+    // "Open Vibe Studio" would send a person to rebuild what they may already own.
+    expect(said()).not.toContain("There is nothing published to put in front of anyone");
+  });
+
+  it("says nothing about campaign work that is still being read", () => {
+    // THE SECOND PEER-GATE'S HEADLINE FINDING. `useSoloCampaigns` returns `{...empty}` for loading
+    // and unavailable as well as error, and only error was flagged — so the four sentences came
+    // straight back in a sibling phase. In flight is the MOST reachable of the three: six round
+    // trips against social's two on first paint, and a synchronous flip on every tenant switch.
+    for (const phase of ["loading", "unavailable"]) {
+      harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+      renderAt({ phase, artifacts: [], submissions: [] });
+      const text = said();
+      expect(text, `campaigns.phase="${phase}"`).not.toContain("Every recorded delivery of yours succeeded");
+      expect(text, `campaigns.phase="${phase}"`).not.toContain("You have not published anything yet");
+      expect(text, `campaigns.phase="${phase}"`).not.toContain("No form of yours is waiting on an approval");
+      expect(text, `campaigns.phase="${phase}"`).not.toContain("There is nothing published to put in front of anyone");
+      expect(text, `campaigns.phase="${phase}"`).toContain("has not been read");
+    }
+  });
+
+  it("does not announce an empty queue while that queue is still loading", () => {
+    // `useSoloPendingActions` starts `{items: [], loading: true, error: null}`, so the first paint
+    // had a zero with no error beside it — and the terminal branch called that good news while the
+    // panel that reads the same table was still showing its skeleton.
+    harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+    harness.pending = { items: [], loading: true, error: null, refresh: () => {} };
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active", recentDispatches: {} }] });
+
+    expect(said()).not.toContain("Nothing is waiting on you here");
+    expect(said()).not.toContain("Nothing is waiting on your decision right now");
+  });
+
+  it("claims nothing about a workspace record the caller was refused sight of", () => {
+    // `get_social_presence_evidence` has three refusals and every one returns a successful response
+    // carrying zero on-record rows. Only the access one was surfaced, so an ordinary team member —
+    // not a tenant admin, which is the common case, not an edge — was told PAIGE did not know their
+    // accounts and handed a button they cannot complete (§13 + §70).
+    harness.social = {
+      ...harness.social,
+      handles: [],
+      canManage: false,
+      notPermitted: true,
+      handlesUnknown: true,
+    };
+    renderAt();
+
+    const text = said();
+    expect(text).not.toContain("PAIGE does not know which accounts are yours");
+    expect(text).not.toContain("You have not told PAIGE which accounts are yours yet");
+    expect(text).not.toContain("Nothing is on record yet");
+    expect(text).toContain("has not been read");
+    // And the dead-end control is not offered.
+    const labels = [...host.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(labels.join(" | ")).not.toContain("Record accounts");
+  });
+
+  it("still shows a real move when only one source failed and the other has work", () => {
+    harness.social = { ...harness.social, handles: [{ network: "instagram", label: "Instagram", handle: "@acme" }] };
+    harness.pending = { loading: false, error: "boom", refresh: () => {}, items: [] };
+    // A failing delivery is real, read successfully, and must not be swallowed by the other half's
+    // failure — the unknown branch sits BELOW it in the ladder for exactly this reason.
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active", recentDispatches: { failed: 2 } }] });
+    expect(said()).toContain("not delivering");
+  });
+});
+
+describe("§13 on the rendered page — the hole the builder-only guard could not see", () => {
+  /**
+   * The contract suite asserts the denial rule over what `social-truth.ts` RETURNS. That is the
+   * right place for it and it is not enough: every sentence written directly into the JSX bypasses
+   * it completely, and a voice pass is precisely when prose gets inlined. So this reads the page a
+   * person actually sees, in several states, and applies the same rule to all of it.
+   */
+  const NEGATED = /\b(no|not|never|nothing|none|cannot|does not|is not|without|neither)\b/;
+  /**
+   * A metric can be denied by CONDITION as well as by negation, and the §58-protected placement
+   * precondition — "they count as placements only once a supported provider records where they
+   * went live" — is exactly that: it names a metric in order to say what would have to exist
+   * before the metric could be claimed. Refusing it would push the surface toward vaguer prose,
+   * which is the opposite of what §13 wants. So conditional denial counts, but only in its
+   * unambiguous forms: a bare `only` is NOT enough ("reach grew only last week" is a claim),
+   * `only once/when/after/if` and `until` are, because each one states the unmet precondition.
+   */
+  const CONDITIONAL = /\bonly (once|when|after|if)\b|\buntil\b|\bwould have to\b/;
+  /**
+   * `i` is load-bearing, and its absence made this guard weaker than it looked. `NEGATED` and
+   * `CONDITIONAL` are tested against `sentence.toLowerCase()`; `METRIC` was tested against the RAW
+   * sentence, so "Reach keeps climbing." and "Followers are up this week." did not match, hit the
+   * `continue`, and were never examined at all — the guard skipped precisely the sentences most
+   * likely to be a fabrication, because a claim tends to lead with its metric.
+   */
+  const METRIC = /\b(followers?|reach(?:ed|es)?|engagement|impressions?|audience|placements?|scheduled?|views?|likes?|subscribers?|clicks?|shares?)\b/i;
+
+  /**
+   * Read the page as SEPARATE strings, never as one `textContent`.
+   *
+   * `host.textContent` concatenates adjacent elements with no separator, so a label and the note
+   * beside it really do arrive glued: `"No account is on recordFollowers are up 12%."` — and
+   * `\bfollowers\b` then fails against `recordFollowers`, so the sentence is skipped entirely. The
+   * glue was silently disarming the guard on exactly the boundary where a label meets a claim.
+   * Walking text nodes keeps every string in its own element, which is how a person reads them.
+   */
+  const pageStrings = () => {
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const out: string[] = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const t = (n.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (t) out.push(t);
+    }
+    return out;
+  };
+
+  /**
+   * A LABEL is not a CLAIM, and de-gluing the page surfaced the difference.
+   *
+   * Reading text nodes separately means a tile's own label — "Recorded placements", "Publishing
+   * queue", "Scheduled" — arrives as its own string. Naming a metric in a heading is the entire
+   * point of a tile that then refuses to carry a figure for it, and §58 protects those labels, so
+   * the denial rule must not fire on them. A label is a short noun phrase with no figure and no
+   * full stop; anything carrying a digit, running to sentence length, or punctuated as a sentence
+   * is a claim and gets the rule. (The figures themselves are guarded separately, below, by the
+   * assertion that no `.social-figure` carries a digit on an empty workspace.)
+   */
+  const isLabel = (t: string) =>
+    !/[.!?]$/.test(t.trim()) && !/[0-9]/.test(t) && t.trim().split(/\s+/).length <= 4;
+
+  const scan = (label: string) => {
+    const text = pageStrings().join("\n");
+    for (const sentence of text.split(/\n|(?<=[.!?])\s+/)) {
+      if (isLabel(sentence)) continue;
+      if (!METRIC.test(sentence)) continue;
+      const lower = sentence.toLowerCase();
+      expect(
+        NEGATED.test(lower) || CONDITIONAL.test(lower),
+        `${label}: a metric is named without being denied — "${sentence.trim().slice(0, 160)}"`,
+      ).toBe(true);
+    }
+  };
+
+  it("names no metric it cannot produce, in any state a person can reach", () => {
+    renderAt();
+    scan("first use");
+
+    harness.social = {
+      ...harness.social,
+      handles: [
+        { network: "instagram", label: "Instagram", handle: "@acme" },
+        { network: "linkedin", label: "LinkedIn", handle: "acme" },
+      ],
+      recordChangedAt: "2026-09-04T10:00:00.000Z",
+    };
+    harness.pending = {
+      loading: false, error: null, refresh: () => {},
+      items: [{ id: "a", title: "Draft the note", summary: "Ready", department: "marketing", rationale: "Filed for your decision", createdAt: "2026-09-04" }],
+    };
+    harness.trust = {
+      loading: false, configured: true, error: null, bySlug: {},
+      departments: [{ slug: "marketing", name: "Marketing", acts: [{ label: "Draft a campaign", lane: "confirm" }] }],
+    };
+    renderAt({ ...CAMPAIGNS, artifacts: [{ routingState: "Active + approval-gated", recentDispatches: { failed: 1 } }], submissions: [{ id: "s" }] });
+    scan("populated");
+  });
+
+  it("shows no number anywhere that a real record did not produce", () => {
+    // Every figure on a first-use page must be the absent mark. A digit here means something
+    // invented one, which is the failure mode this whole surface is built against.
+    renderAt();
+    const figures = [...host.querySelectorAll(".social-figure")];
+    expect(figures.length).toBeGreaterThan(6);
+    for (const figure of figures) {
+      expect(figure.textContent ?? "", "a figure carries a number on an empty workspace")
+        .not.toMatch(/[0-9]/);
+    }
   });
 });
 

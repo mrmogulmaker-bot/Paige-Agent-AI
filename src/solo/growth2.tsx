@@ -2,7 +2,7 @@
 import React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
-import { subtabPath } from "@/lib/routing/tierBranches";
+import { branchPath, subtabPath } from "@/lib/routing/tierBranches";
 import { Ic, PageHead } from "./_shared";
 import { useSoloCampaigns } from "./useSoloCampaigns";
 import { CatalogOffers } from "./catalog-offers";
@@ -293,9 +293,9 @@ function PipelineSurface({ data, setDetail }) {
 // placement only once a supported provider records it) and the Vibe Studio redirect for creative
 // work. `Performance()` below keeps its own "Social performance" UNAVAILABLE card, and the two do
 // not contradict each other — neither claims a provider figure.
-function Social({ data }) {
+function Social({ data, onOpenCompass, onOpenPipeline }) {
   const askPaige = React.useCallback(() => window.dispatchEvent(new CustomEvent("paige:open", { detail: { prompt: "Using only the social accounts on record for this workspace, tell me which are recorded and which are not. Do not report followers, reach, engagement, a publishing queue, a schedule, or where anything went live — none of those exist here. If nothing is recorded, say so." } })), []);
-  return <SocialCommand campaigns={data} onOpenStudio={openStudio} onAskPaige={askPaige}/>;
+  return <SocialCommand campaigns={data} onOpenStudio={openStudio} onAskPaige={askPaige} onOpenCompass={onOpenCompass} onOpenPipeline={onOpenPipeline}/>;
 }
 
 function Performance({ data }) {
@@ -371,6 +371,12 @@ export const GrowthHub=()=>{
   const openCatalogOffers=React.useCallback((resumeTerms=false)=>{
     navigate(`${subtabPath("solo",params.account,"growth","catalog")}?origin=sales${resumeTerms === true ? "&resume=terms" : ""}`);
   },[navigate,params.account]);
+  const openCompass=React.useCallback(()=>{
+    navigate(branchPath("solo",params.account,"trust-compass"));
+  },[navigate,params.account]);
+  const openPipeline=React.useCallback(()=>{
+    navigate(subtabPath("solo",params.account,"growth","pipeline"));
+  },[navigate,params.account]);
   const openClients=React.useCallback(()=>{
     navigate(`${subtabPath("solo",params.account,"clients","people")}?origin=sales`);
   },[navigate,params.account]);
@@ -404,7 +410,7 @@ export const GrowthHub=()=>{
   else if(tab==="catalog") body=<Catalog data={data} setDetail={setDetail} initialType={requestedType}/>;
   else if(tab==="sales") body=<Sales data={data} setDetail={setDetail} onOpenCatalog={openCatalogOffers} onOpenClients={openClients}/>;
   else if(tab==="pipeline") body=<PipelineSurface data={data} setDetail={setDetail}/>;
-  else if(tab==="social") body=<Social data={data}/>;
+  else if(tab==="social") body=<Social data={data} onOpenCompass={openCompass} onOpenPipeline={openPipeline}/>;
   else if(tab==="performance") body=<Performance data={data}/>;
   return <div className="solo-campaigns" data-campaigns-view={tab}><h1 className="campaigns-sr-only">Campaigns</h1><CampaignTabs tabs={tabs} current={tab} setCurrent={setTab}/><div id="campaigns-tabpanel" role="tabpanel" aria-labelledby={`campaigns-tab-${tab}`} className="campaigns-scroll">{legacy?<PageHead eyebrow="Campaigns" title={LEGACY[legacy].label}/>:null}{tab==="catalog" && query.get("origin")==="sales" && !workspaceChanged && data.tenantId && data.phase!=="resolving" && <div className="so-source-return"><button type="button" className="btn btn-s btn-p" onClick={()=>navigate(`${subtabPath("solo",params.account,"growth","sales")}${query.get("resume")==="terms" ? "?resume=terms" : ""}`)}>{query.get("resume")==="terms" ? "Return to commercial terms" : "Return to Sales"}</button><span>Finish offer setup here in Catalog, then return when ready.</span></div>}{body}</div><DetailDrawer detail={detail} onClose={closeDetail}/></div>;
 };

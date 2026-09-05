@@ -1,5 +1,49 @@
 # Decision Log — chronological one-liners
 
+- **Social Command converts to an executive command surface without touching a single figure
+  (2026-09-05, second pass, no migration)** — owner instruction: *"keep Mineral and Obsidian exactly
+  as theme variants, do not change the evidence logic; this pass is purely about converting this from
+  a truthful internal status console into a truthful executive AI COO command surface."* So: a **Next
+  move** band (`buildNextMove`, a pure re-read of existing figures in a fixed precedence — repair →
+  waiting → no accounts → nothing published → nothing waiting), KPI tiles ranked decision-first, a
+  truth label and glyph on every panel, and an age on what PAIGE has filed. **Zero evidence change**:
+  no row in `docs/delivery/solo-social-command.md` gained a source, lost one, or changed state.
+  **A real defect fixed on the way:** the responsive breakpoints keyed on VIEWPORT width while this
+  surface sits inside the Solo shell's content column, so at a docked 1366 the two-column grid ran at
+  352px/275px and no breakpoint ever fired — `@media` → `@container social` with `container-type:
+  inline-size` on `.social-page`. **Two §13 catches in the pass's own first draft:** the `waiting`
+  KPI asserted "nothing is waiting on your decision" on a FAILED read (the hook returns `[]` for both
+  "none" and "could not check" — `waitingUnknown` now separates them), and a rendered-copy denial
+  guard had to learn denial-by-CONDITION ("only once a supported provider records where they went
+  live") rather than the surface being reworded into vaguer prose to satisfy it. **§66 drift struck
+  in the same commit:** both the tier-matrix ledger and the delivery map named a **Repurposing**
+  pipeline stage that has never existed — `buildPipeline` returns six (`ideas · drafting · review ·
+  scheduled · published · repair`). **The §39 peer-gate BLOCKED this pass and was right:** the
+  headline `waitingUnknown` fix was contradicted forty lines below itself by an unconditional
+  "Nothing is waiting on you here", and the identical defect sat untouched on the read next door —
+  `campaigns.phase === "error"` was never gated, so `useSoloCampaigns`' `{phase:"error", ...empty}`
+  collapsed four counts to zero and the surface asserted **"Every recorded delivery of yours
+  succeeded"** on a read that never happened, the one sentence here with a real business cost.
+  Fixed as ONE concept — `campaignsUnknown` joins `waitingUnknown` behind a shared `unread()` and a
+  single `UNREAD_NOTE` (§18) — plus two guards that were weaker than they read (a case-sensitive
+  `METRIC` regex that skipped every sentence LEADING with a metric; a fixture regex that caught only
+  SCREAMING_CASE) and a dialog rule that had been converted to `@container` when its box is
+  viewport-sized. **Every new guard was proven to fail without its fix**, because this pass had
+  already shipped one that passed either way. **Owed, unchanged:** authenticated live drive (§32.c);
+  `useSoloPendingActions` not clearing `items` on error is filed separately (two other consumers,
+  §37). **The peer-gate then blocked the FIX too, and was right again:** the predicate keyed on
+  `phase === "error"` when the class is "has not successfully returned" — `loading` and
+  `unavailable` collapse the same counts, and an in-flight read is the MOST reachable of the three
+  (six round trips against two on first paint; a synchronous flip on every tenant switch). Widened
+  to `!== "ready"` plus `pending.loading`, note reworded to "This has not been read" (true of all
+  three states). A THIRD uncovered source surfaced with it: `get_social_presence_evidence`'s three
+  refusals all return a SUCCESSFUL response with zero on-record rows, so a non-admin member was told
+  PAIGE did not know their accounts and given a Record accounts button the server refuses — now
+  `handlesUnknown`, with the hero control gated on the permission its own note already named.
+  **A finding cleared by measurement:** `container-type: inline-size` was argued from spec to
+  contain the fixed dialog; measured in Chromium it does not (scrim and dialog byte-identical with
+  and without it). Chromium only — no Gecko/WebKit binary here.
+
 - **Solo Campaigns → Social becomes Social Command, and gets the first writer `social_handles` ever had
   (2026-09-05, migration `20261210000000`)** — the tab was one fixed UNAVAILABLE panel; it is now a
   surface where every tile names its source or its absence, and where an owner can RECORD the accounts
