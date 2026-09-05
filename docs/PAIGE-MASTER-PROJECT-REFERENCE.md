@@ -212,7 +212,7 @@ another can read that other tenant's client book and, through the `EXISTS`, its 
 
 ### PAIGE Rail — a workspace-level outcome record exists (SCR-2026-09-05, 2026-09-05)
 
-**Status: PR open**, migration `20261211000000_paige_can_show_her_work.sql`. This is **SCR-1** from
+**Status: PR open**, migration `20261212000000_paige_can_show_her_work.sql`. This is **SCR-1** from
 `docs/architecture/paige-spine-tool-migration-map.md`, raised and approved by the owner on
 2026-09-05 and recorded as `SCR-2026-09-05` in `docs/architecture/paige-spine-foundation.md`. The
 map named it as the blocker on **47 of 60 actions and every wave from 3 onward**.

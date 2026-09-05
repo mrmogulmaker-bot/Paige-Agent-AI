@@ -33,7 +33,7 @@ tenant-scoped reader that unions `paige_client_events` with `paige_workspace_eve
 shape for *"PAIGE did a thing to this workspace"* — so nothing ever wrote one, and the feed was
 empty for a reason that looked like absence and was actually vocabulary.
 
-`20261211000000_paige_can_show_her_work.sql` adds that shape: `source_kind='capability_run'`,
+`20261212000000_paige_can_show_her_work.sql` adds that shape: `source_kind='capability_run'`,
 a `capability_key` column, five outcomes (`capability_succeeded` · `_failed` · `_refused` ·
 `_unreachable` · `_outcome_unknown`), and `record_capability_run(...)` for service-role callers.
 

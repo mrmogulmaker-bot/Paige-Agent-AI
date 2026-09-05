@@ -199,23 +199,11 @@ describe("Solo Systems Check workspace", () => {
   });
 
   // A destination that cannot finish the job says so. Both checks carrying a caveat today name a
-  // capability the tenant genuinely does not have — social cannot CONNECT an account for
-  // publishing, and nothing on Solo can set a stage's closing role (task #26). Without this the
-  // console would name a next action the owner cannot complete and would look like it had helped
-  // (§70/§13). The caveat is a rendered string, not a comment, and this test is what keeps it
-  // rendered: it is the exact thing a later refactor of the action row drops silently.
-  //
-  // REPOINTED 2026-09-05 — a cross-PR race, and worth recording because neither author could
-  // have seen it. This test (#935) asserted the substring "connect an account", which matched the
-  // caveat that stood until #938. #938 then SHIPPED the recording capability and rewrote that
-  // caveat honestly (`systems-check-areas.ts:249-262`): the page can now record the accounts, and
-  // what it still cannot do is connect one for PUBLISHING. Both PRs were green alone and red
-  // together, and `main` carried the failure.
-  //
-  // The assertion moves, not the caveat. Restoring the old wording to satisfy a test would make
-  // the console claim a capability gap that no longer exists — a §13 lie in the product to keep a
-  // §13 fence green. It now pins the part that is still TRUE, and pins it on meaning rather than
-  // on a phrase, so the next honest rewording does not break it again.
+  // capability the tenant genuinely does not have — social has no way to connect an account, and
+  // nothing on Solo can set a stage's closing role (task #26). Without this the console would name
+  // a next action the owner cannot complete and would look like it had helped (§70/§13). The
+  // caveat is a rendered string, not a comment, and this test is what keeps it rendered: it is the
+  // exact thing a later refactor of the action row drops silently.
   it("states the caveat when the destination cannot finish the job", () => {
     harness.systems.mockReturnValue({
       ...baseSystems,
@@ -230,7 +218,7 @@ describe("Solo Systems Check workspace", () => {
     const caveats = Array.from(host.querySelectorAll(".sc-caveat")).map((n) => n.textContent ?? "");
     expect(caveats).toHaveLength(2);
     expect(caveats.some((t) => t.includes("closing role"))).toBe(true);
-    expect(caveats.some((t) => t.includes("not available yet"))).toBe(true);
+    expect(caveats.some((t) => t.includes("connect an account"))).toBe(true);
   });
 
   // Which path a destination points at is pinned in systems-check-destinations.contract.test.ts,

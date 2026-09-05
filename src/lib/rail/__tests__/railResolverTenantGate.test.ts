@@ -30,7 +30,7 @@ import { describe, expect, it } from "vitest";
  * Repoint it again whenever the reader moves.
  */
 const FIX = readFileSync(
-  "supabase/migrations/20261211000000_paige_can_show_her_work.sql",
+  "supabase/migrations/20261212000000_paige_can_show_her_work.sql",
   "utf8",
 );
 
