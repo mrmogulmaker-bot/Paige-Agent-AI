@@ -236,6 +236,21 @@ export function buildAuthorizationUrl(opts: {
   return url.toString();
 }
 
+/**
+ * RFC 6749 §5.1 gives meaning to an OMITTED `scope` -- "identical to the scope requested by
+ * the client" -- and gives none to a malformed one. So the KEY'S ABSENCE is what inherits,
+ * and nothing else does. An explicit `null`, a number or an array is a broken response, and
+ * reading a provider's bug as agreement would record privileges nothing ever established.
+ *
+ * A present EMPTY string is a server genuinely saying "none": it parses to [] and is still
+ * refused downstream, which is the pre-existing behaviour and stays that way.
+ */
+function resolveScopes(body: Record<string, unknown>, requestedScopes?: string[]): string[] {
+  if (!("scope" in body)) return requestedScopes ?? [];
+  if (typeof body.scope !== "string") throw new OAuthError("malformed_token_response");
+  return body.scope.split(/\s+/).filter(Boolean);
+}
+
 async function postToken(
   server: AuthorizationServer,
   form: Record<string, string>,
@@ -273,13 +288,7 @@ async function postToken(
     accessToken,
     refreshToken: str(body.refresh_token),
     expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
-    // ABSENT means "unchanged from requested". Present-and-a-string is parsed, so an
-    // explicitly EMPTY scope stays [] and is still refused -- that is a server actually
-    // saying "nothing". Present-but-not-a-string is malformed, and a malformed response
-    // is refused rather than read as agreement: only silence carries the RFC's meaning.
-    scopes: body.scope === undefined || body.scope === null
-      ? (requestedScopes ?? [])
-      : (typeof body.scope === "string" ? body.scope.split(/\s+/).filter(Boolean) : []),
+    scopes: resolveScopes(body, requestedScopes),
   };
 }
 
