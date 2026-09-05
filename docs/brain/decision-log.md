@@ -24,6 +24,15 @@
   doc NOTE it raised was closed in the SAME PR: the tier-matrix God row's Rail cell + honest-gap
   paragraph were tightened to name the pure-operator (`operator_enter_tenant`, no member seat)
   case whose `capability_run` row is silently dropped — the act happens, only the record is lost.
+  **Codex (repo's automated reviewer) then caught a real P2 the peer-gate's security lens missed
+  (§39 — layered, none sufficient alone):** the newly-admitted tenant-less super_admin hitting
+  `comms_connection_summary`/`comms_registration_status` got an opaque "Unknown error", not the
+  documented `tenant_not_resolved` — `tenant_comms_readiness()` RAISEs `COMMS_READINESS_NO_TENANT`
+  and a PostgREST error is a plain object the shared catch can't stringify. Fixed with the same
+  `!crmTenantId` at-rest guard `comms_list_numbers` already uses, on both read tools; failing-first
+  §25.10/§25.11 (without the guard exactly those two fail; with it 265/0). Not a security change —
+  it fails closed either way; a §13/§36 honesty/state-label fix that makes the reads' documented
+  at-rest behavior true.
 
 - **Flow-by-Flow governs EVERY phase of the PAIGE-at-Cowork-Level program (owner-ruled 2026-09-05, LOCKED)**
   — owner directive, verbatim: *"I need to make sure that there's a mandatory rule in place that you use the

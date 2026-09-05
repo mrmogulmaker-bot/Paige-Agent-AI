@@ -2526,10 +2526,12 @@ console.log('\n24. proposal authority requires proven current scope and durable 
 // coaches". Slice B admits super_admin WITHOUT widening to `platform_admin` (a distinct role
 // string) or any tenant role. These drive the REAL handler.
 //
-// Observables: an ADMITTED `comms_connection_summary` reaches its readiness RPC
-// (`tenant_comms_readiness` in rec.rpc); a DENIED one never does and the gate refusal string
-// surfaces in the round-2 model egress. Denial-before-provider is proven on `comms_search_numbers`:
-// a denied role produces NO `comms-search-numbers` outbound invoke.
+// Observables: an ADMITTED `comms_connection_summary` (acting INSIDE a tenant) reaches its
+// readiness RPC (`tenant_comms_readiness` in rec.rpc); a DENIED one never does and the gate refusal
+// string surfaces in the round-2 model egress. Denial-before-provider is proven on
+// `comms_search_numbers`: a denied role produces NO `comms-search-numbers` outbound invoke.
+// 25.10/25.11 cover the tenant-LESS admitted case (super_admin at rest): the reads answer the
+// documented `tenant_not_resolved`, never an opaque "Unknown error" from the readiness RAISE.
 console.log("\ncomms/CRM tool gate — Super Admin admitted, platform_admin denied, no widening");
 {
   const GATE_REFUSAL = "restricted to admins and coaches";
@@ -2539,6 +2541,11 @@ console.log("\ncomms/CRM tool gate — Super Admin admitted, platform_admin deni
     // changes — is what decides. get_actor_access fails CLOSED to tier 'client', which refuses
     // every owner-ops tool before the role gate; a non-client tier isolates the role gate.
     get_actor_access: { data: { tier: "tenant" }, error: null },
+    // An ADMITTED caller is acting INSIDE a tenant (crmTenantId resolved) — the real usable
+    // super_admin path is operator_enter_tenant. The reads now refuse `tenant_not_resolved` at rest
+    // (25.10/25.11), so the admit cases must carry a tenant or they would trip that at-rest guard
+    // instead of reaching readiness.
+    get_paige_persona_context: { data: [{ tenant_id: CALLER_TENANT, tenant_name: "T", playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null }], error: null },
     tenant_comms_readiness: { data: { can_send_sms: false, blocked_reason: null, number: "absent", number_e164: null, a2p: "absent" }, error: null },
     list_tool_autonomy: { data: [], error: null },
   };
@@ -2592,6 +2599,35 @@ console.log("\ncomms/CRM tool gate — Super Admin admitted, platform_admin deni
   });
   assert("25.9 a caller-supplied role/isAdmin in the body cannot admit a denied caller (server-derived)",
     !readinessRan(spoof) && refused(spoof), JSON.stringify({ readiness: readinessRan(spoof), refused: refused(spoof) }));
+
+  // 25.10 / 25.11 — the honesty fix (Codex P2, 2026-09-05). A tenant-less super_admin (at rest,
+  // before entering a workspace) is ADMITTED by the role gate but has no tenant. Before the guard,
+  // comms_connection_summary / comms_registration_status called tenant_comms_readiness(), which
+  // RAISEs COMMS_READINESS_NO_TENANT; that PostgREST error is a plain object, so the shared catch
+  // surfaced "Unknown error" instead of the documented `tenant_not_resolved`. The `!crmTenantId`
+  // guard now answers `tenant_not_resolved` BEFORE the RPC. Failing-first: without the guard the
+  // readiness RPC runs and "Unknown error" reaches the model, so `!readinessRan` alone would fail.
+  const tenantlessRpcs = {
+    get_actor_access: { data: { tier: "tenant" }, error: null },
+    // No workspace resolved — crmTenantId is null, exactly as the SQL current_user_tenant_id() is.
+    get_paige_persona_context: { data: [{ tenant_id: null, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null }], error: null },
+    // Simulate the SQL RAISE the real RPC makes when current_user_tenant_id() is null.
+    tenant_comms_readiness: { data: null, error: { code: "42501", message: "COMMS_READINESS_NO_TENANT" } },
+    list_tool_autonomy: { data: [], error: null },
+  };
+  const egressHas = (r, s) => JSON.stringify(r.modelEgress).includes(s);
+  for (const [n, tool] of [["25.10", "comms_connection_summary"], ["25.11", "comms_registration_status"]]) {
+    const r = await drive({
+      stream: true,
+      extraBody: { threadId: COMMS_THREAD },
+      toolCall: { name: tool, args: {} },
+      rpcOverrides: tenantlessRpcs,
+      tablesExtra: { user_roles: () => [{ role: "super_admin" }] },
+    });
+    assert(`${n} a tenant-less super_admin gets tenant_not_resolved from ${tool}, not "Unknown error"`,
+      !readinessRan(r) && egressHas(r, "tenant_not_resolved") && !egressHas(r, "Unknown error"),
+      JSON.stringify({ readiness: readinessRan(r), tenant_not_resolved: egressHas(r, "tenant_not_resolved"), unknown_error: egressHas(r, "Unknown error") }));
+  }
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);
