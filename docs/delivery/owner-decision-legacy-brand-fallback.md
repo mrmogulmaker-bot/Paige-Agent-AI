@@ -1,5 +1,34 @@
 # Owner decision: does a value in the legacy brand record count as "on file"?
 
+> ## ⛔ RESOLVED 2026-09-05 — PR #958. This decision no longer needs your call.
+>
+> **The question this brief poses turned out to be the wrong question, and answering it either way
+> would have shipped a regression.** It asks *"which of the two answers already live is the right
+> one?"* — but neither was. Two independent facts had been compressed into one field:
+>
+> - **A** — does a value exist at all? For these workspaces: **yes**, in the legacy record.
+> - **B** — did the owner confirm it in Setup? For these workspaces: **no**.
+>
+> `tenant_comms_readiness` answered **A** and dropped **B**. `business_context.readiness` answered
+> **B** and dropped **A**. Each was locally defensible and each was lossy, so picking a winner would
+> have preserved one true fact by continuing to erase the other. The canonical state now carries
+> **both**, through a new state `legacy_sourced` / source `legacy_brand` — which is Option B's shape
+> from §"The options" below, generalised: it is not a rule about these two workspaces, and it is not
+> a UI accommodation.
+>
+> Both reads now derive every identity fact from one internal resolver,
+> `public.business_identity_readiness`, while keeping their different caller gates. The sweep that
+> followed found the same defect on `industry` (four workspaces, no second reader to contradict it)
+> and, in the opposite direction, on `primary_business_email` (three workspaces given an invented
+> `connection_sourced` provenance).
+>
+> **Kept, not deleted**, because the reasoning below is the record of how the contradiction was
+> found and self-reported, and because the options it lays out are what the resolution was measured
+> against. Everything after this banner describes the situation **as it stood on 2026-09-03**.
+>
+> Current contract: `docs/delivery/canonical-readiness-contract.md`.
+
+
 **One decision. Two workspaces affected. It needs your call because the platform is currently
 answering it *both ways at once*, and one of those answers is mine.**
 

@@ -3524,6 +3524,15 @@ prod to test with. It is a forward-looking guard for the first member or client 
 `website_connected` and one `comms_configured` phone half from pass to fail. True under the
 source-of-truth rule; surfaced for an owner decision rather than absorbed.
 
+**Corrected 2026-09-05 (PR #958).** The STATE those two tenants read is no longer
+`needs_confirmation` — it is **`legacy_sourced`** / source `legacy_brand`: the value exists, in the
+legacy record, and was never confirmed. `needs_confirmation` was itself a lossy answer, and the
+contradiction it created with `tenant_comms_readiness` is what forced the canonical contract
+(`docs/delivery/canonical-readiness-contract.md`). **The Systems Check verdicts above are
+unchanged** — every runner grades through `isConfirmed()`, true only for `owner_confirmed`, so
+`legacy_sourced` still flips `website_connected` and the `comms_configured` phone half exactly as
+described. Only the reported state, and the reason the owner is given, are more truthful.
+
 ### Sales agreement schedule detail (2026-09-03, PR #895)
 
 Solo Sales shows recorded start/renewal/end calendar dates without timezone day shifts. Recurring renewal absence is Not stated; non-recurring is Not applicable. The Slice 2 read/write authority matrix remains unchanged; no shared tier code, policy, writer or schema changes. See `docs/delivery/solo-sales-agreement-schedule.md`. Authenticated production and viewport proof owed.
