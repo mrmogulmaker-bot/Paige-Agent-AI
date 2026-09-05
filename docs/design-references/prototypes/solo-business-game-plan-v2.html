@@ -1,0 +1,970 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap">
+<title>Business Game Plan</title>
+<style>
+/* ============================================================================
+   Business Game Plan — Solo Command Center prototype (throwaway, read-only).
+   Product surface uses the shipped .paige-solo token system verbatim so it reads
+   as native to SoloApp. Review chrome is a deliberately separate technical skin.
+   ========================================================================== */
+
+/* ---- PRODUCT TOKENS: mirrored from src/solo/solo-tokens.css ---- */
+.paige-solo{
+  --font:'Geist','Söhne',-apple-system,'Segoe UI',sans-serif;
+  --mono:'Geist Mono',ui-monospace,monospace;
+  --canvas:#F6F5F1;--surface:#FFFFFF;--surface-2:#FBFAF7;--surface-sunk:#F0EEE8;
+  --line:#E5E1D8;--line-soft:#EFECE4;
+  --ink:#171331;--ink-2:#4A4566;--ink-3:#7E7995;--ink-inv:#FBFAF7;
+  --rail:#171331;--rail-2:#221C46;--rail-line:#332C5E;--rail-text:#C9C4E0;
+  --gold:#C9860C;--gold-bright:#E9A83A;--gold-tint:#FBF1DE;--gold-line:#EFDCB4;
+  --violet:#5B3FD6;--violet-2:#7A62E8;--violet-tint:#EEEAFD;--violet-line:#DAD1FA;
+  --ok:#1B7A52;--ok-tint:#E4F2EB;--warn:#B4700A;--warn-tint:#FBF0DD;--bad:#B93E37;--bad-tint:#FAE9E7;
+  --r-s:8px;--r-m:12px;--r-l:18px;--r-xl:26px;
+  --sh-1:0 1px 2px rgba(23,19,49,.05);
+  --sh-2:0 2px 4px rgba(23,19,49,.04),0 12px 28px -12px rgba(23,19,49,.14);
+  --sh-3:0 24px 60px -18px rgba(23,19,49,.28);
+}
+.paige-solo[data-theme="dark"]{
+  --canvas:#0C0A1B;--surface:#141129;--surface-2:#191637;--surface-sunk:#100D24;
+  --line:#282348;--line-soft:#221D3E;
+  --ink:#EFECFA;--ink-2:#B0AACB;--ink-3:#7D779A;--ink-inv:#141129;
+  --rail:#100D24;--rail-2:#1B1738;--rail-line:#282348;--rail-text:#B0AACB;
+  --gold:#E9A83A;--gold-bright:#F5C266;--gold-tint:#2C2211;--gold-line:#4A3A17;
+  --violet:#8A72F5;--violet-2:#A692FF;--violet-tint:#221C4A;--violet-line:#352C68;
+  --ok:#4CC48C;--ok-tint:#12301F;--warn:#E3A63C;--warn-tint:#2E2311;--bad:#EE7A72;--bad-tint:#331817;
+  --sh-1:0 1px 2px rgba(0,0,0,.3);
+  --sh-2:0 2px 4px rgba(0,0,0,.25),0 12px 28px -12px rgba(0,0,0,.5);
+  --sh-3:0 24px 60px -18px rgba(0,0,0,.6);
+}
+
+/* ---- REVIEW CHROME (separate, technical) ---- */
+:root{
+  --rv-bg:#0b0a12;--rv-panel:#14131f;--rv-panel-2:#1c1b2b;--rv-line:#2a2940;
+  --rv-text:#d7d4e6;--rv-text-2:#8f8bad;--rv-accent:#8A72F5;--rv-gold:#E9A83A;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--rv-bg);color:var(--rv-text);
+  font-family:'Geist','Söhne',-apple-system,'Segoe UI',sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  display:flex;flex-direction:column;min-height:100%;
+}
+.rv-topbar{
+  flex:0 0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:10px 16px;background:linear-gradient(180deg,#14131f,#100f18);
+  border-bottom:1px solid var(--rv-line);position:sticky;top:0;z-index:40;
+}
+.rv-brand{display:flex;align-items:center;gap:9px;padding-right:10px;border-right:1px solid var(--rv-line)}
+.rv-mark{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--rv-accent),#5B3FD6);color:#fff;font-weight:800;font-size:12px}
+.rv-brand b{font-size:13px;letter-spacing:-.01em}
+.rv-brand span{font-size:11px;color:var(--rv-text-2)}
+.rv-group{display:flex;align-items:center;gap:6px}
+.rv-label{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--rv-text-2);margin-right:2px}
+.rv-seg{display:inline-flex;background:var(--rv-panel-2);border:1px solid var(--rv-line);border-radius:9px;padding:3px;gap:2px;flex-wrap:wrap}
+.rv-seg button{
+  font:inherit;font-size:12px;color:var(--rv-text-2);background:none;border:0;
+  padding:5px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;
+}
+.rv-seg button:hover{color:var(--rv-text)}
+.rv-seg button[aria-pressed="true"]{background:var(--rv-accent);color:#fff}
+.rv-seg button.rv-warn[aria-pressed="true"]{background:var(--rv-gold);color:#231a06}
+.rv-spacer{flex:1 1 auto;min-width:8px}
+.rv-note{font-size:11.5px;color:var(--rv-text-2)}
+.rv-note b{color:var(--rv-gold);font-weight:600}
+.rv-toggle{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--rv-text-2);cursor:pointer;user-select:none}
+.rv-toggle input{accent-color:var(--rv-accent);width:15px;height:15px}
+
+/* stage that holds the device frame */
+.rv-stage{flex:1 1 auto;min-height:0;overflow:auto;padding:22px;display:grid;place-items:start center;
+  background:
+    radial-gradient(1200px 500px at 50% -10%, rgba(122,98,232,.10), transparent 60%),
+    repeating-linear-gradient(45deg,transparent,transparent 11px,rgba(255,255,255,.012) 11px,rgba(255,255,255,.012) 12px);
+}
+.rv-frame-wrap{display:flex;flex-direction:column;gap:9px;align-items:center}
+.rv-frame-meta{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--rv-text-2)}
+.rv-frame-meta .dot{width:6px;height:6px;border-radius:50%;background:var(--rv-accent)}
+.rv-device{
+  border-radius:16px;overflow:hidden;background:#000;
+  box-shadow:0 40px 90px -30px rgba(0,0,0,.75),0 0 0 1px rgba(255,255,255,.06);
+  transition:width .32s cubic-bezier(.22,1,.36,1),height .32s cubic-bezier(.22,1,.36,1);
+}
+/* the app viewport — this is the SoloApp host the surface fills */
+/* container-type makes the surface reflow to the SIMULATED device width (not the real
+   browser window), so the harness's size switch faithfully shows responsive behavior.
+   Production SoloApp fills the real host, so it uses @media at the same breakpoints. */
+.appviewport{width:100%;height:100%;overflow:hidden;background:var(--canvas);container-type:inline-size}
+
+/* ================= SOLO SHELL (minimal, faithful) ================= */
+.paige-solo{height:100%;display:flex;background:var(--canvas);color:var(--ink);
+  font-family:var(--font);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.paige-solo *{box-sizing:border-box}
+.paige-solo h1,.paige-solo h2,.paige-solo h3,.paige-solo h4{margin:0;font-weight:600;letter-spacing:-.02em;color:var(--ink)}
+.paige-solo p{margin:0}
+/* Reset stays font/cursor only. It must NOT set border/background here: the element
+   selector `.paige-solo button` (0,1,1) would out-specify class rules like `.btn-gold`
+   (0,1,0) and silently strip their fill — the cascade collision the design guide warns of. */
+.paige-solo button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer}
+.paige-solo a{color:var(--violet);text-decoration:none}
+
+/* left nav rail (context only) */
+.snav{flex:0 0 auto;width:62px;background:var(--rail);border-right:1px solid var(--rail-line);
+  display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:4px;color:var(--rail-text)}
+.snav .logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;margin-bottom:8px;
+  background:linear-gradient(135deg,#7A62E8,#5B3FD6);color:#fff;font-weight:800;font-size:14px}
+.snav .nItem{width:40px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--rail-text);opacity:.72}
+.snav .nItem.active{background:rgba(255,255,255,.10);opacity:1;color:#fff}
+.snav .nItem svg{width:18px;height:18px}
+.snav .nspring{flex:1}
+@container(max-width:760px){.snav{display:none}}
+
+.smain{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+
+/* command-center tab strip — faithful to CommandHub */
+.cctabs{flex:0 0 auto;display:flex;align-items:stretch;min-height:44px;
+  padding:0 clamp(14px,2.2vw,30px);gap:5px;background:var(--surface);border-bottom:1px solid var(--line)}
+.cctabs button{position:relative;display:inline-flex;align-items:center;gap:7px;border:0;padding:0 11px;
+  background:transparent;color:var(--ink-3);font-size:11.5px;font-weight:650;cursor:pointer;white-space:nowrap}
+.cctabs button .tdot{width:14px;height:14px;display:grid;place-items:center;color:currentColor}
+.cctabs button[aria-selected="true"]{color:var(--ink);font-weight:800}
+.cctabs button[aria-selected="true"] .tdot{color:var(--gold)}
+.cctabs button .u{position:absolute;inset:auto 8px -1px;height:2px;border-radius:2px;background:var(--gold);opacity:0}
+.cctabs button[aria-selected="true"] .u{opacity:1}
+.cctabs button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;border-radius:6px}
+
+/* ================= GAME PLAN SURFACE ================= */
+.gp{flex:1;min-height:0;min-width:0;display:grid;grid-template-rows:auto minmax(0,1fr);
+  gap:14px;padding:16px clamp(14px,2.2vw,30px) 18px;overflow:hidden}
+
+/* --- Operating brief header --- */
+.gp-brief{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start}
+.gp-kicker{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);
+  display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+.gp-kicker .sep{opacity:.5}
+.gp-brief h1{font-size:clamp(19px,2.1vw,25px);margin:7px 0 6px;letter-spacing:-.025em;text-wrap:balance}
+.gp-narr{font-size:13.5px;color:var(--ink-2);max-width:64ch;line-height:1.5}
+.gp-narr .k{color:var(--ink);font-weight:600}
+.gp-attn{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
+.gp-actions{display:flex;gap:9px;flex:none}
+.btn{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 15px;border-radius:10px;
+  font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  transition:background .15s,transform .12s,box-shadow .15s;white-space:nowrap}
+.btn:hover{background:var(--surface-sunk)}
+.btn:active{transform:translateY(1px)}
+.btn svg{width:15px;height:15px}
+.btn-gold{background:var(--gold);border-color:var(--gold);color:#231703;box-shadow:0 1px 0 rgba(0,0,0,.05)}
+.paige-solo[data-theme="dark"] .btn-gold{color:#20180a}
+.btn-gold:hover{background:var(--gold-bright)}
+.btn:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+.btn-quiet{background:transparent}
+.btn-sm{height:30px;padding:0 11px;font-size:12.5px;border-radius:9px}
+
+/* --- operating field: priority column + rail --- */
+.gp-field{display:grid;grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);gap:16px;min-height:0}
+.gp-col{min-height:0;display:flex;flex-direction:column;gap:14px;overflow:auto;padding-right:2px}
+.gp-col::-webkit-scrollbar{width:9px}
+.gp-col::-webkit-scrollbar-thumb{background:var(--line);border-radius:20px;border:3px solid transparent;background-clip:content-box}
+.gp-rail{min-height:0;display:flex;flex-direction:column;gap:14px;overflow:auto;padding-right:2px}
+@container(max-width:1040px){.gp-field{grid-template-columns:minmax(0,1fr);overflow:auto}.gp-col,.gp-rail{overflow:visible}}
+
+/* card primitive */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);box-shadow:var(--sh-1)}
+.card-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 16px 11px}
+.card-hd h2{font-size:13px;letter-spacing:.02em}
+.eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* proof chips */
+.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:99px;
+  font-size:10.5px;font-weight:700;letter-spacing:.02em;white-space:nowrap;flex:none}
+.chip .cd{width:6px;height:6px;border-radius:50%;background:currentColor}
+.chip-live{background:var(--ok-tint);color:var(--ok)}
+.chip-partial{background:var(--warn-tint);color:var(--warn)}
+.chip-input{background:var(--violet-tint);color:var(--violet)}
+.chip-unavail{background:var(--surface-sunk);color:var(--ink-3)}
+.chip-blocked{background:var(--bad-tint);color:var(--bad)}
+.chip-ghost{background:transparent;border:1px solid var(--line);color:var(--ink-3);font-weight:600}
+
+/* owner badge */
+.own{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px 0 5px;border-radius:99px;
+  font-size:10.5px;font-weight:700;background:var(--surface-sunk);color:var(--ink-2)}
+.own .av{width:15px;height:15px;border-radius:50%;display:grid;place-items:center;font-size:8.5px;font-weight:800;color:#fff}
+.own-you .av{background:linear-gradient(135deg,#4A4566,#171331)}
+.own-paige .av{background:linear-gradient(135deg,#7A62E8,#5B3FD6)}
+.own-team .av{background:linear-gradient(135deg,#C9860C,#E9A83A);color:#231703}
+
+/* --- Best next move (signature) --- */
+/* §11: gold is spent ONLY on the act (the CTA button). The card is distinguished
+   by elevation + a violet accent (the brand's calm ground), never a decorative gold fill. */
+.bnm{position:relative;overflow:hidden;border:1px solid var(--violet-line);
+  background:var(--surface);box-shadow:var(--sh-2)}
+.bnm::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;
+  background:linear-gradient(90deg,var(--violet),var(--violet-2),transparent)}
+.bnm.blocked{border-color:var(--bad-tint)}
+.bnm.blocked::before{background:linear-gradient(90deg,var(--bad),transparent)}
+.bnm-in{padding:16px 18px 17px;display:flex;flex-direction:column;gap:11px}
+.bnm-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.bnm-star{width:26px;height:26px;border-radius:9px;display:grid;place-items:center;flex:none;
+  background:var(--violet-tint);color:var(--violet)}
+.bnm.blocked .bnm-star{background:var(--bad-tint);color:var(--bad)}
+.bnm-lbl{font-size:10.5px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--violet)}
+.bnm.blocked .bnm-lbl{color:var(--bad)}
+.bnm h2{font-size:clamp(16px,1.7vw,20px);letter-spacing:-.02em;text-wrap:balance}
+.bnm-why{font-size:13px;color:var(--ink-2);max-width:60ch;line-height:1.5}
+.bnm-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.bnm-cta{display:flex;gap:9px;flex-wrap:wrap;margin-top:3px}
+.bnm-block{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--bad);
+  background:var(--bad-tint);border:1px solid var(--bad-tint);padding:9px 11px;border-radius:var(--r-m)}
+.bnm-block svg{width:16px;height:16px;flex:none;margin-top:1px}
+
+/* --- Priority path list --- */
+.pp-list{display:flex;flex-direction:column}
+.pp{border-top:1px solid var(--line-soft);padding:12px 16px}
+.pp:first-child{border-top:0}
+.pp-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start;cursor:pointer}
+.pp-rank{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;flex:none;margin-top:1px;
+  font-size:11px;font-weight:800;background:var(--surface-sunk);color:var(--ink-3);font-family:var(--mono)}
+.pp-main{min-width:0}
+.pp-title{font-size:13.5px;font-weight:650;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pp-why{font-size:12.5px;color:var(--ink-3);margin-top:3px;line-height:1.45}
+.pp-tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px;align-items:center}
+.pp-caret{flex:none;color:var(--ink-3);transition:transform .2s;margin-top:2px}
+.pp[aria-expanded="true"] .pp-caret{transform:rotate(180deg)}
+.pp-detail{display:grid;grid-template-rows:0fr;transition:grid-template-rows .26s cubic-bezier(.22,1,.36,1)}
+.pp[aria-expanded="true"] .pp-detail{grid-template-rows:1fr}
+.pp-detail>div{overflow:hidden}
+.pp-detail-in{padding:11px 0 3px 34px;display:flex;flex-direction:column;gap:10px}
+.pp-fact{display:grid;grid-template-columns:104px minmax(0,1fr);gap:10px;font-size:12.5px}
+.pp-fact .fl{color:var(--ink-3);font-weight:600}
+.pp-fact .fv{color:var(--ink-2)}
+.pp-detail .bnm-cta{margin-top:2px}
+.pp.is-blocked .pp-rank{background:var(--bad-tint);color:var(--bad)}
+
+/* --- Foundation list --- */
+.fnd{display:flex;flex-direction:column}
+.fnd-row{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:11px;align-items:center;
+  padding:11px 16px;border:0;border-top:1px solid var(--line-soft);text-align:left;width:100%;background:none;transition:background .12s}
+.fnd-row:first-child{border-top:0}
+.fnd-row:hover{background:var(--surface-2)}
+.fnd-row:focus-visible{outline:2px solid var(--violet);outline-offset:-2px}
+.fnd-ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;
+  background:var(--surface-sunk);color:var(--ink-3)}
+.fnd-ic svg{width:15px;height:15px}
+.fnd-row.grounded .fnd-ic{background:var(--ok-tint);color:var(--ok)}
+.fnd-row.incomplete .fnd-ic{background:var(--warn-tint);color:var(--warn)}
+.fnd-row.needs-input .fnd-ic{background:var(--violet-tint);color:var(--violet)}
+.fnd-body{min-width:0}
+.fnd-name{font-size:13px;font-weight:600;color:var(--ink)}
+.fnd-note{font-size:11.5px;color:var(--ink-3);margin-top:1px;overflow:hidden;text-overflow:ellipsis}
+.fnd-go{color:var(--ink-3);flex:none;display:flex;align-items:center;gap:4px}
+.fnd-go svg{width:15px;height:15px}
+
+/* coverage meter */
+.cov{padding:13px 16px 15px;border-top:1px solid var(--line-soft)}
+.cov-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.cov-top b{font-size:19px;font-family:var(--mono);letter-spacing:-.01em;color:var(--ink)}
+.cov-top b .of{color:var(--ink-3);font-size:13px;font-weight:500}
+.cov-bar{height:7px;border-radius:99px;background:var(--surface-sunk);overflow:hidden;margin-top:9px;display:flex}
+.cov-bar i{display:block;height:100%}
+.cov-bar .g{background:var(--ok)}
+.cov-bar .p{background:var(--warn)}
+.cov-cap{font-size:11.5px;color:var(--ink-3);margin-top:8px;line-height:1.45}
+
+/* work in motion */
+.mot-first{padding:16px;display:flex;flex-direction:column;gap:9px;align-items:flex-start}
+.mot-ic{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;
+  background:var(--violet-tint);color:var(--violet)}
+.mot-ic svg{width:18px;height:18px}
+.mot-first h3{font-size:13.5px}
+.mot-first p{font-size:12.5px;color:var(--ink-3);line-height:1.5;max-width:44ch}
+.mot-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;
+  padding:11px 16px;border-top:1px solid var(--line-soft)}
+.mot-row:first-child{border-top:0}
+.mot-name{font-size:13px;font-weight:600;color:var(--ink)}
+.mot-sub{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+.mot-count{font-size:12px;font-weight:700;color:var(--ink-2);font-family:var(--mono);white-space:nowrap}
+.mot-caveat{font-size:11px;color:var(--ink-3);padding:10px 16px 13px;line-height:1.45;border-top:1px solid var(--line-soft);
+  display:flex;gap:7px}
+.mot-caveat svg{width:14px;height:14px;flex:none;margin-top:1px;color:var(--ink-3)}
+
+/* paige partner strip */
+.pg-partner{background:linear-gradient(135deg,var(--rail),var(--rail-2));border-color:var(--rail-line);color:var(--rail-text)}
+.pg-partner .card-hd h2{color:#fff}
+.pg-partner .eyebrow{color:#B9B2E0}
+.pg-partner-in{padding:0 16px 15px;display:flex;flex-direction:column;gap:11px}
+.pg-partner p{font-size:12.5px;color:var(--rail-text);line-height:1.5}
+.pg-seed{display:flex;flex-direction:column;gap:7px}
+.pg-seed button{text-align:left;display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:var(--r-m);
+  background:rgba(255,255,255,.055);border:1px solid var(--rail-line);color:#EDEAFB;font-size:12.5px;transition:background .14s}
+.pg-seed button:hover{background:rgba(255,255,255,.10)}
+.pg-seed button:focus-visible{outline:2px solid var(--violet-2);outline-offset:2px}
+.pg-seed button svg{width:15px;height:15px;color:var(--gold-bright);flex:none}
+.pg-open{background:#fff;color:#171331;border-color:#fff;align-self:flex-start}
+.paige-solo[data-theme="dark"] .pg-open{background:var(--violet);color:#fff;border-color:var(--violet)}
+
+/* empty-state hero (first-use) */
+.first{grid-row:1 / -1;display:grid;place-items:center;padding:8px}
+.first-in{max-width:560px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px}
+.first-badge{width:56px;height:56px;border-radius:18px;display:grid;place-items:center;
+  background:linear-gradient(135deg,#7A62E8,#5B3FD6);color:#fff;box-shadow:var(--sh-2)}
+.first-badge svg{width:26px;height:26px}
+.first h1{font-size:clamp(20px,2.4vw,26px);letter-spacing:-.02em}
+.first p{font-size:13.5px;color:var(--ink-2);max-width:52ch;line-height:1.55}
+.first-steps{display:grid;gap:9px;width:100%;max-width:460px;text-align:left;margin-top:4px}
+.first-step{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:11px;align-items:center;
+  padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);transition:background .12s}
+.first-step:hover{background:var(--surface-2)}
+.first-step .num{width:22px;height:22px;border-radius:7px;background:var(--violet-tint);color:var(--violet);
+  display:grid;place-items:center;font-weight:800;font-size:11px;font-family:var(--mono)}
+.first-step .st{min-width:0}
+.first-step .st b{font-size:13px;font-weight:600;color:var(--ink);display:block}
+.first-step .st span{font-size:11.5px;color:var(--ink-3)}
+.first-step .go{color:var(--ink-3);display:flex}
+.first-step .go svg{width:16px;height:16px}
+.first-cta{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;justify-content:center}
+
+/* skeleton */
+.sk{background:linear-gradient(90deg,var(--surface-sunk) 25%,var(--line-soft) 37%,var(--surface-sunk) 63%);
+  background-size:400% 100%;animation:shim 1.3s ease infinite;border-radius:7px}
+@keyframes shim{0%{background-position:100% 0}100%{background-position:-100% 0}}
+.sk-line{height:12px;margin:7px 0}
+
+/* error / stale */
+.errbox{padding:22px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.errbox .ei{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--bad-tint);color:var(--bad)}
+.errbox .ei svg{width:20px;height:20px}
+.errbox h3{font-size:14px}.errbox p{font-size:12.5px;color:var(--ink-3);max-width:40ch}
+.stale-banner{display:flex;align-items:center;gap:9px;padding:9px 13px;border-radius:var(--r-m);
+  background:var(--warn-tint);border:1px solid var(--gold-line);color:var(--warn);font-size:12.5px;font-weight:600}
+.stale-banner svg{width:15px;height:15px;flex:none}
+
+/* toast */
+.toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%) translateY(6px);
+  background:var(--ink);color:var(--ink-inv);padding:9px 15px;border-radius:99px;font-size:12.5px;font-weight:600;
+  box-shadow:var(--sh-3);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:20;max-width:80%}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* annotation markers */
+.anno{position:relative}
+.anno::after{content:attr(data-anno);position:absolute;z-index:15;top:-9px;left:10px;
+  font-size:9.5px;font-weight:700;letter-spacing:.02em;background:var(--rv-accent);color:#fff;
+  padding:2px 7px;border-radius:99px;box-shadow:0 4px 10px -3px rgba(0,0,0,.4);white-space:nowrap;pointer-events:none;
+  opacity:0;transition:opacity .15s}
+body.show-anno .anno{outline:1px dashed rgba(122,98,232,.55);outline-offset:2px;border-radius:6px}
+body.show-anno .anno::after{opacity:1}
+
+/* reveal animation (from a VISIBLE rest — starts at full opacity so thumbnail/rest frame is complete) */
+.gp .card,.gp-brief,.bnm{animation:rise .5s cubic-bezier(.22,1,.36,1) backwards}
+.gp .gp-col>*:nth-child(2){animation-delay:.05s}
+.gp .gp-rail>*:nth-child(1){animation-delay:.06s}
+.gp .gp-rail>*:nth-child(2){animation-delay:.11s}
+.gp .gp-rail>*:nth-child(3){animation-delay:.15s}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}}
+body.reduce-motion *{animation:none!important;transition:none!important}
+
+/* approval panel (bottom sheet in review chrome) */
+.rv-approve{flex:0 0 auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 16px;background:linear-gradient(0deg,#14131f,#100f18);border-top:1px solid var(--rv-line)}
+.rv-approve .lbl{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--rv-text-2)}
+.rv-approve .ipt{flex:1 1 260px;min-width:180px;background:var(--rv-panel-2);border:1px solid var(--rv-line);
+  border-radius:9px;padding:8px 11px;color:var(--rv-text);font:inherit;font-size:12.5px}
+.rv-approve .ipt::placeholder{color:var(--rv-text-2)}
+.rv-btn{font:inherit;font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:9px;border:1px solid var(--rv-line);
+  background:var(--rv-panel-2);color:var(--rv-text);cursor:pointer}
+.rv-btn:hover{border-color:var(--rv-accent)}
+.rv-btn.go{background:var(--rv-accent);border-color:var(--rv-accent);color:#fff}
+.rv-btn.rej{color:#EE7A72}
+.rv-verdict{font-size:12.5px;color:var(--rv-gold);font-weight:600}
+
+@media(max-width:720px){
+  .rv-topbar{gap:9px;padding:9px 11px}
+  .rv-note{display:none}
+  .rv-stage{padding:12px}
+}
+</style>
+
+<!-- ================= REVIEW CHROME ================= -->
+<div class="rv-topbar">
+  <div class="rv-brand">
+    <div class="rv-mark">P</div>
+    <div><b>Business Game Plan</b><br><span>Solo Command Center · interactive prototype</span></div>
+  </div>
+
+  <div class="rv-group">
+    <span class="rv-label">State</span>
+    <div class="rv-seg" id="stateSeg" role="group" aria-label="Prototype state"></div>
+  </div>
+
+  <div class="rv-spacer"></div>
+
+  <div class="rv-group">
+    <span class="rv-label">Size</span>
+    <div class="rv-seg" id="vpSeg" role="group" aria-label="Viewport">
+      <button data-vp="1536" aria-pressed="true">1536×770</button>
+      <button data-vp="1366">1366×768</button>
+      <button data-vp="1024">1024×768</button>
+      <button data-vp="900">900×1000</button>
+    </div>
+  </div>
+  <div class="rv-group">
+    <span class="rv-label">Theme</span>
+    <div class="rv-seg" id="themeSeg" role="group" aria-label="Theme">
+      <button data-theme="light" aria-pressed="true">Light</button>
+      <button data-theme="dark">Dark</button>
+    </div>
+  </div>
+  <label class="rv-toggle"><input type="checkbox" id="motionTgl"> Reduce motion</label>
+  <label class="rv-toggle"><input type="checkbox" id="annoTgl"> Annotations</label>
+  <button class="rv-btn" id="switchBtn" title="Simulate switching workspace — the surface must fully clear and remount">Switch workspace ⇄</button>
+</div>
+
+<div class="rv-stage" id="stage">
+  <div class="rv-frame-wrap">
+    <div class="rv-frame-meta"><span class="dot"></span> <span id="frameLabel">Desktop · 1536×770 · Light</span> <span style="opacity:.5">· surface fills the SoloApp host; sizes below simulate that host</span></div>
+    <div class="rv-device" id="device">
+      <div class="appviewport">
+        <div class="paige-solo" id="solo" data-theme="light">
+          <!-- left rail -->
+          <nav class="snav" aria-hidden="true">
+            <div class="logo">P</div>
+            <div class="nItem active" title="Command Center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+            <div class="nItem" title="Paige"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.2 5.2L20 10l-5.8 1.8L12 17l-2.2-5.2L4 10l5.8-1.8z"/></svg></div>
+            <div class="nItem" title="Clients"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 3-4.6 5.5-4.6S13.9 16 14.5 19"/><path d="M16 7.5a3 3 0 010 5.6"/></svg></div>
+            <div class="nItem" title="Campaigns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l16-6-4 15-4-5-4 2z"/></svg></div>
+            <div class="nspring"></div>
+            <div class="nItem" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg></div>
+          </nav>
+          <!-- main -->
+          <div class="smain">
+            <div class="cctabs" role="tablist" aria-label="Command Center sections" id="cctabs"></div>
+            <div id="panel" style="flex:1;min-height:0;min-width:0;position:relative;overflow:hidden"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="rv-approve">
+  <span class="lbl">Decision</span>
+  <input class="ipt" id="notes" placeholder="Notes for revision — what to change, keep, or question…">
+  <button class="rv-btn go" data-decide="approve">Approve visual direction</button>
+  <button class="rv-btn" data-decide="revise">Request revision</button>
+  <button class="rv-btn rej" data-decide="reject">Reject</button>
+  <span class="rv-verdict" id="verdict"></span>
+</div>
+
+<script>
+"use strict";
+/* ---------- ICONS ---------- */
+const I = {
+  spark:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>',
+  refresh:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0115.5-6.3L21 8"/><path d="M21 4v4h-4"/><path d="M21 12a9 9 0 01-15.5 6.3L3 16"/><path d="M3 20v-4h4"/></svg>',
+  arrow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  caret:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  star:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 5.5L20 9.3l-4.4 3.7L17 19l-5-3.2L7 19l1.4-6L4 9.3l5.8-.8z"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+  building:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1"/></svg>',
+  users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-2.8 2.8-4.5 5.5-4.5S14 16.2 14.5 19"/><path d="M16 6.5a3 3 0 010 5.6"/></svg>',
+  tag:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l8-8 9 1 1 9-8 8z"/><circle cx="15.5" cy="8.5" r="1.4"/></svg>',
+  plug:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 01-10 0z"/><path d="M12 16v5"/></svg>',
+  brain:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4a3 3 0 00-3 3 3 3 0 00-1 5 3 3 0 002 4 3 3 0 003 2V4z"/><path d="M15 4a3 3 0 013 3 3 3 0 011 5 3 3 0 01-2 4 3 3 0 01-3 2V4z"/></svg>',
+  activity:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>',
+  alert:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3z"/><path d="M12 9v4M12 17h.01"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>',
+  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  compass:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  target:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4"/></svg>'
+};
+
+/* ---------- proof chip helper ---------- */
+function chip(kind){
+  const map={live:['chip-live','Live'],partial:['chip-partial','Partial'],input:['chip-input','Needs input'],
+    unavail:['chip-unavail','Unavailable'],blocked:['chip-blocked','Blocked']};
+  const[c,t]=map[kind]||map.unavail;
+  return `<span class="chip ${c}"><span class="cd"></span>${t}</span>`;
+}
+function ownerBadge(kind){
+  const m={you:['own-you','You','ME'],paige:['own-paige','PAIGE','P'],team:['own-team','Growth · a specialist','G']};
+  const[c,label,av]=m[kind]||m.paige;return `<span class="own ${c}"><span class="av">${av}</span>${label}</span>`;
+}
+
+/* ---------- DATASETS (deterministic, representative sample data — NOT a real account) ----------
+   Business used is a generic advisory practice (coaching-generic, §2-clean: no finance/credit).
+   Every value carries an honest proof state. Nothing here is a live read. */
+const DATA = {
+  empty:{
+    tag:'New workspace',
+    greeting:{name:'Jordan',kicker:['Clearpath Advisory','Solo','Thursday, September 3']},
+    narrative:`This is day one. PAIGE can't ground a plan yet — she needs the shape of your business first. <span class="k">Start with Business Context; the rest of the plan builds itself from there.</span>`,
+    attention:[],
+    empty:true,
+    steps:[
+      {n:1,b:'Complete your Business Context',s:'Who you serve and what you sell',dest:'Settings › Setup'},
+      {n:2,b:'Add your first offer',s:'So PAIGE knows what work to move',dest:'Campaigns › Catalog'},
+      {n:3,b:'Connect one operating system',s:'Calendar or email, to act for real',dest:'Settings › Connections'}
+    ]
+  },
+  partial:{
+    tag:'Partial foundation',
+    greeting:{name:'Jordan',kicker:['Clearpath Advisory','Solo','Thursday, September 3']},
+    narrative:`PAIGE has read <span class="k">3 of 5 foundations</span>. She knows who you are and who you serve — but not what you sell, so she can't yet move revenue work. <span class="k">One offer unlocks the pricing, funnel and follow-up plan.</span>`,
+    attention:[{t:'2 drafts waiting',k:'live'},{t:'Setup 60%',k:'partial'}],
+    best:{title:'Add your first offer in Catalog',why:'Everything commercial — pricing pages, proposals, follow-ups — waits on one real offer. PAIGE has your audience and voice ready to build it with you.',owner:'you',proof:'partial',
+      cta:[{label:'Open Catalog',dest:'Campaigns › Catalog',primary:true},{label:'Draft it with PAIGE',dest:'PAIGE',paige:true}]},
+    priorities:[
+      {rank:2,title:'Confirm your positioning statement',why:'PAIGE drafted one from your Setup answers. A yes makes it the spine of every page and email.',owner:'paige',proof:'partial',
+        detail:{evidence:'Draft proposal on your Business Context (get_solo_setup_context)',happens:'Approve and PAIGE writes it into your brand voice everywhere copy is generated.',dest:'Settings › Setup'},cta:[{label:'Review the draft',dest:'Settings › Setup'}]},
+      {rank:3,title:'Connect a calendar',why:'Booking, availability and session follow-ups stay manual until one calendar is linked.',owner:'you',proof:'input',
+        detail:{evidence:'No calendar connection found (useCalendarConnections)',happens:'PAIGE can offer real times and send confirmations for you.',dest:'Settings › Connections'},cta:[{label:'Connect calendar',dest:'Settings › Connections'}]}
+    ],
+    foundation:[
+      {name:'Business identity',status:'grounded',note:'Name, positioning, voice — set',dest:'Settings › Setup'},
+      {name:'Audience',status:'grounded',note:'Ideal client defined',dest:'Settings › Setup'},
+      {name:'Offers',status:'needs-input',note:'No offer yet — blocks revenue moves',dest:'Campaigns › Catalog'},
+      {name:'Connected systems',status:'incomplete',note:'Email sender set · calendar missing',dest:'Settings › Connections'},
+      {name:'Knowledge',status:'incomplete',note:'2 sources — add more so PAIGE answers deeper',dest:'Paige › Knowledge'}
+    ],
+    coverage:{grounded:2,partial:2,total:5,cap:'PAIGE grounds the plan from what you’ve set. Two foundations are complete, two partial, one needs input.'},
+    motion:{mode:'first-use'},
+    seed:['Draft my first offer from my audience and voice','Turn my positioning draft into a one-line promise']
+  },
+  grounded:{
+    tag:'Grounded · meaningful',
+    greeting:{name:'Jordan',kicker:['Clearpath Advisory','Solo','Thursday, September 3']},
+    narrative:`Foundations are set and work is moving. <span class="k">3 drafts wait on you</span> and <span class="k">2 clients are going quiet</span>. The highest-value move today: re-engage the two before they lapse.`,
+    attention:[{t:'3 drafts waiting',k:'live'},{t:'2 clients at risk',k:'partial'},{t:'5 follow-ups due',k:'live'}],
+    best:{title:'Re-engage 2 clients before they lapse',why:'Both crossed 21 days with no contact — your usual churn signal. PAIGE has follow-ups drafted in your voice, referencing each client’s last session. You approve; she sends.',owner:'paige',proof:'live',
+      cta:[{label:'Review the 2 drafts',dest:'Command Center · decision queue',primary:true},{label:'Open in PAIGE',dest:'PAIGE',paige:true}]},
+    priorities:[
+      {rank:2,title:'Publish the Q4 offer page PAIGE built',why:'Draft page is ready and on-brand. Publishing turns it into a real link you can send and track.',owner:'team',proof:'partial',
+        detail:{evidence:'Draft artifact in Campaigns › Catalog',happens:'Page goes live at your domain; PAIGE wires the intake form to your pipeline.',dest:'Campaigns › Catalog'},cta:[{label:'Preview & publish',dest:'Campaigns › Catalog'}]},
+      {rank:3,title:'Fill 3 open slots this week',why:'Your calendar has 3 unbooked sessions and 6 leads who never booked. PAIGE can nudge them with real times.',owner:'paige',proof:'live',
+        detail:{evidence:'Availability + un-booked leads (usePracticeDashboard)',happens:'PAIGE sends a booking nudge with open times; new bookings land on your calendar.',dest:'Clients › People'},cta:[{label:'See the 6 leads',dest:'Clients › People'}]},
+      {rank:4,title:'Review this week’s revenue read',why:'Won value and pipeline moved since Monday. A 60-second read keeps the plan honest.',owner:'you',proof:'partial',
+        detail:{evidence:'practice_dashboard_metrics (point-in-time, no history)',happens:'Opens the Brief. No trend line yet — the metric is a snapshot, shown honestly.',dest:'Analytics › Brief'},cta:[{label:'Open the Brief',dest:'Analytics › Brief'}]}
+    ],
+    foundation:[
+      {name:'Business identity',status:'grounded',note:'Complete',dest:'Settings › Setup'},
+      {name:'Audience',status:'grounded',note:'Complete',dest:'Settings › Setup'},
+      {name:'Offers',status:'grounded',note:'3 active offers',dest:'Campaigns › Catalog'},
+      {name:'Connected systems',status:'grounded',note:'Calendar · email · pipeline linked',dest:'Settings › Connections'},
+      {name:'Knowledge',status:'incomplete',note:'8 sources — healthy, keep feeding it',dest:'Paige › Knowledge'}
+    ],
+    coverage:{grounded:4,partial:1,total:5,cap:'Four foundations grounded, one healthy-but-growing. PAIGE has enough to plan and act with you.'},
+    motion:{mode:'active',items:[
+      {name:'Client Success',sub:'1 working · 3 awaiting you',count:'5 open'},
+      {name:'Growth',sub:'1 working · offer page draft',count:'1 open'}
+    ]},
+    seed:['Draft the two re-engagement notes for my quiet clients','Nudge my 6 un-booked leads with open times']
+  },
+  blocked:{
+    tag:'Blocked dependency',
+    greeting:{name:'Jordan',kicker:['Clearpath Advisory','Solo','Thursday, September 3']},
+    narrative:`Your plan is ready, but <span class="k">the top move is blocked</span>. PAIGE can draft the outreach — she can’t send it until your email sending identity is verified.`,
+    attention:[{t:'1 move blocked',k:'blocked'},{t:'3 drafts waiting',k:'live'}],
+    best:{title:'Launch the re-engagement sequence',why:'8 quiet clients, drafts ready in your voice. This is the move — but email can’t leave the building yet.',owner:'paige',proof:'blocked',
+      blocked:'Your sending identity isn’t verified, so no email can be sent. Verify it in Connections and this move unblocks — the drafts are kept.',
+      cta:[{label:'Verify sending identity',dest:'Settings › Connections',primary:true}]},
+    priorities:[
+      {rank:2,title:'Approve the 3 drafts that are ready',why:'These don’t depend on email — they’re in-app tasks PAIGE can complete the moment you approve.',owner:'you',proof:'live',
+        detail:{evidence:'paige_approval_queue_v · 3 pending',happens:'PAIGE completes each approved task and records it.',dest:'Command Center · decision queue'},cta:[{label:'Review drafts',dest:'Command Center'}]},
+      {rank:3,title:'Add a second knowledge source',why:'PAIGE answers shallow on your methodology. One more document deepens every client reply.',owner:'you',proof:'input',blocked:false,
+        detail:{evidence:'Knowledge base — 1 source (useSoloKnowledge)',happens:'PAIGE reindexes and can answer methodology questions with citations.',dest:'Paige › Knowledge'},cta:[{label:'Add a source',dest:'Paige › Knowledge'}]}
+    ],
+    foundation:[
+      {name:'Business identity',status:'grounded',note:'Complete',dest:'Settings › Setup'},
+      {name:'Audience',status:'grounded',note:'Complete',dest:'Settings › Setup'},
+      {name:'Offers',status:'grounded',note:'2 active offers',dest:'Campaigns › Catalog'},
+      {name:'Connected systems',status:'incomplete',note:'Sending identity NOT verified — blocks email',dest:'Settings › Connections'},
+      {name:'Knowledge',status:'needs-input',note:'1 source only',dest:'Paige › Knowledge'}
+    ],
+    coverage:{grounded:3,partial:1,total:5,cap:'One connection gap is holding back an otherwise-ready plan. Verify sending identity to clear it.'},
+    motion:{mode:'active',items:[{name:'Client Success',sub:'8 re-engagement notes drafted · held on send',count:'held'}]},
+    seed:['What exactly is blocking my re-engagement sequence?','Draft the sequence so it’s ready the moment sending is verified']
+  },
+  owner:{
+    tag:'Owner action required',
+    greeting:{name:'Jordan',kicker:['Clearpath Advisory','Solo','Thursday, September 3']},
+    narrative:`PAIGE has done what she can without you. <span class="k">One decision only you can make</span> is holding three downstream moves.`,
+    attention:[{t:'1 decision needs you',k:'input'},{t:'3 moves waiting on it',k:'partial'}],
+    best:{title:'Confirm your core offer price',why:'PAIGE found two different prices for your flagship program — one in an old proposal, one in Catalog. She can’t pick for you, and pricing pages, proposals and the funnel all wait on the answer.',owner:'you',proof:'input',
+      cta:[{label:'Set the price in Catalog',dest:'Campaigns › Catalog',primary:true},{label:'Ask PAIGE what she found',dest:'PAIGE',paige:true}]},
+    priorities:[
+      {rank:2,title:'Approve your bio for the offer page',why:'PAIGE drafted it from your Setup and past copy. Needs your eyes before it goes public.',owner:'you',proof:'partial',
+        detail:{evidence:'Draft bio (business context + prior copy)',happens:'Approved bio is used on the published offer page and proposals.',dest:'Settings › Setup'},cta:[{label:'Read the bio',dest:'Settings › Setup'}]},
+      {rank:3,title:'Choose who gets the September check-in',why:'PAIGE has 14 clients due a check-in. She wants your call on the 3 sensitive ones before sending.',owner:'you',proof:'live',
+        detail:{evidence:'14 clients past check-in cadence (usePracticeDashboard attention)',happens:'PAIGE sends the 11 straightforward notes; the 3 you flag stay drafts for your review.',dest:'Clients › People'},cta:[{label:'Review the 14',dest:'Clients › People'}]}
+    ],
+    foundation:[
+      {name:'Business identity',status:'grounded',note:'Complete',dest:'Settings › Setup'},
+      {name:'Audience',status:'grounded',note:'Complete',dest:'Settings › Setup'},
+      {name:'Offers',status:'incomplete',note:'Price conflict — needs your decision',dest:'Campaigns › Catalog'},
+      {name:'Connected systems',status:'grounded',note:'Calendar · email · pipeline linked',dest:'Settings › Connections'},
+      {name:'Knowledge',status:'grounded',note:'9 sources',dest:'Paige › Knowledge'}
+    ],
+    coverage:{grounded:4,partial:1,total:5,cap:'Only one thing needs you — a pricing decision PAIGE isn’t allowed to make for you.'},
+    motion:{mode:'active',items:[{name:'Growth',sub:'Offer page drafted · waiting on price',count:'1 held'},{name:'Client Success',sub:'14 check-ins staged',count:'staged'}]},
+    seed:['Show me the two prices you found and where each came from','Stage the 14 check-ins so I only review the sensitive ones']
+  },
+  motion:{
+    tag:'Work in motion',
+    greeting:{name:'Jordan',kicker:['Clearpath Advisory','Solo','Thursday, September 3']},
+    narrative:`PAIGE and her team are working the plan. <span class="k">Two departments have work in motion</span> — here’s what’s moving and what will come back to you.`,
+    attention:[{t:'6 items in motion',k:'live'},{t:'3 awaiting you',k:'partial'}],
+    best:{title:'Approve the 3 items PAIGE finished',why:'Three drafts are done and waiting on your yes. Approving them lets PAIGE close the loop and file the outcomes.',owner:'you',proof:'live',
+      cta:[{label:'Review the 3',dest:'Command Center · decision queue',primary:true}]},
+    priorities:[
+      {rank:2,title:'Watch: Q4 campaign build',why:'Your Growth department has open work on the Q4 offer page. Nothing needs you yet — it’ll arrive as a draft when it’s ready.',owner:'team',proof:'partial',
+        detail:{evidence:'Department open-work counts (usePaigeDeptStatus) — workspace-level, not per-agent',happens:'When the build is ready it arrives as a draft for your approval.',dest:'Campaigns › Catalog'},cta:[{label:'Open Growth',dest:'Campaigns › Catalog'}]}
+    ],
+    foundation:[
+      {name:'Business identity',status:'grounded',note:'Complete',dest:'Settings › Setup'},
+      {name:'Audience',status:'grounded',note:'Complete',dest:'Settings › Setup'},
+      {name:'Offers',status:'grounded',note:'3 active offers',dest:'Campaigns › Catalog'},
+      {name:'Connected systems',status:'grounded',note:'All linked',dest:'Settings › Connections'},
+      {name:'Knowledge',status:'grounded',note:'11 sources',dest:'Paige › Knowledge'}
+    ],
+    coverage:{grounded:5,partial:0,total:5,cap:'Every foundation is grounded. PAIGE is operating on a complete picture.'},
+    motion:{mode:'active',items:[
+      {name:'Client Success',sub:'2 working · 3 awaiting you',count:'5 open'},
+      {name:'Growth',sub:'2 working · 0 awaiting you',count:'2 open'}
+    ],caveat:true},
+    seed:['What is PAIGE’s Growth team building right now?','Summarize everything in motion and what needs me']
+  }
+};
+
+/* ---------- STATES registry (order in picker) ---------- */
+const STATES=[
+  ['empty','Empty'],['partial','Partial'],['grounded','Grounded'],
+  ['blocked','Blocked'],['owner','Owner action'],['motion','In motion'],
+  ['loading','Loading'],['error','Error / stale']
+];
+
+/* ---------- runtime ---------- */
+let cur='grounded', vp='1536', theme='light', account='A';
+const $=s=>document.querySelector(s);
+const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+
+/* tab strip (faithful order: Business Game Plan · Systems Check · Trust Compass · Mind) */
+const TABS=[['plan','Business Game Plan',I.target,true],['sys','Systems Check',I.activity,false],
+  ['compass','Trust Compass',I.compass,false],['mind','Mind',I.brain,false]];
+function renderTabs(){
+  const strip=$('#cctabs');strip.innerHTML='';
+  TABS.forEach(([k,label,ic,active],i)=>{
+    const b=el('button',null,`<span class="tdot">${ic}</span>${label}<span class="u"></span>`);
+    b.setAttribute('role','tab');b.setAttribute('aria-selected',active?'true':'false');
+    b.tabIndex=active?0:-1;b.dataset.k=k;
+    b.addEventListener('keydown',e=>{
+      let n=null;const N=TABS.length;
+      if(e.key==='ArrowRight')n=(i+1)%N;if(e.key==='ArrowLeft')n=(i-1+N)%N;
+      if(e.key==='Home')n=0;if(e.key==='End')n=N-1;
+      if(n===null)return;e.preventDefault();strip.children[n].focus();
+    });
+    b.addEventListener('click',()=>{ if(k!=='plan') toast('In the real app this opens '+label+'. This prototype models Business Game Plan only.'); });
+    strip.appendChild(b);
+  });
+}
+
+/* proof attention chips in the brief */
+function attn(list){return (list||[]).map(a=>`<span class="chip ${({live:'chip-live',partial:'chip-partial',input:'chip-input',blocked:'chip-blocked'})[a.k]}"><span class="cd"></span>${a.t}</span>`).join('');}
+
+function ctaBtns(list){
+  return (list||[]).map(c=>{
+    const cls=c.primary?'btn btn-gold':c.paige?'btn':'btn btn-sm';
+    const ic=c.paige?I.spark:I.arrow;
+    return `<button class="${cls}" data-dest="${c.dest}" data-paige="${c.paige?1:0}">${c.paige?ic+' ':''}${c.label}${c.paige?'':' '+I.arrow}</button>`;
+  }).join('');
+}
+
+/* ---------- panel renderers ---------- */
+function renderLoading(){
+  const p=$('#panel');p.innerHTML='';
+  const gp=el('div','gp');
+  gp.innerHTML=`
+    <div class="gp-brief"><div>
+      <div class="sk sk-line" style="width:180px;height:11px"></div>
+      <div class="sk" style="width:60%;height:26px;margin:10px 0"></div>
+      <div class="sk sk-line" style="width:80%"></div>
+    </div><div class="sk" style="width:150px;height:36px;border-radius:10px"></div></div>
+    <div class="gp-field">
+      <div class="gp-col">
+        <div class="card sk" style="height:140px;border:0"></div>
+        <div class="card" style="padding:16px">${'<div class="sk sk-line" style="width:70%"></div><div class="sk sk-line" style="width:45%"></div>'.repeat(3)}</div>
+      </div>
+      <div class="gp-rail">
+        <div class="card sk" style="height:200px;border:0"></div>
+        <div class="card sk" style="height:120px;border:0"></div>
+      </div>
+    </div>`;
+  p.appendChild(gp);
+}
+function renderError(){
+  const p=$('#panel');p.innerHTML='';
+  const gp=el('div','gp');
+  const field=el('div','gp-field');
+  const col=el('div','gp-col');
+  const c=el('div','card anno');c.dataset.anno='Region-level error — the rest of the plan still renders';
+  c.innerHTML=`<div class="errbox"><div class="ei">${I.alert}</div>
+    <h3>Couldn’t load your priority path</h3>
+    <p>The connected read didn’t respond. Your foundation and PAIGE are still here — retry the plan.</p>
+    <button class="btn btn-sm" id="retry">${I.refresh} Retry</button></div>`;
+  col.appendChild(c);
+  const rail=el('div','gp-rail');
+  rail.innerHTML=`<div class="card"><div class="card-hd"><div><span class="eyebrow">${I.building} Business foundation</span></div>${chip('partial')}</div>
+    <div class="fnd"><button class="fnd-row grounded"><span class="fnd-ic">${I.check}</span><div class="fnd-body"><div class="fnd-name">Business identity</div><div class="fnd-note">Still available from cache</div></div><span class="fnd-go">${I.arrow}</span></button></div></div>`;
+  field.appendChild(col);field.appendChild(rail);
+  const brief=el('div','gp-brief');
+  brief.innerHTML=`<div>
+    <div class="gp-kicker">Clearpath Advisory <span class="sep">·</span> Solo <span class="sep">·</span> Thursday, September 3</div>
+    <h1>Good afternoon, Jordan.</h1>
+    <div class="stale-banner" style="margin-top:10px">${I.clock} Some data is stale — last read 14 minutes ago. Retrying below.</div>
+  </div><div class="gp-actions"><button class="btn btn-quiet btn-sm" id="retry2">${I.refresh} Refresh</button></div>`;
+  gp.appendChild(brief);gp.appendChild(field);p.appendChild(gp);
+  const retry=()=>{setState('grounded');toast('Retried — plan reloaded.');};
+  $('#retry').onclick=retry;$('#retry2').onclick=retry;
+}
+function renderEmpty(d){
+  const p=$('#panel');p.innerHTML='';
+  const gp=el('div','gp');
+  const first=el('div','first anno');first.dataset.anno='Empty workspace — the most useful first-run state, not a blank canvas';
+  first.innerHTML=`<div class="first-in">
+    <div class="first-badge">${I.target}</div>
+    <h1>Let’s build your game plan.</h1>
+    <p>${d.narrative.replace(/<[^>]+>/g,'')}</p>
+    <div class="first-steps">${d.steps.map(s=>`
+      <button class="first-step" data-dest="${s.dest}"><span class="num">${s.n}</span>
+        <span class="st"><b>${s.b}</b><span>${s.s}</span></span>
+        <span class="go">${I.arrow}</span></button>`).join('')}</div>
+    <div class="first-cta">
+      <button class="btn btn-gold" data-dest="Settings › Setup">${I.arrow} Start Business Context</button>
+      <button class="btn" data-dest="PAIGE" data-paige="1">${I.spark} Or let PAIGE walk you through it</button>
+    </div>
+  </div>`;
+  gp.appendChild(first);p.appendChild(gp);
+}
+function renderPlan(d){
+  const p=$('#panel');p.innerHTML='';
+  const gp=el('div','gp');
+
+  /* --- brief --- */
+  const hr=new Date().getHours();
+  const brief=el('div','gp-brief anno');brief.dataset.anno='Opening operating brief — what’s building, what needs you, the one best move';
+  brief.innerHTML=`<div>
+    <div class="gp-kicker">${d.greeting.kicker.map((x,i)=>i?`<span class="sep">·</span>${x}`:x).join(' ')}</div>
+    <h1>Good afternoon, ${d.greeting.name}.</h1>
+    <p class="gp-narr">${d.narrative}</p>
+    <div class="gp-attn">${attn(d.attention)}</div>
+  </div>
+  <div class="gp-actions">
+    <button class="btn btn-quiet btn-sm" data-refresh="1">${I.refresh} Refresh</button>
+    <button class="btn btn-gold" data-dest="PAIGE" data-paige="1">${I.spark} Put PAIGE to work</button>
+  </div>`;
+  gp.appendChild(brief);
+
+  const field=el('div','gp-field');
+  const col=el('div','gp-col');
+
+  /* --- best next move --- */
+  const b=d.best;
+  const bnm=el('div',`card bnm ${b.proof==='blocked'?'blocked':''} anno`);
+  bnm.dataset.anno='Best next move — the single spotlighted decision';
+  bnm.innerHTML=`<div class="bnm-in">
+    <div class="bnm-top"><div class="bnm-star">${b.proof==='blocked'?I.lock:I.star}</div>
+      <span class="bnm-lbl">${b.proof==='blocked'?'Top move · blocked':'The one move that matters most now'}</span></div>
+    <h2>${b.title}</h2>
+    <p class="bnm-why">${b.why}</p>
+    ${b.blocked?`<div class="bnm-block">${I.alert}<span>${b.blocked}</span></div>`:''}
+    <div class="bnm-meta">${ownerBadge(b.owner)} ${chip(b.proof)}</div>
+    <div class="bnm-cta">${ctaBtns(b.cta)}</div>
+  </div>`;
+  col.appendChild(bnm);
+
+  /* --- priority path --- */
+  const pcard=el('div','card anno');pcard.dataset.anno='Priority path — why · evidence · owner · what happens · where to act';
+  pcard.innerHTML=`<div class="card-hd"><div><span class="eyebrow">${I.target} Priority path</span></div>
+    <span class="chip chip-ghost">Derived from your foundation &amp; findings</span></div>`;
+  const list=el('div','pp-list');
+  d.priorities.forEach(pr=>{
+    const row=el('div',`pp ${pr.proof==='blocked'?'is-blocked':''}`);row.setAttribute('aria-expanded','false');
+    row.innerHTML=`
+      <div class="pp-row" role="button" tabindex="0" aria-expanded="false">
+        <div class="pp-rank">${pr.rank}</div>
+        <div class="pp-main">
+          <div class="pp-title">${pr.title}</div>
+          <div class="pp-why">${pr.why}</div>
+          <div class="pp-tags">${ownerBadge(pr.owner)} ${chip(pr.proof)}</div>
+        </div>
+        <div class="pp-caret">${I.caret}</div>
+      </div>
+      <div class="pp-detail"><div><div class="pp-detail-in">
+        <div class="pp-fact"><span class="fl">Why now</span><span class="fv">${pr.why}</span></div>
+        <div class="pp-fact"><span class="fl">Evidence</span><span class="fv">${pr.detail.evidence}</span></div>
+        <div class="pp-fact"><span class="fl">What happens</span><span class="fv">${pr.detail.happens}</span></div>
+        <div class="pp-fact"><span class="fl">Where</span><span class="fv">${pr.detail.dest}</span></div>
+        <div class="bnm-cta">${ctaBtns(pr.cta)}</div>
+      </div></div></div>`;
+    const head=row.querySelector('.pp-row');
+    const toggle=()=>{const now=row.getAttribute('aria-expanded')==='true';row.setAttribute('aria-expanded',String(!now));head.setAttribute('aria-expanded',String(!now));};
+    head.addEventListener('click',e=>{if(e.target.closest('.btn'))return;toggle();});
+    head.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle();}});
+    list.appendChild(row);
+  });
+  pcard.appendChild(list);
+  col.appendChild(pcard);
+  field.appendChild(col);
+
+  /* --- rail --- */
+  const rail=el('div','gp-rail');
+
+  /* foundation */
+  const fnd=el('div','card anno');fnd.dataset.anno='Business foundation — grounded / needs input / incomplete, each clicks to its owner';
+  const fp=d.coverage.grounded===d.coverage.total?'live':(d.foundation.some(f=>f.status==='needs-input')?'input':'partial');
+  fnd.innerHTML=`<div class="card-hd"><div><span class="eyebrow">${I.building} Business foundation</span></div>${chip(fp)}</div>`;
+  const fl=el('div','fnd');
+  const fIcon={grounded:I.check,incomplete:I.info,'needs-input':I.alert};
+  d.foundation.forEach(f=>{
+    const st=f.status;
+    const r=el('button',`fnd-row ${st}`);
+    r.dataset.dest=f.dest;
+    r.innerHTML=`<span class="fnd-ic">${fIcon[st]||I.info}</span>
+      <div class="fnd-body"><div class="fnd-name">${f.name}</div><div class="fnd-note">${f.note}</div></div>
+      <span class="fnd-go">${statusWord(st)} ${I.arrow}</span>`;
+    fl.appendChild(r);
+  });
+  fnd.appendChild(fl);
+  // coverage meter
+  const cov=el('div','cov');
+  const c=d.coverage;const gw=Math.round(c.grounded/c.total*100),pw=Math.round((c.partial||0)/c.total*100);
+  cov.innerHTML=`<div class="cov-top"><span class="eyebrow">What PAIGE can ground</span>
+    <b>${c.grounded}<span class="of"> / ${c.total}</span></b></div>
+    <div class="cov-bar"><i class="g" style="width:${gw}%"></i><i class="p" style="width:${pw}%"></i></div>
+    <div class="cov-cap">${c.cap}</div>`;
+  fnd.appendChild(cov);
+  rail.appendChild(fnd);
+
+  /* work in motion */
+  const mot=el('div','card anno');mot.dataset.anno='Work in motion — real department status, or an honest first-use state';
+  mot.innerHTML=`<div class="card-hd"><div><span class="eyebrow">${I.activity} Work in motion</span></div>${d.motion.mode==='active'?chip('partial'):chip('unavail')}</div>`;
+  if(d.motion.mode==='active'){
+    const mb=el('div',null);
+    d.motion.items.forEach(m=>{
+      mb.appendChild(el('div','mot-row',`<div><div class="mot-name">${m.name}</div><div class="mot-sub">${m.sub}</div></div><div class="mot-count">${m.count}</div>`));
+    });
+    mot.appendChild(mb);
+    if(d.motion.caveat){
+      mot.appendChild(el('div','mot-caveat',`${I.info}<span>Shown by department — open work and what’s awaiting you. Which specialist handled each item isn’t recorded yet, so we don’t name one.</span>`));
+    }
+  }else{
+    mot.appendChild(el('div','mot-first',`<div class="mot-ic">${I.activity}</div>
+      <h3>Nothing is in motion yet</h3>
+      <p>As you and PAIGE act on the plan, the work she picks up will appear here — drafts, sends, bookings and builds, with what’s waiting on you. It stays empty until there’s real work to show.</p>`));
+  }
+  rail.appendChild(mot);
+
+  /* paige partner */
+  const pg=el('div','card pg-partner anno');pg.dataset.anno='PAIGE partner — opening the ONE conversation is LIVE (openPaige); auto pre-fill of a starter prompt is a pending backend wire (#771), tracked in the evidence plan';
+  pg.innerHTML=`<div class="card-hd"><div><span class="eyebrow">${I.spark} Your operating partner</span></div></div>
+    <div class="pg-partner-in">
+      <p>PAIGE runs the plan with you. Start a conversation seeded to what matters now:</p>
+      <div class="pg-seed">${(d.seed||[]).map(s=>`<button data-dest="PAIGE" data-paige="1" data-seed="${s}">${I.spark}<span>${s}</span></button>`).join('')}</div>
+      <button class="btn pg-open" data-dest="PAIGE" data-paige="1">Open PAIGE ${I.arrow}</button>
+    </div>`;
+  rail.appendChild(pg);
+
+  field.appendChild(rail);
+  gp.appendChild(field);
+  p.appendChild(gp);
+}
+function statusWord(s){return {grounded:'Grounded',incomplete:'Finish',['needs-input']:'Add'}[s]||'Open';}
+
+/* ---------- dest handling (prototype: everything is mocked) ---------- */
+function bindDest(){
+  $('#panel').addEventListener('click',e=>{
+    const t=e.target.closest('[data-dest]');if(!t)return;
+    const dest=t.dataset.dest, paige=t.dataset.paige==='1', seed=t.dataset.seed;
+    if(paige){toast(seed?('Opens PAIGE with: “'+seed+'” — prototype only, nothing sent.'):'Opens the one PAIGE conversation — prototype only.');}
+    else{toast('In the real app this goes to '+dest+'. Prototype navigations are mocked.');}
+  });
+  $('#panel').addEventListener('click',e=>{
+    const r=e.target.closest('[data-refresh]');if(!r)return;
+    toast('Refreshing connected reads… (mocked)');
+  });
+}
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg){
+  let t=$('#toast');if(!t){t=el('div','toast');t.id='toast';$('#panel').appendChild(t);}
+  t.textContent=msg;requestAnimationFrame(()=>t.classList.add('show'));
+  clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600);
+}
+
+/* ---------- state / chrome control ---------- */
+function setState(k){
+  cur=k;
+  [...$('#stateSeg').children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.state===k)));
+  if(k==='loading'){renderLoading();return;}
+  if(k==='error'){renderError();return;}
+  const d=DATA[k];
+  if(d.empty){renderEmpty(d);return;}
+  renderPlan(d);
+}
+function applyVp(v){
+  vp=v;const dev=$('#device');
+  const H=v==='900'?1000:(v==='1536'?770:768);
+  dev.style.width=v+'px';dev.style.height=H+'px';
+  [...$('#vpSeg').children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.vp===v)));
+  updateFrameLabel();
+}
+function applyTheme(t){
+  theme=t;$('#solo').setAttribute('data-theme',t);
+  [...$('#themeSeg').children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===t)));
+  updateFrameLabel();
+}
+function updateFrameLabel(){
+  const name=vp==='1536'?'Desktop':vp==='1366'?'Laptop':vp==='1024'?'Small laptop':'Portrait / tablet';
+  const H=vp==='900'?1000:(vp==='1536'?770:768);
+  $('#frameLabel').textContent=`${name} · ${vp}×${H} · ${theme[0].toUpperCase()+theme.slice(1)}`;
+}
+
+/* workspace switch — proves full remount / clear */
+function switchWorkspace(){
+  account=account==='A'?'B':'A';
+  const solo=$('#solo');
+  solo.style.transition='opacity .16s';solo.style.opacity='.25';
+  $('#panel').innerHTML=`<div class="gp"><div style="grid-row:1/-1;display:grid;place-items:center;color:var(--ink-3);font-size:13px">Switching workspace… clearing all Game Plan state</div></div>`;
+  setTimeout(()=>{
+    // full remount: everything re-renders from the new account's dataset; nothing prior remains
+    renderTabs();setState(cur);solo.style.opacity='1';
+    toast('Workspace '+account+' — plan remounted; no prior-workspace data, filters, or PAIGE context remain.');
+  },520);
+}
+
+/* ---------- build review controls ---------- */
+function buildControls(){
+  const seg=$('#stateSeg');
+  STATES.forEach(([k,label])=>{
+    const b=el('button',null,label);b.dataset.state=k;b.setAttribute('aria-pressed',String(k===cur));
+    b.onclick=()=>setState(k);seg.appendChild(b);
+  });
+  $('#vpSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)applyVp(b.dataset.vp);});
+  $('#themeSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)applyTheme(b.dataset.theme);});
+  $('#motionTgl').addEventListener('change',e=>document.body.classList.toggle('reduce-motion',e.target.checked));
+  $('#annoTgl').addEventListener('change',e=>document.body.classList.toggle('show-anno',e.target.checked));
+  $('#switchBtn').addEventListener('click',switchWorkspace);
+  document.querySelectorAll('[data-decide]').forEach(b=>b.addEventListener('click',()=>{
+    const d=b.dataset.decide,notes=$('#notes').value.trim();
+    const v=$('#verdict');
+    const word=d==='approve'?'Approved':d==='revise'?'Revision requested':'Rejected';
+    v.textContent=`${word}${notes?' — “'+notes+'”':''}. Recorded in this prototype only — nothing was sent.`;
+  }));
+}
+
+/* ---------- init ---------- */
+renderTabs();buildControls();bindDest();applyVp('1536');applyTheme('light');setState('grounded');
+</script>

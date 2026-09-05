@@ -333,6 +333,40 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
+### Business Game Plan is the DEFAULT Command Center landing on Solo (2026-09-05)
+
+The Solo Command Center gained a first sub-tab, **Business Game Plan** (`SoloGamePlanWorkspace`), and
+it is now the **default landing** for the Solo shell. Bare `/command-center` and the legacy
+`/command-center/overview` both redirect (`replace`) to `/command-center/business-game-plan`; the
+`business-game-plan` slug carries `overview` as an alias in `SOLO_BRANCHES` so old deep links resolve.
+Command Center sub-tabs are now **Business Game Plan → Systems Check → Mind** — three REAL tabs;
+Trust Compass's slot (position 3) is reserved for its owner to add a real sub-tab, never a
+dead/placeholder tab (§58).
+
+**No new table, RPC, edge function, migration, or tier flag.** The surface is a §18 composition hook
+(`useSoloGamePlan`) over already-released, tenant-safe reads (`useCommandCenter`, `useSoloSetupBrief`,
+`useCatalogOffers`, `useSoloKnowledge`, `useSoloPendingActions`, `useSystemsCheck("tenant")`,
+`useSoloActivityFeed`). It passes **no** client-supplied `tenant_id` (§9); every read is scoped by the
+session the sub-hooks already resolve. Every visible number is a real numerator/denominator over five
+grounding foundations, or it says "incomplete"/"couldn't load"; an empty recorded feed reads
+"No recorded work yet" (§13). The server-resolved account name + tier render in the kicker and in the
+canonical `data-tenant-account-name`/`-tier` shell markers (§65/§70).
+
+| Tier | Sees Business Game Plan as its Command Center landing |
+|---|---|
+| **God / Super Admin** | — operator runs its own OperatorEntry command center, not the Solo shell |
+| **Agency** (agency-as-tenant) | — AgencyApp is a different shell; the Solo CommandHub is Solo-only |
+| **Standalone Solo** | **✓** default landing |
+| **Sub-account** | **— (sequenced, §60 parity gap noted honestly)** — a sub-account renders through `AgencyApp` at `/business/{account}` today, so its Command Center landing is the shared Agency Core, NOT the Business Game Plan (`canonical-app-url` still resolves `sub_account → …/command-center/overview`). §60 says Solo ≡ Sub-account except billing, so this is a real parity gap; it closes when `/business` mounts `SoloApp` (a separate §65 route-taxonomy slice, another workstream). This slice deliberately touched only `SOLO_BRANCHES`. |
+| **Client** | **403** — denied at the Solo route gate |
+| **Anonymous** | **403** — denied at the Solo route gate |
+
+**`UNVERIFIED` — authenticated owner runtime proof (§32.c).** Every claim above is from the component
+bodies, the composed released reads, automated tests (full suite green), typecheck-clean typed files,
+and a 64/64 headless render drive across all states × light/dark × four Solo viewports. No browser
+drove this surface as a signed-in owner on any tier in this session (the headless CI sandbox has no
+browser/auth tool) — the live-drive is **owed to the next capable session**, not claimed.
+
 ### The Rail records what PAIGE DID, not only what was connected (SCR-2026-09-05, 2026-09-05)
 
 `paige_workspace_events` gained one `source_kind`, `capability_run`, so a workspace-level act — an
@@ -1018,7 +1052,7 @@ Legend as above: **✓** live · **—** not built · **N/A** tier not opened ye
 | `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
 | `connections/registration` | Carrier (10DLC) registration: **PAIGE drafts the regulatory copy**, **the reviewed copy is saved**, and **the business facts blocking the filing are editable here** — a second EDITOR of the one canonical record, not a second record. Setup still owns the full record and its own five-subtab surface | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce. The business-record editor writes through `save_solo_business_context`, the same seam Setup uses, so the two surfaces cannot disagree (§57); it is Owner-only and mounts the canonical adapter only when opened. The four carrier-required representative identity columns are **derived** by `sync_a2p_representative_identity` (20261201000700) — before it, no writer populated them and brand filing could never start. The grading ladder stays in `communications`; this area holds the acts (§18) | N/A | N/A | ✓ | N/A | — |
 | `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
-| `connections/available` | The provider catalogue with per-provider truth badges | **structure-only** — a static catalogue, deliberately | N/A | N/A | ✓ | N/A | — |
+| `connections/available` (visible label: **Add channel**) | A job-led control desk for Email and inbox, Phone and messaging, and Calendar and booking, plus one deliberate Integrations handoff | **source-backed orchestration surface** — lists only canonically operating channels; distinguishes pending, unverified, registration-required, failed-read and unavailable states; withholds the best-next action until owning reads resolve; delegates writes to Communications, Registration, Health or Calendars and performs no provider mutation itself | N/A | N/A | ✓ | N/A | — |
 
 **The caller-ID defect this slice found, recorded because it shipped invisibly (§13).**
 `tenant_phone_numbers.is_primary` decides which number a workspace's outbound calls and texts come

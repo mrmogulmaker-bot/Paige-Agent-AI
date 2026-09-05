@@ -193,33 +193,14 @@ serve(async (req) => {
     return json({ ok: true, already_applied: true, applied_keys: [] });
   }
 
-  // ── Perform the write through the owning contract. ──
-  const syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(scoped),
-  });
-  const syncBody = await syncResponse.json().catch(() => ({ error: "Could not parse sync response" }));
-
-  if (!syncResponse.ok) {
-    console.error("[apply-extraction] sync failed:", syncResponse.status, syncBody);
-    await admin.from("audit_logs").insert({
-      user_id: user.id,
-      entity: "credit_report",
-      action: "extraction_apply_failed",
-      entity_id: body.upload_id,
-      data: { status: syncResponse.status, approved_keys: [...approved], error: syncBody?.error ?? null },
-    });
-    // RELEASE THE CLAIM so the person can try again rather than losing the proposal. Without this,
-    // a transient sync failure would leave the row `applied` with nothing applied — the worst of
-    // both, and unrecoverable from the card.
-    //
-    // TWO THINGS THIS RELEASE HAS TO GET RIGHT, both found by review of the pushed diff.
-    // It reads its own error, because postgrest RESOLVES a rejection rather than throwing — a
-    // release that silently failed would leave exactly the unrecoverable state this exists to
-    // prevent, and say nothing. And it is CONDITIONAL on the row still being `applied`: without
-    // that predicate a concurrent decline would be stomped back to `awaiting_review`, resurrecting
-    // a proposal the person had just dismissed.
+  // Releasing the claim is needed on BOTH failure shapes below — a non-2xx sync RESPONSE and a
+  // transport REJECTION (the fetch itself throwing: DNS, connection reset, timeout). ONE closure so
+  // the two load-bearing properties can never drift between the paths: it reads its own error
+  // (postgrest RESOLVES a rejection rather than throwing, so a silently-failed release would leave
+  // exactly the unrecoverable `applied`-with-nothing-applied state this exists to prevent), and it
+  // is CONDITIONAL on the row still being `applied` (so a concurrent decline is not stomped back to
+  // awaiting_review, resurrecting a proposal the person just dismissed).
+  const releaseClaimOrLog = async () => {
     const { data: released, error: relErr } = await admin.from("credit_report_uploads")
       .update({ extraction_review_state: "awaiting_review" })
       .eq("id", body.upload_id)
@@ -232,6 +213,49 @@ serve(async (req) => {
         message: relErr?.message ?? (released ? null : "row was no longer claimed"),
       }));
     }
+  };
+
+  // ── Perform the write through the owning contract. ──
+  // The fetch is wrapped: a transport REJECTION (the fetch throwing before any response) is NOT the
+  // same as a non-2xx response, and #729 finding 3 was that only the latter released the claim. This
+  // handler has NO outer try/catch around the write (the one at the top only guards body parsing), so
+  // an un-caught throw here escaped `serve` and left the row `applied` with nothing applied. Now a
+  // rejection takes the same audit + conditional release + truthful "nothing was changed" as a 5xx.
+  let syncResponse: Response;
+  let syncBody: any;
+  try {
+    syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(scoped),
+    });
+    syncBody = await syncResponse.json().catch(() => ({ error: "Could not parse sync response" }));
+  } catch (transportErr) {
+    console.error("[apply-extraction] sync transport rejected:", (transportErr as Error)?.message);
+    await admin.from("audit_logs").insert({
+      user_id: user.id,
+      entity: "credit_report",
+      action: "extraction_apply_failed",
+      entity_id: body.upload_id,
+      data: { status: null, approved_keys: [...approved], error: "sync_transport_rejected" },
+    });
+    await releaseClaimOrLog();
+    return json({ error: "I couldn't reach the profile service just now. Nothing was changed — try again." }, 502);
+  }
+
+  if (!syncResponse.ok) {
+    console.error("[apply-extraction] sync failed:", syncResponse.status, syncBody);
+    await admin.from("audit_logs").insert({
+      user_id: user.id,
+      entity: "credit_report",
+      action: "extraction_apply_failed",
+      entity_id: body.upload_id,
+      data: { status: syncResponse.status, approved_keys: [...approved], error: syncBody?.error ?? null },
+    });
+    // RELEASE THE CLAIM (the same closure the transport-rejection path uses) so the person can try
+    // again rather than losing the proposal. Without it a transient sync failure would leave the row
+    // `applied` with nothing applied — unrecoverable from the card.
+    await releaseClaimOrLog();
     return json({ error: "I couldn't save those to the profile. Nothing was changed — try again." }, 502);
   }
 
