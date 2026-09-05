@@ -236,10 +236,37 @@ export function buildAuthorizationUrl(opts: {
   return url.toString();
 }
 
+/**
+ * RFC 6749 §5.1 gives meaning to an OMITTED `scope` -- "identical to the scope requested by
+ * the client" -- and gives none to a malformed one. So the KEY'S ABSENCE is what inherits,
+ * and nothing else does. An explicit `null`, a number or an array is a broken response, and
+ * reading a provider's bug as agreement would record privileges nothing ever established.
+ *
+ * A present EMPTY string is a server genuinely saying "none": it parses to [] and is still
+ * refused downstream, which is the pre-existing behaviour and stays that way.
+ */
+function resolveScopes(body: Record<string, unknown>, requestedScopes?: string[]): string[] {
+  if (!("scope" in body)) return requestedScopes ?? [];
+  if (typeof body.scope !== "string") throw new OAuthError("malformed_token_response");
+  return body.scope.split(/\s+/).filter(Boolean);
+}
+
 async function postToken(
   server: AuthorizationServer,
   form: Record<string, string>,
   failure: OAuthErrorCode,
+  /**
+   * What the client asked for. RFC 6749 §5.1 makes `scope` OPTIONAL in a token response
+   * "if identical to the scope requested by the client" -- so an ABSENT scope means the
+   * grant is exactly this, and reading it as NO scopes is simply wrong.
+   *
+   * That misreading is not cosmetic. A refresh whose response omits `scope` produced
+   * `[]`, which then failed every scope assertion downstream; the caller revoked the
+   * freshly-issued token, while the provider had already invalidated the old refresh
+   * token by rotating it. The connection was then unrecoverable and the only way back
+   * was a full re-authorization -- one per token lifetime, forever.
+   */
+  requestedScopes?: string[],
 ): Promise<TokenSet> {
   let res;
   try {
@@ -261,7 +288,7 @@ async function postToken(
     accessToken,
     refreshToken: str(body.refresh_token),
     expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
-    scopes: str(body.scope)?.split(/\s+/).filter(Boolean) ?? [],
+    scopes: resolveScopes(body, requestedScopes),
   };
 }
 
@@ -273,6 +300,8 @@ export function exchangeCode(opts: {
   code: string;
   verifier: string;
   resource: string;
+  /** The scopes this authorization requested; used when the response omits `scope`. */
+  requestedScopes?: string[];
 }): Promise<TokenSet> {
   return postToken(opts.server, {
     grant_type: "authorization_code",
@@ -282,7 +311,7 @@ export function exchangeCode(opts: {
     code_verifier: opts.verifier,
     resource: opts.resource,
     ...(opts.clientSecret ? { client_secret: opts.clientSecret } : {}),
-  }, "token_exchange_failed");
+  }, "token_exchange_failed", opts.requestedScopes);
 }
 
 /**
@@ -296,6 +325,12 @@ export function refreshTokens(opts: {
   clientSecret: string | null;
   refreshToken: string;
   resource: string;
+  /**
+   * The scopes this grant already holds. A refresh_token grant sends no `scope`, so the
+   * server has nothing to echo and commonly omits it; the grant is unchanged, and this is
+   * what "unchanged" means. Pass the stored scopes wherever the caller asserts on them.
+   */
+  grantedScopes?: string[];
 }): Promise<TokenSet> {
   return postToken(opts.server, {
     grant_type: "refresh_token",
@@ -303,7 +338,7 @@ export function refreshTokens(opts: {
     client_id: opts.clientId,
     resource: opts.resource,
     ...(opts.clientSecret ? { client_secret: opts.clientSecret } : {}),
-  }, "refresh_failed");
+  }, "refresh_failed", opts.grantedScopes);
 }
 
 /**

@@ -413,9 +413,24 @@ Deno.serve(async (req) => {
 /**
  * Zapier's authority, discovered from Zapier. Nothing about the flow is hardcoded beyond
  * the MCP endpoint itself, so a change on their side is followed rather than broken.
+ *
+ * THE HOST IS THE SECURITY BOUNDARY. It is what stops this becoming an SSRF into an
+ * arbitrary address, and it does not move. The path and query are shape checks, and the
+ * shape moved underneath us:
+ *
+ *   /api/v1/connect          current, OAuth -- what mcp.zapier.com hands out today
+ *   /api/mcp/s/<secret>/mcp  legacy, token in the path -- still valid for older servers
+ *
+ * Accepting only the legacy prefix rejected the address Zapier actually issues, so the
+ * connection could not be started at all. A query string is allowed for the same reason:
+ * the copy-to-clipboard address carries one, and nothing downstream is harmed by it --
+ * discoverProtectedResource builds the well-known URL from origin + pathname only, and
+ * the RFC 8707 resource indicator is read from Zapier's own metadata, never from this
+ * string. A FRAGMENT is still refused: it is never sent to a server, so its presence
+ * means the address was copied out of a browser bar rather than off the Connect tab.
  */
 function isZapierMcpAddress(value: string): boolean {
-  try { const u=new URL(value);return u.protocol==="https:"&&u.hostname==="mcp.zapier.com"&&!u.username&&!u.password&&!u.search&&!u.hash&&u.pathname.startsWith("/api/mcp/"); }
+  try { const u=new URL(value);return u.protocol==="https:"&&u.hostname==="mcp.zapier.com"&&!u.username&&!u.password&&!u.hash&&(u.pathname.startsWith("/api/v1/")||u.pathname.startsWith("/api/mcp/")); }
   catch { return false; }
 }
 async function resolveZapierAuthority(serverUrl: string): Promise<{ server: AuthorizationServer; resource: string }> {

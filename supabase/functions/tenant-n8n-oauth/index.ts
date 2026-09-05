@@ -25,7 +25,12 @@ const clearCookie=`${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax
 const landing=(account:string|undefined,state:string)=>`${PUBLIC_BASE}${account&&/^\d+$/.test(account)?`/solo/${account}/settings/integrations`:'/choose-account'}?n8n_oauth=${state}`;
 type Payload={server:AuthorizationServer & {responseIssuerRequired?:boolean};client:ClientRegistration;resource:string;verifier:string;redirect_uri:string;authorization_url:string;requested_scopes?:string[]};
 type ServiceResult={expired?:boolean;account_number?:string;authorization_url:string;attempt_id:string;payload:Payload;pin:string;discovery_id:string;revoke?:{token:string;issuer:string;client_id:string;client_secret:string|null;token_type:'access_token'|'refresh_token'}};
-type Lease={lease:string;generation:string;approved_ids:string[];discovery_pin:string|null;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null};
+// The shape n8n_oauth_service's `acquire` returns. _shared/n8n-management.ts declares its
+// OWN copy of this for the same RPC, and the two had drifted: that one carried
+// `oauth_scopes` and this one did not, so reading it compiled there and failed only here.
+// Two declarations of one response is how that happens (§18); unifying them is tracked
+// separately rather than folded into a fix someone is waiting on.
+type Lease={lease:string;generation:string;approved_ids:string[];discovery_pin:string|null;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null;oauth_scopes:string[]};
 Deno.serve(async req=>{
  const origin=req.headers.get('origin');
  const headers={...HEADERS,...(origin&&ALLOWED_ORIGINS.has(origin)?{'Access-Control-Allow-Origin':origin}:{})};
@@ -91,7 +96,7 @@ Deno.serve(async req=>{
    const code=url.searchParams.get('code');
    if(!code||code.length>4096) throw new N8nSafeError('invalid_callback');
    stage='token_exchange';
-   const tokens=await exchangeCode({server:payload.server,...payload.client,redirectUri:CALLBACK,code,verifier:payload.verifier,resource:payload.resource});
+   const tokens=await exchangeCode({server:payload.server,...payload.client,redirectUri:CALLBACK,code,verifier:payload.verifier,resource:payload.resource,requestedScopes:payload.requested_scopes??['workflow:read','workflow:write']});
    pendingGrant={server:payload.server,client:payload.client,tokens};
    stage='scope_validation';
    assertScopedTokens(tokens,payload.requested_scopes??['workflow:read','workflow:write']);
@@ -162,7 +167,7 @@ Deno.serve(async req=>{
     let rotated:{server:AuthorizationServer;tokens:TokenSet}|undefined;
     try{
      const server=await discoverAuthorizationServer(lease.issuer);validateServer(server);
-     const tokens=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url});
+     const tokens=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url,grantedScopes:lease.oauth_scopes});
      rotated={server,tokens};assertScopedTokens(tokens);
      await rpc('rotate',{...bound,tokens});accessToken=tokens.accessToken;
      if(tokens.refreshToken)activeSecrets.push(tokens.refreshToken);
