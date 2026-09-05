@@ -72,6 +72,61 @@ describe('n8n owner OAuth executed handler',()=>{
  // token is already dead, so revoking the new one guarantees the reconnect this whole
  // change exists to prevent. The connection stays, and the next attempt retries.
  it('does NOT revoke when the rotation merely failed to record',async()=>{const h=harness({expired:true,tokens:{...tokens,refreshToken:'rotated-refresh'},rpc:op=>op==='rotate'?{error:{message:'N8N_STALE_OPERATION'}}:undefined});const res=await h.post({action:'verify',expected_tenant_id:'tenant-a'});expect(res.status).toBe(400);expect(h.oauth.revokeToken).not.toHaveBeenCalled();expect(h.calls.at(-1)?.op).toBe('release')});
+ // ── consent is per workflow ─────────────────────────────────────────────────────────
+ //
+ // The run-time gate had NO coverage: the harness returned approved_ids:[] and no pin, so
+ // no test ever exercised an approved workflow. That is how a gate comparing ONE hash of
+ // the whole inventory survived -- it refused EVERY approved workflow whenever anything in
+ // the workspace changed, reported as "not approved".
+ //
+ // A mark is hash(id + "\n" + updatedAt), which is what `workflowMark` computes.
+ const marked=async(h:ReturnType<typeof harness>,id:string,updatedAt:string|null)=>
+   await h.helper.workflowMark({id,updatedAt});
+
+ it('runs an approved workflow that has not changed',async()=>{
+  const wf=[{id:'wf1',name:'Lead intake',availableInMCP:true,updatedAt:'2026-09-01T10:00:00Z'}];
+  const probe=harness({workflows:wf});
+  const mark=await marked(probe,'wf1','2026-09-01T10:00:00Z');
+  const h=harness({workflows:wf,rpc:(op:string)=>op==='acquire'?{lease:'lease',generation:'generation',approved_ids:['wf1'],approved_marks:{wf1:mark},discovery_pin:'stale-pin',server_url:payload.resource,access_token:tokens.accessToken,refresh_token:tokens.refreshToken,expires_at:tokens.expiresAt,issuer:server.issuer,client_id:'client',client_secret:null,oauth_scopes:['workflow:read','workflow:write']}:undefined});
+  // discovery_pin is deliberately WRONG here: it must no longer matter.
+  expect((await h.post({action:'preview',expected_tenant_id:'tenant-a',workflow_id:'wf1'})).status).toBe(200);
+ });
+
+ it('still runs an approved workflow after an UNRELATED one is edited',async()=>{
+  const before=[{id:'wf1',name:'Lead intake',availableInMCP:true,updatedAt:'2026-09-01T10:00:00Z'}];
+  const mark=await marked(harness({workflows:before}),'wf1','2026-09-01T10:00:00Z');
+  // wf2 is new and wf3 was just edited. Neither was ever approved.
+  const after=[...before,
+    {id:'wf2',name:'Something new',availableInMCP:true,updatedAt:'2026-09-04T23:00:00Z'},
+    {id:'wf3',name:'Edited',availableInMCP:true,updatedAt:'2026-09-04T23:30:00Z'}];
+  const h=harness({workflows:after,rpc:(op:string)=>op==='acquire'?{lease:'lease',generation:'generation',approved_ids:['wf1'],approved_marks:{wf1:mark},discovery_pin:'stale-pin',server_url:payload.resource,access_token:tokens.accessToken,refresh_token:tokens.refreshToken,expires_at:tokens.expiresAt,issuer:server.issuer,client_id:'client',client_secret:null,oauth_scopes:['workflow:read','workflow:write']}:undefined});
+  expect((await h.post({action:'preview',expected_tenant_id:'tenant-a',workflow_id:'wf1'})).status).toBe(200);
+ });
+
+ it('refuses an approved workflow that ITSELF changed',async()=>{
+  const mark=await marked(harness(),'wf1','2026-09-01T10:00:00Z');
+  const edited=[{id:'wf1',name:'Lead intake',availableInMCP:true,updatedAt:'2026-09-04T23:45:00Z'}];
+  const h=harness({workflows:edited,rpc:(op:string)=>op==='acquire'?{lease:'lease',generation:'generation',approved_ids:['wf1'],approved_marks:{wf1:mark},discovery_pin:'pin',server_url:payload.resource,access_token:tokens.accessToken,refresh_token:tokens.refreshToken,expires_at:tokens.expiresAt,issuer:server.issuer,client_id:'client',client_secret:null,oauth_scopes:['workflow:read','workflow:write']}:undefined});
+  const res=await h.post({action:'preview',expected_tenant_id:'tenant-a',workflow_id:'wf1'});
+  expect(res.status).toBe(400);
+  expect(await res.text()).toContain('workflow_not_approved');
+ });
+
+ it('refuses a workflow with an approval but NO recorded mark',async()=>{
+  // An approval made before marks existed. Absent is not a match; it must be re-approved
+  // rather than waved through on the id alone.
+  const wf=[{id:'wf1',name:'Lead intake',availableInMCP:true,updatedAt:'2026-09-01T10:00:00Z'}];
+  const h=harness({workflows:wf,rpc:(op:string)=>op==='acquire'?{lease:'lease',generation:'generation',approved_ids:['wf1'],approved_marks:{},discovery_pin:'pin',server_url:payload.resource,access_token:tokens.accessToken,refresh_token:tokens.refreshToken,expires_at:tokens.expiresAt,issuer:server.issuer,client_id:'client',client_secret:null,oauth_scopes:['workflow:read','workflow:write']}:undefined});
+  expect((await h.post({action:'preview',expected_tenant_id:'tenant-a',workflow_id:'wf1'})).status).toBe(400);
+ });
+
+ it('hands the live marks to probe, so revocation can be judged per workflow',async()=>{
+  const h=harness({workflows:[{id:'wf1',name:'A',availableInMCP:true,updatedAt:'2026-09-01T10:00:00Z'}]});
+  await h.post({action:'discover',expected_tenant_id:'tenant-a'});
+  const probe=h.calls.find(c=>c.op==='probe');
+  expect(probe?.input?.marks?.wf1).toBe(await marked(h,'wf1','2026-09-01T10:00:00Z'));
+ });
+
  it.each(['id','name'])('rejects token echo in workflow %s',async field=>{const h=harness({workflows:[{id:'wf1',name:'Preview',availableInMCP:true,[field]:'secret-access'}]});const res=await h.post({action:'discover',expected_tenant_id:'tenant-a'});expect(res.status).toBe(400);expect(await res.text()).not.toContain('secret-access');expect(h.calls.some(c=>c.op==='snapshot')).toBe(false)});
  it('filters non-exposed workflows and strips internals',()=>{const h=harness();const parsed=h.helper.parseWorkflowPreviews({structuredContent:{count:2,data:[{id:'one',name:'One',availableInMCP:true,description:'customer-payload'},{id:'two',name:'Two',availableInMCP:false}]}});expect(parsed.workflows).toEqual([{id:'one',name:'One'}]);expect(JSON.stringify(parsed)).not.toContain('customer-payload')});
  it('accepts provider total above the returned page without claiming a complete or empty inventory',()=>{const parsed=harness().helper.parseWorkflowPreviews({structuredContent:{count:201,data:[{id:'hidden',name:'Hidden',availableInMCP:false}]}});expect(parsed.workflows).toEqual([]);expect(parsed.total_count).toBe(201);expect(parsed.inventory_complete).toBe(false)});
