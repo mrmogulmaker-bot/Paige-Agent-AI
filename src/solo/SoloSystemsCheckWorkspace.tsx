@@ -289,11 +289,55 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
   const confirmedFindings = currentFindings.filter((finding) => evidenceFilter(finding) === "confirmed");
   const completedAt = systems.run?.completed_at ? new Date(systems.run.completed_at) : null;
   const hasCompletedRun = !!completedAt && !Number.isNaN(completedAt.getTime());
-  const isPartial = !!systems.run && (
-    !hasCompletedRun ||
-    currentFindings.some((finding) => finding.status === "skip" || finding.status === "error") ||
-    (systems.run.check_count ?? currentFindings.length) > currentFindings.length
-  );
+  /**
+   * WHY the picture is incomplete, computed BEFORE the flag that announces it — because the flag
+   * used to be the only thing computed, and the sentence beside it was written for just one of the
+   * three causes. A completed run whose single defect was one unevaluable check therefore rendered
+   * "recorded 10 checks but only 10 results are readable here", which is self-contradictory and was
+   * reported from the live surface. A reason that argues with itself is worse than no reason, so
+   * the banner now states whichever causes are actually true, and the PARTIAL badge is derived from
+   * the same list rather than from a parallel condition that could drift away from it.
+   */
+  const incompleteReasons = useMemo<string[]>(() => {
+    if (!systems.run) return [];
+    if (currentFindings.length === 0) return ["The last run left no readable results at all."];
+    const reasons: string[] = [];
+    // `check_count` is safe to trust even on an unfinished run, which looks like it contradicts the
+    // strip above (it abandons the run row when the run has not finished) but does not: the runner
+    // sets check_count at INSERT, before the first check, and patches only pass_count/fail_count at
+    // the end (`_shared/systems-check-runner.ts:277`). The planned total is known up front; the
+    // verdict tallies are not. This sentence needs the former and the strip needed the latter.
+    const recorded = systems.run.check_count ?? currentFindings.length;
+    if (!hasCompletedRun) {
+      reasons.push("The last check did not finish, so what is below is only as far as it got.");
+    }
+    if (recorded > currentFindings.length) {
+      reasons.push(
+        `It recorded ${recorded} check${recorded === 1 ? "" : "s"} but only ${currentFindings.length} result${currentFindings.length === 1 ? " is" : "s are"} readable here.`,
+      );
+    }
+    // Counted through evidenceFilter, NOT raw status, so this is the same quantity the strip's
+    // "could not be evaluated" and the "Could not be checked" bucket render. An earlier draft used
+    // raw status and produced 1 here beside the strip's 0 on a run whose only unevaluated check had
+    // been resolved — two numbers for one quantity, forty lines apart, which is the defect class
+    // this whole memo exists to remove. Resolved work is presented as resolved everywhere else on
+    // this surface, so it is not also counted as unanswered here.
+    const unevaluated = currentFindings.filter(
+      (finding) => evidenceFilter(finding) === "unavailable",
+    ).length;
+    if (unevaluated > 0) {
+      // Denominated in what CAME BACK, never in `recorded`. When results are also missing, saying
+      // "1 of the 10" would assert the other 9 reached a verdict — precisely what the sentence
+      // above it just denied. We only know about the results we can read.
+      const readable = currentFindings.length;
+      reasons.push(
+        `${unevaluated} of the ${readable} result${readable === 1 ? "" : "s"} that came back could not be evaluated, so ${unevaluated === 1 ? "that area is" : "those areas are"} unanswered.`,
+      );
+    }
+    return reasons;
+  }, [systems.run, currentFindings, hasCompletedRun]);
+
+  const isPartial = incompleteReasons.length > 0;
 
   const isStale = hasCompletedRun && Date.now() - completedAt.getTime() > 24 * 60 * 60 * 1000;
   const selectedEvidence = projectEvidence(selected?.evidence ?? null);
@@ -455,25 +499,49 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
    * AN UNFINISHED RUN'S COUNTS ARE ZEROS, NOT ANSWERS.
    *
    * `systems-check-runner.ts` inserts the run row BEFORE the first check and patches
-   * check_count / pass_count / fail_count only at the very end. So a run that crashed midway
+   * pass_count / fail_count only at the very end. So a run that crashed midway
    * carries 0/0 on the row while its real findings sit in the table beside it. Production has
    * five such runs right now — one reads `check_count 10, pass 0, fail 0` next to NINE real
    * findings. None is currently the newest for its workspace, so nobody is seeing it today; the
    * moment a run crashes and is the newest, they would.
    *
    * Reading the row regardless would print "0 passed · 0 need attention" directly above a list of
-   * things needing attention. So the counts come from the run ONLY once the run finished, and are
-   * derived from the findings actually on screen otherwise — which is the one denominator that
-   * cannot disagree with the list under it.
+   * things needing attention. So the verdict tallies are ALWAYS derived from the findings actually
+   * on screen — the one denominator that cannot disagree with the list under it.
+   *
+   * That rule used to be applied only to unfinished runs, and the finished case broke it in the
+   * other direction. `fail_count` is what the scan saw AT SCAN TIME; resolving a finding afterwards
+   * does not rewrite it. So a resolved fail printed "1 needs attention" in this strip while the
+   * section below said "Nothing from the last check needs you", with no banner between them to
+   * explain the gap — measured directly, and reachable in production, because the resolve path
+   * (20260830150343_systems_check_source_integrity.sql:134) permits exactly this status. Deriving
+   * both tallies from the findings closes it. On a finished run with nothing resolved they are
+   * identical to the run row, so this changes nothing except the case where the row is stale.
+   *
+   * `check_count` is the one run column that stays trustworthy throughout, because it is written
+   * at INSERT (`systems-check-runner.ts:283`, `check_count: rows.length`) rather than patched at the
+   * end. An earlier revision of this very comment said all three were patched at the end, which was
+   * false and is corrected here.
+   *
+   * But read it precisely: it is "registry rows THIS RUN SELECTED", not "checks this workspace has".
+   * The runner accepts a `runnerKeys` filter (`:239-240`), and `systems-check-run-change` passes a
+   * single key per changed surface — so such a run legitimately carries check_count 1. Anything that
+   * treats this number as the size of the full sweep is wrong for that flavour.
    */
   const freshDetail = !systems.run
     ? "Nothing has been recorded for this workspace."
     : (() => {
         const trustRun = hasCompletedRun;
         const total = trustRun ? (systems.run.check_count ?? currentFindings.length) : currentFindings.length;
-        const passed = trustRun ? (systems.run.pass_count ?? confirmedFindings.length) : confirmedFindings.length;
-        const failed = trustRun ? (systems.run.fail_count ?? attentionFindings.length) : attentionFindings.length;
+        const passed = confirmedFindings.length;
+        const failed = attentionFindings.length;
         const unread = unavailableFindings.length;
+        // Resolved work has to be COUNTED here, not just listed below. Deriving the tallies from
+        // the findings fixed one contradiction and opened a smaller one: a run whose single finding
+        // was resolved read "1 check · 0 passed · 0 need attention", which accounts for none of the
+        // one check it claims, while the section beneath it shows that same item as ready. A reader
+        // cannot reconcile those. With this segment the parts add up to the whole.
+        const settled = currentFindings.filter((finding) => isResolved(finding)).length;
         return (
           <>
             <strong>{total}</strong> {trustRun ? "check" : "result"}{total === 1 ? "" : "s"}
@@ -481,18 +549,10 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
             <strong>{passed}</strong> passed &middot;{" "}
             <strong>{failed}</strong> need{failed === 1 ? "s" : ""} attention
             {unread > 0 ? <> &middot; <strong>{unread}</strong> could not be evaluated</> : null}
+            {settled > 0 ? <> &middot; <strong>{settled}</strong> resolved</> : null}
           </>
         );
       })();
-
-  /**
-   * Business attention, kept SEPARATE from setup findings on purpose. A failing check says a system
-   * cannot do its job; these say the book itself needs the owner. Collapsing them would let a
-   * clean setup read imply an empty desk. Only figures that are actually present are shown — a
-   * missing count is omitted rather than rendered as zero, because zero is a claim.
-   */
-  /** A run with nothing readable is as incomplete as a partial one — it answers nothing. */
-  const incomplete = !!systems.run && (isPartial || currentFindings.length === 0);
 
   /** Fixed work is working work. Kept reachable rather than dropped off the surface entirely. */
   const resolvedFindings = useMemo(
@@ -500,6 +560,12 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
     [currentFindings],
   );
 
+  /**
+   * Business attention, kept SEPARATE from setup findings on purpose. A failing check says a system
+   * cannot do its job; these say the book itself needs the owner. Collapsing them would let a
+   * clean setup read imply an empty desk. Only figures that are actually present are shown — a
+   * missing count is omitted rather than rendered as zero, because zero is a claim.
+   */
   const businessAttention = useMemo<Array<[string, number]>>(() => ([
     ["Clients at risk", command.attention?.at_risk_clients],
     ["Follow-ups due", command.attention?.follow_ups_due],
@@ -514,7 +580,12 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
       <div ref={scrollOwnerRef} className="sc-scroll-owner" aria-hidden={Boolean(selected || proposal || decision) || undefined}>
         <header className="sc-heading">
           <div>
-            <h1>Systems Check</h1>
+            {/* OWNER RULING 2026-09-05: the sub-tab strip directly above already reads "Systems
+                Check", so a banner-sized repeat of the word tells the reader nothing they cannot
+                see and costs vertical space. Kept in the DOM, out of the layout: a screen reader
+                still gets the page heading, and the document keeps its h1. Same rule applies to
+                Mind, and to Game Plan and Trust Compass when they land. */}
+            <h1 className="sc-sr-only">Systems Check</h1>
             <p>What your business systems can actually do right now, and what is stopping the rest.</p>
             <span className="sc-sr-only"><span data-tenant-account-name>{resolvedAccount.accountName}</span>, <span data-tenant-account-tier>{resolvedAccount.accountTypeLabel}</span>, {command.greeting.dateLabel}. {command.greeting.name}: {command.loading ? "operating sources are still loading." : command.isError ? "some operating sources are unavailable." : command.greeting.summary}</span>
           </div>
@@ -560,19 +631,16 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
             not wired to this surface yet, so nothing here is newer than the time above.
           </p>
 
-          {/* The run's own summary and the findings we can read are two different numbers, and when
-              they disagree neither one describes the whole picture. Saying so here is what stops the
-              strip claiming "1 needs attention" while the section below says nothing does — the run
-              counted checks whose results are not in this response. Overall health is not inferred
-              from the half that came back. */}
-          {incomplete && (
+          {/* Three separate things can make this reading incomplete: the run never finished, it
+              returned fewer results than it recorded, or a check it did return could not reach a
+              verdict. This used to announce all three with the sentence written for the second,
+              which on a finished, fully-returned run read "recorded 10 checks but only 10 results
+              are readable here". It now states whichever are actually true, and shows at all only
+              when at least one of them is. Overall health is never inferred from a partial read. */}
+          {isPartial && (
             <div className="sc-note" role="status">
               <strong>The picture is incomplete.</strong>{" "}
-              {currentFindings.length === 0
-                ? <>The last run left no readable results at all.</>
-                : <>The last run recorded {systems.run?.check_count} check
-                    {systems.run?.check_count === 1 ? "" : "s"} but only {currentFindings.length} result
-                    {currentFindings.length === 1 ? " is" : "s are"} readable here.</>}
+              {incompleteReasons.join(" ")}
               {" "}Overall health cannot be inferred from what came back, so nothing below is being
               reported as a complete answer.
             </div>

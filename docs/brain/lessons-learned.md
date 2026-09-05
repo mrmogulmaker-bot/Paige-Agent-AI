@@ -1866,3 +1866,75 @@ row was written, because the verify path throws before it reaches `probe`. Four 
 events in twenty hours were the only visible evidence that anything was wrong. A failure path that
 records nothing is why this took a live report to find.
 
+
+---
+
+## Asserting that a warning APPEARED, without asserting what it SAID
+
+**2026-09-05 · Systems Check partial-coverage banner · PR #933**
+
+The owner photographed his own console showing:
+
+> **The picture is incomplete.** The last run recorded **10** checks but only **10** results are
+> readable here.
+
+Ten and ten. The sentence contradicts itself, and it was doing so on **all 15 tenants**, on every
+scan. Across 941 runs since 2026-08-10 the condition that sentence describes had occurred five
+times, and every one of those five was *also* a run that never finished — a state the sentence never
+mentions. So the one message the component could print **had never once been true while displayed.**
+
+The mechanism was ordinary: three independent conditions raised one flag, and the render branched on
+whether the finding list was empty rather than on *which* condition fired, so every non-empty case
+printed the sentence written for one of them.
+
+**The part worth keeping is why the test suite did not catch it.** The obvious diagnosis — "no
+fixture had that shape" — is wrong, and I shipped that diagnosis in a commit message before checking
+it. Two fixtures already had the exact shape, and rendering the pre-fix component against them
+prints the contradictory sentence, twice, inside a green suite. What was missing was any assertion
+that read the message. Every test asserted `toContain("The picture is incomplete")` — the first four
+words, the part that is identical no matter which branch produced it — and then stopped.
+
+*Rule:* **asserting that a message appeared is not asserting that the message is right.** For any
+text that varies by branch, assert the varying part, and add a negative assertion for the specific
+wrong output — the one here is `not.toMatch(/recorded (\d+) checks? but only \1 /)`, which catches
+the identical-number form generally rather than one instance of it. A fixture cannot catch what
+nothing asserts on, so "we need a test for that case" is usually the wrong repair; the case is often
+already covered by a test that is not looking.
+
+*Corollary, found the same night:* two assertions in that file — `not.toContain("All available
+checks are clear")` and a sibling — named strings that appear **nowhere in the component**. They
+could never fail. A negative assertion against a string that does not exist reads as a guard and is
+one, of nothing. Grep the string before trusting a `not.toContain`.
+
+---
+
+## A summary and the list beneath it must be derived from the same place
+
+**2026-09-05 · Systems Check strip vs. sections · PR #933, three reviewers**
+
+The same surface carried a header strip ("10 checks · 6 passed · 3 need attention") above sections
+listing those findings. The strip read the run row; the sections read the findings. They agree right
+up until the two sources diverge — and they diverge on ordinary, reachable states:
+
+- **A resolved failure.** `fail_count` records what the scan saw *at scan time*; resolving a finding
+  afterwards does not rewrite it. The strip said "1 needs attention" directly above a section saying
+  "Nothing from the last check needs you", with nothing to explain the gap.
+- **A crashed run.** Counts are patched at the end, so the row reads 0/0 beside real findings.
+- **A resolved *unevaluable* finding.** The banner counted raw status, the strip counted through a
+  filter that reclassifies resolved — zero and one, for one quantity, forty lines apart.
+
+*Rule:* **derive every figure in a summary from the collection the reader can see, not from a stored
+tally that describes it.** A stored count is a snapshot of a different moment; the list is now.
+
+*And the corollary that cost a second round:* once the tallies derive from the list, **every member
+of the list needs a bucket**, or the summary stops adding up. Removing the wrong number that used to
+fill the hole left "1 check · 0 passed · 0 need attention" — accounting for none of the one check it
+claimed. Codex caught that; I had spotted it an hour earlier and reasoned my way out on the grounds
+that "no number claims to be the total of the others," which is false whenever one of them is
+`total`.
+
+*Process note worth its own line:* three review layers ran on this change — an adversarial crew on
+the pushed diff, Codex on the PR, and my own re-read — and **each caught a different defect that the
+other two missed.** The crew found the wrong denominator and a test that pinned the bug; Codex found
+the summary hole the crew's fix opened; the re-read found a comment asserting the opposite of the
+truth. None was redundant.

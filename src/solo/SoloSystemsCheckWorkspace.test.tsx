@@ -291,7 +291,9 @@ describe("Solo Systems Check workspace", () => {
     render();
     expect(host.textContent).toContain("The picture is incomplete");
     expect(host.textContent).toContain("Overall health cannot be inferred");
-    expect(host.textContent).not.toContain("All available checks are clear");
+    // Was `not.toContain("All available checks are clear")`, a string that appears nowhere in
+    // the component and therefore could never fail. Assert the reason it actually gives.
+    expect(host.textContent).toContain("The last run left no readable results at all");
   });
 
   it("does not print an unfinished run's zeroed counts over findings that exist", () => {
@@ -321,7 +323,111 @@ describe("Solo Systems Check workspace", () => {
     render();
     expect(host.textContent).toContain("The picture is incomplete");
     expect(host.textContent).toContain("Overall health cannot be inferred");
-    expect(host.textContent).not.toContain("Available checks are clear");
+    // Same vacuous guard as above. The point of this test is that an unfinished run says so.
+    expect(host.textContent).toContain("The last check did not finish");
+  });
+
+  // THE SHAPE THAT SHIPPED THE DEFECT. Every fixture above either withholds findings or leaves the
+  // run unfinished, so the count-mismatch sentence happened to be true in all of them. On the live
+  // surface the run had FINISHED and returned ALL ten of its results, one of which had errored —
+  // and the banner still printed the count sentence, reading "recorded 10 checks but only 10
+  // results are readable here". The flag was right; the reason beside it was not.
+  it("names the real reason when a finished, fully-returned run has a check it could not evaluate", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      findings: [
+        { ...baseSystems.findings[1] },
+        { ...finding, id: "finding-3", check_id: "revenue_tracking", check_name: "Revenue tracking is set up", status: "error" },
+      ],
+    });
+    render();
+    expect(host.textContent).toContain("The picture is incomplete");
+    expect(host.textContent).toContain("1 of the 2 results that came back could not be evaluated, so that area is unanswered");
+    // The self-contradiction itself: the same number on both sides of "but only".
+    expect(host.textContent).not.toMatch(/recorded (\d+) checks? but only \1 results? (is|are) readable/);
+  });
+
+  it("still reports a genuine count mismatch, and reports both causes when both are true", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      run: { ...baseSystems.run, completed_at: null, check_count: 5 },
+      findings: [
+        { ...baseSystems.findings[1] },
+        { ...finding, id: "finding-4", check_id: "revenue_tracking", status: "skip" },
+      ],
+    });
+    render();
+    expect(host.textContent).toContain("The last check did not finish");
+    expect(host.textContent).toContain("It recorded 5 checks but only 2 results are readable here");
+    // The denominator is what CAME BACK (2), never what was recorded (5). "1 of the 5" would
+    // assert the other 4 reached a verdict, which the sentence directly above it denies.
+    expect(host.textContent).toContain("1 of the 2 results that came back could not be evaluated");
+    expect(host.textContent).not.toContain("1 of the 5");
+  });
+
+  it("raises no partial warning at all when the run finished, returned everything, and evaluated everything", () => {
+    render();
+    expect(host.textContent).not.toContain("The picture is incomplete");
+    expect(host.textContent).not.toContain("PARTIAL COVERAGE");
+  });
+
+  // The peer review's finding 3, pinned. This file's OWN resolved-history fixture (both findings
+  // resolved, one of them an error) used to render "1 of the 2 checks could not be evaluated" in
+  // the banner while the strip above it showed no unevaluated segment at all — zero and one, for
+  // the same quantity, about forty lines apart, inside a green suite. The banner counted raw
+  // status; the strip counts through evidenceFilter, which reclassifies a resolved finding as
+  // resolved. They read the same quantity the same way now.
+  it("never claims an unevaluated count the strip does not also show", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      run: { ...baseSystems.run, check_count: 2, pass_count: 0, fail_count: 1 },
+      findings: [
+        { ...finding, resolved_at: "2026-08-27T18:00:00Z", resolution: "Payment connection restored." },
+        { ...finding, id: "finding-5", check_id: "archived_read_error", status: "error",
+          resolved_at: "2026-08-27T18:10:00Z", resolution: "Read restored." },
+      ],
+    });
+    render();
+    // Both findings are resolved, so nothing is outstanding and nothing is unanswered.
+    expect(host.textContent).not.toMatch(/could not be evaluated/);
+    expect(host.textContent).not.toContain("The picture is incomplete");
+  });
+
+  // The strip used to read its verdict tallies off the run row on a FINISHED run, and fail_count
+  // records what the scan saw at scan time — resolving a finding afterwards does not rewrite it.
+  // So a resolved fail printed "1 needs attention" directly above a section reading "Nothing from
+  // the last check needs you", with no banner between them to explain the gap. Reachable in
+  // production: the resolve path permits exactly status='fail'.
+  it("does not claim attention for a finding the section below reports as resolved", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      run: { ...baseSystems.run, check_count: 1, pass_count: 0, fail_count: 1 },
+      findings: [{ ...finding, resolved_at: "2026-08-27T18:00:00Z", resolution: "Fixed." }],
+    });
+    render();
+    expect(host.textContent).toContain("0 need attention");
+    expect(host.textContent).not.toContain("1 needs attention");
+    // And it is still visible as resolved work rather than vanishing from the surface (§58).
+    expect(host.textContent).toContain("Resolved");
+    // Codex P2: the parts must add up to the whole. Deriving the tallies from the findings left
+    // "1 check · 0 passed · 0 need attention" accounting for none of the one check it claims,
+    // while the section below showed that item as ready. The resolved segment closes it.
+    expect(host.textContent).toContain("1 resolved");
+  });
+
+  // The other half of the same rule: an UNRESOLVED unevaluable finding must be counted in both
+  // places, so the fix above cannot be satisfied by simply never counting anything.
+  it("counts an unresolved unevaluable finding in the strip and the banner alike", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      findings: [
+        { ...baseSystems.findings[1] },
+        { ...finding, id: "finding-6", check_id: "revenue_tracking", status: "skip" },
+      ],
+    });
+    render();
+    expect(host.textContent).toContain("1 could not be evaluated");                       // strip
+    expect(host.textContent).toContain("1 of the 2 results that came back could not be"); // banner
   });
 
   it("shows owner-facing remediation content instead of an internal drafting brief", () => {

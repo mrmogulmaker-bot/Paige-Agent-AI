@@ -127,6 +127,31 @@ per-agent attribution the Rail can only say "PAIGE", which cannot answer "who ow
 Make obvious what the owner must do, what PAIGE can complete autonomously, and what is awaiting an
 external provider or platform response.
 
+### 3.2 No redundant surface title — OWNER RULING 2026-09-05 (applies to all four sub-tabs)
+
+> *"When people are inside of Systems Check, they already understand that they're in there. I don't
+> think we need a banner-sized word saying 'Systems Check'."* … *"Keep that same consistency with the
+> two new tabs as well. We don't need redundant words if we have a word right at the top inside of
+> the menu bar and it says it. They know exactly where they are."* — Antonio
+
+The Command Center sub-tab strip already names the active surface. A page heading repeating that word
+tells the reader nothing they cannot already see and spends vertical space, which on these surfaces is
+the scarce resource (§11).
+
+**The rule, binding on all four Command Center sub-tabs:** Systems Check · Mind · and Game Plan and
+Trust Compass when they land. No visible surface-title heading. The descriptive line under it stays.
+
+**How it is implemented, and why not by deletion.** The `h1` remains in the DOM and is moved out of
+the layout (`.sc-sr-only` / `.mind-sr-only`). Deleting it would take the document's only `h1` with it,
+and on Mind it would break `aria-labelledby="mind-title"` on the whole section. A sighted reader loses
+a redundant word; a screen-reader user loses nothing.
+
+Pinned by assertion on both surfaces so a later pass cannot quietly restore it:
+`SoloMindWorkspace.test.tsx` asserts the exact hidden-heading markup and the CSS rule behind it.
+
+*This is a cross-surface ruling recorded here because this is the doc that exists today. It belongs in
+the four-surfaces architecture contract (task #9) and should move there when that lands.*
+
 ## 4. Status vocabulary — CLOSED SET
 
 Nothing outside this list may render, ever:
@@ -185,6 +210,36 @@ The platform's own §68 clamp is in the capped state as this is written: `ceilin
 That is an unfabricated `PROOF OWED`. It is also **platform state, and a Solo workspace must never
 learn it** (§9) — the tenant surface may say only that something is further limited by platform
 policy, without disclosing the platform's posture, ceiling, attestation or the reason.
+
+### 4.4a A NINTH WORD IS ALREADY RENDERING — `NOT CHECKED`, disclosed rather than quietly kept
+
+**Shipped code renders a word this section says may never render.** `SoloSystemsCheckWorkspace.tsx:692`
+falls back to **`Not checked`** for any operating area whose `coveredBy` list is empty — today that is
+*Paige's team and delegated work*, *Business knowledge — the Mind*, and *Security, permissions and
+governance*, all three visible on the live Solo surface.
+
+That is a direct contradiction of this section's own "nothing outside this list may render, ever", and
+it is recorded here rather than left for someone to discover, because a spec that disagrees with the
+code it governs is worse than no spec (§13 · §66).
+
+**Why none of the eight was used.** The closed set has no term for *no check exists for this area at
+all*, which is a different fact from every word it does carry:
+
+- `UNAVAILABLE` is the near miss and is still wrong. By §4.2's own gloss it means a source was
+  consulted and could not answer. Here nothing was consulted, because nothing is wired to consult.
+- `NOT CONNECTED` asserts a connection that is absent. These areas are not connections.
+- `PROOF OWED` implies a proof is pending. Nothing is pending; no check has been written.
+- `NEEDS ATTENTION` is a claim that something is wrong. Nothing is known to be wrong, and saying so
+  would be the exact fabrication §13 forbids — an absent check is never evidence of a fault.
+
+**The distinction is load-bearing, not pedantic.** "We looked and could not tell" and "we have never
+looked" are different promises to the owner, and only one of them implies a defect somewhere. Collapsing
+them would make the surface less truthful, which is why the ninth word was used.
+
+**The decision is the owner's**, in the same shape as §4.2: either ratify `NOT CHECKED` as a ninth
+member of the closed set, or rule that one of the eight absorbs it and accept the implication that word
+carries. Until then the surface renders the truthful word and this section records that it is outside
+the ruled set.
 
 ### 4.4 Two data defects found while grounding the vocabulary
 

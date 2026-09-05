@@ -2266,3 +2266,54 @@ authorization (`ZAPIER_API_CLIENT_ID`/`_SECRET` absent on prod, so the API tab r
 unavailable truthfully), and a real Skool payload proof. A cross-PR hazard is filed rather than fixed:
 #919 and #925 both DROP+ADD the same three `paige_workspace_events` CHECK constraints with disjoint
 allowed values, so whichever merges second silently clobbers the other's source kinds.
+
+---
+
+## 2026-09-05 · Systems Check + Mind · PR #933 · one owner ruling, two decisions owed
+
+**OWNER RULING — no redundant surface title on a Command Center sub-tab.** *"When people are inside
+of Systems Check, they already understand that they're in there. I don't think we need a
+banner-sized word saying 'Systems Check'."* And, on Mind: *"Keep that same consistency with the two
+new tabs as well. We don't need redundant words if we have a word right at the top inside of the
+menu bar and it says it."*
+
+Binding on all four sub-tabs — Systems Check and Mind now, **Game Plan and Trust Compass when they
+land.** The `h1` is kept in the DOM and taken out of layout rather than deleted: removing it takes
+the document's only `h1`, and on Mind it is the `aria-labelledby` target of the whole section.
+Recorded in `docs/product/systems-check-operating-readiness-spec.md` §3.2, pinned by assertion in
+`SoloMindWorkspace.test.tsx`.
+
+**TWO DECISIONS OWED BY THE OWNER, both surfaced by this work and neither taken here:**
+
+1. **`NOT CHECKED` is a ninth status word** outside the closed set of eight, and it is already
+   rendering on the three uncovered operating areas. None of the eight fits: `UNAVAILABLE` means, by
+   the spec's own gloss, that a source was consulted and could not answer — here nothing was
+   consulted. *"We looked and could not tell"* and *"we have never looked"* are different promises,
+   and only one implies a defect. Ratify it, or rule which of the eight absorbs it. Spec §4.4a.
+2. **An operator-only check makes every tenant permanently PARTIAL.**
+   `revenue_tracking_configured` resolves through `operator_revenue_integrity_audit`, which is
+   `is_platform_owner()`-gated, so it returns `skip` for every tenant on every run by design — its
+   own evidence says so. All 15 tenants therefore carry an unresolvable warning, and a warning that
+   can never clear trains the reader to ignore warnings. The registry already carries `scope` and
+   `tier_scope`; the question is whether the check belongs in the tenant sweep at all. Task #23.
+
+**A LOADED FALSE ALL-CLEAR, found by the crew, filed rather than fixed here (task #24).** The runner
+accepts a `runnerKeys` filter, and `systems-check-run-change` passes ONE key per changed surface, so
+such a run's `check_count` is 1. `rescanBusinessContext` fires three of them on **every successful
+Solo Setup save** (`useSoloSetupBrief.ts:187`). Because the console reads the latest RUN, that
+one-check run would become the tenant's whole picture: `SystemsCheckTile` renders "1 of 1 passed"
+with a StatePill reading **"All clear"**, nine checks hidden, and no incomplete banner — because
+`recorded(1) > readable(1)` is false.
+
+Production carries **zero** `change_triggered` runs (937 scheduled, 4 onboarding). The wiring is not
+broken — all three surface names are valid `SURFACE_TO_RUNNERS` keys and all three runner keys exist
+in the registry — it shipped 2026-09-03 (`bd9b882d`) and simply has not been pulled. **A loaded
+trigger, not a live defect.** Latest-result-per-check (task #19) is the durable fix.
+
+**§13 corrections recorded in the same PR:** two comments claimed the runner patches `check_count` at
+the end of a scan — it is written at INSERT (`systems-check-runner.ts:283`), and read precisely it
+means "registry rows THIS RUN selected", which is what makes the subset case dangerous. A third
+claimed the scan writes its run row only on completion; it writes it up front.
+
+**Owed and NOT claimed:** §32.c authenticated live-drive of the deployed surface — this session
+cannot sign into the workspace.

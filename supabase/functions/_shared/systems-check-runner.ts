@@ -274,7 +274,12 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
     }
   }
 
-  // Insert the run row up-front so findings can reference it; counts are patched at the end.
+  // Insert the run row up-front so findings can reference it. check_count is FINAL from here —
+  // it is the number of registry rows THIS run selected (after the scope + enabled + runnerKeys
+  // filters above), so a change-triggered run legitimately carries 1. Only pass_count/fail_count
+  // are patched at the end. Readers have twice been written against "all three are patched at the
+  // end", which is false and makes check_count look untrustworthy when it is the one column that
+  // is not.
   const { data: runRow, error: runErr } = await admin
     .from("paige_systems_check_run")
     .insert({
