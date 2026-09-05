@@ -249,8 +249,21 @@ source_kind='capability_run'` returns **0**. The seam is live and nothing has ex
 or Zapier write has been run through Chat since it shipped. Read an empty feed here as "not yet
 used", never as "broken".
 
-**Flagged:** PR #776 replaces `get_solo_rail_activity` with a client-events-only version and would
-delete the workspace half of the union; it needs a rebase whichever order the two land in.
+**Flagged — a live cross-PR hazard, escalated to the owner 2026-09-05.** Open PR #776
+(`claude/spine-w0-rail-recovery-746`, head `318f1dbd`) does `CREATE OR REPLACE
+public.get_solo_rail_activity(integer)` at migration version **`20261042000000`** with a body that
+reads **`paige_client_events` ONLY** — no workspace union. That version sorts BELOW the live
+`20261212000000`, so it is invisible on a fresh `db reset` (CI stays green, live def wins) but on
+**production** the deploy pipeline runs `db push --include-all` (`deploy-migrations.yml:153`), which
+applies a behind-version migration LAST — its `CREATE OR REPLACE` then overwrites the live union and
+**deletes every `capability_run` row's visibility**: n8n runs, `zapier_run_action`, and #947's four
+Communications acts (§58 silent-removal, exactly the class §776's own PR body says it is guarding
+against). A GitHub comment on #776 was **attempted and refused (403 — this integration cannot comment
+on that PR)**, so the flag lives here and was raised to the owner directly instead. Resolution is the
+#776 author's call: renumber above `20261213000000` and rebuild the body from the live definition
+with their §59 guard, OR keep the version and add the `paige_workspace_events` union +
+`capability_key` pass-through so out-of-order apply is idempotent. Their column allowlist and the
+union return identical display columns, so option 2 discloses nothing extra.
 
 ### PAIGE Rail — Wave 3, Communications, and the outcome the five could not express (2026-09-05)
 
