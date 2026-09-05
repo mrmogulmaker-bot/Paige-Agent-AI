@@ -44,6 +44,18 @@ describe("draftedFixText never presents an internal brief as a drafted fix", () 
     expect(draftedFixText(fix, "tenant")).toBeNull();
   });
 
+  it.each([
+    ["deferred", { content: "A draft from an earlier tick.", deferred: true }],
+    ["needs_config", { summary: "Some text.", needs_config: true }],
+    ["errored", { text: "Some text.", error: "Featherless call failed or returned no choice" }],
+  ])("lets the %s marker win even when a readable key is present", (_label, fix) => {
+    // These are the cases that make the marker guard LOAD-BEARING for tenant scope. Without them the
+    // four above pass whether or not the guard exists, because `brief` is not in the tenant key list
+    // anyway — the peer gate deleted the whole guard line and only ONE assertion in this file went
+    // red. A marker means no model produced anything, whatever else the object happens to carry.
+    expect(draftedFixText(fix, "tenant")).toBeNull();
+  });
+
   it("still surfaces the brief for an operator finding, where the brief IS the guidance", () => {
     // prompt-forge is tenant-scoped and cannot run tenant-less, so the runner stores the registry
     // brief deterministically for operator scans. Dropping `brief` outright would blank every

@@ -316,8 +316,12 @@ describe("the draft budget is a deadline inside the loop, not a count between te
   });
 
   it("counts what it deferred, so a silent backlog is a number that moves", () => {
-    expect(code).toContain("drafts_deferred");
-    expect(code).toContain("drafts_attempted");
+    // The first version of this asserted the FIELD NAMES, which the interface declaration and the
+    // `: 0` initialisers keep alive whether or not anything ever increments them. Deleting all three
+    // increments passed it — a test titled "a number that moves" that could not tell whether the
+    // number moved. Pin the statements that do the moving.
+    expect(code).toContain("summary.drafts_deferred++");
+    expect(code).toContain("summary.drafts_attempted++");
     expect(code).toContain("summary.draft_ms_spent = draftMsSpent");
   });
 });
@@ -338,7 +342,34 @@ describe("the scheduled sweep reports what it did not do", () => {
   it("defers tenants it never started instead of being killed holding them", () => {
     expect(sweep).toContain("deferred_tenant_ids");
     expect(sweep).toContain("tenants_deferred");
-    expect(sweep).toContain("SWEEP_ELAPSED_BUDGET_MS");
+    // Pin the GUARD, not the identifier. Wrapping it as `if (false && …)` left the constant
+    // declaration and both response keys in place and passed the first version of this test, so the
+    // one bound the whole worst case rests on could be disabled with the suite still green.
+    expect(sweep).toContain("if (Date.now() - startedAt >= SWEEP_ELAPSED_BUDGET_MS) {");
+    expect(sweep).toContain("deferredTenantIds.push(t.id);");
+  });
+
+  it("pins the three constants, because the worst case is arithmetic over their values", () => {
+    // Unpinned, SWEEP_ELAPSED_BUDGET_MS could go 105_000 -> 175_000 and SWEEP_DRAFT_BUDGET_MS
+    // 120_000 -> 600_000 with everything green, each breaking the stated worst case outright. A
+    // deliberate change updates these lines and the comment block above them together.
+    expect(sweep).toContain("const TENANT_DRAFT_BUDGET_MS = 30_000;");
+    expect(sweep).toContain("const SWEEP_DRAFT_BUDGET_MS = 120_000;");
+    expect(sweep).toContain("const SWEEP_ELAPSED_BUDGET_MS = 105_000;");
+  });
+
+  it("charges the fleet pool when a tenant throws, not only when it succeeds", () => {
+    // The decrement lives in the try. A tenant that forges 63s and then throws would contribute
+    // nothing, and the next tenant would receive a full grant — the pool would stop meaning what
+    // its own comment says.
+    expect(sweep).toContain("draftMsRemaining -= Date.now() - tenantStartedAt;");
+  });
+
+  it("bounds the single-tenant branch too, not just the batch", () => {
+    // Same invocation, same ceiling, ten checks. Latent rather than live, but it is the one
+    // remaining service-role-reachable way to kill this function.
+    const single = sweep.slice(sweep.indexOf("if (body.tenant_id)"), sweep.indexOf("Batch mode"));
+    expect(single).toContain("draftBudgetMs: SOLE_RUN_DRAFT_BUDGET_MS");
   });
 
   it("logs both truncations, because nothing reads the response body", () => {
@@ -346,6 +377,11 @@ describe("the scheduled sweep reports what it did not do", () => {
     // there is unobservable, so the edge log is the one place a human can currently see this.
     expect(sweep).toContain("console.warn");
     expect(sweep.match(/console\.warn/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    // §13: a deferral fires on EITHER the per-tenant cap or the shared pool, and the commoner case
+    // is the former — so the log must not announce the fleet pool as exhausted while most of it is
+    // unspent, and must not claim "their actions were still filed", which is false on a retry tick.
+    expect(sweep, "must not claim the fleet pool is exhausted").not.toContain("fleet draft budget exhausted");
+    expect(sweep, "must not claim filing happened on a retry tick").not.toContain("Their actions were still filed.");
   });
 
   it("does not redefine tenants_scanned", () => {
@@ -392,5 +428,38 @@ describe("a deferred draft is postponed, not cancelled", () => {
     // Written on draftNeeded, not remediationNeeded: a check deferred twice must keep its marker,
     // or the second tick silently drops it out of the retry set.
     expect(code).toContain("if (draftNeeded && draftBudgetSpent) {");
+  });
+});
+
+describe("every entry point that can forge more than once is bounded", () => {
+  const onboarding = tsCodeOnly(
+    readFileSync(resolve(process.cwd(), "supabase/functions/systems-check-run-onboarding/index.ts"), "utf8"),
+  );
+  const change = tsCodeOnly(
+    readFileSync(resolve(process.cwd(), "supabase/functions/systems-check-run-change/index.ts"), "utf8"),
+  );
+
+  it("bounds onboarding, which forges the most per invocation of any flavour", () => {
+    // Full 10-check catalog, actionFiling 'all', on a tenant where most checks fail. 3 of the 4
+    // onboarding runs ever executed on prod died mid-loop.
+    expect(onboarding).toContain("draftBudgetMs: SOLE_RUN_DRAFT_BUDGET_MS");
+  });
+
+  it("bounds change-triggered as well, because one surface does map to two runners", () => {
+    // Written first as "leaves this unbounded on purpose, it cannot forge twice" — and it failed on
+    // the first run, which is the only reason the claim was caught. `payments` maps to
+    // ["payment_processor_connected", "payment_methods_declared"]; 16 of 17 surfaces are single, one
+    // is not, and the generalisation came from reading the first few lines of the map.
+    expect(change).toContain("draftBudgetMs: SOLE_RUN_DRAFT_BUDGET_MS");
+  });
+
+  it("keeps the map's shape visible, so a growing fan-out is never silent", () => {
+    const entries = change.match(/^\s{2}[a-z_]+: \[[^\]]*\],$/gm) ?? [];
+    expect(entries.length, "SURFACE_TO_RUNNERS should still be populated").toBeGreaterThan(5);
+    const multi = entries.filter((e) => e.includes('", "'));
+    expect(
+      multi.map((e) => e.trim()),
+      "a new multi-runner surface changes the per-invocation forge ceiling — re-check the budget",
+    ).toEqual(['payments: ["payment_processor_connected", "payment_methods_declared"],']);
   });
 });

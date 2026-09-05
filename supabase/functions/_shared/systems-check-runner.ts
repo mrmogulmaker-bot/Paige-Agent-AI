@@ -41,6 +41,17 @@ const REMEDIATION_TIER: Tier = "open-flexible";
 
 // The platform-default action-kind the migration seeds; the fix routes onto the bus as this kind.
 const REMEDIATE_ACTION_KIND = "systems.remediate";
+
+/** Draft budget for a run that has an edge invocation TO ITSELF — the single-tenant scheduled branch
+ *  and the onboarding scan. A batch member gets a smaller per-tenant share because it competes with
+ *  the rest of the fleet; a sole occupant does not, so it gets the whole allowance.
+ *
+ *  120s leaves the observed ~1s of fixed cost plus one in-flight forge inside the ~180s edge ceiling.
+ *  HONEST LIMIT (§13): that last term has no guaranteed ceiling today — the Claude fallback leg is
+ *  untimed — so this bounds the number of forges a run will START, not the wall clock it can reach.
+ *  Bounding what we can bound is still strictly better than the current unbounded behaviour: 3 of the
+ *  4 onboarding runs ever executed on production died mid-loop, two of them after 7 drafts. */
+export const SOLE_RUN_DRAFT_BUDGET_MS = 120_000;
 const RUNNER_AGENT = "paige-systems-check";
 
 // ── Types ──────────────────────────────────────────────────────────────────────────────────────

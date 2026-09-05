@@ -1341,7 +1341,8 @@ action-bus path (`SoloSystemsCheckWorkspace.tsx:456`).
 | Approve / dismiss a held approval (unchanged seams) | — | — | — | ✓ | ✓ | — | 403 |
 | `SystemsCheckTile` (the compact panel: latest run, findings, approve) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
 | A drafted fix is shown only when one exists (no "Paige drafted this fix" over a brief) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
-| Remediation drafting is budgeted, and a deferred draft retries next sweep | — | ✓ | ✓ | ✓ | ✓ | — | — |
+| Remediation drafting is budgeted at every entry point that can forge | — | ✓ | ✓ | ✓ | ✓ | — | — |
+| A deferred draft is ELIGIBLE for retry next sweep (not guaranteed — see below) | — | ✓ | ✓ | ✓ | ✓ | — | — |
 | Operator lens (`src/operator/surfaces/SystemsCheckSurface.tsx`) | ✓ | — | — | — | — | — | 403 |
 
 **The two new rows, and why their tier cells differ from each other.**
@@ -1357,6 +1358,14 @@ matters most for Sub-account, which per the note above reaches Systems Check ONL
 tier with no alternative view was the one being told something untrue. Operator scope still reads `brief`,
 because there it is the genuine guidance (prompt-forge cannot run tenant-less), so removing the key
 outright would have been a §58 removal rather than a fix.
+
+*Eligible for retry, deliberately not "retries"*. The first version of this row said a deferred draft
+"retries next sweep" flatly, and that overstates what shipped. A retry needs budget left when that
+tenant's turn arrives, and the sweep iterates `order("created_at", asc)` with no rotation — so a
+tenant late in that fixed order retries only on a tick where the tenants ahead of it happen not to
+spend the pool. Whether that ordering changes is a separate decision held open pending a week of
+measured drainage, so the ledger says eligible rather than promising a drain it cannot yet
+demonstrate.
 
 *Budgeted drafting* is `—` for God because the operator scan never drafts through a model at all: it
 stores the registry brief deterministically at zero cost, so budgeting it would suppress a free brief for

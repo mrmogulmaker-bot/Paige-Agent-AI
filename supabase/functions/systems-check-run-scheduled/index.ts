@@ -13,7 +13,7 @@
 //
 // §18: imports the ONE core + the runner barrel; writes no rows itself (the core is the SOLE writer, §37).
 
-import { runSystemsCheck } from "../_shared/systems-check-runner.ts";
+import { runSystemsCheck, SOLE_RUN_DRAFT_BUDGET_MS } from "../_shared/systems-check-runner.ts";
 import "../_shared/systems-check-runners/index.ts"; // side-effect: registers the 10 runner modules (§18)
 import { adminClient, corsHeaders, isAuthorizedInternalCaller, json } from "../_shared/systems-check-http.ts";
 
@@ -46,10 +46,25 @@ const MAX_BATCH = 100;
 //   SWEEP_ELAPSED_BUDGET_MS a backstop before starting each tenant, for the cases drafting does not
 //                           explain — chiefly the operator-fired sweep, which passes limit=100.
 //
-// Worst case, stated so it can be checked rather than trusted:
-//   105s (elapsed backstop) + ~1s (one tenant's fixed cost) + 30s (its draft budget) + 33.2s (the
-//   longest single forge ever measured, since a draft may START just under budget) = 169.2s,
-//   ~11s clear of the earliest observed kill at 180.4s.
+// Worst case, stated so it can be checked rather than trusted — AND stated honestly, because the
+// peer gate proved the first version of this comment was not true:
+//   105s (elapsed backstop) + ~1s (one tenant's fixed cost) + 30s (its draft budget) + T_forge,
+//   where T_forge is however long ONE forge can take once it has started, since a draft may begin
+//   just under budget.
+//
+// T_forge HAS NO CEILING TODAY. `forge()` routes to the open-flexible cell, whose featherless leg
+// is the only bounded one (AbortController at 20s, model-router.ts:155-156). On ANY featherless
+// failure — the 20s abort included — the text fallback calls Claude, and that path reaches
+// `fetch(ANTHROPIC_URL, { signal: opts.signal })` with `opts.signal` undefined: chatCompletionCompat
+// never supplies one. So a single forge is up to 20s PLUS an untimed call. 33.2s is the longest
+// ever OBSERVED over 42 samples; it is not a bound, and these three constants cannot make it one.
+//
+// Concretely: a tenant admitted at 104.9s whose first check aborts featherless at 20s and then
+// spends 60s in Claude reaches ~186s and is killed, with every bound below behaving as designed.
+// That is rarer than the unbounded-fleet failure this replaces — the two measured kills spent
+// ~181s across SIX drafts, which these constants would now prevent — so this is a real improvement
+// and not a claim of safety. The arithmetic only becomes a guarantee once the Claude leg carries a
+// deadline; that is its own slice, and it is the prerequisite for calling this bounded.
 // A healthy tick is 7.3s and is never truncated by any of the three.
 const TENANT_DRAFT_BUDGET_MS = 30_000;
 const SWEEP_DRAFT_BUDGET_MS = 120_000;
@@ -74,6 +89,13 @@ Deno.serve(async (req) => {
         scanFlavor: "scheduled",
         actionFiling: "delta",
         triggeredBy: { source: "scheduled", mode: "single" },
+        // This branch has the invocation to ITSELF, so it gets the whole pool rather than the
+        // per-tenant share a batch member receives. It is bounded for the same reason the batch is:
+        // 10 checks that all draft would run far past the ceiling, and nothing else here stops them.
+        // Latent rather than live — no producer posts {tenant_id} today — but it is the one
+        // remaining service-role-reachable way to kill this invocation, so it is closed with the
+        // mechanism that just landed rather than left as the next session's surprise.
+        draftBudgetMs: SOLE_RUN_DRAFT_BUDGET_MS,
       });
       return json(200, { ok: true, mode: "single", tenants_scanned: 1, runs: [summary] });
     } catch (e) {
@@ -107,6 +129,7 @@ Deno.serve(async (req) => {
       deferredTenantIds.push(t.id);
       continue;
     }
+    const tenantStartedAt = Date.now();
     try {
       const s = await runSystemsCheck({
         admin,
@@ -134,6 +157,13 @@ Deno.serve(async (req) => {
       scanned++;
     } catch (e) {
       // Fail-loud per tenant (§13/§32) — one tenant's failure never aborts the batch.
+      //
+      // Charge the pool this tenant's whole elapsed time. The runner throws without returning a
+      // summary, so its actual forge spend is unknowable here; charging nothing would let a tenant
+      // burn 60s of drafting, throw, and hand the next tenant a full grant — the pool would stop
+      // meaning what its comment says. Over-charging (this includes non-draft time) is the safe
+      // direction: it can only end drafting earlier, never later.
+      draftMsRemaining -= Date.now() - tenantStartedAt;
       console.error(`[systems-check-run-scheduled] scan failed for tenant ${t.id}:`, (e as Error)?.message);
       runs.push({ tenant_id: t.id, error: (e as Error)?.message ?? "scan_failed" });
       failed++;
@@ -151,9 +181,20 @@ Deno.serve(async (req) => {
     );
   }
   if (draftsDeferred > 0) {
+    // Says "a budget", not "the fleet budget": a deferral fires when EITHER the tenant's own 30s cap
+    // or the shared pool is spent, and the first is much commoner. The earlier wording claimed the
+    // fleet pool was exhausted while up to 66s of it could still be unspent.
+    //
+    // And it no longer claims the actions were filed. That is true for a fail deferred the first
+    // time, and FALSE on a retry tick: prevStatus is already 'fail' there, so remediationNeeded is
+    // false and nothing is filed — the action was filed on the earlier tick. Reporting a count of
+    // this tick's deferrals next to a claim about this tick's filings was exactly wrong for the
+    // case this change introduces.
     console.warn(
-      `[systems-check-run-scheduled] fleet draft budget exhausted; ${draftsDeferred} remediation ` +
-      `draft(s) deferred across ${scanned} scanned tenant(s). Their actions were still filed.`,
+      `[systems-check-run-scheduled] a draft budget was reached; ${draftsDeferred} remediation ` +
+      `draft(s) deferred across ${scanned} scanned tenant(s), ${Math.max(0, draftMsRemaining)}ms ` +
+      `left in the fleet pool. A first-time deferral still filed its action; a retry had already ` +
+      `filed one on an earlier tick.`,
     );
   }
 
