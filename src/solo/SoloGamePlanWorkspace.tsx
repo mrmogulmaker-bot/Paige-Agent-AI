@@ -348,7 +348,7 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
                     <div className="gp-mot-when">{m.when}</div>
                   </div>
                 ))}
-                <div className="gp-mot-caveat"><Info /><span>Real events recorded from your workspace activity, newest first with the time each happened. Shown by department — the individual specialist and the underlying record aren't opened from this view; ask PAIGE for the detail on any of them.</span></div>
+                <div className="gp-mot-caveat"><Info /><span>Real events recorded from your workspace activity, newest first with the time each happened. Shown by department; the individual specialist and the underlying record aren't available to open from this summary view.</span></div>
               </>
             )}
             {plan.motion.status === "ready" && plan.motion.items.length === 0 && (
