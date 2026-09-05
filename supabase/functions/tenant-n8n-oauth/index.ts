@@ -25,7 +25,12 @@ const clearCookie=`${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax
 const landing=(account:string|undefined,state:string)=>`${PUBLIC_BASE}${account&&/^\d+$/.test(account)?`/solo/${account}/settings/integrations`:'/choose-account'}?n8n_oauth=${state}`;
 type Payload={server:AuthorizationServer & {responseIssuerRequired?:boolean};client:ClientRegistration;resource:string;verifier:string;redirect_uri:string;authorization_url:string;requested_scopes?:string[]};
 type ServiceResult={expired?:boolean;account_number?:string;authorization_url:string;attempt_id:string;payload:Payload;pin:string;discovery_id:string;revoke?:{token:string;issuer:string;client_id:string;client_secret:string|null;token_type:'access_token'|'refresh_token'}};
-type Lease={lease:string;generation:string;approved_ids:string[];discovery_pin:string|null;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null};
+// The shape n8n_oauth_service's `acquire` returns. _shared/n8n-management.ts declares its
+// OWN copy of this for the same RPC, and the two had drifted: that one carried
+// `oauth_scopes` and this one did not, so reading it compiled there and failed only here.
+// Two declarations of one response is how that happens (§18); unifying them is tracked
+// separately rather than folded into a fix someone is waiting on.
+type Lease={lease:string;generation:string;approved_ids:string[];discovery_pin:string|null;server_url:string;access_token:string;refresh_token:string|null;expires_at:string|null;issuer:string;client_id:string;client_secret:string|null;oauth_scopes:string[]};
 Deno.serve(async req=>{
  const origin=req.headers.get('origin');
  const headers={...HEADERS,...(origin&&ALLOWED_ORIGINS.has(origin)?{'Access-Control-Allow-Origin':origin}:{})};
