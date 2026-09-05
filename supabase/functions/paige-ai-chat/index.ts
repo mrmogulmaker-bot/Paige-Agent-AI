@@ -21,7 +21,7 @@ import { classifyPipelineRun } from "../_shared/pipeline-capability-outcome.ts";
 // no real artifact (null url, empty drafts, null saved id) must degrade to an honest failure,
 // not a success-shaped receipt. ONE pure home for that decision (§18); handlers wrap their
 // own success shape in it so the model, the status label and the artifact card all inherit it.
-import { artifactProduced, ARTIFACT_ABSENT_ERROR } from "../_shared/artifact-receipt.ts";
+import { artifactProduced, ARTIFACT_ABSENT_ERROR, usableDrafts, IMAGE_NOT_FILED_ERROR } from "../_shared/artifact-receipt.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -10276,10 +10276,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               if ((cd as any)?.error) throw new Error((cd as any).error);
-              // §13/§70 — a 200 can carry an empty drafts array; that is no artifact, not a success.
-              const _drafts = (cd as any)?.drafts ?? [];
-              result = artifactProduced("draft_list", _drafts)
-                ? { success: true, channel: (cd as any)?.channel, drafts: _drafts }
+              // §13/§70 — a 200 can carry an empty drafts array, OR a non-empty array of
+              // content-less items (content-draft normalizes a missing `content` to ""), so filter
+              // to drafts that actually carry copy before reporting success (Codex P2). Return only
+              // the usable drafts so the model never narrates an empty one.
+              const _usableDrafts = usableDrafts((cd as any)?.drafts);
+              result = artifactProduced("draft_list", _usableDrafts)
+                ? { success: true, channel: (cd as any)?.channel, drafts: _usableDrafts }
                 : { success: false, error: ARTIFACT_ABSENT_ERROR.draft_list };
             } else if (tc.function.name === "generate_image") {
               // #292 — reuse the on-canvas image row (stack its versions) ONLY when the model targets
@@ -10346,6 +10349,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // `generate-image` edge fn, which now remembers the artifact at that ONE shared seam so
                 // BOTH this path and the Vibe Studio frontend capture (§18 one home). Capturing here too
                 // would double-write.
+              }
+              // §13/§70 (Codex P2) — FINAL Studio check, after any §33 critique regeneration. In a
+              // STUDIO session the image must be FILED (content_id) to reach the canvas — the linkage
+              // below (link_session_artifact / save_artifact_version) requires r.content_id — so a
+              // created-but-unfiled image (url present, best-effort save failed → content_id null, from
+              // the first gen OR a regen) would report success while the canvas gets nothing. Fail
+              // honestly. REGULAR chat keeps a null-content_id url as a usable success (the URL is a
+              // real downloadable file), so this is Studio-only; running it AFTER the critique loop
+              // lets a rescue regeneration that DID file count as a real success.
+              if (studioSessionId && (result as any)?.success === true && !artifactProduced("saved_id", (result as any)?.content_id)) {
+                result = { success: false, error: IMAGE_NOT_FILED_ERROR };
               }
             } else if (tc.function.name === "calendar_book_meeting") {
               // Confirm is enforced by the central autonomy gate above (a booking
