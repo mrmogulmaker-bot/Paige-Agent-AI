@@ -31,6 +31,59 @@
   the build, catches it; and an all-clear is a claim that must be gated on the reads that back it
   actually answering.**
 
+- **Communications closeout, Slice A — Twilio cost ownership: the buy flow stops claiming the tenant
+  is billed (2026-09-05, edge + one migration)** — the PLATFORM is the provider account holder and
+  pays the provider cost for MVP; solo tenants are NOT billed for Communications
+  (`comms-purchase-number` returns `charge_wired:false` on every exit — the tenant-billing charge leg
+  is not wired). But the buy flow said the opposite: the `comms_buy_number` tool description ("THIS
+  SPENDS REAL MONEY… the operator IS being billed"), the server confirmation prompt ("This starts a
+  recurring charge of $X/month"), the `monthly_cents` param desc, and the Rail (`_workspace_event_display`:
+  "Bought a phone number (monthly charge)" + the `capability_completed_unrecorded` summary "a charge or
+  a change has landed"). A §13 falsehood on the audience:'owner' Rail — an owner read it as a bill they
+  owe. Corrected the backend truthfulness layer: the tool description + param + confirmation prompt
+  (paige-ai-chat) now say the recurring monthly cost (the number's LISTED price — `monthly_cents` is
+  retail, not the raw provider cost) is the platform's to cover, the business
+  is not billed, and the real caution is a duplicate/unused number is a waste; and migration
+  `20261222000000` reproduces `_workspace_event_display` verbatim except the two Rail strings (diff
+  proved: only those + the comment changed). NO tenant-billing write is created or implied
+  (`charge_wired:false` unchanged; no billing table touched — the money boundary §38 is preserved, not
+  built). `money_already_spent` is NOT renamed (the outcome classifier + contract test key on it; that
+  is the Billing rebuild the owner ruled out) — its meaning is corrected in the tool description; the
+  `capability_completed_unrecorded` mapping is correct and stays. **Frontend is a Claude Design hand-off
+  (§00):** `src/solo/settings.tsx`, `NumbersTab.tsx` ("charges your business"), and
+  `src/lib/integrations/connectError.ts` ("IS being billed") + their tests carry the same false claim —
+  CC did not touch them; backend goes truthful now, frontend converges on CD's track (temporary
+  cross-layer copy inconsistency, §6-flagged). **Escalated to owner:** the "Billing for messaging"
+  usage-metering card in settings.tsx (generic-Billing-rebuild boundary — flagged, not touched).
+  **Parked (follow-up):** the `list_tool_autonomy` toggle label "Buy a phone number (monthly charge)"
+  (inside the large union function — the #776-hazard surface; disproportionate to reproduce for one
+  label suffix; pre-existing, my Rail fix does not worsen it).
+
+- **Phase 2 · S1.1 — deal_move_stage records an outcome that is TRUE about what happened (2026-09-05,
+  edge-only, fast-follow on merged #962)** — Codex (the repo's automated reviewer) posted 3 P2 findings
+  AFTER #962 merged; all 3 verified against source (§39 — the peer-gate + my §39 pass + Codex are
+  LAYERED, and Codex caught what my pass folded WRONG). TWO were §13 false-Rail-statement defects in my
+  own code and are FIXED: **(a)** a PRE-dispatch throw (malformed-args `JSON.parse` at index.ts:9012,
+  the service-client construction, or a pre-UPDATE stage-lookup error) was recorded as
+  `capability_outcome_unknown`, whose Rail copy says "was sent … may have taken effect" — FALSE for an
+  act that never dispatched; **(b)** the `deal_move_stage` stage lookup (index.ts:9825) ignored its query
+  `error`, so an OPERATIONAL failure (PostgREST outage / malformed-UUID 22P02) returned `success:false`
+  and was classified `capability_refused` ("Not allowed") — FALSE, no guard decision was made. Fix is a
+  `writeAttempted` boundary (`let pipelineWriteAttempted=false` reset per tool-call, flipped `true`
+  immediately before the `deals` UPDATE) threaded to the classifier: **pre-write throw →
+  `capability_failed`** ("nothing changed", true), **post-write throw → `capability_outcome_unknown`**
+  (may have applied), and the stage lookup now `throw`s its error (pre-write → failed) instead of
+  swallowing it into a false `refused`. The genuine "stage isn't in your workspace" (null data, no error)
+  stays `refused` (correct). **Verified:** contract test 11/11 (two new throw-bucket tests + a wiring
+  test); **mutation audit** RED on both a classifier mutation (revert the split) and a wiring mutation
+  (drop `if (stageErr) throw stageErr`), GREEN restored; pipeline+comms suites 31/31; ci:tsc 13→13; §50
+  clean. **TRACKED HANDOFF, NOT fixed here (§0.3 consume-don't-rebuild):** Codex P2 #1 — `record_capability_run`
+  (`20261220000000:246-251`) requires an active `tenant_members(tenant,actor)` row, so an agency-managed
+  operator acting on a child WITHOUT a direct seat gets `CAPABILITY_RUN_FORBIDDEN` (logged by
+  `recordCapabilityRun`, NOT silent) and the completed move records no Rail row. That is a shared §59
+  SECURITY-DEFINER authz change affecting ALL 11+ producers (comms/n8n/mcp/pipeline), routed to the
+  capability-record contract owner — not widened inside a pipeline slice.
+
 - **Communications closeout, Slice B — a verified Super Admin can reach the platform Communications
   tools (2026-09-05, no migration, edge-only)** — the `paige-ai-chat` role gate that guards the eight
   `comms_*` tools (and the CRM operator tools) was `admin || coach`; a God-tier `super_admin` is
