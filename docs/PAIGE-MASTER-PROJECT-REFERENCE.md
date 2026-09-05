@@ -1427,34 +1427,33 @@ Grouped:
   status + provenance for four fields and never a raw value; nothing lets Paige write any of them.
   A write tool needs the one-approval-gate contract, an action-risk classification and Rail events.
 
+### Solo Settings → Connections Add channel (PR #967, LIVE 2026-09-05)
+
+- ✅ **The generic Available catalogue is now the business-channel control desk.** `connections/available`
+  is visibly **Add channel**, grouped by Email and inbox, Phone and messaging, and Calendar and
+  booking. It shows only source-backed operating channels, withholds its one best-next recommendation
+  while required reads are unresolved or unavailable, and routes setup to Communications,
+  Registration, Health, or Calendars. External apps, automations, APIs, social/data systems, and
+  specialist tools have one explicit Integrations handoff; Integrations itself was not redesigned.
+- ✅ **Operating-state truth is tenant-safe and fail-closed.** Prior-workspace identity/readiness values
+  are synchronously masked. A sender counts only when its canonical identity is active or its Google
+  sending account is proven connected; a phone counts only when the canonical readiness record proves
+  `can_send_sms`. Pending, configured-unverified, degraded, registration-required, resolving,
+  failed-read, and unavailable remain distinct. The Add-channel surface performs no provider mutation.
+- ✅ **Exact release proof.** Owner approved exact source head `a1b317d8`; PR #967 squash-merged as
+  `bc89d79c`, whose tree equals the approved head tree (`bd2cf4b4`). Vercel production deployment
+  `dpl_8n1eP8n1Qyik2XVXZCeDLSKKTer1` is `READY` for `bc89d79c`; `paigeagent.ai`,
+  `app.paigeagent.ai`, and the three Vercel aliases point to it. The public Connections route returned
+  HTTP 200, its live Solo bundle contained the five release fingerprints, and the one-hour Vercel
+  runtime-error scan was clean.
+- 🟡 **OWED — authenticated owner live-drive.** Local proof is 188 focused tests plus 170 real-shell
+  checks across all four Solo viewports, both themes, two synthetic tenant contexts, PAIGE open/closed,
+  keyboard/focus, reflow, and reduced motion. No signed-in production owner session or real provider
+  account was exercised, so authenticated tenant/provider behavior remains **UNVERIFIED**.
+
 ---
 
 ## 5. Current focus + known gaps
-### APPROVED RELEASE CANDIDATE — Solo Settings → Connections Add channel (2026-09-05; NOT SHIPPED)
-
-The approved candidate replaces the static `connections/available` provider catalogue with **Add
-channel**: one compact, job-led workspace for Email and inbox, Phone and messaging, and Calendar and
-booking. It shows only source-backed operating channels, withholds its single best-next
-recommendation while required reads are unresolved or unavailable, and routes setup into the
-existing Communications, Registration, Health, or Calendars owner surface. External apps,
-automations, APIs, social tools, data systems, and specialist tools have one explicit handoff to
-Integrations; n8n, Zapier, Make, MCP, and Direct APIs are not Connection choices.
-
-The candidate state boundary is tenant-safe and fail-closed: values from the prior workspace are
-synchronously masked during a switch; a sender is operating only when its canonical identity state
-is active (or a Google sending account is proven connected); an assigned phone number is operating
-only when the canonical readiness record proves `can_send_sms`. Pending,
-configured-but-unverified, degraded, registration-required, failed-read, and unavailable states
-remain distinct. The Add-channel surface itself performs no provider or OAuth mutation.
-
-**Current proof:** 188 focused Connections/adjacent tests; a 170-check real-Solo-shell matrix across
-1536x770, 1366x768, 1024x768, and 900x1000, both Mineral/Obsidian themes, two synthetic tenant
-contexts, PAIGE open/closed, keyboard/focus, 200%-equivalent reflow, and reduced motion; focused lint
-and production build green. The candidate remains here in Section 5 until its exact repaired head
-receives final go-live approval and merges. Only then may it move to Section 4. Authenticated
-provider/account behavior and production tenant data remain **UNVERIFIED** until the post-deploy
-owner drive.
-
 ### Connections after Add channel — remaining real-provider and runtime proof gaps (2026-09-05)
 
 Inbound mailbox reading and non-SMS business messaging remain **UNAVAILABLE** because no supported

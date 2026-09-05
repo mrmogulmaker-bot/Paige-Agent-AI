@@ -3069,7 +3069,7 @@ never as duplicate setup cards. The owner approved the Flow Prototype and then a
 implementation to supersede draft PR #674 while retaining its A2P/domain ideas as separate follow-up
 scope; Integrations UI is not redesigned by this release.
 
-**Approved release-candidate interaction contract; not yet shipped.** The former
+**Shipped interaction contract (PR #967, 2026-09-05).** The former
 `connections/available` provider catalogue is visibly
 **Add channel**, grouped by business job. It begins with confirmed operating channels, one
 source-backed next action, and one Integrations handoff. Each option states outcome, current state,
@@ -3088,5 +3088,8 @@ fails closed until all owning reads required for the decision succeed.
 
 **Evidence boundary.** 188 focused tests and 170 real-shell rendered/behavioral checks pass across
 the four Solo viewports, both themes, two synthetic tenant contexts, PAIGE open/closed, keyboard,
-focus, reflow, and reduced motion. Production build and focused lint pass. Authenticated provider
-behavior, production tenant truth, and the post-deploy owner drive remain **UNVERIFIED**.
+focus, reflow, and reduced motion. Exact source head `a1b317d8` squash-merged as `bc89d79c` with an
+identical tree; Vercel production is `READY`, all five production aliases point to it, the public
+Connections route returned HTTP 200, the live Solo bundle carries the release fingerprints, and the
+one-hour runtime-error scan was clean. Authenticated provider behavior, signed-in production tenant
+truth, and the owner live-drive remain **UNVERIFIED**.
