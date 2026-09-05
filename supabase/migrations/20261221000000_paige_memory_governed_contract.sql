@@ -105,8 +105,11 @@ BEGIN
     'decision','commitment','correction',
     -- agent memory (scoped task outcomes + lessons — NEVER hidden reasoning)
     'agent_outcome','agent_lesson',
-    -- general summary kinds the table already carries (kept so the seam is a superset, not a fork)
-    'summary','session_summary','insight'
+    -- general kinds the table ALREADY carries (kept so the seam is a strict superset, not a fork):
+    -- summary/session_summary/insight, and 'identity' (the §52 operator-briefing type seeded in
+    -- 20260816120000 and read by _shared/owner-context.ts) — omitting it would make the governed
+    -- seam unable to record or supersede a type the platform already stores (peer-gate, §39).
+    'summary','session_summary','insight','identity'
   ) THEN
     RAISE EXCEPTION 'PAIGE_MEMORY_TYPE_UNKNOWN: %', p_memory_type USING ERRCODE = '22023';
   END IF;
