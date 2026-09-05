@@ -1373,6 +1373,33 @@ the `pipeline_configure` tool has no field for it, and the governed RPC hardcode
 finding says so in its `caveat` rather than naming an impossible next action (§70). Task #26 removes
 the gap and the caveat together; until it lands this row is honest, not finished.
 
+#### Pipeline — a stage can be marked closing, by PAIGE (PR #941 + #26 slice, §66)
+
+| | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Closing a deal records `status` + `actual_close_date` (PR #941) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| A stage's closing role is settable **by PAIGE** | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| A stage's closing role is settable **on the Pipeline page** | — | — | — | **not yet** | **not yet** | — | 403 |
+
+Two migrations, sequenced deliberately. `20261204000000` made a governed move into a won stage stamp
+the close — without it the second would let a tenant create a closing stage, watch the Systems Check
+turn green, close a deal and still see zero revenue. `20261205000000` then made `stage_type`
+settable through the one governed RPC both the board and PAIGE reach, and readable through the
+workspace projection.
+
+**Stated so the row is not read as more than it is:** the Campaigns › Pipeline PAGE still cannot set
+it — `growth2.tsx` has no notion of stage type, and that control is Claude Design's to draw (§00).
+The `revenue_tracking_configured` caveat was therefore NARROWED to name the route that works
+("ask Paige"), not deleted. Deleting it would have pointed the owner at a page that still cannot
+finish the job the check names.
+
+**A guard that was planned and deliberately not shipped:** a refusal on any command leaving a
+pipeline with zero live open stages. The §39 pass established it would break the shipped "Create
+blank pipeline" button, refuse a plain rename on a state already reachable, and fail to hold the
+invariant anyway because `archive_stage` is uncovered. Measured on prod: zero forms route to any
+pipeline, and one pipeline already sits at zero open stages. Pre-existing routing fragility, filed
+rather than answered by a guard that breaks a working button.
+
 #### Systems Check + Mind — corrections shipped with PR #933 (§66)
 
 Behaviour and truthfulness only. **No tier availability changes; nothing is added or gated.**
