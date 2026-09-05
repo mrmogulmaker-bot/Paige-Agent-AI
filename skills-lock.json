@@ -12,6 +12,14 @@
       "sourceType": "github",
       "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
       "computedHash": "ec56a54fba0e97bee52c7f244ba603bb284bf8d1b739c66a5cc84ec3df709d9d"
+    },
+    "paige-ui-design": {
+      "source": "PracticalSwan/agent-skills",
+      "sourceType": "github-pinned-curation",
+      "sourceCommit": "da1f686c51f64d32395e645eec5e58ba5045c744",
+      "upstreamSkillPath": "frontend-design/SKILL.md",
+      "skillPath": ".agents/skills/paige-ui-design/SKILL.md",
+      "computedHash": "cf0a44c15f8310a390d16c76e943ff90b3c3c24412ff68c79444ac013aaea064"
     }
   }
 }
