@@ -112,7 +112,13 @@ export const SUMMONS: Readonly<Record<CapabilityId, Summon>> = {
   sweep: {
     title: "Systems sweep",
     deck: "Started from the command bar. It holds no rail slot — close it and it retires, and the run joins Fleet’s own history tab.",
-    foot: "Reads paige_systems_check_run at tenant_id IS NULL. A run in flight reads still running, never a verdict it has not reached.",
+    // CORRECTED 2026-09-05 (migration 20261213000000). This used to end "A run in flight reads
+    // still running, never a verdict it has not reached", which was a claim about the resolver and
+    // is no longer true of it: `systems_check_snapshot` now SKIPS a run with no `completed_at` and
+    // returns the last completed sweep, reporting the in-flight one separately as
+    // `scan_in_progress`. The promise the line was making — never show a verdict a run has not
+    // reached — is now kept more strongly, by not reading the unfinished run at all.
+    foot: "Reads paige_systems_check_run at tenant_id IS NULL. It reads the last sweep that finished, never a verdict a run has not reached.",
     rows: [
       { name: "Resolver integrity", status: "Pass", tone: "var(--pg-positive)" },
       { name: "RLS posture", status: "Pass", tone: "var(--pg-positive)" },

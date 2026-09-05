@@ -1307,20 +1307,56 @@ say which tiers had a SURFACE showing it, and those were different answers:
 ### Systems Check — the operating-readiness console (SHIPS WITH PR #928, §66)
 
 The radial "evidence moving through the business" treatment is REASSIGNED to Trust Compass by owner
-ruling; Systems Check becomes the five-part console. Same tiers, same reads, same RLS — this changes
-what the surface SAYS, not who may see it.
+ruling; Systems Check becomes the five-part console. Same reads, same RLS — this changes what the
+surface SAYS, not who may see the underlying data.
+
+**CORRECTED 2026-09-05 — the Sub-account column was wrong on five rows.** It read `✓`, and the
+paragraph above it read "same tiers", which together asserted that a sub-account reaches the
+five-part console. It does not. `SoloSystemsCheckWorkspace` has exactly one non-test mount
+(`src/solo/CommandCenter.tsx:19`), reached only through `/solo/*`, and `ROUTE_TIERS` in
+`src/lib/auth/workspaceEntry.ts:124-126` maps `solo: ["solo"]` and `business: ["sub_account"]` — a
+sub-account is redirected off `/solo/*`. `/business/*` mounts `AgencyApp`
+(`src/business/BusinessEntry.tsx:2`), whose `systems` tab renders `<SystemsCheckTile scope="tenant">`
+(`src/agency/CommandCenter.tsx:74`); two tests pin that split
+(`TenantCommandCenterSubtabs.test.tsx:184,192`).
+
+So a sub-account sees the SAME tenant-scoped findings through a DIFFERENT surface. The rows below now
+say that. The correction matters beyond tidiness: this is the row a §56 pre-build check reads, and as
+written it would have authorised "the console already covers Solo and Sub-account" for the on-demand
+rescan work — the §99 availability-by-accident shape. Found by the §39 adversarial pass on that task,
+not by a surface survey.
+
+Reading the table below: `— (tile)` means the tier does not get that console treatment but does see
+the same findings through `SystemsCheckTile`, which has its own row. The Approve row is `✓` for
+Sub-account because it genuinely can approve — through the tile (`SystemsCheckTile.tsx:168`, the only
+caller of `approve_systems_check_finding` in the repo), not through the console, whose approve is the
+action-bus path (`SoloSystemsCheckWorkspace.tsx:456`).
 
 | Systems Check console | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
-| The five-part console (attention · ready · nine areas · rail · who-does-what) | — | — | — | ✓ | ✓ | — | 403 |
-| Business-area grouping instead of the raw `domain` enum | — | — | — | ✓ | ✓ | — | 403 |
-| Plain check titles instead of the registry's `check_name` | — | — | — | ✓ | ✓ | — | 403 |
-| Per-item next action into the owning surface | — | — | — | ✓ | ✓ | — | 403 |
+| The five-part console (attention · ready · nine areas · rail · who-does-what) | — | — | — | ✓ | — (tile) | — | 403 |
+| Business-area grouping instead of the raw `domain` enum | — | — | — | ✓ | — (tile) | — | 403 |
+| Plain check titles instead of the registry's `check_name` | — | — | — | ✓ | — (tile) | — | 403 |
+| Per-item next action into the owning surface | — | — | — | ✓ | — (tile) | — | 403 |
 | Approve / dismiss a held approval (unchanged seams) | — | — | — | ✓ | ✓ | — | 403 |
+| `SystemsCheckTile` (the compact panel: latest run, findings, approve) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
 | Operator lens (`src/operator/surfaces/SystemsCheckSurface.tsx`) | ✓ | — | — | — | — | — | 403 |
 
-**God is `—` on every console row deliberately.** `CommandHub` is the Solo shell; the operator reads
-its own tenant-less lens through `useSystemsCheck("operator")`, which this slice does not touch.
+**God is `—` on every FIVE-PART-CONSOLE row deliberately** (the first five). `CommandHub` is the Solo
+shell; the operator reads its own tenant-less lens through `useSystemsCheck("operator")`. It is `✓`
+on the tile row because the tile renders at operator scope in `OperatorCommandCenter.tsx:623` and at
+tenant scope whenever the operator is acting inside a tenant.
+
+**The tile is `✓` for Solo, and that correction is itself a correction.** A first pass at this block
+put `—` there on the reasoning that Solo gets the console instead. Wrong: `PracticeOverview.tsx:265`
+mounts `<SystemsCheckTile scope="tenant" />` UNCONDITIONALLY, above the empty/non-empty split, and
+its own comment says it renders "for EVERY tenant tier (God-tenant-context, solo, sub-account,
+agency-as-tenant)". `resolveLandingRoute.ts` contains zero `/solo` branches, so a solo owner lands on
+`/admin` → `PracticeOverview` unless `workspaceEntry.ts:158-159` sends them to `/solo/{n}/command-center`
+— which it does only when `solo_shell_enabled === true` AND `account_type='standalone'`. So a solo
+tenant reaches the CONSOLE through the shell flag and the TILE through the default landing; both rows
+are `✓` and neither excludes the other. Recorded at length because a ledger correction that
+introduces a new wrong cell is worse than the drift it fixes.
 
 **What did NOT ship here, stated so the ledger is not read as more than it is:** Refresh still
 re-reads the last recorded run and says so — an on-demand re-check is NOT wired. `systems_check_snapshot`
