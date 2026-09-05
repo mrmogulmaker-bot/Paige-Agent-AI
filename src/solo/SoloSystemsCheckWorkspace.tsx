@@ -302,6 +302,11 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
     if (!systems.run) return [];
     if (currentFindings.length === 0) return ["The last run left no readable results at all."];
     const reasons: string[] = [];
+    // `check_count` is safe to trust even on an unfinished run, which looks like it contradicts the
+    // strip above (it abandons the run row when the run has not finished) but does not: the runner
+    // sets check_count at INSERT, before the first check, and patches only pass_count/fail_count at
+    // the end (`_shared/systems-check-runner.ts:277`). The planned total is known up front; the
+    // verdict tallies are not. This sentence needs the former and the strip needed the latter.
     const recorded = systems.run.check_count ?? currentFindings.length;
     if (!hasCompletedRun) {
       reasons.push("The last check did not finish, so what is below is only as far as it got.");
@@ -311,15 +316,22 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
         `It recorded ${recorded} check${recorded === 1 ? "" : "s"} but only ${currentFindings.length} result${currentFindings.length === 1 ? " is" : "s are"} readable here.`,
       );
     }
-    // Deliberately the RAW skip/error count, matching the condition that raises the flag, so the
-    // number in the sentence can never disagree with the reason it was shown. A later-resolved
-    // skip still could not be evaluated when the run went through, which is what this says.
+    // Counted through evidenceFilter, NOT raw status, so this is the same quantity the strip's
+    // "could not be evaluated" and the "Could not be checked" bucket render. An earlier draft used
+    // raw status and produced 1 here beside the strip's 0 on a run whose only unevaluated check had
+    // been resolved — two numbers for one quantity, forty lines apart, which is the defect class
+    // this whole memo exists to remove. Resolved work is presented as resolved everywhere else on
+    // this surface, so it is not also counted as unanswered here.
     const unevaluated = currentFindings.filter(
-      (finding) => finding.status === "skip" || finding.status === "error",
+      (finding) => evidenceFilter(finding) === "unavailable",
     ).length;
     if (unevaluated > 0) {
+      // Denominated in what CAME BACK, never in `recorded`. When results are also missing, saying
+      // "1 of the 10" would assert the other 9 reached a verdict — precisely what the sentence
+      // above it just denied. We only know about the results we can read.
+      const readable = currentFindings.length;
       reasons.push(
-        `${unevaluated} of the ${recorded} check${recorded === 1 ? "" : "s"} could not be evaluated, so ${unevaluated === 1 ? "that area is" : "those areas are"} unanswered.`,
+        `${unevaluated} of the ${readable} result${readable === 1 ? "" : "s"} that came back could not be evaluated, so ${unevaluated === 1 ? "that area is" : "those areas are"} unanswered.`,
       );
     }
     return reasons;
@@ -494,17 +506,28 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
    * moment a run crashes and is the newest, they would.
    *
    * Reading the row regardless would print "0 passed · 0 need attention" directly above a list of
-   * things needing attention. So the counts come from the run ONLY once the run finished, and are
-   * derived from the findings actually on screen otherwise — which is the one denominator that
-   * cannot disagree with the list under it.
+   * things needing attention. So the verdict tallies are ALWAYS derived from the findings actually
+   * on screen — the one denominator that cannot disagree with the list under it.
+   *
+   * That rule used to be applied only to unfinished runs, and the finished case broke it in the
+   * other direction. `fail_count` is what the scan saw AT SCAN TIME; resolving a finding afterwards
+   * does not rewrite it. So a resolved fail printed "1 needs attention" in this strip while the
+   * section below said "Nothing from the last check needs you", with no banner between them to
+   * explain the gap — measured directly, and reachable in production, because the resolve path
+   * (20260830150343_systems_check_source_integrity.sql:134) permits exactly this status. Deriving
+   * both tallies from the findings closes it. On a finished run with nothing resolved they are
+   * identical to the run row, so this changes nothing except the case where the row is stale.
+   *
+   * `check_count` is the one run column that stays trustworthy throughout, because it is written
+   * at INSERT rather than patched at the end — so it remains the planned total.
    */
   const freshDetail = !systems.run
     ? "Nothing has been recorded for this workspace."
     : (() => {
         const trustRun = hasCompletedRun;
         const total = trustRun ? (systems.run.check_count ?? currentFindings.length) : currentFindings.length;
-        const passed = trustRun ? (systems.run.pass_count ?? confirmedFindings.length) : confirmedFindings.length;
-        const failed = trustRun ? (systems.run.fail_count ?? attentionFindings.length) : attentionFindings.length;
+        const passed = confirmedFindings.length;
+        const failed = attentionFindings.length;
         const unread = unavailableFindings.length;
         return (
           <>
