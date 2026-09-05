@@ -57,8 +57,10 @@ describe("Pipeline capability runs — what the Rail is told (S1)", () => {
   });
 
   it("a THROW is capability_outcome_unknown, never failed — the move may have already happened", () => {
-    // §947 governing rule + the deal_activities insert runs AFTER the deal is moved, so a
-    // throw cannot assert "nothing was left half-done."
+    // §947 governing rule: a thrown UPDATE/transport error is not provably non-applied (a
+    // transport throw can land after commit), so a throw must never assert "nothing changed".
+    // (Corrected 2026-09-05 per S1 review: the activity insert can NOT throw — it goes through
+    // checkedWrite — so the in-branch throw is only `throw merr`; unknown is still correct.)
     expect(move({ thrown: new Error("db exploded"), threw: true })).toBe("capability_outcome_unknown");
     // NEGATIVE CONTROL: the one wrong answer that would put a false "nothing changed" on the Rail.
     expect(move({ thrown: new Error("db exploded"), threw: true })).not.toBe("capability_failed");

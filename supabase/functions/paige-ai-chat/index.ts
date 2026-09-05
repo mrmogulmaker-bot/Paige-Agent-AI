@@ -10919,6 +10919,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
 
             // The result the model is about to be handed is the same evidence the owner
             // gets. Classified inside the recorder from the seam's OWN codes, not `success:false`.
+            // Result XOR catch: both recorders are total try/catch and never throw, so this
+            // result-path call cannot fall into the catch below and double-record (S1 review m1).
             await recordCommsRun({ result });
             await recordPipelineRun({ result });
 
