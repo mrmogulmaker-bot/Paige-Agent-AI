@@ -8932,9 +8932,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // the `clients.linked_user_id` branch FIRST and can therefore name a DIFFERENT tenant
           // than the one the purchase hit. Recording against the persona tenant would show one
           // workspace's owner an act that happened in another. So resolve the caller's own tenant
-          // the same way the seam did, and attribute the row to that. Resolved once per turn and
-          // cached (undefined = not yet resolved); the round-trip only happens on a real comms act
-          // because the outcome is checked first.
+          // the same way the seam did, and attribute the row to that. Resolved lazily, ONLY on a
+          // real comms act — the outcome is classified first, and a non-comms tool (or a comms
+          // read) returns before the round-trip. `commsActorTenant` is declared per tool-call
+          // iteration and `recordCommsRun` runs at most once per iteration (result XOR catch), so
+          // the `undefined`-sentinel guard is a correctness belt (never resolve twice, never treat
+          // a real `null` as unresolved), not a cross-call cache — there is no second call in an
+          // iteration for it to save.
           let commsActorTenant: string | null | undefined;
           const resolveCommsActorTenant = async (): Promise<string | null> => {
             if (commsActorTenant !== undefined) return commsActorTenant;
