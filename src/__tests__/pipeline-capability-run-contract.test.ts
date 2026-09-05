@@ -125,4 +125,21 @@ describe("Pipeline capability run WIRING in paige-ai-chat (source assertions)", 
     expect(src).toContain("const { data: stage, error: stageErr } = await admin.from(\"pipeline_stages\")");
     expect(src).toContain("if (stageErr) throw stageErr");
   });
+
+  it("orders the boundary correctly: stageErr throw BEFORE the flag, flag BEFORE the deals UPDATE (§39 peer-gate)", () => {
+    // POSITION matters, not just presence (the §39 MINOR): if `pipelineWriteAttempted = true` moved
+    // AFTER the deals UPDATE, a merr throw would misclassify as capability_failed instead of
+    // outcome_unknown — a false "nothing changed" on a possibly-applied write. Lock the order so a
+    // future refactor can't silently break it. Anchor on the move-specific UPDATE (unique to
+    // deal_move_stage; deal_create INSERTs, it does not UPDATE stage_id+pipeline_id).
+    const idxStageErrThrow = src.indexOf("if (stageErr) throw stageErr");
+    const idxFlagSet = src.indexOf("pipelineWriteAttempted = true");
+    const idxMoveUpdate = src.indexOf(".update({ stage_id: stage.id, pipeline_id: stage.pipeline_id, status");
+    expect(idxStageErrThrow).toBeGreaterThan(0);
+    expect(idxFlagSet).toBeGreaterThan(0);
+    expect(idxMoveUpdate).toBeGreaterThan(0);
+    // pre-write lookup throw → flag flip → external write, in that source order.
+    expect(idxStageErrThrow).toBeLessThan(idxFlagSet);
+    expect(idxFlagSet).toBeLessThan(idxMoveUpdate);
+  });
 });
