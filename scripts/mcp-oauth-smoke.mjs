@@ -207,6 +207,50 @@ routes.set("as.example/token", (_q, res, body) => {
   });
   check("a refresh returns the ROTATED refresh token, which must replace the old one",
     rotated.refreshToken === "rt-2" && rotated.accessToken === "at-2");
+
+  // RFC 6749 5.1: `scope` is OPTIONAL in a token response when it is identical to what
+  // was requested -- and this route deliberately omits it, as a refresh_token grant
+  // commonly does. Reading that as ZERO scopes made every downstream scope assertion
+  // fail, the caller revoked the token it had just been issued, and the provider had
+  // already killed the old refresh token by rotating it. The connection could then never
+  // refresh again and only a full re-authorization brought it back -- once per token
+  // lifetime, indefinitely.
+  check("an omitted scope on refresh means UNCHANGED, not none",
+    (await oauth.refreshTokens({
+      server, clientId: "client-abc", clientSecret: null, refreshToken: "rt-1",
+      resource: RESOURCE_SERVER, grantedScopes: ["mcp:tools", "mcp:read"],
+    })).scopes.join(" ") === "mcp:tools mcp:read");
+  check("...and a caller that names no scopes still gets none, rather than a guess",
+    rotated.scopes.length === 0);
+
+  // The security half: an omission is filled in, a DISAGREEMENT never is.
+  routes.set("as.example/token", (_q, res) => json(res, { access_token: "at-3", expires_in: 3600, scope: "mcp:admin" }));
+  check("a scope the server actually states is never overridden by what we asked for",
+    (await oauth.refreshTokens({
+      server, clientId: "c", clientSecret: null, refreshToken: "rt-2",
+      resource: RESOURCE_SERVER, grantedScopes: ["mcp:tools"],
+    })).scopes.join(" ") === "mcp:admin");
+
+  routes.set("as.example/token", (_q, res) => json(res, { access_token: "at-4", expires_in: 3600, scope: "" }));
+  check("an explicitly EMPTY scope is the server saying none, and stays none",
+    (await oauth.refreshTokens({
+      server, clientId: "c", clientSecret: null, refreshToken: "rt-2",
+      resource: RESOURCE_SERVER, grantedScopes: ["mcp:tools"],
+    })).scopes.length === 0);
+
+  // Only the KEY'S ABSENCE carries the RFC's "identical to requested". A present-but-
+  // malformed scope is a broken response, and reading it as agreement would record
+  // privileges the response never established -- in the n8n exchange path, write and
+  // execute scopes that the discovery probe cannot verify, because it only ever calls
+  // search_workflows. Raised by Codex on this PR; taken as the safer reading.
+  for (const [label, value] of [["a number", 42], ["an array", ["mcp:tools"]], ["an explicit null", null]]) {
+    routes.set("as.example/token", (_q, res) => json(res, { access_token: "at-5", expires_in: 3600, scope: value }));
+    check(`a scope that is ${label} is malformed, not agreement`,
+      await codeOf(() => oauth.refreshTokens({
+        server, clientId: "c", clientSecret: null, refreshToken: "rt-2",
+        resource: RESOURCE_SERVER, grantedScopes: ["mcp:tools"],
+      })) === "malformed_token_response");
+  }
 }
 
 routes.set("as.example/token", (_q, res) => json(res, { error: "invalid_grant", error_description: "token rt-1 for user bob@corp" }, 400));

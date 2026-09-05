@@ -228,15 +228,18 @@ describe("Solo Zapier API and MCP release contract", () => {
     const at = fn.indexOf('u.hostname==="mcp.zapier.com"');
     expect(at).toBeGreaterThan(-1);
     const serverRule = fn.slice(fn.lastIndexOf("\n", at) + 1, fn.indexOf("\n", at));
-    for (const clause of ["u.protocol===\"https:\"", "!u.username", "!u.password", "!u.search", "!u.hash", 'u.pathname.startsWith("/api/mcp/")']) {
+    for (const clause of ["u.protocol===\"https:\"", "!u.username", "!u.password", "!u.hash", 'u.pathname.startsWith("/api/v1/")', 'u.pathname.startsWith("/api/mcp/")']) {
       expect(serverRule).toContain(clause);
     }
+    // A query is deliberately NOT refused: Zapier's own copy-to-clipboard address has one.
+    expect(serverRule).not.toContain("!u.search");
     // ...and the button applies the same clauses rather than a raw prefix match.
     const client = ui.slice(ui.indexOf("export function zapierMcpAddressProblem"));
     const body = client.slice(0, client.indexOf("\n}"));
-    for (const clause of ['u.protocol !== "https:"', "u.username || u.password", "u.search || u.hash", 'u.pathname.startsWith("/api/mcp/")', 'u.hostname.toLowerCase()']) {
+    for (const clause of ['u.protocol !== "https:"', "u.username || u.password", "u.hash", 'u.pathname.startsWith("/api/v1/")', 'u.pathname.startsWith("/api/mcp/")', 'u.hostname.toLowerCase()']) {
       expect(body).toContain(clause);
     }
+    expect(body).not.toContain("u.search");
     // The field is trimmed before it is judged -- an address pasted with surrounding
     // whitespace used to leave the button permanently dead with no reason given.
     expect(body).toContain("raw.trim()");
