@@ -2735,3 +2735,57 @@ type-check ratchet is CI's (`deno` is not installed in this sandbox; the esbuild
 transpile and run the real handler). Authenticated production runtime: **OWED** — no signed-in owner
 drove the deployed handler this session (`LIVE_DRIVE_*` unset). **#591 is superseded by this and should
 be closed.**
+
+**§39 peer-gate (independent adversarial read of the pushed diff): SHIP.** No BLOCKER/MAJOR. The gate
+refuses iff `raw active_tenant_id ≠ current_user_tenant_id()` — only when active is null/unentitled;
+agency-in-child passes (`agency_enter_subaccount` stamps active + the `agency_can_manage_child`
+entitlement branch), profiles self-read is guaranteed by RLS, no bypass path (`knowledge_base`/`rag_documents`
+have no tenant column; `client_memory` is user/client-scoped), no bad interaction with the revalidate latch,
+harness genuinely drives the shipped handler, logging distinguishes read-failure/stale/null honestly. One
+MINOR disclosed §58 item (the 1 null-active-with-membership profile). Producer-inventory note: the primary
+onboarding/invite/agency-switch/signup paths stamp `active_tenant_id`, so the vector is self-healing; a few
+historical backfill/inheritance migrations do not, which is the pre-existing null-active state (login stamps
+active), not a regression this change introduces.
+
+## 2026-09-05 — Release B: Mind's safe evidence contract re-grounded; #644 superseded; a browser-Rail-grant fence added
+
+**Re-grounding #644 against current `main` + #925/#939/#947.** #644 (`get_solo_mind_rail_events`) is
+**SUPERSEDED and REGRESSIVE, not portable:** (1) it returns internal `contact_id` — a FORBIDDEN Mind field
+(the shipped SpineSignal keys the subject on the public `clients.account_number`); (2) it resolves
+`profiles.active_tenant_id` RAW rather than through `current_user_tenant_id()` (the §51/#588 shape); (3) it
+is a flat 8-column raw-Rail index, not the 19-key SpineSignal the shipped Mind path requires, so
+`resolveEvidence.safeSignal` would reject every one of its rows; (4) the binding test
+(`paige-spine-mind-binding.test.ts`) explicitly BANS a Rail-reading `get_solo_mind_rail_events` and
+`contact_id` in the Mind block; (5) it predates the newer Rail foundations. Verified on prod:
+`to_regprocedure('public.get_solo_mind_rail_events(uuid,uuid,integer)')` is null — it was never merged.
+**Recommend #644 closed, successor = the shipped `_shared/paige-spine/resolveEvidence.ts` (`safeSignal`) +
+`get_pipeline_spine_evidence` adapter architecture.**
+
+**No new resolver is needed, and one would be out of scope.** The Mind safe-evidence contract is enforced
+BY CONSTRUCTION: `resolveEvidence.safeSignal` is a strict 19-key allowlist that pins `subject_type='client'`,
+the subject to the public `account_number`, `safe_summary` to a registry CONSTANT and `facts` to a
+per-capability allowlist, requires the opaque `rail:<uuid>` citation, fails closed (one bad signal → whole
+turn unavailable), rejects a mixed-tenant batch, and re-checks scope before AND after the RPC. The only
+Rail-signal Mind capability wired today is `pipeline.deal_stage_evidence` (`mindBinding: PARTIAL`);
+business_context/team/social are deliberately-narrow live-read status contracts, not Rail signals.
+Extending Mind to workspace-level OUTCOMES (the #925/#939 `capability_run`/`actor_agent` semantics) does NOT
+fit today's SpineSignal (it hard-requires a client subject) — that is a Spine Change Request, not a small
+current-main release. Mind is honestly **PARTIAL**, never "live" (SoloMindWorkspace's own `Truth` enum
+already says so).
+
+**What this release ADDS (source-backed, §24/§58): a browser-Rail-grant fence.** The task's live Release-B
+invariant is "keep direct browser access to raw Rail data denied." Verified on prod: `authenticated`/`anon`
+hold no SELECT on `paige_client_events` OR `paige_workspace_events`. But **no CI guard fenced it** — and the
+single most expensive Rail defect (#746/#794) was a migration that GRANTed browser SELECT on the raw table.
+`scripts/ci/rail-browser-grant-lint.mjs` (`lint:rail-grants`, wired into `ci.yml` + a `:test` self-test)
+computes the **NET effective grant state** across all migrations and FAILS if any browser role
+(`authenticated`/`anon`/`PUBLIC`) ends up holding any privilege on a protected Rail table. Net-state, not
+per-migration, so the historical grant in `20260712190000` (revoked by two later migrations) is correctly
+NOT flagged while a new grant-and-forget IS. No exempt marker, deliberately: there is no legitimate browser
+read of the raw Rail; the resolvers are the only path (§18).
+
+**Proof by class.** Automated: guard self-test **7/7** (incl. the failing-first re-grant case); real scan
+PASS; `package.json` valid; both npm scripts green. Production catalog (`xygzykjyynhzqytbqnzu`): browser
+SELECT denied on both Rail tables; `get_solo_mind_rail_events` absent; `get_pipeline_spine_evidence` present
+and authenticated-executable. Static: dependency-free `.mjs` guard + CI wiring, no new type surface.
+**Supersedes #644.**

@@ -22,6 +22,8 @@
     "harness:proxy-bypass": "node scripts/live-drive/proxy-bypass.selftest.mjs",
     "harness:selftest-reject": "node scripts/live-drive/harness/selftest-reject.mjs",
     "lint:definer-fns": "node scripts/ci/definer-fn-lint.mjs",
+    "lint:rail-grants": "node scripts/ci/rail-browser-grant-lint.mjs",
+    "lint:rail-grants:test": "node scripts/ci/rail-browser-grant-lint.mjs --self-test",
     "lint:ssrf-fork": "node scripts/ci/ssrf-fork-lint.mjs",
     "lint:managed-schema": "node scripts/ci/managed-schema-ownership-lint.mjs",
     "lint:tier-features": "node scripts/ci/tier-feature-lint.mjs",
