@@ -14,6 +14,9 @@ import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
 // owns WHICH of the six outcomes these four acts landed in (§18: one home each).
 import { recordCapabilityRun, type CapabilityOutcome } from "../_shared/capability-record.ts";
 import { classifyCommsRun } from "../_shared/comms-capability-outcome.ts";
+// Phase 2 · S1 — Pipeline write acts (starting deal_move_stage) record an honest outcome
+// through the SAME ratified pattern (#947): capability-record owns HOW, this owns WHICH.
+import { classifyPipelineRun } from "../_shared/pipeline-capability-outcome.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -8970,6 +8973,32 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               console.error("[paige] comms capability run not recorded:", (e as Error)?.message);
             }
           };
+          // ── Phase 2 · S1 — Pipeline acts record an honest outcome too ────────────
+          // Same executor-recording pattern as comms (§18/#947): classify from this seam's
+          // OWN result shape, record at most once per iteration (result XOR catch), never
+          // fail the turn. deal_move_stage operates on `personaCtx.tenant_id` (index.ts
+          // ~9758), so the run is attributed to that tenant — the workspace the move hit.
+          // A tenant-less refusal ("no workspace in context") has no tenant to attribute
+          // to, so recordCapabilityRun no-ops it — correct: there is no filed act.
+          const recordPipelineRun = async (
+            input: { result?: unknown; thrown?: unknown; threw?: boolean },
+          ): Promise<void> => {
+            try {
+              const outcome: CapabilityOutcome | null = classifyPipelineRun({
+                capability: tc.function.name,
+                ...input,
+              });
+              if (!outcome) return;
+              await recordCapabilityRun(supabase, {
+                tenantId: personaCtx?.tenant_id ?? null,
+                actorId: user.id,
+                capabilityKey: tc.function.name,
+                outcome,
+              });
+            } catch (e) {
+              console.error("[paige] pipeline capability run not recorded:", (e as Error)?.message);
+            }
+          };
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
             const admin = createClient(supabaseUrl, supabaseServiceKey);
@@ -10891,6 +10920,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // The result the model is about to be handed is the same evidence the owner
             // gets. Classified inside the recorder from the seam's OWN codes, not `success:false`.
             await recordCommsRun({ result });
+            await recordPipelineRun({ result });
 
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
           } catch (err) {
@@ -10900,6 +10930,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // instead, so `NUMBER_NOT_ACTIVE` reaches the Rail as a refusal even though
             // the model is told only that something went wrong.
             await recordCommsRun({ thrown: err, threw: true });
+            await recordPipelineRun({ thrown: err, threw: true });
 
             toolResults.push({
               tool_call_id: tc.id,
