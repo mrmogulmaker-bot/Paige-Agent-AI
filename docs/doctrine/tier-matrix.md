@@ -1417,7 +1417,7 @@ introduces a new wrong cell is worse than the drift it fixes.
 **What did NOT ship here, stated so the ledger is not read as more than it is:** Refresh still
 re-reads the last recorded run and says so — an on-demand re-check is NOT wired. `systems_check_snapshot`
 is still latest-RUN only, so a Setup save still narrows the reading and remediation actions filed
-against older runs remain unreachable on every tier. Only three of the eight status words
+against older runs remain unreachable on every tier. Only three of the nine status words
 (`LIVE`, `NEEDS ATTENTION`, `UNAVAILABLE`) can be produced from the finding store; `PENDING PROVIDER`
 and `PAUSED` require the provider result contract and are NOT rendered by this surface yet.
 
@@ -1509,9 +1509,11 @@ names the surface. The `h1` is kept in the DOM and taken out of layout, never de
 the `aria-labelledby` target of the whole section. Recorded in
 `docs/product/systems-check-operating-readiness-spec.md` §3.2 and pinned by assertion.
 
-**`NOT CHECKED` is a NINTH status word, outside the owner's closed set of eight** — disclosed in
-spec §4.4a, awaiting an owner ruling. The row above this section already describes it as shipped;
-what is new here is that it is now recorded as an exception rather than passing silently.
+**`NOT CHECKED` is the NINTH status word — ratified 2026-09-05 (spec §4.4a; decision-log
+2026-09-05), now shipped as a first-class ninth pill** in the closed set. It renders on an area with
+no covering check (`coveredBy.length === 0`), so — unlike `LIVE` / `NEEDS ATTENTION` / `UNAVAILABLE`
+— it derives from area coverage, not from a persisted `FindingStatus`, and never implies a run
+looked and found nothing.
 
 **Still NOT shipped, unchanged from #928 and restated so this entry is not read as more than it is:**
 Refresh still re-reads the last recorded run. `systems_check_snapshot` is still latest-RUN only.
