@@ -198,27 +198,31 @@ describe("Solo Systems Check workspace", () => {
     expect(host.querySelector(".sc-items .sc-item h3")?.textContent).toBe("Open attention item");
   });
 
-  // A destination that cannot finish the job says so. Both checks carrying a caveat today name a
-  // capability the tenant genuinely does not have — social has no way to connect an account, and
-  // nothing on Solo can set a stage's closing role (task #26). Without this the console would name
-  // a next action the owner cannot complete and would look like it had helped (§70/§13). The
-  // caveat is a rendered string, not a comment, and this test is what keeps it rendered: it is the
-  // exact thing a later refactor of the action row drops silently.
+  // A destination that cannot finish the job says so, and this test is what keeps that string
+  // RENDERED — it is the exact thing a later refactor of the action row drops silently (§70/§13).
+  //
+  // It asserts the MECHANISM plus the one caveat this file owns, and deliberately does not pin any
+  // other check's wording. The first version did: it required the social caveat to contain "connect
+  // an account", and #938 then made that page able to record accounts and rewrote the sentence. The
+  // test broke on a true improvement it had no business constraining — and in-surface copy is not
+  // CC's to pin in the first place (§00). Which checks carry a caveat at all is covered by
+  // systems-check-destinations.contract.test.ts.
   it("states the caveat when the destination cannot finish the job", () => {
     harness.systems.mockReturnValue({
       ...baseSystems,
       findings: [
         { ...finding, id: "finding-rev", check_id: "revenue_tracking_configured", check_name: "Revenue tracking is set up" },
-        { ...finding, id: "finding-social", check_id: "social_accounts_connected", check_name: "Your social accounts are on record" },
+        { ...finding, id: "finding-crm", check_id: "crm_has_customers", check_name: "You have people on your books" },
       ],
       run: { ...baseSystems.run, check_count: 2, pass_count: 0, fail_count: 2 },
     });
     render();
 
     const caveats = Array.from(host.querySelectorAll(".sc-caveat")).map((n) => n.textContent ?? "");
-    expect(caveats).toHaveLength(2);
-    expect(caveats.some((t) => t.includes("closing role"))).toBe(true);
-    expect(caveats.some((t) => t.includes("connect an account"))).toBe(true);
+    // The revenue destination carries one; `crm_has_customers` carries none — so this proves the
+    // caveat is driven by the destination rather than rendered on every finding.
+    expect(caveats).toHaveLength(1);
+    expect(caveats[0]).toContain("closing role");
   });
 
   // Which path a destination points at is pinned in systems-check-destinations.contract.test.ts,
