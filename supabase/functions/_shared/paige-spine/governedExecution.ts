@@ -140,6 +140,30 @@ export type GovernedCaller = {
   /** ADAPTER MUST: derive this from the verified credential (`auth.uid()`), never from a request
    *  field. Null when there is none. */
   userId: string | null;
+  /**
+   * WHETHER A PERSON OR A MACHINE IS BEHIND THE CREDENTIAL. Defaults to `"person"`, so an adapter
+   * that says nothing gets the stricter reading and nothing already written changes meaning.
+   *
+   * ADAPTER MUST: set `"service"` only for a verified NON-PERSON credential — a platform API key, a
+   * service-role automation, a scheduled job — and `"person"` whenever a human session is behind
+   * the call. Setting `"service"` to dodge the identity check for a human session is the assertion
+   * failure this whole type is about.
+   *
+   * WHY IT EXISTS. Four of the six doors this seam declares (`automation`, `agent`, `skill`, `mcp`)
+   * routinely have no `auth.uid()` at all, and the identity check below required one — so every
+   * one of them was refused `unauthenticated` before it could be adopted. That is not strictness,
+   * it is an unusable seam: a machine credential is a real, verified identity, it just is not a
+   * person's.
+   *
+   * WHAT IT DELIBERATELY DOES NOT DO. It grants nothing. A service principal still needs a
+   * server-resolved tenant, an access verdict, a classified capability and — for a mutation — the
+   * same approval every person needs. The one rule this seam does NOT yet carry is "a machine
+   * credential can never be the person whose yes an approval is"; the MCP door enforces that today
+   * by refusing every mutation at the door, and the seam-level rule belongs with the slice that
+   * makes a mutation executable again. Do not read this field's absence from the mutation path as
+   * permission — read it as work that is named and not yet done.
+   */
+  principal?: "person" | "service";
   /** ADAPTER MUST: resolve this server-side. A request-supplied workspace id here is a
    *  cross-tenant hole the seam cannot see. */
   tenantId: string | null;
@@ -317,6 +341,7 @@ export type GovernedRefusalCode =
   | "effect_mismatch"
   | "owner_only"
   | "outcome_channel_undeclared"
+  | "service_principal_may_not_mutate"
   | "autonomy_off"
   | "autonomy_lane_unrecognized"
   | "approval_claim_malformed"
@@ -326,6 +351,7 @@ export type GovernedRefusalCode =
 export const GOVERNED_REFUSAL_CODES: readonly GovernedRefusalCode[] = Object.freeze([
   "tenant_not_server_derived", "unauthenticated", "tenant_unresolved", "capability_unidentified",
   "access_denied", "unclassified_mutation", "effect_mismatch", "owner_only",
+  "service_principal_may_not_mutate",
   "outcome_channel_undeclared", "autonomy_off", "autonomy_lane_unrecognized",
   "approval_claim_malformed", "approval_claim_capability_mismatch",
 ] as const);
@@ -341,6 +367,8 @@ export type GovernedAudit = {
   door: GovernedDoor;
   tenantId: string | null;
   userId: string | null;
+  /** Whether a person or a machine credential was behind the call, as the adapter asserted it. */
+  principal: "person" | "service";
   risk: ActionRisk | "unclassified";
   laneRequested: string;
   laneEffective: string;
@@ -392,12 +420,14 @@ export function decideGovernedExecution(input: {
   const risk = classifyAction(capability.id);
   const laneRequested = approval.autonomyLane;
 
+  const principal = caller.principal ?? "person";
   const base = {
     capability: capability.id,
     effect: capability.effect,
     door: caller.door,
     tenantId: caller.tenantId,
     userId: caller.userId,
+    principal,
     risk,
     laneRequested,
   };
@@ -414,8 +444,15 @@ export function decideGovernedExecution(input: {
       "The workspace for this action was not resolved by the server, so it cannot run.");
   }
 
-  // 2 — IDENTITY.
-  if (!caller.authenticated || !caller.userId) {
+  // 2 — IDENTITY. A verified credential is required in every case; whether it must belong to a
+  // PERSON depends on what the adapter says is behind it. A `person` principal with no `userId` is
+  // an adapter that never resolved who is asking, and that is the case this check was written for.
+  // A `service` principal legitimately has none — see `GovernedCaller.principal`, and note that it
+  // buys a machine nothing beyond reaching the checks below.
+  if (!caller.authenticated) {
+    return refuse("unauthenticated", "This action needs a verified credential behind it.");
+  }
+  if (principal === "person" && !caller.userId) {
     return refuse("unauthenticated", "This action needs a signed-in person behind it.");
   }
 
@@ -470,6 +507,24 @@ export function decideGovernedExecution(input: {
   if (risk === "owner_only") {
     return refuse("owner_only",
       "This is the operator's decision to make in their settings, not something that can be done from here.");
+  }
+
+  // A MACHINE CREDENTIAL IS NOBODY'S YES. `principal: "service"` exists so a verified non-person
+  // credential can reach a READ (see `GovernedCaller.principal`); it must not become a way to
+  // perform a change with no person anywhere in the loop. Every approval this seam honours is a
+  // human's, redeemed once — and a service principal has no human to redeem one, so an `auto` lane
+  // would otherwise auto-execute an ordinary mutation for a key rather than for anyone.
+  //
+  // Placed AFTER `owner_only` deliberately: that refusal is a property of the ACT and is the more
+  // specific truth, so a service caller attempting an owner-only action still hears the real
+  // reason rather than a caller-shaped one.
+  //
+  // An automation acting on a person's standing grant is not an exception to this — it is an
+  // adapter that has a person and should say so, by resolving the grant's owner into `userId` and
+  // declaring `principal: "person"`. "Nobody is behind this" is exactly the case being refused.
+  if (principal === "service") {
+    return refuse("service_principal_may_not_mutate",
+      "A connected app or automation cannot make this change on its own.");
   }
 
   // 7 — OUTCOME. A change nobody can see afterwards is not a governed change. The channel's shape

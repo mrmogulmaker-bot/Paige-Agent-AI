@@ -148,6 +148,9 @@ import { canonicalDirectFunctionName, isMarketplaceDirectFunctionBlocked, resolv
 // §200: the god/platform actor has no tenant of its own; resolve the operator's
 // designated system tenant from config-as-data (fail-closed null when unset).
 import { platformOperatorTenantId } from "../_shared/platform-operator-tenant.ts";
+// The governed door (task #45). One decision for all 119 tools; see the adapter's header for why
+// a mutation refuses here rather than being left to a workspace autonomy row.
+import { decideMcpToolCall, mcpGovernedAuditRow } from "../_shared/paige-mcp/governed-adapter.ts";
 // Tier Rail Spine (Phase D): one shared tier resolver, off the same declared rail
 // (public.get_actor_access) a human resolves through — so Paige's tier == a human's.
 import { getActorTier, isClientSeatByScopes } from "../_shared/actorTier.ts";
@@ -5304,6 +5307,88 @@ async function enforceTierAndScope(
   return { ok: true };
 }
 
+/**
+ * THE GOVERNED DOOR — the single place a `tools/call` is decided, and the last thing that runs
+ * before dispatch.
+ *
+ * WHAT IT ADDS TO THE GATE ABOVE. `enforceTierAndScope` answers audience ("may this tier see this
+ * tool?") and operation ("does this token hold the scope?"). Both are necessary and neither asks
+ * the question this function exists for: **is this act a change, and may a connected app make it?**
+ * For 68 of the 119 tools the answer is no, whatever the tier and whatever the scope — because an
+ * MCP connection authorizes access to the door, not consequential action. See
+ * `_shared/paige-mcp/governed-adapter.ts` for the full reasoning, including why the refusal is a
+ * property of the channel rather than of a workspace's autonomy row.
+ *
+ * ORDER IS LOAD-BEARING, IN BOTH DIRECTIONS.
+ *  - It runs AFTER the tier/scope gate, so `access` is a verdict that was actually reached rather
+ *    than a permissive default — the gate's own `ok` is what is handed in, and moving this call
+ *    above the gate does not compile.
+ *  - It runs BEFORE `httpHandler`, so a refused mutation never reaches a handler and therefore
+ *    never has a side effect to undo. A gate that refuses after the write is a log entry, not a
+ *    gate.
+ *
+ * NOTHING IN THE REQUEST REACHES A GOVERNANCE INPUT. The tenant is `actorTenantId()`, the identity
+ * is the resolved bearer, the access verdict is the gate's, and the effect comes from the
+ * capability policy. `params.arguments` is passed through as the call's arguments and is read for
+ * nothing else, which is what makes a forged `tenant_id`, `role`, `confirm` or `autonomy` in the
+ * model's JSON inert rather than merely discouraged.
+ *
+ * EVERY ATTEMPT LEAVES A RECORD, allowed or refused, and the record carries no arguments, no
+ * headers, no credentials and no provider output — only what was decided and why.
+ */
+async function governMcpToolCall(
+  body: unknown,
+  actor: ActorCtx,
+  access: { allowed: boolean; reason?: string },
+): Promise<{ ok: true } | { ok: false; status: 403; code: string; message: string }> {
+  // A JSON-RPC BATCH has no top-level `.method`, so it would slip past this and the gate above.
+  // The transport rejects arrays with a 400 today, which makes the hole theoretical — and a
+  // guarantee that rests on a distant library's current behaviour is not a guarantee. Refused here
+  // so it rests on this file instead. No working client is affected: an array never got through.
+  if (Array.isArray(body)) {
+    return {
+      ok: false, status: 403, code: "batch_not_governed",
+      message: "Batched calls are not accepted on this connection. Send one request at a time.",
+    };
+  }
+  const rpc = body as { method?: unknown; params?: { name?: unknown; arguments?: unknown } } | null;
+  if (rpc?.method !== "tools/call") return { ok: true };
+
+  const startedAtMs = Date.now();
+  const toolName = typeof rpc?.params?.name === "string" ? rpc.params.name : "";
+
+  // The workspace, resolved SERVER-SIDE. A throw here fails closed: `null` reaches the seam as
+  // `tenant_unresolved` rather than becoming an unscoped call.
+  let tenantId: string | null = null;
+  try {
+    tenantId = await actorStore.run(actor, () => actorTenantId());
+  } catch (e) {
+    console.error("[paige-mcp] governed door: tenant resolution failed", (e as Error)?.message);
+  }
+
+  const { outcome, audit: record } = decideMcpToolCall({
+    tool: toolName,
+    args: rpc?.params?.arguments,
+    // `resolveBearer` matched a platform key or an unexpired, unrevoked OAuth token before dispatch
+    // reached here; an unmatched bearer returned 401 and never gets this far.
+    authenticated: true,
+    userId: actor.user_id,
+    actorKind: actor.kind,
+    tenantId,
+    access,
+    startedAtMs,
+    nowIso: new Date().toISOString(),
+  });
+
+  const row = mcpGovernedAuditRow(record);
+  // Awaited, not detached: a governance decision nobody recorded is the state this surface was
+  // already in. `audit()` logs loudly on failure and never throws.
+  await actorStore.run(actor, () => audit(row.action, row.target_type, row.target_id, row.payload));
+
+  if (outcome.kind === "allow") return { ok: true };
+  return { ok: false, status: outcome.status, code: outcome.code, message: outcome.message };
+}
+
 // ── Paige Context Rail — MCP producer (§7/§8/§12) ────────────────────────────
 // When an EXTERNAL MCP command (Claude Desktop, ChatGPT, etc.) runs an action
 // that TARGETS A CLIENT, we file an `mcp.command` event onto that client's
@@ -5628,6 +5713,21 @@ app.all("/*", async (c) => {
         jsonrpc: "2.0", id: peekedBody?.id ?? null,
         error: { code: -32001, message: gate.error },
       }, gate.status, CORS);
+    }
+    // The governed door. `gate.ok` is the access verdict this branch just established — passing it
+    // rather than a literal is what stops this call being moved above the gate.
+    const governed = await governMcpToolCall(peekedBody, actor, { allowed: gate.ok });
+    if (!governed.ok) {
+      return c.json({
+        jsonrpc: "2.0", id: peekedBody?.id ?? null,
+        error: {
+          code: -32001,
+          message: `${governed.code}: ${governed.message}`,
+          // Machine-readable alongside the sentence, so a client can tell "ask a person to approve
+          // this in Paige" apart from "this is never available here" without parsing prose.
+          data: { refusal_code: governed.code },
+        },
+      }, governed.status, CORS);
     }
   }
 

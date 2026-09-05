@@ -460,6 +460,77 @@ describe("the layers that were previously inline, and therefore unreachable", ()
     expect(w.kind === "refuse" && w.code).toBe("unclassified_mutation");
   });
 
+  /**
+   * A VERIFIED MACHINE CREDENTIAL, added 2026-09-05 with the MCP door.
+   *
+   * Four of the six doors this seam declares — automation, agent, skill, mcp — routinely have no
+   * `auth.uid()`, and the identity check demanded one, so every one of them was refused
+   * `unauthenticated` before it could be adopted. `principal: "service"` says a real non-person
+   * credential is behind the call. It buys exactly one thing: reaching the checks. It must never
+   * buy a change.
+   */
+  it("lets a verified service credential with no user perform a READ", () => {
+    const d = decide({
+      caller: caller({ userId: null, principal: "service" }),
+      capability: { id: "crm_search_contacts", effect: "read" },
+      approval: { autonomyLane: "not_resolved" }, requestArgs: { q: "a" },
+    });
+    expect(d.kind).toBe("execute");
+    expect(d.audit.principal).toBe("service");
+  });
+
+  it("still refuses a service credential with no user when nothing says it is one", () => {
+    // The default is the strict reading, so an adapter that simply forgets to resolve the person
+    // does not get a machine's allowance by omission.
+    const d = decide({
+      caller: caller({ userId: null }),
+      capability: { id: "crm_search_contacts", effect: "read" },
+      approval: { autonomyLane: "auto" }, requestArgs: {},
+    });
+    expect(d.kind === "refuse" && d.code).toBe("unauthenticated");
+  });
+
+  it("refuses EVERY mutation for a service credential, on every lane and every class", () => {
+    // The hole this closes: `ordinary` + `auto` + no claim is the seam's one auto-execute path, and
+    // without this rule a platform API key would take it — a change performed for a key rather
+    // than for any person. Asserted across the whole grid rather than on one fixture, because the
+    // single-case version passes against a rule that only covers `high`.
+    for (const cap of [HIGH, ORDINARY, { id: "crm_delete_everything", effect: "mutate" as const }]) {
+      for (const lane of ["auto", "confirm", "off", "not_resolved"]) {
+        const d = decide({
+          caller: caller({ userId: null, principal: "service" }),
+          capability: { ...cap, outcomeChannel: "rail" },
+          approval: { autonomyLane: lane }, requestArgs: {},
+        });
+        expect(d.kind, `${cap.id} @ ${lane}`).toBe("refuse");
+      }
+    }
+  });
+
+  it("names the service rule for a classified mutation, and does not swallow owner_only", () => {
+    const ordinary = decide({
+      caller: caller({ userId: null, principal: "service" }), capability: ORDINARY,
+      approval: { autonomyLane: "auto" }, requestArgs: {},
+    });
+    expect(ordinary.kind === "refuse" && ordinary.code).toBe("service_principal_may_not_mutate");
+
+    // `owner_only` is a property of the ACT and is the more specific truth, so it must survive.
+    const owner = decide({
+      caller: caller({ userId: null, principal: "service" }), capability: OWNER_ONLY,
+      approval: { autonomyLane: "auto" }, requestArgs: {},
+    });
+    expect(owner.kind === "refuse" && owner.code).toBe("owner_only");
+  });
+
+  it("cannot be reached by a stored approval — a claim is a person's, and there is no person", () => {
+    const d = decide({
+      caller: caller({ userId: null, principal: "service" }), capability: ORDINARY,
+      approval: { autonomyLane: "confirm", claimedArgs: { name: "x" }, claimedFor: ORDINARY.id },
+      requestArgs: {},
+    });
+    expect(d.kind === "refuse" && d.code).toBe("service_principal_may_not_mutate");
+  });
+
   it("never emits a refusal code outside the declared set", () => {
     const seen = new Set<string>();
     for (const door of DOORS) {

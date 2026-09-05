@@ -1,5 +1,5 @@
 /**
- * THE INBOUND MCP ADAPTER — the one door, and the obligations it owes the seam.
+ * THE INBOUND MCP ADAPTER — one door, and the obligations it owes the seam.
  *
  * `decideGovernedExecution` is a pure decision function that trusts what it is told and says so at
  * length: every field on its boundary is an ADAPTER ASSERTION, not a fact it can verify. This module
@@ -7,40 +7,105 @@
  * establishes it. An adapter that fills them from request data defeats the boundary and nothing
  * downstream can tell.
  *
- * THE DECISION IS PURE; THE RECORD IS NOT. `decideMcpToolCall` touches no database, so the whole
- * refusal matrix is testable without one. `mcpGovernedAuditRow` shapes the durable evidence, and the
- * caller writes it. Splitting them is what makes "prove a forged approval is refused" a unit test
- * rather than an integration ceremony.
+ * THE DECISION IS PURE; THE RECORD IS NOT. `decideMcpToolCall` touches no database and awaits
+ * nothing, so the whole refusal matrix is testable without one and cannot fail open on a slow
+ * query. `mcpGovernedAuditRow` shapes the durable evidence and the caller writes it. Splitting them
+ * is what makes "prove a forged approval is refused" a unit test rather than an integration
+ * ceremony.
  *
- * `propose` IS A REFUSAL HERE, AND THAT IS THE WHOLE POINT.
- * For a `high` action the seam returns `kind: "propose"` — do not run, mint a proposal, ask. That
- * answer assumes a surface that CAN ask. MCP cannot: the only caller-controlled field in a
- * `tools/call` body is `params.arguments`, which is the model's own JSON, so any approval placed
- * there is the model approving itself — the exact channel `docs/doctrine/one-approval-gate.md`
- * forbids and `governedExecution.ts` deliberately does not carry. So a proposal becomes a truthful
- * refusal at this door: the act is prepared and named, and it does not execute. Inventing an MCP
- * approval route would be a second approval channel, which is the failure the doctrine exists to
- * stop — and `bulk_delete_contacts` already makes exactly this decision by hand.
+ * ─────────────────────────────────────────────────────────────────────────────────────────────────
+ * THE DOOR RULE, WHICH IS THIS RELEASE'S WHOLE POINT
+ * ─────────────────────────────────────────────────────────────────────────────────────────────────
+ * **An MCP connection authorizes access to the door. It does not authorize consequential action.**
+ *
+ * So every one of the 68 verified mutations refuses here, and the 51 verified reads proceed once
+ * tenant, tier, scope, actor identity and the server-resolved workspace all check out. That is not
+ * a property of any particular workspace's autonomy setting — it is a property of the CHANNEL. The
+ * only caller-controlled field in a `tools/call` body is `params.arguments`, which is the model's
+ * own JSON, so an approval placed anywhere in it is the model approving itself. There is no other
+ * field. There is therefore no approval this door can carry, and `docs/doctrine/one-approval-gate.md`
+ * forbids inventing a second one to fix that.
+ *
+ * WHY THE RULE LIVES HERE AND NOT IN THE LANE. The seam will execute an `ordinary` mutation on an
+ * `auto` lane with no claim, correctly — that is a workspace's standing grant to Paige, given
+ * inside Paige. Measured on production 2026-09-05: `resolve_tool_autonomy` defaults to `'confirm'`
+ * and no `tenant_tool_autonomy` row exists for any MCP tool name, so every mutation resolves to
+ * `confirm` today and the seam would refuse them all anyway. **Leaning on that would be leaning on
+ * a table's current contents.** One inserted row would open sixty-seven mutations to an external
+ * connector, silently, with no code change and nothing in CI to notice. The refusal is therefore
+ * structural, and the lane is not consulted at all — which is also why this decision needs no
+ * database round trip and cannot be affected by one failing.
+ *
+ * WHAT THE CALLER IS TOLD, AND WHY THE TWO CASES ARE DIFFERENT. Sixty-seven mutations refuse
+ * `approval_required` — the act is named, prepared and not run, and a person can go and approve it
+ * in Paige. Exactly one refuses `owner_only`, which is not the same sentence in a different tone:
+ * no approval reaches it through any door, at any strength, because it is the operator's decision
+ * in their settings. Collapsing the two would tell somebody to go and get an approval that does
+ * not exist.
+ *
+ * NOTHING HERE IS A QUEUE. A refusal is not a send that will happen later, not a draft, not a
+ * pending item, and not an approval request that was filed somewhere. It is a refusal, and the
+ * message says so (§13).
  */
 
 import {
   decideGovernedExecution,
   type GovernedAudit,
   type GovernedDecision,
+  type GovernedRefusalCode,
 } from "../paige-spine/governedExecution.ts";
 import { lookupMcpCapability, type McpCapability } from "./capability-policy.ts";
 
-/** Refusal codes this adapter adds on top of the seam's frozen list. Both mean "no policy decision
- *  was possible", which fails closed rather than falling through. */
+/**
+ * Refusal codes this door adds on top of the seam's frozen list.
+ *
+ * `capability_unmapped` — nobody classified this tool. Deny-by-default; CI fails first.
+ * `approval_required`   — the act is a mutation and this channel carries no approval.
+ */
 export type McpAdapterRefusalCode = "capability_unmapped" | "approval_required";
+
+/** Every code this door can return, so a test can assert the set rather than restate it. */
+export type McpRefusalCode = McpAdapterRefusalCode | GovernedRefusalCode;
 
 export type McpGovernedOutcome =
   | { kind: "allow"; canonical: string; risk: string }
-  | { kind: "refuse"; status: 403; code: string; message: string };
+  | { kind: "refuse"; status: 403; code: McpRefusalCode; message: string };
+
+/**
+ * The seam refusals that are TRUER than the door's blanket mutation rule, so they are surfaced
+ * ahead of it. Every one of them is decided before the seam reaches approval at all: provenance,
+ * identity, workspace, capability identity, access, the two effect lies, and the operator's own
+ * ceiling. Telling a caller "approval required" when the real answer is "you are not in this
+ * workspace" would be a worse message AND a worse audit row.
+ *
+ * The lane codes are deliberately ABSENT. This door does not resolve a lane (see the header), so
+ * `autonomy_lane_unrecognized` is what the seam necessarily answers for a mutation here — and
+ * reporting that would blame a workspace setting for a channel rule. `autonomy_off` cannot be
+ * reached for the same reason.
+ */
+const SEAM_REFUSALS_TRUER_THAN_THE_DOOR_RULE: ReadonlySet<string> = new Set<GovernedRefusalCode>([
+  "tenant_not_server_derived",
+  "unauthenticated",
+  "tenant_unresolved",
+  "capability_unidentified",
+  "access_denied",
+  "effect_mismatch",
+  "unclassified_mutation",
+  "owner_only",
+  "outcome_channel_undeclared",
+]);
+
+/**
+ * The lane this door declares. It is not a value read from anywhere, and naming it as one would be
+ * exactly the fabricated assertion `GovernedCaller` warns about — so it says what is true: no lane
+ * was resolved, because no lane could make this channel execute a mutation. The seam consults it
+ * only on the mutation path, which this door refuses regardless.
+ */
+export const MCP_LANE_NOT_RESOLVED = "not_resolved";
 
 /** The durable evidence for ONE attempted call. Carries no arguments, no provider output, no client
- *  content and no secrets — an audit answers what was decided and why, and arguments are the part
- *  most likely to hold personal data. */
+ *  content, no headers and no secrets — an audit answers what was decided and why, and arguments
+ *  are the part most likely to hold personal data. */
 export type McpGovernedAudit = {
   tool: string;
   capability: string | null;
@@ -51,22 +116,27 @@ export type McpGovernedAudit = {
   tenant_id: string | null;
   tenant_source: "server";
   risk: string;
-  lane_requested: string;
-  lane_effective: string | null;
-  clamped: boolean;
   decision: "allow" | "refuse";
-  seam_decision: "execute" | "propose" | "refuse" | "not_reached";
   refusal_code: string | null;
+  /** What the shared seam answered, kept alongside the door's answer rather than replacing it, so
+   *  a reader can see where the two differ instead of guessing which one decided. */
+  seam_decision: "execute" | "propose" | "refuse" | "not_reached";
+  seam_refusal_code: string | null;
+  /** Set when the DOOR overrode the seam, naming the rule that did it. */
+  door_rule: string | null;
   decided_at: string;
   decision_ms: number;
 };
 
-export function decideMcpToolCall(input: {
+export type McpGovernedInput = {
   tool: string;
+  /** Passed to the seam as the call's arguments and NEVER read for a governance value. No tenant,
+   *  role, approval, autonomy or actor is taken from here — that is what makes a forged one inert. */
   args: unknown;
-  /** ADAPTER OBLIGATION — established by the OAuth/bearer check that already ran before dispatch. */
+  /** ADAPTER OBLIGATION — established by the bearer check that already ran before dispatch. */
   authenticated: boolean;
-  /** ADAPTER OBLIGATION — from the verified credential, never from `params.arguments`. */
+  /** ADAPTER OBLIGATION — from the verified credential, never from `params.arguments`. Null for a
+   *  platform key, which is a real credential with no person behind it. */
   userId: string | null;
   actorKind: "platform" | "user";
   /** ADAPTER OBLIGATION — resolved by `actorTenantId()` server-side. A request-supplied workspace id
@@ -76,26 +146,26 @@ export function decideMcpToolCall(input: {
    *  and still owns audience. This adapter never widens it; it only adds what tier and scope do not
    *  answer. */
   access: { allowed: boolean; reason?: string };
-  /** ADAPTER OBLIGATION — read from the workspace's autonomy setting server-side. A
-   *  request-supplied `"auto"` reaches the execute path on an ordinary mutation. */
-  autonomyLane: string;
   startedAtMs: number;
   nowIso: string;
-}): { outcome: McpGovernedOutcome; audit: McpGovernedAudit } {
+};
+
+export function decideMcpToolCall(
+  input: McpGovernedInput,
+): { outcome: McpGovernedOutcome; audit: McpGovernedAudit } {
   const policy: McpCapability | undefined = lookupMcpCapability(input.tool);
 
-  const baseAudit = {
+  const base = {
     tool: input.tool,
     actor_kind: input.actorKind,
     user_id: input.userId,
     tenant_id: input.tenantId,
     tenant_source: "server" as const,
-    lane_requested: input.autonomyLane,
     decided_at: input.nowIso,
     decision_ms: Math.max(0, Date.now() - input.startedAtMs),
   };
 
-  // DENY BY DEFAULT. An unmapped tool is not a tool we decided to allow — it is one nobody has
+  // DENY BY DEFAULT. An unmapped tool is not a tool anyone decided to allow — it is one nobody has
   // classified, and the two must never look the same from the outside.
   if (!policy) {
     return {
@@ -103,19 +173,19 @@ export function decideMcpToolCall(input: {
         kind: "refuse",
         status: 403,
         code: "capability_unmapped",
-        message: "This tool has no governance classification yet, so it cannot run from here.",
+        message: "This tool has no governance classification, so it cannot run from here.",
       },
       audit: {
-        ...baseAudit,
+        ...base,
         capability: null,
         effect: "unknown",
         category: null,
         risk: "unclassified",
-        lane_effective: null,
-        clamped: false,
         decision: "refuse",
-        seam_decision: "not_reached",
         refusal_code: "capability_unmapped",
+        seam_decision: "not_reached",
+        seam_refusal_code: null,
+        door_rule: "deny_by_default",
       },
     };
   }
@@ -124,6 +194,10 @@ export function decideMcpToolCall(input: {
     caller: {
       authenticated: input.authenticated,
       userId: input.userId,
+      // A platform key is a verified credential with no person behind it. Saying so is what lets a
+      // read reach the checks below; it grants nothing, and the mutation rule applies to it
+      // identically.
+      principal: input.actorKind === "platform" ? "service" : "person",
       tenantId: input.tenantId,
       tenantSource: "server",
       door: "mcp",
@@ -132,54 +206,81 @@ export function decideMcpToolCall(input: {
     capability: {
       id: policy.canonical,
       effect: policy.effect,
-      // Honest: the governed audit row below IS the durable outcome record for this door, and it is
-      // written for every attempt. Naming a channel the seam cannot check would be the assertion it
-      // warns about; this one is true because the caller writes it on the same path.
+      // Honest: the governed audit row below IS the durable outcome record for this door, and the
+      // caller writes it on this same path for every attempt. Naming a channel the seam cannot
+      // check would be the assertion it warns about; this one is true.
       ...(policy.effect === "mutate" ? { outcomeChannel: "paige_audit_log" } : {}),
     },
     approval: {
-      autonomyLane: input.autonomyLane,
-      // No `claimedArgs`: MCP redeems no approval, and fabricating one here from request data would
-      // satisfy the seam's shape check and execute. That is the one bypass its header names twice.
+      autonomyLane: MCP_LANE_NOT_RESOLVED,
+      // No `claimedArgs`: this door redeems no approval, and fabricating one here from request data
+      // would satisfy the seam's shape check and execute. That is the one bypass its header names
+      // twice.
     },
     requestArgs: input.args,
   });
 
   const a: GovernedAudit = decision.audit;
-  const audit: McpGovernedAudit = {
-    ...baseAudit,
+  const seamRefusal = decision.kind === "refuse" ? decision.code : null;
+  const record = (
+    decision_: "allow" | "refuse",
+    refusal_code: string | null,
+    door_rule: string | null,
+  ): McpGovernedAudit => ({
+    ...base,
     capability: a.capability,
     effect: policy.effect,
     category: policy.category,
     risk: String(a.risk),
-    lane_effective: a.laneEffective,
-    clamped: a.clamped,
-    decision: decision.kind === "execute" ? "allow" : "refuse",
+    decision: decision_,
+    refusal_code,
     seam_decision: decision.kind,
-    refusal_code:
-      decision.kind === "refuse" ? decision.code : decision.kind === "propose" ? "approval_required" : null,
-  };
+    seam_refusal_code: seamRefusal,
+    door_rule,
+  });
 
-  if (decision.kind === "execute") {
-    return { outcome: { kind: "allow", canonical: a.capability, risk: String(a.risk) }, audit };
+  // 1 — The seam's own refusals, where they say something truer than "approval required".
+  if (decision.kind === "refuse" && SEAM_REFUSALS_TRUER_THAN_THE_DOOR_RULE.has(decision.code)) {
+    return {
+      outcome: { kind: "refuse", status: 403, code: decision.code, message: decision.message },
+      audit: record("refuse", decision.code, null),
+    };
   }
 
-  if (decision.kind === "propose") {
+  // 2 — THE DOOR RULE. Every mutation, whatever the seam went on to say about lanes and claims.
+  if (policy.effect === "mutate") {
     return {
       outcome: {
         kind: "refuse",
         status: 403,
         code: "approval_required",
         message:
-          "This action needs the workspace owner's approval, and this connection has no way to carry one. Ask in Paige, where the approval can be given.",
+          "This would change data, and a connected app cannot approve that. Nothing was run. " +
+          "Ask Paige to do it, where the workspace owner can approve it.",
       },
-      audit,
+      audit: record("refuse", "approval_required", "mcp_carries_no_approval_channel"),
     };
   }
 
+  // 3 — A genuine read that cleared every check.
+  if (decision.kind === "execute") {
+    return {
+      outcome: { kind: "allow", canonical: a.capability, risk: String(a.risk) },
+      audit: record("allow", null, null),
+    };
+  }
+
+  // 4 — Unreachable while step 2 stands, and deliberately not a fallthrough. A read cannot reach a
+  // `propose`: the seam returns `execute` for one before the approval machinery exists. If that
+  // ever changes, the honest answer is to stop rather than to guess which branch was meant.
   return {
-    outcome: { kind: "refuse", status: 403, code: decision.code, message: decision.message },
-    audit,
+    outcome: {
+      kind: "refuse",
+      status: 403,
+      code: "approval_required",
+      message: "This action could not be governed, so nothing was run.",
+    },
+    audit: record("refuse", "approval_required", "unreachable_decision_state"),
   };
 }
 
@@ -203,15 +304,15 @@ export function mcpGovernedAuditRow(audit: McpGovernedAudit): {
       effect: audit.effect,
       category: audit.category,
       risk: audit.risk,
-      autonomy_lane_requested: audit.lane_requested,
-      autonomy_lane_effective: audit.lane_effective,
-      autonomy_clamped: audit.clamped,
       enforcement: "enforced",
       decision: audit.decision,
-      seam_decision: audit.seam_decision,
       refusal_code: audit.refusal_code,
+      seam_decision: audit.seam_decision,
+      seam_refusal_code: audit.seam_refusal_code,
+      door_rule: audit.door_rule,
       actor_kind: audit.actor_kind,
       tenant_source: audit.tenant_source,
+      autonomy_lane: MCP_LANE_NOT_RESOLVED,
       decided_at: audit.decided_at,
       decision_ms: audit.decision_ms,
     },

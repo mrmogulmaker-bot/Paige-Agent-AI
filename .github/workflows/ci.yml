@@ -303,6 +303,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:mcp-destructive-confirm:test
 
+      # Every tool on the MCP surface goes through ONE governed door. The registration shape —
+      # 119 separate top-level `mcp.tool(...)` calls — means a 120th dispatches with no gate and
+      # no test fails, because a test only exercises the tools it knows about. This guard is the
+      # structural half: the map is complete both ways, the chokepoint still calls the adapter,
+      # there is no second door, and no mutation is wearing a read's declaration.
+      - name: Lint — one governed MCP door, and the capability map is complete
+        if: ${{ !cancelled() }}
+        run: npm run lint:mcp-governed-door
+
+      - name: MCP governed-door guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:mcp-governed-door:test
+
       # A similarity search whose search_path excludes `extensions` cannot resolve `<=>` and raises
       # on every call. Three shipped functions were in that state for months, invisible because
       # every call site degrades to an empty result — "no matches" and "cannot execute" look the
