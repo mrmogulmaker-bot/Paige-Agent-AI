@@ -25,6 +25,14 @@ const runner = readFileSync(resolve(process.cwd(), "supabase/functions/_shared/s
 const hook = readFileSync(resolve(process.cwd(), "src/hooks/useSystemsCheck.ts"), "utf8");
 const tierMatrix = readFileSync(resolve(process.cwd(), "docs/doctrine/tier-matrix.md"), "utf8");
 
+/** SQL with every `--` line comment removed, so an assertion cannot be satisfied by prose that
+ *  merely QUOTES the clause it is checking for. The §39 pass on this file found exactly that: an
+ *  assertion for `r.completed_at IS NOT NULL` passed with the executable clause deleted, because
+ *  the migration's own explanatory comment contains the same words. */
+function codeOnly(sql: string): string {
+  return sql.split("\n").map((line) => line.replace(/--.*$/, "")).join("\n");
+}
+
 /** The body of one CREATE OR REPLACE FUNCTION block, so an assertion cannot be satisfied by a
  *  matching string that happens to live in the OTHER function or in a header comment. */
 function functionBody(sql: string, name: string): string {
@@ -53,17 +61,28 @@ describe("systems_check_snapshot skips a run that never finished", () => {
   });
 
   it("reports an in-flight scan instead of leaving the caller to infer it from silence", () => {
-    expect(body).toContain("'scan_in_progress', v_scan_in_progress");
-    // BOTH return paths — the has-a-run one and the no-run-yet one. A caller that only gets the key
-    // on one branch has to treat `undefined` as meaningful, which is how a missing signal becomes a
-    // false negative.
-    expect(body.match(/'scan_in_progress', v_scan_in_progress/g)).toHaveLength(2);
+    // ALL THREE return paths carry the key — has-a-run, no-run-yet, and the no-tenant early return.
+    // A caller that gets it on only some branches has to treat `undefined` as meaningful, which is
+    // how a missing signal becomes a false one. An earlier version of this assertion pinned exactly
+    // two and would therefore have FAILED the fix that added the third: an assertion that blocks
+    // its own repair. It now counts the key however it is supplied.
+    expect(codeOnly(body).match(/'scan_in_progress'/g)).toHaveLength(3);
+    expect(codeOnly(body)).toContain("'scan_in_progress', v_scan_in_progress");
   });
 
-  it("time-bounds the in-flight test so a crashed run cannot claim to be running forever", () => {
-    const exists = body.slice(body.indexOf("SELECT EXISTS ("), body.indexOf("INTO v_scan_in_progress"));
-    expect(exists).toContain("completed_at IS NULL");
-    expect(exists).toContain("started_at >= now() - interval '15 minutes'");
+  it("carries the in-flight run's START TIME, not a bare boolean", () => {
+    // Two shipped surfaces already say something about an in-flight run and both need the time to
+    // say it. A boolean would have made the signal unusable without new copy, which is not this
+    // seam's call to write (§00).
+    expect(body).toContain("v_scan_in_progress timestamptz");
+    expect(codeOnly(body)).toContain("SELECT r.started_at");
+  });
+
+  it("time-bounds the in-flight lookup so a crashed run cannot claim to be running forever", () => {
+    const code = codeOnly(body);
+    const lookup = code.slice(code.indexOf("INTO v_scan_in_progress"), code.indexOf("IF v_run_id IS NULL"));
+    expect(lookup).toContain("r.completed_at IS NULL");
+    expect(lookup).toContain("r.started_at >= now() - interval '15 minutes'");
   });
 
   it("is a replace, not a drop — the ACLs and REVOKEs on these functions must survive", () => {
@@ -82,8 +101,14 @@ describe("approve_systems_check_finding resolves latest the same way (§57)", ()
     // These guard different rows. The outer one asks whether the finding being approved belongs to a
     // finished run; the inner one asks which run is currently authoritative. Losing either re-opens a
     // different half of the bug.
-    expect(body).toContain("r.completed_at IS NOT NULL");
-    expect(body).toContain("AND latest.completed_at IS NOT NULL");
+    //
+    // THE LEADING `AND` IS LOAD-BEARING and this assertion is why the whole file is comment-stripped
+    // below. `r.completed_at IS NOT NULL` occurs twice in this function: once as executable SQL and
+    // once inside a comment this same migration added to explain it. Asserting the bare string
+    // passed even with the executable clause deleted — the comment defended itself. Verified by
+    // mutation after the fix: deleting the clause now fails.
+    expect(codeOnly(body)).toContain("AND r.completed_at IS NOT NULL");
+    expect(codeOnly(body)).toContain("AND latest.completed_at IS NOT NULL");
   });
 
   it("carries the identical three-conjunct predicate as the console, so the two cannot disagree", () => {
@@ -107,30 +132,47 @@ describe("the runner records partiality from the condition that causes it", () =
     expect(runner).not.toContain("selected_runner_keys: opts.runnerKeys ?? null");
   });
 
-  it("keeps the marker expression and the filter condition textually identical", () => {
-    const filter = /if \(opts\.runnerKeys && opts\.runnerKeys\.length > 0\) \{/.test(runner);
-    expect(filter, "the catalog filter must still be length-guarded").toBe(true);
+  it("uses the SAME guard expression in the marker as in the catalog filter", () => {
+    // Named for what it checks. It previously claimed to compare the two expressions and only
+    // asserted that the filter's `if` existed.
+    const guard = "opts.runnerKeys && opts.runnerKeys.length > 0";
+    expect(runner, "the catalog filter must still be length-guarded").toContain(`if (${guard}) {`);
+    expect(runner, "the marker must reuse that same guard").toContain(`${guard} ? opts.runnerKeys : null`);
   });
 });
 
-describe("the delta baseline ignores a run that never finished", () => {
-  it("filters completed_at on the previous-run lookup", () => {
-    const baseline = runner.slice(runner.indexOf("if (actionFiling === \"delta\")"), runner.indexOf("// Insert the run row up-front"));
+describe("the delta baseline prefers a completed run but never degrades to nothing", () => {
+  const baseline = runner.slice(
+    runner.indexOf('if (actionFiling === "delta")'),
+    runner.indexOf("// Insert the run row up-front"),
+  );
+
+  it("filters completed_at on the preferred lookup", () => {
     expect(baseline).toContain('.neq("scan_flavor", "change_triggered")');
     expect(baseline).toContain('.not("completed_at", "is", null)');
+  });
+
+  it("falls back to ANY run when no completed one exists, rather than to an empty baseline", () => {
+    // An empty prevStatus makes every check read as newly-failing, so delta files a duplicate
+    // remediation action for EVERY fail — the maximum, not a reduction. A partial map suppresses
+    // some. Preferring completed and degrading to partial is strictly better than degrading to
+    // nothing, and the degrade is reachable on the next new tenant whose onboarding run crashes.
+    expect(baseline).toContain("baselineQuery(true)");
+    expect(baseline).toContain("baselineQuery(false)");
+    expect(baseline).toContain("if (!prevRun)");
   });
 });
 
 describe("the hook plumbs the in-flight signal honestly", () => {
-  it("exposes scanInProgress", () => {
-    expect(hook).toContain("scanInProgress: boolean;");
-    expect(hook).toContain("scanInProgress: query.data?.scanInProgress ?? false");
+  it("exposes the in-flight start time, typed as nullable rather than boolean", () => {
+    expect(hook).toContain("scanInProgressSince: string | null;");
+    expect(hook).toContain("scanInProgressSince: query.data?.scanInProgressSince ?? null");
   });
 
-  it("defaults a missing scan_in_progress to false, never to true", () => {
+  it("defaults a missing scan_in_progress to null, never to a truthy value", () => {
     // A database that has not taken 20261213000000 omits the key. Absence of evidence that a scan is
     // running must not render as a claim that one is (§13).
-    expect(hook).toContain("scanInProgress: snap.scan_in_progress ?? false");
+    expect(hook).toContain("scanInProgressSince: snap.scan_in_progress ?? null");
   });
 
   it("keeps scanPending distinct — it answers a different question", () => {

@@ -317,6 +317,8 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
     // the end (`_shared/systems-check-runner.ts:277`). The planned total is known up front; the
     // verdict tallies are not. This sentence needs the former and the strip needed the latter.
     const recorded = systems.run.check_count ?? currentFindings.length;
+    // Unreachable through the RPC since 20261213000000 — an unfinished run is never returned as
+    // `systems.run`. Kept as defence in depth; see the long note above `freshDetail`.
     if (!hasCompletedRun) {
       reasons.push("The last check did not finish, so what is below is only as far as it got.");
     }
@@ -511,8 +513,20 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
    * pass_count / fail_count only at the very end. So a run that crashed midway
    * carries 0/0 on the row while its real findings sit in the table beside it. Production has
    * five such runs right now — one reads `check_count 10, pass 0, fail 0` next to NINE real
-   * findings. None is currently the newest for its workspace, so nobody is seeing it today; the
-   * moment a run crashes and is the newest, they would.
+   * findings.
+   *
+   * THIS IS NOW DEFENCE IN DEPTH RATHER THAN A LIVE GUARD, and the distinction is worth keeping
+   * straight. This block used to end "the moment a run crashes and is the newest, they would [see
+   * it]". As of migration 20261213000000 an unfinished run can no longer BE the newest: both
+   * resolvers require `completed_at IS NOT NULL`, so `systems.run` never arrives here with a null
+   * `completed_at` and the `hasCompletedRun === false` arms below are unreachable through the RPC.
+   *
+   * They stay anyway. They are correct, they cost nothing, and they are the thing that holds if a
+   * future change re-widens either predicate — which is exactly how the hole they defend against
+   * was opened in the first place. What they no longer do is TELL THE READER a scan is running:
+   * that signal moved to `scanInProgressSince` on the hook and is deliberately not wired to any
+   * sentence here, because repointing these words changes what the console says during a scan and
+   * that is Claude Design's call (§00). Flagged on the PR, not decided here.
    *
    * Reading the row regardless would print "0 passed · 0 need attention" directly above a list of
    * things needing attention. So the verdict tallies are ALWAYS derived from the findings actually

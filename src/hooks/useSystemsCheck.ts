@@ -70,30 +70,41 @@ export interface SystemsCheckSnapshot {
    *  (`_shared/systems-check-runner.ts:277`). Production carries five rows left behind by scans that
    *  crashed between those two moments.
    *
-   *  So an in-flight scan IS directly readable — `completed_at IS NULL` on the latest run — and the
-   *  caller already sees it that way, because a run row existing at all takes the surface down its
-   *  has-a-run path rather than this one. What is left for this flag is the genuinely narrower gap
-   *  BEFORE the row lands: enqueue latency, or an enqueue that failed. Only that window is guessed
-   *  from tenant.created_at, and after it the flag falls back to the honest empty state so a failed
-   *  enqueue never reads as "running" forever. */
+   *  So an in-flight scan IS directly readable — but NO LONGER THROUGH `run`. As of migration
+   *  20261213000000 both resolvers skip a run with `completed_at IS NULL`, so a tenant whose only
+   *  eligible run is in flight now takes THIS no-run path rather than the has-a-run path, and the
+   *  in-flight signal moved to `scanInProgressSince` below. (The sentence this replaces said a run
+   *  row existing at all took the surface down the has-a-run path. True when written; false now.
+   *  This is the second correction to this block — it was already marked CORRECTED 2026-09-05 for
+   *  a different false claim, which is a fair warning about how fast comments about resolver
+   *  behaviour go stale.)
+   *
+   *  What is left for THIS flag is the genuinely narrower gap BEFORE any row lands: enqueue
+   *  latency, or an enqueue that failed. Only that window is guessed from tenant.created_at, and
+   *  after it the flag falls back to the honest empty state so a failed enqueue never reads as
+   *  "running" forever. */
   scanPending: boolean;
-  /** True when a full sweep is CURRENTLY RUNNING for this scope — a run row exists with no
-   *  `completed_at`, started within the last 15 minutes.
+  /** When a full sweep is CURRENTLY RUNNING for this scope, its `started_at`. NULL otherwise.
    *
-   *  This is the companion to a change made in the same migration (20261213000000): both resolvers
-   *  now skip an unfinished run when picking "the latest full sweep", so the reading below stays on
-   *  the last COMPLETED sweep instead of emptying while a scan is in flight. Having hidden the
-   *  in-flight run from the reading, we owe the caller its existence rather than leaving silence to
-   *  imply nothing is happening (§13).
+   *  Companion to migration 20261213000000: both resolvers now skip an unfinished run when picking
+   *  "the latest full sweep", so `run` below stays on the last COMPLETED sweep instead of emptying
+   *  while a scan is in flight. Having hidden the in-flight run from the reading, we owe the caller
+   *  its existence rather than letting silence imply nothing is happening (§13).
    *
-   *  Time-bounded server-side on purpose: production carries five run rows from scans that crashed
-   *  and will never complete, so an unbounded test would report "running" on those tenants forever.
+   *  A TIMESTAMP RATHER THAN A BOOLEAN, deliberately. Two shipped surfaces already say something
+   *  about an in-flight run and both need the time to say it — the Solo strip's "A check started
+   *  {t} and has not finished" and the sub-account view's Started row. A bare true/false would have
+   *  left neither able to keep saying what it already says without someone writing new copy.
    *
-   *  NOT RENDERED ANYWHERE YET. The control that makes it visible is the on-demand rescan (task
-   *  #28); what it says and how it looks is Claude Design's (§00). Plumbed here so the RPC is
-   *  replaced once rather than twice. Distinct from `scanPending`, which is only ever about a brand
-   *  new tenant's FIRST scan and is false as soon as any run row exists. */
-  scanInProgress: boolean;
+   *  Time-bounded server-side (15 minutes): production carries five run rows from scans that
+   *  crashed and will never complete, so an unbounded test would report "running" forever on those.
+   *
+   *  NOT WIRED TO ANY SURFACE HERE. The four branches that used to detect an in-flight run read it
+   *  from `run.completed_at`, which the resolvers can no longer return; repointing them changes
+   *  what the console SAYS during a scan, and that is Claude Design's call (§00). Flagged on the PR
+   *  rather than decided here. Distinct from `scanPending`, which is only ever about a brand-new
+   *  tenant's FIRST scan and is false as soon as any run row exists. */
+  scanInProgressSince: string | null;
   refresh: () => void;
 }
 
@@ -135,7 +146,7 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
     // Navigation re-mounts no longer re-pay the round-trip within the refresh window; the RPC
     // is the single source and the 60s refetchInterval keeps it fresh (task #122 perf).
     staleTime: 60_000,
-    queryFn: async (): Promise<{ run: SystemsCheckRun | null; findings: SystemsCheckFinding[]; tenantCreatedAt?: string | null; scanInProgress: boolean }> => {
+    queryFn: async (): Promise<{ run: SystemsCheckRun | null; findings: SystemsCheckFinding[]; tenantCreatedAt?: string | null; scanInProgressSince: string | null }> => {
       // ONE round-trip: the systems_check_snapshot RPC merges the former Query A (latest run) +
       // Query B (findings + registry embed) + Query C (tenant created_at) into a single jsonb.
       // §59 caller-scope is enforced IN-BODY (tenant derived from current_user_tenant_id(),
@@ -149,7 +160,7 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
         run?: SystemsCheckRun | null;
         findings?: RawFinding[] | null;
         tenant_created_at?: string | null;
-        scan_in_progress?: boolean | null;
+        scan_in_progress?: string | null;   // the in-flight run's started_at, or null
       };
 
       const run = snap.run ?? null;
@@ -174,14 +185,14 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
 
       // tenant_created_at is only populated (and only consumed) when there is no run yet, in
       // tenant scope — it drives scanPending below. Operator scope always returns null.
-      // `?? false` is the honest default, not a convenience: a database that has not yet taken
+      // `?? null` is the honest default, not a convenience: a database that has not yet taken
       // 20261213000000 omits the key entirely, and absence of evidence that a scan is running must
       // never render as a claim that one is.
       return {
         run,
         findings,
         tenantCreatedAt: snap.tenant_created_at ?? null,
-        scanInProgress: snap.scan_in_progress ?? false,
+        scanInProgressSince: snap.scan_in_progress ?? null,
       };
     },
   });
@@ -208,7 +219,7 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
     loading: enabled && query.isLoading,
     isError: query.isError,
     scanPending,
-    scanInProgress: query.data?.scanInProgress ?? false,
+    scanInProgressSince: query.data?.scanInProgressSince ?? null,
     refresh,
   };
 }

@@ -350,6 +350,21 @@ describe("Solo Systems Check workspace", () => {
     expect(host.textContent).toContain("1 needs attention");
   });
 
+  /**
+   * THE NEXT THREE TESTS FIXTURE A RUN THE RPC CAN NO LONGER RETURN.
+   *
+   * Since migration 20261213000000 both resolvers require `completed_at IS NOT NULL`, so
+   * `systems.run` never arrives with a null `completed_at` in production. These tests are therefore
+   * COMPONENT-CONTRACT tests, not system tests: they prove this component still behaves correctly
+   * if handed such a run, which is what makes the unreachable branches safe to keep as defence in
+   * depth against a future change that re-widens either predicate.
+   *
+   * They are deliberately NOT deleted. But do not read their passing as evidence that the live
+   * surface handles an in-flight scan — it no longer receives one, and the replacement signal
+   * (`scanInProgressSince`) is not wired to any sentence here yet. A test that is green about a
+   * state the system cannot enter is exactly the false-green this file exists to prevent, so it
+   * gets a label rather than silence.
+   */
   it("never infers clear coverage from an unfinished persisted run", () => {
     harness.systems.mockReturnValue({
       ...baseSystems,

@@ -272,17 +272,33 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
       // `systems.remediate`. That is the same over-filing burst described above, arriving through a
       // full-sweep flavor the name-based exclusion cannot catch. `file_action` does not dedupe and
       // nothing drains that queue.
-      let prevQ = admin
-        .from("paige_systems_check_run")
-        .select("id")
-        .neq("scan_flavor", "change_triggered")
-        .not("completed_at", "is", null)
-        .order("started_at", { ascending: false })
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .limit(1);
-      prevQ = scope === "operator" ? prevQ.is("tenant_id", null) : prevQ.eq("tenant_id", tenantId as string);
-      const { data: prevRun } = await prevQ.maybeSingle();
+      const baselineQuery = (completedOnly: boolean) => {
+        let q = admin
+          .from("paige_systems_check_run")
+          .select("id")
+          .neq("scan_flavor", "change_triggered")
+          .order("started_at", { ascending: false })
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(1);
+        if (completedOnly) q = q.not("completed_at", "is", null);
+        return scope === "operator" ? q.is("tenant_id", null) : q.eq("tenant_id", tenantId as string);
+      };
+      // PREFER a completed sweep; FALL BACK to any run rather than to nothing.
+      //
+      // Filtering incomplete runs out is right while a completed one exists — that is the fix
+      // above. It is WRONG when none does, and the failure is the opposite of subtle: with no
+      // baseline row, `prevStatus` is EMPTY, so line ~396 reads `undefined !== "fail"` for EVERY
+      // check and delta files a duplicate `systems.remediate` for every single fail. A partial
+      // map suppresses some; an empty map suppresses none. Preferring completed and degrading to
+      // partial is strictly better than degrading to empty.
+      //
+      // Reachable, and by the commonest path: a new tenant's onboarding run uses actionFiling
+      // 'all' and 3 of the 4 onboarding runs on production crashed mid-loop. The next day's
+      // scheduled sweep would then find no completed baseline. Today's 14 tenants all have one,
+      // so this is the NEXT new tenant's default path, and `file_action` does not dedupe.
+      let { data: prevRun } = await baselineQuery(true).maybeSingle();
+      if (!prevRun) ({ data: prevRun } = await baselineQuery(false).maybeSingle());
       const prevRunId = (prevRun as { id?: string } | null)?.id;
       if (prevRunId) {
         const { data: prevFindings } = await admin

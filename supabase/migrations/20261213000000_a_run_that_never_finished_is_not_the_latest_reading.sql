@@ -40,16 +40,41 @@
 -- WHAT THIS CHANGES FOR A READER (§58, stated rather than absorbed):
 --   * While a scan is in flight, both functions now resolve to the last COMPLETED full sweep instead
 --     of the empty new one. The console keeps showing the previous reading and its real timestamp.
---   * `systems_check_snapshot` gains `scan_in_progress` in its payload so the caller is not left
---     inferring from silence that nothing is happening. It is TIME-BOUNDED (15 minutes) because the
---     orphan rows never complete and an unbounded EXISTS would claim a scan was running forever.
---     Nothing renders it yet -- the control that makes it visible is task #28, and how it reads is
---     Claude Design's (§00). Added here rather than there so this function is replaced once.
+--   * `systems_check_snapshot` gains `scan_in_progress` -- the in-flight run's `started_at`, or
+--     NULL -- so the caller is not left inferring from silence that nothing is happening. It is
+--     TIME-BOUNDED (15 minutes) because the orphan rows never complete and an unbounded test would
+--     claim a scan was running forever. Added here rather than in task #28 so this function is
+--     replaced once.
 --   * The five orphan rows stop being able to become "latest" at all. No tenant loses a reading:
 --     each already had a completed run ranked above its orphan.
+--   * FOUR RENDERED STATES BECOME UNREACHABLE, and this is the part that needs naming rather than
+--     absorbing. Because neither resolver can now return a run with `completed_at IS NULL`, every
+--     consumer branch keyed on that is dead code:
+--       - `SoloSystemsCheckWorkspace.tsx:505` "A check started {t} and has not finished"
+--       - `SoloSystemsCheckWorkspace.tsx:543` the `trustRun === false` arm (findings-derived total)
+--       - `SoloSystemsCheckWorkspace.tsx:320` "The last check did not finish, so what is below is
+--         only as far as it got." -- the PARTIAL banner loses one of its three causes
+--       - `TenantSystemsCheckSecondaryView.tsx:107` `{completed_at ? "Completed" : "In progress"}`
+--         now always reads "Completed". That is the SUB-ACCOUNT surface.
+--     NOTHING IS DELETED. Those branches stay as defence-in-depth against a future change that
+--     re-widens the predicate, and the 45-line comment at `:507-538` explaining why an unfinished
+--     run's counts are zeros stays with them. But the console currently loses its only way of
+--     saying a scan is running, and `scan_in_progress` -- which is why it now carries the start
+--     time rather than a bare boolean -- is deliberately NOT wired to any of them here: repointing
+--     those sentences changes what the surface says while a scan runs, and that is Claude Design's
+--     call (§00), not this seam's.
 --
--- §37: `systems_check_snapshot` has one consumer (`src/hooks/useSystemsCheck.ts:128`) and
--- `approve_systems_check_finding` has one (`src/components/systems-check/SystemsCheckTile.tsx:168`).
+-- §37 CONSUMER INVENTORY. `systems_check_snapshot` has TWO direct callers, not one:
+--   * `src/hooks/useSystemsCheck.ts:128` — the shared hook behind SystemsCheckTile,
+--     TenantSystemsCheckSecondaryView, SystemsCheckSurface, SoloMindWorkspace and the Solo console.
+--   * `src/operator/data/useOperatorChrome.ts:193` — a DIRECT rpc call bypassing the hook, operator
+--     scope, reading only `run?.id` and `findings`. The superset payload is inert for it, and
+--     pinning the last completed operator sweep is an improvement for the fleet badge.
+-- An earlier draft of this header claimed one consumer. That was wrong, and the miss is instructive:
+-- an inventory that stops at the hook also misses TenantSystemsCheckSecondaryView, which is the
+-- sub-account surface and the one whose rendered state this change most affects (see §58 below).
+-- `approve_systems_check_finding` genuinely has one caller
+-- (`src/components/systems-check/SystemsCheckTile.tsx:168`).
 -- Both receive a superset of today's payload; no field is renamed or removed.
 --
 -- Bodies below are byte-identical to 20261203000000 except for the clauses this file adds -- both
@@ -69,14 +94,19 @@ DECLARE
   v_run_id        uuid;
   v_findings      jsonb;
   v_tenant_created timestamptz;
-  v_scan_in_progress boolean := false;
+  v_scan_in_progress timestamptz;   -- the in-flight run's started_at, or NULL
 BEGIN
   IF p_scope = 'tenant' THEN
     -- Tenant is derived IN-BODY from the verified session — never a client-supplied param (§59/§9).
     v_tenant := public.current_user_tenant_id();
     IF v_tenant IS NULL THEN
       -- No resolved tenant → no data (the hook's disabled/empty posture; §13 honest).
-      RETURN jsonb_build_object('run', NULL, 'findings', '[]'::jsonb, 'tenant_created_at', NULL);
+      -- Carries scan_in_progress too. It is unconditionally NULL here — there is no tenant to
+      -- have a scan — but a key present on two of three return paths forces every caller to
+      -- treat `undefined` as meaningful, which is how a missing signal turns into a false one.
+      RETURN jsonb_build_object(
+        'run', NULL, 'findings', '[]'::jsonb, 'tenant_created_at', NULL, 'scan_in_progress', NULL
+      );
     END IF;
   ELSIF p_scope = 'operator' THEN
     -- Operator lens is platform-operator-only; a non-operator caller never sees it (§53/§9).
@@ -124,16 +154,23 @@ BEGIN
   -- TIME-BOUNDED deliberately: the orphan rows above never complete, so an unbounded EXISTS would
   -- report "a scan is running" on those tenants forever. Measured run durations on prod are 26-92s,
   -- so 15 minutes is far outside a healthy run and anything older is a crash, not progress (§13).
-  SELECT EXISTS (
-    SELECT 1
-      FROM public.paige_systems_check_run
-     WHERE ((v_operator AND tenant_id IS NULL)
-         OR (NOT v_operator AND tenant_id = v_tenant))
-       AND selected_runner_keys IS NULL
-       AND scan_flavor <> 'change_triggered'
-       AND completed_at IS NULL
-       AND started_at >= now() - interval '15 minutes'
-  ) INTO v_scan_in_progress;
+  --
+  -- IT RETURNS THE START TIME, NOT A BOOLEAN, and that is the difference between a signal a
+  -- caller can act on and one it cannot. The Solo strip's shipped sentence is "A check started
+  -- {time} and has not finished" and the sub-account view renders a Started row beside its
+  -- status. A bare true/false would leave both unable to say anything they already say without
+  -- someone writing NEW copy, which is not this seam's call. NULL means no scan is running.
+  SELECT r.started_at
+    INTO v_scan_in_progress
+    FROM public.paige_systems_check_run r
+   WHERE ((v_operator AND r.tenant_id IS NULL)
+       OR (NOT v_operator AND r.tenant_id = v_tenant))
+     AND r.selected_runner_keys IS NULL
+     AND r.scan_flavor <> 'change_triggered'
+     AND r.completed_at IS NULL
+     AND r.started_at >= now() - interval '15 minutes'
+   ORDER BY r.started_at DESC, r.created_at DESC, r.id DESC
+   LIMIT 1;
 
   IF v_run_id IS NULL THEN
     -- No run yet. For TENANT scope, read created_at so the tile can honestly distinguish
