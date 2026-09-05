@@ -31,8 +31,9 @@
 -- a tracked follow-up, reframed there in its own change rather than reproducing that sensitive
 -- union function for one label suffix. This migration touches ONLY the Rail display function.
 --
--- SECURITY DEFINER + IMMUTABLE + search_path pinned + REVOKE from PUBLIC/anon/authenticated,
--- exactly as the prior definition — no grant or authority change.
+-- IMMUTABLE + search_path pinned + REVOKE from PUBLIC/anon/authenticated, exactly as the prior
+-- definition (SECURITY INVOKER — the default; the function carries no SECURITY DEFINER clause,
+-- same as 20261220000000) — no grant or authority change.
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 CREATE OR REPLACE FUNCTION public._workspace_event_display(_source_kind text, _outcome text, _capability text)

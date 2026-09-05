@@ -6250,7 +6250,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 type: "object",
                 properties: {
                   phone_number: { type: "string", description: "E.164, exactly as comms_search_numbers returned it, e.g. +14045550123." },
-                  monthly_cents: { type: "integer", description: "The exact monthly_cents comms_search_numbers returned for THIS number — its recurring monthly cost at the provider (which the platform currently covers; the business is not billed for it). It is shown to the operator in the approval prompt and verified against the real price before anything is bought, so a number you did not get from a search will be refused rather than bought." },
+                  monthly_cents: { type: "integer", description: "The exact monthly_cents comms_search_numbers returned for THIS number — its listed recurring monthly price (which the platform currently covers; the business is not billed for it). It is shown to the operator in the approval prompt and verified against the real price before anything is bought, so a number you did not get from a search will be refused rather than bought." },
                   friendly_name: { type: "string", description: "Optional label, e.g. 'Intake line'." }
                 },
                 required: ["phone_number", "monthly_cents"]
@@ -7031,11 +7031,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           const cents = typeof a?.monthly_cents === "number" ? a.monthly_cents : null;
           const label = a?.friendly_name ? ` and label it "${a.friendly_name}"` : "";
           const buy = `Buy ${a?.phone_number || "that number"} for this business${label}.`;
-          // §38: the number has a real recurring cost AT THE PROVIDER, which the platform
-          // currently covers — the business is NOT billed for it in this slice. The caution
-          // kept here is the true one: a duplicate or unused number is a real waste, not a bill.
+          // §38: the number carries a real recurring cost — the platform pays the provider and
+          // currently covers it, so the business is NOT billed for it in this slice. The figure
+          // shown is the LISTED price (`monthly_cents` is retail: wholesale + the platform's fee,
+          // not the raw provider cost), so it is named "listed price", not "provider cost". The
+          // caution kept here is the true one: a duplicate or unused number is a real waste, not a bill.
           return cents !== null
-            ? `${buy} It costs $${(cents / 100).toFixed(2)}/month at the provider, which the platform currently covers — the business isn't billed for it, but buy it deliberately: a duplicate or unused number is a real waste.`
+            ? `${buy} Its listed price is $${(cents / 100).toFixed(2)}/month, which the platform currently covers — the business isn't billed for it, but buy it deliberately: a duplicate or unused number is a real waste.`
             : `${buy} You've passed an unquoted amount, so this will be refused — run a search first so the real monthly price can be shown.`;
         }
         case "comms_name_number":

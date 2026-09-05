@@ -10,7 +10,8 @@
   "Bought a phone number (monthly charge)" + the `capability_completed_unrecorded` summary "a charge or
   a change has landed"). A §13 falsehood on the audience:'owner' Rail — an owner read it as a bill they
   owe. Corrected the backend truthfulness layer: the tool description + param + confirmation prompt
-  (paige-ai-chat) now say the recurring cost is the PROVIDER's, which the platform covers, the business
+  (paige-ai-chat) now say the recurring monthly cost (the number's LISTED price — `monthly_cents` is
+  retail, not the raw provider cost) is the platform's to cover, the business
   is not billed, and the real caution is a duplicate/unused number is a waste; and migration
   `20261222000000` reproduces `_workspace_event_display` verbatim except the two Rail strings (diff
   proved: only those + the comment changed). NO tenant-billing write is created or implied
