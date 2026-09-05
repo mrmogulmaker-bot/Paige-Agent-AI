@@ -287,9 +287,15 @@ SELECT is(
   (SELECT status FROM bcr_legacy WHERE field_key = 'business_phone'), 'legacy_sourced',
   'the same for a phone held only in the legacy record'
 );
+-- DELIBERATELY asserts the UNCHANGED behaviour, and the comment says why so nobody "fixes" it.
+-- An unrecorded provenance still reports connection_sourced. That is not fully honest, and it is
+-- left alone on purpose: Setup reads this same field independently (get_solo_business_context and
+-- useSoloBusinessContext) and makes the SAME inference, so flipping it here alone would make PAIGE
+-- and the Setup badge disagree about one field in the same second — the defect this file exists to
+-- catch, newly created by the fix. The correction moves all three together, in its own slice.
 SELECT is(
-  (SELECT status FROM bcr_legacy WHERE field_key = 'primary_business_email'), 'legacy_sourced',
-  'an email with NO recorded provenance is legacy_sourced — never connection_sourced, which would name a connected account that never wrote it'
+  (SELECT status FROM bcr_legacy WHERE field_key = 'primary_business_email'), 'connection_sourced',
+  'primary_business_email is untouched by this migration — its correction is unbundled, see the migration header'
 );
 SELECT ok(
   (SELECT row_to_json(bcr_legacy)::text FROM bcr_legacy WHERE field_key = 'website')

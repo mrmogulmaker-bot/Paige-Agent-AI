@@ -3363,11 +3363,19 @@ found `industry` wrong in exactly the same way for **four** workspaces — twice
 second reader to contradict it, and `primary_business_email` defaulting to
 `connection_sourced`/`connections` for **all three** workspaces holding a `support_email` with no
 provenance recorded, naming a connected account as the proof for a value no connection ever wrote.
-Ten rows move in total; **zero Systems Check verdicts and zero comms booleans move**, asserted per
-tenant across all 14 production tenants rather than reasoned about. A contradiction is not the
+
+**The email correction was drafted and then WITHDRAWN by the §39 peer-gate, which is the part worth
+remembering.** A THIRD reader of that same field exists — `get_solo_business_context()` and
+`src/solo/data/useSoloBusinessContext.ts`, rendered as Setup's "Connection-sourced" badge — and it
+makes the same inference. All three agree today, so flipping only the readiness reader would have
+made PAIGE say "never confirmed" while Setup said "Connection-sourced" about one field in the same
+second: the exact defect class being fixed, newly created by the fix. Unbundled into its own slice
+that must move all three together. **Seven rows move in total; `primary_business_email` moves on
+zero; zero Systems Check verdicts and zero comms booleans move**, asserted per tenant across all 14
+production tenants rather than reasoned about. A contradiction is not the
 defect — it is the only symptom loud enough to be seen.
 
-**A third answer is named, not changed:** `get_tenant_a2p_registration_status().profile` echoes
+**A further answer is named, not changed:** `get_tenant_a2p_registration_status().profile` echoes
 `tenant_legal_profile` with no brand fallback, so it reports a null website for these workspaces.
 A raw-value echo rather than a readiness contract, zero callers in-repo, A2P out of scope — recorded
 in the contract doc so it is found named rather than re-discovered.

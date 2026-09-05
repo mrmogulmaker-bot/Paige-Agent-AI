@@ -2049,6 +2049,22 @@ which is precisely the argument that tempts you to collapse them. **A latent dif
 licence to collapse it.** The shape that works is a shared *internal resolver* both readers derive
 from, with each keeping its own gate, its own tenant resolution and its own response shape.
 
+**Sweeping the siblings is not the same as finding the other READERS, and the section that enumerates
+readers is the one most likely to stop early.** This change carried a section titled "A third answer
+exists, and is deliberately left alone" — written precisely to catch a reader nobody had inventoried.
+It named one (an A2P echo) and stopped. The §39 peer-gate then found a **third reader of a different
+field**: Setup's own `get_solo_business_context()` and its client hook both default
+`primary_business_email` to `connection_sourced`, exactly as the readiness reader did. Correcting the
+readiness reader alone would have made PAIGE and the Setup badge disagree about one field in the same
+second — **the defect being fixed, newly created by the fix.**
+
+Two things generalise. First: **finding one third reader feels like having finished**, and that
+feeling is the bug; the enumeration is per FIELD, not per change. Second, and sharper: **a correction
+that leaves two of three readers untouched is not a partial fix, it is a new defect.** Three readers
+agreeing on a falsehood is a smaller problem than two readers disagreeing, because the disagreement
+is what a human sees. The right move was to unbundle the correction and ship it where it can move all
+three together — even though that meant shipping *less* truth in this change than the draft claimed.
+
 **Make the resolver unreachable rather than defended.** It takes a tenant parameter, which is
 exactly the input a caller must never supply. Rather than adding a third gate inside it, `EXECUTE`
 was revoked from `PUBLIC`, `anon`, `authenticated` and `service_role` — so only the already-gated

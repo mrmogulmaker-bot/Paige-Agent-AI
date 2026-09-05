@@ -685,9 +685,15 @@ export default function ClientsConversations() {
       const row = error ? null : ((data as SoloCommsReadinessEvidence | null) ?? null);
       // BIND to the workspace on screen. The resolver derives its tenant server-side from the
       // session, so if that has not caught up with the client's active account the answer belongs
-      // to a DIFFERENT business — discard it rather than render it here (§9, the same check
-      // useCommsReadiness makes). Absent is honest; substituted is not.
-      setCommsReadiness(row && row.tenant_id && row.tenant_id !== activeTenantId ? null : row);
+      // to a DIFFERENT business — discard it rather than render it here (§9). Absent is honest;
+      // substituted is not.
+      //
+      // The match must be POSITIVE. An earlier draft read `row.tenant_id && row.tenant_id !== …`,
+      // which lets a payload carrying NO tenant fall through and render — absence treated as a
+      // match, which is precisely the inference this whole change exists to remove, and the exact
+      // opposite of what the field's own type comment promises. Costs nothing today (the resolver
+      // always emits tenant_id) and is the safe direction if it ever stops.
+      setCommsReadiness(row && row.tenant_id === activeTenantId ? row : null);
     })();
     return () => { cancelled = true; };
   }, [isSolo, activeTenantId]);

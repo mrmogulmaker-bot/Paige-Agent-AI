@@ -2747,17 +2747,24 @@ tenant parameter, so `EXECUTE` is revoked from `PUBLIC`, `anon`, `authenticated`
 status or timestamp that bypasses server-resolved scope" — the surface that would accept one is not
 exposed.
 
-**A second correction of the same class, found while fixing the first.** `primary_business_email`
-defaulted to `connection_sourced`/`connections` whenever `tenants.brand` carried a `support_email`
-and no provenance had been recorded. Measured: **all three** production workspaces holding a
-`support_email` are in exactly that position. So the reader has been naming a connected account as
-the proof for a value no connection ever wrote. The first defect invented *absence* from a value
-that existed; this one invents a *source* from a provenance that does not. Recorded
-`owner_confirmed` and recorded `connection_sourced` are both preserved exactly; only the invented
-default moves.
+**A second correction of the same class was drafted and WITHDRAWN, and that is the entry worth
+keeping.** `primary_business_email` defaults to `connection_sourced`/`connections` whenever
+`tenants.brand` carries a `support_email` and no provenance was recorded — measured: **all three**
+production workspaces holding one are in exactly that position. Real defect, same class, opposite
+face (the first invents *absence* from a value that exists; this invents a *source* from a
+provenance that does not).
 
-**What actually changed, measured across all 14 production tenants:** ten rows — website ×2,
-business_phone ×1, **industry ×4**, primary_business_email ×3. `industry` is the proof the rule is
+It is not in this change, because the §39 peer-gate found a **third reader** of the same field:
+`get_solo_business_context()` (`20261103000000`) and `src/solo/data/useSoloBusinessContext.ts` both
+default it to `connection_sourced` independently, rendered as the Setup screen's "Connection-sourced"
+badge. All three agree today. Flipping only the readiness reader would have made PAIGE say *"never
+confirmed"* while Setup said *"Connection-sourced"* about one field in the same second — **the exact
+defect class being fixed, newly created by the fix.** Unbundled into its own slice, which must move
+all three together and assess the adopt/override edit gate those provenance values drive.
+
+**What actually changed, measured across all 14 production tenants:** seven rows — website ×2,
+business_phone ×1, **industry ×4**. `primary_business_email` moves on **zero** — status, source and
+`as_of` byte-identical per tenant. `industry` is the proof the rule is
 general rather than fitted to the two contradicting workspaces: it had no second reader to disagree
 with and was wrong the same way for twice as many workspaces, and nobody had noticed. **Zero Systems
 Check verdicts move** (every runner grades through `isConfirmed()`, true only for `owner_confirmed`)
@@ -2770,7 +2777,7 @@ is left unasserted until a source declares one. The registry's `staleAfterDays` 
 contract type and is satisfied trivially; a comment now says so rather than letting the number read
 as an enforced policy.
 
-**A third answer is named rather than changed.** `get_tenant_a2p_registration_status().profile`
+**Two more answers are named rather than changed.** The email provenance default above, and: `get_tenant_a2p_registration_status().profile`
 echoes `tenant_legal_profile` with no brand fallback, so it reports a null website for these two
 workspaces. Left alone on purpose: it is a raw-value echo rather than a readiness contract, it has
 zero callers in this repository (though it is granted to `authenticated` and reachable via
@@ -2788,7 +2795,8 @@ resolver never did.
 
 **Proof.** Pre-merge `BEGIN … ROLLBACK` on production, twelve assertions, all passing — including
 the failing-first pair in the same transaction: the old contradiction reproduced at **3 rows** before
-the change and measured at **0** after. pgTAP raised to `plan(45)` reproduces it synthetically with a
+the change and measured at **0** after. Re-proved after the peer-gate correction: 7 rows move, 0
+email rows move, 0 verdicts move, 0 unsanctioned changes. pgTAP raised to `plan(45)` reproduces it synthetically with a
 third fixture tenant and states the disagreement directly as an invariant over **both** readers.
 **Authenticated runtime proof on the deployed surfaces is OWED, not claimed** (§32.c) — this session
 held no browser-driving tool.

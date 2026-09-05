@@ -142,31 +142,54 @@ where a failed read previously became an indistinguishable `false`.
 After this, both readers report the same canonical state for the same workspace, from the same
 resolver, and the contradiction cannot recur by construction rather than by agreement.
 
-## 6. The second correction, found while reconciling the first
+## 6. A second correction, found while reconciling the first — and withdrawn
 
-`primary_business_email` reported `connection_sourced` / `connections` whenever `tenants.brand`
-carried a `support_email` and no provenance had been recorded — the `coalesce(..., 'connection_sourced')`
-default. Measured on production: **all three** workspaces holding a `support_email` are in exactly
-that position (two have no `tenant_setup_business_context_meta` row at all; the third has a row whose
-`primary_email_provenance` carries no `source` key). So the reader has been naming a connected
-account as the proof for a value no connection ever wrote.
+`primary_business_email` reports `connection_sourced` / `connections` whenever `tenants.brand`
+carries a `support_email` and no provenance has been recorded. Measured on production: **all three**
+workspaces holding a `support_email` are in exactly that position (two have no
+`tenant_setup_business_context_meta` row at all; the third has a row whose
+`primary_email_provenance` carries no `source` key). So the reader names a connected account as the
+proof for a value no connection ever wrote. That is the same untruth as the one above, wearing the
+opposite face: the first invents *absence* from a value that exists, this one invents a *source*
+from a provenance that does not. It is real.
 
-That is the same untruth as the one above, wearing the opposite face: the first invented *absence*
-from a value that existed, this one invents a *source* from a provenance that does not. It is
-corrected in the same change, to the state that is actually true — `legacy_sourced` / `legacy_brand`.
-A **recorded** `owner_confirmed` and a **recorded** `connection_sourced` are both preserved exactly;
-only the invented default moves.
+**It is not corrected here**, and the reason is the whole point of this document rather than a
+footnote. **Correcting it in this reader alone would have created a new cross-surface disagreement
+instead of closing one.** Setup reads the same field independently and makes the same inference, in
+two places:
+
+- `get_solo_business_context()` (migration `20261103000000`) —
+  `coalesce(…, '{"source":"connection_sourced","confidence":"observed"}')` when an email is present
+  and the meta row is absent or `{}`;
+- `src/solo/data/useSoloBusinessContext.ts` — `row.primaryBusinessEmail ? "connection_sourced" : …`,
+  unconditionally, rendered as the badge **"Connection-sourced"** on the Setup screen.
+
+Today those two and this reader **agree** — all three wrong in the same direction. Had this change
+flipped only this one, the same workspace would have read *"on file from an older brand record,
+never confirmed"* in PAIGE and *"Connection-sourced"* in Setup, in the same second. That is the
+exact defect class this contract exists to end, newly created by the fix.
+
+**Found by the §39 peer-gate**, after §8 of this document — the section that exists to name third
+readers — had already been written and had stopped one function short. The lesson is recorded in
+`docs/brain/lessons-learned.md`.
+
+The correction is tracked as its own slice, which must move the resolver,
+`get_solo_business_context` and the client hook **together**, and assess the adopt/override edit
+gate those provenance values drive (`SoloBusinessContextSetup.tsx` `change()`, and the
+`SETUP_SOURCE_DECISION_REQUIRED` raise in `20261046000000`). Until then
+`primary_business_email` is byte-identical to the deployed behaviour — status, source **and**
+`as_of` — asserted per tenant.
 
 ## 7. What actually changed, measured across all 14 production tenants
 
-Ten rows move, and no verdict does.
+Seven rows move, and no verdict does.
 
 | Fact | Tenants | Before | After |
 |---|---|---|---|
 | `website` | 2 | `needs_confirmation` | `legacy_sourced` / `legacy_brand` |
 | `business_phone` | 1 | `needs_confirmation` | `legacy_sourced` / `legacy_brand` |
 | `industry` | 4 | `needs_confirmation` | `legacy_sourced` / `legacy_brand` |
-| `primary_business_email` | 3 | `connection_sourced` / `connections` | `legacy_sourced` / `legacy_brand` |
+| `primary_business_email` | **0** | — | unchanged, see §6 |
 
 `industry` is the proof the rule is general rather than fitted to the two contradicting workspaces:
 it has no second reader to disagree with, and it was wrong in exactly the same way for twice as many
@@ -183,7 +206,12 @@ read as present in one and absent in the other — the same contradiction in min
 btrims. Production holds zero whitespace-only values in any of these columns, so no tenant's answer
 moves today.
 
-## 8. A third answer exists, and is deliberately left alone
+## 8. Two more answers exist, and are deliberately left alone
+
+**The first is `primary_business_email`'s provenance default** — in this reader and in Setup's own
+two reads. See §6: all three agree today, and the correction moves them together or not at all.
+
+**The second:**
 
 `get_tenant_a2p_registration_status().profile` echoes `tenant_legal_profile` with **no brand
 fallback**, so for these two workspaces it reports a null `website_url` — a third answer to the same
@@ -195,7 +223,10 @@ question. It is not changed here, and that is a decision rather than an oversigh
   PostgREST, so it is latent rather than dead);
 - **A2P is explicitly outside this release's scope.**
 
-Recorded here so the next session finds it named rather than re-discovering it.
+Recorded here so the next session finds it named rather than re-discovering it — and note that
+this section, in its first draft, named only this one. The §39 peer-gate found the other. A section
+that exists to enumerate third readers is exactly the section most likely to stop early, because
+finding one feels like having finished.
 
 ## 9. Workspace switching
 

@@ -49,15 +49,32 @@
 -- source, a state or a timestamp that bypasses server-resolved scope -- not because a check rejects
 -- it, but because the surface that would accept it is not exposed.
 --
--- SECOND CORRECTION, SAME DEFECT CLASS, MEASURED NOT ASSUMED. primary_business_email defaulted to
--- `connection_sourced`/`connections` whenever tenants.brand carried a support_email and no
--- provenance had been recorded. On production ALL THREE workspaces with a support_email are in
+-- A SECOND CORRECTION WAS DRAFTED HERE AND WITHDRAWN, and the reason is the whole point of this
+-- migration rather than a footnote. primary_business_email defaults to
+-- `connection_sourced`/`connections` whenever tenants.brand carries a support_email and no
+-- provenance was ever recorded. On production ALL THREE workspaces with a support_email are in
 -- exactly that position (Antonio Daniel LLC and First Sterling Capital have no meta row at all;
--- Mogul Maker Academy has a row whose primary_email_provenance carries no `source` key). So the
--- reader has been naming a connected account as the proof for a value no connection ever wrote --
--- a source invented from missing data, which is the same untruth this migration exists to remove.
--- A recorded `owner_confirmed` and a recorded `connection_sourced` are both preserved exactly; only
--- the invented default changes, to the state that is actually true: legacy_sourced / legacy_brand.
+-- Mogul Maker Academy has a row whose primary_email_provenance carries no `source` key), so the
+-- reader is naming a connected account as the proof for a value no connection ever wrote. That is
+-- the same untruth as the one above, wearing the opposite face, and it is real.
+--
+-- It is NOT corrected here, because correcting it in THIS reader alone would have created a new
+-- cross-surface disagreement instead of closing one. Setup reads the same field independently and
+-- makes the same inference, in two places:
+--     get_solo_business_context() (20261103000000) -- coalesce(..., '{"source":"connection_sourced"}')
+--     src/solo/data/useSoloBusinessContext.ts      -- `row.primaryBusinessEmail ? "connection_sourced"`
+-- rendered as the badge "Connection-sourced" on the Setup screen. Today those two and this reader
+-- AGREE (all three wrong in the same direction). Had this migration flipped only this one, the same
+-- workspace would have read "on file from an older brand record, never confirmed" in PAIGE and
+-- "Connection-sourced" in Setup, in the same second -- the exact defect class being fixed, newly
+-- created by the fix. Found by the §39 peer-gate, which looked for a THIRD reader after the
+-- header's own "a third answer exists" section had stopped one function short.
+--
+-- So the email correction is unbundled and tracked as its own slice, which must move the resolver,
+-- get_solo_business_context and the client hook TOGETHER, and assess the adopt/override edit gate
+-- those provenance values drive (SoloBusinessContextSetup.tsx `change()`, and the
+-- SETUP_SOURCE_DECISION_REQUIRED raise in 20261046000000). This migration leaves
+-- primary_business_email byte-identical to the deployed behaviour.
 --
 -- WHAT CHANGES FOR CONSUMERS, measured across all 14 production tenants before writing this:
 --
@@ -69,8 +86,8 @@
 --     rather than re-deriving the same coalesce over raw tables.
 --   * get_business_context_readiness gains legacy_sourced where a value demonstrably exists:
 --     website on 2 tenants, business_phone on 1, industry on 4, business_name on 1 (business_name
---     is resolver-only -- this reader still returns its same four field_keys), plus the
---     primary_business_email correction on 3.
+--     is resolver-only -- this reader still returns its same four field_keys).
+--     primary_business_email moves on ZERO tenants -- see the withdrawal note above.
 --   * Both readers gain next_action, so a state that needs something now says what.
 --
 -- ONE BEHAVIOUR DIFFERENCE, DELIBERATE. tenant_comms_readiness compared with nullif(x,'') while
@@ -84,7 +101,11 @@
 -- manufacturing a readiness fact, which is the thing being fixed. When a source declares a TTL,
 -- staleness is emitted from that declaration and from nowhere else.
 --
--- STILL DIVERGENT, NAMED RATHER THAN SILENTLY LEFT: get_tenant_a2p_registration_status().profile
+-- STILL DIVERGENT, NAMED RATHER THAN SILENTLY LEFT (1 of 2): the primary_business_email
+-- provenance default, in this reader AND in Setup's own two -- see the withdrawal note above. All
+-- three agree today; the correction moves them together or not at all.
+--
+-- STILL DIVERGENT (2 of 2): get_tenant_a2p_registration_status().profile
 -- echoes tenant_legal_profile with no brand fallback, so for these two workspaces it reports a null
 -- website_url. It is an A2P registration echo of raw values rather than a readiness contract, it has
 -- zero callers in this repository, and A2P is explicitly out of this release's scope -- so it is
@@ -246,23 +267,25 @@ begin
          when v_ind_legacy is not null then c_confirm_legacy
          else c_enter end
   union all
+  -- primary_business_email is DELIBERATELY UNCHANGED from the deployed behaviour -- see the
+  -- "second correction, withdrawn" note in the header. An unrecorded provenance still reports
+  -- connection_sourced/connections, which is not fully honest, and correcting it HERE ALONE would
+  -- have created a NEW cross-surface disagreement rather than closing one: Setup's own read
+  -- (get_solo_business_context, 20261103000000) and its client hook default the same field to
+  -- connection_sourced independently, so this reader would have said "never confirmed" while the
+  -- Setup screen said "Connection-sourced" about the same field in the same second.
   select 'primary_business_email'::text,
     case when v_email is null then 'needs_confirmation'
-         when v_email_source = 'owner_confirmed' then 'owner_confirmed'
-         when v_email_source = 'connection_sourced' then 'connection_sourced'
-         else 'legacy_sourced' end,
+         when coalesce(v_email_source, 'connection_sourced') = 'owner_confirmed' then 'owner_confirmed'
+         else 'connection_sourced' end,
     case when v_email is null then null
-         when v_email_source = 'owner_confirmed' then 'setup'
-         when v_email_source = 'connection_sourced' then 'connections'
-         else 'legacy_brand' end,
-    case when v_email is null then null
-         when v_email_source is null then null
-         else v_email_at end,
+         when coalesce(v_email_source, 'connection_sourced') = 'owner_confirmed' then 'setup'
+         else 'connections' end,
+    v_email_at,
     null::text,
     case when v_email is null then c_enter
-         when v_email_source = 'owner_confirmed' then null
-         when v_email_source = 'connection_sourced' then c_confirm_conn
-         else c_confirm_legacy end;
+         when coalesce(v_email_source, 'connection_sourced') = 'owner_confirmed' then null
+         else c_confirm_conn end;
 end;
 $fn$;
 

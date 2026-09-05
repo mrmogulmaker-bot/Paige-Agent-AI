@@ -34,8 +34,11 @@ describe("Solo Conversations page wiring", () => {
     expect(effect).not.toEqual("");
     // Clear FIRST and unconditionally — before the guard, not inside one branch of it.
     expect(effect.indexOf("setCommsReadiness(null);")).toBeLessThan(effect.indexOf("if (!isSolo || !activeTenantId) return;"));
-    // And bind the answer to the workspace on screen before it is rendered.
-    expect(effect).toContain("row.tenant_id !== activeTenantId");
+    // And bind the answer to the workspace on screen before it is rendered — POSITIVELY. A
+    // `row.tenant_id && row.tenant_id !== active` form lets a payload with no tenant fall through
+    // and render, which is absence treated as a match.
+    expect(effect).toContain("row.tenant_id === activeTenantId ? row : null");
+    expect(effect).not.toContain("row.tenant_id !== activeTenantId");
   });
 
   it("keeps sends on proven email and SMS seams and fails governed handling closed", () => {
