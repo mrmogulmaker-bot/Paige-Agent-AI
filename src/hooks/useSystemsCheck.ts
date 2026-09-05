@@ -77,6 +77,23 @@ export interface SystemsCheckSnapshot {
    *  from tenant.created_at, and after it the flag falls back to the honest empty state so a failed
    *  enqueue never reads as "running" forever. */
   scanPending: boolean;
+  /** True when a full sweep is CURRENTLY RUNNING for this scope — a run row exists with no
+   *  `completed_at`, started within the last 15 minutes.
+   *
+   *  This is the companion to a change made in the same migration (20261213000000): both resolvers
+   *  now skip an unfinished run when picking "the latest full sweep", so the reading below stays on
+   *  the last COMPLETED sweep instead of emptying while a scan is in flight. Having hidden the
+   *  in-flight run from the reading, we owe the caller its existence rather than leaving silence to
+   *  imply nothing is happening (§13).
+   *
+   *  Time-bounded server-side on purpose: production carries five run rows from scans that crashed
+   *  and will never complete, so an unbounded test would report "running" on those tenants forever.
+   *
+   *  NOT RENDERED ANYWHERE YET. The control that makes it visible is the on-demand rescan (task
+   *  #28); what it says and how it looks is Claude Design's (§00). Plumbed here so the RPC is
+   *  replaced once rather than twice. Distinct from `scanPending`, which is only ever about a brand
+   *  new tenant's FIRST scan and is false as soon as any run row exists. */
+  scanInProgress: boolean;
   refresh: () => void;
 }
 
@@ -118,7 +135,7 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
     // Navigation re-mounts no longer re-pay the round-trip within the refresh window; the RPC
     // is the single source and the 60s refetchInterval keeps it fresh (task #122 perf).
     staleTime: 60_000,
-    queryFn: async (): Promise<{ run: SystemsCheckRun | null; findings: SystemsCheckFinding[]; tenantCreatedAt?: string | null }> => {
+    queryFn: async (): Promise<{ run: SystemsCheckRun | null; findings: SystemsCheckFinding[]; tenantCreatedAt?: string | null; scanInProgress: boolean }> => {
       // ONE round-trip: the systems_check_snapshot RPC merges the former Query A (latest run) +
       // Query B (findings + registry embed) + Query C (tenant created_at) into a single jsonb.
       // §59 caller-scope is enforced IN-BODY (tenant derived from current_user_tenant_id(),
@@ -132,6 +149,7 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
         run?: SystemsCheckRun | null;
         findings?: RawFinding[] | null;
         tenant_created_at?: string | null;
+        scan_in_progress?: boolean | null;
       };
 
       const run = snap.run ?? null;
@@ -156,7 +174,15 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
 
       // tenant_created_at is only populated (and only consumed) when there is no run yet, in
       // tenant scope — it drives scanPending below. Operator scope always returns null.
-      return { run, findings, tenantCreatedAt: snap.tenant_created_at ?? null };
+      // `?? false` is the honest default, not a convenience: a database that has not yet taken
+      // 20261213000000 omits the key entirely, and absence of evidence that a scan is running must
+      // never render as a claim that one is.
+      return {
+        run,
+        findings,
+        tenantCreatedAt: snap.tenant_created_at ?? null,
+        scanInProgress: snap.scan_in_progress ?? false,
+      };
     },
   });
 
@@ -182,6 +208,7 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
     loading: enabled && query.isLoading,
     isError: query.isError,
     scanPending,
+    scanInProgress: query.data?.scanInProgress ?? false,
     refresh,
   };
 }

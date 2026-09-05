@@ -264,10 +264,19 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
       // in SQL, but referencing it here would make this bundle fail against a database that has not
       // yet taken the migration — the two deploy pipelines have no ordering link. A stale entry for
       // the one check a change run re-graded is a far smaller error than nine spurious ones.
+      //
+      // AND IT MUST HAVE FINISHED. Without this the baseline can resolve to a run that is still
+      // dispatching — or one that died mid-loop, of which prod carries five — and `prevStatus` is
+      // then a PARTIAL map. Line ~371 reads `undefined !== "fail"` for every check the partial run
+      // never wrote, so each still-failing check re-forges a draft and files a duplicate
+      // `systems.remediate`. That is the same over-filing burst described above, arriving through a
+      // full-sweep flavor the name-based exclusion cannot catch. `file_action` does not dedupe and
+      // nothing drains that queue.
       let prevQ = admin
         .from("paige_systems_check_run")
         .select("id")
         .neq("scan_flavor", "change_triggered")
+        .not("completed_at", "is", null)
         .order("started_at", { ascending: false })
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
@@ -302,6 +311,21 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
       tenant_id: tenantId,                 // EXPLICIT (§9); NULL for an operator scan (§53 tenant-less)
       scan_flavor: scanFlavor,
       check_count: rows.length,
+      // THE PARTIALITY MARKER, written for the first time. The column has existed since
+      // 20261203000000, where its comment calls it "the durable marker, keyed on the MECHANISM" —
+      // and nothing has ever written it, so every one of the 959 rows on prod carries NULL and the
+      // full-sweep guard in `systems_check_snapshot` has been resting entirely on the flavor NAME.
+      // That is enough only while `change_triggered` is the sole subset-running flavor. It stops
+      // being enough the moment a second one exists, which is exactly what per-check re-run will be.
+      //
+      // Derived from the SAME expression that applies the filter (see the `.in("runner_key", …)`
+      // guard above), NOT from `opts.runnerKeys ?? null`. An empty array is falsy for the filter but
+      // truthy for `??`, so that shorthand would mark a run that scanned the FULL catalog as partial
+      // and make it permanently invisible to both the console and the approve path. Unreachable
+      // today — every caller builds a non-empty array or 400s — and precisely the kind of latent
+      // divergence the column exists to prevent.
+      selected_runner_keys:
+        opts.runnerKeys && opts.runnerKeys.length > 0 ? opts.runnerKeys : null,
       triggered_by: { ...(opts.triggeredBy ?? {}), scope },  // scope carried in audit (run table has no scope col)
     })
     .select("id")
