@@ -2432,6 +2432,16 @@ mcp.tool("send_transactional_email", {
 
 // ---------- send_sms ----------
 // Legacy send_sms stays fail-closed until governed outbound authorization exists.
+//
+// THIS TOOL IS DECLARED `effect: "read"` IN `_shared/paige-mcp/capability-policy.ts`, AND THAT IS
+// ONLY TRUE WHILE THE HANDLER BELOW STAYS INERT. It is truthful today — the whole body is a length
+// check, a uuid, an append-only audit row and a `blocked_…` status; there is no provider call. But
+// the governed door's read branch returns BEFORE classification, clamp, approval and outcome, so
+// re-arming the Twilio send under this tool name would put a real outbound send behind a `read`
+// declaration and it would execute ungoverned. If you re-arm it, change that row to
+// `effect: "mutate"` in the SAME commit. R6 of `mcp-governed-door-lint` catches the accident —
+// a `fetch(` or a provider helper appearing in this span fails CI — but it cannot catch a send
+// routed through a module it does not follow. The row and this comment are a pair; keep both.
 mcp.tool("send_sms", {
   description:
     "SMS sending is unavailable from this legacy tool. Tenant messages must use the governed Communications sender after that tenant's A2P registration is approved.",

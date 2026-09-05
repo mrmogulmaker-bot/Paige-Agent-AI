@@ -217,6 +217,9 @@ export const MCP_CAPABILITY_POLICY: Readonly<Record<string, McpCapability>> = {
     category: "read",
     evidence: "index.ts:3041-3055: one .select() on paige_ingestion_proposals with order/limit, filtered by actor.user_id from currentActor() (:3043-3049). No insert/update/upsert/delete, no rpc, no fetch, no audit() call in the handler.",
   },
+  // CLEARS `MUTATION_VERB` BY ONE CHARACTER CLASS: "authorization" is not the banned segment
+  // "author". `action-risk.ts` says that pattern "should err long" and it has been widened once
+  // already. If it ever gains suffix matching, this key refuses a read that works today.
   list_payment_authorizations: {
     canonical: "crm_payment_authorization_list",
     effect: "read",
@@ -355,6 +358,9 @@ export const MCP_CAPABILITY_POLICY: Readonly<Record<string, McpCapability>> = {
     category: "read",
     evidence: "supabase/functions/paige-mcp/index.ts:4407-4415 — currentActor() (in-memory AsyncLocalStorage read, index.ts:110) plus actorClient() which performs one .from('clients').select('id, tenant_id, linked_user_id').eq('linked_user_id', a.user_id).maybeSingle() (index.ts:4395-4399). No insert/update/delete, no rpc, no fetch, no audit().",
   },
+  // CLEARS `MUTATION_VERB` BY ONE CHARACTER CLASS: "sender" is not the banned segment "send".
+  // Same caveat as `crm_payment_authorization_list` above — a widened pattern turns this into a
+  // production refusal for a working read.
   resolve_sender_identity: {
     canonical: "tenant_sender_identity",
     effect: "read",
@@ -373,6 +379,9 @@ export const MCP_CAPABILITY_POLICY: Readonly<Record<string, McpCapability>> = {
     category: "read",
     evidence: "index.ts:356-373 — one .select() on clients scoped .eq('tenant_id', tenantId). Grepped range 348-374 for .insert(/.update(/.upsert(/.delete(/.rpc(/fetch(/audit( → 0 hits. Helper applyContactSearchFilter (_shared/contact-search.ts) is a pure query-filter builder: 0 write verbs in the whole file.",
   },
+  // PAIRED WITH A COMMENT AT THE HANDLER (index.ts, above the registration). `read` is true only
+  // while that handler stays inert; re-arming the Twilio send makes this row `mutate` in the same
+  // commit, because the read branch skips classification, clamp, approval and outcome in one move.
   send_sms: {
     canonical: "comms_sms_block_notice",
     effect: "read",
