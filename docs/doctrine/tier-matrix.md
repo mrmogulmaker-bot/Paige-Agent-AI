@@ -333,6 +333,40 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
+### Business Game Plan is the DEFAULT Command Center landing on Solo (2026-09-05)
+
+The Solo Command Center gained a first sub-tab, **Business Game Plan** (`SoloGamePlanWorkspace`), and
+it is now the **default landing** for the Solo shell. Bare `/command-center` and the legacy
+`/command-center/overview` both redirect (`replace`) to `/command-center/business-game-plan`; the
+`business-game-plan` slug carries `overview` as an alias in `SOLO_BRANCHES` so old deep links resolve.
+Command Center sub-tabs are now **Business Game Plan → Systems Check → Mind** — three REAL tabs;
+Trust Compass's slot (position 3) is reserved for its owner to add a real sub-tab, never a
+dead/placeholder tab (§58).
+
+**No new table, RPC, edge function, migration, or tier flag.** The surface is a §18 composition hook
+(`useSoloGamePlan`) over already-released, tenant-safe reads (`useCommandCenter`, `useSoloSetupBrief`,
+`useCatalogOffers`, `useSoloKnowledge`, `useSoloPendingActions`, `useSystemsCheck("tenant")`,
+`useSoloActivityFeed`). It passes **no** client-supplied `tenant_id` (§9); every read is scoped by the
+session the sub-hooks already resolve. Every visible number is a real numerator/denominator over five
+grounding foundations, or it says "incomplete"/"couldn't load"; an empty recorded feed reads
+"No recorded work yet" (§13). The server-resolved account name + tier render in the kicker and in the
+canonical `data-tenant-account-name`/`-tier` shell markers (§65/§70).
+
+| Tier | Sees Business Game Plan as its Command Center landing |
+|---|---|
+| **God / Super Admin** | — operator runs its own OperatorEntry command center, not the Solo shell |
+| **Agency** (agency-as-tenant) | — AgencyApp is a different shell; the Solo CommandHub is Solo-only |
+| **Standalone Solo** | **✓** default landing |
+| **Sub-account** | **— (sequenced, §60 parity gap noted honestly)** — a sub-account renders through `AgencyApp` at `/business/{account}` today, so its Command Center landing is the shared Agency Core, NOT the Business Game Plan (`canonical-app-url` still resolves `sub_account → …/command-center/overview`). §60 says Solo ≡ Sub-account except billing, so this is a real parity gap; it closes when `/business` mounts `SoloApp` (a separate §65 route-taxonomy slice, another workstream). This slice deliberately touched only `SOLO_BRANCHES`. |
+| **Client** | **403** — denied at the Solo route gate |
+| **Anonymous** | **403** — denied at the Solo route gate |
+
+**`UNVERIFIED` — authenticated owner runtime proof (§32.c).** Every claim above is from the component
+bodies, the composed released reads, automated tests (full suite green), typecheck-clean typed files,
+and a 64/64 headless render drive across all states × light/dark × four Solo viewports. No browser
+drove this surface as a signed-in owner on any tier in this session (the headless CI sandbox has no
+browser/auth tool) — the live-drive is **owed to the next capable session**, not claimed.
+
 ### The inbound MCP door — `paige-mcp`, all 119 tools, one governed decision (2026-09-05)
 
 **What is LIVE.** Every `tools/call` passes one chokepoint, after the tier and scope gate and before

@@ -57,7 +57,10 @@ const ROUTES: Record<MountedTier, Partial<Record<CanonicalDestination, string>>>
     marketplace_submissions: "/operator/marketplace/submissions",
   },
   solo: {
-    home: "/solo/{account}/command-center/systems-check",
+    // Business Game Plan is the default Command Center landing (owner-approved 2026-09-05),
+    // so the canonical "home" an external emitter links to opens it. Systems Check stays a
+    // valid deep link; bare /command-center also redirects here.
+    home: "/solo/{account}/command-center/business-game-plan",
     billing: "/solo/{account}/settings/billing",
     security: "/solo/{account}/settings/security-data",
     settings: "/solo/{account}/settings/setup",
