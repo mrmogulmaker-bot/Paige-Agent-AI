@@ -409,6 +409,10 @@ describe("Solo Systems Check workspace", () => {
     expect(host.textContent).not.toContain("1 needs attention");
     // And it is still visible as resolved work rather than vanishing from the surface (§58).
     expect(host.textContent).toContain("Resolved");
+    // Codex P2: the parts must add up to the whole. Deriving the tallies from the findings left
+    // "1 check · 0 passed · 0 need attention" accounting for none of the one check it claims,
+    // while the section below showed that item as ready. The resolved segment closes it.
+    expect(host.textContent).toContain("1 resolved");
   });
 
   // The other half of the same rule: an UNRESOLVED unevaluable finding must be counted in both

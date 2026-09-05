@@ -536,6 +536,12 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
         const passed = confirmedFindings.length;
         const failed = attentionFindings.length;
         const unread = unavailableFindings.length;
+        // Resolved work has to be COUNTED here, not just listed below. Deriving the tallies from
+        // the findings fixed one contradiction and opened a smaller one: a run whose single finding
+        // was resolved read "1 check · 0 passed · 0 need attention", which accounts for none of the
+        // one check it claims, while the section beneath it shows that same item as ready. A reader
+        // cannot reconcile those. With this segment the parts add up to the whole.
+        const settled = currentFindings.filter((finding) => isResolved(finding)).length;
         return (
           <>
             <strong>{total}</strong> {trustRun ? "check" : "result"}{total === 1 ? "" : "s"}
@@ -543,6 +549,7 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
             <strong>{passed}</strong> passed &middot;{" "}
             <strong>{failed}</strong> need{failed === 1 ? "s" : ""} attention
             {unread > 0 ? <> &middot; <strong>{unread}</strong> could not be evaluated</> : null}
+            {settled > 0 ? <> &middot; <strong>{settled}</strong> resolved</> : null}
           </>
         );
       })();
