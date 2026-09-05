@@ -259,7 +259,7 @@ export const CHECK_DESTINATIONS: Record<SystemsCheckId, CheckDestination> = {
     // publishing, which this check has never asked for: it is a §38 capture-only check by owner
     // ruling (see the registry row in 20260816000000_systems_check_layer1.sql).
     caveat:
-      "Recording the accounts is what this check asks for. Connecting one for publishing is a separate capability and is not available yet.",
+      "Recording the accounts is what this check asks for, and you can do that here. You cannot connect an account for publishing yet — that is a separate capability.",
   },
   automation_wired: {
     title: "An outside automation tool is connected",
