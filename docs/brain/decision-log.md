@@ -1,5 +1,19 @@
 # Decision Log — chronological one-liners
 
+- **Paige UI Delivery Skills Standard established (2026-09-05)** — any agent that designs/redesigns/
+  materially changes a Paige UI now follows a mandatory workflow: `flow-by-flow` → the
+  `paige-ui-delivery` bundle (curated, MIT, vendored + pinned from `PracticalSwan/agent-skills`
+  @ `da1f686c51f64d32395e645eec5e58ba5045c744`) → `flow-prototype` for any new/changed flow, then
+  rendered + behavioral evidence labelled LIVE/PARTIAL/UNAVAILABLE/UNVERIFIED. Homes: standard at
+  `docs/paige-ui-delivery/UI-DELIVERY-STANDARD.md`, active skill `.claude/skills/paige-ui-delivery/`,
+  root trigger `AGENTS.md`, doctrine `CLAUDE.md` §71. Enforcement: CI `lint:ui-evidence` (17-case
+  self-test) fails a shipped-UI PR (`src` `.tsx`/`.css`, excl. tests/stories) that lacks the UI
+  Delivery Evidence attestation; NO-OP on DB/edge/docs/test/backend PRs — a guardrail, not proof
+  (a checkbox is not accepted, Rule 5/§32/§70). Vendoring is licit here where `flow-by-flow`'s was
+  refused, because this upstream ships fetchable MIT + a full tri-license chain for `frontend-design`
+  (Apache-2.0 + GitHub-MIT + THIRD_PARTY_NOTICES) — nothing reconstructed. §00-clean: process
+  governance, not design-taste authority.
+
 - **Wave 3 Communications — the §39 peer-gate blocked once and was right (2026-09-05, same PR)** — an
   independent adversarial read of the pushed diff returned BLOCK on one finding and two SHOULD-FIXes,
   all three real. ① **BLOCKER:** `number_purchase_failed` was mapped to `capability_unreachable`

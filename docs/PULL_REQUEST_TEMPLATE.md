@@ -17,6 +17,22 @@ Before requesting review, confirm each item:
 ## Related Doctrines
 - §118 Master Tenant · §158 Platform Owner · §188 Tenant vs Platform Primitives · §189 Feature Flag Gating · §199 Ecosystem Boundaries · §200 Platform Independence
 
+## UI Delivery Evidence
+<!--
+REQUIRED when this PR changes shipped UI (src tsx/css, excluding tests/stories/__tests__).
+CI (lint:ui-evidence) reads the lines below. Fill the <...> values with REAL evidence or an honest
+"UNVERIFIED: <reason>" — a ticked checkbox is NOT accepted as proof (Rule 5 / §32 / §70).
+Full standard + template: docs/paige-ui-delivery/UI-DELIVERY-STANDARD.md and UI-EVIDENCE-TEMPLATE.md.
+For a backend/DB/edge/docs/test-only PR: delete this whole section (the gate is a no-op for it).
+For an src tsx/css change that is genuinely NOT a visible-interface change, replace the block with a
+single line: `UI-Delivery-Exempt: <specific reason>`.
+-->
+UI-Delivery-Evidence: yes
+Skills-used: flow-by-flow, paige-ui-delivery <, flow-prototype — required for any new/changed flow>
+Rendered: <viewports checked (Solo: 1536×770 / 1366×768 / 1024×768 / 900×1000) + result, or "UNVERIFIED: <reason>">
+Behavioral: <the user flow driven end to end + result, or "UNVERIFIED: <reason>">
+State-labels: <LIVE / PARTIAL / UNAVAILABLE / UNVERIFIED, per feature>
+
 ## Testing
 <!-- How this was verified. -->
 

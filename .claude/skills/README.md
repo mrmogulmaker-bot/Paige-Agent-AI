@@ -6,6 +6,7 @@ installed **per-account**, not vendored here. This directory holds our own addit
 | Path | What it is |
 |---|---|
 | `second-brain/SKILL.md` | Ours. BOTH bookends: read the brain before work (so nothing already written down gets re-diagnosed), and record + sweep before calling it done. Bound to §0 / §BRAIN.3 / §66 |
+| `paige-ui-delivery/SKILL.md` | Ours. The mandatory UI workflow entrypoint: routes `flow-by-flow` → the curated UI bundle → `flow-prototype`, applies Paige's token/viewport/evidence gates, enforces truthful LIVE/PARTIAL/UNAVAILABLE/UNVERIFIED labels. Points at the vendored, pinned bundle in `docs/paige-ui-delivery/upstream/`. Bound to §00 / §11 / §13 / §23 / §32 / §69 / §70. See "The UI delivery bundle IS vendored" below. |
 
 ---
 
@@ -130,3 +131,28 @@ Mirror `second-brain/SKILL.md` into it as a new gate plus a read-first and a clo
 re-derive it, and do not fork a second copy of the content (§18). This file stays the one home for
 the *reason*; that skill stays the one home for the *procedure*.
 
+
+---
+
+## The UI delivery bundle IS vendored — and why that is licit here (2026-09-05)
+
+`paige-ui-delivery/SKILL.md` (ours) points at a **vendored, pinned** copy of a narrow slice of
+`github.com/PracticalSwan/agent-skills` under `docs/paige-ui-delivery/upstream/`. That is the exact
+move refused above for `flow-by-flow`/`flow-prototype` — so the distinction matters, and it is the
+opposite case, not a repeat of the rejected one:
+
+- **The upstream ships the authoritative notice.** `LICENSE.txt` is real MIT text with a named
+  copyright holder (© 2026 Sithu Win San), the repo has a public URL, and the exact commit SHA was
+  captured at clone (`da1f686c51f64d32395e645eec5e58ba5045c744`). The `flow-by-flow` blocker was
+  that its notice *could not be fetched and could not be reconstructed*. Here it was fetched, not
+  reconstructed — nothing is invented.
+- **`frontend-design`'s full tri-license chain travels** (MIT + Apache-2.0 + a GitHub-MIT +
+  `THIRD_PARTY_NOTICES.md`), preserved verbatim. See `docs/paige-ui-delivery/upstream/PROVENANCE.md`.
+- **It is under `docs/`, not here.** `.claude/skills/` still contains only our own authorship — the
+  statement above ("Nothing third-party is present in this directory") stays true. Nesting other
+  skills' `SKILL.md` files as grandchildren of `.claude/skills/` would also risk the harness
+  double-registering them; keeping the vendor under `docs/` avoids both problems.
+
+If the `flow-by-flow` bundles ever gain a fetchable authoritative notice, the same test they failed
+is the one this bundle passed — vendor them the same way, with provenance, and delete their blocker
+note.

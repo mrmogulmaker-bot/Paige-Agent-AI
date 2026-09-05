@@ -2688,3 +2688,66 @@ flow bound to a real write with tests, and reported the work ~90% pre-delivered.
 intended outcome — *I can use this on my own platform* — was never checked against a rendered
 result. Driven, four flows failed, including a save that reports "Saved." and discards the write.
 The prior report was the artifact of the miss, not a finding about it.
+
+## 71. UI work runs through the Paige UI Delivery Standard — the skill workflow is mandatory, not optional.
+
+**Owner-commissioned governance (2026-09-05).** Any agent — Claude, Codex, Claude Design, or
+otherwise — that designs, redesigns, or materially changes a Paige user interface follows the
+**Paige UI Delivery Skills Standard**. It is the delivery-governance layer that makes the approved
+UI skill workflow unavoidable. The one home for the full standard is
+`docs/paige-ui-delivery/UI-DELIVERY-STANDARD.md`; the active skill is
+`.claude/skills/paige-ui-delivery/SKILL.md`; the root cross-agent trigger is `AGENTS.md`. This
+section is the doctrine pointer, not a second copy (§18).
+
+**What counts as UI work:** product screens, settings, modals, drawers, forms, onboarding, funnels,
+landing pages, dashboards, tabs, empty states, mobile layouts, interaction states, animation, and
+visual styling — anything a person sees or operates. Mechanically: a PR whose diff adds/modifies a
+shipped UI file (`src` `.tsx`/`.css`, excluding tests/stories/`__tests__`). Database-only,
+edge-function-only, documentation-only, test-only, and other backend-only work is NOT UI work (it
+still runs `flow-by-flow`, §69).
+
+**The five rules:**
+1. **Flow-by-Flow first** (this is §69, restated as the standard's entry).
+2. **The `paige-ui-delivery` bundle before design or implementation** on any visible interface —
+   loaded first, routing to the pinned `frontend-design` + `web-design-reviewer` + `accessibility` +
+   `web-testing` bundle.
+3. **`flow-prototype` before production** for any new or materially changed flow (forms, signup,
+   onboarding, funnels, drawers, modals, settings, payment, connection, destructive actions, any
+   multi-state/multi-exit flow).
+4. **Design around the user's real job** — not generic cards, decorative gradients, empty dashboard
+   chrome, or a static mockup that cannot be used (this is §11/§70, sharpened for the interface).
+5. **"It renders" is not "it works"** — no claim of a working UI feature on the strength of a render,
+   fixtures, or a structural test; claims require rendered + behavioral evidence, labelled truthfully
+   **LIVE / PARTIAL / UNAVAILABLE / UNVERIFIED** (this is §32/§70, restated for the interface).
+
+**Paige quality gates on top of the bundle** (full detail in the standard): reuse `.paige-solo`
+tokens and `@/components/ui/page` primitives before inventing; verify the RENDERED Solo experience at
+1536×770, 1366×768, 1024×768, and 900×1000, responding to the content-column width the docked PAIGE
+shell leaves; check scroll owner, clipping, reachability, keyboard path, focus, zoom/reflow, and
+every state including workspace-switch; forms/funnels carry first-use guidance, real editable
+controls, visible labels, no fake success, recoverable input, working cancel/back, destructive
+confirmation, and honest unavailable states; visual work states purpose/audience/action/direction,
+spends gold only on the act, keeps light genuinely light and dark genuinely dark (§23), and fabricates
+no metric/history/health/capability (§13).
+
+**Enforcement.** `AGENTS.md` and this section carry the trigger; CI's `lint:ui-evidence` fails a
+shipped-UI PR that does not carry the UI Delivery Evidence attestation (`docs/PULL_REQUEST_TEMPLATE.md`),
+and is a no-op on non-UI PRs. **The gate is a guardrail, not proof** — it forces the evidence to
+exist and be reviewable; it does not certify the agent used the skills or that the feature works.
+A ticked checkbox is never production proof.
+
+**§00 boundary — this is process, not taste.** The standard governs which skills run, in what order,
+and what evidence a UI change must carry. It grants NO implementation agent design-taste authority:
+which layout, colour, motion, or copy is right stays Claude Design's and the owner's call (§00). An
+implementation agent renders frames as evidence, never as a verdict, and raises only a concrete
+incompatibility (the design cannot be wired as drawn, or the backend must change for it to work).
+
+**The test, every time:** *"Does this change something a person sees or operates? Then did I run
+flow-by-flow, load the UI bundle before building, prototype the flow if it is new or changed, and can
+I show rendered + behavioral evidence — or am I about to call it done because it compiled and
+rendered?"* If the evidence is not rendered + behavioral, it is not done (§32/§70).
+
+**Cross-references:** §00 (design jurisdiction), §11/§22/§23 (design floor, tokens, colour), §13
+(honest reporting), §28/§58 (approved-frozen, anti-regression), §32/§70 (green build ≠ working
+render; the deliverable is a human finishing the job), §69 (Flow-by-Flow), §18 (one home — the
+standard is the one home, this is the pointer).
