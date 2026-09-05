@@ -1516,6 +1516,19 @@ recurring [PLANNED; §67/§68, §64]. Each capability declares its contract (ten
 outcome, provenance, safe-failure, durable home). **Same-slice refresh discipline:** each completed slice
 updates this matrix with shipped/evidence/proof-owed/next-owner/dep-order (§0/§66/§BRAIN.3).
 
+**Slice 1 progress (2026-09-05):** _increment 1 — truthful artifact-creation receipts_ (PR #972). Five
+creation handlers (`generate_image`, `draft_marketing_content`, `content_save`, `document_generate`,
+`growth_page_save`) no longer emit a `success:true` receipt on a 200-with-empty-payload (null url / empty
+drafts / null saved id); a new pure home `_shared/artifact-receipt.ts` (`artifactProduced` +
+`ARTIFACT_ABSENT_ERROR`) degrades an absent artifact to an honest `success:false`, so the model narration,
+the status label, and the artifact card all inherit the honest signal (§13/§70). **Proof:** 17 contract
+tests + 167 green across the source-asserting suite; §50 clean; transpiles clean. **Proof owed:**
+authenticated owner §32.c live-drive (headless). **Still in slice 1:** download/export action, render the
+artifact card on all chat surfaces, image→campaign routing, the missing types (campaign_brief · HTML
+email_template · video · social-schedule), regular-chat in-place refine — the visible items run the §00
+Claude-Design pack (CC ports, does not design). **Deferred to their slices, named:** the two going-live
+PUBLISH receipts (slice 6/7) and Rail wiring of these tools (slice 3 / F05).
+
 ### Sandboxed Research & External Execution — a COMPONENT of the Paige Capability System (above); APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
 
 Owner-directed MVP capability so Paige is an active AI COO/orchestrator, not a chat interface that
