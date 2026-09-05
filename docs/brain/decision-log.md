@@ -18,6 +18,34 @@
   `capability-record.ts` (6 outcomes); Spine/Mind retain scoped sourced facts (F02 handoff dep). Same-slice
   refresh discipline: each completed slice updates master §5 with shipped/evidence/proof-owed/next-owner/dep-order.
 
+- **Communications closeout, Slice A — Twilio cost ownership: the buy flow stops claiming the tenant
+  is billed (2026-09-05, edge + one migration)** — the PLATFORM is the provider account holder and
+  pays the provider cost for MVP; solo tenants are NOT billed for Communications
+  (`comms-purchase-number` returns `charge_wired:false` on every exit — the tenant-billing charge leg
+  is not wired). But the buy flow said the opposite: the `comms_buy_number` tool description ("THIS
+  SPENDS REAL MONEY… the operator IS being billed"), the server confirmation prompt ("This starts a
+  recurring charge of $X/month"), the `monthly_cents` param desc, and the Rail (`_workspace_event_display`:
+  "Bought a phone number (monthly charge)" + the `capability_completed_unrecorded` summary "a charge or
+  a change has landed"). A §13 falsehood on the audience:'owner' Rail — an owner read it as a bill they
+  owe. Corrected the backend truthfulness layer: the tool description + param + confirmation prompt
+  (paige-ai-chat) now say the recurring monthly cost (the number's LISTED price — `monthly_cents` is
+  retail, not the raw provider cost) is the platform's to cover, the business
+  is not billed, and the real caution is a duplicate/unused number is a waste; and migration
+  `20261222000000` reproduces `_workspace_event_display` verbatim except the two Rail strings (diff
+  proved: only those + the comment changed). NO tenant-billing write is created or implied
+  (`charge_wired:false` unchanged; no billing table touched — the money boundary §38 is preserved, not
+  built). `money_already_spent` is NOT renamed (the outcome classifier + contract test key on it; that
+  is the Billing rebuild the owner ruled out) — its meaning is corrected in the tool description; the
+  `capability_completed_unrecorded` mapping is correct and stays. **Frontend is a Claude Design hand-off
+  (§00):** `src/solo/settings.tsx`, `NumbersTab.tsx` ("charges your business"), and
+  `src/lib/integrations/connectError.ts` ("IS being billed") + their tests carry the same false claim —
+  CC did not touch them; backend goes truthful now, frontend converges on CD's track (temporary
+  cross-layer copy inconsistency, §6-flagged). **Escalated to owner:** the "Billing for messaging"
+  usage-metering card in settings.tsx (generic-Billing-rebuild boundary — flagged, not touched).
+  **Parked (follow-up):** the `list_tool_autonomy` toggle label "Buy a phone number (monthly charge)"
+  (inside the large union function — the #776-hazard surface; disproportionate to reproduce for one
+  label suffix; pre-existing, my Rail fix does not worsen it).
+
 - **Phase 2 · S1.1 — deal_move_stage records an outcome that is TRUE about what happened (2026-09-05,
   edge-only, fast-follow on merged #962)** — Codex (the repo's automated reviewer) posted 3 P2 findings
   AFTER #962 merged; all 3 verified against source (§39 — the peer-gate + my §39 pass + Codex are
