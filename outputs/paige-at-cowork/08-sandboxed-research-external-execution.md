@@ -42,7 +42,7 @@ decomposition (dependency-ordered slices) · **Date:** 2026-09-05 · **Base:** `
 | `web_search` chat tool → `paige-web-search` (Firecrawl) | public-web search in chat | **PARTIAL** (config-gated on `FIRECRAWL_API_KEY`; honest `configured:false` degrade) | `paige-ai-chat/index.ts` web_search dispatch; `paige-web-search/index.ts` |
 | `deep_research` chat tool → `paige-deep-research` | multi-hop PLAN→SEARCH→READ→gap-check→synthesize with a hard **anti-fabrication citation gate** (every finding ≥1 real source or empty+honest) | **LIVE** | `paige-deep-research/index.ts` |
 | `fetch-url-content` | SSRF-guarded single-URL reader (the READ step) | **LIVE** (weaker guard — see gap G1) | `fetch-url-content/index.ts` |
-| `paige-browser` Fly service — `/browse-public-url` | self-hosted Playwright general public-web reader (title/meta/h1/body/links), **read-only** (click/submit/type/download rejected), DB-free, shared-secret gated, strong DNS-resolving SSRF guard + denylist | **LIVE** (per repo/second-brain; live Fly state not observable headless — PROOF-OWED) | `services/paige-browser/server.js`; `docs/brain/config-registry.md` |
+| `paige-browser` Fly service — `/browse-public-url` | self-hosted Playwright general public-web reader (title/meta/h1/body/links); **Paige-driven steps limited to reads** (click/submit/type/download rejected) — but **page-initiated writes are not yet HTTP-method-gated** (JS on; `page.route` filters host/SSRF only, `server.js:328-334`), a named G5 gap; DB-free, shared-secret gated, strong DNS-resolving SSRF guard + denylist | **PARTIAL** on the no-external-write axis (LIVE as a reader per repo/second-brain; live Fly state not observable headless — PROOF-OWED) | `services/paige-browser/server.js:328-334`; `docs/brain/config-registry.md` |
 | `browse_public_url` skill (`paige_skills`) | the governed public-web research capability; first writer of the tenant-scoped `paige_browser_usage` audit rail; reachable via `run_skill` | **LIVE** (§32.a persisted-apply confirmed; §32.c live-drive OWED) | migration `20260914000000`; `skill-runner`/`skill-interpreter` |
 | `verify_deployed_surface` skill → `/self-verify` | Paige self-verifies her own deployed surfaces | **LIVE** (§32.c GREEN) | migration `20260912000000` |
 | Governed CHAT dispatch (action-risk → autonomy lane → ceiling clamp → approval card → dispatch → outcome projection) | the strong governance path for external workers | **LIVE** | `_shared/action-risk.ts`; `paige-ai-chat/index.ts` gate |
@@ -52,12 +52,24 @@ decomposition (dependency-ordered slices) · **Date:** 2026-09-05 · **Base:** `
 | Trust Compass CEILING + `resolve_tool_autonomy` clamp; §16 `autonomy_lane` (`auto\|confirm\|off`) | the account ceiling that clamps every tool lane | **LIVE** | `20261039000000`; `20260711024632_action_bus.sql` |
 | `_shared/paige-spine/governedExecution.ts` `decideGovernedExecution` | the intended ONE seam every door (chat/automation/agent/skill/mcp) should call | **PARTIAL — pure module, NOT wired to any edge function** (the live gate is inline in `paige-ai-chat`; `paige-mcp` ships 117 tools that never call `resolve_tool_autonomy`) | `governedExecution.ts` header |
 
-**Structural safety already true today (the research constraints the owner named are mostly met):**
-public browsing is **read-only by construction** (write/click/submit/download steps are rejected at
-the Fly host), so it *cannot* silently log in, submit forms, purchase, publish, alter external
-records, or download untrusted files into production; any action beyond research must enter the
-governed action/approval path. Provider credentials never enter agent prompts/artifacts (creds are
-service-role-resolved server-side; the browser host is DB-free and holds none).
+**Structural safety today — precise, not overstated (§13; Codex P1 correction, 2026-09-05):**
+- **PAIGE-DRIVEN writes are blocked.** The `/browse-public-url` step allowlist admits only
+  read steps (`assertSelector`/`assertText`/`readText`); a Paige-supplied click/submit/type/download
+  is rejected at the Fly host. So *Paige* cannot drive a login, form submit, purchase, publish, or
+  download — those must enter the governed action/approval path.
+- **PAGE-INITIATED writes are NOT yet blocked — a named PARTIAL gap.** The host enables page
+  JavaScript and its `page.route("**/*")` interceptor filters requests **by host/SSRF only, not by
+  HTTP method** (`services/paige-browser/server.js:328-334`: private-host → abort, else
+  `route.continue()` for any method). A *visited page's own on-load script* could therefore issue a
+  POST/form-submit to a public host that Paige never asked for. What still constrains it: the SSRF +
+  StevenBlack/Cloudflare-Families denylist (blocks private/denylisted targets) and the wildcard flag
+  (gates which sites open at all) — but **not** the HTTP method to an arbitrary public host. So the
+  honest claim is "Paige-driven writes are blocked," **not** "read-only by construction." Closing this
+  (restrict page requests to safe methods / block non-GET, or disable page JS on the research read) is
+  a first-class S-R1 hardening item (G5 below), and until it lands this capability is PARTIAL on the
+  "no external write" axis.
+- **Credential hygiene holds:** provider credentials never enter agent prompts/artifacts (creds are
+  service-role-resolved server-side; the browser host is DB-free and holds none).
 
 ---
 
@@ -66,7 +78,7 @@ service-role-resolved server-side; the browser host is DB-free and holds none).
 | Missing capability | Why it's net-new | State |
 |---|---|---|
 | **A general untrusted-execution SANDBOX** — tenant+task isolation, no cross-tenant data, creds out of prompts/artifacts/logs, per-task/connector network policy (not a global denylist), quarantined downloads (never treated as instructions), short-lived task envs, explicit retry/timeout/cancel/failure | Exhaustive grep (sandbox/isolate/quarantine/vm2/firecracker/gvisor/nsjail/Deno.Command/child_process/eval/new Function/untrusted/ephemeral) found **no isolated code-runner**; the only "sandboxes" are the two Fly Playwright browser services (read-only browse/screenshot, Chromium `--no-sandbox`) and the inert Browserbase stub | **UNAVAILABLE** |
-| **Advanced browser automation** (login, submit, click, download) | current browse is read-only by construction; any mutation must go through the governed action path, on top of the sandbox | **UNAVAILABLE / PLANNED** |
+| **Advanced browser automation** (login, submit, click, download) | current browse blocks Paige-DRIVEN writes via the step allowlist (page-initiated writes are the G5 gap); any Paige-driven mutation must go through the governed action path, on top of the sandbox | **UNAVAILABLE / PLANNED** |
 | **Per-worker network allowlist + worker network isolation** | egress today is a global SSRF **denylist** (`ssrfGuard.ts`) + per-service content denylist; there is no positive per-task/connector allowlist and no worker-level network isolation | **UNAVAILABLE** |
 | **One unified risk gate across BOTH regimes + governance over sub-agent/worker DOWNSTREAM actions** | `action-risk.ts` is Chat-only; `paige-mcp` enforces tier+scope but no approval-card/risk gate; `delegate_to_subagent` runs the orchestrator as service-role and the specialist's actions run outside the gate ("delegating IS the authority decision") | **UNAVAILABLE** (the `decideGovernedExecution` seam exists as a pure module but is unwired) |
 | **Budget/cost control + Trust Compass consult on the worker EXECUTION path** | `trigger-workflow` is fail-closed **disabled** precisely because neither exists; the F01↔F04 contracts `trust_compass_autonomy_consult` + `budget_or_cost_control` are declared `missing_contracts` on the dispatch paths | **UNAVAILABLE** |
@@ -105,7 +117,14 @@ Slice work is hardening + reachability, not construction:
 - **G4 — §32.c live-drive:** authenticated drive of `deep_research` + `browse_public_url` painting real
   sourced findings + a `paige_browser_usage` row (needs a browser/paige-mcp-capable session — OWED by this
   headless session).
-- **Cross-cutting (met today, assert in the slice):** read-only browse; any action beyond research → the
+- **G5 — block PAGE-INITIATED writes (Codex P1, 2026-09-05):** the `page.route("**/*")` interceptor
+  (`server.js:328-334`) gates host/SSRF only, not HTTP method, with page JS on — so a visited page's own
+  on-load script can POST/submit to a public host. Restrict page requests to safe methods (abort non-GET/
+  HEAD, or the read-only resource types), or disable page JS on the research read, so "Paige-driven writes
+  blocked" becomes "no external write on the research path." Until G5 lands, the capability is PARTIAL on the
+  no-external-write axis (do NOT claim read-only-by-construction).
+- **Cross-cutting (assert honestly in the slice):** Paige-DRIVEN writes are blocked by the step allowlist;
+  PAGE-INITIATED writes are the G5 gap (not yet method-gated); any Paige action beyond research → the
   governed path; creds never in prompts/artifacts.
 - **UI:** if research adds a material new Chat surface, the #955/§00 UI-delivery standard (paige-ui-design +
   flow-prototype + evidence) gates it. Surfacing existing results in the one conversation does not.

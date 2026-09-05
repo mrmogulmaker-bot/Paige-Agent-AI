@@ -1446,9 +1446,11 @@ browser/file/external execution — not a replacement for Paige or the governed 
   multi-hop engine with a hard anti-fabrication citation gate) and `web_search` are LIVE Paige-chat
   tools; the `browse_public_url` skill + the SSRF-hardened `paige-browser` Fly service ship with the
   tenant-scoped `paige_browser_usage` audit rail (§32.a confirmed; §32.c live-drive OWED). Public
-  browsing is **read-only by construction** (login/submit/click/download rejected) — it structurally
-  cannot log in, submit, purchase, publish, or download into prod. `FIRECRAWL_API_KEY` config-gating +
-  DNS-rebinding (#138) + the two unequal SSRF guards are named PARTIAL/PROOF-OWED gaps.
+  browsing blocks **Paige-DRIVEN** writes (login/submit/click/download steps rejected by the allowlist);
+  a visited page's own JS could still POST to a public host (the `page.route` interceptor gates host/SSRF
+  only, not HTTP method — a named **G5** hardening gap, Codex P1 2026-09-05), so it is **PARTIAL on the
+  no-external-write axis, NOT read-only-by-construction**. `FIRECRAWL_API_KEY` config-gating +
+  DNS-rebinding (#138) + the two unequal SSRF guards are the other named PARTIAL/PROOF-OWED gaps.
 - **Sandbox half — genuinely GREENFIELD/UNAVAILABLE.** An exhaustive grep found **no untrusted-execution
   sandbox** (the only "sandboxes" are the two read-only Fly Playwright services; Browserbase is an inert
   stub). Governing worker **downstream** actions is also UNAVAILABLE — `delegate_to_subagent` runs the

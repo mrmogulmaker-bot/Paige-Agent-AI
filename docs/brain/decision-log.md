@@ -8,7 +8,8 @@
   + master §5), NOT shipped (§13/§32/§70 — no sandbox called live on a design). Grounded by 4 read-only scouts:
   the **research half is largely LIVE/PARTIAL** (`deep_research` w/ anti-fabrication citation gate + `web_search`
   are live chat tools; `browse_public_url` + SSRF-hardened `paige-browser` + `paige_browser_usage` rail; browse
-  is read-only by construction) → harden+reach, not build (§18); the **sandbox half is greenfield/UNAVAILABLE**
+  blocks Paige-DRIVEN writes but a page's own JS is not yet HTTP-method-gated — G5 gap, Codex P1, so PARTIAL on
+  the no-external-write axis, NOT read-only-by-construction) → harden+reach, not build (§18); the **sandbox half is greenfield/UNAVAILABLE**
   (exhaustive grep found no untrusted-execution sandbox; `delegate_to_subagent` runs specialists outside the
   risk gate; `paige-mcp` is tier+scope only; `decideGovernedExecution` is a pure unwired module; no per-worker
   net isolation; budget/Trust-Compass consult on the exec path is why `trigger-workflow` is fail-closed off).
