@@ -2672,6 +2672,23 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ## 10. §13 corrections log
 
+ - **2026-09-05 — five chat artifact-creation tools reported success on a 200-with-empty-payload
+   (SHIPPED §13/§70 dishonesty, fixed in PR #972).** `generate_image`, `draft_marketing_content`,
+   `content_save`, `document_generate` and `growth_page_save` emitted `{ success: true, … }` even
+   when the underlying edge fn / RPC returned HTTP 200 carrying no real artifact — a null public URL,
+   an empty drafts array, or a null saved id — because a 200-with-empty-payload does not throw. That
+   one dishonest field then drove three consumers at once: the model narrated a fake success, the
+   `describeStep` status label showed "done"/"image ready", and the artifact card pushed with no
+   artifact. Corrected: a new pure home `supabase/functions/_shared/artifact-receipt.ts`
+   (`artifactProduced(shape, value)` + non-leaky `ARTIFACT_ABSENT_ERROR`) degrades an absent artifact
+   to an honest `success:false`, and each handler wraps its own success shape in it. `growth_funnel_build`
+   already threw on missing ids (untouched). Two independent reviews (§39 adversarial verifier + §5
+   compliance) confirmed no false negatives against the real return shapes and SHIP. **Scope note:**
+   the going-live PUBLISH receipts (`growth_page_publish`/`growth_funnel_publish`) and the CRM/scheduling
+   write receipts (`crm_log_activity`, `calendar_book_meeting`) carry the same 200-empty-id class and are
+   deferred to their own slices (external-publishing = slice 6/7; a write-receipt slice) rather than fixed
+   here; the draft-only generators (`growth_page_generate`/`growth_funnel_generate`) persist nothing and
+   are correctly excluded. Authenticated owner §32.c live-drive of the deployed edge fn remains owed.
  - **2026-09-05 — Connections treated configured resources as operating and could paint the prior
    workspace during a switch.** The Add-channel candidate originally classified any non-empty
    `default_email_sender` as Connected without reading `default_email_status`, and listed any
