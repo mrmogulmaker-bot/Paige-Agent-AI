@@ -1340,7 +1340,31 @@ action-bus path (`SoloSystemsCheckWorkspace.tsx:456`).
 | Per-item next action into the owning surface | — | — | — | ✓ | — (tile) | — | 403 |
 | Approve / dismiss a held approval (unchanged seams) | — | — | — | ✓ | ✓ | — | 403 |
 | `SystemsCheckTile` (the compact panel: latest run, findings, approve) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| A drafted fix is shown only when one exists (no "Paige drafted this fix" over a brief) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Remediation drafting is budgeted, and a deferred draft retries next sweep | — | ✓ | ✓ | ✓ | ✓ | — | — |
 | Operator lens (`src/operator/surfaces/SystemsCheckSurface.tsx`) | ✓ | — | — | — | — | — | 403 |
+
+**The two new rows, and why their tier cells differ from each other.**
+
+*Shown-only-when-one-exists* is `✓` everywhere the tile is, because it is a fix to the tile itself.
+`SystemsCheckTile` resolved `brief` ahead of `content` and never read `content` at all, so the four
+`paige_drafted_fix` shapes that mean "no model produced anything" — `{needs_config}`, `{error}`, the
+new `{deferred}`, and the operator's own `{source:"operator_registry_brief"}` — all rendered under the
+literal heading "Paige drafted this fix". For a tenant that text is the registry's `remediation_prompt`
+with their business name substituted: an instruction addressed to Paige, about them. `SoloSystemsCheck-
+Workspace` has always excluded `brief` and has a test saying so; the tile had no equivalent guard. That
+matters most for Sub-account, which per the note above reaches Systems Check ONLY through the tile — the
+tier with no alternative view was the one being told something untrue. Operator scope still reads `brief`,
+because there it is the genuine guidance (prompt-forge cannot run tenant-less), so removing the key
+outright would have been a §58 removal rather than a fix.
+
+*Budgeted drafting* is `—` for God because the operator scan never drafts through a model at all: it
+stores the registry brief deterministically at zero cost, so budgeting it would suppress a free brief for
+no saving — and since operator findings also never file an action, the finding would end up carrying
+neither. The budget is gated on `scope === "tenant"` for exactly that reason. It is `—` for Client and
+Anonymous because neither reaches any scan. The tenant tiers are `✓` through the scheduled sweep, which
+is fleet-wide and does not discriminate by tier; onboarding and change-triggered runs stay unbudgeted and
+therefore unchanged.
 
 **God is `—` on every FIVE-PART-CONSOLE row deliberately** (the first five). `CommandHub` is the Solo
 shell; the operator reads its own tenant-less lens through `useSystemsCheck("operator")`. It is `✓`

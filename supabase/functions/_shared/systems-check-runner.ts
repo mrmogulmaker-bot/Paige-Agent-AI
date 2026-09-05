@@ -142,6 +142,26 @@ export interface RunSystemsCheckOptions {
   actionFiling?: "all" | "delta";
   /** Test seam: override the dispatch map (defaults to the shared SYSTEMS_CHECK_DISPATCH registry). */
   dispatch?: Record<string, CheckRunner>;
+  /** Wall-clock ceiling, in ms, on how long THIS run may spend forging remediation drafts.
+   *
+   *  Omit for unbounded — every existing caller keeps byte-identical behaviour (§37). Only the
+   *  scheduled batch passes one today.
+   *
+   *  It is TIME, not a count, and that is deliberate. A forge either calls a model (~27s typical,
+   *  31s p90, 33.2s max measured on prod across 42 calls) or fails fast without one (~132ms when
+   *  the provider is down — 40 such markers cost 23.3s in total, while 4 real drafts cost 110s).
+   *  A count budget cannot tell those apart, so it would defer cheap work while still admitting
+   *  three thirty-second calls: wrong by roughly 200x in the direction that matters.
+   *
+   *  Checked BEFORE each forge, inside the per-check loop, never only between tenants. On
+   *  2026-08-12 the sweep started the tenant that went on to kill the invocation at elapsed 2.1s,
+   *  so no between-tenant threshold would have fired at all.
+   *
+   *  TENANT SCOPE ONLY. An operator scan never calls forge — prompt-forge is §9 tenant-scoped and
+   *  cannot run tenant-less, so the runner stores the registry brief deterministically at zero
+   *  cost. Budgeting that would suppress a free brief for no saving, and because operator findings
+   *  also never file an action it would leave the finding with neither (§58). */
+  draftBudgetMs?: number;
 }
 
 export interface RunSystemsCheckSummary {
@@ -152,6 +172,15 @@ export interface RunSystemsCheckSummary {
   skip_count: number;
   error_count: number;
   actions_filed: number;
+  /** Forge attempts this run actually started (a fast provider failure still counts — it was tried). */
+  drafts_attempted: number;
+  /** Qualifying fails whose draft was NOT attempted because the draft budget was spent. Their
+   *  remediation action is still filed; only the drafting is skipped. Zero when unbudgeted. */
+  drafts_deferred: number;
+  /** Wall-clock ms this run actually spent inside forge(), summed over every attempt including the
+   *  ones that failed. A batch caller subtracts this from a fleet-wide pool so one tenant's drafting
+   *  cannot consume the whole invocation. */
+  draft_ms_spent: number;
   findings: Array<{
     check_id: string;
     status: CheckStatus;
@@ -247,6 +276,10 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
 
   // Delta mode: snapshot the tenant's PREVIOUS run's per-check statuses BEFORE we insert the new run.
   const prevStatus: Record<string, CheckStatus> = {};
+  /** The previous run's drafted-fix per check. Read for ONE question only: did that run defer the
+   *  draft because it ran out of budget? A deferral must survive to the next sweep or the budget
+   *  converts a slow draft into a permanently missing one. */
+  const prevDraft: Record<string, Record<string, unknown>> = {};
   if (actionFiling === "delta") {
     try {
       // Operator runs are tenant-less (tenant_id IS NULL); tenant runs key on the tenant. Use the right
@@ -301,12 +334,23 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
       if (!prevRun) ({ data: prevRun } = await baselineQuery(false).maybeSingle());
       const prevRunId = (prevRun as { id?: string } | null)?.id;
       if (prevRunId) {
+        // paige_drafted_fix rides along on the SAME read, deliberately. A separate per-check lookup
+        // could resolve to a different run than the delta snapshot did, and the two would then
+        // disagree about what the previous state was — a false-green of exactly the kind the peer
+        // gate exists to catch.
         const { data: prevFindings } = await admin
           .from("paige_systems_check_finding")
-          .select("check_id, status")
+          .select("check_id, status, paige_drafted_fix")
           .eq("run_id", prevRunId);
-        for (const f of (prevFindings ?? []) as Array<{ check_id: string; status: CheckStatus }>) {
+        for (
+          const f of (prevFindings ?? []) as Array<
+            { check_id: string; status: CheckStatus; paige_drafted_fix: unknown }
+          >
+        ) {
           prevStatus[f.check_id] = f.status;
+          if (f.paige_drafted_fix && typeof f.paige_drafted_fix === "object") {
+            prevDraft[f.check_id] = f.paige_drafted_fix as Record<string, unknown>;
+          }
         }
       }
     } catch (e) {
@@ -360,8 +404,18 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
     skip_count: 0,
     error_count: 0,
     actions_filed: 0,
+    drafts_attempted: 0,
+    drafts_deferred: 0,
+    draft_ms_spent: 0,
     findings: [],
   };
+
+  // Draft budget state. Below the run insert on purpose: the delta-baseline block above is read as
+  // a source SLICE by src/solo/systems-check-latest-run.contract.test.ts, which anchors on
+  // `if (actionFiling === "delta")` and `// Insert the run row up-front`. Setup placed between those
+  // two anchors would land inside the slice and silently change what those assertions read.
+  const draftBudgetMs = scope === "tenant" ? opts.draftBudgetMs : undefined;   // operator: never budgeted
+  let draftMsSpent = 0;
 
   for (const row of rows) {
     // 1) Dispatch — fail-loud on a missing runner OR a runner throw (§32: never a silent pass).
@@ -408,16 +462,59 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
     // condition as filing — only a NEW / newly-degraded fail drafts (and files). A chronically-failing
     // tenant does NOT re-forge a fresh draft on every scheduled tick; its original fail already carries
     // the draft + the queued action. In 'all' mode every fail still drafts.
-    const shouldDraft = result.status === "fail" &&
+    // A fail that is NEW or newly-degraded is what needs remediation. This ONE predicate now drives
+    // FILING; drafting is derived from it separately below and may be skipped without touching it.
+    const remediationNeeded = result.status === "fail" &&
       (actionFiling !== "delta" || prevStatus[row.check_id] !== "fail"); // delta: only NEW/newly-degraded
     // The tenant action bus (paige_actions) is tenant-scoped BY CONSTRUCTION (tenant_id NOT NULL, RLS
     // tenant-member gated, and file_action RAISEs ACTION_NO_TENANT on a null tenant). An operator-scope
     // finding is platform-global (tenant_id NULL) and therefore NEVER files onto the tenant action bus —
     // it surfaces on the operator queue directly (the operator tile acts on the finding). So action
     // filing is gated to the tenant scope; operator remediation lives on the finding's drafted_fix.
-    const shouldFileAction = shouldDraft && scope === "tenant";
+    //
+    // DERIVED FROM remediationNeeded, NEVER FROM shouldDraft (owner ruling, 2026-09-05): "a paused
+    // draft must not silently pause remediation filing." Left downstream of drafting, a budget-deferred
+    // fail would be neither drafted nor tracked — it would simply vanish, which is the one outcome
+    // worse than the mid-fleet kill this budget exists to end. A contract assertion in
+    // src/solo/systems-check-latest-run.contract.test.ts fails the build if this coupling returns.
+    const shouldFileAction = remediationNeeded && scope === "tenant";
+
+    // Drafting is the expensive half, and the only thing the budget governs. Checked HERE, before the
+    // call and inside the per-check loop, rather than between tenants: on 2026-08-12 the sweep began
+    // the tenant that went on to kill the invocation at elapsed 2.1s, so a between-tenant threshold
+    // would never have fired.
+    const draftBudgetSpent = draftBudgetMs !== undefined && draftMsSpent >= draftBudgetMs;
+
+    // A fail whose PREVIOUS draft was deferred still needs one, even though it is no longer new.
+    // Without this the budget does not postpone a draft, it cancels it: on the next tick
+    // prevStatus is already 'fail', so remediationNeeded is false and nothing would ever retry.
+    //
+    // Only `deferred` retries here. `{needs_config}` and `{error}` are NOT retried in this change —
+    // 81 findings currently carry an `{error}` draft and have never received a real one, and the
+    // owner has ruled those retriable WITH exponential backoff, which needs attempt state this
+    // change does not carry. That is the next slice, not a silent widening of this one.
+    //
+    // HONEST LIMIT (§13): the deferral is read from the ONE baseline run, and baselineQuery prefers
+    // a COMPLETED one — so markers written by a run that then died are persisted but never read.
+    // The budget above makes such a kill much less likely, which is why this is acceptable now; it
+    // is not the same as solved, and holding deferral per (tenant, check) rather than inside a run's
+    // finding is the durable fix.
+    const previousDraftDeferred = prevDraft[row.check_id]?.deferred === true;
+    const draftNeeded = result.status === "fail" &&
+      (actionFiling !== "delta" || prevStatus[row.check_id] !== "fail" || previousDraftDeferred);
+    const shouldDraft = draftNeeded && !draftBudgetSpent;
 
     let draftedFix: Record<string, unknown> | null = null;
+    if (draftNeeded && draftBudgetSpent) {
+      // Say plainly that no draft was attempted (§13). Deliberately WITHOUT the `brief` key: the
+      // brief is the registry's remediation_prompt — an instruction addressed to Paige about the
+      // tenant — and SystemsCheckTile resolves `brief` ahead of `content`, so carrying it here would
+      // render an internal instruction under the heading "Paige drafted this fix". The tile is fixed
+      // in this same change; omitting the key too means neither renderer can misread the marker even
+      // if one of them regresses.
+      draftedFix = { deferred: true, reason: "draft_budget_exhausted", budget_ms: draftBudgetMs };
+      summary.drafts_deferred++;
+    }
     if (shouldDraft) {
       const brief = resolveRemediationBrief(row.remediation_prompt, tenantName);
       if (scope === "operator") {
@@ -427,6 +524,12 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
         // instruction (§13 honest: no hallucinated infra steps, no fake model attribution).
         draftedFix = { brief, source: "operator_registry_brief", operator_scope: true };
       } else {
+        // Charge the budget by ELAPSED TIME, in a finally, so every outcome pays what it actually
+        // cost: a real model call (~27s) and a fast provider rejection (~132ms) are both measured
+        // rather than both counted as "one draft". summary.drafts_attempted counts the try, because
+        // a call that was made and failed is still work this invocation spent.
+        const forgeStartedAt = Date.now();
+        summary.drafts_attempted++;
         try {
           const forged = await forge({
             tenantId: tenantId as string,    // tenant scope guarantees non-null (guarded above)
@@ -447,6 +550,8 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
         } catch (e) {
           console.error(`[systems-check] forge failed for ${row.check_id}:`, (e as Error)?.message);
           draftedFix = { brief, error: (e as Error)?.message ?? "forge_failed" };
+        } finally {
+          draftMsSpent += Date.now() - forgeStartedAt;
         }
       }
     }
@@ -538,5 +643,6 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
     .eq("id", runId);
   if (patchErr) console.error("[systems-check] run finalize failed:", patchErr.message);
 
+  summary.draft_ms_spent = draftMsSpent;
   return summary;
 }
