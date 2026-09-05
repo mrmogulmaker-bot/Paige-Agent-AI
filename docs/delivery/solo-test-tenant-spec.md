@@ -89,6 +89,15 @@ Setup persistence and provenance, the Systems Check tile actually rendering on a
 Connections readiness reporting honestly, the roster surface distinguishing *refused* from *empty*,
 and every future Spine binding currently reported `PARTIAL` for want of an authenticated caller.
 
+**Added 2026-09-05 (PR #958, the canonical readiness contract).** Two more rows now wait on this
+account, and both are the *interesting* kind — a state that only becomes visible once a human looks:
+(a) Solo Settings → Connections rendering `business_provenance` honestly for a workspace whose
+website and phone exist **only** in the legacy record, so the surface distinguishes "confirmed",
+"inherited from an older record" and "we could not read this" rather than collapsing all three into
+a boolean; and (b) PAIGE's per-turn business-context block saying a legacy value **exists AND is
+unconfirmed** in the same sentence, since asserting either half alone is what the contract exists to
+stop. The server behaviour for both is proven; what is owed is the look.
+
 **Honest limit (§13):** this converts *tenant-tier* claims. It cannot prove anything about operator
 surfaces or about Act-as — those need operator authority, which this account must never hold, and
 which stays owner-verified by design.

@@ -20,6 +20,27 @@ describe("Solo Conversations page wiring", () => {
     expect(page).toContain("if (accountEpochRef.current.accept(epoch)) void cancelUndo(id)");
   });
 
+  // The comms readiness read was the one piece of account-owned state on this page that did
+  // NEITHER of the two things every other piece does. On an account switch the effect went
+  // straight to its async arm, so the previous workspace's readiness kept feeding the channel
+  // disclosure until the new RPC returned, and nothing checked that the answer that came back was
+  // even about the account on screen. Settings -> Connections has always done both
+  // (useCommsReadiness, src/solo/settings.tsx); this consumer of the SAME resolver did not.
+  it("clears comms readiness before the next account paints, and never renders another account's answer", () => {
+    const effect = page.slice(
+      page.indexOf("const [commsReadiness, setCommsReadiness]"),
+      page.indexOf("const soloChannelTruth ="),
+    );
+    expect(effect).not.toEqual("");
+    // Clear FIRST and unconditionally — before the guard, not inside one branch of it.
+    expect(effect.indexOf("setCommsReadiness(null);")).toBeLessThan(effect.indexOf("if (!isSolo || !activeTenantId) return;"));
+    // And bind the answer to the workspace on screen before it is rendered — POSITIVELY. A
+    // `row.tenant_id && row.tenant_id !== active` form lets a payload with no tenant fall through
+    // and render, which is absence treated as a match.
+    expect(effect).toContain("row.tenant_id === activeTenantId ? row : null");
+    expect(effect).not.toContain("row.tenant_id !== activeTenantId");
+  });
+
   it("keeps sends on proven email and SMS seams and fails governed handling closed", () => {
     expect(page).toContain('c.channel_type === "email" || c.channel_type === "sms"');
     expect(page).toContain("const composerConnectors = isSolo ? sendableConnectors : activeConnectors");

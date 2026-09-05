@@ -2741,3 +2741,99 @@ pre-existing routing fragility it is.
 **The caveat was NARROWED, not deleted.** PAIGE can set the closing role; the Pipeline page cannot,
 and that control is CD's. A deleted caveat would have sent the owner to a page that still cannot
 finish the job (§70).
+
+## 2026-09-05 · One canonical meaning for "is this business fact on file" (Spine #40, PR #958)
+
+**The contradiction, and why it was not a choice between two answers.** For two real workspaces
+(Antonio Daniel LLC on website; First Sterling Capital on website and phone),
+`get_business_context_readiness` reported `needs_confirmation` — "there is no value" — while
+`tenant_comms_readiness` reported `has_website`/`has_phone` = true — "there is a value" — about the
+same workspace in the same second. Reproduced on production 2026-09-05 as First Sterling's own
+owner, two days and ~55 merges after it was first recorded.
+
+**Neither reader was right.** Two independent facts had been compressed into one field: **A**, does
+a value exist at all (yes, in the legacy `tenants.brand` record); **B**, did the owner confirm it in
+Setup (no, `tenant_legal_profile` is empty and there is no confirmation event). Comms answered A and
+dropped B; business_context answered B and dropped A. Each was locally defensible and each was
+lossy, so choosing between their answers would have preserved one true fact by continuing to erase
+the other. **The decision was to carry both**, and then the disagreement dissolves without either
+reader being overruled.
+
+**The state the vocabulary was missing:** `legacy_sourced` / source `legacy_brand`. Not a new idea —
+the same contract already distinguished `connection_sourced`/`connections` from
+`owner_confirmed`/`setup` for `primary_business_email`, which is the identical shape. This extends
+that vocabulary rather than inventing one (§18).
+
+**Why a shared resolver and not "one reader calls the other."** The two readers do not share a
+caller gate, and the difference is load-bearing: `get_business_context_readiness` gates on
+`is_tenant_admin(resolved tenant) OR is_platform_owner()` (tenant-scoped), `tenant_comms_readiness`
+on `is_platform_operator() OR has_any_role(uid,['admin','coach'])` (the tenant-agnostic §59
+predicate). Making either call the other would impose one reader's gate on the other's callers and
+could silently refuse a persona served today (§58). Measured: all 9 users who resolve a workspace
+pass both gates, so the difference is latent — **and a latent difference is not a licence to
+collapse the two.** So both now derive from one internal resolver,
+`public.business_identity_readiness`, and each keeps its own gate, tenant resolution and shape.
+
+**The resolver is unreachable by any caller, by construction rather than by check.** It takes a
+tenant parameter, so `EXECUTE` is revoked from `PUBLIC`, `anon`, `authenticated` **and**
+`service_role` and granted to nobody: only the already-gated `SECURITY DEFINER` parents (owned by
+`postgres`) can invoke it. That is what satisfies "a caller cannot supply a tenant, role, source
+status or timestamp that bypasses server-resolved scope" — the surface that would accept one is not
+exposed.
+
+**A second correction of the same class was drafted and WITHDRAWN, and that is the entry worth
+keeping.** `primary_business_email` defaults to `connection_sourced`/`connections` whenever
+`tenants.brand` carries a `support_email` and no provenance was recorded — measured: **all three**
+production workspaces holding one are in exactly that position. Real defect, same class, opposite
+face (the first invents *absence* from a value that exists; this invents a *source* from a
+provenance that does not).
+
+It is not in this change, because the §39 peer-gate found a **third reader** of the same field:
+`get_solo_business_context()` (`20261103000000`) and `src/solo/data/useSoloBusinessContext.ts` both
+default it to `connection_sourced` independently, rendered as the Setup screen's "Connection-sourced"
+badge. All three agree today. Flipping only the readiness reader would have made PAIGE say *"never
+confirmed"* while Setup said *"Connection-sourced"* about one field in the same second — **the exact
+defect class being fixed, newly created by the fix.** Unbundled into its own slice, which must move
+all three together and assess the adopt/override edit gate those provenance values drive.
+
+**What actually changed, measured across all 14 production tenants:** seven rows — website ×2,
+business_phone ×1, **industry ×4**. `primary_business_email` moves on **zero** — status, source and
+`as_of` byte-identical per tenant. `industry` is the proof the rule is
+general rather than fitted to the two contradicting workspaces: it had no second reader to disagree
+with and was wrong the same way for twice as many workspaces, and nobody had noticed. **Zero Systems
+Check verdicts move** (every runner grades through `isConfirmed()`, true only for `owner_confirmed`)
+and **zero comms booleans move** — both asserted per tenant, not reasoned about.
+
+**`stale` is defined in the contract and deliberately never emitted.** No source in this domain
+declares a TTL — measured, not assumed. Choosing a threshold to fill the gap would manufacture
+exactly the kind of readiness fact this change exists to stop, so `as_of` is reported and staleness
+is left unasserted until a source declares one. The registry's `staleAfterDays` is required by the
+contract type and is satisfied trivially; a comment now says so rather than letting the number read
+as an enforced policy.
+
+**Two more answers are named rather than changed.** The email provenance default above, and: `get_tenant_a2p_registration_status().profile`
+echoes `tenant_legal_profile` with no brand fallback, so it reports a null website for these two
+workspaces. Left alone on purpose: it is a raw-value echo rather than a readiness contract, it has
+zero callers in this repository (though it is granted to `authenticated` and reachable via
+PostgREST, so latent rather than dead), and A2P was outside this release's scope. Recorded so the
+next session finds it named instead of re-discovering it.
+
+**A fence was crossed, and is flagged rather than silent.** The assignment fenced Clients UI.
+`ClientsConversations.tsx` cleared no readiness on an account switch and never checked the payload's
+tenant, so the previous workspace's answer fed the channel disclosure until the new RPC returned.
+Six lines were changed — clear first unconditionally, then discard a payload naming another
+workspace — because "workspace switching must clear prior readiness before the next workspace
+paints" is a stated requirement of this release and this is a consumer of the reader being changed.
+Settings → Connections (`useCommsReadiness`) had always done both; this consumer of the same
+resolver never did.
+
+**Proof.** Pre-merge `BEGIN … ROLLBACK` on production, twelve assertions, all passing — including
+the failing-first pair in the same transaction: the old contradiction reproduced at **3 rows** before
+the change and measured at **0** after. Re-proved after the peer-gate correction: 7 rows move, 0
+email rows move, 0 verdicts move, 0 unsanctioned changes. pgTAP raised to `plan(45)` reproduces it synthetically with a
+third fixture tenant and states the disagreement directly as an invariant over **both** readers.
+**Authenticated runtime proof on the deployed surfaces is OWED, not claimed** (§32.c) — this session
+held no browser-driving tool.
+
+Full contract, the eight-state table and the six never-infer rules:
+`docs/delivery/canonical-readiness-contract.md`.

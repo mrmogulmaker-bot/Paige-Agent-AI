@@ -22,6 +22,17 @@ const AVAILABLE_ROWS = [
   { field_key: "primary_business_email", status: "connection_sourced", source: "connections", as_of: null, reason: null, tenant_id: TENANT },
 ];
 
+/** The production shape that made two readers contradict each other: a value that exists ONLY in
+ *  the legacy brand record, with no confirmation event. Before the canonical contract this arrived
+ *  here as `needs_confirmation` — "not entered yet" — about a field the Connections screen was
+ *  simultaneously reporting as on file. */
+const LEGACY_ROWS = [
+  { field_key: "website", status: "legacy_sourced", source: "legacy_brand", as_of: null, reason: null, tenant_id: TENANT, next_action: "Open Settings → Setup and confirm this value so the record shows the owner entered it." },
+  { field_key: "business_phone", status: "legacy_sourced", source: "legacy_brand", as_of: null, reason: null, tenant_id: TENANT, next_action: "Open Settings → Setup and confirm this value so the record shows the owner entered it." },
+  { field_key: "industry", status: "needs_confirmation", source: null, as_of: null, reason: null, tenant_id: TENANT, next_action: "Enter it in Settings → Setup." },
+  { field_key: "primary_business_email", status: "owner_confirmed", source: "setup", as_of: "2026-09-01T00:00:00Z", reason: null, tenant_id: TENANT, next_action: null },
+];
+
 describe("business_context.readiness — Chat evidence", () => {
   it("loads and renders confirmed / invalid / missing / connection-sourced honestly, never crossing statuses", async () => {
     const evidence = await loadBusinessContextReadinessForChat(fakeClient(AVAILABLE_ROWS), TENANT);
@@ -34,6 +45,38 @@ describe("business_context.readiness — Chat evidence", () => {
     // The confirmed field's own sentence must never leak into another field's line.
     const industryLine = block.split("\n").find((l) => l.startsWith("- Industry"));
     expect(industryLine).not.toContain("confirmed in Setup");
+  });
+
+  it("says a legacy value BOTH exists and is unconfirmed — neither half alone", async () => {
+    const evidence = await loadBusinessContextReadinessForChat(fakeClient(LEGACY_ROWS), TENANT);
+    const block = renderBusinessContextReadinessForChat(evidence);
+    const websiteLine = block.split("\n").find((l) => l.startsWith("- Website")) ?? "";
+    // The old reader's answer. If PAIGE says this about a workspace whose Connections screen says
+    // the website is on file, the two surfaces are contradicting each other in front of the owner.
+    expect(websiteLine).not.toContain("not entered yet");
+    expect(websiteLine).toContain("on file from an older brand record");
+    expect(websiteLine).toContain("never confirmed by the owner in Setup");
+    // And it must not be upgraded the other way either.
+    expect(websiteLine).not.toMatch(/confirmed in Setup \(as of/);
+  });
+
+  it("carries the contract's own next step, and none where there is nothing to do", async () => {
+    const evidence = await loadBusinessContextReadinessForChat(fakeClient(LEGACY_ROWS), TENANT);
+    const block = renderBusinessContextReadinessForChat(evidence);
+    expect(block).toContain("Next step for the owner: Open Settings → Setup and confirm this value");
+    expect(block).toContain("Next step for the owner: Enter it in Settings → Setup.");
+    // owner_confirmed has next_action: null — a confirmed field must not be given busywork.
+    const emailLine = block.split("\n").find((l) => l.startsWith("- Primary business email")) ?? "";
+    expect(emailLine).toContain("confirmed in Setup");
+    expect(emailLine).not.toContain("Next step for the owner");
+  });
+
+  it("renders rows from a pre-contract read without a next step rather than throwing", async () => {
+    const evidence = await loadBusinessContextReadinessForChat(fakeClient(AVAILABLE_ROWS), TENANT);
+    const block = renderBusinessContextReadinessForChat(evidence);
+    expect(block).toContain("- Website: confirmed in Setup");
+    expect(block).not.toContain("Next step for the owner: undefined");
+    expect(block).not.toContain("Next step for the owner: null");
   });
 
   it("degrades honestly on an RPC error — never fabricates a status for any field", async () => {

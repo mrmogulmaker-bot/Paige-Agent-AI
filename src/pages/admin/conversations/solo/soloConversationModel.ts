@@ -68,6 +68,14 @@ function connectorEvidence(connectors: SoloConnectorEvidence[], channel: Channel
  * `soloConversationModel.test.ts` locks.
  */
 export interface SoloCommsReadinessEvidence {
+  /**
+   * The workspace the RESOLVER resolved, server-side, for this answer.
+   *
+   * Carried so a container can prove the payload belongs to the account on screen before it
+   * renders. Optional because it is only used for that binding check and an absent value is
+   * treated as "cannot prove it" by the caller, never as a match.
+   */
+  tenant_id?: string | null;
   can_send_sms: boolean;
   a2p: "approved" | "submitted" | "prepared" | "absent";
   number_e164: string | null;
