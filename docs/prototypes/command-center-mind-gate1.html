@@ -97,6 +97,7 @@ h1,h2,h3,h4,p{margin:0}
 button{font:inherit;color:inherit;cursor:pointer;background:none;border:none}
 :focus-visible{outline:2px solid var(--pg-gold-core);outline-offset:3px;border-radius:4px}
 [hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 [data-pg] ::-webkit-scrollbar{width:10px;height:10px}
 [data-pg] ::-webkit-scrollbar-track{background:transparent}
 [data-pg] ::-webkit-scrollbar-thumb{background:var(--pg-line-strong);border-radius:999px;border:3px solid transparent;background-clip:content-box}
@@ -135,9 +136,10 @@ button{font:inherit;color:inherit;cursor:pointer;background:none;border:none}
 .stage{padding:22px;display:flex;justify-content:center;overflow:auto}
 .viewport{background:var(--pg-canvas);border:1px solid var(--pg-line-strong);border-radius:16px;
   box-shadow:var(--pg-e4);overflow:hidden;position:relative;transition:width .2s,height .2s;
-  width:1536px;height:770px;max-width:100%}
+  width:1536px;height:770px;max-width:100%;
+  container-type:inline-size;container-name:vp}
 .viewport[data-fit="1"]{width:100%!important;height:auto!important;min-height:720px}
-.vp-tag{position:absolute;top:8px;right:12px;z-index:40;font:500 10.5px/1 var(--pg-font-data);
+.vp-tag{position:absolute;top:8px;right:12px;z-index:40;pointer-events:none;font:500 10.5px/1 var(--pg-font-data);
   color:var(--pg-faint);background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-pill);padding:4px 9px;letter-spacing:.04em}
 
 /* ============================================================================
@@ -208,7 +210,10 @@ button{font:inherit;color:inherit;cursor:pointer;background:none;border:none}
   border-radius:var(--pg-r-pill);padding:6px 11px;font-size:12px;color:var(--pg-muted);min-height:32px}
 .chip:hover{color:var(--pg-ink)}
 .chip[aria-pressed="true"]{background:var(--pg-gold-bloom);border-color:var(--pg-line-authority);color:var(--pg-ink)}
+.chip:disabled{opacity:.5;cursor:not-allowed}
+.chip:disabled:hover{color:var(--pg-muted)}
 .chip .caret{width:11px;height:11px;opacity:.6}
+.mind-paige-note{font-size:11px;color:var(--pg-faint);margin-top:9px}
 
 /* body scroll owner */
 .mind-body{flex:1;min-height:0;overflow:auto;padding:16px 22px 30px;
@@ -242,6 +247,14 @@ button{font:inherit;color:inherit;cursor:pointer;background:none;border:none}
 .state-pill{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.02em;text-transform:uppercase;
   border-radius:var(--pg-r-pill);padding:4px 9px;border:1px solid var(--pg-line);color:var(--pg-ink-2);background:var(--pg-canvas);white-space:nowrap}
 .state-pill .dot{width:7px;height:7px;box-shadow:none}
+/* Coverage verdict — a TEXT chip with border tint (a different visual channel than the
+   fact-state dots), so a domain's LIVE/PARTIAL/UNAVAILABLE can't be misread as a fact state. */
+.verdict-chip{display:inline-flex;align-items:center;font:600 10px/1 var(--pg-font-data);letter-spacing:.06em;
+  text-transform:uppercase;color:var(--pg-ink-2);background:var(--pg-canvas);border:1px solid var(--pg-line);
+  border-radius:var(--pg-r-pill);padding:5px 9px;white-space:nowrap}
+.verdict-live{color:var(--pg-positive);border-color:color-mix(in srgb,var(--pg-positive) 42%,var(--pg-line))}
+.verdict-partial{color:var(--pg-warning);border-color:color-mix(in srgb,var(--pg-warning) 42%,var(--pg-line))}
+.verdict-unavailable{color:var(--pg-muted);border-color:var(--pg-line)}
 .d-empty{padding:12px 10px;color:var(--pg-muted);font-size:12.5px}
 .d-empty .why{color:var(--pg-faint);margin-top:3px}
 .d-linkout{margin-top:9px}
@@ -261,6 +274,7 @@ button{font:inherit;color:inherit;cursor:pointer;background:none;border:none}
 .attn .a-title{font-size:12.5px;color:var(--pg-ink)}
 .attn .a-next{font-size:11px;color:var(--pg-muted);margin-top:2px}
 .attn .a-next b{color:var(--pg-gold-deep);font-weight:500}
+.attn-sep{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--pg-faint);padding:10px 8px 3px;margin-top:3px;border-top:1px solid var(--pg-line-soft)}
 .recent{display:flex;flex-direction:column}
 .rec{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:9px 8px;align-items:start}
 .rec+.rec{border-top:1px solid var(--pg-line-soft)}
@@ -384,12 +398,14 @@ body[data-annot="1"] .ann-panel{display:block}
 /* ============================================================================
    9. RESPONSIVE — the desk folds intentionally, no tiny-card maze
    ============================================================================ */
-@media (max-width:1120px){
+/* Breakpoints are CONTAINER queries scoped to .viewport, so the harness viewport presets
+   (which resize .viewport) genuinely exercise the fold — not just a real window resize. */
+@container vp (max-width:1120px){
   .mind-body{grid-template-columns:1fr}
   .rail{flex-direction:row;flex-wrap:wrap}
   .rail>*{flex:1;min-width:260px}
 }
-@media (max-width:900px){
+@container vp (max-width:900px){
   .shell,.shell[data-paige="1"]{grid-template-columns:1fr}
   .nav{flex-direction:row;overflow:auto;align-items:center;gap:6px}
   .nav .cm,.nav .navsection,.nav .subtabs,.nav .foot{display:none}
@@ -466,23 +482,23 @@ body[data-annot="1"] .ann-panel{display:block}
             <span class="who">Acme Advisory<small>Solo workspace</small></span>
           </div>
 
-          <button class="navitem" aria-current="page">▦ Command Center</button>
+          <button class="navitem" aria-current="page"><span aria-hidden="true">▦</span> Command Center</button>
           <div class="subtabs" data-ann="nav" role="group" aria-label="Command Center sub-tabs">
             <span class="ann-badge" aria-hidden="true">7</span>
             <button class="subtab pending"><span>Business Game&nbsp;Plan</span><span class="q">new</span></button>
             <button class="subtab"><span>Systems Check</span><span class="q">readiness</span></button>
             <button class="subtab pending"><span>Trust Compass</span><span class="q">folding&nbsp;in</span></button>
-            <button class="subtab" aria-current="page"><span>Mind</span><span class="q">/mind</span></button>
+            <button class="subtab" aria-current="page"><span>Mind</span><span class="q">here</span></button>
           </div>
-          <button class="navitem">☷ Clients</button>
-          <button class="navitem">◆ Campaigns</button>
-          <button class="navitem">⌘ Marketplace</button>
-          <button class="navitem">▤ Analytics</button>
-          <button class="navitem">⚙ Settings</button>
+          <button class="navitem"><span aria-hidden="true">☷</span> Clients</button>
+          <button class="navitem"><span aria-hidden="true">◆</span> Campaigns</button>
+          <button class="navitem"><span aria-hidden="true">⌘</span> Marketplace</button>
+          <button class="navitem"><span aria-hidden="true">▤</span> Analytics</button>
+          <button class="navitem"><span aria-hidden="true">⚙</span> Settings</button>
 
           <div class="foot">
-            <button class="navitem" id="nav-theme">◐ Mineral / Obsidian</button>
-            <button class="navitem">⇥ Sign out</button>
+            <button class="navitem" id="nav-theme"><span aria-hidden="true">◐</span> Mineral / Obsidian</button>
+            <button class="navitem"><span aria-hidden="true">⇥</span> Sign out</button>
           </div>
         </nav>
 
@@ -498,7 +514,8 @@ body[data-annot="1"] .ann-panel{display:block}
                   <h1 class="mind-title">Mind</h1>
                   <p class="mind-brief" id="brief">What PAIGE safely knows about your business, where it came from, and what needs your confirmation. <b>3 foundational facts are on file from older records but not yet confirmed</b> — confirming them strengthens what PAIGE can rely on. No hidden reasoning is shown.</p>
                 </div>
-                <div class="mind-head-actions">
+                <div class="mind-head-actions" data-ann="actions">
+                  <span class="ann-badge" aria-hidden="true">4</span>
                   <button class="btn btn--ghost" id="act-refresh" title="Re-reads current records. This is not a scan.">
                     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
                     Refresh sources
@@ -521,11 +538,11 @@ body[data-annot="1"] .ann-panel{display:block}
                   <input id="search" type="search" placeholder="Search what PAIGE knows…" aria-label="Search what PAIGE knows" />
                   <kbd>/</kbd>
                 </div>
-                <div class="filters" data-ann="filters">
+                <div class="filters" data-ann="filters" role="group" aria-label="Filters (designed; wired in the full build)">
                   <span class="ann-badge" aria-hidden="true">3</span>
-                  <button class="chip" data-filter="state">State <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
-                  <button class="chip" data-filter="source">Source <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
-                  <button class="chip" data-filter="fresh">Freshness <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+                  <button class="chip" data-filter="state" disabled aria-disabled="true" title="Designed filter — wired in the full build; search above is live">State <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+                  <button class="chip" data-filter="source" disabled aria-disabled="true" title="Designed filter — wired in the full build; search above is live">Source <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+                  <button class="chip" data-filter="fresh" disabled aria-disabled="true" title="Designed filter — wired in the full build; search above is live">Freshness <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
                 </div>
               </div>
               <div class="legend-inline" aria-hidden="true">
@@ -535,6 +552,7 @@ body[data-annot="1"] .ann-panel{display:block}
                 <span><i class="dot" style="background:var(--sig-needs);color:var(--sig-needs)"></i>Needs confirmation</span>
                 <span><i class="dot" style="background:var(--sig-unavailable);color:var(--sig-unavailable)"></i>Unavailable</span>
               </div>
+              <p class="mind-paige-note" role="note">Opening PAIGE uses your existing workspace — no Mind context is attached or prepared.</p>
             </header>
 
             <!-- BODY (scroll owner) -->
@@ -616,7 +634,8 @@ body[data-annot="1"] .ann-panel{display:block}
                 </div>
               </div>
 
-              <div id="state-switching" class="surface-state" hidden>
+              <div id="state-switching" class="surface-state" data-ann="switch" hidden>
+                <span class="ann-badge" aria-hidden="true">11</span>
                 <div class="glyph" aria-hidden="true" style="animation:pg-pulse 1.4s infinite">
                   <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/></svg>
                 </div>
@@ -626,6 +645,7 @@ body[data-annot="1"] .ann-panel{display:block}
             </div><!-- /mind-body -->
 
             <div class="toast" id="toast" hidden></div>
+            <div class="sr-only" id="live" aria-live="polite"></div>
           </div><!-- /mind -->
         </main>
 
@@ -714,23 +734,23 @@ const DOMAINS = [
     verdict:"PARTIAL", source:"Governed context: Release C memory seam (record_/get_/forget_paige_memory · client_memory). Canonical records: People/Clients (Layer 1).",
     sum:"How to work with the people and businesses you serve.",
     facts:[],
-    empty:{h:"Governed store exists · nothing on file yet", b:"Canonical people, roles and relationships live in People/Clients — the one source of truth. Mind holds governed context on top (a memory seam shipped in Release C), but nothing writes to it yet, so there's nothing to show. Anything learned here is stored as “proposed” and never becomes a canonical record without your confirmation.", link:"Open People / Clients"}
+    empty:{h:"Governed store exists · nothing on file yet", b:"Canonical people, roles and relationships live in People/Clients — the one source of truth. Mind holds governed context on top (a memory seam shipped in Release C), but nothing writes to it from Mind or chat yet, so there's nothing to show. Anything learned here is stored as “proposed” and never becomes a canonical record without your confirmation.", link:"Open People / Clients"}
   },
   {
     key:"goals", name:"Goals, strategy, decisions & commitments", icon:"goals",
     verdict:"PARTIAL", source:"Governed memory seam (Release C: decision · commitment · correction types). Not yet written from Mind or chat.",
     sum:"The direction you've set and the calls you've made.",
     facts:[],
-    empty:{h:"Governed store exists · nothing on file yet", b:"A governed memory seam can hold decisions, commitments and corrections (shipped in Release C), but nothing writes to it yet, so PAIGE records none. A recorded decision is stored as “proposed” until you confirm it. Pending approvals are a different thing and live in Systems Check.", link:"Open Systems Check"}
+    empty:{h:"Governed store exists · nothing on file yet", b:"A governed memory seam can hold decisions, commitments and corrections (shipped in Release C), but nothing writes to it from Mind or chat yet, so PAIGE records none. A recorded decision is stored as “proposed” until you confirm it. Pending approvals are a different thing and live in Systems Check.", link:"Open Systems Check"}
   },
   {
     key:"systems", name:"Connected systems, tools & data sources", icon:"systems",
     verdict:"PARTIAL", source:"n8n readiness getters + systems_check_snapshot (status only, tenant-scoped)",
     sum:"What PAIGE is connected to, and whether each connection is working.",
     facts:[
-      {name:"Automations (n8n) — API", state:"connection_sourced", as_of:"Last checked 2d ago", reason:"Connection record present; status read only, no history.", next:"Open Connections"},
-      {name:"PAIGE tools (MCP)", state:"needs_confirmation", as_of:null, reason:"OAuth consent is not authorization to execute — not yet approved.", next:"Review in Integrations"},
-      {name:"Call transcripts", state:"unavailable", as_of:null, reason:"No substrate — this source isn't built. PAIGE will not infer from it.", next:null},
+      {name:"Workflow automation", state:"connection_sourced", as_of:"Last checked 2d ago", reason:"A workflow connection is on file; PAIGE reads its current status only, not its history.", next:"Open Connections"},
+      {name:"PAIGE's connected tools", state:"needs_confirmation", as_of:null, reason:"A tool connection is on file but isn't active yet. Whether PAIGE may act with it is governed in Trust Compass.", next:"Open Connections"},
+      {name:"Call transcripts", state:"unavailable", as_of:null, reason:"Not connected — this source isn't set up, so PAIGE won't draw on it.", next:null},
     ]
   },
   {
@@ -749,8 +769,8 @@ const ATTENTION = [
   {title:"Website not confirmed", next:"Confirm in Setup", domain:"identity", fact:0},
   {title:"Business phone not confirmed", next:"Confirm in Setup", domain:"identity", fact:1},
   {title:"Industry not confirmed", next:"Confirm in Setup", domain:"identity", fact:2},
-  {title:"PAIGE tools (MCP) not approved", next:"Review in Integrations", domain:"systems", fact:1},
-  {title:"Call transcripts source unavailable", next:"No substrate built", domain:"systems", fact:2, muted:true},
+  {title:"Connected tools not active yet", next:"Open Connections", domain:"systems", fact:1},
+  {title:"Call transcripts not connected", next:"Not set up", domain:"systems", fact:2, muted:true},
 ];
 
 const RECENT = [
@@ -762,7 +782,7 @@ const RECENT = [
 const ANNOTATIONS = [
   {n:1, name:"Command header · operating brief", v:"partial", src:'Account name is real (<code>accountContext</code>). The one-line brief is <b>derived</b> from readiness states, not a stored sentence. Today the shipped brief is fixed copy → PARTIAL.'},
   {n:2, name:"Search — “what PAIGE knows”", v:"partial", src:'Prototype filters the <b>loaded, source-backed records</b> client-side. A real tenant-safe semantic seam exists (<code>kb-search</code> · voyage-3 · <code>match_tenant_knowledge</code>) but has <b>zero frontend callers</b> — not yet wired. No semantic recall is claimed.'},
-  {n:3, name:"Filters (state / source / freshness)", v:"partial", src:'State, source, and freshness exist per-record in the real contract; only a category filter ships today. Filtering here operates over loaded records → PARTIAL.'},
+  {n:3, name:"Filters (state / source / freshness)", v:"partial", src:'These filter axes exist per-record in the real contract. The filter chips here are <b>designed but not wired in this prototype</b> (shown disabled) — the live control is the search box above. Full filtering is production work.'},
   {n:4, name:"Actions", v:"partial", src:'<b>Refresh</b> re-reads current records (LIVE, not a scan). <b>Ask PAIGE</b> opens the one workspace with no Mind context attached (PARTIAL). <b>Confirm</b> deep-links to Setup, the real write path.'},
   {n:5, name:"Needs attention", v:"partial", src:'Derived from <code>business_context.readiness</code> (needs_confirmation / legacy_sourced) + n8n connection state. Real conditions, no score. <code>stale</code> is defined but never emitted (no source declares a TTL) — no stale items are fabricated.'},
   {n:6, name:"Recent changes", v:"partial", src:'“Recently learned” is real (<code>useSoloKnowledge.recentlyLearned</code>, newest docs). A durable confirmed/corrected/retired log is <b>UNAVAILABLE</b> — the Rail holds 9 rows platform-wide and can’t be read from the browser.'},
@@ -771,6 +791,8 @@ const ANNOTATIONS = [
   {n:9, name:"Evidence drawer", v:"partial", src:'Fact contract (state/source/as_of/reason/next_action) is real for identity facts via <code>business_context.readiness</code>. Confirm/Correct → Setup (Layer-1 write path). Retire/forget maps to the Release C governed-memory seam for memory items (not wired to this UI). A per-fact correction-HISTORY reader is not built.'},
   {n:10, name:"Add context / capture", v:"partial", src:'A governed WRITE seam now exists (Release C, migration <code>20261223000000</code>): <code>record_paige_memory</code> (stores as <code>proposed</code>; correct via supersede), <code>forget_paige_memory</code> (retire), <code>get_paige_memory</code> (read) — authenticated, in-body caller scope (§59). <b>No Mind UI is wired to it yet</b>; chat auto-write is deferred. Business-identity facts confirm through <b>Setup</b> (Layer-1 promotion). A typed fact never auto-becomes canonical truth (propose→confirm).'},
   {n:11, name:"Workspace switch", v:"live", src:'Real shell remounts on <code>key=user:tenant</code> + invalidates tenant-scoped caches + per-hook scope guards. All prior-workspace records/filters/drawers/search/pending edits are torn down → LIVE.'},
+  {n:12, name:"§58 — Systems Check findings removed from Mind", v:"partial", src:'The shipped orb surfaced Systems Check findings as Mind “recall” records. This redesign <b>deliberately drops them</b>: Systems Check owns operating readiness/blockers (four-surfaces boundary, §00). Flagged here per §58 (no silent capability removal) — owner sign-off requested. Mind links to Systems Check rather than duplicating it. Same for the shipped “Ask PAIGE — no context attached” caveat, which is preserved here as visible copy under the header.'},
+  {n:13, name:"Save-success & retirement states", v:"partial", src:'Not shown as rendered states because their write paths are not wired to this UI yet (capture routes to Setup; retire maps to the governed forget seam). No fake success is shown — the capture form refuses honestly. These are production work once the seam is wired.'},
 ];
 
 /* ============================================================================
@@ -785,11 +807,26 @@ function statePill(stateKey){
   return `<span class="state-pill"><i class="dot" style="background:var(${s.sig})"></i>${s.label}</span>`;
 }
 
+// Scenario changes the DATA, not just a banner: "partial" drops records that didn't load;
+// "unavailable" turns the source whose read was refused into honest unavailable facts.
+function domainsForScenario(s){
+  if(s==="unavailable"){
+    return DOMAINS.map(d=> d.key==="systems"
+      ? {...d, verdict:"UNAVAILABLE", facts:[], empty:{h:"Couldn't be read this refresh",
+          b:"Connections didn't respond, so these facts are shown as unavailable with a reason — never as “nothing to do”. Retry re-reads them.", link:"Open Connections"}}
+      : d);
+  }
+  if(s==="partial"){
+    return DOMAINS.map(d=> d.key==="knowledge"
+      ? {...d, facts:d.facts.slice(0,1), partialNote:"2 more records didn't load this refresh — nothing is treated as empty. Retry re-reads them."}
+      : d);
+  }
+  return DOMAINS;
+}
 function renderDomains(scenario){
   const wrap = $("#domains"); wrap.innerHTML = "";
-  DOMAINS.forEach((d,di)=>{
+  domainsForScenario(scenario).forEach((d,di)=>{
     let facts = d.facts;
-    // partial-coverage scenario: identity + knowledge only; others honest-absent already
     const el = document.createElement("div");
     el.className = "domain"; el.dataset.open = (d.key==="identity")?"1":"0";
     const count = facts.length ? `${facts.length} fact${facts.length>1?"s":""}` : "—";
@@ -801,7 +838,7 @@ function renderDomains(scenario){
           <span class="d-sum">${d.sum}</span>
         </span>
         <span class="d-meta">
-          <span class="state-pill" title="Coverage verdict"><i class="dot" style="background:var(${verdictSig(d.verdict)})"></i>${d.verdict}</span>
+          <span class="verdict-chip verdict-${d.verdict.toLowerCase()}" title="How much PAIGE can rely on this domain">${d.verdict}</span>
           <span class="d-count">${count}</span>
           <svg class="d-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
         </span>
@@ -813,6 +850,7 @@ function renderDomains(scenario){
             <span><span class="f-name">${f.name}</span><span class="f-src">${f.reason}</span></span>
             ${statePill(f.state)}
           </button>`).join("")}</div>
+          ${d.partialNote?`<p class="note" style="margin:10px 8px 2px;border-color:color-mix(in srgb,var(--pg-warning) 40%,var(--pg-line))">${d.partialNote} <a class="linkout" href="#">Retry</a></p>`:""}
           ${d.valueNote?`<p class="note" style="margin:10px 8px 2px">${d.valueNote}</p>`:""}`
         : `<div class="d-empty"><div>${d.empty.h}</div><div class="why">${d.empty.b}</div>
             <div class="d-linkout"><a class="linkout" href="#">${d.empty.link}
@@ -828,18 +866,27 @@ function renderDomains(scenario){
   // wire fact → drawer
   $$(".fact").forEach(b=>b.addEventListener("click",()=>openDrawer(+b.dataset.d,+b.dataset.f,b)));
 }
-function verdictSig(v){return v==="LIVE"?"--sig-needs":v==="PARTIAL"?"--sig-legacy":"--sig-unavailable";}
 
 function renderRail(){
   const attn = $("#attn"); attn.innerHTML="";
-  ATTENTION.forEach(a=>{
+  const actionable=ATTENTION.filter(a=>!a.muted), info=ATTENTION.filter(a=>a.muted);
+  actionable.forEach(a=>{
     const b=document.createElement("button"); b.className="attn";
-    b.innerHTML=`<i class="dot" style="background:var(${a.muted?'--sig-unavailable':'--sig-needs'});margin-top:5px"></i>
-      <span><span class="a-title">${a.title}</span><span class="a-next">${a.muted?a.next:`<b>${a.next} →</b>`}</span></span>`;
-    if(!a.muted && a.domain!=null) b.addEventListener("click",()=>openDrawer(DOMAINS.findIndex(d=>d.key===a.domain),a.fact,b));
+    b.innerHTML=`<i class="dot" style="background:var(--sig-needs);margin-top:5px"></i>
+      <span><span class="a-title">${a.title}</span><span class="a-next"><b>${a.next} →</b></span></span>`;
+    if(a.domain!=null) b.addEventListener("click",()=>openDrawer(DOMAINS.findIndex(d=>d.key===a.domain),a.fact,b));
     attn.appendChild(b);
   });
-  $("#attn-n").textContent = ATTENTION.filter(a=>!a.muted).length;
+  if(info.length){
+    const sep=document.createElement("div"); sep.className="attn-sep"; sep.textContent="For your awareness"; attn.appendChild(sep);
+    info.forEach(a=>{
+      const d=document.createElement("div"); d.className="attn";
+      d.innerHTML=`<i class="dot" style="background:var(--sig-unavailable);margin-top:5px"></i>
+        <span><span class="a-title">${a.title}</span><span class="a-next">${a.next}</span></span>`;
+      attn.appendChild(d);
+    });
+  }
+  $("#attn-n").textContent = actionable.length;
   const rec = $("#recent"); rec.innerHTML="";
   RECENT.forEach(r=>{
     const el=document.createElement("div"); el.className="rec";
@@ -954,9 +1001,9 @@ function openCapture(d,f,mode){
           <div><div class="rn-t">This confirms into Setup — the one governed write path.</div>
           <div class="rn-b">Confirming a business fact writes its provenance and confirmation time in Setup, which is where PAIGE reads “owner-confirmed” from. You'll finish in Setup; nothing is saved here.</div></div>
         </div>
-        <div class="field"><label>Fact</label><input value="${label}" readonly /></div>
-        <div class="field"><label>Applies to</label><input value="This workspace" readonly /></div>
-        <div class="field"><label>Value to confirm ${mode==='correct'?'(edit)':''}</label><input placeholder="Entered and confirmed in Setup" ${mode==='confirm'?'readonly':''} /><div class="help">The value itself is entered in Setup, not here.</div></div>
+        <div class="field"><label for="cf-fact">Fact</label><input id="cf-fact" value="${label}" readonly /></div>
+        <div class="field"><label for="cf-scope">Applies to</label><input id="cf-scope" value="This workspace" readonly /></div>
+        <div class="field"><label for="cf-value">Value to confirm ${mode==='correct'?'(edit)':''}</label><input id="cf-value" placeholder="Entered and confirmed in Setup" ${mode==='confirm'?'readonly':''} /><div class="help">The value itself is entered in Setup, not here.</div></div>
         <button class="btn btn--gold" id="cap-goto" style="width:100%;justify-content:center">Continue in Setup →</button>
         `:`
         <div class="route-note" style="border-color:color-mix(in srgb,var(--pg-warning) 45%,var(--pg-line))">
@@ -964,9 +1011,9 @@ function openCapture(d,f,mode){
           <div><div class="rn-t">A governed memory seam exists — this Mind form isn't wired to it yet.</div>
           <div class="rn-b">A governed write path shipped in Release C: a fact you record is stored as <b>“proposed”</b> and never auto-becomes a canonical record — you confirm it, correct it, or retire it. This prototype form shows that shape; it isn't connected yet, so it saves nothing here. Business basics still confirm in Setup, and documents ingest through Knowledge.</div></div>
         </div>
-        <div class="field"><label>What should PAIGE know? <span class="req">*</span></label><textarea id="cap-what" placeholder="e.g. We only take clients on 6-month retainers"></textarea><div class="err-msg">Enter what PAIGE should know.</div></div>
-        <div class="field"><label>Scope</label><select><option>This workspace</option><option>A specific client</option></select></div>
-        <div class="field"><label>Source / evidence</label><input placeholder="Where does this come from?" /></div>
+        <div class="field"><label for="cap-what">What should PAIGE know? <span class="req" aria-hidden="true">*</span></label><textarea id="cap-what" aria-required="true" aria-describedby="cap-what-err" placeholder="e.g. We only take clients on 6-month retainers"></textarea><div class="err-msg" id="cap-what-err" role="alert">Enter what PAIGE should know.</div></div>
+        <div class="field"><label for="cap-scope">Scope</label><select id="cap-scope"><option>This workspace</option><option>A specific client</option></select></div>
+        <div class="field"><label for="cap-source">Source / evidence</label><input id="cap-source" placeholder="Where does this come from?" /></div>
         <div style="display:flex;gap:8px">
           <button class="btn btn--gold" id="cap-setup" style="flex:1;justify-content:center">Confirm basics in Setup</button>
           <button class="btn" id="cap-doc" style="flex:1;justify-content:center">Add a document</button>
@@ -986,11 +1033,42 @@ function openCapture(d,f,mode){
   if($("#cap-setup")) $("#cap-setup").addEventListener("click",()=>{closeDrawer();showToast("Setup is where confirmation is saved (prototype).");});
   if($("#cap-doc")) $("#cap-doc").addEventListener("click",()=>{closeDrawer();showToast("Document ingestion lives in the Knowledge admin (prototype).");});
   if($("#cap-try")) $("#cap-try").addEventListener("click",()=>{
-    const fld=$("#cap-what").closest(".field");
-    if(!$("#cap-what").value.trim()){fld.dataset.invalid="1";$("#cap-what").focus();return;}
-    fld.dataset.invalid="0";
+    const w=$("#cap-what"); const fld=w.closest(".field");
+    if(!w.value.trim()){fld.dataset.invalid="1";w.setAttribute("aria-invalid","true");announce("Enter what PAIGE should know.");w.focus();return;}
+    fld.dataset.invalid="0";w.setAttribute("aria-invalid","false");
     showToast("Not saved — the governed write seam exists, but this Mind form isn't wired to it yet.",true);
   });
+  trapFocus($(".drawer"));
+}
+function openConfirmBatch(){
+  lastFocus=$("#act-confirm");
+  const id=DOMAINS.find(d=>d.key==="identity");
+  const items=id.facts.filter(f=>f.state==="legacy_sourced");
+  const mount=$("#drawer-mount");
+  mount.innerHTML=`
+    <div class="scrim" id="scrim"></div>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="cb-title">
+      <header>
+        <div><h2 id="cb-title">Confirm foundational facts</h2>
+        <div style="font-size:11.5px;color:var(--pg-faint);margin-top:4px">${items.length} on file from older records, not yet confirmed</div></div>
+        <button class="close" id="cb-close" aria-label="Cancel"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </header>
+      <div class="d-scroll">
+        <div class="route-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 22v-6M2 12h6M22 12h-6"/><circle cx="12" cy="12" r="3"/></svg>
+          <div><div class="rn-t">These confirm in Setup — the one governed write path.</div>
+          <div class="rn-b">Confirming writes each fact's provenance and confirmation time in Setup, where PAIGE reads “owner-confirmed” from. You'll finish in Setup; nothing is saved here.</div></div>
+        </div>
+        <div class="facts">${items.map(f=>`<div class="fact" style="cursor:default"><i class="dot" style="background:var(${STATES[f.state].sig})"></i><span><span class="f-name">${f.name}</span><span class="f-src">${f.reason}</span></span>${statePill(f.state)}</div>`).join("")}</div>
+        <button class="btn btn--gold" id="cb-goto" style="width:100%;justify-content:center;margin-top:14px">Continue in Setup →</button>
+      </div>
+      <div class="actions"><button class="btn btn--ghost" id="cb-cancel">Cancel</button></div>
+    </aside>`;
+  requestAnimationFrame(()=>$("#cb-close").focus());
+  $("#scrim").addEventListener("click",closeDrawer);
+  $("#cb-close").addEventListener("click",closeDrawer);
+  $("#cb-cancel").addEventListener("click",closeDrawer);
+  $("#cb-goto").addEventListener("click",()=>{closeDrawer();showToast("Setup is where confirmation is saved (prototype).");});
   trapFocus($(".drawer"));
 }
 function closeDrawer(){
@@ -1008,9 +1086,11 @@ function trapFocus(container){
     else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
   });
 }
+function announce(msg){ const l=$("#live"); if(!l) return; l.textContent=""; requestAnimationFrame(()=>{ l.textContent=msg; }); }
 let toastTimer;
 function showToast(msg,err){
   const t=$("#toast"); t.textContent=msg; t.className="toast"+(err?" err":""); t.hidden=false;
+  announce(msg);
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>{t.hidden=true;},3400);
 }
 
@@ -1036,15 +1116,33 @@ function setPaige(open){
   $("#shell").dataset.paige=open?"1":"0";
   $("#p-open").setAttribute("aria-pressed",String(open));
   $("#p-closed").setAttribute("aria-pressed",String(!open));
+  if(open){ announce("PAIGE opened. No Mind context was attached or prepared."); requestAnimationFrame(()=>{ const el=$("#paige .composer input"); if(el) el.focus(); }); }
+  else { announce("PAIGE closed."); }
 }
+const ORIGINAL_BRIEF = $("#brief").innerHTML;
+// Header copy + actions are DERIVED from data, so they must follow the scenario — otherwise a
+// "3 facts on file / Confirm 3 facts" header contradicts an empty/loading/switching body (§13).
+function setHeaderMode(s){
+  const full = (s==="populated"||s==="partial"||s==="unavailable");
+  $(".mind-command").hidden=!full; $(".legend-inline").hidden=!full; $(".mind-head-actions").hidden=!full; $(".mind-paige-note").hidden=!full;
+  const brief=$("#brief");
+  if(full) brief.innerHTML=ORIGINAL_BRIEF;
+  else if(s==="loading") brief.textContent="Resolving this workspace's knowledge…";
+  else if(s==="switching") brief.textContent="Switching workspace — clearing the previous account's knowledge before this one loads.";
+  else brief.textContent="PAIGE hasn't learned anything durable about this workspace yet.";
+}
+const SCN_SAY={populated:"Showing governed knowledge.",partial:"Partial coverage — some records did not load.",unavailable:"A source is unavailable.",loading:"Loading this workspace's knowledge.",firstuse:"This workspace has no durable knowledge yet.",switching:"Switching workspace. Previous account cleared."};
 function setScenario(s){
+  CURRENT_SCN=s;
   const primary=$("#content-primary");
   const map={loading:"#state-loading",firstuse:"#state-firstuse",switching:"#state-switching"};
   $$("#state-loading,#state-firstuse,#state-switching").forEach(el=>el.hidden=true);
-  // banners
   $$(".banner").forEach(b=>b.remove());
-  if(map[s]){primary.style.display="none";$(map[s]).hidden=false;}
-  else{primary.style.display="contents";}
+  setHeaderMode(s);
+  if(map[s]){primary.style.display="none";$(map[s]).hidden=false;announce(SCN_SAY[s]||"");return;}
+  primary.style.display="contents";
+  renderDomains(s); renderRail(s); paintOrb();
+  announce(SCN_SAY[s]||"");
   if(s==="partial"){
     const b=document.createElement("div");b.className="banner warn";
     b.innerHTML=`<i class="dot b-dot" style="background:var(--sig-legacy)"></i><div><strong>Mind has partial coverage</strong><span>Some sources didn't answer. No missing source is treated as empty — what's shown is what resolved. Refresh retries the read-only records.</span></div>`;
@@ -1057,12 +1155,17 @@ function setScenario(s){
   }
 }
 document.addEventListener("keydown",e=>{
-  if(e.key==="/"&&document.activeElement.tagName!=="INPUT"&&document.activeElement.tagName!=="TEXTAREA"){e.preventDefault();$("#search").focus();}
+  const t=document.activeElement, tag=t&&t.tagName;
+  if(e.key==="/" && tag!=="INPUT" && tag!=="TEXTAREA" && tag!=="SELECT" && !(t&&t.isContentEditable) && !$(".drawer")){
+    e.preventDefault(); $("#search").focus();
+  }
 });
 
 /* search filters the loaded records */
+let CURRENT_SCN="populated";
 function applySearch(q){
   q=q.trim().toLowerCase();
+  if(!q){ renderDomains(CURRENT_SCN); const none=$("#no-results"); if(none) none.remove(); return; }
   let anyVisible=false;
   $$(".domain").forEach(dm=>{
     const facts=$$(".fact",dm); let dmHit=false;
@@ -1123,7 +1226,9 @@ $("#annot-close").addEventListener("click",()=>{
 });
 $("#act-refresh").addEventListener("click",()=>showToast("Re-reading current records… (this is not a scan)"));
 $("#act-ask").addEventListener("click",()=>setPaige(true));
-$("#act-confirm").addEventListener("click",()=>openCapture(DOMAINS[0],DOMAINS[0].facts[0],"confirm"));
+$("#act-confirm").addEventListener("click",openConfirmBatch);
+const paigeFold=$("#paige header .close");
+if(paigeFold) paigeFold.addEventListener("click",()=>{ setPaige(false); requestAnimationFrame(()=>{ const a=$("#act-ask"); if(a) a.focus(); }); });
 $("#orb-toggle").addEventListener("click",()=>{
   const o=$("#orb");const open=o.dataset.open==="1";o.dataset.open=open?"0":"1";
   $("#orb-toggle").setAttribute("aria-expanded",String(!open));

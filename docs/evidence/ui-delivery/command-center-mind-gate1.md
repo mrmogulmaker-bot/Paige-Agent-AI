@@ -88,7 +88,50 @@ Google Fonts / fontshare are progressive enhancement with the pack's real fallba
 
 ## Adversarial verifier (§39) + compliance officer (§5)
 
-<!-- filled after crew returns -->
+**Assurance: independent review** — two separate agents read the actual file + rendered frames
+against the ground-truth contracts (not the author's proof). Both are correctness/honesty/boundary/
+a11y reviews; neither offered visual-taste input (§00). All findings below were integrated and
+re-verified; nothing was reported as fixed without a re-run.
+
+Resolved (BLOCKER/MAJOR):
+- **§11 jargon in shipped copy** — "MCP" and "n8n" removed from user-facing copy ("PAIGE's connected
+  tools", "Workflow automation"); vendor/protocol names kept only in the dev annotation layer.
+- **§00 boundary** — the connected-tools fact was reframed from an approval/authority claim to a
+  connection-state fact and now points authority to Trust Compass rather than asserting it.
+- **§13 header self-contradiction** — the header brief + actions + command row are now scenario-gated,
+  so first-use/loading/switching no longer claim "3 facts on file / Confirm 3 facts" over an empty body.
+- **Responsive evidence** — breakpoints converted to `@container` queries scoped to `.viewport`, so
+  the viewport presets genuinely exercise the fold (verified: 1024/900 collapse to one column; nav
+  folds at 900). Prior fixed-preset frames had not exercised the window-keyed media queries.
+- **aria-live** — a persistent `aria-live="polite"` region was added and toasts/state changes/PAIGE
+  open-close route through it (the shipped surface had one; §58).
+- **Capture-form labels** — every field now has `for`/`id`; the required field carries `aria-required`,
+  `aria-describedby`, `role="alert"`, and `aria-invalid` toggling.
+- **Dead controls** — the "Fold PAIGE" button is wired (with focus return); the filter chips are
+  marked `disabled`/`aria-disabled` (designed, not wired in this prototype) and the annotation no
+  longer implies they filter; the header CTA opens a 3-fact batch-confirm routing to Setup.
+- **§58 flags** — the deliberate removal of Systems Check findings from Mind, and the preserved
+  "Ask PAIGE — no context attached" caveat, are both stated explicitly (visible copy + annotation)
+  for owner sign-off.
+- **partial/unavailable scenarios** now change the rendered data (the systems domain flips to
+  UNAVAILABLE), not just a banner, so the state toggles are genuine evidence.
+- **Verdict-color collision** — domain verdicts are now text chips with border tint (a different
+  visual channel than fact-state dots).
+
+Resolved (MINOR): nav glyphs `aria-hidden`; Mind nav badge slug → "here"; `/` shortcut excludes
+SELECT and dialogs; search reverts domain open-state on clear; needs-attention count separated from
+the informational row via an "awareness" divider; annotation wording tightened to "not wired to this
+UI/chat" (a service/MCP caller can drive the seam today); the decorative viewport tag set
+`pointer-events:none` so it never intercepts a control.
+
+Re-verified after fixes: full render matrix regenerated; behavioral asserts (drawer focus/Esc/return,
+search, no-results, confirm-batch=3 facts, fold-PAIGE, scenario gating, container fold at 1024/900,
+unavailable-scenario data change) all pass; contrast still ≥4.5:1 both themes (min 5.66 dark / 5.13
+light); only console errors are the two sandbox font `ERR_CONNECTION_RESET`.
+
+**Still owed (honest):** authenticated production runtime proof (§32.c) is N/A at prototype stage and
+owed at the production-port slice; a real screen-reader pass (this was code + automated a11y checks,
+not an AT run).
 
 ## Owed / next
 
