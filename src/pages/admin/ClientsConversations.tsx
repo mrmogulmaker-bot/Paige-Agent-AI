@@ -667,7 +667,13 @@ export default function ClientsConversations() {
   // this account can text. Solo only: the disclosure itself is Solo-only.
   const [commsReadiness, setCommsReadiness] = useState<SoloCommsReadinessEvidence | null>(null);
   useEffect(() => {
-    if (!isSolo || !activeTenantId) { setCommsReadiness(null); return; }
+    // CLEAR FIRST, unconditionally. On an account switch this effect previously went straight to
+    // its async arm, so the PREVIOUS workspace's readiness kept feeding getSoloChannelTruth until
+    // the new workspace's RPC returned — the disclosure asserted one business's texting state under
+    // another business's heading. Settings → Connections already cleared before every load
+    // (useCommsReadiness in src/solo/settings.tsx); this consumer of the same resolver did not.
+    setCommsReadiness(null);
+    if (!isSolo || !activeTenantId) return;
     let cancelled = false;
     void (async () => {
       // RPC is deployed but not yet present in generated database types.
@@ -676,7 +682,12 @@ export default function ClientsConversations() {
       if (cancelled) return;
       // On any failure the disclosure keeps saying "Not reported" rather than
       // inferring readiness from connector presence.
-      setCommsReadiness(error ? null : ((data as SoloCommsReadinessEvidence | null) ?? null));
+      const row = error ? null : ((data as SoloCommsReadinessEvidence | null) ?? null);
+      // BIND to the workspace on screen. The resolver derives its tenant server-side from the
+      // session, so if that has not caught up with the client's active account the answer belongs
+      // to a DIFFERENT business — discard it rather than render it here (§9, the same check
+      // useCommsReadiness makes). Absent is honest; substituted is not.
+      setCommsReadiness(row && row.tenant_id && row.tenant_id !== activeTenantId ? null : row);
     })();
     return () => { cancelled = true; };
   }, [isSolo, activeTenantId]);
