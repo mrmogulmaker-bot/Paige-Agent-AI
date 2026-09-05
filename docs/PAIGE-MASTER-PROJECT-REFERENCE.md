@@ -1516,6 +1516,19 @@ recurring [PLANNED; §67/§68, §64]. Each capability declares its contract (ten
 outcome, provenance, safe-failure, durable home). **Same-slice refresh discipline:** each completed slice
 updates this matrix with shipped/evidence/proof-owed/next-owner/dep-order (§0/§66/§BRAIN.3).
 
+**Slice 1 progress (2026-09-05):** _increment 1 — truthful artifact-creation receipts_ (PR #972). Five
+creation handlers (`generate_image`, `draft_marketing_content`, `content_save`, `document_generate`,
+`growth_page_save`) no longer emit a `success:true` receipt on a 200-with-empty-payload (null url / empty
+drafts / null saved id); a new pure home `_shared/artifact-receipt.ts` (`artifactProduced` +
+`ARTIFACT_ABSENT_ERROR`) degrades an absent artifact to an honest `success:false`, so the model narration,
+the status label, and the artifact card all inherit the honest signal (§13/§70). **Proof:** 17 contract
+tests + 167 green across the source-asserting suite; §50 clean; transpiles clean. **Proof owed:**
+authenticated owner §32.c live-drive (headless). **Still in slice 1:** download/export action, render the
+artifact card on all chat surfaces, image→campaign routing, the missing types (campaign_brief · HTML
+email_template · video · social-schedule), regular-chat in-place refine — the visible items run the §00
+Claude-Design pack (CC ports, does not design). **Deferred to their slices, named:** the two going-live
+PUBLISH receipts (slice 6/7) and Rail wiring of these tools (slice 3 / F05).
+
 ### Sandboxed Research & External Execution — a COMPONENT of the Paige Capability System (above); APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
 
 Owner-directed MVP capability so Paige is an active AI COO/orchestrator, not a chat interface that
@@ -2659,6 +2672,23 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ## 10. §13 corrections log
 
+ - **2026-09-05 — five chat artifact-creation tools reported success on a 200-with-empty-payload
+   (SHIPPED §13/§70 dishonesty, fixed in PR #972).** `generate_image`, `draft_marketing_content`,
+   `content_save`, `document_generate` and `growth_page_save` emitted `{ success: true, … }` even
+   when the underlying edge fn / RPC returned HTTP 200 carrying no real artifact — a null public URL,
+   an empty drafts array, or a null saved id — because a 200-with-empty-payload does not throw. That
+   one dishonest field then drove three consumers at once: the model narrated a fake success, the
+   `describeStep` status label showed "done"/"image ready", and the artifact card pushed with no
+   artifact. Corrected: a new pure home `supabase/functions/_shared/artifact-receipt.ts`
+   (`artifactProduced(shape, value)` + non-leaky `ARTIFACT_ABSENT_ERROR`) degrades an absent artifact
+   to an honest `success:false`, and each handler wraps its own success shape in it. `growth_funnel_build`
+   already threw on missing ids (untouched). Two independent reviews (§39 adversarial verifier + §5
+   compliance) confirmed no false negatives against the real return shapes and SHIP. **Scope note:**
+   the going-live PUBLISH receipts (`growth_page_publish`/`growth_funnel_publish`) and the CRM/scheduling
+   write receipts (`crm_log_activity`, `calendar_book_meeting`) carry the same 200-empty-id class and are
+   deferred to their own slices (external-publishing = slice 6/7; a write-receipt slice) rather than fixed
+   here; the draft-only generators (`growth_page_generate`/`growth_funnel_generate`) persist nothing and
+   are correctly excluded. Authenticated owner §32.c live-drive of the deployed edge fn remains owed.
  - **2026-09-05 — Connections treated configured resources as operating and could paint the prior
    workspace during a switch.** The Add-channel candidate originally classified any non-empty
    `default_email_sender` as Connected without reading `default_email_status`, and listed any

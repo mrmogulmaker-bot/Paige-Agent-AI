@@ -39,6 +39,32 @@
   by querying the real database, not only by driving the browser; the owner's live look surfaced an
   identity SOURCE bug whose displayed value happened to be right.**
 
+- **Capability System slice 1 · increment 1 — truthful artifact-creation receipts (2026-09-05, PR #972)** —
+  five chat artifact-creation handlers (`generate_image`, `draft_marketing_content`, `content_save`,
+  `document_generate`, `growth_page_save`) could emit a `success:true` receipt when the edge fn / RPC
+  returned HTTP 200 carrying no real artifact (null public URL, empty drafts array, null saved id). A
+  200-with-empty-payload does not throw, so one dishonest field became a dishonest receipt in three
+  places at once (model narration, the `describeStep` status label, the artifact-card push) — the
+  §13/§70 defect. New pure module `supabase/functions/_shared/artifact-receipt.ts` is the one home
+  (§18) for the decision "did the sub-call actually produce the artifact this kind promises?"
+  (`artifactProduced(shape, value)` + non-leaky `ARTIFACT_ABSENT_ERROR`); each handler wraps its own
+  success shape in it, so the model, status label, card, and audit outcome all inherit the honest
+  signal. `generate_image` gains a no-url branch mirroring the guard the §33 regenerate helper already
+  had; `document_generate` keeps its blocks/placeholder guards + adds the saved-id check;
+  `growth_funnel_build` already threw on missing ids (untouched). **Out of scope, named:** the two
+  going-live PUBLISH handlers (external-publishing, slice 6/7 — needs the publish RPCs' URL return
+  contract verified to avoid a §37 false-negative); Rail (`record_capability_run`) wiring of these
+  tools (slice 3 / F05); and — flagged by the §39 verifier — the CRM/scheduling **write receipts**
+  `crm_log_activity` / `calendar_book_meeting`, which carry the same 200-empty-id class but are writes
+  with their own rail/audit path, not chat artifacts, so they belong to a future write-receipt slice.
+  The draft-only generators (`growth_page_generate` / `growth_funnel_generate`) persist nothing and are
+  correctly excluded (not a gap). Both independent reviews (§39 adversarial verifier + §5 compliance)
+  returned SHIP with no blocking findings. **Proof (§13):** 17 behavioural + wiring contract tests
+  (`artifact-receipt-contract.test.ts`); the 9 tests asserting on `paige-ai-chat/index.ts` source stay
+  green (167 total); §50 clean; all three files transpile clean; tenant scoping unchanged (§9). **Owed:**
+  authenticated owner §32.c live-drive of the deployed edge fn (headless session). Edge deploy via CI on
+  merge (`deploy-edge-functions.yml`).
+
 - **The Paige Capability System — OWNER-LOCKED full-range MVP direction (2026-09-05)** — PAIGE is the
   tenant's governed operating environment; chat is the front door to a FULL capability range, NOT chat-only/
   read-only/recommendation-only. ONE Capability System (governed contracts), not unrelated chat widgets.
