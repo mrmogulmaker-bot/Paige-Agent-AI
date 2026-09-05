@@ -123,6 +123,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:definer-fns
 
+      - name: Raw-Rail browser-grant guard (§9/§58 #746 — the browser reads the Rail via resolvers, never the table)
+        if: ${{ !cancelled() }}
+        run: npm run lint:rail-grants
+
+      - name: Raw-Rail browser-grant guard self-test
+        if: ${{ !cancelled() }}
+        run: npm run lint:rail-grants:test
+
       - name: Authority guard (no service-role work or provider traffic before the caller is authorized)
         if: ${{ !cancelled() }}
         run: npm run lint:action-authority

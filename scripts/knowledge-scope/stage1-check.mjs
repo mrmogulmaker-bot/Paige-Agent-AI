@@ -325,7 +325,12 @@ const handler = capturedHandler();
  * ordered so its FIRST row is NOT the active tenant. That is the whole trap: a correct
  * handler must ignore this ordering entirely.
  */
-async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, ragHits = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "PRIVATE-CHUNKTITLE-MARKER", chunkContent = "x", provider = ["text"], rpcExtras = {}, tableExtras = {}, fundingEnabled = false, throwOnSync = false, userMessage = "what does my onboarding process look like?" }) {
+async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, ragHits = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "PRIVATE-CHUNKTITLE-MARKER", chunkContent = "x", provider = ["text"], rpcExtras = {}, tableExtras = {}, fundingEnabled = false, throwOnSync = false, activeTenantId = "__USE_PERSONA__", userMessage = "what does my onboarding process look like?" }) {
+  // `profiles.active_tenant_id` is an INDEPENDENT axis from the persona-resolved tenant. It
+  // defaults to `personaTenant` so every existing scenario is byte-identical (persona and active
+  // agree). A check overrides it to model the case current_user_tenant_id() hides: a null or
+  // stale active_tenant_id where the persona tenant is the COALESCE oldest-membership fallback.
+  const declaredActiveTenant = activeTenantId === "__USE_PERSONA__" ? personaTenant : activeTenantId;
   const logged = [];
   syncThrows = throwOnSync;
   resetEmbeds();
@@ -382,7 +387,7 @@ async function drive({ personaTenant, personaSequence = null, memberships, kbRej
     },
     tables: {
       tenant_members: () => memberships.map((t) => ({ tenant_id: t })),
-      profiles: () => [{ active_tenant_id: personaTenant }],
+      profiles: () => [{ active_tenant_id: declaredActiveTenant }],
       ...tableExtras,
     },
   });
@@ -651,6 +656,44 @@ group("a stale or wrong account's knowledge cannot enter the prompt");
     "11.3 exactly one knowledge query is issued per turn (no second, wider sweep)",
     r.rec.rpc.filter((x) => x.name === "match_tenant_knowledge").length === 1,
     `count: ${r.rec.rpc.filter((x) => x.name === "match_tenant_knowledge").length}`,
+  );
+}
+
+// ── 24 · The DECLARED active workspace gates Knowledge, not the COALESCE fallback ─
+// current_user_tenant_id() (migration 20261213000000) COALESCEs a null or unentitled
+// active_tenant_id to `tenant_members ORDER BY joined_at ASC LIMIT 1` — the OLDEST membership, a
+// workspace the caller is a member of but is not operating as. persona resolves through it, and
+// both the RPC's own guard and revalidateTenantKnowledgeScope compare against the SAME resolver,
+// so neither sees the substitution. The handler must confirm the resolved scope IS the caller's
+// declared active workspace before searching. active null / stale / mismatch → no query.
+group("tenant Knowledge is gated on the DECLARED active workspace, not the fallback");
+{
+  // active_tenant_id NULL: persona came from the oldest-membership fallback (AGENCY sorts first).
+  const nullActive = await drive({ personaTenant: CHILD, memberships: [AGENCY, CHILD], activeTenantId: null });
+  assert(
+    "24.1 no Knowledge query when active_tenant_id is unset (oldest-membership fallback refused)",
+    nullActive.kbCall === undefined,
+    `match_tenant_knowledge called with ${JSON.stringify(nullActive.kbCall?.args?.p_tenant_id)}`,
+  );
+  assert(
+    "24.2 …and no Knowledge telemetry row is written on the refused turn",
+    !nullActive.telemetry,
+  );
+
+  // active_tenant_id points at a DIFFERENT (stale / unentitled) workspace than the resolved scope.
+  const staleActive = await drive({ personaTenant: CHILD, memberships: [AGENCY, CHILD], activeTenantId: AGENCY });
+  assert(
+    "24.3 no Knowledge query when the resolved scope != the declared active workspace",
+    staleActive.kbCall === undefined,
+    `match_tenant_knowledge called with ${JSON.stringify(staleActive.kbCall?.args?.p_tenant_id)}`,
+  );
+
+  // Happy path preserved: declared active EQUALS the resolved scope, so the search runs normally.
+  const matched = await drive({ personaTenant: CHILD, memberships: [AGENCY, CHILD], activeTenantId: CHILD });
+  assert(
+    "24.4 the query still runs when the declared active workspace matches the resolved scope",
+    matched.kbCall?.args?.p_tenant_id === CHILD,
+    `expected ${CHILD}, got ${matched.kbCall?.args?.p_tenant_id}`,
   );
 }
 
