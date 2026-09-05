@@ -91,7 +91,7 @@ Deno.serve(async req=>{
    const code=url.searchParams.get('code');
    if(!code||code.length>4096) throw new N8nSafeError('invalid_callback');
    stage='token_exchange';
-   const tokens=await exchangeCode({server:payload.server,...payload.client,redirectUri:CALLBACK,code,verifier:payload.verifier,resource:payload.resource});
+   const tokens=await exchangeCode({server:payload.server,...payload.client,redirectUri:CALLBACK,code,verifier:payload.verifier,resource:payload.resource,requestedScopes:payload.requested_scopes??['workflow:read','workflow:write']});
    pendingGrant={server:payload.server,client:payload.client,tokens};
    stage='scope_validation';
    assertScopedTokens(tokens,payload.requested_scopes??['workflow:read','workflow:write']);
@@ -162,7 +162,7 @@ Deno.serve(async req=>{
     let rotated:{server:AuthorizationServer;tokens:TokenSet}|undefined;
     try{
      const server=await discoverAuthorizationServer(lease.issuer);validateServer(server);
-     const tokens=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url});
+     const tokens=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url,grantedScopes:lease.oauth_scopes});
      rotated={server,tokens};assertScopedTokens(tokens);
      await rpc('rotate',{...bound,tokens});accessToken=tokens.accessToken;
      if(tokens.refreshToken)activeSecrets.push(tokens.refreshToken);

@@ -111,7 +111,7 @@ export async function runN8nManagement(input:{admin:Admin;userId:string;tenantId
   if(isExpired(lease.expires_at)){
    if(!lease.refresh_token)fail('token_expired');
    const server=await discoverAuthorizationServer(lease.issuer);validateServer(server);
-   const tokens:TokenSet=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url});
+   const tokens:TokenSet=await refreshTokens({server,clientId:lease.client_id,clientSecret:lease.client_secret,refreshToken:lease.refresh_token,resource:lease.server_url,grantedScopes:lease.oauth_scopes});
    try{
     if(tokens.scopes.length!==lease.oauth_scopes.length||!tokens.scopes.every(s=>lease!.oauth_scopes.includes(s))||new Set(tokens.scopes).size!==tokens.scopes.length||!tokens.accessToken||isExpired(tokens.expiresAt))fail('provider_scope_refused');
     await rpc('rotate',{tokens});access=tokens.accessToken;secrets.push(access);if(tokens.refreshToken)secrets.push(tokens.refreshToken);
