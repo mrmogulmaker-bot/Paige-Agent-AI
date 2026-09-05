@@ -346,7 +346,8 @@
 
 /* ── pipeline ─────────────────────────────────────────────────────────────── */
 /* Source → live, read as one flow. A hairline connector with a small arrowhead joins DOM-adjacent
-   stages; the review stage takes the one gold accent when it genuinely holds work for a person. */
+   stages; a stage takes its semantic accent (amber for work held for you, green for work published)
+   only when it genuinely carries a sourced figure — never gold, which is spent on the act alone. */
 
 .social-pipeline {
   display: grid;
