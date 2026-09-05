@@ -850,6 +850,14 @@ Six vertical slices, each independently reviewed by an adversarial agent, repair
   Pre-existing, NOT introduced by this branch. It is scope-enforced (`workflows.run` etc.), not
   lane-enforced. Deliberately not fixed here: MCP callers have no confirm affordance, so gating it
   would make every MCP write un-executable — the exact failure R1 exists to undo.
+  - **SUPERSEDED 2026-09-05 (PR #960), and the prediction was right.** All 119 MCP tools now pass
+    one governed door; the 68 verified mutations refuse (67 `approval_required`, `create_tenant`
+    `owner_only`), which IS "every MCP write un-executable", ruled for explicitly by the owner:
+    an MCP connection authorizes access to the door, not consequential action. The lane is still
+    not resolved on that surface — the door declares `not_resolved` and refuses regardless, so the
+    refusal is a property of the channel rather than of a workspace setting. Giving MCP a way to
+    carry a person's consent is the named next slice; the note above is kept because it named the
+    cost before it was paid.
 - **Approval on five of the six chat surfaces is still MODEL-ASSERTED.** A new request proves a
   person sent another message, not that the message was a yes. Only a surface that renders the
   summary and echoes back its fingerprint proves a human approved THAT call, and one surface does
