@@ -1432,6 +1432,44 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+### Sandboxed Research & External Execution — APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
+
+Owner-directed MVP capability so Paige is an active AI COO/orchestrator, not a chat interface that
+describes what to do. **This is an approved DIRECTION + dependency-ordered plan — no sandbox is "live"
+because a design or handler exists (§13/§32/§70).** Full plan + honest state labels + file:line grounding:
+`outputs/paige-at-cowork/08-sandboxed-research-external-execution.md`. Operating model: PAIGE is the
+governed decision layer; native tools operate inside the tenant platform; n8n/Zapier/MCP/future
+integrations are **controlled external workers, never a bypass** around authority/tenant-isolation/
+approvals/outcome-recording; a **sandbox** is the contained workbench for untrusted/generated-code/
+browser/file/external execution — not a replacement for Paige or the governed tool system.
+
+**The honest state split (grounded by four read-only scouts, 2026-09-05):**
+- **Research half — largely LIVE/PARTIAL, harden+reach not build (§18).** `deep_research` (a real
+  multi-hop engine with a hard anti-fabrication citation gate) and `web_search` are LIVE Paige-chat
+  tools; the `browse_public_url` skill + the SSRF-hardened `paige-browser` Fly service ship with the
+  tenant-scoped `paige_browser_usage` audit rail (§32.a confirmed; §32.c live-drive OWED). Public
+  browsing blocks **Paige-DRIVEN** writes (login/submit/click/download steps rejected by the allowlist);
+  a visited page's own JS could still POST to a public host (the `page.route` interceptor gates host/SSRF
+  only, not HTTP method — a named **G5** hardening gap, Codex P1 2026-09-05), so it is **PARTIAL on the
+  no-external-write axis, NOT read-only-by-construction**. `FIRECRAWL_API_KEY` config-gating +
+  DNS-rebinding (#138) + the two unequal SSRF guards are the other named PARTIAL/PROOF-OWED gaps.
+- **Sandbox half — genuinely GREENFIELD/UNAVAILABLE.** An exhaustive grep found **no untrusted-execution
+  sandbox** (the only "sandboxes" are the two read-only Fly Playwright services; Browserbase is an inert
+  stub). Governing worker **downstream** actions is also UNAVAILABLE — `delegate_to_subagent` runs the
+  orchestrator as service-role and the specialist acts outside the risk gate; `paige-mcp` enforces
+  tier+scope but no approval/risk gate; the `decideGovernedExecution` seam exists as a pure module,
+  unwired. Per-worker network isolation, budget/cost + Trust-Compass consult on the execution path
+  (why `trigger-workflow` is fail-closed disabled), and recurring-autonomous scheduling are all PLANNED.
+
+**Five dependency-ordered slices:** (1) browser research MVP [LIVE/PARTIAL — harden+reach] → (2) governed
+worker dispatch [PARTIAL — unify the gate across regimes + govern downstream] → (3) sandboxed file/code/data
+work [UNAVAILABLE/greenfield] → (4) advanced browser automation [UNAVAILABLE; only via the governed action
+path] → (5) recurring autonomous [PLANNED; governed by §67/§68, cloud-native §64]. Every meaningful
+external/sandboxed action records a safe attributable Rail outcome (reuse `capability-record.ts`, 6
+outcomes); Spine/Mind retain only scoped sourced facts (F02 Memory contract — handoff dep). **Same-slice
+refresh discipline (owner-directed):** at each completed slice this record updates with what shipped, exact
+evidence, what remains UNAVAILABLE/proof-owed, the next owning workstream, and any dependency-order change.
+
 ### Solo n8n connection clarity — historical UI slice, 2026-09-03
 
 The owner approved separate API connection and Paige tools (MCP) tabs and independent tile/overview states. This earlier UI slice preserved stored credentials while OAuth was blocked. Superseded by released PR #909: standard OAuth is live with the owner-accepted gateway logging risk; only final owner consent/provider verification remains Proof Owed. Current API saved status/count/timestamp does not prove fresh health; the UI must not claim it does. No callback, backend credential, tool-authority, workflow execution, Chat or Spine changes are included. Delivery and proof: `docs/delivery/solo-n8n-connection-clarity.md`. Authenticated owner acceptance is recorded separately from automated/build/deployment evidence.
