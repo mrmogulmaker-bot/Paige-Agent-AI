@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Building2,
@@ -18,6 +19,7 @@ import {
   Users,
   Webhook,
   WifiOff,
+  X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -84,7 +86,14 @@ function useManagedIdentity() {
     if (!tenantLoading) void load();
     return () => activeGate.clear();
   }, [tenantLoading, load]);
-  return { ...state, loading: tenantLoading || state.loading || Boolean(activeTenantId && state.tenantId !== activeTenantId), retry: load };
+  const ownsActiveTenant = state.tenantId === activeTenantId;
+  return {
+    tenantId: ownsActiveTenant ? state.tenantId : null,
+    loading: tenantLoading || state.loading || !ownsActiveTenant,
+    error: ownsActiveTenant ? state.error : null,
+    value: ownsActiveTenant ? state.value : null,
+    retry: load,
+  };
 }
 
 function TeamView({ openPaige }: { openPaige?: () => void }) {
@@ -159,13 +168,16 @@ function useCommsReadiness() {
     setState({ tenantId: activeTenantId, loading: false, error: error?.message ?? null, value: error ? null : row });
   }, [activeTenantId]);
   useEffect(() => { if (!tenantLoading) void load(); }, [load, tenantLoading]);
+  const ownsActiveTenant = state.tenantId === activeTenantId;
   return {
-    ...state,
+    tenantId: ownsActiveTenant ? state.tenantId : null,
     // Stay in the loading state while the tenant context resolves and until the
     // answer we hold belongs to the account now on screen. Without this the card
     // paints "Texting is not ready yet" — a definite claim — before a single read
     // has been attempted.
-    loading: state.loading || tenantLoading || Boolean(activeTenantId && state.tenantId !== activeTenantId),
+    loading: state.loading || tenantLoading || !ownsActiveTenant,
+    error: ownsActiveTenant ? state.error : null,
+    value: ownsActiveTenant ? state.value : null,
     retry: load,
   };
 }
@@ -444,14 +456,140 @@ function Subsection({ id, title, blurb, children }: { id: string; title: string;
   </section>;
 }
 
-const PROVIDERS = [
-  ["Gmail", "OAuth mailbox", "PARTIAL"], ["Outlook", "OAuth mailbox", "UNAVAILABLE"],
-  ["SMTP / Resend", "Outbound sending", "PARTIAL"], ["Twilio", "SMS, MMS & voice", "PARTIAL"],
-  ["Vapi", "Voice", "UNAVAILABLE"], ["Meta IG / FB", "Business messaging", "PARTIAL"],
-  ["Apple Messages for Business", "Business messaging", "PROPOSED"], ["WhatsApp / RCS", "Vocabulary only", "PROPOSED"],
-  ["n8n", "Tenant automation seam", "PARTIAL"], ["Zapier / MCP", "Fragmented connection seams", "PARTIAL"],
-  ["Direct APIs", "Permission-specific", "PARTIAL"], ["Make.com", "No connector seam", "UNAVAILABLE"],
-] as const;
+type AddChannelOption = {
+  id: string;
+  title: string;
+  outcome: string;
+  state: string;
+  tone: "ok" | "warn" | "bad" | "neutral";
+  required: string;
+  paige: string;
+  owner: string;
+  source: string;
+  action: "Connect" | "Continue setup" | "Review issue" | "View details";
+  destination?: ConnectionsSegment;
+};
+
+function ConnectionSetupDrawer({ option, onClose, onContinue }: {
+  option: AddChannelOption;
+  onClose: () => void;
+  onContinue: (destination: ConnectionsSegment) => void;
+}) {
+  const panelRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const latest = useRef(onClose);
+  useEffect(() => { latest.current = onClose; });
+  useEffect(() => {
+    const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const settingsRoot = panelRef.current?.closest(".solo-settings");
+    const background = settingsRoot ? [...settingsRoot.children].filter((node) => !node.classList.contains("ss-add-drawer-backdrop")) : [];
+    const priorInert = background.map((node) => node.hasAttribute("inert"));
+    background.forEach((node) => node.setAttribute("inert", ""));
+    (panelRef.current?.querySelector<HTMLElement>("[data-initial-focus]") ?? closeRef.current)?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        latest.current();
+        return;
+      }
+      if (event.key !== "Tab" || !panelRef.current) return;
+      const focusable = [...panelRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), [href], [tabindex]:not([tabindex="-1"])')];
+      if (!focusable.length) { event.preventDefault(); return; }
+      const first = focusable[0]; const last = focusable[focusable.length - 1];
+      if (!focusable.includes(document.activeElement as HTMLElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      background.forEach((node, index) => { if (!priorInert[index]) node.removeAttribute("inert"); });
+      if (returnFocus && document.contains(returnFocus)) returnFocus.focus({ preventScroll: true });
+    };
+  }, []);
+  const drawer = <div className="ss-add-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
+    <aside ref={panelRef} className="ss-add-drawer" role="dialog" aria-modal="true" aria-labelledby="ss-add-drawer-title" aria-describedby="ss-add-drawer-description">
+      <header>
+        <div><span>Add a communication channel</span><h2 id="ss-add-drawer-title">{option.title}</h2></div>
+        <button ref={closeRef} type="button" className="ss-add-close" aria-label="Close setup" onClick={onClose}><X aria-hidden /></button>
+      </header>
+      <div className="ss-add-drawer-body">
+        <p id="ss-add-drawer-description">{option.outcome}</p>
+        <Status tone={option.tone}>{option.state}</Status>
+        <dl className="ss-add-details">
+          <div><dt>Before setup</dt><dd>{option.required}</dd></div>
+          <div><dt>What Paige may use</dt><dd>{option.paige}</dd></div>
+          <div><dt>Owner and source</dt><dd>{option.owner} · {option.source}</dd></div>
+        </dl>
+        {!option.destination && <div className="ss-add-unavailable" role="status"><TriangleAlert aria-hidden /><p>This route is not available yet. No provider connection or permission is implied.</p></div>}
+      </div>
+      <footer>
+        <button type="button" className="ss-add-secondary" onClick={onClose}>Cancel</button>
+        {option.destination && <button type="button" data-initial-focus className="ss-add-primary" onClick={() => onContinue(option.destination!)}>{option.action}</button>}
+      </footer>
+    </aside>
+  </div>;
+  return createPortal(drawer, document.querySelector(".solo-settings") ?? document.body);
+}
+
+function AddChannelWorkspace({ account, options, connected, bestId, nextState, onOpen }: {
+  account: string;
+  options: AddChannelOption[];
+  connected: string[];
+  bestId: string | null;
+  nextState: "ready" | "resolving" | "unavailable";
+  onOpen: (option: AddChannelOption) => void;
+}) {
+  const sections = [
+    { title: "Email and inbox", blurb: "Receiving mail and sending mail are different permissions.", icon: Mail, ids: ["inbox", "sending"] },
+    { title: "Phone and messaging", blurb: "Set up the number, messaging account, and required registration.", icon: Smartphone, ids: ["phone", "messaging"] },
+    { title: "Calendar and booking", blurb: "Scheduling setup stays with the Calendars owner surface.", icon: CalendarClock, ids: ["calendar", "booking"] },
+  ] as const;
+  const best = bestId ? options.find((option) => option.id === bestId) ?? null : null;
+  const bestTitle = best?.id === "calendar" ? "Review calendar and booking" : best?.title;
+  const bestOutcome = best?.id === "calendar"
+    ? "Review existing scheduling connections or add one from the Calendars owner surface."
+    : best?.outcome;
+  return <div className="ss-add-workspace">
+    <section className="ss-add-intro" aria-labelledby="ss-add-title">
+      <div><span>Business channel setup</span><h2 id="ss-add-title">Add a communication channel</h2><p>Connections are how your business can be reached, how Paige may work with those channels, and what needs attention.</p></div>
+      <div className="ss-add-current"><strong>Operating channels</strong>{connected.length ? <ul>{connected.map((item) => <li key={item}><CheckCircle2 aria-hidden />{item}</li>)}</ul> : <p>No operating channels are confirmed yet.</p>}</div>
+    </section>
+    {best && <section className="ss-add-next" aria-label="Best next setup action">
+      <div><span>Best next step</span><strong>{bestTitle}</strong><p>{bestOutcome}</p></div>
+      <button type="button" className="ss-add-primary" onClick={() => onOpen(best)} aria-haspopup="dialog">{best.action}</button>
+    </section>}
+    {!best && <section className="ss-add-next" aria-label="Setup recommendation status" role="status">
+      <div>
+        <span>{nextState === "resolving" ? "Checking setup" : "Next step unavailable"}</span>
+        <strong>{nextState === "resolving" ? "Checking your channel setup" : "Next step unavailable"}</strong>
+        <p>{nextState === "resolving"
+          ? "The next action will appear after this workspace’s channel records finish resolving."
+          : "We couldn’t verify every channel record needed to rank a safe next action. Review the options marked for attention or try again from their owner surface."}</p>
+      </div>
+    </section>}
+    <div className="ss-add-groups">{sections.map(({ title, blurb, icon: Icon, ids }) => <section key={title} className="ss-add-group" aria-labelledby={`ss-add-${ids[0]}`}>
+      <header><span className="ss-card-icon"><Icon aria-hidden /></span><div><h3 id={`ss-add-${ids[0]}`}>{title}</h3><p>{blurb}</p></div></header>
+      <div className="ss-add-options">{ids.map((id) => {
+        const option = options.find((entry) => entry.id === id)!;
+        return <article key={option.id} className="ss-add-option" data-channel-option={option.id}>
+          <div className="ss-add-option-main"><strong>{option.title}</strong><p>{option.outcome}</p><small>{option.owner} · {option.source}</small></div>
+          <div className="ss-add-option-state"><Status tone={option.tone}>{option.state}</Status><span>Requires: {option.required}</span></div>
+          <button type="button" className="ss-add-option-action" onClick={() => onOpen(option)} aria-haspopup="dialog">{option.action}</button>
+        </article>;
+      })}</div>
+    </section>)}</div>
+    <aside className="ss-add-integrations" aria-label="Find external tools">
+      <div><ExternalLink aria-hidden /><p><strong>Looking for external tools?</strong> For automations, external apps, APIs, social tools, data systems, and specialist tools, go to Integrations.</p></div>
+      <Link to={`/solo/${account}/settings/integrations`}>Go to Integrations</Link>
+    </aside>
+  </div>;
+}
 
 /**
  * Settings → Connections.
@@ -485,7 +623,7 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
   const numbers = useSoloNumbers();
   const a2p = useSoloA2P();
   const a2pProvider = useSoloA2PProvider();
-  const { activeTenantId: registrationTenant } = useTenantContext();
+  const { activeTenantId: registrationTenant, activeUserId, loading: tenantLoading } = useTenantContext();
   const identity = useManagedIdentity();
   // Communications contains communication methods, Registration contains number
   // acquisition and carrier filing, Calendars contains scheduling configuration,
@@ -510,13 +648,70 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
   const domainPresentation = getCustomDomainPresentation({ statuses: comms.domains.map((domain) => domain.status), loading: comms.loading, error: comms.error });
   const readiness = useCommsReadiness();
   const r = readiness.value;
+  const scopeKey = `${activeUserId ?? ""}:${registrationTenant ?? ""}`;
+  const [openOption, setOpenOption] = useState<{ option: AddChannelOption; scope: string } | null>(null);
+  useEffect(() => { setOpenOption(null); }, [scopeKey, tenantLoading, account]);
+  const mailboxConnected = comms.mailbox?.connected === true;
+  const identityOperational = identityPresentation.accountState === "active"
+    && Boolean(identity.value?.default_email_sender);
+  const sendingOperational = mailboxConnected || identityOperational;
+  const addOptions = useMemo<AddChannelOption[]>(() => {
+    const sendingSourceFailed = Boolean(
+      identity.error || comms.error || comms.mailbox === null || identityPresentation.accountState === "unavailable",
+    );
+    const sendingState: Pick<AddChannelOption, "state" | "tone" | "action"> = sendingOperational && (identity.loading || comms.loading)
+      ? { state: "Connected · checking status", tone: "neutral", action: "View details" }
+      : sendingOperational && sendingSourceFailed
+        ? { state: "Connected · failed check", tone: "warn", action: "Review issue" }
+        : sendingOperational
+          ? { state: "Connected", tone: "ok", action: "View details" }
+          : identity.loading || comms.loading
+        ? { state: "Checking status", tone: "neutral", action: "View details" }
+        : sendingSourceFailed
+          ? { state: "Status unavailable", tone: "bad", action: "Review issue" }
+          : identityPresentation.accountState === "pending"
+            ? { state: "Activation pending", tone: "warn", action: "Continue setup" }
+            : identityPresentation.accountState === "degraded"
+              ? { state: "Needs attention", tone: "bad", action: "Review issue" }
+              : identityPresentation.accountState === "configured"
+                ? { state: "Configured, not verified", tone: "warn", action: "Continue setup" }
+                : { state: "Ready to begin", tone: "neutral", action: "Connect" };
+    const phoneState = readiness.error ? { state: "Status unavailable", tone: "bad" as const, action: "Review issue" as const }
+      : !r ? { state: "Checking status", tone: "neutral" as const, action: "View details" as const }
+        : r.can_send_sms ? { state: "Connected", tone: "ok" as const, action: "View details" as const }
+          : r.number === "assigned" && r.a2p !== "approved" ? { state: "Registration required", tone: "warn" as const, action: "Continue setup" as const }
+            : { state: "Needs setup", tone: "warn" as const, action: "Continue setup" as const };
+    return [
+      { id: "inbox", title: "Connect a mailbox", outcome: "Receive and review incoming business email.", state: "Unavailable", tone: "neutral", required: "A supported inbound-mail permission and read path", paige: "Nothing until inbound mail support is proven", owner: "Communications", source: "No inbound mailbox source", action: "View details" },
+      { id: "sending", title: "Set up a sending identity", outcome: "Send business email from a managed identity or a connected Google sending account.", ...sendingState, required: "A sender name and verified domain, or Google send permission", paige: "The approved sender identity and outbound send permission only", owner: "Communications", source: "Sending identity and sending-account records", destination: "communications" },
+      { id: "phone", title: "Business phone and SMS", outcome: "Set up the business number and its supported messaging capability.", state: phoneState.state, tone: phoneState.tone, required: r?.number === "assigned" ? "Carrier registration and recorded consent" : "A messaging account, eligible number, and business facts", paige: "The assigned number, texting readiness, consent, and delivery status", owner: "Communications and Registration", source: "Canonical messaging-readiness record", action: phoneState.action, destination: readiness.error ? "health" : r?.number === "assigned" && r.a2p !== "approved" ? "registration" : "communications" },
+      { id: "messaging", title: "Business messaging channels", outcome: "Use supported business messaging beyond SMS when a verified connection path exists.", state: "Unavailable", tone: "neutral", required: "A supported provider contract, permission path, and verified channel", paige: "Nothing until a supported channel is connected", owner: "Communications", source: "No eligible business-messaging source", action: "View details" },
+      { id: "calendar", title: "Connect a calendar", outcome: "Let Paige use the calendar permissions you choose for scheduling.", state: "Status checked in Calendars", tone: "neutral", required: "A supported calendar account and explicit calendar permission", paige: "Only the calendar availability and actions allowed by that connection", owner: "Calendars", source: "Calendar connection records", action: "View details", destination: "calendars" },
+      { id: "booking", title: "Booking and availability", outcome: "Manage booking links, hosts, availability rules, and scheduling health.", state: "Managed in Calendars", tone: "neutral", required: "A calendar connection and configured availability", paige: "Booking availability and supported scheduling actions", owner: "Calendars", source: "Booking and host configuration", action: "View details", destination: "calendars" },
+    ];
+  }, [comms.error, comms.loading, comms.mailbox, identity.error, identity.loading, identityPresentation.accountState, r, readiness.error, sendingOperational]);
+  const connectedChannels = useMemo(() => {
+    const channels: string[] = [];
+    if (identityOperational && identity.value?.default_email_sender) channels.push(`Sending identity · ${identity.value.default_email_sender}`);
+    if (mailboxConnected) channels.push(`Google sending account${comms.mailbox?.address ? ` · ${comms.mailbox.address}` : ""}`);
+    if (r?.can_send_sms && r.number === "assigned" && r.number_e164) channels.push(`Business phone · ${r.number_e164}`);
+    return channels;
+  }, [comms.mailbox?.address, identity.value?.default_email_sender, identityOperational, mailboxConnected, r?.can_send_sms, r?.number, r?.number_e164]);
+  const recommendationResolving = identity.loading || comms.loading || readiness.loading;
+  const recommendationUnavailable = !recommendationResolving
+    && Boolean(identity.error || comms.error || readiness.error || !r || comms.mailbox === null);
+  const bestNextId = recommendationResolving || recommendationUnavailable
+    ? null
+    : !sendingOperational
+      ? "sending"
+      : !r!.can_send_sms
+        ? "phone"
+        : "calendar";
+  const nextState = recommendationResolving ? "resolving" : recommendationUnavailable ? "unavailable" : "ready";
 
-  // Integrations is deliberately NOT built as a tab here. It is its own Settings
-  // destination, shipped by #657, so Connections does not become a second home
-  // for it (§18). `Available` below is #660's provider CATALOGUE, which predates
-  // that split and is annotated there as part of the owner-locked shape — it is
-  // preserved rather than deleted, because removing another lane's shipped
-  // surface is not this PR's call (§58).
+  // Integrations remains a separate Settings destination. Add channel owns only
+  // operating communication paths and provides one explicit handoff for external
+  // apps, automations, APIs, data systems and specialist tools.
   const TABS = [
     ["communications", "Communications"],
     ["calendars", "Calendars"],
@@ -525,7 +720,7 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
     // things a person opens Communications to check.
     ["registration", "Registration"],
     ["health", "Health"],
-    ["available", "Available"],
+    ["available", "Add channel"],
   ] as const;
 
   /** The ruled fallback for a not-ready path where the read SUCCEEDED and there
@@ -770,13 +965,8 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
       </Subsection>
     </div>}
 
-    {/* #660's provider catalogue, preserved verbatim. This branch had deleted it
-        and disclosed the resulting visibility gap under §58; #657 then shipped a
-        real top-level Integrations owner, and #660 annotated Available as part of
-        the owner-locked Connections shape. Both facts point the same way: keep it,
-        withdraw the removal, and leave whether Available still earns a place here
-        to the owner and the lane that owns it. */}
-    {view === "available" && <div className="ss-provider-grid">{PROVIDERS.map(([name,kind,truth])=><article key={name}><Smartphone/><div><strong>{name}</strong><span>{kind}</span></div><Truth value={truth}/></article>)}</div>}
+    {view === "available" && <AddChannelWorkspace account={account} options={addOptions} connected={connectedChannels} bestId={bestNextId} nextState={nextState} onOpen={(option) => setOpenOption({ option, scope: scopeKey })}/>}
+    {openOption && !tenantLoading && openOption.scope === scopeKey && <ConnectionSetupDrawer key={`${scopeKey}:${openOption.option.id}`} option={openOption.option} onClose={() => setOpenOption(null)} onContinue={(destination) => { setOpenOption(null); changeView(destination); }}/>}
   </>;
 }
 
@@ -1583,7 +1773,7 @@ function SoloSettingsContent({ openPaige }: { openPaige?: () => void }) {
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
   const view = tab === "team" ? <TeamView openPaige={openPaige}/> : tab === "connections" ? <ConnectionsView initialSegment={segment} onSegmentChange={resetSettingsScroll}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <SoloBillingView/> : <SoloBusinessContextSetup account={account}/>;
   return <div ref={rootRef} className="solo-settings">
-    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "setup" ? "The owner-confirmed business truth Paige may use to understand and support this workspace." : current.key === "connections" ? "Communication methods, registration, schedules, and verified status for this workspace." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
+    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "setup" ? "The owner-confirmed business truth Paige may use to understand and support this workspace." : current.key === "connections" ? "Operating channels, availability, registration, and verified health for this workspace." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div>{current.key !== "connections" && <Truth value={current.truth}/>}</header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}
     {current.key === "setup" && <SettingsMoveNotice key={account}/>}
     <div className="ss-content" data-settings-tab={tab} data-tab-count={tabs.length}>{view}</div>

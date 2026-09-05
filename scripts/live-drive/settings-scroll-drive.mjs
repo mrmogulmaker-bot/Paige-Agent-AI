@@ -49,8 +49,8 @@ const DESTINATIONS = [
   "setup", "team", "connections", "integrations",
   "notifications", "security-data", "vault", "billing",
 ];
-/** Connections' four segments are child state, not addresses — clicked, not navigated. */
-const SEGMENTS = ["Communications", "Calendars", "Registration", "Health", "Available"];
+/** Connections' five segments are child state, not addresses — clicked, not navigated. */
+const SEGMENTS = ["Communications", "Calendars", "Registration", "Health", "Add channel"];
 /**
  * The authorized visible-scroll destinations, kept identical to the product's own
  * declaration in `src/components/tenant-shell/settings-scroll-contract.ts`.
@@ -257,7 +257,7 @@ async function openDestination(page, dest, clipped) {
 /**
  * Wait until the surface has stopped growing. A destination whose data is still
  * resolving changes scrollHeight under the drive: the scrollbar geometry gets read at
- * one height and the drag asserted against another, which is how `connections›Available`
+ * one height and the drag asserted against another, which is how `connections›Add channel`
  * at 900x1000 reported 15/35 on a surface that reaches 35/35 once settled. That was a
  * race in this drive, not a defect in the scrollbar — but a flaky check is a check
  * nobody can trust, so the wait is on the fact rather than on a fixed timeout.

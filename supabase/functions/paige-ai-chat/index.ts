@@ -1795,6 +1795,52 @@ JSON:`;
       // fallback here; if this value is wrong, the persona resolver is the thing to fix.
       const tkTenantId = personaCtx.tenant_id;
 
+      // §9/§51 — CONFIRM the resolved scope IS the caller's DECLARED active workspace before
+      // searching, not a COALESCE fallback. `personaCtx.tenant_id` comes (via
+      // get_paige_persona_context() → current_user_tenant_id(), migration 20261213000000) from
+      //   COALESCE(<active_tenant_id, only when non-null AND entitled>,
+      //            <oldest active membership: tenant_members ORDER BY joined_at ASC LIMIT 1>).
+      // When active_tenant_id is null OR set-but-unentitled (stale/revoked), that silently
+      // resolves to the OLDEST membership — a workspace the caller is a member of but is not
+      // operating as. Neither the RPC's own guard (it re-checks p_tenant_id against the SAME
+      // resolver) nor revalidateTenantKnowledgeScope() (it compares two reads of that resolver,
+      // so it catches a mid-turn CHANGE but never the substitution itself) can see it. So read the
+      // caller's OWN declared active workspace directly — the same profiles.active_tenant_id the
+      // §9 working-context capture reads ~600 lines below — through the caller's JWT, and only
+      // search when it EQUALS the resolved scope. This is a fail-closed CONFIRMATION, never a new
+      // tenant pick or a second resolver (§18): current_user_tenant_id()'s fallback is deliberately
+      // untouched because 68 live RLS policies depend on it. It drops no legitimate turn — a turn
+      // that searches KB today already has personaCtx.tenant_id == current_user_tenant_id(), which
+      // equals a non-null, entitled active_tenant_id in every case except the fallback this refuses.
+      // §13: null/read-failure/mismatch → no embed (a paid call), no retrieval, no telemetry, logged.
+      let tkScopeIsDeclaredActive = false;
+      if (tkTenantId != null) {
+        let declaredActiveTenantId: string | null = null;
+        let declaredActiveReadFailed = false;
+        try {
+          const { data: declaredProfile, error: declaredError } = await supabaseClient
+            .from("profiles")
+            .select("active_tenant_id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (declaredError) declaredActiveReadFailed = true;
+          else declaredActiveTenantId = (declaredProfile?.active_tenant_id as string | null) ?? null;
+        } catch (_declaredErr) {
+          declaredActiveReadFailed = true;
+        }
+        tkScopeIsDeclaredActive = !declaredActiveReadFailed && declaredActiveTenantId === tkTenantId;
+        if (!tkScopeIsDeclaredActive) {
+          console.error(
+            "[paige] tenant Knowledge scope is not the caller's DECLARED active workspace — searching no tenant Knowledge this turn (fail closed)",
+            JSON.stringify({
+              resolved_tenant_id: tkTenantId,
+              declared_active_tenant_id: declaredActiveReadFailed ? null : declaredActiveTenantId,
+              declared_read_failed: declaredActiveReadFailed,
+            }),
+          );
+        }
+      }
+
       // Unresolved authoritative scope does NO tenant work: no embedding (a paid call), no
       // retrieval, no tenant telemetry. A tenant-less caller — the Platform Operator — must
       // never be handed some arbitrary account's knowledge, and `null` is not a scope to
@@ -1814,7 +1860,7 @@ JSON:`;
       // re-asserted at each boundary that carries this content further — before the sync's
       // provider egress, after it returns, and at stream close — and the reply is withheld
       // behind `holdProtectedContent` until the last of those passes.
-      if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId) {
+      if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId && tkScopeIsDeclaredActive) {
         const tkQuery = lastUserMessage.content.trim();
         // Reuse the embedding from the rag block when available, else compute.
         const tkEmbedding = await embedText(tkQuery);
