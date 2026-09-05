@@ -2694,3 +2694,44 @@ pre-existing routing fragility it is.
 **The caveat was NARROWED, not deleted.** PAIGE can set the closing role; the Pipeline page cannot,
 and that control is CD's. A deleted caveat would have sent the owner to a page that still cannot
 finish the job (§70).
+
+## 2026-09-05 — Release A: PAIGE Knowledge retrieval is gated on the DECLARED active workspace (recovery lane, re-ground of #591)
+
+**The gap, re-grounded on current `main`.** #591's five knowledge tenant-safety protections were
+re-audited against current `main`. Four are already delivered by a STRONGER superseding seam
+(SAFETY-FIRST STREAMING + `revalidateTenantKnowledgeScope` + the one-way revocation latch + the 409
+`ACTIVE_ACCOUNT_CHANGED` before model egress + per-round tool guards), and the `sync-credit-report-data`
+crossing #591 hardened is moot — the chat path no longer calls it (§70 proposal-first). The ONE
+protection still absent was #591's core claim: **refusing the oldest-membership fallback AT the
+knowledge-retrieval boundary.**
+
+**Root cause.** `paige-ai-chat` searched `match_tenant_knowledge` for `personaCtx.tenant_id`, which via
+`get_paige_persona_context() → current_user_tenant_id()` (migration `20261213000000`) COALESCEs a null
+or unentitled `active_tenant_id` to the OLDEST active membership (`tenant_members ORDER BY joined_at ASC
+LIMIT 1`). The RPC's own guard re-checks against the SAME resolver, and `revalidateTenantKnowledgeScope`
+compares two reads of it — so both see a mid-turn CHANGE but neither sees the substitution. A caller with
+no declared active workspace had the oldest membership's private KB searched silently.
+
+**The fix (smallest current-main release, NOT a merge of #591).** In the tenant-KB block, read the
+caller's own `profiles.active_tenant_id` through the JWT client and search only when it EQUALS the
+resolved scope; null / read-failure / mismatch → no embed, no retrieval, no telemetry, logged. A
+fail-closed CONFIRMATION, never a new tenant pick — `current_user_tenant_id()` is deliberately untouched
+(68 RLS policies depend on it). It drops no legitimate turn: a turn that searches KB today already has
+`personaCtx.tenant_id == current_user_tenant_id()`, which equals a non-null entitled `active_tenant_id`
+in every case except the fallback this refuses. Linked-client and agency-managed-child turns are
+unaffected — they already fail the DB guard, or (agency, active set to the child) pass both.
+
+**Blast radius, measured on prod (§58, ref `xygzykjyynhzqytbqnzu`):** of 16 profiles, exactly **1** has a
+null `active_tenant_id` WITH a membership — the only account whose tenant-KB retrieval this newly refuses
+(recovery: `active_tenant_id` is stamped on login/workspace-entry). **0** profiles are in the
+multi-membership-null-active case, so the arbitrary-oldest-pick leak has zero live population but is
+structurally live the moment any multi-membership user's active goes null (matches #591's "structurally
+live, never reached").
+
+**Proof, by class.** Automated: `test:knowledge-scope` group 24 (new) — failing-first (3 of 4 fail on
+pre-fix `main`, all pass after); full suite **352/0** with the 349 prior checks unchanged. Static:
+`ci:tsc` 13→13; `lint:write-targets` / `lint:action-risk` / `lint:conversation-tenant` green. The Deno
+type-check ratchet is CI's (`deno` is not installed in this sandbox; the esbuild-backed harness did
+transpile and run the real handler). Authenticated production runtime: **OWED** — no signed-in owner
+drove the deployed handler this session (`LIVE_DRIVE_*` unset). **#591 is superseded by this and should
+be closed.**
