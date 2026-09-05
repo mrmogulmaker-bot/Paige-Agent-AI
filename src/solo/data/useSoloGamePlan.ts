@@ -153,7 +153,9 @@ function severityRank(sev: string | null | undefined): number {
 function checkStateTitle(interp: string | null | undefined): string {
   const text = (interp || "").trim();
   if (!text) return "Resolve a setup check";
-  const state = text.split(/\s+[—–-]\s+/)[0].trim();
+  // Split on the em/en dash separator the authored "STATE — next step" copy uses. NOT a bare spaced
+  // hyphen: a STATE clause may legitimately contain " - ", and truncating there would drop real state.
+  const state = text.split(/\s+[—–]\s+/)[0].trim();
   if (state && state.length <= 90) return state;
   return "Resolve a setup check";
 }
@@ -166,17 +168,25 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
   const pending = useSoloPendingActions();
   const checks = useSystemsCheck("tenant");
   const activity = useSoloActivityFeed(workspaceId);
-  const { activeTenant, activeUserId } = useTenantContext();
+  const { activeTenant, activeTenantId, isPlatformStaff } = useTenantContext();
 
   // §57 identity: the personal greeting belongs to the person WHOSE workspace this is. The
-  // signed-in user's name is only theirs to show when they actually OWN the active workspace —
-  // otherwise an operator/super-admin viewing a tenant would see their OWN name pasted over
-  // someone else's HQ. When the viewer is not the owner, fall back to a neutral greeting rather
-  // than misattributing the workspace. (The owner's name is the only personal name the session
-  // can source; there is no seam that returns another tenant's owner name, so a non-owner viewer
-  // is greeted neutrally, never with a fabricated or borrowed identity — §13.)
-  const viewerOwnsWorkspace =
-    !!activeUserId && !!activeTenant?.owner_user_id && activeUserId === activeTenant.owner_user_id;
+  // signed-in user's name is only theirs to show when the active workspace is genuinely their own —
+  // otherwise an operator/super-admin viewing a tenant would see their OWN name pasted over someone
+  // else's HQ (the exact "Antonio over Mogul Maker Academy" mislabel).
+  //
+  // The reliable signal is NOT `owner_user_id`: it is NULL on prod for every sub-account and for
+  // some solo tenants, so keying on it would greet real owners "there" on their own workspace.
+  // Instead: RLS scopes a NON-staff user to only their OWN tenants, and platform staff are never
+  // auto-scoped into a tenant (they reach any tenant only by act-as / the operator switcher). So a
+  // non-staff viewer with an active workspace is, by construction, in their own workspace; a
+  // platform operator is not, and is greeted neutrally rather than with a borrowed identity (§13).
+  //
+  // KNOWN, HONEST LIMITATION (§13): an agency PARENT who switches into a sub-account's Solo shell is
+  // also non-staff, so they would be greeted by their own name over the child workspace. Because a
+  // sub-account carries no `owner_user_id`, distinguishing that case robustly needs a per-workspace
+  // owner seam (get_user_primary_tenant) not read here — documented, not silently assumed away.
+  const viewerOwnsWorkspace = !isPlatformStaff && !!activeTenantId;
 
   const refresh = useCallback(() => {
     cc.refresh();
@@ -553,16 +563,24 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
 
   const greeting = useMemo(() => {
     const now = new Date();
-    // Only greet by the signed-in person's name when they own this workspace (§57). cc.greeting.name
-    // resolves to the signed-in user's own name; showing it over a workspace they don't own is the
-    // identity leak the owner flagged. A non-owner viewer gets a neutral greeting.
-    const name = viewerOwnsWorkspace ? firstToken(cc.greeting?.name || "there") : "there";
+    // Greet by the signed-in person's name only when BOTH hold (§57/§13):
+    //  (1) they own this active workspace (viewerOwnsWorkspace), AND
+    //  (2) the name is a GENUINE personal name — not the business-name fallback.
+    // `cc.greeting.name` (useCommandCenter) resolves to `authName || activeTenant.name || "there"`, so
+    // when the signed-in owner has no display name it silently becomes the WORKSPACE name. Pasting that
+    // over the greeting ("Good evening, Mogul") is the same identity mislabel the owner flagged — so a
+    // name equal to the workspace name (or the neutral "there") is treated as "no personal name" and we
+    // greet neutrally rather than voice a business name as a person.
+    const ccName = (cc.greeting?.name || "").trim();
+    const workspaceName = (activeTenant?.name || "").trim();
+    const nameIsPersonal = !!ccName && ccName !== "there" && ccName !== workspaceName;
+    const name = viewerOwnsWorkspace && nameIsPersonal ? firstToken(ccName) : "there";
     return {
       name,
       dateLabel: now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }),
       salutation: salutationFor(now),
     };
-  }, [cc.greeting?.name, viewerOwnsWorkspace]);
+  }, [cc.greeting?.name, activeTenant?.name, viewerOwnsWorkspace]);
 
   // Each summary chip carries the REAL surface that backs it, so a confident count is never a dead
   // label — clicking it opens the supporting surface where the evidence lives (owner request, §36).

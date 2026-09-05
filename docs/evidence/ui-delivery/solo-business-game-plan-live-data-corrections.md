@@ -14,7 +14,7 @@ MATERIAL_FLOW_CHANGE: NO: no new screen, state, goal, or exit is introduced — 
 FLOW_PROTOTYPE: NOT_REQUIRED: not a material flow change (behaviour/identity/honesty correction on an already-owner-approved surface); the visual direction is unchanged.
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: Solo business owner; purpose unchanged (answer "what should we do?"). New: each summary claim opens the surface that backs it (§36 drill-down); the greeting names the person only when they own the workspace.
 VISUAL_DIRECTION: PASS: unchanged `.paige-solo` tokens; the chip becomes a real control with a violet focus ring (never gold, §11) and a small arrow affordance; no new palette or layout.
-AUTOMATED_EVIDENCE: PASS: full `npx vitest run` — 233 files / 3456 tests passed; the surface suites SoloGamePlanWorkspace.test.tsx (12) + data/useSoloGamePlan.test.ts (13) include failing-first tests for the greeting ownership gate, the honest payment title, and every chip carrying a real destination; `npm run build` green; `npm run ci:tsc` no new type errors; ESLint + gold-discipline on the changed src exit 0.
+AUTOMATED_EVIDENCE: PASS: full `npx vitest run` — 233 files / 3457 tests passed; the surface suites SoloGamePlanWorkspace.test.tsx (12) + data/useSoloGamePlan.test.ts (14) include failing-first tests for the greeting ownership gate, the greeting business-name-fallback neutralisation (peer-gate MAJOR), the honest payment title, and every chip carrying a real destination; `npm run build` green; `npx tsc --noEmit` clean; ESLint + gold-discipline on the changed src exit 0.
 STATIC_EVIDENCE: PASS: tsc-clean typed files (useSoloGamePlan.ts / SoloGamePlanWorkspace.tsx carry no @ts-nocheck); removed the now-unused CHECK_DESTINATIONS import; eslint changed-src exit 0; gold-discipline clean.
 RENDERED_EVIDENCE: PASS: real component + real CSS rendered headless (Chromium, scripts/live-drive/game-plan-render-drive.mjs) across all 8 states × light+dark × eight Solo content widths — 128/128 geometry checks (bodyOX=0, gpOX=0, rendered, no crash), with the attention chips now rendering as interactive buttons. Artifacts: scripts/live-drive/artifacts/game-plan/*.png.
 BEHAVIORAL_EVIDENCE: PASS: component tests drive the real flows — the "clients at risk" chip navigates to /solo/42/clients/people, the "drafts waiting" chip invokes openPaige, a foundation row navigates, a priority row expands (keyboard), and no route/provider/internal id leaks into visible copy; hook tests prove the greeting is neutral for a non-owner viewer and the payment move title is the honest state clause.
@@ -23,7 +23,7 @@ KEYBOARD_FOCUS: PASS: the attention chips are now real <button>s in the tab orde
 ZOOM_REFLOW: PASS: relative units + internal scroll owner unchanged; the render drive re-confirmed zero horizontal overflow at every Solo content width down to a 490px column with the chips as buttons. A separate 400%/320px browser zoom pass was not run (UNVERIFIED).
 REDUCED_MOTION: PASS: the new `.gp-chip-act` hover transition is disabled under @media (prefers-reduced-motion: reduce); no JS-driven animation added.
 STATE_COVERAGE: PASS: loading / spine-error / empty first-run / grounded (with grounded-partial-needs input-blocked proof states) / recorded-work motion (incl. the honest source+freshness caveat and the "No recorded work yet" empty) — all rendered in the drive and covered by tests.
-TRUTHFUL_STATE_LABELS: PASS: the greeting is the owner's name only when they own the workspace, else neutral (§57); a failing check's title is the true present state, never the achieved goal ("You can take payment" removed); the motion caveat states the source (recorded workspace activity) + freshness and that the underlying record isn't opened from this view; every chip opens a real surface; the payment reason is declare-oriented, never "can't take payment" (§38). Tests lock each.
+TRUTHFUL_STATE_LABELS: PASS: the greeting voices a personal name only when the viewer genuinely owns the active workspace (a non-staff viewer is RLS-scoped to their own tenants) AND the name is a real personal name — NOT the business-name fallback `useCommandCenter` emits when auth metadata has no display name (peer-gate MAJOR: "Good evening, Mogul" from firstToken("Mogul Maker Academy") is neutralised to "there"); a failing check's title is the true present state, never the achieved goal ("You can take payment" removed); the motion caveat states the source (recorded workspace activity) + freshness and that the underlying record isn't opened from this view; every chip opens a real surface; the payment reason is declare-oriented, never "can't take payment" (§38). Tests lock each.
 SOLO_UI: YES: Solo → Command Center → Business Game Plan (src/solo/SoloGamePlanWorkspace.tsx + src/solo/data/useSoloGamePlan.ts), the default landing of the canonical Solo shell.
 SOLO_1536X770_PAIGE_CLOSED: PASS: render drive at 1536×770 — all 8 states × both themes: bodyOX=0, gpOX=0, rendered, no crash, chips render as buttons.
 SOLO_1536X770_PAIGE_OPEN: PASS: render drive at a 1126px content column (1536 minus the ~410px Paige rail) — all 8 states × both themes: bodyOX=0, gpOX=0, rendered, no crash. (Component at the Paige-open content width; the authed shell's real dock is owed — see UNVERIFIED.)
@@ -59,7 +59,27 @@ condition, not the achieved goal. Intended scroll owner and geometry unchanged (
 
 ## Review and limitations
 
-Independent review: this diff is under a §39 peer-gate (independent adversarial read — correctness /
-§57 identity / §36 drill / §13 honesty / §58) whose blocking findings are resolved before merge.
+Independent review: a §39 peer-gate (independent adversarial read — correctness / §57 identity / §36
+drill / §13 honesty / §58) ran on the real diff and returned ONE MAJOR plus minors; all are resolved
+in this diff:
+- MAJOR (§57/§13): the greeting read `cc.greeting.name`, which `useCommandCenter` resolves to
+  `authName || activeTenant.name || "there"` — so an owner with no auth display name would be voiced
+  as their BUSINESS name ("Good evening, Mogul"). Resolved: the greeting now also requires the name to
+  be a genuine personal name (≠ the workspace name, ≠ "there"), locked by a failing-first test.
+- MINOR (§58): the original owner-gate keyed on `tenants.owner_user_id`, which is NULL on prod for
+  every sub-account and 3/8 solo tenants (verified) — so real owners would be greeted "there". Resolved:
+  the gate now uses the reliable membership signal (`!isPlatformStaff && activeTenantId`) — a non-staff
+  viewer is RLS-scoped to their own tenants; a platform operator reaches other tenants only by act-as.
+- MINOR: the harness stub carried `destination` on only one mode → dead buttons in three harness
+  frames. Resolved: all attention chips in the stub's partial/blocked/owner modes now carry a real
+  `destination`.
+- MINOR: `checkStateTitle` split on a bare spaced hyphen as well as em/en dashes. Resolved: tightened
+  to em/en dash only (the authored "STATE — next step" separator) so a state clause with " - " isn't
+  truncated.
 Limitations: every UNVERIFIED item above, chiefly the authenticated browser render of the deployed
-surface (owed to a browser-capable session, §32.c) and the coarse at-risk-clients drill.
+surface (owed to a browser-capable session, §32.c) and the coarse at-risk-clients drill. KNOWN,
+HONEST greeting-gate limitation (§13): an agency PARENT who switches into a sub-account's Solo shell is
+also non-staff, so they would be greeted by their own name over the child workspace. A sub-account
+carries no `owner_user_id`, so distinguishing that case robustly needs a per-workspace owner seam
+(`get_user_primary_tenant`) not read here — documented, not silently assumed away. Not the reported
+bug (operator/super-admin over a tenant), which IS fixed.

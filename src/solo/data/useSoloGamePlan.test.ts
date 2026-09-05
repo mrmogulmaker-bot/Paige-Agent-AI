@@ -57,8 +57,10 @@ function resetEmpty() {
   m.pending = { items: [], loading: false, error: null, refresh: vi.fn() };
   m.checks = { run: null, findings: [], loading: false, isError: false, scanPending: false, refresh: vi.fn() };
   m.activity = { items: [], loading: false, status: "loading", error: null, refresh: vi.fn() };
-  // Default: the signed-in user OWNS the active workspace (the normal Solo case).
-  m.tenant = { activeUserId: "owner-1", activeTenant: { owner_user_id: "owner-1" } };
+  // Default: the signed-in user OWNS the active workspace — a NON-staff viewer with an active tenant
+  // is, by RLS scoping, in their own workspace (the normal Solo case). `activeTenant.name` is the
+  // business name, distinct from any personal greeting name.
+  m.tenant = { isPlatformStaff: false, activeTenantId: "42", activeTenant: { name: "Clearpath Advisory" } };
 }
 
 beforeEach(() => {
@@ -178,19 +180,31 @@ describe("useSoloGamePlan derivation", () => {
   // ── owner corrections 2026-09-05 (authenticated live-data verification) ───────────────────
 
   it("greets the signed-in person by name ONLY when they own the active workspace (§57 identity)", () => {
-    // Owner case (default fixture): activeUserId === activeTenant.owner_user_id.
+    // Owner case (default fixture): a NON-staff viewer with an active workspace is in their own HQ.
     m.cc.greeting = { name: "Antonio" };
     render();
     expect(view.greeting.name).toBe("Antonio");
   });
 
   it("does NOT paste the viewer's name over a workspace they do not own — greets neutrally (§57)", () => {
-    // A super-admin / operator viewing a tenant: viewer id ≠ the workspace owner id.
+    // A super-admin / operator viewing a tenant via act-as: platform staff, so NOT their own HQ.
     m.cc.greeting = { name: "Antonio" };
-    m.tenant = { activeUserId: "operator-9", activeTenant: { owner_user_id: "owner-1" } };
+    m.tenant = { isPlatformStaff: true, activeTenantId: "t-mma", activeTenant: { name: "Mogul Maker Academy" } };
     render();
     expect(view.greeting.name).toBe("there");
     expect(view.greeting.name).not.toBe("Antonio");
+  });
+
+  it("greets neutrally when the only name available is the business-name fallback — even for the owner (§57/§13)", () => {
+    // useCommandCenter's greeting.name resolves to `authName || activeTenant.name || "there"`, so an
+    // OWNER with no auth display name (unset on prod for sub-accounts + some solo tenants) gets the
+    // WORKSPACE name here. It must never be voiced as a person ("Good evening, Mogul") — a name equal
+    // to the workspace name is treated as "no personal name" and the greeting stays neutral.
+    m.cc.greeting = { name: "Mogul Maker Academy" };
+    m.tenant = { isPlatformStaff: false, activeTenantId: "t-mma", activeTenant: { name: "Mogul Maker Academy" } };
+    render();
+    expect(view.greeting.name).toBe("there");
+    expect(view.greeting.name).not.toBe("Mogul");
   });
 
   it("a failing check's TITLE describes the real state, never an unachieved goal (payment, §13)", () => {

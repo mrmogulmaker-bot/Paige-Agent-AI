@@ -8,8 +8,19 @@
   workspace — so an operator/super-admin viewing a tenant would see their OWN name over that tenant's HQ.
   MMA is owned by `mogulmakeracademy@gmail.com` (metadata "Antonio"), so the owner's own login was
   coincidentally correct, but the SOURCE was wrong. Fixed IN `useSoloGamePlan` (not the shared
-  `useCommandCenter`, to leave Systems Check untouched): the personal name shows only when
-  `activeUserId === activeTenant.owner_user_id`, else a neutral greeting — no borrowed/fabricated identity.
+  `useCommandCenter`, to leave Systems Check untouched): the personal name shows only when the viewer
+  genuinely owns the active workspace — a **NON-staff viewer is RLS-scoped to their own tenants**, so
+  `!isPlatformStaff && activeTenantId` is the reliable ownership signal; a platform operator reaches
+  other tenants only by act-as and is greeted neutrally. The **§39 peer-gate caught a MAJOR** here: an
+  earlier draft keyed on `tenants.owner_user_id` AND read the name from `cc.greeting.name`, which
+  `useCommandCenter` resolves to `authName || activeTenant.name || "there"` — so (a) `owner_user_id` is
+  NULL on prod for every sub-account + 3/8 solo tenants (verified), which would greet real owners
+  "there"; and (b) an owner with no auth display name would be voiced as their BUSINESS name ("Good
+  evening, Mogul"). Both fixed: the membership signal replaces `owner_user_id`, and the greeting also
+  requires a genuine personal name (≠ workspace name, ≠ "there"). KNOWN, HONEST limit (§13): an agency
+  PARENT switching into a sub-account's Solo shell is also non-staff, so they'd be greeted by their own
+  name over the child — robustly distinguishing that needs `get_user_primary_tenant` (not the reported
+  bug; documented).
   (2) **Drill-able claims (§36):** the summary chips ("N clients at risk / drafts waiting / 1 move blocked /
   follow-ups due") were dead labels; each now carries a real `destination` and renders as a button that
   opens the backing surface (Clients / PAIGE / Systems Check). (3) **Payment-processor title (§13/§38):** a
@@ -21,8 +32,9 @@
   `get_solo_rail_activity` deliberately strips the per-row ref and the Rail RPC is out of scope — so the
   caveat now states the source (recorded workspace activity) + freshness honestly instead of implying a
   drill. The "Zapier PAIGE tools test succeeded" row is a REAL event (zapier_mcp_connection, 2026-09-05
-  14:08). (5) **Trust Compass** stays OUT — 3 real tabs, slot reserved, no dead tab (§58). Full suite 3456
-  green, build green, 128/128 render drive, §39 peer-gate. §32.c authenticated browser render still owed;
+  14:08). (5) **Trust Compass** stays OUT — 3 real tabs, slot reserved, no dead tab (§58). Full suite 3457
+  green, build green, tsc clean, 128/128 render drive, §39 peer-gate ran and its MAJOR + minors resolved
+  (greeting robustness, stub destinations, checkStateTitle dash). §32.c authenticated browser render still owed;
   the DATA layer is verified against prod. **Lesson: a headless session CAN do authenticated verification —
   by querying the real database, not only by driving the browser; the owner's live look surfaced an
   identity SOURCE bug whose displayed value happened to be right.**
