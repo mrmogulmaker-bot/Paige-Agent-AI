@@ -267,8 +267,16 @@ union return identical display columns, so option 2 discloses nothing extra.
 
 ### PAIGE Rail — Wave 3, Communications, and the outcome the five could not express (2026-09-05)
 
-**Status: PR open**, migration `20261220000000_an_act_that_landed_but_was_not_recorded.sql`.
-Owner-sequenced ahead of everything else in the adoption plan, under the ruling: *"Every real-money
+**Status: MERGED and LIVE on prod** (PR #947, squash-merge `2d91d1a1`, migration
+`20261220000000_an_act_that_landed_but_was_not_recorded.sql`). Persisted-apply confirmed 2026-09-05:
+`schema_migrations` carries `20261220000000` (prod head advanced from `20261213000000`), the sixth
+outcome `capability_completed_unrecorded` is live in BOTH the outcome CHECK and the source
+cross-check, and the live `_workspace_event_display` renders the sixth-outcome title and the four
+comms labels. `db-live` and `edge-live` both at `2d91d1a1`; deploy-migrations #209 and
+deploy-edge-functions #213 both green; zero migration drift. **Still owed (§32.c):** the
+authenticated browser-drive that a row actually PAINTS on the Command Center — needs the owner or a
+browser-capable session; the prod read proves the data reaches the reader, not that the component
+renders it. Owner-sequenced ahead of everything else in the adoption plan, under the ruling: *"Every real-money
 external action MUST record capability_run before it can be delegated at any autonomy tier above
 'Ask first.'"*
 
@@ -291,8 +299,8 @@ anon+JWT client, which returns `permission denied` as a **value, not a throw** �
 have shipped with every gate green and written zero rows forever. Filed as lesson 0a in
 `docs/brain/lessons-learned.md` so the next three adoption waves do not rediscover it.
 
-**Evidence.** 20 assertions against prod inside `BEGIN … ROLLBACK`, rollback confirmed (0 rows, 0
-migration rows, prod head still `20261213000000`) — including reading as the **authenticated
+**Evidence.** Pre-merge: 20 assertions against prod inside `BEGIN … ROLLBACK`, rollback confirmed
+(0 rows, 0 migration rows) — including reading as the **authenticated
 member** through `get_solo_rail_activity(50)`, the same RPC the Command Center calls, which returned
 all four acts with their intended copy. 3358 unit tests (18 new); `tsc` ratchet 13→13 with none in
 the changed files; `deno check` on the changed edge graph produced a diagnostic set **identical** to
