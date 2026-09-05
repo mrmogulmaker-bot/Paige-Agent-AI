@@ -6291,12 +6291,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "comms_buy_number",
-              description: "Admin only. BUY a phone number for this business. THIS SPENDS REAL MONEY — a monthly charge that starts immediately — so always show the number and its exact monthly price from comms_search_numbers and get a clear yes before calling with confirm:true. Never buy a number the operator did not name. Provider inventory goes stale between a search and a buy, so a refusal here is normal and final for that number: pick another rather than retrying the same one. If the reply says the number was bought but could not be recorded, the operator IS being billed for it — tell them so and do NOT buy a replacement.",
+              description: "Admin only. BUY a phone number for this business. This provisions a REAL number from the provider at a recurring monthly cost — the platform currently covers that cost, so the business is NOT billed for it, but a wrong or duplicate number is still a real waste, so always show the number and its exact monthly price from comms_search_numbers and get a clear yes before calling with confirm:true. Never buy a number the operator did not name. Provider inventory goes stale between a search and a buy, so a refusal here is normal and final for that number: pick another rather than retrying the same one. If the reply says the number was bought but could not be recorded, a real number was provisioned that the platform cannot see — do NOT buy a replacement (that would provision a second one); tell the operator to check the provider before trying again.",
               parameters: {
                 type: "object",
                 properties: {
                   phone_number: { type: "string", description: "E.164, exactly as comms_search_numbers returned it, e.g. +14045550123." },
-                  monthly_cents: { type: "integer", description: "The exact monthly_cents comms_search_numbers returned for THIS number. It is shown to the operator in the approval prompt and verified against the real price before anything is bought, so a number you did not get from a search will be refused rather than charged." },
+                  monthly_cents: { type: "integer", description: "The exact monthly_cents comms_search_numbers returned for THIS number — its listed recurring monthly price (which the platform currently covers; the business is not billed for it). It is shown to the operator in the approval prompt and verified against the real price before anything is bought, so a number you did not get from a search will be refused rather than bought." },
                   friendly_name: { type: "string", description: "Optional label, e.g. 'Intake line'." }
                 },
                 required: ["phone_number", "monthly_cents"]
@@ -7075,10 +7075,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // read as an approvable proposal — an earlier revision said "an amount Paige could
           // not quote", which invited a yes to a purchase with no number in it.
           const cents = typeof a?.monthly_cents === "number" ? a.monthly_cents : null;
-          const price = cents !== null
-            ? `$${(cents / 100).toFixed(2)}/month`
-            : "an unquoted amount — this will be refused; run a search first";
-          return `Buy ${a?.phone_number || "that number"} for this business${a?.friendly_name ? ` and label it "${a.friendly_name}"` : ""}. This starts a recurring charge of ${price}.`;
+          const label = a?.friendly_name ? ` and label it "${a.friendly_name}"` : "";
+          const buy = `Buy ${a?.phone_number || "that number"} for this business${label}.`;
+          // §38: the number carries a real recurring cost — the platform pays the provider and
+          // currently covers it, so the business is NOT billed for it in this slice. The figure
+          // shown is the LISTED price (`monthly_cents` is retail: wholesale + the platform's fee,
+          // not the raw provider cost), so it is named "listed price", not "provider cost". The
+          // caution kept here is the true one: a duplicate or unused number is a real waste, not a bill.
+          return cents !== null
+            ? `${buy} Its listed price is $${(cents / 100).toFixed(2)}/month, which the platform currently covers — the business isn't billed for it, but buy it deliberately: a duplicate or unused number is a real waste.`
+            : `${buy} You've passed an unquoted amount, so this will be refused — run a search first so the real monthly price can be shown.`;
         }
         case "comms_name_number":
           return String(a?.friendly_name ?? "").trim()
@@ -9036,7 +9042,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // A tenant-less refusal ("no workspace in context") has no tenant to attribute
           // to, so recordCapabilityRun no-ops it — correct: there is no filed act.
           const recordPipelineRun = async (
-            input: { result?: unknown; thrown?: unknown; threw?: boolean },
+            input: { result?: unknown; thrown?: unknown; threw?: boolean; writeAttempted?: boolean },
           ): Promise<void> => {
             try {
               const outcome: CapabilityOutcome | null = classifyPipelineRun({
@@ -9054,6 +9060,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               console.error("[paige] pipeline capability run not recorded:", (e as Error)?.message);
             }
           };
+          // Pre/post-write boundary for the pipeline capability recorder (Codex P2, 2026-09-05):
+          // set TRUE immediately before a pipeline write act dispatches its external UPDATE, so a
+          // throw caught below is classified honestly — a pre-write throw (parse/client/lookup)
+          // is `capability_failed` (nothing changed), only a post-write throw is `outcome_unknown`.
+          let pipelineWriteAttempted = false;
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
             const admin = createClient(supabaseUrl, supabaseServiceKey);
@@ -9868,8 +9879,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (!tenantId) {
                 result = { success: false, error: "No workspace in context — pick a workspace first." };
               } else {
-                const { data: stage } = await admin.from("pipeline_stages")
+                const { data: stage, error: stageErr } = await admin.from("pipeline_stages")
                   .select("id, stage_type, label, pipeline_id").eq("id", args.stage_id).eq("tenant_id", tenantId).is("archived_at", null).maybeSingle();
+                // Distinguish an OPERATIONAL lookup failure (PostgREST outage, malformed-UUID
+                // 22P02) from a genuine "not in your workspace" (Codex P2, 2026-09-05). A thrown
+                // query error is a PRE-WRITE failure → recorded as capability_failed, never a false
+                // `refused` ("Not allowed"). Only a clean null-with-no-error is the real guard
+                // rejection handled below.
+                if (stageErr) throw stageErr;
                 if (!stage) {
                   result = { success: false, error: "That stage isn't in your workspace." };
                 } else {
@@ -9878,6 +9895,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   // Keep pipeline_id in lockstep with the stage: if the target stage lives in a
                   // different pipeline of the same tenant, the deal moves to THAT pipeline — never a
                   // row whose stage_id and pipeline_id disagree (which would vanish off the board).
+                  // Mark the external write as dispatched: a throw AT OR AFTER this point may have
+                  // applied → capability_outcome_unknown; any earlier throw stays capability_failed.
+                  pipelineWriteAttempted = true;
                   const { data: moved, error: merr } = await admin.from("deals")
                     .update({ stage_id: stage.id, pipeline_id: stage.pipeline_id, status, actual_close_date: status === "open" ? null : today })
                     .eq("id", args.deal_id).eq("tenant_id", tenantId)
@@ -11012,7 +11032,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // instead, so `NUMBER_NOT_ACTIVE` reaches the Rail as a refusal even though
             // the model is told only that something went wrong.
             await recordCommsRun({ thrown: err, threw: true });
-            await recordPipelineRun({ thrown: err, threw: true });
+            await recordPipelineRun({ thrown: err, threw: true, writeAttempted: pipelineWriteAttempted });
 
             toolResults.push({
               tool_call_id: tc.id,

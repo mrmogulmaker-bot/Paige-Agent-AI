@@ -18,23 +18,33 @@ import type { CapabilityOutcome } from "./capability-record.ts";
  *     (no workspace in context · stage not in workspace · deal not in workspace), so
  *     nothing external changed. `capability_refused` — "refused before it ran, so nothing
  *     changed" is true of all three.
- *   - THROWN → deliberately `capability_outcome_unknown`, not `failed`. §13/§39 correction
- *     (both S1 review passes, 2026-09-05): an earlier draft claimed the `deal_activities`
- *     insert "throws after a successful move" — that is FALSE. That insert goes through
- *     `recordWrite`→`checkedWrite` (`_shared/checked-write.ts`), which swallows its error and
- *     returns false, NEVER throwing (`result` is still set to success). So the ONLY in-branch
- *     throw is `if (merr) throw merr` (index.ts ~9805, BEFORE the activity insert), plus a
- *     pre-handler `JSON.parse`/`createClient` throw in the shared dispatch `try`. `unknown` is
- *     still the honest mapping: a thrown UPDATE/transport error cannot be PROVEN at the JS
- *     layer to have NOT applied (a transport throw can land after the row committed but before
- *     the response arrived), so we never assert "nothing was left half-done." Mapping a throw
- *     to `failed` is the exact §947-forbidden false-"nothing changed" and is rejected here.
+ *   - THROWN → the honest outcome depends on WHERE the throw happened relative to the external
+ *     write, so the caller passes `writeAttempted` (§13/§39 + Codex P2, 2026-09-05):
+ *       • `writeAttempted === true` (the `deals` UPDATE was dispatched and threw, or a transport
+ *         error landed around it) → `capability_outcome_unknown`. A thrown UPDATE/transport error
+ *         cannot be PROVEN at the JS layer to have NOT applied (a transport throw can land after
+ *         the row committed but before the response arrived), so we never assert "nothing was
+ *         left half-done." Mapping THIS case to `failed` is the §947-forbidden false-"nothing
+ *         changed" and is rejected.
+ *       • `writeAttempted !== true` (a PRE-WRITE throw — the shared dispatch `try` begins with
+ *         `JSON.parse(tc.function.arguments)` then `createClient(...)`, and the handler's
+ *         pre-UPDATE stage lookup now `throw`s its own query error) → `capability_failed`. No
+ *         external effect was attempted, so "nothing changed" is TRUE. It must NOT be
+ *         `capability_outcome_unknown`: that outcome's Rail copy ("was sent … may have taken
+ *         effect … check before re-running") is a FALSE reassurance about an act that never
+ *         dispatched (the exact Codex P2 defect this split fixes), and it must NOT be
+ *         `capability_refused` (no guard decision was made — that is an operational failure).
+ *     The `deal_activities` timeline insert still cannot throw (it goes through
+ *     `recordWrite`→`checkedWrite`, `_shared/checked-write.ts`, which swallows and returns
+ *     false), so it never affects this mapping.
  *
- * FAMILY GROWTH (S1 review m4): the Set may later add deal_create / pipeline_create / …, but
- * the blanket rules below (`success:false → refused`, `throw → unknown`) are verified for
- * deal_move_stage's control flow ONLY. Each new member MUST re-verify that its `success:false`
- * returns before any write, and that no throw path can follow a committed effect — or branch
- * per-capability (as `comms-capability-outcome.ts` does with per-code signal maps) — first.
+ * FAMILY GROWTH (S1 review m4 + Codex P2): the Set may later add deal_create / pipeline_create /
+ * …, and the `writeAttempted` boundary is what makes that safe to generalize — each new member
+ * MUST (a) set the caller's write-attempted flag immediately BEFORE its first external write, and
+ * (b) `throw` (not swallow) any pre-UPDATE lookup error so it lands in the pre-write bucket. The
+ * `success:false → refused` mapping stays verified for deal_move_stage's control flow ONLY (every
+ * `success:false` branch returns before the UPDATE); a new member with a different shape branches
+ * per-capability (as `comms-capability-outcome.ts` does) first.
  *
  * OTHER PRODUCER, out of S1 scope (§37, review m2): `paige-mcp` also exposes `move_deal_stage`
  * (`paige-mcp/index.ts:490`), which moves the deal and records to `paige_audit_log` (via
@@ -63,15 +73,24 @@ export function classifyPipelineRun(input: {
   result?: unknown;
   thrown?: unknown;
   threw?: boolean;
+  /**
+   * Did the executor get as far as DISPATCHING the external write before it threw? The caller
+   * sets this `true` immediately before its first mutating call (the `deals` UPDATE). It splits
+   * a throw's honesty: a post-write throw may have applied (`outcome_unknown`); a pre-write throw
+   * provably did not (`failed`). Absent/false ⇒ pre-write. See the header for the full rationale.
+   */
+  writeAttempted?: boolean;
 }): CapabilityOutcome | null {
   if (!PIPELINE_WRITE_CAPABILITIES.has(input.capability)) return null;
 
-  // A thrown UPDATE/transport error is not PROVABLY non-applied at the JS layer (a transport
-  // throw can land after the row committed), so we never assert "nothing changed" on a throw
-  // (§947 governing rule) — NOT `failed`. The activity-log insert cannot throw (it goes through
-  // checkedWrite), so the in-branch throw is only `throw merr`; see the header for the full
-  // corrected rationale.
-  if (input.threw) return "capability_outcome_unknown";
+  if (input.threw) {
+    // Post-write throw: not PROVABLY non-applied (a transport throw can land after commit), so
+    // never claim "nothing changed" — `capability_outcome_unknown` (§947 governing rule).
+    // Pre-write throw (malformed-args JSON.parse, client construction, or a pre-UPDATE lookup
+    // error the handler now re-throws): no external effect was attempted, so "nothing changed"
+    // is TRUE — `capability_failed`, NEVER the false-reassurance `outcome_unknown` (Codex P2).
+    return input.writeAttempted ? "capability_outcome_unknown" : "capability_failed";
+  }
 
   const r = (input.result && typeof input.result === "object")
     ? input.result as Record<string, unknown>
@@ -80,8 +99,10 @@ export function classifyPipelineRun(input: {
 
   if (r.success === true) return "capability_succeeded";
 
-  // Every `success:false` branch of deal_move_stage returns before the UPDATE — a real
-  // refusal where nothing external changed.
+  // Every `success:false` branch of deal_move_stage returns BEFORE the UPDATE — a real refusal
+  // where nothing external changed. The one former exception (an operational stage-lookup error
+  // surfacing as `success:false`) is now THROWN at the handler and classified above as
+  // `capability_failed`, so a false "refused" on an outage can no longer reach here (Codex P2).
   if (r.success === false) return "capability_refused";
 
   return "capability_outcome_unknown";
