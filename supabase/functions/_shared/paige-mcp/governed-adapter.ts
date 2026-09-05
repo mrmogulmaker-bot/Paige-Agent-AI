@@ -301,7 +301,7 @@ export function decideMcpToolCall(
           ? "This would change data, and a connected app cannot approve that. Nothing was run. " +
             "Ask Paige to do it, where the workspace owner can approve it."
           : "This would change data, and a connected app cannot approve that. Nothing was run. " +
-            "There is no approved path for this action yet.",
+            "This action has no path through Paige for a person to approve it yet.",
       },
       audit: record("refuse", "approval_required", "mcp_carries_no_approval_channel"),
     };

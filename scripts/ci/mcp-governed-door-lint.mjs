@@ -32,6 +32,13 @@ import { resolve } from "node:path";
 const MCP = "supabase/functions/paige-mcp/index.ts";
 const POLICY = "supabase/functions/_shared/paige-mcp/capability-policy.ts";
 const RISK = "supabase/functions/_shared/action-risk.ts";
+const CHAT = "supabase/functions/paige-ai-chat/index.ts";
+
+/** The tool names the Chat handler declares to the model — the same shape `action-risk-lint` reads.
+ *  R8 uses it to recompute `paigeHome`, so that field can never drift into a comfortable lie. */
+export function chatDeclaredTools(src) {
+  return new Set([...src.matchAll(/\n\s*name: "([a-z0-9_]+)",/g)].map((m) => m[1]));
+}
 
 /** Tool names as REGISTERED. Anchored at column 0 so a name inside a comment or string cannot count. */
 export function registeredTools(src) {
@@ -64,7 +71,13 @@ export function policyRows(src) {
     const span = table.slice(m.index, i + 1 < keys.length ? keys[i + 1].index : table.length);
     const canonical = /\bcanonical:\s*"([^"]*)"/.exec(span);
     const effect = /\beffect:\s*"(read|mutate)"/.exec(span);
-    return { tool: m[1], canonical: canonical ? canonical[1] : null, effect: effect ? effect[1] : null };
+    const home = /\bpaigeHome:\s*(true|false)\b/.exec(span);
+    return {
+      tool: m[1],
+      canonical: canonical ? canonical[1] : null,
+      effect: effect ? effect[1] : null,
+      paigeHome: home ? home[1] === "true" : null,
+    };
   });
 }
 
@@ -227,7 +240,7 @@ export function secondDoors(src) {
  *  Raising this number is a deliberate act that must be reviewed, which is the point. */
 const EXPECTED_TOOLS_CALL_MENTIONS = 4;
 
-export function check(mcpSrc, policySrc, riskSrc = "") {
+export function check(mcpSrc, policySrc, riskSrc = "", chatSrc = "") {
   const failures = [];
   const registered = registeredTools(mcpSrc);
   const policied = policyTools(policySrc);
@@ -322,6 +335,37 @@ export function check(mcpSrc, policySrc, riskSrc = "") {
     }
   }
 
+  // R8 ─ `paigeHome` is DERIVED, never asserted. It decides the one sentence a refused caller reads:
+  // "ask Paige to do it" for an act a person can actually perform there, and "there is no approved
+  // path for this yet" for the fifty-six that reached the classifier only because MCP registered
+  // them. A hand-kept boolean drifts toward the comfortable answer, and the comfortable answer here
+  // is a destination the platform does not have — the operator goes to Paige, finds nothing, and
+  // concludes the refusal was a bug.
+  if (populated && chatSrc) {
+    const declared = chatDeclaredTools(chatSrc);
+    if (declared.size < 50) {
+      failures.push(`R8 only ${declared.size} tool name(s) parsed out of ${CHAT} — this rule is reading nothing, so it would silently bless every paigeHome value`);
+    } else {
+      for (const row of rows) {
+        if (row.paigeHome === null) {
+          failures.push(`R8 ${row.tool} declares no paigeHome, so the door cannot tell a refused caller whether the act has anywhere to go.`);
+          continue;
+        }
+        const truth = !!row.canonical && declared.has(row.canonical);
+        if (row.paigeHome !== truth) {
+          failures.push(
+            `R8 ${row.tool} declares paigeHome:${row.paigeHome} but ${CHAT} ${truth ? "DOES" : "does NOT"} declare "${row.canonical}" as a tool. ` +
+            (truth
+              ? "The refusal would tell the caller there is no approved path when a person can do this in Paige."
+              : "The refusal would send the caller to Paige for an act Paige cannot perform."),
+          );
+        }
+      }
+    }
+  } else if (populated && !chatSrc) {
+    failures.push(`R8 no ${CHAT} source was supplied, so paigeHome was graded against nothing`);
+  }
+
   return { failures, registeredCount: registered.length, policiedCount: policied.length };
 }
 
@@ -336,7 +380,7 @@ function selfTest() {
     const mcp = tools.map((t) => `mcp.tool("${t.name}", {\n${t.body ?? ""}});\n${t.after ?? ""}`).join("")
       + "governMcpToolCall(\n" + '"tools/call"\n'.repeat(4);
     const policy = `export const MCP_TOOL_COUNT = ${tools.length};\nexport const MCP_CAPABILITY_POLICY = {\n`
-      + tools.map((t) => `  ${t.name}: { canonical: "${t.canonical ?? t.name}", ${t.effect === null ? "" : `effect: "${t.effect}", `}category: "read", evidence: "index.ts:1" },\n`).join("")
+      + tools.map((t) => `  ${t.name}: { canonical: "${t.canonical ?? t.name}", ${t.effect === null ? "" : `effect: "${t.effect}", `}category: "read", evidence: "index.ts:1"${t.paigeHome === undefined ? ", paigeHome: false" : t.paigeHome === null ? "" : `, paigeHome: ${t.paigeHome}`} },\n`).join("")
       + "};\n";
     return [mcp, policy];
   };
@@ -346,7 +390,11 @@ function selfTest() {
     + "const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([\n"
     + exempts.map((k) => `  ["${k}", "a reason long enough"],\n`).join("") + "]);\n"
     + "export const MUTATION_VERB = /(^|_)(create|update|delete|send|run|log)(_|$)/;\n";
-  const many = (n, effect) => Array.from({ length: n }, (_, i) => ({ name: `t_${i}`, canonical: `c_${i}`, effect }));
+  const many = (n, effect, extra = {}) => Array.from({ length: n }, (_, i) => ({ name: `t_${i}`, canonical: `c_${i}`, effect, ...extra }));
+  // A Chat handler stub with enough declarations to be graded, and deliberately declaring NONE of
+  // the fixtures' canonicals — so `paigeHome: false` is the truth for every default row.
+  const chatNone = Array.from({ length: 60 }, (_, i) => `\n  name: "chat_tool_${i}",`).join("");
+  const chatWith = (key) => chatNone + `\n  name: "${key}",`;
   const FETCH = '    const r = await fetch("https://api.example.com/x", {\n';
   const MARK = "    // mcp-read-fetch-exempt: the sibling function only SELECTs on this branch\n";
 
@@ -384,6 +432,10 @@ function selfTest() {
   const [, polReadVerb] = tree([{ name: "get_thing", canonical: "x_run_thing", effect: "read" }]);
   const [mcpBig, polBig] = tree(many(22, "mutate"));
   const [, polNoEffect] = tree(many(22, null));
+  // One row lies about having a Paige-side home; one row omits the field entirely.
+  const withFirst = (over) => [{ ...many(22, "mutate")[0], ...over }, ...many(22, "mutate").slice(1)];
+  const [, polHomeLie] = tree(withFirst({ paigeHome: true }));
+  const [, polNoHome] = tree(withFirst({ paigeHome: null }));
   const riskBig = risk([...many(22, "mutate").map((t) => t.canonical), ...Array.from({ length: 23 }, (_, i) => `pad_${i}`)]);
   const cases = [
     ["clean tree passes", okMcp, okPolicy, 0],
@@ -417,10 +469,20 @@ function selfTest() {
     ["R7 a populated policy with no action-risk source fails", mcpBig, polBig, 1, ""],
     ["R7 a populated policy against an unreadable RISK table fails", mcpBig, polBig, 1, "export const MUTATION_VERB = /(^|_)(run)(_|$)/;\n"],
     ["R7 a populated row with no readable effect fails", mcpBig, polNoEffect, 1, riskBig],
+
+    // ── R8 ────────────────────────────────────────────────────────────────────────────────────
+    // The field decides one sentence, and the wrong value sends a refused caller to a place that
+    // cannot perform the act. Graded against the Chat handler rather than trusted.
+    ["R8 paigeHome:false on a canonical Chat does NOT declare passes", mcpBig, polBig, 0, riskBig],
+    ["R8 paigeHome:true on a canonical Chat does NOT declare fails", mcpBig, polHomeLie, 1, riskBig],
+    ["R8 paigeHome:false on a canonical Chat DOES declare fails", mcpBig, polBig, 1, riskBig, chatWith("c_0")],
+    ["R8 a row with no paigeHome at all fails", mcpBig, polNoHome, 1, riskBig],
+    ["R8 a chat source this rule cannot read fails rather than blessing every row", mcpBig, polBig, 1, riskBig, "nothing parseable here"],
+    ["R8 an absent chat source fails rather than grading against nothing", mcpBig, polBig, 1, riskBig, ""],
   ];
   let bad = 0;
-  for (const [name, m, p, expected, r] of cases) {
-    const got = check(m, p, r ?? "").failures.length;
+  for (const [name, m, p, expected, r, c] of cases) {
+    const got = check(m, p, r ?? "", c === undefined ? chatNone : c).failures.length;
     const ok = got === expected;
     if (!ok) bad++;
     console.log(`${ok ? "  ok" : "FAIL"}  ${name} (expected ${expected} failure(s), got ${got})`);
@@ -437,7 +499,8 @@ else {
   const mcpSrc = readFileSync(resolve(process.cwd(), MCP), "utf8");
   const policySrc = readFileSync(resolve(process.cwd(), POLICY), "utf8");
   const riskSrc = readFileSync(resolve(process.cwd(), RISK), "utf8");
-  const { failures, registeredCount, policiedCount } = check(mcpSrc, policySrc, riskSrc);
+  const chatSrc = readFileSync(resolve(process.cwd(), CHAT), "utf8");
+  const { failures, registeredCount, policiedCount } = check(mcpSrc, policySrc, riskSrc, chatSrc);
   if (failures.length) {
     console.error(`\nmcp-governed-door-lint: ${failures.length} failure(s)\n`);
     for (const f of failures) console.error(`  • ${f}`);

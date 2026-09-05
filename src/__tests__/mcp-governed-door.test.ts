@@ -185,6 +185,27 @@ describe("the door's answer for all 119 tools", () => {
     expect(owner.kind === "refuse" && owner.message).not.toBe(ordinary.kind === "refuse" && ordinary.message);
   });
 
+  it("sends a caller to Paige only for an act Paige can actually perform", () => {
+    // The near-miss worth recording: the no-home sentence first read "there is no approved path",
+    // and the honesty check below caught it on the word "approved". The check is word-level and
+    // cannot tell a denial of approval from a claim of one — so the sentence was reworded rather
+    // than the guard narrowed. A blunt guard plus clear copy beats a clever guard.
+    const home = ENTRIES.filter(([, c]) => c.effect === "mutate" && c.paigeHome);
+    const away = ENTRIES.filter(([, c]) => c.effect === "mutate" && !c.paigeHome);
+    expect(home.length).toBe(11);
+    expect(away.length).toBe(57); // 56 approval_required + create_tenant, which is owner_only
+    for (const [tool] of home) {
+      const { outcome } = decide({ tool });
+      expect(outcome.kind === "refuse" && outcome.message, tool).toContain("Ask Paige to do it");
+    }
+    for (const [tool] of away) {
+      const { outcome } = decide({ tool });
+      if (outcome.kind !== "refuse" || outcome.code === "owner_only") continue;
+      expect(outcome.message, tool).toContain("no path through Paige");
+      expect(outcome.message, tool).not.toContain("Ask Paige to do it");
+    }
+  });
+
   it("never describes a refusal as a success, a queue, a send or an approval", () => {
     // §13. The exact words matter: "queued", "sent", "will be", "pending" all tell a caller that
     // something is going to happen, and nothing is.
@@ -323,6 +344,18 @@ describe("the durable record is safe to keep and honest about what happened", ()
       expect(["mcp_governed_allow", "mcp_governed_refuse"]).toContain(row.action);
       expect(row.target_type).toBe("mcp_tool");
     }
+  });
+
+  it("carries the workspace the decision was about, so its owner can read the row", () => {
+    // On the COLUMN, not in the payload: the tenant-admin read policy on `paige_audit_log` gates on
+    // `tenant_id = current_user_tenant_id()`, so a payload key would satisfy nothing. A governance
+    // record the affected workspace cannot read is a write-only log.
+    for (const [tool] of ENTRIES) {
+      expect(mcpGovernedAuditRow(decide({ tool }).audit).tenant_id, tool).toBe("tenant-1");
+    }
+    // Null only when no workspace resolved — which is itself the refusal, not a silent gap.
+    const unresolved = mcpGovernedAuditRow(decide({ tool: READS[0][0], tenantId: null }).audit);
+    expect(unresolved.tenant_id).toBeNull();
   });
 
   it("never puts a tool NAME in the uuid column — the defect that erased this surface's history", () => {
