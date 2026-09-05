@@ -86,3 +86,24 @@
 - Any changes to hierarchy, copy, density, motion, or the loop treatment before it becomes production?
 
 On approval, the throwaway prototype is deleted/absorbed and the production build wires `src/solo/growth2.tsx` → `Overview()` to the real reads + honest absences, coordinating shared Campaigns routing with the Catalog/Sales/Pipeline/Social/Performance owners.
+
+---
+
+## Production implementation (approved 2026-09-05) — release candidate, pending merge approval
+
+The owner approved the Command Desk direction; the production build shipped on this branch. The prototype (`docs/prototypes/campaigns-overview.html`) is retained as the frozen design-of-record (§28).
+
+**What was built**
+- **Backend foundation** — `supabase/migrations/20261224000000_solo_campaign_briefs_foundation.sql`: the `campaign_briefs` table (owner-authored fields, lifecycle enum, reserved `mission_id`, `version`; two tenant-validated links `offer_id`→`tenant_products`, `pipeline_id`→`pipelines`), the idempotency ledger, a version-bump trigger, tenant-scoped RLS (read-only; writes revoked from `authenticated`), and two SECURITY-DEFINER RPCs `get_campaign_briefs` + `configure_campaign_brief` modeled verbatim on the pipeline governed seam (tenant re-resolved from auth — arg never widens, §9/§59; writes gated on `is_tenant_admin`/owner, §53; optimistic concurrency; idempotent; audited).
+- **Client** — `src/solo/useSoloCampaignBriefs.ts` (own tenant-scoped read/write hook; keeps the four-reads contract on `useSoloCampaigns` intact; every RPC error token mapped to a sentence), `src/solo/campaign-desk.tsx` (the desk), `src/solo/growth2.tsx` `Overview` → thin wrapper mounting the desk, keyed by tenant so a workspace switch clears its state; `onRoute` coordinates into the owning subtabs. `src/solo/solo-campaigns.css` desk styles on the real tokens; gold spent only on the act (desk-scoped).
+
+**Evidence — separated by class**
+- **Automated / runtime SQL proof (§32/§39):** a throwaway-Postgres RLS/RPC security proof (`scratchpad/pgproof/`, the pre-merge manual proof pattern) — **18/18 assertions PASS, RC 0**: §9 tenant isolation (read + write + cross-tenant offer/pipeline link rejection), §53 role gate, §59 arg-doesn't-widen, name-required, version conflict, version bump, idempotent replay + same-key/different-body conflict, owner-set lifecycle transition + transition→archived rejection, archive removes-from-active + archived_count++, RLS-scoped SELECT (tenant B sees 0 of tenant A), direct INSERT blocked for `authenticated`.
+- **Automated tests:** `src/solo/campaign-briefs.contract.test.tsx` (10) — backend security contract (tenant guard, role gate, concurrency/idempotency, link tenant-validation, RLS + governed-write discipline, reserved Mission link) + client contract (RPC-only reads/writes, full error-token parity, no fabricated metric). All **1633 `src/solo` tests pass**; `growth2.render.test.tsx` + `sales-ops.contract.test.tsx` updated to stub the new briefs read.
+- **Static:** `tsc` clean on the new files (13 repo-wide errors are all pre-existing, unrelated files); `vite build` green (6353 modules); lints green — `lint:migration-versions`, `lint:definer-fns`, `lint:write-targets`, `lint:governed-execution`, `lint:managed-schema`, `lint:tier-features`, `lint:pg-tokens` (design tokens), `lint:skeleton`, `.github/scripts/lint_migrations.py` (0 warnings), `eslint` clean.
+- **Rendered / behavioral:** the approved prototype's frames stand as the visual reference; production render parity relies on the same tokens/classes.
+- **Authenticated production runtime: `Proof Owed`.** This session is headless with no browser/auth tool and prod is not reachable — the authenticated live Solo drive (create/edit/save-fail/retry/archive a brief; workspace switch; drawer Escape/focus; four Solo viewports × PAIGE closed/open; Mineral + Obsidian) is **owed after deploy** to a capable session or the owner (§32.c/§28-capability-conditional). The migration's **persisted-apply proof** is owed to CI on merge (§32.a: `deploy-migrations.yml` → `schema_migrations` advances + objects exist).
+
+**Tier (§56/§60/§61):** rides under the existing `growth` feature gate (Solo + Sub-account + Enterprise + God; Agency excluded) — no new capability bit (confirmed against `src/lib/tier/tierFeatures.ts`). Governed acts gated on `canManage` (tenant-admin/owner), enforced independently by the RPC.
+
+**Truthfulness:** no fabricated counts/revenue/reach/attribution/ad-spend/audience-size/active-status/completion. The only surfaced number is a linked pipeline's real deal count (server-resolved). Budget target disclaimed as not spend. Distribution/Conversations/Recorded-outcome are UNAVAILABLE with reasons. Overview coordinates; recreates no sibling subtab; six-tab IA unchanged.
