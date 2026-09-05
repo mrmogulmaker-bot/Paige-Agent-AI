@@ -2518,5 +2518,81 @@ console.log('\n24. proposal authority requires proven current scope and durable 
  const read=await drive({stream:true,extraBody:{threadId:THREAD,declinedConfirmations:['1234567890abcdef']},toolCall:{name:'pipeline_catalogue',args:{}},rpcOverrides:{get_paige_persona_context:{data:[{tenant_id:CALLER_TENANT}],error:null},get_actor_access:{data:{tier:'tenant'},error:null},get_pipeline_catalogue:{data:{items:[]},error:null}},tablesExtra:{user_roles:()=>[{role:'admin'}]},tableErrorsExtra:{'paige_pending_confirmations:update':{code:'57014',message:'cancel failed'}}});
  assert('24.7 cancellation failure does not disable unrelated reads',read.rec.rpc.some(x=>x.name==='get_pipeline_catalogue'));
 }
+// ── 25. THE COMMS / CRM TOOL GATE — Super Admin admitted, platform_admin NOT, others unchanged ──
+//
+// `paige-ai-chat` gates the eight `comms_*` tools (with the CRM operator tools) on
+// `roles.includes("admin") || roles.includes("coach")`. A God-tier Super Admin's `user_roles`
+// row is `super_admin` — neither — so every comms tool refused with "restricted to admins and
+// coaches". Slice B admits super_admin WITHOUT widening to `platform_admin` (a distinct role
+// string) or any tenant role. These drive the REAL handler.
+//
+// Observables: an ADMITTED `comms_connection_summary` reaches its readiness RPC
+// (`tenant_comms_readiness` in rec.rpc); a DENIED one never does and the gate refusal string
+// surfaces in the round-2 model egress. Denial-before-provider is proven on `comms_search_numbers`:
+// a denied role produces NO `comms-search-numbers` outbound invoke.
+console.log("\ncomms/CRM tool gate — Super Admin admitted, platform_admin denied, no widening");
+{
+  const GATE_REFUSAL = "restricted to admins and coaches";
+  const COMMS_THREAD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const commsRpcs = {
+    // Clear the EARLIER client-seat gate (:7532) so the ROLE gate (:8888) — the thing Slice B
+    // changes — is what decides. get_actor_access fails CLOSED to tier 'client', which refuses
+    // every owner-ops tool before the role gate; a non-client tier isolates the role gate.
+    get_actor_access: { data: { tier: "tenant" }, error: null },
+    tenant_comms_readiness: { data: { can_send_sms: false, blocked_reason: null, number: "absent", number_e164: null, a2p: "absent" }, error: null },
+    list_tool_autonomy: { data: [], error: null },
+  };
+  const driveGate = (role, tool = "comms_connection_summary", extra = {}) => drive({
+    stream: true,
+    extraBody: { threadId: COMMS_THREAD },
+    toolCall: { name: tool, args: {} },
+    rpcOverrides: commsRpcs,
+    tablesExtra: { user_roles: () => (role === null ? [] : [{ role }]) },
+    ...extra,
+  });
+  const readinessRan = (r) => r.rec.rpc.some((c) => c.name === "tenant_comms_readiness");
+  const refused = (r) => JSON.stringify(r.modelEgress).includes(GATE_REFUSAL);
+
+  const sa = await driveGate("super_admin");
+  assert("25.1 a Super Admin is ADMITTED to the comms tools (the fix)",
+    readinessRan(sa) && !refused(sa), JSON.stringify({ readiness: readinessRan(sa), refused: refused(sa) }));
+
+  const pa = await driveGate("platform_admin");
+  assert("25.2 a platform_admin (NOT super_admin) is DENIED — no widening",
+    !readinessRan(pa) && refused(pa), JSON.stringify({ readiness: readinessRan(pa), refused: refused(pa) }));
+
+  const admin = await driveGate("admin");
+  assert("25.3 a tenant admin is still admitted (unchanged)",
+    readinessRan(admin) && !refused(admin), JSON.stringify({ readiness: readinessRan(admin), refused: refused(admin) }));
+  const coach = await driveGate("coach");
+  assert("25.4 a coach is still admitted (unchanged)",
+    readinessRan(coach) && !refused(coach), JSON.stringify({ readiness: readinessRan(coach), refused: refused(coach) }));
+
+  const member = await driveGate("member");
+  assert("25.5 a tenant member is denied", !readinessRan(member) && refused(member),
+    JSON.stringify({ readiness: readinessRan(member), refused: refused(member) }));
+  const client = await driveGate("client");
+  assert("25.6 a client is denied", !readinessRan(client) && refused(client),
+    JSON.stringify({ readiness: readinessRan(client), refused: refused(client) }));
+  const none = await driveGate(null);
+  assert("25.7 a caller with no role is denied", !readinessRan(none) && refused(none),
+    JSON.stringify({ readiness: readinessRan(none), refused: refused(none) }));
+
+  // Denial happens BEFORE any provider/privileged operation: a denied role never reaches the
+  // comms-search-numbers edge invoke.
+  const denyProvider = await driveGate("member", "comms_search_numbers");
+  assert("25.8 denial precedes provider access — no comms-search-numbers invoke for a denied role",
+    !denyProvider.outboundCalls.some((c) => c.url.includes("comms-search-numbers")) && refused(denyProvider),
+    JSON.stringify(denyProvider.outboundCalls.map((c) => c.url)));
+
+  // Server-derived authority: a caller-supplied role/tenant/isAdmin in the request BODY cannot
+  // admit a denied caller — the gate reads user_roles keyed on the JWT-derived user.id.
+  const spoof = await driveGate("member", "comms_connection_summary", {
+    extraBody: { threadId: COMMS_THREAD, role: "super_admin", isAdmin: true, tenant_id: CALLER_TENANT },
+  });
+  assert("25.9 a caller-supplied role/isAdmin in the body cannot admit a denied caller (server-derived)",
+    !readinessRan(spoof) && refused(spoof), JSON.stringify({ readiness: readinessRan(spoof), refused: refused(spoof) }));
+}
+
 console.log(`\n${checks - failures} passed, ${failures} failed`);
 process.exit(failures === 0 ? 0 : 1);

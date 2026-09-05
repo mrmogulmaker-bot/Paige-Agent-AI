@@ -379,7 +379,7 @@ re-proved 2026-09-05: a non-member actor raises `CAPABILITY_RUN_FORBIDDEN`).
 
 | Tier | Can trigger a comms `capability_run` row | Sees it on the Solo Rail |
 |---|---|---|
-| **God / Super Admin** | **—** and this is a KNOWN GAP, not a decision: the four comms tools' role gate is `roles.includes('admin') \|\| roles.includes('coach')` with **no `is_platform_owner()` branch**, so an operator cannot reach the tools at all. Owner-routed to its own PR | ✓ when acting inside a tenant |
+| **God / Super Admin** | ✓ **when acting inside a tenant** (operator_enter_tenant) — the role gate now admits `super_admin` (Slice B, 2026-09-05); at rest, tenant-less, the read tools answer `tenant_not_resolved`. Admits super_admin ONLY, NOT platform_admin (a distinct role string) — frozen super_admin grant, §53 | ✓ when acting inside a tenant |
 | **Agency** (agency-as-tenant) | ✓ admin/coach of the active workspace | ✓ |
 | **Standalone Solo** | ✓ same gate | ✓ |
 | **Sub-account** | ✓ same gate, its own tenant only | ✓ its own only |

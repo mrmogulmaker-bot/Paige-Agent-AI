@@ -1,5 +1,24 @@
 # Decision Log — chronological one-liners
 
+- **Communications closeout, Slice B — a verified Super Admin can reach the platform Communications
+  tools (2026-09-05, no migration, edge-only)** — the `paige-ai-chat` role gate that guards the eight
+  `comms_*` tools (and the CRM operator tools) was `admin || coach`; a God-tier `super_admin` is
+  neither, so every comms tool refused "restricted to admins and coaches" (the KNOWN GAP flagged on
+  #947). Fix is one additive disjunct: `|| roles.includes("super_admin")`. Admits super_admin ONLY —
+  NOT `platform_admin` (distinct role string) — the frozen super_admin grant (§53); deliberately not
+  `is_platform_operator()`, which would widen. Coherence: a super_admin is tenant-less at rest, so
+  the tools are usable only while **acting inside a tenant** (the existing `operator_enter_tenant`
+  act-as seam resolves `current_user_tenant_id()`); at rest the reads correctly say
+  `tenant_not_resolved`. Authority is server-derived from the JWT — a caller-supplied role/tenant
+  can't reach the gate. **Proven** by 9 executed per-role assertions against the REAL handler
+  (`scripts/client-memory-authz/check.mjs` §25, in CI): super_admin admitted; platform_admin/member/
+  client/no-role denied; admin/coach unchanged; denial precedes the provider invoke; body-supplied
+  `role:'super_admin'`/`isAdmin` ignored. tsc 13→13, deno identical to base, 3399 vitest. **Parked
+  (separate defect, exact evidence):** `NumbersTab.tsx` (legacy `/admin/comms`) holds local
+  `owned`/`results`/`buying` with no `activeTenantId`-keyed reset, so an act-as switch without remount
+  renders the prior tenant's numbers (RLS still protects the data; leak is stale render). Not on the
+  primary comms-management path; frontend-lifecycle fix.
+
 - **Wave 3 Communications — the §39 peer-gate blocked once and was right (2026-09-05, same PR)** — an
   independent adversarial read of the pushed diff returned BLOCK on one finding and two SHOULD-FIXes,
   all three real. ① **BLOCKER:** `number_purchase_failed` was mapped to `capability_unreachable`

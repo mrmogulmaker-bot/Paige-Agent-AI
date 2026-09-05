@@ -8885,7 +8885,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             .eq("user_id", user.id);
           const roles = (roleRows || []).map((r: any) => r.role);
           // n8n has its own exact owner/session/tenant lease check; global CRM roles are unrelated.
-          const allowed = N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) || roles.includes("admin") || roles.includes("coach");
+          //
+          // `super_admin` is admitted so a verified God-tier operator can manage a tenant's CRM/
+          // Communications while acting inside that tenant (operator_enter_tenant → the tools then
+          // resolve that tenant via current_user_tenant_id()); at rest, tenant-less, the read tools
+          // still answer `tenant_not_resolved`, which is correct. This is the frozen super_admin-only
+          // grant (§53) — NOT `is_platform_operator()`, which would also admit `platform_admin`; the
+          // role string here is the same one `is_platform_owner()`/`is_super_admin()` gate on, and
+          // `platform_admin` is a DISTINCT string that stays denied. Server-derived from the JWT
+          // (user.id) — a caller-supplied role can never reach this array.
+          const allowed = N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) || roles.includes("admin") || roles.includes("coach") || roles.includes("super_admin");
           if (!allowed) {
             toolResults.push({
               tool_call_id: tc.id,
