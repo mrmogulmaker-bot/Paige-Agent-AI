@@ -61,11 +61,35 @@ Deno.serve(async (req) => {
   if (loadErr) return json(500, { error: loadErr.message });
   if (!approval) return json(404, { error: "approval_not_found" });
 
+  // STAGE 1 — an approval with no tenant is refused BEFORE anything is sent.
+  //
+  // `paige_pending_approvals.tenant_id` is nullable and the BEFORE INSERT
+  // `stamp_tenant_id()` trigger resolves it from `current_user_tenant_id()`, which is
+  // NULL under a service-role writer — so an unattributed row lands NULL without raising.
+  // NULL has never meant "platform scope"; it means attribution failed. The RESTRICTIVE
+  // `tenant_isolation` policy admits `tenant_id IS NULL` unconditionally, so such a row is
+  // visible to every tenant admin on the platform — and the old `approval.tenant_id &&`
+  // guard below let exactly those rows SKIP the membership check and be executed, which
+  // for an email/SMS category means a real outbound send on behalf of a business nobody
+  // identified.
+  //
+  // Refusing here rather than inside the guard matters: this must land before the atomic
+  // claim and before any dispatch, so a refused row is not consumed, mutated, or sent.
+  // A future platform-wide approval needs its own explicit contract and a trusted creation
+  // path — never an untagged row (§9/§13).
+  if (!approval.tenant_id) {
+    console.error(
+      "[execute-approval] REFUSED — approval has no tenant attribution",
+      JSON.stringify({ approval_id: approvalId, category: approval.category ?? null }),
+    );
+    return json(422, { error: "tenant_attribution_missing" });
+  }
+
   // Tenant isolation: unless the caller is the platform owner, the approval must
   // belong to a tenant the caller is a member of (defense-in-depth over the
-  // global admin|coach gate). Skip only when the row carries no tenant_id.
+  // global admin|coach gate). `approval.tenant_id` is non-null past the check above.
   const { data: isOwner } = await admin.rpc("is_platform_owner", { _user_id: user.id });
-  if (approval.tenant_id && !isOwner) {
+  if (!isOwner) {
     const { data: membership } = await admin
       .from("tenant_members")
       .select("tenant_id")
