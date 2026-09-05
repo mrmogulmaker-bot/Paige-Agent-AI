@@ -66,6 +66,12 @@ export interface AreaDefinition {
   name: string;
   /** One line of what this area covers, in the same register. */
   scope: string;
+  /**
+   * A short subject phrase for the operating brief's plain-English lead ("{briefLabel} is ready").
+   * The full `name` is a heading; this is how the area is named inside a running sentence. Kept
+   * here in the label home rather than derived in the surface (§18).
+   */
+  briefLabel: string;
   /** Check ids graded in this area. Empty is a real, honest answer — see the header. */
   coveredBy: SystemsCheckId[];
   /**
@@ -81,18 +87,21 @@ export const SYSTEMS_CHECK_AREAS: AreaDefinition[] = [
     id: "identity",
     name: "Business setup and identity",
     scope: "Who your business is, and the details Paige is allowed to state as fact.",
+    briefLabel: "Your business setup",
     coveredBy: ["company_info_populated", "website_connected"],
   },
   {
     id: "people",
     name: "People and CRM",
     scope: "The people on your books and whether anything can reach them.",
+    briefLabel: "Your client list",
     coveredBy: ["crm_has_customers"],
   },
   {
     id: "sales",
     name: "Sales and commercial operations",
     scope: "What you sell, how work is tracked, and how you get paid.",
+    briefLabel: "Sales",
     coveredBy: [
       "sales_pipeline_configured",
       "revenue_tracking_configured",
@@ -104,18 +113,21 @@ export const SYSTEMS_CHECK_AREAS: AreaDefinition[] = [
     id: "comms",
     name: "Email, phone and SMS readiness",
     scope: "Whether a message you send actually leaves this workspace.",
+    briefLabel: "Email and messaging",
     coveredBy: ["comms_configured"],
   },
   {
     id: "campaigns",
     name: "Campaigns, social and advertising",
     scope: "What you have live, and where new enquiries come from.",
+    briefLabel: "Campaigns",
     coveredBy: ["social_accounts_connected"],
   },
   {
     id: "integrations",
     name: "Integrations and automations",
     scope: "The outside tools connected here, and what Paige may run in them.",
+    briefLabel: "Your automations",
     coveredBy: ["automation_wired"],
   },
   {
@@ -124,6 +136,7 @@ export const SYSTEMS_CHECK_AREAS: AreaDefinition[] = [
     id: "team",
     name: "Paige's team and delegated work",
     scope: "What Paige is holding for you, and how much she may do on her own.",
+    briefLabel: "Paige's team",
     coveredBy: [],
     uncovered:
       "No setup check grades this yet. What is shown comes straight from the work Paige is actually holding.",
@@ -134,6 +147,7 @@ export const SYSTEMS_CHECK_AREAS: AreaDefinition[] = [
     id: "mind",
     name: "Business knowledge — the Mind",
     scope: "What Paige knows about your business, and what she can search.",
+    briefLabel: "Business knowledge",
     coveredBy: [],
     uncovered:
       "No setup check grades this yet. Open Mind to see what she actually holds.",
@@ -144,6 +158,7 @@ export const SYSTEMS_CHECK_AREAS: AreaDefinition[] = [
     id: "security",
     name: "Security, permissions and governance",
     scope: "Who can get in here, and what Paige is allowed to do on her own.",
+    briefLabel: "Security",
     coveredBy: [],
     uncovered:
       "No setup check grades this yet. Access and permissions are shown in Settings, and Paige's limits in Trust Compass.",

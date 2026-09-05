@@ -19,8 +19,16 @@ export const BUSINESS_CONTEXT_READINESS = {
   evidence: {
     signalKinds: ["business_context.field_status"],
     adapter: "public.get_business_context_readiness",
+    // The adapter is the CALLER-FACING reader; every fact it returns is derived from
+    // public.business_identity_readiness, the one internal resolver tenant_comms_readiness also
+    // reads. The resolver is deliberately unreachable by any caller (EXECUTE revoked from anon,
+    // authenticated and service_role), which is why it is not itself a registered capability.
     audience: "owner_internal",
-    freshness: "live read of Setup's current record on every call; there is no cached snapshot",
+    freshness: "live read of Setup's current record on every call; there is no cached snapshot, so no row can be stale — as_of reports when the owner CONFIRMED the value, which is not a freshness deadline and is never used as one",
+    // Required by the registry contract and satisfied trivially: there is no snapshot to age, so
+    // nothing in this domain is ever reported `stale`. No source here declares a TTL — measured,
+    // not assumed — and choosing a threshold to fill this in would manufacture exactly the kind of
+    // readiness fact the canonical contract forbids (docs/delivery/canonical-readiness-contract.md).
     staleAfterDays: 1,
     projectionWindowDays: 1,
     sourceSystem: "solo_setup",
@@ -31,8 +39,19 @@ export const BUSINESS_CONTEXT_READINESS = {
     referencePrefix: "business_context:",
     factValues: {
       field_key: ["website", "business_phone", "industry", "primary_business_email"],
-      status: ["owner_confirmed", "connection_sourced", "needs_confirmation", "invalid_format", "unavailable"],
-      source: ["setup", "connections"],
+      // `legacy_sourced` / `legacy_brand` is the state the vocabulary was missing: a value present
+      // ONLY in the legacy tenants.brand record and never confirmed. Its absence is why this
+      // capability and tenant_comms_readiness contradicted each other for two real workspaces —
+      // see docs/delivery/canonical-readiness-contract.md and migration 20261221000000.
+      status: [
+        "owner_confirmed",
+        "connection_sourced",
+        "legacy_sourced",
+        "needs_confirmation",
+        "invalid_format",
+        "unavailable",
+      ],
+      source: ["setup", "connections", "legacy_brand"],
     },
   },
   action: {

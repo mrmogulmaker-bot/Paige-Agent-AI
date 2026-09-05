@@ -378,6 +378,15 @@ unapplied until the next successful run. Recorded on incident #198.
 **Status: RELEASED.** PR #864, merge `7ad98cff`, migration `20261112000000`. The Spine registry now
 carries **two** capabilities, and this is the first **workspace-level** one.
 
+> **Amended 2026-09-05 — PR #958, migration `20261221000000`.** Every fact this capability returns is
+> now derived from **`public.business_identity_readiness`**, one internal resolver
+> `tenant_comms_readiness` also reads, because the two were answering the same question differently
+> for two real workspaces. New state `legacy_sourced` / source `legacy_brand` (present only in the
+> legacy `tenants.brand` record, never confirmed) and a new `next_action` column on every row. The
+> gate, the four `field_key`s and the always-four-rows promise are unchanged; no Systems Check
+> verdict moves. See the §10 entry "Two readiness reads disagree…" and
+> `docs/delivery/canonical-readiness-contract.md`.
+
 **What PAIGE and Systems Check can now accurately know.** For the caller's own workspace, the status
 and provenance of four Setup fields — `website`, `business_phone`, `industry`,
 `primary_business_email` — via `public.get_business_context_readiness(uuid)`. Status and provenance
@@ -3353,6 +3362,48 @@ reads afterwards is not optional and does not need one.
 **The lesson this log exists for:** a fix that is correct against the surface in front of you can
 still be wrong against the platform. `20261160000000` was verified by executing the flags it
 repaired, and never by asking what else already answered the same question.
+
+**RESOLVED 2026-09-05 — PR #958, migration `20261221000000`.** Not by picking a winner. Both reads
+were lossy: two independent facts had been compressed into one field — **A**, does a value exist at
+all (yes, in the legacy record); **B**, did the owner confirm it in Setup (no). Comms answered A and
+dropped B; business_context answered B and dropped A. Choosing between their answers would have
+preserved one true fact by continuing to erase the other, so the canonical state now carries both,
+via the new state `legacy_sourced` / source `legacy_brand` — which **extends** the
+`connection_sourced`/`connections` vs `owner_confirmed`/`setup` distinction this contract already
+made for `primary_business_email` rather than inventing a vocabulary.
+
+Both reads now derive every identity fact from **one internal resolver**,
+`public.business_identity_readiness`, while keeping their **different** caller gates (this one
+tenant-scoped, comms on the §59 global predicate) — making either call the other would have imposed
+one read's authorization on the other's callers. The resolver takes a tenant parameter and is
+therefore unreachable by any caller: `EXECUTE` revoked from `PUBLIC`, `anon`, `authenticated` and
+`service_role`.
+
+**The sweep the contradiction did not announce.** Asking the same question of the neighbouring facts
+found `industry` wrong in exactly the same way for **four** workspaces — twice as many — with no
+second reader to contradict it, and `primary_business_email` defaulting to
+`connection_sourced`/`connections` for **all three** workspaces holding a `support_email` with no
+provenance recorded, naming a connected account as the proof for a value no connection ever wrote.
+
+**The email correction was drafted and then WITHDRAWN by the §39 peer-gate, which is the part worth
+remembering.** A THIRD reader of that same field exists — `get_solo_business_context()` and
+`src/solo/data/useSoloBusinessContext.ts`, rendered as Setup's "Connection-sourced" badge — and it
+makes the same inference. All three agree today, so flipping only the readiness reader would have
+made PAIGE say "never confirmed" while Setup said "Connection-sourced" about one field in the same
+second: the exact defect class being fixed, newly created by the fix. Unbundled into its own slice
+that must move all three together. **Seven rows move in total; `primary_business_email` moves on
+zero; zero Systems Check verdicts and zero comms booleans move**, asserted per tenant across all 14
+production tenants rather than reasoned about. A contradiction is not the
+defect — it is the only symptom loud enough to be seen.
+
+**A further answer is named, not changed:** `get_tenant_a2p_registration_status().profile` echoes
+`tenant_legal_profile` with no brand fallback, so it reports a null website for these workspaces.
+A raw-value echo rather than a readiness contract, zero callers in-repo, A2P out of scope — recorded
+in the contract doc so it is found named rather than re-discovered.
+
+Contract, states, never-infer rules and the measured before/after:
+`docs/delivery/canonical-readiness-contract.md`. Authenticated runtime proof on the deployed
+surfaces is **OWED, not claimed** (§32.c).
 
 ### get_tenant_people(): the resting state is not the capability (2026-09-03)
 

@@ -38,8 +38,13 @@ register any widening before a runtime consumption claim changes.
 - Brand voice and operating preferences
 - Owner-authored do-not-assume guidance
 
-Each projected field must retain its Setup provenance
-(`owner_confirmed`, `connection_sourced`, or `needs_confirmation`) and the server-resolved tenant.
+Each projected field must retain its Setup provenance and the server-resolved tenant. **Amended
+2026-09-05 (PR #958):** that vocabulary is `owner_confirmed`, `connection_sourced`,
+**`legacy_sourced`** (present only in the legacy `tenants.brand` record, never confirmed),
+`needs_confirmation`, `invalid_format`, `unavailable` and `unknown` — the canonical set in
+`docs/delivery/canonical-readiness-contract.md`. The three listed here were the shipped set on
+2026-09-03, and the missing `legacy_sourced` is precisely what made two readers contradict each
+other about two real workspaces.
 Unknown scope fails closed. A connection-sourced value does not become owner-confirmed without an
 explicit Setup adopt/override decision.
 

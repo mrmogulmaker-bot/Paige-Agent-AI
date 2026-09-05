@@ -2003,3 +2003,70 @@ the other traced the mechanism (reachable by real shipped callers). The resoluti
 verdict but a third reading: the proposed fix would have introduced a false FAIL, so only the honest
 half — an over-claiming sentence — was changed, and the reasoning was written into the module header
 so the next session does not re-argue it.
+
+## When two readers disagree, the bug is usually that BOTH are lossy (2026-09-05, Spine #40)
+
+**The shape.** Two readers answered the same question about the same workspace and gave opposite
+answers. The instinct — the one that had to be actively resisted — is to work out which reader is
+*right* and make the other match it. That instinct was wrong, and it would have shipped a
+regression while looking like a fix.
+
+**Why.** The two readers were not answering the same question badly. They were answering
+**different questions** and both presenting the answer as if it were the whole truth:
+
+- *Does a value exist at all?* — yes, in a legacy record.
+- *Did the owner confirm it?* — no.
+
+One reader answered the first and dropped the second; the other did the reverse. Each was locally
+defensible. **Picking a winner would have preserved one true fact by continuing to erase the
+other** — which is why "make the wrong one match the right one" is not a reconciliation, it is
+choosing which half of the truth to keep losing.
+
+**The tell that this is the case you are in.** Both answers survive contact with the data. If you
+can look at the source rows and say "well, they're both sort of right", you are not looking at one
+bug and one correct reader — you are looking at **one field carrying two facts**, and the fix is to
+decompose it, not to arbitrate it.
+
+**The corollary that found a second defect.** Once the fields were decomposed, the same question was
+asked of every neighbouring fact rather than only the two that contradicted. `industry` turned out
+to be wrong in exactly the same way for **twice as many** workspaces — and nobody had ever noticed,
+because it had no second reader to contradict it. A contradiction is not the defect; it is the
+**only symptom loud enough to be seen**. Sweep the siblings, or you fix the one that made noise and
+leave the ones that did not.
+
+**And a third, in the opposite direction.** `primary_business_email` defaulted to
+"present from a connected account" whenever a value existed with no provenance recorded — on
+production, that was every workspace holding one. The first defect invented *absence* from a value
+that existed; this one invented a *source* from a provenance that did not. Both are the same rule
+broken: **state only what a row proves.** A default that fills in a plausible provenance is a
+fabricated fact wearing the clothes of a sensible fallback.
+
+**Where the fix goes when the readers have different caller gates.** The obvious move — have one
+reader call the other — was wrong here, and the reason generalises: the two gates were genuinely
+different (one tenant-scoped, one the §59 global predicate), so calling through would have imposed
+one reader's authorization on the other's callers. Measurement said every current user passes both,
+which is precisely the argument that tempts you to collapse them. **A latent difference is not a
+licence to collapse it.** The shape that works is a shared *internal resolver* both readers derive
+from, with each keeping its own gate, its own tenant resolution and its own response shape.
+
+**Sweeping the siblings is not the same as finding the other READERS, and the section that enumerates
+readers is the one most likely to stop early.** This change carried a section titled "A third answer
+exists, and is deliberately left alone" — written precisely to catch a reader nobody had inventoried.
+It named one (an A2P echo) and stopped. The §39 peer-gate then found a **third reader of a different
+field**: Setup's own `get_solo_business_context()` and its client hook both default
+`primary_business_email` to `connection_sourced`, exactly as the readiness reader did. Correcting the
+readiness reader alone would have made PAIGE and the Setup badge disagree about one field in the same
+second — **the defect being fixed, newly created by the fix.**
+
+Two things generalise. First: **finding one third reader feels like having finished**, and that
+feeling is the bug; the enumeration is per FIELD, not per change. Second, and sharper: **a correction
+that leaves two of three readers untouched is not a partial fix, it is a new defect.** Three readers
+agreeing on a falsehood is a smaller problem than two readers disagreeing, because the disagreement
+is what a human sees. The right move was to unbundle the correction and ship it where it can move all
+three together — even though that meant shipping *less* truth in this change than the draft claimed.
+
+**Make the resolver unreachable rather than defended.** It takes a tenant parameter, which is
+exactly the input a caller must never supply. Rather than adding a third gate inside it, `EXECUTE`
+was revoked from `PUBLIC`, `anon`, `authenticated` and `service_role` — so only the already-gated
+`SECURITY DEFINER` parents can invoke it, and the surface that would accept a caller-supplied tenant
+does not exist. A gate can be reasoned around; an absent grant cannot.
