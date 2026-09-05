@@ -1938,3 +1938,36 @@ the pushed diff, Codex on the PR, and my own re-read — and **each caught a dif
 other two missed.** The crew found the wrong denominator and a test that pinned the bug; Codex found
 the summary hole the crew's fix opened; the re-read found a comment asserting the opposite of the
 truth. None was redundant.
+
+---
+
+## A test double that discards its arguments is not a test — it is decoration (2026-09-05)
+
+Writing the tenant revenue-check runner, CC shipped seven tests that all passed and proved nothing
+about the query. The double declared `eq() { return builder; }` — arguments thrown away — and
+resolved on the table NAME alone. Mutation proof under CI's exact flags: with **both**
+`.eq("tenant_id", tenantId)` calls **and** the `.eq("stage_type", "won")` predicate deleted from the
+runner, **7 of 7 passed**.
+
+This matters more here than in most code. A systems-check runner executes as **service-role**, so
+there is no RLS underneath it to catch a missing tenant filter — the test is the only thing standing
+between an omitted `tenant_id` and a cross-tenant read. The four most expensive bugs in this
+codebase (#86, #130, #172, #588) are all that omission.
+
+**The rule:** when a test double stands in for a query, it records what was asked for, and at least
+one test asserts it. Verdict assertions test what the code CONCLUDES; only filter assertions test
+what it ASKED. A suite with no assertion in the second class cannot fail on the defect class that
+actually costs money here.
+
+**And the meta-lesson, which is the third time this session:** the vacuity was invisible to its
+author and obvious to three independent reviewers, who found it separately. CC had explicitly
+resolved *earlier in the same session* not to ship another vacuous assertion, and then did. A
+resolution is not a control; the mutation run is. Mutate the thing under test and watch the suite go
+red — if it does not, the suite is decoration, whatever its count says.
+
+*Also from the same gate, worth its own line:* two independent refuters reached **opposite verdicts**
+on the same finding, and both were partly right — one measured production (zero occurrences today),
+the other traced the mechanism (reachable by real shipped callers). The resolution was neither
+verdict but a third reading: the proposed fix would have introduced a false FAIL, so only the honest
+half — an over-claiming sentence — was changed, and the reasoning was written into the module header
+so the next session does not re-argue it.

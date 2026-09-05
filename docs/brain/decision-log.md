@@ -2387,3 +2387,46 @@ tenants today.
 **Verified byte-clean.** The migration reproduces both function bodies to replace them; the peer gate
 pulled the live `prosrc` from prod and confirmed `md5` on both before diffing, so the only changes
 are the intended ones.
+
+---
+
+## 2026-09-05 — Revenue tracking on Systems Check is the TENANT's sales revenue (owner ruling)
+
+**Owner, verbatim:** *"The revenue tracking is not from the platform admin. I don't know where you
+got that from. The revenue tracking should be for the particular tenant... The platform admin bills
+the clients... As far as all of the sales revenue that sits inside the campaigns and tracks
+throughout the metrics and all the data, that should be something that Systems Check is looking at.
+That has to do with the revenue that the actual customer is making."*
+
+And the scope boundary that goes with it: *"all of the work we're doing is isolated for the Solo
+tenant shell and Solo tenant shell only... I don't want you guys to worry about anything that has to
+do with the platform operator account. That's totally out of scope right now."*
+
+**What was wrong.** `revenue_tracking_configured` called `operator_revenue_integrity_audit` — a
+platform-billing chain gated on `is_platform_owner()`. The scan runs as service-role with no user
+identity, so `auth.uid()` is NULL and the RPC raised 42501 on every tenant, every run, since
+2026-08-10. Prod: **315 findings, all `skip`, all with a NULL drafted fix.** Every workspace carried
+a PARTIAL badge it could never clear. Shipped in PR #935.
+
+**A correction worth recording (§13).** CC's own recommendation had been to pull the check OUT of the
+tenant sweep as operator-only. That was wrong, and the owner corrected it. The error was inferring
+INTENT from IMPLEMENTATION: the check was correctly named and correctly placed, and had simply been
+pointed at the wrong data. "What the code does" is not evidence of "what it was for."
+
+## 2026-09-05 — Two gaps found while wiring that check, both filed rather than folded in
+
+**#26 — a Solo tenant cannot mark a stage as closing.** Not defaulted; unreachable. `growth2.tsx`
+has zero references to `stage_type`; the `pipeline_configure` tool schema has no such field on
+create-pipeline, create-stage or update-stage; the governed RPC inserts a hardcoded `'open'` and
+never updates it. So the revenue check names a next action the owner cannot complete — Paige would
+report success and create an open stage. Stated in the finding's `caveat` until #26 lands (§70).
+Owner's direction on the shape: a drop target at the bottom of the board. `deals.stage_id` is NOT
+NULL, so whatever it looks like it must be backed by a real won-typed stage — which keeps the check's
+predicate the right one.
+
+**#27 — the Sales Pipeline sub-agent is scoped by OWNER, not by workspace.**
+`subagent-sales-pipeline` runs service-role and filters `deals` on `owner_user_id` with no
+`tenant_id`, and reads `pipeline_stages` with no filter at all. Not an anonymous IDOR — the caller's
+id is real and JWT-derived — but a multi-tenant user gets their workspaces blended into one answer.
+The file header claims "Tenant-scoped via the deal owner," which is how it survived review. Same
+class as #588.
