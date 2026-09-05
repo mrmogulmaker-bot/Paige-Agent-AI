@@ -408,8 +408,11 @@ assertions: all four keys write rows; the sixth outcome survives both CHECKs and
 guard; reading as the **authenticated member** through `get_solo_rail_activity(50)` — the same RPC
 the Command Center calls — returns all four with their intended copy; the five original outcomes and
 the n8n/Zapier delegations are unchanged (§58). What that does NOT prove is that the component
-paints them: **the browser drive is still owed.** Zero `capability_run` rows exist on production as
-of this commit — measured, not assumed; the seam is live and nothing has run through it yet.
+paints them: **the browser drive is still owed** (needs the owner or a browser-capable session).
+**MERGED and persisted 2026-09-05** (PR #947 → `2d91d1a1`): `schema_migrations` carries
+`20261220000000`, the sixth outcome is live in both CHECKs, `db-live`/`edge-live` at the merge
+commit. Zero `capability_run` rows exist on production — measured, not assumed; the seam is live and
+nothing has run through it yet, which is "unused", never "broken".
 
 ### The operator console — `/operator/{slot}/{view}`, six slots × thirty-three views
 
