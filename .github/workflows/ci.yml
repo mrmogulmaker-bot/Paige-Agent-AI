@@ -468,6 +468,13 @@ jobs:
         run: |
           node --import ./scripts/client-memory-authz/register.mjs --test scripts/billing-payment-setup.test.mjs supabase/functions/_shared/payment-setup-reconciliation.test.ts
           deno test --allow-import=esm.sh,deno.land --deny-net --deny-env --deny-read --deny-write --deny-run --deny-ffi --deny-sys supabase/functions/_shared/stripe-webhook-signature.test.ts
+          # --no-check here and NOT on the line above, deliberately. This module's import graph
+          # reaches `systems-check-runner.ts` -> `prompt-forge.ts`, which carries three PRE-EXISTING
+          # type errors (TS2769 x2, TS2345). Typechecking that graph is `deno-edge-ratchet`'s job and
+          # it holds a baseline for exactly those; this line's job is to run the behaviour. Without
+          # the flag the step fails on errors this PR did not introduce and cannot fix here — which
+          # is why the sibling `_business-context-readiness.test.ts` was written and never wired in.
+          deno test --no-check --allow-import=esm.sh,deno.land --deny-net --deny-env --deny-read --deny-write --deny-run --deny-ffi --deny-sys supabase/functions/_shared/systems-check-runners/revenue_tracking_configured.test.ts
 
       - name: Test
         if: ${{ !cancelled() }}
