@@ -2905,7 +2905,7 @@ onto `paige_owner_memory`'s OPEN-VOCAB `memory_type` — CONVERSATION → `decis
 missing was a GOVERNED, callable seam that stamps all six governance fields and enforces caller scope
 in-body.
 
-**What shipped — migration `20261222000000` (additive, three RPCs):** `record_paige_memory` (governed
+**What shipped — migration `20261223000000` (additive, three RPCs):** `record_paige_memory` (governed
 WRITE — source/scope/timestamp/correction via `p_supersede_prior`), `get_paige_memory` (governed READ —
 server-resolved scope + audience filter, own rows only), `forget_paige_memory` (governed DELETION —
 soft-delete). All `SECURITY DEFINER`, `search_path=public`, **anon-revoked**, `authenticated`+`service_role`

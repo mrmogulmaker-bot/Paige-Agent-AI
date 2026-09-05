@@ -13,7 +13,7 @@ merged into one unbounded store:
 
 ## The store (extend, never fork — §18)
 
-Memory has homes already; Release C (2026-09-05, migration `20261222000000`) added the governed
+Memory has homes already; Release C (2026-09-05, migration `20261223000000`) added the governed
 CALLABLE SEAM over them, not a new table:
 
 - **Workspace memory** → `public.paige_owner_memory`, `(tenant_id, user_id)`-scoped; operator (God)
@@ -30,7 +30,7 @@ CALLABLE SEAM over them, not a new table:
 `paige_owner_memory.memory_type` is OPEN VOCAB (no DB CHECK) by design (§10 config-as-data); the
 governed seam enumerates the allowed types so the store cannot become a raw event dump.
 
-## The governed seam (the §10 callable contract — migration `20261222000000`)
+## The governed seam (the §10 callable contract — migration `20261223000000`)
 
 All three are `SECURITY DEFINER`, `search_path=public`, **anon-revoked**, `authenticated` +
 `service_role` only, and resolve caller scope IN-BODY (§59/§45): a JWT caller is confined to
@@ -56,7 +56,7 @@ bypasses the vocab + correction + confirmation discipline; prefer the seam.
 
 ## Proof + honest state (§13/§32)
 
-- **Migration `20261222000000` — pre-merge `BEGIN..ROLLBACK` behavioral proof on prod
+- **Migration `20261223000000` — pre-merge `BEGIN..ROLLBACK` behavioral proof on prod
   (`xygzykjyynhzqytbqnzu`, re-run 2026-09-05 after the Codex peer-review fixes):** DDL executes;
   `record_paige_memory` is `SECURITY DEFINER` with `search_path=public`; **anon cannot EXECUTE** any
   of the three, `authenticated`/`service_role` can. Behaviorally proven end-to-end (all green,

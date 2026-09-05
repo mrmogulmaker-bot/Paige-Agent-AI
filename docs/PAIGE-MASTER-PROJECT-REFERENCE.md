@@ -3578,7 +3578,7 @@ merging any old branch. Detail + proof-by-class: `docs/brain/decision-log.md` (R
   19-key allowlist already enforces the contract, and the binding test bans a Rail-reading resolver. Added
   `lint:rail-grants` (CI) fencing browser roles out of the raw Rail (`paige_client_events` /
   `paige_workspace_events`) — the #746 defect class. #644 → recommend close.
-- **Release C — governed Memory backend contract.** Migration `20261222000000` adds three §59/§45-clean
+- **Release C — governed Memory backend contract.** Migration `20261223000000` adds three §59/§45-clean
   RPCs (`record_/get_/forget_paige_memory`) over the existing `paige_owner_memory` (no new store, §18) —
   the governed seam giving conversation + agent memory a home with all six governance fields (source,
   scope, freshness, visibility, correction, deletion). Pre-merge `BEGIN..ROLLBACK` prod proof (anon
