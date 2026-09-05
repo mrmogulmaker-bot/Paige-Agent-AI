@@ -10,7 +10,9 @@
  * exactly one caller. Every other caller — an automation, an agent, a skill, a future MCP surface —
  * either re-implements it, or does without it.
  *
- * Doing without it is not hypothetical. `paige-mcp` ships 117 tools, imports neither
+ * Doing without it is not hypothetical. `paige-mcp` ships 119 tools (117 when this was written;
+ * two were added since, and a count in prose rots silently — `MCP_TOOL_COUNT` is now CI-asserted),
+ * imports neither
  * `action-risk.ts` nor `toolConfirmation.ts`, never calls `resolve_tool_autonomy`, and until
  * 2026-09-02 hard-deleted client records on a boolean the model wrote (#784). It was not built
  * carelessly; it was built where the gate could not be reached.

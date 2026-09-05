@@ -283,7 +283,7 @@ jobs:
 
       # The shared governed execution seam must stay blind to which door called it. A decision
       # that consults the door makes "reach it a different way" a way to gain permission — which
-      # is how 117 MCP tools ended up outside the gate entirely (#784).
+      # is how 119 MCP tools ended up outside the gate entirely (#784).
       - name: Lint — governed execution seam is door-blind and has one approval home
         if: ${{ !cancelled() }}
         run: npm run lint:governed-execution

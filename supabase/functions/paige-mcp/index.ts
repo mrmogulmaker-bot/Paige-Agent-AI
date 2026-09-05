@@ -1634,10 +1634,21 @@ async function resolveTenantId(explicit?: string | null): Promise<string | null>
     }
     return null;
   }
-  const tenantId = await actorTenantId();
-  if (tenantId) return tenantId;
-  const { data: mma } = await admin.from("tenants").select("id").eq("slug", "mma").maybeSingle();
-  return (mma?.id as string) ?? null;
+  // §200: FAIL CLOSED. This used to fall back to a hardcoded `slug = 'mma'` lookup, so any caller
+  // whose workspace did not resolve silently wrote into Mogul Maker Academy — a real production
+  // account — through five call sites, four of which also accept a caller-supplied tenant_id.
+  //
+  // The same §200 repair was already made 40 lines above in `actorTenantId`, whose comment reads
+  // "was a hardcoded (and stale/phantom) MMA_TENANT_ID … or null when none is designated (every
+  // consumer below fails closed on null — strictly safer than pinning to a phantom)". That cleanup
+  // simply did not reach this function. `actorTenantId` ALREADY resolves the operator's designated
+  // system tenant for a platform actor, so there is nothing left for a fallback to add: if it
+  // returned null, the honest answer is null.
+  //
+  // This matters to the governed door specifically. The gate resolves tenancy server-side and
+  // asserts `tenantSource: "server"`; a resolver that invents a tenant would have the gate govern
+  // one workspace while the handler wrote to another, and stamp that as server-derived.
+  return await actorTenantId();
 }
 
 // ---------- Contacts (extended) ----------
