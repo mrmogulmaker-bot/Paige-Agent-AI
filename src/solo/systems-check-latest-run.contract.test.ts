@@ -141,6 +141,46 @@ describe("the runner records partiality from the condition that causes it", () =
   });
 });
 
+describe("a draft budget may never silently pause remediation filing", () => {
+  // OWNER CONDITION, 2026-09-05: "confirming shouldFileAction stays derived from a source that is
+  // NOT shouldDraft under the new budget — a paused draft must not silently pause remediation
+  // filing. If your backstop enforces that split, ship #944."
+  //
+  // This IS that backstop, placed in code rather than promised in a task description.
+  //
+  // Today's coupling at systems-check-runner.ts:418 is
+  //     const shouldFileAction = shouldDraft && scope === "tenant";
+  // and it is harmless ONLY because nothing can currently switch `shouldDraft` off for cost
+  // reasons. It is false exactly when the finding is not a new or newly-degraded fail — and in
+  // that case no action is wanted either, so the two agree by accident of what they mean.
+  //
+  // The moment task #37 introduces a per-invocation draft budget, that same line silently converts
+  // "we ran out of LLM budget" into "file no remediation" — a §58 removal wearing a cost control's
+  // clothes, and invisible in review because not one character of it changed.
+  //
+  // ONE assertion, two branches, deliberately. It must NOT fail merely because a budget arrives —
+  // that would block the very work it exists to protect. It fails only if a budget arrives AND the
+  // coupling survives. While dormant it pins the exact line under guard, so a rename or refactor
+  // trips it and forces a human to re-read this note rather than letting the check rot silently.
+
+  const BUDGET_MARKERS = /draftBudget|draftsRemaining|DRAFT_BUDGET|draftsUsed|budgetExhausted/;
+
+  it("keeps action filing independent of whether a draft was produced", () => {
+    if (BUDGET_MARKERS.test(runner)) {
+      expect(
+        runner,
+        "a draft budget now exists, so filing must gate on the finding's own status — never on shouldDraft",
+      ).not.toMatch(/const\s+shouldFileAction\s*=\s*shouldDraft\b/);
+      return;
+    }
+    // Dormant: no budget yet. Pin the guarded line so this cannot quietly stop checking.
+    expect(
+      runner,
+      "the guarded line moved or changed shape — re-read the note above before adjusting this test",
+    ).toContain('const shouldFileAction = shouldDraft && scope === "tenant";');
+  });
+});
+
 describe("the delta baseline prefers a completed run but never degrades to nothing", () => {
   const baseline = runner.slice(
     runner.indexOf('if (actionFiling === "delta")'),
