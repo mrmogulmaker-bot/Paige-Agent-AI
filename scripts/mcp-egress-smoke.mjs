@@ -133,6 +133,8 @@ const DEFAULT_SCHEMA_MARKER = Symbol("default");
 const DEFAULT_SCHEMA = { type: "object", properties: { to: { type: "string" } }, required: ["to"] };
 
 const TENANT = "tenant-a";
+const ACTOR = "00000000-0000-4000-8000-0000000000a1";
+const CONTACT = "00000000-0000-4000-8000-0000000000c1";
 const CAPABILITY = "gmail_send_email";
 
 /**
@@ -587,13 +589,38 @@ if (!BASELINE) {
     Object.keys(payload).sort().join(",") === "at,authorization,capability,evidence_ref,provider,status",
     Object.keys(payload).sort().join(","));
 
-  // The rail cannot represent a call that is not about a client, and inventing one would
-  // put a fabricated association in front of an operator.
+  // The CLIENT rail cannot represent a call that is not about a client, and inventing a contact
+  // to satisfy its NOT NULL column would put a fabricated association in front of an operator.
+  // The WORKSPACE rail has no such requirement, and since SCR-2026-09-05 that is where an act
+  // about the business rather than about one client is recorded.
   calls.length = 0;
-  const noContact = await outcomeMod.fileGovernedOutcome(admin, { tenantId: TENANT, outcome: result.outcome, contactId: null });
+  const noContact = await outcomeMod.fileGovernedOutcome(admin, { tenantId: TENANT, outcome: result.outcome, contactId: null, actorId: ACTOR });
   check("with no contact in scope the action is still filed", calls.some((c) => c.fn === "file_action"));
-  check("...but no rail event is invented for a client that was never involved",
+  check("...but no CLIENT rail event is invented for a client that was never involved",
     !calls.some((c) => c.fn === "record_rail_event") && noContact.railSkipped === "no_contact");
+  check("...and the workspace record is written instead, so the act is not invisible",
+    calls.some((c) => c.fn === "record_capability_run") && noContact.workspaceFiled === true);
+
+  // THE DEFECT THE PEER-GATE FOUND, pinned so it cannot come back. The workspace row used to be
+  // written ONLY when no contact was in scope -- but `get_zapier_rail_activity`, the only reader
+  // behind Settings -> Integrations -> Zapier, reads the workspace table and nothing else. So the
+  // commonest Zapier turn (the owner on a client's screen) was invisible on the panel named after
+  // Zapier, permanently. Both records are written now: the contact row is that client's history,
+  // the workspace row is what PAIGE did to this business.
+  calls.length = 0;
+  const withContact = await outcomeMod.fileGovernedOutcome(admin, { tenantId: TENANT, outcome: result.outcome, contactId: CONTACT, actorId: ACTOR });
+  check("with a contact in scope BOTH records are written, not one",
+    calls.some((c) => c.fn === "record_rail_event") && calls.some((c) => c.fn === "record_capability_run"));
+  check("...and each reports its own success independently",
+    withContact.railFiled === true && withContact.workspaceFiled === true && withContact.railSkipped === null);
+
+  // Provenance must never fail the action it is describing.
+  calls.length = 0;
+  const railDown = await outcomeMod.fileGovernedOutcome(
+    { rpc: async (fn) => { calls.push({ fn }); return { data: null, error: { message: "down" } }; } },
+    { tenantId: TENANT, outcome: result.outcome, contactId: CONTACT, actorId: ACTOR });
+  check("a recording failure is reported, never thrown",
+    railDown.actionFiled === false && railDown.railFiled === false && railDown.workspaceFiled === false);
 
   // A refusal is the record most worth being able to find later.
   calls.length = 0;

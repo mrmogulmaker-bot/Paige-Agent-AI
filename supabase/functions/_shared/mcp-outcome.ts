@@ -810,14 +810,57 @@ function titleOf(outcome: McpOutcome): string {
  * failure — the action happened, and saying otherwise would be the lie this whole path is
  * built to avoid. Failures are logged and reported in the return value.
  */
+/** SCR-2026-09-05 — the provider status, as the workspace Rail's own vocabulary.
+ *  `unavailable` is kept apart from `failed` because nothing happened out there in the
+ *  first case and something went wrong out there in the second, and those lead the owner
+ *  to different next actions. */
+const WORKSPACE_OUTCOME: Record<McpOutcomeStatus, string> = {
+  ok: "capability_succeeded",
+  failed: "capability_failed",
+  denied: "capability_refused",
+  unavailable: "capability_unreachable",
+};
+
 export async function fileGovernedOutcome(
   // deno-lint-ignore no-explicit-any
   admin: any,
-  opts: { tenantId: string; outcome: McpOutcome; contactId?: string | null },
-): Promise<{ actionFiled: boolean; railFiled: boolean; railSkipped: "no_contact" | null }> {
+  opts: { tenantId: string; outcome: McpOutcome; contactId?: string | null; actorId?: string | null },
+): Promise<{ actionFiled: boolean; railFiled: boolean; railSkipped: "no_contact" | null; workspaceFiled: boolean }> {
   const payload = provenanceOf(opts.outcome);
   let actionFiled = false;
   let railFiled = false;
+  let workspaceFiled = false;
+
+  /** The workspace-level twin of the contact-scoped rail entry below.
+   *
+   * WHY IT EXISTS. `paige_client_events.contact_id` is NOT NULL, so the rail entry below
+   * can only be written when the turn genuinely has a client in scope -- which is why a
+   * Zapier action run from a general conversation left no owner-visible trace at all. The
+   * workspace Rail has no such requirement, so this is where an act that is about the
+   * BUSINESS rather than about one client belongs.
+   *
+   * WHY IT IS SKIPPED WHEN THE CONTACT ROW WAS WRITTEN. `get_solo_rail_activity` UNIONs
+   * both tables into one feed, so writing both would show one Zapier call as two
+   * near-identical lines seconds apart, and the per-table unique keys cannot see each
+   * other. One act, one line.
+   *
+   * IT NEVER THROWS, for the same reason nothing else here does. */
+  const fileWorkspace = async (): Promise<void> => {
+    if (!opts.actorId) return;
+    try {
+      const { error } = await admin.rpc("record_capability_run", {
+        _tenant_id: opts.tenantId,
+        _actor_id: opts.actorId,
+        _capability_key: "zapier_run_action",
+        _outcome: WORKSPACE_OUTCOME[opts.outcome.status] ?? "capability_failed",
+        _run_id: crypto.randomUUID(),
+      });
+      if (error) console.error("[mcp] capability run not recorded:", error.message);
+      else workspaceFiled = true;
+    } catch (e) {
+      console.error("[mcp] capability run not recorded:", e instanceof Error ? e.message : "unknown");
+    }
+  };
 
   try {
     const { error } = await admin.rpc("file_action", {
@@ -839,7 +882,26 @@ export async function fileGovernedOutcome(
     console.error("[mcp] action not filed:", e instanceof Error ? e.message : "unknown");
   }
 
-  if (!opts.contactId) return { actionFiled, railFiled: false, railSkipped: "no_contact" };
+  // ALWAYS, and the earlier "only when no contact is in scope" was a real defect.
+  //
+  // The reasoning that produced it was sound about the Command Center feed -- that reader UNIONs
+  // both tables, so writing both showed one act twice -- and wrong about everything else.
+  // `get_zapier_rail_activity`, the ONLY reader behind Settings -> Integrations -> Zapier, reads
+  // `paige_workspace_events` and nothing else. So the commonest Zapier turn there is -- the owner
+  // on a client's screen saying "add them to my list" -- wrote a contact row, no workspace row,
+  // and was invisible on the panel named after Zapier. Permanently. Which is the exact condition
+  // this release widened that reader to end.
+  //
+  // Both rows are TRUE and they answer different questions: the contact row is this client's
+  // history, the workspace row is what PAIGE did to this business. Writing one and calling the
+  // other redundant is what made two surfaces disagree about the same act. A duplicate line in
+  // one feed is a presentation question and belongs to Claude Design (§00); a permanent blind
+  // spot on the integration's own panel is a correctness question and belongs here.
+  await fileWorkspace();
+
+  if (!opts.contactId) {
+    return { actionFiled, railFiled: false, railSkipped: "no_contact", workspaceFiled };
+  }
 
   try {
     const { error } = await admin.rpc("record_rail_event", {
@@ -860,5 +922,9 @@ export async function fileGovernedOutcome(
     console.error("[mcp] rail event not filed:", e instanceof Error ? e.message : "unknown");
   }
 
-  return { actionFiled, railFiled, railSkipped: null };
+  // Both rows are written by now. `railFiled` says whether the contact-scoped one landed;
+  // `workspaceFiled` says whether the workspace one did. They fail independently, and the
+  // caller is told which -- so "the act happened and nothing recorded it" is distinguishable
+  // from "the act happened and one of its two records is missing".
+  return { actionFiled, railFiled, railSkipped: null, workspaceFiled };
 }

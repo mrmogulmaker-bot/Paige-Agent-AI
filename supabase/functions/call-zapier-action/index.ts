@@ -254,7 +254,7 @@ Deno.serve(async (req) => {
   //    is contact-scoped by construction, so it is written only when this turn genuinely
   //    has a contact; `contact_id` is taken from the caller's request rather than invented.
   const contactId = typeof body.contact_id === "string" && body.contact_id ? body.contact_id : null;
-  await fileGovernedOutcome(admin, { tenantId, outcome, contactId });
+  await fileGovernedOutcome(admin, { tenantId, outcome, contactId, actorId: user.id });
 
   return jsonResponse({ ok: outcome.status === "ok", ...outcome });
 });

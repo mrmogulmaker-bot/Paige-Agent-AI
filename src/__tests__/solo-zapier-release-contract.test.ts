@@ -111,8 +111,21 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(sql).toContain("zapier_api_test_failed");
     expect(sql).toContain("zapier_api_oauth_refused");
     expect(sql).toContain("Zapier API authorization declined");
-    expect(sql).toContain("FUNCTION public.get_zapier_rail_activity");
-    expect(sql).toContain("w.source_kind IN ('zapier_api_oauth','zapier_api_connection','zapier_mcp_connection','zapier_skool_intake')");
+    // REPOINTED 2026-09-05. `get_zapier_rail_activity` is redefined by
+    // 20261203000000 (SCR-2026-09-05), which widens the filter so the panel also shows
+    // the Zapier actions PAIGE actually ran — not just connection state. Left pointing at
+    // `sql`, these two assertions would keep passing against a definition that no longer
+    // ships, which is the stale-fence failure this suite has already hit once.
+    const readerSql = read(
+      "supabase/migrations/20261212000000_paige_can_show_her_work.sql",
+    );
+    expect(readerSql).toContain("FUNCTION public.get_zapier_rail_activity");
+    // The four connection families are still admitted, unchanged...
+    expect(readerSql).toContain("w.source_kind IN ('zapier_api_oauth','zapier_api_connection','zapier_mcp_connection','zapier_skool_intake')");
+    // ...and so is the Zapier capability run, which is the point of the widening. n8n runs
+    // are deliberately NOT admitted here: this is the Zapier card.
+    expect(readerSql).toContain("w.source_kind='capability_run' AND w.capability_key='zapier_run_action'");
+    expect(readerSql).not.toContain("capability_key='n8n_run_workflow'");
     const ui = read("src/solo/settings-integrations.tsx");
     expect(ui).toContain('rpc("get_zapier_rail_activity",{p_limit:5})');
     expect(ui).not.toContain('rpc("get_solo_rail_activity",{p_limit:50})');

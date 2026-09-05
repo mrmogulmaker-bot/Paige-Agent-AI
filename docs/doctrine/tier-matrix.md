@@ -333,6 +333,32 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
+### The Rail records what PAIGE DID, not only what was connected (SCR-2026-09-05, 2026-09-05)
+
+`paige_workspace_events` gained one `source_kind`, `capability_run`, so a workspace-level act — an
+automation run, a connected-app action — is recorded where the owner can read it. Before this the
+table held **10 rows on production, every one a connection event**, while `paige_audit_log` held
+142 acts no Solo surface reads.
+
+**No route, gate or tier permission changed.** This is content appearing in a reader that already
+shipped and was already granted; the per-tier answer below is the reader's existing authority
+restated, not a new one.
+
+| Tier | Can trigger a `capability_run` row | Sees it on the Solo Rail | Sees a Zapier run on Settings → Integrations |
+|---|---|---|---|
+| **God / Super Admin** | — (tenant-less; both executors refuse an empty `tenant_id`) | ✓ when acting inside a tenant (`is_platform_owner()` branch) | ✓ same |
+| **Agency** (agency-as-tenant) | ✓ n8n: tenant OWNER only · Zapier: `has_role(admin)` | ✓ `get_solo_rail_activity` (owner/admin/coach) | ✓ `get_zapier_rail_activity` |
+| **Standalone Solo** | ✓ same gates | ✓ | ✓ |
+| **Sub-account** | ✓ same gates, scoped to its own tenant | ✓ its own only | ✓ its own only |
+| **Client** | — never reaches the executors | **403** — reader raises `RAIL_FORBIDDEN` for a non-staff seat, and the rows are `visibility: owner_internal` | **403** |
+| **Anonymous** | — | **403** — `REVOKE ALL … FROM PUBLIC, anon` | **403** |
+
+**Recorded honestly (§13):** two capabilities are wired — `n8n_*` writes and `zapier_run_action`.
+The other ~47 classified actions still write only `paige_audit_log`; each migration wave adds its
+own copy. An unmapped capability renders a generic line rather than nothing. **Reads are never
+recorded.** The §32.c authenticated live-drive — that a row actually RENDERS for the owner — is
+**owed**, not claimed.
+
 ### The operator console — `/operator/{slot}/{view}`, six slots × thirty-three views
 
 **§66 debt, paid LATE — recorded rather than backfilled quietly.** PR #571 (`24482d15`, *Operator

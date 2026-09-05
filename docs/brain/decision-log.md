@@ -2446,3 +2446,110 @@ predicate the right one.
 id is real and JWT-derived — but a multi-tenant user gets their workspaces blended into one answer.
 The file header claims "Tenant-scoped via the deal owner," which is how it survived review. Same
 class as #588.
+
+## 2026-09-05 · PAIGE's workspace-level acts have somewhere to be recorded (SCR-2026-09-05)
+
+**Decision.** A workspace-level outcome is recorded on `paige_workspace_events` under a new
+`source_kind` of its own, `capability_run`, naming the capability and one of five outcomes. The
+MCP integrations are its first two consumers; the remaining ~47 actions adopt it wave by wave.
+
+**The gap this closes, measured on prod 2026-09-05 (ref xygzykjyynhzqytbqnzu), not inferred:**
+142 rows in `paige_audit_log` — which no Solo surface reads — against **10** rows in
+`paige_workspace_events`, all three of whose source kinds are connection events. So of the 60
+actions PAIGE can perform from Chat, the owner could see the result of **none**: 13 write a
+per-client Rail row whose production `SELECT` is still denied (#746, re-verified false the same
+day), and 47 wrote only the audit log. The migration map states it plainly at :127 — *"Leg 7 —
+owner can see the truthful result — is closed for 100% of PAIGE's writes."*
+
+**What was NOT the problem, and is worth recording because it inverted the plan.** The READ half
+already ships and is live: `get_solo_rail_activity` already UNIONs `paige_client_events` with
+`paige_workspace_events` through `_workspace_event_display`, takes no tenant argument, and
+`authenticated` already holds EXECUTE — all four verified on prod before any code was written.
+There was never a missing window. There was a missing **vocabulary**, so nothing could appear in
+the window that existed.
+
+**Four things the design crew caught that a solo pass would have shipped:**
+1. The live `_workspace_event_display` is the one in `20261202000000`, not `20261201000800`.
+   Rebuilding it from the earlier ancestor would have silently deleted the Zapier dispatch and
+   dropped all eleven Zapier outcomes to "Recorded activity". Avoided entirely by widening
+   through delegation rather than by copying a body.
+2. `actor_type` defaults to `'system'`, and `useSoloActivityFeed` derives `byPaige` from
+   `actor_type === 'paige_agent'`. Left alone, every act PAIGE performed would have rendered as
+   **"Person"** on Systems Check and filed under the People filter — while the same Zapier call's
+   contact-scoped twin already says `paige_agent`. The capability family emits `paige_agent`.
+3. One Zapier call would have produced TWO lines in the unified feed. The workspace row is now
+   skipped when the contact-scoped row was actually written.
+4. `get_zapier_rail_activity` hard-filters four source kinds, so a Zapier run would have been
+   invisible on the one panel named after Zapier. Its filter now admits
+   `capability_key='zapier_run_action'`.
+
+**And one the crew did not find, which prod did.** The cross-check constraint is named
+`paige_workspace_event_source` on production, not `n8n_workspace_event_source` as the original
+migration created it. Dropping only the old name would have left the live constraint standing
+beside a new one — the migration applies GREEN and then every `capability_run` insert is rejected
+forever. Caught by reading `pg_constraint` instead of the migration file. **The lesson generalises:
+a migration that edits a constraint must read the constraint's LIVE name, because a rename leaves
+the file lying.**
+
+**Proof.** Thirteen assertions (A–M) run against prod inside `BEGIN … ROLLBACK` — existing Zapier,
+n8n and `agent_run` copy unchanged; the five new outcomes; idempotence per run id; both directions
+of the family constraint; the non-member and invalid-outcome refusals; and the health-check flood
+collapsing while a real state flip still records. Rollback confirmed afterwards: no
+`capability_key` column and no `record_capability_run` on prod, 10 rows still. Plus 3262 unit
+tests, `tsc`, `deno check` on all three edge modules, and six CI lints.
+
+**Also in this change.** `record_zapier_mcp_connection_test` passed `gen_random_uuid(), 0`, so its
+unique key could never collide and EVERY health check wrote a row. It now records only a CHANGE in
+result, which is the pattern `_n8n_rail_revision` already used.
+
+**Flagged, not fixed:** PR **#776** replaces `get_solo_rail_activity` with a version that reads
+`paige_client_events` only. Merged as-is it deletes the workspace half of the union — the ten rows
+that exist today and every row this change adds. It needs a rebase whichever order the two land in.
+
+**Owed and NOT claimed:** §32.c authenticated live-drive — this session cannot sign into the
+workspace, so that a capability row RENDERS on the owner's Command Center is unverified until the
+owner or a browser-capable session looks.
+
+### Peer-gate follow-up, same day, before merge (§39)
+
+The §39 adversarial read of the pushed diff returned **no blocking defect and four real ones**,
+each of which the author's own 13 green assertions structurally could not reach. Recorded because
+three of the four were defects in the thing being shipped, not in what surrounded it.
+
+1. **A Zapier action run with a client in scope was invisible on the Zapier panel — permanently.**
+   The workspace row was written only when NO contact was in scope, to avoid a double line in the
+   Command Center feed. But `get_zapier_rail_activity` reads `paige_workspace_events` and nothing
+   else, so the commonest Zapier turn (owner on a client's screen) wrote a contact row, no
+   workspace row, and never appeared on the panel this very release widened to show it. **Both
+   rows are now written.** They answer different questions — the contact row is that client's
+   history, the workspace row is what PAIGE did to this business — and a duplicate line in one
+   feed is a presentation question (§00) where a permanent blind spot is a correctness one.
+2. **A scope refusal after the tenant/session fence recorded nothing**, while a provider-tool
+   refusal did — two refusals of the same act class, one findable and one not. It also made
+   `RAIL_OUTCOME.authorization_needed` dead code. Now records, with a test.
+3. **The health-check fix suppressed the confirming test after a reconnect.** The de-dup lookup
+   read only the two test outcomes, so a disconnect never reset it: succeed → disconnect →
+   reconnect → succeed was silently dropped, and the owner would watch the connection go down and
+   never see it come back. The lookup now reads the connection-state rows too, which is what makes
+   the n8n pattern it copies work. Proven on prod, including the exact sequence.
+4. **A locally-refused capability was reported as the provider refusing it.** All four Zapier
+   `denied` states fire before any network call; the copy said *"the connected service declined
+   this… its permissions may need a look"* and sent the owner to the wrong screen. That is verbatim
+   the collapse `McpDenialReason` exists to prevent, re-committed one layer up. The copy no longer
+   names who refused, because the row does not record it.
+
+**Also corrected: two comments that asserted things the same file made untrue** — that the 2-arg
+display still had callers (it has none after this migration) and that recording is idempotent per
+run (the key makes idempotence *available*; no current caller re-presents a run id, so a genuinely
+retried act writes two rows).
+
+**Left open and written down rather than implied fixed:** two concurrent health checks can both
+insert under READ COMMITTED, because `source_id` is a fresh uuid and the UNIQUE key cannot collapse
+them. Worst case is one duplicate line, not a wrong one; closing it needs a stable source_id plus a
+state-derived revision, which is a larger change than this release's subject.
+
+**The lesson worth keeping:** the peer-gate's value here was not catching sloppiness. Every one of
+the four sat in a decision that was *locally* reasonable — avoid a double line, keep the dedup
+narrow, reuse an existing status word — and wrong once traced to the surface a person actually
+opens. A proof written by the author tests the author's model of the system.
+

@@ -210,6 +210,40 @@ exist as columns and are not yet reachable from the editor.
 another can read that other tenant's client book and, through the `EXISTS`, its agreements. A
 `clients`-owned defect, not one this table introduced. Re-check per release.
 
+### PAIGE Rail — a workspace-level outcome record exists (SCR-2026-09-05, 2026-09-05)
+
+**Status: PR open**, migration `20261212000000_paige_can_show_her_work.sql`. This is **SCR-1** from
+`docs/architecture/paige-spine-tool-migration-map.md`, raised and approved by the owner on
+2026-09-05 and recorded as `SCR-2026-09-05` in `docs/architecture/paige-spine-foundation.md`. The
+map named it as the blocker on **47 of 60 actions and every wave from 3 onward**.
+
+**Answer "can the owner see what PAIGE did?" from HERE, not from memory.** Measured on prod
+2026-09-05 before the change: `paige_audit_log` 142 rows · `paige_workspace_events` **10** rows,
+all connection events · `has_table_privilege('authenticated','paige_client_events','SELECT')` =
+**false** (#746 open). So the result of **zero** of PAIGE's 60 Chat actions was owner-visible.
+
+**What shipped.** One new `source_kind` (`capability_run`) with five outcomes, one new column
+(`capability_key`), one service-role RPC (`record_capability_run`, actor must be an active member
+of the tenant, §59), and the writer + display projection widened by delegation so no existing
+family's body was retyped. `get_solo_rail_activity` passes the capability through;
+`get_zapier_rail_activity` now also admits `capability_key='zapier_run_action'` so a Zapier run is
+visible on the Zapier card. Also fixed: `record_zapier_mcp_connection_test` wrote a row on EVERY
+health check (`gen_random_uuid(), 0` defeated its own de-dup key) and now records only a change.
+
+**The READ half was already live and is NOT part of this** — `get_solo_rail_activity` already
+unioned workspace events and `authenticated` already held EXECUTE (verified on prod). The gap was
+vocabulary, not visibility.
+
+**Wired so far: TWO capabilities** — the six n8n writes and `zapier_run_action`. The remaining ~47
+still write only `paige_audit_log`; each wave adds its own copy. **Reads are never recorded.**
+
+**Evidence.** Thirteen assertions against prod inside `BEGIN … ROLLBACK`, rollback confirmed; 3262
+unit tests; `tsc`; `deno check` on all three edge modules; six CI lints. **UNVERIFIED and owed:**
+§32.c authenticated live-drive that a row renders on the owner's Command Center.
+
+**Flagged:** PR #776 replaces `get_solo_rail_activity` with a client-events-only version and would
+delete the workspace half of the union; it needs a rebase whichever order the two land in.
+
 ### PAIGE Spine — `team.authority`, and both readiness reads bound to their workspace (2026-09-03)
 
 **Status: PR #876**, migrations `20261150000000` + `20261170000000`. The Spine registry now carries

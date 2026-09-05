@@ -15,17 +15,22 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 /**
- * REPOINTED 2026-09-04 to the migration that actually defines the live reader.
+ * REPOINTED 2026-09-05 to the migration that actually defines the live reader.
  *
- * This fence used to read 20261043000000. Two migrations have redefined
- * `get_solo_rail_activity` since — 20261201000200 (workspace events) and 20261201000700
- * (agent attribution) — so it was guarding a file that no longer ships, which is the
- * failure mode its own header warns about: a fence that fences nothing still passes.
+ * History of this pin, kept because it is the whole argument for having it: it read
+ * 20261043000000, then 20261201000800, and now 20261203000000. Each time
+ * `get_solo_rail_activity` was redefined, this fence went on passing while guarding a
+ * file that no longer shipped — which is precisely the failure its own header warns
+ * about. A fence that fences nothing is green.
  *
- * It now reads the CURRENT definition. Repoint it again whenever that moves.
+ * 20261203000000 (SCR-2026-09-05) redefines the reader to pass `w.capability_key` into
+ * the display projection so PAIGE's own acts can name themselves. Every property below
+ * is unchanged by that and must stay that way.
+ *
+ * Repoint it again whenever the reader moves.
  */
 const FIX = readFileSync(
-  "supabase/migrations/20261201000800_the_rail_says_which_agent_acted.sql",
+  "supabase/migrations/20261212000000_paige_can_show_her_work.sql",
   "utf8",
 );
 
