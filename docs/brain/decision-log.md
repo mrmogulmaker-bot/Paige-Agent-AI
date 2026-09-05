@@ -1,5 +1,17 @@
 # Decision Log — chronological one-liners
 
+- **Solo Trust Compass became a REAL governed control surface, 3rd Command Center tab (2026-09-05, RC)** —
+  moved from a top-level Solo branch to the third Command Center sub-tab (Systems Check → Trust Compass →
+  Mind); legacy `/solo/{account}/trust-compass` redirects in (§58, no duplicate surface). The mouse-only
+  canvas dial + two false-affordance modals are gone. Per-capability knobs write **real** per-tool autonomy
+  via `set_tool_autonomy` (the ONE tenant-writable governance seam, JWT-scoped to a tenant admin, §59), read
+  back via `list_tool_autonomy` / `resolve_tool_autonomy`. Effective = `min(stored, ceiling, risk cap)`:
+  owner-only → read-only "Your call"; `high` → caps at "Asks first" (runtime neutralises `auto`, §70.1); the
+  platform ceiling shows only as an **effect**, never itself (§4.2). Risk classes copied into the browser
+  are drift-guarded against `_shared/action-risk.ts` by a test (§18). New files: `src/solo/data/
+  capabilityTools.ts` + `useSoloToolGovernance.ts`. Pending decisions route to the ONE Paige chat (§18).
+  GREEN headless (unit + jsdom-render, tsc ratchet, relevant lints, prod build). **§32.c authenticated
+  live-drive OWED** (headless session) → recorded as RC, not LIVE. Tier: Solo + sub-account only.
 - **Wave 3 Communications — the §39 peer-gate blocked once and was right (2026-09-05, same PR)** — an
   independent adversarial read of the pushed diff returned BLOCK on one finding and two SHOULD-FIXes,
   all three real. ① **BLOCKER:** `number_purchase_failed` was mapped to `capability_unreachable`

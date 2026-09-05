@@ -2195,8 +2195,10 @@ self-knowledge (§18).
   `isBufferDiagram` · `isPipeHead` · `isSocialGrid` · `isSocialQueue` · `isPipeBoard` · `isStageBoard` ·
   `isArea` · `isBench` — plus the `platform-brain.js` neural field (`KnowledgeSurface` exposes
   `fieldSlot` as its mount point). Honest, but not the design.
-- ❌ **Real backends behind the surfaces** (task #193): the Compass lane WRITE path, the Workspace send
-  seam + chat history, and per-panel reads. Every panel body currently states it is not connected.
+- ⚠ **Real backends behind the surfaces** (task #193): the **Compass lane WRITE path is addressed by the
+  2026-09-05 Trust Compass RC** (§10) — the Solo Command Center tab now writes real per-tool autonomy
+  via `set_tool_autonomy` (owner live-drive OWED, §32.c, so not yet marked LIVE). Still open: the
+  Workspace send seam + chat history, and per-panel reads. Panels not yet wired state they are not connected.
 - ⚠ **Optional owner cleanup (task #196), NOT a blocker:** four of the agency's sub-accounts look like
   leftovers — two named "[TEST] …" and two with no `comp_reason` ("Sample Account LTD", "Unknown Name-
   1"). All four are COUNTED and VISIBLE by design (they are inside the customer shell). If the owner wants
@@ -2519,6 +2521,24 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ## 10. §13 corrections log
 
+ - **2026-09-05 — The Solo Trust Compass became a real, tenant-governed control surface — and it is
+   recorded as an RC, not a shipped claim, because the authenticated live-drive is OWED.** #780's
+   parked state (the dial's numbers were fixtures and its buttons only closed a modal) is closed in
+   CODE: Trust Compass is now the third Command Center sub-tab (Systems Check → Trust Compass → Mind),
+   and its per-capability knobs write REAL per-tool autonomy through `set_tool_autonomy` — the one
+   tenant-writable governance seam, JWT-scoped to a tenant admin (§59) — read back through
+   `list_tool_autonomy` / `resolve_tool_autonomy`. Effective = `min(stored, ceiling, risk cap)`:
+   owner-only tools render read-only, `high` tools cap at "Asks first" (the runtime neutralises `auto`,
+   §70.1), and the platform ceiling shows only as an effect, never itself (§4.2). The risk-class copy
+   in the browser is drift-guarded against `_shared/action-risk.ts` by a test (§18). The mouse-only
+   canvas dial and the two false-affordance modals are gone; pending decisions route to the ONE Paige
+   chat (§18); legacy `/solo/{account}/trust-compass` redirects into the Command Center path (§58).
+   **Verified GREEN, headless:** unit + jsdom-render tests, the tsc ratchet, `lint:{tier-features,
+   tool-catalogue,action-risk,…}`, and a green production build. **Still OWED (§32.c):** a real
+   Solo-admin session turning a knob and confirming the `tenant_tool_autonomy` write persists — this
+   build session has no browser. So this is an RC pending merge + the owner's live review; the §4/#780
+   line below stays true until it merges, and the tier-matrix Surface ledger carries the per-tier
+   Trust Compass entry.
  - **2026-09-03 — I swept for the instance that had just bitten me, not for the class I had just
    learned, and reported it as a sweep.** Commit `eb0dbd83` on #792 was titled *"swept R2 and R3 for
    R1's and R4's blind spot — a NEGATIVE result, asserted"*. The measurement was real and the result

@@ -333,6 +333,37 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
+### Trust Compass — the governed control surface (Command Center 3rd sub-tab, 2026-09-05)
+
+Trust Compass moved from a top-level Solo branch to the **third Command Center sub-tab** (Business
+Game Plan → Systems Check → **Trust Compass** → Mind; Game Plan not built yet). The mouse-only canvas
+dial and its two false-affordance modals are gone. The surface is now an accessible governance
+instrument whose per-capability knobs write **real** per-tool autonomy through `set_tool_autonomy`
+(the one tenant-writable governance seam), read back through `list_tool_autonomy` /
+`resolve_tool_autonomy`. Effective posture = `min(stored, ceiling, risk cap)`; owner-only tools are
+read-only ("Your call"), `high` tools cap at "Asks first" (the runtime would neutralise `auto`, §70.1),
+and the platform ceiling shows only as an **effect** ("further limited by platform policy"), never the
+ceiling value/posture/attestation (§4.2). Pending decisions route to the ONE Paige chat, not a second
+inbox (§18). Legacy `/solo/{account}/trust-compass` redirects into the Command Center path (§58); no
+duplicate top-level surface remains.
+
+| Tier | Sees the tab | Can set a knob (`set_tool_autonomy`) |
+|---|---|---|
+| **God / Super Admin** | — (operator governs via `/operator/settings/capabilities`, not this Solo shell) | — |
+| **Agency** (agency-as-tenant) | — (agency shell has its own surfaces) | — |
+| **Standalone Solo** | ✓ | ✓ tenant **admin** on its own tenant · read-only + honest refusal for a non-admin |
+| **Sub-account** | ✓ (shares the Solo shell, §60) | ✓ same gate, scoped to its own tenant |
+| **Client** | — (no Command Center) | — |
+| **Anonymous** | **403** | **403** (`set_tool_autonomy` REVOKEs `anon`) |
+
+**Recorded honestly (§13/§32.c):** code-complete and covered by unit + jsdom-render tests (the
+risk-class copy is drift-guarded against `_shared/action-risk.ts`; the effective/ceiling/held-back
+derivation, accessible `role=slider` knobs, honest read/empty/error/forbidden states, and the routing
+round-trip are all asserted); the production build is green. The **authenticated live-drive is OWED** —
+a real Solo-admin session turning a knob and confirming the `tenant_tool_autonomy` write persists —
+because this build session is headless (no browser, §32.c). So this is an **RC pending merge + owner
+live review**, not yet marked LIVE beyond code.
+
 ### The Rail records what PAIGE DID, not only what was connected (SCR-2026-09-05, 2026-09-05)
 
 `paige_workspace_events` gained one `source_kind`, `capability_run`, so a workspace-level act — an
