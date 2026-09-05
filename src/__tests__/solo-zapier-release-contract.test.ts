@@ -225,6 +225,9 @@ describe("Solo Zapier API and MCP release contract", () => {
     const ui = read("src/solo/settings-integrations.tsx");
     expect(ui).toContain('<CapabilityApproval provider="zapier" onChanged={onChanged}/>');
     expect(ui).toContain("setChosen(null); onChanged?.();");
+    // The approved-tool count is read from the drawer's own connection row, so a mutation has
+    // to reload that too -- refreshing the catalogue and the Rail alone left it pre-save.
+    expect(ui).toContain("setActivityEpoch(n=>n+1);void mReload();onChanged();");
   });
   it("retries an intake whose contact write failed, and only that kind of failure", () => {
     const sql = readMigration();

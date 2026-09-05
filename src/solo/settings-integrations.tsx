@@ -377,8 +377,14 @@ function ZapierDrawer({onClose,onChanged}:{onClose:()=>void;onChanged:()=>void})
  // well as telling the parent to re-read connection status, so the list below reflects the
  // action the owner just took rather than the state before it.
  const[activityEpoch,setActivityEpoch]=useState(0);
- const changed=useCallback(()=>{setActivityEpoch(n=>n+1);onChanged();},[onChanged]);
- const api=useZapierApi();const m=useMcpConnection("zapier");const[tab,setTab]=useState<"api"|"mcp">("api");const panel=useRef<HTMLElement>(null);const close=useRef<HTMLButtonElement>(null);
+ const api=useZapierApi();const m=useMcpConnection("zapier");const[tab,setTab]=useState<"api"|"mcp">("api");
+ // A mutation here moves three things that are read independently: the outer catalogue (via
+ // the parent), the Rail list below, and this drawer's OWN connection row -- which is where
+ // the approved-tool count is read from. Refreshing only the first two left that count showing
+ // its pre-save value until the drawer was reopened. `reload` re-reads the row; it does not
+ // re-probe the provider, so this costs no outbound request.
+ const mReload=m.reload;
+ const changed=useCallback(()=>{setActivityEpoch(n=>n+1);void mReload();onChanged();},[mReload,onChanged]);const panel=useRef<HTMLElement>(null);const close=useRef<HTMLButtonElement>(null);
  useEffect(()=>{const opener=document.activeElement as HTMLElement|null;close.current?.focus();return()=>{if(opener&&document.contains(opener))opener.focus();};},[]);
  useEffect(()=>{const onKey=(event:KeyboardEvent)=>{const root=panel.current;if(!root)return;if(event.key==="Escape"){event.preventDefault();onClose();return;}if(event.key!=="Tab")return;const items=Array.from(root.querySelectorAll<HTMLElement>('button,input,select,textarea,a[href],[tabindex="0"]')).filter(item=>!item.hasAttribute("disabled")&&item.tabIndex!==-1&&item.offsetParent!==null);if(!items.length)return;if(!root.contains(document.activeElement)){event.preventDefault();items[0].focus();}else if(event.shiftKey&&document.activeElement===items[0]){event.preventDefault();items[items.length-1].focus();}else if(!event.shiftKey&&document.activeElement===items[items.length-1]){event.preventDefault();items[0].focus();}};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[onClose]);
  const choose=(next:"api"|"mcp")=>{setTab(next);panel.current?.querySelector<HTMLButtonElement>(`#ig-zapier-tab-${next}`)?.focus();};
