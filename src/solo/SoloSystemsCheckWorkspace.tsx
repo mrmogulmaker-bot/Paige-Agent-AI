@@ -67,6 +67,15 @@ const PRESENTATION_SAFE_EVIDENCE = new Set([
   "processor_agnostic", "payment_processor_declared", "has_revenue_classification", "integrity_ok",
   "revenue_class", "custom_pipeline_count", "has_stages", "social_handle_count", "declared_capture_only",
   "has_published_growth_page", "has_declared_website",
+  // The revenue check's keys, added when it was repointed from platform billing at the tenant's own
+  // pipeline. Its previous keys are the three above ending `revenue_class` — those stay, because
+  // findings written before the repoint are still in the table and would otherwise lose their proof.
+  //
+  // This is a deny-by-default guard: an unlisted key is suppressed, silently and by design. That is
+  // correct for secrets and wrong for a check's own evidence — without these three the drawer says
+  // "No presentation-safe evidence fields are available" on a check that now fails for real tenants,
+  // so the owner is told something is wrong and shown nothing that says why (§70).
+  "live_won_stages", "archived_won_stages", "deal_count",
 ]);
 
 const evidenceValue = (value: unknown): string | null => {

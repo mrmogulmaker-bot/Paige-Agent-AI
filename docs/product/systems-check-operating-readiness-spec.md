@@ -157,7 +157,10 @@ the four-surfaces architecture contract (task #9) and should move there when tha
 Nothing outside this list may render, ever:
 
 `LIVE` · `PARTIAL` · `NOT CONNECTED` · `NEEDS ATTENTION` · `PENDING PROVIDER` · `UNAVAILABLE` ·
-`PROOF OWED` · `PAUSED`
+`PROOF OWED` · `PAUSED` · `NOT CHECKED`
+
+`NOT CHECKED` is the ninth, **owner-ratified 2026-09-05** — see §4.4a for what it means and what it
+obliges. The other eight are the original set.
 
 > "Do not use an unexplained health percentage or trust score."
 
@@ -211,7 +214,7 @@ That is an unfabricated `PROOF OWED`. It is also **platform state, and a Solo wo
 learn it** (§9) — the tenant surface may say only that something is further limited by platform
 policy, without disclosing the platform's posture, ceiling, attestation or the reason.
 
-### 4.4a A NINTH WORD IS ALREADY RENDERING — `NOT CHECKED`, disclosed rather than quietly kept
+### 4.4a `NOT CHECKED` — the ninth word, OWNER-RATIFIED 2026-09-05
 
 **Shipped code renders a word this section says may never render.** `SoloSystemsCheckWorkspace.tsx:692`
 falls back to **`Not checked`** for any operating area whose `coveredBy` list is empty — today that is
@@ -236,10 +239,27 @@ all*, which is a different fact from every word it does carry:
 looked" are different promises to the owner, and only one of them implies a defect somewhere. Collapsing
 them would make the surface less truthful, which is why the ninth word was used.
 
-**The decision is the owner's**, in the same shape as §4.2: either ratify `NOT CHECKED` as a ninth
-member of the closed set, or rule that one of the eight absorbs it and accept the implication that word
-carries. Until then the surface renders the truthful word and this section records that it is outside
-the ruled set.
+**RULED.** The owner ratified it: *"as far as the 'not checked' that you haven't checked yet, that's
+fine… I don't mind having it."* The closed set is nine words.
+
+**And it carries an obligation, which is the owner's actual instruction:** *"Just write something on
+the backend for other agents to be able to refer to, so they know that when they're wiring into those
+areas, they can directly point them to the 'not checked' areas. Once they start wiring into those
+areas, they know that they need to address those first."*
+
+So `NOT CHECKED` is not a resting state — it is a **marker of unfinished backend work**, and the
+obligation lives where an engineer will actually meet it: a header block in
+`src/solo/systems-check-areas.ts` naming the four steps that finish an area (registry row →
+tenant-scoped runner → destination map → move the id into `coveredBy` and delete the `uncovered`
+string), plus a pointer comment on each of the three affected rows.
+
+The failure it exists to prevent is specific and quiet: someone builds the Mind, ships it, and the
+console keeps saying NOT CHECKED about a thing that now works — because nothing fails and no test
+complains. The header also names the service-role trap that broke the revenue check, since a new
+runner is the step most likely to hit it.
+
+Carrying it today: **Paige's team and delegated work · Business knowledge — the Mind · Security,
+permissions and governance.**
 
 ### 4.4 Two data defects found while grounding the vocabulary
 

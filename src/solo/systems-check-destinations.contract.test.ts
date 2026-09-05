@@ -104,4 +104,18 @@ describe("Systems Check destinations resolve against the real Solo route tree", 
     }
     expect(thin).toEqual([]);
   });
+
+  it("sends the revenue finding where a stage is authored, not where revenue is reported", () => {
+    // The check fails with "add a closing stage to your pipeline". Stages are authored on
+    // Campaigns > Pipeline; Campaigns > Sales is only where the money then shows. Pointing at the
+    // result instead of the fix is the exact miss this pins — and it is easy to reintroduce,
+    // because three of the four `sales`-area checks legitimately DO point at Sales.
+    const revenue = CHECK_DESTINATIONS.revenue_tracking_configured;
+    expect(revenue.path(ACCOUNT)).toContain("/growth/pipeline");
+    expect(revenue.path(ACCOUNT)).not.toContain("/growth/sales");
+    // And it must not pretend the job can be finished there. On Solo today nothing — not the
+    // surface, not PAIGE — can set a stage's closing role (task #26), so the caveat is the only
+    // thing standing between this check and a next action the owner cannot complete (§70).
+    expect(revenue.caveat ?? "").not.toBe("");
+  });
 });

@@ -1,5 +1,21 @@
 # Decision Log — chronological one-liners
 
+- **Solo Campaigns → Social becomes Social Command, and gets the first writer `social_handles` ever had
+  (2026-09-05, migration `20261210000000`)** — the tab was one fixed UNAVAILABLE panel; it is now a
+  surface where every tile names its source or its absence, and where an owner can RECORD the accounts
+  the business posts from. Closes the gap `docs/product/systems-check-operating-readiness-spec.md:414`
+  records in its own words ("NONE EXISTS. Verified: no route writes tenants.features.social_handles"),
+  which made Systems Check #3 structurally unpassable for every tenant since the day it shipped.
+  **Spine capability `social.presence`** (registry now 17) with a live per-turn Chat block, plus
+  `get_social_accounts`/`record_social_accounts` in `paige-mcp` so PAIGE reads and writes the same
+  field the surface does. **No Rail signal, deliberately:** `record_rail_event` is contact-scoped and
+  this fact is workspace-scoped — the same evidence class as `business_context.readiness`.
+  **The `BEGIN..ROLLBACK` proof earned its keep:** it caught the read's role gate being unguarded on
+  `auth.uid()`, which would have refused PAIGE's own service-role MCP caller and the Systems Check
+  runner while looking correct in review. **Owed:** CI-applied migration, authenticated live drive.
+  **NOT shipped and not implied:** a live per-tenant provider connection — `meta-schedule-post` uses a
+  single platform-wide token and writes a table with no `tenant_id`.
+
 - **RELEASED to production: `tenant_comms_readiness()` reads Setup (2026-09-03, PR #878, merge `8689df61`, migration `20261160000000`)** —
   the FOURTH consumer of the pointer #864 fixed, found only by enumerating what functions READ rather
   than what they are named. Solo Settings → Connections was telling Mogul Maker Academy its website
@@ -2318,6 +2334,118 @@ claimed the scan writes its run row only on completion; it writes it up front.
 **Owed and NOT claimed:** §32.c authenticated live-drive of the deployed surface — this session
 cannot sign into the workspace.
 
+---
+
+## 2026-09-05 · `NOT CHECKED` ratified as the ninth status word, with an obligation attached
+
+**OWNER RULING.** *"As far as the 'not checked' that you haven't checked yet, that's fine… I don't
+mind having it."* The Systems Check status vocabulary is now **nine** words, not eight.
+
+It means one thing: **no check has ever looked at this area.** Distinct from `UNAVAILABLE`, which
+means a source was consulted and could not answer. An absent check is never evidence of a fault,
+and collapsing the two would have shown three faults on every account where none exist.
+
+**The ruling came with an instruction, and that is the substantive part:** *"Just write something on
+the backend for other agents to be able to refer to, so they know that when they're wiring into
+those areas… they need to address those first."*
+
+So the word is a **marker of unfinished backend work**, not a resting state, and the reference lives
+at the code an engineer will actually open — a header block in `src/solo/systems-check-areas.ts`
+with the four steps that finish an area (registry row → tenant-scoped runner → destination map →
+move the id into `coveredBy` and delete the `uncovered` string), plus a pointer on each affected
+row. Mirrored in `docs/product/systems-check-operating-readiness-spec.md` §4 and §4.4a.
+
+The failure it prevents is specific and quiet: someone builds the Mind, ships it, and the console
+goes on saying NOT CHECKED about something that now works — with nothing failing and no test
+complaining. The header names the trap explicitly, including the service-role one that broke the
+revenue check (a runner cannot resolve its tenant from `current_user_tenant_id()`).
+
+Carrying it today: **Paige's team and delegated work · Business knowledge — the Mind · Security,
+permissions and governance.**
+
+---
+
+## 2026-09-05 · The Systems Check console now reads the last FULL sweep, not the newest run
+
+Behaviour change worth finding later, because the obvious question — *"why is my console showing
+yesterday's scan?"* — has a deliberate answer.
+
+**Why.** `_shared/systems-check-runner.ts` accepts a `runnerKeys` filter and
+`systems-check-run-change` passes ONE key per changed surface, so such a run carries
+`check_count = 1`. The console read the newest run, so a one-check run became the tenant's whole
+picture — tile showing "1 of 1 passed · All clear" with nine checks, including real failures,
+absent, and no incomplete banner because `recorded(1) > readable(1)` is false.
+`rescanBusinessContext` fires three of those on **every successful Solo Setup save**. Zero such
+runs existed on prod and the wiring shipped 2026-09-03: a loaded trigger, not a live defect.
+
+**What changed.** Migration `20261203000000` adds `paige_systems_check_run.selected_runner_keys`
+and guards the run-select in BOTH `systems_check_snapshot` and `approve_systems_check_finding` with
+`selected_runner_keys IS NULL AND scan_flavor <> 'change_triggered'`. The runner's delta baseline
+(a fourth "latest run" resolver, found by the peer gate) takes the flavour clause too — using a
+one-check run as the baseline left nine checks reading `undefined !== "fail"`, re-forging an LLM
+draft and re-filing a duplicate action for each, once per Setup save.
+
+**Two clauses, not one.** The column is written from the same `opts.runnerKeys` that drives the
+filter, so a future partial flavour records itself with no SQL change. The flavour clause makes the
+migration effective on its own — without it the guard would be dark until the edge bundle deployed,
+and the two CI pipelines have no ordering link.
+
+**The cost, so nobody rediscovers it as a bug.** The console reads a sweep ~17h old on average.
+Inside that window a tenant can make a check *worse* and still see the older passing result, with
+STALE EVIDENCE silent until 24h. A loud flattering lie traded for a quiet stale one. Reading the
+newest result PER CHECK removes both and is the durable fix.
+
+**Conditional on cron coverage.** Approvals need a full sweep under 24h. `systems-check-run-scheduled`
+pages with `DEFAULT_BATCH = 15` ordered `created_at ASC` with no cursor, so from tenant 16 the newest
+are never swept — such a workspace would be pinned to its onboarding sweep with approvals dead. 14
+tenants today.
+
+**Verified byte-clean.** The migration reproduces both function bodies to replace them; the peer gate
+pulled the live `prosrc` from prod and confirmed `md5` on both before diffing, so the only changes
+are the intended ones.
+
+---
+
+## 2026-09-05 — Revenue tracking on Systems Check is the TENANT's sales revenue (owner ruling)
+
+**Owner, verbatim:** *"The revenue tracking is not from the platform admin. I don't know where you
+got that from. The revenue tracking should be for the particular tenant... The platform admin bills
+the clients... As far as all of the sales revenue that sits inside the campaigns and tracks
+throughout the metrics and all the data, that should be something that Systems Check is looking at.
+That has to do with the revenue that the actual customer is making."*
+
+And the scope boundary that goes with it: *"all of the work we're doing is isolated for the Solo
+tenant shell and Solo tenant shell only... I don't want you guys to worry about anything that has to
+do with the platform operator account. That's totally out of scope right now."*
+
+**What was wrong.** `revenue_tracking_configured` called `operator_revenue_integrity_audit` — a
+platform-billing chain gated on `is_platform_owner()`. The scan runs as service-role with no user
+identity, so `auth.uid()` is NULL and the RPC raised 42501 on every tenant, every run, since
+2026-08-10. Prod: **315 findings, all `skip`, all with a NULL drafted fix.** Every workspace carried
+a PARTIAL badge it could never clear. Shipped in PR #935.
+
+**A correction worth recording (§13).** CC's own recommendation had been to pull the check OUT of the
+tenant sweep as operator-only. That was wrong, and the owner corrected it. The error was inferring
+INTENT from IMPLEMENTATION: the check was correctly named and correctly placed, and had simply been
+pointed at the wrong data. "What the code does" is not evidence of "what it was for."
+
+## 2026-09-05 — Two gaps found while wiring that check, both filed rather than folded in
+
+**#26 — a Solo tenant cannot mark a stage as closing.** Not defaulted; unreachable. `growth2.tsx`
+has zero references to `stage_type`; the `pipeline_configure` tool schema has no such field on
+create-pipeline, create-stage or update-stage; the governed RPC inserts a hardcoded `'open'` and
+never updates it. So the revenue check names a next action the owner cannot complete — Paige would
+report success and create an open stage. Stated in the finding's `caveat` until #26 lands (§70).
+Owner's direction on the shape: a drop target at the bottom of the board. `deals.stage_id` is NOT
+NULL, so whatever it looks like it must be backed by a real won-typed stage — which keeps the check's
+predicate the right one.
+
+**#27 — the Sales Pipeline sub-agent is scoped by OWNER, not by workspace.**
+`subagent-sales-pipeline` runs service-role and filters `deals` on `owner_user_id` with no
+`tenant_id`, and reads `pipeline_stages` with no filter at all. Not an anonymous IDOR — the caller's
+id is real and JWT-derived — but a multi-tenant user gets their workspaces blended into one answer.
+The file header claims "Tenant-scoped via the deal owner," which is how it survived review. Same
+class as #588.
 
 ## 2026-09-05 · PAIGE's workspace-level acts have somewhere to be recorded (SCR-2026-09-05)
 
@@ -2381,4 +2509,3 @@ that exist today and every row this change adds. It needs a rebase whichever ord
 **Owed and NOT claimed:** §32.c authenticated live-drive — this session cannot sign into the
 workspace, so that a capability row RENDERS on the owner's Command Center is unverified until the
 owner or a browser-capable session looks.
-

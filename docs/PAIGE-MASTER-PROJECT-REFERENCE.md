@@ -131,6 +131,35 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Solo Campaigns → Social — a business can record the accounts it posts from (2026-09-05)
+
+**What shipped.** `/solo/{account}/growth/social` was one fixed UNAVAILABLE panel. It is now a Social
+Command surface — an executive brief composed only from figures that have a source, five KPI tiles, a
+six-stage content pipeline, the accounts on record, what PAIGE has filed and stopped on, and the Trust
+Compass lanes reflected read-only — and it carries the **first writer** `tenants.features->'social_handles'`
+has ever had (`public.record_social_handles`, migration `20261210000000`). Systems Check #3
+(`social_accounts_connected`) has pointed at this page since it shipped while admitting the page could
+not finish the job; that caveat is gone in the same commit.
+
+**PAIGE can now see AND change it.** New Spine capability `social.presence`
+(`public.get_social_presence_evidence`), injected as a live per-turn block into every tenant Chat turn,
+plus `get_social_accounts` / `record_social_accounts` in `paige-mcp`. The surface and PAIGE read the
+same function, so they cannot describe the accounts differently.
+
+**What is still UNAVAILABLE, and this narrows §5 rather than closing it.** A declared handle is a
+§38 CAPTURE, not a connection. No follower, reach, engagement, publishing-queue, schedule or placement
+figure exists for a tenant anywhere, and every tile that would imply one renders an em-dash plus the
+sentence naming what would have to exist. **A live per-tenant social connection is NOT shipped:**
+`meta-schedule-post`/`meta-get-insights` read a single platform-wide `META_PAGE_ACCESS_TOKEN` and
+write `paige_social_posts`, a table with no `tenant_id` — so per-tenant publishing needs per-tenant
+OAuth (provider app review, per-tenant tokens) and a tenant column on that table. Owner decision owed.
+
+**Proof.** 53 new assertions, full suite 3303 passing, typecheck/build/lints green, and a production
+`BEGIN..ROLLBACK` proof of ten assertions that **caught a real defect before merge** (the read's role
+gate was unguarded on `auth.uid()` and would have refused PAIGE's own service-role caller).
+**Proof owed:** migration applied on production (CI on merge) and an authenticated live drive (§32.c).
+Full ledger: `docs/doctrine/tier-matrix.md` → "Campaigns → Social".
+
 ### Solo n8n MCP OAuth read/write connection — 2026-09-03
 
 PR #909 merged as 49b9f338. Frontend production deployment is READY on paigeagent.ai and app.paigeagent.ai; dedicated tenant-n8n-oauth version 1 and migration 20261201000000 are deployed and verified. Every Solo workspace owner can connect, edit, reconnect and disconnect through OAuth requesting workflow:read and workflow:write. API health remains independent. 3,020 Linux tests and all ordinary checks passed; rendered evidence covers four viewports and both themes. Final owner consent and real provider discovery are still Proof Owed. Hosted gateway callback URL retention is an accepted MVP residual risk, not a release blocker. See docs/delivery/solo-n8n-oauth-mvp.md.
@@ -183,7 +212,7 @@ another can read that other tenant's client book and, through the `EXISTS`, its 
 
 ### PAIGE Rail — a workspace-level outcome record exists (SCR-2026-09-05, 2026-09-05)
 
-**Status: PR open**, migration `20261203000000_paige_can_show_her_work.sql`. This is **SCR-1** from
+**Status: PR open**, migration `20261211000000_paige_can_show_her_work.sql`. This is **SCR-1** from
 `docs/architecture/paige-spine-tool-migration-map.md`, raised and approved by the owner on
 2026-09-05 and recorded as `SCR-2026-09-05` in `docs/architecture/paige-spine-foundation.md`. The
 map named it as the blocker on **47 of 60 actions and every wave from 3 onward**.

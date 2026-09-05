@@ -4938,6 +4938,57 @@ const SUPPORTED_SCOPES = [
 ] as const;
 type Scope = (typeof SUPPORTED_SCOPES)[number];
 
+mcp.tool("get_social_accounts", {
+  description:
+    "Read which social accounts this workspace has RECORDED that it posts from (Instagram, Facebook, LinkedIn, YouTube, TikTok, X), and which are not recorded. Scoped to the caller's tenant. These are DECLARED accounts \u2014 a record of what the business says it posts from, never a connection: nothing here is authorised to publish, schedule, or read a follower, reach or engagement figure, and no such figure exists to return.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+    // Service-role client, so auth.uid() is null inside the function and the passed tenant is
+    // honored on the trusted arm (§59). The tenant came from actorTenantId(), never from the model.
+    const { data, error } = await admin.rpc("get_social_presence_evidence", { _tenant_id: tenant_id });
+    if (error) return err(error.message);
+    const rows = (Array.isArray(data) ? data : []) as Array<{ network: string; status: string; handle: string | null }>;
+    return ok({
+      tenant_id,
+      accounts: rows,
+      on_record: rows.filter((r) => r.status === "on_record").length,
+      note: "Declared capture only. No account is connected for publishing or measurement.",
+    });
+  },
+});
+
+mcp.tool("record_social_accounts", {
+  description:
+    "Record or update the social accounts this workspace posts from. Send the complete set you want on record: a network you OMIT is cleared, so read with `get_social_accounts` first and resend the ones that should stay. Allowed networks: instagram, facebook, linkedin, youtube, tiktok, x. This writes a RECORD only \u2014 it performs no OAuth, stores no token, calls no provider API, and publishes and schedules nothing. It is what makes Systems Check #3 (social accounts on record) passable.",
+  inputSchema: z.object({
+    instagram: z.string().nullable().optional(),
+    facebook: z.string().nullable().optional(),
+    linkedin: z.string().nullable().optional(),
+    youtube: z.string().nullable().optional(),
+    tiktok: z.string().nullable().optional(),
+    x: z.string().nullable().optional(),
+  }),
+  handler: async (args) => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+    const handles: Record<string, string> = {};
+    for (const [network, value] of Object.entries(args)) {
+      if (typeof value === "string" && value.trim()) handles[network] = value.trim();
+    }
+    const { data, error } = await admin.rpc("record_social_handles", {
+      _expected_tenant_id: tenant_id,
+      _handles: handles,
+    });
+    if (error) return err(error.message);
+    await audit("record_social_accounts", "tenant", tenant_id, { networks: Object.keys(handles) });
+    // Reports what the database read back off the updated row, never what was sent (§13).
+    return ok({ ok: true, ...(data as Record<string, unknown>) });
+  },
+});
+
+
 // Tool → required scope.
 //   *.read / *.write   → Tenant Admin grant (operator-tier work inside their tenant)
 //   crm.delete         → Tenant Admin grant (bulk delete with audit + dry-run, per owner directive)
@@ -5039,6 +5090,12 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_stage_automation_events: "crm.read",
   // Ship #1 Phase B — GDPR/CCPA DSR
   handle_data_subject_request: "admin.delete",
+  // Campaigns › Social — the accounts a workspace records that it posts from (§38 capture-only).
+  // Not "platform.*": these are the CALLER'S OWN tenant's records, so tenant-admin scope is right
+  // and the tier gate stays default (tenant). The write goes through public.record_social_handles,
+  // which re-enforces scope in-body (§59) — the grant here is not the guard.
+  get_social_accounts: "crm.read",
+  record_social_accounts: "crm.write",
   // Ship #2 — Scheduled Readiness Proposals (§122 two-phase)
   list_readiness_proposals: "btf.read",
   get_readiness_proposal: "btf.read",

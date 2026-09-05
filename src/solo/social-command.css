@@ -1,0 +1,435 @@
+/* Campaigns › Social — Social Command.
+ *
+ * Its OWN stylesheet, deliberately. `solo-campaigns.css` carries two APPROVED-FROZEN (§28) blocks
+ * and ten assertions in `growth2.contract.test.tsx` that match its bytes — including two that
+ * depend on the whitespace difference between `overflow-x: clip` and `overflow-x:clip`. Nothing
+ * here needs to touch it, so nothing here does.
+ *
+ * TOKENS ONLY. Every colour is a `.paige-solo` token, so the light theme is authored the moment the
+ * dark one is (§23) and no surface is pinned to one theme. `--danger` does NOT exist in this shell
+ * — `--bad` is the negative. There is no orb token either: the pack's `--cm-orb` family is
+ * `--pg-*`-derived and resolves to nothing under `.paige-solo`, so the mark below is built from
+ * `--gold*` and `--violet*`.
+ *
+ * SCROLL. `.campaigns-scroll` is the one scroll owner for this tab and `.paige-solo main` is
+ * clipped `!important`. Nothing here may grow the host: every grid child carries `min-width:0`,
+ * which the design-system note records as the defect that hit the v3 pack six times.
+ */
+
+.social-page {
+  max-width: 1240px;
+  margin: 0 auto;
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+.social-page > * { min-width: 0; }
+
+.social-eyebrow {
+  display: block;
+  font: 600 10.5px/1 var(--font);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ── truth labels ─────────────────────────────────────────────────────────── */
+/* Same four-label vocabulary and the same accent mapping as `.campaigns-truth`, restated here so
+   this sheet stands alone rather than depending on a frozen file's selector order. */
+.social-truth {
+  display: inline-flex; align-items: center; flex: none;
+  height: 19px; padding: 0 7px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface-sunk); color: var(--ink-3);
+  font: 650 9px/1 var(--mono); letter-spacing: .09em;
+}
+.social-truth--live { color: var(--ok); }
+.social-truth--partial { color: var(--violet); }
+.social-truth--proposed { color: var(--warn); }
+.social-truth--unavailable { color: var(--ink-3); }
+
+/* A figure and its absence are the same size and weight on purpose: an em-dash that shrinks reads
+   as a missing element rather than a stated absence. */
+.social-figure {
+  font: 650 26px/1 var(--font);
+  letter-spacing: -.03em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.social-figure--absent { color: var(--ink-3); font-weight: 400; }
+
+/* ── hero ─────────────────────────────────────────────────────────────────── */
+
+.social-hero {
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+  padding: 22px 22px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  /* Depth from a layered wash between two surface tokens plus a hairline — not from darkening. */
+  background:
+    radial-gradient(120% 140% at 78% 0%, var(--surface-2), transparent 62%),
+    linear-gradient(140deg, var(--surface), var(--surface-sunk));
+  box-shadow: var(--sh-2);
+}
+.social-hero-top {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) auto minmax(0, .85fr);
+  gap: 24px;
+  align-items: center;
+}
+.social-hero-top > * { min-width: 0; }
+
+.social-headline {
+  margin-top: 8px;
+  font-size: 27px;
+  line-height: 1.16;
+  letter-spacing: -.035em;
+  text-wrap: balance;
+}
+.social-hero-body {
+  margin-top: 9px;
+  max-width: 52ch;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.social-signature {
+  display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.social-signature strong { font: 650 11px/1 var(--font); letter-spacing: .18em; color: var(--gold); }
+.social-signature span { font-size: 11.5px; color: var(--ink-3); }
+
+.social-hero-mark { display: grid; justify-items: center; gap: 12px; }
+.social-quote {
+  margin: 0; max-width: 22ch; text-align: center;
+  font-size: 12.5px; line-height: 1.5; color: var(--ink-2);
+}
+
+.social-hero-act { display: grid; align-content: start; gap: 8px; justify-items: end; }
+.social-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.social-hero-permission { font-size: 11.5px; color: var(--ink-3); text-align: right; }
+
+/* ── the mark ─────────────────────────────────────────────────────────────── */
+
+.social-orb { position: relative; width: 116px; height: 116px; display: grid; place-items: center; }
+.social-orb-halo,
+.social-orb-body,
+.social-orb-ring { position: absolute; inset: 0; border-radius: 50%; }
+.social-orb-halo {
+  background: radial-gradient(circle at 50% 50%, var(--gold-tint), transparent 68%);
+  opacity: .85;
+}
+.social-orb-body {
+  inset: 13px;
+  background: radial-gradient(circle at 34% 28%, var(--surface-2), var(--surface-sunk) 58%, var(--canvas));
+  border: 1px solid var(--line);
+  box-shadow: var(--sh-2), inset 0 1px 0 var(--line-soft);
+}
+/* The rim light. A conic sweep so the highlight travels rather than pulsing — a pulse on a surface
+   with nothing running reads as live traffic, which on this surface would be a lie. */
+.social-orb-ring {
+  inset: 9px;
+  background: conic-gradient(from 0deg, transparent 0deg, var(--gold-bright) 42deg, transparent 96deg, transparent 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  opacity: .8;
+  animation: social-orb-turn 14s linear infinite;
+}
+.social-orb-mark { position: relative; z-index: 1; }
+@keyframes social-orb-turn { to { transform: rotate(360deg); } }
+
+/* ── KPI strip ────────────────────────────────────────────────────────────── */
+
+.social-kpis {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+.social-kpi {
+  min-width: 0;
+  display: grid; align-content: start; gap: 5px;
+  padding: 13px 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  background: var(--surface);
+}
+.social-kpi-glyph { color: var(--violet); display: inline-flex; }
+.social-kpi h3 { font-size: 12px; font-weight: 600; letter-spacing: -.01em; }
+.social-kpi p { font-size: 11px; line-height: 1.45; color: var(--ink-3); text-wrap: pretty; }
+.social-kpi .social-truth { justify-self: start; }
+
+/* ── panels ───────────────────────────────────────────────────────────────── */
+
+.social-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.social-grid > * { min-width: 0; }
+
+.social-panel {
+  min-width: 0;
+  display: flex; flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+.social-panel-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 15px 17px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-2);
+}
+.social-panel-head h3 { font-size: 14px; letter-spacing: -.02em; }
+.social-panel-head p { margin-top: 3px; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
+.social-panel-foot {
+  padding: 11px 17px 14px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11.5px; line-height: 1.5; color: var(--ink-3);
+}
+
+.social-empty {
+  display: grid; place-items: center; align-content: center; justify-items: center;
+  gap: 8px; padding: 30px 22px; text-align: center; flex: 1;
+}
+.social-empty-glyph {
+  display: grid; place-items: center;
+  width: 38px; height: 38px; border-radius: 12px;
+  background: var(--surface-sunk); color: var(--ink-3);
+}
+.social-empty h4 { font-size: 13.5px; }
+.social-empty p { max-width: 48ch; font-size: 12px; line-height: 1.55; color: var(--ink-3); }
+
+/* ── PAIGE sees ───────────────────────────────────────────────────────────── */
+
+.social-feed { display: grid; margin: 0; padding: 0; list-style: none; }
+.social-feed li {
+  display: flex; gap: 11px; align-items: flex-start;
+  padding: 13px 17px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.social-feed li:last-child { border-bottom: 0; }
+.social-feed li > div { min-width: 0; }
+.social-feed-glyph {
+  display: grid; place-items: center; flex: none;
+  width: 28px; height: 28px; border-radius: 9px;
+  background: var(--violet-tint); color: var(--violet);
+}
+.social-feed h4 { font-size: 12.8px; }
+.social-feed p { margin-top: 3px; font-size: 12px; line-height: 1.5; color: var(--ink-2); overflow-wrap: anywhere; }
+.social-feed small { display: block; margin-top: 5px; font-size: 11px; color: var(--ink-3); }
+
+/* ── pipeline ─────────────────────────────────────────────────────────────── */
+
+.social-pipeline {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0; padding: 14px 17px; list-style: none;
+}
+.social-stage {
+  min-width: 0;
+  display: grid; align-content: start; gap: 4px;
+  padding: 12px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  background: var(--surface-sunk);
+  /* The connector. A hairline between stages reads as flow without a decorative arrow glyph that
+     would need its own reduced-motion and forced-colors handling. */
+  position: relative;
+}
+.social-stage + .social-stage::before {
+  content: ""; position: absolute; left: -8px; top: 50%;
+  width: 8px; height: 1px; background: var(--line);
+}
+.social-stage h4 { font-size: 11.5px; font-weight: 600; }
+.social-stage p { font-size: 10.5px; line-height: 1.4; color: var(--ink-3); text-wrap: pretty; }
+.social-stage .social-figure { font-size: 21px; }
+/* Semantic, never decorative: attention marks work genuinely held for a person, positive marks work
+   this workspace has actually produced. A stage with no source gets neither. */
+.social-stage--attention:has(.social-figure:not(.social-figure--absent)) { border-color: var(--warn); }
+.social-stage--attention:has(.social-figure:not(.social-figure--absent)) .social-figure { color: var(--warn); }
+.social-stage--positive:has(.social-figure:not(.social-figure--absent)) { border-color: var(--ok); }
+.social-stage--positive:has(.social-figure:not(.social-figure--absent)) .social-figure { color: var(--ok); }
+
+/* ── channels ─────────────────────────────────────────────────────────────── */
+
+.social-channels { display: grid; margin: 0; padding: 0; list-style: none; }
+.social-channels li {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 12px 17px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.social-channels li:last-child { border-bottom: 0; }
+.social-channel-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.social-channel-id > div { min-width: 0; }
+.social-channel-id h4 { font-size: 12.8px; }
+.social-channel-id small { display: block; margin-top: 2px; font-size: 11px; color: var(--ink-3); overflow-wrap: anywhere; }
+/* One neutral dot per channel, tokenised. Network brand colours are deliberately NOT used: the
+   networks are infrastructure beneath this surface, and six brand fills would out-shout the one
+   accent this shell spends on the act. */
+.social-channel-dot {
+  flex: none; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--violet); opacity: .85;
+}
+.social-channel-metric { text-align: right; min-width: 0; }
+.social-channel-metric .social-figure { font-size: 17px; }
+.social-channel-metric small { display: block; margin-top: 2px; max-width: 34ch; font-size: 10.5px; line-height: 1.4; color: var(--ink-3); }
+
+/* ── governance ───────────────────────────────────────────────────────────── */
+
+.social-governance {
+  min-width: 0;
+  padding: 14px 17px 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  background: var(--surface-sunk);
+}
+.social-governance-head { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.social-governance-head h3 { font-size: 12.5px; font-weight: 600; }
+.social-governance ul {
+  display: flex; flex-wrap: wrap; gap: 8px 16px;
+  margin: 10px 0 0; padding: 0; list-style: none;
+}
+.social-governance li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.social-governance > p { margin-top: 10px; font-size: 11px; line-height: 1.5; color: var(--ink-3); }
+.social-lane {
+  display: inline-flex; align-items: center; flex: none;
+  height: 19px; padding: 0 8px; border-radius: 999px;
+  font: 600 10.5px/1 var(--font);
+}
+.social-lane--auto { background: var(--ok-tint); color: var(--ok); }
+.social-lane--confirm { background: var(--warn-tint); color: var(--warn); }
+.social-lane--off { background: var(--bad-tint); color: var(--bad); }
+.social-lane-label { font-size: 11.5px; color: var(--ink-2); overflow-wrap: anywhere; }
+
+.social-record-stamp { font-size: 11px; line-height: 1.5; color: var(--ink-3); }
+
+/* ── states ───────────────────────────────────────────────────────────────── */
+
+.social-state {
+  min-height: 240px;
+  display: grid; place-items: center; align-content: center; justify-items: center;
+  gap: 9px; padding: 34px 20px; text-align: center;
+  border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface);
+}
+.social-state h2 { font-size: 16px; letter-spacing: -.02em; }
+.social-state p { max-width: 56ch; font-size: 12.8px; line-height: 1.55; color: var(--ink-2); }
+.social-spinner {
+  width: 22px; height: 22px; border: 2px solid var(--line);
+  border-top-color: var(--gold); border-radius: 50%;
+  animation: social-spin .8s linear infinite;
+}
+@keyframes social-spin { to { transform: rotate(360deg); } }
+.social-skeleton { display: grid; gap: 9px; padding: 18px; }
+.social-skeleton span {
+  height: 58px; border-radius: 10px;
+  background: linear-gradient(90deg, var(--surface-sunk), var(--surface-2), var(--surface-sunk));
+  background-size: 200% 100%;
+  animation: social-shimmer 1.2s linear infinite;
+}
+@keyframes social-shimmer { to { background-position: -200% 0; } }
+
+/* ── the record form ──────────────────────────────────────────────────────── */
+
+.social-scrim {
+  position: fixed; inset: 0; z-index: 88;
+  background: rgb(18 14 40 / .42);
+  backdrop-filter: blur(2px);
+}
+.social-dialog {
+  position: fixed; z-index: 89; inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(86vh, 760px);
+  display: flex; flex-direction: column;
+  border: 1px solid var(--line); border-radius: var(--r-l);
+  background: var(--surface); box-shadow: var(--sh-3);
+  overflow: hidden;
+}
+.social-dialog > header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 16px 18px; border-bottom: 1px solid var(--line);
+}
+.social-dialog > header h2 { margin-top: 4px; font-size: 16px; letter-spacing: -.02em; }
+.social-dialog form { min-height: 0; overflow: auto; padding: 16px 18px 18px; display: grid; gap: 14px; }
+.social-dialog-note { font-size: 12px; line-height: 1.55; color: var(--ink-2); }
+.social-dialog-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.social-dialog-fields label { display: grid; gap: 5px; min-width: 0; font-size: 11.5px; color: var(--ink-3); }
+.social-dialog-fields input {
+  width: 100%; min-width: 0; height: 34px;
+  padding: 0 10px; font: inherit; color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r-s); background: var(--surface-2);
+}
+.social-dialog-fields input:focus-visible { outline: 2px solid var(--violet); outline-offset: -1px; }
+.social-dialog-fields input:disabled { color: var(--ink-3); background: var(--surface-sunk); }
+.social-dialog-status {
+  padding: 9px 11px; border-radius: var(--r-s);
+  background: var(--surface-sunk); color: var(--ink-2);
+  font-size: 12px; line-height: 1.5;
+}
+.social-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ── focus ────────────────────────────────────────────────────────────────── */
+/* Indigo, never gold: gold is spent on the act and a focus ring is not one (§11). */
+.social-page button:focus-visible,
+.social-dialog button:focus-visible {
+  outline: 2px solid var(--violet); outline-offset: 2px; border-radius: var(--r-s);
+}
+
+/* ── responsive ───────────────────────────────────────────────────────────── */
+/* Plain @media, not @container: `container-type` is declared only on `.campaigns-nav`, so a
+   container query here would never match. The widths track the column this tab actually gets —
+   Solo's docked PAIGE column makes a 1366 session ~685px wide, and ~439px with PAIGE expanded. */
+
+@media (max-width: 1180px) {
+  .social-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .social-pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .social-stage + .social-stage::before { display: none; }
+}
+@media (max-width: 1020px) {
+  .social-hero-top { grid-template-columns: minmax(0, 1fr); justify-items: start; }
+  .social-hero-mark { justify-items: start; }
+  .social-quote { text-align: left; }
+  .social-hero-act { justify-items: start; }
+  .social-hero-actions { justify-content: flex-start; }
+  .social-hero-permission { text-align: left; }
+  .social-grid { grid-template-columns: minmax(0, 1fr); }
+  .social-headline { font-size: 23px; }
+}
+@media (max-width: 720px) {
+  .social-hero { padding: 18px 16px 16px; }
+  .social-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .social-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .social-dialog-fields { grid-template-columns: minmax(0, 1fr); }
+  .social-channels li { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .social-channel-metric { text-align: left; }
+  .social-headline { font-size: 20px; }
+}
+
+/* ── motion + forced colors ───────────────────────────────────────────────── */
+/* Every effect writes its own reduced-motion fallback; these libraries ship none. The ring stops
+   rather than disappearing — the mark still has to read as the mark when it is still. */
+@media (prefers-reduced-motion: reduce) {
+  .social-orb-ring { animation: none; }
+  .social-spinner,
+  .social-skeleton span { animation-duration: .01ms; animation-iteration-count: 1; }
+  .social-page *, .social-dialog * { transition-duration: .01ms !important; }
+}
+@media (forced-colors: active) {
+  .social-hero, .social-panel, .social-kpi, .social-stage, .social-governance,
+  .social-state, .social-dialog, .social-truth { border: 1px solid CanvasText; }
+  .social-orb-halo, .social-orb-ring { display: none; }
+  .social-scrim { background: Canvas; }
+}

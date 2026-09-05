@@ -117,7 +117,7 @@ describe("Solo Zapier API and MCP release contract", () => {
     // `sql`, these two assertions would keep passing against a definition that no longer
     // ships, which is the stale-fence failure this suite has already hit once.
     const readerSql = read(
-      "supabase/migrations/20261203000000_paige_can_show_her_work.sql",
+      "supabase/migrations/20261211000000_paige_can_show_her_work.sql",
     );
     expect(readerSql).toContain("FUNCTION public.get_zapier_rail_activity");
     // The four connection families are still admitted, unchanged...
