@@ -86,7 +86,14 @@ function useManagedIdentity() {
     if (!tenantLoading) void load();
     return () => activeGate.clear();
   }, [tenantLoading, load]);
-  return { ...state, loading: tenantLoading || state.loading || Boolean(activeTenantId && state.tenantId !== activeTenantId), retry: load };
+  const ownsActiveTenant = state.tenantId === activeTenantId;
+  return {
+    tenantId: ownsActiveTenant ? state.tenantId : null,
+    loading: tenantLoading || state.loading || !ownsActiveTenant,
+    error: ownsActiveTenant ? state.error : null,
+    value: ownsActiveTenant ? state.value : null,
+    retry: load,
+  };
 }
 
 function TeamView({ openPaige }: { openPaige?: () => void }) {
@@ -161,13 +168,16 @@ function useCommsReadiness() {
     setState({ tenantId: activeTenantId, loading: false, error: error?.message ?? null, value: error ? null : row });
   }, [activeTenantId]);
   useEffect(() => { if (!tenantLoading) void load(); }, [load, tenantLoading]);
+  const ownsActiveTenant = state.tenantId === activeTenantId;
   return {
-    ...state,
+    tenantId: ownsActiveTenant ? state.tenantId : null,
     // Stay in the loading state while the tenant context resolves and until the
     // answer we hold belongs to the account now on screen. Without this the card
     // paints "Texting is not ready yet" — a definite claim — before a single read
     // has been attempted.
-    loading: state.loading || tenantLoading || Boolean(activeTenantId && state.tenantId !== activeTenantId),
+    loading: state.loading || tenantLoading || !ownsActiveTenant,
+    error: ownsActiveTenant ? state.error : null,
+    value: ownsActiveTenant ? state.value : null,
     retry: load,
   };
 }
@@ -527,11 +537,12 @@ function ConnectionSetupDrawer({ option, onClose, onContinue }: {
   return createPortal(drawer, document.querySelector(".solo-settings") ?? document.body);
 }
 
-function AddChannelWorkspace({ account, options, connected, bestId, onOpen }: {
+function AddChannelWorkspace({ account, options, connected, bestId, nextState, onOpen }: {
   account: string;
   options: AddChannelOption[];
   connected: string[];
-  bestId: string;
+  bestId: string | null;
+  nextState: "ready" | "resolving" | "unavailable";
   onOpen: (option: AddChannelOption) => void;
 }) {
   const sections = [
@@ -539,15 +550,28 @@ function AddChannelWorkspace({ account, options, connected, bestId, onOpen }: {
     { title: "Phone and messaging", blurb: "Set up the number, messaging account, and required registration.", icon: Smartphone, ids: ["phone", "messaging"] },
     { title: "Calendar and booking", blurb: "Scheduling setup stays with the Calendars owner surface.", icon: CalendarClock, ids: ["calendar", "booking"] },
   ] as const;
-  const best = options.find((option) => option.id === bestId) ?? options[0];
+  const best = bestId ? options.find((option) => option.id === bestId) ?? null : null;
+  const bestTitle = best?.id === "calendar" ? "Review calendar and booking" : best?.title;
+  const bestOutcome = best?.id === "calendar"
+    ? "Review existing scheduling connections or add one from the Calendars owner surface."
+    : best?.outcome;
   return <div className="ss-add-workspace">
     <section className="ss-add-intro" aria-labelledby="ss-add-title">
       <div><span>Business channel setup</span><h2 id="ss-add-title">Add a communication channel</h2><p>Connections are how your business can be reached, how Paige may work with those channels, and what needs attention.</p></div>
       <div className="ss-add-current"><strong>Operating channels</strong>{connected.length ? <ul>{connected.map((item) => <li key={item}><CheckCircle2 aria-hidden />{item}</li>)}</ul> : <p>No operating channels are confirmed yet.</p>}</div>
     </section>
     {best && <section className="ss-add-next" aria-label="Best next setup action">
-      <div><span>Best next step</span><strong>{best.title}</strong><p>{best.outcome}</p></div>
+      <div><span>Best next step</span><strong>{bestTitle}</strong><p>{bestOutcome}</p></div>
       <button type="button" className="ss-add-primary" onClick={() => onOpen(best)} aria-haspopup="dialog">{best.action}</button>
+    </section>}
+    {!best && <section className="ss-add-next" aria-label="Setup recommendation status" role="status">
+      <div>
+        <span>{nextState === "resolving" ? "Checking setup" : "Next step unavailable"}</span>
+        <strong>{nextState === "resolving" ? "Checking your channel setup" : "Next step unavailable"}</strong>
+        <p>{nextState === "resolving"
+          ? "The next action will appear after this workspace’s channel records finish resolving."
+          : "We couldn’t verify every channel record needed to rank a safe next action. Review the options marked for attention or try again from their owner surface."}</p>
+      </div>
     </section>}
     <div className="ss-add-groups">{sections.map(({ title, blurb, icon: Icon, ids }) => <section key={title} className="ss-add-group" aria-labelledby={`ss-add-${ids[0]}`}>
       <header><span className="ss-card-icon"><Icon aria-hidden /></span><div><h3 id={`ss-add-${ids[0]}`}>{title}</h3><p>{blurb}</p></div></header>
@@ -627,8 +651,31 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
   const scopeKey = `${activeUserId ?? ""}:${registrationTenant ?? ""}`;
   const [openOption, setOpenOption] = useState<{ option: AddChannelOption; scope: string } | null>(null);
   useEffect(() => { setOpenOption(null); }, [scopeKey, tenantLoading, account]);
+  const mailboxConnected = comms.mailbox?.connected === true;
+  const identityOperational = identityPresentation.accountState === "active"
+    && Boolean(identity.value?.default_email_sender);
+  const sendingOperational = mailboxConnected || identityOperational;
   const addOptions = useMemo<AddChannelOption[]>(() => {
-    const sendingConnected = Boolean(identity.value?.default_email_sender) || Boolean(comms.mailbox?.connected);
+    const sendingSourceFailed = Boolean(
+      identity.error || comms.error || comms.mailbox === null || identityPresentation.accountState === "unavailable",
+    );
+    const sendingState: Pick<AddChannelOption, "state" | "tone" | "action"> = sendingOperational && (identity.loading || comms.loading)
+      ? { state: "Connected · checking status", tone: "neutral", action: "View details" }
+      : sendingOperational && sendingSourceFailed
+        ? { state: "Connected · failed check", tone: "warn", action: "Review issue" }
+        : sendingOperational
+          ? { state: "Connected", tone: "ok", action: "View details" }
+          : identity.loading || comms.loading
+        ? { state: "Checking status", tone: "neutral", action: "View details" }
+        : sendingSourceFailed
+          ? { state: "Status unavailable", tone: "bad", action: "Review issue" }
+          : identityPresentation.accountState === "pending"
+            ? { state: "Activation pending", tone: "warn", action: "Continue setup" }
+            : identityPresentation.accountState === "degraded"
+              ? { state: "Needs attention", tone: "bad", action: "Review issue" }
+              : identityPresentation.accountState === "configured"
+                ? { state: "Configured, not verified", tone: "warn", action: "Continue setup" }
+                : { state: "Ready to begin", tone: "neutral", action: "Connect" };
     const phoneState = readiness.error ? { state: "Status unavailable", tone: "bad" as const, action: "Review issue" as const }
       : !r ? { state: "Checking status", tone: "neutral" as const, action: "View details" as const }
         : r.can_send_sms ? { state: "Connected", tone: "ok" as const, action: "View details" as const }
@@ -636,21 +683,31 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
             : { state: "Needs setup", tone: "warn" as const, action: "Continue setup" as const };
     return [
       { id: "inbox", title: "Connect a mailbox", outcome: "Receive and review incoming business email.", state: "Unavailable", tone: "neutral", required: "A supported inbound-mail permission and read path", paige: "Nothing until inbound mail support is proven", owner: "Communications", source: "No inbound mailbox source", action: "View details" },
-      { id: "sending", title: "Set up a sending identity", outcome: "Send business email from a managed identity or a connected Google sending account.", state: identity.error || comms.error ? "Status unavailable" : sendingConnected ? "Connected" : "Ready to begin", tone: identity.error || comms.error ? "bad" : sendingConnected ? "ok" : "neutral", required: "A sender name and verified domain, or Google send permission", paige: "The approved sender identity and outbound send permission only", owner: "Communications", source: "Sending identity and sending-account records", action: identity.error || comms.error ? "Review issue" : sendingConnected ? "View details" : "Connect", destination: "communications" },
+      { id: "sending", title: "Set up a sending identity", outcome: "Send business email from a managed identity or a connected Google sending account.", ...sendingState, required: "A sender name and verified domain, or Google send permission", paige: "The approved sender identity and outbound send permission only", owner: "Communications", source: "Sending identity and sending-account records", destination: "communications" },
       { id: "phone", title: "Business phone and SMS", outcome: "Set up the business number and its supported messaging capability.", state: phoneState.state, tone: phoneState.tone, required: r?.number === "assigned" ? "Carrier registration and recorded consent" : "A messaging account, eligible number, and business facts", paige: "The assigned number, texting readiness, consent, and delivery status", owner: "Communications and Registration", source: "Canonical messaging-readiness record", action: phoneState.action, destination: readiness.error ? "health" : r?.number === "assigned" && r.a2p !== "approved" ? "registration" : "communications" },
       { id: "messaging", title: "Business messaging channels", outcome: "Use supported business messaging beyond SMS when a verified connection path exists.", state: "Unavailable", tone: "neutral", required: "A supported provider contract, permission path, and verified channel", paige: "Nothing until a supported channel is connected", owner: "Communications", source: "No eligible business-messaging source", action: "View details" },
       { id: "calendar", title: "Connect a calendar", outcome: "Let Paige use the calendar permissions you choose for scheduling.", state: "Status checked in Calendars", tone: "neutral", required: "A supported calendar account and explicit calendar permission", paige: "Only the calendar availability and actions allowed by that connection", owner: "Calendars", source: "Calendar connection records", action: "View details", destination: "calendars" },
       { id: "booking", title: "Booking and availability", outcome: "Manage booking links, hosts, availability rules, and scheduling health.", state: "Managed in Calendars", tone: "neutral", required: "A calendar connection and configured availability", paige: "Booking availability and supported scheduling actions", owner: "Calendars", source: "Booking and host configuration", action: "View details", destination: "calendars" },
     ];
-  }, [comms.error, comms.mailbox?.connected, identity.error, identity.value?.default_email_sender, r, readiness.error]);
+  }, [comms.error, comms.loading, comms.mailbox, identity.error, identity.loading, identityPresentation.accountState, r, readiness.error, sendingOperational]);
   const connectedChannels = useMemo(() => {
     const channels: string[] = [];
-    if (identity.value?.default_email_sender) channels.push(`Sending identity · ${identity.value.default_email_sender}`);
-    if (comms.mailbox?.connected) channels.push(`Google sending account${comms.mailbox.address ? ` · ${comms.mailbox.address}` : ""}`);
-    if (r?.number === "assigned" && r.number_e164) channels.push(`Business phone · ${r.number_e164}`);
+    if (identityOperational && identity.value?.default_email_sender) channels.push(`Sending identity · ${identity.value.default_email_sender}`);
+    if (mailboxConnected) channels.push(`Google sending account${comms.mailbox?.address ? ` · ${comms.mailbox.address}` : ""}`);
+    if (r?.can_send_sms && r.number === "assigned" && r.number_e164) channels.push(`Business phone · ${r.number_e164}`);
     return channels;
-  }, [comms.mailbox?.address, comms.mailbox?.connected, identity.value?.default_email_sender, r?.number, r?.number_e164]);
-  const bestNextId = !identity.error && !comms.error && !identity.value?.default_email_sender && !comms.mailbox?.connected ? "sending" : r && !r.can_send_sms ? "phone" : "calendar";
+  }, [comms.mailbox?.address, identity.value?.default_email_sender, identityOperational, mailboxConnected, r?.can_send_sms, r?.number, r?.number_e164]);
+  const recommendationResolving = identity.loading || comms.loading || readiness.loading;
+  const recommendationUnavailable = !recommendationResolving
+    && Boolean(identity.error || comms.error || readiness.error || !r || comms.mailbox === null);
+  const bestNextId = recommendationResolving || recommendationUnavailable
+    ? null
+    : !sendingOperational
+      ? "sending"
+      : !r!.can_send_sms
+        ? "phone"
+        : "calendar";
+  const nextState = recommendationResolving ? "resolving" : recommendationUnavailable ? "unavailable" : "ready";
 
   // Integrations remains a separate Settings destination. Add channel owns only
   // operating communication paths and provides one explicit handoff for external
@@ -908,7 +965,7 @@ function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?:
       </Subsection>
     </div>}
 
-    {view === "available" && <AddChannelWorkspace account={account} options={addOptions} connected={connectedChannels} bestId={bestNextId} onOpen={(option) => setOpenOption({ option, scope: scopeKey })}/>}
+    {view === "available" && <AddChannelWorkspace account={account} options={addOptions} connected={connectedChannels} bestId={bestNextId} nextState={nextState} onOpen={(option) => setOpenOption({ option, scope: scopeKey })}/>}
     {openOption && !tenantLoading && openOption.scope === scopeKey && <ConnectionSetupDrawer key={`${scopeKey}:${openOption.option.id}`} option={openOption.option} onClose={() => setOpenOption(null)} onContinue={(destination) => { setOpenOption(null); changeView(destination); }}/>}
   </>;
 }

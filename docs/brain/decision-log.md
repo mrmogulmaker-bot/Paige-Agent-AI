@@ -3058,3 +3058,35 @@ held no browser-driving tool.
 
 Full contract, the eight-state table and the six never-infer rules:
 `docs/delivery/canonical-readiness-contract.md`.
+
+## 2026-09-05 · Connections Available becomes Add channel; operating means proven
+
+**Owner decision.** Settings → Connections is the business-channel control desk. Mailboxes and
+sending identities, business phone/SMS/voice/messaging, calendars/booking, channel compliance, and
+channel health belong here. External apps, automations, APIs, social/data systems, and specialist
+tools belong in Integrations. A vendor may appear in both only for explicitly distinct capabilities,
+never as duplicate setup cards. The owner approved the Flow Prototype and then authorized this
+implementation to supersede draft PR #674 while retaining its A2P/domain ideas as separate follow-up
+scope; Integrations UI is not redesigned by this release.
+
+**Approved release-candidate interaction contract; not yet shipped.** The former
+`connections/available` provider catalogue is visibly
+**Add channel**, grouped by business job. It begins with confirmed operating channels, one
+source-backed next action, and one Integrations handoff. Each option states outcome, current state,
+requirements, Paige-visible scope, owner/source, and a focused action. Detail uses the approved
+drawer with X, Cancel, Escape, backdrop dismissal, focus containment/return, and tenant/user/account
+scope reset.
+
+**Truth and tenant correction caught before release.** The first candidate treated a stored sender
+address as Connected regardless of activation status, treated an assigned-but-unregistered phone as
+operating, ranked a next action while reads were pending/failed, and returned the previous hook value
+for one render after a workspace switch. The repaired contract synchronously masks values unless
+their recorded tenant matches the active tenant; only an active sender/connected Google sending
+account and a canonical `can_send_sms` phone count as operating; pending, configured-unverified,
+degraded, registration-required, resolving, failed-read, and unavailable remain distinct; ranking
+fails closed until all owning reads required for the decision succeed.
+
+**Evidence boundary.** 188 focused tests and 170 real-shell rendered/behavioral checks pass across
+the four Solo viewports, both themes, two synthetic tenant contexts, PAIGE open/closed, keyboard,
+focus, reflow, and reduced motion. Production build and focused lint pass. Authenticated provider
+behavior, production tenant truth, and the post-deploy owner drive remain **UNVERIFIED**.

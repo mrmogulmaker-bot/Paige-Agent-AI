@@ -1430,6 +1430,40 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+### APPROVED RELEASE CANDIDATE — Solo Settings → Connections Add channel (2026-09-05; NOT SHIPPED)
+
+The approved candidate replaces the static `connections/available` provider catalogue with **Add
+channel**: one compact, job-led workspace for Email and inbox, Phone and messaging, and Calendar and
+booking. It shows only source-backed operating channels, withholds its single best-next
+recommendation while required reads are unresolved or unavailable, and routes setup into the
+existing Communications, Registration, Health, or Calendars owner surface. External apps,
+automations, APIs, social tools, data systems, and specialist tools have one explicit handoff to
+Integrations; n8n, Zapier, Make, MCP, and Direct APIs are not Connection choices.
+
+The candidate state boundary is tenant-safe and fail-closed: values from the prior workspace are
+synchronously masked during a switch; a sender is operating only when its canonical identity state
+is active (or a Google sending account is proven connected); an assigned phone number is operating
+only when the canonical readiness record proves `can_send_sms`. Pending,
+configured-but-unverified, degraded, registration-required, failed-read, and unavailable states
+remain distinct. The Add-channel surface itself performs no provider or OAuth mutation.
+
+**Current proof:** 188 focused Connections/adjacent tests; a 170-check real-Solo-shell matrix across
+1536x770, 1366x768, 1024x768, and 900x1000, both Mineral/Obsidian themes, two synthetic tenant
+contexts, PAIGE open/closed, keyboard/focus, 200%-equivalent reflow, and reduced motion; focused lint
+and production build green. The candidate remains here in Section 5 until its exact repaired head
+receives final go-live approval and merges. Only then may it move to Section 4. Authenticated
+provider/account behavior and production tenant data remain **UNVERIFIED** until the post-deploy
+owner drive.
+
+### Connections after Add channel — remaining real-provider and runtime proof gaps (2026-09-05)
+
+Inbound mailbox reading and non-SMS business messaging remain **UNAVAILABLE** because no supported
+read/permission contract is proven. Calendar and booking state remains owned and verified inside
+Calendars rather than duplicated in Add channel. Provider OAuth completion, real-account
+permissions, production tenant truth, and authenticated workspace switching remain **UNVERIFIED**
+until the post-deploy owner drive. Integrations retains external apps, automations, APIs, social
+tools, data systems, and specialist tools; this release does not redesign that page.
+
 ### Sandboxed Research & External Execution — APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
 
 Owner-directed MVP capability so Paige is an active AI COO/orchestrator, not a chat interface that
@@ -2573,6 +2607,17 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ## 10. §13 corrections log
 
+ - **2026-09-05 — Connections treated configured resources as operating and could paint the prior
+   workspace during a switch.** The Add-channel candidate originally classified any non-empty
+   `default_email_sender` as Connected without reading `default_email_status`, and listed any
+   assigned phone number under Operating channels even when `can_send_sms=false` or carrier
+   registration was absent. Its best-next card also treated unresolved or failed reads as absence.
+   Independent pre-release review found that the identity/readiness hooks returned their prior
+   `value` for one render after the active tenant changed, allowing the prior workspace's sender
+   address or phone number to appear under the next workspace. Corrected before release: returned
+   values/errors are synchronously tenant-matched, recommendation ranking waits for every owning
+   read, and only canonically active/send-ready resources count as operating. Delayed-switch and
+   independent-source-failure regressions now lock the boundary.
  - **2026-09-05 — the Communications buy flow told the tenant they were being billed; they are not
    (Slice A).** `comms-purchase-number` returns `charge_wired:false` on every exit — the PLATFORM is
    the provider account holder and pays the provider cost for MVP; solo tenants are NOT billed for

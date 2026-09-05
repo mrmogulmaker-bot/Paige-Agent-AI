@@ -35,6 +35,10 @@ import { SoloSettings } from "./settings";
  */
 const rpcState = vi.hoisted(() => ({
   readiness: { data: null as unknown, error: null as { message: string } | null },
+  identity: { data: null as unknown, error: null as { message: string } | null },
+  commsError: null as string | null,
+  commsLoading: false,
+  mailboxConnected: false,
   tenantId: "tenant-1971670",
   userId: "u1",
   tenantLoading: false,
@@ -47,8 +51,11 @@ vi.mock("@/hooks/useUserRoles", () => ({
 }));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    rpc: vi.fn(async (fn: string) =>
-      fn === "tenant_comms_readiness" ? rpcState.readiness : { data: null, error: null }),
+    rpc: vi.fn((fn: string) => Promise.resolve(
+      fn === "tenant_comms_readiness" ? rpcState.readiness
+        : fn === "resolve_tenant_domain_identity" ? rpcState.identity
+          : { data: null, error: null },
+    )),
   },
 }));
 vi.mock("@/hooks/useTenantContext", () => ({
@@ -67,7 +74,7 @@ vi.mock("./data/useSoloOwner", () => ({
   useSoloOwner: () => ({ owner: { name: "Antonio Cook", email: null, phone: null, website: null }, loading: false, error: null, refresh: vi.fn() }),
 }));
 vi.mock("./data/useSoloComms", () => ({
-  useSoloComms: () => ({ business: { name: "", website: "", phone: "" }, mailbox: { connected: false, address: null, displayName: null, provider: null, status: null }, canManage: true, saveBusiness: vi.fn(async () => ({ ok: true, error: null })), addDomain: vi.fn(async () => ({ ok: true, error: null })), refreshDomain: vi.fn(async () => ({ ok: true, error: null })), setDefaultDomain: vi.fn(async () => ({ ok: true, error: null })), removeDomain: vi.fn(async () => ({ ok: true, error: null })), startGmailConnect: vi.fn(async () => ({ url: null, error: null })), disconnectGmail: vi.fn(async () => ({ ok: true, error: null })), domains: [], billing: null, loading: false, error: null, refresh: vi.fn() }),
+  useSoloComms: () => ({ business: { name: "", website: "", phone: "" }, mailbox: rpcState.commsLoading ? null : { connected: rpcState.mailboxConnected, address: rpcState.mailboxConnected ? "google@example.com" : null, displayName: null, provider: rpcState.mailboxConnected ? "gmail" : null, status: rpcState.mailboxConnected ? "active" : null }, canManage: true, saveBusiness: vi.fn(async () => ({ ok: true, error: null })), addDomain: vi.fn(async () => ({ ok: true, error: null })), refreshDomain: vi.fn(async () => ({ ok: true, error: null })), setDefaultDomain: vi.fn(async () => ({ ok: true, error: null })), removeDomain: vi.fn(async () => ({ ok: true, error: null })), startGmailConnect: vi.fn(async () => ({ url: null, error: null })), disconnectGmail: vi.fn(async () => ({ ok: true, error: null })), domains: [], billing: null, loading: rpcState.commsLoading, error: rpcState.commsError, refresh: vi.fn() }),
 }));
 
 const READY = {
@@ -106,7 +113,7 @@ async function openArea(host: HTMLDivElement, label: string) {
 }
 
 describe("Connections renders its real states", () => {
-  beforeEach(() => { rpcState.readiness = { data: null, error: null }; rpcState.tenantId = "tenant-1971670"; rpcState.userId = "u1"; rpcState.tenantLoading = false; });
+  beforeEach(() => { rpcState.readiness = { data: null, error: null }; rpcState.identity = { data: null, error: null }; rpcState.commsError = null; rpcState.commsLoading = false; rpcState.mailboxConnected = false; rpcState.tenantId = "tenant-1971670"; rpcState.userId = "u1"; rpcState.tenantLoading = false; });
 
   it("says the READ failed — it does not report an empty account", async () => {
     rpcState.readiness = { data: null, error: { message: "COMMS_READINESS_FORBIDDEN" } };
@@ -257,6 +264,136 @@ describe("Connections renders its real states", () => {
       root.render(<MemoryRouter initialEntries={["/solo/1971670/settings/connections"]}><Routes><Route path="/solo/:account/settings/:tab" element={<SoloSettings />} /></Routes></MemoryRouter>);
     });
     expect(document.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull();
+    await cleanup();
+  });
+
+  it("never paints the previous workspace sender or number while the next workspace resolves", async () => {
+    rpcState.identity = { data: { default_email_sender: "owner@tenant-a.example", default_email_status: "active" }, error: null };
+    rpcState.readiness = { data: { ...READY, tenant_id: "tenant-1971670", can_send_sms: true }, error: null };
+    const { host, root, cleanup } = await mountConnections();
+    await openArea(host, "Add channel");
+    expect(host.textContent).toContain("owner@tenant-a.example");
+    expect(host.textContent).toContain("+15550001111");
+
+    let resolveIdentity!: (value: unknown) => void;
+    let resolveReadiness!: (value: unknown) => void;
+    rpcState.identity = new Promise((resolve) => { resolveIdentity = resolve; }) as never;
+    rpcState.readiness = new Promise((resolve) => { resolveReadiness = resolve; }) as never;
+    rpcState.tenantId = "tenant-2000000";
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/solo/2000000/settings/connections?segment=available"]}><Routes><Route path="/solo/:account/settings/:tab" element={<SoloSettings />} /></Routes></MemoryRouter>);
+    });
+
+    expect(host.textContent).not.toContain("owner@tenant-a.example");
+    expect(host.textContent).not.toContain("+15550001111");
+    expect(host.textContent).toContain("Checking your channel setup");
+    expect(host.textContent).not.toContain("Best next step");
+
+    await act(async () => {
+      resolveIdentity({ data: null, error: null });
+      resolveReadiness({ data: { ...READY, tenant_id: "tenant-2000000", number: "absent", number_e164: null }, error: null });
+    });
+    await cleanup();
+  });
+
+  it.each([
+    ["provisioning", "Activation pending", "Continue setup"],
+    ["failed", "Needs attention", "Review issue"],
+    ["configured", "Configured, not verified", "Continue setup"],
+  ])("does not call a %s sending identity connected or operating", async (status, label, action) => {
+    rpcState.identity = { data: { default_email_sender: "sender@example.com", default_email_status: status }, error: null };
+    rpcState.readiness = { data: READY, error: null };
+    const { host, cleanup } = await mountConnections();
+    await openArea(host, "Add channel");
+    const option = host.querySelector<HTMLElement>('[data-channel-option="sending"]')!;
+    expect(option.textContent).toContain(label);
+    expect(option.textContent).toContain(action);
+    expect(host.querySelector(".ss-add-current")?.textContent).not.toContain("sender@example.com");
+    await cleanup();
+  });
+
+  it("lists only canonically operating sender and phone channels", async () => {
+    rpcState.identity = { data: { default_email_sender: "sender@example.com", default_email_status: "active" }, error: null };
+    rpcState.readiness = { data: { ...READY, can_send_sms: true, a2p: "approved" }, error: null };
+    const { host, cleanup } = await mountConnections();
+    await openArea(host, "Add channel");
+    const operating = host.querySelector(".ss-add-current")?.textContent ?? "";
+    expect(operating).toContain("sender@example.com");
+    expect(operating).toContain("+15550001111");
+    const next = host.querySelector(".ss-add-next")?.textContent ?? "";
+    expect(next).toContain("Review calendar and booking");
+    expect(next).not.toContain("Connect a calendar");
+    await cleanup();
+  });
+
+  it("does not list an assigned but unregistered number as operating", async () => {
+    rpcState.readiness = { data: READY, error: null };
+    const { host, cleanup } = await mountConnections();
+    await openArea(host, "Add channel");
+    expect(host.querySelector(".ss-add-current")?.textContent).not.toContain("+15550001111");
+    expect(host.querySelector('[data-channel-option="phone"]')?.textContent).toContain("Registration required");
+    await cleanup();
+  });
+
+  it("withholds the best-next claim while sources resolve or after any owning read fails", async () => {
+    let resolveIdentity!: (value: unknown) => void;
+    rpcState.identity = new Promise((resolve) => { resolveIdentity = resolve; }) as never;
+    rpcState.readiness = { data: READY, error: null };
+    const { host, cleanup } = await mountConnections();
+    await openArea(host, "Add channel");
+    expect(host.textContent).toContain("Checking your channel setup");
+    expect(host.textContent).not.toContain("Best next step");
+
+    await act(async () => { resolveIdentity({ data: null, error: { message: "IDENTITY_READ_FAILED" } }); });
+    expect(host.textContent).toContain("Next step unavailable");
+    expect(host.textContent).not.toContain("Best next step");
+    expect(host.textContent).not.toContain("IDENTITY_READ_FAILED");
+    await cleanup();
+  });
+
+  it.each(["identity", "readiness", "communications"])("withholds the best-next claim when the %s read fails", async (source) => {
+    rpcState.identity = source === "identity"
+      ? { data: null, error: { message: "PRIVATE_IDENTITY_FAILURE" } }
+      : { data: null, error: null };
+    rpcState.readiness = source === "readiness"
+      ? { data: null, error: { message: "PRIVATE_READINESS_FAILURE" } }
+      : { data: READY, error: null };
+    rpcState.commsError = source === "communications" ? "PRIVATE_COMMS_FAILURE" : null;
+    const { host, cleanup } = await mountConnections();
+    await openArea(host, "Add channel");
+    expect(host.textContent).toContain("Next step unavailable");
+    expect(host.textContent).not.toContain("Best next step");
+    expect(host.textContent).not.toContain("PRIVATE_");
+    await cleanup();
+  });
+
+  it.each(["connected mailbox with failed identity read", "active identity with failed communications read"])("marks a mixed sending state for review: %s", async (scenario) => {
+    const mailboxWins = scenario.startsWith("connected mailbox");
+    rpcState.mailboxConnected = mailboxWins;
+    rpcState.identity = mailboxWins
+      ? { data: null, error: { message: "PRIVATE_IDENTITY_FAILURE" } }
+      : { data: { default_email_sender: "sender@example.com", default_email_status: "active" }, error: null };
+    rpcState.commsError = mailboxWins ? null : "PRIVATE_COMMS_FAILURE";
+    rpcState.readiness = { data: READY, error: null };
+    const { host, cleanup } = await mountConnections();
+    await openArea(host, "Add channel");
+    const option = host.querySelector('[data-channel-option="sending"]')?.textContent ?? "";
+    expect(option).toContain("Connected · failed check");
+    expect(option).toContain("Review issue");
+    expect(host.textContent).toContain("Next step unavailable");
+    await cleanup();
+  });
+
+  it("keeps an active sending identity in checking state while communications is still loading", async () => {
+    rpcState.identity = { data: { default_email_sender: "sender@example.com", default_email_status: "active" }, error: null };
+    rpcState.commsLoading = true;
+    rpcState.readiness = { data: READY, error: null };
+    const { host, cleanup } = await mountConnections();
+    await openArea(host, "Add channel");
+    const option = host.querySelector('[data-channel-option="sending"]')?.textContent ?? "";
+    expect(option).toContain("Connected · checking status");
+    expect(option).not.toContain("failed check");
+    expect(host.textContent).toContain("Checking your channel setup");
     await cleanup();
   });
 });
