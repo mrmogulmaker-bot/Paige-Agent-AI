@@ -273,11 +273,13 @@ async function postToken(
     accessToken,
     refreshToken: str(body.refresh_token),
     expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
-    // Absent (or non-string) means "unchanged from requested". An explicitly EMPTY scope
-    // is a server actually saying "nothing", and stays [] so it is still refused.
-    scopes: typeof body.scope === "string"
-      ? body.scope.split(/\s+/).filter(Boolean)
-      : (requestedScopes ?? []),
+    // ABSENT means "unchanged from requested". Present-and-a-string is parsed, so an
+    // explicitly EMPTY scope stays [] and is still refused -- that is a server actually
+    // saying "nothing". Present-but-not-a-string is malformed, and a malformed response
+    // is refused rather than read as agreement: only silence carries the RFC's meaning.
+    scopes: body.scope === undefined || body.scope === null
+      ? (requestedScopes ?? [])
+      : (typeof body.scope === "string" ? body.scope.split(/\s+/).filter(Boolean) : []),
   };
 }
 

@@ -237,6 +237,16 @@ routes.set("as.example/token", (_q, res, body) => {
       server, clientId: "c", clientSecret: null, refreshToken: "rt-2",
       resource: RESOURCE_SERVER, grantedScopes: ["mcp:tools"],
     })).scopes.length === 0);
+
+  // Only SILENCE carries the RFC's "identical to requested". A present-but-malformed
+  // scope is a broken response, and reading it as agreement would turn a bug at the
+  // provider into a grant we never actually verified.
+  routes.set("as.example/token", (_q, res) => json(res, { access_token: "at-5", expires_in: 3600, scope: 42 }));
+  check("a malformed scope is refused, not read as agreement",
+    (await oauth.refreshTokens({
+      server, clientId: "c", clientSecret: null, refreshToken: "rt-2",
+      resource: RESOURCE_SERVER, grantedScopes: ["mcp:tools"],
+    })).scopes.length === 0);
 }
 
 routes.set("as.example/token", (_q, res) => json(res, { error: "invalid_grant", error_description: "token rt-1 for user bob@corp" }, 400));
