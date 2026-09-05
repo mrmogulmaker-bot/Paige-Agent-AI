@@ -388,7 +388,14 @@ BEGIN
   BEGIN
     -- §58. The envelope is unchanged for every existing family: `actor_agent` is
     -- still added only when an agent acted, and no key is added unconditionally.
-    -- `tests/n8n-oauth/workspace-rail.sql:47` asserts that array by exact equality.
+    --
+    -- `tests/n8n-oauth/workspace-rail.sql:47` asserts that key array by exact equality -- AND IT
+    -- HAS NEVER RUN. It sits in `tests/`, while CI's `database-contract` job runs only the eight
+    -- suites under `supabase/tests/`; no workflow and no npm script references it. The migration
+    -- that introduced this envelope said so plainly and the caveat was dropped when this block was
+    -- rewritten, which is how a comment starts implying a guard that is not guarding. Restated,
+    -- because the honest reading is that the envelope here is protected by REVIEW, not by that
+    -- file. Wiring it is a real follow-up and deliberately not smuggled into this release.
     PERFORM realtime.send(
       display
         || jsonb_build_object('id', event_id, 'tenant_id', _tenant, 'occurred_at', occurred)
