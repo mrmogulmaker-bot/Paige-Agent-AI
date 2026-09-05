@@ -326,22 +326,46 @@ the wiring work.
 
 ### 5.3 The structural fix that unblocks the rest
 
-`systems_check_snapshot` returns **only the latest run's** findings
-(`20260822000000_systems_check_snapshot_rpc.sql:52-61` and `:113`). Three consequences compound:
+> **Partially shipped 2026-09-05 (PR #935). This section is corrected in place rather than deleted,
+> because the reasoning still stands and one of its three consequences is now closed.** The section
+> previously described the partial-scan collapse as *"live behaviour today"*. It is not, and leaving
+> that sentence would have had the spec assert a fixed defect as current — the §13 drift §66 exists
+> to prevent, committed here by the same session that shipped the fix.
 
-- **A partial scan erases the whole picture.** `rescanBusinessContext.ts` fires three
-  `change`-triggered scans in parallel after a Setup save; each writes a run row with
-  `check_count` of one or two, and whichever finishes last becomes *the* latest run. After any Setup
-  save, this surface's entire reading collapses to a one-check scan. That is live behaviour today.
-- **Remediation filed against an older run is invisible.** Paige has eight actions filed for the pilot
-  workspace, three of them against checks that are still failing, and none of them can be reached from
-  this surface.
-- **Per-check re-run can never be made safe** while a single-check run replaces the view.
+`systems_check_snapshot` no longer returns the latest RUN's findings. Since migration
+`20261203000000` it returns the findings of the latest **full sweep** — the newest run with
+`selected_runner_keys IS NULL AND scan_flavor <> 'change_triggered'` — and
+`approve_systems_check_finding` resolves "latest" the same way, so the two cannot disagree (§57).
 
-The fix is one function replacement and no table change: `DISTINCT ON (f.check_id) … ORDER BY
-f.check_id, f.created_at DESC` in place of `WHERE f.run_id = v_run_id` — latest-per-check rather than
-latest-run. It is a semantics change and needs its own §37 consumer walk, because `run.check_count`,
-`pass_count` and `fail_count` would no longer describe the finding set on screen.
+- **A partial scan erases the whole picture — CLOSED.** `rescanBusinessContext.ts` still fires
+  `change`-triggered scans after a Setup save, each writing a run with a `check_count` of one or
+  two, but such a run can no longer become *the* run this surface reads. Proven on prod before the
+  fix by injecting a simulated Setup-save run: the pick moved from a 1-check run to the 10-check
+  sweep on the affected tenant and was unchanged for the other thirteen. Note what this was: a
+  loaded trigger, not an observed failure — production carried zero `change_triggered` runs at the
+  time, and the wiring had shipped two days earlier.
+- **Remediation filed against an older run is invisible — STILL OPEN.** Unchanged by the above: the
+  read is still run-scoped, just to a better-chosen run.
+- **Per-check re-run can never be made safe** while a single run replaces the view — STILL OPEN.
+
+**The durable fix is still latest-per-check** (`DISTINCT ON (f.check_id) … ORDER BY f.check_id,
+f.created_at DESC`), and the guard above is explicitly the cheaper interim: it trades a loud,
+flattering lie for a quieter stale one. The sweep it now reads is the scheduled daily one, so what
+the console shows is **anything up to 24 hours old** — a tenant can make a check *worse* inside that
+window without the surface saying so. (Do not read a single measurement as the steady state. The
+scheduled tenant sweep is `cron.job` 10, `0 9 * * *` — 09:00 UTC — so the age cycles from zero to a
+full day. A reading taken at 2026-09-05 05:31 UTC put all 14 tenants at 1.4h, which looks reassuring
+and is not the steady state: that sweep was a **manual fire** of the same job made earlier in that
+session, and the last genuine cron run was 09:00 UTC the previous day.)
+
+That change is larger than the one-line replacement this section originally implied, and the
+grounding pass established why: latest-per-check **deletes the run-level incompleteness signals and
+falsifies the survivor**. Under a registry-driven read the finding count is always the registry
+count, so "recorded N but only M readable" stops detecting incompleteness and becomes a
+registry-drift detector that fires permanently the moment any check is disabled. Incompleteness has
+to move to **per-row freshness before the read changes**, the age-out threshold cannot be one
+constant across both lenses (tenant median gap 24h; operator median 1h, p95 1h), and the approve
+gate has to move with the read or a recovered older finding can never be approved.
 
 **Sequence: this first, then the on-demand scan flavor and caller-supplied `actionFiling` together,
 then per-check re-run.**
