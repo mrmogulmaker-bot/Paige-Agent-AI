@@ -222,7 +222,11 @@ describe("Solo Systems Check workspace", () => {
     // The revenue destination carries one; `crm_has_customers` carries none — so this proves the
     // caveat is driven by the destination rather than rendered on every finding.
     expect(caveats).toHaveLength(1);
-    expect(caveats[0]).toContain("closing role");
+    // It must name the route that WORKS, not merely refuse. 20261205000000 gave PAIGE the ability
+    // to set a stage's closing role; the Pipeline page still cannot, so the caveat was narrowed
+    // rather than deleted. A caveat that only says "you cannot" leaves the owner where he started.
+    expect(caveats[0]).toMatch(/paige/i);
+    expect(caveats[0]).toMatch(/closing/i);
   });
 
   // Which path a destination points at is pinned in systems-check-destinations.contract.test.ts,

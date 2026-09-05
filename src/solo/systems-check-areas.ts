@@ -217,14 +217,19 @@ export const CHECK_DESTINATIONS: Record<SystemsCheckId, CheckDestination> = {
     // there to add a closing stage sends them to the result rather than to the fix.
     label: "Campaigns › Pipeline",
     path: (a) => `/solo/${acct(a)}/growth/pipeline`,
-    // Verified 2026-09-05, and this caveat is why: on Solo there is currently NO path — surface or
-    // Paige — that sets a stage's closing role. `growth2.tsx` never mentions stage_type; the
-    // `pipeline_configure` tool schema has no such field; and the governed RPC inserts a hardcoded
-    // 'open' and never updates it. Without this line the check names a next action the owner cannot
-    // complete, and Paige would report success while creating an open stage (§70). Task #26 removes
-    // both the gap and this caveat together.
+    // NARROWED 2026-09-05, not removed, and the distinction is the whole point.
+    //
+    // It used to say the closing role could not be set "on that page or by Paige yet" — both halves
+    // true: the governed RPC inserted a hardcoded 'open', and the `pipeline_configure` tool had no
+    // field for it. Migration 20261205000000 retired the second half only. PAIGE can now set it on
+    // request; `growth2.tsx` still contains zero references to stage_type, and that control is
+    // Claude Design's to draw (§00).
+    //
+    // So the caveat stays and tells the owner the one route that WORKS. Deleting it outright would
+    // have sent him to a page that still cannot finish the job this check names — the §70 failure
+    // the caveat exists to prevent — and the check would have looked helped without being.
     caveat:
-      "Stages are added there, but the closing role that revenue counts against cannot be set on that page or by Paige yet, so this cannot be finished today.",
+      "Ask Paige to mark a stage as closing and she will. That page cannot set it yet, so the button below will not finish this one on its own.",
   },
   payment_processor_connected: {
     title: "You can take payment",

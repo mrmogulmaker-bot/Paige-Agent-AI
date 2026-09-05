@@ -2553,3 +2553,39 @@ the four sat in a decision that was *locally* reasonable — avoid a double line
 narrow, reuse an existing status word — and wrong once traced to the surface a person actually
 opens. A proof written by the author tests the author's model of the system.
 
+
+---
+
+## 2026-09-05 — Closing a deal, and marking a stage closing (PRs #941 + the #26 slice)
+
+**#941 — the Solo board recorded no revenue.** Three paths move a deal into a won stage; PAIGE's
+`deal_move_stage` and the legacy /admin board both stamped `status` and `actual_close_date`, and the
+governed board that `/solo` and `/business` use stamped neither. Period revenue keys on the close
+date, so a deal closed on the Solo board never counted. Because the all-time sums carry no date
+predicate the symptom was a DIVERGENCE, not a clean zero — harder to notice. Proven on prod in a
+rollback: a $2,500 deal recorded $0 before and $2,500 after, and clears again on reopen.
+
+**The #26 slice — a stage can be marked closing.** `stage_type` is now settable through
+`configure_tenant_pipeline_core_identity` (the one function both the board and PAIGE reach) and
+readable through the workspace projection. Absent preserves today's behaviour; an unrecognised value
+RAISES rather than coercing, because unlike `movePolicy` this column has no safe fallback direction.
+
+**The camelCase trap, recorded because it would have been invisible.** `useSoloCampaigns` forwards
+the command object verbatim with no serializer, and every key the RPC reads is camelCase. Reading
+`stage_type` instead of `stageType` would evaluate to NULL, fall through the absent-value rule, and
+write 'open' while the UI reported a successful save. The sibling `create_pipeline_with_stages` DOES
+read snake_case — the exact line someone copies. Pinned by four assertions in
+`growth2.contract.test.tsx`, and demonstrated in the prod proof rather than described.
+
+**A guard planned and killed by the §39 pass, which is the entry worth keeping.** The plan carried a
+refusal on any command leaving a pipeline with zero live open stages. It was wrong four ways: it
+would refuse the shipped "Create blank pipeline" button; it would refuse a plain rename on a state
+already reachable; it would not hold the invariant because `archive_stage` is uncovered; and its
+rationale was false, since PAIGE's `deal_create` picks a stage with no stage_type filter so such a
+pipeline receives deals fine. Measured on prod before deciding: zero `growth_forms` route to any
+pipeline, and one of 17 pipelines already sits at zero open stages. Dropped, and filed as the
+pre-existing routing fragility it is.
+
+**The caveat was NARROWED, not deleted.** PAIGE can set the closing role; the Pipeline page cannot,
+and that control is CD's. A deleted caveat would have sent the owner to a page that still cannot
+finish the job (§70).

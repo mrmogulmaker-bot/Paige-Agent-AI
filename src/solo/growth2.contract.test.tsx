@@ -6,6 +6,7 @@ const source = readFileSync(resolve(process.cwd(), "src/solo/growth2.tsx"), "utf
 const css = readFileSync(resolve(process.cwd(), "src/solo/solo-campaigns.css"), "utf8");
 const adapter = readFileSync(resolve(process.cwd(), "src/solo/useSoloCampaigns.ts"), "utf8");
 const pipelineSettings = readFileSync(resolve(process.cwd(), "src/pages/admin/PipelineSettings.tsx"), "utf8");
+const closingStageMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261205000000_a_stage_can_be_marked_closing.sql"), "utf8");
 const pipelineAdmin = readFileSync(resolve(process.cwd(), "src/pages/admin/PipelineAdmin.tsx"), "utf8");
 const contactDeals = readFileSync(resolve(process.cwd(), "src/components/admin/contacts/ContactDealsSection.tsx"), "utf8");
 const stageAutomationRules = readFileSync(resolve(process.cwd(), "src/pages/admin/StageAutomationRules.tsx"), "utf8");
@@ -290,6 +291,32 @@ describe("Solo Campaigns approved contract", () => {
     expect(taskGuardMigration).toContain("TASK_DEAL_TENANT_MISMATCH");
     expect(taskGuardMigration).toContain("trg_validate_task_deal_tenant_link");
     expect(concurrencyMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-default:'||_tenant::text,0))");
+
+    // ── The closing-stage seam, and the one trap that would make it a silent no-op ────────────
+    //
+    // useSoloCampaigns forwards the command object VERBATIM (no serializer), and every key this
+    // RPC already reads is camelCase. If the RPC read `stage_type` instead of `stageType` the
+    // value would be NULL, the absent-value rule would write 'open', and the UI would report a
+    // successful save that changed nothing. The sibling `create_pipeline_with_stages` DOES read
+    // snake_case, so that is the exact line someone copies. These pin the correct spelling.
+    expect(closingStageMigration).toContain("_command->>'stageType'");
+    expect(closingStageMigration).toContain("_proposed_stage->>'stageType'");
+    expect(closingStageMigration).not.toContain("_command->>'stage_type'");
+    expect(closingStageMigration).not.toContain("_proposed_stage->>'stage_type'");
+    // Raise on an unrecognised value rather than coerce it to 'open' — stage_type has no safe
+    // fallback direction, unlike movePolicy whose coercion lands on the stricter value.
+    expect(closingStageMigration).toContain("PIPELINE_STAGE_TYPE_INVALID");
+    // Update must PRESERVE on absent. An unconditional overwrite would silently reopen a closing
+    // stage on any edit that did not resend the field.
+    expect(closingStageMigration).toContain("stage_type=coalesce(nullif(_command->>'stageType',''),_stage.stage_type)");
+    // The value has to come back out, or it is written and unverifiable (§70).
+    expect(closingStageMigration).toContain("'stage_type',s.stage_type");
+    // §59/§9: replace, never drop+create — a drop resets EXECUTE to PUBLIC on a DEFINER function
+    // that is deliberately revoked.
+    expect(closingStageMigration).toContain("create or replace function public.get_pipeline_workspace_pre_identity");
+    expect(closingStageMigration).not.toMatch(/drop function public\.(get_pipeline_workspace_pre_identity|configure_tenant_pipeline_core_identity)/);
+    // PAIGE must be able to drive it (§10), and the tenant must be told why a refusal happened.
+    expect(adapter).toContain("PIPELINE_STAGE_TYPE_INVALID");
     expect(concurrencyMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-stage-order:'||_pipeline::text,0))");
     expect(invariantMigration).toContain("target.executor in ('contact_upsert','pipeline_attach','client_rail_event','notify_team') then 'auto'");
     expect(invariantMigration).toContain("s.archived_at is null");

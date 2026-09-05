@@ -5883,7 +5883,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "pipeline_configure",
-              description: "Admin only. The governed pipeline-owning capability shared with the Campaigns Pipeline workspace. Read with pipeline_catalogue, then create, rename, describe, activate, archive, or restore a pipeline; create, edit, reorder, archive, or restore a stage; move a deal; or create, rename, archive, restore, and organize one-level tenant folders. Hard delete is unavailable here. create-pipeline may include explicit editable stages or no stages for a blank draft; it never substitutes presets. Pipeline archive requires pipeline_archive_preview plus owner confirmation of that exact reference. Folder archive always requires owner confirmation of the exact selected folder name and moves every assigned pipeline to Unfiled without changing its lifecycle status. Never infer stage meaning, revenue, ROI, payment, client health, or portal engagement.",
+              description: "Admin only. The governed pipeline-owning capability shared with the Campaigns Pipeline workspace. Read with pipeline_catalogue, then create, rename, describe, activate, archive, or restore a pipeline; create, edit, reorder, archive, or restore a stage; move a deal; or create, rename, archive, restore, and organize one-level tenant folders. Hard delete is unavailable here. create-pipeline may include explicit editable stages or no stages for a blank draft; it never substitutes presets. Pipeline archive requires pipeline_archive_preview plus owner confirmation of that exact reference. Folder archive always requires owner confirmation of the exact selected folder name and moves every assigned pipeline to Unfiled without changing its lifecycle status. Never INFER stage meaning, revenue, ROI, payment, client health, or portal engagement. Setting `stageType` is the one exception and it is not an inference: send it only when the owner has told you a stage means won or lost, never because a label looks like it.",
               parameters: {
                 type: "object",
                 properties: {
@@ -5906,6 +5906,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                       description: { type: "string" },
                       label: { type: "string" },
                       movePolicy: { type: "string", enum: ["direct", "approval"] },
+                      stageType: { type: "string", enum: ["open", "won", "lost"], description: "What the stage MEANS: open = work in progress, won = the deal is closed and its value is recorded as revenue, lost = closed without the sale. Send it only when the owner has told you which one they want. Omit it to leave a stage as it is; omitting it on create leaves the stage open." },
                       orderedIds: { type: "array", items: { type: "string" }, description: "Every active stage id exactly once, in the requested order." },
                       reason: { type: "string", description: "Short operator-visible reason for a deal move." },
                       stages: {
@@ -5917,6 +5918,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                             label: { type: "string" },
                             description: { type: "string" },
                             movePolicy: { type: "string", enum: ["direct", "approval"] },
+                            stageType: { type: "string", enum: ["open", "won", "lost"], description: "Only when the owner said so. Omit and the stage is open." },
                           },
                           required: ["label"],
                         },
