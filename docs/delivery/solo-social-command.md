@@ -112,6 +112,43 @@ quietly.
 
 ---
 
+## 4b. The memory substrate — what she retains, and where Social does (and does not) belong
+
+**Seven stores get called "memory" in this codebase and they are not the same thing.** Mapped
+2026-09-05, with each one's real state rather than its intent.
+
+| Store | What it retains | Scope | State |
+|---|---|---|---|
+| **Per-thread continuity** (turns + rolling summary, `maybeRefreshSummary`) | What was said in THIS conversation, compacted when it grows | `(tenant_id, user_id)` | **LIVE** — slice 4a.3 |
+| **Durable tasking** (`tasks.source_thread_id`) | The conversation a chat-created task came from | tenant | **LIVE** |
+| **`paige_owner_memory`** (L8 fabric, `20260810120000`) | Durable cross-session facts, preferences, summaries about the owner — voyage-3 @ 1024 | `(tenant_id, user_id)`, IDOR-guarded | **SUBSTRATE LIVE, CHAT RECALL NOT WIRED.** The table and `match_paige_owner_memory` exist; `paige-ai-chat` explicitly does **not** call them — deferred to slice 4b, which is tier-gated and monetizable. It IS read by `owner-context.ts` for the §52 operator briefing |
+| **`paige_prompt_memory`** (§26 compound loop) | A prompt + the artifact it genuinely produced, so the next forge retrieves what worked | tenant | **LIVE**, Studio generation only |
+| **`client_memory`** (+ `match_paige_memory`) | The §8 CLIENT-side store — milestones, session summaries, coach notes | `client_user_id` | LIVE |
+| **`studio_session_scratchpad`** (`session-memory.ts`) | Working memory inside ONE Studio session: goal, tried, worked, failed, next step | session | LIVE, best-effort, never load-bearing |
+| **`paige_llm_trace`** | Observability, not memory — what was called, what it cost | tenant | LIVE |
+
+**Where Social belongs, and the recommendation is deliberately NOT "write it to memory."**
+
+The accounts on record are a **RECORD, not a memory**. They live in `tenants.features`, and PAIGE
+re-reads them live on every single turn through the `social.presence` block — so what she knows is
+always current, by construction. Copying them into `paige_owner_memory` would create a **second,
+staler copy of the same fact**: the moment someone edits the record, the memory row is wrong, and a
+vector search would surface a handle the business no longer uses. That is the §18 two-homes problem
+with a §13 failure mode attached, and it is worth stating plainly rather than adding a memory write
+to look thorough.
+
+**What genuinely belongs in `paige_owner_memory` for this domain** is the conversational half a
+record cannot hold: the tone the owner likes, the cadence they've agreed to, an offer they said not
+to lead with, an audience they've told her about. Those are durable preferences, not fields — which
+is precisely what the L8 fabric was built for. They will become recallable when **slice 4b** wires
+`match_paige_owner_memory` into the chat; nothing about this Social slice blocks or advances that,
+and no shortcut around it is proposed here.
+
+**The one thing worth flagging for 4b's crew:** its write side has to decide what counts as a
+durable fact. "Their Instagram is @acme" must NOT become one, because the record already answers it
+better and would then disagree with the memory. A rule like *"never store a fact a live read already
+returns"* would keep the two layers from drifting, and this capability is a clean first test of it.
+
 ## 5. Live provider connections — the honest position, and the owner decision
 
 **Not shipped, not started, and nothing on this surface implies otherwise.**
