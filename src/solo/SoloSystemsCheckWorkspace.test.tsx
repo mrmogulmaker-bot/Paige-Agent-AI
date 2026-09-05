@@ -232,7 +232,7 @@ describe("Solo Systems Check workspace", () => {
 
   it("contains finding detail in a restorable drawer/full-panel flow", () => {
     render();
-    const trigger = button("Payment connection needs attention")!;
+    const trigger = button("What was checked")!;
     act(() => trigger.focus());
     act(() => trigger.click());
     expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Finding details");
@@ -251,7 +251,7 @@ describe("Solo Systems Check workspace", () => {
 
   it("keeps Ask First explicitly PARTIAL and only opens the existing PAIGE workspace", () => {
     render();
-    act(() => button("Payment connection needs attention")?.click());
+    act(() => button("What was checked")?.click());
     act(() => button("Put PAIGE to work")?.click());
     const drawer = host.querySelector<HTMLElement>(".sc-drawer");
     expect(drawer?.getAttribute("aria-hidden")).toBe("true");
@@ -319,7 +319,7 @@ describe("Solo Systems Check workspace", () => {
       run: { ...baseSystems.run, check_count: 1, pass_count: 0, fail_count: 1 },
     });
     render();
-    act(() => button("Payment connection needs attention")?.click());
+    act(() => button("What was checked")?.click());
     expect(host.textContent).toContain("Reconnect the approved payment provider, then refresh this evidence.");
     expect(host.textContent).not.toContain("Internal instruction that must not be presented.");
     expect(host.textContent).not.toContain("internal-model-name");
@@ -342,7 +342,7 @@ describe("Solo Systems Check workspace", () => {
       run: { ...baseSystems.run, check_count: 1, pass_count: 0, fail_count: 1 },
     });
     render();
-    act(() => button("Payment connection needs attention")?.click());
+    act(() => button("What was checked")?.click());
     expect(host.textContent).toContain("Provider");
     expect(host.textContent).toContain("Stripe");
     expect(host.textContent).toContain("Additional evidence is retained but not displayed here.");
@@ -369,8 +369,9 @@ describe("Solo Systems Check workspace", () => {
   it("labels retained metrics as last available when the current operating read fails", () => {
     harness.command.mockReturnValue({ ...baseCommand, isError: true });
     render();
-    expect(host.textContent).toContain("LAST AVAILABLE · PARTIAL");
-    expect(host.textContent).not.toContain("LIVE READ");
+    expect(host.textContent).toContain("Active clients");
+    expect(host.textContent).toContain("this may not be today's number");
+    expect(host.textContent).not.toContain("Live read from your own records");
   });
 
   it("reviews a governed approval once, disables repeat activation, and announces success", async () => {

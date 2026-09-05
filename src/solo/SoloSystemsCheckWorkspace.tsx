@@ -443,9 +443,11 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
    */
   const freshHeading = systems.isError
     ? "The last check could not be read"
-    : !systems.run
-      ? (systems.scanPending ? "Your first check is running" : "No check has finished yet")
-      : hasCompletedRun
+    : systems.scanPending
+      ? "Your first check is running"
+      : !systems.run
+        ? "No check has finished yet"
+        : hasCompletedRun
         ? `Last checked ${completedAt.toLocaleString()}`
         : `A check started ${new Date(systems.run.started_at).toLocaleString()} and has not finished`;
 
@@ -472,6 +474,15 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
    * clean setup read imply an empty desk. Only figures that are actually present are shown — a
    * missing count is omitted rather than rendered as zero, because zero is a claim.
    */
+  /** A run with nothing readable is as incomplete as a partial one — it answers nothing. */
+  const incomplete = !!systems.run && (isPartial || currentFindings.length === 0);
+
+  /** Fixed work is working work. Kept reachable rather than dropped off the surface entirely. */
+  const resolvedFindings = useMemo(
+    () => currentFindings.filter((f) => isResolved(f)),
+    [currentFindings],
+  );
+
   const businessAttention = useMemo<Array<[string, number]>>(() => ([
     ["Clients at risk", command.attention?.at_risk_clients],
     ["Follow-ups due", command.attention?.follow_ups_due],
@@ -515,6 +526,7 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
                 type="button"
                 className="sc-button sc-button--quiet"
                 onClick={refresh}
+                aria-label="Refresh current data"
                 title="Re-reads the last recorded check. It does not run the checks again."
               >
                 {isReading ? <span className="sc-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />}
@@ -536,13 +548,16 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
               strip claiming "1 needs attention" while the section below says nothing does — the run
               counted checks whose results are not in this response. Overall health is not inferred
               from the half that came back. */}
-          {isPartial && (
+          {incomplete && (
             <div className="sc-note" role="status">
-              <strong>The picture is incomplete.</strong> The last run recorded{" "}
-              {systems.run?.check_count} check{systems.run?.check_count === 1 ? "" : "s"} but only{" "}
-              {currentFindings.length} result{currentFindings.length === 1 ? " is" : "s are"} readable
-              here. Overall health cannot be inferred from the part that came back, so nothing below
-              is being reported as a complete answer.
+              <strong>The picture is incomplete.</strong>{" "}
+              {currentFindings.length === 0
+                ? <>The last run left no readable results at all.</>
+                : <>The last run recorded {systems.run?.check_count} check
+                    {systems.run?.check_count === 1 ? "" : "s"} but only {currentFindings.length} result
+                    {currentFindings.length === 1 ? " is" : "s are"} readable here.</>}
+              {" "}Overall health cannot be inferred from what came back, so nothing below is being
+              reported as a complete answer.
             </div>
           )}
 
@@ -597,21 +612,30 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
           )}
 
           {/* 2 — what is ready to operate */}
-          {confirmedFindings.length > 0 && (
+          {(confirmedFindings.length > 0 || resolvedFindings.length > 0) && (
             <section className="sc-block" aria-labelledby="sc-ready-title">
               <div className="sc-block-head">
                 <h2 id="sc-ready-title">What is ready to operate</h2>
-                <span className="sc-n">{confirmedFindings.length}</span>
+                <span className="sc-n">{confirmedFindings.length + resolvedFindings.length}</span>
                 <span className="sc-aside">Each one names the check that answered for it</span>
               </div>
               <ul className="sc-ready">
-                {confirmedFindings.map((finding) => (
+                {[...confirmedFindings, ...resolvedFindings].map((finding) => (
                   <li key={finding.id}>
                     <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
                       <path d="M2.6 7.4l2.8 2.8L11.4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                     <div>
-                      <p>{findingTitle(finding)}</p>
+                      <p>
+                        <button
+                          type="button"
+                          className="sc-ready-open"
+                          onClick={(event) => openFinding(finding, event.currentTarget)}
+                        >
+                          {findingTitle(finding)}
+                        </button>
+                        {isResolved(finding) ? " — Resolved" : null}
+                      </p>
                       <small>Setup check &middot; {new Date(finding.created_at).toLocaleString()}</small>
                     </div>
                   </li>
