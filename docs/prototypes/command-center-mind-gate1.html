@@ -1,0 +1,1142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Command Center · Mind — Gate 1 prototype</title>
+<!--
+  THROWAWAY GATE 1 PROTOTYPE — Command Center → Mind (Solo).
+  Purpose: owner visual approval of the redesigned Mind subtab before ANY production UI.
+  Jurisdiction (§00): CC ports the owner's brief + reference onto the installed pack design
+  system (`--pg-*`, both themes). Zero CC design taste. No production mutation. No network
+  beyond fonts. Every value on screen is an ILLUSTRATIVE FIXTURE rendered from the REAL
+  contract shapes; the annotation layer names each region's real source or honest absence.
+  Delete or absorb after approval (matches docs/prototypes/platform-billing-gate1.html).
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300&display=swap" rel="stylesheet" />
+<link href="https://api.fontshare.com/v2/css?f[]=gambetta@400,401,500&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   1. TOKENS — lifted verbatim from the pack (design-system-port.md). Both themes
+   are separately authored; champagne inverts role. Mineral = [data-pg="light"],
+   Obsidian = [data-pg="dark"].
+   ============================================================================ */
+[data-pg]{
+  --pg-font-display:"Schibsted Grotesk","Segoe UI Variable Display","SF Pro Display",system-ui,sans-serif;
+  --pg-font-ui:"Schibsted Grotesk","Segoe UI Variable Text","SF Pro Text",system-ui,sans-serif;
+  --pg-font-editorial:"Gambetta","Newsreader","Iowan Old Style",Baskerville,serif;
+  --pg-font-data:"JetBrains Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+  font-synthesis-weight:none;font-variant-numeric:tabular-nums;
+}
+[data-pg="dark"]{
+  color-scheme:dark;
+  --pg-env:#08070b;--pg-nav:#0d0b11;--pg-canvas:#100e14;--pg-spine:#121017;--pg-workspace:#16131a;--pg-surface:#19161e;--pg-raised:#211d27;--pg-artifact:#e9e4da;
+  --pg-line-soft:rgba(244,237,222,.115);--pg-line:rgba(244,237,222,.195);--pg-line-strong:rgba(244,237,222,.30);--pg-line-authority:rgba(234,213,170,.40);
+  --pg-ink:#f6f2ea;--pg-ink-2:#d6d0c9;--pg-muted:#aca69d;--pg-faint:#969089;
+  --pg-gold-core:#fff0cf;--pg-gold:#ead5aa;--pg-gold-deep:#c7a978;--pg-gold-fill:#d4a752;--pg-gold-bloom:rgba(240,200,106,.28);
+  --pg-graphite:#2a2730;--pg-lift:rgba(255,255,255,.018);--pg-violet:#9b8de0;--pg-positive:#8fd1ae;--pg-warning:#edc17f;--pg-negative:#eda093;
+  --pg-e2:0 1px 2px rgba(0,0,0,.45);--pg-e4:0 28px 70px rgba(0,0,0,.42);
+  --pg-rim:inset 0 1px 0 rgba(255,255,255,.07),inset 0 -1px 0 rgba(0,0,0,.5);
+  --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.055),0 1px 1px rgba(0,0,0,.3),0 4px 12px -4px rgba(0,0,0,.42);
+  --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.07),0 2px 4px rgba(0,0,0,.32),0 16px 34px -12px rgba(0,0,0,.52);
+  --pg-lift-3:inset 0 1px 0 rgba(255,255,255,.085),0 6px 12px rgba(0,0,0,.36),0 36px 72px -20px rgba(0,0,0,.62);
+  --pg-inset:inset 0 1px 2px rgba(0,0,0,.42),inset 0 -1px 0 rgba(255,255,255,.035);
+  --pg-r-plate:13px;--pg-r-chip:9px;--pg-r-seal:11px;--pg-r-pill:999px;
+  --k-skill:#c7a978;--k-automation:#8fa9c4;--k-integration:#8fb9a4;--k-template:#c2a3b8;--k-agent:#a99ad6;
+}
+[data-pg="light"]{
+  color-scheme:light;
+  --pg-env:#e8e5df;--pg-nav:#f4f1eb;--pg-canvas:#fbf9f5;--pg-spine:#f1eee8;--pg-workspace:#f7f4ee;--pg-surface:#f5f2ec;--pg-raised:#fffdf8;--pg-artifact:#fffdf8;
+  --pg-line-soft:rgba(45,40,50,.105);--pg-line:rgba(45,40,50,.185);--pg-line-strong:rgba(45,40,50,.28);--pg-line-authority:rgba(155,120,60,.44);
+  --pg-ink:#201e23;--pg-ink-2:#3d3941;--pg-muted:#67616b;--pg-faint:#6a646e;
+  --pg-gold-core:#6f5636;--pg-gold:#8b7049;--pg-gold-deep:#7a5c2e;--pg-gold-fill:#c9a96a;--pg-gold-bloom:rgba(201,169,106,.30);
+  --pg-graphite:#b9b2a6;--pg-lift:rgba(45,40,50,.03);--pg-violet:#655a96;--pg-positive:#327458;--pg-warning:#986322;--pg-negative:#a5483d;
+  --pg-e2:0 1px 2px rgba(45,40,50,.10);--pg-e4:0 24px 60px rgba(45,40,50,.16);
+  --pg-rim:inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 0 rgba(45,40,50,.07);
+  --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.9),0 1px 1px rgba(45,40,50,.055),0 4px 10px -4px rgba(45,40,50,.12);
+  --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.95),0 2px 4px rgba(45,40,50,.07),0 14px 30px -12px rgba(45,40,50,.17);
+  --pg-lift-3:inset 0 1px 0 #fff,0 6px 12px rgba(45,40,50,.09),0 32px 64px -20px rgba(45,40,50,.22);
+  --pg-inset:inset 0 1px 2px rgba(45,40,50,.1),inset 0 -1px 0 rgba(255,255,255,.85);
+  --pg-r-plate:13px;--pg-r-chip:9px;--pg-r-seal:11px;--pg-r-pill:999px;
+  --k-skill:#9a7638;--k-automation:#4d6f92;--k-integration:#3f7a5f;--k-template:#8d5f7c;--k-agent:#6f5eb0;
+}
+
+/* Source-signal palette — canonical readiness states mapped to pack tokens + the
+   reference legend. owner_confirmed=gold, connection_sourced=violet,
+   source refreshed/connection=steel, needs_confirmation=teal(positive),
+   legacy_sourced=amber(warning), stale=amber, unavailable/invalid=negative,
+   retired=faint. (Colour mapping is a derivation for owner ruling; states are canonical.) */
+[data-pg]{
+  --sig-confirmed:var(--pg-gold-fill);
+  --sig-connection:var(--pg-violet);
+  --sig-refreshed:var(--k-automation);
+  --sig-needs:var(--pg-positive);
+  --sig-legacy:var(--pg-warning);
+  --sig-stale:var(--pg-warning);
+  --sig-unavailable:var(--pg-negative);
+  --sig-retired:var(--pg-faint);
+}
+
+/* ============================================================================
+   2. RESET + BASE
+   ============================================================================ */
+*{box-sizing:border-box}
+html,body{height:100%}
+/* Base color/background/type live on the TOKEN-SCOPED root (#root carries [data-pg]),
+   not on body — body is ABOVE the token scope, so var(--pg-ink) is undefined there and
+   would fall back to black (invisible in Obsidian). This is the fix for that. */
+body{margin:0;background:#0a0910}
+#root[data-pg]{
+  min-height:100vh;background:var(--pg-env);color:var(--pg-ink);
+  font:400 14px/1.55 var(--pg-font-ui);letter-spacing:-.002em;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4,p{margin:0}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:none}
+:focus-visible{outline:2px solid var(--pg-gold-core);outline-offset:3px;border-radius:4px}
+[hidden]{display:none!important}
+[data-pg] ::-webkit-scrollbar{width:10px;height:10px}
+[data-pg] ::-webkit-scrollbar-track{background:transparent}
+[data-pg] ::-webkit-scrollbar-thumb{background:var(--pg-line-strong);border-radius:999px;border:3px solid transparent;background-clip:content-box}
+[data-pg] ::-webkit-scrollbar-thumb:hover{background:var(--pg-faint);background-clip:content-box}
+.mono{font-family:var(--pg-font-data)}
+.serif{font-family:var(--pg-font-editorial)}
+.tnum{font-variant-numeric:tabular-nums}
+@keyframes pg-reveal{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+@keyframes pg-pulse{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes pg-orbit{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* ============================================================================
+   3. PROTOTYPE HARNESS (clearly not part of Mind)
+   ============================================================================ */
+.harness{position:sticky;top:0;z-index:60;display:flex;flex-wrap:wrap;gap:14px 22px;align-items:center;
+  padding:9px 16px;background:var(--pg-nav);border-bottom:1px solid var(--pg-line);box-shadow:var(--pg-e2)}
+.harness .brandmark{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:-.01em}
+.harness .brandmark small{color:var(--pg-faint);font-weight:400;font-size:11px;letter-spacing:.02em;text-transform:uppercase}
+.h-group{display:flex;align-items:center;gap:7px}
+.h-group>span.lab{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--pg-faint)}
+.seg{display:inline-flex;background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-pill);padding:2px}
+.seg button{padding:5px 11px;border-radius:var(--pg-r-pill);font-size:12.5px;color:var(--pg-muted);min-height:28px}
+.seg button[aria-pressed="true"]{background:var(--pg-raised);color:var(--pg-ink);box-shadow:var(--pg-lift-1)}
+.h-select{background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);color:var(--pg-ink);
+  padding:6px 10px;font:inherit;font-size:12.5px;min-height:32px}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--pg-muted)}
+.switch{width:38px;height:22px;border-radius:999px;background:var(--pg-graphite);border:1px solid var(--pg-line);position:relative;transition:background .18s}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:var(--pg-ink-2);transition:transform .18s}
+.switch[aria-pressed="true"]{background:var(--pg-gold-fill)}
+.switch[aria-pressed="true"]::after{transform:translateX(16px);background:#fff}
+
+/* ============================================================================
+   4. VIEWPORT STAGE — frames the Solo shell at a chosen size
+   ============================================================================ */
+.stage{padding:22px;display:flex;justify-content:center;overflow:auto}
+.viewport{background:var(--pg-canvas);border:1px solid var(--pg-line-strong);border-radius:16px;
+  box-shadow:var(--pg-e4);overflow:hidden;position:relative;transition:width .2s,height .2s;
+  width:1536px;height:770px;max-width:100%}
+.viewport[data-fit="1"]{width:100%!important;height:auto!important;min-height:720px}
+.vp-tag{position:absolute;top:8px;right:12px;z-index:40;font:500 10.5px/1 var(--pg-font-data);
+  color:var(--pg-faint);background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-pill);padding:4px 9px;letter-spacing:.04em}
+
+/* ============================================================================
+   5. SOLO SHELL — nav rail + workspace + optional PAIGE rail
+   ============================================================================ */
+.shell{display:grid;grid-template-columns:210px 1fr;height:100%}
+.shell[data-paige="1"]{grid-template-columns:210px 1fr 340px}
+.nav{background:var(--pg-nav);border-right:1px solid var(--pg-line);display:flex;flex-direction:column;padding:14px 12px;gap:3px;min-height:0}
+.nav .cm{display:flex;align-items:center;gap:10px;padding:4px 6px 14px}
+.cm .plate{width:34px;height:34px;border-radius:var(--pg-r-plate);background:var(--pg-surface);box-shadow:var(--pg-rim);display:grid;place-items:center}
+.cm .who{font-weight:600;font-size:14px;letter-spacing:-.01em}
+.cm .who small{display:block;color:var(--pg-faint);font-weight:400;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase}
+.nav a,.nav button.navitem{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--pg-r-chip);color:var(--pg-muted);font-size:13px;text-decoration:none;min-height:36px;width:100%;text-align:left}
+.nav .navitem:hover{background:var(--pg-surface);color:var(--pg-ink)}
+.nav .navitem[aria-current="page"]{background:var(--pg-surface);color:var(--pg-ink);box-shadow:var(--pg-rim)}
+.nav .navsection{margin-top:6px;padding:10px 10px 4px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--pg-faint)}
+.nav .subtabs{display:flex;flex-direction:column;gap:2px;margin:2px 0 2px 8px;padding-left:10px;border-left:1px solid var(--pg-line)}
+.nav .subtab{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 9px;border-radius:var(--pg-r-chip);color:var(--pg-muted);font-size:12.5px;min-height:32px;width:100%;text-align:left}
+.nav .subtab:hover{background:var(--pg-surface);color:var(--pg-ink)}
+.nav .subtab[aria-current="page"]{background:var(--pg-workspace);color:var(--pg-ink);box-shadow:var(--pg-rim)}
+.nav .subtab .q{font-size:9.5px;color:var(--pg-faint);letter-spacing:.02em}
+.nav .subtab.pending{opacity:.62}
+.nav .subtab.pending .q{color:var(--pg-violet)}
+.nav .foot{margin-top:auto;display:flex;flex-direction:column;gap:2px;padding-top:10px;border-top:1px solid var(--pg-line)}
+
+.work{min-height:0;overflow:auto;background:var(--pg-canvas);position:relative}
+.paige-rail{background:var(--pg-spine);border-left:1px solid var(--pg-line);display:flex;flex-direction:column;min-height:0}
+.paige-rail header{padding:14px 16px;border-bottom:1px solid var(--pg-line);display:flex;align-items:center;justify-content:space-between}
+.paige-rail .body{padding:16px;color:var(--pg-muted);font-size:12.5px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+.paige-rail .bubble{background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);padding:11px 13px;box-shadow:var(--pg-rim)}
+.paige-rail .composer{margin-top:auto;padding:12px;border-top:1px solid var(--pg-line);display:flex;gap:8px;align-items:center}
+.paige-rail .composer input{flex:1;background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-pill);padding:8px 12px;color:var(--pg-ink);font:inherit;font-size:12.5px}
+
+/* ============================================================================
+   6. MIND — the knowledge command desk
+   ============================================================================ */
+.mind{display:flex;flex-direction:column;min-height:100%}
+/* header */
+.mind-head{position:sticky;top:0;z-index:20;background:linear-gradient(var(--pg-canvas),var(--pg-canvas) 78%,transparent);
+  padding:18px 22px 12px;border-bottom:1px solid var(--pg-line-soft)}
+.mind-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.mind-eyebrow{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--pg-faint)}
+.mind-title{font:600 21px/1.2 var(--pg-font-display);letter-spacing:-.02em;margin-top:3px}
+.mind-brief{margin-top:5px;max-width:62ch;color:var(--pg-ink-2);font-size:13px}
+.mind-brief b{color:var(--pg-ink);font-weight:600}
+.mind-head-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.btn{display:inline-flex;align-items:center;gap:7px;border-radius:var(--pg-r-chip);padding:8px 13px;font-size:12.5px;
+  border:1px solid var(--pg-line);background:var(--pg-surface);color:var(--pg-ink);min-height:36px;box-shadow:var(--pg-rim);transition:transform .12s,box-shadow .12s}
+.btn:hover{box-shadow:var(--pg-lift-1)}
+.btn:active{box-shadow:var(--pg-inset);transform:translateY(.5px)}
+.btn .ico{width:15px;height:15px;flex-shrink:0}
+.btn--ghost{background:transparent;box-shadow:none}
+.btn--ghost:hover{background:var(--pg-surface)}
+.btn--gold{background:var(--pg-gold-fill);color:#1a1305;border-color:transparent;box-shadow:var(--pg-lift-1)}
+.btn--gold:hover{filter:brightness(1.04)}
+.btn[disabled]{opacity:.5;cursor:not-allowed;box-shadow:none}
+.btn[disabled]:hover{box-shadow:none}
+
+/* command row: search + filters + refresh */
+.mind-command{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.searchbox{flex:1;min-width:220px;display:flex;align-items:center;gap:9px;background:var(--pg-surface);
+  border:1px solid var(--pg-line);border-radius:var(--pg-r-pill);padding:8px 14px;box-shadow:var(--pg-inset)}
+.searchbox input{flex:1;background:none;border:none;color:var(--pg-ink);font:inherit;font-size:13px;outline:none}
+.searchbox .ico{width:15px;height:15px;color:var(--pg-faint)}
+.searchbox kbd{font:500 10px var(--pg-font-data);color:var(--pg-faint);border:1px solid var(--pg-line);border-radius:5px;padding:2px 5px}
+.filters{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--pg-surface);border:1px solid var(--pg-line);
+  border-radius:var(--pg-r-pill);padding:6px 11px;font-size:12px;color:var(--pg-muted);min-height:32px}
+.chip:hover{color:var(--pg-ink)}
+.chip[aria-pressed="true"]{background:var(--pg-gold-bloom);border-color:var(--pg-line-authority);color:var(--pg-ink)}
+.chip .caret{width:11px;height:11px;opacity:.6}
+
+/* body scroll owner */
+.mind-body{flex:1;min-height:0;overflow:auto;padding:16px 22px 30px;
+  display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-content:start}
+
+/* domains column */
+.desk-title{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:2px 0 10px}
+.desk-title h2{font:600 13px/1 var(--pg-font-display);letter-spacing:.01em}
+.desk-title .hint{font-size:11px;color:var(--pg-faint)}
+.domains{display:flex;flex-direction:column;gap:10px}
+.domain{background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);box-shadow:var(--pg-rim);overflow:hidden}
+.domain>.d-head{display:grid;grid-template-columns:40px 1fr auto;gap:13px;align-items:center;padding:13px 15px;width:100%;text-align:left}
+.domain>.d-head:hover{background:var(--pg-workspace)}
+.d-plate{width:40px;height:40px;border-radius:var(--pg-r-seal);background:var(--pg-workspace);box-shadow:var(--pg-rim);display:grid;place-items:center;color:var(--pg-ink-2)}
+.d-plate svg{width:19px;height:19px}
+.d-main .d-name{font:600 14px/1.25 var(--pg-font-display);letter-spacing:-.01em}
+.d-main .d-sum{font-size:12px;color:var(--pg-muted);margin-top:2px;max-width:60ch}
+.d-meta{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.d-count{font:500 12px var(--pg-font-data);color:var(--pg-faint)}
+.d-caret{width:16px;height:16px;color:var(--pg-faint);transition:transform .2s}
+.domain[data-open="1"] .d-caret{transform:rotate(180deg)}
+.d-body{border-top:1px solid var(--pg-line-soft);padding:6px 12px 12px;display:none}
+.domain[data-open="1"] .d-body{display:block;animation:pg-reveal .18s ease both}
+.facts{display:flex;flex-direction:column}
+.fact{display:grid;grid-template-columns:auto 1fr auto;gap:11px;align-items:center;padding:10px 8px;border-radius:var(--pg-r-chip);width:100%;text-align:left}
+.fact:hover{background:var(--pg-workspace)}
+.fact+.fact{border-top:1px solid var(--pg-line-soft)}
+.fact .f-name{font-size:13px;color:var(--pg-ink)}
+.fact .f-src{font-size:11px;color:var(--pg-faint);margin-top:1px}
+.dot{width:8px;height:8px;border-radius:999px;flex-shrink:0;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 16%,transparent)}
+.state-pill{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.02em;text-transform:uppercase;
+  border-radius:var(--pg-r-pill);padding:4px 9px;border:1px solid var(--pg-line);color:var(--pg-ink-2);background:var(--pg-canvas);white-space:nowrap}
+.state-pill .dot{width:7px;height:7px;box-shadow:none}
+.d-empty{padding:12px 10px;color:var(--pg-muted);font-size:12.5px}
+.d-empty .why{color:var(--pg-faint);margin-top:3px}
+.d-linkout{margin-top:9px}
+.linkout{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--pg-gold-deep);border-bottom:1px solid transparent}
+.linkout:hover{border-color:var(--pg-gold-deep)}
+.linkout svg{width:13px;height:13px}
+
+/* right rail: health + recent + orb */
+.rail{display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);box-shadow:var(--pg-rim)}
+.panel>h3{font:600 12px/1 var(--pg-font-display);letter-spacing:.02em;padding:13px 14px 0;display:flex;align-items:center;gap:8px}
+.panel>h3 .n{margin-left:auto;font:500 11px var(--pg-font-data);color:var(--pg-faint)}
+.panel .p-body{padding:10px 12px 13px;display:flex;flex-direction:column;gap:2px}
+.attn{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;padding:9px 8px;border-radius:var(--pg-r-chip);width:100%;text-align:left}
+.attn:hover{background:var(--pg-workspace)}
+.attn+.attn{border-top:1px solid var(--pg-line-soft)}
+.attn .a-title{font-size:12.5px;color:var(--pg-ink)}
+.attn .a-next{font-size:11px;color:var(--pg-muted);margin-top:2px}
+.attn .a-next b{color:var(--pg-gold-deep);font-weight:500}
+.recent{display:flex;flex-direction:column}
+.rec{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:9px 8px;align-items:start}
+.rec+.rec{border-top:1px solid var(--pg-line-soft)}
+.rec .r-t{font-size:12.5px;color:var(--pg-ink)}
+.rec .r-m{font-size:11px;color:var(--pg-faint);margin-top:1px}
+.absence{margin:6px;padding:12px 13px;border:1px dashed var(--pg-line-strong);border-radius:var(--pg-r-chip);background:var(--pg-canvas)}
+.absence .a-h{font:600 12.5px var(--pg-font-display);color:var(--pg-ink-2)}
+.absence .a-b{font-size:11.5px;color:var(--pg-muted);margin-top:4px;line-height:1.5}
+.absence .linkout{margin-top:8px}
+
+/* subtle optional orb detail */
+.orb-detail{background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);box-shadow:var(--pg-rim);overflow:hidden}
+.orb-detail>button.o-head{display:flex;align-items:center;gap:10px;width:100%;padding:11px 13px;text-align:left}
+.orb-detail .o-title{font:600 12px var(--pg-font-display)}
+.orb-detail .o-title small{display:block;font-weight:400;font-size:10.5px;color:var(--pg-faint);text-transform:none;letter-spacing:0}
+.orb-detail .o-caret{margin-left:auto;width:15px;height:15px;color:var(--pg-faint);transition:transform .2s}
+.orb-detail[data-open="1"] .o-caret{transform:rotate(180deg)}
+.orb-wrap{display:none;padding:0 13px 14px}
+.orb-detail[data-open="1"] .orb-wrap{display:block}
+.orb{position:relative;height:150px;margin:2px auto 8px;width:150px}
+.orb i{position:absolute;inset:0;border-radius:999px;border:1px solid var(--pg-line);animation:pg-orbit 26s linear infinite}
+.orb i:nth-child(2){inset:16px;border-color:var(--pg-line-soft);animation-duration:34s;animation-direction:reverse}
+.orb i:nth-child(3){inset:34px;border-color:var(--pg-line-soft);animation-duration:44s}
+.orb .core{position:absolute;inset:0;display:grid;place-items:center}
+.orb .core b{width:30px;height:30px;border-radius:999px;background:radial-gradient(circle at 40% 35%,var(--pg-gold-core),var(--pg-gold-deep));box-shadow:0 0 22px var(--pg-gold-bloom);animation:pg-pulse 5.2s ease-in-out infinite}
+.orb .n{position:absolute;width:9px;height:9px;border-radius:999px}
+.orb-legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:6px}
+.orb-legend span{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;color:var(--pg-muted)}
+.orb-note{font-size:10.5px;color:var(--pg-faint);margin-top:8px;line-height:1.5}
+
+/* full-surface states */
+.surface-state{grid-column:1/-1;display:grid;place-items:center;padding:54px 20px;text-align:center}
+.surface-state .glyph{width:52px;height:52px;border-radius:var(--pg-r-plate);background:var(--pg-surface);box-shadow:var(--pg-rim);display:grid;place-items:center;color:var(--pg-faint);margin-bottom:16px}
+.surface-state h2{font:600 17px var(--pg-font-display);letter-spacing:-.01em}
+.surface-state p{color:var(--pg-muted);font-size:13px;margin-top:7px;max-width:52ch}
+.skel{background:var(--pg-surface);border:1px solid var(--pg-line-soft);border-radius:var(--pg-r-plate);overflow:hidden;position:relative}
+.skel::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,var(--pg-lift),transparent);animation:pg-shimmer 1.4s infinite}
+@keyframes pg-shimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.banner{grid-column:1/-1;display:flex;gap:11px;align-items:flex-start;padding:12px 14px;border-radius:var(--pg-r-plate);
+  border:1px solid var(--pg-line);background:var(--pg-surface);box-shadow:var(--pg-rim);margin-bottom:2px}
+.banner .b-dot{margin-top:3px}
+.banner.warn{border-color:color-mix(in srgb,var(--pg-warning) 45%,var(--pg-line))}
+.banner.err{border-color:color-mix(in srgb,var(--pg-negative) 45%,var(--pg-line))}
+.banner strong{font-size:13px}
+.banner span{display:block;font-size:12px;color:var(--pg-muted);margin-top:2px}
+.toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:45;display:flex;align-items:center;gap:9px;
+  background:var(--pg-raised);border:1px solid var(--pg-line-strong);border-radius:var(--pg-r-pill);padding:9px 16px;box-shadow:var(--pg-lift-2);font-size:12.5px}
+.toast.err{border-color:color-mix(in srgb,var(--pg-negative) 55%,var(--pg-line))}
+
+/* ============================================================================
+   7. DRAWER (evidence) + capture form
+   ============================================================================ */
+.scrim{position:absolute;inset:0;z-index:48;background:color-mix(in srgb,var(--pg-env) 55%,transparent);backdrop-filter:blur(1.5px)}
+.drawer{position:absolute;top:0;right:0;bottom:0;z-index:49;width:min(430px,86%);background:var(--pg-workspace);
+  border-left:1px solid var(--pg-line-strong);box-shadow:var(--pg-e4);display:flex;flex-direction:column;animation:pg-slide .2s ease both}
+@keyframes pg-slide{from{transform:translateX(14px);opacity:.6}to{transform:none;opacity:1}}
+.drawer header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 16px 13px;border-bottom:1px solid var(--pg-line)}
+.drawer header h2{font:600 16px/1.25 var(--pg-font-display);letter-spacing:-.01em}
+.drawer header .close{width:32px;height:32px;border-radius:var(--pg-r-chip);display:grid;place-items:center;color:var(--pg-muted);border:1px solid var(--pg-line);background:var(--pg-surface)}
+.drawer header .close:hover{color:var(--pg-ink)}
+.drawer .d-scroll{flex:1;min-height:0;overflow:auto;padding:16px}
+.drawer section+section{margin-top:18px}
+.drawer h3{font:600 11px/1 var(--pg-font-display);text-transform:uppercase;letter-spacing:.06em;color:var(--pg-faint);margin-bottom:8px}
+.drawer .plain{font-size:13.5px;color:var(--pg-ink);line-height:1.5}
+.drawer .serif-quote{font-family:var(--pg-font-editorial);font-size:15px;line-height:1.5;color:var(--pg-ink)}
+.dl{display:grid;grid-template-columns:104px 1fr;gap:7px 12px;font-size:12.5px}
+.dl dt{color:var(--pg-faint)}
+.dl dd{color:var(--pg-ink-2);margin:0}
+.dl dd .mono{font-size:11.5px}
+.hist{display:flex;flex-direction:column;gap:0}
+.hist .h-row{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:8px 0}
+.hist .h-row+.h-row{border-top:1px solid var(--pg-line-soft)}
+.hist .h-when{font:500 11px var(--pg-font-data);color:var(--pg-faint)}
+.drawer .actions{border-top:1px solid var(--pg-line);padding:13px 16px;display:flex;gap:8px;flex-wrap:wrap}
+.note{font-size:11.5px;color:var(--pg-muted);background:var(--pg-canvas);border:1px solid var(--pg-line-soft);border-radius:var(--pg-r-chip);padding:9px 11px;line-height:1.5}
+.note b{color:var(--pg-ink-2)}
+/* capture form */
+.field{margin-bottom:13px}
+.field label{display:block;font-size:12px;color:var(--pg-ink-2);margin-bottom:5px;font-weight:500}
+.field .req{color:var(--pg-gold-deep)}
+.field input,.field select,.field textarea{width:100%;background:var(--pg-surface);border:1px solid var(--pg-line);
+  border-radius:var(--pg-r-chip);padding:9px 11px;color:var(--pg-ink);font:inherit;font-size:13px}
+.field textarea{min-height:76px;resize:vertical}
+.field .help{font-size:11px;color:var(--pg-faint);margin-top:4px}
+.field .err-msg{font-size:11.5px;color:var(--pg-negative);margin-top:4px;display:none}
+.field[data-invalid="1"] input,.field[data-invalid="1"] textarea{border-color:var(--pg-negative)}
+.field[data-invalid="1"] .err-msg{display:block}
+.route-note{display:flex;gap:10px;align-items:flex-start;background:var(--pg-canvas);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);padding:12px 13px;margin-bottom:14px}
+.route-note svg{width:17px;height:17px;color:var(--pg-gold-deep);flex-shrink:0;margin-top:1px}
+.route-note .rn-t{font-size:12.5px;color:var(--pg-ink)}
+.route-note .rn-b{font-size:11.5px;color:var(--pg-muted);margin-top:3px}
+
+/* ============================================================================
+   8. ANNOTATION LAYER
+   ============================================================================ */
+body[data-annot="1"] [data-ann]{position:relative;outline:1px dashed color-mix(in srgb,var(--pg-violet) 55%,transparent);outline-offset:2px;border-radius:6px}
+.ann-badge{display:none}
+body[data-annot="1"] .ann-badge{display:inline-grid;place-items:center;position:absolute;top:-10px;left:-10px;z-index:15;
+  width:20px;height:20px;border-radius:999px;background:var(--pg-violet);color:#fff;font:600 11px var(--pg-font-data);box-shadow:var(--pg-lift-1)}
+.ann-panel{position:fixed;right:14px;bottom:14px;z-index:70;width:340px;max-height:66vh;overflow:auto;
+  background:var(--pg-raised);border:1px solid var(--pg-line-strong);border-radius:var(--pg-r-plate);box-shadow:var(--pg-e4);display:none}
+body[data-annot="1"] .ann-panel{display:block}
+.ann-panel header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--pg-line);position:sticky;top:0;background:var(--pg-raised)}
+.ann-panel header h4{font:600 12.5px var(--pg-font-display)}
+.ann-panel .ap-body{padding:8px 12px 14px}
+.ann-item{padding:9px 0;border-bottom:1px solid var(--pg-line-soft);font-size:12px}
+.ann-item:last-child{border-bottom:none}
+.ann-item .ai-top{display:flex;align-items:center;gap:8px}
+.ann-item .num{display:grid;place-items:center;width:18px;height:18px;border-radius:999px;background:var(--pg-violet);color:#fff;font:600 10px var(--pg-font-data);flex-shrink:0}
+.ann-item .ai-name{font-weight:600;color:var(--pg-ink)}
+.ann-item .verdict{margin-left:auto;font:600 9.5px var(--pg-font-data);letter-spacing:.04em;padding:2px 7px;border-radius:999px;border:1px solid var(--pg-line)}
+.v-live{color:var(--pg-positive);border-color:color-mix(in srgb,var(--pg-positive) 50%,var(--pg-line))}
+.v-partial{color:var(--pg-warning);border-color:color-mix(in srgb,var(--pg-warning) 50%,var(--pg-line))}
+.v-unavail{color:var(--pg-negative);border-color:color-mix(in srgb,var(--pg-negative) 50%,var(--pg-line))}
+.ann-item .ai-src{color:var(--pg-muted);margin-top:5px;line-height:1.5}
+.ann-item .ai-src code{font:500 11px var(--pg-font-data);color:var(--pg-ink-2);background:var(--pg-surface);border-radius:5px;padding:1px 5px}
+
+.legend-inline{display:flex;flex-wrap:wrap;gap:8px 16px;padding:2px 2px 0}
+.legend-inline span{display:inline-flex;align-items:center;gap:7px;font-size:11px;color:var(--pg-muted)}
+
+/* ============================================================================
+   9. RESPONSIVE — the desk folds intentionally, no tiny-card maze
+   ============================================================================ */
+@media (max-width:1120px){
+  .mind-body{grid-template-columns:1fr}
+  .rail{flex-direction:row;flex-wrap:wrap}
+  .rail>*{flex:1;min-width:260px}
+}
+@media (max-width:900px){
+  .shell,.shell[data-paige="1"]{grid-template-columns:1fr}
+  .nav{flex-direction:row;overflow:auto;align-items:center;gap:6px}
+  .nav .cm,.nav .navsection,.nav .subtabs,.nav .foot{display:none}
+  .paige-rail{display:none}
+  .rail{flex-direction:column}
+}
+</style>
+</head>
+<body data-annot="0">
+<div id="root" data-pg="dark">
+  <!-- ===================== PROTOTYPE HARNESS ===================== -->
+  <div class="harness" role="region" aria-label="Prototype controls — not part of Mind">
+    <div class="brandmark">Command Center · Mind <small>Gate&nbsp;1 prototype</small></div>
+
+    <div class="h-group">
+      <span class="lab">Theme</span>
+      <div class="seg" role="group" aria-label="Theme">
+        <button id="t-light" aria-pressed="false">Mineral</button>
+        <button id="t-dark" aria-pressed="true">Obsidian</button>
+      </div>
+    </div>
+
+    <div class="h-group">
+      <span class="lab">Viewport</span>
+      <select class="h-select" id="vp" aria-label="Viewport size">
+        <option value="1536x770">1536 × 770</option>
+        <option value="1366x768">1366 × 768</option>
+        <option value="1024x768">1024 × 768</option>
+        <option value="900x1000">900 × 1000</option>
+        <option value="fit">Fit width</option>
+      </select>
+    </div>
+
+    <div class="h-group">
+      <span class="lab">PAIGE</span>
+      <div class="seg" role="group" aria-label="PAIGE panel">
+        <button id="p-closed" aria-pressed="true">Closed</button>
+        <button id="p-open" aria-pressed="false">Open</button>
+      </div>
+    </div>
+
+    <div class="h-group">
+      <span class="lab">State</span>
+      <select class="h-select" id="scenario" aria-label="Scenario / state">
+        <option value="populated">Populated</option>
+        <option value="firstuse">First-use (empty)</option>
+        <option value="partial">Partial coverage</option>
+        <option value="unavailable">Source unavailable</option>
+        <option value="loading">Loading</option>
+        <option value="switching">Workspace switching</option>
+      </select>
+    </div>
+
+    <div class="h-group">
+      <button class="toggle" id="annot" aria-pressed="false"><span class="switch" aria-hidden="true"></span> Annotations</button>
+    </div>
+  </div>
+
+  <!-- ===================== STAGE ===================== -->
+  <div class="stage">
+    <div class="viewport" id="viewport" style="width:1536px;height:770px">
+      <div class="vp-tag mono" id="vptag">1536×770 · Obsidian</div>
+
+      <div class="shell" id="shell" data-paige="0">
+        <!-- NAV RAIL -->
+        <nav class="nav" aria-label="Solo primary">
+          <div class="cm">
+            <span class="plate" aria-hidden="true">
+              <svg viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="PAIGE">
+                <polygon points="21,13.6 30.5,13.6 21,34.4 11.5,34.4" fill="var(--pg-gold)" stroke="var(--pg-gold)" stroke-width="3.2" stroke-linejoin="round"></polygon>
+                <circle cx="34.5" cy="30.5" r="5.5" fill="var(--pg-gold-core)"></circle>
+              </svg>
+            </span>
+            <span class="who">Acme Advisory<small>Solo workspace</small></span>
+          </div>
+
+          <button class="navitem" aria-current="page">▦ Command Center</button>
+          <div class="subtabs" data-ann="nav" role="group" aria-label="Command Center sub-tabs">
+            <span class="ann-badge" aria-hidden="true">7</span>
+            <button class="subtab pending"><span>Business Game&nbsp;Plan</span><span class="q">new</span></button>
+            <button class="subtab"><span>Systems Check</span><span class="q">readiness</span></button>
+            <button class="subtab pending"><span>Trust Compass</span><span class="q">folding&nbsp;in</span></button>
+            <button class="subtab" aria-current="page"><span>Mind</span><span class="q">/mind</span></button>
+          </div>
+          <button class="navitem">☷ Clients</button>
+          <button class="navitem">◆ Campaigns</button>
+          <button class="navitem">⌘ Marketplace</button>
+          <button class="navitem">▤ Analytics</button>
+          <button class="navitem">⚙ Settings</button>
+
+          <div class="foot">
+            <button class="navitem" id="nav-theme">◐ Mineral / Obsidian</button>
+            <button class="navitem">⇥ Sign out</button>
+          </div>
+        </nav>
+
+        <!-- WORKSPACE -->
+        <main class="work" id="work">
+          <div class="mind" id="mind">
+            <!-- HEADER -->
+            <header class="mind-head" data-ann="header">
+              <span class="ann-badge" aria-hidden="true">1</span>
+              <div class="mind-title-row">
+                <div>
+                  <div class="mind-eyebrow">Acme Advisory · Solo · Governed knowledge</div>
+                  <h1 class="mind-title">Mind</h1>
+                  <p class="mind-brief" id="brief">What PAIGE safely knows about your business, where it came from, and what needs your confirmation. <b>3 foundational facts are on file from older records but not yet confirmed</b> — confirming them strengthens what PAIGE can rely on. No hidden reasoning is shown.</p>
+                </div>
+                <div class="mind-head-actions">
+                  <button class="btn btn--ghost" id="act-refresh" title="Re-reads current records. This is not a scan.">
+                    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                    Refresh sources
+                  </button>
+                  <button class="btn btn--ghost" id="act-ask">
+                    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></svg>
+                    Ask PAIGE
+                  </button>
+                  <button class="btn btn--gold" id="act-confirm">
+                    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>
+                    Confirm 3 facts
+                  </button>
+                </div>
+              </div>
+
+              <div class="mind-command">
+                <div class="searchbox" data-ann="search">
+                  <span class="ann-badge" aria-hidden="true">2</span>
+                  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                  <input id="search" type="search" placeholder="Search what PAIGE knows…" aria-label="Search what PAIGE knows" />
+                  <kbd>/</kbd>
+                </div>
+                <div class="filters" data-ann="filters">
+                  <span class="ann-badge" aria-hidden="true">3</span>
+                  <button class="chip" data-filter="state">State <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+                  <button class="chip" data-filter="source">Source <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+                  <button class="chip" data-filter="fresh">Freshness <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+                </div>
+              </div>
+              <div class="legend-inline" aria-hidden="true">
+                <span><i class="dot" style="background:var(--sig-confirmed);color:var(--sig-confirmed)"></i>Owner-confirmed</span>
+                <span><i class="dot" style="background:var(--sig-connection);color:var(--sig-connection)"></i>Connection-sourced</span>
+                <span><i class="dot" style="background:var(--sig-legacy);color:var(--sig-legacy)"></i>Legacy record</span>
+                <span><i class="dot" style="background:var(--sig-needs);color:var(--sig-needs)"></i>Needs confirmation</span>
+                <span><i class="dot" style="background:var(--sig-unavailable);color:var(--sig-unavailable)"></i>Unavailable</span>
+              </div>
+            </header>
+
+            <!-- BODY (scroll owner) -->
+            <div class="mind-body" id="body">
+              <!-- ============ populated / partial content ============ -->
+              <div id="content-primary" style="display:contents">
+                <div>
+                  <div class="desk-title">
+                    <h2>Knowledge domains</h2>
+                    <span class="hint">Open a domain to see its facts and evidence</span>
+                  </div>
+                  <div class="domains" id="domains"><!-- injected --></div>
+                </div>
+
+                <aside class="rail">
+                  <section class="panel" data-ann="health">
+                    <span class="ann-badge" aria-hidden="true">5</span>
+                    <h3>Needs attention <span class="n" id="attn-n">3</span></h3>
+                    <div class="p-body" id="attn"><!-- injected --></div>
+                  </section>
+
+                  <section class="panel" data-ann="recent">
+                    <span class="ann-badge" aria-hidden="true">6</span>
+                    <h3>Recent changes <span class="n" id="rec-n">2</span></h3>
+                    <div class="p-body recent" id="recent"><!-- injected --></div>
+                    <div class="absence">
+                      <div class="a-h">Durable change log · unavailable here</div>
+                      <div class="a-b">Confirmed, corrected, and retired events are the activity record. That record isn't readable from this workspace yet — the attributable history lives in Rail.</div>
+                      <a class="linkout" href="#">Open Rail
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+                    </div>
+                  </section>
+
+                  <section class="orb-detail" id="orb" data-ann="orb">
+                    <span class="ann-badge" aria-hidden="true">8</span>
+                    <button class="o-head" id="orb-toggle" aria-expanded="false">
+                      <span class="o-title">Knowledge field<small>optional · source-backed view</small></span>
+                      <svg class="o-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                    </button>
+                    <div class="orb-wrap">
+                      <div class="orb" id="orb-art" aria-hidden="true">
+                        <i></i><i></i><i></i>
+                        <div class="core"><b></b></div>
+                      </div>
+                      <div class="orb-legend" aria-hidden="true">
+                        <span><i class="dot" style="background:var(--sig-confirmed)"></i>Confirmed</span>
+                        <span><i class="dot" style="background:var(--sig-connection)"></i>Connection</span>
+                        <span><i class="dot" style="background:var(--sig-legacy)"></i>Legacy</span>
+                        <span><i class="dot" style="background:var(--sig-needs)"></i>Needs&nbsp;you</span>
+                      </div>
+                      <p class="orb-note">A calm view of the same governed records above, coloured by source. It never stands in for the records, and shows no activity or reasoning. Motion pauses under reduced-motion.</p>
+                    </div>
+                  </section>
+                </aside>
+              </div>
+
+              <!-- ============ full-surface state variants ============ -->
+              <div id="state-loading" class="surface-state" hidden aria-hidden="true">
+                <div style="width:100%;max-width:820px;display:grid;grid-template-columns:1fr 300px;gap:20px">
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <div class="skel" style="height:64px"></div><div class="skel" style="height:64px"></div>
+                    <div class="skel" style="height:64px"></div><div class="skel" style="height:64px"></div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <div class="skel" style="height:150px"></div><div class="skel" style="height:120px"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="state-firstuse" class="surface-state" hidden>
+                <div class="glyph" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3a4 4 0 0 1 4 4 4 4 0 0 1 0 8 4 4 0 0 1-8 0 4 4 0 0 1 0-8 4 4 0 0 1 4-4z"/></svg>
+                </div>
+                <h2>PAIGE hasn't learned anything durable here yet</h2>
+                <p>Nothing is invented to fill this space. The fastest way to give PAIGE a foundation is to confirm your business basics in Setup — the website, phone, and what you do.</p>
+                <div style="display:flex;gap:8px;margin-top:16px">
+                  <button class="btn btn--gold">Confirm business basics in Setup</button>
+                  <button class="btn btn--ghost">Add a knowledge document</button>
+                </div>
+              </div>
+
+              <div id="state-switching" class="surface-state" hidden>
+                <div class="glyph" aria-hidden="true" style="animation:pg-pulse 1.4s infinite">
+                  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/></svg>
+                </div>
+                <h2>Resolving this workspace's Mind…</h2>
+                <p>Records, filters, search, open drawers, and pending edits from the previous workspace are cleared before this one paints. Nothing from another account is shown while it resolves.</p>
+              </div>
+            </div><!-- /mind-body -->
+
+            <div class="toast" id="toast" hidden></div>
+          </div><!-- /mind -->
+        </main>
+
+        <!-- PAIGE RAIL -->
+        <aside class="paige-rail" id="paige" hidden aria-label="PAIGE">
+          <header>
+            <span style="font:600 13px var(--pg-font-display)">✦ PAIGE</span>
+            <button class="close" aria-label="Fold PAIGE conversation" style="width:28px;height:28px;border-radius:8px">‹</button>
+          </header>
+          <div class="body">
+            <div class="bubble">Ask me about anything I know about Acme Advisory — I'll name where each answer comes from, or tell you honestly when I don't have it.</div>
+            <div class="bubble" style="align-self:flex-end;background:var(--pg-workspace)">What do you know about our offers?</div>
+            <div class="bubble">I don't have your offers as confirmed knowledge yet — nothing is on file I can rely on. Your catalog lives in Campaigns; want me to point you there, or help you record what you sell?</div>
+          </div>
+          <div class="composer">
+            <input placeholder="Message PAIGE…" aria-label="Message PAIGE" />
+            <button class="btn btn--gold" style="padding:8px 12px;min-height:34px">Send</button>
+          </div>
+        </aside>
+      </div><!-- /shell -->
+
+      <!-- DRAWER MOUNT -->
+      <div id="drawer-mount"></div>
+    </div><!-- /viewport -->
+  </div><!-- /stage -->
+
+  <!-- ===================== ANNOTATION PANEL ===================== -->
+  <div class="ann-panel" role="region" aria-label="Region data-source annotations">
+    <header>
+      <h4>Region → real source / honest absence</h4>
+      <button class="toggle" id="annot-close" aria-label="Hide annotations"><span style="font-size:16px">×</span></button>
+    </header>
+    <div class="ap-body" id="ann-list"><!-- injected --></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================================
+   DATA — every value is an ILLUSTRATIVE FIXTURE rendered from the REAL contract
+   shape. Fixture tenant "Acme Advisory" (never a real owner account, §63).
+   Fact shape follows the canonical readiness contract:
+   fact_key · state · source · as_of · reason · next_action.
+   ============================================================================ */
+const STATES = {
+  owner_confirmed:  {label:"Owner-confirmed",  sig:"--sig-confirmed",  src:"setup"},
+  connection_sourced:{label:"Connection-sourced",sig:"--sig-connection",src:"connections"},
+  legacy_sourced:   {label:"Legacy record",    sig:"--sig-legacy",     src:"legacy_brand"},
+  needs_confirmation:{label:"Needs confirmation",sig:"--sig-needs",     src:"—"},
+  unavailable:      {label:"Unavailable",      sig:"--sig-unavailable",src:"—"},
+  retired:          {label:"Retired",          sig:"--sig-retired",    src:"—"},
+};
+
+const ICON = {
+  identity:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/></svg>',
+  offers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 7H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  people:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.3 3.1-5 7-5s7 1.7 7 5"/><circle cx="18" cy="9" r="2.4"/><path d="M17 15c3 .4 5 1.9 5 4.5"/></svg>',
+  goals:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".7" fill="currentColor"/></svg>',
+  systems:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>',
+  knowledge:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-6-3-6 3z"/><path d="M8 7h6"/></svg>',
+};
+
+/* Domains follow the owner brief's six. Each carries its honest verdict + real source. */
+const DOMAINS = [
+  {
+    key:"identity", name:"Business identity & operating context", icon:"identity",
+    verdict:"PARTIAL", source:"get_business_context_readiness · business_context.readiness (Spine, read-only)",
+    sum:"What PAIGE understands about who you are and how you operate.",
+    facts:[
+      {name:"Website", state:"legacy_sourced", as_of:null, reason:"Present only in an older brand record — never confirmed in Setup.", next:"Confirm in Setup"},
+      {name:"Business phone", state:"legacy_sourced", as_of:null, reason:"Present only in an older brand record — never confirmed.", next:"Confirm in Setup"},
+      {name:"Industry", state:"legacy_sourced", as_of:null, reason:"Inherited from an older record.", next:"Confirm in Setup"},
+      {name:"Primary business email", state:"connection_sourced", as_of:"Observed via a connected account", reason:"Derived from a connected provider, not owner-confirmed.", next:"Confirm in Setup"},
+    ],
+    valueNote:"This domain reports each fact's state and provenance, never the raw value itself — that boundary is deliberate."
+  },
+  {
+    key:"offers", name:"Offers, services & delivery", icon:"offers",
+    verdict:"UNAVAILABLE", source:"No governed knowledge lens (catalog lives in Campaigns)",
+    sum:"What you sell and how you deliver it.",
+    facts:[],
+    empty:{h:"Not on file as knowledge yet", b:"PAIGE has no confirmed record of your offers. Your catalog is real, but it lives in Campaigns and isn't yet a governed fact PAIGE can rely on.", link:"Open Campaigns · Catalog"}
+  },
+  {
+    key:"people", name:"People, clients & relationship context", icon:"people",
+    verdict:"PARTIAL", source:"Governed context: Release C memory seam (record_/get_/forget_paige_memory · client_memory). Canonical records: People/Clients (Layer 1).",
+    sum:"How to work with the people and businesses you serve.",
+    facts:[],
+    empty:{h:"Governed store exists · nothing on file yet", b:"Canonical people, roles and relationships live in People/Clients — the one source of truth. Mind holds governed context on top (a memory seam shipped in Release C), but nothing writes to it yet, so there's nothing to show. Anything learned here is stored as “proposed” and never becomes a canonical record without your confirmation.", link:"Open People / Clients"}
+  },
+  {
+    key:"goals", name:"Goals, strategy, decisions & commitments", icon:"goals",
+    verdict:"PARTIAL", source:"Governed memory seam (Release C: decision · commitment · correction types). Not yet written from Mind or chat.",
+    sum:"The direction you've set and the calls you've made.",
+    facts:[],
+    empty:{h:"Governed store exists · nothing on file yet", b:"A governed memory seam can hold decisions, commitments and corrections (shipped in Release C), but nothing writes to it yet, so PAIGE records none. A recorded decision is stored as “proposed” until you confirm it. Pending approvals are a different thing and live in Systems Check.", link:"Open Systems Check"}
+  },
+  {
+    key:"systems", name:"Connected systems, tools & data sources", icon:"systems",
+    verdict:"PARTIAL", source:"n8n readiness getters + systems_check_snapshot (status only, tenant-scoped)",
+    sum:"What PAIGE is connected to, and whether each connection is working.",
+    facts:[
+      {name:"Automations (n8n) — API", state:"connection_sourced", as_of:"Last checked 2d ago", reason:"Connection record present; status read only, no history.", next:"Open Connections"},
+      {name:"PAIGE tools (MCP)", state:"needs_confirmation", as_of:null, reason:"OAuth consent is not authorization to execute — not yet approved.", next:"Review in Integrations"},
+      {name:"Call transcripts", state:"unavailable", as_of:null, reason:"No substrate — this source isn't built. PAIGE will not infer from it.", next:null},
+    ]
+  },
+  {
+    key:"knowledge", name:"Knowledge & resources", icon:"knowledge",
+    verdict:"LIVE", source:"useSoloKnowledge → tenant_knowledge_docs (RLS-scoped)",
+    sum:"Documents and material you've given PAIGE to reason from.",
+    facts:[
+      {name:"Onboarding playbook.pdf", state:"owner_confirmed", as_of:"Indexed 4d ago", reason:"12 indexed chunks · Operations.", next:"Open document", chunks:12},
+      {name:"Service agreement template", state:"owner_confirmed", as_of:"Indexed 6d ago", reason:"8 indexed chunks · Legal.", next:"Open document", chunks:8},
+      {name:"Discovery call framework", state:"owner_confirmed", as_of:"Indexed 9d ago", reason:"5 indexed chunks · Sales.", next:"Open document", chunks:5},
+    ]
+  },
+];
+
+const ATTENTION = [
+  {title:"Website not confirmed", next:"Confirm in Setup", domain:"identity", fact:0},
+  {title:"Business phone not confirmed", next:"Confirm in Setup", domain:"identity", fact:1},
+  {title:"Industry not confirmed", next:"Confirm in Setup", domain:"identity", fact:2},
+  {title:"PAIGE tools (MCP) not approved", next:"Review in Integrations", domain:"systems", fact:1},
+  {title:"Call transcripts source unavailable", next:"No substrate built", domain:"systems", fact:2, muted:true},
+];
+
+const RECENT = [
+  {t:"Discovery call framework", m:"Learned · indexed 9d ago", domain:"knowledge", fact:2},
+  {t:"Service agreement template", m:"Learned · indexed 6d ago", domain:"knowledge", fact:1},
+];
+
+/* Annotation registry — the honest data-source / absence map (§13). */
+const ANNOTATIONS = [
+  {n:1, name:"Command header · operating brief", v:"partial", src:'Account name is real (<code>accountContext</code>). The one-line brief is <b>derived</b> from readiness states, not a stored sentence. Today the shipped brief is fixed copy → PARTIAL.'},
+  {n:2, name:"Search — “what PAIGE knows”", v:"partial", src:'Prototype filters the <b>loaded, source-backed records</b> client-side. A real tenant-safe semantic seam exists (<code>kb-search</code> · voyage-3 · <code>match_tenant_knowledge</code>) but has <b>zero frontend callers</b> — not yet wired. No semantic recall is claimed.'},
+  {n:3, name:"Filters (state / source / freshness)", v:"partial", src:'State, source, and freshness exist per-record in the real contract; only a category filter ships today. Filtering here operates over loaded records → PARTIAL.'},
+  {n:4, name:"Actions", v:"partial", src:'<b>Refresh</b> re-reads current records (LIVE, not a scan). <b>Ask PAIGE</b> opens the one workspace with no Mind context attached (PARTIAL). <b>Confirm</b> deep-links to Setup, the real write path.'},
+  {n:5, name:"Needs attention", v:"partial", src:'Derived from <code>business_context.readiness</code> (needs_confirmation / legacy_sourced) + n8n connection state. Real conditions, no score. <code>stale</code> is defined but never emitted (no source declares a TTL) — no stale items are fabricated.'},
+  {n:6, name:"Recent changes", v:"partial", src:'“Recently learned” is real (<code>useSoloKnowledge.recentlyLearned</code>, newest docs). A durable confirmed/corrected/retired log is <b>UNAVAILABLE</b> — the Rail holds 9 rows platform-wide and can’t be read from the browser.'},
+  {n:7, name:"Command Center tabs / routing", v:"partial", src:'Target order Game Plan → Systems Check → Trust Compass → Mind is a <b>coordinated 4-subtab redesign</b>. Today only [Systems Check, Mind] exist (<code>CommandCenter.tsx</code> + <code>tierBranches.ts</code>, contract-tested). Deep link <code>/command-center/mind</code> (+ /directory,/history aliases) is preserved. Game Plan & Trust Compass owned by their own redesigns.'},
+  {n:8, name:"Knowledge field (orb)", v:"partial", src:'A subtle, optional, collapsed view of the same governed records, coloured by source. Never primary, never a stand-in for records/trust/activity. Motion pauses under reduced-motion.'},
+  {n:9, name:"Evidence drawer", v:"partial", src:'Fact contract (state/source/as_of/reason/next_action) is real for identity facts via <code>business_context.readiness</code>. Confirm/Correct → Setup (Layer-1 write path). Retire/forget maps to the Release C governed-memory seam for memory items (not wired to this UI). A per-fact correction-HISTORY reader is not built.'},
+  {n:10, name:"Add context / capture", v:"partial", src:'A governed WRITE seam now exists (Release C, migration <code>20261223000000</code>): <code>record_paige_memory</code> (stores as <code>proposed</code>; correct via supersede), <code>forget_paige_memory</code> (retire), <code>get_paige_memory</code> (read) — authenticated, in-body caller scope (§59). <b>No Mind UI is wired to it yet</b>; chat auto-write is deferred. Business-identity facts confirm through <b>Setup</b> (Layer-1 promotion). A typed fact never auto-becomes canonical truth (propose→confirm).'},
+  {n:11, name:"Workspace switch", v:"live", src:'Real shell remounts on <code>key=user:tenant</code> + invalidates tenant-scoped caches + per-hook scope guards. All prior-workspace records/filters/drawers/search/pending edits are torn down → LIVE.'},
+];
+
+/* ============================================================================
+   RENDER
+   ============================================================================ */
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+const cssv = n => getComputedStyle(document.getElementById('root')).getPropertyValue(n).trim();
+
+function statePill(stateKey){
+  const s = STATES[stateKey];
+  return `<span class="state-pill"><i class="dot" style="background:var(${s.sig})"></i>${s.label}</span>`;
+}
+
+function renderDomains(scenario){
+  const wrap = $("#domains"); wrap.innerHTML = "";
+  DOMAINS.forEach((d,di)=>{
+    let facts = d.facts;
+    // partial-coverage scenario: identity + knowledge only; others honest-absent already
+    const el = document.createElement("div");
+    el.className = "domain"; el.dataset.open = (d.key==="identity")?"1":"0";
+    const count = facts.length ? `${facts.length} fact${facts.length>1?"s":""}` : "—";
+    el.innerHTML = `
+      <button class="d-head" aria-expanded="${el.dataset.open==='1'}">
+        <span class="d-plate" aria-hidden="true">${ICON[d.icon]}</span>
+        <span class="d-main">
+          <span class="d-name">${d.name}</span>
+          <span class="d-sum">${d.sum}</span>
+        </span>
+        <span class="d-meta">
+          <span class="state-pill" title="Coverage verdict"><i class="dot" style="background:var(${verdictSig(d.verdict)})"></i>${d.verdict}</span>
+          <span class="d-count">${count}</span>
+          <svg class="d-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </span>
+      </button>
+      <div class="d-body">${
+        facts.length ? `<div class="facts">${facts.map((f,fi)=>`
+          <button class="fact" data-d="${di}" data-f="${fi}">
+            <i class="dot" style="background:var(${STATES[f.state].sig});color:var(${STATES[f.state].sig})"></i>
+            <span><span class="f-name">${f.name}</span><span class="f-src">${f.reason}</span></span>
+            ${statePill(f.state)}
+          </button>`).join("")}</div>
+          ${d.valueNote?`<p class="note" style="margin:10px 8px 2px">${d.valueNote}</p>`:""}`
+        : `<div class="d-empty"><div>${d.empty.h}</div><div class="why">${d.empty.b}</div>
+            <div class="d-linkout"><a class="linkout" href="#">${d.empty.link}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M9 7h8v8"/></svg></a></div></div>`
+      }</div>`;
+    wrap.appendChild(el);
+  });
+  // wire domain toggles
+  $$(".domain .d-head").forEach(h=>h.addEventListener("click",()=>{
+    const dm = h.closest(".domain"); const open = dm.dataset.open==="1";
+    dm.dataset.open = open?"0":"1"; h.setAttribute("aria-expanded", String(!open));
+  }));
+  // wire fact → drawer
+  $$(".fact").forEach(b=>b.addEventListener("click",()=>openDrawer(+b.dataset.d,+b.dataset.f,b)));
+}
+function verdictSig(v){return v==="LIVE"?"--sig-needs":v==="PARTIAL"?"--sig-legacy":"--sig-unavailable";}
+
+function renderRail(){
+  const attn = $("#attn"); attn.innerHTML="";
+  ATTENTION.forEach(a=>{
+    const b=document.createElement("button"); b.className="attn";
+    b.innerHTML=`<i class="dot" style="background:var(${a.muted?'--sig-unavailable':'--sig-needs'});margin-top:5px"></i>
+      <span><span class="a-title">${a.title}</span><span class="a-next">${a.muted?a.next:`<b>${a.next} →</b>`}</span></span>`;
+    if(!a.muted && a.domain!=null) b.addEventListener("click",()=>openDrawer(DOMAINS.findIndex(d=>d.key===a.domain),a.fact,b));
+    attn.appendChild(b);
+  });
+  $("#attn-n").textContent = ATTENTION.filter(a=>!a.muted).length;
+  const rec = $("#recent"); rec.innerHTML="";
+  RECENT.forEach(r=>{
+    const el=document.createElement("div"); el.className="rec";
+    el.innerHTML=`<i class="dot" style="background:var(--sig-confirmed);margin-top:5px"></i><span><div class="r-t">${r.t}</div><div class="r-m">${r.m}</div></span>`;
+    rec.appendChild(el);
+  });
+  $("#rec-n").textContent = RECENT.length;
+}
+
+function renderAnnotations(){
+  const list = $("#ann-list"); list.innerHTML="";
+  ANNOTATIONS.forEach(a=>{
+    const el=document.createElement("div"); el.className="ann-item";
+    const vc = a.v==="live"?"v-live":a.v==="partial"?"v-partial":"v-unavail";
+    const vt = a.v==="live"?"LIVE":a.v==="partial"?"PARTIAL":"UNAVAIL";
+    el.innerHTML=`<div class="ai-top"><span class="num">${a.n}</span><span class="ai-name">${a.name}</span><span class="verdict ${vc}">${vt}</span></div><div class="ai-src">${a.src}</div>`;
+    list.appendChild(el);
+  });
+}
+
+/* ============================================================================
+   DRAWER — evidence + capture
+   ============================================================================ */
+let lastFocus=null;
+function openDrawer(di,fi,launcher){
+  const d=DOMAINS[di], f=d.facts[fi]; if(!f) return;
+  lastFocus=launcher||null;
+  const s=STATES[f.state];
+  const canConfirm = f.state==="legacy_sourced"||f.state==="needs_confirmation"||f.state==="connection_sourced";
+  const isDoc = d.key==="knowledge";
+  const mount=$("#drawer-mount");
+  mount.innerHTML=`
+    <div class="scrim" id="scrim"></div>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-title" data-ann="drawer">
+      <span class="ann-badge" aria-hidden="true">9</span>
+      <header>
+        <div>
+          <div style="margin-bottom:7px">${statePill(f.state)}</div>
+          <h2 id="dr-title">${f.name}</h2>
+          <div style="font-size:11.5px;color:var(--pg-faint);margin-top:4px">${d.name}</div>
+        </div>
+        <button class="close" id="dr-close" aria-label="Close record details">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <div class="d-scroll">
+        <section>
+          <h3>What PAIGE knows</h3>
+          <p class="serif-quote">${factPlain(d,f)}</p>
+        </section>
+        <section>
+          <h3>Source &amp; provenance</h3>
+          <dl class="dl">
+            <dt>State</dt><dd>${s.label}</dd>
+            <dt>Scope</dt><dd>This workspace</dd>
+            <dt>Source</dt><dd><span class="mono">${s.src}</span></dd>
+            <dt>As of</dt><dd>${f.as_of||'<span style="color:var(--pg-faint)">— no confirmation on record</span>'}</dd>
+            ${f.chunks?`<dt>Evidence</dt><dd>${f.chunks} indexed chunks</dd>`:""}
+            <dt>Why</dt><dd>${f.reason}</dd>
+          </dl>
+        </section>
+        <section>
+          <h3>Correction history</h3>
+          <div class="note">No correction or supersession history is recorded for this fact. That history store doesn't exist yet — nothing is shown rather than invented.</div>
+        </section>
+        <section>
+          <h3>Honesty boundary</h3>
+          <div class="note">Mind shows this attributable record and where it came from. It never infers private reasoning, causal links, or history it can't source.</div>
+        </section>
+      </div>
+      <div class="actions">
+        ${canConfirm?`<button class="btn btn--gold" id="dr-confirm">Confirm in Setup</button>
+          <button class="btn" id="dr-correct">Correct in Setup</button>`:""}
+        ${isDoc?`<button class="btn">Open document</button>`:""}
+        <button class="btn btn--ghost" id="dr-ask">Ask PAIGE about this</button>
+        <button class="btn btn--ghost" title="Retire maps to the governed forget seam for memory items; readiness facts are managed in Setup. Not wired to this UI yet." disabled>Retire · not yet wired</button>
+      </div>
+    </aside>`;
+  const drawer=$(".drawer");
+  requestAnimationFrame(()=>$("#dr-close").focus());
+  $("#scrim").addEventListener("click",closeDrawer);
+  $("#dr-close").addEventListener("click",closeDrawer);
+  if($("#dr-confirm")) $("#dr-confirm").addEventListener("click",()=>{closeDrawer();openCapture(d,f,"confirm");});
+  if($("#dr-correct")) $("#dr-correct").addEventListener("click",()=>{closeDrawer();openCapture(d,f,"correct");});
+  if($("#dr-ask")) $("#dr-ask").addEventListener("click",()=>{closeDrawer();setPaige(true);});
+  trapFocus(drawer);
+}
+function factPlain(d,f){
+  if(d.key==="knowledge") return `This is a document you gave PAIGE to reason from — “${f.name}”. Its content is indexed; PAIGE can cite it when it answers.`;
+  if(f.state==="legacy_sourced") return `PAIGE has your ${f.name.toLowerCase()} on file, carried over from an older brand record. You haven't confirmed it, so PAIGE treats it as unverified until you do.`;
+  if(f.state==="connection_sourced") return `PAIGE observed your ${f.name.toLowerCase()} from a connected account. It hasn't been confirmed by you.`;
+  if(f.state==="needs_confirmation") return `PAIGE doesn't have a confirmed ${f.name.toLowerCase()} yet.`;
+  if(f.state==="unavailable") return `PAIGE can't read a ${f.name.toLowerCase()} — this source isn't built, so nothing is inferred.`;
+  return f.reason;
+}
+function openCapture(d,f,mode){
+  const mount=$("#drawer-mount");
+  const label = f? f.name : "a new fact";
+  mount.innerHTML=`
+    <div class="scrim" id="scrim"></div>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="cap-title" data-ann="capture">
+      <span class="ann-badge" aria-hidden="true">10</span>
+      <header>
+        <div><h2 id="cap-title">${mode==='add'?'Add context':mode==='correct'?'Correct a fact':'Confirm a fact'}</h2>
+        <div style="font-size:11.5px;color:var(--pg-faint);margin-top:4px">${mode==='add'?'Teach PAIGE something durable':label}</div></div>
+        <button class="close" id="cap-close" aria-label="Cancel"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </header>
+      <div class="d-scroll">
+        ${mode!=='add'?`
+        <div class="route-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 22v-6M2 12h6M22 12h-6"/><circle cx="12" cy="12" r="3"/></svg>
+          <div><div class="rn-t">This confirms into Setup — the one governed write path.</div>
+          <div class="rn-b">Confirming a business fact writes its provenance and confirmation time in Setup, which is where PAIGE reads “owner-confirmed” from. You'll finish in Setup; nothing is saved here.</div></div>
+        </div>
+        <div class="field"><label>Fact</label><input value="${label}" readonly /></div>
+        <div class="field"><label>Applies to</label><input value="This workspace" readonly /></div>
+        <div class="field"><label>Value to confirm ${mode==='correct'?'(edit)':''}</label><input placeholder="Entered and confirmed in Setup" ${mode==='confirm'?'readonly':''} /><div class="help">The value itself is entered in Setup, not here.</div></div>
+        <button class="btn btn--gold" id="cap-goto" style="width:100%;justify-content:center">Continue in Setup →</button>
+        `:`
+        <div class="route-note" style="border-color:color-mix(in srgb,var(--pg-warning) 45%,var(--pg-line))">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6A2 2 0 0 0 22 18L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <div><div class="rn-t">A governed memory seam exists — this Mind form isn't wired to it yet.</div>
+          <div class="rn-b">A governed write path shipped in Release C: a fact you record is stored as <b>“proposed”</b> and never auto-becomes a canonical record — you confirm it, correct it, or retire it. This prototype form shows that shape; it isn't connected yet, so it saves nothing here. Business basics still confirm in Setup, and documents ingest through Knowledge.</div></div>
+        </div>
+        <div class="field"><label>What should PAIGE know? <span class="req">*</span></label><textarea id="cap-what" placeholder="e.g. We only take clients on 6-month retainers"></textarea><div class="err-msg">Enter what PAIGE should know.</div></div>
+        <div class="field"><label>Scope</label><select><option>This workspace</option><option>A specific client</option></select></div>
+        <div class="field"><label>Source / evidence</label><input placeholder="Where does this come from?" /></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn--gold" id="cap-setup" style="flex:1;justify-content:center">Confirm basics in Setup</button>
+          <button class="btn" id="cap-doc" style="flex:1;justify-content:center">Add a document</button>
+        </div>
+        <button class="btn btn--ghost" id="cap-try" style="width:100%;justify-content:center;margin-top:8px">Try to save anyway</button>
+        `}
+      </div>
+      <div class="actions">
+        <button class="btn btn--ghost" id="cap-cancel">Cancel</button>
+      </div>
+    </aside>`;
+  requestAnimationFrame(()=>$("#cap-close").focus());
+  $("#scrim").addEventListener("click",closeDrawer);
+  $("#cap-close").addEventListener("click",closeDrawer);
+  $("#cap-cancel").addEventListener("click",closeDrawer);
+  if($("#cap-goto")) $("#cap-goto").addEventListener("click",()=>{closeDrawer();showToast("Setup is where confirmation is saved (prototype).");});
+  if($("#cap-setup")) $("#cap-setup").addEventListener("click",()=>{closeDrawer();showToast("Setup is where confirmation is saved (prototype).");});
+  if($("#cap-doc")) $("#cap-doc").addEventListener("click",()=>{closeDrawer();showToast("Document ingestion lives in the Knowledge admin (prototype).");});
+  if($("#cap-try")) $("#cap-try").addEventListener("click",()=>{
+    const fld=$("#cap-what").closest(".field");
+    if(!$("#cap-what").value.trim()){fld.dataset.invalid="1";$("#cap-what").focus();return;}
+    fld.dataset.invalid="0";
+    showToast("Not saved — the governed write seam exists, but this Mind form isn't wired to it yet.",true);
+  });
+  trapFocus($(".drawer"));
+}
+function closeDrawer(){
+  $("#drawer-mount").innerHTML="";
+  if(lastFocus){try{lastFocus.focus();}catch(e){}}
+}
+function trapFocus(container){
+  container.addEventListener("keydown",e=>{
+    if(e.key==="Escape"){e.preventDefault();closeDrawer();return;}
+    if(e.key!=="Tab")return;
+    const f=[...container.querySelectorAll('button:not([disabled]),[href],input:not([readonly]),select,textarea,[tabindex]:not([tabindex="-1"])')].filter(x=>x.offsetParent!==null);
+    if(!f.length)return;
+    const first=f[0],last=f[f.length-1];
+    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+  });
+}
+let toastTimer;
+function showToast(msg,err){
+  const t=$("#toast"); t.textContent=msg; t.className="toast"+(err?" err":""); t.hidden=false;
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>{t.hidden=true;},3400);
+}
+
+/* ============================================================================
+   HARNESS WIRING
+   ============================================================================ */
+const root=$("#root"), vp=$("#viewport"), vptag=$("#vptag");
+function setTheme(mode){
+  root.dataset.pg=mode;
+  $("#t-light").setAttribute("aria-pressed",String(mode==="light"));
+  $("#t-dark").setAttribute("aria-pressed",String(mode==="dark"));
+  updateTag(); paintOrb();
+}
+function currentVpLabel(){const v=$("#vp").value; return v==="fit"?"Fit":v.replace("x","×");}
+function updateTag(){vptag.textContent=`${currentVpLabel()} · ${root.dataset.pg==="light"?"Mineral":"Obsidian"}`;}
+function setViewport(v){
+  if(v==="fit"){vp.dataset.fit="1";vp.style.width="";vp.style.height="";}
+  else{vp.dataset.fit="0";const[w,h]=v.split("x");vp.style.width=w+"px";vp.style.height=h+"px";}
+  updateTag();
+}
+function setPaige(open){
+  $("#paige").hidden=!open;
+  $("#shell").dataset.paige=open?"1":"0";
+  $("#p-open").setAttribute("aria-pressed",String(open));
+  $("#p-closed").setAttribute("aria-pressed",String(!open));
+}
+function setScenario(s){
+  const primary=$("#content-primary");
+  const map={loading:"#state-loading",firstuse:"#state-firstuse",switching:"#state-switching"};
+  $$("#state-loading,#state-firstuse,#state-switching").forEach(el=>el.hidden=true);
+  // banners
+  $$(".banner").forEach(b=>b.remove());
+  if(map[s]){primary.style.display="none";$(map[s]).hidden=false;}
+  else{primary.style.display="contents";}
+  if(s==="partial"){
+    const b=document.createElement("div");b.className="banner warn";
+    b.innerHTML=`<i class="dot b-dot" style="background:var(--sig-legacy)"></i><div><strong>Mind has partial coverage</strong><span>Some sources didn't answer. No missing source is treated as empty — what's shown is what resolved. Refresh retries the read-only records.</span></div>`;
+    $("#body").prepend(b);
+  }
+  if(s==="unavailable"){
+    const b=document.createElement("div");b.className="banner err";
+    b.innerHTML=`<i class="dot b-dot" style="background:var(--sig-unavailable)"></i><div><strong>A source is unavailable</strong><span>Connections couldn't be read, so its facts are shown as Unavailable with a reason — never as “nothing to do”. This routes to the source's own setup.</span> <a class="linkout" href="#" style="margin-top:6px">Open Connections →</a></div>`;
+    $("#body").prepend(b);
+  }
+}
+document.addEventListener("keydown",e=>{
+  if(e.key==="/"&&document.activeElement.tagName!=="INPUT"&&document.activeElement.tagName!=="TEXTAREA"){e.preventDefault();$("#search").focus();}
+});
+
+/* search filters the loaded records */
+function applySearch(q){
+  q=q.trim().toLowerCase();
+  let anyVisible=false;
+  $$(".domain").forEach(dm=>{
+    const facts=$$(".fact",dm); let dmHit=false;
+    const nameHit=dm.querySelector(".d-name").textContent.toLowerCase().includes(q);
+    facts.forEach(f=>{
+      const hit=!q||nameHit||f.textContent.toLowerCase().includes(q);
+      f.style.display=hit?"":"none"; if(hit)dmHit=true;
+    });
+    const hasFacts=facts.length>0;
+    const show=!q||nameHit||dmHit||(!hasFacts&&dm.textContent.toLowerCase().includes(q));
+    dm.style.display=show?"":"none"; if(show)anyVisible=true;
+    if(q&&dmHit&&hasFacts)dm.dataset.open="1";
+  });
+  let none=$("#no-results");
+  if(!anyVisible){
+    if(!none){none=document.createElement("div");none.id="no-results";none.className="d-empty";
+      none.style.cssText="background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);padding:20px;text-align:center";
+      none.innerHTML=`<div>No governed records match “<span id="nr-q"></span>”.</div><div class="why">Search covers the records shown here. PAIGE's full semantic recall isn't wired to this box yet.</div>`;
+      $("#domains").appendChild(none);}
+    $("#nr-q").textContent=q; none.style.display="";
+  }else if(none){none.style.display="none";}
+}
+
+/* subtle orb — plots the domain facts as source-coloured nodes (decorative, source-backed) */
+function paintOrb(){
+  const art=$("#orb-art"); if(!art)return;
+  $$(".n",art).forEach(n=>n.remove());
+  const nodes=[];
+  DOMAINS.forEach(d=>d.facts.forEach(f=>nodes.push(f.state)));
+  nodes.slice(0,14).forEach((st,i)=>{
+    const a=(i/nodes.length)*Math.PI*2, r=52+((i*37)%22);
+    const n=document.createElement("i"); n.className="n";
+    n.style.left=`calc(50% + ${Math.cos(a)*r}px - 4.5px)`;
+    n.style.top=`calc(50% + ${Math.sin(a)*r}px - 4.5px)`;
+    n.style.background=`var(${STATES[st].sig})`;
+    art.appendChild(n);
+  });
+}
+
+/* ============================================================================
+   INIT + LISTENERS
+   ============================================================================ */
+$("#t-light").addEventListener("click",()=>setTheme("light"));
+$("#t-dark").addEventListener("click",()=>setTheme("dark"));
+$("#nav-theme").addEventListener("click",()=>setTheme(root.dataset.pg==="light"?"dark":"light"));
+$("#vp").addEventListener("change",e=>setViewport(e.target.value));
+$("#p-open").addEventListener("click",()=>setPaige(true));
+$("#p-closed").addEventListener("click",()=>setPaige(false));
+$("#scenario").addEventListener("change",e=>setScenario(e.target.value));
+$("#annot").addEventListener("click",()=>{
+  const on=document.body.dataset.annot==="1";
+  document.body.dataset.annot=on?"0":"1";
+  $("#annot").setAttribute("aria-pressed",String(!on));
+  $("#annot .switch").setAttribute("aria-pressed",String(!on));
+});
+$("#annot-close").addEventListener("click",()=>{
+  document.body.dataset.annot="0";$("#annot").setAttribute("aria-pressed","false");$("#annot .switch").setAttribute("aria-pressed","false");
+});
+$("#act-refresh").addEventListener("click",()=>showToast("Re-reading current records… (this is not a scan)"));
+$("#act-ask").addEventListener("click",()=>setPaige(true));
+$("#act-confirm").addEventListener("click",()=>openCapture(DOMAINS[0],DOMAINS[0].facts[0],"confirm"));
+$("#orb-toggle").addEventListener("click",()=>{
+  const o=$("#orb");const open=o.dataset.open==="1";o.dataset.open=open?"0":"1";
+  $("#orb-toggle").setAttribute("aria-expanded",String(!open));
+});
+$("#search").addEventListener("input",e=>applySearch(e.target.value));
+
+renderDomains();
+renderRail();
+renderAnnotations();
+paintOrb();
+setTheme("dark");
+setViewport("1536x770");
+setScenario("populated");
+</script>
+</body>
+</html>
