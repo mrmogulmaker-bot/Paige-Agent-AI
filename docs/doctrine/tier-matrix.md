@@ -1306,6 +1306,24 @@ and `PAUSED` require the provider result contract and are NOT rendered by this s
 **Six of the nine areas are covered by a check; three are not** (Paige's team, the Mind, security).
 Those three render "Not checked" with a reason rather than a status, on every tier that sees them.
 
+#### Systems Check — the console reads the last FULL sweep (PR #935, §66)
+
+Backend behaviour. **No tier availability changes; nothing added or gated.**
+
+| PR #935 | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Console reads the latest FULL sweep, not the newest run | ✓ (operator lens) | — | — | ✓ | ✓ | — | 403 |
+| Approve resolves "latest" the same way, so the two cannot disagree | ✓ | — | — | ✓ | ✓ | — | 403 |
+| Delta baseline skips partial runs, so nine checks stop re-filing per save | ✓ | — | — | ✓ | ✓ | — | 403 |
+
+A Setup save fires three one-check scans; the console read the newest run, so one of those became
+the whole picture — "1 of 1 passed · All clear" over nine hidden checks. Zero such runs exist on
+prod and the wiring shipped 2026-09-03, so it was a loaded trigger rather than a live defect.
+
+**Stated so the ledger is not read as more than it is:** the console is now up to ~17h stale by
+design, and a tenant outside the scheduled batch (`DEFAULT_BATCH = 15`, no cursor) would be pinned
+to its onboarding sweep with approvals dead. Latest-result-per-check is the durable fix for both.
+
 #### Systems Check + Mind — corrections shipped with PR #933 (§66)
 
 Behaviour and truthfulness only. **No tier availability changes; nothing is added or gated.**

@@ -2346,3 +2346,44 @@ revenue check (a runner cannot resolve its tenant from `current_user_tenant_id()
 
 Carrying it today: **Paige's team and delegated work · Business knowledge — the Mind · Security,
 permissions and governance.**
+
+---
+
+## 2026-09-05 · The Systems Check console now reads the last FULL sweep, not the newest run
+
+Behaviour change worth finding later, because the obvious question — *"why is my console showing
+yesterday's scan?"* — has a deliberate answer.
+
+**Why.** `_shared/systems-check-runner.ts` accepts a `runnerKeys` filter and
+`systems-check-run-change` passes ONE key per changed surface, so such a run carries
+`check_count = 1`. The console read the newest run, so a one-check run became the tenant's whole
+picture — tile showing "1 of 1 passed · All clear" with nine checks, including real failures,
+absent, and no incomplete banner because `recorded(1) > readable(1)` is false.
+`rescanBusinessContext` fires three of those on **every successful Solo Setup save**. Zero such
+runs existed on prod and the wiring shipped 2026-09-03: a loaded trigger, not a live defect.
+
+**What changed.** Migration `20261203000000` adds `paige_systems_check_run.selected_runner_keys`
+and guards the run-select in BOTH `systems_check_snapshot` and `approve_systems_check_finding` with
+`selected_runner_keys IS NULL AND scan_flavor <> 'change_triggered'`. The runner's delta baseline
+(a fourth "latest run" resolver, found by the peer gate) takes the flavour clause too — using a
+one-check run as the baseline left nine checks reading `undefined !== "fail"`, re-forging an LLM
+draft and re-filing a duplicate action for each, once per Setup save.
+
+**Two clauses, not one.** The column is written from the same `opts.runnerKeys` that drives the
+filter, so a future partial flavour records itself with no SQL change. The flavour clause makes the
+migration effective on its own — without it the guard would be dark until the edge bundle deployed,
+and the two CI pipelines have no ordering link.
+
+**The cost, so nobody rediscovers it as a bug.** The console reads a sweep ~17h old on average.
+Inside that window a tenant can make a check *worse* and still see the older passing result, with
+STALE EVIDENCE silent until 24h. A loud flattering lie traded for a quiet stale one. Reading the
+newest result PER CHECK removes both and is the durable fix.
+
+**Conditional on cron coverage.** Approvals need a full sweep under 24h. `systems-check-run-scheduled`
+pages with `DEFAULT_BATCH = 15` ordered `created_at ASC` with no cursor, so from tenant 16 the newest
+are never swept — such a workspace would be pinned to its onboarding sweep with approvals dead. 14
+tenants today.
+
+**Verified byte-clean.** The migration reproduces both function bodies to replace them; the peer gate
+pulled the live `prosrc` from prod and confirmed `md5` on both before diffing, so the only changes
+are the intended ones.

@@ -49,6 +49,11 @@
 -- systems_check_signal_reference.sql:308-315` asserts that an incomplete change run SUPERSEDES the
 -- current reference, which is correct fail-closed behaviour for a signal token.
 --
+-- That leaves a disagreement worth naming rather than discovering later: BEFORE this change the
+-- console and the signal seam agreed, both pointing at the change run; AFTER it, the console shows
+-- and offers Approve on full-sweep findings whose signal reference that seam would reject. Not
+-- reachable today — a repo-wide grep finds zero product callers of it outside `supabase/tests/`.
+--
 -- §9/§51/§59: no caller-scope surface changes. Both functions keep their in-body tenant/operator
 -- gates untouched; this adds conjuncts to a row filter INSIDE the already-established scope.
 
@@ -109,9 +114,11 @@ BEGIN
         OR (NOT v_operator AND tenant_id = v_tenant))
       AND selected_runner_keys IS NULL
       AND scan_flavor <> 'change_triggered'
-    -- Tiebreak added: this ordering was `started_at DESC` alone while its two sibling functions
-    -- already used the full three-column form. Three change runs fire within milliseconds of one
-    -- Setup save, so ties are reachable, and an unstable pick is an unstable console.
+    -- Tiebreak added: this ordering was `started_at DESC` alone while both sibling functions
+    -- already used the full three-column form, and two resolvers that can disagree on which run is
+    -- "latest" is the §57 shape this migration exists to close. (An earlier draft justified it with
+    -- "three change runs fire within milliseconds of a Setup save" — true, but those rows are
+    -- excluded two lines above, so that tie cannot occur in THIS set. Parity is the real reason.)
     ORDER BY started_at DESC, created_at DESC, id DESC
     LIMIT 1
   ) r;
@@ -187,6 +194,14 @@ $function$;
 -- Consequence, stated: a finding produced by a change run becomes neither shown nor approvable.
 -- That is coherent, and its approvability window was already capped at 24h by the completed_at
 -- clause below and superseded by the next scheduled sweep regardless.
+--
+-- THE OTHER HALF OF THAT, which belongs next to it: the CONSOLE is pinned to the same run. A tenant
+-- the scheduled sweep never reaches falls back to its day-one onboarding sweep — permanently past
+-- 24h, so STALE EVIDENCE renders and approvals are dead. And a tenant with NO non-change run at all
+-- gets `run = null`, which the tile renders as "No systems check yet" — false, because checks did
+-- run and their findings are in the table. Both need a tenant outside `DEFAULT_BATCH = 15`; prod
+-- carries 14 and onboarding now fires reliably, so neither is reachable today. The cursor fix is
+-- what actually closes them.
 --
 -- CONDITIONAL, and worth knowing: this restores approvability only while the latest FULL sweep is
 -- under 24h old. That holds today (~17h on all 14 tenants) ONLY because the cron reaches every
