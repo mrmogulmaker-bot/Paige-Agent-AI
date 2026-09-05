@@ -351,6 +351,15 @@ does not apply that containment for `inline-size`. The earlier read had measured
 Chromium 141 and agreed. **Honest limit:** Chromium only; no Gecko or WebKit binary is available
 here, so this is not proven cross-browser.
 
+**A consequence of the widened predicate, stated as a fact rather than changed.** The page gates
+itself to a skeleton on `social.phase === "loading"` but not on `campaigns.phase === "loading"`.
+Social resolves first in the common case (two round trips against six), so on first paint the
+campaign figures render in the not-read state for a moment and then fill in. That is the honest
+rendering of a read that is genuinely in flight, and it is correct as it stands. Whether that moment
+should instead be a skeleton — i.e. whether the whole surface should wait on its slowest read — is a
+presentation decision and belongs to Claude Design (§00); it is recorded here so the choice is
+visible rather than made by default.
+
 **Second-pass proof, by class (§13).** Automated: full suite **228 files / 3368 tests passing**.
 Static/build: `ci:tsc` clean at its 13-error baseline, `vite build` green, 25 CI lints green.
 `lint:gold` reports one violation in `src/components/dashboard/BusinessCreditDashboard.tsx` — a file
