@@ -45,7 +45,7 @@ function render() {
 
 /** Baseline: everything loaded, nothing set up (a fresh workspace). */
 function resetEmpty() {
-  m.cc = { loading: false, isError: false, greeting: { name: "Jordan" }, attention: {}, counts: { approvals: 0 }, refresh: vi.fn() };
+  m.cc = { loading: false, isError: false, empty: true, greeting: { name: "Jordan" }, attention: {}, counts: { approvals: 0 }, refresh: vi.fn() };
   m.setup = { loading: false, error: null, brief: {}, managedSendingEmail: null, refresh: vi.fn() };
   m.catalog = { phase: "ready", offers: [], retry: vi.fn() };
   m.knowledge = { loading: false, error: null, documentsIndexed: 0, empty: true, refresh: vi.fn() };

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SoloGamePlanWorkspace — the Business Game Plan, the default Command Center landing.
  *
@@ -15,39 +14,60 @@ import {
   AlertTriangle, Check, Info, RefreshCw,
 } from "lucide-react";
 import { subtabPath } from "@/lib/routing/tierBranches";
-import { useSoloGamePlan } from "./data/useSoloGamePlan";
+import { resolveTenantAccountContext, type TenantAccountContext } from "@/components/tenant-shell/tenantShellRoutes";
+import { useSoloGamePlan, type GamePlanDestination } from "./data/useSoloGamePlan";
 import "./solo-game-plan-workspace.css";
 
-const OWNER = {
+// sr-only identity marker — the canonical shell contract every mounted Command Center surface
+// emits (§65 identity resolution reaches the mounted surface; matches SoloSystemsCheckWorkspace).
+const SR_ONLY: React.CSSProperties = { position: "absolute", width: 1, height: 1, overflow: "hidden", clipPath: "inset(50%)" };
+
+const OWNER: Record<string, { cls: string; label: string; av: string }> = {
   you: { cls: "gp-own-you", label: "You", av: "ME" },
   paige: { cls: "gp-own-paige", label: "PAIGE", av: "P" },
 };
-const PROOF = {
+const PROOF: Record<string, [string, string]> = {
   live: ["gp-chip-live", "Live"],
   partial: ["gp-chip-partial", "Partial"],
   input: ["gp-chip-input", "Needs input"],
   blocked: ["gp-chip-blocked", "Blocked"],
 };
-const FND_ICON = { grounded: Check, incomplete: Info, "needs-input": AlertTriangle };
-const FND_WORD = { grounded: "Grounded", incomplete: "Finish", "needs-input": "Add" };
+const FND_ICON: Record<string, typeof Check> = { grounded: Check, incomplete: Info, "needs-input": AlertTriangle };
+const FND_WORD: Record<string, string> = { grounded: "Grounded", incomplete: "Finish", "needs-input": "Add" };
 
-function Chip({ proof }) {
+function Chip({ proof }: { proof: string }) {
   const [cls, label] = PROOF[proof] || PROOF.partial;
   return <span className={`gp-chip ${cls}`}><span className="gp-cd" />{label}</span>;
 }
-function Owner({ owner }) {
+function Owner({ owner }: { owner: string }) {
   const o = OWNER[owner] || OWNER.paige;
   return <span className={`gp-own ${o.cls}`}><span className="gp-av">{o.av}</span>{o.label}</span>;
 }
 
-export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId } = {}) {
+interface SoloGamePlanWorkspaceProps {
+  accountContext?: TenantAccountContext | null;
+  openPaige?: () => void;
+  workspaceId?: string | null;
+}
+
+export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }: SoloGamePlanWorkspaceProps = {}) {
   const params = useParams();
   const account = params.account || "";
   const navigate = useNavigate();
   const plan = useSoloGamePlan(account, workspaceId);
   const [openId, setOpenId] = useState(null);
+  // The real account identity (server-resolved name + tier label). Resolved once so the visible
+  // kicker and the sr-only shell-contract marker never diverge.
+  const resolvedAccount = resolveTenantAccountContext(accountContext);
+  const identityMarker = (
+    <span style={SR_ONLY}>
+      <span data-tenant-account-name>{resolvedAccount.accountName}</span>
+      <span aria-hidden="true"> · </span>
+      <span data-tenant-account-tier>{resolvedAccount.accountTypeLabel}</span>
+    </span>
+  );
 
-  const routeFor = (dest) => {
+  const routeFor = (dest: GamePlanDestination): string | null => {
     switch (dest) {
       case "setup": return subtabPath("solo", account, "settings", "setup");
       case "catalog": return subtabPath("solo", account, "growth", "catalog");
@@ -58,7 +78,7 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
       default: return null;
     }
   };
-  const go = (dest) => {
+  const go = (dest: GamePlanDestination) => {
     if (dest === "paige") { openPaige?.(); return; }
     const r = routeFor(dest);
     if (r) navigate(r);
@@ -68,6 +88,7 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
   if (plan.loading) {
     return (
       <div className="gp" aria-busy="true">
+        {identityMarker}
         <div className="gp-brief">
           <div>
             <div className="gp-sk" style={{ width: 180, height: 11 }} />
@@ -101,6 +122,7 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
   if (plan.error) {
     return (
       <div className="gp">
+        {identityMarker}
         <div className="gp-field">
           <div className="gp-col">
             <div className="gp-card">
@@ -122,6 +144,7 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
   if (plan.empty) {
     return (
       <div className="gp">
+        {identityMarker}
         <div className="gp-first">
           <div className="gp-first-in">
             <div className="gp-first-badge"><Target /></div>
@@ -154,8 +177,16 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
       <div className="gp-brief">
         <div>
           <div className="gp-kicker">
-            {(accountContext?.name || "Your business")}<span className="gp-sep">·</span>Solo<span className="gp-sep">·</span>{plan.greeting.dateLabel}
+            {/* Server-resolved account name + tier (§65 — the account identity is the real,
+                shell-resolved name; `resolveTenantAccountContext` supplies the canonical
+                "Your workspace" fallback shared with every sibling surface, never an invented
+                placeholder). The sr-only marker below carries the same values for the shell
+                contract + screen readers. */}
+            {[resolvedAccount.accountName, resolvedAccount.accountTypeLabel, plan.greeting.dateLabel].filter(Boolean).map((seg, i) => (
+              <React.Fragment key={i}>{i > 0 && <span className="gp-sep">·</span>}{seg}</React.Fragment>
+            ))}
           </div>
+          {identityMarker}
           <h1>{plan.greeting.salutation}, {plan.greeting.name}.</h1>
           <p className="gp-narr">{plan.narrative}</p>
           {plan.attention.length > 0 && (
@@ -226,12 +257,14 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
                       </div>
                       <div className="gp-pp-caret"><ChevronDown /></div>
                     </div>
-                    <div className="gp-pp-detail"><div><div className="gp-pp-detail-in">
+                    <div className="gp-pp-detail" aria-hidden={!isOpen}><div><div className="gp-pp-detail-in">
                       <div className="gp-fact"><span className="gp-fl">Why now</span><span className="gp-fv">{pr.why}</span></div>
                       <div className="gp-fact"><span className="gp-fl">Evidence</span><span className="gp-fv">{pr.evidence}</span></div>
                       <div className="gp-fact"><span className="gp-fl">What happens</span><span className="gp-fv">{pr.outcome}</span></div>
                       <div className="gp-bnm-cta">
-                        <button className="gp-btn gp-btn-sm" onClick={() => go(pr.destination)}>{pr.ctaLabel} <ArrowRight /></button>
+                        {/* When collapsed the row is grid-height:0 but still in the DOM; keep its
+                            control out of the tab order so focus never lands on an invisible button. */}
+                        <button className="gp-btn gp-btn-sm" tabIndex={isOpen ? undefined : -1} onClick={() => go(pr.destination)}>{pr.ctaLabel} <ArrowRight /></button>
                       </div>
                     </div></div></div>
                   </div>
@@ -299,7 +332,7 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
                     <div className="gp-mot-when">{m.when}</div>
                   </div>
                 ))}
-                <div className="gp-mot-caveat"><Info /><span>Shown by department. Which specialist handled each item isn't recorded yet, so we don't name one.</span></div>
+                <div className="gp-mot-caveat"><Info /><span>Shown by department. We don't surface the individual specialist on this view.</span></div>
               </>
             )}
             {plan.motion.status === "ready" && plan.motion.items.length === 0 && (

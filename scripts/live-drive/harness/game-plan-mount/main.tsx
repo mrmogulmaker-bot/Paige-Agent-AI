@@ -40,7 +40,7 @@ function Harness() {
         <Routes>
           <Route
             path="/solo/:account/*"
-            element={<SoloGamePlanWorkspace openPaige={() => {}} accountContext={{ name: "Clearpath Advisory" }} workspaceId="review" />}
+            element={<SoloGamePlanWorkspace openPaige={() => {}} accountContext={{ accountName: "Clearpath Advisory", accountType: "standalone", parentTenantId: null }} workspaceId="review" />}
           />
         </Routes>
       </MemoryRouter>

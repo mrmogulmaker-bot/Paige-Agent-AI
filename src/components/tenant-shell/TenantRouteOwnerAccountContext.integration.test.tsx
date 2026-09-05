@@ -134,6 +134,21 @@ vi.mock("@/components/admin/voice/DialPadTrigger", () => ({ DialPadTrigger: () =
 vi.mock("@/components/admin/AdminBridgeBell", () => ({ AdminBridgeBell: () => null }));
 vi.mock("@/components/dashboard/PaigeAIChat", () => ({ PaigeAIChat: () => null }));
 vi.mock("@/components/systems-check/SystemsCheckTile", () => ({ SystemsCheckTile: () => null }));
+// Business Game Plan is the default Command Center landing. This suite proves auth/tenant-identity
+// resolution, not the panel content, so its composed data reads are stubbed out like every other
+// Solo screen mocked here (§18 — the surface's own tests own its behaviour). It still emits the
+// canonical shell-contract identity markers from the resolved account context CommandHub passes,
+// exactly as the real surface does, so identity resolution is verified on the DEFAULT landing.
+vi.mock("@/solo/SoloGamePlanWorkspace", () => ({
+  SoloGamePlanWorkspace: ({ accountContext }: {
+    accountContext?: { accountName?: string | null; accountTypeLabel?: string | null } | null;
+  }) => (
+    <output>
+      <span data-tenant-account-name>{accountContext?.accountName}</span>
+      <span data-tenant-account-tier>{accountContext?.accountTypeLabel}</span>
+    </output>
+  ),
+}));
 vi.mock("@/lib/auth/signOut", () => ({ performSignOut: vi.fn() }));
 
 const emptyCoreData = {

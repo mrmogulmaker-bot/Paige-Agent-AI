@@ -1,5 +1,23 @@
 # Decision Log — chronological one-liners
 
+- **Business Game Plan is the DEFAULT Solo Command Center landing, and a §70 identity bug hid behind a
+  green build (2026-09-05, branch `claude/business-game-plan-ui-rxuju3`)** — the Solo Command Center
+  gains a first sub-tab, **Business Game Plan** (`SoloGamePlanWorkspace`), made the default landing
+  (bare `/command-center` + legacy `/overview` redirect to `/command-center/business-game-plan`);
+  sub-tabs are now Business Game Plan → Systems Check → Mind (Trust Compass slot 3 reserved, no dead
+  tab). It is a §18 composition hook (`useSoloGamePlan`) over already-released tenant-safe reads — no
+  new table/RPC/edge/migration/tier-flag, no client-supplied `tenant_id` (§9). **The bug the tests
+  caught:** the kicker read `accountContext?.name` while the resolved prop is
+  `{accountName, accountType, accountTypeLabel}`, so the owner's real account name silently never
+  rendered — a §70 "compiles but the human can't see their identity" miss. Fixed by resolving through
+  `resolveTenantAccountContext` and emitting the canonical `data-tenant-account-name`/`-tier` shell
+  markers every mounted Command Center surface carries (§65); the integration test that verifies
+  tenant-identity resolution on the default landing then went green because the identity actually flows
+  now. Full suite 3416 green · build green · typecheck-clean typed files · 64/64 headless render drive.
+  **§32.c authenticated owner live-drive OWED** (headless sandbox, no browser/auth tool). **Lesson:
+  a default-landing swap silently deletes whatever the old default rendered — here the account-name
+  shell marker — and only a test that reads the human-visible identity, not the build, catches it.**
+
 - **Wave 3 Communications — the §39 peer-gate blocked once and was right (2026-09-05, same PR)** — an
   independent adversarial read of the pushed diff returned BLOCK on one finding and two SHOULD-FIXes,
   all three real. ① **BLOCKER:** `number_purchase_failed` was mapped to `capability_unreachable`

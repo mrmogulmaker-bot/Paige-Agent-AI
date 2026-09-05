@@ -1,8 +1,32 @@
-# Solo Business Game Plan — Command Center UI (prototype delivery + implementation plan)
+# Solo Business Game Plan — Command Center UI (prototype + shipped production implementation)
 
-**Status:** PROTOTYPE DELIVERED — awaiting owner visual approval (Gate 1). No production UI, route,
-schema, edge function or tenant record changed yet. This document + the interactive prototype are the
-deliverable; production implementation is blocked on owner approval per the assignment's explicit gate.
+**Status:** PRODUCTION IMPLEMENTED — owner-approved 2026-09-05, built end-to-end under MVP cadence.
+Visual direction approved via the prototype; the five owner corrections were applied. No schema, edge
+function (beyond the pure canonical-url route constant), or tenant record changed. Verified: the **full
+vitest suite is green (232 files / 3416 tests)**, production build green, typecheck-clean on the typed
+files (`SoloGamePlanWorkspace.tsx`, `useSoloGamePlan.ts` — the 13 pre-existing `tsc` errors are all in
+untouched files), and a **64/64 render drive** of the real component + CSS (8 states × 2 themes × 4
+viewports, zero overflow, no crashes). **A real §70 identity bug was caught by the integration test and
+fixed:** the kicker read `accountContext?.name` while the resolved prop is
+`{accountName, accountType, accountTypeLabel}`, so the owner's real account name never rendered — it now
+resolves through `resolveTenantAccountContext` and emits the canonical `data-tenant-account-name`/`-tier`
+shell markers (§65/§70). The authenticated production live-drive is the one piece still **owed** (§32.c —
+this headless session has no browser/auth tool).
+
+## Owner corrections applied (2026-09-05)
+1. **Work in motion** binds to the released recorded feed (`useSoloActivityFeed` → `get_solo_rail_activity`,
+   four honest states). An empty *ready* read reads **"No recorded work yet"** with freshness — never
+   "nowhere to land", never a fabricated feed.
+2. **Every visible claim is source-backed.** Coverage is a real numerator/denominator over the five
+   foundations the hook actually reads; priorities are derived from real gaps/findings/waiting work; no
+   fabricated metric is presented as the tenant's.
+3. **No internal detail in visible copy.** No route strings, provider/table/RPC names, or issue numbers
+   reach the owner UI; a unit test asserts the absence.
+4. **Every primary action routes to a real, authorized step** — a mounted Solo route or `openPaige()`.
+   No button implies Paige acts when the real result is owner approval/setup.
+5. **Fresh collision scan before the first edit** — see §5 below (no active shell collision).
+
+## Prototype (kept as the design record)
 
 **Interactive prototype (clickable, all states):**
 `docs/design-references/prototypes/solo-business-game-plan-v2.html` — published for review at the
@@ -41,9 +65,11 @@ Compass → act → results → next Game Plan).
 - `/solo/{account}/command-center/mind` (+ aliases `directory`,`history`) → Mind (unchanged).
 - `/solo/{account}/command-center/business-game-plan` → canonical Game Plan address.
 - Old-route redirects use `replace` (no Back loop — the redirect regex must not match the new canonical
-  path). Tab strip order: **Business Game Plan · Systems Check · Trust Compass · Mind**, with Arrow/
-  Home/End, ARIA `tablist`/`tab`/`tabpanel`, focus management, and an `aria-live` route announcement
-  (all already present in `CommandHub` and preserved).
+  path). Shipped tab strip is **three REAL tabs: Business Game Plan · Systems Check · Mind**; Trust
+  Compass's slot (position 3, between Systems Check and Mind) is **reserved** for its owner to add a real
+  Command Center sub-tab — never a dead/placeholder tab (§58). Arrow/Home/End, ARIA
+  `tablist`/`tab`/`tabpanel`, focus management, and an `aria-live` route announcement (all present in
+  `CommandHub` and preserved).
 - Workspace switch → full remount/clear via `key={activeTenantId}` on each panel (prototype demonstrates
   the reset explicitly).
 

@@ -36,7 +36,7 @@ function mount(openPaige?: () => void) {
         <Routes>
           <Route
             path="/solo/:account/*"
-            element={<><SoloGamePlanWorkspace openPaige={openPaige} accountContext={{ name: "Clearpath Advisory" }} /><LocationProbe /></>}
+            element={<><SoloGamePlanWorkspace openPaige={openPaige} accountContext={{ accountName: "Clearpath Advisory", accountType: "standalone", parentTenantId: null }} /><LocationProbe /></>}
           />
         </Routes>
       </MemoryRouter>,
@@ -118,6 +118,17 @@ describe("SoloGamePlanWorkspace", () => {
     expect(container.textContent).toContain("Business identity");
     // Real numerator/denominator, shown as "3 / 5".
     expect(container.querySelector(".gp-cov-top b")?.textContent?.replace(/\s+/g, "")).toBe("3/5");
+  });
+
+  it("renders the owner's real, server-resolved account identity (§70) — name + tier, not a placeholder", () => {
+    hooked.view = groundedView();
+    mount();
+    // The visible kicker carries the resolved account name and its tier label…
+    expect(container.querySelector(".gp-kicker")?.textContent).toContain("Clearpath Advisory");
+    expect(container.querySelector(".gp-kicker")?.textContent).toContain("Solo");
+    // …and the canonical sr-only shell-contract markers carry the same values.
+    expect(container.querySelector("[data-tenant-account-name]")?.textContent).toBe("Clearpath Advisory");
+    expect(container.querySelector("[data-tenant-account-tier]")?.textContent).toBe("Solo");
   });
 
   it("renders the blocked treatment with its reason", () => {

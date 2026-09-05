@@ -213,20 +213,23 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
       destination: "connections",
     });
 
-    // 5. Knowledge (real indexed count)
+    // 5. Knowledge (real indexed count) — a failed read reads "couldn't load", never "add a source".
+    const knowErr = !!knowledge.error;
     const docs = typeof knowledge.documentsIndexed === "number" ? knowledge.documentsIndexed : 0;
     items.push({
       key: "knowledge",
       label: "Knowledge",
-      status: docs === 0 ? "needs-input" : docs < 3 ? "incomplete" : "grounded",
-      note: docs === 0
-        ? "Add a source so PAIGE can answer with your material"
-        : `${docs} source${docs === 1 ? "" : "s"}${docs < 3 ? " — add more for depth" : ""}`,
+      status: knowErr ? "incomplete" : docs === 0 ? "needs-input" : docs < 3 ? "incomplete" : "grounded",
+      note: knowErr
+        ? "Couldn't load your knowledge right now"
+        : docs === 0
+          ? "Add a source so PAIGE can answer with your material"
+          : `${docs} source${docs === 1 ? "" : "s"}${docs < 3 ? " — add more for depth" : ""}`,
       destination: "knowledge",
     });
 
     return items;
-  }, [setup.brief, setup.managedSendingEmail, catalog.phase, catalog.offers, knowledge.documentsIndexed]);
+  }, [setup.brief, setup.managedSendingEmail, catalog.phase, catalog.offers, knowledge.documentsIndexed, knowledge.error]);
 
   const coverage = useMemo(() => {
     const grounded = foundation.filter((f) => f.status === "grounded").length;
@@ -254,7 +257,9 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
       const blocking = f.severity_at_finding === "blocking";
       candidates.push({
         id: `check:${f.id}`,
-        title: dest?.title || f.check_name || "Resolve a system check",
+        // Neutral fallback title — never leak a raw engineering check_name (corr #3) for an
+        // unmapped id. `paige_interpretation` is owner-facing copy, safe to show.
+        title: dest?.title || "Resolve a system check",
         why: f.paige_interpretation || "This check needs attention before the work it guards can run.",
         owner: "you",
         proof: blocking ? "blocked" : "partial",
@@ -262,9 +267,12 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
           ? `${f.paige_interpretation || "A required system isn't ready."} Clear it and this move unblocks.`
           : undefined,
         evidence: "From this workspace's latest system check.",
-        outcome: "Opens the exact place to resolve it; the drafts and plan are kept.",
-        destination: dest ? "systems-check" : "systems-check",
-        ctaLabel: dest?.label || "Open Systems Check",
+        outcome: "Opens Systems Check at the finding; the drafts and plan are kept.",
+        // The move always routes to Systems Check, so the CTA must SAY Systems Check — never borrow
+        // CHECK_DESTINATIONS' page breadcrumb, which would label a button for a page it doesn't open
+        // (corr #4 — an action must go where it says).
+        destination: "systems-check",
+        ctaLabel: "Open Systems Check",
         rank: severityRank(f.severity_at_finding),
       });
     }
@@ -437,14 +445,21 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
 
   // ── SURFACE-LEVEL loading / error / empty ───────────────────────────────────────────────
   const loading =
-    cc.loading || setup.loading || catalog.phase === "resolving" || knowledge.loading;
-  const error = !!setup.error;
+    cc.loading || setup.loading || catalog.phase === "resolving" || catalog.phase === "loading" || knowledge.loading;
+  // §13 — a failed read is "couldn't load", never rendered as "you have nothing". Setup is the
+  // grounding spine and the command-center is the operating-brief spine; a failure in either makes
+  // the surface honestly unreliable (a lone knowledge-read error degrades only its own tile, below).
+  const error = !!setup.error || !!cc.isError;
 
   const attentionTotal =
     ((cc.attention as any)?.at_risk_clients ?? 0) +
     ((cc.attention as any)?.follow_ups_due ?? 0);
+  // Day-one only when the reads genuinely settled empty — never on a failed read, and deferring to
+  // useCommandCenter.empty (which also weighs active clients) so a client-heavy tenant never sees it.
   const empty =
     !loading &&
+    !!cc.empty &&
+    !knowledge.error &&
     coverage.grounded === 0 &&
     (Array.isArray(catalog.offers) ? catalog.offers.length : 0) === 0 &&
     (knowledge.documentsIndexed ?? 0) === 0 &&
