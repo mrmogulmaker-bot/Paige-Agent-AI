@@ -168,29 +168,38 @@ function RailActivityPanel({ activity }: { activity: ReturnType<typeof useSoloAc
 }
 
 /**
- * THE CLOSED STATUS SET (owner ruling). Eight words, and never a ninth:
- *   LIVE · PARTIAL · NOT CONNECTED · NEEDS ATTENTION · PENDING PROVIDER · UNAVAILABLE · PROOF OWED · PAUSED
+ * THE CLOSED STATUS SET (owner ruling; NOT CHECKED ratified 2026-09-05, §4.4a). Nine words:
+ *   LIVE · PARTIAL · NOT CONNECTED · NEEDS ATTENTION · PENDING PROVIDER · UNAVAILABLE · PROOF OWED ·
+ *   PAUSED · NOT CHECKED
  *
- * Only THREE of them can be produced from a persisted finding, and that is a structural fact
- * rather than an omission: `paige_systems_check_finding.status` is CHECK-constrained to
- * `pass | fail | skip | error`. PENDING PROVIDER and PAUSED in particular can never come from
- * this store — they have to be published by the workstream that owns the provider, through the
- * result contract (docs/product/provider-result-contract.md).
+ * Only THREE come from a persisted finding, a structural fact rather than an omission:
+ * `paige_systems_check_finding.status` is CHECK-constrained to `pass | fail | skip | error`, which
+ * maps to LIVE / NEEDS ATTENTION / UNAVAILABLE. PENDING PROVIDER and PAUSED can never come from
+ * this store — they are published by the workstream that owns the provider, through the result
+ * contract (docs/product/provider-result-contract.md).
+ *
+ * NOT CHECKED is an AREA-level word, never a finding: it means no check covers that area yet
+ * (`coveredBy: []` in systems-check-areas.ts) — a marker of unfinished backend work, and a
+ * different promise from UNAVAILABLE ("a check ran and could not tell"). It is the ninth word, and
+ * the reason `StatusWord` splits: `statusOf()` can only ever return the finding-level three, while
+ * an area pill may also be NOT CHECKED.
  *
  * So this surface renders what it can actually derive and says so, rather than inferring the
- * other five from evidence shapes. A `fail` is NEEDS ATTENTION whether the thing was never set up
- * or was set up wrongly; the item's own sentence carries which, because guessing "not connected"
- * from a `has_x: false` would be the surface inventing a status the runner never recorded.
+ * others from evidence shapes. A `fail` is NEEDS ATTENTION whether the thing was never set up or
+ * was set up wrongly; the item's own sentence carries which, because guessing "not connected" from
+ * a `has_x: false` would be the surface inventing a status the runner never recorded.
  */
-type StatusWord = "live" | "attention" | "unavailable";
+type FindingStatusWord = "live" | "attention" | "unavailable";
+type StatusWord = FindingStatusWord | "notchecked";
 
 const STATUS_TEXT: Record<StatusWord, string> = {
   live: "Live",
   attention: "Needs attention",
   unavailable: "Unavailable",
+  notchecked: "Not checked",
 };
 
-function statusOf(finding: SystemsCheckFinding): StatusWord {
+function statusOf(finding: SystemsCheckFinding): FindingStatusWord {
   if (isResolved(finding)) return "live";
   if (finding.status === "pass") return "live";
   if (isUnavailable(finding)) return "unavailable";
@@ -597,6 +606,45 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
     .filter((entry): entry is [string, number] => typeof entry[1] === "number" && entry[1] > 0),
   [command.attention]);
 
+  /**
+   * Each area's single status word, computed once and shared by the operating brief and the areas
+   * list so the two can never disagree (the defect the prototype review caught: a pill that swaps
+   * without its evidence). An area with a covering check takes the worst of its findings; an area
+   * with `coveredBy: []` is NOT CHECKED (no runner exists yet, §4.4a); a covered area with no
+   * finding in this run is UNAVAILABLE (the run did not reach it); null before any run has landed.
+   */
+  const areaStatus = useMemo(() => {
+    const map: Record<string, StatusWord | null> = {};
+    for (const area of SYSTEMS_CHECK_AREAS) {
+      const inArea = currentFindings.filter((finding) => areaForCheck(finding.check_id) === area.id);
+      const worst: StatusWord | null = inArea.some((finding) => statusOf(finding) === "attention")
+        ? "attention"
+        : inArea.some((finding) => statusOf(finding) === "unavailable")
+          ? "unavailable"
+          : inArea.length ? "live" : null;
+      map[area.id] = worst ?? (area.coveredBy.length === 0 ? "notchecked" : systems.run ? "unavailable" : null);
+    }
+    return map;
+  }, [currentFindings, systems.run]);
+
+  /**
+   * The operating brief's plain-English lead — DERIVED from the real area statuses, never a score
+   * or a roll-up. A clause appears only when it is true: the areas that are ready are named, then
+   * the ones that need the owner. "Start here" is the single highest-priority owner action and the
+   * exact surface it lives on. These are the same signals the sections below render, said in a
+   * sentence — nothing here is a claim a section does not also make.
+   */
+  const readyAreas = SYSTEMS_CHECK_AREAS.filter((area) => areaStatus[area.id] === "live");
+  const needAreas = SYSTEMS_CHECK_AREAS.filter((area) => areaStatus[area.id] === "attention");
+  const nameAreas = (areas: typeof SYSTEMS_CHECK_AREAS) =>
+    areas.length === 0 ? ""
+      : areas.length === 1 ? areas[0].briefLabel
+        : areas.length === 2 ? `${areas[0].briefLabel} and ${areas[1].briefLabel}`
+          : `${areas[0].briefLabel} and ${areas.length - 1} more`;
+  const topTodo = ownerTodo[0] ?? orderedAttention[0] ?? null;
+  const topTodoDest = topTodo ? destinationForCheck(topTodo.check_id) : null;
+  const showBrief = Boolean(systems.run) && !systems.isError;
+
   const isReading = systems.loading || command.loading || systems.scanPending;
   return (
     <main className="sc-workspace" aria-label="Solo Systems Check">
@@ -624,6 +672,34 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
         <div className="sc-console">
           <div className="sc-strip">
             <div className="sc-strip-l">
+              {/* The operating brief — the plain-English lead (§3). Derived from the real area
+                  statuses above; no score, no roll-up. A clause shows only when it is true. */}
+              {showBrief && (readyAreas.length > 0 || needAreas.length > 0) && (
+                <p className="sc-brief-say">
+                  {readyAreas.length > 0 && (
+                    <span className="sc-w-ready">{nameAreas(readyAreas)} {readyAreas.length === 1 ? "is" : "are"} ready.</span>
+                  )}
+                  {readyAreas.length > 0 && needAreas.length > 0 ? " " : null}
+                  {needAreas.length > 0 && (
+                    <span className="sc-w-need">{nameAreas(needAreas)} need{needAreas.length === 1 ? "s" : ""} you.</span>
+                  )}
+                </p>
+              )}
+              {showBrief && (
+                <p className="sc-brief-next">
+                  <span className="sc-brief-dot" aria-hidden="true" />
+                  {/* Points to the destination (an action), never the finding's affirmative title —
+                      a failing check's title reads as if it already passed. The attention section
+                      below carries the full item; the brief just names where to start. */}
+                  {topTodo && topTodoDest && account ? (
+                    <span><strong>Start here:</strong> <a className="sc-brief-link" href={topTodoDest.path(account)}>{topTodoDest.label} <ChevronRight size={11} aria-hidden="true" /></a> — the first item under &ldquo;What needs you now&rdquo;.</span>
+                  ) : topTodo ? (
+                    <span><strong>Start here:</strong> the first item under &ldquo;What needs you now&rdquo; below.</span>
+                  ) : (
+                    <span>Nothing from the last check needs you right now.</span>
+                  )}
+                </p>
+              )}
               <div className="sc-strip-h">{freshHeading}</div>
               <div className="sc-strip-s">{freshDetail}</div>
               {systems.isError && (
@@ -782,11 +858,9 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
               {SYSTEMS_CHECK_AREAS.map((area) => {
                 const inArea = currentFindings.filter((f) => areaForCheck(f.check_id) === area.id);
                 const open = openArea === area.id;
-                const worst = inArea.some((f) => statusOf(f) === "attention")
-                  ? "attention"
-                  : inArea.some((f) => statusOf(f) === "unavailable")
-                    ? "unavailable"
-                    : inArea.length ? "live" : null;
+                // Shared with the operating brief so a pill can never disagree with its evidence.
+                // NOT CHECKED (no runner) renders its own ninth-word pill, distinct from UNAVAILABLE.
+                const status = areaStatus[area.id];
                 return (
                   <div className="sc-area" key={area.id} data-open={open}>
                     <button
@@ -797,7 +871,7 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
                     >
                       <ChevronRight className="sc-chev" size={11} aria-hidden="true" />
                       <span className="sc-area-n">{area.name}</span>
-                      {worst ? <StatusPill state={worst} /> : <span className="sc-status sc-status--unavailable"><i />Not checked</span>}
+                      {status ? <StatusPill state={status} /> : null}
                       <span className="sc-area-k">{area.scope}</span>
                     </button>
                     {open && (

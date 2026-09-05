@@ -19,9 +19,15 @@ import type { SpineEvidenceRpcClient } from "../resolveEvidence.ts";
 export type BusinessContextFieldStatus =
   | "owner_confirmed"
   | "connection_sourced"
+  /** Present ONLY in the legacy tenants.brand record, never confirmed in Setup. See the canonical
+   *  contract (docs/delivery/canonical-readiness-contract.md, migration 20261221000000): this is
+   *  the state the vocabulary was missing, and its absence is why this reader said "not entered
+   *  yet" for a workspace whose Connections screen simultaneously said the value was on file. */
+  | "legacy_sourced"
   | "needs_confirmation"
   | "invalid_format"
-  | "unavailable";
+  | "unavailable"
+  | "unknown";
 
 type ReadinessRow = {
   field_key: string;
@@ -30,6 +36,9 @@ type ReadinessRow = {
   as_of: string | null;
   reason: string | null;
   tenant_id: string | null;
+  /** What the owner has to do about this field, decided once in the resolver. Optional so a row
+   *  from a pre-20261221000000 read still renders (as no next step) rather than throwing. */
+  next_action?: string | null;
 };
 
 export type BusinessContextReadinessEvidence =
@@ -62,11 +71,14 @@ function statusSentence(row: ReadinessRow): string {
       return `confirmed in Setup${row.as_of ? ` (as of ${row.as_of})` : ""}.`;
     case "connection_sourced":
       return "present from a connected account, but not yet confirmed by the owner in Setup.";
+    case "legacy_sourced":
+      return "on file from an older brand record, but never confirmed by the owner in Setup — say it exists AND that it is unconfirmed; neither half alone is true.";
     case "needs_confirmation":
       return "not entered yet — the owner has not saved this in Setup.";
     case "invalid_format":
       return "entered in Setup, but does not look like a valid value — ask the owner to re-check it.";
     case "unavailable":
+    case "unknown":
     default:
       return `could not be read right now${row.reason ? ` (${row.reason})` : ""} — do not report this as missing or confirmed; say it is unknown.`;
   }
@@ -119,7 +131,10 @@ export function renderBusinessContextReadinessForChat(evidence: BusinessContextR
 
   const lines = evidence.rows.map((row) => {
     const label = FIELD_LABEL[row.field_key] ?? row.field_key;
-    return `- ${label}: ${statusSentence(row)}`;
+    // The next step comes from the contract, never from PAIGE's own idea of what would help. A
+    // state with nothing to do carries no next_action, and then nothing is appended.
+    const next = row.next_action ? ` Next step for the owner: ${row.next_action}` : "";
+    return `- ${label}: ${statusSentence(row)}${next}`;
   });
 
   return [

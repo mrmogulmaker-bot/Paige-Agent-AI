@@ -37,6 +37,19 @@ frontend and everything visible in it. Claude Code owns the backend and everythi
   jurisdiction is correctness, honesty, security, tenant scope, and port fidelity. None of them
   has an opinion about the interface. **No agent debates UI.**
 
+### MANDATORY UI DELIVERY SKILL — read before every visible-interface change
+
+After Flow-by-Flow and before design or implementation, every visible-interface assignment must
+read `.agents/skills/paige-ui-design/SKILL.md` completely and follow every routed reference. A new
+or materially changed user flow also uses the installed Flow Prototype skill before production
+implementation. The evidence record and `ui-delivery-evidence` check are mandatory as defined by
+that project skill.
+
+This requirement grants Claude Code no visual authority. CC records and ports the visual direction
+already approved in the Claude Design pack; it never invents, substitutes, critiques, or overrides
+that direction. The skill governs complete states, accessibility, responsive behavior, fidelity,
+and proof while this §00 jurisdiction remains absolute.
+
 ### PACK-FIRST — read `docs/design-references/PACK-FIRST.md` before ANY UI work
 
 **Owner, 2026-08-23:** *"You keep seeming to want to ask Claude Design about specifics when they

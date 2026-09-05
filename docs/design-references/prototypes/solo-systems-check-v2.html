@@ -1,0 +1,1232 @@
+<title>Systems Check — advance & polish</title>
+<meta name="description" content="Can the business systems actually do what the plan asks? — advance-and-polish prototype on the real --pg-* tokens.">
+<style>
+/* ============================================================================================
+   THROWAWAY GATE-1 REVIEW SURFACE. Deleted or absorbed after approval.
+
+   Advance-and-polish pass on the SHIPPED Solo Systems Check console
+   (src/solo/SoloSystemsCheckWorkspace.tsx) — a surface that already exists, reorganised and
+   raised, not a new design language. Rev 2: incorporates the adversarial-verifier +
+   compliance-officer findings (per-area override truthfulness, closed-vocabulary drawer,
+   PROOF OWED demonstrated §9-safely, real Trust Compass route, production focus ring, owner
+   language in place of internal automation-tool names).
+
+   FIDELITY: palette below is the app's REAL token set, copied verbatim from src/index.css
+   (L245-313). Status colours are the same --sc-* aliases the shipped surface declares.
+   Nothing here is a dial, a score, or a percentage. The radial belongs to Trust Compass.
+   ============================================================================================ */
+
+/* --- real production tokens (src/index.css) --- light is the default --- */
+:root{
+  --pg-font-display:"Schibsted Grotesk","Segoe UI Variable Display","SF Pro Display",system-ui,sans-serif;
+  --pg-font-ui:"Schibsted Grotesk","Segoe UI Variable Text","SF Pro Text",system-ui,sans-serif;
+  --pg-font-data:"JetBrains Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+
+  --pg-env:#e8e5df; --pg-nav:#f4f1eb; --pg-canvas:#fbf9f5; --pg-spine:#f1eee8;
+  --pg-workspace:#f7f4ee; --pg-surface:#f5f2ec; --pg-raised:#fffdf8; --pg-artifact:#fffdf8;
+  --pg-line-soft:rgba(45,40,50,.105); --pg-line:rgba(45,40,50,.185);
+  --pg-line-strong:rgba(45,40,50,.28); --pg-line-authority:rgba(155,120,60,.44);
+  --pg-ink:#201e23; --pg-ink-2:#3d3941; --pg-muted:#67616b; --pg-faint:#6a646e;
+  --pg-gold-core:#6f5636; --pg-gold:#8b7049; --pg-gold-deep:#7a5c2e;
+  --pg-gold-fill:#c9a96a; --pg-gold-bloom:rgba(201,169,106,.30);
+  --pg-graphite:#b9b2a6; --pg-lift:rgba(45,40,50,.03);
+  --pg-violet:#655a96; --pg-positive:#327458; --pg-warning:#986322; --pg-negative:#a5483d;
+  --pg-e1:inset 0 1px rgba(255,255,255,.7);
+  --pg-e2:0 1px 2px rgba(45,40,50,.10);
+  --pg-e3:-20px 0 60px rgba(45,40,50,.08);
+  --pg-e4:0 24px 60px rgba(45,40,50,.16);
+  --pg-rim:inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 0 rgba(45,40,50,.07);
+  --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.9),0 1px 1px rgba(45,40,50,.055),0 4px 10px -4px rgba(45,40,50,.12);
+  --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.95),0 2px 4px rgba(45,40,50,.07),0 14px 30px -12px rgba(45,40,50,.17);
+  --pg-lift-3:inset 0 1px 0 #fff,0 6px 12px rgba(45,40,50,.09),0 32px 64px -20px rgba(45,40,50,.22);
+  --pg-r-plate:13px; --pg-r-chip:9px; --pg-r-seal:11px; --pg-r-pill:999px;
+
+  /* gold-fill's paired ink. In production this is --accent-foreground (deep indigo,
+     src/index.css); a standalone prototype has no design-system layer, so it is a local token
+     here and the port swaps it for --accent-foreground. */
+  --pg-on-gold:#241c08;
+
+  --sc-healthy:var(--pg-positive); --sc-attention:var(--pg-warning);
+  --sc-critical:var(--pg-negative); --sc-paige:var(--pg-violet);
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --pg-env:#08070b; --pg-nav:#0d0b11; --pg-canvas:#100e14; --pg-spine:#121017;
+  --pg-workspace:#16131a; --pg-surface:#19161e; --pg-raised:#211d27; --pg-artifact:#e9e4da;
+  --pg-line-soft:rgba(244,237,222,.115); --pg-line:rgba(244,237,222,.195);
+  --pg-line-strong:rgba(244,237,222,.30); --pg-line-authority:rgba(234,213,170,.40);
+  --pg-ink:#f6f2ea; --pg-ink-2:#d6d0c9; --pg-muted:#aca69d; --pg-faint:#969089;
+  --pg-gold-core:#fff0cf; --pg-gold:#ead5aa; --pg-gold-deep:#c7a978;
+  --pg-gold-fill:#d4a752; --pg-gold-bloom:rgba(240,200,106,.28);
+  --pg-graphite:#2a2730; --pg-lift:rgba(255,255,255,.018);
+  --pg-violet:#9b8de0; --pg-positive:#8fd1ae; --pg-warning:#edc17f; --pg-negative:#eda093;
+  --pg-e1:inset 0 1px rgba(255,255,255,.025);
+  --pg-e2:0 1px 2px rgba(0,0,0,.45);
+  --pg-e3:-20px 0 60px rgba(0,0,0,.22);
+  --pg-e4:0 28px 70px rgba(0,0,0,.42);
+  --pg-rim:inset 0 1px 0 rgba(255,255,255,.07),inset 0 -1px 0 rgba(0,0,0,.5);
+  --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.055),0 1px 1px rgba(0,0,0,.3),0 4px 12px -4px rgba(0,0,0,.42);
+  --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.07),0 2px 4px rgba(0,0,0,.32),0 16px 34px -12px rgba(0,0,0,.52);
+  --pg-lift-3:inset 0 1px 0 rgba(255,255,255,.085),0 6px 12px rgba(0,0,0,.36),0 36px 72px -20px rgba(0,0,0,.62);
+  --pg-on-gold:#231a06;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box;}
+body{margin:0;background:var(--pg-env);color:var(--pg-ink);
+     font:400 14px/1.55 var(--pg-font-ui);letter-spacing:-.002em;
+     -webkit-font-smoothing:antialiased;}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;}
+h1,h2,h3,h4,p,ul,dl,dd,dt{margin:0;} ul{padding:0;list-style:none;}
+:is(h1,h2,h3){font-family:var(--pg-font-display);}
+a{color:inherit;}
+/* production focus treatment (src/index.css L327): --pg-gold-core solid, 2px, offset 3px.
+   NOT gold-at-65%-transparent, which risks the 3:1 focus-indicator contrast bar. */
+*:focus-visible{outline:2px solid var(--pg-gold-core);outline-offset:3px;border-radius:5px;}
+
+/* ---------- review harness (NOT product) ---------- */
+.rv{position:sticky;top:0;z-index:60;background:var(--pg-spine);color:var(--pg-ink);
+    display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:9px 15px;
+    border-bottom:1px solid var(--pg-line);}
+.rv-l{font:800 9px/1 var(--pg-font-ui);letter-spacing:.13em;text-transform:uppercase;color:var(--pg-faint);}
+.rv-g{display:flex;gap:5px;align-items:center;flex-wrap:wrap;}
+.rv-btn{border:1px solid var(--pg-line);border-radius:8px;padding:5px 9px;
+        font:750 10px/1 var(--pg-font-ui);color:var(--pg-muted);background:var(--pg-surface);}
+.rv-btn:hover{border-color:var(--pg-line-strong);color:var(--pg-ink);}
+.rv-btn.on{color:var(--pg-ink);border-color:var(--pg-gold);background:var(--pg-gold-bloom);}
+.rv-note{margin-left:auto;font-size:10px;color:var(--pg-faint);max-width:34ch;text-align:right;}
+
+.stage{padding:22px 16px 60px;display:flex;justify-content:center;}
+.shell{width:100%;max-width:1220px;background:var(--pg-canvas);border-radius:16px;
+       overflow:hidden;box-shadow:var(--pg-lift-2);border:1px solid var(--pg-line-soft);}
+.shell[data-vw="1536"]{max-width:1220px;}
+.shell[data-vw="1366"]{max-width:1120px;}
+.shell[data-vw="1024"]{max-width:860px;}
+.shell[data-vw="900"]{max-width:760px;}
+.shell[data-vw="tablet"]{max-width:720px;}
+.shell[data-vw="mobile"]{max-width:388px;}
+
+/* ---------- product chrome: the Command Center band + four sub-tabs (context) ---------- */
+.band{background:linear-gradient(180deg,var(--pg-nav),var(--pg-spine));
+      color:var(--pg-ink);padding:15px 20px 0;border-bottom:1px solid var(--pg-line-soft);}
+.band-top{display:flex;align-items:center;gap:13px;flex-wrap:wrap;}
+.mark{width:34px;height:34px;flex:0 0 auto;color:var(--pg-gold-deep);}
+.brand h1{font:600 21px/1.05 var(--pg-font-display);letter-spacing:-.03em;}
+.brand .kicker{font:800 9px/1 var(--pg-font-ui);letter-spacing:.16em;text-transform:uppercase;
+               color:var(--pg-faint);margin-top:5px;}
+.band-right{margin-left:auto;display:flex;align-items:center;gap:14px;}
+.acct{text-align:right;line-height:1.3;} .acct b{display:block;font-size:13px;font-weight:700;}
+.acct span{font-size:11px;color:var(--pg-muted);}
+.tabs{display:flex;gap:2px;margin-top:14px;overflow-x:auto;}
+.tab{padding:9px 13px;font:700 11px/1 var(--pg-font-ui);color:var(--pg-muted);white-space:nowrap;
+     border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px;}
+.tab:hover{color:var(--pg-ink);}
+.tab.on{color:var(--pg-ink);border-bottom-color:var(--pg-gold-fill);}
+.tab .dot{width:6px;height:6px;border-radius:50%;background:var(--pg-line-strong);}
+.tab.on .dot{background:var(--pg-gold-fill);}
+.shell[data-vw="mobile"] .brand h1{font-size:18px;} .shell[data-vw="mobile"] .band-right{margin-left:0;}
+
+/* ---------- product body ---------- */
+.body{padding:16px clamp(14px,2.2vw,26px) 26px;display:flex;flex-direction:column;gap:14px;}
+.shell[data-vw="mobile"] .body{padding:13px;}
+
+.subhead{color:var(--pg-muted);font-size:11px;margin-bottom:2px;
+         display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.subhead .proofs{display:flex;gap:7px;flex-wrap:wrap;}
+
+/* header read-level proof chips — a coverage descriptor, distinct from the per-area status set */
+.proof{display:inline-flex;align-items:center;gap:5px;border:1px solid color-mix(in srgb,var(--sc-attention) 45%,var(--pg-line));
+       border-radius:99px;padding:3px 8px;color:var(--sc-attention);
+       font:900 8px/1 var(--pg-font-ui);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;}
+.proof--live{color:var(--sc-healthy);border-color:color-mix(in srgb,var(--sc-healthy) 45%,var(--pg-line));}
+.proof--critical{color:var(--sc-critical);border-color:color-mix(in srgb,var(--sc-critical) 48%,var(--pg-line));}
+.proof--stale{color:var(--sc-attention);}
+
+/* A. THE OPERATING BRIEF — the new lead. Plain-English; no score, no banner. */
+.brief{border:1px solid var(--pg-line);background:var(--pg-raised);border-radius:var(--pg-r-plate);
+       box-shadow:var(--pg-lift-1);padding:15px 17px;display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;}
+.brief-l{flex:1 1 380px;min-width:0;}
+.brief-say{font:500 16px/1.4 var(--pg-font-display);letter-spacing:-.02em;color:var(--pg-ink);}
+.brief-say .w-ready{color:var(--sc-healthy);font-weight:650;}
+.brief-say .w-need{color:var(--sc-attention);font-weight:650;}
+.brief-say .w-wait{color:var(--sc-paige);font-weight:650;}
+.brief-next{margin-top:9px;font-size:12px;color:var(--pg-ink-2);display:flex;gap:8px;align-items:flex-start;}
+.brief-next b{color:var(--pg-ink);font-weight:750;}
+.brief-next .lead-dot{flex:0 0 auto;margin-top:5px;width:6px;height:6px;border-radius:50%;background:var(--sc-paige);}
+.brief-fresh{margin-top:11px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+             font-size:10px;color:var(--pg-muted);font-family:var(--pg-font-data);}
+.brief-fresh .err{color:var(--sc-critical);font-family:var(--pg-font-ui);}
+.brief-r{flex:0 0 auto;display:flex;flex-direction:column;gap:7px;align-items:stretch;min-width:172px;}
+.shell[data-vw="mobile"] .brief-r{width:100%;}
+
+.btn{border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);padding:8px 12px;min-height:36px;
+     display:inline-flex;align-items:center;justify-content:center;gap:7px;
+     font:750 11px/1 var(--pg-font-ui);background:var(--pg-surface);box-shadow:var(--pg-e1);white-space:nowrap;}
+.btn:hover{border-color:var(--pg-gold);color:var(--pg-gold);}
+.btn--gold{background:var(--pg-gold-fill);border-color:var(--pg-gold);color:var(--pg-on-gold);box-shadow:0 1px 0 var(--pg-gold-bloom);}
+.btn--gold:hover{color:var(--pg-on-gold);filter:brightness(1.03);}
+.btn--quiet{background:transparent;}
+.btn--paige{border-color:color-mix(in srgb,var(--sc-paige) 50%,var(--pg-line));color:var(--sc-paige);}
+.btn[disabled]{opacity:.5;cursor:wait;}
+.btn--sm{min-height:30px;padding:6px 9px;font-size:10px;}
+.spin{display:inline-block;width:10px;height:10px;border-radius:50%;
+      border:1.6px solid currentColor;border-top-color:transparent;animation:sp .9s linear infinite;}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none;opacity:.6}}
+
+.sec{display:flex;flex-direction:column;gap:9px;}
+.sec-h{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;}
+.sec-h h2{font:650 16px/1.2 var(--pg-font-display);letter-spacing:-.02em;}
+.sec-h .n{font:750 10px/1 var(--pg-font-ui);color:var(--pg-muted);font-variant-numeric:tabular-nums;
+          border:1px solid var(--pg-line);border-radius:99px;padding:2px 7px;}
+.sec-h .aside{margin-left:auto;font-size:10px;color:var(--pg-faint);}
+
+/* THE CLOSED SET — NINE words (owner-ratified 2026-09-05, §4.4a adds NOT CHECKED). */
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:var(--pg-r-pill);
+      padding:2px 8px;font:900 8px/1.6 var(--pg-font-ui);letter-spacing:.08em;text-transform:uppercase;
+      white-space:nowrap;border:1px solid transparent;}
+.pill i{width:5px;height:5px;border-radius:50%;background:currentColor;flex:0 0 auto;}
+.p-live{color:var(--sc-healthy);background:color-mix(in srgb,var(--sc-healthy) 14%,transparent);border-color:color-mix(in srgb,var(--sc-healthy) 34%,transparent);}
+.p-partial{color:var(--sc-paige);background:color-mix(in srgb,var(--sc-paige) 13%,transparent);border-color:color-mix(in srgb,var(--sc-paige) 32%,transparent);}
+.p-attention{color:var(--sc-attention);background:color-mix(in srgb,var(--sc-attention) 14%,transparent);border-color:color-mix(in srgb,var(--sc-attention) 34%,transparent);}
+.p-notconnected{color:var(--pg-muted);background:color-mix(in srgb,var(--pg-muted) 12%,transparent);border-color:var(--pg-line);}
+.p-provider{color:var(--sc-paige);background:transparent;border-color:color-mix(in srgb,var(--sc-paige) 40%,transparent);}
+.p-unavailable{color:var(--pg-faint);background:transparent;border:1px dashed var(--pg-line);}
+.p-proof{color:var(--pg-faint);background:transparent;border:1px dashed var(--pg-line);}
+.p-paused{color:var(--pg-muted);background:transparent;border-color:var(--pg-line-strong);}
+.p-notchecked{color:var(--pg-faint);background:repeating-linear-gradient(135deg,transparent,transparent 4px,color-mix(in srgb,var(--pg-line-soft) 60%,transparent) 4px,color-mix(in srgb,var(--pg-line-soft) 60%,transparent) 5px);border:1px dotted var(--pg-line-strong);}
+.why-c{font-size:11px;color:var(--pg-muted);}
+
+/* B. attention list */
+.att{display:flex;flex-direction:column;gap:8px;}
+.item{background:var(--pg-raised);border:1px solid var(--pg-line);border-left:3px solid var(--pg-line-strong);
+      border-radius:var(--pg-r-chip);padding:11px 13px;box-shadow:var(--pg-lift-1);}
+.item.sev-block{border-left-color:var(--sc-critical);}
+.item.sev-high{border-left-color:var(--sc-attention);}
+.item.sev-wait{border-left-color:var(--sc-paige);}
+.item.sev-med{border-left-color:var(--sc-paige);}
+.item-t{display:flex;gap:9px;align-items:flex-start;flex-wrap:wrap;}
+.item-t h3{font:750 13px/1.4 var(--pg-font-ui);flex:1 1 240px;min-width:0;}
+.item-holds{margin-top:7px;font-size:10px;color:var(--sc-critical);
+            background:color-mix(in srgb,var(--sc-critical) 8%,transparent);
+            border:1px solid color-mix(in srgb,var(--sc-critical) 28%,transparent);
+            border-radius:7px;padding:6px 8px;}
+.item-holds b{font-weight:800;}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:5px 16px;margin-top:9px;}
+.shell[data-vw="mobile"] .meta{grid-template-columns:1fr;}
+.m dt{font:900 8px/1.5 var(--pg-font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--pg-faint);}
+.m dd{margin:0;font-size:10px;color:var(--pg-ink-2);overflow-wrap:anywhere;}
+.m dd.src{font-family:var(--pg-font-data);font-size:9px;color:var(--pg-muted);}
+.item-a{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:10px;}
+.route{font-family:var(--pg-font-data);font-size:9px;color:var(--pg-faint);overflow-wrap:anywhere;}
+.item-extra{margin-top:6px;font-size:11px;color:var(--pg-ink-2);}
+
+/* C. ready list */
+.ready{background:var(--pg-raised);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);
+       box-shadow:var(--pg-lift-1);overflow:hidden;}
+.ready li{display:flex;gap:10px;align-items:flex-start;padding:10px 13px;border-top:1px solid var(--pg-line-soft);}
+.ready li:first-child{border-top:0;}
+.ready .tick{color:var(--sc-healthy);flex:0 0 auto;margin-top:1px;}
+.ready p{font-size:12px;}
+.ready .ready-open{font:inherit;color:inherit;text-align:left;padding:0;text-decoration:underline;
+                   text-decoration-color:var(--pg-line-strong);text-underline-offset:2px;}
+.ready .ready-open:hover{text-decoration-color:var(--pg-gold);}
+.ready small{display:block;font-size:9px;color:var(--pg-faint);font-family:var(--pg-font-data);margin-top:2px;}
+
+/* D. nine operating areas */
+.areas{background:var(--pg-raised);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);
+       box-shadow:var(--pg-lift-1);overflow:hidden;}
+.area{border-top:1px solid var(--pg-line-soft);} .area:first-child{border-top:0;}
+.area-b{display:flex;gap:11px;align-items:center;width:100%;text-align:left;padding:11px 13px;}
+.area-b:hover{background:color-mix(in srgb,var(--pg-surface) 70%,var(--pg-canvas));}
+.area-n{font:750 13px/1.35 var(--pg-font-ui);flex:0 0 auto;}
+.area-k{font-size:11px;color:var(--pg-muted);flex:1 1 auto;min-width:0;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.shell[data-vw="mobile"] .area-b{flex-wrap:wrap;} .shell[data-vw="mobile"] .area-k{flex-basis:100%;white-space:normal;}
+.chev{flex:0 0 auto;color:var(--pg-faint);transition:transform .18s ease;}
+.area[data-open="true"] .chev{transform:rotate(90deg);}
+@media (prefers-reduced-motion:reduce){.chev{transition:none}}
+.area-d{padding:3px 13px 14px;background:color-mix(in srgb,var(--pg-surface) 80%,var(--pg-canvas));border-top:1px solid var(--pg-line-soft);}
+.area-detail{margin-top:10px;font-size:11px;color:var(--pg-ink-2);line-height:1.55;}
+.grid7{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:11px 18px;margin-top:11px;}
+.shell[data-vw="mobile"] .grid7{grid-template-columns:1fr;}
+.area-uncov{margin-top:10px;font-size:11px;color:var(--pg-muted);
+            border:1px dotted var(--pg-line-strong);border-radius:8px;padding:9px 11px;
+            background:repeating-linear-gradient(135deg,transparent,transparent 6px,color-mix(in srgb,var(--pg-line-soft) 40%,transparent) 6px,color-mix(in srgb,var(--pg-line-soft) 40%,transparent) 7px);}
+.area-uncov b{color:var(--pg-ink-2);}
+
+/* E. rail */
+.rail{background:var(--pg-raised);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);
+      box-shadow:var(--pg-lift-1);overflow:hidden;}
+.rail li{display:flex;gap:11px;align-items:baseline;padding:10px 13px;border-top:1px solid var(--pg-line-soft);}
+.rail li:first-child{border-top:0;}
+.rail .when{font-family:var(--pg-font-data);font-size:9px;color:var(--pg-faint);flex:0 0 82px;}
+.rail .who{font:800 8px/1.6 var(--pg-font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--sc-paige);flex:0 0 auto;}
+.rail .who.none{color:var(--pg-faint);font-weight:650;letter-spacing:0;text-transform:none;font-style:italic;}
+.rail .what{font-size:11px;color:var(--pg-ink-2);flex:1 1 auto;min-width:0;}
+.shell[data-vw="mobile"] .rail li{flex-wrap:wrap;gap:4px 9px;}
+
+/* F. decision buckets */
+.dec3{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:11px;}
+.buck{background:var(--pg-raised);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);
+      padding:12px 13px;box-shadow:var(--pg-lift-1);}
+.buck h3{font:900 8px/1.5 var(--pg-font-ui);letter-spacing:.11em;text-transform:uppercase;color:var(--pg-faint);}
+.buck ul{margin-top:8px;display:flex;flex-direction:column;gap:7px;}
+.buck li{font-size:11px;color:var(--pg-ink-2);padding-left:13px;position:relative;}
+.buck li:before{content:"";position:absolute;left:0;top:6px;width:5px;height:5px;border-radius:50%;background:var(--pg-line-strong);}
+.buck.you li:before{background:var(--pg-ink-2);}
+.buck.paige li:before{background:var(--sc-paige);}
+.buck.wait li:before{background:var(--sc-attention);}
+.buck .none{font-style:italic;color:var(--pg-faint);padding-left:0;} .buck .none:before{display:none;}
+.buck-a{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;}
+
+.note{background:color-mix(in srgb,var(--pg-surface) 70%,var(--pg-canvas));
+      border:1px dashed var(--pg-line);border-radius:var(--pg-r-chip);padding:10px 13px;
+      font-size:11px;color:var(--pg-muted);}
+.note.solid{border-style:solid;border-color:var(--pg-line-soft);}
+.note b{color:var(--pg-ink-2);font-weight:700;}
+.first{text-align:center;padding:34px 20px;background:var(--pg-raised);
+       border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);box-shadow:var(--pg-lift-1);}
+.first h3{font:600 18px/1.3 var(--pg-font-display);}
+.first p{font-size:12px;color:var(--pg-muted);max-width:48ch;margin:8px auto 0;}
+.first .btn{margin-top:14px;}
+
+.sk{background:var(--pg-raised);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);
+    box-shadow:var(--pg-lift-1);padding:14px;display:flex;flex-direction:column;gap:10px;}
+.sk-row{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--pg-surface),color-mix(in srgb,var(--pg-line-soft) 60%,var(--pg-surface)),var(--pg-surface));
+        background-size:200% 100%;animation:sh 1.3s ease-in-out infinite;}
+.sk-row.w80{width:80%;} .sk-row.w60{width:60%;} .sk-row.w40{width:40%;}
+@keyframes sh{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.sk-row{animation:none;}}
+
+.ann{display:none;font-size:10px;color:var(--sc-paige);border-left:2px solid color-mix(in srgb,var(--sc-paige) 55%,transparent);
+     padding:4px 0 4px 9px;margin-top:7px;font-family:var(--pg-font-data);line-height:1.55;}
+body.ann-on .ann{display:block;}
+
+/* z above the sticky review harness (z-60) so the modal is never clipped by it. In production
+   there is no harness; the drawer's own z simply needs to top the app chrome. */
+.scrim{position:fixed;inset:0;z-index:70;background:color-mix(in srgb,var(--pg-env) 60%,transparent);}
+.drawer{position:fixed;z-index:71;inset:0 0 0 auto;width:min(480px,100%);display:flex;flex-direction:column;
+        background:var(--pg-surface);border-left:1px solid var(--pg-line);box-shadow:var(--pg-e4);
+        animation:din .22s cubic-bezier(.2,.8,.2,1);}
+@keyframes din{from{transform:translateX(26px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.drawer{animation:none;}}
+.drawer-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px;border-bottom:1px solid var(--pg-line);}
+.drawer-h .kick{font:800 8px/1.5 var(--pg-font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--sc-paige);}
+.drawer-h h2{font:650 17px/1.2 var(--pg-font-display);margin-top:4px;}
+.icon-btn{border:1px solid var(--pg-line);background:var(--pg-surface);border-radius:8px;min-height:32px;padding:6px 8px;
+          display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:750;}
+.icon-btn:hover{border-color:var(--pg-gold);color:var(--pg-gold);}
+.drawer-b{overflow:auto;padding:16px;}
+.drawer-b section{border-top:1px solid var(--pg-line);padding:14px 0;}
+.drawer-b section:first-child{border-top:0;padding-top:0;}
+.drawer-b h3{font:900 9px/1.5 var(--pg-font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--pg-faint);margin-bottom:6px;}
+.drawer-b p{font-size:12px;line-height:1.6;color:var(--pg-ink-2);}
+.drawer-b dl{display:grid;grid-template-columns:minmax(120px,.5fr) minmax(0,1fr);gap:6px;margin-top:6px;}
+.drawer-b dt{font-size:11px;color:var(--pg-muted);font-family:var(--pg-font-data);}
+.drawer-b dd{font-size:11px;overflow-wrap:anywhere;}
+.ev-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--pg-muted);font-size:10px;margin-bottom:2px;}
+
+.dec{max-width:1220px;margin:0 auto;padding:2px 16px 46px;}
+.dec .lbl{font:800 9px/1 var(--pg-font-ui);letter-spacing:.13em;text-transform:uppercase;color:var(--pg-faint);}
+.dec p.d{font-size:12px;color:var(--pg-muted);margin-top:6px;}
+.dec textarea{width:100%;min-height:64px;margin-top:9px;padding:10px 12px;border:1px solid var(--pg-line);
+              border-radius:var(--pg-r-chip);background:var(--pg-raised);color:var(--pg-ink);font:inherit;font-size:12px;resize:vertical;}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;}
+.verdict{margin-top:10px;font-size:11px;color:var(--sc-healthy);min-height:1.4em;}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}
+</style>
+
+<div class="rv" role="region" aria-label="Prototype review controls">
+  <div class="rv-g"><span class="rv-l">State</span><span id="states"></span></div>
+  <div class="rv-g"><span class="rv-l">Viewport</span>
+    <button class="rv-btn on" data-vw="1536">1536</button>
+    <button class="rv-btn" data-vw="1366">1366</button>
+    <button class="rv-btn" data-vw="1024">1024</button>
+    <button class="rv-btn" data-vw="900">900×1000</button>
+    <button class="rv-btn" data-vw="tablet">Tablet</button>
+    <button class="rv-btn" data-vw="mobile">Mobile</button></div>
+  <div class="rv-g"><span class="rv-l">Theme</span>
+    <button class="rv-btn on" data-theme="light">Light</button>
+    <button class="rv-btn" data-theme="dark">Dark</button></div>
+  <div class="rv-g"><button class="rv-btn" id="annBtn">Annotations</button></div>
+  <span class="rv-note">Prototype — every control here checks nothing and writes nothing. Real tokens from src/index.css.</span>
+</div>
+
+<div class="stage" id="stage"><div class="shell" id="shell" data-vw="1536">
+  <div class="band">
+    <div class="band-top">
+      <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
+        <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".4"/>
+        <circle cx="24" cy="24" r="14.5" fill="none" stroke="currentColor" stroke-width=".8" opacity=".24"/>
+        <path d="M19 33V15h6.6a5.4 5.4 0 0 1 0 10.8H19" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="brand"><h1>Command Center</h1>
+        <div class="kicker">Solo · your operating system</div></div>
+      <div class="band-right">
+        <div class="acct"><b id="ws">Northwind Advisory</b><span id="wsSub">Solo workspace · 3855</span></div>
+      </div>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Command Center sections">
+      <div class="tab" role="tab" aria-selected="false"><span class="dot"></span>Business Game Plan</div>
+      <div class="tab on" role="tab" aria-selected="true"><span class="dot"></span>Systems Check</div>
+      <div class="tab" role="tab" aria-selected="false"><span class="dot"></span>Trust Compass</div>
+      <div class="tab" role="tab" aria-selected="false"><span class="dot"></span>Mind</div>
+    </div>
+  </div>
+  <div class="body" id="body"></div>
+</div></div>
+
+<div class="dec" id="decsurface">
+  <div class="lbl">Decision — Gate 1</div>
+  <p class="d">Appearance and intended function. Nothing ships to the production surface before this is answered. (Approving here is the §69 Gate-1 point; the code change is presentation-only on the shipped console.)</p>
+  <textarea id="notes" placeholder="Notes, revisions, anything that reads wrong…"></textarea>
+  <div class="acts">
+    <button class="btn btn--gold" data-dec="Approved">Approve</button>
+    <button class="btn" data-dec="Revision requested">Request revision</button>
+    <button class="btn" data-dec="Rejected">Reject</button>
+  </div>
+  <div class="verdict" id="verdict" role="status" aria-live="polite"></div>
+</div>
+<span class="sr" id="live" role="status" aria-live="polite"></span>
+
+<script>
+/* Routes — verified against src/lib/routing/tierBranches.ts (SOLO_BRANCHES). command-center has
+   ONLY the subtabs systems-check + mind; Trust Compass is a SEPARATE top-level branch
+   (/solo/{account}/trust-compass, key "compass") — NOT a command-center subtab. Building
+   command-center/trust-compass would silently render Command Center with a wrong URL (the
+   /solo/* splat has no catch-all), so it is /solo/{account}/trust-compass here. ?segment= are
+   QUERIES, not path segments. Where a destination does not exist, the item says so. */
+var ACC = "3855";
+var R = {
+  profile:  "/solo/"+ACC+"/settings/setup/business-profile",
+  people:   "/solo/"+ACC+"/clients/people",
+  portal:   "/solo/"+ACC+"/clients/portal",
+  team:     "/solo/"+ACC+"/settings/team",
+  know:     "/solo/"+ACC+"/paige/knowledge",
+  compass:  "/solo/"+ACC+"/trust-compass",
+  integ:    "/solo/"+ACC+"/settings/integrations",
+  commsSeg: "/solo/"+ACC+"/settings/connections?segment=communications",
+  regSeg:   "/solo/"+ACC+"/settings/connections?segment=registration",
+  catalog:  "/solo/"+ACC+"/growth/catalog",
+  pipeline: "/solo/"+ACC+"/growth/pipeline",
+  sales:    "/solo/"+ACC+"/growth/sales",
+  perf:     "/solo/"+ACC+"/growth/performance"
+};
+
+/* The CLOSED SET — NINE words. Owner-ratified 2026-09-05 (§4.4a adds NOT CHECKED). */
+var S = {
+  live:         {k:"p-live",         t:"Live"},
+  partial:      {k:"p-partial",      t:"Partial"},
+  notconnected: {k:"p-notconnected", t:"Not connected"},
+  attention:    {k:"p-attention",    t:"Needs attention"},
+  provider:     {k:"p-provider",     t:"Pending provider"},
+  unavailable:  {k:"p-unavailable",  t:"Unavailable"},
+  proof:        {k:"p-proof",        t:"Proof owed"},
+  paused:       {k:"p-paused",       t:"Paused"},
+  notchecked:   {k:"p-notchecked",   t:"Not checked"}
+};
+function pill(s, why){
+  var d = S[s]; if(!d) return "";
+  return '<span class="pill '+d.k+'"><i></i>'+d.t+'</span>'
+    + (why ? ' <span class="why-c">'+why+'</span>' : "");
+}
+function esc(x){ return String(x).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+function svgTick(){ return '<svg class="tick" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">'
+  + '<path d="M2.6 7.4l2.8 2.8L11.4 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+function svgChev(){ return '<svg class="chev" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">'
+  + '<path d="M4 2.5L7.5 5.5 4 8.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+function ann(t){ return t ? '<div class="ann">'+t+'</div>' : ""; }
+
+/* ---- the nine operating areas, in the owner's plain business language (§3.3) ----
+   Owner-facing prose carries NO internal automation-tool names (§11); the backing record
+   stays in the mono Source field only. Three areas (team / mind / security) carry no readiness
+   runner today — NOT CHECKED, the ninth word, a marker of unfinished backend work (§4.4a). */
+function AREAS(){ return [
+ { id:"setup", n:"Business setup & identity", s:"partial",
+   sum:"Name and playbook on file · website, phone, industry and legal name are not",
+   know:"Your business name and what you do are recorded. Website, business phone, industry, registered legal name and business address are not — the last two are what a carrier asks for before it will let you text.",
+   src:"Setup check company_info_populated + the tenant_legal_profile row", ver:"3 Sep, 06:12",
+   can:"Paige has drafted the profile fields she can infer, and is holding them for you to accept or dismiss.",
+   blocked:"Nothing. This is entirely in your hands.", own:"You", act:"Setup › Business profile", route:R.profile },
+
+ { id:"people", n:"People & CRM", s:"attention",
+   sum:"42 on file · 9 have gone quiet · 4 cannot be reached at all",
+   know:"42 people on file. 7 added in the last 30 days. 9 have had nothing recorded against them in 21 days. 4 have no email and no phone, so nothing can reach them.",
+   src:"Live counts from your client list; the 21-day figure from the last recorded run", ver:"3 Sep, 06:12",
+   can:"Paige can draft a re-engagement note for the 9 who have gone quiet, and hold each for your approval.",
+   blocked:"Your relationship stages are the platform starter set. Where each person sits on the ladder was filled in automatically and nobody has confirmed it.",
+   own:"You, with Paige drafting", act:"Clients › People", route:R.people },
+
+ { id:"sales", n:"Sales & commercial operations", s:"notconnected",
+   sum:"Nothing written down yet — not the pipeline, not what you sell, not how you get paid",
+   know:"No pipeline stages. No offers recorded, so there is nothing a client can be signed up to. No record of how your clients pay you or what they have agreed to.",
+   src:"Empty tenant_products / tenant_prices and pipeline-stage tables", ver:"3 Sep, 06:12",
+   can:"Nothing yet. Paige cannot draft an offer until she knows what you sell.",
+   blocked:"Money your clients have actually paid you cannot be reported at all — there is no source for it in this workspace today.",
+   own:"You", act:"Campaigns › Catalog", route:R.catalog },
+
+ { id:"comms", n:"Email, phone & SMS readiness", s:"partial",
+   sum:"Email sends today · texting is not switched on · calls are not recorded",
+   know:"Email goes out from a Paige-hosted address, and replies land back here. Your own business domain has not been verified for sending. Texting is not switched on for this business.",
+   src:"Setup check comms_configured + the live sender record", ver:"3 Sep, 06:12",
+   can:"Paige can send email on your behalf now, within the limits you set in Trust Compass.",
+   blocked:"Whether the emails you sent were delivered, bounced or opened — nothing verifies that yet, so it is not claimed.",
+   own:"You, then your domain host", act:"Connections › Communications", route:R.commsSeg },
+
+ { id:"campaigns", n:"Campaigns, social & advertising", s:"partial",
+   sum:"Two pages and a form are live · six enquiries never finished processing",
+   know:"2 published pages and 1 active intake form, each with the date it went live. 14 enquiries captured in 30 days, 8 of which became a person in your client list.",
+   src:"Live page, funnel and form records; submission rows", ver:"3 Sep, 06:12",
+   can:"Paige can retry the 6 stalled enquiries and file each result for you.",
+   blocked:"Social accounts cannot be reported at all — there is no way to record them in this workspace, so their absence is not evidence of anything.",
+   own:"Paige, then you", act:"Campaigns › Performance", route:R.perf },
+
+ { id:"integrations", n:"Integrations & automations", s:"attention",
+   sum:"Your automations are connected · Paige is permitted to run none of them yet",
+   know:"Your automation workspace is connected. Paige has permission to run none of your workflows, so nothing there can fire. Your other automation connection has nothing saved for it.",
+   src:"get_n8n_spine_readiness → approved_workflow_count (0), plus the connection record", ver:"3 Sep, 06:12",
+   can:"Nothing, until you name which workflows she may run.",
+   blocked:"The workflow list Paige can see was last refreshed two months ago, and has never been re-checked against your account.",
+   own:"You", act:"Settings › Integrations", route:R.integ },
+
+ { id:"team", n:"Paige's team & delegated work", s:"notchecked",
+   sum:"No readiness check covers this area yet — on the backend list, not a fault",
+   know:"No Systems Check readiness runner reports on delegated work today, so this area is not being scored either way. When one is wired, this row moves to a real status.",
+   src:"No runner in the registry covers this area (systems-check-areas.ts · coveredBy: [])", ver:"—",
+   can:"Nothing is scored here yet, because no check has been written for it.",
+   blocked:"A backend readiness check has not been written for this area yet. This is not a claim that anything is wrong.",
+   own:"Backend work (not yours)", act:"Trust Compass", route:R.compass },
+
+ { id:"mind", n:"Business knowledge — the Mind", s:"notchecked",
+   sum:"No readiness check covers this area yet — on the backend list, not a fault",
+   know:"No Systems Check readiness runner scores your business knowledge yet. Paige can already search your documents — that shows under 'What is ready to operate' — but whether that knowledge is complete and current is not yet checked. When a runner is wired, this row moves to a real status.",
+   src:"No runner in the registry covers this area (systems-check-areas.ts · coveredBy: [])", ver:"—",
+   can:"Nothing is scored here yet, because no readiness check has been written for it.",
+   blocked:"A backend readiness check has not been written for this area yet. This is not a claim that anything is wrong.",
+   own:"Backend work (not yours)", act:"Paige › Knowledge", route:R.know },
+
+ { id:"security", n:"Security, permissions & governance", s:"notchecked",
+   sum:"No readiness check covers this area yet — on the backend list, not a fault",
+   know:"The Systems Check pipeline carries no security or governance readiness check at the tenant tier today. Who can get in and at what level is real and readable elsewhere, but nothing here is being scored either way.",
+   src:"No runner in the registry covers this area (systems-check-areas.ts · coveredBy: [])", ver:"—",
+   can:"Nothing is scored here yet, because no readiness check has been written for it.",
+   blocked:"A backend readiness check has not been written for this area yet. This is not a claim that anything is wrong.",
+   own:"Backend work (not yours)", act:"Settings › Team", route:R.team }
+]; }
+
+/* Area overrides now carry per-area CONTENT, never a lone pill swap: {s, sum, detail, ver?}.
+   detail replaces the seven-field drill-down for that area in that state, so a pill can never
+   sit above contradictory evidence (§13). */
+var STATES = {
+
+ mixed: { label:"Mixed readiness", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  brief:{
+    say:'<span class="w-ready">Email and your client list are ready.</span> <span class="w-need">Your sending domain and two-step sign-in need you.</span> <span class="w-wait">Texting is waiting on the carrier.</span>',
+    next:'Start the carrier registration for texting — it is the one thing standing between you and sending a text, and it is a filing, not a wait, until you submit it.',
+    nextRoute:R.regSeg, nextAct:"Connections › Registration",
+    fresh:"Last checked 3 Sep, 06:12 · the daily sweep", mode:"idle" },
+  ann:"The realistic default for a working Solo workspace, from the 101 grounded signals. The BRIEF is the new lead: a plain-English sentence that names real systems, never a score or a percentage. Six areas partial or worse is the truth, not a failure of the surface.",
+  att:[
+   {sev:"high", h:"Your business profile is missing the details Paige needs", s:"attention",
+    why:"website, business phone and industry are blank",
+    own:"You", src:"Setup check · company_info_populated", ver:"3 Sep, 06:12",
+    act:"Setup › Business profile", route:R.profile,
+    extra:"Paige has drafted what she can infer. Accepting it is one press."},
+   {sev:"high", h:"Paige can run none of your connected automations", s:"attention",
+    why:"0 of 4 automation workflows have been approved, so nothing there can fire",
+    own:"You", src:"get_n8n_spine_readiness · approved_workflow_count 0", ver:"3 Sep, 06:12",
+    act:"Settings › Integrations", route:R.integ},
+   {sev:"high", h:"Six enquiries were captured and never finished processing", s:"attention",
+    why:"someone filled in your form and nothing happened after it",
+    own:"Paige can retry these", src:"growth_form_submissions · processing_state", ver:"3 Sep, 06:12",
+    act:"Campaigns › Performance", route:R.perf},
+   {sev:"high", h:"Two-step sign-in is off on your own account", s:"attention",
+    why:"the owner seat is the one that can change everything else",
+    own:"You", src:"Your account's sign-in factors", ver:"3 Sep, 06:12",
+    act:"Settings › Team", route:R.team,
+    extra:"Two-step sign-in is set on your personal account security. There is no one-click control for it inside this workspace yet — Team is the closest surface."},
+   {sev:"high", h:"Text messaging is not switched on for this business", s:"notconnected",
+    why:"nothing has been filed with a carrier yet — this is the first step, not a wait",
+    own:"You", src:"tenant_comms_readiness · no registration on file", ver:"3 Sep, 06:12",
+    act:"Connections › Registration", route:R.regSeg,
+    extra:"Once filed this becomes a wait on the carrier. It is not one yet."}
+  ],
+  ready:[
+   {p:"Email sending works — Paige can send on your behalf, and replies land back here.", s:"Live sender record and reply routing · 3 Sep 06:12", open:true, status:"live"},
+   {p:"42 people are on file, 7 of them added in the last 30 days.", s:"Live count from your client list", status:"live"},
+   {p:"Paige can search 18 of your documents when she answers you.", s:"Live document index · 3 Sep 06:12", status:"live"},
+   {p:"Two pages and one intake form are live right now.", s:"Live page and form records", status:"live"},
+   {p:"You can see who has access here, at what level, and who owns the workspace.", s:"Live membership records", status:"live"}
+  ],
+  rail:[
+   {when:"3 Sep 06:14", who:null, what:"Setup check completed — 10 checks, 6 needing attention"},
+   {when:"3 Sep 06:14", who:null, what:"Eight fixes drafted and filed for your approval"},
+   {when:"2 Sep 17:02", who:null, what:"Business profile saved"},
+   {when:"1 Sep 11:26", who:null, what:"Form submitted — became a person in your client list"}
+  ],
+  railNote:"Every line above says <b>Paige</b>, because until an agent records its own name on the Rail nothing can say which specialist did the work. The column exists as of today; nothing writes to it yet. This section stays thin until it does — a real gap, not a display choice.",
+  dec:{ you:["Fill in website, business phone and industry","Approve which automations Paige may run","Turn on two-step sign-in","Start the carrier registration for texting"],
+        paige:["Retry the six stalled enquiries","Refresh your automation workflow list","Draft a re-engagement note for the nine quiet contacts"],
+        wait:[] } },
+
+ ready: { label:"Mostly confirmed", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  brief:{
+    say:'<span class="w-ready">Everything the last check looked at is ready.</span> One thing — paid-ad tracking — is off because you switched it off.',
+    next:'Nothing needs you right now. When you next add an offer or connect a channel, run the check again to confirm it.',
+    nextRoute:null, nextAct:null,
+    fresh:"Last checked 3 Sep, 06:12 · the daily sweep", mode:"idle" },
+  ann:"The healthy state. Note there is STILL no score and no roll-up — 'ready' is the ABSENCE of an attention list, not a number. The one thing that is off is off by the owner's own choice, and says so (PAUSED, the honest word for it). Every LIVE area now carries a matching summary and drill-down, so no pill sits above contradictory evidence.",
+  att:[], attEmpty:"Nothing needs you right now. Every check that ran came back clean, and the one thing that is off is off because you switched it off.",
+  ready:[
+   {p:"Email sends from your own verified business domain.", s:"Domain verified 28 Aug · re-checked 3 Sep 06:12", open:true, status:"live"},
+   {p:"Texting is switched on and your carrier registration is approved.", s:"Carrier approval recorded 22 Aug", status:"live"},
+   {p:"Paige can run four of your automations, and has run three this week.", s:"Approved workflow list · 3 Sep 06:12", status:"live"},
+   {p:"What you sell is written down, and your pipeline stages are your own.", s:"Live offer and stage records", status:"live"},
+   {p:"Paige can search 63 of your documents, all of them fully indexed.", s:"Live document index · 3 Sep 06:12", status:"live"},
+   {p:"Two-step sign-in is on for every seat that can change access.", s:"Live sign-in factor records", status:"live"}
+  ],
+  areaOverrides:{
+    setup:{s:"live", sum:"Profile, website, phone and legal name all on file",
+      detail:"Every business detail the check looks at is recorded and current."},
+    people:{s:"live", sum:"Your client list is complete and reachable",
+      detail:"Everyone on file has a way to reach them and a person on the team responsible for them."},
+    sales:{s:"live", sum:"Offers and pipeline stages are recorded — and they are your own",
+      detail:"What you sell and how work moves are written down, so Paige can act on them."},
+    comms:{s:"live", sum:"Email sends from your own verified domain",
+      detail:"Your domain is verified and email goes out from it; replies land back here."},
+    integrations:{s:"live", sum:"Paige can run four of your automations",
+      detail:"Four workflows are approved and three have run this week."}
+  },
+  pausedArea:"campaigns", pausedWhy:"you switched paid-ad tracking off on 14 Aug",
+  pausedDetail:"You switched paid-ad tracking off on 14 Aug. Nothing is wrong here — it is off because you chose to turn it off.",
+  rail:[
+   {when:"3 Sep 06:14", who:null, what:"Setup check completed — 10 checks, none needing attention"},
+   {when:"2 Sep 09:31", who:null, what:"Email sent to 12 people"},
+   {when:"1 Sep 14:08", who:null, what:"Workflow run completed"}
+  ],
+  dec:{ you:[], paige:["Nothing waiting"], wait:[] } },
+
+ blocked: { label:"One failure blocks several", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  brief:{
+    say:'<span class="w-need">Your sending identity was rejected — and it holds up four other things.</span> Your client list and access records are fine.',
+    next:'Fix the sending identity. Until it is fixed, no email, no campaign follow-up and no client invitation can leave this workspace — so everything else is waiting on this one thing.',
+    nextRoute:R.commsSeg, nextAct:"Connections › Communications",
+    fresh:"Last checked 3 Sep, 06:12 · the daily sweep", mode:"idle" },
+  ann:"One blocking failure sits underneath several areas at once. The surface names WHICH areas it holds up and why, rather than showing five unrelated red rows and making the owner work out the connection. This is dependency-ordered attention, not a card wall.",
+  att:[
+   {sev:"block", h:"Your sending identity was rejected, and it holds up four other things", s:"attention",
+    why:"until this is fixed, no email, no campaign follow-up and no client invitation can leave this workspace",
+    own:"You, then your domain host", src:"Setup check · comms_configured — failed, blocking", ver:"3 Sep, 06:12",
+    act:"Connections › Communications", route:R.commsSeg,
+    holds:"Email readiness · Campaigns follow-up · People &amp; CRM invitations · Paige's delegated work"},
+   {sev:"high", h:"Paige is holding eight drafts she cannot deliver", s:"attention",
+    why:"each of them ends in an email, and nothing can send",
+    own:"Paige, blocked by the above", src:"paige_actions · 8 open rows", ver:"3 Sep, 06:14",
+    act:"Trust Compass", route:R.compass}
+  ],
+  ready:[
+   {p:"42 people are on file and reachable by phone.", s:"Live count from your client list", status:"live"},
+   {p:"You can see who has access here, at what level, and who owns the workspace.", s:"Live membership records", status:"live"}
+  ],
+  areaOverrides:{
+    comms:{s:"attention", sum:"Sending is down — nothing can leave this workspace",
+      detail:"Your sending identity was rejected, so no email, follow-up or invitation can be sent until it is fixed."},
+    campaigns:{s:"attention", sum:"Follow-ups cannot send while sending is down",
+      detail:"Campaign follow-ups end in an email, and email cannot leave the workspace right now."},
+    people:{s:"attention", sum:"Client invitations cannot be sent while sending is down",
+      detail:"Inviting a client ends in an email, which cannot send until the sending identity is fixed."},
+    integrations:{s:"attention", sum:"Eight drafts are held, waiting on a channel that cannot send",
+      detail:"Paige is holding eight drafts; each one ends in an email, and nothing can send."}
+  },
+  rail:[
+   {when:"3 Sep 06:12", who:null, what:"Sending identity check failed — rejected by the provider"},
+   {when:"3 Sep 06:12", who:null, what:"Eight deliveries held rather than attempted"}
+  ],
+  dec:{ you:["Fix the sending identity — everything else is waiting on it"], paige:[],
+        wait:["Your domain host, once the record is added"] } },
+
+ provider: { label:"Pending provider", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  brief:{
+    say:'<span class="w-wait">Two things are filed and waiting on someone outside</span> — your carrier registration and your DNS. <span class="w-need">One thing is yours: two-step sign-in.</span>',
+    next:'Turn on two-step sign-in while you wait — it is the only item here that is in your hands. The carrier and your domain host hold the rest.',
+    nextRoute:R.team, nextAct:"Settings › Team",
+    fresh:"Last checked 3 Sep, 06:12 · the daily sweep", mode:"idle" },
+  ann:"The ONLY state where PENDING PROVIDER may appear — and it requires that something was genuinely filed. 'Not started' is NOT CONNECTED; conflating the two is how a surface starts telling people to wait for a thing nobody submitted. The Security area here shows PROOF OWED with §9-safe wording (the effect of platform policy, never the platform's own posture). The fourth attention item is the vocabulary HOLE (suspended-by-carrier) — read its annotation; the prototype renders it the least-wrong way and flags the compromise.",
+  att:[
+   {sev:"wait", h:"Your carrier registration is filed and under review", s:"provider",
+    why:"submitted 29 Aug; carriers typically answer within 5 to 10 business days",
+    own:"The carrier — nothing is needed from you", src:"Registration record · submitted 29 Aug 14:20", ver:"3 Sep, 06:12",
+    act:"Connections › Registration", route:R.regSeg,
+    extra:"Texting stays off until they answer. Paige will record the outcome here either way, including a rejection."},
+   {sev:"wait", h:"Your domain is verified with us and waiting on your DNS to propagate", s:"provider",
+    why:"the record was added 2 Sep; propagation is out of everyone's hands",
+    own:"Your domain host", src:"tenant_email_domains · status verifying", ver:"3 Sep, 06:12",
+    act:"Connections › Communications", route:R.commsSeg},
+   {sev:"high", h:"Two-step sign-in is off on your own account", s:"attention",
+    why:"nothing outside is holding this up — it is yours to switch on",
+    own:"You", src:"Your account's sign-in factors", ver:"3 Sep, 06:12",
+    act:"Settings › Team", route:R.team,
+    extra:"Set on your personal account security; there is no one-click control inside this workspace yet."},
+   {sev:"wait", h:"Your messaging account was suspended by the carrier", s:"attention",
+    why:"it was working, and it was taken away — you did not switch this off",
+    own:"The carrier. There may be nothing you can do inside Paige.",
+    src:"Messaging account status · suspended", ver:"3 Sep, 06:12",
+    act:"Connections › Registration", route:R.regSeg,
+    extra:"GAP — read the state note. None of the nine words fits this precisely, and the pill above is the least wrong of them.",
+    gap:true}
+  ],
+  ready:[
+   {p:"Email sends today from a Paige-hosted address, while your own domain finishes.", s:"Live sender record", status:"live"},
+   {p:"Paige can run four of your automations.", s:"Approved workflow list · 3 Sep 06:12", status:"live"},
+   {p:"42 people on file, 7 added in the last 30 days.", s:"Live count from your client list", status:"live"}
+  ],
+  areaOverrides:{
+    comms:{s:"provider", sum:"Your domain is verified with us and waiting on DNS",
+      detail:"The record is added; propagation is out of everyone's hands until your domain host completes it."},
+    security:{s:"proof", sum:"Part of what Paige may do here is further limited by platform policy",
+      detail:"Some of Paige's limits in this workspace are set above it, and only their effect on your own tools is shown here. The platform's own settings are never exposed to your workspace — so this reads Proof owed: something limits Paige, and it cannot be verified from here."}
+  },
+  rail:[
+   {when:"29 Aug 14:20", who:null, what:"Carrier registration submitted"},
+   {when:"2 Sep 10:05", who:null, what:"Domain record added — verification pending"}
+  ],
+  dec:{ you:["Turn on two-step sign-in"], paige:[],
+        wait:["The carrier, on your texting registration — filed 29 Aug","Your domain host, on DNS propagation — added 2 Sep"] } },
+
+ sparse: { label:"Sparse (first real data)", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  brief:{
+    say:'<span class="w-ready">Your first check has run.</span> It could look at three things so far — and most of your business is <span class="w-need">not connected yet</span>, which is normal for a new workspace.',
+    next:'Add your business profile and connect email. Those two unlock most of the other checks — right now there is simply not much for the check to look at.',
+    nextRoute:R.profile, nextAct:"Setup › Business profile",
+    fresh:"Last checked 3 Sep, 06:12 · your first sweep", mode:"idle" },
+  ann:"Distinct from EMPTY: a check HAS run, but the workspace is new so most sources have nothing to answer. The honest read is 'not connected yet', never 'needs attention' — an absent connection is not a fault. This is the far more common early state than a total blank.",
+  att:[
+   {sev:"med", h:"Your business profile has not been filled in", s:"notconnected",
+    why:"most other checks cannot run until Paige knows your website, phone and industry",
+    own:"You", src:"Setup check · company_info_populated", ver:"3 Sep, 06:12",
+    act:"Setup › Business profile", route:R.profile,
+    extra:"This is the single most useful first move — it unlocks several other checks at once."},
+   {sev:"med", h:"Email is not connected yet", s:"notconnected",
+    why:"nothing has been set up for Paige to send from",
+    own:"You", src:"comms_configured · nothing on file", ver:"3 Sep, 06:12",
+    act:"Connections › Communications", route:R.commsSeg}
+  ],
+  ready:[
+   {p:"Your workspace exists and the daily check is running on schedule.", s:"Live run record · 3 Sep 06:12", status:"live"}
+  ],
+  areaOverrides:{
+    people:{s:"notconnected", sum:"Not set up yet", detail:"No people are on file yet, which is normal for a new workspace."},
+    sales:{s:"notconnected", sum:"Not set up yet", detail:"Nothing commercial has been recorded yet — no offers, pipeline or payment details."},
+    comms:{s:"notconnected", sum:"Not set up yet", detail:"No sending identity has been connected yet, so there is nothing to report."},
+    campaigns:{s:"notconnected", sum:"Not set up yet", detail:"No pages, forms or enquiries exist in this workspace yet."},
+    integrations:{s:"notconnected", sum:"Not set up yet", detail:"No automation connection has been saved yet."}
+  },
+  rail:[
+   {when:"3 Sep 06:12", who:null, what:"First setup check completed — 3 checks, nothing yet to report"}
+  ],
+  railNote:"A new workspace's rail is genuinely near-empty. Padding it would be a lie; it says so plainly.",
+  dec:{ you:["Fill in your business profile","Connect email"], paige:[], wait:[] } },
+
+ empty: { label:"Empty (first-use)", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  brief:{
+    say:'No check has finished for this workspace yet, so there is nothing to show — <span class="w-ready">and nothing here is a claim that anything is wrong.</span>',
+    next:'Run the first check. It reads what your business systems actually report and takes a moment.',
+    nextRoute:null, nextAct:null,
+    fresh:"No check has finished yet", mode:"first" },
+  ann:"A workspace whose first check has not landed. No area may show a status, because no source has answered. The one honest thing to offer is to start the check. NOT the same as sparse (which HAS a completed run).",
+  emptyState:{ t:"Nothing has been checked yet", p:"Systems Check reads what your business systems actually report. None of them has answered for this workspace yet, so there is nothing here to show you — and nothing here is a claim that anything is wrong." },
+  att:[], ready:[], rail:[], areas:"suppress",
+  dec:{ you:["Run the first check"], paige:[], wait:[] } },
+
+ loading: { label:"Loading", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  brief:{ say:"", next:"", fresh:"Reading this workspace's checks…", mode:"loading" },
+  ann:"Initial read. Skeletons carry the shape of what is coming so the layout does not jump when it lands. No count, no status, no claim of health while the read is in flight. Reduced-motion turns the shimmer off.",
+  skeleton:true, att:[], ready:[], rail:[], areas:"suppress",
+  dec:{ you:[], paige:[], wait:[] } },
+
+ rechecking: { label:"Re-checking (in flight)", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  brief:"inherit-mixed",
+  staleBanner:"A check is running now — started 3 Sep, 08:41. Everything below is the <b>last recorded</b> result, from 3 Sep 06:12. It has not been replaced yet.",
+  reMode:"running",
+  ann:"Real in-flight state, not a timer: a run row exists with no completion time (readable from scanInProgressSince). The last-recorded values stay on screen, explicitly LABELLED last-recorded rather than dimmed and left ambiguous. 'Re-run the checks' invokes systems-check-run-onboarding with the tenant's own session — available today, but its costs are real (records as an onboarding scan, no dedupe, one blocking POST); wiring it is a separate owner decision, flagged not assumed.",
+  dec:{ you:["Wait for the check to finish, or carry on — it will not interrupt you"], paige:["Running your checks now"], wait:[] } },
+
+ stale: { label:"Stale (>24h)", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  brief:{
+    say:'<span class="w-ready">Email and your client list were ready</span> when this was last checked — <span class="w-need">but that was over a day ago.</span>',
+    next:'Re-run the checks to confirm nothing has changed since yesterday. What is shown is the last recorded sweep, and a check can go stale inside a day.',
+    nextRoute:null, nextAct:null,
+    fresh:"Last checked 2 Sep, 09:00 — over 24 hours ago", mode:"stale" },
+  staleChip:true, reMode:"idle-rerun",
+  ann:"The scheduled sweep runs once a day (09:00 UTC), so a reading can be up to 24h old — a tenant can make a check worse inside that window without the surface saying so. STALE EVIDENCE is shown honestly, every shown value carries the stale date, and 'Re-run the checks' is offered as the real way to refresh it (not the re-read).",
+  att:[
+   {sev:"high", h:"Your business profile is missing the details Paige needs", s:"attention",
+    why:"as of the last sweep, over a day ago",
+    own:"You", src:"Setup check · company_info_populated", ver:"2 Sep, 09:00",
+    act:"Setup › Business profile", route:R.profile}
+  ],
+  ready:[
+   {p:"Email sending worked — as of the last sweep.", s:"Sender record · 2 Sep 09:00 (over a day ago)", open:true, status:"live"},
+   {p:"42 people were on file at the last sweep.", s:"Client list count · 2 Sep 09:00", status:"live"}
+  ],
+  areaOverrides:{
+    setup:{s:"attention", sum:"Profile was incomplete at the last sweep", ver:"2 Sep, 09:00",
+      detail:"As of over a day ago, website, phone and industry were blank. Re-run the checks to confirm this is still true."},
+    comms:{s:"live", sum:"Email sent — as of the last sweep", ver:"2 Sep, 09:00",
+      detail:"True at the last sweep, over a day ago. Re-run the checks to confirm it still holds."},
+    people:{s:"live", sum:"Client list read — as of the last sweep", ver:"2 Sep, 09:00",
+      detail:"42 people were on file at the last sweep. This number can change inside a day."}
+  },
+  rail:[
+   {when:"2 Sep 09:00", who:null, what:"Scheduled sweep completed — the last one recorded"}
+  ],
+  dec:{ you:["Re-run the checks to get a current reading"], paige:[], wait:[] } },
+
+ refreshfail: { label:"Refresh failed", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  brief:{
+    say:'<span class="w-need">The last read failed.</span> Nothing below is being reported as healthy — it is the last result we could read, from 3 Sep 06:12.',
+    next:'Try the refresh again. If it keeps failing, the check data could not be reached — this is our problem to look at, not yours.',
+    nextRoute:null, nextAct:null,
+    fresh:"The last read did not complete", mode:"failed",
+    err:"The re-read failed. What is shown below is the last result we could read, from 3 Sep 06:12 — it is not being reported as current or healthy." },
+  reMode:"idle-retry",
+  ann:"A failed re-read must NEVER render as 'everything is fine'. The error is stated plainly, the shown values are explicitly marked last-recorded, the Rail goes to its own UNAVAILABLE state rather than reading as empty, and no empty result is treated as a healthy one. This is the §13/§32 rule: a failed read is not good news.",
+  att:[
+   {sev:"high", h:"Your business profile is missing the details Paige needs", s:"attention",
+    why:"from the last result we could read — this may not be current",
+    own:"You", src:"Setup check · company_info_populated", ver:"3 Sep, 06:12",
+    act:"Setup › Business profile", route:R.profile}
+  ],
+  ready:[
+   {p:"Email sending worked — in the last result we could read.", s:"Sender record · 3 Sep 06:12 (read failed since)", status:"live"}
+  ],
+  areaOverrides:{
+    setup:{s:"attention", sum:"Profile incomplete — in the last result we could read",
+      detail:"This may not be current; the last read failed. Try the refresh again."},
+    comms:{s:"live", sum:"Email worked — in the last result we could read",
+      detail:"True in the last result we could read; the current read failed, so it is not confirmed as of now."}
+  },
+  rail:[],
+  railStatus:"unavailable",
+  dec:{ you:[], paige:["Retry the read"], wait:[] } },
+
+ failure: { label:"Run failed partway", ws:"Northwind Advisory", sub:"Solo workspace · 3855",
+  brief:{
+    say:'<span class="w-need">The last check stopped partway through.</span> Four of ten checks completed; the other six were never evaluated, so they are shown as <span class="w-need">unavailable</span>, not passed.',
+    next:'Re-run the checks. The six that never ran are not being reported either way — nothing below claims anything about Sales, Campaigns, Integrations, Paige’s team, the Mind, or Security.',
+    nextRoute:null, nextAct:null,
+    fresh:"The last check did not finish · started 3 Sep 06:12, stopped after 4 of 10", mode:"failed",
+    err:"The check stopped after the fourth of ten. Six checks were never evaluated, so nothing below covers them." },
+  reMode:"idle-rerun",
+  ann:"The run itself broke. The critical rule: the four checks that DID complete are shown as their own real result, and the six that never ran are UNAVAILABLE — not passed, not failed, and not quietly omitted. Their summaries say 'not evaluated', never a positive claim the aborted run could not have produced. A count no run produced never appears.",
+  att:[
+   {sev:"block", h:"Six of your ten checks were never evaluated", s:"unavailable",
+    why:"the check stopped after the fourth one and did not resume",
+    own:"Paige — this is ours, not yours", src:"Run record · no completion time", ver:"3 Sep, 06:12",
+    act:"Re-run the checks", route:null,
+    extra:"Nothing below claims anything about Sales, Campaigns, Integrations, Paige's team, the Mind, or Security. They were not looked at."}
+  ],
+  ready:[
+   {p:"Of the four that did complete: email sending works, and replies land back here.", s:"Live sender record · 3 Sep 06:12", open:true, status:"live"},
+   {p:"42 people on file — this one completed before the run stopped.", s:"Live count · 3 Sep 06:12", status:"live"}
+  ],
+  areaOverrides:{
+    sales:{s:"unavailable", sum:"Not evaluated — the check stopped before reaching it",
+      detail:"This area's check never ran in the last (failed) run, so nothing here is being reported either way."},
+    campaigns:{s:"unavailable", sum:"Not evaluated — the check stopped before reaching it",
+      detail:"This area's check never ran in the last (failed) run, so nothing here is being reported either way."},
+    integrations:{s:"unavailable", sum:"Not evaluated — the check stopped before reaching it",
+      detail:"This area's check never ran in the last (failed) run, so nothing here is being reported either way."}
+  },
+  rail:[{when:"3 Sep 06:12", who:null, what:"Setup check started"},
+        {when:"3 Sep 06:12", who:null, what:"Check stopped after 4 of 10 — no completion recorded"}],
+  dec:{ you:[], paige:["Re-run the check"], wait:[] } },
+
+ switch: { label:"Workspace switch", ws:"Harbour & Fen", sub:"Solo workspace · 4102",
+  brief:{ say:"", next:"", fresh:"Reading Harbour & Fen's checks…", mode:"loading" },
+  ann:"The account changed mid-read. Nothing from the prior workspace may survive the switch — not a row, not a count, not a cached status. The surface goes to its OWN honest loading state under the new name rather than showing the last workspace's numbers. (In the app, CommandHub re-keys the subtree on the tenant id, so a remount enforces this structurally.)",
+  emptyState:{ t:"Reading Harbour & Fen", p:"You switched workspace. Nothing from the last one is carried over — its counts, statuses and open items belong to it, not to this one." },
+  skeleton:true, att:[], ready:[], rail:[], areas:"suppress",
+  dec:{ you:[], paige:[], wait:[] } }
+};
+
+/* ---------------- render ---------------- */
+var cur = "mixed";
+var open = {};
+
+function resolveState(key){
+  var st = STATES[key];
+  if (key === "rechecking"){
+    var base = {}; var m = STATES.mixed;
+    for (var k in m) base[k] = m[k];
+    for (var j in st) if (st[j] !== "inherit-mixed") base[j] = st[j];
+    base.label = st.label; base.brief = m.brief; return base;
+  }
+  return st;
+}
+
+/* the refresh contract — TWO honest buttons, always distinct (spec §5.4) */
+function reAction(st, mode){
+  var reread = '<button class="btn btn--quiet btn--sm" title="Re-reads the last recorded check. It does not run the checks again.">'
+             + '<span aria-hidden="true">↻</span> Refresh current data</button>';
+  var rerun  = '<button class="btn btn--gold">Re-run the checks</button>';
+  if (st.skeleton || mode === "loading") {
+    return '<button class="btn" disabled><span class="spin"></span> Loading…</button>';
+  }
+  if (mode === "first") return '<button class="btn btn--gold">Run the first check</button>';
+  if (st.reMode === "running")
+    return '<button class="btn" disabled><span class="spin"></span> Re-running all 10 checks…</button>'
+         + '<button class="btn btn--quiet btn--sm" disabled><span aria-hidden="true">↻</span> Refresh current data</button>';
+  if (st.reMode === "idle-retry") return reread + rerun
+    + ann("A failed re-read leads with the retry, but the real re-check stays offered.");
+  return rerun + reread
+    + ann("Re-run the checks = invoke systems-check-run-onboarding with the tenant's own session — the full 10-check catalog, server-side, a real summary. Refresh current data = re-read the last recorded run, and it says so. The two are NEVER the same button. Wiring the re-run live is a separate owner decision (it records as an onboarding scan, has no dedupe, and is one blocking POST) — this prototype shows the target, not an assumed default.");
+}
+
+function briefEl(st){
+  var b = st.brief; if (!b) return "";
+  if (st.skeleton && !b.say){
+    return '<div class="brief"><div class="brief-l">'
+      + '<div class="sk" style="box-shadow:none;border:0;padding:0;background:none">'
+      + '<div class="sk-row w60"></div><div class="sk-row w80"></div></div>'
+      + '<div class="brief-fresh">'+b.fresh+'</div></div></div>';
+  }
+  var acts = reAction(st, b.mode);
+  return '<div class="brief"><div class="brief-l">'
+    + (b.say ? '<div class="brief-say">'+b.say+'</div>' : "")
+    + (b.next ? '<div class="brief-next"><span class="lead-dot"></span><div><b>Do next:</b> '
+        + b.next + (b.nextRoute ? ' <span class="route">'+esc(b.nextRoute)+'</span>' : "") + '</div></div>' : "")
+    + '<div class="brief-fresh">'+ b.fresh
+    + (b.err ? ' — <span class="err">'+b.err+'</span>' : "") + '</div>'
+    + ann("The operating brief is the §3 lead: a plain-English sentence built from the real signals in each state — never a health score or an aggregate roll-up. 'Do next' names the single most consequential move and the exact surface it lives on.")
+    + '</div><div class="brief-r">'+acts+'</div></div>'
+    + (st.staleBanner ? '<div class="note">'+st.staleBanner+'</div>' : "");
+}
+
+function attEl(st){
+  if (st.emptyState || st.skeleton) return "";
+  var items = st.att || [];
+  var head = '<div class="sec-h"><h2>What needs you now</h2>'
+    + (items.length ? '<span class="n">'+items.length+'</span>' : "")
+    + '<span class="aside">Ordered by what holds up the most, not by area</span></div>';
+  if (!items.length){
+    return '<section class="sec">'+head
+      + '<div class="note solid">'+(st.attEmpty || "Nothing needs you right now.")+'</div>'
+      + ann("An empty attention list is a real state and must read as calm, not as an error or a blank.")
+      + '</section>';
+  }
+  var body = items.map(function(it){
+    return '<article class="item sev-'+it.sev+'">'
+      + '<div class="item-t"><h3>'+it.h+'</h3>'+pill(it.s)+'</div>'
+      + '<div class="why-c" style="margin-top:4px">'+it.why+'</div>'
+      + (it.holds ? '<div class="item-holds"><b>Holds up:</b> '+it.holds+'</div>' : "")
+      + (it.extra ? '<div class="item-extra">'+it.extra+'</div>' : "")
+      + '<dl class="meta">'
+      +   '<div class="m"><dt>Owner</dt><dd>'+it.own+'</dd></div>'
+      +   '<div class="m"><dt>Source</dt><dd class="src">'+it.src+'</dd></div>'
+      +   '<div class="m"><dt>Verified</dt><dd>'+it.ver+'</dd></div>'
+      + '</dl>'
+      + '<div class="item-a">'
+      +   (it.route ? '<a class="btn btn--sm" href="'+esc(it.route)+'" onclick="return false">'+it.act+' →</a><span class="route">'+esc(it.route)+'</span>'
+                    : '<button class="btn btn--sm btn--gold">'+it.act+'</button>')
+      +   '<button class="btn btn--sm btn--quiet" data-inspect="'+esc(it.h)+'" data-status="'+it.s+'">What was checked</button>'
+      + '</div>'
+      + (it.gap ? ann("VOCABULARY HOLE for the owner to rule on. 'suspended' is a live CHECK value on six tables, written by real shipped code (Twilio maps its own subaccount status through; a platform operator can freeze a tenant; an agency admin can suspend a seat). None of the nine words fits precisely: PAUSED says YOU switched it off, NOT CONNECTED says it never was, UNAVAILABLE means no source exists, NEEDS ATTENTION implies an action the owner may not have. Zero rows sit suspended on prod today — reachable-but-unoccupied. Either a tenth word, or a ruling that NEEDS ATTENTION absorbs it with the sentence carrying who switched it off.") : "")
+      + ann(it.route ? "Route built through subtabPath/setupSubtabPath and verified against tierBranches.ts. /solo/* has no catch-all, so a wrong slug would silently render Command Center with the wrong URL — a bad link would look like it worked."
+                     : "No route: this action IS the re-check, not a destination.")
+      + '</article>';
+  }).join("");
+  return '<section class="sec">'+head+'<div class="att">'+body+'</div></section>';
+}
+
+function readyEl(st){
+  if (st.emptyState || st.skeleton) return "";
+  var r = st.ready || [];
+  if (!r.length) return "";
+  return '<section class="sec"><div class="sec-h"><h2>What is ready to operate</h2>'
+    + '<span class="n">'+r.length+'</span>'
+    + '<span class="aside">Only what a real source answers for. Nothing here is inferred.</span></div>'
+    + '<ul class="ready">' + r.map(function(x){
+        var stt = x.status || "live";
+        var t = x.open ? '<button class="ready-open" data-inspect="'+esc(x.p)+'" data-status="'+stt+'">'+x.p+'</button>' : x.p;
+        return '<li>'+svgTick()+'<div><p>'+t+'</p><small>'+x.s+'</small></div></li>';
+      }).join("") + '</ul>'
+    + ann("Each line names its own source and time. A capability with no source does not appear here at all — it appears in its area as Not connected, Unavailable, Proof owed or Not checked. An underlined title opens the evidence drawer (the long-explanation state).")
+    + '</section>';
+}
+
+function areasEl(st){
+  if (st.areas === "suppress" || st.skeleton) return "";
+  var list = AREAS();
+  var ov = st.areaOverrides || {};
+  return '<section class="sec"><div class="sec-h"><h2>Your operating areas</h2>'
+    + '<span class="n">9</span>'
+    + '<span class="aside">Each carries its own status. There is deliberately no total.</span></div>'
+    + '<div class="areas">' + list.map(function(a){
+        var o = ov[a.id];
+        var paused = st.pausedArea === a.id;
+        var s = paused ? "paused" : (o ? o.s : a.s);
+        var why = paused ? st.pausedWhy : (o ? o.sum : a.sum);
+        var detail = paused ? st.pausedDetail : (o ? o.detail : null);
+        var isOpen = !!open[a.id];
+        var isNotChecked = (s === "notchecked") && !o && !paused;
+        var body = "";
+        if (detail){
+          body = '<p class="area-detail">'+detail+'</p>';
+        } else if (isNotChecked){
+          body = '<div class="area-uncov"><b>Not checked.</b> No Systems Check readiness runner covers this area yet, so nothing here is being scored either way — a marker of unfinished backend work, not a claim that anything is wrong.</div>';
+        } else {
+          body = '<div class="grid7">'
+              + '<div class="m"><dt>What we know</dt><dd>'+a.know+'</dd></div>'
+              + '<div class="m"><dt>Source</dt><dd class="src">'+a.src+'</dd></div>'
+              + '<div class="m"><dt>Last verified</dt><dd>'+a.ver+'</dd></div>'
+              + '<div class="m"><dt>What Paige can do now</dt><dd>'+a.can+'</dd></div>'
+              + '<div class="m"><dt>What is blocked</dt><dd>'+a.blocked+'</dd></div>'
+              + '<div class="m"><dt>Owner</dt><dd>'+a.own+'</dd></div>'
+              + '</div>';
+        }
+        return '<div class="area" data-open="'+isOpen+'">'
+          + '<button class="area-b" data-area="'+a.id+'" aria-expanded="'+isOpen+'" aria-controls="scd-'+a.id+'">'
+          +   svgChev()
+          + '<span class="area-n">'+a.n+'</span>'+pill(s)
+          + '<span class="area-k">'+why+'</span></button>'
+          + (isOpen ? '<div class="area-d" id="scd-'+a.id+'">'
+              + body
+              + '<div class="item-a" style="margin-top:11px"><a class="btn btn--sm" href="'+esc(a.route)+'" onclick="return false">'+a.act+' →</a>'
+              + '<span class="route">'+esc(a.route)+'</span></div>'
+              + ann("An area that cannot fill a field says so in that field rather than dropping it. In an override state the drill-down carries the state-specific truth, so the pill never sits above contradictory evidence (the defect the verifier caught).")
+              + '</div>' : "")
+          + '</div>';
+      }).join("") + '</div>'
+    + ann("Nine rows, collapsed. The 101 grounded signals live INSIDE these — revealed on expand, never all at once. That is what keeps this off a scroll-wall (§11/§67). The one-line summary beside each pill is the advance over the shipped console, which showed only a terse scope label.")
+    + '</section>';
+}
+
+function railEl(st){
+  if (st.skeleton) return "";
+  if (st.railStatus === "unavailable"){
+    return '<section class="sec"><div class="sec-h"><h2>What has actually been verified</h2>'
+      + '<span class="aside">Real recorded events only</span></div>'
+      + '<div class="note">This workspace’s recent activity could not be loaded, so this is not a record of nothing happening.</div>'
+      + ann("A refusal or a failed read NEVER renders as an empty 'nothing happened' — it says so out loud (§13). Five different answers — loading, refused, failed, genuinely empty, populated — are kept apart.")
+      + '</section>';
+  }
+  var rows = st.rail || [];
+  if (!rows.length) return "";
+  return '<section class="sec"><div class="sec-h"><h2>What has actually been verified</h2>'
+    + '<span class="aside">Real recorded events only</span></div>'
+    + '<ul class="rail">' + rows.map(function(r){
+        return '<li><span class="when">'+r.when+'</span>'
+          + '<span class="who'+(r.who?"":" none")+'">'+(r.who || "Paige")+'</span>'
+          + '<span class="what">'+r.what+'</span></li>';
+      }).join("") + '</ul>'
+    + (st.railNote ? '<div class="note">'+st.railNote+'</div>' : "")
+    + ann("Reads the Rail. Nothing writes an agent name yet, so this stays honestly thin rather than padded — a real gap, surfaced not hidden.")
+    + '</section>';
+}
+
+function decEl(st){
+  if (st.skeleton) return "";
+  var d = st.dec || {you:[],paige:[],wait:[]};
+  function b(cls, title, items, none){
+    return '<div class="buck '+cls+'"><h3>'+title+'</h3><ul>'
+      + (items && items.length ? items.map(function(x){return '<li>'+x+'</li>';}).join("")
+                               : '<li class="none">'+none+'</li>')
+      + '</ul></div>';
+  }
+  return '<section class="sec"><div class="sec-h"><h2>Who does what next</h2></div>'
+    + '<div class="dec3">'
+    + b("you","Only you can do these", d.you, "Nothing waiting on you")
+    + b("paige","Paige can finish these", d.paige, "Nothing she can take on right now")
+    + b("wait","Waiting on someone outside", d.wait, "Nobody outside is holding anything up")
+    + '</div>'
+    + ann("Three buckets, because the owner's question is 'what is mine' — not 'what is broken'. An empty bucket says so plainly rather than disappearing.")
+    + '</section>';
+}
+
+function skeletonEl(){
+  return '<section class="sec"><div class="sk">'
+    + '<div class="sk-row w40"></div><div class="sk-row"></div><div class="sk-row w80"></div>'
+    + '</div><div class="sk"><div class="sk-row w60"></div><div class="sk-row"></div></div>'
+    + '<div class="sk"><div class="sk-row w40"></div><div class="sk-row w80"></div><div class="sk-row w60"></div></div></section>'
+    + ann("Skeletons carry the shape of the console so the layout does not jump when data lands. No status word and no count appears while the read is in flight.");
+}
+
+function render(){
+  var st = resolveState(cur);
+  document.getElementById("ws").textContent = st.ws;
+  document.getElementById("wsSub").textContent = st.sub;
+  var proofs = "";
+  if (st.staleChip) proofs += '<span class="proof proof--stale">Stale evidence</span>';
+  if (cur === "mixed" || cur === "rechecking") proofs += '<span class="proof">Partial coverage</span>';
+  if (cur === "refreshfail") proofs += '<span class="proof proof--critical">Read failed</span>';
+  if (cur === "failure") proofs += '<span class="proof proof--critical">Run did not finish</span>';
+
+  var h = '<div class="subhead"><span>What your business systems can actually do right now, and what is stopping the rest.</span>'
+        + (proofs ? '<span class="proofs">'+proofs+'</span>' : "") + '</div>';
+
+  h += briefEl(st);
+
+  if (st.skeleton){
+    if (st.emptyState){
+      h += '<div class="first"><h3>'+st.emptyState.t+'</h3><p>'+st.emptyState.p+'</p></div>';
+    } else {
+      h += skeletonEl();
+    }
+  } else {
+    if (st.emptyState){
+      h += '<div class="first"><h3>'+st.emptyState.t+'</h3><p>'+st.emptyState.p+'</p>'
+         + (st.brief && st.brief.mode==="first" ? '<button class="btn btn--gold">Run the first check</button>' : "")
+         + '</div>';
+    }
+    h += attEl(st) + readyEl(st) + areasEl(st) + railEl(st) + decEl(st);
+  }
+
+  h += '<div class="note solid"><b>State note.</b> '+st.ann+'</div>';
+  document.getElementById("body").innerHTML = h;
+  document.getElementById("live").textContent = st.label + " state shown.";
+}
+
+/* ---- evidence drawer (long explanation) ---- */
+/* sKey is a CLOSED-SET status word, so the drawer pill can never render a word outside the nine. */
+var DRAWER = {
+  "Email sending works — Paige can send on your behalf, and replies land back here.":{
+    kick:"Email, phone & SMS · Live", title:"Email sending is ready", sKey:"live", when:"3 Sep, 06:12",
+    signal:"Your emails go out from a Paige-hosted address, and replies land back in this workspace.",
+    ev:[["provider","resend"],["default_email_kind","reserved_shared"],["default_email_status","outbound_ready"],["has_email_identity","true"]],
+    suppressed:true,
+    impact:"Paige can send email on your behalf now, within the limits you set in Trust Compass. This is the strongest live channel in the workspace today.",
+    next:"Nothing is required. To send from your OWN business domain instead of the shared address, add a domain in Connections › Communications.",
+    decision:"No owner decision is recorded for this finding.",
+    outcome:"No durable outcome is recorded on the tenant rail." },
+  "Email sends from your own verified business domain.":{
+    kick:"Email, phone & SMS · Live", title:"Sending domain verified", sKey:"live", when:"3 Sep, 06:12",
+    signal:"Your own business domain is verified for sending, and email goes out from it.",
+    ev:[["provider","resend"],["default_email_kind","own_domain"],["default_email_status","outbound_ready"]],
+    suppressed:true,
+    impact:"Email from your own domain lands with better deliverability and reads as yours, not as a shared Paige address.",
+    next:"Nothing is required.",
+    decision:"No owner decision is recorded for this finding.",
+    outcome:"Domain verified 28 Aug · re-checked 3 Sep 06:12." },
+  "Of the four that did complete: email sending works, and replies land back here.":{
+    kick:"Email, phone & SMS · Live", title:"Email sending is ready", sKey:"live", when:"3 Sep, 06:12",
+    signal:"This check completed before the run stopped. Email sends and replies route back here.",
+    ev:[["provider","resend"],["default_email_status","outbound_ready"]],
+    suppressed:false,
+    impact:"One of only four checks that completed in the failed run. It is a real result; the six that never ran are shown as unavailable, not as passed.",
+    next:"Re-run the checks to evaluate the six that never ran.",
+    decision:"No owner decision is recorded for this finding.",
+    outcome:"No durable outcome is recorded." },
+  "Email sending worked — as of the last sweep.":{
+    kick:"Email, phone & SMS · Live (stale)", title:"Email sending — last sweep", sKey:"live", when:"2 Sep, 09:00 (over a day ago)",
+    signal:"Email sending worked at the last recorded sweep. That sweep is over 24 hours old.",
+    ev:[["provider","resend"],["default_email_status","outbound_ready"]],
+    suppressed:false,
+    impact:"This was true at the last sweep. A check can change inside a day, so re-run the checks to confirm it is still true.",
+    next:"Re-run the checks for a current reading.",
+    decision:"No owner decision is recorded for this finding.",
+    outcome:"No durable outcome is recorded." },
+  "Your business profile is missing the details Paige needs":{
+    kick:"Business setup · Needs attention", title:"Business profile incomplete", sKey:"attention", when:"3 Sep, 06:12",
+    signal:"Your business profile is missing the details Paige needs: website, business phone, and industry. Your business name is on file.",
+    ev:[["has_name","true"],["has_website","false"],["has_industry","false"],["has_business_phone","false"]],
+    suppressed:true,
+    impact:"Several other checks cannot run until these are filled in — the legal name and address in particular are what a carrier asks for before it will let you text.",
+    next:"Paige has drafted the fields she can infer and is holding them for you to accept. Open Setup › Business profile to review and save.",
+    decision:"No owner decision is recorded for this finding.",
+    outcome:"No durable outcome is recorded." }
+};
+function defaultDrawer(sKey){
+  return {
+    kick:"Systems Check", title:"What was checked", sKey:(S[sKey]?sKey:"live"), when:"3 Sep, 06:12",
+    signal:"This finding comes from the last recorded Systems Check run for this workspace.",
+    ev:[], suppressed:false,
+    impact:"No Paige interpretation is attached to this persisted finding.",
+    next:"Review this finding with Paige before any work is prepared or executed.",
+    decision:"No owner decision is recorded for this finding.",
+    outcome:"No durable outcome is recorded on the tenant rail." };
+}
+
+function openDrawer(key, sKey, trigger){
+  var d = DRAWER[key] || defaultDrawer(sKey);
+  var sMeta = S[d.sKey] || S.live;
+  var scrim = document.createElement("div"); scrim.className = "scrim"; scrim.id = "scrim";
+  var evHtml = d.ev.length
+    ? '<dl>'+d.ev.map(function(p){return '<dt>'+p[0]+'</dt><dd>'+p[1]+'</dd>';}).join("")+'</dl>'
+    : '<p>No presentation-safe evidence fields are available.</p>';
+  var dr = document.createElement("div");
+  dr.className = "drawer"; dr.id = "drawer"; dr.setAttribute("role","dialog");
+  dr.setAttribute("aria-modal","true"); dr.setAttribute("aria-label", d.title);
+  dr.innerHTML =
+      '<div class="drawer-h"><div><div class="kick">'+d.kick+'</div><h2>'+d.title+'</h2></div>'
+    + '<button class="icon-btn" id="drawerClose" data-initial>✕ <span>Close</span></button></div>'
+    + '<div class="drawer-b">'
+    +   '<section><div class="ev-meta"><span class="pill '+sMeta.k+'"><i></i>'+sMeta.t+'</span><span>Recorded '+d.when+'</span></div></section>'
+    +   '<section><h3>Signal</h3><p>'+d.signal+'</p></section>'
+    +   '<section><h3>Evidence &amp; provenance</h3>'+evHtml
+    +      (d.suppressed ? '<p style="margin-top:8px;font-size:11px">Additional evidence is retained but not displayed here — only presentation-safe fields render, never a provider payload, secret or internal id.</p>' : "")
+    +   '</section>'
+    +   '<section><h3>Impact</h3><p>'+d.impact+'</p></section>'
+    +   '<section><h3>Recommended next step</h3><p>'+d.next+'</p>'
+    +      '<button class="btn btn--paige btn--sm" style="margin-top:9px">Put Paige to work</button></section>'
+    +   '<section><h3>Owner decision</h3><p>'+d.decision+'</p></section>'
+    +   '<section><h3>Durable outcome</h3><p>'+d.outcome+'</p></section>'
+    +   '<div class="ann" style="display:'+(document.body.classList.contains("ann-on")?"block":"none")+'">The long-evidence state. Signal · evidence (presentation-safe fields ONLY) · impact · recommended next step · owner decision · durable outcome. A finding with no safe fields says so rather than dumping raw evidence. The pill uses the item&#39;s own closed-set status word. Focus is trapped here; the console behind is inert; Escape or Close returns focus to the trigger.</div>'
+    + '</div>';
+  document.body.appendChild(scrim); document.body.appendChild(dr);
+  // Make the console behind the modal inert for AT + pointer, not just the keyboard trap.
+  var inertTargets = [document.getElementById("stage"), document.getElementById("decsurface")];
+  inertTargets.forEach(function(el){ if (el){ el.inert = true; el.setAttribute("aria-hidden","true"); } });
+  var closeBtn = document.getElementById("drawerClose");
+  closeBtn.focus();
+  function close(){
+    dr.remove(); scrim.remove();
+    inertTargets.forEach(function(el){ if (el){ el.inert = false; el.removeAttribute("aria-hidden"); } });
+    document.removeEventListener("keydown", onKey);
+    if (trigger && trigger.isConnected) trigger.focus();
+  }
+  function onKey(e){
+    if (e.key === "Escape"){ close(); return; }
+    if (e.key !== "Tab") return;
+    var f = [].slice.call(dr.querySelectorAll("button, [href], textarea, [tabindex]:not([tabindex='-1'])"));
+    if (!f.length) return;
+    var first = f[0], last = f[f.length-1];
+    if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  }
+  scrim.addEventListener("click", close);
+  closeBtn.addEventListener("click", close);
+  document.addEventListener("keydown", onKey);
+}
+
+/* ---- harness wiring ---- */
+var sw = document.getElementById("states");
+sw.innerHTML = Object.keys(STATES).map(function(k){
+  return '<button class="rv-btn'+(k===cur?" on":"")+'" data-state="'+k+'">'+STATES[k].label+'</button>';
+}).join("");
+
+document.addEventListener("click", function(e){
+  var t = e.target.closest("button, a[data-inspect]"); if(!t) return;
+  if (t.dataset.state){ cur = t.dataset.state; open = {};
+    [].forEach.call(sw.children, function(b){ b.classList.toggle("on", b.dataset.state===cur); });
+    render(); return; }
+  if (t.dataset.vw){ document.getElementById("shell").dataset.vw = t.dataset.vw;
+    [].forEach.call(t.parentNode.children, function(b){ if(b.dataset&&b.dataset.vw) b.classList.toggle("on", b===t); }); return; }
+  if (t.dataset.theme){ document.documentElement.dataset.theme = t.dataset.theme;
+    [].forEach.call(t.parentNode.children, function(b){ if(b.dataset&&b.dataset.theme) b.classList.toggle("on", b===t); }); return; }
+  if (t.id === "annBtn"){ document.body.classList.toggle("ann-on");
+    t.classList.toggle("on", document.body.classList.contains("ann-on")); return; }
+  if (t.dataset.area){ var i = t.dataset.area; open[i] = !open[i]; render();
+    requestAnimationFrame(function(){ var el = document.querySelector('[data-area="'+i+'"]'); if (el) el.focus(); }); return; }
+  if (t.dataset.inspect !== undefined){ openDrawer(t.dataset.inspect, t.dataset.status || "live", t); return; }
+  if (t.dataset.dec){
+    document.getElementById("verdict").textContent =
+      t.dataset.dec + " — " + STATES[cur].label + " state. "
+      + (document.getElementById("notes").value.trim() || "No notes.");
+    return; }
+});
+
+render();
+</script>

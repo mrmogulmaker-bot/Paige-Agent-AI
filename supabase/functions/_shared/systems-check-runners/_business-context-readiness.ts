@@ -14,9 +14,20 @@ import { throwOnDbError } from "./_kit.ts";
 export type BusinessContextFieldStatus =
   | "owner_confirmed"
   | "connection_sourced"
+  /** Present ONLY in the legacy tenants.brand record, never confirmed in Setup. Added by the
+   *  canonical readiness contract (20261221000000): the two readers of these facts used to
+   *  disagree about it — one reported "no value" while the other reported "a value exists" — and
+   *  each was half right. It grades exactly like needs_confirmation through isConfirmed() below,
+   *  so no Systems Check verdict moves; what changes is that the state now says which record the
+   *  value came from instead of erasing one of the two facts. */
+  | "legacy_sourced"
   | "needs_confirmation"
   | "invalid_format"
-  | "unavailable";
+  /** The read was refused or could not be performed. NEVER equivalent to "no value" — a caller
+   *  that treats it as missing is inventing a fact from a failure. */
+  | "unavailable"
+  /** Scope could not be resolved, so nothing about any field is asserted. */
+  | "unknown";
 
 export type BusinessContextField = "website" | "business_phone" | "industry" | "primary_business_email";
 
@@ -25,6 +36,9 @@ export type BusinessContextReadiness = Record<BusinessContextField, {
   source: string | null;
   as_of: string | null;
   reason: string | null;
+  /** What the owner has to do for this field, or null when there is nothing to do. Written once
+   *  in the resolver so no consumer invents its own wording for the same state (§18). */
+  next_action: string | null;
 }>;
 
 /** True only for the one state that means "Setup has a confirmed value for this field". */
@@ -44,7 +58,15 @@ export async function readBusinessContextReadiness(
 ): Promise<BusinessContextReadiness> {
   if (!tenantId) {
     const out = {} as BusinessContextReadiness;
-    for (const f of ALL_FIELDS) out[f] = { status: "unavailable", source: null, as_of: null, reason: "workspace not resolved" };
+    for (const f of ALL_FIELDS) {
+      out[f] = {
+        status: "unavailable",
+        source: null,
+        as_of: null,
+        reason: "workspace not resolved",
+        next_action: "Nothing to act on until this can be read; do not treat it as missing.",
+      };
+    }
     return out;
   }
   const { data, error } = await admin.rpc("get_business_context_readiness", { _tenant_id: tenantId });
@@ -55,8 +77,17 @@ export async function readBusinessContextReadiness(
     source: string | null;
     as_of: string | null;
     reason: string | null;
+    next_action: string | null;
   }>;
   const out = {} as BusinessContextReadiness;
-  for (const r of rows) out[r.field_key] = { status: r.status, source: r.source, as_of: r.as_of, reason: r.reason };
+  for (const r of rows) {
+    out[r.field_key] = {
+      status: r.status,
+      source: r.source,
+      as_of: r.as_of,
+      reason: r.reason,
+      next_action: r.next_action ?? null,
+    };
+  }
   return out;
 }

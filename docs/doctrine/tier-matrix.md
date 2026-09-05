@@ -379,7 +379,7 @@ re-proved 2026-09-05: a non-member actor raises `CAPABILITY_RUN_FORBIDDEN`).
 
 | Tier | Can trigger a comms `capability_run` row | Sees it on the Solo Rail |
 |---|---|---|
-| **God / Super Admin** | **—** and this is a KNOWN GAP, not a decision: the four comms tools' role gate is `roles.includes('admin') \|\| roles.includes('coach')` with **no `is_platform_owner()` branch**, so an operator cannot reach the tools at all. Owner-routed to its own PR | ✓ when acting inside a tenant |
+| **God / Super Admin** | ✓ **when acting inside a tenant** (operator_enter_tenant) — the role gate now admits `super_admin` (Slice B, 2026-09-05); at rest, tenant-less, the read tools answer `tenant_not_resolved`. Admits super_admin ONLY, NOT platform_admin (a distinct role string) — frozen super_admin grant, §53 | ✓ **when acting inside a tenant they hold a `tenant_members` seat in**; a pure operator act-as (`operator_enter_tenant`, no member seat) still drives the act but its Rail row is silently dropped — see the honest gap below |
 | **Agency** (agency-as-tenant) | ✓ admin/coach of the active workspace | ✓ |
 | **Standalone Solo** | ✓ same gate | ✓ |
 | **Sub-account** | ✓ same gate, its own tenant only | ✓ its own only |
@@ -388,11 +388,12 @@ re-proved 2026-09-05: a non-member actor raises `CAPABILITY_RUN_FORBIDDEN`).
 
 **One honest gap in the recorder itself (§39 peer-gate, 2026-09-05).** Each row above is the caller
 acting on a workspace they are an active **member** of. A cross-tenant *manager* — an agency owner
-reaching DOWN into a child via `agency_can_manage_child`, or a `platform_admin` who also holds a
-global `admin` role — can drive these tools (the role gate is global) and the seam acts on the
-child, but `record_capability_run` requires the ACTOR to hold an active `tenant_members` seat in
-that child and raises `CAPABILITY_RUN_FORBIDDEN` otherwise, so **the row is silently dropped** (the
-act still happens; only the record is lost). This is inherited unchanged from the merged SCR-1 and
+reaching DOWN into a child via `agency_can_manage_child`, a `platform_admin` who also holds a
+global `admin` role, or (as of Slice B, 2026-09-05) a `super_admin` act-as'd into a tenant via
+`operator_enter_tenant` without a member seat — can drive these tools (the role gate is global) and
+the seam acts on the child, but `record_capability_run` requires the ACTOR to hold an active
+`tenant_members` seat in that child and raises `CAPABILITY_RUN_FORBIDDEN` otherwise, so **the row is
+silently dropped** (the act still happens; only the record is lost). This is inherited unchanged from the merged SCR-1 and
 is identical for the n8n and Zapier executors — the recorder's member-seat gate is narrower than the
 `current_user_tenant_id()` authority the seams themselves honour. It is **latent** for comms
 (agency-managing-a-child through the comms tools; zero such prod rows today) and pre-launch.
@@ -1416,7 +1417,7 @@ introduces a new wrong cell is worse than the drift it fixes.
 **What did NOT ship here, stated so the ledger is not read as more than it is:** Refresh still
 re-reads the last recorded run and says so — an on-demand re-check is NOT wired. `systems_check_snapshot`
 is still latest-RUN only, so a Setup save still narrows the reading and remediation actions filed
-against older runs remain unreachable on every tier. Only three of the eight status words
+against older runs remain unreachable on every tier. Only three of the nine status words
 (`LIVE`, `NEEDS ATTENTION`, `UNAVAILABLE`) can be produced from the finding store; `PENDING PROVIDER`
 and `PAUSED` require the provider result contract and are NOT rendered by this surface yet.
 
@@ -1508,9 +1509,11 @@ names the surface. The `h1` is kept in the DOM and taken out of layout, never de
 the `aria-labelledby` target of the whole section. Recorded in
 `docs/product/systems-check-operating-readiness-spec.md` §3.2 and pinned by assertion.
 
-**`NOT CHECKED` is a NINTH status word, outside the owner's closed set of eight** — disclosed in
-spec §4.4a, awaiting an owner ruling. The row above this section already describes it as shipped;
-what is new here is that it is now recorded as an exception rather than passing silently.
+**`NOT CHECKED` is the NINTH status word — ratified 2026-09-05 (spec §4.4a; decision-log
+2026-09-05), now shipped as a first-class ninth pill** in the closed set. It renders on an area with
+no covering check (`coveredBy.length === 0`), so — unlike `LIVE` / `NEEDS ATTENTION` / `UNAVAILABLE`
+— it derives from area coverage, not from a persisted `FindingStatus`, and never implies a run
+looked and found nothing.
 
 **Still NOT shipped, unchanged from #928 and restated so this entry is not read as more than it is:**
 Refresh still re-reads the last recorded run. `systems_check_snapshot` is still latest-RUN only.
@@ -3523,6 +3526,15 @@ prod to test with. It is a forward-looking guard for the first member or client 
 `tenants.brand` — never confirmed in Setup — now read `needs_confirmation`, flipping
 `website_connected` and one `comms_configured` phone half from pass to fail. True under the
 source-of-truth rule; surfaced for an owner decision rather than absorbed.
+
+**Corrected 2026-09-05 (PR #958).** The STATE those two tenants read is no longer
+`needs_confirmation` — it is **`legacy_sourced`** / source `legacy_brand`: the value exists, in the
+legacy record, and was never confirmed. `needs_confirmation` was itself a lossy answer, and the
+contradiction it created with `tenant_comms_readiness` is what forced the canonical contract
+(`docs/delivery/canonical-readiness-contract.md`). **The Systems Check verdicts above are
+unchanged** — every runner grades through `isConfirmed()`, true only for `owner_confirmed`, so
+`legacy_sourced` still flips `website_connected` and the `comms_configured` phone half exactly as
+described. Only the reported state, and the reason the owner is given, are more truthful.
 
 ### Sales agreement schedule detail (2026-09-03, PR #895)
 
