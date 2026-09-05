@@ -221,6 +221,48 @@ describe("Solo Zapier API and MCP release contract", () => {
     expect(sql).toContain("OLD.capability_pins IS DISTINCT FROM NEW.capability_pins");
     expect(sql).toContain("NEW.capability_pins IS DISTINCT FROM OLD.capability_pins");
   });
+  it("refuses exactly what the server refuses, and says why", () => {
+    const ui = read("src/solo/settings-integrations.tsx");
+    const fn = read("supabase/functions/tenant-mcp-connect/index.ts");
+    // The server's rule, in one line. If it changes, the button must change with it.
+    const at = fn.indexOf('u.hostname==="mcp.zapier.com"');
+    expect(at).toBeGreaterThan(-1);
+    const serverRule = fn.slice(fn.lastIndexOf("\n", at) + 1, fn.indexOf("\n", at));
+    for (const clause of ["u.protocol===\"https:\"", "!u.username", "!u.password", "!u.search", "!u.hash", 'u.pathname.startsWith("/api/mcp/")']) {
+      expect(serverRule).toContain(clause);
+    }
+    // ...and the button applies the same clauses rather than a raw prefix match.
+    const client = ui.slice(ui.indexOf("export function zapierMcpAddressProblem"));
+    const body = client.slice(0, client.indexOf("\n}"));
+    for (const clause of ['u.protocol !== "https:"', "u.username || u.password", "u.search || u.hash", 'u.pathname.startsWith("/api/mcp/")', 'u.hostname.toLowerCase()']) {
+      expect(body).toContain(clause);
+    }
+    // The field is trimmed before it is judged -- an address pasted with surrounding
+    // whitespace used to leave the button permanently dead with no reason given.
+    expect(body).toContain("raw.trim()");
+    // A refusal is shown to the owner rather than expressed only as a dead button.
+    expect(ui).toContain("<small>{addressProblem??");
+    expect(ui).toContain("addressProblem!==null}");
+    expect(ui).not.toContain('!serverUrl.startsWith("https://mcp.zapier.com/api/mcp/")');
+    // Owner wording: the control names the thing being connected, not the protocol.
+    expect(ui).toContain('"Reconnect to Zapier MCP":"Connect to Zapier MCP"');
+    expect(ui).not.toContain("Connect PAIGE tools with OAuth");
+  });
+
+  it("states one PAIGE-tools connection state, not one per surface", () => {
+    const ui = read("src/solo/settings-integrations.tsx");
+    // Production carries a zapier row with status='connected' and no credential. Rendering the
+    // stored status directly made the card say "Not connected" and the drawer say "Connected"
+    // about that same row on the same screen. Both surfaces read one derivation now.
+    expect(ui).toContain("<dt>PAIGE tools (MCP)</dt><dd>{zapierMcpSummary(m).account}</dd>");
+    expect(ui).not.toContain("<dt>PAIGE tools (MCP)</dt><dd>{mcpStateWords(m.status)}</dd>");
+    // ...and that derivation withholds "Connected" until a credential is actually held.
+    const summary = ui.slice(ui.indexOf("function zapierMcpSummary"));
+    const body = summary.slice(0, summary.indexOf("\n}"));
+    expect(body).toContain('if(!value.configured)return{account:"Not connected"');
+    expect(body.indexOf("!value.configured")).toBeLessThan(body.indexOf('account:"Connected"'));
+  });
+
   it("advances the drawer refresh when approvals are saved", () => {
     const ui = read("src/solo/settings-integrations.tsx");
     expect(ui).toContain('<CapabilityApproval provider="zapier" onChanged={onChanged}/>');

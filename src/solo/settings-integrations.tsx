@@ -338,15 +338,37 @@ function ZapierApiPanel({ api, onChanged }: { api: ReturnType<typeof useZapierAp
    </div>}</>;
 }
 
+/**
+ * The SAME rule tenant-mcp-connect applies (index.ts, isZapierMcpUrl), restated here so the
+ * button refuses exactly what the server refuses -- and SAYS SO. It previously gated on a raw
+ * `startsWith` against the untrimmed field, so an address pasted with any surrounding
+ * whitespace, or with the host in capitals, left the button dead with no reason shown and no
+ * way for the owner to find out why. A control that refuses in silence is not usable.
+ * Returns null when the address is acceptable, otherwise the reason to show the owner.
+ * solo-zapier-release-contract.test.ts pins this against the edge function's predicate.
+ */
+export function zapierMcpAddressProblem(raw: string): string | null {
+  const value = raw.trim();
+  if (!value) return null;
+  let u: URL;
+  try { u = new URL(value); } catch { return "That is not a complete web address. Paste the whole address, starting with https://"; }
+  if (u.protocol !== "https:") return "The address must start with https://";
+  if (u.hostname.toLowerCase() !== "mcp.zapier.com") return "This is the Zapier connection, so the address must be on mcp.zapier.com";
+  if (u.username || u.password) return "Remove the sign-in details from the address";
+  if (u.search || u.hash) return "Remove everything from the ? or # onward";
+  if (!u.pathname.startsWith("/api/mcp/")) return "That looks like a Zapier link, but not an MCP server address. Copy it from the MCP server you created at Zapier.";
+  return null;
+}
+
 function ZapierMcpPanel({ m, onChanged }: { m: ReturnType<typeof useMcpConnection>; onChanged: () => void }) {
  const{activeTenantId}=useTenantContext();const[serverUrl,setServerUrl]=useState("");const[starting,setStarting]=useState(false);const[message,setMessage]=useState<string|null>(null);const[confirming,setConfirming]=useState(false);const[editing,setEditing]=useState(false);
  const begin=async()=>{setStarting(true);setMessage(null);const{data,error}=await supabase.functions.invoke("tenant-mcp-connect",{body:{provider:"zapier",action:"oauth_begin",server_url:serverUrl.trim(),expected_tenant_id:activeTenantId}});const url=data?.authorize_url;setServerUrl("");if(error||typeof url!=="string"){setStarting(false);setMessage("Zapier did not offer a compatible authorization flow for that MCP server. Confirm the server address and try again.");return;}window.location.assign(url);};
  if(m.loading)return <p className="ig-state" role="status">Checking PAIGE tools access…</p>;
  if(m.error)return <div className="ig-state" role="alert"><span>The PAIGE tools connection could not be read, so no state is being claimed.</span><button className="ig-btn" onClick={()=>void m.reload()}>Try again</button></div>;
- const oauth=m.authKind==="oauth";
- return <><p className="ig-lede">Connect PAIGE to the narrow Zapier MCP server and app actions you approve.</p><dl className="ig-facts"><div><dt>PAIGE tools (MCP)</dt><dd>{mcpStateWords(m.status)}</dd></div><div><dt>Authorization</dt><dd>{oauth?"Granted through Zapier OAuth":m.configured?"Legacy connection — reconnect with OAuth":"Not authorized"}</dd></div><div><dt>Approved tools</dt><dd>{m.approvedToolCount??"Unavailable"}</dd></div><div><dt>Last health check</dt><dd>{m.lastProbedAt?safeCheckDate(m.lastProbedAt):"No successful check yet"}</dd></div></dl>
+ const oauth=m.authKind==="oauth";const addressProblem=zapierMcpAddressProblem(serverUrl);
+ return <><p className="ig-lede">Connect PAIGE to the narrow Zapier MCP server and app actions you approve.</p><dl className="ig-facts"><div><dt>PAIGE tools (MCP)</dt><dd>{zapierMcpSummary(m).account}</dd></div><div><dt>Authorization</dt><dd>{oauth?"Granted through Zapier OAuth":m.configured?"Legacy connection — reconnect with OAuth":"Not authorized"}</dd></div><div><dt>Approved tools</dt><dd>{m.approvedToolCount??"Unavailable"}</dd></div><div><dt>Last health check</dt><dd>{m.lastProbedAt?safeCheckDate(m.lastProbedAt):"No successful check yet"}</dd></div></dl>
   <p className="ig-note">Create a Zapier MCP server, add only the app actions this workspace needs, then paste its HTTPS server address to begin Zapier’s authorization. The address is cleared immediately and credentials are never shown.</p>
-  {m.canWrite&&(!m.configured||editing)&&<form className="ig-form" onSubmit={e=>{e.preventDefault();void begin();}}><label className="ig-field"><span>Zapier MCP server address</span><input type="url" required autoComplete="off" spellCheck={false} placeholder="https://mcp.zapier.com/api/mcp/s/…" value={serverUrl} onChange={e=>setServerUrl(e.target.value)} disabled={starting||m.saving}/><small>From the MCP server you created at Zapier. Connecting does not approve every action.</small></label><div className="ig-actions"><button type="submit" className="ig-btn" data-primary disabled={starting||m.saving||!serverUrl.startsWith("https://mcp.zapier.com/api/mcp/")}>{starting?"Opening Zapier…":oauth?"Reconnect OAuth":"Connect PAIGE tools with OAuth"}</button>{m.configured&&<button type="button" className="ig-btn" onClick={()=>{setServerUrl("");setEditing(false);}}>Cancel</button>}</div></form>}
+  {m.canWrite&&(!m.configured||editing)&&<form className="ig-form" onSubmit={e=>{e.preventDefault();void begin();}}><label className="ig-field"><span>Zapier MCP server address</span><input type="url" required autoComplete="off" spellCheck={false} placeholder="https://mcp.zapier.com/api/mcp/s/…" value={serverUrl} onChange={e=>setServerUrl(e.target.value)} disabled={starting||m.saving}/><small>{addressProblem??"From the MCP server you created at Zapier. Connecting does not approve every action."}</small></label><div className="ig-actions"><button type="submit" className="ig-btn" data-primary disabled={starting||m.saving||!serverUrl.trim()||addressProblem!==null}>{starting?"Opening Zapier…":oauth?"Reconnect to Zapier MCP":"Connect to Zapier MCP"}</button>{m.configured&&<button type="button" className="ig-btn" onClick={()=>{setServerUrl("");setEditing(false);}}>Cancel</button>}</div></form>}
   {oauth&&m.status==="connected"&&m.canWrite&&<CapabilityApproval provider="zapier" onChanged={onChanged}/>}
   {(message||m.writeError)&&<p className="ig-error" role="alert">{message??m.writeError}</p>}
   {!m.canWrite?<p className="ig-note">Only a workspace admin can change PAIGE tools access.</p>:m.configured&&<div className="ig-actions"><button type="button" className="ig-btn" data-primary disabled={m.saving||starting} onClick={()=>setEditing(true)}>Reconnect authorization</button><button type="button" className="ig-btn" disabled={m.saving} onClick={()=>void m.verify().then(onChanged)}>Check it again</button>{confirming?<span className="ig-confirm"><button type="button" className="ig-btn" data-danger disabled={m.saving} onClick={()=>{setConfirming(false);void m.disconnect().then(onChanged);}}>Disconnect</button><button type="button" className="ig-btn" onClick={()=>setConfirming(false)}>Keep it</button></span>:<button type="button" className="ig-btn" onClick={()=>setConfirming(true)}><Link2Off aria-hidden size={14}/>Disconnect</button>}</div>}
@@ -363,6 +385,14 @@ function ZapierRecentActivity({epoch}:{epoch:number}){const{activeTenantId}=useT
   const{data,error}=await (supabase as any).rpc("get_zapier_rail_activity",{p_limit:5});if(!live)return;if(error||!Array.isArray(data)){setFailed(true);return;}setRows(data.map((r:Record<string,unknown>)=>({id:String(r.id),title:String(r.title??"Zapier activity"),summary:String(r.summary??""),occurred_at:String(r.occurred_at??"")})));})();return()=>{live=false;};},[activeTenantId,epoch]);
  return <div className="ig-caps"><h4>Recent safe activity</h4>{rows===null&&!failed?<p className="ig-state" role="status">Loading recent Zapier activity…</p>:failed?<p className="ig-note">Recent activity is unavailable. Connection states above are unchanged.</p>:rows.length===0?<p className="ig-note">No Zapier activity has been recorded for this workspace.</p>:<ul className="ig-activity-list">{rows.map(r=><li key={r.id}><strong>{r.title}</strong><span>{r.summary}</span><time>{r.occurred_at?safeCheckDate(r.occurred_at):"Time unavailable"}</time></li>)}</ul>}</div>;
 }
+/**
+ * The ONE derivation of "is PAIGE connected to Zapier", read by both the card tile and the
+ * drawer's own fact row. They must not each answer it: production carries a row with
+ * status='connected' and no credential at all, and the drawer used to render the stored
+ * status directly — so the card said "Not connected" and the drawer said "Connected" about
+ * the same row, on the same screen. `configured` is the server's "we hold a credential",
+ * and a connection we cannot authenticate is not connected whatever the status column says.
+ */
 function zapierMcpSummary(value: ReturnType<typeof useMcpConnection>) {
  if(value.loading)return{account:"Checking…",tone:"neutral"};
  if(value.error)return{account:"Status unavailable",tone:"neutral"};
