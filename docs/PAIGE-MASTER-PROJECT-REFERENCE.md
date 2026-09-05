@@ -299,6 +299,16 @@ the changed files; `deno check` on the changed edge graph produced a diagnostic 
 `origin/main`'s (14 inherited on both legs); production build; nine CI lints. **UNVERIFIED and
 owed:** the §32.c authenticated browser drive that a row actually paints.
 
+**§39 peer-gate — blocked once, and it was right.** An independent adversarial read of the pushed
+diff caught a false reassurance my own 20-assertion proof could not: `number_purchase_failed` was
+classified `capability_unreachable` ("nothing changed"), but it is reachable only on a Twilio **2xx
+with an empty body** — the charge may have landed — so it now falls to `capability_outcome_unknown`.
+Two more, both fixed or documented: the row now records against the tenant the seam acted on
+(`current_user_tenant_id()`), not the persona tenant that can diverge; and the recorder's member-seat
+gate dropping cross-tenant-manager actors is documented in the tier matrix as an inherited, latent
+gap for its own slice rather than widened here. Classification moved inside the recorder's try so it
+cannot crash the turn.
+
 **Flagged to the owner, deliberately NOT touched in this PR:**
 1. **Revenue leak** — `comms-purchase-number` returns `charge_wired: false` on every success path.
    PAIGE pays Twilio for the number; the tenant is not billed for it. That is the owner's money

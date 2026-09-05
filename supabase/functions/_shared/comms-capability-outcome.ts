@@ -51,7 +51,7 @@ const REFUSED = new Set([
   "forbidden", "unauthorized", "method_not_allowed", "tenant_not_resolved",
   "number_unavailable", "price_changed", "price_unverifiable",
   "twilio_subaccount_not_provisioned", "twilio_subaccount_row_missing",
-  "twilio_creds_unavailable", "inbound_webhook_secret_missing",
+  "twilio_creds_unavailable", "twilio_missing_credentials", "inbound_webhook_secret_missing",
   // comms-a2p-draft: gate refusals, and every SAVE_REFUSAL_STATUS code
   "METHOD_NOT_ALLOWED", "UNAUTHENTICATED", "BAD_JSON", "INVALID_TENANT_ID",
   "WORKSPACE_CHANGED", "NO_TENANT", "TENANT_REQUIRED", "UNKNOWN_TENANT",
@@ -77,8 +77,25 @@ const COMPLETED_UNRECORDED = new Set([
   "twilio_purchase_missing_sid",
 ]);
 
-/** A service we needed did not answer. Twilio's 502, and the model gateway's. */
-const UNREACHABLE = new Set(["number_purchase_failed", "MODEL_UNAVAILABLE"]);
+/**
+ * A service we needed genuinely did not answer, AND nothing external can have happened —
+ * so "the service did not answer, so this never ran. Nothing changed." is TRUE.
+ *
+ * ONLY `MODEL_UNAVAILABLE` qualifies: it is `comms-a2p-draft` failing to reach the model,
+ * and a draft that never generated spent no money and left nothing behind.
+ *
+ * `number_purchase_failed` is DELIBERATELY NOT here (§39 peer-gate, 2026-09-05). Traced to
+ * source: `comms-purchase-number:246` reaches that string only via `!bought.data` while
+ * `bought.ok === true` — i.e. Twilio answered **2xx** with an empty/unparseable body
+ * (`twilio.ts:196` returns `{ ok:true, error:null, data:null }`). On every genuine
+ * transport failure `twilioRequest` sets a specific `error` (`twilio_network:…`,
+ * `twilio_<status>:…`), so the `??` fallback never fires. A 2xx means the purchase POST was
+ * accepted and the tenant may already be billed — and this exit is ABOVE the audit write, so
+ * there is no trace anywhere. "Nothing changed" is exactly the lie this file's own governing
+ * rule (above) forbids, so it must fall through to `capability_outcome_unknown`: "may or may
+ * not have taken effect. Check the service before running it again."
+ */
+const UNREACHABLE = new Set(["MODEL_UNAVAILABLE"]);
 
 /**
  * It genuinely ran, produced nothing usable, and left nothing behind. Only the model

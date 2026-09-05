@@ -386,6 +386,23 @@ re-proved 2026-09-05: a non-member actor raises `CAPABILITY_RUN_FORBIDDEN`).
 | **Client** | — never reaches the executors | **403** — `owner_internal` |
 | **Anonymous** | — | **403** |
 
+**One honest gap in the recorder itself (§39 peer-gate, 2026-09-05).** Each row above is the caller
+acting on a workspace they are an active **member** of. A cross-tenant *manager* — an agency owner
+reaching DOWN into a child via `agency_can_manage_child`, or a `platform_admin` who also holds a
+global `admin` role — can drive these tools (the role gate is global) and the seam acts on the
+child, but `record_capability_run` requires the ACTOR to hold an active `tenant_members` seat in
+that child and raises `CAPABILITY_RUN_FORBIDDEN` otherwise, so **the row is silently dropped** (the
+act still happens; only the record is lost). This is inherited unchanged from the merged SCR-1 and
+is identical for the n8n and Zapier executors — the recorder's member-seat gate is narrower than the
+`current_user_tenant_id()` authority the seams themselves honour. It is **latent** for comms
+(agency-managing-a-child through the comms tools; zero such prod rows today) and pre-launch.
+Deliberately **not** widened in the Communications PR: `record_capability_run` is a shared §59
+caller-scope DEFINER function, and changing its authority model across three executors is its own
+security-reviewed slice with its own §37 producer inventory — not a change to bolt into a feature
+PR. Tracked as a follow-up. The Communications PR does, however, now record against the tenant the
+seam **acted on** (`current_user_tenant_id()`), not `personaCtx.tenant_id`, so when a row IS written
+it can never land on a workspace the act did not touch.
+
 **Proven, and to what standard (§13).** A rolled-back transaction on production, 2026-09-05, 20
 assertions: all four keys write rows; the sixth outcome survives both CHECKs and the RPC's in-body
 guard; reading as the **authenticated member** through `get_solo_rail_activity(50)` — the same RPC

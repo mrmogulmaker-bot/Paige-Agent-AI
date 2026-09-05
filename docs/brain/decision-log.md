@@ -1,5 +1,24 @@
 # Decision Log — chronological one-liners
 
+- **Wave 3 Communications — the §39 peer-gate blocked once and was right (2026-09-05, same PR)** — an
+  independent adversarial read of the pushed diff returned BLOCK on one finding and two SHOULD-FIXes,
+  all three real. ① **BLOCKER:** `number_purchase_failed` was mapped to `capability_unreachable`
+  ("nothing changed"), but traced to source it is reachable ONLY on a Twilio **2xx with an empty
+  body** — the purchase POST was accepted and the tenant may already be billed — so "nothing changed"
+  was a false reassurance on a possible charge, on the money capability. Now falls to
+  `capability_outcome_unknown` ("check the service before running it again"). The test that locked the
+  wrong mapping in was titled "Twilio not answering" — Twilio *did* answer. ② **Recorded tenant:** the
+  row now attributes to `current_user_tenant_id()` (the tenant the seam acted on) instead of
+  `personaCtx.tenant_id`, which resolves the linked-client branch first and could name a different
+  workspace than the purchase hit. ③ **Documented, not silently fixed:** the recorder's
+  `tenant_members`-seat gate drops the row for a cross-tenant manager (agency-managing-a-child,
+  platform_admin) — inherited from SCR-1, identical for n8n/Zapier, latent, and left to its own
+  security-reviewed slice rather than widened inside a feature PR; the gap is now in the tier matrix.
+  Also: classification moved INSIDE the recorder's try so "cannot fail the turn" is literally true,
+  and `twilio_missing_credentials` joined the refusal set. **The standing lesson: a green 20-assertion
+  proof tests the author's model of the failure; the peer tests what the author did not think of — the
+  BLOCKER sat in a set-membership the author hand-wrote and never doubted.**
+
 - **Social Command, round 3: the guard keeps getting written for the case that already worked
   (2026-09-05, follow-up to PR #945)** — a third §39 peer-gate blocked again, with two HIGH. ①
   `notPermitted` is a strict SUBSET of `handlesUnknown`, and the Channels panel branched on the

@@ -8920,14 +8920,44 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // Named-agent attribution is the owner's next layer; inventing a slug now
           // would put a name on the Rail that resolves to nothing.
           //
-          // IT CANNOT FAIL THE TURN. `recordCapabilityRun` never throws and this wraps
-          // it anyway: an unwritable Rail must never turn a phone number that WAS bought
-          // into a crashed request.
-          const recordCommsRun = async (outcome: CapabilityOutcome | null): Promise<void> => {
-            if (!outcome) return;
+          // IT CANNOT FAIL THE TURN. The classification AND the write both run inside this
+          // one try, so an unwritable Rail — or an unexpected shape reaching the classifier —
+          // never turns a phone number that WAS bought into a crashed request. (Declared above
+          // the dispatch `try` on purpose: `comms_name_number`/`_set_primary_number` throw every
+          // refusal, and the catch is block-scoped away from `admin`/`crmTenantId`.)
+          //
+          // RECORDED AGAINST THE TENANT THE SEAM ACTUALLY ACTED ON, not `personaCtx.tenant_id`
+          // (§39 peer-gate, 2026-09-05). Each comms seam derives its own workspace server-side
+          // from `current_user_tenant_id()` on the caller's JWT; `personaCtx.tenant_id` resolves
+          // the `clients.linked_user_id` branch FIRST and can therefore name a DIFFERENT tenant
+          // than the one the purchase hit. Recording against the persona tenant would show one
+          // workspace's owner an act that happened in another. So resolve the caller's own tenant
+          // the same way the seam did, and attribute the row to that. Resolved once per turn and
+          // cached (undefined = not yet resolved); the round-trip only happens on a real comms act
+          // because the outcome is checked first.
+          let commsActorTenant: string | null | undefined;
+          const resolveCommsActorTenant = async (): Promise<string | null> => {
+            if (commsActorTenant !== undefined) return commsActorTenant;
+            const { data, error } = await supabaseClient.rpc("current_user_tenant_id");
+            if (error) {
+              console.error("[paige] comms capability tenant resolve failed:", error.message);
+              commsActorTenant = null;
+            } else {
+              commsActorTenant = (data as string | null) ?? null;
+            }
+            return commsActorTenant;
+          };
+          const recordCommsRun = async (
+            input: { result?: unknown; thrown?: unknown; threw?: boolean },
+          ): Promise<void> => {
             try {
+              const outcome: CapabilityOutcome | null = classifyCommsRun({
+                capability: tc.function.name,
+                ...input,
+              });
+              if (!outcome) return;
               await recordCapabilityRun(supabase, {
-                tenantId: personaCtx.tenant_id,
+                tenantId: await resolveCommsActorTenant(),
                 actorId: user.id,
                 capabilityKey: tc.function.name,
                 outcome,
@@ -10855,8 +10885,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
 
             // The result the model is about to be handed is the same evidence the owner
-            // gets. Classified from the seam's OWN codes, not from `success:false`.
-            await recordCommsRun(classifyCommsRun({ capability: tc.function.name, result }));
+            // gets. Classified inside the recorder from the seam's OWN codes, not `success:false`.
+            await recordCommsRun({ result });
 
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
           } catch (err) {
@@ -10865,7 +10895,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // `classifyCommsRun` reads `.code`/`.message`/`.hint` off the thrown value
             // instead, so `NUMBER_NOT_ACTIVE` reaches the Rail as a refusal even though
             // the model is told only that something went wrong.
-            await recordCommsRun(classifyCommsRun({ capability: tc.function.name, thrown: err, threw: true }));
+            await recordCommsRun({ thrown: err, threw: true });
 
             toolResults.push({
               tool_call_id: tc.id,

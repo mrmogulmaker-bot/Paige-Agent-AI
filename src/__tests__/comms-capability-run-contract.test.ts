@@ -75,15 +75,27 @@ describe("Communications capability runs — what the Rail is told", () => {
       "forbidden", "unauthorized", "tenant_not_resolved", "number_unavailable",
       "price_changed", "price_unverifiable", "twilio_subaccount_not_provisioned",
       "twilio_subaccount_row_missing", "inbound_webhook_secret_missing", "twilio_creds_unavailable",
+      // A config problem the request layer catches before anything is sent — nothing attempted.
+      "twilio_missing_credentials",
     ]) expect(buy({ success: false, error: code })).toBe("capability_refused");
     expect(buy({ success: false, error: "phone_number must be E.164 (e.g. +14155550123)" }))
       .toBe("capability_refused");
   });
 
-  it("calls Twilio not answering unreachable, not failed", () => {
-    expect(buy({ success: false, error: "number_purchase_failed" })).toBe("capability_unreachable");
+  // MODEL_UNAVAILABLE is the ONLY genuinely-unreachable case: a draft that never generated
+  // spent no money and left nothing, so "the service did not answer, nothing changed" is true.
+  it("calls a model that never answered unreachable — nothing changed is true there", () => {
     expect(classifyCommsRun({ capability: "comms_draft_registration", result: { success: false, error: "MODEL_UNAVAILABLE" } }))
       .toBe("capability_unreachable");
+  });
+
+  // §39 peer-gate, 2026-09-05. `number_purchase_failed` is reachable ONLY on a Twilio 2xx with
+  // an empty body (comms-purchase-number:246, via `!bought.data`): the POST was accepted and the
+  // tenant MAY already be billed. "The service did not answer, so this never ran. Nothing
+  // changed." would be a false reassurance on a possible charge, so it must be unknown, never
+  // unreachable — check the service before running it again.
+  it("calls a 2xx-with-empty-body purchase UNKNOWN, never unreachable — money may have moved", () => {
+    expect(buy({ success: false, error: "number_purchase_failed" })).toBe("capability_outcome_unknown");
   });
 
   // `capability_failed` promises "Nothing was left half-done." An error we do not recognise is
@@ -146,8 +158,24 @@ describe("Communications capability runs — the wiring that makes them exist", 
   // refusal they produce arrives in the catch. Recording only from the result path covers
   // one act of four and no refusals at all, while looking finished.
   it("records from the result path AND the throw path", () => {
-    expect(chat).toContain("await recordCommsRun(classifyCommsRun({ capability: tc.function.name, result }));");
-    expect(chat).toContain("await recordCommsRun(classifyCommsRun({ capability: tc.function.name, thrown: err, threw: true }));");
+    expect(chat).toContain("await recordCommsRun({ result });");
+    expect(chat).toContain("await recordCommsRun({ thrown: err, threw: true });");
+    // Classification runs INSIDE the recorder's try, so an unexpected shape reaching the
+    // classifier cannot crash the turn (§39 peer-gate — the "cannot fail the turn" guarantee).
+    expect(chat).toContain("const outcome: CapabilityOutcome | null = classifyCommsRun({");
+  });
+
+  // §39 peer-gate, 2026-09-05. The row must be attributed to the tenant the seam ACTUALLY acted
+  // on — current_user_tenant_id() on the caller's JWT — not personaCtx.tenant_id, which resolves
+  // the linked-client branch first and can name a different workspace than the purchase hit.
+  it("records against the seam's own resolved tenant, not the persona tenant", () => {
+    const decl = chat.indexOf("const recordCommsRun = async (");
+    const region = chat.slice(chat.indexOf("let commsActorTenant", decl - 2000), decl + 900);
+    expect(region).toContain('supabaseClient.rpc("current_user_tenant_id")');
+    expect(chat).toContain("tenantId: await resolveCommsActorTenant(),");
+    // and NOT the persona tenant inside the recorder
+    const body = chat.slice(chat.indexOf("const recordCommsRun = async ("), chat.indexOf("};", chat.indexOf("const recordCommsRun = async (")) + 2);
+    expect(body).not.toContain("personaCtx.tenant_id");
   });
 
   // `admin` and `crmTenantId` are block-scoped inside the try. If the recorder is moved in
