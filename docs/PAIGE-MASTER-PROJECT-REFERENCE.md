@@ -1659,9 +1659,11 @@ read-only scouts (file:line-citable).
   **STILL OPEN:** a generic chat→file download primitive + content-sniffing beyond the MIME allow-list, and a
   SECOND unfenced surface — the retrieved-KB block (`=== TENANT KNOWLEDGE ===`) where OCR'd upload content
   re-enters via `match_tenant_knowledge`. §32.c authenticated malicious-doc drive OWED (headless).
-- **Write & operate native records** — LIVE (wired: `deal_move_stage` honest outcome S1/S1.1, content/
-  document/growth writes) / PARTIAL (~43 consequential actions still write only `paige_audit_log`, not the
-  Rail — F05 continuation).
+- **Write & operate native records** — LIVE (wired: `deal_move_stage` honest outcome S1/S1.1; the three
+  CRM/scheduling write-receipts `crm_log_activity`/`calendar_book_meeting`/`crm_create_task` now file a
+  capability-Rail outcome too — Slice 3 increment 1, Task #19, `_shared/crm-capability-outcome.ts`; content/
+  document/growth writes) / PARTIAL (~40 remaining consequential actions still write only `paige_audit_log`,
+  not the Rail — F05 continuation; `crm_create_contact` needs a per-capability branch for its dedup-clarify).
 - **Research (bounded web)** — LIVE/PARTIAL (`deep_research` + `web_search` + `browse_public_url`; gaps per §5
   Sandboxed-Research entry below).
 - **External execution / integrations** — PARTIAL (chat path governed; `paige-mcp` tier+scope only, no risk
