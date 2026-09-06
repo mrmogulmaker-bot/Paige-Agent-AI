@@ -1,0 +1,114 @@
+/* PaigeCommandMark — self-contained, theme-aware styling for the current Paige Command Mark.
+   Colours live here (not in the operator --pg/--cm tokens) so the mark renders on ANY surface,
+   shell or no shell. Light is the base; dark comes from prefers-color-scheme; an explicit
+   [data-theme] or [data-pg] on an ancestor wins over the OS preference in both directions. */
+
+.pcm {
+  /* Gold rides the glyph (the mark's inherent brand gold — foreground, never a resting bg, §11). */
+  --pcm-slash: #c9860c;
+  --pcm-orb: #e9a83a;
+  /* The plate is a neutral metal tile — never gold. */
+  --pcm-plate-top: #ffffff;
+  --pcm-plate-bottom: #f0eee8;
+  --pcm-plate-border: rgba(23, 19, 49, 0.12);
+  --pcm-plate-shadow: 0 1px 2px rgba(23, 19, 49, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  vertical-align: middle;
+  line-height: 0;
+  /* The mark is square. aspect-ratio keeps it square when a caller sizes only one axis (e.g. the
+     `h-12 w-auto` classNames the retired <img> logos carried), so width never collapses to content. */
+  aspect-ratio: 1;
+}
+/* Zero-specificity default HEIGHT only (width comes from aspect-ratio:1 above), so a caller that sizes
+   only one axis — the common `h-11` / `h-12` case — stays square instead of collapsing to a pill:
+   setting BOTH axes here would make both definite and cancel aspect-ratio. Any caller className (e.g.
+   Tailwind h-8, or h-8 w-8) still wins on specificity; the mark is never left content-sized. */
+:where(.pcm) { height: 1.75em; }
+
+/* The app themes via a `.dark` CLASS on <html> (Tailwind darkMode:"class" + next-themes); the Solo/
+   Agency sub-apps set [data-theme] on their container and the operator/tenant shells set [data-pg].
+   Follow all three so the mark flips with the REAL toggle on every surface (§23 — no surface hardcoded
+   to one theme). Deliberately NOT prefers-color-scheme: this is a class-strategy app, and the OS
+   preference can disagree with the user's resolved theme class, which would leave the toggle looking
+   dead. Base (no signal) = light, matching Tailwind's default. Hex is self-contained so the mark also
+   renders in isolation (no index.css); the flip is by signal, not by token. */
+.dark .pcm,
+[data-theme="dark"] .pcm,
+[data-pg="dark"] .pcm {
+  --pcm-slash: #e9a83a;
+  --pcm-orb: #f5c266;
+  --pcm-plate-top: #2a2730;
+  --pcm-plate-bottom: #17141f;
+  --pcm-plate-border: rgba(255, 255, 255, 0.10);
+  --pcm-plate-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+/* An explicit light island nested inside a dark ancestor wins back to light. */
+.light .pcm,
+[data-theme="light"] .pcm,
+[data-pg="light"] .pcm {
+  --pcm-slash: #c9860c;
+  --pcm-orb: #e9a83a;
+  --pcm-plate-top: #ffffff;
+  --pcm-plate-bottom: #f0eee8;
+  --pcm-plate-border: rgba(23, 19, 49, 0.12);
+  --pcm-plate-shadow: 0 1px 2px rgba(23, 19, 49, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.pcm-plate {
+  position: absolute;
+  inset: 0;
+  border-radius: 28%;
+  background: linear-gradient(160deg, var(--pcm-plate-top), var(--pcm-plate-bottom));
+  border: 1px solid var(--pcm-plate-border);
+  box-shadow: var(--pcm-plate-shadow);
+}
+
+/* The glyph sits above the plate and lifts a touch — a subtle raised "bulge" so it reads
+   dimensional rather than flat-printed. Explicit percentage of a definite-size parent (never a
+   content-sized one), so it never sizes off the SVG's 300px intrinsic default. */
+.pcm-glyph {
+  position: relative;
+  z-index: 1;
+  width: 66%;
+  height: 66%;
+  transform: translateY(-3%);
+  filter: drop-shadow(0 0.06em 0.05em rgba(0, 0, 0, 0.34));
+}
+.pcm--bare .pcm-glyph {
+  width: 100%;
+  height: 100%;
+  transform: none;
+  filter: none;
+}
+
+.pcm-slash {
+  fill: var(--pcm-slash);
+  stroke: var(--pcm-slash);
+  stroke-width: 3.2;
+  stroke-linejoin: round;
+}
+.pcm-orb { fill: var(--pcm-orb); }
+
+/* Animated presence — a slow, subtle breathe. Off entirely under reduced motion. */
+@keyframes pcm-breathe {
+  0%, 100% { transform: translateY(-3%) scale(1); }
+  50% { transform: translateY(-3%) scale(1.045); }
+}
+.pcm--animated .pcm-glyph {
+  transform-origin: center;
+  animation: pcm-breathe 3.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcm--animated .pcm-glyph { animation: none; }
+}
+
+/* High-contrast mode: keep the tile edge and let the glyph take the system colour. */
+@media (forced-colors: active) {
+  .pcm-plate { border-color: CanvasText; }
+  .pcm-slash { fill: CanvasText; stroke: CanvasText; }
+  .pcm-orb { fill: CanvasText; }
+}

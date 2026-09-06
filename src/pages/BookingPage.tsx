@@ -23,7 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 
 type Phase = "loading" | "service" | "pick" | "form" | "done" | "error";
 const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -445,7 +445,7 @@ export default function BookingPage() {
       <div className="flex items-center gap-2.5 mb-5">
         {brand.logoUrl
           ? <img src={brand.logoUrl} alt={brand.name} className="h-11 w-11 rounded-xl object-cover" style={{ border: `1px solid ${c.border}` }} />
-          : <span className="h-11 w-11 rounded-xl grid place-items-center" style={{ background: brand.accent + "1f" }}><PaigeMark className="h-6 w-6" /></span>}
+          : <span className="h-11 w-11 rounded-xl grid place-items-center" style={{ background: brand.accent + "1f" }}><PaigeCommandMark plated={false} className="h-6 w-6" /></span>}
         {brand.showCompanyName && <span className="font-semibold tracking-tight" style={{ color: c.text }}>{brand.name}</span>}
       </div>
       {brand.subtitle && <div className="text-xs font-medium uppercase tracking-wide mb-1.5" style={{ color: c.sub }}>{brand.subtitle}</div>}

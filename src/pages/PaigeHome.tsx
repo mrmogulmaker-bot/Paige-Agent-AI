@@ -16,7 +16,7 @@ import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode 
 import { paigeAnim } from "@/lib/paigeAnim";
 import { appUrl } from "@/lib/hostRouting";
 import { onboardingPathWithPlan } from "@/lib/auth/signupPlanIntent";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
@@ -207,9 +207,9 @@ function FloatingPanels() {
   );
 }
 
-// PaigeMark (the shared brand mark) now lives in @/components/brand/PaigeMark
-// and is imported at the top of this file, so the landing, auth, and signup
-// flow all render the identical logo.
+// The Command Mark (PaigeCommandMark, @/components/brand/PaigeCommandMark) is the shared
+// brand mark, imported at the top of this file, so the landing, auth, and signup flows all
+// render the identical current logo. (The retired orbital PaigeMark was removed 2026-09-06.)
 
 /**
  * IntroSequence — the phone-opening: a phone rises, its screen shows Paige
@@ -358,7 +358,7 @@ function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () 
                 transition={{ duration: INTRO_T, times: [0, 0.83, 0.92], ease: "easeIn" }}
               >
                 <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3.5 pt-7">
-                  <PaigeMark className="h-7 w-7" />
+                  <PaigeCommandMark plated={false} className="h-7 w-7" />
                   <div className="leading-tight">
                     <div className="text-[12px] font-semibold text-white" style={{ fontFamily: HEAD }}>Paige</div>
                     <div className="text-[9px] text-[#7ee0a8]">working your inbox…</div>
@@ -539,7 +539,7 @@ export default function PaigeHome() {
       {/* Nav */}
       <header className="sticky top-0 z-30 mx-auto flex w-full max-w-6xl items-center justify-between border-b border-white/[0.08] bg-[#140c27]/70 px-6 py-4 backdrop-blur-xl supports-[backdrop-filter]:bg-[#140c27]/55">
         <a href="#hero" className="flex items-center gap-2.5">
-          <PaigeMark className="h-9 w-9" />
+          <PaigeCommandMark plated={false} className="h-9 w-9" />
           <span className="text-lg font-semibold tracking-tight text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
             Paige <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
           </span>
@@ -793,7 +793,7 @@ export default function PaigeHome() {
       <footer className="mx-auto w-full max-w-6xl px-6 py-12 text-sm text-white/40">
         <div className="flex flex-col items-center gap-6 border-t border-white/10 pt-8 sm:flex-row sm:justify-between">
           <a href="#hero" className="flex items-center gap-2 text-white/70">
-            <PaigeMark className="h-6 w-6" />
+            <PaigeCommandMark plated={false} className="h-6 w-6" />
             <span className="font-semibold" style={{ fontFamily: HEAD }}>
               Paige <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
             </span>

@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { cn } from "@/lib/utils";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { ProjectNavigator } from "./ProjectNavigator";
@@ -341,7 +341,7 @@ export default function StudioLayout() {
         <div className={cn("flex h-14 shrink-0 items-center px-3", collapsed ? "justify-center" : "gap-2")}>
           {!collapsed && (
             <Link to="/admin/studio" className="flex min-w-0 items-center gap-2" aria-label="Vibe Studio home">
-              <PaigeMark className="h-7 w-7 shrink-0" />
+              <PaigeCommandMark className="h-7 w-7 shrink-0" />
               <span className="truncate font-display text-sm font-semibold">Vibe Studio</span>
             </Link>
           )}

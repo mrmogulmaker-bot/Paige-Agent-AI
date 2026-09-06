@@ -28,6 +28,8 @@
     "lint:managed-schema": "node scripts/ci/managed-schema-ownership-lint.mjs",
     "lint:tier-features": "node scripts/ci/tier-feature-lint.mjs",
     "lint:tier-features:test": "node scripts/ci/tier-feature-lint.mjs --self-test",
+    "lint:legacy-mark": "node scripts/ci/legacy-mark-lint.mjs",
+    "lint:legacy-mark:test": "node scripts/ci/legacy-mark-lint.mjs --self-test",
     "lint:skeleton": "node scripts/ci/skeleton-content-lint.mjs",
     "preview": "vite preview",
     "smoke:skills-interpreter": "node --experimental-strip-types --import ./scripts/_register-forge-stub.mjs scripts/skills-interpreter-provenance-smoke.mjs",
@@ -89,7 +91,9 @@
     "lint:approval-gate": "node scripts/ci/one-approval-gate-lint.mjs",
     "lint:approval-gate:test": "node scripts/ci/one-approval-gate-lint.mjs --self-test",
     "lint:chat-tool-registry": "node scripts/ci/chat-tool-registry-lint.mjs",
-    "lint:chat-tool-registry:test": "node scripts/ci/chat-tool-registry-lint.mjs --self-test"
+    "lint:chat-tool-registry:test": "node scripts/ci/chat-tool-registry-lint.mjs --self-test",
+    "lint:binding-ledger": "node scripts/ci/binding-ledger-lint.mjs",
+    "lint:binding-ledger:test": "node scripts/ci/binding-ledger-lint.mjs --self-test"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",

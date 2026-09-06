@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, CheckCircle2 } from "lucide-react";
-import paigeLogo from "@/assets/paige-logo-transparent.png";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { PasswordStrengthIndicator, MIN_PASSWORD_LENGTH } from "@/components/auth/PasswordStrengthIndicator";
 
 interface PortalBrand {
@@ -97,7 +97,7 @@ const ResetPassword = () => {
               <img src={brand.logo_url} alt={brand.tenant_name} className="h-12 w-auto mx-auto object-contain" />
             ) : null
           ) : !portalSlug ? (
-            <img src={paigeLogo} alt="PaigeAgent.ai" className="h-12 w-auto mx-auto" />
+            <PaigeCommandMark className="h-12 mx-auto" label="PaigeAgent.ai" />
           ) : null}
           <h1 className="text-2xl font-bold text-foreground">Invalid Reset Link</h1>
           <p className="text-muted-foreground text-sm">
@@ -133,7 +133,7 @@ const ResetPassword = () => {
             )
           ) : !portalSlug ? (
             <>
-              <img src={paigeLogo} alt="PaigeAgent.ai" className="h-10 w-auto" />
+              <PaigeCommandMark className="h-10" label={null} />
               <span className="text-xl font-bold text-foreground tracking-tight">PaigeAgent.ai</span>
             </>
           ) : null}

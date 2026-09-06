@@ -8,7 +8,7 @@ vi.mock("./data/useSoloKnowledge", () => ({ useSoloKnowledge: () => harness.know
 vi.mock("./data/useCommandCenter", () => ({ useCommandCenter: () => harness.command() }));
 
 import { SoloMindWorkspace } from "./SoloMindWorkspace";
-import { mindOrbitPreferenceKey, type MindOrbitPreferenceScope } from "./mindOrbitPreference";
+import { mindOrbitPreferenceKey, mindMotionPreferenceKey, mindDismissedPreferenceKey, type MindOrbitPreferenceScope } from "./mindOrbitPreference";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -141,6 +141,61 @@ describe("Solo Mind workspace — orb port", () => {
     act(() => rm.click());
     expect(button("Reduced motion")!.getAttribute("aria-pressed")).toBe("true");
     expect(host.querySelector('[aria-live="polite"]')?.textContent?.toLowerCase()).toContain("reduced motion on");
+  });
+
+  it("the motion choice is an explicit override that persists per user + tenant", () => {
+    const scope = { userId: "user-m", tenantId: "tenant-m" };
+    render(scope);
+    // Turning reduced-motion ON writes an explicit "reduced" choice (overriding the OS default).
+    act(() => button("Reduced motion")!.click());
+    expect(window.localStorage.getItem(mindMotionPreferenceKey(scope))).toBe("reduced");
+    expect(button("Reduced motion")!.getAttribute("aria-pressed")).toBe("true");
+    // A fresh mount for the same scope reads the stored choice back — the orb stays still.
+    act(() => root.unmount());
+    root = createRoot(host);
+    render(scope);
+    expect(button("Reduced motion")!.getAttribute("aria-pressed")).toBe("true");
+    // "Resume orbit" is a one-click start: it lifts the reduced block AND enables the orbit.
+    expect(button("Resume orbit")).toBeTruthy();
+    act(() => button("Resume orbit")!.click());
+    expect(window.localStorage.getItem(mindMotionPreferenceKey(scope))).toBe("full");
+    expect(button("Pause orbit")).toBeTruthy();
+    expect(button("Reduced motion")!.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("clears a record card non-destructively; the choice persists and is restorable", () => {
+    const scope = { userId: "user-d", tenantId: "tenant-d" };
+    render(scope);
+    expect(records()).toHaveLength(3);
+    // Clearing a card hides it from the list and persists the choice — the record is NOT deleted.
+    act(() => host.querySelector<HTMLButtonElement>(".mind-record-dismiss")!.click());
+    expect(records()).toHaveLength(2);
+    expect(window.localStorage.getItem(mindDismissedPreferenceKey(scope))).toBeTruthy();
+    // Persists across a fresh mount for the same scope.
+    act(() => root.unmount());
+    root = createRoot(host);
+    render(scope);
+    expect(records()).toHaveLength(2);
+    // Restore brings every cleared card back and clears storage (§70 — a way back).
+    act(() => button("Restore")!.click());
+    expect(records()).toHaveLength(3);
+    expect(window.localStorage.getItem(mindDismissedPreferenceKey(scope))).toBeNull();
+  });
+
+  it("keeps keyboard focus on the list after clearing a card — never drops to <body>", async () => {
+    render();
+    const firstX = host.querySelector<HTMLButtonElement>(".mind-record-dismiss")!;
+    firstX.focus();
+    expect(document.activeElement).toBe(firstX); // jsdom honors .focus() here
+    await act(async () => { firstX.click(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 40)); }); // let the focus-recovery rAF fire
+    expect(document.activeElement).not.toBe(document.body);
+    const focused = document.activeElement as HTMLElement;
+    expect(
+      focused.classList.contains("mind-record-dismiss") ||
+        focused.classList.contains("mind-records-restore") ||
+        focused.classList.contains("mind-records"),
+    ).toBe(true);
   });
 
   it("refresh re-reads the live sources and never calls it a scan", () => {

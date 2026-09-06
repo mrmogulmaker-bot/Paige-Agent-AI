@@ -5,12 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 
 /**
- * Business Game Plan surface — the render + behaviour contract.
+ * Business Game Plan — the STRATEGY DESK render + behaviour contract (owner-approved 2026-09-06).
  *
  * Drives the REAL component against a mocked view-model, so the assertions cover what a human
- * actually reaches: every state renders, every primary action goes somewhere real (a route this
- * app mounts, or the one PAIGE conversation), and no route string / internal identifier leaks
- * into visible copy (owner corrections #3/#4, 2026-09-05).
+ * actually reaches: the strategy spine renders (not a readiness list), the Plan Brief is genuinely
+ * EDITABLE and calls the persist seam (§70), Systems Check is a demoted supporting dependency, every
+ * action goes somewhere real (a route this app mounts, or the one PAIGE conversation), and no route
+ * string / internal identifier leaks into visible copy.
  */
 
 import type { SoloGamePlanView } from "./data/useSoloGamePlan";
@@ -29,7 +30,6 @@ function LocationProbe() {
   loc.value = l.pathname;
   return null;
 }
-
 function mount(openPaige?: () => void) {
   loc.value = "";
   act(() => {
@@ -45,38 +45,61 @@ function mount(openPaige?: () => void) {
     );
   });
 }
-
-function clickText(tag: string, text: string) {
-  const el = [...container.querySelectorAll(tag)].find((n) => (n.textContent || "").includes(text)) as HTMLElement | undefined;
-  if (!el) throw new Error(`no <${tag}> containing "${text}"`);
+function clickText(selector: string, text: string) {
+  const el = [...container.querySelectorAll(selector)].find((n) => (n.textContent || "").includes(text)) as HTMLElement | undefined;
+  if (!el) throw new Error(`no ${selector} containing "${text}"`);
   act(() => { el.click(); });
   return el;
 }
+function setTextarea(labelText: string, value: string) {
+  const field = [...container.querySelectorAll(".ov-field")].find((f) => (f.textContent || "").includes(labelText)) as HTMLElement | undefined;
+  const ta = field?.querySelector("textarea") as HTMLTextAreaElement | undefined;
+  if (!ta) throw new Error(`no textarea for "${labelText}"`);
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!;
+  act(() => { setter.call(ta, value); ta.dispatchEvent(new Event("input", { bubbles: true })); });
+}
+
+const saveMock = vi.fn().mockResolvedValue({ ok: true, kind: "saved" });
 
 const groundedView = (): SoloGamePlanView => ({
   loading: false, error: false, empty: false,
-  greeting: { name: "Jordan", dateLabel: "Thursday, September 3", salutation: "Good afternoon" },
-  narrative: "Foundations are set and work is moving.",
-  attention: [
-    { label: "3 drafts waiting", tone: "live", destination: "paige" },
-    { label: "2 clients at risk", tone: "partial", destination: "clients" },
-  ],
-  bestMove: {
-    id: "attn:atrisk", title: "Re-engage 2 clients before they lapse", why: "Both crossed your quiet threshold.",
-    owner: "paige", proof: "live", evidence: "2 clients flagged at risk.", outcome: "PAIGE drafts; you approve.",
-    destination: "clients", ctaLabel: "See the clients",
-  },
-  priorities: [
-    { id: "gap:offers", title: "Add your first offer", why: "Revenue waits on one offer.", owner: "you", proof: "input", evidence: "No offer yet.", outcome: "PAIGE builds pricing.", destination: "catalog", ctaLabel: "Open Catalog" },
-  ],
-  foundation: [
-    { key: "identity", label: "Business identity", status: "grounded", note: "Clearpath Advisory", destination: "setup" },
-    { key: "offers", label: "Offers", status: "needs-input", note: "No offer yet", destination: "catalog" },
-    { key: "sender", label: "Sending identity", status: "grounded", note: "Email set up", destination: "connections" },
-  ],
-  coverage: { grounded: 3, partial: 1, degraded: 0, total: 5, caption: "Three grounded." },
+  greeting: { name: "Jordan", dateLabel: "Saturday, September 6", salutation: "Good afternoon" },
+  narrative: "", attention: [], bestMove: null, priorities: [], foundation: [],
+  coverage: { grounded: 0, partial: 0, degraded: 0, total: 5, caption: "" },
   motion: { status: "ready", items: [], freshness: "No recorded work yet" },
   firstRun: [],
+  planBrief: {
+    fields: {
+      annualDirection: "Become the default operations advisor in the Northeast.",
+      goals90Day: "6 retained clients by quarter end.",
+      currentPriority: "Convert the 3 warm referrals.",
+      successDefinition: "$20k/mo retained.",
+      constraints: "Max 8 active clients.",
+      operatingPreferences: "Draft, don't send.",
+      doNotAssume: "",
+    },
+    provenance: { annualDirection: "owner_confirmed", currentPriority: "owner_confirmed" },
+    hasPlan: true, canEdit: true, saving: false, pendingProposal: null, proposalPlanOnly: false, updatedAt: "2026-09-04T00:00:00Z",
+    save: saveMock,
+    applyProposal: vi.fn().mockResolvedValue({ ok: true, kind: "saved" }),
+    dismissProposal: vi.fn().mockResolvedValue({ ok: true }),
+  },
+  horizons: [
+    { id: "annual", label: "Annual", sub: "This year", direction: "Become the default operations advisor in the Northeast.", outcome: "$20k/mo retained.", defined: true },
+    { id: "quarter", label: "This quarter", sub: "90 days", direction: "Convert the 3 warm referrals.", outcome: "6 retained clients by quarter end.", defined: true },
+  ],
+  playsStatus: "ready",
+  plays: [
+    { id: "p1", name: "Q3 Launch campaign", objective: "Put the offer in front of the warm list.", audience: "Warm list", angle: "Find the leaks", window: "Sep 22 – Oct 3", channels: "Email", outcome: "20 booked diagnostics.", successSignal: "Bookings.", offerName: "Ops-audit", status: "approved", blocked: false },
+  ],
+  decisions: [
+    { id: "d1", title: "Review 3 drafts Paige is holding", detail: "Paige prepared these.", source: "recommendation", waiting: true, destination: "paige", evidence: "3 drafts waiting." },
+  ],
+  decisionsStatus: "ready",
+  dependencies: [
+    { id: "dep1", title: "Sending identity not verified", reason: "Blocks the launch send.", blocking: true },
+  ],
+  dependenciesStatus: "ready",
   refresh: vi.fn(),
 });
 
@@ -84,6 +107,7 @@ beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  saveMock.mockClear();
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -91,7 +115,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("SoloGamePlanWorkspace", () => {
+describe("SoloGamePlanWorkspace (strategy desk)", () => {
   it("renders a loading skeleton (aria-busy) while the plan resolves", () => {
     hooked.view = { ...groundedView(), loading: true };
     mount();
@@ -108,86 +132,119 @@ describe("SoloGamePlanWorkspace", () => {
       ],
     };
     mount();
-    expect(container.textContent).toContain("Let's build your game plan.");
-    expect(container.querySelectorAll(".gp-first-step").length).toBe(3);
-    clickText(".gp-first-step", "Add your first offer");
+    expect(container.textContent).toContain("Let's build your game plan with Paige.");
+    clickText(".sd-first-step", "Add your first offer");
     expect(loc.value).toBe("/solo/42/growth/catalog");
   });
 
-  it("renders the grounded plan: greeting, best move, priority, foundation, real coverage", () => {
+  it("leads with the STRATEGY spine: greeting, the plan brief direction, plays — not a readiness list", () => {
     hooked.view = groundedView();
     mount();
     expect(container.textContent).toContain("Good afternoon, Jordan.");
-    expect(container.textContent).toContain("Re-engage 2 clients before they lapse");
-    expect(container.textContent).toContain("Add your first offer");
-    expect(container.textContent).toContain("Business identity");
-    // Real numerator/denominator, shown as "3 / 5".
-    expect(container.querySelector(".gp-cov-top b")?.textContent?.replace(/\s+/g, "")).toBe("3/5");
+    expect(container.textContent).toContain("Plan brief");
+    // The quarter horizon is the default lead; its direction shows.
+    expect(container.textContent).toContain("Convert the 3 warm referrals.");
+    expect(container.textContent).toContain("Q3 Launch campaign");
+    // Systems Check is demoted to a supporting dependency, never a "best move" spine.
+    expect(container.textContent).toContain("Plan dependencies");
+    expect(container.textContent).not.toContain("Top move · blocked");
   });
 
   it("renders the owner's real, server-resolved account identity (§70) — name + tier, not a placeholder", () => {
     hooked.view = groundedView();
     mount();
-    // The visible kicker carries the resolved account name and its tier label…
-    expect(container.querySelector(".gp-kicker")?.textContent).toContain("Clearpath Advisory");
-    expect(container.querySelector(".gp-kicker")?.textContent).toContain("Solo");
-    // …and the canonical sr-only shell-contract markers carry the same values.
+    expect(container.querySelector(".sd-kicker")?.textContent).toContain("Clearpath Advisory");
+    expect(container.querySelector(".sd-kicker")?.textContent).toContain("Solo");
     expect(container.querySelector("[data-tenant-account-name]")?.textContent).toBe("Clearpath Advisory");
     expect(container.querySelector("[data-tenant-account-tier]")?.textContent).toBe("Solo");
   });
 
-  it("renders the blocked treatment with its reason", () => {
+  it("the Plan Brief is genuinely EDITABLE and persists through the save seam (§70)", () => {
+    hooked.view = groundedView();
+    mount();
+    clickText("button", "Edit brief");
+    // A dialog opened with the current values.
+    expect(container.querySelector('[role="dialog"]')).toBeTruthy();
+    setTextarea("Annual direction", "Own the Series-A ops-advisory category.");
+    clickText("button", "Save changes");
+    expect(saveMock).toHaveBeenCalledTimes(1);
+    expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ annualDirection: "Own the Series-A ops-advisory category." }));
+  });
+
+  it("a NON-first Plan Brief field is editable and its value reaches the save seam (§70, peer-gate BLOCKER)", () => {
+    // The focus-trap effect once re-ran on every keystroke (unstable onClose dep), stealing focus
+    // back to field #1 so only the first field was editable. This drives a LATER field end-to-end;
+    // its value must flow to save — a regression guard for the multi-field first-run flow.
+    hooked.view = groundedView();
+    mount();
+    clickText("button", "Edit brief");
+    setTextarea("This quarter's focus", "Convert the 3 warm referrals into retained clients.");
+    clickText("button", "Save changes");
+    expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ currentPriority: "Convert the 3 warm referrals into retained clients." }));
+  });
+
+  it("a Systems Check read OUTAGE shows 'Couldn't check', never a false 'All clear' (§13, peer-gate MAJOR)", () => {
+    hooked.view = { ...groundedView(), dependencies: [], dependenciesStatus: "unavailable" };
+    mount();
+    expect(container.textContent).toContain("Couldn't check");
+    expect(container.textContent).not.toContain("Nothing is blocking your plays");
+    expect(container.textContent).not.toContain("All clear");
+  });
+
+  it("a drafts read OUTAGE shows 'Couldn't check what's waiting', never 'All caught up' (§13, Codex P2)", () => {
+    hooked.view = { ...groundedView(), decisions: [], decisionsStatus: "unavailable" };
+    mount();
+    expect(container.textContent).toContain("Couldn't check what's waiting");
+    expect(container.textContent).not.toContain("All caught up");
+  });
+
+  it("a MIXED proposal (touches business details) offers 'Review in Setup', never an inline Apply (§13, Codex P1)", () => {
     const v = groundedView();
-    v.bestMove = {
-      ...v.bestMove, proof: "blocked", title: "Launch the re-engagement sequence",
-      blockedReason: "Your sending identity isn't verified, so no email can be sent. Clear it and this move unblocks.",
-      destination: "connections", ctaLabel: "Verify sending identity",
-    };
+    v.planBrief = { ...v.planBrief, pendingProposal: { id: "p1", reason: "Narrow the quarter target.", proposedAt: "2026-09-06T00:00:00Z", patch: { currentPriority: "x", legalName: "Acme LLC" } } as never, proposalPlanOnly: false };
     hooked.view = v;
     mount();
-    expect(container.textContent).toContain("Top move · blocked");
-    expect(container.textContent).toContain("sending identity isn't verified");
-    expect(container.querySelector(".gp-bnm.gp-blocked")).toBeTruthy();
+    expect(container.textContent).toContain("Review in Setup");
+    // No inline Apply for a proposal that reaches beyond the plan fields shown here.
+    const applyBtn = [...container.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Apply");
+    expect(applyBtn).toBeFalsy();
+    clickText("button", "Review in Setup");
+    expect(loc.value).toBe("/solo/42/settings/setup");
+  });
+
+  it("a dismiss FAILURE surfaces its error, never a false 'Dismissed' success (§13, Codex P2)", async () => {
+    const dismiss = vi.fn().mockResolvedValue({ ok: false, error: "This plan changed elsewhere." });
+    const v = groundedView();
+    v.planBrief = { ...v.planBrief, pendingProposal: { id: "p1", reason: "r", proposedAt: "2026-09-06T00:00:00Z", patch: { currentPriority: "x" } } as never, proposalPlanOnly: true, dismissProposal: dismiss };
+    hooked.view = v;
+    mount();
+    await act(async () => { clickText("button", "Dismiss"); });
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("This plan changed elsewhere.");
+    expect(container.textContent).not.toContain("your approved plan is unchanged");
   });
 
   it("the primary act opens the one PAIGE conversation (never a fake action)", () => {
     const openPaige = vi.fn();
     hooked.view = groundedView();
     mount(openPaige);
-    clickText("button", "Put PAIGE to work");
+    clickText("button", "Plan with Paige");
     expect(openPaige).toHaveBeenCalledTimes(1);
   });
 
-  it("a foundation row routes to its real owning surface", () => {
+  it("a plan dependency routes to Systems Check (demoted, but reachable)", () => {
     hooked.view = groundedView();
     mount();
-    clickText(".gp-fnd-row", "Business identity");
-    expect(loc.value).toBe("/solo/42/settings/setup");
+    // open the collapsible dependencies section, then click the finding.
+    clickText(".sd-dep-name", "Sending identity not verified");
+    expect(loc.value).toBe("/solo/42/command-center/systems-check");
   });
 
-  it("every summary chip is a real control that opens its backing surface (§36 drill-down)", () => {
+  it("a decision on the desk opens its backing surface (§36 drill-down)", () => {
     const openPaige = vi.fn();
     hooked.view = groundedView();
     mount(openPaige);
-    const chips = [...container.querySelectorAll(".gp-chip-act")] as HTMLButtonElement[];
-    // Both chips render as buttons (not dead spans).
-    expect(chips.length).toBe(2);
-    chips.forEach((c) => expect(c.tagName).toBe("BUTTON"));
-    // "2 clients at risk" opens the Clients surface for real.
-    clickText(".gp-chip-act", "clients at risk");
-    expect(loc.value).toBe("/solo/42/clients/people");
-    // "3 drafts waiting" opens the one PAIGE conversation (no dead-end).
-    clickText(".gp-chip-act", "drafts waiting");
+    clickText("button", "Open PAIGE");
     expect(openPaige).toHaveBeenCalledTimes(1);
-  });
-
-  it("a priority row is keyboard-expandable (aria-expanded toggles)", () => {
-    hooked.view = groundedView();
-    mount();
-    const row = container.querySelector(".gp-pp-row") as HTMLElement;
-    expect(row.getAttribute("aria-expanded")).toBe("false");
-    act(() => { row.click(); });
-    expect(row.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("shows 'No recorded work yet' for an empty recorded feed (never a fake activity feed)", () => {
@@ -200,7 +257,7 @@ describe("SoloGamePlanWorkspace", () => {
     hooked.view = groundedView();
     mount();
     const text = container.textContent || "";
-    for (const forbidden of ["/solo/", "supabase", "_snapshot", "usePractice", "paige_", "get_solo_rail", "#771", "RPC"]) {
+    for (const forbidden of ["/solo/", "supabase", "business_brief", "campaign_briefs", "paige_", "get_solo", "RPC", "§"]) {
       expect(text, `visible copy must not contain "${forbidden}"`).not.toContain(forbidden);
     }
   });

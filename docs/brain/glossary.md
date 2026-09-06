@@ -148,11 +148,47 @@ PR #406). Build order was L1 → L4 → L2 → L5.
   "Blueprints" = the one-click vertical install layer (`docs/doctrine/paige-practice-blueprints…`).
 - **Vibe Studio** — the tenant creative surface (Campaigns tab): pages, funnels, forms, images, in one
   session (§19/§21/§22). `ProjectNavigator` = the project rail.
-- **Command Mark** — the current PAIGE brand mark, owner-approved 2026-08-22. Source of truth for
-  the mark, wordmark, palette and motion sequence: `../brand/paige-brand-identity.md`; it builds into
-  `src/components/brand/PaigeSymbol.tsx`. **It replaces the retired orbital PaigeMark** — do not cite
-  PaigeMark as the current primitive. ("Illuminated Precision" is a superseded label; do not
-  reintroduce it.) `PaigeScene` = the landing 3D hero (three.js), a separate thing.
+- **Command Mark** — the CURRENT and authoritative Paige brand mark (a slash + an orb),
+  owner-approved 2026-08-22 and, per the owner ruling 2026-09-06, the Paige identity across the ACTIVE
+  product AND the public/marketing experience (this supersedes the earlier "tenant + operator surfaces
+  only" rollout scope). Source of truth for the mark, wordmark, palette and motion sequence:
+  `../brand/paige-brand-identity.md`. **Two component homes:** the operator
+  `src/operator/shell/CommandMark.tsx` (plate variant, coloured by `--pg`/`--cm` tokens, only resolves
+  inside a `data-pg` shell — renders on the operator shell `SlotRail.tsx` and on the Solo/agency/admin
+  command centers via `TenantCommandCenterShell.tsx`); and the surface-agnostic
+  `src/components/brand/PaigeCommandMark.tsx` (the keystone — self-contained theme-aware colours that
+  resolve WITH or WITHOUT a shell; renders anywhere — marketing/auth/chrome; API
+  `className`/`animated`/`label`/`plated`; consumed by the ~25 migrated surfaces + `PaigeSymbol`'s
+  command branch).
+  **The slash-and-orb geometry is embedded independently in EIGHT files** (verified 2026-09-06,
+  post-retirement — `grep "21,13.6 30.5,13.6" src`): the four OPERATOR copies — `operator/shell/CommandMark.tsx`
+  (the 38px rail plaque), `operator/shell/CommandBar.tsx`, `operator/shell/spine/SpineHeader.tsx`,
+  `operator/surfaces/relationships/SegmentsSurface.tsx` (none of the latter three is sourced from
+  `CommandMark.tsx`, and `SpineHeader`'s copy is DELIBERATE per its own header comment: rail variant vs.
+  the bare spine glyph — do NOT "consolidate" without reading that comment; `OperatorSpine.tsx` imports
+  only the `CommandMarkState` type, not the geometry) — plus the shared keystone
+  `components/brand/PaigeCommandMark.tsx` and the small inline copies in `solo/_shared.tsx`,
+  `agency/_shared.tsx`, and `solo/social-command.tsx`. **A geometry change touches all eight, not one.**
+  **Social** carries an owner-authorised contrasting local variation (indigo plate + gold slash/orb,
+  bulging glyph) — a local treatment, NOT a new logo.
+- **PaigeMark — RETIRED (owner ruling 2026-09-06).** The orbital orb + ring + companion spark + halo
+  mark — and the older blue "PAi" monogram rasters it replaced — is retired and PROHIBITED from active
+  product/public surfaces; `src/components/brand/PaigeMark.tsx` is DELETED. It was formerly imported
+  DIRECTLY by ~two dozen production surfaces (marketing landing `src/pages/PaigeHome.tsx`, auth &
+  onboarding, the admin + agency layouts, Studio, `src/solo/social-command.tsx`) — ALL migrated to the
+  Command Mark (`PaigeCommandMark`, and `PaigeSymbol`'s command branch now renders it). The 2026-09-06
+  Social ruling "stay to that one and that one only" was CORRECTED the same day: the one mark is the
+  Command Mark, not the orbital PaigeMark. Guard: `lint:legacy-mark`
+  (`scripts/ci/legacy-mark-lint.mjs` — scans `src/**` + `public/**` + `index.html` for the
+  component/import/tag, the distinctive orbital hexes, the orbital animation classes, and a re-drawn
+  tilted-ring `<ellipse>`) + eslint `no-restricted-imports` on the legacy import paths. See decision-log
+  2026-09-06 (BRAND) + `../evidence/ui-delivery/legacy-mark-retirement-command-mark.md`.
+  **KEPT (not a mark):** `src/assets/paige-ai-avatar.png` (the Paige persona character). **Known
+  archival exception:** descriptive code COMMENTS in the Studio cutscene primitives + a stale comment in
+  the locked operator `CommandMark.tsx` still say "PaigeMark" — harmless prose drift, not a live render;
+  the guard does not (and must not) trip on the bare word in a comment.
+  ("Illuminated Precision" is a superseded label; do not reintroduce it.) `PaigeScene` = the landing
+  3D hero (three.js), a separate thing.
 - **MMA / PME** — Mogul Maker Academy / Project Mogul Enterprise: the owner's **tenant** vertical
   (funding-coaching) — a *tenant's* config, **never** a platform default (§2/§9).
 - **`db-live` / `edge-live` tags** — git tags the CI pipelines move to the last commit whose

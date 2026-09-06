@@ -5,7 +5,7 @@
 // "waiting on you" count (never rescoped by focus — B3) that soft-pulses once
 // when it rises. Full width, sticky, above both columns.
 import { useEffect, useRef, useState } from "react";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { BookOpen, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -67,7 +67,7 @@ export function PaigeCommandBar({ pb, tenantName, counts, knowledgePulse, pendin
       {/* Desktop */}
       <div className="hidden md:flex items-center justify-between gap-4 px-4 lg:px-6 py-2">
         <div className="flex items-start gap-3 min-w-0">
-          <PaigeMark className="h-9 w-9 shrink-0 mt-0.5" />
+          <PaigeCommandMark className="h-9 w-9 shrink-0 mt-0.5" />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-base font-semibold truncate">Your Paige</h1>
@@ -115,7 +115,7 @@ export function PaigeCommandBar({ pb, tenantName, counts, knowledgePulse, pendin
       {/* Mobile */}
       <div className="flex md:hidden items-center justify-between gap-2 px-3 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
-          <PaigeMark className="h-7 w-7 shrink-0" />
+          <PaigeCommandMark className="h-7 w-7 shrink-0" />
           <span className="font-semibold text-sm truncate">
             {named ? pb.persona.name : "Your Paige"}
           </span>
