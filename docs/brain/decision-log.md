@@ -3400,6 +3400,53 @@ the refusals back into executions (#47); splitting arming out of the stage-autom
 which can arm unattended sending in one call (#48); four inconsistencies the mapping surfaced in
 existing policy (#49).
 
+## 2026-09-06 — Paige OS Integration Phases 0–1: the Surface Binding Ledger + the Surface Context Handoff Contract (PR #989)
+
+**Durable decision.** The program that binds every meaningful surface to Paige through one governed
+chain — *canonical source → server-resolved tenant scope → safe context → authority → governed write →
+verified outcome → Rail → Mind → Memory* — now has a single source of truth and a CI-enforced honesty
+rule. Two artifacts shipped; **no runtime binding was created and no surface changed behaviour.**
+
+**Changed contract / what shipped.**
+- `docs/binding-ledger/surface-binding-ledger.json` (+ `README.md`): the machine-readable + human-readable
+  ledger of all 26 rows (25 Solo surfaces + the operator console, recorded out-of-scope), each across the
+  full chain with the six-state vocabulary (LIVE / PARTIAL / READ_ONLY_CONTEXT / INTENTIONALLY_ISOLATED /
+  UNAVAILABLE / PROOF_OWED). It CITES the Mind matrix, the Spine/Rail state doc, the surface cards and the
+  parity matrix — forks none of them (§18).
+- `scripts/ci/binding-ledger-lint.mjs` (`lint:binding-ledger` + `:test`, wired into `ci.yml`): the release
+  contract — a surface may not be reported LIVE / "Paige-connected" without a complete entry proven by
+  `authenticated_runtime` (§13/§32). Self-test 14 cases; clean on all 26 rows.
+- `docs/doctrine/surface-context-handoff-contract.md`: the one server-safe way a surface opens the
+  dedicated Paige workspace — an allowlisted INTENT (never raw payload/authority), server-resolved context
+  via the existing JWT + Spine seams, fail-closed, reuses the `paige_pending_confirmations` gate (no second
+  approval system), extends `paigeClientScope`. Closes three gaps: raw `clientContext` prose, the dropped
+  prompt (#771), no surface identity.
+
+**Proof status (honest).** No surface is LIVE (Mind axis-B is NO everywhere). Of 26 rows: 4 PROOF_OWED,
+5 PARTIAL, 2 INTENTIONALLY_ISOLATED, 15 UNAVAILABLE. Guard verified by self-test + clean run. No
+authenticated runtime proof for any binding.
+
+**Known limitations / deferred.** The Phase 1 runtime adoption (extending the scope bridge, consuming the
+intent, retiring the raw prose payload) and its two regression guards are DEFERRED to the next bounded
+slice — they touch owned/contested files. The nine `paige:open` dispatch sites (four files) are the frozen
+migration baseline.
+
+**Review corrections folded in before merge (the program's own §13/§37 discipline, applied to itself).**
+The §39 verifier caught a BLOCKER: the Business Game Plan row falsely denied a shipped governed write —
+`business_mission.create/.revise/.transition` (chat-bound, approval-gated, migration `20260905221203`,
+#983) target that surface; the first draft grounded on the pre-#983 Mind matrix instead of the registry.
+Fixed to PARTIAL. Also corrected: the handoff contract's dispatcher inventory (five → the true nine across
+four files), a master-ref state-count mismatch, an overstated "CI keeps README and JSON in step" claim
+(CI validates the JSON only), and Setup's five subtabs / knowledge-persona seam were enumerated.
+
+**Next owning workstream + dependency.** The Phase 1 adoption slice — MUST read
+`docs/doctrine/surface-context-handoff-contract.md` first. Then the Spine SCR-1/2/3 sequence for the
+UNAVAILABLE surfaces (read `docs/architecture/paige-spine-tool-migration-map.md` +
+`docs/architecture/paige-mind-integration-matrix.md` first). Each binding slice updates its ledger row on
+merge (§BRAIN.3) and never claims LIVE without authenticated runtime proof.
+
+**Where recorded.** `docs/binding-ledger/` (new), `docs/doctrine/surface-context-handoff-contract.md`
+(new), `docs/brain/README.md` (index rows), `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4, and this entry.
 ## 2026-09-06 · Campaigns → Sales redesigned into the four-view Sales Command Desk (Solo)
 
 Same surface and tiers as Sales Operations Slice A — no gating change, no new feature key, no route,
