@@ -32,6 +32,7 @@ Paige-specific half. It is our own content and adds to flow-by-flow rather than 
 | `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4 | Any "do we have this?" question — §4 is SHIPPED, §5 is gaps |
 | `docs/doctrine/tier-matrix.md` | Anything whose visibility or gating differs per account type |
 | `docs/brain/decision-log.md` | Before re-opening anything that smells like a settled decision |
+| `docs/doctrine/release-governance-and-customer-update-policy.md` | Before opening/closing a PR, merge, deployment, staged rollout, version/name decision, customer update, or answering what changed <!-- RELEASE_GOVERNANCE_POLICY --> |
 
 **Why this is a STEP and not a habit.** `CLAUDE.md` §BRAIN.1 already requires reading
 `docs/brain/README.md` at **session** start. That is a different trigger: delivery work runs per
@@ -78,6 +79,7 @@ The last step of the work, **in the same change**. Not a follow-up.
 | A reusable pattern or skill emerged | The mechanic, so the next task inherits it | `docs/brain/` + its index row in `README.md` |
 | Tier, surface, or gating changed | The per-tier reality **as shipped** | `docs/doctrine/tier-matrix.md` |
 | A new doc was added | Its index row | `docs/brain/README.md` |
+| A PR, deployment, or customer release closed | Exact build identity, release channel, customer identity only when earned, evidence state, and any What's New record | `docs/doctrine/release-governance-and-customer-update-policy.md` + PR closeout; customer candidates use `docs/release-governance/release-record.schema.json` <!-- RELEASE_GOVERNANCE_POLICY --> |
 | A finding was discovered **outside this task's scope** | The issue — evidence, impact, next step, what was not verified — filed **when it was found**, not here | GitHub Issues. The PAIGE Attention Register is a view over them and is `UNAVAILABLE` until its board exists — `docs/doctrine/paige-attention-register.md` §7 |
 
 What binds which: **§0** the master reference · **§BRAIN.3** `docs/brain/` · **§66** the tier matrix ·

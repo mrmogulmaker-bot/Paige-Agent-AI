@@ -3,6 +3,19 @@
 ## Summary
 <!-- What changed and why. -->
 
+## Release governance
+
+<!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
+
+- Internal build identity: exact head SHA; deployment ID/environment when known; migrations; edge status; evidence:
+- Release channel: development / preview / production / approved staged rollout
+- Classification: internal-only / patch / minor-candidate / major-candidate
+- Customer release identity: none, or proposed version + name + owner-decision reference
+- Truth labels and proof boundary: `LIVE` / `PARTIAL` / `UNAVAILABLE` / `PROOF OWED`
+- Release note required: yes/no and why
+- Affected audience/tier, benefits, limitations, owner action, rollback/recovery:
+- Second Brain + Master Reference updated, or exact collision-safe handoff:
+
 ## Doctrine §200 — Platform Independence Checklist
 
 Before requesting review, confirm each item:

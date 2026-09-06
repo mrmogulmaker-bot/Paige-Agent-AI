@@ -397,6 +397,23 @@
   `paige-mcp/index.ts:5388/5421/5782`) so the "2026-09-05 unwired/tier+scope-only" claim was stale; (4) the
   registry same-commit rule. **Post-merge:** owner-complete MVP plan → dedicated-builder build handoff
   (in-chat UI flow first, then backend).
+- **Release Governance & Customer Update Policy — canonical standing contract (2026-09-06, owner-directed).**
+  `docs/doctrine/release-governance-and-customer-update-policy.md` now separates three identities every
+  delivery path had been conflating: exact internal build identity (always recorded), release channel,
+  and customer version/name (only for a coherent owner-visible outcome). Paige Solo Preview uses
+  `0.x.y`; patches generally stay quiet, meaningful owner-visible improvements are minors with notes,
+  and `1.0` requires Antonio's explicit milestone decision plus demonstrated OS coherence. Customer
+  announcement requires deployed outcome evidence, green CI/security/production checks, precise
+  `PROOF OWED` wording where applicable, audience/tier + benefits + limits + recovery + exact deployment,
+  and owner publication approval. The machine contract is
+  `docs/release-governance/release-record.schema.json`; agent startup, Second Brain closeout, master,
+  PR/UI templates, release guide, and CI point to the one policy. UX direction is recorded, not built:
+  subtle unread indicator in the existing workspace/account area, one durable Updates destination,
+  no routine-patch popup, no duplicated chrome. **RECOMMENDATION FOR OWNER DECISION — NOT A RELEASE OR
+  ANNOUNCEMENT:** train `Paige Solo Preview 0.1.x`; first candidate label
+  `0.1.0 — Governed Workspace Foundations`, only after the owner chooses the proven included outcomes
+  and every included claim passes the announcement gate. `1.0` and external marketing are not authorized.
+  <!-- RELEASE_GOVERNANCE_POLICY -->
 
 - **Integration Capability Registry v1.1 — API Expense & Operations Layer + the "M1" disambiguation (2026-09-06, PR #1029, squash `1fee5418`; owner-authorized, incl. a mid-slice M1 terminology ruling).**
   Extended the existing registry JSON (§18, no second registry): an `expense_and_operations` block on **all 20

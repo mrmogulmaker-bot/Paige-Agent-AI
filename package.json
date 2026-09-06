@@ -98,7 +98,9 @@
     "lint:integration-registry:test": "node scripts/ci/integration-registry-lint.mjs --self-test",
     "smoke:secure-browser-security": "node scripts/secure-browser-security-smoke.mjs",
     "smoke:secure-browser-authority": "deno run -A scripts/secure-browser-authority-smoke.ts",
-    "smoke:secure-browser-egress": "node services/paige-browser/smoke-readonly-egress.mjs"
+    "smoke:secure-browser-egress": "node services/paige-browser/smoke-readonly-egress.mjs",
+    "lint:release-governance": "node scripts/ci/release-governance-lint.mjs",
+    "lint:release-governance:test": "node scripts/ci/release-governance-lint.mjs --self-test"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",

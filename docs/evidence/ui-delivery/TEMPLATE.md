@@ -22,6 +22,15 @@ TRUTHFUL_STATE_LABELS: PASS: REPLACE_ME with checked capability labels and contr
 SOLO_UI: NO: REPLACE_ME with why this is not a Solo interface
 UNVERIFIED: REPLACE_ME with remaining behavior and reason, or state none with the completed proof boundary
 
+<!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
+INTERNAL_BUILD_IDENTITY: REPLACE_ME exact head SHA; deployment ID/environment when known; migrations; edge status; evidence
+RELEASE_CHANNEL: REPLACE_ME development / preview / production / approved staged rollout
+RELEASE_CLASSIFICATION: REPLACE_ME internal-only / patch / minor-candidate / major-candidate
+CUSTOMER_RELEASE_IDENTITY: REPLACE_ME none, or proposed version + name + owner-decision reference
+RELEASE_NOTE_REQUIRED: REPLACE_ME yes/no and why
+RELEASE_TRUTH_BOUNDARY: REPLACE_ME exact LIVE / PARTIAL / UNAVAILABLE / PROOF OWED claims
+RELEASE_RECOVERY: REPLACE_ME rollback/forward-fix position and reference
+
 For a non-material flow change, use `MATERIAL_FLOW_CHANGE: NO: reason` and `FLOW_PROTOTYPE: NOT_REQUIRED: reason`. Do not use `NOT_REQUIRED` merely because a prototype was inconvenient.
 
 For Solo work, set `SOLO_UI: YES: affected canonical surface` and include all eight records:

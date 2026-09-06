@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paige.ai/schemas/release-record.schema.json",
+  "title": "Paige Agent AI release record",
+  "description": "Machine-readable contract for exact build identity, release channel, and an optional earned customer release identity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_id",
+    "record_state",
+    "classification",
+    "internal_builds",
+    "scope",
+    "affected_audience",
+    "benefits",
+    "limitations",
+    "rollback_recovery",
+    "customer_release_identity",
+    "whats_new"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "record_id": { "type": "string", "minLength": 1 },
+    "record_state": {
+      "enum": ["DRAFT", "OWNER_DECISION_PENDING", "APPROVED", "PUBLISHED", "CORRECTED", "RETRACTED"]
+    },
+    "classification": {
+      "enum": ["internal_only", "patch", "minor_candidate", "major_candidate"]
+    },
+    "internal_builds": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/buildIdentity" }
+    },
+    "scope": { "$ref": "#/$defs/nonEmptyStrings" },
+    "affected_audience": { "$ref": "#/$defs/nonEmptyStrings" },
+    "benefits": { "$ref": "#/$defs/nonEmptyStrings" },
+    "limitations": { "$ref": "#/$defs/nonEmptyStrings" },
+    "rollback_recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["position", "reference"],
+      "properties": {
+        "position": { "type": "string", "minLength": 1 },
+        "reference": { "type": "string", "minLength": 1 }
+      }
+    },
+    "customer_release_identity": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "release_name", "date", "owner_approval_reference"],
+          "properties": {
+            "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+            "release_name": { "type": "string", "minLength": 1 },
+            "date": { "type": "string", "format": "date" },
+            "owner_approval_reference": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "whats_new": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/whatsNew" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "customer_release_identity": { "type": "object" } },
+        "required": ["customer_release_identity"]
+      },
+      "then": {
+        "properties": { "whats_new": { "$ref": "#/$defs/whatsNew" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "classification": { "enum": ["minor_candidate", "major_candidate"] } },
+        "required": ["classification"]
+      },
+      "then": {
+        "properties": { "whats_new": { "$ref": "#/$defs/whatsNew" } }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmptyStrings": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "evidenceState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "evidence"],
+      "properties": {
+        "state": { "enum": ["PASS", "FAIL", "UNVERIFIED"] },
+        "evidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "deliveryState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "evidence"],
+      "properties": {
+        "state": { "enum": ["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAILED"] },
+        "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "buildIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit_sha",
+        "deployment_id",
+        "environment",
+        "release_channel",
+        "deployed_at",
+        "migration_status",
+        "edge_status",
+        "checks",
+        "evidence"
+      ],
+      "properties": {
+        "commit_sha": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+        "deployment_id": { "type": "string", "minLength": 1 },
+        "environment": { "type": "string", "minLength": 1 },
+        "release_channel": { "enum": ["development", "preview", "production", "staged"] },
+        "deployed_at": { "type": "string", "format": "date-time" },
+        "migration_status": { "$ref": "#/$defs/deliveryState" },
+        "edge_status": { "$ref": "#/$defs/deliveryState" },
+        "checks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ci", "security", "production_checks"],
+          "properties": {
+            "ci": { "$ref": "#/$defs/evidenceState" },
+            "security": { "$ref": "#/$defs/evidenceState" },
+            "production_checks": { "$ref": "#/$defs/evidenceState" }
+          }
+        },
+        "evidence": { "$ref": "#/$defs/nonEmptyStrings" }
+      }
+    },
+    "whatsNew": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "customer_outcome",
+        "what_changed",
+        "who_can_use_it",
+        "owner_action",
+        "status",
+        "known_limitations",
+        "safe_next_step",
+        "technical_release_reference",
+        "paige_readable_summary"
+      ],
+      "properties": {
+        "customer_outcome": { "type": "string", "minLength": 1 },
+        "what_changed": { "type": "string", "minLength": 1 },
+        "who_can_use_it": { "type": "string", "minLength": 1 },
+        "owner_action": { "type": "string", "minLength": 1 },
+        "status": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["LIVE", "PARTIAL", "UNAVAILABLE", "PROOF OWED"] }
+        },
+        "known_limitations": { "type": "string", "minLength": 1 },
+        "safe_next_step": { "type": "string", "minLength": 1 },
+        "technical_release_reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["visibility", "build_ids"],
+          "properties": {
+            "visibility": { "const": "internal_only" },
+            "build_ids": { "$ref": "#/$defs/nonEmptyStrings" }
+          }
+        },
+        "paige_readable_summary": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

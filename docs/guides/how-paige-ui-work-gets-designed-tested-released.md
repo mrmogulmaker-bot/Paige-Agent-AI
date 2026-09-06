@@ -7,7 +7,7 @@ Every interface assignment follows the same simple path.
 3. **Prototype new flows.** If the work changes steps, choices, confirmations, recovery, or consequences, the agent uses Flow Prototype so the intended experience can be exercised before production implementation.
 4. **Build the complete experience.** Loading, empty, failure, retry, permission, success, cancellation, Back, and workspace-switch behavior are included where relevant. A working-looking mock is not treated as working software.
 5. **Prove what is true.** Tests, code checks, rendered screenshots, behavioral browser drives, and authenticated tenant proof are reported separately. Anything not actually exercised is labeled `UNVERIFIED`; unsupported capability is `UNAVAILABLE`.
-6. **Review and release.** The pull request includes a structured evidence record. CI catches missing attestations for recognized UI source changes, and a reviewer inspects the real flow. Normal Paige release gates still control merge and production.
+6. **Review and release.** The pull request includes a structured evidence record. CI catches missing attestations for recognized UI source changes, and a reviewer inspects the real flow. The canonical Release Governance & Customer Update Policy separates the exact internal build identity, release channel, and any earned customer release identity; it controls What's New wording and customer announcement. <!-- RELEASE_GOVERNANCE_POLICY -->
 
 For Solo work, proof covers four required screen sizes with PAIGE closed and open, plus the affected tenant and another known-good tenant. Reviewers check real scrolling, clipping, reachability, keyboard/focus, zoom, reduced motion, and relevant states.
 
