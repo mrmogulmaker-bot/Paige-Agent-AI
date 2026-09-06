@@ -42,6 +42,19 @@ type PipelineWorkspaceFixture = {
 
 vi.mock("./useSoloCampaigns", () => ({ useSoloCampaigns: () => harness.state }));
 
+// Overview is now the Campaign Command Desk, which reads owner briefs through its own tenant-scoped
+// adapter (`useSoloCampaignBriefs`). This file proves the shell (tab order, error/unavailable
+// identity), which the campaigns loop-source read (`harness.state`) drives via the desk's composite
+// phase — so the briefs read is stubbed ready/empty here. The write seam + brief flows have their
+// own proof in `campaign-briefs.contract.test.tsx`.
+vi.mock("./useSoloCampaignBriefs", () => ({
+  useSoloCampaignBriefs: () => ({
+    tenantId: harness.state.tenantId, phase: "ready", briefs: [], archivedCount: 0, canManage: true,
+    retry: () => {}, saveBrief: async () => ({ ok: true, message: "" }),
+    transitionBrief: async () => ({ ok: true, message: "" }), archiveBrief: async () => ({ ok: true, message: "" }),
+  }),
+}));
+
 // Slice 2A — Catalog now opens on Offers, which reads through its own tenant-scoped adapter
 // (`useCatalogOffers`). This file proves the VIBE-OWNED half of the tab, so the offer read is
 // stubbed empty here and the two published-output tests below address that half explicitly by
@@ -460,6 +473,23 @@ describe("Solo Campaigns rendered flows", () => {
     act(() => tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
     expect((host.querySelector("[data-location]") as HTMLOutputElement).value).toBe("/solo/42/growth/catalog");
     expect(document.activeElement?.textContent).toBe("Catalog");
+  });
+
+  it("lets a brand-new tenant actually open the brief builder from the empty first-run state (§70 first use)", () => {
+    // Regression lock for the §39 re-review's §70 finding: the empty-state FirstRun branch used to
+    // render neither `deskRef` nor the drawer portals, so clicking the primary first-use action did
+    // nothing. With 0 briefs the desk shows FirstRun; the builder must still OPEN through the real
+    // `.solo-campaigns` shell GrowthHub provides (the portal host).
+    renderAt("/solo/42/growth/overview");
+    expect(host.textContent).toContain("Start your first growth initiative");
+    const create = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Create campaign brief")) as HTMLButtonElement;
+    expect(create).toBeDefined();
+    act(() => create.click());
+    // The builder actually renders — the empty-state action is NOT inert.
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain("New campaign brief");
+    expect(dialog?.querySelector("input")).not.toBeNull(); // the name field is reachable
   });
 
   it("renders error/retry and unavailable identity without treating either as empty", () => {
