@@ -31,7 +31,10 @@
   provider authority. **The Integration Capability Registry itself does NOT yet exist in the repo** — per the
   directive I did NOT create a competing one; the missing-entry requirement (a Google Workspace-docs entry:
   capability, Drive/Docs/Sheets/Slides scopes, authority lane, provider-confirmed outcome path,
-  Rail/Mind/Memory boundaries) is recorded here and surfaced to the owner as Registry Steward. **ARCHITECTURE
+  Rail/Mind/Memory boundaries) is recorded here and surfaced to the owner as Registry Steward. **[§13
+  correction on merge: the Registry NOW EXISTS on main (`docs/integration-registry/`, shipped by a parallel
+  session in the same window); the actionable item is therefore the Google Workspace-docs ENTRY + a Google
+  provider contract, not the registry itself. This first-party doc-export needs no registry entry.]** **ARCHITECTURE
   FINDING (see lessons-learned):** a NEW edge-native (non-n8n) capability cannot currently be registered as a
   Spine `action` — `paige-spine-registry-lint` requires an executor that is a `public.*` DB RPC (which cannot
   render or mint signed URLs) OR the n8n-management edge-proof shape (`integrations.*` key + lease/project);
@@ -68,6 +71,114 @@
   Re-verified: doc-export 10/10 (incl. the rich-block regression), tsc 0, edge ratchet 145, full suite
   3790/3790, §50/§63 clean. The §39 IDOR + Codex P1 correctness bug are exactly why this MVP got three
   independent review layers before merge.
+- **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
+  new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
+  the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace
+  service/external-execution platform Paige may use, with per-provider governance (business reason · Paige use
+  cases · connection prerequisite · required scopes · safe readable context · allowed writes/effects · authority
+  lane · M1 dependency · canonical provider receipt · Rail/Mind/Memory boundary · status · owner · dependency ·
+  next slice · tier eligibility Platform/Solo/future-Agency/future-Enterprise). **Six-word status vocab: LIVE ·
+  PARTIAL · PROPOSED · UNAVAILABLE · DEFERRED · PROOF OWED** (kept distinct from provider-result-contract's
+  eight runtime words). **Cardinal rule R1: listing a provider NEVER means connected/available/autonomous.**
+  Marketplace entries = **global capability metadata only** (R4); private Paige artifacts need no provider,
+  native Google/M365 creation needs that tenant's connected-provider auth (R5); role/authority separate from
+  tier, Admin is a role never a URL/tier (R6). **This is a product-governance + delivery record — installs
+  nothing, holds no credentials, calls no API, creates no OAuth client.** 20 providers catalogued spanning all
+  6 taxonomy groups + all 6 statuses; every other WIRED provider named in `uncatalogued_wired_providers`
+  (honest coverage); pure infra (Supabase/Vercel/LLM-router/Voyage/GitHub) excluded to config-registry (§18).
+  **Delivery rule (MANDATORY, §0/§66/§BRAIN.3):** read the entry before proposing/implementing/opening a PR
+  for/changing a provider integration; update it before merge with actual capability/authority/proof/limits/next
+  owner, same commit. **CI-enforced:** `scripts/ci/integration-registry-lint.mjs`
+  (`npm run lint:integration-registry` + `:test`, wired in `ci.yml`) — a concise clone of `lint:binding-ledger`;
+  guard + 14-mutation self-test green. Made mandatory in-place: master reference §3/§4, brain README index,
+  `config-registry.md` cross-link, second-brain SKILL read + closeout tables. **§18 disambiguation:** distinct
+  from config-registry (wiring names/IDs), provider-result-contract (runtime per-tenant state), the Surface
+  Binding Ledger (surfaces), the Spine `registry.ts` (domain declarations), and the code-level
+  `tenant_mcp_connections` "Integration Registry, slice 1" (migration `20261005000000`). **§13 flags:** the
+  brief's *"Marketplace Brain decision"* has NO artifact under that phrase repo-wide — Marketplace rule grounded
+  on `MARKETPLACE-DATA-MODEL.md`, recorded unresolved not invented; M1 is real (`autonomy-architecture.md §8`).
+  Crew: §39 adversarial verifier + §5 compliance officer run against the real files. Draft PR = the record + CI.
+- **RE-2 M1-a — money-truth layer (provider-confirmed spend + reconciliation + complete receipt), DARK (2026-09-06, owner-authorized, PR #1014).**
+  The money-truth core of the real-money spend-control backbone (owner ruling 2026-09-06, `autonomy-architecture.md`
+  §10.8 item 3; distinct from the §8.4 LLM-token internal-cost lane). Extends the PR-1 substrate (§18, no fork),
+  migration `20270102000000_re2_m1a_money_truth.sql`. **DARK — ZERO producers**; proven with controlled fixtures
+  inside `BEGIN..ROLLBACK`; no real payment/purchase/ad-spend/bookkeeping/provider change. **What it adds:**
+  `paige_authority_act_runs` gains `confirmed_cost_usd` (provider-CONFIRMED actual = financial truth, distinct from
+  the reserved `cost_usd` estimate — reserved ≠ spent, §13), `confirmed_currency`, `rail_evidence`, an ORTHOGONAL
+  `reconciliation_status` (none/partially_refunded/refunded/reversed/voided — a refunded act keeps status='succeeded'
+  so `authority_reserve`'s exactly-once replay is not broken), `over_cap_breach`; a NEW append-only immutable audit
+  `paige_authority_reconciliations` (§17 — enforced by UPDATE/DELETE/TRUNCATE triggers + `ON DELETE RESTRICT` FKs);
+  and `authority_confirm` / `authority_reconcile` / `authority_receipt`. `authority_confirm` records the confirmed
+  actual and trues-up the atomic ledger by (confirmed−reserved) bounded to the act's own contribution (never a
+  sibling's); `authority_reconcile` handles partial/refund/reversal/external_change/adjust/void, bounding each
+  event's ledger effect to the act's own contribution (over-refund can't erase a sibling or open phantom cap
+  headroom), insert-before-apply, idempotent per (receipt_id, provider_event_id) on APPLIED rows, out-of-order/
+  non-USD events recorded (applied=false)+escalated never dropped; over_cap on confirm RECORDS truth never rejects.
+  DROPs the dark zero-producer `authority_consume` (§37 verified, §58 flagged). §59 writers service-role EXECUTE-only
+  (settlement truth only from authenticated provider evidence — never a human click with a self-asserted amount);
+  reader authenticated+member. §38 evidence-only of the tenant's own rail; never merchant-of-record.
+  **THREE review layers, all cleared (§13 — layered defense, no single pass sufficient):** §5 compliance + §39
+  adversarial verifier both FIX-FIRST (folded C1 sibling-safety, H1 orphan-idempotency, H2 RESTRICT/TRUNCATE
+  immutability, H3 event-id, M1 live breach recompute, M2 terminal guard, M3 label, B1/B2/B3, L1); §39 confirming
+  pass on the folded diff = SHIP (no new defect); **Codex** (third layer) then caught NULL-input coercion bugs the
+  first two layers missed — folded P1 (reject NULL confirmed amount), P1 (reject NULL delta), P1 (require
+  provider_event_id for provider-originated events), P2 (surface per-event evidence in the receipt).
+  **PROOF (§32):** `BEGIN..ROLLBACK` on prod (ref `xygzykjyynhzqytbqnzu`) PROOF_OK across both folds — structural
+  S1-S9 + behavioral incl. the C1 two-act sibling-safety test, H1 redelivery-applies, H2 delete-blocked, M1
+  breach-clears, M2 void/post-terminal, M3 label, EUR fail-closed, §59 refusals, P1a/P1b/P1c/P2. Guards
+  (lint:definer-fns/managed-schema/migration-versions) + §50/§63 clean.
+  **INTEGRATION CAPABILITY REGISTRY (owner directive 2026-09-06) — MISSING-ENTRY REQUIREMENT RECORDED, not
+  invented.** No Integration Capability Registry exists in `docs/brain/` yet and an agent is building it; per the
+  directive's rule 6 this slice did NOT create a competing registry. M1-a is the **provider-agnostic** money
+  backbone — it invents NO provider authority, names no provider, connects nothing, and asserts no provider is
+  live/connected/authorized/autonomous (the confirm/reconcile settlement-truth is fed by an authenticated provider
+  webhook/read that **PR-3** wires per action family). **OWED registry entry (for the Registry Steward / registry
+  agent to add once it exists):** capability = *record-provider-confirmed-spend + reconcile*; provider/scopes = **none
+  (provider-agnostic backbone; a concrete provider is bound only at PR-3)**; authority lane = the RE-2 grant → §67/§68
+  ceiling → `resolve_execution_autonomy` → `authority_reserve` → `authority_confirm`/`authority_reconcile` chain,
+  **execution DARK**; provider-confirmed outcome path = `authority_confirm`(actual)/`authority_reconcile`(refund/
+  reversal/…) service-role-only, fed only by authenticated provider evidence; Rail = `paige_authority_act_runs` +
+  `paige_authority_reconciliations` (immutable); Mind/Memory = none (no LLM/memory surface); proof = §32 PROOF_OK
+  above; limitations = USD-only (multi-currency FX deferred, non-USD fails closed), campaign/client-engagement caps
+  = M1-b (owed), no provider wired (PR-3). Tier-vs-role kept separate (§59 gates on service_role/member, never a
+  URL/tier; admin is a role).
+  **OWNER DECISIONS FLAGGED (safe fail-closed defaults shipped; owner to weigh in — not blocking):** (1) currency/FX
+  (USD-only, non-USD fails closed); (2) audit retention — RESTRICT blocks hard-deleting a tenant/grant/receipt with
+  financial records (offboarding must archive-then-detach); (3) void/state-machine financial semantics (minimal
+  terminal guard shipped; full semantics a PR-3 decision).
+  **LOW hardening follow-ups (from §39 confirming pass):** loud-RAISE on a missing reserved-window row; per-act
+  over_cap_breach flag semantics; a `grant_id`-immutability assert. **authenticated drive OWED to PR-3**.
+  **OUTCOME — MERGED to `main` (squash `94e08d8`, PR #1014, 2026-09-06).** All required PR checks green on head
+  `f6ad69c` (ci · PAIGE Spine contract incl. the `database-contract` shadow-DB job · Security Audit · migration-lint ·
+  ui-delivery-evidence · Vercel). The prior `database-contract` red was a bare version collision (main landed
+  `20270101000000_paige_thread_business_mission_context` after this branch's lint ran); resolved by renaming this
+  slice's migration `20270101000000 → 20270102000000` (SQL byte-identical, §32 PROOF_OK stood) per the
+  never-renumber-the-merged-one rule. §5 + §39 + Codex all cleared before merge.
+  **§32.a persisted-apply CONFIRMED on prod (ref `xygzykjyynhzqytbqnzu`), `deploy-migrations` run 34058404179
+  (main-push) = success + CC's independent prod query:** `supabase_migrations.schema_migrations` carries
+  `20270102000000`; `paige_authority_reconciliations` table present with its append-only BEFORE-UPDATE/DELETE trigger,
+  its BEFORE-TRUNCATE guard, and all three `ON DELETE RESTRICT` FK constraint triggers (tenants · act_runs · grants);
+  the five new `paige_authority_act_runs` columns (`confirmed_cost_usd`, `confirmed_currency`, `over_cap_breach`,
+  `rail_evidence`, `reconciliation_status`) all resolve; `authority_confirm/6`, `authority_reconcile/7`,
+  `authority_receipt/1` all resolve; `authority_consume` is GONE (0 remaining). **Authenticated drive still OWED to
+  PR-3** (no execution lane consumes this yet).
+
+- **PARKED FINDING (2026-09-06) — LLM-token internal-cost meter (§8.4 / MET1 / #737) is LIVE; NOT M1.**
+  Surfaced while grounding M1 (real-money backbone); recorded + parked per owner discipline (stay tight on M1).
+  **Affected area:** the §8.4 LLM-token *internal-cost* lane — `public.meter_llm_usage()` drain +
+  `cron.job 'meter-llm-usage-hourly'` (`35 * * * *`) → `platform_usage_events (event_type='llm_tokens')`;
+  the parked #737 "MET2 evidence owed". This is a SEPARATE lane from RE-2 money-spend metering (owner ruling
+  2026-09-06 distinguished the two) and must not dilute M1. **Current state (verified on prod
+  `xygzykjyynhzqytbqnzu`, 2026-09-06 read-only):** cron active=true, **102/102 runs succeeded** (last end
+  18:35 UTC); `platform_usage_events` holds **322 `llm_tokens` rows / 22,869,251 tokens** (last event
+  2026-09-05 14:20 UTC — idempotent, nothing new to drain since). So MET1 works and the #737 "does it run?"
+  question is effectively **YES**. **Risk:** LOW — not an M1 dependency; no tenant-safety/authority/actual-spend
+  impact. **Open (token-lane's OWN roadmap, not M1):** (a) close #737 MET2 with this evidence; (b) fix the stale
+  `autonomy-architecture.md §8.4` line that still names `platform_metered_events` — the drain writes
+  `platform_usage_events` (owner ruling 2026-09-03; the §8.4 doc contradiction); (c) Stripe metered-item attach
+  + rollup (money-spine "Missing"). **Recommended next owner/slice:** the token-billing/#737 owner — NOT this
+  M1 program. Returning to M1.
+
 - **Capability System Slice 3 (F05) increment 1 — CRM/scheduling write receipts record an honest Rail outcome (2026-09-06, Task #19, owner-authorized)** —
   three consequential chat acts that recorded ONLY to `paige_audit_log` and left NO capability-Rail row —
   `crm_log_activity`, `calendar_book_meeting`, `crm_create_task` (the write-receipts the §39 Slice-1 verifier
@@ -4479,3 +4590,40 @@ drive OWED to PR-3 (no execution lane consumes it yet).
 plus the owner-facing grant/caps/history surface, at which point the reporting tools become grant-aware
 and must say `auto` only when a lane is released). §66: no tier gating changed (no-op); no surface
 changed state (dark oracle) — surfaces move when PR-3 wires a lane.
+
+### 2026-09-06 — Solo Tenant Brain Business Mission vertical slice (MVP candidate)
+
+**Owner-approved outcome.** This is the first bounded Solo Tenant Brain operating proof: an approved
+Mission create/revise/transition must resolve the active Solo tenant and selected canonical Mission,
+persist through the existing Mission RPC, verify the requested change through a fresh canonical
+readback, and only then record the outcome through the existing workspace `capability_run` Rail seam.
+It is not a context-only or UI slice.
+
+**Implementation.** `business-mission-tenant-brain.ts` composes, rather than forks, the existing
+contracts. A bounded `get_paige_thread_business_mission` read extends the Mission system: it derives
+owner and active tenant in-body and uses the persisted Paige thread only as a locator for the newest
+canonically linked Mission. That full current editable brief is inserted as record data before
+reasoning so a one-field revision preserves untouched values. The helper then uses the caller-JWT
+client for the Mission mutation, re-resolves tenant, matches Mission id, revision, lifecycle, brief
+version plus every normalized persisted field through `get_business_mission`, and
+calls the existing service-role `record_capability_run` only after a match. The Mission request UUID is
+also the Rail run UUID, so an identical Mission replay has a stable event identity. A failed/missing/
+mismatched readback writes no Rail and cannot claim success. A Rail failure is reported separately
+from the already verified canonical Mission rather than rewriting history.
+
+**Authority and collision.** The existing chat-canonical approval path remains the real reachable
+authority. RE-2 PR-2 is now on `main` (`7939476d`) but its policy-aware oracle remains deliberately
+DARK with zero producers; this slice does not steal PR-3 by wiring it. PR #917 overlaps the large chat
+file for orchestration/import behavior but owns no Mission context/readback/Rail contract; this slice
+does not alter its orchestration, registry or authority files.
+
+**Truth state.** `command-center.business-game-plan` stays `PARTIAL`. Source/automated proof is green;
+authenticated deployed Mission and matching Rail row/read projection are `PROOF OWED`. Mission Mind is
+`UNAVAILABLE`; Mission Memory is `UNAVAILABLE`; no learned/remembered claim is permitted. This one
+vertical slice never makes the Solo Tenant Brain complete. Detail:
+`docs/brain/solo-tenant-brain.md` and
+`docs/delivery/solo-tenant-brain-business-mission-mvp.md`.
+
+**Production closeout (2026-09-06).** PR #1016 squash-merged as `68d7c10f4381dd66a5d930d82f9400d004d189b5`. `deploy-migrations` run 34057655392 passed its persisted-prod verification; `deploy-edge-functions` run 34057655408 deployed the affected `paige-ai-chat` graph; `db-live` and `edge-live` both resolve to the merge SHA. Vercel Production succeeded and `paigeagent.ai/version.json` returned `68d7c10f4381dd66a5d930d82f9400d004d189b5-mtq9a8x3`. The first PR verification run correctly failed a new Deno TS2322 on nullable tenant input; the shipping head adds an explicit no-tenant exit before argument parsing, mutation or Rail and the repaired real-Deno ratchet passed. Canonical Mission and Rail behavior remain contract/database proven, not authenticated-row proven: those production rows and denied/cross-tenant signed-in paths remain `PROOF OWED`; Mind/Memory remain `UNAVAILABLE`.
+
+**Integration Capability Registry dependency.** Effective at closeout, the owner requires that registry for all provider-facing work. No Integration Capability Registry artifact or Supabase infrastructure entry exists in current main/shared workspaces. This slice did not add a customer provider connection, scope, Marketplace claim or external provider execution and used only the established Supabase deploy path already recorded in `config-registry.md`; no competing registry was created. Registry Steward must add or cross-link the controlling infrastructure entry before later provider-facing expansion. No verified Registry Steward destination was available; attempted routing to an unverified coordinator was refused, so notification receipt is not claimed.

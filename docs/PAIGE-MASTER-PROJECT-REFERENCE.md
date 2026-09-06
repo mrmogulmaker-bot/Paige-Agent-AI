@@ -136,6 +136,20 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 `100M-org-blueprint.md` (§16 canonical) · `1B-growth-map.md` (§17 canonical) · `paige-os-architecture.md` (§35 derived) · `money-spine-architecture.md` (§38 derived) · `paige-c-suite-roster.md` (proposed §42) · `paige-corporate-structure-2026-08-01.md` (Wyoming LLC → Delaware C-Corp + QSBS + Core Connect holdco + TX domicile) · `paige-memory-fabric-l8-2026-07-28.md` (L8 owner-flagged, promoted into MVP) · `paige-unified-comms-substrate-2026-07-29.md` (§49) · `paige-voice-layer-2026-07-28.md` · `paige-chat-universal-control-surface-2026-07-28.md` · `paige-practice-blueprints-2026-07-29.md` (deferred past W4 per owner ruling 2026-08-08) · `tenant-lifecycle-winddown-2026-07-28.md` (Task #129) · `paige-n8n-orchestrator-brain-doctrine.md` (Task #118 template library).
 
+### Integration Capability Registry (provider-governance delivery record — MANDATORY)
+
+**`docs/integration-registry/`** (README + `integration-capability-registry.json`, the source of
+truth) is the one authoritative, living catalogue + taxonomy of every third-party provider, API,
+connector, Marketplace service, and external-execution platform Paige may use, and how each is
+governed (taxonomy · tier eligibility · authority lane · M1 metering dependency · canonical provider
+receipt · Rail/Mind/Memory boundary · honest status). **Cardinal rule: listing a provider there never
+means it is connected, available, or autonomous.** **Delivery rule (MANDATORY, §0/§66/§BRAIN.3):**
+before proposing, implementing, opening a PR for, or changing ANY provider integration, read the
+relevant registry entry; before merge, update it with the actual capability/authority/proof/limits/next
+owner in the same commit. Enforced by `npm run lint:integration-registry` (CI). Distinct from
+`config-registry.md` (wiring names/IDs), `provider-result-contract.md` (runtime per-tenant state into
+Systems Check), and the Spine `registry.ts` / `tenant_mcp_connections` code registries (§18).
+
 ---
 
 ## 4. What's SHIPPED (stop asking about these)
@@ -217,6 +231,13 @@ describes the gap to that target, it does not narrow the target to what is built
 runtime slice — Business Game Plan + Missions — must demonstrate a real governed Paige action (create/
 revise/sequence/advance a Business Mission) with a verified outcome and Rail evidence, not a richer
 context handoff.**
+
+### Solo Tenant Brain — Business Mission vertical slice deployed PARTIAL (2026-09-06)
+
+- PR #1016 is squash-merged and deployed at `68d7c10f4381dd66a5d930d82f9400d004d189b5`. `deploy-migrations` run 34057655392 and `deploy-edge-functions` run 34057655408 passed; `db-live` and `edge-live` both point to that SHA; the production version marker reports the same SHA.
+- Paige now resolves the selected Mission from the persisted chat thread under the caller's server-resolved active Solo tenant, supplies bounded source/revision/lifecycle/freshness context before reasoning, uses the existing approval-gated Mission RPCs, and verifies every normalized canonical persisted field before calling the existing Rail writer. Mission request UUID is the stable Rail run identity.
+- This is `PARTIAL`, not Tenant Brain completion. Authenticated production Solo-owner, denied-role, cross-tenant, canonical Mission-row and matching Rail-row/read-projection proof remain `PROOF OWED`. Mission Mind and durable Memory remain `UNAVAILABLE`; no external business action or outcome is implied by a Mission record change.
+- The owner-mandated Integration Capability Registry has no current Supabase infrastructure entry in the repository/shared workspaces. This slice created no customer provider capability or authority and did not create a competing registry. Registry Steward must add/cross-link the controlling entry before later provider-facing expansion; no verified Steward destination was available, so receipt is not claimed.
 ### Business Vault Phase 2 owner/admin foundation — deployed PARTIAL at `809faec3` (2026-09-06)
 
 - 🟡 **PARTIAL / DEPLOYED.** Tenant-bound owner/admin Vault navigation, Overview, Library metadata, Contracts, Obligations, focused record inspector, archive/fact-revocation lifecycle, and truthful member denial shipped in PR #986 merge `809faec3`. Server functions resolve the active workspace and current role; client-supplied tenant or authority values are never trusted. Authenticated production behavior is not yet proven.
@@ -1420,6 +1441,34 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
 - **Intelligence layer NOT live (§13 baked into the copy):** the placeholder literally reads *"{persona}'s live conversation connects here soon — your message isn't sent yet."* The chrome is shipped; the send/receive/reasoning wiring is Wave 4 MVP-hub work — the correct shipped-chrome / not-yet-intelligence pattern (§32).
 - **Spec:** `docs/product/agent-ui-placement-spec.md` (§5a persona surface + ⌘K launcher + right-rail placement).
 - **Evidence:** owner screenshot 2026-08-09 of `paigeagent.ai/admin/platform/tenants` (rail + ⌘K modal); CC file/size verification against `origin/main`.
+
+### Integration Capability Registry — the provider-governance delivery contract (2026-09-06)
+
+- ✅ **`docs/integration-registry/` shipped** — the one authoritative, living catalogue + taxonomy of
+  every third-party provider, API, connector, Marketplace service, and external-execution platform
+  Paige may use, with per-provider governance (business reason · Paige use cases · connection
+  prerequisite · required scopes · safe readable context · allowed writes/effects · authority lane ·
+  M1 dependency · canonical provider receipt · Rail/Mind/Memory boundary · status · owner · dependency
+  · next slice · tier eligibility). Machine-readable `integration-capability-registry.json` is the
+  source of truth; `README.md` is the human companion. Six-word status vocabulary: **LIVE · PARTIAL ·
+  PROPOSED · UNAVAILABLE · DEFERRED · PROOF OWED**.
+  - **This is a product-governance and delivery record, not a provider-integration build** — it
+    installs nothing, holds no credentials, calls no external API, creates no OAuth client.
+  - **Cardinal rule:** a registry listing NEVER means a provider is connected, available, or
+    autonomous (R1). Marketplace entries are **global capability metadata only** — never tenant
+    credentials/usage/private client material/purchases/billing (R4). Native Google Workspace / M365
+    creation requires that tenant's explicit connected-provider authorization (R5).
+  - **Delivery rule (MANDATORY):** read the entry before proposing/implementing/opening a PR
+    for/changing a provider integration; update it before merge with the actual capability/authority/
+    proof/limits/next owner, same commit (§0/§66/§BRAIN.3).
+  - **Enforced by** the structural guard `scripts/ci/integration-registry-lint.mjs`
+    (`npm run lint:integration-registry` + `:test`, wired into `ci.yml`) — a concise clone of
+    `lint:binding-ledger` that fails CI on missing fields, unknown status/lane/tier vocabulary,
+    duplicate ids, an unbuilt status declaring a real acting lane, a LIVE entry with no provable
+    receipt, a Marketplace entry leaking per-tenant data, or an uncovered taxonomy group.
+  - **§13 grounding note:** the brief named a *"Marketplace Brain decision"* that has **no artifact
+    under that phrase repo-wide** — the Marketplace rule is grounded on `MARKETPLACE-DATA-MODEL.md`
+    instead; recorded as unresolved, not invented.
 
 ### Third-party integrations WIRED + CONFIGURED
 
@@ -4129,3 +4178,24 @@ merging any old branch. Detail + proof-by-class: `docs/brain/decision-log.md` (R
 
 **Authenticated production runtime proof is OWED across this lane** (no signed-in owner drove the deployed
 surfaces this session; `LIVE_DRIVE_*` unset). The migration's persisted-apply is CI's (`deploy-migrations.yml`).
+
+### Solo Tenant Brain — Business Mission vertical slice, 2026-09-06 (MVP candidate)
+
+Owner-approved first operating slice for the **Solo Tenant Brain**, distinct from Platform Brain and
+not a claim that the tenant brain is complete. After the existing chat-canonical Mission approval,
+the dedicated `paige-ai-chat` path now resolves the caller's active tenant and the newest Mission
+canonically linked to the persisted Paige thread before reasoning, uses the existing
+create/revise/transition Mission seams, re-resolves tenant, re-reads the canonical
+Mission, verifies the id/revision/lifecycle and every requested persisted field, and only then calls
+the existing service-role `record_capability_run` Rail writer. The stable Rail run id is the Mission
+request UUID. Failed/missing/mismatched readback emits no Rail and cannot claim success.
+
+No new chat, Mission store, approval channel, Memory store, Mind resolver or table is added. One
+read-only Mission RPC plus its supporting partial index extends the existing Mission contract.
+RE-2 PR-2's policy-aware resolver is merged but remains dark and is not adopted here; confirmation is
+the reachable Mission authority. PR #917's orchestration/import ownership is preserved. Mission Mind
+and Memory remain `UNAVAILABLE`. `command-center.business-game-plan` remains `PARTIAL` pending exact-SHA
+authenticated Solo-owner, denied/cross-tenant, canonical Mission and matching Rail proof. Current
+contract and proof ledger: `docs/brain/solo-tenant-brain.md`,
+`docs/delivery/solo-tenant-brain-business-mission-mvp.md`, and
+`docs/binding-ledger/surface-binding-ledger.json`.
