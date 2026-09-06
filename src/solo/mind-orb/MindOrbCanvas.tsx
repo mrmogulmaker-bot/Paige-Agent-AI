@@ -72,10 +72,25 @@ function MindOrbCanvasInner({
   onPickRef.current = onPick;
   const onUnavailableRef = useRef(onUnavailable);
   onUnavailableRef.current = onUnavailable;
-  // Latest focus target, so a re-mount (structure change) re-applies it once the engine finishes its
-  // async load — the focus effect below runs before handleRef exists and would otherwise never re-run.
+  // Latest prop values in refs. The engine loads through an ASYNC dynamic import, so any prop that
+  // changes during that import window would otherwise be lost: the reconcile effects below fire once
+  // while `handleRef.current` is still null (no-op) and never re-run unless the value changes AGAIN.
+  // The parent flips `dark` (dark→light) and `reduced` (OS prefers-reduced-motion) in its own
+  // post-mount effects, precisely inside this window — so without this, a reduced-motion user would
+  // get an ANIMATING orb all session and a light shell would render dark. We therefore (a) construct
+  // the engine from the LATEST values and (b) re-assert every reconciled value once the handle exists.
   const focusDomainRef = useRef(focusDomain);
   focusDomainRef.current = focusDomain;
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const ringsRef = useRef(rings);
+  ringsRef.current = rings;
+  const darkRef = useRef(dark);
+  darkRef.current = dark;
+  const runningRef = useRef(running);
+  runningRef.current = running;
+  const reducedRef = useRef(reduced);
+  reducedRef.current = reduced;
 
   // Mount / unmount the engine once. `three` loads here via the dynamic import (code-split).
   useEffect(() => {
@@ -95,12 +110,14 @@ function MindOrbCanvasInner({
       try {
         const { createMindOrb } = await import("./engine");
         if (disposed) return;
+        // Construct from the LATEST values (refs), not the closure captured at first render — the
+        // parent may already have flipped theme/reduced-motion during this import window.
         const result = createMindOrb(canvas, {
-          nodes,
-          rings: rings ?? [],
-          dark,
-          running,
-          reduced,
+          nodes: nodesRef.current,
+          rings: ringsRef.current ?? [],
+          dark: darkRef.current,
+          running: runningRef.current,
+          reduced: reducedRef.current,
           onPick: (n) => onPickRef.current?.(n),
         });
         // `in`-operator narrowing (not `!result.ok`): under this repo's `strict:false`, a
@@ -115,11 +132,16 @@ function MindOrbCanvasInner({
           return;
         }
         handleRef.current = result.handle;
-        // Re-apply the active domain filter after an async (re)mount: the focus effect below runs
-        // once, synchronously, while handleRef is still null (the engine chunk is still loading),
-        // so its focus call is a no-op. On a structure-change re-mount that would silently desync
-        // the orb from the parent's active filter — so re-assert it here, from the ref (§13 honesty:
-        // the surface always reflects the real filter state, never a stale one).
+        // Re-assert EVERY reconciled value once the handle exists. Each sibling effect below fired
+        // once during the async import while handleRef was null (a no-op) and will not re-run unless
+        // its value changes AGAIN — so a value the parent set exactly once, inside the import window
+        // (light theme; OS reduced-motion), would be silently lost. Re-applying from the refs here
+        // makes the mounted orb match the current props regardless of async timing (§11 motion-safe,
+        // §13 honesty). Construction above already used these values; re-applying is idempotent.
+        handleRef.current.applyTheme(null, darkRef.current);
+        handleRef.current.setData({ nodes: nodesRef.current, rings: ringsRef.current ?? [] });
+        handleRef.current.setRunning(runningRef.current);
+        handleRef.current.setReduced(reducedRef.current);
         handleRef.current.focus(focusDomainRef.current ?? null);
 
         // Pause when scrolled offscreen (the engine also pauses on document.hidden).
@@ -147,8 +169,8 @@ function MindOrbCanvasInner({
       handleRef.current?.dispose();
       handleRef.current = null;
     };
-    // Mount-once: data/theme/running/reduced are reconciled by the dedicated effects below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Mount-once: the effect body reads only refs + stable callbacks, so it has no reactive deps;
+    // data/theme/running/reduced are reconciled by the dedicated effects below.
   }, []);
 
   // Data change → recolour/re-lay in place (NOT a re-init — preserves rotation, §28).

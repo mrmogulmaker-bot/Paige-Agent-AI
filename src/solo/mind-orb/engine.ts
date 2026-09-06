@@ -453,7 +453,15 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
   function setData(payload: MindOrbDataPayload) { /* recolour nodes + rings in place; DO NOT reset rotation */
     if (!S || !payload) return;
     const nodes = Array.isArray(payload) ? payload : payload.nodes; // accepts {nodes,rings} or a bare nodes array
-    if (Array.isArray(nodes)) nodes.forEach((n, i) => { if (i < S.nodes.length && n) S.nodes[i].colorHex = n.colorHex; });
+    // The instanced mesh is sized once at init; setData only RECOLOURS in place. The caller re-mounts
+    // the canvas whenever the node count changes (its `orbKey` covers every id), so an overflow here
+    // means that contract broke — warn loudly rather than silently dropping nodes off the orb (§32).
+    if (Array.isArray(nodes)) {
+      if (nodes.length > S.nodes.length) {
+        console.warn(`[mind-orb] setData received ${nodes.length} nodes but the mesh holds ${S.nodes.length}; extra nodes ignored. The caller must re-mount on a node-count change (orbKey).`);
+      }
+      nodes.forEach((n, i) => { if (i < S.nodes.length && n) S.nodes[i].colorHex = n.colorHex; });
+    }
     const rings = Array.isArray(payload) ? undefined : payload.rings;
     if (rings) rings.forEach((r, i) => { const rg = S.rings[i]; if (rg && rg.mat) { rg.mat.color.set(hex(r.color)); rg.mat.opacity = r.a; } });
     applyEmphasis(); // repaints nodes from fresh base, preserving focus + search
@@ -518,6 +526,7 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
 
   function dispose() {
     if (!S) return;
+    const renderer = S.renderer; // capture so the GPU teardown runs even if an earlier dispose throws
     cancelAnimationFrame(S.raf);
     try {
       S.controls.dispose();
@@ -525,9 +534,18 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
       S.coreHalo.material.dispose();                         // sprite material (was leaked)
       S.hubSprites.forEach(({ sp }) => sp.material.dispose()); // hub-halo sprite materials (were leaked)
       S.inst.dispose(); S.envTex.dispose(); S.pmrem.dispose();
-      S.composer.dispose(); S.renderer.dispose();
-      S.renderer.forceContextLoss && S.renderer.forceContextLoss();
-    } catch (e) { /* best-effort */ }
+      // EffectComposer.dispose() frees only its own render targets + copy pass, NOT the passes we
+      // added — so dispose each pass (UnrealBloom's 11 render targets + blur/composite materials,
+      // OutputPass) explicitly before the composer.
+      S.composer.passes.forEach((p) => { try { (p as { dispose?: () => void }).dispose?.(); } catch { /* per-pass best-effort */ } });
+      S.composer.dispose();
+    } catch (e) {
+      console.error("[mind-orb] non-fatal error during dispose; still releasing the GPU context.", e);
+    } finally {
+      // Release the WebGL context unconditionally — a throw above must never leak a live context
+      // (each orb owns its own renderer; forceContextLoss reclaims all GPU memory for it).
+      try { renderer.dispose(); renderer.forceContextLoss && renderer.forceContextLoss(); } catch { /* best-effort */ }
+    }
     S = null;
   }
   function available() { return !!S; }

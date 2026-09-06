@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BrainCircuit, ChevronLeft, ExternalLink, Maximize2, Minimize2, Pause, Play, RefreshCw, Rotate3D, X } from "lucide-react";
 import { useN8nSpineReadiness } from "./data/useN8nSpineReadiness";
 import { N8N_ACTION_WORDS, N8N_API_WORDS, N8N_MCP_WORDS } from "../../supabase/functions/_shared/paige-spine/domains/n8nReadiness";
@@ -108,6 +108,11 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const knownIds = useRef<Set<string> | null>(null);
+  // Was the orb canvas the last real focus target? Tracked so a canvas re-mount (a node-structure
+  // change from a data refresh, which bumps `orbKey`) can hand keyboard focus back to the fresh
+  // canvas instead of dropping it to <body>. We set it from focusin only: a focusout to <body> (which
+  // is exactly what the old canvas being removed produces) must NOT clear it, or the restore no-ops.
+  const orbHadFocus = useRef(false);
 
   const reduced = reducedToggle || osReduced;
 
@@ -165,13 +170,51 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
     [domainFilter, records],
   );
 
-  const signalColors = useMemo(() => resolveSignalColors(dark), [dark]);
+  // Resolve the live --sig-* tokens in a POST-COMMIT effect, not in render: resolveSignalColors
+  // mutates the DOM (appends/removes a probe span), which is impure in a useMemo (concurrent-mode
+  // hazard) and — because the default theme is dark and `dark` never flips after mount on a dark
+  // shell — would run exactly once during first render, before `.mind-workspace` is in the DOM, and
+  // silently return the constant fallback for the WHOLE session. Running it here (after the element
+  // is committed) makes the live-token path actually exercise for BOTH themes; the vetted fallback
+  // (mirrors the --pg-* chain) is only the first-paint value, replaced on the next tick.
+  const [signalColors, setSignalColors] = useState<Record<MindSignalState, number>>(() => resolveSignalColors(true));
+  useEffect(() => {
+    setSignalColors(resolveSignalColors(dark));
+  }, [dark]);
   const orbNodes = useMemo(() => buildOrbNodes(domains, (s) => signalColors[s]), [domains, signalColors]);
   const orbRings = useMemo(() => buildOrbRings((s) => signalColors[s]), [signalColors]);
   // The engine sizes its instanced mesh at init and setData only recolours in place. Re-mount the
   // canvas (fresh context) ONLY when the node STRUCTURE changes (records added/removed/reordered);
   // recolour/theme/focus keep the same ids, so those reconcile in place with no rotation jump (§28).
   const orbKey = useMemo(() => orbNodes.map((n) => n.id).join("|"), [orbNodes]);
+
+  // Track whether the orb canvas holds focus. Set true when it gains focus; cleared only when a
+  // DIFFERENT real element gains focus (never on a focusout to <body>, which is what removing the
+  // focused canvas produces) — so the flag survives the re-mount and the layout effect below can
+  // restore focus to the fresh canvas.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onFocusIn = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      if (t.classList?.contains("mind-canvas")) orbHadFocus.current = true;
+      else if (t !== document.body) orbHadFocus.current = false;
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
+
+  // When a node-structure change re-mounts the canvas (fresh `orbKey`) and the OLD canvas had
+  // keyboard focus, return focus to the new canvas so an arrow-key user is not dropped to <body>
+  // (a11y-as-function; skip the initial mount so we never steal focus on first paint).
+  const orbKeySeen = useRef(orbKey);
+  useLayoutEffect(() => {
+    if (orbKey === orbKeySeen.current) return;
+    orbKeySeen.current = orbKey;
+    if (orbHadFocus.current && !orbUnavailable && typeof document !== "undefined") {
+      document.querySelector<HTMLElement>(".mind-canvas")?.focus({ preventScroll: true });
+    }
+  }, [orbKey, orbUnavailable]);
 
   const loading = knowledge.loading || command.loading || n8n.loading;
   const partial = !!knowledge.error || command.isError || !!n8n.error;
@@ -191,12 +234,26 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
     setSelected((cur) => (cur ? records.find((r) => r.id === cur.id) ?? null : cur));
   }, [records]);
 
+  // Restore focus to whatever opened the drawer. If that element was removed while the drawer was
+  // open (the canvas re-mounting on a background data refresh detaches the stored `.mind-canvas`
+  // launcher), focusing it would silently drop to <body> — so fall back to the fresh canvas, then
+  // the first record, then the surface root, never nothing (a11y-as-function).
+  const restoreLauncherFocus = useCallback(() => {
+    const el = launcherRef.current;
+    if (el && typeof document !== "undefined" && document.contains(el)) { el.focus(); return; }
+    const fallback =
+      document.querySelector<HTMLElement>(".mind-canvas") ??
+      rootRef.current?.querySelector<HTMLElement>("[data-mind-record]") ??
+      rootRef.current;
+    fallback?.focus?.();
+  }, []);
+
   // Drawer: focus in, Escape closes + restores, trap Tab while expanded.
   useEffect(() => {
     if (!selected) return;
     requestAnimationFrame(() => drawerCloseRef.current?.focus({ preventScroll: true }));
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setSelected(null); setExpanded(false); requestAnimationFrame(() => launcherRef.current?.focus()); return; }
+      if (event.key === "Escape") { setSelected(null); setExpanded(false); requestAnimationFrame(() => restoreLauncherFocus()); return; }
       if (event.key !== "Tab" || !expanded || !drawerRef.current) return;
       const focusable = [...drawerRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')];
       if (!focusable.length) return;
@@ -206,7 +263,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [expanded, selected]);
+  }, [expanded, selected, restoreLauncherFocus]);
 
   const chooseRecord = useCallback((record: MindRecord, launcher?: HTMLElement | null) => {
     if (launcher) launcherRef.current = launcher;
@@ -227,7 +284,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
     setDomainFilter((cur) => (cur === key ? "all" : key));
   };
 
-  const closeInspector = () => { setSelected(null); setExpanded(false); requestAnimationFrame(() => launcherRef.current?.focus()); };
+  const closeInspector = () => { setSelected(null); setExpanded(false); requestAnimationFrame(() => restoreLauncherFocus()); };
   const refresh = () => { knowledge.refresh(); command.refresh(); void n8n.refresh(); setAnnouncement("Refreshing the current record sources. This is not a scan."); };
   const openExistingPaige = () => {
     setSelected(null); setExpanded(false);

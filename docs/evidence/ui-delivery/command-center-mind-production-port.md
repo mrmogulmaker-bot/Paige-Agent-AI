@@ -54,4 +54,27 @@ and sub-account share the shell; subtab order unchanged.
 ## Review and limitations
 
 Independent §39 adversarial verifier + §5 compliance officer reviewed the pushed diff (this session);
-findings integrated before merge. Remaining limitations are the three UNVERIFIED items above.
+findings integrated before merge. A SECOND §39 peer-gate then read the real pushed diff after the
+first round of fixes and returned **no blocker**; its findings were integrated before merge:
+- **M1 (a11y, CONFIRMED):** the async engine-import window silently dropped OS reduced-motion and a
+  light-theme flip (the same race already fixed for `focus` was not applied to the sibling props), so
+  a `prefers-reduced-motion` user could get an animating orb all session. Fixed: the engine is
+  constructed from latest-value refs AND every reconciled value (theme/data/running/reduced/focus) is
+  re-asserted once the handle exists.
+- **M2 (focus restoration):** a node-structure re-mount dropped canvas keyboard focus to `<body>`, and
+  a drawer opened from an orb pick restored focus to a detached launcher after such a re-mount. Fixed:
+  a focusin tracker + layout effect return focus to the fresh canvas, and a launcher fallback
+  (fresh canvas → first record → root) never lands on nothing.
+- **m1:** `EffectComposer.dispose()` does not free added passes — the bloom/OutputPass passes are now
+  disposed explicitly, and the renderer teardown (`dispose` + `forceContextLoss`) moved to a `finally`
+  so a throw can't leak the GL context.
+- **m2:** `resolveSignalColors` moved out of `useMemo` (render-phase DOM mutation) into a post-commit
+  effect + state — this also makes the live-token path actually resolve for the default dark theme
+  (it previously always returned the constant fallback).
+- **m4:** the engine's `setData` now `console.warn`s instead of silently dropping nodes on an
+  instanced-mesh overflow (§32 never-fail-silently).
+- **m3 (noted, not changed):** `identity`/`people` are classified `PARTIAL` (a governed store exists
+  server-side; no frontend hook yet), distinct from `offers` `UNAVAILABLE` (no governed fact). The
+  ghost-satellite appearance is CD's frozen design (§00); the state model is honest via the empty copy.
+
+Remaining limitations are the three UNVERIFIED items above.
