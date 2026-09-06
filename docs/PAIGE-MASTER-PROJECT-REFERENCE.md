@@ -4108,3 +4108,24 @@ merging any old branch. Detail + proof-by-class: `docs/brain/decision-log.md` (R
 
 **Authenticated production runtime proof is OWED across this lane** (no signed-in owner drove the deployed
 surfaces this session; `LIVE_DRIVE_*` unset). The migration's persisted-apply is CI's (`deploy-migrations.yml`).
+
+### Solo Tenant Brain — Business Mission vertical slice, 2026-09-06 (MVP candidate)
+
+Owner-approved first operating slice for the **Solo Tenant Brain**, distinct from Platform Brain and
+not a claim that the tenant brain is complete. After the existing chat-canonical Mission approval,
+the dedicated `paige-ai-chat` path now resolves the caller's active tenant and the newest Mission
+canonically linked to the persisted Paige thread before reasoning, uses the existing
+create/revise/transition Mission seams, re-resolves tenant, re-reads the canonical
+Mission, verifies the id/revision/lifecycle and every requested persisted field, and only then calls
+the existing service-role `record_capability_run` Rail writer. The stable Rail run id is the Mission
+request UUID. Failed/missing/mismatched readback emits no Rail and cannot claim success.
+
+No new chat, Mission store, approval channel, Memory store, Mind resolver or table is added. One
+read-only Mission RPC plus its supporting partial index extends the existing Mission contract.
+RE-2 PR-2's policy-aware resolver is merged but remains dark and is not adopted here; confirmation is
+the reachable Mission authority. PR #917's orchestration/import ownership is preserved. Mission Mind
+and Memory remain `UNAVAILABLE`. `command-center.business-game-plan` remains `PARTIAL` pending exact-SHA
+authenticated Solo-owner, denied/cross-tenant, canonical Mission and matching Rail proof. Current
+contract and proof ledger: `docs/brain/solo-tenant-brain.md`,
+`docs/delivery/solo-tenant-brain-business-mission-mvp.md`, and
+`docs/binding-ledger/surface-binding-ledger.json`.

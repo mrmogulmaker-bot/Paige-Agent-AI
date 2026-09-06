@@ -4370,3 +4370,36 @@ drive OWED to PR-3 (no execution lane consumes it yet).
 plus the owner-facing grant/caps/history surface, at which point the reporting tools become grant-aware
 and must say `auto` only when a lane is released). §66: no tier gating changed (no-op); no surface
 changed state (dark oracle) — surfaces move when PR-3 wires a lane.
+
+### 2026-09-06 — Solo Tenant Brain Business Mission vertical slice (MVP candidate)
+
+**Owner-approved outcome.** This is the first bounded Solo Tenant Brain operating proof: an approved
+Mission create/revise/transition must resolve the active Solo tenant and selected canonical Mission,
+persist through the existing Mission RPC, verify the requested change through a fresh canonical
+readback, and only then record the outcome through the existing workspace `capability_run` Rail seam.
+It is not a context-only or UI slice.
+
+**Implementation.** `business-mission-tenant-brain.ts` composes, rather than forks, the existing
+contracts. A bounded `get_paige_thread_business_mission` read extends the Mission system: it derives
+owner and active tenant in-body and uses the persisted Paige thread only as a locator for the newest
+canonically linked Mission. That full current editable brief is inserted as record data before
+reasoning so a one-field revision preserves untouched values. The helper then uses the caller-JWT
+client for the Mission mutation, re-resolves tenant, matches Mission id, revision, lifecycle, brief
+version plus every normalized persisted field through `get_business_mission`, and
+calls the existing service-role `record_capability_run` only after a match. The Mission request UUID is
+also the Rail run UUID, so an identical Mission replay has a stable event identity. A failed/missing/
+mismatched readback writes no Rail and cannot claim success. A Rail failure is reported separately
+from the already verified canonical Mission rather than rewriting history.
+
+**Authority and collision.** The existing chat-canonical approval path remains the real reachable
+authority. RE-2 PR-2 is now on `main` (`7939476d`) but its policy-aware oracle remains deliberately
+DARK with zero producers; this slice does not steal PR-3 by wiring it. PR #917 overlaps the large chat
+file for orchestration/import behavior but owns no Mission context/readback/Rail contract; this slice
+does not alter its orchestration, registry or authority files.
+
+**Truth state.** `command-center.business-game-plan` stays `PARTIAL`. Source/automated proof is green;
+authenticated deployed Mission and matching Rail row/read projection are `PROOF OWED`. Mission Mind is
+`UNAVAILABLE`; Mission Memory is `UNAVAILABLE`; no learned/remembered claim is permitted. This one
+vertical slice never makes the Solo Tenant Brain complete. Detail:
+`docs/brain/solo-tenant-brain.md` and
+`docs/delivery/solo-tenant-brain-business-mission-mvp.md`.

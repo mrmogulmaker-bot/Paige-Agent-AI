@@ -1,4 +1,5 @@
 import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_mission.ts';
+import { executeVerifiedMissionMutation, resolveBusinessMissionThreadContext } from '../_shared/business-mission-tenant-brain.ts';
 import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.ts';
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
@@ -4262,6 +4263,29 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       }
     }
 
+    // Solo Tenant Brain · selected Business Mission. Mission creation already stores the
+    // canonical Paige thread id. The caller-scoped RPC uses that thread only as a locator,
+    // derives owner + active tenant from auth.uid(), and returns the newest Mission linked to
+    // this persisted conversation. The full current brief is the minimum safe edit bundle:
+    // it lets a one-field revision preserve every untouched canonical value. No client-supplied
+    // tenant, raw transcript truth, Mind projection or Memory record participates.
+    let businessMissionContextBlock = "";
+    if (personaCtx.tenant_id && payloadThreadId && callerTier !== "client") {
+      try {
+        const selectedMission = await resolveBusinessMissionThreadContext({
+          caller: supabaseClient,
+          expectedTenantId: personaCtx.tenant_id,
+          threadId: payloadThreadId,
+        });
+        if (selectedMission.ok && selectedMission.promptBlock) {
+          businessMissionContextBlock = selectedMission.promptBlock;
+          markProtectedLate("business_mission_context");
+        }
+      } catch (e) {
+        console.warn("[paige-ai-chat] selected Mission context unavailable:", (e as Error)?.message);
+      }
+    }
+
     const n8nEvidence = personaCtx.tenant_id ? await loadN8nReadinessForChat(supabaseClient, personaCtx.tenant_id) : null;
     const n8nReadinessBlock = n8nEvidence ? renderN8nReadinessForChat(n8nEvidence) : "";
     // A fixed unavailable notice carries no workspace facts; verified evidence does.
@@ -4292,6 +4316,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       ...(businessContextReadinessBlock ? [{ role: "system", content: businessContextReadinessBlock }] : []),
       ...(teamAuthorityBlock ? [{ role: "system", content: teamAuthorityBlock }] : []),
       ...(socialPresenceBlock ? [{ role: "system", content: socialPresenceBlock }] : []),
+      ...(businessMissionContextBlock ? [{ role: "system", content: businessMissionContextBlock }] : []),
       ...(n8nReadinessBlock ? [{ role: "system", content: n8nReadinessBlock }] : []),
       ...(spineEvidenceBlock ? [{ role: "system", content: spineEvidenceBlock }] : []),
       { role: "system", content: systemPrompt },
@@ -11375,47 +11400,59 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "propose_action_error" }) });
           }
         } else if (tc.function.name === "mission_create" || tc.function.name === "mission_revise" || tc.function.name === "mission_transition") {
-          // Owner-private Mission writes use the caller JWT. Tenant, actor, Solo topology,
-          // ownership, expected revision and lifecycle are revalidated inside the RPC.
-          // No Action Bus, worker, provider, Mind or Rail write is reachable from this branch.
+          // Solo Tenant Brain · Business Mission vertical slice.
+          //
+          // The existing confirmation/authority gate has already released this existing Mission
+          // tool. The helper deliberately uses the caller-JWT client for tenant resolution, selected
+          // Mission context, mutation and canonical readback. Only AFTER the readback matches the
+          // requested persisted change does it hand the existing service-role-only capability-run
+          // recorder a success outcome. No Action Bus, provider, Mind or Memory path is reachable.
+          const missionTurnTenantId = personaCtx.tenant_id;
+          if (!missionTurnTenantId) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({
+                success: false,
+                code: "MISSION_TENANT_NOT_RESOLVED",
+                error: "The active workspace could not be verified. Reopen the mission in the current workspace.",
+                note: "Nothing was changed. Do not claim success. No Rail evidence was written.",
+              }),
+            });
+            continue;
+          }
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
-            let rpcName = "";
-            let rpcArgs: Record<string, unknown> = {};
-            if (tc.function.name === "mission_create") {
-              rpcName = "create_business_mission";
-              rpcArgs = { p_request_key: args.request_key, p_title: args.title, p_desired_outcome: args.desired_outcome,
-                p_deadline_on: args.deadline_on ?? null, p_baseline: args.baseline, p_strategy: args.strategy,
-                p_constraints: args.constraints ?? [], p_success_definition: args.success_definition,
-                p_owner_authority: args.owner_authority, p_assumptions: args.assumptions ?? [],
-                p_missing_information: args.missing_information ?? [], p_next_action: args.next_action ?? null,
-                p_request_source: "paige_chat", p_request_thread_id: payloadThreadId ?? null };
-            } else if (tc.function.name === "mission_revise") {
-              rpcName = "revise_business_mission_brief";
-              rpcArgs = { p_mission_id: args.mission_id, p_expected_revision: args.expected_revision, p_request_key: args.request_key,
-                p_desired_outcome: args.desired_outcome, p_deadline_on: args.deadline_on ?? null, p_baseline: args.baseline,
-                p_strategy: args.strategy, p_constraints: args.constraints ?? [], p_success_definition: args.success_definition,
-                p_owner_authority: args.owner_authority, p_assumptions: args.assumptions ?? [], p_missing_information: args.missing_information ?? [],
-                p_revision_reason: args.revision_reason, p_title: args.title ?? null, p_next_action: args.next_action ?? null };
-            } else {
-              rpcName = "transition_business_mission";
-              rpcArgs = { p_mission_id: args.mission_id, p_expected_revision: args.expected_revision, p_request_key: args.request_key,
-                p_to_state: args.to_state, p_reason: args.reason ?? null, p_closure_outcome: args.closure_outcome ?? null,
-                p_outcome_summary: args.outcome_summary ?? null, p_outcome_unknowns: args.outcome_unknowns ?? null };
-            }
-            const { data: result, error } = await supabaseClient.rpc(rpcName, rpcArgs);
-            if (error) {
-              const message = String(error.message || "");
-              const friendly = message.includes("MISSION_REVISION_CONFLICT") ? "This mission changed since it was read. Reopen it before trying again."
-                : message.includes("MISSION_OWNER_REQUIRED") ? "Only the verified owner of this Solo workspace can change missions."
-                : message.includes("MISSION_INVALID_TRANSITION") ? "That mission cannot move to that state from where it is now."
-                : message.includes("MISSION_OUTCOME_REQUIRED") ? "Closing a mission needs an honest outcome summary."
-                : message.includes("MISSION_NOT_FOUND") ? "That mission is not available in this workspace."
-                : "The mission was not changed. Reopen it and try again.";
-              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false,error:friendly,note:"Nothing was changed. Do not claim success." }) });
-            } else {
-              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:true,...(result && typeof result === "object" ? result : { result }),note:"The private Mission record committed. Report only the saved state; no work was executed and no outcome beyond this record is proven." }) });
-            }
+            const result = await executeVerifiedMissionMutation({
+              caller: supabaseClient,
+              expectedTenantId: missionTurnTenantId,
+              actorId: user.id,
+              tool: tc.function.name,
+              args,
+              threadId: payloadThreadId ?? null,
+              recordRun: (run) => recordCapabilityRun(supabase, run),
+            });
+            const code = String(result.code || "");
+            const friendly = code === "MISSION_REVISION_CONFLICT" ? "This mission changed since it was read. Reopen it before trying again."
+              : code === "MISSION_OWNER_REQUIRED" ? "Only the verified owner of this Solo workspace can change missions."
+              : code === "MISSION_INVALID_TRANSITION" ? "That mission cannot move to that state from where it is now."
+              : code === "MISSION_OUTCOME_REQUIRED" ? "Closing a mission needs an honest outcome summary."
+              : code === "MISSION_NOT_FOUND" ? "That mission is not available in this workspace."
+              : code === "MISSION_TENANT_NOT_RESOLVED" || code === "ACTIVE_ACCOUNT_CHANGED" ? "The active workspace changed or could not be verified. Reopen the mission in the current workspace."
+              : code === "MISSION_READBACK_MISMATCH" || code === "MISSION_READ_FAILED" || code === "MISSION_READ_OUTCOME_UNKNOWN" || code === "MISSION_READBACK_INVALID"
+                ? "The mission change may have saved, but Paige could not verify the canonical record. Reopen it before trying again."
+              : "The mission was not changed or could not be verified. Reopen it and try again.";
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify(result.success ? result : {
+                ...result,
+                error: friendly,
+                note: result.mutationMayHavePersisted
+                  ? "Do not claim success and do not retry until the canonical Mission is reopened. No Rail evidence was written."
+                  : "Nothing was verified as changed. Do not claim success. No Rail evidence was written.",
+              }),
+            });
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false,error:"The mission was not changed.",note:"No work ran and no Mission success may be claimed." }) });
           }
