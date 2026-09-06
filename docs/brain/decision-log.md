@@ -27,6 +27,10 @@
   brief's *"Marketplace Brain decision"* has NO artifact under that phrase repo-wide — Marketplace rule grounded
   on `MARKETPLACE-DATA-MODEL.md`, recorded unresolved not invented; M1 is real (`autonomy-architecture.md §8`).
   Crew: §39 adversarial verifier + §5 compliance officer run against the real files. Draft PR = the record + CI.
+  **OUTCOME — MERGED to `main` (squash `833aa930`, PR #1019, 2026-09-06); §32.a main CI green (ci run
+  34059082608, run #2792, head `93088c8` = current main) confirms `lint:integration-registry` +
+  `:test` execute and pass on every main CI run. §39 verifier + §5 compliance both SHIP, no blocking
+  finding. This OUTCOME line lands as a fresh follow-up off `main` (PR #1019 already merged — never reused).**
 - **RE-2 M1-a — money-truth layer (provider-confirmed spend + reconciliation + complete receipt), DARK (2026-09-06, owner-authorized, PR #1014).**
   The money-truth core of the real-money spend-control backbone (owner ruling 2026-09-06, `autonomy-architecture.md`
   §10.8 item 3; distinct from the §8.4 LLM-token internal-cost lane). Extends the PR-1 substrate (§18, no fork),
