@@ -42,9 +42,27 @@
   cap — a person has many engagements, so person-level is ambiguous and fails closed here; (2) `client_period` is
   CUMULATIVE-over-grant, not per-renewal-period reset — cumulative can only under-spend vs a resetting period, so it is
   the safe default; a resetting semantics is a future refinement.
-  **§5 compliance + §39 adversarial verifier crews DISPATCHED on the pushed diff (running); any blocking finding folded
-  as a follow-up commit before merge (FIX-FIRST). OUTCOME: crew-review → merge; §32.a persisted-apply owed post-merge via
-  `deploy-migrations`; authenticated drive owed to PR-3.**
+  **§5 compliance + §39 adversarial verifier crews (independent) BOTH CONVERGED on ONE real finding (folded FIX-FIRST):**
+  the `client_period` window was anchored to `(grant.effective_at)::date`, but `effective_at` is MUTABLE (tenant-admin RLS
+  `FOR ALL`; service_role bypass; the grants guard trigger never protects it). §39 (MAJOR): a mid-life reschedule strands
+  the window in release/confirm/reconcile (capacity leak + missed true-up + missed breach). §5 (MEDIUM, the sharper trace):
+  a reschedule between two reserves SPLITS the window — a second `client_period` row lets cumulative spend exceed the cap
+  (a fail-OPEN of a real-money control), exactly the "never silently under-enforce the narrower cap" the owner forbids.
+  **FOLD — re-anchored `client_period` to a fixed non-calendar sentinel `CLIENT_PERIOD_ANCHOR = DATE '2000-01-01'`** in all
+  five primitives (§39 fix (b), strictly better than §5's proposed immutability trigger: the window key depends on NO
+  mutable column, so it closes BOTH the drift AND the split-window fail-open — every reserve computes the same window, so
+  reserve B reads reserve A's row and enforces the cumulative cap — AND it preserves the legitimate ability to reschedule
+  `effective_at`, adding no trigger). `release` no longer reads the grant. Stale "immutable"/"effective_at" comments fixed.
+  §39 Finding 2 (MINOR, resolver's now-stale "same allowlist" inline comment) is functionally moot (client_period/campaign
+  are triply excluded from the resolver's lift) and documented in the migration header for refresh when the resolver is
+  next materially touched, rather than re-emitting the untouched 17KB function for a comment. Everything else BOTH crews
+  affirmed clean (§9/§38/§59/§18/§37, campaign fail-closed, day/week/month regression, resolver lockstep, doc discipline,
+  registry-no-edit); §5 verdict **SHIP** with this one required follow-up, now closed in-branch.
+  **§32 RE-PROVED after the fold — PROOF_OK (constant anchor)**: B1..B14, adding **B14** (a grant whose `effective_at` is
+  100 days ago still anchors its window to the constant, and two reserves accumulate in the ONE window — the direct
+  behavioral rebuttal of the fail-open). Guards green: `lint:migration-versions` / `lint:definer-fns` / `lint:managed-schema`.
+  **PR #1027 (draft). OUTCOME: MERGING** (§32.a persisted-apply owed post-merge via `deploy-migrations`; authenticated drive
+  owed to PR-3). Flip to MERGED + §32.a CONFIRMED post-merge.
 
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):

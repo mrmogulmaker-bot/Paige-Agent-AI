@@ -28,13 +28,27 @@
 --       a follow-up enforces it the same way client_period is enforced here.
 --
 -- THE client_period WINDOW is GRANT-CUMULATIVE, not calendar. It accumulates all spend under this grant for
--- its named engagement over the grant's life; its window_start is anchored to (_g.effective_at)::date — a
--- value every primitive derives identically from the grant it already loads (release gains a one-line
--- effective_at read), so there is no magic literal and no cross-function drift. There is exactly ONE
--- client_period window per grant, so the (grant_id,'client_period') pair is the real key; the date is the
--- stable PK anchor. paige_authority_budget_windows.window_kind already admits 'client_period' (PR-1 CHECK).
--- (Per-renewal-period reset is a deliberate NON-goal here: cumulative-over-grant can only UNDER-spend vs a
--- resetting period, so it is the safe/fail-closed default; a resetting semantics is a flagged owner decision.)
+-- its named engagement over the grant's life. There is exactly ONE client_period window per grant, so the
+-- (grant_id,'client_period') pair is the REAL key; window_start is a FIXED NON-CALENDAR SENTINEL, CLIENT_PERIOD_ANCHOR
+-- (DATE '2000-01-01'), used byte-identically in all five primitives.
+-- WHY A CONSTANT, NOT effective_at (§39 verifier Finding 1, folded): an earlier draft anchored on
+-- (grant.effective_at)::date, but effective_at is MUTABLE (paige_authority_grants_admin_write is FOR ALL TO
+-- authenticated; service_role bypasses RLS; the grants guard trigger never protects it). A reschedule of a live
+-- grant would then compute a different window_start in release/confirm/reconcile than reserve used, ORPHANING the
+-- window — a capacity leak + a missed true-up + a missed over-cap breach, none of which a BEGIN..ROLLBACK proof
+-- reaches. A constant depends on no mutable column, so the window key can never drift. (day/week/month are immune
+-- for the same reason by construction — they anchor on the receipt's immutable reserved_at, not on the grant.)
+-- paige_authority_budget_windows.window_kind already admits 'client_period' (PR-1 CHECK).
+-- (Per-renewal-period reset is a deliberate NON-goal: cumulative-over-grant can only UNDER-spend vs a resetting
+-- period, so it is the safe/fail-closed default; a resetting semantics is a flagged owner decision. Likewise, if an
+-- admin re-points a live grant's scope.client_agreement_id to a DIFFERENT same-tenant engagement, the one
+-- grant-cumulative window keeps bounding total spend at the cap (fail-safe, same-tenant, not a §9 leak); strict
+-- per-engagement window isolation is a flagged follow-up, not built here.)
+-- RESOLVER COMMENT (§39 Finding 2, MINOR): the untouched PR-2 resolver (20261231000000) still says its cap-peek
+-- uses the "same allowlist authority_reserve enforces"; after M1-b reserve's allowlist also admits
+-- client_period_budget_usd, so that inline comment is now stale-BUT-FUNCTIONALLY-MOOT (a client_period/campaign
+-- grant is triply excluded from the resolver's lift — see below), and is left for refresh when the resolver is
+-- next materially touched rather than re-emitting the whole function for a comment.
 --
 -- §37 LOCKSTEP — every primitive that walks reserved_windows must handle the new kind, or the ledger drifts:
 --   reserve (validate boundary + enforce headroom + record the window) · release (reverse it, else a failed
@@ -83,7 +97,7 @@ DECLARE
   _today            date := (now() AT TIME ZONE 'UTC')::date;
   _wk               date := date_trunc('week',  now() AT TIME ZONE 'UTC')::date;
   _mo               date := date_trunc('month', now() AT TIME ZONE 'UTC')::date;
-  _cp               date;                       -- M1-b: client_period window anchor = grant.effective_at::date
+  _cp               date;                       -- M1-b: client_period window anchor = CLIENT_PERIOD_ANCHOR (fixed sentinel)
   _cp_agreement     text;                       -- M1-b: scope.client_agreement_id (the named engagement)
   _agr              record;                     -- M1-b: the canonical engagement boundary row
   _win              record;
@@ -198,7 +212,7 @@ BEGIN
     IF _agr.ends_on IS NOT NULL AND _today > _agr.ends_on THEN
       RETURN jsonb_build_object('ok', false, 'reason', 'client_agreement_ended');
     END IF;
-    _cp := (_g.effective_at AT TIME ZONE 'UTC')::date;   -- grant-cumulative anchor (one window per grant)
+    _cp := DATE '2000-01-01';   -- CLIENT_PERIOD_ANCHOR: fixed non-calendar sentinel, one window per grant, immune to grant mutation (§39/§5 F1)
   END IF;
 
   -- PASS 1: verify headroom for every DECLARED window under a row lock, and record which windows this
@@ -273,7 +287,7 @@ $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. authority_release — reverse the client_period window too (else a released client_period reservation
---    leaks capacity). Loads the grant's effective_at (immutable) to derive the same anchor reserve used.
+--    leaks capacity). Uses the fixed CLIENT_PERIOD_ANCHOR — no grant read needed, immune to grant edits (§39/§5 F1).
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.authority_release(_receipt_id uuid, _failed boolean DEFAULT true)
 RETURNS jsonb
@@ -286,7 +300,6 @@ DECLARE
   _r      record;
   _kind   text;
   _wstart date;
-  _g_eff  timestamptz;   -- M1-b: grant.effective_at, the client_period anchor (immutable; non-locking read)
 BEGIN
   SELECT * INTO _r FROM public.paige_authority_act_runs WHERE id = _receipt_id FOR UPDATE;
   IF NOT FOUND THEN
@@ -302,22 +315,19 @@ BEGIN
     RETURN jsonb_build_object('ok', true, 'receipt_id', _receipt_id, 'status', _r.status, 'noop', true);
   END IF;
 
-  -- M1-b: the client_period window is anchored to the grant's effective_at (grant-cumulative). effective_at
-  -- is immutable, so a non-locking read is correct; NULL only if reserved_windows lacks client_period (unused).
-  SELECT effective_at INTO _g_eff FROM public.paige_authority_grants WHERE id = _r.grant_id;
-
   -- Reverse EXACTLY the windows this receipt incremented (recorded in reserved_windows at reserve time),
-  -- recomputing each window_start from the receipt's OWN reserved_at (calendar windows) or the grant anchor
-  -- (client_period) so the reversed window matches the reserved one. Not a fixed day/week/month assumption —
-  -- so a cap added to the grant after this receipt reserved can never make release decrement a window this
-  -- receipt never touched (§32 correctness). Clamped at zero (never drive a counter negative).
+  -- recomputing each window_start from the receipt's OWN reserved_at (calendar windows) or the fixed
+  -- CLIENT_PERIOD_ANCHOR (client_period) so the reversed window matches the reserved one. Not a fixed
+  -- day/week/month assumption — so a cap added to the grant after this receipt reserved can never make release
+  -- decrement a window this receipt never touched (§32). No grant read needed: the client_period anchor is a
+  -- constant, immune to any grant-column edit (§39/§5 F1). Clamped at zero (never drive a counter negative).
   FOR _kind IN SELECT jsonb_array_elements_text(_r.reserved_windows)
   LOOP
     _wstart := CASE _kind
                  WHEN 'day'           THEN (_r.reserved_at AT TIME ZONE 'UTC')::date
                  WHEN 'week'          THEN date_trunc('week',  _r.reserved_at AT TIME ZONE 'UTC')::date
                  WHEN 'month'         THEN date_trunc('month', _r.reserved_at AT TIME ZONE 'UTC')::date
-                 WHEN 'client_period' THEN (_g_eff AT TIME ZONE 'UTC')::date
+                 WHEN 'client_period' THEN DATE '2000-01-01'   -- CLIENT_PERIOD_ANCHOR (§39/§5 F1)
                  ELSE NULL
                END;
     IF _wstart IS NOT NULL THEN
@@ -418,13 +428,13 @@ BEGIN
 
   -- USD path: true-up each reserved window by (confirmed − reserved). Bounded to this act's own reserved
   -- contribution (confirmed ≥ 0, and each window holds ≥ this act's reserved cost), so no sibling is disturbed.
-  -- client_period (M1-b) trues up the SAME way, anchored to the grant's effective_at (the reserve anchor).
+  -- client_period (M1-b) trues up the SAME way, on the fixed CLIENT_PERIOD_ANCHOR window (the reserve anchor).
   _delta := _confirmed - COALESCE(_r.cost_usd, 0);
   FOR _kind IN SELECT jsonb_array_elements_text(_r.reserved_windows) LOOP
     _wstart := CASE _kind WHEN 'day' THEN (_r.reserved_at AT TIME ZONE 'UTC')::date
                  WHEN 'week' THEN date_trunc('week', _r.reserved_at AT TIME ZONE 'UTC')::date
                  WHEN 'month' THEN date_trunc('month', _r.reserved_at AT TIME ZONE 'UTC')::date
-                 WHEN 'client_period' THEN (_g.effective_at AT TIME ZONE 'UTC')::date ELSE NULL END;
+                 WHEN 'client_period' THEN DATE '2000-01-01' ELSE NULL END;  -- CLIENT_PERIOD_ANCHOR (fixed sentinel, §39/§5 F1)
     IF _wstart IS NULL THEN CONTINUE; END IF;
     SELECT spend_used_usd INTO _before FROM public.paige_authority_budget_windows
       WHERE grant_id = _r.grant_id AND window_kind = _kind AND window_start = _wstart FOR UPDATE;
@@ -602,12 +612,12 @@ BEGIN
   END IF;
 
   -- PASS 1 (compute-only): read each window, project _after, detect over-cap. No write yet. client_period
-  -- (M1-b) is anchored to the grant's effective_at (the reserve anchor).
+  -- (M1-b) is on the fixed CLIENT_PERIOD_ANCHOR window (the reserve anchor).
   FOR _kind IN SELECT jsonb_array_elements_text(_r.reserved_windows) LOOP
     _wstart := CASE _kind WHEN 'day' THEN (_r.reserved_at AT TIME ZONE 'UTC')::date
                  WHEN 'week' THEN date_trunc('week', _r.reserved_at AT TIME ZONE 'UTC')::date
                  WHEN 'month' THEN date_trunc('month', _r.reserved_at AT TIME ZONE 'UTC')::date
-                 WHEN 'client_period' THEN (_g.effective_at AT TIME ZONE 'UTC')::date ELSE NULL END;
+                 WHEN 'client_period' THEN DATE '2000-01-01' ELSE NULL END;  -- CLIENT_PERIOD_ANCHOR (fixed sentinel, §39/§5 F1)
     IF _wstart IS NULL THEN CONTINUE; END IF;
     SELECT spend_used_usd INTO _before FROM public.paige_authority_budget_windows
       WHERE grant_id = _r.grant_id AND window_kind = _kind AND window_start = _wstart FOR UPDATE;
@@ -643,7 +653,7 @@ BEGIN
     _wstart := CASE _kind WHEN 'day' THEN (_r.reserved_at AT TIME ZONE 'UTC')::date
                  WHEN 'week' THEN date_trunc('week', _r.reserved_at AT TIME ZONE 'UTC')::date
                  WHEN 'month' THEN date_trunc('month', _r.reserved_at AT TIME ZONE 'UTC')::date
-                 WHEN 'client_period' THEN (_g.effective_at AT TIME ZONE 'UTC')::date ELSE NULL END;
+                 WHEN 'client_period' THEN DATE '2000-01-01' ELSE NULL END;  -- CLIENT_PERIOD_ANCHOR (fixed sentinel, §39/§5 F1)
     IF _wstart IS NULL THEN CONTINUE; END IF;
     UPDATE public.paige_authority_budget_windows SET spend_used_usd = GREATEST(0, spend_used_usd + _applied_delta), updated_at = now()
      WHERE grant_id = _r.grant_id AND window_kind = _kind AND window_start = _wstart;
@@ -688,7 +698,7 @@ BEGIN
      AND NOT public.is_tenant_member(_g.tenant_id) THEN
     RETURN jsonb_build_object('found', false);
   END IF;
-  _cp := (_g.effective_at AT TIME ZONE 'UTC')::date;   -- M1-b: grant-cumulative client_period anchor
+  _cp := DATE '2000-01-01';   -- CLIENT_PERIOD_ANCHOR: fixed non-calendar sentinel (§39/§5 F1)
   FOR _row IN
     SELECT window_kind, actions_used, spend_used_usd
       FROM public.paige_authority_budget_windows
