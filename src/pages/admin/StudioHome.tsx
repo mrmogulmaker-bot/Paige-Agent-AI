@@ -130,7 +130,7 @@ export default function StudioHome() {
     ensureSessionForArtifact({ tenantId: activeTenantId, kind: "page", artifactId: shimPageId })
       .then((session) => {
         if (!live) return;
-        navigate(`/admin/studio/${session.id}?mode=page&pageId=${shimPageId}`, { replace: true });
+        navigate("/choose-account", { replace: true });
       })
       .catch((err) => {
         // Couldn't wrap it — don't strand the operator on a spinner; drop them on the gallery
@@ -193,7 +193,7 @@ export default function StudioHome() {
         // brief already travels — so the autostart build (generateWholePage → draftPage) picks them
         // up on arrival. They're seeded into the shell's INITIAL state (render 0), before the build
         // fires, so no stale-closure timing risk.
-        navigate(`/admin/studio/${session.id}`, { state: { brief: seed, autostart: true, attachments } });
+        navigate("/choose-account", { state: { brief: seed, autostart: true, attachments } });
       } catch (err) {
         toast({
           title: "Couldn't start a project",
@@ -468,7 +468,7 @@ export default function StudioHome() {
                 session={s}
                 isTemplate={isTemplates}
                 onOpen={() =>
-                  isTemplates ? void startSession(s.seedBrief ?? undefined) : navigate(`/admin/studio/${s.id}`)
+                  isTemplates ? void startSession(s.seedBrief ?? undefined) : navigate("/choose-account")
                 }
                 onToggleStar={() => toggleStar(s.id)}
                 onRename={

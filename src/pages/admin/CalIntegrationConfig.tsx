@@ -78,7 +78,7 @@ export default function CalIntegrationConfig() {
           </div>
           <div className="flex gap-2">
             <Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
-            <Button asChild variant="outline"><Link to="/admin/bookings">View bookings</Link></Button>
+            <Button asChild variant="outline"><Link to="/choose-account">View bookings</Link></Button>
           </div>
         </CardContent>
       </Card>

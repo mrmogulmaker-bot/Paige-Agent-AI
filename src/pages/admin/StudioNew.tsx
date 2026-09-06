@@ -41,7 +41,7 @@ export default function StudioNew() {
   }, [activeTenantId, tenantLoading, sessionId]);
 
   if (sessionId) {
-    return <Navigate to={`/admin/studio/${sessionId}`} replace />;
+    return <Navigate to={"/choose-account"} replace />;
   }
 
   if (error) {
@@ -55,7 +55,7 @@ export default function StudioNew() {
               title="Couldn't start a project"
               description={error}
               action={
-                <Button variant="outline" onClick={() => (window.location.href = "/admin/studio")}>
+                <Button variant="outline" onClick={() => (window.location.href = "/choose-account")}>
                   Back to the Studio
                 </Button>
               }

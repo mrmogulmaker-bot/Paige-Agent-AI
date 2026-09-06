@@ -122,7 +122,7 @@ export default function PipelineSettings() {
   return (
     <div className="space-y-4 max-w-5xl">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/admin/pipeline")}><ArrowLeft className="w-4 h-4 mr-1" /> Back to board</Button>
+        <Button variant="ghost" size="sm" onClick={() => navigate("/choose-account")}><ArrowLeft className="w-4 h-4 mr-1" /> Back to board</Button>
       </div>
 
       <div>
@@ -207,7 +207,7 @@ export default function PipelineSettings() {
                 </div>
                 <div className="col-span-2">
                   <Label className="text-[10px] text-muted-foreground">Type</Label>
-                  <Select value={s.stage_type} onValueChange={(v) => updateStage(s.id, { stage_type: v as any })}>
+                  <Select value={s.stage_type} onValueChange={(v) => updateStage(s.id, { stage_type: v as typeof s.stage_type })}>
                     <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="open">Open</SelectItem>

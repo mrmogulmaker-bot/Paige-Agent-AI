@@ -12,6 +12,7 @@ type Props = {
 
 export function DuplicatesBanner({ contactId, email, phone }: Props) {
   const navigate = useNavigate();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
   const [dupes, setDupes] = useState<any[]>([]);
 
   useEffect(() => {
@@ -44,7 +45,7 @@ export function DuplicatesBanner({ contactId, email, phone }: Props) {
                 size="sm"
                 variant="ghost"
                 className="h-6 px-2 text-xs"
-                onClick={() => navigate(`/admin/contacts/${d.id}`)}
+                onClick={() => navigate("/choose-account")}
               >
                 Open
               </Button>

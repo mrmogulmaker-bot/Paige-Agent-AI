@@ -46,7 +46,7 @@ describe("tenant wildcard host routing", () => {
   });
 
   it.each([
-    "/admin", "/auth/login", "/app", "/operator/tenants", "/dashboard",
+    "/solo/1/command-center", "/auth/login", "/app", "/operator/tenants", "/dashboard",
     "/setup", "/workspace", "/pricing", "/unknown",
   ])("fails closed for sensitive or unknown route %s", (path) => {
     expect(computeTenantHostRedirect("acme.paigeagent.ai", path, "?x=1", "#top"))
@@ -55,7 +55,7 @@ describe("tenant wildcard host routing", () => {
 
   it("works while the separate app-host split remains dormant", () => {
     expect(computeHostRedirect("acme.paigeagent.ai", "/", "", "")).toBe("/portal/acme");
-    expect(computeHostRedirect("acme.paigeagent.ai", "/admin", "", "")).toBe("/portal/acme");
-    expect(computeHostRedirect("paigeagent.ai", "/admin", "", "")).toBeNull();
+    expect(computeHostRedirect("acme.paigeagent.ai", "/solo/1/command-center", "", "")).toBe("/portal/acme");
+    expect(computeHostRedirect("paigeagent.ai", "/solo/1/command-center", "", "")).toBeNull();
   });
 });

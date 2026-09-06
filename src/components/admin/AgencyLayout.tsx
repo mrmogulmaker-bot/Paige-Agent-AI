@@ -1,6 +1,6 @@
 /**
  * AgencyLayout — the Agency Operator side (§9), a top-level shell PEER to the God
- * console, NOT nested under the tenant `/admin` menu.
+ * console, never nested under a privileged URL.
  *
  * WHO IS THIS FOR (§9): the agency OPERATOR — someone who runs a *book* of
  * sub-accounts and resells platform capabilities down onto them. That is a
@@ -15,7 +15,7 @@
  *   - agency_switch_context().is_agency_manager  (auth.uid()-keyed)
  *   - agency_list_my_subaccounts()               (empty for a non-agency caller)
  * A plain sub-account user or standalone tenant that hits `/agency` is redirected
- * to `/admin` — the UI matches RLS end-to-end.
+ * to the canonical account chooser — the UI matches RLS end-to-end.
  *
  * ONE SWITCHER (§6): the header carries the single canonical AccountSwitcher and
  * a persistent context banner ("Agency: {name}") so the operator always knows
@@ -215,8 +215,8 @@ export default function AgencyLayout() {
   }
 
   // Not an agency operator → this side isn't theirs. Send them back to their
-  // workspace; /admin re-checks auth and routes appropriately.
-  if (!eligible) return <Navigate to="/admin" replace />;
+  // workspace chooser, which re-resolves authority server-side.
+  if (!eligible) return <Navigate to="/choose-account" replace />;
 
   const isActive = (href: string) =>
     href === "/agency" ? location.pathname === "/agency" : location.pathname.startsWith(href);

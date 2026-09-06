@@ -122,7 +122,7 @@ export default function ContactDetail() {
     try {
       const { data: c, error } = await supabase.from("clients").select("*").eq("id", clientId).maybeSingle();
       if (error) throw error;
-      if (!c) { toast.error("Contact not found"); navigate("/admin/contacts"); return; }
+      if (!c) { toast.error("Contact not found"); navigate("/choose-account"); return; }
       setClient(c as Client);
 
       const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
@@ -265,7 +265,7 @@ export default function ContactDetail() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/admin/contacts")}>
+        <Button variant="ghost" size="sm" onClick={() => navigate("/choose-account")}>
           <ArrowLeft className="h-4 w-4 mr-1" /> Contacts
         </Button>
         <div className="flex-1 min-w-0">
@@ -294,14 +294,14 @@ export default function ContactDetail() {
             ContactCommsPanel). Deep-link opens/starts this contact's thread there. Non-gold (§11). */}
         <Button
           variant="outline" size="sm"
-          onClick={() => navigate(`/admin/clients-hub/conversations?contact=${client.id}`)}
+          onClick={() => navigate("/choose-account")}
         >
           <MessageSquare className="h-4 w-4 mr-1" /> Message {client.first_name || fullName || "contact"}
         </Button>
         <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
           <Pencil className="h-4 w-4 mr-1" /> Edit
         </Button>
-        <Button variant="outline" size="sm" onClick={() => navigate(`/admin/contacts/${client.id}/journey`)}>
+        <Button variant="outline" size="sm" onClick={() => navigate("/choose-account")}>
           <Activity className="h-4 w-4 mr-1" /> Member Journey
         </Button>
         {btfEnabled && isAdmin && (
@@ -325,12 +325,12 @@ export default function ContactDetail() {
 
         <ImpersonateClientButton contactId={client.id} linkedUserId={client.linked_user_id} />
         {client.linked_user_id && (
-          <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/user/${client.linked_user_id}`)}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/choose-account")}>
             <ExternalLink className="h-4 w-4 mr-1" /> Full Client File
           </Button>
         )}
         {!client.linked_user_id && (
-          <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/internal/${client.id}`)}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/choose-account")}>
             <ExternalLink className="h-4 w-4 mr-1" /> Internal Record
           </Button>
         )}
@@ -465,7 +465,7 @@ export default function ContactDetail() {
                 never "lost" — it's just in its home (§13 honest). */}
             <button
               type="button"
-              onClick={() => navigate(`/admin/clients-hub/conversations?contact=${client.id}`)}
+              onClick={() => navigate("/choose-account")}
               className="mb-3 flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
             >
               <span className="flex items-center gap-1.5">
@@ -560,7 +560,7 @@ export default function ContactDetail() {
                   return (
                     <button
                       key={a.id}
-                      onClick={() => navigate(`/admin/approvals/${a.id}`)}
+                      onClick={() => navigate("/choose-account")}
                       className="w-full text-left border border-border rounded p-3 hover:bg-muted/40 transition"
                     >
                       <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -627,7 +627,7 @@ export default function ContactDetail() {
                 try {
                   await deleteContact(client.id);
                   toast.success("Contact deleted");
-                  navigate("/admin/contacts");
+                  navigate("/choose-account");
                 } catch (err) {
                   toast.error(err instanceof Error ? err.message : "Delete failed");
                   setDeleting(false);

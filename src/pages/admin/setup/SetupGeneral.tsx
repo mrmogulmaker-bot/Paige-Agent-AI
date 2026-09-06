@@ -91,16 +91,16 @@ export default function SetupGeneral() {
             description="Other places you run your practice from — planning, referrals, and support."
           >
             <div className="grid gap-3 sm:grid-cols-2">
-              <ToolLink to="/admin/planning" icon={CalendarRange} label="Planning" hint="Map out your quarter and priorities" />
-              <ToolLink to="/admin/affiliates" icon={Users2} label="Referrals" hint="Your affiliate program and partners" />
+              <ToolLink to="/choose-account" icon={CalendarRange} label="Planning" hint="Map out your quarter and priorities" />
+              <ToolLink to="/choose-account" icon={Users2} label="Referrals" hint="Your affiliate program and partners" />
               <RoleGate allow={["admin"]} fallback={<></>}>
-                <ToolLink to="/admin/support" icon={LifeBuoy} label="Support" hint="Tickets and help for your practice" />
+                <ToolLink to="/choose-account" icon={LifeBuoy} label="Support" hint="Tickets and help for your practice" />
               </RoleGate>
               <RoleGate allow={["admin"]} fallback={<></>}>
-                <ToolLink to="/admin/maintenance" icon={Wrench} label="Maintenance" hint="System health and upkeep" />
+                <ToolLink to="/choose-account" icon={Wrench} label="Maintenance" hint="System health and upkeep" />
               </RoleGate>
               <FundingGate>
-                <ToolLink to="/admin/brokers" icon={Landmark} label="Brokers" hint="Your lending partners and broker desk" />
+                <ToolLink to="/choose-account" icon={Landmark} label="Brokers" hint="Your lending partners and broker desk" />
               </FundingGate>
             </div>
           </SectionCard>

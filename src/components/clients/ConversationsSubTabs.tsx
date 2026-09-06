@@ -10,7 +10,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Inbox, ListChecks, MessageSquareText, Link2, BarChart3, Settings, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const BASE = "/admin/clients-hub/conversations";
+const BASE = "/choose-account";
 
 type Tab = { label: string; href: string; icon: LucideIcon };
 

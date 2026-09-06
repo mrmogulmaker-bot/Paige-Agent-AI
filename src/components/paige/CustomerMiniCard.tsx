@@ -40,7 +40,7 @@ export function CustomerMiniCard({ client, onClear }: Props) {
       )}
 
       <Button asChild variant="link" size="sm" className="mt-1 h-auto p-0 text-accent">
-        <Link to={`/admin/contacts/${client.id}`}>Open full profile</Link>
+        <Link to={"/choose-account"}>Open full profile</Link>
       </Button>
     </div>
   );

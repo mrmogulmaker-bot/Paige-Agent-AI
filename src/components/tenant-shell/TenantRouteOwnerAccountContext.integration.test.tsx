@@ -46,6 +46,7 @@ const harness = vi.hoisted(() => ({
   sessionUid: "authenticated-owner" as string | null,
   lastSignInAt: null as string | null,
   primaryLoads: [] as Array<Deferred<{ data: Array<{ tenant_id: string }> | null; error: unknown }>>,
+  agencyAccountNumber: null as string | null,
 }));
 
 function loadPart<K extends keyof LoadResult>(key: K): Promise<NonNullable<LoadResult[K]>> {
@@ -83,6 +84,14 @@ vi.mock("@/integrations/supabase/client", () => ({
         const primary = harness.primaryLoads.shift();
         if (!primary) throw new Error("No primary-tenant response is queued");
         return primary.promise;
+      }
+      if (name === "agency_switch_context") {
+        return Promise.resolve({
+          data: harness.agencyAccountNumber
+            ? { is_agency_manager: true, agency_account_number: harness.agencyAccountNumber }
+            : { is_agency_manager: false, agency_account_number: null },
+          error: null,
+        });
       }
       if (name === "agency_list_my_subaccounts") return new Promise(() => {});
       return Promise.resolve({ data: null, error: null });
@@ -297,6 +306,8 @@ async function settle() {
 }
 
 function mount(path: string, route: React.ReactNode) {
+  const agencyMatch = path.match(/^\/agency\/(\d+)/);
+  harness.agencyAccountNumber = agencyMatch?.[1] ?? null;
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -357,6 +368,7 @@ beforeEach(() => {
   harness.sessionUid = "authenticated-owner";
   harness.lastSignInAt = null;
   harness.primaryLoads = [];
+  harness.agencyAccountNumber = null;
   window.localStorage.clear();
 });
 

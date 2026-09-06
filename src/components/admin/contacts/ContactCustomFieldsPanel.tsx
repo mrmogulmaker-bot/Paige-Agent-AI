@@ -94,7 +94,7 @@ export function ContactCustomFieldsPanel({ contactId, tenantId }: ContactCustomF
         description="Create fields like “T-shirt size” or “Program cohort” to track anything specific to your practice on every contact."
         action={
           <Button asChild variant="outline" size="sm">
-            <Link to="/admin/settings/custom-fields">Set up custom fields</Link>
+            <Link to="/choose-account">Set up custom fields</Link>
           </Button>
         }
       />

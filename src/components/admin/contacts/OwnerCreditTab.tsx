@@ -10,7 +10,9 @@ type Snapshot = {
   bureau: string;
   score: number;
   pulled_at: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
   factors: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
   alerts_triggered: any;
 };
 
@@ -53,7 +55,7 @@ export function OwnerCreditTab({ contactId }: { contactId: string }) {
       {latestByBureau.size === 0 ? (
         <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">
           No owner credit snapshots yet. Connect SmartCredit from{" "}
-          <a href="/admin/integrations/smartcredit" className="text-primary hover:underline">Integrations → SmartCredit</a>.
+          <a href="/choose-account" className="text-primary hover:underline">Integrations → SmartCredit</a>.
         </CardContent></Card>
       ) : (
         <>

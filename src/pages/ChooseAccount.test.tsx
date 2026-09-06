@@ -219,25 +219,26 @@ describe("ChooseAccount", () => {
   // person HAS chosen, and the door would wave them through — it still parked them
   // on an error card the door itself would never have shown. Both surfaces now run
   // one predicate, so a divergence like this cannot be reintroduced on one side.
-  it("hands back when the record already names the active workspace, even with nothing to offer", async () => {
+  it("stays honest when the record names a workspace that is no longer available", async () => {
     sessionStorage.setItem("paige.workspace.entered", "antonio");
     harness.memberships = [];
     await act(async () => {
       root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
     });
-    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/admin");
-    expect(host.textContent).not.toContain("couldn't confirm which workspaces");
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
+    expect(host.textContent).toContain("couldn't confirm a workspace");
   });
 
   // And when the door genuinely would NOT ask — no enterable workspaces at all —
   // leaving for /admin is correct and terminates.
-  it("hands back to /admin when that door has nothing to ask about either", async () => {
+  it("stays on account selection with an actionable error when no workspace is available", async () => {
     harness.memberships = [];
     harness.context.tenants = [];
     await act(async () => {
       root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
     });
-    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/admin");
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
+    expect(host.textContent).toContain("couldn't confirm a workspace");
   });
 
 

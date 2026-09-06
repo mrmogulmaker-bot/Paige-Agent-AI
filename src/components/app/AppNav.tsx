@@ -302,7 +302,7 @@ export function AppNav({ user }: AppNavProps) {
             variant="ghost"
             size="sm"
             className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-sidebar-accent/50 gap-1.5 text-xs"
-            onClick={() => { setMode("internal"); navigate("/admin"); }}
+            onClick={() => { setMode("internal"); navigate("/choose-account"); }}
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Exit Client View
@@ -343,9 +343,9 @@ export function AppNav({ user }: AppNavProps) {
             <DropdownMenuSeparator />
             {isCoachOrAdmin && !isViewingAsClient && (
               <>
-                <DropdownMenuItem onClick={() => navigate("/admin")}>
+                <DropdownMenuItem onClick={() => navigate("/choose-account")}>
                   <Eye className="w-4 h-4 mr-2" />
-                  Admin Workspace
+                  Choose workspace
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>

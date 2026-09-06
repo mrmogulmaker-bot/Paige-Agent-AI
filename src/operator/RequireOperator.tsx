@@ -233,5 +233,5 @@ export default function RequireOperator({ children }: { children: React.ReactNod
   if (hasSession === null || verdict === null || loading) return <PageSkeleton />;
 
   // 5. Signed in, and the server said no. A real denial: they are not an operator.
-  return <Navigate to="/admin" replace />;
+  return <Navigate to="/app" replace />;
 }

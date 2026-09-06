@@ -32,8 +32,16 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { resolveTierKey } from "@/lib/tier/tierFeatures";
 
-// The marketplace's existing first-run chooser ("choose what your business does").
-const SETUP_CHOOSER_PATH = "/admin/marketplace";
+export function canonicalSetupPath(
+  tierKey: ReturnType<typeof resolveTierKey>,
+  accountNumber: number | string | null | undefined,
+): string | null {
+  const normalized = Number(accountNumber);
+  if (!Number.isSafeInteger(normalized) || normalized <= 0) return null;
+  if (tierKey === "solo") return `/solo/${normalized}/settings/setup`;
+  if (tierKey === "sub_account") return `/business/${normalized}/setup`;
+  return null;
+}
 
 export function RequireSetupComplete({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -58,15 +66,14 @@ export function RequireSetupComplete({ children }: { children: React.ReactNode }
     parent_tenant_id: activeTenant?.parent_tenant_id ?? null,
   });
   const gatedTier = tierKey === "solo" || tierKey === "sub_account";
+  const setupPath = canonicalSetupPath(tierKey, activeTenant?.account_number);
 
   // Reachable WHILE gated: the marketplace chooser AND the whole /admin/setup subtree —
   // the real playbook chooser is /admin/setup/playbook, so a gated tenant must be able to
   // move freely through Setup + the marketplace to choose; only OTHER /admin routes bounce
   // them to the chooser. (Without /admin/setup here, the gate bounced tenants away from the
   // very chooser they were sent to find.)
-  const onChooser =
-    location.pathname.startsWith(SETUP_CHOOSER_PATH) ||
-    location.pathname.startsWith("/admin/setup");
+  const onChooser = setupPath != null && location.pathname.startsWith(setupPath);
 
   // Decide at RENDER time (not in a post-paint effect): a gated tenant then never commits
   // a frame of the dashboard before the bounce (§11/§36 — no flash), and there is no
@@ -77,6 +84,6 @@ export function RequireSetupComplete({ children }: { children: React.ReactNode }
   // playbook (grandfathered), or already on the chooser/setup subtree.
   const shouldRedirect =
     !loading && !isPlatformStaff && !!activeTenant && gatedTier && !hasPlaybook && !onChooser;
-  if (shouldRedirect) return <Navigate to={SETUP_CHOOSER_PATH} replace />;
+  if (shouldRedirect) return <Navigate to={setupPath ?? "/choose-account"} replace />;
   return <>{children}</>;
 }

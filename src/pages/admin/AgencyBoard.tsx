@@ -59,7 +59,7 @@ import {
 } from "@/lib/marketplace/skills";
 import { PLAYBOOK_LIBRARY } from "@/lib/playbook/presets";
 import { stashSwitchNotice } from "@/lib/agency/switchNotice";
-import { rememberWorkspaceEntered } from "@/lib/auth/workspaceEntry";
+import { authorizedRootForTier, rememberWorkspaceEntered } from "@/lib/auth/workspaceEntry";
 
 // A child spins up ready: pick a Playbook preset from the shared library, or let
 // it inherit the agency's. Sentinel = "carry the agency's Playbook down" (no
@@ -75,6 +75,7 @@ interface SubAccount {
   name: string;
   account_type: string;
   status: string;
+  account_number: number | string;
   created_at: string;
 }
 
@@ -250,7 +251,7 @@ export default function AgencyBoard() {
     }
   };
 
-  const openChild = async (childId: string, childName: string) => {
+  const openChild = async (childId: string, childName: string, accountNumber: number | string) => {
     // Enter the sub-account through the parentage-gated RPC (§9/§10): it grants
     // the agency admin a membership row on the child (so child-scoped RLS lets
     // them work) AND sets active_tenant_id = child in one authenticated call —
@@ -270,7 +271,9 @@ export default function AgencyBoard() {
       // shipped agency capability was nearly broken for the third time (§58/§37:
       // `/admin` is a DESTINATION, and every producer of it has to be inventoried).
       rememberWorkspaceEntered(childId);
-      window.location.assign("/admin");
+      const root = authorizedRootForTier("sub_account", accountNumber);
+      if (!root) throw new Error("This account does not have a valid workspace address.");
+      window.location.assign(root);
     } catch (e) {
       const code = (e as { code?: string } | null)?.code;
       toast.error(
@@ -737,7 +740,7 @@ export default function AgencyBoard() {
                           variant="outline"
                           size="sm"
                           disabled={switchingId === s.id}
-                          onClick={(e) => { e.stopPropagation(); openChild(s.id, s.name); }}
+                          onClick={(e) => { e.stopPropagation(); openChild(s.id, s.name, s.account_number); }}
                           aria-label={`Open ${s.name} to work inside`}
                         >
                           {switchingId === s.id ? (

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
-/** Roles allowed to access non-/app surfaces of the platform. */
+/** Roles allowed to access authenticated staff surfaces of the platform. */
 const STAFF_ROLES = new Set([
   "admin",
   "super_admin",
@@ -23,12 +23,12 @@ const STAFF_ROLES = new Set([
 // blocked by RequireOperator, but this list is the defense-in-depth layer and leaving a newly
 // privileged prefix out of it is exactly the §37 producer-inventory gap that lets the two
 // drift apart. Caught by the §39 peer-gate.
-const CLIENT_FORBIDDEN_PREFIXES = ["/admin", "/broker/app", "/operator"];
+const CLIENT_FORBIDDEN_PREFIXES = ["/broker/app", "/operator"];
 
 /**
  * Hard guard: a signed-in account whose only role is `client` (or no role at all
  * while linked to a clients row) is locked to /app, /onboard, /auth, and public
- * pages. They cannot reach the admin, broker, or BTF workspace surfaces — even
+ * pages. They cannot reach broker or platform-operator surfaces — even
  * if they paste a URL directly. (BTF surface retired — Sprint 211.b cleanup)
  */
 export function ClientOnlyRouteGuard() {

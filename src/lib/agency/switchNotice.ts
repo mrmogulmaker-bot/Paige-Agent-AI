@@ -2,7 +2,7 @@
  * Cross-reload switch notice (agency ⇄ sub-account).
  *
  * Switching the active tenant writes `profiles.active_tenant_id` server-side and
- * then HARD-navigates (`window.location.assign('/admin')`) so every consumer of
+ * then HARD-navigates (`window.location.assign('the retired privileged route')`) so every consumer of
  * the per-instance `useTenantContext` hook re-reads the new scope from scratch —
  * a soft refresh would only update the caller's own copy, leaving AdminLayout on
  * the old tenant. Because the reload tears down the toast queue, we hand the

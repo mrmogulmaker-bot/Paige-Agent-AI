@@ -16,9 +16,9 @@ import { WORKSPACE_CHOOSER_PATH, decideWorkspaceEntry } from "@/lib/auth/workspa
  * forked).
  *
  * Like sub-account, there is no legacy standalone board to fork against here
- * — a Solo tenant has only ever rendered inline at `/admin` (Admin.tsx's Solo
+ * — a Solo tenant has only ever rendered inline at `/choose-account` (Admin.tsx's Solo
  * gate), never at its own top-level route — so this dispatcher has a single
- * leg. The `/admin` gate's redirect (§58, mirrors Gate A/B) is what makes
+ * leg. The `/choose-account` gate's redirect (§58, mirrors Gate A/B) is what makes
  * this address reachable; `SoloApp`'s own top-level ownership guard (§9,
  * mirrors task #171/R3c-i) then keeps the `:account` segment honest against
  * the caller's real tenant.

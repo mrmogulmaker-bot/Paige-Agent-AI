@@ -5,6 +5,8 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { MarketplaceSkill } from "@/lib/marketplace/skills";
+import { useLocation } from "react-router-dom";
+import { tenantRoutePrefixForPath } from "@/components/tenant-shell/tenantShellRoutes";
 
 interface Props {
   skill: MarketplaceSkill;
@@ -65,6 +67,8 @@ export function SkillCard({
   curationMode, curationPending, curationScopeLabel,
 }: Props) {
   const reduce = useReducedMotion();
+  const location = useLocation();
+  const tenantRoot = tenantRoutePrefixForPath(location.pathname);
 
   const StatePill = () => {
     // Agency curation pill: Shared (gold, the act) / Pending / Hidden — never the
@@ -244,7 +248,7 @@ export function SkillCard({
           )
         ) : lockedOn ? (
           <a
-            href="/admin/your-paige"
+            href={tenantRoot ? `${tenantRoot}/marketplace/installed` : "/choose-account"}
             className="shrink-0 rounded text-xs font-medium text-[hsl(var(--primary))] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           >
             Manage →

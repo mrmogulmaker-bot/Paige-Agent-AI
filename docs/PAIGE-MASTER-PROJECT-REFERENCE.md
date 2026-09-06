@@ -4,6 +4,15 @@
 
 **Locked:** 2026-08-09 by Antonio Cook + Cowork · **Owner:** Antonio · **Living:** update on every merge · **Cross-refs:** every deeper doc is in Section 9.
 
+> **Current owner override — 2026-09-06:** Admin is a role, never a URL. The legacy privileged
+> route, its descendants, redirects, shell flags, and delayed authentication entry are retired.
+> Requests to those old addresses use the ordinary immediate unknown-route behavior. Authentication,
+> account selection, setup, OAuth callbacks, notifications, tenant workspaces, and operator capability
+> remain in their explicit canonical routes and resolve authority server-side. This supersedes every
+> older section that describes legacy route dependency, smart redirects, or a shared admin shell,
+> including the prior note that three Solo tenants depended on unset shell flags. Durable hotfix status
+> and proof live in `docs/evidence/ui-delivery/retire-admin-route.md`.
+
 > **Note on identifiers (§11/§34):** operator-infrastructure account SIDs (Twilio Org/Account/subaccount SIDs, etc.) are **redacted** from this in-repo doc — GitHub secret-scanning blocks them and doctrine keeps them out of artifacts. The literal values live in the owner's Twilio console + the owner handoff, never in the repository.
 
 ---

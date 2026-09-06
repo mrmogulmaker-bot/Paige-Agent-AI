@@ -9,7 +9,7 @@ export default function ModelRouterAdmin() {
       title="Model Router"
       purpose="Provider status, routing tiers, and cost caps across the multi-LLM router."
       relatedLabel="Live model/provider status in Intelligence"
-      relatedHref="/admin/platform/intelligence"
+      relatedHref="/choose-account"
     />
   );
 }

@@ -607,30 +607,40 @@ describe("tenant Relationships / Clients workspace", () => {
 
       rows[1]?.focus();
       await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 700 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
-      expect(workspace?.dataset.recordLayout).toBe("overlay");
-      expect(list?.inert).toBe(true);
-      expect(document.activeElement).toBe(host.querySelector<HTMLButtonElement>(".trc-record-back"));
+      await vi.waitFor(() => {
+        expect(workspace?.dataset.recordLayout).toBe("overlay");
+        expect(list?.inert).toBe(true);
+        expect(document.activeElement).toBe(host.querySelector<HTMLButtonElement>(".trc-record-back"));
+      });
       await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 762 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
-      expect(workspace?.dataset.recordLayout).toBe("docked");
-      expect(list?.inert).toBe(false);
+      await vi.waitFor(() => {
+        expect(workspace?.dataset.recordLayout).toBe("docked");
+        expect(list?.inert).toBe(false);
+      });
       await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 1000 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
-      expect(workspace?.dataset.recordLayout).toBe("docked");
-      expect(list?.inert).toBe(false);
+      await vi.waitFor(() => {
+        expect(workspace?.dataset.recordLayout).toBe("docked");
+        expect(list?.inert).toBe(false);
+      });
 
       Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
       await act(async () => window.dispatchEvent(new Event("resize")));
-      expect(workspace?.dataset.recordLayout).toBe("overlay");
-      expect(list?.inert).toBe(true);
+      await vi.waitFor(() => {
+        expect(workspace?.dataset.recordLayout).toBe("overlay");
+        expect(list?.inert).toBe(true);
+      });
       await act(async () => host.querySelector<HTMLButtonElement>(".trc-record-back")?.click());
-      await vi.waitFor(() => expect(document.activeElement).toBe(rows[1]));
-      expect(list?.inert).toBe(false);
+      await vi.waitFor(() => {
+        expect(document.activeElement).toBe(rows[1]);
+        expect(list?.inert).toBe(false);
+      });
 
       Object.defineProperty(window, "innerWidth", { configurable: true, value: 900 });
       await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 1000 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
-      expect(workspace?.dataset.recordLayout).toBe("overlay");
+      await vi.waitFor(() => expect(workspace?.dataset.recordLayout).toBe("overlay"));
       Object.defineProperty(window, "innerWidth", { configurable: true, value: 1536 });
       await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 1000 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
-      expect(workspace?.dataset.recordLayout).toBe("docked");
+      await vi.waitFor(() => expect(workspace?.dataset.recordLayout).toBe("docked"));
     } finally {
       act(() => root.unmount());
       host.remove();
@@ -855,8 +865,6 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(html).toContain("Files and agreements");
     expect(html).toContain("Configuration remains owner/admin gated");
     expect(html).toContain("Choose a client to manage access");
-    const adminRoutes = readFileSync(resolve("src/pages/Admin.tsx"), "utf8");
-    expect(adminRoutes).toMatch(/path="portal"[\s\S]*?<AdminOnly>/);
     const source = readFileSync(resolve("src/components/tenant-relationships/TenantRelationshipsClientsWorkspace.tsx"), "utf8");
     expect(source).toContain("<RoleGate allow={[\"admin\"]}");
     expect(source).toContain("<PortalStudio key={activeTenantId} />");

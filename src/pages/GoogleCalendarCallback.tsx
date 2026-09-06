@@ -93,7 +93,7 @@ export default function GoogleCalendarCallback() {
       toast.success("Google Calendar connected");
       const returnOrigin = safeReturnOrigin(result?.return_origin);
       setTimeout(() => {
-        const dest = requestedReturn ?? (isStaffRef.current ? "/admin/calendar" : "/app/settings?tab=accounts");
+        const dest = requestedReturn ?? (isStaffRef.current ? "/choose-account" : "/app/settings?tab=accounts");
         if (returnOrigin && returnOrigin !== window.location.origin) {
           window.location.replace(`${returnOrigin}${dest}`);
           return;

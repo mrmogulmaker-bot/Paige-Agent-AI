@@ -239,7 +239,7 @@ export function AdminBridgeBell() {
 
         <div className="border-t px-5 py-3">
           <Link
-            to="/admin/notifications"
+            to="/choose-account"
             onClick={() => setOpen(false)}
             className="text-xs text-primary hover:underline"
           >

@@ -48,9 +48,9 @@ export default function SetupAutomations() {
               description="Configure your sales pipelines, the custom fields your practice tracks, and the rules that fire as deals move stage."
             >
               <div className="grid gap-3 sm:grid-cols-3">
-                <LinkRow to="/admin/settings/pipelines" icon={KanbanSquare} label="Pipelines" />
-                <LinkRow to="/admin/settings/custom-fields" icon={ListChecks} label="Custom Fields" />
-                <LinkRow to="/admin/automation/stage-rules" icon={GitBranch} label="Stage automation rules" />
+                <LinkRow to="/choose-account" icon={KanbanSquare} label="Pipelines" />
+                <LinkRow to="/choose-account" icon={ListChecks} label="Custom Fields" />
+                <LinkRow to="/choose-account" icon={GitBranch} label="Stage automation rules" />
               </div>
             </SectionCard>
           </div>

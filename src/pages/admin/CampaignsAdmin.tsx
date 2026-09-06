@@ -124,7 +124,7 @@ export default function CampaignsAdmin() {
                 </TableCell>
                 <TableCell>
                   <Button asChild variant="ghost" size="sm">
-                    <Link to={`/admin/campaigns/${encodeURIComponent(c.campaign_key)}`}>
+                    <Link to={"/choose-account"}>
                       Open <ExternalLink className="w-3 h-3 ml-1" />
                     </Link>
                   </Button>

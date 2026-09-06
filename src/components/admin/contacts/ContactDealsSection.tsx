@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { tenantRoutePrefixForPath } from "@/components/tenant-shell/tenantShellRoutes";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,8 @@ type Deal = {
 
 export function ContactDealsSection({ contactId }: { contactId: string }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const tenantRoot = tenantRoutePrefixForPath(location.pathname);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [stages, setStages] = useState<PipelineStage[]>([]);
@@ -58,7 +61,7 @@ export function ContactDealsSection({ contactId }: { contactId: string }) {
           {deals.map((d) => (
             <button
               key={d.id}
-              onClick={() => navigate(`/admin/pipeline?deal=${d.id}`)}
+              onClick={() => navigate(tenantRoot ? `${tenantRoot}/growth/pipeline?deal=${encodeURIComponent(d.id)}` : "/choose-account")}
               className="w-full text-left border border-border rounded-lg p-3 hover:bg-muted/40 transition-colors flex items-center justify-between gap-3"
             >
               <div className="min-w-0">
