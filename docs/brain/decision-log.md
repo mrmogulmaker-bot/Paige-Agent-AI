@@ -1,5 +1,109 @@
 # Decision Log — chronological one-liners
 
+- **RE-2 M1-b — campaign + client/engagement scope caps (2026-09-06, owner-ruled required for M1 completeness).**
+  Migration `20270103000000_re2_m1b_scope_caps.sql`. **DARK — ZERO producers**; proven with controlled fixtures
+  inside `BEGIN..ROLLBACK`; no real payment/purchase/ad-spend/provider change. Extends the merged PR-1 substrate
+  (`20261230000000`) + M1-a money-truth layer (`20270102000000`) via `CREATE OR REPLACE` of 5 primitives
+  (reserve/release/confirm/reconcile/remaining_capacity); forks nothing (§18); signatures unchanged so grants persist.
+  Applies the owner rule ("enforce where a canonical boundary exists; else fail closed + state unavailable, never
+  silently ignore the narrower cap") **per selector, against grounded reality:**
+  - **`client_period_budget_usd` → ENFORCED** against `public.tenant_client_agreements` (the canonical client-engagement
+    boundary: `tenant_id NOT NULL`, a real `starts_on`/`ends_on` period, a lifecycle `status`). The grant names ONE
+    engagement in a new `scope.client_agreement_id` key. Grant-CUMULATIVE window (one per grant), anchored to a
+    FIXED non-calendar sentinel `CLIENT_PERIOD_ANCHOR = DATE '2000-01-01'` — derived identically in all 5 primitives,
+    immune to grant mutation (see the fold notes below; NOT `effective_at`, which is mutable). Every §9 /
+    state / period failure fails CLOSED with a SPECIFIC reason (`client_period_boundary_unspecified` /
+    `client_agreement_id_invalid` / `client_agreement_not_found` / `not_authorized` (foreign tenant, §9) /
+    `client_agreement_inactive` / `client_agreement_not_started` / `client_agreement_ended`) — never silently skipped.
+  - **`campaign_budget_usd` → FAIL-CLOSED-UNAVAILABLE** (`campaign_boundary_unavailable`) — grounded: NO durable
+    campaigns table exists; `campaign_briefs` (`20261225000000`) is an owner-authored PLANNING record, explicitly not
+    live-campaign state and with no spend window; `scope.campaign_id`/`ad_account` are EXTERNAL provider ids with no
+    internal row. A specific reason (not the generic `unenforceable_cap_kind`) so the unavailability is legible (§13).
+  - **§37 lockstep:** all 5 primitives that walk `reserved_windows` handle the new `client_period` kind (reserve
+    validate+enforce+record · release reverse · confirm/reconcile true-up · remaining_capacity report). The PR-2
+    resolver (`20261231000000`) is REVIEWED and DELIBERATELY UNCHANGED — a client_period/campaign grant is doubly
+    excluded from its floor-lift (`provider_account IS NOT NULL` + the scope-key whitelist), so it already refuses
+    exactly what reserve refuses; adding these kinds to its lift allowlist would be WRONG.
+  **INTEGRATION CAPABILITY REGISTRY (owner directive; #1019 has LANDED at `docs/integration-registry/`) — READ, no
+  entry change required.** M1-b changes NO provider entry's capability/authority/receipt (DARK, provider-agnostic,
+  invents no provider authority; the campaign selector fails closed precisely because no provider/canonical boundary
+  exists; client_period uses an internal table). It advances the **§10.8 money-backbone** cap dimension — a DIFFERENT
+  "M1" from the §8 metering-into-`platform_metered_events` lane the registry's `m1_dependency` fields reference (the
+  owner separated the two names). Honest form of the Meta entry's "gate before any autonomous media buy": the gate
+  exists and fail-closes campaign spend. So no `integration-capability-registry.json` edit (its `lint:integration-registry`
+  stays green); recorded here per the delivery rule.
+  **TESTING (§32):** `BEGIN..ROLLBACK` on prod (ref `xygzykjyynhzqytbqnzu`) — **PROOF_OK**: S1 (all 5 CREATE OR REPLACE
+  apply) + 13 behavioral asserts (client_period enforce + cumulative over-cap refuse; campaign fail-closed; 4 §9/state/
+  period fail-closed reasons; confirm true-up 50→30; reconcile refund give-back 30→20 partially_refunded; release
+  reverses 50→0; over-cap-on-confirm breach 40→70; unknown-cap + day-cap regressions; remaining_capacity reports
+  client_period). Guards green: `lint:migration-versions` (994, no reuse) · `lint:definer-fns` · `lint:managed-schema` ·
+  `lint:integration-registry`; §50/§63 clean. Fixtures were fresh synthetic tenants (§63 — never the owner's real accounts).
+  **OWNER DECISIONS FLAGGED (safe fail-closed defaults shipped; not blocking):** (1) client-engagement cap is bound to
+  the AGREEMENT (`tenant_client_agreements` via `scope.client_agreement_id`), not a person-level (`clients.id`) cumulative
+  cap — a person has many engagements, so person-level is ambiguous and fails closed here; (2) `client_period` is
+  CUMULATIVE-over-grant, not per-renewal-period reset — cumulative can only under-spend vs a resetting period, so it is
+  the safe default; a resetting semantics is a future refinement.
+  **§5 compliance + §39 adversarial verifier crews (independent) BOTH CONVERGED on ONE real finding (folded FIX-FIRST):**
+  the `client_period` window was anchored to `(grant.effective_at)::date`, but `effective_at` is MUTABLE (tenant-admin RLS
+  `FOR ALL`; service_role bypass; the grants guard trigger never protects it). §39 (MAJOR): a mid-life reschedule strands
+  the window in release/confirm/reconcile (capacity leak + missed true-up + missed breach). §5 (MEDIUM, the sharper trace):
+  a reschedule between two reserves SPLITS the window — a second `client_period` row lets cumulative spend exceed the cap
+  (a fail-OPEN of a real-money control), exactly the "never silently under-enforce the narrower cap" the owner forbids.
+  **FOLD — re-anchored `client_period` to a fixed non-calendar sentinel `CLIENT_PERIOD_ANCHOR = DATE '2000-01-01'`** in all
+  five primitives (§39 fix (b), strictly better than §5's proposed immutability trigger: the window key depends on NO
+  mutable column, so it closes BOTH the drift AND the split-window fail-open — every reserve computes the same window, so
+  reserve B reads reserve A's row and enforces the cumulative cap — AND it preserves the legitimate ability to reschedule
+  `effective_at`, adding no trigger). `release` no longer reads the grant. Stale "immutable"/"effective_at" comments fixed.
+  §39 Finding 2 (MINOR, resolver's now-stale "same allowlist" inline comment) is functionally moot (client_period/campaign
+  are triply excluded from the resolver's lift) and documented in the migration header for refresh when the resolver is
+  next materially touched, rather than re-emitting the untouched 17KB function for a comment. Everything else BOTH crews
+  affirmed clean (§9/§38/§59/§18/§37, campaign fail-closed, day/week/month regression, resolver lockstep, doc discipline,
+  registry-no-edit); §5 verdict **SHIP** with this one required follow-up, now closed in-branch.
+  **§32 RE-PROVED after the fold — PROOF_OK (constant anchor)**: B1..B14, adding **B14** (a grant whose `effective_at` is
+  100 days ago still anchors its window to the constant, and two reserves accumulate in the ONE window — the direct
+  behavioral rebuttal of the fail-open). Guards green: `lint:migration-versions` / `lint:definer-fns` / `lint:managed-schema`.
+  **CODEX PEER-GATE (§39) on head `2e5c9f9` caught THREE more real fail-opens the §5/§39 crews missed — the layered-defense
+  point exactly (a green crew never waives the independent read of the real diff); all THREE folded FIX-FIRST, all IN
+  `authority_reserve`, §37 lockstep held (a fail-closed reserve creates no window for the other four primitives to walk):**
+  (P1-a, delegation) budget windows are keyed strictly per grant with NO ancestor rollup (verified in reserve +
+  `authority_remaining_capacity`), so a DELEGATED child grant (`parent_grant_id` set) targeting an ancestor's engagement
+  would start at zero client_period usage and reserve its FULL cap again — widening the delegator's ceiling, breaching the
+  substrate invariant "delegation never widens authority". No shared-window/ancestor-sum mechanism exists yet, so per the
+  owner rule a delegated grant's client_period cap fails CLOSED (`client_period_delegation_unsupported`); the owner's OWN
+  grant (`parent_grant_id` NULL) enforces normally. (P1-b, null cap) `caps ? 'client_period_budget_usd'` is TRUE for JSON
+  `null`, which casts to SQL NULL, drops the window row, and returns `ok:true` UNENFORCED — a fail-OPEN; now `jsonb_typeof <>
+  'number'` OR negative fails CLOSED (`client_period_cap_invalid`), two IFs so a JSON-string never reaches the `::numeric`
+  cast (no `invalid_text_representation`). (P1-c, TOCTOU) the agreement read is now `FOR SHARE` — it conflicts with the
+  `FOR NO KEY UPDATE` a lifecycle `UPDATE` takes, serializing pause/cancel/re-date against the reserve so a stale-`active`
+  read can't commit a reservation against a since-closed boundary. **PARKED (§13, out of DARK M1-b scope):** the broader
+  per-ENGAGEMENT rollup across multiple top-level owner grants, and spend by grants that never declare the cap, are
+  target-aware PR-3 concerns. **§32 RE-PROVED after the round-1 fold — PROOF_OK: B1..B16.**
+  **CODEX PEER-GATE ROUND 2 (§39) on head `e8ec654` caught THREE MORE (2×P1, 1×P2) — the round-1 null-cap fix was too
+  NARROW; all folded FIX-FIRST:** (P1, all-caps shape) reserve now validates the SHAPE of EVERY declared cap (all 8
+  recognized keys, not just client_period) BEFORE building any window — a JSON null / non-number / negative value on ANY
+  cap (e.g. a null `daily_budget_usd` on a grant that also declares a valid client_period) fails CLOSED with
+  `cap_invalid` + the offending `cap` key (this SUPERSEDES the round-1 `client_period_cap_invalid`, which is removed); two
+  nested IFs so a JSON-string never reaches the `::numeric` cast. (P1, settlement) `authority_confirm` AND
+  `authority_reconcile` read the LIVE (mutable) cap at settlement — a cap edited to null/non-number AFTER the reservation
+  would silently skip the breach check (`over_cap_breach`/`escalate` false = fail-OPEN) or RAISE on a string; both now
+  read the cap under a shape-guard and record a `cap_unreadable_at_settlement` anomaly (forcing `escalate`), never a
+  silent skip or a raise. (P2, doc) the decision-log lead bullet still said the window anchored to `effective_at` — a
+  self-contradiction with the round-1 fold; corrected above to the constant sentinel. **PARKED (more robust, out of DARK
+  M1-b scope):** a cap SNAPSHOT recorded at reserve time would additionally immunize a valid-but-CHANGED cap (needs a
+  receipt column + a mid-flight-cap-change semantics decision). **§32 RE-PROVED after round 2 — PROOF_OK: B1..B18**,
+  adding **B17** (valid client_period + null daily → `cap_invalid` on `daily_budget_usd`, no window written) and **B18**
+  (cap edited to null/string AFTER reserve → confirm ESCALATES, no silent breach-miss, no raise-on-string).
+  **CODEX PEER-GATE ROUND 3 (§39) on head `e1302fc` — ONE more P1:** the three action-COUNT caps
+  (`max_per_day`/`week`/`month`) are cast `::int` downstream and PostgreSQL ROUNDS, so a fractional `0.9` would
+  become `1` and over-authorize an action against a sub-1 cap (and a huge value would overflow the cast). The
+  round-2 shape loop only checked `>= 0`; it now ALSO requires the three count caps to be INTEGRAL and within int
+  range (`cap_invalid` + cap key), dollar caps unchanged (fractions OK). **§32 RE-PROVED after round 3 — PROOF_OK:
+  B1..B19**, adding **B19** (fractional `max_per_day` → `cap_invalid`, no window; a valid integer count cap still
+  enforces at its limit → `over_action_count_cap`). Guards green: `lint:migration-versions` (995, no reuse) ·
+  `lint:definer-fns` · `lint:managed-schema` · `lint:integration-registry`; §50/§63 clean.
+  **PR #1027 (ready). OUTCOME: MERGING** (§32.a persisted-apply owed post-merge via `deploy-migrations`; authenticated drive
+  owed to PR-3). Flip to MERGED + §32.a CONFIRMED post-merge.
+
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace
