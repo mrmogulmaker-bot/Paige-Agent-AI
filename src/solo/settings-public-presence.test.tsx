@@ -32,6 +32,11 @@ async function mount() {
           },
         })}
         primaryBusinessEmail="hello@northstar.example"
+        primaryBusinessEmailProvenance={{
+          source: "owner_confirmed",
+          confidence: "confirmed",
+          confirmedAt: "2026-09-05T14:30:00.000Z",
+        }}
         onReviewBusinessProfile={onReviewBusinessProfile}
       />,
     ),
@@ -43,6 +48,26 @@ const control = (root: ParentNode, label: string) =>
   Array.from(root.querySelectorAll("button")).find(
     (node) => node.textContent?.trim() === label,
   ) as HTMLButtonElement;
+
+async function mountBrief(brief: ReturnType<typeof cleanSoloSetupBrief>) {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () =>
+    root.render(
+      <SettingsPublicPresence
+        brief={brief}
+        primaryBusinessEmail=""
+        primaryBusinessEmailProvenance={{
+          source: "needs_confirmation",
+          confidence: "unknown",
+        }}
+        onReviewBusinessProfile={() => undefined}
+      />,
+    ),
+  );
+  return { host, root };
+}
 
 describe("Settings Public Presence", () => {
   afterEach(() => {
@@ -64,22 +89,49 @@ describe("Settings Public Presence", () => {
     await act(async () => root.unmount());
   });
 
-  it("does not promote an unconfirmed fallback name to owner-confirmed truth", async () => {
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    await act(async () =>
-      root.render(
-        <SettingsPublicPresence
-          brief={cleanSoloSetupBrief({ publicName: "Fallback name" })}
-          primaryBusinessEmail=""
-          onReviewBusinessProfile={() => undefined}
-        />,
-      ),
+  it("does not promote a connection-sourced name or timestamp to owner-confirmed truth", async () => {
+    const { host, root } = await mountBrief(
+      cleanSoloSetupBrief({
+        publicName: "Observed name",
+        provenance: {
+          publicName: {
+            source: "connection_sourced",
+            confidence: "observed",
+            confirmedAt: "2026-09-05T14:30:00.000Z",
+          },
+        },
+      }),
     );
-    expect(host.textContent).toContain("Business Profile · confirmation required");
-    expect(host.textContent).not.toContain("Business Profile · owner confirmed");
-    expect(host.textContent).toContain("Needs review");
+    expect(host.textContent).toContain(
+      "Business Profile · confirmation required",
+    );
+    expect(host.textContent).toContain(
+      "Connected record · owner review required Sep 5, 2026",
+    );
+    expect(host.textContent).not.toContain(
+      "Business Profile · owner confirmed",
+    );
+    expect(host.textContent).not.toContain("Owner confirmed Sep 5, 2026");
+    await act(async () => root.unmount());
+  });
+
+  it("uses the matching provenance for an owner-confirmed DBA fallback", async () => {
+    const { host, root } = await mountBrief(
+      cleanSoloSetupBrief({
+        dbaName: "Northstar DBA",
+        phone: "+1 555 010 2020",
+        serviceArea: "Greater Raleigh",
+        provenance: {
+          dbaName: {
+            source: "owner_confirmed",
+            confidence: "confirmed",
+            confirmedAt: "2026-09-05T14:30:00.000Z",
+          },
+        },
+      }),
+    );
+    expect(host.textContent).toContain("Business Profile · owner confirmed");
+    expect(host.textContent).toContain("Owner confirmed Sep 5, 2026");
     await act(async () => root.unmount());
   });
 
@@ -101,11 +153,9 @@ describe("Settings Public Presence", () => {
     expect(host.textContent).toContain("Apple Business Connect");
     expect(host.textContent).toContain("Yelp");
     expect(host.textContent).toContain("Connection setup stays in Integrations");
-    const unavailable = Array.from(
-      host.querySelectorAll<HTMLButtonElement>("button:disabled"),
-    );
-    expect(unavailable.length).toBeGreaterThan(0);
-    expect(unavailable.every((button) => button.title.length > 0)).toBe(true);
+    expect(host.textContent).toContain("Authenticated provider required");
+    expect(host.querySelectorAll("button:disabled")).toHaveLength(0);
+    expect(host.querySelectorAll(".presence-unavailable")).not.toHaveLength(0);
     expect(host.textContent).not.toMatch(/claimed|synced|corrected|published/i);
     await act(async () => root.unmount());
   });
@@ -119,18 +169,43 @@ describe("Settings Public Presence", () => {
     expect(dialog).toBeTruthy();
     expect(dialog?.textContent).toContain("Northstar Studio");
     expect(dialog?.textContent).toContain("hello@northstar.example");
-    expect(dialog?.textContent).toContain("Business Profile remains the edit home");
+    expect(dialog?.textContent).toContain(
+      "Business Profile remains the edit home",
+    );
+    expect(dialog?.textContent).toContain(
+      "Paige eligibility: excluded until owner confirmed",
+    );
+    expect(host.getAttribute("aria-hidden")).toBe("true");
+    expect(host.inert).toBe(true);
+    expect(document.body.style.overflow).toBe("hidden");
+    const dialogButtons = Array.from(
+      dialog!.querySelectorAll<HTMLButtonElement>("button"),
+    );
+    expect(document.activeElement).toBe(dialogButtons[0]);
+    await act(async () =>
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", shiftKey: true }),
+      ),
+    );
+    expect(document.activeElement).toBe(dialogButtons.at(-1));
+    await act(async () =>
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" })),
+    );
+    expect(document.activeElement).toBe(dialogButtons[0]);
     await act(async () =>
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })),
     );
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.body.style.overflow).toBe("");
+    expect(host.getAttribute("aria-hidden")).toBeNull();
+    expect(host.inert).not.toBe(true);
     expect(document.activeElement).toBe(opener);
     await act(async () => root.unmount());
   });
 
   it("routes canonical fact repair to Business Profile", async () => {
     const { host, root, onReviewBusinessProfile } = await mount();
-    await act(async () => control(host, "Review Business Profile").click());
+    await act(async () => control(host, "Review public facts").click());
     expect(onReviewBusinessProfile).toHaveBeenCalledTimes(1);
     await act(async () => root.unmount());
   });

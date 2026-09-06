@@ -22,6 +22,7 @@ type PresenceView =
 type SettingsPublicPresenceProps = {
   brief: SoloSetupBrief;
   primaryBusinessEmail: string;
+  primaryBusinessEmailProvenance: SetupFactProvenance;
   onReviewBusinessProfile: () => void;
 };
 
@@ -43,21 +44,53 @@ const venues = [
   ["Directory networks", "411-style and industry directories"],
 ] as const;
 
-const unavailableTitle =
-  "Unavailable until an authenticated provider connection and evidence contract are implemented.";
+const unavailableReason =
+  "Unavailable until an authenticated source and evidence contract are implemented.";
+
+function isApproved(provenance?: SetupFactProvenance) {
+  return (
+    provenance?.source === "owner_confirmed" &&
+    provenance.confidence === "confirmed"
+  );
+}
+
+function sourceLabel(provenance?: SetupFactProvenance) {
+  if (isApproved(provenance)) return "Owner confirmed";
+  if (provenance?.source === "connection_sourced")
+    return "Connected record · owner review required";
+  return "Needs owner confirmation";
+}
 
 function freshness(provenance?: SetupFactProvenance, fallback?: string) {
   if (!provenance?.confirmedAt) return fallback || "No verified check time";
   const date = new Date(provenance.confirmedAt);
-  if (Number.isNaN(date.getTime())) return "Saved record · time unavailable";
-  return `Owner confirmed ${date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })}`;
+  if (Number.isNaN(date.getTime())) return "Source time unavailable";
+  return (
+    sourceLabel(provenance) +
+    " " +
+    date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+  );
 }
 
-function Status({ tone, children }: { tone: "ok" | "review" | "off"; children: string }) {
+function selectPublicIdentity(brief: SoloSetupBrief) {
+  if (brief.publicName)
+    return { value: brief.publicName, provenance: brief.provenance.publicName };
+  if (brief.dbaName)
+    return { value: brief.dbaName, provenance: brief.provenance.dbaName };
+  return { value: brief.legalName, provenance: brief.provenance.legalName };
+}
+
+function Status({
+  tone,
+  children,
+}: {
+  tone: "ok" | "review" | "off";
+  children: string;
+}) {
   return (
     <span className="presence-status" data-tone={tone}>
       {children}
@@ -65,28 +98,55 @@ function Status({ tone, children }: { tone: "ok" | "review" | "off"; children: s
   );
 }
 
-function UnavailableButton({ children }: { children: string }) {
+function UnavailableState({
+  children,
+  reason = unavailableReason,
+}: {
+  children: string;
+  reason?: string;
+}) {
   return (
-    <button className="presence-button" type="button" disabled title={unavailableTitle}>
-      {children}
-    </button>
+    <span
+      className="presence-unavailable"
+      role="status"
+      aria-label={children + ". " + reason}
+    >
+      <strong>{children}</strong>
+      <small>{reason}</small>
+    </span>
   );
 }
 
 function PublicFactsDrawer({
   brief,
   email,
+  emailProvenance,
   onClose,
   onEdit,
 }: {
   brief: SoloSetupBrief;
   email: string;
+  emailProvenance: SetupFactProvenance;
   onClose: () => void;
   onEdit: () => void;
 }) {
   const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
     const surface = dialog.current;
+    const backdrop = surface?.closest(".presence-drawer-backdrop");
+    const background = Array.from(document.body.children)
+      .filter((node) => node !== backdrop)
+      .map((node) => ({
+        node: node as HTMLElement,
+        ariaHidden: node.getAttribute("aria-hidden"),
+        inert: (node as HTMLElement).inert,
+      }));
+    const priorOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    background.forEach(({ node }) => {
+      node.inert = true;
+      node.setAttribute("aria-hidden", "true");
+    });
     const focusable = () =>
       Array.from(
         surface?.querySelectorAll<HTMLElement>("button:not(:disabled),a[href]") ?? [],
@@ -112,21 +172,69 @@ function PublicFactsDrawer({
       }
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = priorOverflow;
+      background.forEach(({ node, ariaHidden, inert }) => {
+        node.inert = inert;
+        if (ariaHidden === null) node.removeAttribute("aria-hidden");
+        else node.setAttribute("aria-hidden", ariaHidden);
+      });
+    };
   }, [onClose]);
 
-  const facts = [
-    ["Public business name", brief.publicName || brief.dbaName || brief.legalName],
-    ["Website / domain", brief.website],
-    ["Public phone", brief.phone],
-    ["Public email", email],
-    ["Address or service area", brief.address || brief.serviceArea],
-    ["Hours", "Not available in the canonical record"],
-    ["Category", brief.industry],
-    ["Services / offers", brief.offers],
-    ["Public description", "Not available in the canonical record"],
-    ["Social and profile links", "Not available in the canonical record"],
-    ["Logo and public imagery", "Not available in the canonical record"],
+  const identity = selectPublicIdentity(brief);
+  const address = brief.address
+    ? { value: brief.address, provenance: brief.provenance.address }
+    : {
+        value: brief.serviceArea,
+        provenance: brief.provenance.serviceArea,
+      };
+  const facts: Array<{
+    label: string;
+    value: string;
+    provenance?: SetupFactProvenance;
+    unavailable?: boolean;
+  }> = [
+    {
+      label: "Public business name",
+      value: identity.value,
+      provenance: identity.provenance,
+    },
+    {
+      label: "Website / domain",
+      value: brief.website,
+      provenance: brief.provenance.website,
+    },
+    {
+      label: "Public phone",
+      value: brief.phone,
+      provenance: brief.provenance.phone,
+    },
+    {
+      label: "Public email",
+      value: email,
+      provenance: emailProvenance,
+    },
+    {
+      label: "Address or service area",
+      value: address.value,
+      provenance: address.provenance,
+    },
+    { label: "Hours", value: "", unavailable: true },
+    {
+      label: "Category",
+      value: brief.industry,
+      provenance: brief.provenance.industry,
+    },
+    {
+      label: "Services / offers",
+      value: brief.offers,
+      provenance: brief.provenance.offers,
+    },
+    { label: "Public description", value: "", unavailable: true },
+    { label: "Social and profile links", value: "", unavailable: true },
+    { label: "Logo and public imagery", value: "", unavailable: true },
   ];
 
   return createPortal(
@@ -143,21 +251,47 @@ function PublicFactsDrawer({
         <header>
           <div>
             <span>PUBLIC FACTS · READ ONLY</span>
-            <h2 id="presence-facts-title">Approved facts Paige may use publicly</h2>
-            <p>Business Profile remains the edit home. This inspector coordinates outward use without forking identity.</p>
+            <h2 id="presence-facts-title">
+              Public facts available for review
+            </h2>
+            <p>
+              Business Profile remains the edit home. Only owner-confirmed
+              public facts are eligible for a future safe Paige handoff.
+            </p>
           </div>
           <button type="button" className="presence-icon-button" aria-label="Close public facts" onClick={onClose}>
             <X aria-hidden />
           </button>
         </header>
         <div className="presence-fact-list">
-          {facts.map(([label, value]) => (
-            <div key={label}>
-              <span>{label}</span>
-              <strong>{value || "Not yet confirmed"}</strong>
-              <small>Source: Business Profile · Edit authority: owner or authorized representative</small>
-            </div>
-          ))}
+          {facts.map((fact) => {
+            const approved = isApproved(fact.provenance);
+            return (
+              <div key={fact.label} data-approved={approved}>
+                <span>{fact.label}</span>
+                <strong>
+                  {fact.value ||
+                    (fact.unavailable
+                      ? "Not available in the canonical record"
+                      : "Not yet confirmed")}
+                </strong>
+                <small>
+                  {fact.provenance
+                    ? "Source: " +
+                      sourceLabel(fact.provenance) +
+                      " · " +
+                      freshness(fact.provenance)
+                    : "Source: No canonical field or confirmed value"}
+                </small>
+                <small>
+                  {approved
+                    ? "Paige eligibility: reviewed public context"
+                    : "Paige eligibility: excluded until owner confirmed"}
+                  {" · Edit authority: Business Profile policy"}
+                </small>
+              </div>
+            );
+          })}
         </div>
         <footer>
           <button type="button" className="presence-button" onClick={onClose}>Close inspector</button>
@@ -174,16 +308,16 @@ function PublicFactsDrawer({
 export function SettingsPublicPresence({
   brief,
   primaryBusinessEmail,
+  primaryBusinessEmailProvenance,
   onReviewBusinessProfile,
 }: SettingsPublicPresenceProps) {
   const [view, setView] = useState<PresenceView>("center");
   const [factsOpen, setFactsOpen] = useState(false);
   const factsOpener = useRef<HTMLButtonElement>(null);
-  const identity = brief.publicName || brief.dbaName || brief.legalName;
-  const identitySource = brief.provenance.publicName;
-  const identityConfirmed =
-    identitySource?.source === "owner_confirmed" &&
-    identitySource.confidence === "confirmed";
+  const identityFact = selectPublicIdentity(brief);
+  const identity = identityFact.value;
+  const identitySource = identityFact.provenance;
+  const identityConfirmed = isApproved(identitySource);
   const factsMissing = !identityConfirmed || !brief.phone || !(brief.address || brief.serviceArea);
 
   const pulse = useMemo<Array<{ label: string; status: string; tone: "ok" | "review" | "off"; source: string; checked: string }>>(
@@ -232,9 +366,15 @@ export function SettingsPublicPresence({
           <p>See which approved business facts are ready for public use, what outside sources can actually verify, and the next honest move.</p>
         </div>
         <div className="presence-heading__actions">
-          <UnavailableButton>Ask PAIGE</UnavailableButton>
-          <button type="button" className="presence-button presence-button--primary" onClick={onReviewBusinessProfile}>
-            Improve public presence <ArrowRight aria-hidden />
+          <UnavailableState reason="PAIGE handoff not connected">
+            Ask PAIGE
+          </UnavailableState>
+          <button
+            type="button"
+            className="presence-button presence-button--primary"
+            onClick={onReviewBusinessProfile}
+          >
+            Review public facts <ArrowRight aria-hidden />
           </button>
         </div>
       </header>
@@ -281,12 +421,35 @@ export function SettingsPublicPresence({
               <div>
                 <Globe2 aria-hidden />
                 <div>
-                  <h3>{factsMissing ? "Confirm the public facts people should recognize" : brief.website ? "Verify where the website appears publicly" : "Add the business website"}</h3>
-                  <p>{factsMissing ? "Public Presence reads the approved Business Profile record. Complete missing identity facts there before preparing outside corrections." : "Search and listing checks stay unavailable until a supported, authenticated source is connected."}</p>
+                  <h3>
+                    {factsMissing
+                      ? "Confirm the public facts people should recognize"
+                      : brief.website
+                        ? "Website saved; public verification is unavailable"
+                        : "Add the business website"}
+                  </h3>
+                  <p>
+                    {factsMissing
+                      ? "Public Presence reads the approved Business Profile record. Complete missing identity facts there before preparing outside corrections."
+                      : brief.website
+                        ? "Review the saved website now. Search and listing verification starts only after a supported authenticated source exists."
+                        : "Add the canonical website in Business Profile before any future public-source check."}
+                  </p>
                 </div>
               </div>
               <div className="presence-actions">
-                <button type="button" className="presence-button presence-button--primary" onClick={onReviewBusinessProfile}>Review Business Profile <ArrowRight aria-hidden /></button>
+                <button
+                  type="button"
+                  className="presence-button presence-button--primary"
+                  onClick={onReviewBusinessProfile}
+                >
+                  {factsMissing
+                    ? "Review Business Profile"
+                    : brief.website
+                      ? "Review saved website"
+                      : "Add website in Business Profile"}{" "}
+                  <ArrowRight aria-hidden />
+                </button>
                 <button ref={factsOpener} type="button" className="presence-button" onClick={() => setFactsOpen(true)}>Inspect public facts</button>
               </div>
             </article>
@@ -294,7 +457,14 @@ export function SettingsPublicPresence({
               <span>PAIGE-CO-OWNED SETUP</span>
               <ol>
                 {[
-                  ["Confirm canonical public business facts", identity ? "Ready to review" : "Missing facts"],
+                  [
+                    "Confirm canonical public business facts",
+                    identityConfirmed
+                      ? "Owner-confirmed identity on file"
+                      : identity
+                        ? "Owner confirmation required"
+                        : "Missing facts",
+                  ],
                   ["Verify the website and domain", brief.website ? "Website on file · verification unavailable" : "No website on file"],
                   ["Connect supported public venues", "No supported provider source"],
                   ["Compare venue facts to canonical facts", "Waiting for a verified venue source"],
@@ -303,7 +473,9 @@ export function SettingsPublicPresence({
                 ].map(([label, detail], index) => (
                   <li key={label}>
                     <span>{index + 1}</span><div><strong>{label}</strong><small>{detail}</small></div>
-                    <UnavailableButton>Continue with PAIGE</UnavailableButton>
+                    <UnavailableState reason="PAIGE handoff not connected">
+                      Continue with PAIGE
+                    </UnavailableState>
                   </li>
                 ))}
               </ol>
@@ -321,7 +493,9 @@ export function SettingsPublicPresence({
                 <div className="presence-venue-detail">
                   <p>No authenticated source is available for this venue, so public facts and state are not asserted here.</p>
                   <div><span>Source</span><strong>No supported provider source</strong><span>Last checked</span><strong>No verified check time</strong></div>
-                  <UnavailableButton>Provider unavailable</UnavailableButton>
+                  <UnavailableState reason="Authenticated provider required">
+                    Provider unavailable
+                  </UnavailableState>
                 </div>
               </details>
             ))}
@@ -348,13 +522,15 @@ export function SettingsPublicPresence({
             <ShieldCheck aria-hidden />
             <h3>No connected review source</h3>
             <p>Review queues and response work appear only after a source proves them. Paige cannot draft or send a response from this surface yet.</p>
-            <UnavailableButton>Review source unavailable</UnavailableButton>
+            <UnavailableState reason="Authenticated review source required">
+              Review source unavailable
+            </UnavailableState>
           </section>
         )}
 
         {view === "facts" && (
           <section className="presence-facts-preview">
-            <div><span>PUBLIC FACTS</span><h3>One canonical record, coordinated outward</h3><p>Inspect approved facts and their edit authority without creating a second identity store.</p></div>
+            <div><span>PUBLIC FACTS</span><h3>One canonical record, coordinated outward</h3><p>Inspect canonical facts, confirmation status, and Paige eligibility without creating a second identity store.</p></div>
             <button ref={factsOpener} type="button" className="presence-button presence-button--primary" onClick={() => setFactsOpen(true)}>Inspect public facts <ExternalLink aria-hidden /></button>
           </section>
         )}
@@ -364,6 +540,7 @@ export function SettingsPublicPresence({
         <PublicFactsDrawer
           brief={brief}
           email={primaryBusinessEmail}
+          emailProvenance={primaryBusinessEmailProvenance}
           onClose={closeFacts}
           onEdit={() => { closeFacts(); onReviewBusinessProfile(); }}
         />

@@ -1383,6 +1383,9 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
               <SettingsPublicPresence
                 brief={data.brief}
                 primaryBusinessEmail={data.primaryBusinessEmail}
+                primaryBusinessEmailProvenance={
+                  data.primaryBusinessEmailProvenance
+                }
                 onReviewBusinessProfile={() => switchTab("business-profile")}
               />
             )}{" "}
