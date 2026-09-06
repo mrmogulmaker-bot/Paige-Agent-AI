@@ -48,6 +48,6 @@ Vercel's SPA rewrite correctly served `index.html` for every path. The client ro
 
 PR #724's route mount, legacy shell, and setup fallback are superseded; unrelated canonical auth/setup/OAuth behavior was preserved. PR #981's floating-chat retirement was already on main and remains compatible. Origin main advanced during implementation through #985, #986, #987, #969, #993, #991, #994, and #989. The hotfix was rebased after #989 merged; its surface-context handoff wording was corrected to remove the stale Agency/admin destination while preserving the new contract.
 
-Current state: `PARTIAL` until merge/deployment. Code and local proof are ready for PR; authenticated production role driving and migration-ledger confirmation remain `PROOF OWED`.
+Current state: `PARTIAL` until merge/deployment. PR #995 CI is green; authenticated production role driving, migration-ledger confirmation, exact production revision, and live production browser proof remain `PROOF OWED`.
 
 Next owning workstream: P0 Solo Campaigns Sales blank-screen incident at `/solo/9082725/growth/sales`. It must first read this record, the 2026-09-06 decision-log entry, and the Campaigns/Sales record introduced by PR #985; then capture live console/network/revision evidence before editing.
