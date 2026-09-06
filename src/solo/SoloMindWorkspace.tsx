@@ -110,6 +110,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   const [announcement, setAnnouncement] = useState("Mind presentation orbit is visual only. Tenant activity is unchanged.");
 
   const rootRef = useRef<HTMLElement>(null);
+  const recordsRef = useRef<HTMLDivElement>(null);
   const launcherRef = useRef<HTMLElement | null>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
@@ -185,6 +186,9 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   // orb and is restorable) — §13/§70, nothing governed is deleted.
   const visible = useMemo(() => inDomain.filter((r) => !dismissed.has(r.id)), [inDomain, dismissed]);
   const dismissedCount = useMemo(() => records.filter((r) => dismissed.has(r.id)).length, [records, dismissed]);
+  // Dismissed WITHIN the current filter — so an all-cleared filtered view says "cleared", not the
+  // domain's honest-empty copy (a record that's merely dismissed still exists, §13).
+  const dismissedInDomain = useMemo(() => inDomain.filter((r) => dismissed.has(r.id)).length, [inDomain, dismissed]);
 
   // Resolve the live --sig-* tokens in a POST-COMMIT effect, not in render: resolveSignalColors
   // mutates the DOM (appends/removes a probe span), which is impure in a useMemo (concurrent-mode
@@ -333,9 +337,20 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
     setAnnouncement(next === "reduced" ? "Reduced motion on. The orb is still." : "Reduced motion off. The orb resumes its calm orbit.");
   };
   const resetView = () => { setDomainFilter("all"); setResetToken((t) => t + 1); setAnnouncement("View reset. Showing all domains, recentred."); };
-  const dismissRecord = useCallback((id: string, title: string) => {
+  const dismissRecord = useCallback((id: string, title: string, fromEl?: HTMLElement | null) => {
+    // Record the clicked X's position so focus can move to whatever fills its slot after the re-render
+    // (never dropped to <body> — the same standard this file holds for the drawer and orb re-mount).
+    const before = recordsRef.current ? [...recordsRef.current.querySelectorAll<HTMLElement>(".mind-record-dismiss")] : [];
+    const idx = fromEl ? before.indexOf(fromEl) : -1;
     setDismissed((cur) => { const next = new Set(cur); next.add(id); writeMindDismissed(preferenceScope, next); return next; });
-    setAnnouncement(`${title} cleared from the activity list. The record stays in the orb — restore it with Show dismissed.`);
+    setAnnouncement(`${title} cleared from the activity list. The record stays in the orb — restore it with Restore dismissed.`);
+    requestAnimationFrame(() => {
+      const after = recordsRef.current ? [...recordsRef.current.querySelectorAll<HTMLElement>(".mind-record-dismiss")] : [];
+      const target = (idx >= 0 && after[Math.min(idx, after.length - 1)])
+        || recordsRef.current?.querySelector<HTMLElement>(".mind-records-restore")
+        || recordsRef.current;
+      target?.focus?.();
+    });
   }, [preferenceScope]);
   const restoreDismissed = useCallback(() => {
     writeMindDismissed(preferenceScope, new Set());
@@ -469,7 +484,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
               {/* Record list — the accessible instrument (orb is not a novelty that buries records).
                   Each card can be CLEARED from the activity list (non-destructive: the record stays in
                   the orb and is restorable), so the viewer can work down what's in the brain. */}
-              <div className="mind-records" role="group" aria-label="Grounded Mind records">
+              <div className="mind-records" role="group" aria-label="Grounded Mind records" ref={recordsRef} tabIndex={-1}>
                 {visible.map((record) => (
                   <div key={record.id} className="mind-record-card">
                     <button type="button" data-mind-record onClick={(event) => chooseRecord(record, event.currentTarget)}>
@@ -478,10 +493,18 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
                       <b>{record.truth}</b>
                     </button>
                     <button type="button" className="mind-record-dismiss" aria-label={`Clear ${record.title} from the activity list`}
-                      onClick={() => dismissRecord(record.id, record.title)}><X size={12} /></button>
+                      onClick={(event) => dismissRecord(record.id, record.title, event.currentTarget)}><X size={12} /></button>
                   </div>
                 ))}
-                {!visible.length && <p>{domainFilter === "all" ? (dismissedCount ? "You've cleared every card from the activity list. The records still live in the orb — restore them below." : "Nothing durable is indexed here yet. No sample records or invented relationships are substituted.") : `${MIND_DOMAINS.find((d) => d.key === domainFilter)?.name}: ${domains.find((d) => d.def.key === domainFilter)?.empty?.body ?? "Nothing on file yet."}`}</p>}
+                {!visible.length && <p>{
+                  dismissedInDomain > 0
+                    ? (domainFilter === "all"
+                        ? "You've cleared every card from the activity list. The records still live in the orb — restore them below."
+                        : `${MIND_DOMAINS.find((d) => d.key === domainFilter)?.name}: every card here is cleared. The records still live in the orb — restore them below.`)
+                    : (domainFilter === "all"
+                        ? "Nothing durable is indexed here yet. No sample records or invented relationships are substituted."
+                        : `${MIND_DOMAINS.find((d) => d.key === domainFilter)?.name}: ${domains.find((d) => d.def.key === domainFilter)?.empty?.body ?? "Nothing on file yet."}`)
+                }</p>}
                 {dismissedCount > 0 && (
                   <button type="button" className="mind-records-restore" onClick={restoreDismissed}>
                     <RotateCcw size={12} />Restore {dismissedCount} dismissed

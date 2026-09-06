@@ -182,6 +182,22 @@ describe("Solo Mind workspace — orb port", () => {
     expect(window.localStorage.getItem(mindDismissedPreferenceKey(scope))).toBeNull();
   });
 
+  it("keeps keyboard focus on the list after clearing a card — never drops to <body>", async () => {
+    render();
+    const firstX = host.querySelector<HTMLButtonElement>(".mind-record-dismiss")!;
+    firstX.focus();
+    expect(document.activeElement).toBe(firstX); // jsdom honors .focus() here
+    await act(async () => { firstX.click(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 40)); }); // let the focus-recovery rAF fire
+    expect(document.activeElement).not.toBe(document.body);
+    const focused = document.activeElement as HTMLElement;
+    expect(
+      focused.classList.contains("mind-record-dismiss") ||
+        focused.classList.contains("mind-records-restore") ||
+        focused.classList.contains("mind-records"),
+    ).toBe(true);
+  });
+
   it("refresh re-reads the live sources and never calls it a scan", () => {
     render();
     act(() => button("Refresh records")!.click());

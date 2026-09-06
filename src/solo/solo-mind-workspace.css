@@ -68,5 +68,8 @@
 .mind-records-restore{grid-column:1/-1;justify-self:start;display:inline-flex;align-items:center;gap:6px;min-height:32px;border:1px dashed var(--pg-line-strong);border-radius:9px;background:transparent;color:var(--pg-muted);font:inherit;font-size:9px;font-weight:750;padding:5px 11px;cursor:pointer}
 .mind-records-restore:hover{color:var(--pg-ink);border-color:var(--pg-line-authority,var(--pg-gold))}
 .mind-records-restore:focus-visible{outline:3px solid color-mix(in srgb,var(--pg-gold) 68%,transparent);outline-offset:2px}
+/* The records container is a programmatic focus fallback (tabindex -1) only reached when a dismiss
+   removes the last focusable card and no restore button exists — don't paint a ring on the whole list. */
+.mind-records:focus{outline:none}
 
 
