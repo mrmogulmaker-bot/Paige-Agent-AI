@@ -30,7 +30,7 @@ const PPTX_SPEC = "npm:pptxgenjs@3.12.0";
 const FFLATE_SPEC = "npm:fflate@0.8.2";
 
 // ── Public contract ──────────────────────────────────────────────────────────────────────────────────
-export type DocFormat = "pdf" | "docx" | "pptx" | "epub";
+export type DocFormat = "pdf" | "docx" | "pptx" | "epub" | "md";
 
 export interface DocRenderInput {
   format: DocFormat;
@@ -58,6 +58,7 @@ const MIME: Record<DocFormat, string> = {
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   epub: "application/epub+zip",
+  md: "text/markdown; charset=utf-8",
 };
 
 function msg(e: unknown): string {
@@ -82,6 +83,7 @@ export async function renderDoc(input: DocRenderInput): Promise<DocRenderResult>
       case "docx": return { ...(await renderDocx(title, blocks, style)), mime: MIME.docx, ext: "docx" };
       case "pptx": return { ...(await renderPptx(title, blocks, style)), mime: MIME.pptx, ext: "pptx" };
       case "epub": return { ...(await renderEpub(title, blocks, style)), mime: MIME.epub, ext: "epub" };
+      case "md":   return { ...renderMarkdownDoc(title, blocks),         mime: MIME.md,   ext: "md" };
       default:
         // Unknown/unsupported format is an honest fail-closed, same shape the router already handles.
         throw new NeedsConfigError("doc-render", `unsupported doc format: ${String(input?.format)}`);
@@ -180,6 +182,44 @@ function parseMarkdown(src: string): Block[] {
   }
   flushAll();
   return out;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════
+// Markdown — pure serializer, ZERO dependency (so it cannot fail on a Deno/npm import; it is the one
+// format that never degrades to needs_config). Serializes the normalized block model back to clean
+// markdown: a title as an H1, headings by level, paragraphs, unordered/ordered lists, page breaks as
+// thematic breaks. This is the "give me the words in a portable text file" path (§13 — a real .md file,
+// not a document dressed up).
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════
+function renderMarkdownDoc(title: string | undefined, blocks: Block[]): { bytes: Uint8Array } {
+  const lines: string[] = [];
+  const t = (title ?? "").trim();
+  if (t) { lines.push(`# ${t}`); lines.push(""); }
+  for (const b of blocks) {
+    switch (b.type) {
+      case "heading": {
+        // The title is already the H1; a block heading sits one level below so the outline stays sane.
+        const level = Math.min(6, (b.level ?? 1) + (t ? 1 : 0));
+        lines.push(`${"#".repeat(Math.max(1, level))} ${b.text}`.trimEnd());
+        lines.push("");
+        break;
+      }
+      case "paragraph":
+        if (b.text.trim()) { lines.push(b.text.trim()); lines.push(""); }
+        break;
+      case "list":
+        b.items.forEach((item, i) => lines.push(b.ordered ? `${i + 1}. ${item}` : `- ${item}`));
+        lines.push("");
+        break;
+      case "pagebreak":
+        lines.push("---");
+        lines.push("");
+        break;
+    }
+  }
+  // Collapse a trailing run of blank lines to a single terminating newline.
+  const md = lines.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\n+$/, "\n");
+  return { bytes: new TextEncoder().encode(md.length ? md : (t ? `# ${t}\n` : "")) };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════

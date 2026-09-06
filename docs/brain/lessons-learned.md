@@ -6,6 +6,23 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 0. A NEW edge-native Paige capability cannot be a new inline chat tool NOR a Spine `action` today — extend a baseline tool (2026-09-06)
+
+- **Symptom.** Building the document-export capability, the obvious move (a new `export_document` chat
+  tool in `paige-ai-chat`) FAILS `chat-tool-registry-lint` — the inline baseline is frozen at 94 and may
+  only DESCEND (new capabilities register in the Spine). But registering it as a Spine `action` ALSO
+  fails: `paige-spine-registry-lint` requires `action.executor` to be either a `public.*` DB RPC or the
+  n8n-management edge-proof shape (`integrations.*` key + `rpc('acquire')`/`project(...)` lease structure).
+- **Root cause.** An edge-native capability whose executor is the model router / a first-party edge path
+  (render → Supabase Storage → signed URL) fits NEITHER: a Postgres RPC can't render or mint signed URLs,
+  and it isn't n8n-shaped. The Spine `action` executor model currently has exactly two accepted shapes,
+  and "generic edge logic" is not one of them.
+- **Rule.** For a new FIRST-PARTY edge capability, the §18-clean path is to **extend an existing baseline
+  tool** (export shipped as an `export_format` param on `document_generate` + a standalone `export-document`
+  edge function it invokes) — NOT a new inline tool, NOT a forced Spine registration. Generalizing the
+  `registry.ts` edge-native executor allow-list (beyond N8N_MANAGEMENT) is a real follow-up if edge-native
+  capabilities should become first-class Spine citizens; until then, don't fight the two lints — extend.
+
 ## 0a. A service_role-only RPC called from the anon+JWT seam writes NOTHING, and every gate stays green (2026-09-05)
 
 - **Symptom (caught in design, before it shipped).** The obvious way to make PAIGE's acts visible was

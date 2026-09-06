@@ -1,5 +1,42 @@
 # Decision Log — chronological one-liners
 
+- **Capability System — document EXPORT MVP: a real downloadable file (pdf/docx/pptx/md) (2026-09-06, Task #21, owner-authorized)** —
+  the owner's doc-creation task. AUDIT (grounded, not from labels): today Paige's only "document" is
+  block-JSON in `marketing_content` rendered on canvas (download = the browser's own Print→PDF); NO valid
+  binary file was produced/stored/downloadable. THE PIVOTAL FINDING: the real binary renderer
+  (`_shared/doc-render.ts` → pdf/docx/pptx/epub via pdf-lib/docx/pptxgenjs) AND the model router's persist
+  lane (`callModel("doc-render")` → private tenant-scoped `studio-deliverables` bucket + 30-day signed URL +
+  `studio_deliverable` provenance row) ALREADY EXISTED but were UNREACHED — no caller ever invoked the
+  doc-render modality. **SHIPPED:** (1) a `md` output format added to doc-render (a pure, zero-dependency
+  serializer — the one format that can never degrade); (2) a NEW `export-document` edge function — the
+  callable seam (§10), admin/coach-gated, reads the source doc with the CALLER JWT (RLS scopes to the
+  caller's tenant, §9), files under the ROW's tenant_id (never the body), renders via the doc-render lane,
+  records an honest Rail outcome (`document_export`: succeeded/failed/outcome_unknown), returns the signed
+  `download_url` or an honest `needs_config`/`failed` — never a fake link (§13/§32); (3) `document_generate`
+  gained an optional `export_format` param that invokes the seam after save and attaches `download_url`, so
+  Paige produces a downloadable file conversationally. **§18, not a new tool:** export is an EDGE FUNCTION +
+  a param on the existing baseline tool — chat-tool-registry stays 94. **Behavior-preserving (§37):** no
+  export_format → the result is byte-identical. **PROOF:** `src/__tests__/doc-export-contract.test.ts` (9) —
+  md serializer smoke-tested headlessly + source contracts on the edge fn + document_generate wiring; tsc 0;
+  edge ratchet 145; chat-tool-registry 94; spine lint PASS; full suite 3789/3789; §50/§63 clean. **HONEST
+  STATE (§13/§70):** md = LIVE (pure, proven); pdf = LIVE-pending (pdf-lib Deno-proven); docx/pptx =
+  PROOF-OWED on Deno (each fail-closed to needs_config); **§32.c authenticated owner drive OWED** (headless —
+  the owner clicking export and opening the file is the real proof). **NAMED, out of scope:** xlsx (tabular,
+  needs a new lib — deliberately NOT offered rather than failed); a re-download control on the artifact card
+  (frontend = Claude Design's, §00). **INTEGRATION CAPABILITY REGISTRY (owner directive 2026-09-06):** this
+  export is FIRST-PARTY (in-bundle render libs + Supabase Storage) — no external API/connector/OAuth provider
+  — so it does not depend on inventing provider authority and proceeds under the directive. **Native Google
+  Docs/Sheets/Slides (Effort 2) is provider-gated and NOT built:** the scout confirmed no Drive/Docs/Sheets/
+  Slides scope, no API client, only gmail.send + calendar.events exist; per the directive I invented no
+  provider authority. **The Integration Capability Registry itself does NOT yet exist in the repo** — per the
+  directive I did NOT create a competing one; the missing-entry requirement (a Google Workspace-docs entry:
+  capability, Drive/Docs/Sheets/Slides scopes, authority lane, provider-confirmed outcome path,
+  Rail/Mind/Memory boundaries) is recorded here and surfaced to the owner as Registry Steward. **ARCHITECTURE
+  FINDING (see lessons-learned):** a NEW edge-native (non-n8n) capability cannot currently be registered as a
+  Spine `action` — `paige-spine-registry-lint` requires an executor that is a `public.*` DB RPC (which cannot
+  render or mint signed URLs) OR the n8n-management edge-proof shape (`integrations.*` key + lease/project);
+  so export ships by EXTENDING the `document_generate` baseline tool (§18), not as a Spine capability.
+  Generalizing the edge-native executor allow-list is a follow-up.
 - **Capability System Slice 3 (F05) increment 1 — CRM/scheduling write receipts record an honest Rail outcome (2026-09-06, Task #19, owner-authorized)** —
   three consequential chat acts that recorded ONLY to `paige_audit_log` and left NO capability-Rail row —
   `crm_log_activity`, `calendar_book_meeting`, `crm_create_task` (the write-receipts the §39 Slice-1 verifier

@@ -5563,6 +5563,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   title: { type: "string", description: "The document's title (benefit-led and specific, not the bare topic). For a proposal, name the client + engagement." },
                   brief: { type: "string", description: "Optional one-line brief/prompt that produced it." },
                   target_content_id: { type: "string", description: "Set to the on-canvas artifact's id (see CANVAS STATE) ONLY when the user is refining/revising the document already on the canvas — this updates that same document in place and keeps its version history. OMIT it to create a brand-new/additional document as a separate asset. Never pass an id for a genuinely new document." },
+                  export_format: { type: "string", enum: ["pdf", "docx", "pptx", "md"], description: "OPTIONAL. When the user asks for a downloadable FILE — 'give me the PDF/Word/PowerPoint/Markdown', 'download this', 'send me a copy' — set this and the saved document is ALSO rendered to that real file, returning a private download link (download_url). Omit it when the user just wants the document on the canvas; omitting it changes nothing. PDF and Markdown are the most reliable." },
                   blocks: {
                     type: "array",
                     description: "The document as an ordered list of design blocks. The first block MUST be type 'cover'.",
@@ -10634,9 +10635,40 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 if (error) throw error;
                 // §13/§70 — blocks/placeholder guards above prove the CONTENT is real; this proves it
                 // PERSISTED (a 200 with no returned id means it may not have saved).
-                result = artifactProduced("saved_id", cid)
-                  ? { success: true, content_id: cid, title: docTitle, doc_type: docType, blocks: blocks.length }
-                  : { success: false, error: ARTIFACT_ABSENT_ERROR.saved_id };
+                if (!artifactProduced("saved_id", cid)) {
+                  result = { success: false, error: ARTIFACT_ABSENT_ERROR.saved_id };
+                } else {
+                  const base: Record<string, unknown> = { success: true, content_id: cid, title: docTitle, doc_type: docType, blocks: blocks.length };
+                  // §18/§70 — if the caller asked for a downloadable FILE, render it via the export-document
+                  // seam (doc-render lane → private studio-deliverables bucket → 30-day signed URL) and attach
+                  // the link. Behavior-preserving (§37): with no export_format this is skipped and the result is
+                  // byte-identical to before. Honest degrade (§13): a format the renderer can't produce comes
+                  // back needs_config → we attach export_status, never a fake/broken link. The export seam
+                  // re-derives the tenant from the caller's JWT (§9) — we pass only the content_id + format.
+                  const exportFormat = typeof args.export_format === "string" ? args.export_format.toLowerCase() : null;
+                  if (exportFormat && ["pdf", "docx", "pptx", "md"].includes(exportFormat) && personaCtx?.tenant_id) {
+                    try {
+                      const exResp = await fetch(`${supabaseUrl}/functions/v1/export-document`, {
+                        method: "POST",
+                        headers: { "Authorization": authHeader, "Content-Type": "application/json" },
+                        body: JSON.stringify({ content_id: cid, format: exportFormat }),
+                      });
+                      const ex = await exResp.json().catch(() => ({}));
+                      if (ex?.success && ex.download_url) {
+                        base.download_url = ex.download_url;
+                        base.download_format = exportFormat;
+                      } else {
+                        base.export_status = ex?.needs_config ? "needs_config" : (ex?.status ?? "unavailable");
+                        base.export_note = ex?.note ?? `The ${exportFormat.toUpperCase()} file could not be produced right now.`;
+                      }
+                    } catch (exErr) {
+                      base.export_status = "failed";
+                      base.export_note = `Export to ${exportFormat.toUpperCase()} failed.`;
+                      console.error("[paige] document_generate export invoke failed:", (exErr as Error)?.message);
+                    }
+                  }
+                  result = base;
+                }
               }
             } else if (tc.function.name === "growth_list") {
               // Caller-authed read, EXPLICITLY tenant-pinned (§9). Don't rely on RLS

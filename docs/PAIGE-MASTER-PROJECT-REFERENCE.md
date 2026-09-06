@@ -1643,8 +1643,18 @@ read-only scouts (file:line-citable).
 - **Create artifacts in chat (image·document·copy·page·funnel·form)** — **LIVE core** (`generate_image`
   4-provider, `document_generate` 8-type, copy, growth studio; durable home `marketing_content`
   `status='draft'`; `save_marketing_content`; `chatArtifacts`→`PaigeArtifactCard`; `studio_artifact_versions`).
-  GAPS: download button, multi-surface card render, image→campaign routing, missing types
-  (campaign_brief · HTML email_template · video · social-schedule).
+  **DOCUMENT EXPORT — SHIPPED (Task #21, 2026-09-06):** a document created with `document_generate` can now
+  be turned into a REAL downloadable file — the new `export-document` edge function (the §10 callable seam,
+  admin/coach-gated, §9 caller-JWT read) renders it via the existing in-band `doc-render` lane → private
+  `studio-deliverables` bucket → 30-day signed `download_url` + `document_export` Rail outcome;
+  `document_generate` gained an optional `export_format` (pdf/docx/pptx/md) that returns the link inline.
+  Honest state: **md LIVE** (pure serializer), **pdf LIVE-pending** (pdf-lib Deno-proven), **docx/pptx
+  PROOF-OWED** on the Deno runtime (each fail-closed to needs_config), **§32.c owner drive OWED**. GAPS:
+  **xlsx** (tabular, needs a new lib — named follow-up); a re-download control on the artifact card
+  (Claude Design's, §00); **native Google Docs/Sheets/Slides = UNAVAILABLE** (provider-gated: no Drive/Docs/
+  Sheets/Slides OAuth scope or API client exists — only gmail.send + calendar.events; an Integration
+  Capability Registry entry + Google provider contract are prerequisites); multi-surface card render,
+  image→campaign routing, other missing types (HTML email_template · video · social-schedule).
 - **Upload/download & inspect files** — **LIVE** (upload+inspect: `useChatDocumentUpload` 10MB pdf/img/docx,
   read-check + approve-to-apply extraction, `kb-ingest-file`; folder-scoped storage RLS + server-side scope
   refusal). PARTIAL: no generic chat→file download. **INJECTION FENCE — SHIPPED (Slice 2, Task #18,
