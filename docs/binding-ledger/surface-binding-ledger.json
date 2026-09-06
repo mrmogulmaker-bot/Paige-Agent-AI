@@ -430,10 +430,11 @@
     },
     {
       "id": "campaigns.vibe-studio",
+      "consequential": true,
       "intended_capability": {
         "read": "The tenant's present-only brand tokens and prior creative memory.",
         "draft": "Generate creative assets — images, pages, funnels, forms — end to end in one session (§19).",
-        "auto": "None for external publish — creative drafts have no side effect; shipping an asset to a live surface is confirm-gated (§33).",
+        "auto": "Within the owner's standing delegated policy and its scope, ship a critiqued creative asset to a live surface as the tenant's delegated operator — the §33 visual-critique gate always runs first — Rail-logged. Drafting has no side effect and is unrestricted.",
         "confirm": "Shipping a generated asset to a live surface is confirmation-gated.",
         "prohibited": "Never present a hoped-for artifact as delivered (§13); never bypass the visual-critique gate (§33).",
         "completion_criterion": "A brief becomes a real, critiqued creative asset the tenant can ship — the §19/§26/§33 creative loop, not a placeholder."
@@ -736,7 +737,7 @@
       },
       "prohibited_context": ["the connection endpoint above all", "every credential-derived value", "host fragments", "error text", "labels", "approved capabilities", "capability-pin digests"],
       "state": "PARTIAL",
-      "state_reason": "n8n readiness read wired + injected; 12 n8n management capabilities registered with 6 governed writes wired to the Rail capability-run write. Not proven: ZERO capability_run rows exist in production; no authenticated runtime drive. Connection-state Mind lens is UNAVAILABLE (needs SCR-1/2). Accounting/finance/paid-media provider connectors (e.g. QuickBooks reconcile/classify/pay) have NO connected seam yet — those sub-capabilities stay UNAVAILABLE and their seam+proof is owed; the intended_capability declares the delegated-execution target regardless (owner ruling 2026-09-06, §13).",
+      "state_reason": "n8n readiness read wired + injected; 12 n8n management capabilities registered with 6 governed writes wired to the Rail capability-run write. Not proven: ZERO capability_run rows exist in production; no authenticated runtime drive. Connection-state Mind lens is UNAVAILABLE (needs SCR-1/2). Accounting/finance/paid-media provider connectors (e.g. QuickBooks reconcile/classify/pay) have NO connected seam yet — those sub-capabilities stay UNAVAILABLE and their seam+proof is owed; the intended_capability declares the delegated-execution target regardless (owner ruling 2026-09-06, §13). settings.integrations owns only the connected-tool execution SEAM; the tenant-facing Finance/bookkeeping SURFACE (§16 Finance) is deferred to its own slice when accounting-firm tenants land (§18/§56), not cemented under Integrations (§65).",
       "evidence_class": ["production_catalog", "automated_test", "source_read"],
       "linked": [],
       "next_slice": "Authenticated drive of an n8n management write through chat to produce the first capability_run row and verify it renders on the owner's Command Center (#746 owner-visibility).",
@@ -853,7 +854,7 @@
       "intended_capability": {
         "read": "Coverage, freshness, and counts with provenance (epoch-bound, enumerated).",
         "draft": "Interpret analytics, recommend actions, and model scenarios.",
-        "auto": "Within the owner's standing delegated policy, trigger a pre-approved analytics-driven action on its owning surface (e.g. pause spend on a flagged campaign) within that surface's caps and stop conditions — the action executes and is Rail-logged there.",
+        "auto": "Within the owner's standing delegated policy, trigger a pre-approved analytics-driven action on its owning surface (e.g. pause spend on a flagged campaign) within that surface's caps and stop conditions — the action executes and is Rail-logged there. Analytics itself performs no write (chain governed_write=none), so it routes to the owning surface rather than executing here — deliberately not marked consequential.",
         "confirm": "An analytics-driven change routes to its owning surface's confirm gate.",
         "prohibited": "Never expose metric definitions/formulas/exclusion reasons or the source refs.",
         "completion_criterion": "A real analytics finding drives a Paige-prepared, owner-approved action on the owning surface with a verified result — not a static dashboard (needs SCR-2 + SCR-3)."

@@ -532,12 +532,19 @@ None`.
    `tenant_member` holding the required tenant-scoped role/access (§9/§53). A grant is set once, per
    process (§2 "the human, once per process"), never inferred from a single chat turn. **§53 invariant:
    a tenant-side grantor can never confer a platform tier** (`super_admin`/`platform_admin`) — that
-   class is frozen and structurally blocked regardless of any delegation.
+   class is frozen and structurally blocked regardless of any delegation. The authorized representative
+   is confined to a **same-tenant** `tenant_member`; a grant never crosses a tenant boundary. A firm or
+   agency acting across another tenant's engagements is a distinct **cross-tenant** model, deferred to a
+   later tier under explicit client-engagement authority boundaries (§9/§51) — never reachable through
+   this same-tenant grant.
 2. **What Paige may do.** Concrete tool actions from `_shared/action-risk.ts` / the capability
    registry, expressed as a **process** (trigger + conditions + ordered acts, §2), never vague
    "automation." Each act carries its `action-risk` class (`ordinary | high | owner_only`).
 3. **Boundaries.** The grant carries: tenant/client scope (§9/§51); provider account; dollar cap +
-   daily/monthly budget (read by the §8-M3 budget clamp alongside the ceiling); campaign/object scope;
+   daily/monthly budget (read by the §8-M3 budget clamp alongside the ceiling); per-window
+   **action-count / velocity caps** (e.g. "≤N sends/day", "≤M installs/week") — a first-class boundary
+   alongside the dollar budget, decremented **atomically with the budget** under concurrent autonomous
+   execution so two parallel acts cannot both slip past a nearly-exhausted cap; campaign/object scope;
    time window (the §9 posture expiry / §8 raise-window); allowed recipients; the approval threshold at
    which `auto` escalates to `confirm`; and explicit **stop conditions**.
 4. **Autonomy lane.** Expressed in the §16 `autonomy_lane` enum — 🟢 `auto` (autonomous within policy),
@@ -548,10 +555,18 @@ None`.
    exact action (the server-computed fingerprint of `one-approval-gate.md`), the provider result, the
    verified outcome, the Rail evidence, and an owner-visible history (`get_solo_rail_activity` →
    Command Center). A hoped-for outcome is never reported as real (§13/§32); a fire is not a delivery.
+   **Exactly-once:** every autonomous consequential act — above all a payment or an external send —
+   carries an **idempotency key** so a retry, a redelivery, or a race cannot double-fire it; the act is
+   de-duplicated at RE-1's `paige_automation_acts` and the executor honors the key end-to-end through
+   the connected provider. An autonomous money movement or send that cannot prove exactly-once does not
+   ship.
 6. **Controls.** The owner can, at any time: **pause** a process, **revoke** a grant, **tighten** a
    limit, **raise** the approval threshold, and **emergency-stop immediately**. Lowering the posture is
    any platform operator (a brake needs no God tier, §8). A grant **decays** and must be re-attested
-   and provably safe (§9/§68) — it never stands permanently.
+   and provably safe (§9/§68) — it never stands permanently. **Emergency-stop halts FUTURE acts** — it
+   cannot recall an act already submitted to a provider; a payment or send already in flight is bounded
+   only by the reversible-where-possible property (§10.6 RE-3), never by a claim of instantaneous recall
+   (§13). The honest guarantee is "no further acts fire," not "the last one is unwound."
 7. **Failure behavior.** Fail closed on missing authority, ambiguous scope, stale context, a failed
    provider response, or conflicting instructions — the governed-execution seam's thirteen typed
    fail-closed codes, plus `one-approval-gate.md`'s rule that a turn which cannot persist a decline may
@@ -576,6 +591,13 @@ Reserve `owner_only` for the genuinely non-delegable:
 
 Marking a delegable business action `owner_only` (or `auto: None`) to be "safe" is the exact
 over-fence this ruling forbids — it is as wrong as over-claiming autonomy.
+
+**Conflict-of-interest guard (self-dealing).** An act that increases Paige's / the platform's OWN
+revenue from the tenant — e.g. auto-upgrading the tenant's Paige subscription (`settings.billing`) — is
+delegable and §38-clean, but it is a self-dealing class: it **defaults to `confirm`, never `auto` by
+default**, and any standing grant that raises it to `auto` must be explicit and carry a stop condition.
+Paige spending the tenant's money *to Paige's own company* is held to a higher bar than the tenant
+spending on their own operations.
 
 ## 10.3 §38 reconciliation (money) — never repealed
 
@@ -619,8 +641,12 @@ is a real backend slice, sequenced here so it is built, not admired:
 - **RE-1 · Standing-policy substrate (§5-A/B).** `paige_automations` + `paige_automation_acts` +
   `granted_lane`, and `resolve_automation_autonomy(automation_id) → {granted, asked, ceiling,
   effective, capped, dark[]}` (CD's arithmetic, in SQL, ONE home). The policy row carries dimension 3:
-  scope, provider account, dollar/budget caps, time window, allowed recipients, threshold, stop
-  conditions. Extends the action bus; forks nothing (§18).
+  scope, provider account, dollar/budget caps, **per-window action-count / velocity caps**, time window,
+  allowed recipients, threshold, stop conditions. `paige_automation_acts` carries an **idempotency key**
+  per act (dimension 5 exactly-once), and the $-budget and count-cap decrement **atomically** so
+  concurrent autonomous acts cannot both pass a nearly-exhausted limit. Extends the action bus; forks
+  nothing (§18). **These two — exactly-once and velocity caps — MUST land in RE-1/RE-2 before any
+  autonomous act touches a tenant's bank/processor** (the §5 compliance MEDIUM-1/MEDIUM-2 gate).
 - **RE-2 · The governed-execution seam honors a valid standing policy.** Add a `standingPolicy`
   adapter-assertion input to `governedExecution.ts` (an *assertion*, like tenancy and approval — the
   seam validates shape and refuses when absent, the adapter proves it true). When — and only when — a

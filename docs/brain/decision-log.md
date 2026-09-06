@@ -3989,3 +3989,30 @@ its own crewed PR with a §37 producer inventory and §32 runtime proof.
 **§66 note:** no tier gating/visibility changed (intended-capability language only) — tier-matrix is a
 no-op for this change. **Where recorded:** the ledger JSON + README, `autonomy-architecture.md` §10,
 `scripts/ci/binding-ledger-lint.mjs`, and this entry (§BRAIN.3 same-commit).
+
+### Crew round (§5/§39) — both SHIP; findings folded (2026-09-06)
+
+The §39 adversarial verifier and §5 compliance officer both returned **SHIP** on the real diff
+(`state` byte-unchanged confirmed; §38 fenced to the tenant's own rails; §53 platform-tier escalation
+fenced; reversal explicit; cross-refs internally consistent; classifier-coherent — `action-risk.ts`
+classes only authority-policy acts `owner_only`; no trademark/finance/silent-removal). Findings folded
+into this PR before merge:
+- **§39 MINOR (real laundering hole) — closed.** `§67|§68` was removed from the guard's
+  `HARD_PROHIBITION` regex — those are the autonomy-GRANTING doctrine, not a hard fence, so a bare
+  `"None (§68)."` could have laundered past the tripwire. Self-test now pins it FAILS.
+- **§39 PLAUSIBLE — aligned.** `campaigns.vibe-studio` is now `consequential: true` with a scoped-
+  autonomy `auto` (ship a critiqued asset within policy; §33 gate still runs), consistent with
+  `campaigns.catalog` publish. 16 consequential surfaces.
+- **LOW-8 — fixed.** The `consequential`-is-boolean type check moved to surface scope (fires even when
+  `intended_capability` is absent).
+- **MEDIUM-2 velocity/count caps** added as a first-class boundary in §10.1 dim 3 + RE-1 (atomic
+  decrement with the dollar budget). **MEDIUM-1 exactly-once/idempotency** added to dim 5 + RE-1 —
+  both gated to land in RE-1/RE-2 before any autonomous act touches a tenant bank/processor.
+- **MEDIUM-3** — the ledger's `settings.integrations` state_reason now says it owns only the
+  connected-tool execution SEAM; the tenant-facing Finance/bookkeeping SURFACE (§16) is deferred.
+- **LOW-4** billing self-dealing (default `confirm`, never `auto`-by-default) added to §10.2; **LOW-5**
+  cross-engagement deferral made explicit in dim 1; **LOW-6** emergency-stop halts FUTURE acts (no
+  instantaneous recall) in dim 6; **LOW-7** analytics route-to-owning-surface note in the ledger.
+Guard after folds: self-test 35 cases; real ledger 26 rows clean; §67/§68 laundering caught; §38 fence
+intact. The remaining PR-2 requirements (idempotency + velocity enforcement in code) are recorded in
+§10.6 RE-1/RE-2.
