@@ -475,6 +475,23 @@ describe("Solo Campaigns rendered flows", () => {
     expect(document.activeElement?.textContent).toBe("Catalog");
   });
 
+  it("lets a brand-new tenant actually open the brief builder from the empty first-run state (§70 first use)", () => {
+    // Regression lock for the §39 re-review's §70 finding: the empty-state FirstRun branch used to
+    // render neither `deskRef` nor the drawer portals, so clicking the primary first-use action did
+    // nothing. With 0 briefs the desk shows FirstRun; the builder must still OPEN through the real
+    // `.solo-campaigns` shell GrowthHub provides (the portal host).
+    renderAt("/solo/42/growth/overview");
+    expect(host.textContent).toContain("Start your first growth initiative");
+    const create = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Create campaign brief")) as HTMLButtonElement;
+    expect(create).toBeDefined();
+    act(() => create.click());
+    // The builder actually renders — the empty-state action is NOT inert.
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain("New campaign brief");
+    expect(dialog?.querySelector("input")).not.toBeNull(); // the name field is reachable
+  });
+
   it("renders error/retry and unavailable identity without treating either as empty", () => {
     harness.state = { phase: "error", campaigns: [], artifacts: [], submissions: [], retry: vi.fn() };
     renderAt("/solo/42/growth/overview");

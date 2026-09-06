@@ -183,9 +183,10 @@ function Readiness({ brief, onRoute }) {
 export default function CampaignOverview({ data, onRoute }) {
   const briefsState = useSoloCampaignBriefs();
   // A REAL tenant-scoped Catalog read — the honest backing for the workspace-scope "Offer" loop
-  // stage (§13). "has" only when offers truly exist; "error" when the read failed; else unknown.
-  const catalog = useCatalogOffers();
-  const offerSignal = catalog.phase === "error" ? "error" : catalog.phase === "ready" ? (catalog.offers.length > 0 ? "has" : "none") : "unknown";
+  // stage (§13). Only EXISTENCE is needed here, so a single-row page is enough (never the whole
+  // catalog). "has" only when offers truly exist; "error" when the read failed; else unknown.
+  const catalog = useCatalogOffers({ pageSize: 1 });
+  const offerSignal = catalog.phase === "error" ? "error" : catalog.phase === "ready" ? (catalog.offers.length > 0 || catalog.hasMore ? "has" : "none") : "unknown";
   const [filters, setFilters] = React.useState({ phase: "all", src: "all", q: "" });
   const [openRow, setOpenRow] = React.useState(null);
   const [focusId, setFocusId] = React.useState(null);
@@ -280,12 +281,35 @@ export default function CampaignOverview({ data, onRoute }) {
   if (worst === "error")
     return <div className="campaigns-state" role="alert">{truth("UNAVAILABLE")}<h2>Campaigns could not load</h2><p>Your records were not changed. Try the tenant-scoped read again.</p><button className="btn btn-s" onClick={retryAll}><Ic.arrow size={13}/>Retry</button></div>;
 
-  if (briefs.length === 0) return <><div className="desk"><FirstRun canManage={canManage} onNew={() => canManage && openDrawer("brief")} onRoute={onRoute} data={data}/></div>{toast && <Toast toast={toast}/>}</>;
+  // Portal host + drawer fragment, defined ABOVE the first-run branch so a brand-new tenant (0
+  // briefs) can open the builder from the empty state too (§70 first use) — the drawers and
+  // `deskRef` must exist in BOTH returns, not only the populated desk. `portalHost` resolves from
+  // the mounted `.desk` node so the portal targets THIS campaigns instance, never a stray
+  // `.solo-campaigns`; on the render that first opens a drawer, `deskRef` already holds the node
+  // committed on the prior render (a drawer can only be opened from within a rendered `.desk`).
+  const portalHost = deskRef.current ? deskRef.current.closest(".solo-campaigns") : null;
+  const drawers = (
+    <>
+      {drawer?.kind === "dossier" && portalHost && (() => { const b = briefs.find((x) => x.id === drawer.briefId); return b
+        ? createPortal(<DossierDrawer brief={b} canManage={canManage} onClose={closeDrawer} onRoute={onRoute} onAsk={() => askPaige(b)}
+            onEdit={() => setDrawer({ kind: "brief", briefId: b.id })}
+            onTransition={async (status, blocker, idem) => { const r = await briefsState.transitionBrief(b.id, status, b.version, blocker, idem); showToast(r.message, r.ok ? "ok" : "err"); if (r.ok) closeDrawer(); return r; }}
+            onArchive={async (idem) => { const r = await briefsState.archiveBrief(b.id, b.version, idem); showToast(r.message, r.ok ? "ok" : "err"); if (r.ok) closeDrawer(); return r; }}/>, portalHost)
+        : null; })()}
+      {drawer?.kind === "brief" && portalHost && createPortal(
+        <BriefBuilder existing={drawer.briefId ? briefs.find((x) => x.id === drawer.briefId) : null} data={data}
+          onClose={closeDrawer} onRoute={onRoute}
+          onSave={(draft, idem) => briefsState.saveBrief(draft, idem)}
+          onRequestReview={async (briefId, version, idem) => briefsState.transitionBrief(briefId, "ready_for_review", version, undefined, idem)}
+          onDone={(msg, kind = "ok") => { closeDrawer(); showToast(msg, kind); }}/>,
+        portalHost,
+      )}
+    </>
+  );
+
+  if (briefs.length === 0) return <><div className="desk" ref={deskRef}><FirstRun canManage={canManage} onNew={() => canManage && openDrawer("brief")} onRoute={onRoute} data={data}/></div>{drawers}{toast && <Toast toast={toast}/>}</>;
 
   // ── the desk ─────────────────────────────────────────────────────────────────────────────────
-  // The drawers portal to `.solo-campaigns` (see `deskRef` note above). Resolved from the mounted
-  // `.desk` node so the portal targets THIS campaigns instance, never a stray `.solo-campaigns`.
-  const portalHost = deskRef.current ? deskRef.current.closest(".solo-campaigns") : null;
   return (
     <>
       <div className="desk" ref={deskRef}>
@@ -343,21 +367,7 @@ export default function CampaignOverview({ data, onRoute }) {
         </div>
       </div>
 
-      {drawer?.kind === "dossier" && portalHost && (() => { const b = briefs.find((x) => x.id === drawer.briefId); return b
-        ? createPortal(<DossierDrawer brief={b} canManage={canManage} onClose={closeDrawer} onRoute={onRoute} onAsk={() => askPaige(b)}
-            onEdit={() => setDrawer({ kind: "brief", briefId: b.id })}
-            onTransition={async (status, blocker, idem) => { const r = await briefsState.transitionBrief(b.id, status, b.version, blocker, idem); showToast(r.message, r.ok ? "ok" : "err"); if (r.ok) closeDrawer(); return r; }}
-            onArchive={async (idem) => { const r = await briefsState.archiveBrief(b.id, b.version, idem); showToast(r.message, r.ok ? "ok" : "err"); if (r.ok) closeDrawer(); return r; }}/>, portalHost)
-        : null; })()}
-
-      {drawer?.kind === "brief" && portalHost && createPortal(
-        <BriefBuilder existing={drawer.briefId ? briefs.find((x) => x.id === drawer.briefId) : null} data={data}
-          onClose={closeDrawer} onRoute={onRoute}
-          onSave={(draft, idem) => briefsState.saveBrief(draft, idem)}
-          onRequestReview={async (briefId, version, idem) => briefsState.transitionBrief(briefId, "ready_for_review", version, undefined, idem)}
-          onDone={(msg, kind = "ok") => { closeDrawer(); showToast(msg, kind); }}/>,
-        portalHost,
-      )}
+      {drawers}
 
       {toast && <Toast toast={toast}/>}
     </>
@@ -573,6 +583,7 @@ function BriefBuilder({ existing, data, onClose, onRoute, onSave, onRequestRevie
   const [stage, setStage] = React.useState(0);
   const [save, setSave] = React.useState("idle"); // idle | saving | error
   const [saveErr, setSaveErr] = React.useState(""); // the REAL server sentence, never a hardcoded line
+  const [nameError, setNameError] = React.useState(false); // inline validation shown AT the name field
   // Double-submit guard (§39 MAJOR): a synchronous latch so a rapid double-click can't fire two
   // creates before React disables the button. Paired with a STABLE per-submit idempotency key —
   // regenerated for a fresh submit, REUSED on Retry — so the ledger dedupes a resend of the same
@@ -616,7 +627,7 @@ function BriefBuilder({ existing, data, onClose, onRoute, onSave, onRequestRevie
   // deduped by the ledger; a fresh submit mints a new one.
   const persist = async (thenReview, isRetry = false) => {
     if (submitting.current) return;
-    if (!d.name.trim()) { setStage(0); setSave("idle"); setSaveErr("A campaign brief needs a name before it can be saved."); return; }
+    if (!d.name.trim()) { setStage(0); setSave("idle"); setNameError(true); return; }
     submitting.current = true;
     wantReview.current = thenReview;
     if (!isRetry || !idemRef.current) idemRef.current = { save: crypto.randomUUID(), review: crypto.randomUUID() };
@@ -648,7 +659,7 @@ function BriefBuilder({ existing, data, onClose, onRoute, onSave, onRequestRevie
 
   let body;
   if (stage === 0) body = <>
-    <div className="bb-field"><label>Campaign name <span className="req">Required</span></label><input value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Spring Masterclass launch"/></div>
+    <div className="bb-field"><label>Campaign name <span className="req">Required</span></label><input value={d.name} onChange={(e) => { set({ name: e.target.value }); if (nameError) setNameError(false); }} placeholder="e.g. Spring Masterclass launch" aria-invalid={nameError || undefined}/>{nameError && <span className="help warn">A campaign brief needs a name before it can be saved.</span>}</div>
     <div className="bb-field"><label>Objective</label><textarea value={d.objective} onChange={(e) => set({ objective: e.target.value })} placeholder="The measurable outcome — fill a cohort, book 10 calls, renew the retainers…"/><span className="help">Plain English. This becomes the “what is this for” the whole loop points at.</span></div>
   </>;
   else if (stage === 1) body = <>
