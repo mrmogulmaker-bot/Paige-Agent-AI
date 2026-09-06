@@ -22,6 +22,7 @@ describe("voice call safety", () => {
   it("maps provider failures to actionable categories without leaking raw messages", () => {
     const raw = "private provider payload";
     expect(providerCallErrorMessage({ code: 21211, message: raw })).toContain("valid phone number");
+    expect(providerCallErrorMessage({ code: 20104, message: raw })).toContain("session expired");
     expect(providerCallErrorMessage({ code: 31005, message: raw })).toContain("Retry");
     expect(providerCallErrorMessage({ code: 99999, message: raw })).toBe(
       "The provider rejected this call. Check the number and retry.",

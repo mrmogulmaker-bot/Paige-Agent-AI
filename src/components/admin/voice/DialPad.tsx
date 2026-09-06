@@ -53,6 +53,9 @@ export function DialPad() {
   const inCall = status === "in_call" || (status === "connecting" && activeCall != null);
   const normalized = normalizeDialNumber(draft);
   const canCall = isDialableNumber(normalized) && status !== "connecting";
+  const validationReason = draft.trim().length > 0 && !isDialableNumber(normalized)
+    ? "Enter a valid phone number, including the country code."
+    : null;
 
   function press(k: string) {
     setDraft(draft + k);
@@ -220,8 +223,8 @@ export function DialPad() {
       </div>
 
       {/* Honest error line (§13) — a real reason, never a fake "connected". */}
-      {status === "error" && reason && (
-        <p role="alert" className="text-center text-xs text-destructive">{reason}</p>
+      {(validationReason || (status === "error" && reason)) && (
+        <p role="alert" className="text-center text-xs text-destructive">{validationReason ?? reason}</p>
       )}
     </div>
   );

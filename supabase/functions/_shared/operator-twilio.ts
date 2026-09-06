@@ -84,18 +84,23 @@ export function operatorVoiceCallerId(): string {
 }
 
 /**
- * Dedicated bearer proof for the operator TwiML Application. The production account uses
- * scoped API keys and intentionally has no account Auth Token, so Twilio signature validation
- * is unavailable. Derive a purpose-bound value from the API-key secret instead of placing that
- * credential itself in a webhook URL. Rotation changes the proof automatically.
+ * Dedicated bearer proof for the operator TwiML Application. It is deliberately independent
+ * of the Twilio API-key secret: rotating provider credentials must not invalidate the URL that
+ * Twilio has already stored. An explicit independently-rotatable proof may be configured; the
+ * service-role secret is the existing stable fallback. Only a purpose-bound HMAC leaves this
+ * process, never either source credential itself.
  */
 export async function deriveOperatorVoiceWebhookSecret(): Promise<string | null> {
   const creds = masterCreds();
-  if (!creds?.authToken || !creds.accountSid) return null;
+  if (!creds?.accountSid) return null;
+  const proofKey = Deno.env.get("TWILIO_OPERATOR_WEBHOOK_SECRET")
+    ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+    ?? "";
+  if (!proofKey) return null;
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
-    enc.encode(creds.authToken),
+    enc.encode(proofKey),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],

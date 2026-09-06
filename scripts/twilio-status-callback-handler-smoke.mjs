@@ -117,7 +117,7 @@ assert.equal(updates.length, 1, "provider facts may still enrich terminal histor
 assert.equal(updates[0].status, undefined, "failed voice history must never change status on later callbacks");
 
 const key = await crypto.subtle.importKey(
-  "raw", new TextEncoder().encode(ENV.TWILIO_API_KEY_SECRET),
+  "raw", new TextEncoder().encode(ENV.SUPABASE_SERVICE_ROLE_KEY),
   { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
 );
 const signed = new Uint8Array(await crypto.subtle.sign(

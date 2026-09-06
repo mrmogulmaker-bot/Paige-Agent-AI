@@ -722,7 +722,7 @@ function clampVoiceTtl(requested?: number): number {
  * be created, and storing the intended URL now means the webhook slice doesn't have to
  * re-point every app. Overridable via VOICE_TWIML_URL for non-default deployments.
  */
-function defaultVoiceTwimlUrl(secret?: string | null): string | null {
+export function voiceTwimlUrl(secret?: string | null): string | null {
   const explicit = Deno.env.get("VOICE_TWIML_URL");
   const baseUrl = explicit && explicit.length > 0
     ? explicit
@@ -813,7 +813,7 @@ export async function ensureTwimlApp(
 
   const baseVoiceUrl = opts.voiceUrl && opts.voiceUrl.length > 0
     ? opts.voiceUrl
-    : defaultVoiceTwimlUrl(null);
+    : voiceTwimlUrl(null);
   let voiceUrl: string | null = null;
   if (baseVoiceUrl) {
     try {

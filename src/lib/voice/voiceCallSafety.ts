@@ -29,7 +29,7 @@ export function providerCallErrorMessage(error: unknown): string {
   if (code === "21211" || code === "21217") {
     return "Enter a valid phone number, including the country code.";
   }
-  if (code === "20101" || code === "31205") {
+  if (code === "20101" || code === "20104" || code === "31205") {
     return "Your calling session expired. Retry the call.";
   }
   if (code === "31005" || code === "31009") {

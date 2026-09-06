@@ -5,8 +5,8 @@ Date: 2026-09-05
 UI_DELIVERY_EVIDENCE_VERSION: 1
 FLOW_BY_FLOW: PASS: Existing Project Diagnose and Hotfix packet covers browser request, server authority, provider acceptance, callback reconciliation, truthful history, tenant census, and collision review.
 PAIGE_UI_DESIGN: PASS: Repository Paige UI design skill and complete required reference bundle were read before editing the existing dialer status copy.
-MATERIAL_FLOW_CHANGE: NO: The hotfix preserves the existing dialer goal, controls, navigation, and exits; it corrects authorization, reconciliation, failure copy, and evidence-backed status semantics.
-FLOW_PROTOTYPE: NOT_REQUIRED: No new user goal, control, step, transition, exit, or navigation was introduced.
+MATERIAL_FLOW_CHANGE: YES: Validation refusal, duplicate-start locking, provider rejection, expiry recovery, and provider-backed status transitions change consequential dial-flow states while preserving the existing container and goal.
+FLOW_PROTOTYPE: PASS: A deterministic read-only state prototype covered ready, invalid, permission denied, missing configuration, starting, accepted, rejected, callback retry, completed, expiry, recovery, and exit; the owner's hotfix brief explicitly approved these required states and copy boundaries, and the throwaway controls were absorbed into this state map rather than shipped.
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: Active Solo owner, admin, or coach initiates one authorized outbound call and sees provider-backed state in Conversations.
 VISUAL_DIRECTION: PASS: Existing approved Solo dialer and status-pill system retained; only compact actionable and truthful state copy changed.
 AUTOMATED_EVIDENCE: PASS: Voice handler 48 assertions, callback and repair smokes, tenant and auth smokes, focused UI tests, duplicate protection, and provider rejection coverage passed.
@@ -30,12 +30,35 @@ SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: Browser-control runtime crashed before cap
 SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: Browser-control runtime crashed before capture; no geometry changed.
 SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: Browser-control runtime crashed before capture; no geometry changed.
 
+## Flow Prototype design brief and state map
+
+Goal: An authorized Solo owner, admin, or coach starts one outbound call and sees only provider-backed status.
+Human and feel: A workspace owner under time pressure; specific, calm, and recoverable.
+Entry and exit: Existing Conversations dialer; close or cancel returns to the unchanged conversation.
+System: Existing right-side dialer, compact density, established tokens, no navigation or scroll change.
+Signature: One truthful status line that never promotes initiated to connected or completed.
+Feedback: Immediate inline copy; existing motion only; no haptic claim.
+Rejecting: Silent disabled actions and optimistic provider claims.
+Variants: Unauthorized roles fail server-side; missing tenant setup fails closed with owner action.
+
+| From | Trigger / guard | To | Feedback | Recovery / exit |
+| --- | --- | --- | --- | --- |
+| Ready | Invalid nonempty destination | Validation | Country-code guidance beside disabled Call | Correct input or close |
+| Ready | Valid Call | Starting | Provider request in progress; duplicate locked | Cancel, await result, or close |
+| Starting | Microphone denied | Permission | Microphone action required | Grant and retry or close |
+| Starting | Tenant config missing | Unavailable | Workspace or caller-ID action | Owner repairs setup or closes |
+| Starting | Provider rejects | Failed | Safe provider-rejection category | Retry or close |
+| Starting | Provider accepts | Initiated | Initiated only, never connected/completed | Hang up or await callbacks |
+| Initiated | Callback persistence fails | Reconciliation delayed | No false terminal history; provider retries | Await retry |
+| Initiated | Provider terminal callback | Completed or Failed | Durable status pill | Close to conversation |
+| Any pre-call | Token expired | Expired | Session-expired retry guidance | Retry for fresh token or close |
+
 ## Job and boundary
 
 - Audience: active Solo owner/admin/coach in Conversations.
 - Primary action: place one authorized outbound call and see provider-backed state.
 - Visual direction: existing Solo dialer and status-pill system; copy/state correction only.
-- `FLOW_PROTOTYPE: NOT_REQUIRED` — no new goal, control, step, exit, or navigation.
+- `FLOW_PROTOTYPE: PASS` — the owner's hotfix brief fixed the required refusal, recovery, and truthful-status contract; the deterministic throwaway review model introduced no new product choice.
 - No real phone call was placed and no private number, provider credential, token, or raw payload is recorded here.
 
 ## Failure location

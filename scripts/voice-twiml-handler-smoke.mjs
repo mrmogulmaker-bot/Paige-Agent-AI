@@ -404,6 +404,9 @@ console.log("voice-twiml handler smoke (real handler, fail-closed tenant auth)\n
   });
   const { deriveOperatorVoiceWebhookSecret } = await import(pathToFileURL(helperFile).href);
   const proof = await deriveOperatorVoiceWebhookSecret();
+  ENV.TWILIO_API_KEY_SECRET = "rotated-master-api-key-secret";
+  const proofAfterApiKeyRotation = await deriveOperatorVoiceWebhookSecret();
+  check("operator proof survives Twilio API-key rotation", proofAfterApiKeyRotation === proof);
   const r = await post(
     `From=${encodeURIComponent(`client:operator.${OPERATOR_SEAT}`)}&To=%2B15559998888&CallSid=CAoperatorproof`,
     { secret: proof },
