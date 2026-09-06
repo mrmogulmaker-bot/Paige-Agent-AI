@@ -112,34 +112,17 @@ describe("Pipeline capability run WIRING in paige-ai-chat (source assertions)", 
   it("is reachable from BOTH the result path and the throw path, threading writeAttempted", () => {
     expect(src).toContain("await recordPipelineRun({ result })");
     // The catch MUST pass writeAttempted so a pre-write throw is failed, not a false outcome_unknown.
-    expect(src).toContain("await recordPipelineRun({ thrown: err, threw: true, writeAttempted: pipelineWriteAttempted })");
+    expect(src).toContain("await recordPipelineRun({ thrown: err, threw: true, writeAttempted: false })");
   });
 
-  it("sets the pre/post-write boundary and re-throws the stage-lookup error (Codex P2)", () => {
-    // The flag is declared per-iteration (default false = pre-write) and flipped true right before
-    // the external UPDATE, so a throw's honesty (failed vs outcome_unknown) tracks reality.
-    expect(src).toContain("let pipelineWriteAttempted = false");
-    expect(src).toContain("pipelineWriteAttempted = true");
-    // deal_move_stage's stage lookup must PROPAGATE its query error, not swallow it into a false
-    // `refused` — an operational lookup failure is a pre-write throw → capability_failed.
-    expect(src).toContain("const { data: stage, error: stageErr } = await admin.from(\"pipeline_stages\")");
-    expect(src).toContain("if (stageErr) throw stageErr");
-  });
-
-  it("orders the boundary correctly: stageErr throw BEFORE the flag, flag BEFORE the deals UPDATE (§39 peer-gate)", () => {
-    // POSITION matters, not just presence (the §39 MINOR): if `pipelineWriteAttempted = true` moved
-    // AFTER the deals UPDATE, a merr throw would misclassify as capability_failed instead of
-    // outcome_unknown — a false "nothing changed" on a possibly-applied write. Lock the order so a
-    // future refactor can't silently break it. Anchor on the move-specific UPDATE (unique to
-    // deal_move_stage; deal_create INSERTs, it does not UPDATE stage_id+pipeline_id).
-    const idxStageErrThrow = src.indexOf("if (stageErr) throw stageErr");
-    const idxFlagSet = src.indexOf("pipelineWriteAttempted = true");
-    const idxMoveUpdate = src.indexOf(".update({ stage_id: stage.id, pipeline_id: stage.pipeline_id, status");
-    expect(idxStageErrThrow).toBeGreaterThan(0);
-    expect(idxFlagSet).toBeGreaterThan(0);
-    expect(idxMoveUpdate).toBeGreaterThan(0);
-    // pre-write lookup throw → flag flip → external write, in that source order.
-    expect(idxStageErrThrow).toBeLessThan(idxFlagSet);
-    expect(idxFlagSet).toBeLessThan(idxMoveUpdate);
+  it("fails the legacy Chat move closed instead of bypassing the canonical executor", () => {
+    const branchStart = src.indexOf('} else if (tc.function.name === "deal_move_stage")');
+    const branchEnd = src.indexOf('} else if (tc.function.name === "pipeline_catalogue")', branchStart);
+    const branch = src.slice(branchStart, branchEnd);
+    expect(branchStart).toBeGreaterThan(0);
+    expect(branch).toContain("temporarily unavailable while the governed approval connection is completed");
+    expect(branch).not.toContain('.from("deals")');
+    expect(branch).not.toContain("pipelineWriteAttempted = true");
+    expect(branch).not.toContain("actual_close_date");
   });
 });
