@@ -131,6 +131,16 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Business Vault Phase 2 owner/admin foundation — deployed PARTIAL at `809faec3` (2026-09-06)
+
+- 🟡 **PARTIAL / DEPLOYED.** Tenant-bound owner/admin Vault navigation, Overview, Library metadata, Contracts, Obligations, focused record inspector, archive/fact-revocation lifecycle, and truthful member denial shipped in PR #986 merge `809faec3`. Server functions resolve the active workspace and current role; client-supplied tenant or authority values are never trusted. Authenticated production behavior is not yet proven.
+- ✅ Owner-only records, dependent contract/obligation metadata, downloads, and fact review remain invisible and immutable to tenant administrators. Known-ID, cross-tenant, workspace-switch, demotion, stale-fact, replacement, and duplicate races have executable actor/database coverage.
+- 🟣 Binary PDF/image intake is intentionally **UNAVAILABLE**. The private quarantine, inspection evidence, bounded cleanup, and disabled-promotion contract exists, but the repository has no approved OCR/DLP adapter or proven byte-copy worker. No uninspected file can become a normal Vault record, download, Paige/Mind context, shared artifact, task, Rail outcome, or external action.
+- ✅ **Automated/static/CI proof:** 29 focused tests, 71 count-enforced actor/RLS assertions, two-session duplicate/cleanup proof, affected lint, Deno/type ratchets, production build, audit/contracts/database/UI evidence, complete CI rerun, and three independent reviews PASS.
+- ✅ **Production deployment proof:** post-merge CI passed; `db-live` and `edge-live` both point to `809faec3`; Vercel Production deployment `6MT79LnaSVWixnZXWQwStnVsNW2F` succeeded for that SHA; `paigeagent.ai` and `app.paigeagent.ai` returned HTTP 200 with live Solo chunk `SoloApp-GsPt1vrB.js` carrying the fail-closed Vault fingerprints.
+- 🟡 **PROOF OWED:** real quarantine/inspection bytes, signed-in owner/admin/member/cross-tenant viewport and denial drives, and the Vercel runtime-log scan. Representative Gate 1 renders are design proof, not authenticated product proof.
+- **Next owner:** Vault inspection adapter + service worker. It must read `docs/brain/codebase-map.md` → “Business Vault Phase 2 security foundation,” `docs/brain/decision-log.md` → 2026-09-06 Vault ruling, the UI evidence handoff, migrations `13700..14000`, and the 71-assertion SQL plan before provider selection. Explicit provider approval/credentials and real OCR/DLP/storage proof are required before binary intake can be enabled.
+
 ### The inbound MCP door — 119 tools, one governed decision, 68 mutations refused (2026-09-05, PR #960)
 
 **Owner ruling:** *"An MCP connection authorizes access to the MCP door; it does not authorize
@@ -200,6 +210,22 @@ Full ledger: `docs/doctrine/tier-matrix.md` → "Campaigns → Social".
 PR #909 merged as 49b9f338. Frontend production deployment is READY on paigeagent.ai and app.paigeagent.ai; dedicated tenant-n8n-oauth version 1 and migration 20261201000000 are deployed and verified. Every Solo workspace owner can connect, edit, reconnect and disconnect through OAuth requesting workflow:read and workflow:write. API health remains independent. 3,020 Linux tests and all ordinary checks passed; rendered evidence covers four viewports and both themes. Final owner consent and real provider discovery are still Proof Owed. Hosted gateway callback URL retention is an accepted MVP residual risk, not a release blocker. See docs/delivery/solo-n8n-oauth-mvp.md.
 
 ### Solo Sales Ops — a Solo owner can record what one client agreed to (2026-09-03)
+
+**Redesign shipping under MVP mode (2026-09-06).** The owner lifted the final release gate to MVP
+cadence (design + intended function approved) and authorized the release path; PR #985 is being merged
+to `main` and is LIVE on prod once the merge deploy completes. Authenticated live-drive stays
+owner-owed (§32.c). Full record: `docs/brain/decision-log.md` (2026-09-06 MVP-close entry) +
+`docs/doctrine/tier-matrix.md` "Sales Command Desk redesign". The original build (below) read: The
+Sales subtab is being rebuilt into an evidence-aware **Sales Command Desk**: four internal views via a
+Sales-local `?view=` param — Sales Command (Commercial Pulse · 6-stage Commercial Readiness Ladder ·
+Top Commercial Moves · Open Commercial Work), Commercial Terms, Revenue & Collections, and a Sales
+Scenario Lab (a model that writes nothing). Same surface, same tiers, no gating/route/migration change.
+Every commercial figure carries an evidence class; Actual received stays unavailable, Contracted is
+active one-time terms with recurring shown monthly (em-dash, never "$0"/"Free"), Contract-pending
+unavailable. Verified: full suite 3563/3563, tsc ratchet 13/13, `drive:sales-ops` 524/524 with zero
+horizontal/nested overflow across the real Solo content-column widths (to 439px). Authenticated
+live-drive OWED (§32.c). Full §66 ledger: `docs/doctrine/tier-matrix.md` → "the Sales Command Desk
+redesign". Awaiting the owner's live review + final release gate before merge.
 
 **Current usability status: PARTIAL.** Owner feedback explicitly rejects treating the current Sales UX as complete. PR #895 fixed recurring-date display only. **Release 1 usability repair is implemented in PR #903** on `codex/solo-sales-usability-r1`, refreshed onto main `bd32fd6`: functional drawer close/discard, reachable commercial-term editing, workspace cleanup, clearer controls, canonical Catalog/Clients return paths and removal of the oversized client-billing banner. The owner cleared the historical #706 shared-file collision; Pipeline implementation and six Campaigns tabs stay intact. See `docs/delivery/solo-sales-usability-r1.md` for the live product record and evidence. Local eight-frame drawer interaction proof passed; authenticated production persistence and owner acceptance remain **Proof Owed**. Merge and deployment evidence are recorded on PR #903.
 
@@ -1499,6 +1525,8 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+
+- **Business Vault binary inspection remains UNAVAILABLE:** activate only after an owner-approved OCR/DLP provider and service-owned worker prove PDF/image OCR, secret and financial-sensitive detection, timeouts, encrypted/malformed handling, exact-byte promotion, cleanup compensation, and authenticated storage behavior. Provider-neutral quarantine schema is present; service-role promotion is deliberately revoked. Client publishing, provider ingestion, legal interpretation, automated execution, and broad document-to-memory promotion remain later phases. Active collision handoff: #724 is adjacent; #917 overlaps the narrow Settings/header/config seam and must preserve both Integrations/Vault `openPaige`, Vault layout/header treatment, current Connections copy, `solo-contact-import`, and all three Vault JWT blocks.
 ### Connections after Add channel — remaining real-provider and runtime proof gaps (2026-09-05)
 
 Inbound mailbox reading and non-SMS business messaging remain **UNAVAILABLE** because no supported
@@ -1931,6 +1959,36 @@ ever completed or been refused. The most likely blocker is a `STRIPE_SECRET_KEY`
 having been configured — a credential this session cannot read or fabricate, named honestly as the
 owner's action rather than guessed around. Independent of that, a real UX defect was fixed: a
 durable (retry-cannot-fix) refusal no longer leaves the action button clickable.
+
+### PAIGE Mind — the approved 3D knowledge orb, LIVE on the Solo surface (production port) — 2026-09-06
+
+**What shipped (PR #969).** The owner-approved living **WebGL knowledge orb** replaces the hand-rolled
+2D-canvas topology on the Solo (and sub-account) **Command Center → Mind** subtab
+(`src/solo/SoloMindWorkspace.tsx`). This is a **presentation + reconciliation** change, not a new data
+capability: the orb is wired to the **same live reads the surface already used** — `useSoloKnowledge`
+(`tenant_knowledge_docs`), `useCommandCenter` (pending approvals), `useN8nSpineReadiness` — reconciled
+onto the six owner-approved domains (`src/solo/mind-orb/mindDomains.ts`). It does **NOT** add
+authenticated Rail/Spine Mind evidence — the integration matrix below (axis B: nothing flows via
+Rail/Spine) is **unchanged**.
+
+**Honesty (§13/§70).** Knowledge / Connected sources / Operating decisions populate from those live
+hooks; **Business context, Client relationships, and Offers render an honest absence** (no frontend
+read-hook yet / catalog lives in Campaigns) — never invented data. §58: Systems Check findings are not
+surfaced in Mind (they stay in the Systems Check subtab). Nodes carry a record's canonical source
+STATE; the orb renders presentation, never fabricated activity.
+
+**Build.** The frozen approved prototype engine was promoted verbatim into `src/solo/mind-orb/engine.ts`
+as a `createMindOrb()` factory (no rendering values changed, §28); `MindOrbCanvas.tsx` mounts it
+code-split (three ships as a separate ~48 KB lazy chunk), WebGL-gated, degrading to the record list on
+failure (§32, never blank); reduced-motion (toggle + OS), offscreen pause, dispose all wired. Subtab
+order unchanged (Systems Check → Mind).
+
+**Proof.** 28 unit tests (reconciliation honesty + component) + 47 sibling command-center tests green;
+`tsc`/`eslint`/`vite build` green with the engine code-split; a headless SwiftShader smoke proves the
+factory renders lit pixels + disposes cleanly. **§32.c authenticated live-drive of the deployed surface
+is OWED to the owner** (headless can't auth the app). Evidence:
+`docs/evidence/ui-delivery/command-center-mind-production-port.md`; per-tier rows:
+`docs/doctrine/tier-matrix.md`. Fast-follow: frontend hooks for the three not-yet-wired domains.
 
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 
@@ -2735,6 +2793,8 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+- **2026-09-05 · Vault filename/attestation scanning is not document inspection:** filename patterns, owner attestation, and magic-byte/hash checks cannot prove that a PDF or image is free of credentials or banking-sensitive content. The Phase 2 repair therefore fails closed: private quarantine and safe audit state may exist, but binary intake/release stays unavailable because no approved OCR/DLP adapter is configured and every promotion entry point is revoked. Do not describe the upload UI, synthetic scanner outcomes, or quarantine rows as live document inspection.
 
  - **2026-09-05 — five chat artifact-creation tools reported success on a 200-with-empty-payload
    (SHIPPED §13/§70 dishonesty, fixed in PR #972).** `generate_image`, `draft_marketing_content`,
