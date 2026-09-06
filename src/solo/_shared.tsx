@@ -31,7 +31,7 @@ filter:I(<><path d="M4 6.5h16M7 12h10M10 17.5h4"/></>),
 cal:I(<><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3.5v3M16 3.5v3"/><circle cx="8.5" cy="14" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="14" r="1.1" fill="currentColor" stroke="none"/></>),
 plus:I(<><path d="M12 5.5v13M5.5 12h13"/></>),
 };
-export const Logo=({size=26})=>(<svg width={size} height={size} viewBox="0 0 32 32" fill="none"><ellipse cx="16" cy="16" rx="8.4" ry="8.4" stroke="var(--gold-bright)" strokeWidth="2.1"/><ellipse cx="16" cy="16" rx="14.5" ry="5.4" transform="rotate(-22 16 16)" stroke="var(--gold-bright)" strokeWidth="1.7" opacity=".8"/><circle cx="16" cy="16" r="3.1" fill="var(--gold-bright)"/></svg>);
+export const Logo=({size=26})=>(<svg width={size} height={size} viewBox="0 0 48 48" fill="none"><polygon points="21,13.6 30.5,13.6 21,34.4 11.5,34.4" fill="var(--gold-bright)" stroke="var(--gold-bright)" strokeWidth="3.2" strokeLinejoin="round"/><circle cx="34.5" cy="30.5" r="5.5" fill="var(--gold-bright)"/></svg>);
 export const Avatar=({name,size=28,tone})=>{const init=name.split(' ').map(w=>w[0]).slice(0,2).join('');const tones=['var(--violet)','var(--gold)','#2E7D8F','#8A5A9E','#3F7A4B'];const c=tone||tones[name.charCodeAt(0)%5];
 return <div style={{width:size,height:size,borderRadius:'50%',background:c,color:'#fff',display:'grid',placeItems:'center',fontSize:size*.36,fontWeight:600,flex:'none',letterSpacing:'.02em'}}>{init}</div>};
 

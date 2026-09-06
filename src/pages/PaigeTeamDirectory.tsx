@@ -17,7 +17,7 @@ import {
   Cpu,
 } from "lucide-react";
 import { PageShell, PageHeader, SectionCard, GlyphPlate, EmptyState, VP_ROSTER, type VP } from "@/components/ui/page";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantSpecialists, type TenantSpecialist } from "@/hooks/usePaigeOrchestrator";
 
@@ -298,7 +298,7 @@ export function PaigeTeamDirectory({ scope }: { scope: PaigeTeamScope }) {
           read (§36), then hands off to the specialist grid. */}
       <SectionCard>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <PaigeMark animated={false} className="h-14 w-14 shrink-0" />
+          <PaigeCommandMark animated={false} className="h-14 w-14 shrink-0" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="font-display text-xl font-semibold leading-tight text-foreground">

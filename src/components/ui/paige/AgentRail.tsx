@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ChevronRight, PanelRightClose, Command, MessagesSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { PresenceDot, EmptyState } from "@/components/ui/page";
 import { useAgentPresence } from "./AgentPresenceContext";
 import type { AgentAccountType, AgentPersona } from "./persona";
@@ -169,9 +169,9 @@ function CollapsedTab({
     >
       <span className="relative grid place-items-center">
         {/* ONE living signal on this always-visible 52px strip (§25): the breathing
-            PaigeMark is the presence cue. The dot renders as a STATIC success ring
+            The Command Mark is the presence cue. The dot renders as a STATIC success ring
             (pulse={false}) so we don't stack a second perpetual pulse next to it. */}
-        <PaigeMark className="h-8 w-8" animated={!reduce} />
+        <PaigeCommandMark plated={false} className="h-8 w-8" animated={!reduce} />
         <PresenceDot
           status="online"
           size="sm"
@@ -220,7 +220,7 @@ function ExpandedPanel({
           the body via a hairline seam (§27 definition). */}
       <header className="flex shrink-0 items-start gap-2.5 border-b border-border px-4 py-3">
         <span className="relative mt-0.5 grid shrink-0 place-items-center">
-          <PaigeMark className="h-7 w-7" animated={!reduce} />
+          <PaigeCommandMark plated={false} className="h-7 w-7" animated={!reduce} />
           <PresenceDot status="online" size="sm" className="absolute -bottom-0.5 -right-0.5" />
         </span>
         <div className="min-w-0 flex-1">

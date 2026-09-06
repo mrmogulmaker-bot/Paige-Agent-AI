@@ -21,6 +21,14 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
+      // The orbital PaigeMark is retired (owner-ruled 2026-09-06); the Command Mark is the identity.
+      // Belt-and-suspenders with scripts/ci/legacy-mark-lint.mjs (which also catches inline copies).
+      "no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["@/components/brand/PaigeMark", "**/brand/PaigeMark", "./PaigeMark"],
+          message: "The orbital PaigeMark is retired. Use PaigeCommandMark from @/components/brand/PaigeCommandMark (or the operator CommandMark inside a data-pg shell).",
+        }],
+      }],
     },
   },
   {

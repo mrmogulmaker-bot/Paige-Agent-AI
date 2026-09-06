@@ -107,65 +107,42 @@
         transform-style: preserve-3d;
         animation: psxIn 1s cubic-bezier(0.22, 1, 0.36, 1) both;
       }
-      /* Paige — the orb */
-      .psx-orb {
+      /* Paige Command Mark — the CURRENT mark (a slash and an orb on a plate), painted in pure CSS
+         before React/index.css load, so hardcoded hex is required (tokens do not exist yet). This
+         replaced the retired orbital mark (gold orb + violet/gold rings) on 2026-09-06 per owner
+         ruling: the Command Mark is the platform identity; the orbital PaigeMark is retired. */
+      .psx-plate {
         position: absolute;
         inset: 0;
         margin: auto;
-        width: 96px;
-        height: 96px;
-        border-radius: 50%;
-        /* Gold orb core — matches the marketing PaigeScene gold (#D4A752 / #F0C86A)
-           for one continuous brand (§6). Hardcoded hex is required here: this splash
-           paints before React/index.css load, so --gold/--accent tokens don't exist
-           yet. The pale-violet ring below is kept — the marketing scene deliberately
-           pairs one gold figure with one violet ring, and it gives the gold orb
-           figure/ground separation. */
-        background: radial-gradient(circle at 38% 30%, #fff6df 0%, #f0c86a 24%, #d4a752 52%, #8a6a22 100%);
-        box-shadow: 0 0 60px 6px rgba(212, 167, 82, 0.5), inset -10px -12px 30px rgba(120, 90, 25, 0.85);
-        animation: psxOrb 2.6s ease-in-out infinite;
+        width: 132px;
+        height: 132px;
+        border-radius: 36px;
+        background: linear-gradient(160deg, #2a2730, #17141f);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        box-shadow: 0 22px 54px -14px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        animation: psxOrb 2.8s ease-in-out infinite;
       }
-      .psx-orb::after {
-        content: "";
+      .psx-slash {
         position: absolute;
-        inset: -45%;
-        border-radius: 50%;
-        background: radial-gradient(circle, rgba(212, 167, 82, 0.5), transparent 62%);
-        filter: blur(18px);
+        top: 30px;
+        left: 40px;
+        width: 27px;
+        height: 66px;
+        border-radius: 8px;
+        background: linear-gradient(#f5c266, #e3a437);
+        transform: skewX(16deg);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.42);
       }
-      /* Orbital rings — tilted ellipses */
-      .psx-ring {
+      .psx-dot {
         position: absolute;
-        inset: 0;
-        margin: auto;
+        right: 33px;
+        bottom: 33px;
+        width: 27px;
+        height: 27px;
         border-radius: 50%;
-        border: 1.5px solid;
-      }
-      .psx-ring--violet {
-        width: 210px;
-        height: 210px;
-        border-color: rgba(192, 132, 252, 0.5);
-        transform: rotateX(74deg) rotateZ(0deg);
-        animation: psxSpin 5s linear infinite;
-      }
-      .psx-ring--gold {
-        width: 162px;
-        height: 162px;
-        border-color: rgba(212, 175, 55, 0.6);
-        transform: rotateX(66deg) rotateY(20deg) rotateZ(0deg);
-        animation: psxSpinGold 7s linear infinite;
-      }
-      /* A gold particle orbiting on the gold ring */
-      .psx-ring--gold::after {
-        content: "";
-        position: absolute;
-        top: -3px;
-        left: calc(50% - 3px);
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #f0d878;
-        box-shadow: 0 0 12px 3px rgba(240, 216, 120, 0.85);
+        background: radial-gradient(circle at 36% 30%, #ffe4ab, #e9a83a 72%);
+        box-shadow: 0 5px 12px rgba(0, 0, 0, 0.42);
       }
       .psx-word {
         display: flex;
@@ -190,12 +167,10 @@
       }
       @keyframes psxIn { from { opacity: 0; transform: scale(0.82); } to { opacity: 1; transform: scale(1); } }
       @keyframes psxOrb { 0%, 100% { transform: scale(0.97); } 50% { transform: scale(1.05); } }
-      @keyframes psxSpin { to { transform: rotateX(74deg) rotateZ(360deg); } }
-      @keyframes psxSpinGold { to { transform: rotateX(66deg) rotateY(20deg) rotateZ(-360deg); } }
       @keyframes psxFadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
       @keyframes psxLine { from { width: 0; opacity: 0; } to { width: 56px; opacity: 1; } }
       @media (prefers-reduced-motion: reduce) {
-        .psx-stage, .psx-orb, .psx-ring, .psx-word, .psx-word i { animation: none !important; }
+        .psx-stage, .psx-plate, .psx-word, .psx-word i { animation: none !important; }
       }
     </style>
   </head>
@@ -203,9 +178,7 @@
   <body>
     <div id="paige-splash" role="status" aria-label="Loading">
       <div class="psx-stage">
-        <div class="psx-ring psx-ring--violet"></div>
-        <div class="psx-ring psx-ring--gold"></div>
-        <div class="psx-orb"></div>
+        <div class="psx-plate"><span class="psx-slash"></span><span class="psx-dot"></span></div>
       </div>
       <div class="psx-word">Paige<i></i></div>
     </div>

@@ -27,7 +27,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Check, ShieldCheck, X } from "lucide-react";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { GP_FADE_RISE, GP_SHIMMER } from "@/components/growth/growth-motion";
 import { ArtifactPreview, type ArtifactPreviewKind } from "@/components/ui/page/ArtifactPreview";
 import { cn } from "@/lib/utils";
@@ -191,7 +191,7 @@ function LivingMark({ reduce }: { reduce: boolean }) {
       {orbit("build-orbit-1", 34, 5)}
       {orbit("build-orbit-2", 20, 3.5)}
       {orbit("build-orbit-3", 48, 4)}
-      <PaigeMark animated={!reduce} className="relative h-24 w-24 md:h-28 md:w-28" />
+      <PaigeCommandMark plated={false} animated={!reduce} className="relative h-24 w-24 md:h-28 md:w-28" />
     </div>
   );
 

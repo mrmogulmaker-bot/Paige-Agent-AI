@@ -25,7 +25,7 @@ import { usePlaybook } from "@/lib/playbook";
 import { useClientPortalBrandState, type ClientPortalBrand } from "@/hooks/useClientPortalBrand";
 import { useClientPortalConfigState } from "@/hooks/useClientPortalConfig";
 import { readableTextOn } from "@/lib/brand/contrast";
-import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 
 // Renders the brand mark in the /app chrome. Prefers the TENANT's brand (logo, or
 // a monogram + name driven by the tenant's primary color) so a client sees THEIR
@@ -79,8 +79,8 @@ function PortalLogo({
       </span>
     );
   }
-  // Resolved with no tenant → platform (Paige) fallback.
-  return <img src={paigeLogoTransparent} alt="PaigeAgent.ai" className={imgClassName} />;
+  // Resolved with no tenant → platform (Paige) fallback: the current Command Mark.
+  return <PaigeCommandMark className={imgClassName} label="PaigeAgent.ai" />;
 }
 
 // The client portal nav is driven by the active Playbook's portal.modules,

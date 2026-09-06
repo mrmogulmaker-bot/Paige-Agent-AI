@@ -30,7 +30,7 @@ import { UserPlus, Users, Sparkles, Building2, ArrowRight, Check, Loader2, Mail 
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { SectionCard, GlyphPlate, StatePill } from "@/components/ui/page";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 
 export interface OnboardingState {
   dismissed?: boolean;
@@ -278,7 +278,7 @@ export function OwnerWelcome({ tenantId, accountType, ownerName, initialState, o
   return (
     <SectionCard className="overflow-hidden">
       <div className="flex items-center gap-3 border-b border-border/60 px-5 py-3">
-        <PaigeMark className="h-8 w-8 shrink-0" />
+        <PaigeCommandMark className="h-8 w-8 shrink-0" />
         <div className="min-w-0 flex-1">
           <h2 className="font-display text-base font-semibold text-foreground">
             Put Paige to work{greetingName}
