@@ -116,6 +116,16 @@ BEGIN
     RETURN _id;
   END IF;
 
+  -- §13 (Codex P2): `versions` is SERVER-OWNED lineage; a brand-new row has none. Strip any
+  -- caller-supplied `meta.versions` on INSERT so a caller cannot plant fabricated history that a later
+  -- reuse would then treat as authentic server-owned lineage (the reuse branch above re-asserts history
+  -- from the row's OWN meta, so a forged initial `versions` would otherwise be carried forward). Only an
+  -- object meta can carry the key; a scalar/array meta can't, so it is left as-is.
+  _merged_meta := COALESCE(p_meta, '{}'::jsonb);
+  IF jsonb_typeof(_merged_meta) = 'object' THEN
+    _merged_meta := _merged_meta - 'versions';
+  END IF;
+
   INSERT INTO public.marketing_content (
     tenant_id, created_by, kind, channel, title, body,
     image_url, image_path, size, brief, meta
@@ -123,7 +133,7 @@ BEGIN
     _tenant, _caller, _kind, NULLIF(btrim(p_channel), ''),
     COALESCE(NULLIF(btrim(p_title), ''), 'Untitled'), p_body,
     NULLIF(btrim(p_image_url), ''), NULLIF(btrim(p_image_path), ''),
-    NULLIF(btrim(p_size), ''), p_brief, COALESCE(p_meta, '{}'::jsonb)
+    NULLIF(btrim(p_size), ''), p_brief, _merged_meta
   )
   RETURNING id INTO _id;
 

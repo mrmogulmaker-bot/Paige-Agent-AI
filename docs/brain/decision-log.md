@@ -71,6 +71,16 @@
   → forced-NULL case), vitest 8/8, ci:tsc + lints green. LESSON: a "make this column server-owned"
   requirement must enumerate EVERY write vector (INSERT + all UPDATE shapes) up front — patching them one
   Codex round at a time is the anti-pattern; the complete fix is a trigger over the whole write surface.
+  **CODEX-FOLD ROUND 4 (2 P2, PR #992):** (1) the anchor-maintenance guards keyed on `!canvasArtifact`,
+  a CLIENT request field — a dedicated-chat client could send a forged `canvasArtifact` to suppress the
+  server-owned anchor maintenance AND drive the reuse clamp with a client-supplied canvas id. Fix: make
+  `canvasArtifact` a mutable `let` and NEUTRALIZE it (`if (!studioSessionId) canvasArtifact = null;`) once
+  the SERVER-resolved `studioSessionId` is known — a dedicated chat has no canvas — and key the two anchor
+  guards on `!studioSessionId` alone. (2) `save_marketing_content`'s INSERT branch stored `p_meta.versions`
+  verbatim, letting an admin/coach plant fabricated history at creation that later reuse would treat as
+  authentic server lineage; the insert now strips `versions` from an object meta (mirrors the reuse branch;
+  a non-versions caller key is preserved). Re-proven: db-proof 13/13 (adds INSERT-strip), vitest 9/9 (adds
+  the canvasArtifact server-gating test), ci:tsc + lints + §50 green.
 
 - **PAIGE Mind — the owner-approved 3D knowledge orb ported LIVE onto the Solo surface (2026-09-06, MVP mode)** —
   the §28-frozen, Gate-1-approved Three.js "knowledge orb" prototype (`docs/prototypes/command-center-mind-gate1.html`)

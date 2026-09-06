@@ -282,6 +282,18 @@ try {
     assert((await scalar(`select jsonb_typeof(meta) from public.marketing_content where id='${a}';`)) === "object", "array meta must be normalized to an object");
   });
 
+  await test("INSERT strips caller-supplied meta.versions so fabricated history cannot be planted (Codex P2)", async () => {
+    // create (p_id NULL) with a forged versions array in p_meta → stored meta must carry NO versions
+    const id = await scalar(`select public.save_marketing_content('image','T',null,null,'ins1.png','/p/ins1.png','square','b','{"versions":[{"image_url":"forged-on-insert.png"}],"keep":"me"}'::jsonb, null, '${TA}');`);
+    assert((await versions(id)).length === 0, "forged versions on INSERT must be stripped");
+    // a non-versions key the caller passed is preserved (we strip only `versions`, not all meta)
+    assert((await scalar(`select meta->>'keep' from public.marketing_content where id='${id}';`)) === "me", "non-versions caller meta must be preserved on INSERT");
+    // and a real reuse then builds server-owned history from an empty base
+    await saveImage(TA, "ins2.png", id);
+    const v = await versions(id);
+    assert(v.length === 1 && v[0].image_url === "ins1.png", `reuse after insert should start clean: ${JSON.stringify(v.map((x)=>x.image_url))}`);
+  });
+
   const failed = results.filter((r) => r.status === "FAIL");
   console.log(`\n${results.length - failed.length}/${results.length} assertions passed.`);
   await cleanup();

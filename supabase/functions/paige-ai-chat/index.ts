@@ -707,7 +707,12 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext: rawClientContext, userTime, userTimezone, userTimeFormatted, canvasArtifact } = validatedData;
+    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext: rawClientContext, userTime, userTimezone, userTimeFormatted } = validatedData;
+    // canvasArtifact is a CLIENT request field, meaningful ONLY in a server-resolved Studio session.
+    // Declared `let` so it can be neutralized for a dedicated (non-Studio) chat once studio_session_id
+    // is resolved (Codex P2): a dedicated-chat client must not be able to drive the reuse clamp with a
+    // forged canvas id, nor suppress the server-owned refine-anchor maintenance, via this field.
+    let canvasArtifact = validatedData.canvasArtifact ?? null;
     // The approvals this request carries, as a set. Derived ONCE from the validated body — never
     // re-read from a raw field further down, which is how a validated value stops being the value
     // that gets used.
@@ -4568,6 +4573,12 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
             });
           }
         }
+        // Task #15 (Codex P2) — canvasArtifact is a CLIENT field; honor it ONLY in a server-resolved
+        // Studio session. A dedicated (non-Studio) chat has no canvas, so null it here now that
+        // studioSessionId is resolved: this makes the reuse clamp and the anchor maintenance below key
+        // on the SERVER's studio state, so a forged canvasArtifact can neither drive a client-supplied
+        // reuse id nor suppress the server-owned anchor.
+        if (!studioSessionId) canvasArtifact = null;
         // Task #15 — DEDICATED chat (no Studio session): resolve the server-owned in-place-refine
         // anchor from THIS thread row (RLS already double-scopes it to the caller's own, tenant-matched
         // thread) and, when it is still within the recency window, tell the model it can refine that
@@ -10310,7 +10321,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // overwrite an OLDER image through. A genuine success re-ADVANCES the anchor to the new
               // filed id at the end of this branch. Dedicated chat only; SERVICE-ROLE (the freeze trigger
               // admits it); fenced to (thread ∧ caller ∧ ACTIVE tenant); best-effort + LOGGED (§13/§32).
-              if (!studioSessionId && !canvasArtifact && payloadThreadId && personaCtx?.tenant_id) {
+              if (!studioSessionId && payloadThreadId && personaCtx?.tenant_id) {
                 const { error: clearErr } = await supabase.from("paige_chat_threads")
                   .update({ last_image_content_id: null, last_image_anchor_at: null })
                   .eq("id", payloadThreadId)
@@ -10401,7 +10412,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // the tenant half the service-role write bypasses — so a MULTI-TENANT caller can never stamp
               // an active-tenant image id into a thread of an INACTIVE workspace (Codex P2). The image was
               // filed under personaCtx.tenant_id, so the anchored thread must match it. Best-effort: LOGGED.
-              if (!studioSessionId && !canvasArtifact && payloadThreadId && personaCtx?.tenant_id
+              if (!studioSessionId && payloadThreadId && personaCtx?.tenant_id
                   && (result as any)?.success === true
                   && artifactProduced("saved_id", (result as any)?.content_id)) {
                 const { error: anchorErr } = await supabase.from("paige_chat_threads")

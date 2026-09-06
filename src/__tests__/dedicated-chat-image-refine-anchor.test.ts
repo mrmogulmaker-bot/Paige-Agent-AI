@@ -67,6 +67,9 @@ describe("Task #15 — migrations exist and carry the safety clauses", () => {
     expect(m).toMatch(/jsonb_array_length\(_versions\) > 20/);
     // §9 tenant scope on the reuse UPDATE is preserved
     expect(m).toMatch(/WHERE id = p_id AND tenant_id = _tenant/);
+    // the INSERT branch strips caller-supplied meta.versions so fabricated history can't be planted (Codex P2)
+    expect(m).toMatch(/jsonb_typeof\(_merged_meta\) = 'object'\s+THEN\s*\n\s*_merged_meta := _merged_meta - 'versions';/);
+    expect(m).toMatch(/NULLIF\(btrim\(p_size\), ''\), p_brief, _merged_meta/);
   });
 });
 
@@ -110,5 +113,15 @@ describe("Task #15 — the server-owned anchor is wired safely into paige-ai-cha
 
   it("does NOT regress the Studio canvas clamp (still keyed on canvasArtifact)", () => {
     expect(chat).toMatch(/canvasArtifact\?\.kind === "content" && args\.target_content_id === canvasArtifact\.id/);
+  });
+
+  it("canvasArtifact is SERVER-GATED: it is a mutable client field neutralized for a dedicated (non-Studio) chat, so a forged canvas cannot drive reuse or suppress anchor maintenance (Codex P2)", () => {
+    // canvasArtifact is declared mutable (let), sourced from the request, so it can be neutralized
+    expect(chat).toMatch(/let canvasArtifact = validatedData\.canvasArtifact \?\? null;/);
+    // neutralized whenever the SERVER-resolved studio state says this is not a Studio session
+    expect(chat).toMatch(/if \(!studioSessionId\) canvasArtifact = null;/);
+    // the anchor-maintenance guards key on the server-resolved studioSessionId, NOT the client field —
+    // they must NOT re-introduce a `!canvasArtifact` gate that a client could flip
+    expect(chat).not.toMatch(/!studioSessionId && !canvasArtifact/);
   });
 });
