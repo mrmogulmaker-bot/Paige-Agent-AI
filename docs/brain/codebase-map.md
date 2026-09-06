@@ -293,9 +293,20 @@ an integration entry point updates this file in the same commit (§BRAIN.3). Ver
   replaced with `/solo/{account}/command-center/mind`. Do not copy this Solo ruling into Agency,
   Sub-account, Enterprise, or operator registries.
 - `src/solo/SoloMindWorkspace.tsx` + `solo-mind-workspace.css` own Mind's read-only, interactive 3D
-  record topology and contextual inspector. They compose existing sources only: `useSoloKnowledge`,
-  `useSystemsCheck("tenant")`, and current read-only decision references from `useCommandCenter`.
-  They do not own actions, chat, historical inference, relationships, or helper provenance.
+  record topology and contextual inspector. They compose existing read sources only: `useSoloKnowledge`
+  (Knowledge resources), `useN8nSpineReadiness` (Connected sources, status only), and read-only decision
+  references from `useCommandCenter` (Operating decisions). Business context + Client relationships render
+  an honest ABSENCE (no frontend hook yet); Offers & services is honest UNAVAILABLE. **Systems Check
+  findings are DELIBERATELY not surfaced here (§58** — they live in the Systems Check subtab), so this
+  no longer reads `useSystemsCheck`. They do not own actions, chat, historical inference, relationships,
+  or helper provenance.
+- `src/solo/mind-orb/` owns the 3D engine, promoted VERBATIM from the owner-approved (§28 frozen) Gate-1
+  prototype: `engine.ts` (`createMindOrb` Three.js factory), `MindOrbCanvas.tsx` (React mount — WebGL
+  probe, code-split dynamic `import("./engine")` so `three` is a lazy chunk, `SceneBoundary` + loud
+  degrade to the parent list, effect-based reconciliation), and `mindDomains.ts` (PURE reconciliation
+  from the read contracts → orb nodes + honest source-signal states). Unit-tested: `mindDomains.test.ts`
+  (28) + `SoloMindWorkspace.test.tsx`; §32 headless env smoke `scripts/mind-orb-smoke.mjs`. Ported live
+  2026-09-06, PR #969.
 - `src/solo/SoloPaigeWorkspace.tsx` links to canonical Mind but remains the single PAIGE Chat/Knowledge
   owner. Mind may open that workspace only through the existing shell callback, with no context attach,
   prefill, send, preparation, or work-start claim.

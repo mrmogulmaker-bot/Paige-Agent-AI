@@ -3820,3 +3820,65 @@ zero tests and now breaks three.
 `paige_social_posts`, a table with **no `tenant_id`**. Pointing a tenant surface at them would publish
 every workspace's post to one shared page. Per-tenant publishing needs per-tenant OAuth (provider app
 review, per-tenant tokens) and a tenant column on that table.
+
+### PAIGE Mind — the approved 3D knowledge orb, `/solo/{account}/…` Command Center → Mind
+
+**§66, same commit as the ship. This is a REDESIGN of an existing surface — tier VISIBILITY is
+unchanged; nothing is added or gated.** The owner-approved (§28 frozen) Three.js "knowledge orb"
+(prototype `docs/prototypes/command-center-mind-gate1.html`, Gate-1 signed off) is ported into the
+real `SoloMindWorkspace` as the Mind subtab's primary instrument. The orb engine is promoted verbatim
+from the frozen prototype into `src/solo/mind-orb/engine.ts` (byte-identical rendering, §28) and
+code-split behind a dynamic `import("./engine")` so `three` ships as a lazy chunk, never in the main
+bundle. Each node is a REAL governed record; a domain with no live hook renders an HONEST ABSENCE, and
+an `UNAVAILABLE` domain shows its hub with **no** satellites (a "pending"-coloured ghost around an
+"unavailable" hub would read as work awaiting the owner when nothing is on file — §13/§70).
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| See the Mind subtab (the orb + record list) | — (no Solo book) | — | ✓ | ✓ | ✓ | — | 403 |
+| Knowledge resources nodes ← `tenant_knowledge_docs` (LIVE, owner-indexed) | — | — | ✓ | ✓ | ✓ | — | 403 |
+| Connected sources nodes ← n8n readiness (LIVE, status only) | — | — | ✓ | ✓ | ✓ | — | 403 |
+| Operating decisions nodes ← pending approvals (LIVE) | — | — | ✓ | ✓ | ✓ | — | 403 |
+| Business context / Client relationships domains | honest ABSENCE — no frontend hook yet | | | | | | |
+| Offers & services domain | honest UNAVAILABLE — catalog lives in Campaigns, not a governed fact | | | | | | |
+| Open a record's evidence drawer (provenance + honesty boundary) | — | — | ✓ | ✓ | ✓ | — | 403 |
+| Any create/update/delete from Mind | ✗ read-only surface | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+
+**Honest source truth per domain (the orb never invents to fill a hub):** three of the six domains
+are `LIVE` from real read contracts (Knowledge / Connected sources / Operating decisions); two render
+an honest absence because no frontend hook reads their governed store yet (Business context ←
+`business_context.readiness`; Client relationships ← governed memory); one is honest `UNAVAILABLE`
+(Offers & services). **§58 boundary held:** Systems Check findings are DELIBERATELY not surfaced as
+Mind records — proven by `src/solo/SoloMindWorkspace.test.tsx`.
+
+**Degrades LOUDLY, never white-screens (§32):** WebGL is probed before `three` loads; a failed probe,
+a failed async engine mount, or a render-phase throw all `console.error` and route to the parent's
+record-list fallback ("Showing your records as a list") with every governed record still reachable —
+proven by the jsdom degradation test. The orb-NAVIGATION affordances (drag/scroll hint, Reset view)
+hide in the fallback rather than show as dead controls; the persisted PREFERENCE toggles (orbit
+pause, reduced motion) stay available because they hold real per-user+tenant state and reduced-motion
+is an accessibility control (§70). Three.js resources (renderer, InstancedMesh, env texture, PMREM,
+`RoomEnvironment`, halo materials, geometries) are disposed on unmount.
+
+**Proof at this ledger entry:** 28 deterministic unit tests over the pure reconciliation/geometry
+(`src/solo/mind-orb/mindDomains.test.ts`) + workspace behaviour tests
+(`src/solo/SoloMindWorkspace.test.tsx`); full solo suite 1595 passing; `tsc --noEmit` clean; eslint
+clean on the changed files; and a §32 headless env-construction smoke (`scripts/mind-orb-smoke.mjs`,
+guards the `RoomEnvironment` construct + dispose that a green build would not catch).
+
+**UNVERIFIED / owed (§32.c):** the authenticated live drive of the deployed Mind subtab at the four
+viewports in both themes. No session in this work holds a browser that can reach the authenticated
+Solo surface, so the browser-driven live check is owed to the next capable session (Cowork/Chrome) —
+it is not claimed here. The rendering itself is the §28-frozen, Gate-1-approved prototype; what is
+owed is the authenticated in-app render of the ported surface, not a fresh design review.
+
+**Conflict check vs recorded decisions (all clear, §BRAIN contract):** the Mind surface renders NO
+`PaigeMark`/`PaigeSymbol` component (the retired orbital brand mark is not used — the Command-Mark
+decision is preserved; the orb is the Gate-1-approved data-viz, a different object from the logo);
+"Open PAIGE" uses the ONE existing workspace (no floating authenticated chat); Mind is READ-ONLY (it
+displays governed records, never writes Mind/Memory eligibility); tier visibility UNCHANGED — Solo +
+Sub-account already received Mind pre-PR (row above, PR #933), so this is a REDESIGN, not new
+sub-account delivery (no "explicit release" rule triggered). **Next owning workstream:** the
+Business-context + Client-relationships frontend read-hooks (to light those two `UNAVAILABLE/DEFERRED`
+domains); **first-read dependency:** `docs/handoff/solo-setup-business-context-spine-handoff.md` (the
+narrower safe-field projection contract — status + provenance only, never a raw value).

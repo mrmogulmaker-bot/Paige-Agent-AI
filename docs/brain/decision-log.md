@@ -1,5 +1,38 @@
 # Decision Log — chronological one-liners
 
+- **PAIGE Mind — the owner-approved 3D knowledge orb ported LIVE onto the Solo surface (2026-09-06, MVP mode)** —
+  the §28-frozen, Gate-1-approved Three.js "knowledge orb" prototype (`docs/prototypes/command-center-mind-gate1.html`)
+  is wired into the real `SoloMindWorkspace` as the Mind subtab's primary instrument. Engine promoted verbatim
+  from the frozen prototype into `src/solo/mind-orb/engine.ts` (`createMindOrb` factory; byte-identical rendering,
+  §28) and code-split behind a dynamic `import("./engine")` so `three` ships as a lazy chunk, never in the main
+  bundle. Nodes bind to REAL read contracts, honest source-signal states, tenant-scoped by the existing hooks:
+  Knowledge resources ← `tenant_knowledge_docs` (LIVE), Connected sources ← n8n readiness (LIVE, status only),
+  Operating decisions ← pending approvals (LIVE); Business context + Client relationships render honest ABSENCE
+  (no frontend hook yet); Offers & services is honest UNAVAILABLE. §58 held (no Systems Check finding surfaced as
+  a Mind record). §32 loud degrade: WebGL probed before `three` loads; probe/mount/render throws all `console.error`
+  and route to the parent record-list fallback with every record still reachable. Read-only surface — no Mind
+  create/update/delete on any tier. Tier VISIBILITY unchanged (redesign of an existing surface, §66/§58): Solo +
+  Sub-account + Enterprise see it, Agency/God/Client/Anon do not. Proof: 28 unit tests + full solo suite 1595
+  passing, `tsc` clean, eslint clean, headless env smoke `scripts/mind-orb-smoke.mjs`.
+  **Proof status (explicit):** the three wired domains (Knowledge / Connected sources / Operating decisions) =
+  **LIVE** in code, proven by unit + build, but **PROOF OWED** on the authenticated runtime — §32.c live drive of the
+  deployed subtab at the four viewports in both themes is OWED (no session here holds a browser that can reach the
+  authenticated Solo surface; owed to the next capable session — Cowork/Chrome — not claimed). Business context +
+  Client relationships domains = **UNAVAILABLE in this view / DEFERRED** (governed store exists server-side; the
+  frontend read-hook is a fast-follow). Offers & services = **UNAVAILABLE** (catalog lives in Campaigns, not a
+  governed fact). No capability is implied LIVE because the orb renders — the render is the §28-frozen prototype;
+  the DATA states are as typed here.
+  **Conflict check vs recorded decisions (all clear):** renders NO `PaigeMark`/`PaigeSymbol` (the retired orbital
+  brand mark is not used — Command-Mark decision preserved); "Open PAIGE" uses the ONE existing workspace, no
+  floating chat; Mind is READ-ONLY (never writes Mind/Memory eligibility); tier visibility UNCHANGED — Solo +
+  Sub-account already received Mind pre-PR (ledger row PR #933), so this is a redesign, NOT new sub-account delivery.
+  **Next owning workstream:** the Business-context + Client-relationships frontend read-hooks (to light those two
+  domains from `business_context.readiness` + governed memory). **Dependency it must read FIRST:**
+  `docs/handoff/solo-setup-business-context-spine-handoff.md` (the safe-field projection contract — it is NARROWER
+  than a raw value; only status + provenance may surface), then this ledger row + `docs/brain/codebase-map.md`
+  "Solo Command Center governed-record surface".
+  Ledger: `docs/doctrine/tier-matrix.md` "PAIGE Mind — the approved 3D knowledge orb"; PR #969.
+
 - **ARCHITECTURE: floating Paige chat is RETIRED from the authenticated platform (owner decision 2026-09-06)** —
   there must be NO floating Paige chat anywhere inside the authenticated platform (no Solo route, Command
   Center, Clients, Campaigns, Settings, Marketplace, Analytics, tenant portal, mobile shell, or embedded
