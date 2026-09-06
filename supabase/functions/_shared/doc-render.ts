@@ -269,9 +269,21 @@ function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
       continue;
     }
     if (t === "toc") {
-      // The canvas auto-builds the TOC with live anchors; a flat export can't link, but the ENTRIES are
-      // real content, so emit them as a plain list under the (optional) title rather than dropping them.
+      // Explicit entries win; otherwise — a VALID schema shape, entries MAY be omitted — auto-build from
+      // the document's own section-header/chapter-divider titles, mirroring the canvas (DocumentPreview),
+      // so an exported guide/ebook keeps its table of contents instead of silently dropping it (Codex P2).
       const entries = Array.isArray(b.entries) ? b.entries.map(asText).map((s) => s.trim()).filter((s) => s.length > 0) : [];
+      if (!entries.length) {
+        for (const x of arr) {
+          if (!x || typeof x !== "object") continue;
+          const xb = x as Record<string, unknown>;
+          const xt = typeof xb.type === "string" ? xb.type.toLowerCase() : "";
+          if (xt === "section-header" || xt === "chapter-divider") {
+            const heading = asText(xb.title ?? xb.text).trim();
+            if (heading) entries.push(heading);
+          }
+        }
+      }
       if (entries.length) {
         push((asText(b.title).trim() || "Contents"), "heading", 1);
         out.push({ type: "list", items: entries, ordered: false });
@@ -331,15 +343,23 @@ function parseMarkdown(src: string): Block[] {
 // code/strike markers are removed rather than shown literally. Used ONLY on `prose` (which is raw
 // markdown by contract) — never on plain-text fields, where a stray `_`/`*` is a literal character.
 function inlineMdToText(s: string): string {
-  return String(s)
+  // Extract link/image destinations into placeholders BEFORE the emphasis passes, so an underscore in a
+  // URL (e.g. `?utm_source=…&utm_medium=…`) is never eaten by the italic-underscore rule (Codex P2). The
+  // label is left inline and IS emphasis-cleaned (label markdown is real markdown); the raw URL is spliced
+  // back only at the end. The `@@URL0@@` sentinel is plain ASCII with no markdown-special or control
+  // char, so no emphasis pass touches it and (unlike a NUL/BEL delimiter) it can never leak a bad byte.
+  const urls: string[] = [];
+  let str = String(s)
     .replace(/^\s*>\s?/gm, "")                          // blockquote markers
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")           // image → alt text (before links)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)")     // link → label (url)
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")           // image → alt text (destination dropped)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, url) => `${label}@@URL${urls.push(String(url)) - 1}@@`);
+  str = str
     .replace(/(\*\*|__)(.+?)\1/g, "$2")                 // bold
-    .replace(/(\*|_)([^*_]+?)\1/g, "$2")                // italic
+    .replace(/(\*|_)([^*_]+?)\1/g, "$2")                // italic (URLs are placeheld, so safe)
     .replace(/~~(.+?)~~/g, "$1")                        // strikethrough
-    .replace(/`([^`]+)`/g, "$1")                        // inline code
-    .trim();
+    .replace(/`([^`]+)`/g, "$1");                       // inline code
+  str = str.replace(/@@URL(\d+)@@/g, (_m, i) => ` (${urls[Number(i)] ?? ""})`); // restore raw URL last
+  return str.trim();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════

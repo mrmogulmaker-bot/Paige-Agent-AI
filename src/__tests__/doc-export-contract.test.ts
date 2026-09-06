@@ -140,6 +140,27 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(md).toContain("https://ex.co/book");           // the CTA destination is followable, not discarded
   });
 
+  it("keeps underscores in a prose link URL intact and auto-derives an entries-less TOC (Codex round-5)", async () => {
+    const r = await renderDoc({
+      format: "md",
+      title: "R5",
+      content: [
+        { type: "toc" },                                  // no entries — must auto-build from the sections below
+        { type: "section-header", title: "Alpha" },
+        { type: "prose", markdown: "See the [guide](https://ex.co/p?utm_source=email&utm_medium=doc)." },
+        { type: "chapter-divider", title: "Beta" },
+      ],
+    });
+    const md = dec(r.bytes);
+    // G1 — a URL's underscores survive; the emphasis pass must not turn `utm_source` into `utmsource`.
+    expect(md).toContain("https://ex.co/p?utm_source=email&utm_medium=doc");
+    expect(md).not.toContain("utmsource");
+    // G2 — an entries-less toc auto-builds from the section-header/chapter-divider titles (mirrors the canvas).
+    expect(md).toContain("Contents");                     // toc default title
+    expect(md).toContain("- Alpha");                      // derived TOC entry (a list item, not just the heading)
+    expect(md).toContain("- Beta");
+  });
+
   it("never throws and still produces a file for empty content (title-only)", async () => {
     const r = await renderDoc({ format: "md", title: "Only A Title", content: [] });
     expect(r.ext).toBe("md");

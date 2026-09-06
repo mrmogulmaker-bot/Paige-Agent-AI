@@ -120,6 +120,17 @@
   §00/§13), both deliberate. This is the fidelity floor: every content-bearing field of every rich block
   now survives to the file. Regression test extended (11/11). tsc ratchet 13/13, §50/§63 clean. SEVEN
   independent review-layer catches on one MVP.
+  **EIGHTH catch — Codex round 5 found two follow-on bugs in the round-4 fidelity code, both FOLDED:**
+  (G1) `inlineMdToText` inlined a link URL and THEN ran the italic-underscore pass over it, so a URL like
+  `?utm_source=…&utm_medium=…` had its `_source=…&utm_` underscore pair stripped to `utmsource` — a
+  corrupted destination. Fixed by extracting URLs into a plain-ASCII `@@URL{i}@@` placeholder BEFORE the
+  emphasis passes and splicing the raw URL back last (the label is still emphasis-cleaned; the URL never
+  is). The first attempt used a control-char (BEL) delimiter — caught in my own re-read as a byte that
+  could leak to `?` under sanitizeWinAnsi — and was rewritten to the ASCII sentinel; a control-char scan
+  now guards the file. (G2) a `toc` block with OMITTED entries (a valid schema shape — the canvas derives
+  them) computed an empty array and dropped the whole TOC; now it auto-builds from the surrounding
+  section-header/chapter-divider titles, mirroring `DocumentPreview`. Regression test 12/12 (drives the
+  underscore-URL and the entries-less toc). tsc ratchet 13/13, §50/§63 clean, control-chars none.
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace
