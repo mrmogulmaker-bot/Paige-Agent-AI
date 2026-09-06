@@ -150,6 +150,13 @@ self-tested, run against `main` first to prove zero false-positives — the repo
 Each slice updates the `paige.workspace` row in `docs/binding-ledger/surface-binding-ledger.json` on
 merge (§BRAIN.3), and none claims `LIVE` without authenticated runtime proof (§13/§32).
 
+> **A safe context handoff is the FLOOR, not the deliverable (owner ruling, 2026-09-06).** This contract
+> makes Paige open *oriented*; it does not by itself make a surface complete. A surface's
+> `completion_criterion` (see the ledger's `intended_capability`) is a **real governed action with a
+> verified outcome and Rail evidence** — not a richer handoff. The next runtime slice, Business Game
+> Plan + Missions, must demonstrate exactly that: Paige creating/revising/sequencing/advancing a real
+> Business Mission (`business_mission.*`, already wired), owner-confirmed, verified, and Rail-recorded.
+
 ## Cross-references
 
 `docs/binding-ledger/` (the ledger this serves) · `governed-execution-seam.md` · `one-approval-gate.md`

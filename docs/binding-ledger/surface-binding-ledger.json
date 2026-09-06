@@ -13,6 +13,15 @@
     "UNAVAILABLE": "the required Paige-binding contract does not exist yet",
     "PROOF_OWED": "the binding is implemented and reachable in code, but authenticated/runtime proof is absent"
   },
+  "intended_capability_note": "Every surface carries BOTH `state` (what is PROVEN today — the current-state vocabulary) AND `intended_capability` (the product operating TARGET across authority lanes). An absent current proof NEVER shrinks the intended target; the ledger describes the gap between present proof and the full operating goal. Paige is built to help RUN the company through real governed actions, not to report passively.",
+  "authority_lanes": {
+    "read": "What Paige may safely read and understand (enumerated safe facts; never raw payload or secrets).",
+    "draft": "What Paige may draft, model, organize, prepare, or recommend — a proposal or artifact with NO side effect.",
+    "auto": "What Paige may EXECUTE autonomously within a tenant-approved policy (§16 green AI-Performed / §67 per-process grant).",
+    "confirm": "What requires OWNER CONFIRMATION before execution (§16 yellow AI-Drafted/Human-Approved, via the paige_pending_confirmations gate).",
+    "prohibited": "What is permanently ISOLATED or prohibited — raw secrets, credentials, unreviewed sensitive files, authority escalation (§16 red / §67/§68).",
+    "completion_criterion": "The REAL action/outcome that proves the surface is complete — not that Paige can merely open or summarize it."
+  },
   "binding_chain": [
     "canonical_source",
     "tenant_scope",
@@ -40,6 +49,14 @@
   "surfaces": [
     {
       "id": "paige.workspace",
+      "intended_capability": {
+        "read": "The safe surface context handed to the workspace — surface id, public-safe record ref, readiness/provenance — never raw payload or authority.",
+        "draft": "Compose replies, proposals, and the intended question/plan for the surface the owner opened from.",
+        "auto": "Within the tenant's policy, run read-only tool calls and ordinary governed actions the process grant permits.",
+        "confirm": "Any high-risk or owner_only action raises an approval card (paige_pending_confirmations) before execution.",
+        "prohibited": "Never accept a client-supplied tenant, role, raw prose, or secret as authority or identity (the #981 leak class).",
+        "completion_criterion": "An owner opens Paige from a surface and Paige acts on that surface's real record through a governed tool, with the outcome recorded — never a blind chat window."
+      },
       "surface": "Paige — the dedicated authenticated workspace (sole tenant-aware chat)",
       "group": "paige",
       "tier_scope": ["solo"],
@@ -66,6 +83,14 @@
     },
     {
       "id": "command-center.business-game-plan",
+      "intended_capability": {
+        "read": "The composite plan (metrics, attention, systems, missions) and the current Business Mission record; monitors mission progress and plan drift over time.",
+        "draft": "Propose a plan, sequence missions, draft mission briefs and next moves, and model strategic options.",
+        "auto": "Within policy, advance a mission through the non-destructive stages the tenant has pre-approved.",
+        "confirm": "Create / revise / transition a Business Mission (high, chat-canonical) executes only after owner confirmation.",
+        "prohibited": "Never fabricate progress or mark a mission advanced without a verified state change (§13).",
+        "completion_criterion": "Paige creates, sequences, and ADVANCES a real Business Mission on this surface, the state change is verified, and a Rail outcome records it — not a displayed plan. THIS IS THE NEXT RUNTIME SLICE: a real governed action + verified outcome + Rail evidence, not a richer context handoff."
+      },
       "surface": "Command Center -> Business Game Plan",
       "group": "command-center",
       "tier_scope": ["solo"],
@@ -92,6 +117,14 @@
     },
     {
       "id": "command-center.systems-check",
+      "intended_capability": {
+        "read": "Pass/fail counts, window timestamps, and readiness posture (enumerated, never finding text).",
+        "draft": "Recommend which failing checks to address and in what order; prepare the remediation steps.",
+        "auto": "Re-run the systems check on the tenant's schedule/policy.",
+        "confirm": "Any remediation that mutates tenant config runs through its owning surface's confirm gate.",
+        "prohibited": "Never expose finding interpretation text, check/run ids, or the triggering actor.",
+        "completion_criterion": "A failing check leads Paige to prepare and (on the owning surface, with authority) execute a real remediation whose effect the next scan verifies — Systems Check GOVERNS action, it is not a scoreboard."
+      },
       "surface": "Command Center -> Systems Check",
       "group": "command-center",
       "tier_scope": ["solo"],
@@ -118,6 +151,14 @@
     },
     {
       "id": "command-center.mind",
+      "intended_capability": {
+        "read": "The tenant's curated knowledge index and safe facts (titles are internal; raw bodies never cross).",
+        "draft": "Propose what belongs in the knowledge base and summarize what is known, with provenance.",
+        "auto": "None on this tab — it is a visualization; Memory writes go through the governed memory seam.",
+        "confirm": "Adding a learned fact to the knowledge base is confirmation-gated (§15).",
+        "prohibited": "Never present the CC visualization as the governed PAIGE Mind contract; never expose raw document bodies.",
+        "completion_criterion": "Reviewed, eligible facts enter the governed Memory seam with provenance and can be recalled by Paige — not a static visualization."
+      },
       "surface": "Command Center -> Mind (the knowledge visualization tab)",
       "group": "command-center",
       "tier_scope": ["solo"],
@@ -144,6 +185,14 @@
     },
     {
       "id": "command-center.trust-compass",
+      "intended_capability": {
+        "read": "The current autonomy ceiling and per-process grants (the effective rung).",
+        "draft": "Recommend a posture and explain what a rung would and would not permit.",
+        "auto": "None — Paige never raises her own authority.",
+        "confirm": "The owner sets the ceiling/grant; a temporary raise is super_admin-only and expires (§67/§68).",
+        "prohibited": "Mind/Paige must never become a path toward raising authority; the dial is non-authoritative UI.",
+        "completion_criterion": "The Compass's visible controls perform the REAL governed autonomy change (or are plainly read-only), and the server action-risk policy + approval gate — not the dial — actually govern execution. Trust Compass governs Paige's real actions, it is not a decorative scoreboard."
+      },
       "surface": "Trust Compass (top-level branch; governs Paige autonomy)",
       "group": "command-center",
       "tier_scope": ["solo"],
@@ -170,6 +219,14 @@
     },
     {
       "id": "campaigns.overview",
+      "intended_capability": {
+        "read": "Once a tenant-authorized campaign source exists: the live campaign roster and status.",
+        "draft": "Propose campaign structure and priorities.",
+        "auto": "None until a tenant-authorized source exists.",
+        "confirm": "Launching or pausing a campaign is confirmation-gated.",
+        "prohibited": "Never invent campaigns or a source that is not tenant-authorized.",
+        "completion_criterion": "Paige reads real campaigns and, on approval, launches/adjusts one through a connected system with a verified outcome — blocked today on the absent source."
+      },
       "surface": "Campaigns -> Overview",
       "group": "campaigns",
       "tier_scope": ["solo"],
@@ -196,6 +253,14 @@
     },
     {
       "id": "campaigns.catalog",
+      "intended_capability": {
+        "read": "Published counts and per-form routing state (enumerated).",
+        "draft": "Generate and refine pages, funnels, and forms (the §19 Studio flow) and organize the catalog.",
+        "auto": "None for publish.",
+        "confirm": "Publishing a page/funnel/form and wiring its capture routing is confirmation-gated.",
+        "prohibited": "Never expose page/funnel/form ids or slugs, or the public href (it leaks the tenant slug).",
+        "completion_criterion": "Paige generates and, on approval, PUBLISHES a working page/funnel/form and wires its capture routing, verified live — not a listing of what already exists."
+      },
       "surface": "Campaigns -> Catalog (pages/funnels/forms) & Pipeline configuration",
       "group": "campaigns",
       "tier_scope": ["solo"],
@@ -222,6 +287,14 @@
     },
     {
       "id": "campaigns.sales",
+      "intended_capability": {
+        "read": "Which captures routed to a person or deal, and commercial terms on record (safe classification only).",
+        "draft": "Prepare follow-ups for new captures; draft/redline agreement terms; model deal outcomes.",
+        "auto": "Within policy, route a new capture to the pipeline/contact per the tenant's rule.",
+        "confirm": "Sending a follow-up, issuing an agreement, or moving a deal is confirmation-gated.",
+        "prohibited": "Never expose agreement legal terms/amounts to Mind beyond the safe classification; never auto-send legal documents.",
+        "completion_criterion": "A capture becomes a governed follow-up or a recorded agreement outcome, verified and Rail-logged — not a static submissions list."
+      },
       "surface": "Campaigns -> Sales (form captures + agreements workbench)",
       "group": "campaigns",
       "tier_scope": ["solo"],
@@ -248,6 +321,14 @@
     },
     {
       "id": "campaigns.pipeline",
+      "intended_capability": {
+        "read": "Recorded stage outcomes for a client (cited) and current board state.",
+        "draft": "Prepare follow-ups, maintain deal context, model stage/scenario changes, and recommend the next move.",
+        "auto": "Within policy, move a deal to the next non-approval stage the tenant pre-approved.",
+        "confirm": "An approval-required stage move, or any client-facing send, is confirmation-gated.",
+        "prohibited": "Never expose deal/stage/contact ids, and never move a deal that move_policy holds for approval.",
+        "completion_criterion": "Paige moves a governed deal (respecting move_policy), the move is recorded, and she can cite her own move in her evidence (closes #755) — not just reading stage history."
+      },
       "surface": "Campaigns -> Pipeline (deal-stage outcome)",
       "group": "campaigns",
       "tier_scope": ["solo"],
@@ -274,6 +355,14 @@
     },
     {
       "id": "campaigns.social",
+      "intended_capability": {
+        "read": "Which networks the workspace posts from and the declared handles (public identifiers).",
+        "draft": "Create and refine posts and a schedule; organize a content calendar.",
+        "auto": "Within policy, publish/schedule approved posts through a connected native/external system.",
+        "confirm": "Connecting a provider, or publishing outside pre-approved policy, is confirmation-gated.",
+        "prohibited": "Never expose provider credentials or tokens; never invent metrics.",
+        "completion_criterion": "Paige creates, schedules, and (on approval or policy) PUBLISHES real posts through a connected system with a verified post outcome — not just recording handles."
+      },
       "surface": "Campaigns -> Social (accounts a business posts from)",
       "group": "campaigns",
       "tier_scope": ["solo"],
@@ -300,6 +389,14 @@
     },
     {
       "id": "campaigns.performance",
+      "intended_capability": {
+        "read": "Once a metrics source exists: real performance metrics with provenance.",
+        "draft": "Interpret performance and recommend actions.",
+        "auto": "None.",
+        "confirm": "Any performance-driven change routes to its owning surface's confirm gate.",
+        "prohibited": "Never infer or fabricate a metric — the surface exists to state what cannot be reported.",
+        "completion_criterion": "Real performance data drives a Paige-prepared, owner-approved action with a verified result — blocked today on the absent metrics source."
+      },
       "surface": "Campaigns -> Performance",
       "group": "campaigns",
       "tier_scope": ["solo"],
@@ -326,6 +423,14 @@
     },
     {
       "id": "campaigns.vibe-studio",
+      "intended_capability": {
+        "read": "The tenant's present-only brand tokens and prior creative memory.",
+        "draft": "Generate creative assets — images, pages, funnels, forms — end to end in one session (§19).",
+        "auto": "None for external publish.",
+        "confirm": "Shipping a generated asset to a live surface is confirmation-gated.",
+        "prohibited": "Never present a hoped-for artifact as delivered (§13); never bypass the visual-critique gate (§33).",
+        "completion_criterion": "A brief becomes a real, critiqued creative asset the tenant can ship — the §19/§26/§33 creative loop, not a placeholder."
+      },
       "surface": "Campaigns -> Vibe Studio (creative overlay)",
       "group": "campaigns",
       "tier_scope": ["solo"],
@@ -352,6 +457,14 @@
     },
     {
       "id": "clients.people",
+      "intended_capability": {
+        "read": "Safe relationship context — lifecycle, status, consent, portal-linked — enumerated, no PII to Mind.",
+        "draft": "Prepare contact updates and communications; maintain relationship context.",
+        "auto": "Within policy, apply a low-risk, non-client-facing field update (e.g. a tag or lifecycle stage) the tenant explicitly pre-approved — never a creation, an identity-field edit, or a send.",
+        "confirm": "Creating a contact, editing identity fields (name/email/phone), or any client-facing send is confirmation-gated; the owner's own UI writes must also emit Rail so history is complete.",
+        "prohibited": "Never expose names, emails, phones, or notes to Mind; act only within authority.",
+        "completion_criterion": "Paige maintains a contact and coordinates a governed follow-up whose outcome is recorded — with the owner's own edits also Rail-visible — not a read-only book."
+      },
       "surface": "Clients -> People (the contact book)",
       "group": "clients",
       "tier_scope": ["solo"],
@@ -378,6 +491,14 @@
     },
     {
       "id": "clients.conversations",
+      "intended_capability": {
+        "read": "Conversation status and metadata (never message bodies to Mind).",
+        "draft": "Prepare replies and follow-ups for the coach's approval.",
+        "auto": "None for outbound sends by default.",
+        "confirm": "Sending a message runs through the send-message governed gate.",
+        "prohibited": "Never surface raw transcript or message bodies to Mind; never auto-send without authority.",
+        "completion_criterion": "Paige drafts and, on approval, SENDS a governed reply whose delivery is verified and Rail-logged — not a passive inbox."
+      },
       "surface": "Clients -> Conversations (canonical inbox)",
       "group": "clients",
       "tier_scope": ["solo"],
@@ -404,6 +525,14 @@
     },
     {
       "id": "clients.calendar",
+      "intended_capability": {
+        "read": "Booking history and outcomes for a client (enumerated, with correct attribution).",
+        "draft": "Propose meeting times; prepare a booking/reschedule; coordinate scheduling.",
+        "auto": "Within policy, book/reschedule inside the tenant's availability rules.",
+        "confirm": "A client-facing booking change outside policy is confirmation-gated.",
+        "prohibited": "Never expose attendee PII or provider bodies; the untruthful actor attribution (#786) must be fixed before an actor fact is projected.",
+        "completion_criterion": "Paige books/reschedules a real meeting with truthful attribution and a verified Rail outcome — not just reading booking history."
+      },
       "surface": "Clients -> Calendar / Bookings",
       "group": "clients",
       "tier_scope": ["solo"],
@@ -430,6 +559,15 @@
     },
     {
       "id": "clients.portal",
+      "out_of_scope": true,
+      "intended_capability": {
+        "read": "Portal configuration and link state (safe).",
+        "draft": "Recommend portal setup and prepare portal content.",
+        "auto": "None in this program's scope.",
+        "confirm": "Sending portal access is Solo/Sub-account-gated and confirmation-gated.",
+        "prohibited": "Never expose private client portal material.",
+        "completion_criterion": "Owned by the Client-Experience workstream; here only the safe seam is recorded — not in this program's action scope."
+      },
       "surface": "Clients -> Portal (customer portal — separately owned product)",
       "group": "clients",
       "tier_scope": ["solo"],
@@ -456,6 +594,14 @@
     },
     {
       "id": "settings.setup",
+      "intended_capability": {
+        "read": "Business-field readiness — status and provenance, never raw values.",
+        "draft": "Recommend what business context to complete and prepare setup values from known data.",
+        "auto": "None — the owner authors setup.",
+        "confirm": "Writing setup values via chat is confirmation-gated; a save does not auto-become Memory.",
+        "prohibited": "Never expose raw website/phone/email/brand values or the sender address to Mind.",
+        "completion_criterion": "Paige reads readiness and helps the owner COMPLETE real business context (verified on save), and only reviewed facts cross to Mind — not just reporting what is missing."
+      },
       "surface": "Settings -> Setup (business context)",
       "group": "settings",
       "tier_scope": ["solo"],
@@ -482,6 +628,14 @@
     },
     {
       "id": "settings.team",
+      "intended_capability": {
+        "read": "The caller's own permission and legal-owner status, plus member/invitation posture from Team hydration.",
+        "draft": "Recommend role/access changes and prepare invitations.",
+        "auto": "None — role/access changes are never autonomous.",
+        "confirm": "Inviting a member or changing a role is confirmation-gated, and never escalates to a platform tier (§53).",
+        "prohibited": "Never expose member PII or tokens; never mint operator roles; member identity never crosses to Mind without an owner decision.",
+        "completion_criterion": "Paige prepares and, on owner confirmation, executes a real team change (invite/role) with a verified outcome — within authority, never escalating."
+      },
       "surface": "Settings -> Team / Roles & Access",
       "group": "settings",
       "tier_scope": ["solo"],
@@ -508,6 +662,14 @@
     },
     {
       "id": "settings.connections",
+      "intended_capability": {
+        "read": "Safe connection posture — has_connected_provider, send-capability with unknown!=false — never credentials.",
+        "draft": "Recommend which providers to connect and prepare the A2P/comms configuration.",
+        "auto": "None for credential or provider changes.",
+        "confirm": "Connecting a provider or changing comms routing is confirmation-gated.",
+        "prohibited": "Credentials, provider sync state, endpoints, and per-person provider state are permanently isolated (#788).",
+        "completion_criterion": "Paige guides and, on confirmation, completes a real provider/comms connection whose readiness the next check verifies — never touching a secret."
+      },
       "surface": "Settings -> Connections (calendar providers, A2P, comms)",
       "group": "settings",
       "tier_scope": ["solo"],
@@ -535,6 +697,14 @@
     },
     {
       "id": "settings.integrations",
+      "intended_capability": {
+        "read": "n8n/MCP connection readiness and workflow inventory (safe status, never the endpoint).",
+        "draft": "Design and model n8n workflows and automation rules; recommend integrations.",
+        "auto": "Within policy, run a read-only n8n management call the tenant pre-approved.",
+        "confirm": "Create/update/activate/deactivate/archive/run a workflow (external_effect, high) is confirmation-gated.",
+        "prohibited": "The connection endpoint and credentials are permanently isolated; never arm unattended sending in one step (#48).",
+        "completion_criterion": "Paige builds/activates a real n8n workflow through the governed write and its capability_run Rail row renders on the owner's Command Center — not just reporting connection status."
+      },
       "surface": "Settings -> Integrations (n8n, MCP, automations)",
       "group": "settings",
       "tier_scope": ["solo"],
@@ -561,6 +731,14 @@
     },
     {
       "id": "settings.vault",
+      "intended_capability": {
+        "read": "Approved, reviewed facts and obligations (metadata); library/contract/obligation posture.",
+        "draft": "Organize and summarize reviewed obligations; prepare fact reviews.",
+        "auto": "None over raw content.",
+        "confirm": "Promoting a reviewed, inspected fact into eligible Memory is confirmation-gated.",
+        "prohibited": "Raw secrets, credentials, payment details, and uninspected/quarantined uploads are permanently isolated — never Paige/Mind context, a download, an artifact, a task, or a Rail outcome.",
+        "completion_criterion": "Only OCR/DLP-inspected, reviewed facts become eligible knowledge Paige can use — raw documents never cross (Phase 2 quarantine now shipped; Phase 7 promotion is the target)."
+      },
       "surface": "Settings -> Vault",
       "group": "settings",
       "tier_scope": ["solo"],
@@ -588,6 +766,14 @@
     },
     {
       "id": "settings.billing",
+      "intended_capability": {
+        "read": "Safe billing STATUS — plan/renewal/trial/promotional state, notice posture — never secrets.",
+        "draft": "Explain billing state and recommend plan actions.",
+        "auto": "None — Paige is never merchant-of-record and never moves money autonomously (§38).",
+        "confirm": "A billing action (e.g. plan change) is owner-confirmed and executed within the §38 money boundary.",
+        "prohibited": "Payment-method and provider secrets are permanently isolated; never merchant-of-record for tenant->client money.",
+        "completion_criterion": "Paige surfaces true billing status and, on confirmation, drives a real billing action within the §38 boundary — only status crosses to Mind."
+      },
       "surface": "Settings -> Billing",
       "group": "settings",
       "tier_scope": ["solo"],
@@ -615,6 +801,14 @@
     },
     {
       "id": "settings.security-data",
+      "intended_capability": {
+        "read": "The current autonomy/data posture (describe only).",
+        "draft": "Recommend a posture and explain its implications.",
+        "auto": "None — autonomy authority is a non-Chat act (§67/§68).",
+        "confirm": "An autonomy/data-posture change is owner-only; a raise is super_admin-only and expiring.",
+        "prohibited": "Mind may describe posture but never become a path to changing it; sender/hostname/domain are isolated.",
+        "completion_criterion": "The posture controls perform the REAL governed change (or are plainly read-only) and govern Paige's actual actions — not a decorative panel."
+      },
       "surface": "Settings -> Security & data",
       "group": "settings",
       "tier_scope": ["solo"],
@@ -642,6 +836,14 @@
     },
     {
       "id": "analytics",
+      "intended_capability": {
+        "read": "Coverage, freshness, and counts with provenance (epoch-bound, enumerated).",
+        "draft": "Interpret analytics, recommend actions, and model scenarios.",
+        "auto": "None — aggregates drive recommendations, not autonomous acts.",
+        "confirm": "An analytics-driven change routes to its owning surface's confirm gate.",
+        "prohibited": "Never expose metric definitions/formulas/exclusion reasons or the source refs.",
+        "completion_criterion": "A real analytics finding drives a Paige-prepared, owner-approved action on the owning surface with a verified result — not a static dashboard (needs SCR-2 + SCR-3)."
+      },
       "surface": "Analytics",
       "group": "analytics",
       "tier_scope": ["solo"],
@@ -668,6 +870,14 @@
     },
     {
       "id": "marketplace",
+      "intended_capability": {
+        "read": "Safe install-state — installed, item type, pricing model — never publisher/scope claims.",
+        "draft": "Recommend skills/add-ons/blueprints to install and explain what an install would do.",
+        "auto": "None for installs or purchases.",
+        "confirm": "Installing or purchasing an add-on is confirmation-gated (a chosen customization, §2/§60/§61).",
+        "prohibited": "Never assert publisher, release identity, approved scope, or declared capabilities the source does not carry.",
+        "completion_criterion": "Paige recommends and, on confirmation, INSTALLS a marketplace item whose entitlement is verified — not just browsing a catalogue."
+      },
       "surface": "Marketplace",
       "group": "marketplace",
       "tier_scope": ["solo"],
@@ -694,6 +904,15 @@
     },
     {
       "id": "operator.platform",
+      "out_of_scope": true,
+      "intended_capability": {
+        "read": "Operator tier only: fleet/platform posture — tenant-less, operator-gated.",
+        "draft": "Operator-tier recommendations.",
+        "auto": "None in this Solo program.",
+        "confirm": "Operator actions are super_admin/platform_admin-gated (§53).",
+        "prohibited": "Never cross the platform/tenant seam; no subaccount/operator binding without explicit release.",
+        "completion_criterion": "Out of this Solo program's scope; recorded only so the seam is not bound to Solo work."
+      },
       "surface": "Operator / Platform console (intentionally separate)",
       "group": "operator",
       "tier_scope": ["operator"],

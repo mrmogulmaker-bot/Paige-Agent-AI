@@ -3870,3 +3870,66 @@ proof. Binary intake/inspection stays **UNAVAILABLE**. Signed-in owner/admin/mem
 drives, real quarantine/inspection bytes, and the Vercel runtime-log scan remain **PROOF OWED**.
 The deployment URL itself is protected and was not used as UI proof; the primary public aliases
 and commit-bound Vercel status are the non-authenticated production evidence.
+
+## 2026-09-06 — Surface Binding Ledger gains an Intended Operating Capability + Authority Lane dimension (owner ruling)
+
+**Durable decision.** The ledger must preserve strict truthfulness about what is proven today AND stop
+understating Paige's intended operating capability. Paige is built to help RUN the company through real
+governed actions, not report passively. So every surface now carries TWO dimensions: `state` (current
+proof — the six-state vocabulary, unchanged) and `intended_capability` (the product operating target).
+
+**Changed contract / what shipped** (branch restarted from merged `main` after PR #989; new PR):
+- `docs/binding-ledger/surface-binding-ledger.json` — all 26 surfaces gain `intended_capability` with
+  five authority lanes (`read` · `draft` · `auto` · `confirm` · `prohibited`) + a `completion_criterion`
+  (the real action/outcome that proves the surface done, never "open/summarize"). Lanes map to §16
+  🟢auto/🟡confirm/🔴off and §67 per-process grants. A top-level `authority_lanes` legend +
+  `intended_capability_note` state the current-state-vs-target distinction.
+- `scripts/ci/binding-ledger-lint.mjs` — now REQUIRES the block on every surface (all lanes +
+  completion_criterion) and FAILS a passive completion_criterion. Top-level `authority_lanes`/
+  `intended_capability_note` also required. (First cut: substring stems, 19 self-test cases — hardened
+  to word-boundary verbs + 26 cases in the addendum below after the §39 verifier round.)
+- README documents the two dimensions and the authority-lane table.
+
+**Rule.** An absent current proof (`state`) never shrinks the intended target (`intended_capability`).
+The ledger describes the GAP between present proof and the full operating goal.
+
+**Next owning workstream (owner directive).** Business Game Plan + Missions — the next runtime slice
+must demonstrate an ACTUAL governed Paige action (create/revise/sequence/advance a real Business Mission
+via `business_mission.*`, #983, already wired) with a verified outcome and Rail evidence, moving
+`command-center.business-game-plan` from PARTIAL toward LIVE — not a richer context handoff. Read
+`docs/binding-ledger/README.md` + `docs/doctrine/surface-context-handoff-contract.md` first.
+
+**Where recorded.** `docs/binding-ledger/` (JSON + README), `scripts/ci/binding-ledger-lint.mjs`,
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4, `docs/brain/README.md` (index row), and this entry.
+
+### Addendum (2026-09-06) — §39/§5 verifier round on the intended-capability PR
+
+**Guard hardened (verifier MAJOR "M1").** The first cut used an `ACTION_STEMS` *substring* allowlist,
+which laundered nouns — "open and summarize the connected records" passed via the stems
+`connect`/`record`. Replaced with: (1) a word-boundary `STRONG_VERB` list curated to VERB forms only —
+bare `records?` (plural noun) and `connect*` (adjective/noun) removed, `recorded|recording` kept — so
+the bypass now contains no real verb and fails outright; (2) `completionNamesRealAction()` allows a
+passive framing verb (open/view/list/summarize…) only when EXCUSED by clause-scoped negation
+("— not a static list", "not just browsing") or a precondition pattern (a passive verb followed by a
+real action verb, e.g. "owner opens Paige … and Paige acts"). Verified against the exact bypass string
++ all 24 in-scope criteria; self-test now 26 cases; real ledger clean.
+
+**Import side-effect fixed (minor "m3").** CLI execution is now guarded behind an `invokedDirectly()`
+entrypoint check, so `import { completionNamesRealAction }` is side-effect-free (no ledger run on import).
+
+**Two surfaces marked `out_of_scope: true`** (`clients.portal`, `operator.platform`) — their completion
+is legitimately out of this Solo program's scope (Client-Experience product; separate operator tree),
+so they are honestly exempt from the real-action bar rather than dressing a non-action up as one.
+
+**Copy sharpened.** `command-center.business-game-plan` read lane now names ongoing monitoring;
+`clients.people` auto vs confirm lanes disambiguated (auto = pre-approved low-risk non-client-facing
+field updates only; confirm = creation, identity-field edits, any client-facing send).
+
+**Kept as OWNER-INTENDED, not a defect (§67/§16 — do NOT re-flag, §58/§BRAIN.2).**
+`campaigns.social.auto` ("within policy, publish/schedule approved posts through a connected system")
+is the owner's explicit "(c) EXECUTE AUTONOMOUSLY within tenant-approved policy" lane, clamped by the
+§67 process grant + §68 decay + the confirm lane gating anything outside pre-approved policy. It is the
+intended operating target, not over-reach — a future verifier round must not down-rank it to confirm.
+
+**README** gains a "Completion target (real action)" column so the intended-target dimension is visible
+in the human-readable release contract, not only the JSON.
