@@ -10379,7 +10379,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // uses its canvas + studio_artifact_versions). Only on a genuine success with a filed
               // content_id. Best-effort: a failed anchor write never breaks the image the user got, but
               // it is LOGGED, never swallowed silently (§13/§32).
-              if (!canvasArtifact && payloadThreadId && (result as any)?.success === true
+              if (!studioSessionId && !canvasArtifact && payloadThreadId && (result as any)?.success === true
                   && artifactProduced("saved_id", (result as any)?.content_id)) {
                 const { error: anchorErr } = await supabaseClient.from("paige_chat_threads")
                   .update({ last_image_content_id: (result as any).content_id, last_image_anchor_at: new Date().toISOString() })

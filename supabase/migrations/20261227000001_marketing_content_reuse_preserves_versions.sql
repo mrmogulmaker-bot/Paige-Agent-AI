@@ -52,39 +52,45 @@ BEGIN
   END IF;
 
   IF p_id IS NOT NULL THEN
-    -- Read the CURRENT row (tenant-scoped) so we can preserve the prior image before overwriting it.
+    -- Read + LOCK the CURRENT row (tenant-scoped) so we can preserve the prior image before overwriting
+    -- it. FOR UPDATE serializes concurrent refines of the SAME row, so a double-submit cannot lose a
+    -- version to a read-modify-write race.
     SELECT image_url, image_path, size, meta INTO _cur
     FROM public.marketing_content
-    WHERE id = p_id AND tenant_id = _tenant;
+    WHERE id = p_id AND tenant_id = _tenant
+    FOR UPDATE;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'CONTENT_NOT_FOUND' USING ERRCODE = 'P0002';
     END IF;
 
-    -- p_meta (when supplied) still replaces the caller-facing meta; `versions` is server-managed on top.
+    -- p_meta (when supplied) still replaces the caller-facing meta, BUT `versions` is SERVER-OWNED: it
+    -- is ALWAYS re-asserted from the row's own history below, so a caller can neither forge it (a
+    -- caller-supplied meta.versions is ignored) nor wipe it (a non-image reuse with p_meta='{}' cannot
+    -- drop it) — the §70 "prior image is never silently lost" invariant holds on EVERY reuse path.
     _merged_meta := COALESCE(p_meta, _cur.meta, '{}'::jsonb);
+    _versions := _cur.meta -> 'versions';
+    IF _versions IS NULL OR jsonb_typeof(_versions) <> 'array' THEN
+      _versions := '[]'::jsonb;
+    END IF;
 
-    -- Version preservation: only when the image is actually being replaced with a different one.
+    -- Version preservation: when the image is actually being replaced with a different one, append the
+    -- OUTGOING (prior) image as the newest history entry (capped to the most-recent 20).
     IF _new_image IS NOT NULL AND _cur.image_url IS NOT NULL AND _new_image <> _cur.image_url THEN
-      _versions := _cur.meta -> 'versions';
-      IF _versions IS NULL OR jsonb_typeof(_versions) <> 'array' THEN
-        _versions := '[]'::jsonb;
-      END IF;
-      -- append the outgoing (prior) image as the newest history entry
       _versions := _versions || jsonb_build_array(jsonb_build_object(
         'image_url', _cur.image_url,
         'image_path', _cur.image_path,
         'size', _cur.size,
         'at', now()
       ));
-      -- cap to the most-recent 20 entries (drop the oldest), keeping ascending order
       IF jsonb_array_length(_versions) > 20 THEN
         SELECT COALESCE(jsonb_agg(v ORDER BY ord), '[]'::jsonb)
           INTO _versions
         FROM jsonb_array_elements(_versions) WITH ORDINALITY AS t(v, ord)
         WHERE ord > jsonb_array_length(_versions) - 20;
       END IF;
-      _merged_meta := jsonb_set(_merged_meta, '{versions}', _versions, true);
     END IF;
+    -- server-owned versions ALWAYS win over any caller-supplied meta.versions (forge/wipe-proof)
+    _merged_meta := jsonb_set(_merged_meta, '{versions}', _versions, true);
 
     UPDATE public.marketing_content SET
       title = COALESCE(NULLIF(btrim(p_title), ''), title),

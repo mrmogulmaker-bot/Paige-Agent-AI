@@ -1574,7 +1574,8 @@ anchor on `paige_chat_threads` (never a client/model-supplied id — the model's
 refine-intent echo, re-checked against the server anchor) drives a version-preserving reuse —
 `save_marketing_content` snapshots the prior image into `meta.versions[]` before the tenant-scoped overwrite,
 so prior images are never silently lost (§18 one-home / §58-safe: no new table, no touch to shipped
-`studio_artifact_versions`; §9 unchanged). Proven 9/9 on real Postgres 16 + 7/7 wiring guard.
+`studio_artifact_versions`; §9 unchanged; `meta.versions` is server-owned — un-wipeable/un-forgeable).
+Proven 10/10 on real Postgres 16 + 7/7 wiring guard; §39 verifier + §5 compliance folded (FK index, race lock).
 **Proof owed (§32.c):** the frontend version-history UI + authenticated end-to-end live-drive (headless).
 **Still in slice 1 — re-scoped to the DEDICATED Paige experience (owner decision 2026-09-06):**
 download/export action, image→campaign routing, the missing types (campaign_brief · HTML email_template ·

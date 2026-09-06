@@ -27,7 +27,16 @@ ALTER TABLE public.paige_chat_threads
     REFERENCES public.marketing_content(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS last_image_anchor_at timestamptz;
 
+-- Index the REFERENCING column: ON DELETE SET NULL makes Postgres scan paige_chat_threads (a
+-- high-traffic table) for every marketing_content delete — and deletes are reachable in prod
+-- (delete_marketing_content is authenticated-callable; tenant offboarding cascade-deletes images).
+-- Partial (only the few threads that carry an anchor) keeps the index tiny, so a plain build fits
+-- the `supabase db push` transaction.
+CREATE INDEX IF NOT EXISTS idx_paige_chat_threads_last_image_content_id
+  ON public.paige_chat_threads (last_image_content_id)
+  WHERE last_image_content_id IS NOT NULL;
+
 COMMENT ON COLUMN public.paige_chat_threads.last_image_content_id IS
-  'Task #15: server-owned in-place-image-refine anchor — the immediately-eligible Paige-created marketing_content image id for THIS (tenant, thread). Written by paige-ai-chat ONLY after a successful generate_image with a filed content_id; read (within a recency window) to reuse the row on a refine turn. NEVER a client/model-supplied id. RLS-scoped via the thread row. ON DELETE SET NULL auto-clears a deleted image.';
+  'Task #15: in-place-image-refine anchor — the immediately-eligible Paige-created marketing_content image id for THIS (tenant, thread). paige-ai-chat WRITES it only after a successful generate_image with a filed content_id (server-writer convention, defense-in-depth). The ENFORCED safety fence is NOT this column (RLS is row-level, so a thread owner can set it) but the reuse itself: save_marketing_content reuses `WHERE id=p_id AND tenant_id=_tenant`, so a forged foreign-tenant id → CONTENT_NOT_FOUND → fresh insert (no cross-tenant read/write); a forged own-tenant id only redirects onto a row the admin/coach may already edit, and the prior image is snapshotted. ON DELETE SET NULL auto-clears a deleted image.';
 COMMENT ON COLUMN public.paige_chat_threads.last_image_anchor_at IS
   'Task #15: when last_image_content_id was set — bounds refine eligibility to a recency window (expiry clear).';

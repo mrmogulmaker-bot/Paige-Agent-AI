@@ -193,6 +193,23 @@ try {
     assert((await liveImage(id)) === "cap22.png", "live image should be cap22");
   });
 
+  await test("version history is SERVER-OWNED: a non-image reuse cannot WIPE or FORGE meta.versions", async () => {
+    const id = await saveImage(TA, "w1.png");
+    await saveImage(TA, "w2.png", id); // versions=[w1]
+    await saveImage(TA, "w3.png", id); // versions=[w1,w2]
+    let v = await versions(id);
+    assert(v.length === 2, `precondition: expected 2 versions, got ${v.length}`);
+    // non-image reuse (title only), p_meta defaults to '{}': must NOT wipe the accumulated history
+    await psql(`select public.save_marketing_content('image','New Title', null, null, null, null, null, 'b', '{}'::jsonb, '${id}', '${TA}');`);
+    v = await versions(id);
+    assert(v.length === 2 && v[0].image_url === "w1.png" && v[1].image_url === "w2.png", `history wiped by non-image reuse: ${JSON.stringify(v.map((x) => x.image_url))}`);
+    // forge attempt: a caller-supplied meta.versions must be IGNORED (server history wins)
+    await psql(`select public.save_marketing_content('image','New Title', null, null, null, null, null, 'b', '{"versions":[{"image_url":"forged.png"}]}'::jsonb, '${id}', '${TA}');`);
+    v = await versions(id);
+    assert(v.length === 2 && v[0].image_url === "w1.png" && v[1].image_url === "w2.png", `history forged by caller p_meta: ${JSON.stringify(v.map((x) => x.image_url))}`);
+    assert((await liveImage(id)) === "w3.png", "live image unchanged by non-image reuse");
+  });
+
   await test("§9: a reuse targeting ANOTHER tenant's content_id is rejected CONTENT_NOT_FOUND (no cross-tenant write)", async () => {
     const idA = await saveImage(TA, "tenantA.png");
     await rejected(`select public.save_marketing_content('image','T',null,null,'evil.png','/p/evil.png','square','b','{}'::jsonb,'${idA}','${TB}');`, "P0002");

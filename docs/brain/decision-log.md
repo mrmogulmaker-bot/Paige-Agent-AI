@@ -18,12 +18,21 @@
   `WHERE id=p_id AND tenant_id=_tenant`; cross-tenant id → CONTENT_NOT_FOUND → fresh insert under caller's tenant).
   §37: Studio canvas clamp + §33 critique-loop byte-unchanged (additive). Also folded the two deferred stale
   `FloatingChatbot` comments (paige-ai-chat, `_shared/client-context.ts`) since this PR redeploys paige-ai-chat.
-  **PROOF:** `scripts/marketing-content-refine-db-proof.mjs` 9/9 on real Postgres 16 (snapshot-on-change, no
+  **PROOF:** `scripts/marketing-content-refine-db-proof.mjs` 10/10 on real Postgres 16 (snapshot-on-change,
+  server-owned versions un-wipeable/un-forgeable, no
   spurious versions on idempotent/text reuse, cap 20, §9 CONTENT_NOT_FOUND, FK auto-clear); wiring+safety guard
   `src/__tests__/dedicated-chat-image-refine-anchor.test.ts` 7/7; edge fn transpiles clean. **PROOF OWED (§32.c):**
   the frontend version-history UI + the authenticated live-drive of an end-to-end dedicated-chat refine (headless
   session cannot render/drive it). Earlier grounding (superseded here): the §9-question decision-log line for this
   item is RESOLVED — the tenant-ownership check exists; and the reuse anchor is server-owned, not model-supplied.
+  **REVIEW-FOLD (§39 verifier + §5 compliance, PR #992):** added a partial index on the FK column (an unindexed
+  FK → seq-scan of the high-traffic threads table on every `marketing_content` delete); made `meta.versions`
+  UNCONDITIONALLY server-owned so a non-image reuse can neither wipe nor forge history (MAJOR — the invariant
+  was false on the non-replace path); `FOR UPDATE` on the reuse read (double-submit race); tightened the
+  anchor-advance to `!studioSessionId`; corrected the anchor-column comment (the reuse tenant-scope, not the
+  browser-writable column, is the enforced §9 fence — confirmed not cross-tenant-exploitable); added the §66
+  tier-matrix Surface-ledger row. §5 flagged the 30-min recency window as a user-observable knob (kept 30 min;
+  surfaced to owner, not blocking).
 
 - **ARCHITECTURE: floating Paige chat is RETIRED from the authenticated platform (owner decision 2026-09-06)** —
   there must be NO floating Paige chat anywhere inside the authenticated platform (no Solo route, Command
