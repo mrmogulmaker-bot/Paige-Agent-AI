@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { VaultView } from "./vault";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { useSoloComms } from "./data/useSoloComms";
 import {
@@ -1633,8 +1634,6 @@ function RegistrationPanel({ a2p, provider, account, status, statusLoading }: {
 
 function SecurityView() { return <div className="ss-grid"><Card title="Account security" icon={ShieldCheck} truth="PARTIAL"><p>Authentication and workspace access remain protected by existing account security controls.</p></Card><Card title="Privacy & data" icon={FileLock2} truth="PARTIAL"><p>Data controls must follow Trust Compass authority and proven retention/export contracts. Unsupported controls remain unavailable.</p></Card><Card title="Credential storage" icon={KeyRound} truth="UNAVAILABLE"><p>Vault is not a password manager. Raw passwords and secrets must not enter Vault records, PAIGE memory, or conversation content. Use proven OAuth/provider flows or an external password manager.</p></Card></div>; }
 
-function VaultView() { return <div className="ss-grid"><Card title="Outside relationships & obligations" icon={FileLock2} truth="PROPOSED"><div className="ss-tags">{["Insurance","Lease / rent","Utilities","Vendors","Registrations","Licenses","Annual filings","Tax & compliance"].map(x=><span key={x}>{x}</span>)}</div><p className="ss-note">Structured records, evidence, responsible contacts, renewals, and due dates require a separately approved backend contract.</p></Card><Card title="PAIGE-assisted intake" icon={CalendarClock} truth="PROPOSED"><p>PAIGE may eventually ingest, classify, draft, and store supported information under permission and Trust Compass rules. No upload or memory claim is active here.</p></Card><Card title="Passwords & secrets" icon={KeyRound} truth="UNAVAILABLE"><p>Ordinary Vault fields and documents never accept raw credentials. Secure credential storage is unavailable without a dedicated encrypted contract.</p></Card></div>; }
-
 export function SoloSettings(props: { openPaige?: () => void } = {}) {
   return <SettingsRouteBoundary><SoloSettingsContent {...props}/></SettingsRouteBoundary>;
 }
@@ -1771,9 +1770,9 @@ function SoloSettingsContent({ openPaige }: { openPaige?: () => void }) {
     resetSettingsScroll();
   }, [tab, segment, resetSettingsScroll]);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
-  const view = tab === "team" ? <TeamView openPaige={openPaige}/> : tab === "connections" ? <ConnectionsView initialSegment={segment} onSegmentChange={resetSettingsScroll}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <SoloBillingView/> : <SoloBusinessContextSetup account={account}/>;
-  return <div ref={rootRef} className="solo-settings">
-    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "setup" ? "The owner-confirmed business truth Paige may use to understand and support this workspace." : current.key === "connections" ? "Operating channels, availability, registration, and verified health for this workspace." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div>{current.key !== "connections" && <Truth value={current.truth}/>}</header>
+  const view = tab === "team" ? <TeamView openPaige={openPaige}/> : tab === "connections" ? <ConnectionsView initialSegment={segment} onSegmentChange={resetSettingsScroll}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView openPaige={openPaige}/> : tab === "billing" ? <SoloBillingView/> : <SoloBusinessContextSetup account={account}/>;
+  return <div ref={rootRef} className={`solo-settings${tab === "vault" ? " solo-settings--vault" : ""}`}>
+    {tab !== "vault" && <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "setup" ? "The owner-confirmed business truth Paige may use to understand and support this workspace." : current.key === "connections" ? "Operating channels, availability, registration, and verified health for this workspace." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div>{current.key !== "connections" && <Truth value={current.truth}/>}</header>}
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}
     {current.key === "setup" && <SettingsMoveNotice key={account}/>}
     <div className="ss-content" data-settings-tab={tab} data-tab-count={tabs.length}>{view}</div>

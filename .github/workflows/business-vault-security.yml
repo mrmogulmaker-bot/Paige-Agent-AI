@@ -1,0 +1,61 @@
+name: Business Vault security
+
+on:
+  pull_request:
+    paths:
+      - "src/solo/vault/**"
+      - "src/solo/vault.tsx"
+      - "supabase/functions/business-vault-*/**"
+      - "supabase/migrations/*business_vault*"
+      - "supabase/tests/business_vault_phase2_security.sql"
+      - "scripts/proof/business-vault-*"
+      - ".github/workflows/business-vault-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actor-rls-and-concurrency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: business_vault_test
+          POSTGRES_PASSWORD: vault_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d business_vault_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: vault_test_only
+      PGDATABASE: business_vault_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Replay schema and actor assertions
+        run: |
+          set -euo pipefail
+          for file in \
+            scripts/proof/business-vault-local-bootstrap.sql \
+            supabase/migrations/20261225013700_business_vault_phase2_foundation.sql \
+            supabase/migrations/20261225013800_business_vault_phase2_writes.sql \
+            supabase/migrations/20261225013900_business_vault_phase2_security_repairs.sql \
+            supabase/migrations/20261225014000_business_vault_quarantine_inspection.sql \
+            scripts/proof/business-vault-local-pgtap-shim.sql \
+            supabase/tests/business_vault_phase2_security.sql
+          do
+            psql -X -v ON_ERROR_STOP=1 -f "$file"
+          done
+      - name: Prove duplicate quarantine serialization
+        run: node scripts/proof/business-vault-concurrency-proof.mjs "$(command -v psql)" 5432 postgres business_vault_test
