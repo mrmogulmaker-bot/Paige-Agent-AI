@@ -76,6 +76,10 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
         { type: "pull-quote", quote: "This changed our business", attribution: "A client" },
         { type: "stat", value: "3x", label: "pipeline growth" },
         { type: "pricing-table", caption: "Investment", rows: [{ item: "Retainer", amount: "$2,500/mo" }], total: "$30,000/yr" },
+        { type: "list", style: "checklist", items: ["Sign contract", "Kickoff call"] },
+        { type: "worksheet-field", field: "lines", label: "Your top goal", lines: 2 },
+        { type: "worksheet-field", field: "scale", label: "Confidence", scaleMin: 1, scaleMax: 5, minLabel: "Low", maxLabel: "High" },
+        { type: "worksheet-field", field: "checkbox", label: "I agree to the terms" },
         { type: "cta", headline: "Ready to start?", action: "Approve & start" },
       ],
     });
@@ -94,6 +98,20 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(md).toContain("$2,500/mo");                   // pricing-table amount
     expect(md).toContain("Total: $30,000/yr");           // pricing-table total
     expect(md).toContain("Approve & start");             // cta action
+    // Codex P2 — the cover's title equals the outer doc title, so it must render ONCE (as the H1), never
+    // twice. Assert exactly one `# Growth Proposal` and NO `## Growth Proposal` duplicate heading.
+    expect((md.match(/^# Growth Proposal$/gm) || []).length).toBe(1);
+    expect(md).not.toContain("## Growth Proposal");
+    // Codex P2 — a `checklist` list keeps its checkbox job in the export (empty ballot box, not a bullet).
+    expect(md).toContain("☐ Sign contract");
+    // Codex P1 — a worksheet-field is a REAL printable blank: the prompt AND a place to write/rate/check.
+    expect(md).toContain("Your top goal");               // lines field: prompt
+    expect(md).toMatch(/_{10,}/);                        // lines field: an actual ruled write-line
+    expect(md).toContain("Confidence");                  // scale field: prompt
+    expect(md).toContain("1 — 2 — 3 — 4 — 5");           // scale field: the numbered rating
+    expect(md).toContain("Low");                         // scale field: min anchor
+    expect(md).toContain("High");                        // scale field: max anchor
+    expect(md).toContain("I agree to the terms");        // checkbox field: prompt
   });
 
   it("never throws and still produces a file for empty content (title-only)", async () => {

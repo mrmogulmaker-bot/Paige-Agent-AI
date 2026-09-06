@@ -77,6 +77,20 @@
   false-green: the test asserted H2, the output was H3. Fixed: `section-header` → level 1 (renders a real
   `## ` H2, matching a generic heading-level-1 and the cover/chapter top level), and the test tightened to
   a line-anchored `/^## Scope$/m` so it can never again pass on `### Scope`. doc-export 10/10, tsc 0.
+  **FIFTH catch — Codex re-review of the head, THREE more §70 fidelity losses in the freshly-added
+  `coerceBlockArray` mappings, all FOLDED:** (P1) a `worksheet-field` exported only its label, dropping
+  `field`/`helper`/`lines`/`scaleMin`/`scaleMax`/`minLabel`/`maxLabel` — a printable blank with nowhere
+  to write/rate/check/sign; now emits the prompt + helper + the real fill affordance per `field` kind
+  (ruled lines clamped 1–12, an open-box area, a numbered rating scale with anchors, or a checkbox).
+  (P2) a `style:"checklist"` list flattened to ordinary bullets — now each item carries an empty ballot
+  box `☐` so every serializer shows an unchecked box (no GFM-task-list dependency). (P2) the `cover`
+  block's title duplicated the outer doc title (the renderer always prints the doc title as H1, and
+  export-document passes the row title as both) — the cover title is now emitted only when it DIFFERS
+  from the outer title (threaded `docTitle` through `coerceBlockArray`). The lesson under all three: a
+  normalizer that flattens a rich block vocabulary must preserve each type's JOB (a checklist's checkbox,
+  a worksheet's blank), not just its text — dropping the affordance is a §70 loss that still returns
+  success. Regression test extended to drive checklist + all worksheet-field kinds + assert no title
+  dup. Re-verified: doc-export 10/10, tsc ratchet 13/13 (no new errors), §50/§63 clean.
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace

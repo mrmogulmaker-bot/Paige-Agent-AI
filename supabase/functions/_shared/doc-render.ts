@@ -101,14 +101,16 @@ function normalizeBlocks(content: unknown, title?: string): Block[] {
   // {blocks:[...]} / {content:[...]} wrappers → unwrap to the inner array/string.
   if (content && typeof content === "object" && !Array.isArray(content)) {
     const c = content as Record<string, unknown>;
-    if (Array.isArray(c.blocks)) return coerceBlockArray(c.blocks);
-    if (Array.isArray(c.content)) return coerceBlockArray(c.content);
+    // Prefer the wrapper's own title when the caller passed none, so a cover block can dedupe against it.
+    const innerTitle = title ?? (typeof c.title === "string" ? c.title : undefined);
+    if (Array.isArray(c.blocks)) return coerceBlockArray(c.blocks, innerTitle);
+    if (Array.isArray(c.content)) return coerceBlockArray(c.content, innerTitle);
     if (typeof c.markdown === "string") return parseMarkdown(c.markdown);
     if (typeof c.text === "string") return parseMarkdown(c.text);
     // Some unknown object — stringify so we still produce a real (if plain) document.
     try { return parseMarkdown(JSON.stringify(content, null, 2)); } catch { return []; }
   }
-  if (Array.isArray(content)) return coerceBlockArray(content);
+  if (Array.isArray(content)) return coerceBlockArray(content, title);
   if (typeof content === "string") return parseMarkdown(content);
   if (content == null) return title ? [] : [{ type: "paragraph", text: "" }];
   return parseMarkdown(String(content));
@@ -121,7 +123,7 @@ function asText(v: unknown): string {
   try { return JSON.stringify(v); } catch { return String(v); }
 }
 
-function coerceBlockArray(arr: unknown[]): Block[] {
+function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
   const out: Block[] = [];
   for (const raw of arr) {
     if (typeof raw === "string") { out.push({ type: "paragraph", text: raw }); continue; }
@@ -139,8 +141,13 @@ function coerceBlockArray(arr: unknown[]): Block[] {
     }
     if (t === "list" || t === "bullets" || t === "ul" || t === "ol") {
       const itemsRaw = Array.isArray(b.items) ? b.items : Array.isArray(b.content) ? b.content : [];
-      const items = itemsRaw.map(asText).filter((s) => s.length > 0);
-      out.push({ type: "list", items, ordered: t === "ol" || b.ordered === true || b.style === "numbered" });
+      // A `checklist`-styled list is a real checkbox list on canvas; a flat export must keep that job
+      // (Codex P2 — dropping the style rendered checkboxes as ordinary bullets). Prefix each item with an
+      // empty ballot box (U+2610) so every serializer (md/docx/pptx/pdf) shows an unchecked box, no
+      // GFM-task-list support required; a checklist is never ordered.
+      const isChecklist = b.style === "checklist";
+      const items = itemsRaw.map(asText).filter((s) => s.length > 0).map((s) => (isChecklist ? `☐ ${s}` : s));
+      out.push({ type: "list", items, ordered: !isChecklist && (t === "ol" || b.ordered === true || b.style === "numbered") });
       continue;
     }
     // ── document_generate's RICH block schema (the on-canvas document contract: cover · section-header ·
@@ -156,7 +163,14 @@ function coerceBlockArray(arr: unknown[]): Block[] {
     };
     if (t === "cover") {
       push(asText(b.eyebrow));
-      push(asText(b.title ?? b.text), "heading", 1);
+      // The renderer ALWAYS prints the document's outer title as the H1; the cover's title is normally
+      // that same string (export-document passes the row title as both), so emitting it again renders the
+      // title twice (Codex P2). Emit the cover title only when it DIFFERS from the outer title — or when
+      // there is no outer title, so a bare content array with a cover still gets its H1.
+      const coverTitle = asText(b.title ?? b.text).trim();
+      if (coverTitle && coverTitle.toLowerCase() !== (docTitle ?? "").trim().toLowerCase()) {
+        push(coverTitle, "heading", 1);
+      }
       push(asText(b.subhead));
       continue;
     }
@@ -181,7 +195,33 @@ function coerceBlockArray(arr: unknown[]): Block[] {
       continue;
     }
     if (t === "stat") { push([asText(b.value), asText(b.label)].map((s) => s.trim()).filter(Boolean).join(" — ")); continue; }
-    if (t === "worksheet-field") { push(asText(b.label)); continue; }
+    if (t === "worksheet-field") {
+      // A worksheet-field is a REAL printable blank (§319) — the label alone gives a prompt with nowhere
+      // to write/rate/check/sign (Codex P1). Emit the prompt + helper, then the fill affordance for the
+      // field kind: ruled write-lines, an open box (a few lines), a numbered rating scale, or a checkbox.
+      const RULE = "________________________________________"; // a write-on line, visible in every format
+      push(asText(b.label));
+      push(asText(b.helper));
+      const kind = typeof b.field === "string" ? b.field.toLowerCase() : "lines";
+      if (kind === "scale") {
+        const min = Number.isFinite(b.scaleMin as number) ? Math.round(b.scaleMin as number) : 1;
+        const max = Number.isFinite(b.scaleMax as number) ? Math.round(b.scaleMax as number) : 5;
+        const nums: string[] = [];
+        for (let i = min; i <= max && nums.length < 20; i++) nums.push(String(i));
+        const minL = asText(b.minLabel).trim();
+        const maxL = asText(b.maxLabel).trim();
+        push([minL, nums.join(" — "), maxL].filter((s) => s.length > 0).join("   "));
+      } else if (kind === "checkbox") {
+        push(`☐ ${RULE}`);
+      } else if (kind === "box") {
+        for (let i = 0; i < 4; i++) push(RULE); // an open box → a small area of write-lines in a flat export
+      } else {
+        // "line" | "lines" (default): 1 line, or `lines` clamped 1–12 (default 3)
+        const n = kind === "line" ? 1 : clampLines(b.lines);
+        for (let i = 0; i < n; i++) push(RULE);
+      }
+      continue;
+    }
     if (t === "cta") { push([asText(b.headline), asText(b.action)].map((s) => s.trim()).filter(Boolean).join(" — ")); continue; }
     if (t === "pricing-table") {
       const caption = asText(b.caption).trim();
@@ -208,6 +248,13 @@ function coerceBlockArray(arr: unknown[]): Block[] {
 function clampLevel(n: number): number {
   if (!Number.isFinite(n) || n < 1) return 1;
   return n > 3 ? 3 : Math.floor(n);
+}
+
+// A worksheet-field's ruled-line count: clamp to 1–12, default 3 (mirrors the StudioDocBlock contract).
+function clampLines(n: unknown): number {
+  const v = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(v) || v < 1) return 3;
+  return v > 12 ? 12 : Math.floor(v);
 }
 
 // Minimal, dependency-free markdown/plain parser. Handles: ATX headings (#/##/###), unordered
