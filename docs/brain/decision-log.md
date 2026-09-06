@@ -3390,3 +3390,33 @@ prior one used the full window, so 439px was never tested) and caught the pulse 
 overflow, now fixed. The §39 peer-gate caught a BLOCKING `money(0)`→"Free" defect the render proof
 missed (pure-recurring retainer read "Free"), fixed with an em-dash guard + tests; the §58 read-only
 terms guidance the redesign had dropped was restored. Authenticated live-drive OWED (§32.c). PR: https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/985
+
+## 2026-09-06 · Sales Command Desk → MVP release (responsive fold + container queries + merge)
+
+Owner switched this workstream to MVP delivery mode (design + intended function approved) and
+authorized the release path autonomously; the earlier "final release gate / do-not-merge" hold is
+lifted for this PR. No conflict with recorded decisions: Solo-scoped; no sub-account delivery added;
+no floating authenticated chat; Command Mark untouched; the terms/payment writes use the pre-shipped
+governed seams (declare_client_payment_handling, saveAgreement) — no new governed action, no Rail/
+Mind/Memory wiring, and the Scenario Lab writes nothing.
+
+Responsive decision (owner delegated it): the desk now reflows on the CONTENT COLUMN via a container
+query keyed to `.so-view` (was viewport `@media`, which never reflowed a PAIGE-docked narrow column).
+The Commercial Readiness Ladder — the secondary reference section — collapses to a disclosure by
+DEFAULT at a narrow column (<620px, i.e. PAIGE expanded) and shows in full at a wide column, keeping
+the Commercial Pulse, Top Moves, Open Work and primary actions above the fold. Proof: drive:sales-ops
+524/524, horizontal overflow 0 at all 48 states; command-view vertical scroll dropped materially at
+narrow columns (439: +1469→+862, 521: +1272→+683, 797: +902→+466).
+
+Proof status:
+- LIVE (after merge + prod deploy confirm): the four-view Sales Command Desk on Solo Campaigns → Sales.
+- PARTIAL: Contracted = active one-time terms + recurring shown monthly; deal↔term not linked.
+- UNAVAILABLE (by design, no backend): Actual received (no connected payment source), Contract-pending
+  (no Vault/contract store), scenario/mission persistence.
+- PROOF OWED (§32.c): authenticated production runtime — no auth browser from this headless session;
+  owner/Cowork live-drive checklist is in PR #985.
+
+Next owning workstream: a future "Solo Sales Release 2 (Client Agreements / Actual-received)" must read
+this entry + the tier-matrix "Sales Command Desk redesign" ledger + the truth boundary FIRST, and must
+not present Actual received or contract linkage as live until a real payment/contract backend exists.
+PR: https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/985

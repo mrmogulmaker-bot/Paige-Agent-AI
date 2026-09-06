@@ -1190,6 +1190,13 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
             </div>
 
             <div className="so-2col">
+              {/* The readiness ladder is a reference OVERVIEW — the secondary section. At a wide column
+                * it is the full desk; at a narrow (PAIGE-expanded) column it collapses to a disclosure
+                * by default so the pulse, next moves, open work and primary actions stay above the fold.
+                * Wide vs narrow is decided by the .so-view container width, not the window, so the
+                * default state is right whether or not PAIGE is docked. */}
+              <details className="so-fold so-ladder-fold">
+              <summary className="so-ladder-toggle">Commercial Readiness Ladder <span className="so-quiet">— show stages</span></summary>
               <section className="so-band so-ladder-band">
                 <div className="so-band-head"><h3>Commercial Readiness Ladder</h3><small>Every state shows a real record or an honest gap — drawn from pipeline, recorded terms and payment handling. Deals and terms aren’t linked yet, so this is a readiness overview, not one deal’s journey.</small></div>
                 <div className="so-ladder">
@@ -1223,6 +1230,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
                   ))}
                 </div>
               </section>
+              </details>
 
               <div className="so-cmd-side">
                 <section className="so-band">

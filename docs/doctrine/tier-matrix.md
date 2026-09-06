@@ -3599,6 +3599,18 @@ contract test (§58/§36 — a reader who cannot write is told who may, never a 
 - *UNVERIFIED — authenticated runtime (§32.c):* OWED to a browser-capable session against live prod;
   the local render proof stubs the network reads. See the PR's live-drive checklist.
 
+**Round 2 (MVP, 2026-09-06) — responsive refinement + container queries, owner-delegated.** The owner
+moved this workstream to MVP mode and delegated the responsive call. The desk now reflows on the
+CONTENT COLUMN via a container query keyed to `.so-view` (it was viewport `@media`, which never
+reflowed a PAIGE-docked narrow column — a latent cramping the viewport-width render harness could not
+surface). The Commercial Readiness Ladder (the secondary reference section) collapses to a disclosure
+by DEFAULT at a narrow column (<620px = PAIGE expanded) and shows in full at a wide column, keeping the
+Commercial Pulse, Top Moves, Open Work and primary actions above the fold. Re-proof: `drive:sales-ops`
+524/524, horizontal overflow 0 at all 48 states; command-view vertical scroll fell materially at narrow
+columns (439 +1469→+862, 521 +1272→+683, 797 +902→+466). Scenarios remains a focused single-purpose
+form (its length is inherent; reported, not collapsed). Merged to `main` under MVP cadence; the
+authenticated live-drive (§32.c) stays OWNER-OWED.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

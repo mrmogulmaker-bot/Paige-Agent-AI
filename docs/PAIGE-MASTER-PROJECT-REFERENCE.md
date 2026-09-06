@@ -201,7 +201,11 @@ PR #909 merged as 49b9f338. Frontend production deployment is READY on paigeagen
 
 ### Solo Sales Ops — a Solo owner can record what one client agreed to (2026-09-03)
 
-**Redesign in flight (2026-09-06, DRAFT PR under the owner's final release gate — not merged).** The
+**Redesign shipping under MVP mode (2026-09-06).** The owner lifted the final release gate to MVP
+cadence (design + intended function approved) and authorized the release path; PR #985 is being merged
+to `main` and is LIVE on prod once the merge deploy completes. Authenticated live-drive stays
+owner-owed (§32.c). Full record: `docs/brain/decision-log.md` (2026-09-06 MVP-close entry) +
+`docs/doctrine/tier-matrix.md` "Sales Command Desk redesign". The original build (below) read: The
 Sales subtab is being rebuilt into an evidence-aware **Sales Command Desk**: four internal views via a
 Sales-local `?view=` param — Sales Command (Commercial Pulse · 6-stage Commercial Readiness Ladder ·
 Top Commercial Moves · Open Commercial Work), Commercial Terms, Revenue & Collections, and a Sales

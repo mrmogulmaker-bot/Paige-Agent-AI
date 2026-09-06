@@ -323,7 +323,7 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 
 /* ── narrow ─────────────────────────────────────────────────────────────────────────────────── */
 
-@media (max-width: 720px) {
+@container sodesk (max-width: 720px) {
   .so-ready-row { grid-template-columns: auto minmax(0, 1fr); }
   .so-ready-act { grid-column: 1 / -1; justify-content: flex-start; }
   .so-tr, .so-tr-4 { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
@@ -420,7 +420,7 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so-activity summary:focus-visible,.so-form-activity summary:focus-visible { outline:2px solid var(--violet); outline-offset:3px; }
 .so-form-activity { margin:0 16px 16px; padding:14px 16px; animation:none; }
 .so-form-activity .so-absent { margin:8px 0; }
-@media (max-width:1100px) { .so .so-band { padding:12px; } .so-workbench-head h2 { font-size:20px; } .so-filters { grid-template-columns:minmax(0,1fr) 130px; } }
+@container sodesk (max-width:1100px) { .so .so-band { padding:12px; } .so-workbench-head h2 { font-size:20px; } .so-filters { grid-template-columns:minmax(0,1fr) 130px; } }
 @media (prefers-reduced-motion:reduce) { .so *, .so-editor * { animation:none!important; transition:none!important; } }
 /* White action text keeps AA contrast with both theme variants of violet. */
 .paige-solo[data-theme] .so .btn-p,.paige-solo[data-theme] .so-editor .btn-p { background:color-mix(in srgb,var(--violet) 80%,#000); border-color:color-mix(in srgb,var(--violet) 80%,#000); color:#fff; }
@@ -444,7 +444,11 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so .so-subnav button:hover { color:var(--ink-2); }
 .so .so-subnav button[aria-selected="true"] { background:var(--surface); color:var(--ink); box-shadow:var(--sh-1); }
 .so .so-subnav button:focus-visible { outline:2px solid var(--violet); outline-offset:2px; }
-.so .so-view { min-width:0; }
+.so /* The desk reflows on the CONTENT COLUMN, not the window. In the Solo shell PAIGE docks as a sibling
+ * column, so a 1366 window can give this surface only a 439px column; the responsive rules below are
+ * @container queries keyed to `.so-view` (its width IS the column) so they fire on the real column at
+ * any window. `.so-view` excludes the fixed-position editors, which stay viewport-anchored. */
+.so-view { min-width:0; container-type:inline-size; container-name:sodesk; }
 
 /* ── Sales Command ─────────────────────────────────────────────────────────────────────────── */
 .so-cmd { display:flex; flex-direction:column; gap:12px; min-width:0; }
@@ -494,15 +498,33 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 /* two-column desk body */
 .so-2col { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); gap:12px; align-items:start; min-width:0; }
 .so-2col > * { min-width:0; }
-@media(max-width:1080px){ .so-2col { grid-template-columns:minmax(0,1fr); } }
+@container sodesk (max-width:1080px){ .so-2col { grid-template-columns:minmax(0,1fr); } }
 
 /* Commercial Readiness Ladder — wraps rather than horizontally scrolling (no nested scroll). The
  * stage NUMBER carries the sequence, so wrapping to 3×2 / 2×3 never loses the progression. */
 .so-ladder-band { padding:14px 16px; }
 .so-ladder { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:1px; margin-top:10px;
   background:var(--line-soft); border:1px solid var(--line); border-radius:var(--r-s); overflow:hidden; }
-@media(max-width:1180px){ .so-ladder { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-@media(max-width:680px){ .so-ladder { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@container sodesk (max-width:1180px){ .so-ladder { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@container sodesk (max-width:680px){ .so-ladder { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+/* The readiness ladder is the secondary/reference section. At a WIDE column it is the full desk with
+ * no disclosure chrome (the toggle is hidden and the band is forced visible, overriding the UA rule
+ * that hides a closed <details>'s body). At a NARROW column (PAIGE expanded) the native <details>
+ * takes over: the toggle shows and the band collapses by DEFAULT, keeping the pulse, next moves,
+ * open work and primary actions above the fold. Keyed to the .so-view container, so it is right
+ * whether the window is wide or PAIGE is docked. */
+.so-ladder-fold { border:none; background:none; padding:0; margin-bottom:10px; }
+.so-ladder-fold > summary { display:none; }
+.so-ladder-fold > .so-ladder-band { display:block; margin-bottom:0; }
+.so-ladder-toggle { list-style:none; }
+.so-ladder-toggle::-webkit-details-marker { display:none; }
+@container sodesk (max-width:619px) {
+  .so-ladder-fold { border:1px solid var(--violet-line); border-radius:var(--r-m); background:var(--surface); padding:2px 12px; box-shadow:var(--sh-1); }
+  .so-ladder-fold > summary { display:flex; align-items:center; gap:6px; }
+  .so-ladder-fold:not([open]) > .so-ladder-band { display:none; }
+  .so-ladder-fold[open] > .so-ladder-band { border:none; background:none; box-shadow:none; padding:0 0 6px; }
+}
 .so-lad-col { background:var(--surface); display:flex; flex-direction:column; min-height:118px; min-width:0; }
 .so-lad-hd { position:relative; padding:9px 10px 8px; border-bottom:1px solid var(--line-soft); }
 .so-lad-n { display:inline-grid; place-items:center; width:18px; height:18px; border-radius:50%;
@@ -561,7 +583,7 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so-owt-off { font-size:11.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .so-owt-go { color:var(--ink-3); justify-self:end; }
 .so-owt-row:hover .so-owt-go { color:var(--violet); }
-@media(max-width:680px){ .so-owt-row { grid-template-columns:minmax(0,1fr) auto; } .so-owt-off { display:none; } }
+@container sodesk (max-width:680px){ .so-owt-row { grid-template-columns:minmax(0,1fr) auto; } .so-owt-off { display:none; } }
 
 /* foldout */
 .so-fold { border:1px solid var(--line); border-radius:var(--r-s); background:var(--surface); padding:4px 12px; }
@@ -574,7 +596,7 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so-rev-lead h3::before { content:""; position:absolute; left:0; top:50%; transform:translateY(-50%); width:3px; height:14px; border-radius:2px; background:var(--violet); }
 .so-rev-lead small { display:block; margin-top:4px; font-size:11.5px; color:var(--ink-2); max-width:82ch; }
 .so-rev-top { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
-@media(max-width:840px){ .so-rev-top { grid-template-columns:minmax(0,1fr); } }
+@container sodesk (max-width:840px){ .so-rev-top { grid-template-columns:minmax(0,1fr); } }
 .so-rev-card { padding:14px 16px; }
 .so-rev-card .so-band-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
 .so-rev-card .so-band-head h3 { flex:1; }
@@ -587,7 +609,7 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 
 /* ── Sales Scenario Lab ────────────────────────────────────────────────────────────────────── */
 .so-lab { display:grid; grid-template-columns:300px minmax(0,1fr); gap:12px; align-items:start; min-width:0; }
-@media(max-width:1080px){ .so-lab { grid-template-columns:minmax(0,1fr); } }
+@container sodesk (max-width:1080px){ .so-lab { grid-template-columns:minmax(0,1fr); } }
 .so-lab-inputs { padding:14px 16px; display:flex; flex-direction:column; gap:11px; }
 .so-labf { display:grid; gap:5px; min-width:0; }
 .so-labf > span { display:flex; align-items:center; gap:7px; font:600 11px/1.2 var(--font); color:var(--ink-2); }
@@ -599,7 +621,7 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so-labfixed small { font-weight:400; }
 .so-lab-right { display:flex; flex-direction:column; gap:12px; min-width:0; }
 .so-lab-paths { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
-@media(max-width:760px){ .so-lab-paths { grid-template-columns:minmax(0,1fr); } }
+@container sodesk (max-width:760px){ .so-lab-paths { grid-template-columns:minmax(0,1fr); } }
 .so-path { border:1px solid var(--line); border-radius:var(--r-m); padding:12px; background:var(--surface-2);
   display:flex; flex-direction:column; gap:8px; min-width:0; }
 .so-path-evi { border-color:var(--violet-line); background:linear-gradient(180deg,var(--violet-tint) 0,var(--surface-2) 56px); }
@@ -610,7 +632,7 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so-path-li { display:flex; justify-content:space-between; gap:10px; font-size:11.5px; color:var(--ink-2); padding:3px 0; border-top:1px dashed var(--line-soft); }
 .so-path-li .mono { color:var(--ink); }
 .so-lab-reason { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-@media(max-width:760px){ .so-lab-reason { grid-template-columns:minmax(0,1fr); } }
+@container sodesk (max-width:760px){ .so-lab-reason { grid-template-columns:minmax(0,1fr); } }
 .so-reason { border:1px solid var(--line); border-radius:var(--r-s); padding:11px 12px; background:var(--surface); }
 .so-reason h4 { font:700 10px/1.2 var(--font); letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); margin:0 0 6px; }
 .so-reason ul { margin:0; padding-left:16px; font-size:11.5px; color:var(--ink-2); line-height:1.55; }
