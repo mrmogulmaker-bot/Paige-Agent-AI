@@ -164,10 +164,18 @@ sniffing beyond the MIME allow-list; and a SECOND unfenced surface — the retri
 (`index.ts` `=== TENANT KNOWLEDGE ===`) where OCR'd upload content re-enters via `match_tenant_knowledge`.
 Untrusted-exec hardening ties to Sb. **§32.c authenticated malicious-doc drive OWED** (headless).
 
-### Slice 3 — Governed native record writes · **LIVE core → continue F05 coverage**
+### Slice 3 — Governed native record writes · **increment 1 SHIPPED → continue F05 coverage**
 Build on: `deal_move_stage` (honest outcome, S1/S1.1), `content_save`/`document_generate`/`growth_*`,
 `capability-record.ts`. Net-new: wire the **~43 consequential actions that still write only
 `paige_audit_log`** (not the Rail) to record honest outcomes at their executor — the F05 continuation.
+**Increment 1 SHIPPED (Task #19, 2026-09-06):** the three CRM/scheduling write-receipts the §39 Slice-1
+verifier named — `crm_log_activity`, `calendar_book_meeting`, `crm_create_task` — now file a
+`record_capability_run` outcome via a new `_shared/crm-capability-outcome.ts` classifier + a `recordCrmRun`
+helper (same pattern as pipeline/comms; §18), with a `crmWriteAttempted` pre/post-write split for honest
+throw mapping. Behavior-preserving (§37); the audit-log trail is unchanged (Rail row added alongside).
+Proof: `src/__tests__/crm-capability-run-contract.test.ts`. **STILL OPEN:** the remaining ~40 acts (CRM
+updates with mixed throws, content/team/plan/automation writes) and `crm_create_contact` (dedup-clarify
+`success:false` needs a per-capability branch, not the no-refusal map).
 
 ### Slice 4 — Bounded browser research · **LIVE/PARTIAL (from `08` S-R1)**
 Harden + reach: reconcile the two SSRF guards, close DNS-rebinding (#138) + G5 page-write fence, verify

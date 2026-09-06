@@ -20,6 +20,9 @@ import { classifyCommsRun } from "../_shared/comms-capability-outcome.ts";
 // Phase 2 · S1 — Pipeline write acts (starting deal_move_stage) record an honest outcome
 // through the SAME ratified pattern (#947): capability-record owns HOW, this owns WHICH.
 import { classifyPipelineRun } from "../_shared/pipeline-capability-outcome.ts";
+// Capability System · slice 3 (F05) — CRM/scheduling write acts that recorded only to
+// paige_audit_log now also file an honest capability-Rail outcome, through the SAME pattern.
+import { classifyCrmRun } from "../_shared/crm-capability-outcome.ts";
 // Capability System · slice 1 — truthful artifact-creation receipts (§13/§70). A 200 carrying
 // no real artifact (null url, empty drafts, null saved id) must degrade to an honest failure,
 // not a success-shaped receipt. ONE pure home for that decision (§18); handlers wrap their
@@ -9144,6 +9147,33 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               console.error("[paige] pipeline capability run not recorded:", (e as Error)?.message);
             }
           };
+          // ── Capability System · slice 3 (F05) — CRM/scheduling write receipts ────────────
+          // crm_log_activity / calendar_book_meeting / crm_create_task recorded only to
+          // paige_audit_log; now they also file an honest capability-Rail outcome through the SAME
+          // pattern. Attributed to `personaCtx.tenant_id` (the acted-on workspace, like the pipeline
+          // recorder — the CRM mega-block already scopes its writes to that tenant). Records at most
+          // once per iteration (result XOR catch), never fails the turn. `crmWriteAttempted` splits a
+          // throw honestly (post-write → outcome_unknown; pre-write → failed).
+          let crmWriteAttempted = false;
+          const recordCrmRun = async (
+            input: { result?: unknown; thrown?: unknown; threw?: boolean; writeAttempted?: boolean },
+          ): Promise<void> => {
+            try {
+              const outcome: CapabilityOutcome | null = classifyCrmRun({
+                capability: tc.function.name,
+                ...input,
+              });
+              if (!outcome) return;
+              await recordCapabilityRun(supabase, {
+                tenantId: personaCtx?.tenant_id ?? null,
+                actorId: user.id,
+                capabilityKey: tc.function.name,
+                outcome,
+              });
+            } catch (e) {
+              console.error("[paige] crm capability run not recorded:", (e as Error)?.message);
+            }
+          };
           // Pre/post-write boundary for the pipeline capability recorder (Codex P2, 2026-09-05):
           // set TRUE immediately before a pipeline write act dispatches its external UPDATE, so a
           // throw caught below is classified honestly — a pre-write throw (parse/client/lookup)
@@ -9599,6 +9629,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               result = { success: true, assigned: ids.length, coach_user_id: coach.id };
             } else if (tc.function.name === "crm_create_task") {
               const assignee = args.assignee_user_id || user.id;
+              crmWriteAttempted = true; // slice 3 (F05): dispatching the external write
               const { data: row, error } = await admin
                 .from("tasks")
                 .insert({
@@ -10459,6 +10490,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             } else if (tc.function.name === "calendar_book_meeting") {
               // Confirm is enforced by the central autonomy gate above (a booking
               // is a real event → defaults to 'confirm'); here we're cleared to book.
+              crmWriteAttempted = true; // slice 3 (F05): dispatching the external write
               const { data: bid, error } = await supabaseClient.rpc("create_internal_booking", {
                 _title: args.title,
                 _start_at: args.start_at,
@@ -10893,6 +10925,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (error) throw error;
               result = { success: true, ...(data as any) };
             } else if (tc.function.name === "crm_log_activity") {
+              crmWriteAttempted = true; // slice 3 (F05): dispatching the external write
               const { data: row, error } = await admin
                 .from("communication_log")
                 .insert({
@@ -11157,6 +11190,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // result-path call cannot fall into the catch below and double-record (S1 review m1).
             await recordCommsRun({ result });
             await recordPipelineRun({ result });
+            await recordCrmRun({ result });
 
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
           } catch (err) {
@@ -11167,6 +11201,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // the model is told only that something went wrong.
             await recordCommsRun({ thrown: err, threw: true });
             await recordPipelineRun({ thrown: err, threw: true, writeAttempted: false });
+            await recordCrmRun({ thrown: err, threw: true, writeAttempted: crmWriteAttempted });
 
             toolResults.push({
               tool_call_id: tc.id,

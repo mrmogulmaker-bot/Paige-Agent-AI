@@ -1,5 +1,28 @@
 # Decision Log — chronological one-liners
 
+- **Capability System Slice 3 (F05) increment 1 — CRM/scheduling write receipts record an honest Rail outcome (2026-09-06, Task #19, owner-authorized)** —
+  three consequential chat acts that recorded ONLY to `paige_audit_log` and left NO capability-Rail row —
+  `crm_log_activity`, `calendar_book_meeting`, `crm_create_task` (the write-receipts the §39 Slice-1 verifier
+  named) — now also file a `record_capability_run` outcome, closing part of the F05 gap (~43 audit-only acts).
+  **Pattern reused (§18), not forked:** new `_shared/crm-capability-outcome.ts` (`CRM_WRITE_CAPABILITIES` +
+  `classifyCrmRun`) beside the pipeline/comms classifiers; a `recordCrmRun` helper beside `recordPipelineRun`
+  (service-role `supabase` client, attributed to `personaCtx.tenant_id`, actor `user.id`); a per-iteration
+  `crmWriteAttempted` flag set TRUE immediately before each of the three external writes; and one added call
+  on each of the result + catch paths (the pipeline recorder's catch literal kept verbatim so its sibling test
+  still passes). **Honest mapping (§947):** success→succeeded; post-write throw (writeAttempted)→outcome_unknown
+  (a transport throw can land after commit); pre-write throw→failed; and — the deliberate difference from the
+  pipeline map — an UNEXPECTED `success:false` (none of the three ever emits one) → outcome_unknown, NOT refused
+  (no refusal branch made a "nothing changed" decision). **Behavior-preserving (§37):** no request/response
+  contract change, no new tool/gate (chat-tool-registry baseline 94 unchanged, action-risk 0 unclassified); the
+  generic `paige_audit_log` trail is unchanged — this ADDS the Rail row alongside it. **PROOF:**
+  `src/__tests__/crm-capability-run-contract.test.ts` (mapping half over the real module — succeeded/unknown/failed/
+  no-false-refused/non-CRM-null — + wiring source-asserts: import, service-role recorder, both paths, flag set 3×,
+  pipeline literal intact); pipeline + comms contract tests still green (their hard-coded assertions undisturbed);
+  tsc 13/13; action-risk / chat-tool-registry / governed-execution / write-targets / §50/§63 all clean. Edge deploy
+  via CI on merge; Deno type-check in the CI real-deno leg. **NAMED, out of scope:** the rest of the ~43 acts
+  (CRM updates with mixed pre/post-write throws, content/team/plan/automation writes), and `crm_create_contact`
+  (its dedup-clarify `success:false` is an ask-the-human, not a refusal — needs a per-capability branch). **§32.c
+  authenticated drive OWED** (headless).
 - **Capability System Slice 2 — uploaded-file prompt-injection fence (2026-09-06, Task #18, owner-authorized)** —
   the file-handling contract's first-class security net-new. An attached document's extracted text was
   inlined RAW into the model turn immediately next to the TRUSTED analysis instructions
@@ -40,6 +63,11 @@
   `===` run (a forged TRUSTED sibling header echoed by a file, not only this fence's own markers); the
   file NAME is neutralized too (it's interpolated into the header line); and a stale "zero-width break"
   comment was corrected (§13 doc-accuracy in the new file). +3 tests (13 total).
+  **OUTCOME — MERGED to `main` (squash `0aa8943e`, PR #1011, 2026-09-06).** All PR checks green on head
+  `d76ce741` (ci incl. deno leg · Security Audit · ui-delivery-evidence); Codex third-layer review COMPLETED
+  clean (no findings). **§32.a CONFIRMED:** `deploy-edge-functions` run 34052683170 (main push) = success —
+  `paige-ai-chat` redeployed (the shared `untrusted-fence.ts` is in its bundle). **§32.c STILL OWED:** an
+  authenticated malicious-document drive against the deployed edge fn (headless session, no browser).
 - **P1 UI hotfix — dedicated Paige chat horizontal scrollbar + real permission chip (2026-09-06, Task #17, owner-authorized)** —
   TWO fixes to the dedicated Solo Paige workspace chat (`paige.workspace`: `PaigeAIChat` in `SoloPaigeWorkspace`).
   **(1) Horizontal scrollbar — fixed at the SOURCE, not clipped.** Root cause (grounded, not guessed): the message
