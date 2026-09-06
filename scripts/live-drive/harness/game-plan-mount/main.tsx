@@ -10,7 +10,7 @@
  * synthetic. It proves GEOMETRY, STATE RENDERING and both palettes — never production data or
  * production behaviour. The authenticated live drive stays owed to a capable session.
  *
- *   /?mode=grounded&theme=dark   (modes: grounded · partial · empty · blocked · owner · motion · loading · error)
+ *   /?mode=grounded&theme=dark   (modes: grounded · partial · empty · blocked · proposal · motion · loading · error)
  */
 import { Component, StrictMode, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";

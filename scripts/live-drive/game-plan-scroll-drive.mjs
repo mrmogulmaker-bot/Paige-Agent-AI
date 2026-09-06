@@ -81,7 +81,7 @@ function probe() {
   // no ancestor scrolls to reveal it — the owner's unreachable-content bug.
   const gpOverflowsParent = gpH > tpH + 1;
   const wide = window.innerWidth > 1040;
-  const owners = wide ? [".gp-col", ".gp-rail"] : [".gp-field"];
+  const owners = wide ? [".sd-col", ".sd-rail"] : [".sd-field"];
   const regions = owners.map((sel) => {
     const el = document.querySelector(sel);
     if (!el) return { sel, present: false, bottomReachable: false };
@@ -97,7 +97,7 @@ function probe() {
       lastBottom: r ? Math.round(r.bottom) : -1,
     };
   });
-  return { tpH, gpH, gpOverflowsParent, bodyOX, gpOX, wide, vh, regions, rows: document.querySelectorAll(".gp-pp-row").length };
+  return { tpH, gpH, gpOverflowsParent, bodyOX, gpOX, wide, vh, regions, rows: document.querySelectorAll(".sd-card").length };
 }
 
 (async () => {

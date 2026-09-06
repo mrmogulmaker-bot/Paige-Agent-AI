@@ -1,5 +1,36 @@
 # Decision Log — chronological one-liners
 
+- **Business Game Plan → Strategy-Desk SLICE A SHIPPED — the in-place production build of the
+  owner-approved reimagination (2026-09-06, branch `claude/business-game-plan-ui-rxuju3`, PR #988).**
+  STATUS: **shipped to `main` (MVP cadence, §4); §32.c authenticated owner live-drive OWED** (this
+  headless CI session has no browser/auth tool — §32 capability-conditional rule). Supersedes the Gate 1
+  "PROTOTYPE ONLY / DEFERRED" entry below — owner approved the redesign and said "you are officially in MVP
+  mode" (2026-09-06). `SoloGamePlanWorkspace` + `useSoloGamePlan` are REPLACED IN PLACE: the spine is now
+  the owner's approved STRATEGY (editable Plan Brief · horizon navigator annual/quarter · Strategic plays
+  from real `campaign_briefs` · Decision & Opportunity swipe deck · Paige operating contribution), and
+  **Systems Check is DEMOTED to a compact collapsible "Plan dependencies"** — never the spine. **Editable &
+  persists (§70):** the Plan Brief rides the EXISTING setup-brief save seam (`useSoloSetupBrief.save` →
+  `save_solo_setup_context` RPC) — §18 compose, NO new table/RPC/edge/migration/tier-flag; all 7 planning
+  fields are a real subset of `SOLO_SETUP_TEXT_FIELDS`, provenance-stamped `owner_confirmed`,
+  optimistic-concurrency guarded; a plain edit passes `proposalId=null` so it never consumes a pending
+  Paige proposal (only Apply does). Every value carries a source class
+  (fact/your-direction/Paige-suggests/assumption/unavailable/proof-owed) derived from real provenance. §9
+  clean — the hook passes NO client `tenant_id`; each composed read self-resolves. **Peer-gate (§39) +
+  compliance (§5) caught 3 defects before ship:** (1) BLOCKER — the edit-drawer focus trap re-ran on every
+  keystroke (unstable `onClose` dep) and stole focus to field #1, making 6 of 7 fields uneditable → fixed
+  (mount-once effect, `onClose` via ref) + a non-first-field regression test; (2) MAJOR — a Systems Check
+  read OUTAGE rendered a false "All clear" → added `dependenciesStatus` + an honest "Couldn't check" state
+  + tests; (3) two `res.error` TS narrowing errors (mock-green but tsc-red) → fixed with `in`-guards.
+  **Verified:** full vitest green (3547+), tsc ratchet green (baseline 13 unchanged — the changed files add
+  0), regression-lint green, render drive 128/128 (8 states × 2 themes × 8 viewports, no crash/overflow),
+  scroll drive 6/6 (owner's scroll bug reproduced + fix proven, incl. dock-open). §11 raw hex in the ported
+  partner-rail/scrim CSS reported to Claude Design (§00 — ported verbatim from the approved pack, not
+  changed here). COLLISION #975 (Solo Trust Compass, open) respected — stayed INSIDE the component/hook/CSS,
+  did NOT touch `CommandCenter.tsx` TABS or `tierBranches.ts`. STILL DEFERRED (net-new, honest §13): a
+  first-class strategic-plan store, structured pillars, and the Mission System (`campaign_briefs.mission_id`
+  reserved/unwritten) — plays come from existing campaign briefs, not a mission store. NEXT OWNER: the
+  owner's live look on the deployed Solo Command Center → Business Game Plan (the §32.c drive owed here),
+  then follow-on slices for the deferred stores.
 - **RULING: the current Command Mark replaces the retired orbital PaigeMark (owner, 2026-09-06)** —
   the owner ruled the Command Mark (champagne slash + detached orb, `docs/brand/paige-brand-identity.md`,
   owner-approved 2026-08-22) is now the current brand mark; the orbital PaigeMark (orb + ring + spark +
@@ -11,7 +42,10 @@
   so the doc never claims resolved while code renders the old mark). The Business Game Plan strategy-desk
   prototype (below) already uses the Command Mark for its brand plate.
 - **Business Game Plan → Strategy-Desk reimagination — Gate 1 PROTOTYPE ONLY, nothing shipped
-  (2026-09-06, branch `claude/business-game-plan-ui-rxuju3`, PR pending)** — STATUS: **DEFERRED /
+  (2026-09-06, branch `claude/business-game-plan-ui-rxuju3`, PR pending)** — **⚠ SUPERSEDED by the
+  "SLICE A SHIPPED" entry at the top of this log (2026-09-06) — the owner approved the redesign and the
+  production build shipped; this entry describes only the Gate 1 prototype stage and is kept for the
+  audit trail (§58), not as current status.** STATUS (at time of writing): **DEFERRED /
   PROOF OWED, awaiting owner Gate 1 approval.** No production `src/`/schema/route/contract/deploy
   changed; the shipped Business Game Plan (#952/#973/#980) is unchanged and still LIVE. Owner ruled
   the shipped page reads as a Systems-Check-derived readiness/task list (confirmed from code: its

@@ -19,6 +19,7 @@ type Loose = Record<string, unknown>;
 const m = vi.hoisted(() => ({
   cc: {} as Loose, setup: {} as Loose, catalog: {} as Loose, knowledge: {} as Loose,
   pending: {} as Loose, checks: {} as Loose, activity: {} as Loose, tenant: {} as Loose,
+  campaigns: {} as Loose,
 }));
 
 vi.mock("./useCommandCenter", () => ({ useCommandCenter: () => m.cc }));
@@ -28,6 +29,7 @@ vi.mock("./useSoloKnowledge", () => ({ useSoloKnowledge: () => m.knowledge }));
 vi.mock("./useSoloPendingActions", () => ({ useSoloPendingActions: () => m.pending }));
 vi.mock("@/hooks/useSystemsCheck", () => ({ useSystemsCheck: () => m.checks }));
 vi.mock("@/hooks/useTenantContext", () => ({ useTenantContext: () => m.tenant }));
+vi.mock("../useSoloCampaignBriefs", () => ({ useSoloCampaignBriefs: () => m.campaigns }));
 vi.mock("./useSoloActivityFeed", () => ({
   useSoloActivityFeed: () => m.activity,
   elapsedLabel: () => "1m ago",
@@ -57,6 +59,7 @@ function resetEmpty() {
   m.pending = { items: [], loading: false, error: null, refresh: vi.fn() };
   m.checks = { run: null, findings: [], loading: false, isError: false, scanPending: false, refresh: vi.fn() };
   m.activity = { items: [], loading: false, status: "loading", error: null, refresh: vi.fn() };
+  m.campaigns = { phase: "ready", briefs: [], archivedCount: 0, canManage: true, retry: vi.fn() };
   // Default: the signed-in user OWNS the active workspace — a NON-staff viewer with an active tenant
   // is, by RLS scoping, in their own workspace (the normal Solo case). `activeTenant.name` is the
   // business name, distinct from any personal greeting name.
@@ -147,6 +150,29 @@ describe("useSoloGamePlan derivation", () => {
     expect(view.bestMove?.evidence).not.toContain("Nothing is blocked");
     expect(view.attention.some((a) => a.label === "Couldn't check your systems")).toBe(true);
     expect(view.narrative).toContain("couldn't fully check");
+  });
+
+  it("demotes blocking/high system-check fails into Plan dependencies, and marks the read READY", () => {
+    m.checks.findings = [
+      { id: "b1", status: "fail", severity_at_finding: "blocking", paige_interpretation: "Sending identity not verified — verify it." },
+      { id: "h1", status: "fail", severity_at_finding: "high", paige_interpretation: "No payment processor declared yet — tell Paige which one." },
+      { id: "m1", status: "fail", severity_at_finding: "medium", paige_interpretation: "Add a second knowledge source." },
+      { id: "p1", status: "pass", severity_at_finding: "blocking", paige_interpretation: "All good." },
+    ];
+    render();
+    // Only blocking + high FAILS become dependencies (never a pass, never medium/low).
+    expect(view.dependencies.map((d) => d.id)).toEqual(["dep:b1", "dep:h1"]);
+    expect(view.dependencies[0].blocking).toBe(true);
+    expect(view.dependencies[0].title).toBe("Sending identity not verified");
+    expect(view.dependenciesStatus).toBe("ready");
+  });
+
+  it("a FAILED systems-check read marks dependencies 'unavailable' — never a false all-clear (§13)", () => {
+    // findings coerces to [] on an errored read; the card must NOT show that as "All clear".
+    m.checks = { ...m.checks, findings: [], isError: true };
+    render();
+    expect(view.dependencies.length).toBe(0);
+    expect(view.dependenciesStatus).toBe("unavailable");
   });
 
   it("a FAILED drafts (pending) read never reads as all-clear (§13)", () => {
