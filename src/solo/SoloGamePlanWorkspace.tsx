@@ -226,8 +226,9 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
     } finally { setSaving(false); }
   };
   const dismissProposal = async () => {
-    await pb.dismissProposal();
-    flash("Dismissed — your approved plan is unchanged.");
+    const res = await pb.dismissProposal();
+    if (res.ok) flash("Dismissed — your approved plan is unchanged.");
+    else flash(res.error || "Couldn't dismiss just now — try again.");
   };
 
   // Decision deck (button/keyboard-driven advance; pointer-swipe is a fast-follow slice).
@@ -314,9 +315,11 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
               {pb.pendingProposal && (
                 <div className="sd-banner sd-banner-prop" style={{ gridColumn: "auto" }}>
                   <Sparkles />
-                  <span><span className="bt">Paige proposed a change to your plan.</span> {pb.pendingProposal.reason}</span>
+                  <span><span className="bt">Paige proposed a change to your plan.</span> {pb.pendingProposal.reason}{!pb.proposalPlanOnly && " It also touches your business details, so review it in Setup where every field is shown."}</span>
                   <span className="sd-hdacts bact">
-                    <button className="sd-btn sd-btn-sm sd-act" onClick={applyProposal} disabled={saving}><Check /> Apply</button>
+                    {pb.proposalPlanOnly
+                      ? <button className="sd-btn sd-btn-sm sd-act" onClick={applyProposal} disabled={saving}><Check /> Apply</button>
+                      : <button className="sd-btn sd-btn-sm" onClick={() => go("setup")}>Review in Setup <ArrowRight /></button>}
                     <button className="sd-btn sd-btn-sm" onClick={dismissProposal} disabled={saving}><X /> Dismiss</button>
                   </span>
                 </div>
@@ -377,7 +380,7 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
               <span className="sd-eyebrow"><Scale /> Decision &amp; opportunity desk</span>
               <div className="sd-hdacts"><span className="sd-living"><Sparkles /> You or Paige can change this</span></div>
             </div>
-            <Deck items={deckList} onDismiss={dismissDecision} onAct={actDecision} />
+            <Deck items={deckList} status={plan.decisionsStatus} onDismiss={dismissDecision} onAct={actDecision} onRetry={() => go("paige")} />
           </div>
         </div>
 
@@ -572,8 +575,18 @@ function Overlay({ kind, title, sub, onClose, children }: { kind: "drawer" | "mo
 
 /** The decision & opportunity deck — a stack you clear one card at a time (buttons + keyboard;
  *  pointer-swipe is a fast-follow). Each card is source-labelled. */
-function Deck({ items, onDismiss, onAct }: { items: DecisionItem[]; onDismiss: (id: string) => void; onAct: (d: DecisionItem) => void }) {
+function Deck({ items, status, onDismiss, onAct, onRetry }: { items: DecisionItem[]; status: "ready" | "unavailable"; onDismiss: (id: string) => void; onAct: (d: DecisionItem) => void; onRetry: () => void }) {
   if (items.length === 0) {
+    // A drafts-read OUTAGE must not read as "All caught up" — say plainly it couldn't be checked (§13).
+    if (status === "unavailable") {
+      return (
+        <div className="sd-deck"><div className="sd-deck-empty">
+          <div className="de-ic" style={{ background: "var(--warn-tint)", color: "var(--warn)" }}><AlertTriangle /></div>
+          <h4>Couldn't check what's waiting</h4>
+          <p>Paige couldn't load your drafts queue just now — this isn't an all-clear. <button className="sd-inline-link" onClick={onRetry}>Open PAIGE</button> to see the latest.</p>
+        </div></div>
+      );
+    }
     return (
       <div className="sd-deck"><div className="sd-deck-empty">
         <div className="de-ic"><Check /></div>

@@ -19,7 +19,7 @@ MATERIAL_FLOW_CHANGE: YES: the surface is reimagined — a new comprehension lea
 FLOW_PROTOTYPE: PASS: owner-approved Gate 1 prototype docs/design-references/prototypes/solo-business-game-plan-strategy-desk.html (interactive, all states × 4 Solo viewports × both themes × Paige open/closed; 3 independent adversarial reviews integrated); owner approval recorded 2026-09-06 ("Approved on this redesign and UI. You are officially in MVP mode.").
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: Solo business owner; purpose = answer "where is the business going and what matters most now"; the primary act is "Plan with Paige" (opens the one PAIGE conversation), and the Plan Brief is genuinely editable (Edit brief → Save changes → persists via save_solo_setup_context).
 VISUAL_DIRECTION: PASS: ports the owner-approved prototype pack verbatim onto the shipped `.paige-solo` tokens (§00 — CC records port fidelity, never judges design); gold spent only on the one act (`.sd-act`); §11 raw hex/rgba in the ported always-dark partner-rail + scrim CSS is reported to Claude Design (ported from the approved pack, not changed here).
-AUTOMATED_EVIDENCE: PASS: full `npx vitest run` green (236 files / 3551 tests, incl. 4 new regression tests); `npm run ci:tsc` tsc ratchet green (baseline 13, current 13 — the changed files add zero type errors); `npm run ci:regression` green (no new §3/jargon/policy in added lines); ESLint clean on the changed `src/solo` files; `npm run build` green.
+AUTOMATED_EVIDENCE: PASS: full `npx vitest run` green (250 files / 3652 tests after merging main, incl. 13 new regression tests — 4 for the peer-gate finds and 9 for the Codex review finds); `npm run ci:tsc` tsc ratchet green (baseline 13, current 13 — the changed files add zero type errors); `npm run ci:regression` green (no new §3/jargon/policy in added lines); ESLint clean on the changed `src/solo` files; `npm run build` green.
 STATIC_EVIDENCE: PASS: `SoloGamePlanWorkspace.tsx` and `useSoloGamePlan.ts` are fully typed (no @ts-nocheck) and tsc-clean — they are NOT among the 13 pre-existing baseline errors (all in untouched files); two `res.error` discriminated-union narrowing errors were caught by tsc (green under the mock-based vitest, red under tsc) and fixed with `in`-guards; no new `any` reaches the derivation path.
 RENDERED_EVIDENCE: PASS: headless render drive scripts/live-drive/game-plan-render-drive.mjs — 128/128 (8 states × light+dark × 8 Solo content widths): every frame rendered, no crash, zero horizontal overflow (bodyOX=0, gpOX=0).
 BEHAVIORAL_EVIDENCE: PASS: scroll drive scripts/live-drive/game-plan-scroll-drive.mjs 6/6 (owner's scroll bug reproduced + fix proven reachable, incl. the faithful Paige-dock case); jsdom component tests drive the editable Plan Brief save for field #1 AND a NON-first field (regression for the peer-gate focus-steal BLOCKER), the proposal apply, dependency routing to Systems Check, a decision opening PAIGE, and the Systems-Check-outage "Couldn't check" honest state; hook tests drive the honesty derivations incl. dependencies demotion and the outage-not-all-clear rule.
@@ -47,13 +47,21 @@ UNVERIFIED: (1) §32.c authenticated DEPLOYED live-drive of the signed-in Solo s
 - Neighboring regressions: none. Only the Game Plan component/hook/CSS changed; `CommandCenter.tsx` TABS and `tierBranches.ts` are untouched (collision #975 respected). The readiness outputs the hook still exports are retained (not silently removed); the surface's demotion of the readiness list is the owner-approved reimagination (§28 re-opened by explicit owner instruction; §58 documented, not silent).
 - Explicit exclusions: no design token changed; §11 raw hex in the ported partner-rail/scrim is handed to Claude Design (§00), not altered here.
 
-## Findings caught before ship (peer-gate §39 + compliance §5)
+## Findings caught before ship (peer-gate §39 + compliance §5 + Codex review)
 
+Peer-gate (§39) + compliance (§5):
 - BLOCKER (peer-gate): edit-drawer focus trap re-ran on every keystroke (unstable `onClose` dep), stealing focus to field #1 → 6/7 Plan Brief fields uneditable. Fixed (mount-once effect, `onClose` via ref) + non-first-field regression test.
 - MAJOR (peer-gate): a Systems Check read OUTAGE rendered a false "All clear / Nothing is blocking". Fixed with `dependenciesStatus` + an honest "Couldn't check" state + hook/component tests.
 - MAJOR (compliance): a plain Plan-Brief edit passed the pending-proposal id, silently consuming a Paige proposal the owner never acted on. Fixed — a plain edit passes `proposalId=null`; only Apply passes the id.
 - MINOR (both): hardcoded "Your direction" source labels on the sub-cells/outcome → routed through real per-field provenance (incl. the quarter-direction fallback field).
 - Two `res.error` tsc narrowing errors (mock-green, tsc-red) → fixed with `in`-guards.
+
+Codex automated review (5 findings on `2ab0e74`, all verified real and fixed):
+- P1: a workspace with a plan direction set (or campaign briefs) but no readiness signals fell into the first-run screen, hiding the real strategy. Fixed — `hasPlanBriefSet`/`hasCampaignBriefs` join the `empty` decision + hook tests.
+- P1: applying a Paige proposal from the Plan-Brief banner (which shows only the reason) could persist unseen identity fields (`legalName`/`website`) from the same patch. Fixed — inline Apply is offered only when the proposal is confined to the plan fields (`proposalPlanOnly`); a mixed proposal routes to Setup, and `applyProposal` refuses a beyond-plan patch + tests.
+- P2: a failed drafts read announced "All caught up". Fixed — `decisionsStatus` + an honest "Couldn't check what's waiting" deck state + tests.
+- P2: `dismissProposal` announced success without checking the result. Fixed — branch on `{ok,error}` and surface the error + test.
+- P2: the confirmation label used the whole-record `updatedAt` (advances on any unrelated Setup save, fabricating recency). Fixed — derive from the plan fields' own provenance `confirmedAt` + test.
 
 ## Evidence index
 

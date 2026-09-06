@@ -194,6 +194,55 @@ describe("useSoloGamePlan derivation", () => {
     expect(view.coverage.caption).toContain("couldn't load");
   });
 
+  it("a workspace with a plan direction set is NOT first-run empty — the strategy must not be hidden (Codex P1)", () => {
+    // cc.empty + no offers/knowledge/pending, but the owner HAS set an annual direction.
+    m.setup.brief = { annualDirection: "Become the default ops advisor in the Northeast." };
+    render();
+    expect(view.empty).toBe(false);
+    expect(view.planBrief.hasPlan).toBe(true);
+  });
+
+  it("a workspace with campaign briefs is NOT first-run empty (Codex P1)", () => {
+    m.campaigns = { ...m.campaigns, phase: "ready", briefs: [{ id: "c1", objective: "Launch" }] };
+    render();
+    expect(view.empty).toBe(false);
+  });
+
+  it("decisionsStatus is 'unavailable' on a failed drafts read — never a silent 'All caught up' (Codex P2)", () => {
+    m.pending = { ...m.pending, items: [], error: new Error("drafts read failed") };
+    render();
+    expect(view.decisionsStatus).toBe("unavailable");
+  });
+
+  it("proposalPlanOnly reflects whether the proposal patch stays within the plan fields (Codex P1)", () => {
+    m.setup = { ...m.setup, pendingProposal: { id: "p1", reason: "r", patch: { currentPriority: "x", goals90Day: "y" } } };
+    render();
+    expect(view.planBrief.proposalPlanOnly).toBe(true);
+    m.setup = { ...m.setup, pendingProposal: { id: "p2", reason: "r", patch: { currentPriority: "x", legalName: "Acme LLC" } } };
+    render();
+    expect(view.planBrief.proposalPlanOnly).toBe(false);
+  });
+
+  it("applyProposal REFUSES a proposal that reaches beyond the plan fields (Codex P1)", async () => {
+    const save = vi.fn();
+    m.setup = { ...m.setup, save, pendingProposal: { id: "p2", reason: "r", patch: { currentPriority: "x", website: "evil.example" } } };
+    render();
+    const res = await view.planBrief.applyProposal();
+    expect(res.ok).toBe(false);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("the plan confirmation date derives from the plan fields' provenance, not the whole-record updatedAt (Codex P2)", () => {
+    m.setup.brief = {
+      annualDirection: "Grow.",
+      updatedAt: "2026-09-06T12:00:00Z", // advanced by an unrelated Setup save
+      provenance: { annualDirection: { source: "owner_confirmed", confirmedAt: "2026-01-15T00:00:00Z" } },
+    };
+    render();
+    expect(view.planBrief.updatedAt).toBe("2026-01-15T00:00:00Z");
+    expect(view.planBrief.updatedAt).not.toBe("2026-09-06T12:00:00Z");
+  });
+
   it("surfaces work Paige drafted as an owner-approval move", () => {
     m.pending.items = [{ id: "p1", title: "Draft email", summary: null, draftContent: null, rationale: "Client went quiet.", department: "Client Success", createdAt: "" }];
     render();

@@ -82,6 +82,9 @@ export interface PlanBrief {
   saving: boolean;
   /** A Paige-proposed revision awaiting the owner (apply/dismiss), or null. */
   pendingProposal: SoloSetupProposal | null;
+  /** True when the pending proposal only touches the plan fields shown here — so an inline Apply
+   *  can never persist unseen identity fields. A mixed proposal is routed to Setup instead (§13). */
+  proposalPlanOnly: boolean;
   updatedAt?: string;
   /** Persist an owner edit of the planning fields — merges over the full brief, stamps owner_confirmed
    *  provenance on changed fields only, optimistic-concurrency guarded. Returns the setup save result. */
@@ -221,6 +224,9 @@ export interface SoloGamePlanView {
   playsStatus: PlaysStatus;
   /** Decision & opportunity desk items, each source-labelled. */
   decisions: DecisionItem[];
+  /** Whether the drafts read behind `decisions` resolved. On an OUTAGE (`pending.error`) this is
+   *  "unavailable" so the deck never announces "All caught up" over a queue it couldn't check (§13). */
+  decisionsStatus: "ready" | "unavailable";
   /** Supporting dependencies (demoted Systems Check) that can block a play. */
   dependencies: DependencyItem[];
   /** Whether the Systems Check read behind `dependencies` actually resolved. On an OUTAGE
@@ -657,11 +663,19 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     ((cc.attention as AttentionLike)?.follow_ups_due ?? 0);
   // Day-one only when the reads genuinely settled empty — never on a failed read, and deferring to
   // useCommandCenter.empty (which also weighs active clients) so a client-heavy tenant never sees it.
+  // A workspace where the owner has SET a plan direction, or has authored campaign briefs, is NOT
+  // first-run — the first-run screen would falsely claim "no approved direction" and HIDE the real
+  // strategy/plays (§13/§70, Codex P1). Those two signals join the empty decision.
+  const briefRec = (setup.brief ?? {}) as Partial<Record<PlanBriefField, string>>;
+  const hasPlanBriefSet = PLAN_BRIEF_FIELDS.some((fld) => typeof briefRec[fld] === "string" && (briefRec[fld] as string).trim().length > 0);
+  const hasCampaignBriefs = Array.isArray(campaigns.briefs) && campaigns.briefs.length > 0;
   const empty =
     !loading &&
     !!cc.empty &&
     !knowledge.error &&
     !pending.error &&
+    !hasPlanBriefSet &&
+    !hasCampaignBriefs &&
     coverage.grounded === 0 &&
     (Array.isArray(catalog.offers) ? catalog.offers.length : 0) === 0 &&
     (knowledge.documentsIndexed ?? 0) === 0 &&
@@ -760,6 +774,23 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     }
     const hasPlan = PLAN_BRIEF_FIELDS.some((f) => fields[f].trim().length > 0);
 
+    // The confirmation label must reflect when the PLAN fields were confirmed, not the whole-record
+    // `updatedAt` (which advances on any unrelated Setup save, fabricating recency — Codex P2). Use
+    // the latest confirmedAt among the plan fields' own provenance; undefined ⇒ the label omits a date.
+    let planConfirmedAt: string | undefined;
+    for (const f of PLAN_BRIEF_FIELDS) {
+      const at = setupBrief.provenance?.[f]?.confirmedAt;
+      if (typeof at === "string" && (!planConfirmedAt || at > planConfirmedAt)) planConfirmedAt = at;
+    }
+
+    // Is the pending proposal confined to the plan fields THIS surface shows? A proposal patch can
+    // also carry identity fields (legalName/publicName/website); applying those from a banner that
+    // shows only a free-form reason would overwrite unseen business truth (Codex P1). A mixed
+    // proposal is routed to Setup (where every field is shown + staged), never inline-applied here.
+    const proposalPatchKeys = Object.keys(setup.pendingProposal?.patch ?? {});
+    const proposalPlanOnly =
+      proposalPatchKeys.length > 0 && proposalPatchKeys.every((k) => (PLAN_BRIEF_FIELDS as string[]).includes(k));
+
     const save = (next: Partial<Record<PlanBriefField, string>>) => {
       const merged: SoloSetupBrief = { ...EMPTY_SOLO_SETUP_BRIEF, ...setupBrief };
       for (const f of PLAN_BRIEF_FIELDS) if (typeof next[f] === "string") merged[f] = next[f] as string;
@@ -772,6 +803,12 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     const applyProposal = async () => {
       const proposal = setup.pendingProposal ?? null;
       if (!proposal) return { ok: false as const, kind: "failed" as const, error: "No proposal to apply." };
+      // Refuse to apply a proposal that reaches beyond the plan fields shown here — it must be
+      // reviewed in Setup where its identity fields are displayed and staged (Codex P1).
+      const patchKeys = Object.keys(proposal.patch ?? {});
+      if (!(patchKeys.length > 0 && patchKeys.every((k) => (PLAN_BRIEF_FIELDS as string[]).includes(k)))) {
+        return { ok: false as const, kind: "failed" as const, error: "This proposal also changes your business details — review it in Setup." };
+      }
       const applied = applySetupProposal({ ...EMPTY_SOLO_SETUP_BRIEF, ...setupBrief }, proposal);
       const confirmed = prepareOwnerConfirmedBrief(applied, new Date().toISOString(), setupBrief, {});
       return setup.save(confirmed, setup.businessOwners ?? [], proposal.id);
@@ -783,7 +820,8 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
       canEdit: !!setup.canEdit,
       saving: !!setup.saving,
       pendingProposal: setup.pendingProposal ?? null,
-      updatedAt: setupBrief.updatedAt,
+      proposalPlanOnly,
+      updatedAt: planConfirmedAt,
       save, applyProposal, dismissProposal,
     };
   }, [setupBrief, setup]);
@@ -871,6 +909,10 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     return out;
   }, [pending.items, cc.attention]);
 
+  // A failed drafts read must never render as "All caught up" — an empty `decisions` from an errored
+  // pending read is "couldn't check", not "nothing waiting" (§13, Codex P2).
+  const decisionsStatus: "ready" | "unavailable" = pending.error ? "unavailable" : "ready";
+
   return {
     loading,
     error,
@@ -889,6 +931,7 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     plays,
     playsStatus,
     decisions,
+    decisionsStatus,
     dependencies,
     dependenciesStatus,
     refresh,

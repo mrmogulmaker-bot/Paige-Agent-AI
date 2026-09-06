@@ -79,7 +79,7 @@ const groundedView = (): SoloGamePlanView => ({
       doNotAssume: "",
     },
     provenance: { annualDirection: "owner_confirmed", currentPriority: "owner_confirmed" },
-    hasPlan: true, canEdit: true, saving: false, pendingProposal: null, updatedAt: "2026-09-04T00:00:00Z",
+    hasPlan: true, canEdit: true, saving: false, pendingProposal: null, proposalPlanOnly: false, updatedAt: "2026-09-04T00:00:00Z",
     save: saveMock,
     applyProposal: vi.fn().mockResolvedValue({ ok: true, kind: "saved" }),
     dismissProposal: vi.fn().mockResolvedValue({ ok: true }),
@@ -95,6 +95,7 @@ const groundedView = (): SoloGamePlanView => ({
   decisions: [
     { id: "d1", title: "Review 3 drafts Paige is holding", detail: "Paige prepared these.", source: "recommendation", waiting: true, destination: "paige", evidence: "3 drafts waiting." },
   ],
+  decisionsStatus: "ready",
   dependencies: [
     { id: "dep1", title: "Sending identity not verified", reason: "Blocks the launch send.", blocking: true },
   ],
@@ -188,6 +189,38 @@ describe("SoloGamePlanWorkspace (strategy desk)", () => {
     expect(container.textContent).toContain("Couldn't check");
     expect(container.textContent).not.toContain("Nothing is blocking your plays");
     expect(container.textContent).not.toContain("All clear");
+  });
+
+  it("a drafts read OUTAGE shows 'Couldn't check what's waiting', never 'All caught up' (§13, Codex P2)", () => {
+    hooked.view = { ...groundedView(), decisions: [], decisionsStatus: "unavailable" };
+    mount();
+    expect(container.textContent).toContain("Couldn't check what's waiting");
+    expect(container.textContent).not.toContain("All caught up");
+  });
+
+  it("a MIXED proposal (touches business details) offers 'Review in Setup', never an inline Apply (§13, Codex P1)", () => {
+    const v = groundedView();
+    v.planBrief = { ...v.planBrief, pendingProposal: { id: "p1", reason: "Narrow the quarter target.", proposedAt: "2026-09-06T00:00:00Z", patch: { currentPriority: "x", legalName: "Acme LLC" } } as never, proposalPlanOnly: false };
+    hooked.view = v;
+    mount();
+    expect(container.textContent).toContain("Review in Setup");
+    // No inline Apply for a proposal that reaches beyond the plan fields shown here.
+    const applyBtn = [...container.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Apply");
+    expect(applyBtn).toBeFalsy();
+    clickText("button", "Review in Setup");
+    expect(loc.value).toBe("/solo/42/settings/setup");
+  });
+
+  it("a dismiss FAILURE surfaces its error, never a false 'Dismissed' success (§13, Codex P2)", async () => {
+    const dismiss = vi.fn().mockResolvedValue({ ok: false, error: "This plan changed elsewhere." });
+    const v = groundedView();
+    v.planBrief = { ...v.planBrief, pendingProposal: { id: "p1", reason: "r", proposedAt: "2026-09-06T00:00:00Z", patch: { currentPriority: "x" } } as never, proposalPlanOnly: true, dismissProposal: dismiss };
+    hooked.view = v;
+    mount();
+    await act(async () => { clickText("button", "Dismiss"); });
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("This plan changed elsewhere.");
+    expect(container.textContent).not.toContain("your approved plan is unchanged");
   });
 
   it("the primary act opens the one PAIGE conversation (never a fake action)", () => {

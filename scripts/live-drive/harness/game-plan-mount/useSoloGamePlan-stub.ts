@@ -31,7 +31,7 @@ function grounded() {
         doNotAssume: "Don't assume a client wants a call before a written summary.",
       },
       provenance: { annualDirection: "owner_confirmed", currentPriority: "owner_confirmed", goals90Day: "owner_confirmed", successDefinition: "owner_confirmed", constraints: "owner_confirmed" },
-      hasPlan: true, canEdit: true, saving: false, pendingProposal: null, updatedAt: "2026-09-04T00:00:00Z",
+      hasPlan: true, canEdit: true, saving: false, pendingProposal: null, proposalPlanOnly: false, updatedAt: "2026-09-04T00:00:00Z",
       save: okSave, applyProposal: okSave, dismissProposal: async () => ({ ok: true }),
     },
     horizons: [
@@ -47,6 +47,7 @@ function grounded() {
       { id: "d1", title: "Review 3 drafts Paige is holding", detail: "Paige prepared these and stopped for your approval.", source: "recommendation", waiting: true, destination: "paige", evidence: "3 items Paige drafted, waiting on you." },
       { id: "d2", title: "Re-engage 2 clients before they lapse", detail: "These crossed your usual quiet threshold. Paige can draft a note in your voice for each.", source: "recommendation", waiting: false, destination: "clients", evidence: "2 clients flagged at risk in your book." },
     ],
+    decisionsStatus: "ready",
     dependencies: [
       { id: "dep1", title: "Sending identity not verified", reason: "Blocks the Q3 launch campaign send.", blocking: true },
       { id: "dep2", title: "No payment processor declared yet", reason: "Blocks the paid diagnostic.", blocking: true },
@@ -92,7 +93,8 @@ export function viewFor(mode: string) {
     case "proposal":
       return withPatch({
         planBrief: {
-          pendingProposal: { id: "prop1", reason: "From your Sep 6 conversation — narrow the quarter target to 4–5 clients.", proposedAt: "2026-09-06T00:00:00Z", patch: {} },
+          pendingProposal: { id: "prop1", reason: "From your Sep 6 conversation — narrow the quarter target to 4–5 clients.", proposedAt: "2026-09-06T00:00:00Z", patch: { currentPriority: "Convert the 3 warm referrals and land 4–5 retained clients." } },
+          proposalPlanOnly: true,
         },
       });
     case "blocked":
