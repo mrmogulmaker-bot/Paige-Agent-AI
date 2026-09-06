@@ -131,6 +131,44 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Paige OS Integration — the Surface Binding Ledger + the Surface Context Handoff Contract (2026-09-06, Phases 0–1)
+
+**What shipped: two durable contracts + one CI regression guard. NO runtime binding was created and no
+surface changed behaviour.** This is the program's foundation — the single source of truth for how
+every Solo surface binds to Paige, and the release rule that keeps that truth honest.
+
+- **Phase 0 — the Surface Binding Ledger** (`docs/binding-ledger/surface-binding-ledger.json` +
+  `README.md`). One machine-readable + human-readable ledger of all 25 Solo surfaces across the full
+  chain — *source → server-resolved tenant scope → safe context → authority → governed write →
+  verified outcome → Rail → Mind → Memory* — using the six states LIVE / PARTIAL / READ_ONLY_CONTEXT /
+  INTENTIONALLY_ISOLATED / UNAVAILABLE / PROOF_OWED. It is the **unifying index** that CITES the Mind
+  integration matrix, the Spine/Rail state doc, the surface cards and the parity matrix — it forks
+  none of them. **Enforced by `scripts/ci/binding-ledger-lint.mjs` (`lint:binding-ledger`, wired into
+  `ci.yml`)**: a surface cannot be reported LIVE / "Paige-connected" without a complete entry proven by
+  `authenticated_runtime` — a rendered page, a badge, a prototype or an "Open Paige" button never
+  satisfies a binding link (§13/§32). Guard self-test 13/13; runs clean on all 25 rows.
+- **Phase 1 — the Surface Context Handoff Contract** (`docs/doctrine/surface-context-handoff-contract.md`).
+  The one server-safe way a surface opens the dedicated Paige workspace: the client sends an
+  **allowlisted INTENT** (surface + public-safe record ref + enumerated ask), never raw page payload,
+  tenant id, role, secrets or a forged snapshot; the server resolves the safe context via the JWT
+  tenant resolution + the registered Spine capabilities already wired into `paige-ai-chat`; fail-closed
+  on workspace switch / role change / deleted record / stale source / denied actor; reuses the
+  `paige_pending_confirmations` approval gate (no second approval system) and EXTENDS `paigeClientScope`
+  (§18). It names the three gaps it closes: the raw `clientContext` prose payload, the silently-dropped
+  prompt (#771), and the missing surface identity.
+
+**Honest state (never imply live from a doc):** the ledger and contract are **published**; the Phase 1
+runtime adoption (extending the scope bridge, consuming the intent, retiring the raw prose, the two
+regression guards) is **DEFERRED to the next bounded slice** with coordination, because it touches
+owned surfaces and contested files. Across the platform, **no surface is LIVE** — Mind axis-B is NO
+everywhere; of the 25 surfaces, **4 are PROOF_OWED** (read-context wired + tested, authenticated
+runtime owed), **4 PARTIAL**, **2 INTENTIONALLY_ISOLATED**, and the remaining **15 UNAVAILABLE**. **Scope: Solo only**; the operator tree
+is recorded out-of-scope (no subaccount/operator binding without explicit release). **Next owning
+workstream:** the Phase 1 adoption slice (reads `surface-context-handoff-contract.md` first), then the
+Spine SCR-1/2/3 sequence for the UNAVAILABLE surfaces. Second Brain updated: `docs/brain/README.md`
+(architecture + doctrine indexes). §00: the ledger holds zero design opinion; the "IN CONTEXT" banner
+and truthful-status components are Claude Design's.
+
 ### The inbound MCP door — 119 tools, one governed decision, 68 mutations refused (2026-09-05, PR #960)
 
 **Owner ruling:** *"An MCP connection authorizes access to the MCP door; it does not authorize

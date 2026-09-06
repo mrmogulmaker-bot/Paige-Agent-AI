@@ -1,0 +1,135 @@
+# Surface Binding Ledger — the Paige OS Integration release/regression contract
+
+**Read this before claiming any surface is "Paige-connected," and before designing, sequencing, or
+building any Spine / Rail / Mind / Memory / Chat / surface binding.**
+
+Grounded 2026-09-06 against `origin/main` `0b48f26df84e84c781c427f46e06023a6371f366`.
+
+## What this is
+
+The **single, machine-readable + human-readable ledger** of how every meaningful Solo surface binds
+to Paige, across one governed chain:
+
+```
+canonical source → server-resolved tenant scope → safe Paige-readable context → authority
+  → governed write/action → verified outcome → Rail evidence → Mind eligibility → Memory retention
+```
+
+The authoritative machine-readable form is **`surface-binding-ledger.json`** (this directory). This
+README is its human-readable companion: the vocabulary, the release rule, the honest platform
+position, and a compact per-surface summary. **The JSON is the source of truth for full per-field
+detail** (safe facts, prohibited fields, per-link status, linked PRs/issues, next slice, grounding
+sources). The two are kept in step by CI (`lint:binding-ledger`).
+
+## What this is NOT
+
+- **Not a fork of existing docs.** It is the *unifying index*. Each row cites its grounding source:
+  `docs/architecture/paige-mind-integration-matrix.md` (the Mind axis + safe/forbidden facts),
+  `docs/brain/paige-spine-and-rail-state.md` (Spine/Rail state), the Spine registry
+  (`supabase/functions/_shared/paige-spine/`), `docs/doctrine/canonical-solo-parity-matrix.md`
+  (routing/parity), and the per-department `docs/doctrine/surface-cards/`. When those change, the
+  ledger row is updated in the same commit (§BRAIN.3) — it never restates them from memory.
+- **Not authorization.** A row is an observation about the contract, never permission to build.
+  Implementation is assigned by the owner.
+- **Not a design record.** Per §00, this ledger records what *works* / is *wired*; it holds zero
+  opinion about how any surface looks. The retired orbital PaigeMark → current Command Mark is a
+  design decision owned by Claude Design and is deliberately absent here.
+
+## The six states (never let a UI, a badge, a prototype, or an "Open Paige" button masquerade as a binding)
+
+| State | Meaning |
+|---|---|
+| `LIVE` | the full intended binding is real **and proven by authenticated end-to-end runtime** |
+| `PARTIAL` | some binding links are real; the exact remaining gaps are named |
+| `READ_ONLY_CONTEXT` | Paige can safely understand this surface but cannot act on it |
+| `INTENTIONALLY_ISOLATED` | sensitive data on this surface must not enter Paige/Mind/Memory |
+| `UNAVAILABLE` | the required Paige-binding contract does not exist yet |
+| `PROOF_OWED` | the binding is implemented and reachable in code, but authenticated/runtime proof is absent |
+
+## The release/regression contract (CI-enforced)
+
+> A surface may not be reported `LIVE` / "Paige-connected" without a **complete** ledger entry whose
+> state is `LIVE` **and** whose `evidence_class` includes `authenticated_runtime`.
+
+`scripts/ci/binding-ledger-lint.mjs` (`npm run lint:binding-ledger`) fails CI when:
+- a surface claims `LIVE` without `authenticated_runtime` evidence, or with a `none` canonical source / safe context;
+- a surface claims `PROOF_OWED` while also claiming `authenticated_runtime` (that would be `LIVE`);
+- `INTENTIONALLY_ISOLATED` carries no `isolation_note`;
+- any entry is structurally incomplete (missing chain link, empty `sources`, unknown state/evidence class, duplicate id).
+
+This is the mechanical form of §13 (honest reporting) + §32 (a green build is not a working render),
+applied to the binding chain. A ledger a session can quietly edit to say "LIVE" without proof is worse
+than none.
+
+## Honest platform position (grounding SHA)
+
+**No surface is `LIVE`.** Mind axis-B — authenticated, tenant-safe evidence flowing for a real owner —
+is `NO` for every surface (per the Mind integration matrix). Concretely:
+
+- **`PROOF_OWED`** (safe read-context implemented + chat-injected + unit-tested; authenticated runtime
+  proof absent): `campaigns.pipeline` · `campaigns.social` · `settings.setup` · `settings.team`.
+- **`PARTIAL`** (some links real, gaps named): `command-center.trust-compass` (authority governed
+  server-side; the visible dial is a non-authoritative fixture) · `settings.integrations` (n8n writes
+  wired to the Rail capability-run write; zero rows in prod) · `settings.billing` (safe status source
+  contract shipped, not injected; secrets isolated) · `paige.workspace` (handoff carries client scope
+  but drops the intended prompt, #771, and still accepts raw prose).
+- **`INTENTIONALLY_ISOLATED`**: `settings.vault` · `settings.security-data`.
+- **`UNAVAILABLE`** (contract not built, sourceless, or awaiting a Spine Change Request): the rest —
+  Command Center (Game Plan / Systems Check / Mind tab), all Clients surfaces, Calendar, Catalog,
+  Sales, Overview, Analytics, Marketplace, Connections, Vibe Studio, and the intentionally-separate
+  Operator console.
+
+`paige.workspace` is recorded `PARTIAL`, not PROOF_OWED — the workspace is the *consumer* of bindings;
+its own gap is the handoff seam Phase 1 addresses.
+
+## Per-surface summary
+
+| Surface | State | Why / gap | Next slice |
+|---|---|---|---|
+| Paige workspace | `PARTIAL` | sole chat surface, server-safe scope; no surface identity, prompt dropped (#771), raw `clientContext` prose | Phase 1: adopt the Surface Context Handoff Contract |
+| Command Center → Business Game Plan | `UNAVAILABLE` | no Paige-safe lens/write; needs CC Change Request (#647) | Phase 4.1 via redesign-owned adapter |
+| Command Center → Systems Check | `UNAVAILABLE` | safe lens exists, unwired; needs SCR-2 + SCR-3 | Phase 4.4 read-only context |
+| Command Center → Mind tab | `UNAVAILABLE` | a knowledge visualization, not the PAIGE Mind contract | none until #647 |
+| Trust Compass | `PARTIAL` | authority governed server-side; visible dial is a non-authoritative fixture | Phase 4.3: reconcile dial to real governed action or mark read-only |
+| Campaigns → Overview | `UNAVAILABLE` | no tenant-authorized campaign source | none |
+| Campaigns → Catalog | `UNAVAILABLE` | real source, no Paige lens; SCR-1/2 | reference `get_pipeline_routing_evidence` shape |
+| Campaigns → Sales | `UNAVAILABLE` | Rail producer dead (#787) | none until #787 decided |
+| Campaigns → Pipeline | `PROOF_OWED` | the one Mind lens; authenticated drive never run + signal never produced | produce one real Rail row, then drive |
+| Campaigns → Social | `PROOF_OWED` | `social.presence` read+write wired/tested; no auth drive; metrics UNAVAILABLE | authenticated drive |
+| Campaigns → Vibe Studio | `UNAVAILABLE` | creative overlay, not a data binding | out of scope (§26 creative memory) |
+| Clients → People | `UNAVAILABLE` | no Mind-safe lens; owner's own UI write emits no Rail (#757 "do not start") | resolve producer gap first |
+| Clients → Conversations | `UNAVAILABLE` | message bodies forbidden to Mind | future transcript-evidence ingestion |
+| Clients → Calendar | `UNAVAILABLE` | FU-3 Rail contract absent; attribution untruthful (#786); six-PR collision | resolve #786 + FU-3 |
+| Clients → Portal | `UNAVAILABLE` | separately owned product surface | out of scope |
+| Settings → Setup | `PROOF_OWED` | `business_context.readiness` deployed + injected; owner UI-flow proof owed | Phase 4.4 authenticated proof |
+| Settings → Team | `PROOF_OWED` | `team.authority` wired; PAIGE can act (capability PARTIAL); auth proof owed | Phase 5 |
+| Settings → Connections | `UNAVAILABLE` | safe subset unwired; credentials isolated; private finding #788 | Phase 5 |
+| Settings → Integrations | `PARTIAL` | n8n readiness + 12 mgmt capabilities wired; zero capability_run rows in prod | authenticated drive → first Rail row |
+| Settings → Vault | `INTENTIONALLY_ISOLATED` | raw docs/credentials/payment never cross | Phase 7 reviewed eligible facts after quarantine |
+| Settings → Billing | `PARTIAL` | safe status source contract shipped, not injected; secrets isolated | Phase 8 bind safe status only |
+| Settings → Security & data | `INTENTIONALLY_ISOLATED` | autonomy authority is non-Chat (§67/§68) | none as a write binding |
+| Analytics | `UNAVAILABLE` | needs SCR-2 + SCR-3; strongest existing authorization semantics | Phase 8; reference consumer for SCR-2 |
+| Marketplace | `UNAVAILABLE` | the most blocked; SCR-1/2/3 | bind safe install-state only |
+| Operator / Platform | `UNAVAILABLE` (out of Solo scope) | intentionally separate tree, tenant-less | out of scope; no subaccount/operator work without release |
+
+## How to keep it true (§BRAIN.3 / §66)
+
+Any PR that ships a binding, changes a surface's source/scope/authority/outcome/Rail/Mind/Memory
+posture, or lands an owner ruling **updates the relevant `surface-binding-ledger.json` row in the same
+commit**, and re-runs `npm run lint:binding-ledger`. Record the honest state
+(`LIVE`/`PARTIAL`/`READ_ONLY_CONTEXT`/`INTENTIONALLY_ISOLATED`/`UNAVAILABLE`/`PROOF_OWED`) — never
+imply a capability is live because a UI or prototype exists — and the next owning workstream + the
+dependency it must read first.
+
+## Sequenced remainder (Phases 2–8 — bounded implementation slices, MVP cadence)
+
+Phase 0 (this ledger) and Phase 1 (the handoff contract, `docs/doctrine/surface-context-handoff-contract.md`)
+are published. The implementation of individual bindings continues as bounded slices, each of which
+updates its ledger row on merge:
+
+- **Phase 2** — verified action outcome + Rail backbone (`governedExecution.ts` seam adoption beyond the
+  MCP door; `record_capability_run` fed by real acts; owner-visible outcome reading, #746).
+- **Phase 3** — Mind/Memory eligibility (the Memory seam shipped in Release C; the Spine SCRs — SCR-1
+  workspace-outcome projection, SCR-2 non-client subject, SCR-3 record/list shape — remain unraised).
+- **Phase 4** — Game Plan ↔ Missions; Pipeline governed action loop (#755); Trust Compass; Systems Check.
+- **Phases 5–8** — Team/Connections; Campaigns subtabs; Mind/Vault; Billing/Analytics/Marketplace/Clients/Calendar/Portal.
