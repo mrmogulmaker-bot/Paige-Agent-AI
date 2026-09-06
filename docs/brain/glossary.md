@@ -151,13 +151,21 @@ PR #406). Build order was L1 → L4 → L2 → L5.
 - **Command Mark** — the console/operator brand mark (a slash and orb on a rimmed plate),
   owner-approved 2026-08-22. Source of truth for the mark, wordmark, palette and motion sequence:
   `../brand/paige-brand-identity.md`. Rollout scope is tenant + operator surfaces only.
-  **It is PARTIALLY PORTED, and its live implementation is `src/operator/shell/CommandMark.tsx`** —
-  not `PaigeSymbol`. It renders today on the operator shell (`src/operator/shell/SlotRail.tsx`) and
-  on the Solo / agency / admin command centers (`src/components/tenant-shell/TenantCommandCenterShell.tsx`).
-  What is still outstanding is the narrower `PaigeSymbol territory="command"` migration — that one
-  still renders `PaigeMark` (`src/components/brand/PaigeSymbol.tsx`). Do not read either "the
-  Command Mark is live" or "the port has not happened" as true platform-wide; check what the
-  surface in front of you actually renders.
+  **It is PARTIALLY PORTED and LIVE — via `src/operator/shell/CommandMark.tsx`, not `PaigeSymbol`.**
+  That component renders on the operator shell (`src/operator/shell/SlotRail.tsx`) and on the Solo /
+  agency / admin command centers (`src/components/tenant-shell/TenantCommandCenterShell.tsx`).
+  **But it is NOT the only copy.** Four files embed the slash-and-orb geometry independently
+  (verified 2026-09-06 — `grep "21,13.6 30.5,13.6" src`): `CommandMark.tsx` (the 38px rail plaque),
+  `operator/shell/CommandBar.tsx`, `operator/shell/spine/SpineHeader.tsx`, and
+  `operator/surfaces/relationships/SegmentsSurface.tsx`. None of the latter three is sourced from
+  `CommandMark.tsx`, and `SpineHeader`'s copy is DELIBERATE per its own header comment (CommandMark
+  renders the rail variant; the spine mark is a bare 26px glyph) — so do not "consolidate" it
+  without reading that comment first. **A change to the mark's geometry touches four files, not
+  one.** `OperatorSpine.tsx` imports only the `CommandMarkState` type, not the geometry.
+  Separately, the `PaigeSymbol territory="command"` migration is still outstanding — that one still
+  renders `PaigeMark` (`src/components/brand/PaigeSymbol.tsx`). Do not read either "the Command Mark
+  is live" or "the port has not happened" as true platform-wide; check what the surface in front of
+  you actually renders.
 - **PaigeMark** — the orbital orb + ring + spark + halo mark. **Current, not retired.** It is
   imported DIRECTLY by roughly two dozen production surfaces — the marketing landing page
   (`src/pages/PaigeHome.tsx`), auth and onboarding, the admin and agency layouts, Studio, and
