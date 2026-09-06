@@ -148,11 +148,27 @@ PR #406). Build order was L1 → L4 → L2 → L5.
   "Blueprints" = the one-click vertical install layer (`docs/doctrine/paige-practice-blueprints…`).
 - **Vibe Studio** — the tenant creative surface (Campaigns tab): pages, funnels, forms, images, in one
   session (§19/§21/§22). `ProjectNavigator` = the project rail.
-- **Command Mark** — the current PAIGE brand mark, owner-approved 2026-08-22. Source of truth for
-  the mark, wordmark, palette and motion sequence: `../brand/paige-brand-identity.md`; it builds into
-  `src/components/brand/PaigeSymbol.tsx`. **It replaces the retired orbital PaigeMark** — do not cite
-  PaigeMark as the current primitive. ("Illuminated Precision" is a superseded label; do not
-  reintroduce it.) `PaigeScene` = the landing 3D hero (three.js), a separate thing.
+- **Command Mark** — the console/operator brand mark (a slash and orb on a rimmed plate),
+  owner-approved 2026-08-22. Source of truth for the mark, wordmark, palette and motion sequence:
+  `../brand/paige-brand-identity.md`. **Rollout scope is tenant + operator surfaces only**, and the
+  port has NOT happened yet — `PaigeSymbol territory="command"` still renders `PaigeMark` today
+  (`src/components/brand/PaigeSymbol.tsx`). The brand doc's "builds into `PaigeSymbol.tsx`" states
+  the intended destination, not shipped state; do not read the Command Mark as already live on a
+  surface without checking what that surface actually renders.
+- **PaigeMark** — the orbital orb + ring + spark + halo mark. **Current, not retired**, in three
+  places at once: it is the marketing site's mark
+  (`../design-references/cd-packs/super-admin-shell-v3/design-system-port.md` §3), it is what
+  `PaigeSymbol territory="command"` renders today, and an owner ruling on 2026-09-06 made it the
+  correct mark on Solo → Campaigns → Growth → Social — "stay to that one and that one only"
+  (`../evidence/ui-delivery/campaigns-social-header-compaction.md`). `PaigeMark.tsx` stays as the
+  backward-compat path; the brand doc says do not rip it out.
+  **Open owner ruling** (`../brand/paige-brand-identity.md` §2, required before Stage 3): swapping
+  what `territory="command"` renders changes the mark on every surface already rendering it,
+  including the §28 approved-frozen marketing landing page. Whether the freeze holds the orb there,
+  or the landing page adopts the Command Mark in the same rollout, is undecided — do not resolve it
+  by editing code.
+  ("Illuminated Precision" is a superseded label; do not reintroduce it.) `PaigeScene` = the landing
+  3D hero (three.js), a separate thing.
 - **MMA / PME** — Mogul Maker Academy / Project Mogul Enterprise: the owner's **tenant** vertical
   (funding-coaching) — a *tenant's* config, **never** a platform default (§2/§9).
 - **`db-live` / `edge-live` tags** — git tags the CI pipelines move to the last commit whose
