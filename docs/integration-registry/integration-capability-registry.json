@@ -524,6 +524,36 @@
       "iSoftpull / SmartCredit / Nav / TransUnion Business / Array / D&B / LexisNexis / OpenCorporates / FRED (finance/credit-vertical — §2/§194 opt-in only, never a platform default; park deeper cataloguing per the task)"
     ]
   },
+  "known_owed_entries": {
+    "note": "Found at the registry-build closeout sweep (2026-09-06): pre-existing slices declared an 'Integration Capability Registry dependency' + a 'Registry Steward' role BEFORE this registry existed, and spec'd specific entries they OWE. These are transcribed honestly from those slices' own records (§13 — not invented, not yet authored as full entries). Authoring them + defining the Registry Steward role + reconciling the dependent slices' stale 'no registry exists' notes is a tracked follow-up (parked, per 'don't expand into individual integrations'). The registry existing does NOT unblock a slice's provider action on its own.",
+    "registry_steward_role": "UNDEFINED here. The RE-2 M1-a, Solo Tenant Brain Business Mission, and Public Presence slices reference a 'Registry Steward' who must add/cross-link canonical entries before provider-facing work. This registry ships a per-entry `owner` field + the delivery rule instead of a named Steward — an owner decision on whether that satisfies the requirement is owed.",
+    "entries": [
+      {
+        "owed_by": "RE-2 M1-a money backbone (docs/brain/decision-log.md ~L63-77, PR #1014)",
+        "capability": "record-provider-confirmed-spend + reconcile",
+        "provider_scopes": "none (provider-agnostic backbone; a concrete provider is bound only at PR-3)",
+        "authority_lane": "RE-2 grant -> §67/§68 ceiling -> resolve_execution_autonomy -> authority_reserve -> authority_confirm/authority_reconcile; execution DARK",
+        "provider_confirmed_outcome": "authority_confirm(actual)/authority_reconcile(refund/reversal), service-role-only, fed only by authenticated provider evidence",
+        "rail_mind_memory": "Rail: paige_authority_act_runs + paige_authority_reconciliations (immutable); Mind/Memory: none",
+        "status": "UNAVAILABLE (no provider wired; PR-3 owed)",
+        "limitations": "USD-only (non-USD fails closed); campaign/client-engagement caps = M1-b (owed)",
+        "note": "This is a finance/spend-control backbone, not a single provider — the follow-up decides whether it is a registry entry or a cross-cutting note."
+      },
+      {
+        "owed_by": "Public Presence slice (docs/PAIGE-MASTER-PROJECT-REFERENCE.md ~L4198; docs/evidence/ui-delivery/solo-public-presence.md)",
+        "capability": "a canonical social/public-presence provider entry with exact provider capability + scopes, tenant-tier eligibility SEPARATE from role authority, standing-authority lane, M1 dependency, provider-confirmed outcome path, Rail/Mind/Memory boundaries, proof state, and limitations",
+        "partially_covered_by": "the `meta` entry (social/public presence) — the follow-up decides whether Meta suffices or a distinct entry is needed",
+        "status": "UNAVAILABLE (provider action blocked pending the entry AND an authenticated tenant-authorized contract)",
+        "note": "The registry existing partially resolves this slice's dependency (the home now exists); it does NOT by itself advance the provider states beyond UNAVAILABLE."
+      },
+      {
+        "owed_by": "Solo Tenant Brain Business Mission slice (docs/delivery/solo-tenant-brain-business-mission-mvp.md:64)",
+        "capability": "the controlling Integration Capability Registry / infrastructure entry the slice depends on (it added no provider integration itself)",
+        "status": "UNAVAILABLE (dependency)",
+        "note": "Cross-link the shipped registry as its home; keep UNAVAILABLE for any provider action still absent."
+      }
+    ]
+  },
   "excluded_delivery_infrastructure": {
     "note": "Pure DELIVERY infrastructure is governed by docs/brain/config-registry.md, not this capability registry (§18 — no duplication). These are not tenant-capability integrations with authority lanes / Rail-Mind-Memory boundaries.",
     "providers": ["Supabase (Postgres/RLS/edge/auth)", "Vercel (deploy)", "LLM providers via _shared/model-router.ts (Anthropic/OpenAI/Gemini/Groq/Featherless/Replicate/Ideogram/Meshy)", "Voyage (embeddings)", "GitHub (CI/repo)"]

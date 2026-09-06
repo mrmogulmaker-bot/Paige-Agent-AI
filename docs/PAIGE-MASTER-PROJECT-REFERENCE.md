@@ -1469,6 +1469,21 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
   - **§13 grounding note:** the brief named a *"Marketplace Brain decision"* that has **no artifact
     under that phrase repo-wide** — the Marketplace rule is grounded on `MARKETPLACE-DATA-MODEL.md`
     instead; recorded as unresolved, not invented.
+  - **Known pre-existing dependencies (found at the registry-build closeout sweep, 2026-09-06 — reconciles
+    this doc's own dated "no registry exists" notes below, e.g. the Public Presence dependency ~L4198):**
+    the RE-2 M1-a money backbone, the Solo Tenant Brain Business Mission slice, and the Public Presence
+    slice each declared an *"Integration Capability Registry dependency"* and referenced a **"Registry
+    Steward"** role BEFORE this registry existed. The registry is now their home, but two things remain
+    **owed** and are honestly NOT yet delivered (§13 — the registry existing does not by itself unblock a
+    slice's provider action): (1) the **specific per-provider entries** those slices spec'd — RE-2 M1-a's
+    *"record-provider-confirmed-spend + reconcile"* backbone and a **Public Presence** provider entry
+    (the `meta` entry partially covers social/public-presence; a dedicated entry may be needed) — seeded
+    into the registry JSON's `known_owed_entries`; and (2) the **"Registry Steward" role** those slices
+    reference is undefined here (the registry ships a per-entry `owner` field + the delivery rule instead —
+    an owner decision on whether that satisfies the Steward requirement is owed). Reconciling the dependent
+    slices' stale notes + authoring the owed entries + settling the Steward role is a **tracked follow-up**
+    (parked, not folded into the registry-build PR per "park unrelated provider findings, don't expand into
+    individual integrations").
 
 ### Third-party integrations WIRED + CONFIGURED
 
