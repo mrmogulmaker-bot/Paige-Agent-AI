@@ -36,9 +36,13 @@
 --   §67/§68 — a grant can never raise autonomy above the Trust Compass ceiling (`trust_effective_rung`);
 --          the ceiling STILL binds. A valid grant SUPERSEDES the process's default `confirm` posture —
 --          that is the whole point of a standing authorization, and it is necessary because the process
---          posture (`paige_automations.granted_lane`) is re-clamped to `confirm` every time its steps
---          change (`trg_paige_automation_acts_changed`), so a grant that deferred to it would never fire.
---          But an EXPLICIT `off` on the process is a kill switch a grant never overrides.
+--          posture (`paige_automations.granted_lane`) is re-clamped from `auto` to `confirm` whenever its
+--          steps change (`trg_paige_automation_acts_changed`), so a grant that deferred to it would never
+--          fire. But an EXPLICIT `off` — on the PROCESS (`granted_lane='off'`) OR on the ACT-FLOOR (a
+--          tenant-disabled tool, or a kind catalogued `default_autonomy_lane='off'`) — is a deliberate
+--          disable, a kill switch a grant never overrides. (Whether a grant should also override a
+--          DELIBERATE process `confirm`, vs only the re-clamp default, is a product-semantics question
+--          flagged to the owner at the PR-3 gate — §5 F3; PR-2 is dark, so nothing turns on it yet.)
 --   §51/§53 — the grant lookup keys on the AUTOMATION's `tenant_id` (never `current_user_tenant_id()`),
 --          so the service-role runtime resolves the correct tenant; delegation never widens.
 --   §10.9 — every lift returns the `grant_id` so a downstream act can CITE the specific authority.
@@ -119,8 +123,19 @@ BEGIN
     FROM public.paige_authority_grants g
    WHERE g.tenant_id = _a.tenant_id
      AND (g.automation_id IS NULL OR g.automation_id = _automation_id)
-     AND NOT (g.scope ? 'client_id')
-     AND NOT (g.scope ? 'campaign_id')
+     -- FAIL CLOSED on anything PR-2 cannot FULLY verify (§10.7 "cross-scope fails closed"; §39/§5). The
+     -- oracle has no concrete act TARGET or provider context here, so it honours ONLY act-identity scope
+     -- keys. A grant whose scope carries ANY other (target-narrowing) key — client_id / campaign_id /
+     -- allowed_recipients / allowed_payees / allowed_vendors / allowed_campaigns / allowed_offers /
+     -- allowed_categories / financial_account / ad_account / provider_account — is EXCLUDED, as is any
+     -- RAIL-bound (spend) grant (provider_account column set). Verifying a specific recipient / payee /
+     -- rail is PR-3's job, when the executor knows the concrete target. A whitelist (not a 2-key
+     -- blacklist) is future-proof: a new scope key fails closed by default rather than lifting silently.
+     AND g.provider_account IS NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM jsonb_object_keys(g.scope) AS sk(key)
+        WHERE sk.key NOT IN ('allowed_action_kinds','allowed_tool_keys')
+     )
      AND (
        (_act_is_kind AND g.scope->'allowed_action_kinds' ? _act_key)
        OR ((NOT _act_is_kind) AND g.scope->'allowed_tool_keys' ? _act_key)
@@ -183,8 +198,13 @@ BEGIN
   -- posture is re-clamped to `confirm` on every step change, so a grant cannot defer to it). The §67/§68
   -- ceiling STILL binds, and an EXPLICIT process `off` (a human kill switch) is never overridden. ──
   IF _reason = 'lifted' THEN
-    IF _a.granted_lane = 'off' THEN
-      _lifted_rank := 0;                          -- explicit kill switch wins over any grant
+    -- The grant lifts a `confirm` act-floor (the "blanket high-action confirm floor", §10.8). It NEVER
+    -- lifts an `off` floor: a process `off` (human kill switch) and an act-floor `off` (a tenant-disabled
+    -- tool via resolve_tool_autonomy, or a kind catalogued default_autonomy_lane='off') are DELIBERATE
+    -- disables, not defaults, so a grant may not re-enable them (§10.9 narrowest-limit-wins — an `off`
+    -- layer is a hard stop). Only these two `off`s and the §67/§68 ceiling bind the lift.
+    IF _a.granted_lane = 'off' OR _act_floor = 'off' THEN
+      _lifted_rank := 0;
     ELSE
       _lifted_rank := LEAST(
         public.autonomy_lane_rank('auto'),        -- the grant authorizes auto for this act...
@@ -192,6 +212,7 @@ BEGIN
     END IF;
     _capped_by := CASE
       WHEN _a.granted_lane = 'off' THEN 'process_grant'   -- the human turned this process off
+      WHEN _act_floor = 'off' THEN 'floor'                -- this act/tool is deliberately disabled
       WHEN _lifted_rank = public.autonomy_lane_rank(_ceiling)
            AND public.autonomy_lane_rank(_ceiling) < public.autonomy_lane_rank('auto') THEN 'ceiling'
       ELSE NULL
@@ -205,9 +226,16 @@ BEGIN
       'rung',          _rung,
       'granted_lane',  _a.granted_lane,
       'grant_lifted',  (_lifted_rank > _base_rank),
-      'grant_id',      _matches[1],
+      'grant_id',      _matches[1],   -- a grant matched: cite it (§10.9) even when it did not raise the lane
       'capped_by',     _capped_by,
-      'reason',        'lifted');
+      -- HONEST reason (§39 Finding 2): 'lifted' ONLY when the effective actually reached auto; otherwise
+      -- name why the matched grant did not raise it (an off kill switch, or the ceiling holding it). A
+      -- PR-3 consumer keys "a grant matched" on grant_id/grant_lifted, never on reason=='lifted'.
+      'reason',        CASE
+                         WHEN _lifted_rank >= public.autonomy_lane_rank('auto') THEN 'lifted'
+                         WHEN _a.granted_lane = 'off' OR _act_floor = 'off'      THEN 'grant_present_but_off'
+                         ELSE 'grant_present_ceiling_capped'
+                       END);
   END IF;
 
   -- ── FAIL CLOSED — return the base answer, cite why no lift happened. Never `auto` via this path. ──
@@ -242,4 +270,4 @@ REVOKE ALL ON FUNCTION public.resolve_execution_autonomy(uuid, text, boolean, nu
 GRANT EXECUTE ON FUNCTION public.resolve_execution_autonomy(uuid, text, boolean, numeric) TO service_role;
 
 COMMENT ON FUNCTION public.resolve_execution_autonomy(uuid, text, boolean, numeric) IS
-  'RE-2 PR-2 — the policy-aware floor-lift oracle. Per act, returns min(process grant, act floor, Trust Compass ceiling); a single active, in-scope, cap-headroom standing grant (paige_authority_grants) lifts THIS act''s floor to auto — ceiling + process grant still bind. Every other branch fails closed to the base floor and cites reason; a lift cites grant_id (§10.9). SUBSTRATE — no producer yet; the reporting tools still read resolve_automation_autonomy (dark until PR-3).';
+  'RE-2 PR-2 — the policy-aware floor-lift oracle. Per act, returns min(process grant, act floor, Trust Compass ceiling); a single active, in-scope, cap-headroom standing grant (paige_authority_grants) lifts THIS act''s CONFIRM floor to auto, superseding the default confirm posture. The §67/§68 ceiling still binds, and an explicit off (process granted_lane OR act-floor) is never overridden. PR-2 lifts only act-identity grants with no rail/target sub-scope (rail/target verification is PR-3). Every other branch fails closed to the base floor and cites reason; a matched grant cites grant_id (§10.9). SUBSTRATE — no producer yet; the reporting tools still read resolve_automation_autonomy (dark until PR-3).';

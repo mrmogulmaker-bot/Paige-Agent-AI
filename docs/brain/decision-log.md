@@ -4195,11 +4195,28 @@ producers; the 3 paige-ai-chat reporting tools deliberately STILL read the uncha
 §13 lie this slice avoids). §37: the only runtime caller of `resolve_automation_autonomy` is those 3
 tools; PR-2 changes no existing signature/body, so every producer is unaffected by construction.
 
-**Crew (§1/§14/§39).** Design/architecture + §37-inventory scout done (plan at
-`scratchpad/re2_pr2_design.md`); §39 adversarial verifier + §5 compliance run on the pushed diff (same
-flow as PR-1). Their standing checks for this slice: the 3 reporting tools still call
-`resolve_automation_autonomy` (darkness), no existing resolver signature changed, and the oracle keys on
-the AUTOMATION's tenant, never `current_user_tenant_id()` (§51/§53).
+**Crew (§1/§14/§39) — both FIX-FIRST, folded pre-merge.** Design/architecture + §37-inventory scout done
+(plan at `scratchpad/re2_pr2_design.md`). §5 compliance and §39 adversarial verifier both ran the pushed
+diff and both returned FIX-FIRST, confirming darkness / grants / tenant-scope / cap-lockstep clean and
+CONVERGING on two fail-closed correctness defects the green proof structurally could not reach — folded
+into the shipping migration before merge (un-applied file, so cheap, doctrine-determined, no round-table):
+- **F1 (both crews): an `off` act-floor was lifted.** The lift ignored `_act_floor`, so a deliberately
+  disabled tool/kind (`resolve_tool_autonomy='off'` or a kind `default_autonomy_lane='off'`) got raised to
+  `auto`. Fixed: an `off` act-floor (like an `off` process posture) is a hard stop a grant never
+  overrides (§10.9). Proof case F1 added (real off-kind `talent.flag_role_gap` → stays `off`, `capped_by:floor`).
+- **F2 (both crews; §39 proved it live): only 2 of ~11 target/rail sub-scope keys failed closed.** A grant
+  narrowed by `allowed_recipients`/`allowed_payees`/etc. (or rail-bound via `provider_account`) lifted to
+  `auto` wholesale. Fixed with a WHITELIST — the oracle lifts ONLY grants whose scope keys ⊆
+  {allowed_action_kinds, allowed_tool_keys} AND with no `provider_account`; any target-narrowed or
+  rail-bound grant fails closed (PR-3 verifies the concrete target/rail). Proof cases F2a/F2b added.
+- **F4 + §39-Finding-2 (honesty):** corrected the `COMMENT ON FUNCTION` ("process grant still binds" was
+  false) and made `reason` honest — `'lifted'` only when the effective actually reached `auto`, else
+  `grant_present_but_off` / `grant_present_ceiling_capped` (a matched grant still cites `grant_id`).
+Carried as explicit PR-3 obligations (not baked): §5 F3 — whether a grant should override a DELIBERATE
+process `confirm` (vs only the re-clamp default) is an owner call at the PR-3 gate; §39 Findings 3/4 —
+PR-3's executor must independently gate `state='live'` and guard an allowlisted-but-unknown action_kind;
+§5 F8 — PR-3 must reconcile the per-process (reporting) and per-act (execution) resolvers so §57
+source-of-truth cannot diverge.
 
 **Proof (§32).** `BEGIN..ROLLBACK` on prod (ref xygzykjyynhzqytbqnzu) — 22 behavioral asserts PROOF_OK
 against the shipping SQL: structural (SECURITY DEFINER + no anon EXECUTE + service_role EXECUTE); lift →
