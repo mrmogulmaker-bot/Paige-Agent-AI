@@ -18,8 +18,8 @@ import { readFileSync, existsSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 
 const CHAT = "supabase/functions/paige-ai-chat/index.ts";
-const ANCHOR_MIG = "supabase/migrations/20261227000000_thread_image_refine_anchor.sql";
-const VERSION_MIG = "supabase/migrations/20261227000001_marketing_content_reuse_preserves_versions.sql";
+const ANCHOR_MIG = "supabase/migrations/20261228000000_thread_image_refine_anchor.sql";
+const VERSION_MIG = "supabase/migrations/20261228000001_marketing_content_reuse_preserves_versions.sql";
 const chat = readFileSync(CHAT, "utf8");
 
 describe("Task #15 — migrations exist and carry the safety clauses", () => {

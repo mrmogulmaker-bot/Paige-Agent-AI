@@ -22,8 +22,8 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const bin = process.env.REFINE_PROOF_PG_BIN || "/usr/lib/postgresql/16/bin";
 const migrations = [
-  "20261227000000_thread_image_refine_anchor.sql",
-  "20261227000001_marketing_content_reuse_preserves_versions.sql",
+  "20261228000000_thread_image_refine_anchor.sql",
+  "20261228000001_marketing_content_reuse_preserves_versions.sql",
 ];
 for (const m of migrations) {
   if (!existsSync(join(root, "supabase/migrations", m))) throw new Error(`Required migration absent: ${m}`);

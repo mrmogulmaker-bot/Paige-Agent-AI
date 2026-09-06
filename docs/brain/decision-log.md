@@ -94,6 +94,18 @@
   Raw-table-boundary enforcement is logged here as a POSSIBLE FUTURE HARDENING, deferred. Merge decision:
   proceed on green CI (5 review rounds, 10 findings folded/decided; core §9 tenant-isolation + server-owned
   anchor invariants proven). ROUND 5 is comment/doc-only — no functional change, no new Codex round requested.
+  **MIGRATION-VERSION COLLISION (resolved 2026-09-06).** While this PR was in review, `main` advanced and
+  merged `20261227000000_retire_admin_notification_urls.sql` — the SAME version prefix as my
+  `20261227000000_thread_image_refine_anchor.sql`. GitHub's CI merge-ref (PR head ∪ current main) applied
+  both → `schema_migrations_pkey` duplicate-key (23505) in the PAIGE Spine `database-contract` job. Fix: my
+  two migrations renamed to `20261228000000_thread_image_refine_anchor.sql` +
+  `20261228000001_marketing_content_reuse_preserves_versions.sql` (past main's latest); refs updated in the
+  db-proof + vitest. HONEST NOTE (§13): the `lint:migration-versions` guard has NO gap — it keys on the
+  version prefix and DID flag this once retire_admin was in the base; my earlier local runs passed only
+  because the collision did not yet exist (main added retire_admin later). LESSON: concurrent migration
+  development can claim your version slot AFTER your local lint is green; the CI merge-ref is what catches
+  it — on any base-advance/merge, re-run the migration lint and renumber past the base's newest, never
+  renumber the already-applied one.
 
 - **Business Game Plan → Strategy-Desk SLICE A SHIPPED — the in-place production build of the
   owner-approved reimagination (2026-09-06, branch `claude/business-game-plan-ui-rxuju3`, PR #988).**
