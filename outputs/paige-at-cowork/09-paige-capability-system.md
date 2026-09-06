@@ -159,10 +159,18 @@ agentic and document-direct-stream paths inherit it; behavior-preserving (§37 �
 `src/solo/untrusted-fence.test.ts` (10 tests) + source-contract guard. Accurate scope (Codex P1, verified):
 the attachment turn does NOT execute model-emitted tool calls, so today the fence guards against *steered
 answer/extraction*; it becomes load-bearing the moment attachments are routed into the tool loop.
-**STILL OPEN in this slice (named):** a generic chat→file **download** primitive; executable/content
-sniffing beyond the MIME allow-list; and a SECOND unfenced surface — the retrieved-KB block
-(`index.ts` `=== TENANT KNOWLEDGE ===`) where OCR'd upload content re-enters via `match_tenant_knowledge`.
-Untrusted-exec hardening ties to Sb. **§32.c authenticated malicious-doc drive OWED** (headless).
+**Increment 2 SHIPPED (Task #20, 2026-09-06):** the SECOND unfenced surface named above — the retrieved-KB
+block (`index.ts` `=== TENANT KNOWLEDGE ===`, `match_tenant_knowledge`) where OCR'd upload content re-enters —
+is now fenced, together with its equally-untrusted sibling `ragContext` (`match_rag_documents`, fed by
+client-financial/artifact ingest). Both retrieval blocks carry `RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE` and
+sanitize each retrieved chunk (title+content) via the reused `_shared/untrusted-fence.ts` `sanitizeUntrustedText`
+(§18 — no fourth spelling); the operator-authored `knowledge_base` block gets marker/control HYGIENE only (no
+distrust notice — trusted canon, honest three-way scoping §13). This surface is MORE load-bearing than inc-1's
+attachment fence: retrieval runs on turns that DO execute model tool calls. Behavior-preserving (§37 — every
+load-bearing outer marker the funding/RAG instructions depend on is preserved). Proof: `src/solo/untrusted-fence.test.ts`
+(25). **STILL OPEN in this slice (named):** a generic chat→file **download** primitive; executable/content
+sniffing beyond the MIME allow-list. Untrusted-exec hardening ties to Sb. **§32.c authenticated malicious-doc
+drive OWED** (headless).
 
 ### Slice 3 — Governed native record writes · **increment 1 SHIPPED → continue F05 coverage**
 Build on: `deal_move_stage` (honest outcome, S1/S1.1), `content_save`/`document_generate`/`growth_*`,

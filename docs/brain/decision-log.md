@@ -23,6 +23,36 @@
   (CRM updates with mixed pre/post-write throws, content/team/plan/automation writes), and `crm_create_contact`
   (its dedup-clarify `success:false` is an ask-the-human, not a refusal — needs a per-capability branch). **§32.c
   authenticated drive OWED** (headless).
+  **OUTCOME — MERGED to `main` (squash `72735275`, PR #1013, 2026-09-06).** §39 peer-gate + §5 compliance both
+  SHIP (no blocking finding); PR checks green (ci incl. deno leg · Security Audit · ui-delivery-evidence). **§32.a
+  CONFIRMED:** `deploy-edge-functions` run 34054706246 (main push, head `72735275`) = success — `paige-ai-chat`
+  redeployed (`_shared/crm-capability-outcome.ts` is in its bundle). Codex third-layer review was RUNNING on
+  `80eab00` at merge (pre-merge CI + peer-gate + compliance were green; any real Codex finding folds into a
+  follow-up). **§32.c** authenticated CRM-write→Rail-row drive still OWED (headless).
+- **Capability System Slice 2 increment 2 — fence the RETRIEVED-content injection surfaces (2026-09-06, Task #20, owner-authorized)** —
+  closes the named Slice-2 open item (the SECOND unfenced surface) and its equally-untrusted sibling. THREE
+  retrieval blocks are inlined into the SAME system prompt (`paige-ai-chat/index.ts` ~3006-3008) — and,
+  unlike the direct-attachment turn, retrieval runs on turns that DO execute model tool calls, so an injection
+  inside a retrieved chunk is MORE load-bearing (could steer a mutating tool call), not less. **Grounded trust
+  classes (§13 honest three-way scoping):** `tenant_knowledge` (`match_tenant_knowledge`, the named surface) is
+  fed by OCR'd uploads (`kb-ingest-core`) → UNTRUSTED; `rag_documents` (`match_rag_documents`) is fed by
+  client-financial/artifact ingest (`embed-client-financials`, `rebuild-client-financial-brief`, `kb-promote`) →
+  UNTRUSTED; `knowledge_base` (`relevantKnowledge`) is OPERATOR-authored (`src/operator/data/useKnowledge.ts`) →
+  TRUSTED canon. **Fix (§18 one home):** two new exports on `_shared/untrusted-fence.ts` —
+  `RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE` (permits GROUNDING, forbids obeying directives inside an entry) and
+  `sanitizeUntrustedText` (composes the existing private `stripControl`+`neutralizeMarkers`; drops bidi/
+  zero-width/C0, breaks any `===` run — no fourth spelling). The two untrusted blocks get the notice inside the
+  block + per-chunk title/content sanitization; the operator block gets marker/control HYGIENE only (no distrust
+  notice — honest, it's trusted). **Behavior-preserving (§37):** every load-bearing outer marker the downstream
+  funding (line ~3019) + RAG (line ~3011) instructions depend on is preserved verbatim (`=== TENANT KNOWLEDGE ===`,
+  `=== RELEVANT KNOWLEDGE BASE ===`, `=== END KNOWLEDGE BASE ===`); content caps unchanged (600/240); no
+  request/response contract change, no tool added (chat-tool-registry baseline 94). **PROOF:**
+  `src/solo/untrusted-fence.test.ts` extended to 25 (sanitizer units incl. zero-width split + forged-marker;
+  notice-permits-grounding; source-contract asserts on all three sites incl. the operator no-notice adjacency);
+  tsc 0; crm+pipeline contract tests 22/22 (paige-ai-chat asserts undisturbed); edge ratchet 145;
+  conversation-tenant + chat-tool-registry clean; §50/§63 clean. Deno type-check on the CI real-deno leg. **§32.c
+  authenticated malicious-doc→KB-retrieval drive OWED** (headless). §39 peer-gate + §5 compliance + Codex pending
+  on the PR.
 - **Capability System Slice 2 — uploaded-file prompt-injection fence (2026-09-06, Task #18, owner-authorized)** —
   the file-handling contract's first-class security net-new. An attached document's extracted text was
   inlined RAW into the model turn immediately next to the TRUSTED analysis instructions

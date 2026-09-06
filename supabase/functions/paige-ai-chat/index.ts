@@ -54,7 +54,12 @@ import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
 // below. NO-OP (returns null) for anyone but a seeded platform operator (the tenant-less God account).
 import { loadOwnerContextBlock } from "../_shared/owner-context.ts";
 import { buildTenantTeamContextBlock } from "../_shared/team-context.ts";
-import { fenceUploadedFileText, UPLOADED_FILE_UNTRUSTED_NOTICE } from "../_shared/untrusted-fence.ts";
+import {
+  fenceUploadedFileText,
+  RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE,
+  sanitizeUntrustedText,
+  UPLOADED_FILE_UNTRUSTED_NOTICE,
+} from "../_shared/untrusted-fence.ts";
 import { loadSpineEvidenceForChat } from "../_shared/paige-spine/chatEvidence.ts";
 import { buildBusinessContextReadinessBlock } from "../_shared/paige-spine/domains/businessContextChatEvidence.ts";
 import { buildTeamAuthorityBlock } from "../_shared/paige-spine/domains/teamAuthorityChatEvidence.ts";
@@ -1683,7 +1688,14 @@ JSON:`;
       const sanitizedContent = lastUserMessage.content.replace(/[\\%_]/g, '\\$&').substring(0, 200);
       const { data: knowledge } = await supabase.from("knowledge_base").select("title, content, summary, framework, category").textSearch('content', sanitizedContent).limit(5);
       if (knowledge && knowledge.length > 0) {
-        relevantKnowledge = "\n\nRelevant Knowledge Base:\n" + knowledge.map(k => `### ${k.title} (${k.framework} - ${k.category})\n${k.content}`).join("\n\n");
+        // §13 honest scoping (Slice 2 inc 2) — knowledge_base is OPERATOR-authored platform canon
+        // (src/operator/data/useKnowledge.ts), a different trust class from the OCR-fed tenant KB and
+        // client-derived rag stores, so it does NOT carry the untrusted-DATA notice. It DOES route
+        // through the same §18 sanitizer for marker/control HYGIENE (break any `===` run; drop bidi/
+        // zero-width) — cheap belt-and-suspenders so no retrieval span can forge a marker, with no
+        // behavior change for ordinary operator text. If knowledge_base ever ingests tenant/document
+        // content it inherits the full fence.
+        relevantKnowledge = "\n\nRelevant Knowledge Base:\n" + knowledge.map(k => `### ${sanitizeUntrustedText(k.title)} (${sanitizeUntrustedText(k.framework)} - ${sanitizeUntrustedText(k.category)})\n${sanitizeUntrustedText(k.content)}`).join("\n\n");
       }
     }
 
@@ -1772,9 +1784,16 @@ JSON:`;
             ragRetrievedIds = ragRows.map((r: any) => r.id);
             const blocks = ragRows.map((r: any) => {
               const pct = Math.round((Number(r.similarity) || 0) * 100);
-              return `${r.title} (relevance: ${pct}%)\n${r.summary || (r.content || "").slice(0, 240)}\n---`;
+              // §9/§13 injection fence (Slice 2 inc 2) — rag_documents is fed by client-financial /
+              // artifact ingest (embed-client-financials, rebuild-client-financial-brief, kb-promote),
+              // so a retrieved title/body is UNTRUSTED document-derived content. Sanitize each span so a
+              // chunk cannot forge the trusted `=== END KNOWLEDGE BASE ===` marker or smuggle bidi/
+              // zero-width chars. Body selection + 240 cap unchanged; the outer markers stay ours.
+              const safeTitle = sanitizeUntrustedText(r.title).replace(/[\r\n]+/g, " ").trim().slice(0, 200);
+              const safeBody = sanitizeUntrustedText(r.summary || (r.content || "").slice(0, 240));
+              return `${safeTitle} (relevance: ${pct}%)\n${safeBody}\n---`;
             }).join("\n");
-            ragContext = `\n\n=== RELEVANT KNOWLEDGE BASE ===\nUse these real outcomes and insights to inform your response. Reference naturally as "clients in similar situations" or "outcomes we have tracked" — never quote verbatim:\n\n${blocks}\n=== END KNOWLEDGE BASE ===\n`;
+            ragContext = `\n\n=== RELEVANT KNOWLEDGE BASE ===\n${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}\nUse these real outcomes and insights to inform your response. Reference naturally as "clients in similar situations" or "outcomes we have tracked" — never quote verbatim:\n\n${blocks}\n=== END KNOWLEDGE BASE ===\n`;
 
             const sims = ragRows.map((r: any) => Number(r.similarity) || 0);
             const avgSim = sims.reduce((s, n) => s + n, 0) / sims.length;
@@ -1927,9 +1946,17 @@ JSON:`;
             if (kept.length > 0) {
               const blocks = kept.map((r: any) => {
                 const tier = r.source_tier === "global" ? "GLOBAL" : "TENANT";
-                return `[${tier}] ${r.title}\n${(r.content || "").slice(0, 600)}\n---`;
+                // §9/§13 injection fence (Capability System Slice 2 inc 2) — a retrieved chunk's
+                // title/content are UNTRUSTED: tenant KB is fed by OCR'd uploads (kb-ingest-core), so a
+                // malicious document can land text here that later re-enters the prompt. Sanitize each
+                // span (drop bidi/zero-width/controls; break any `===` run) so a chunk cannot forge the
+                // trusted `=== END TENANT KNOWLEDGE ===` marker to make injected text read as system
+                // prose. Content cap unchanged (600). The outer markers stay platform-authored.
+                const safeTitle = sanitizeUntrustedText(r.title).replace(/[\r\n]+/g, " ").trim().slice(0, 200);
+                const safeContent = sanitizeUntrustedText(r.content).slice(0, 600);
+                return `[${tier}] ${safeTitle}\n${safeContent}\n---`;
               }).join("\n");
-              tenantKbContext = `\n\n=== TENANT KNOWLEDGE ===\nPrivate tenant docs and global canon, ranked by semantic relevance. Use to ground your answer; never quote verbatim.\n\n${blocks}\n=== END TENANT KNOWLEDGE ===\n`;
+              tenantKbContext = `\n\n=== TENANT KNOWLEDGE ===\n${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}\nPrivate tenant docs and global canon, ranked by semantic relevance. Use to ground your answer; never quote verbatim.\n\n${blocks}\n=== END TENANT KNOWLEDGE ===\n`;
               tenantKbScopeTenantId = tkTenantId;
 
               // Prepare metadata-only telemetry, but DO NOT write it yet. Active-account
