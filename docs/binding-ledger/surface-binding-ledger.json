@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "artifact": "Paige OS Integration — Surface Binding Ledger",
   "generated": "2026-09-06",
-  "grounded_against": "origin/main 68d7c10f4381dd66a5d930d82f9400d004d189b5",
+  "grounded_against": "origin/main d4392b9786e68ce44b72905f3ffe6771aea319ab",
   "scope": "solo",
   "owner": "backend (Claude Code) — §00: this ledger records what WORKS/is wired; it holds zero design opinion",
   "state_vocabulary": {
@@ -110,7 +110,7 @@
       },
       "prohibited_context": ["approval titles/summaries/draft bodies", "knowledge titles", "finding interpretation text", "check/run ids", "tenant-authored stage labels"],
       "state": "PARTIAL",
-      "state_reason": "PR #1016 code, migration and affected edge function are deployed at 68d7c10f4381dd66a5d930d82f9400d004d189b5, with db-live and edge-live at that SHA. The Business Mission governed write remains chat-bound behind the existing approval/authority gate. The Tenant Brain Mission helper supplies persisted-thread-selected canonical Mission context before reasoning, re-resolves tenant after the write, verifies every normalized persisted change by readback, and only then records the existing capability_run Rail outcome. Still PARTIAL, never Tenant-Brain complete: authenticated production Mission/Rail row proof is owed; the policy-aware standing-authority oracle is dark until its owning runtime slice; Mind and Memory remain UNAVAILABLE; the composite-plan Mind lens still needs #647.",
+      "state_reason": "PR #1016 code, migration and affected edge function are deployed at 68d7c10f4381dd66a5d930d82f9400d004d189b5. At its closeout both live markers matched; current main after descendant M1-a #1014 has edge-live at 68d7c10f and db-live at 94e08d8b, which includes the Mission migration. The Business Mission governed write remains chat-bound behind the existing approval/authority gate. The Tenant Brain Mission helper supplies persisted-thread-selected canonical Mission context before reasoning, re-resolves tenant after the write, verifies every normalized persisted change by readback, and only then records the existing capability_run Rail outcome. Still PARTIAL, never Tenant-Brain complete: authenticated production Mission/Rail row proof is owed; the policy-aware standing-authority oracle is dark until its owning runtime slice; Mind and Memory remain UNAVAILABLE; the composite-plan Mind lens still needs #647.",
       "evidence_class": ["production_catalog", "automated_test", "source_read"],
       "linked": ["#1016", "#983", "#647", "#639"],
       "next_slice": "Drive an authenticated Solo owner through create/revise/transition at deployed SHA 68d7c10f4381dd66a5d930d82f9400d004d189b5, prove the canonical Mission revision and matching capability_run row/read projection, and retain the denied/cross-tenant path. The composite-plan Mind lens is separate and still needs #647; Memory promotion remains unavailable.",
