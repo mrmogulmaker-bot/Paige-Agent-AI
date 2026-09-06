@@ -9,7 +9,7 @@ MATERIAL_FLOW_CHANGE: YES: the legacy privileged destination and its delayed aut
 FLOW_PROTOTYPE: PASS: owner approval in the hotfix assignment explicitly fixes the interaction contract as standard safe unknown-route behavior and forbids a replacement privileged route or shell
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: any visitor to an old URL receives the ordinary 404; authenticated users enter only through server-resolved canonical tenant, account-selection, setup, callback, or operator contexts
 VISUAL_DIRECTION: PASS: preserve the existing product NotFound presentation and canonical authenticated shell; the approved correction is route taxonomy and loading behavior, not a redesign
-AUTOMATED_EVIDENCE: PASS: 249 test files and 3,630 tests passed on the final rebased commit; focused post-rebase route/security suite 59/59 and newly merged Vault collision suite 29/29
+AUTOMATED_EVIDENCE: PASS: 249 test files and 3,633 tests passed on the final rebased commit; focused post-rebase route/security suite 59/59 and newly merged Vault collision suite 29/29
 STATIC_EVIDENCE: PASS: TypeScript and production build passed; changed-source ESLint passed with 0 errors and 10 pre-existing warnings; route-producer, migration-version, SECURITY DEFINER, regression, and diff guards passed
 RENDERED_EVIDENCE: PASS: local production Chromium rendered the base, trailing-slash, and deep retired variants as the standard 404 at 1366x768, 390x844, and 900x1000 with no page errors or horizontal overflow
 BEHAVIORAL_EVIDENCE: PASS: local production Chromium covered direct navigation, refresh, back/forward, anonymous Solo and account-selection redirects, and both explicit OAuth callback routes; old-route render completed in 645-1,578 ms
