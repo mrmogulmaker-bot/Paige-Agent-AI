@@ -304,6 +304,26 @@ describe("TrustCompass — the governed surface runs, honest and accessible", ()
     expect(modes).toEqual(["confirm", "off"]); // the queued last choice runs once the first settles
   });
 
+  it("returning to the PERSISTED value while a write is in flight enqueues it, not a no-op (§70.1 #3)", async () => {
+    // Knob starts at off; user picks confirm (in flight, gated), then backs out to off before it saves.
+    // The return to off must QUEUE (overriding the in-flight confirm), never no-op on r===rank and let
+    // the more-permissive confirm persist.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const modes: string[] = [];
+    const setDomainMode = vi.fn(async (_k: string, m: string) => { modes.push(m); if (modes.length === 1) await gate; return { ok: true }; });
+    gov.value = govValue([row("crm_create_contact", "off")], {}, { setDomainMode });
+    const h = draw(<TC accountEpoch="t1" />);
+    const knob = [...h.querySelectorAll('[role="slider"]')]
+      .find((s) => /CRM & client records/i.test(s.getAttribute("aria-label") ?? ""))!;
+    await act(async () => { knob.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })); }); // off → confirm (gated)
+    await act(async () => { knob.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })); });  // confirm → off (return to persisted, while confirm saves)
+    expect(modes).toEqual(["confirm"]); // confirm still the only write in flight; off is queued behind it
+    await act(async () => { release(); await Promise.resolve(); await Promise.resolve(); });
+    // off is written AFTER confirm settles — the user's back-out wins, governance is not left at confirm.
+    expect(modes).toEqual(["confirm", "off"]);
+  });
+
   it("a FAILED knob write still runs the newer queued choice — never strands the last value (§70.1 #2)", async () => {
     // The first write hangs then FAILS; the second choice queues behind it and must still be attempted.
     let release!: () => void;

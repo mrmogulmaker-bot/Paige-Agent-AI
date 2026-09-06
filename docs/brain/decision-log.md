@@ -111,7 +111,16 @@
   **Round-7 follow-ons (Codex round-6 review):** F-B above (migration reverted); F-A — removing the marketplace
   tombstones left the `account` domain label claiming "marketplace/installs" it no longer governs, corrected to
   "Team access / Teammate roles, permissions, and invitations" (§70.1/§13, a factual fix to CC-authored config my own
-  change falsified). The two pending-preview P2s remain §00 design follow-ups.
+  change falsified).
+  **Round-8 (Codex round-7 review):** F-C (P1, FIXED) — the knob `commit` no-op fired on `r===rank` even while a
+  DIFFERENT write was in flight, so `off→confirm→off` before the first save let the in-flight `confirm` persist
+  (more permissive than the user's back-out); now the no-op only fires when nothing is draining/queued, else the
+  return value is enqueued to override the in-flight write (§70.1) + test. F-D (P2, §00 follow-up) — `mission_create/
+  revise/transition` are LIVE, HIGH-risk, Solo-facing chat mutations (humanSurface `/command-center/business-game-plan`)
+  not on the compass, so "Pipeline & work → Held" doesn't hold them; their governance HOME on the compass (a new
+  "Business plan" domain vs folding into an existing one) is a §00 organization decision, tracked with the
+  "compass curates a subset" position — NOT silently mis-filed under Pipeline. The two pending-preview P2s + F-D
+  remain §00 design follow-ups (owner/CD to decide the mission-governance home).
   **Next owning workstream:** (1) the §32.c authenticated Solo live-drive (browser-capable session); (2) a CD/product
   decision on the pending-decisions preview (deep-link seam + overflow); (3) any future explicit sub-account release
   (flip `trust_compass` into SUB_ACCOUNT_FEATURES + a §51 sub-account tier verification). Dependency to read first:

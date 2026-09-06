@@ -92,6 +92,12 @@ export const TOOL_MAP: Readonly<Record<string, { capability: CapabilityKey; risk
   save_to_knowledge_base: { capability: "crm", risk: "ordinary" },
 
   // ── Pipeline & work ───────────────────────────────────────────────────────────────────────
+  // §00 FOLLOW-UP (Codex r7 F-D): mission_create/revise/transition are LIVE, HIGH-risk, Solo-facing
+  // chat mutations (humanSurface /command-center/business-game-plan) NOT governed here — so
+  // "Pipeline & work → Held" does not hold them. They are business-PLAN acts, a different concept than
+  // this Pipeline/deals domain, so their governance HOME on the compass (a new "Business plan" domain,
+  // or folding in) is a design/organization decision for CD/owner — deliberately not mis-filed under
+  // Pipeline. Tracked in decision-log; the "curates a subset" test records the gap honestly.
   crm_update_pipeline_stage: { capability: "pipeline", risk: "ordinary" },
   crm_create_task: { capability: "pipeline", risk: "ordinary" },
   deal_create: { capability: "pipeline", risk: "ordinary" },

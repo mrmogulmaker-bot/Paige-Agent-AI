@@ -223,7 +223,12 @@ const TcKnob=({value,max,onCommit,ariaLabel,onError,mixed})=>{
   }finally{draining.current=false;if(mounted.current)setSaving(false);}
  },[onCommit,onError]);
  const commit=React.useCallback((r)=>{r=Math.max(0,Math.min(maxRank,r));
-  if(r===rank&&!mixed){setPending(null);return;} // no change — unless a mixed domain needs normalising to the shown level
+  // No-op ONLY when the target already matches the persisted prop AND nothing is in flight or queued.
+  // If a DIFFERENT write is still saving (draining) or queued, a return to the persisted value must be
+  // ENQUEUED so it overrides that in-flight write — clearing here would let the stale in-flight value
+  // (e.g. a 'confirm' the user has since backed out of) persist, more permissive than the last choice
+  // (§70.1/§13). A mixed domain still commits the shown level to normalise.
+  if(r===rank&&!mixed&&!draining.current&&desired.current==null){setPending(null);return;}
   setPending(r);desired.current=r;void drain();
  },[maxRank,rank,mixed,drain]);
  const key=e=>{if(disabled)return;let r=shown;
