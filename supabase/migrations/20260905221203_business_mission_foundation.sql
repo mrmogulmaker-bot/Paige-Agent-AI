@@ -26,7 +26,7 @@ create table public.business_missions (
 );
 create index business_missions_portfolio_idx on public.business_missions(tenant_id,lifecycle_state,updated_at desc);
 
-create function public.business_mission_text_array_valid(p_values text[],p_max_count integer,p_max_length integer)
+create or replace function public.business_mission_text_array_valid(p_values text[],p_max_count integer,p_max_length integer)
 returns boolean language sql immutable set search_path='' as $$
   select p_values is not null and cardinality(p_values)<=p_max_count
     and not exists(select 1 from unnest(p_values) v where v is null or btrim(v)='' or char_length(v)>p_max_length)
@@ -69,7 +69,7 @@ create table public.business_mission_mutation_receipts (
 );
 create index business_mission_receipts_mission_idx on public.business_mission_mutation_receipts(tenant_id,mission_id,created_at desc);
 
-create function public.prevent_business_mission_brief_mutation() returns trigger
+create or replace function public.prevent_business_mission_brief_mutation() returns trigger
 language plpgsql set search_path='' as $$
 begin raise exception 'MISSION_BRIEF_IMMUTABLE' using errcode='55000'; end $$;
 create trigger business_mission_brief_immutable before update or delete on public.business_mission_brief_versions
@@ -81,7 +81,7 @@ alter table public.business_mission_mutation_receipts enable row level security;
 revoke all on public.business_missions,public.business_mission_brief_versions,public.business_mission_mutation_receipts from public,anon,authenticated;
 grant all on public.business_missions,public.business_mission_brief_versions,public.business_mission_mutation_receipts to service_role;
 
-create function public.business_mission_owner_context() returns table(actor_id uuid,tenant_id uuid)
+create or replace function public.business_mission_owner_context() returns table(actor_id uuid,tenant_id uuid)
 language plpgsql stable security definer set search_path='' as $$
 declare a uuid:=auth.uid(); t uuid;
 begin
@@ -94,7 +94,7 @@ begin
 end $$;
 revoke all on function public.business_mission_owner_context() from public,anon,authenticated;
 
-create function public.create_business_mission(p_request_key uuid,p_title text,p_desired_outcome text,p_deadline_on date,p_baseline text,p_strategy text,
+create or replace function public.create_business_mission(p_request_key uuid,p_title text,p_desired_outcome text,p_deadline_on date,p_baseline text,p_strategy text,
   p_constraints text[] default '{}',p_success_definition text default '',p_owner_authority text default '',p_assumptions text[] default '{}',
   p_missing_information text[] default '{}',p_next_action text default null,p_request_source text default 'owner_ui',p_request_thread_id uuid default null)
 returns jsonb language plpgsql security definer set search_path='' as $$
@@ -131,7 +131,7 @@ begin
   return answer;
 end $$;
 
-create function public.revise_business_mission_brief(p_mission_id uuid,p_expected_revision integer,p_request_key uuid,p_desired_outcome text,p_deadline_on date,
+create or replace function public.revise_business_mission_brief(p_mission_id uuid,p_expected_revision integer,p_request_key uuid,p_desired_outcome text,p_deadline_on date,
   p_baseline text,p_strategy text,p_constraints text[],p_success_definition text,p_owner_authority text,p_assumptions text[],p_missing_information text[],
   p_revision_reason text,p_title text default null,p_next_action text default null)
 returns jsonb language plpgsql security definer set search_path='' as $$
@@ -167,7 +167,7 @@ begin
   return answer;
 end $$;
 
-create function public.transition_business_mission(p_mission_id uuid,p_expected_revision integer,p_request_key uuid,p_to_state text,p_reason text default null,
+create or replace function public.transition_business_mission(p_mission_id uuid,p_expected_revision integer,p_request_key uuid,p_to_state text,p_reason text default null,
   p_closure_outcome text default null,p_outcome_summary text default null,p_outcome_unknowns text default null)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare a uuid;t uuid;m public.business_missions%rowtype;h text;n integer;r public.business_mission_mutation_receipts%rowtype;answer jsonb;
@@ -205,7 +205,7 @@ begin
   return answer;
 end $$;
 
-create function public.list_business_missions(p_limit integer default 50) returns jsonb language plpgsql stable security definer set search_path='' as $$
+create or replace function public.list_business_missions(p_limit integer default 50) returns jsonb language plpgsql stable security definer set search_path='' as $$
 declare a uuid;t uuid;r jsonb;begin select c.actor_id,c.tenant_id into a,t from public.business_mission_owner_context() c;
   select coalesce(jsonb_agg(x order by (x->>'updated_at')::timestamptz desc),'[]'::jsonb) into r from(select jsonb_build_object('id',m.id,'title',m.title,'state',m.lifecycle_state,
     'state_reason',m.state_reason,'next_action',m.next_action,'revision',m.revision,'created_at',m.created_at,'updated_at',m.updated_at,'deadline_on',b.deadline_on,
@@ -214,7 +214,7 @@ declare a uuid;t uuid;r jsonb;begin select c.actor_id,c.tenant_id into a,t from 
     where m.tenant_id=t order by m.updated_at desc limit greatest(1,least(coalesce(p_limit,50),100)))q;
   return jsonb_build_object('missions',r,'resolved_tenant_id',t);end $$;
 
-create function public.get_business_mission(p_mission_id uuid) returns jsonb language plpgsql stable security definer set search_path='' as $$
+create or replace function public.get_business_mission(p_mission_id uuid) returns jsonb language plpgsql stable security definer set search_path='' as $$
 declare a uuid;t uuid;r jsonb;begin select c.actor_id,c.tenant_id into a,t from public.business_mission_owner_context() c;
   select jsonb_build_object('mission',jsonb_build_object('id',m.id,'title',m.title,'state',m.lifecycle_state,'state_reason',m.state_reason,'next_action',m.next_action,'revision',m.revision,'created_at',m.created_at,'updated_at',m.updated_at,'closure_outcome',m.closure_outcome,'outcome_summary',m.outcome_summary,'outcome_unknowns',m.outcome_unknowns,'request_source',m.request_source,'request_thread_id',m.request_thread_id),
     'brief',to_jsonb(b)-'tenant_id'-'mission_id'-'created_by') into r
