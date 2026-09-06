@@ -122,7 +122,7 @@ export function AppNav({ user }: AppNavProps) {
   useEffect(() => {
     let cancelled = false;
     supabase.from("profiles").select("avatar_url").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => { if (!cancelled) setAvatarUrl((data as any)?.avatar_url || ""); });
+      .then(({ data }) => { if (!cancelled) setAvatarUrl((data as { avatar_url?: string | null } | null)?.avatar_url || ""); });
     return () => { cancelled = true; };
   }, [user.id]);
   const avatarNode = isAvatarBucketUrl(avatarUrl)
