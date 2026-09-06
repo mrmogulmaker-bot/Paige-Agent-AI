@@ -203,6 +203,12 @@ DECLARE
   _anomaly   jsonb := NULL;
   _recon_id  uuid;
 BEGIN
+  -- Codex P1: a MISSING confirmed amount is ABSENT financial truth, NOT zero (§13). COALESCE-to-0 would
+  -- strip the reserved estimate, mark the receipt 'succeeded', and send the corrected redelivery down the
+  -- status-replay path (real amount lost). Fail closed on NULL BEFORE any mutation.
+  IF _confirmed_cost_usd IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'missing_confirmed_amount');
+  END IF;
   IF _confirmed < 0 THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'negative_confirmed_amount');
   END IF;
@@ -330,6 +336,20 @@ DECLARE
 BEGIN
   IF _event_type NOT IN ('partial','adjust','refund','reversal','external_change','void') THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'invalid_event_type', 'event_type', _event_type);
+  END IF;
+  -- Codex P1: a MISSING delta is ABSENT financial truth, NOT zero (§13). COALESCE-to-0 would record a
+  -- zero-dollar applied=true row that occupies the idempotency slot, so a corrected redelivery no-ops and the
+  -- real refund/reversal never reaches the ledger. Fail closed on NULL BEFORE any mutation.
+  IF _delta_usd IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'missing_delta', 'event_type', _event_type);
+  END IF;
+  -- Codex P1: a PROVIDER-originated event (refund/reversal/partial/external_change) MUST carry the provider's
+  -- own stable event id — without it, it bypasses both the replay lookup and the partial unique index, so a
+  -- duplicate webhook delivery double-applies its delta and opens phantom cap headroom. Internal operator
+  -- corrections (adjust/void) may remain keyless (single-shot, not webhook-replayed).
+  IF _event_type IN ('refund','reversal','partial','external_change')
+     AND (_provider_event_id IS NULL OR length(_provider_event_id) = 0) THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'provider_event_id_required', 'event_type', _event_type);
   END IF;
   -- L1 defense-in-depth: a give-back event carrying a positive delta is a caller sign bug.
   IF _event_type IN ('refund','reversal','partial') AND _delta > 0 THEN
@@ -495,8 +515,12 @@ BEGIN
     RETURN jsonb_build_object('found', false);
   END IF;
   SELECT * INTO _g FROM public.paige_authority_grants WHERE id = _r.grant_id;
+  -- Codex P2: project each event's own `evidence` so the "complete receipt" (§10.9/§17) preserves the full
+  -- chain — the original confirmation proof and every refund/reversal's evidence — not just the latest
+  -- top-level rail_evidence (which authority_reconcile overwrites). Per the §13/§59 caller contract, evidence
+  -- carries provider confirmation proof, never secrets/full-PAN, so surfacing it to a tenant member is safe.
   SELECT COALESCE(jsonb_agg(e ORDER BY e.created_at), '[]'::jsonb) INTO _events FROM (
-    SELECT id, event_type, delta_usd, confirmed_total_usd, currency, provider_event_id, reason, applied, anomaly, created_at
+    SELECT id, event_type, delta_usd, confirmed_total_usd, currency, provider_event_id, reason, evidence, applied, anomaly, created_at
       FROM public.paige_authority_reconciliations WHERE receipt_id = _receipt_id) e;
   RETURN jsonb_build_object(
     'found', true, 'receipt_id', _r.id, 'tenant_id', _r.tenant_id, 'grant_id', _r.grant_id, 'act_key', _r.act_key,
