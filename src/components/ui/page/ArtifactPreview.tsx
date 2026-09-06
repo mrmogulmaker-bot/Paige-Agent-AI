@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GlyphPlate } from "./GlyphPlate";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 
 /** The kinds a preview can resolve. `document` and `copy` extend the four studio artifact types so
  *  the primitive can also render the canvas reopen surfaces (§21 — one session, every type). */
@@ -173,14 +173,14 @@ function BrandedField({
             "radial-gradient(120% 92% at 50% 122%, hsl(var(--studio-ink) / 0.55), transparent 56%)",
         }}
       />
-      {/* Faint PaigeMark watermark — §6 brand continuity, kept low enough to read as texture. Dropped
+      {/* Faint Command Mark watermark — §6 brand continuity, kept low enough to read as texture. Dropped
           on the compact (rail) fallback where a 28px mark would just be noise. */}
       {!compact && (
         <span
           aria-hidden
           className="pointer-events-none absolute -bottom-5 -right-5 opacity-[0.09]"
         >
-          <PaigeMark className="h-28 w-28" />
+          <PaigeCommandMark plated={false} className="h-28 w-28" />
         </span>
       )}
       {/* The kind glyph, centered. At full size it's a plated glyph on an INDIGO hairline (never resting
@@ -672,7 +672,7 @@ function ArtifactFormingSkeleton({
                 transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
               />
             )}
-            <PaigeMark className="relative h-11 w-11 opacity-45" />
+            <PaigeCommandMark plated={false} className="relative h-11 w-11 opacity-45" />
           </div>
           <MaterializingLines count={Math.min(5, 2 + Math.floor(formingSteps / 2))} reduce={reduce} />
         </div>

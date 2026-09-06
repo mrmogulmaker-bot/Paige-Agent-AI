@@ -151,6 +151,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:tier-features
 
+      - name: Legacy-mark guard (2026-09-06 — retired orbital PaigeMark must not return; use PaigeCommandMark)
+        if: ${{ !cancelled() }}
+        run: npm run lint:legacy-mark
+
+      - name: Legacy-mark guard self-test
+        if: ${{ !cancelled() }}
+        run: npm run lint:legacy-mark:test
+
       - name: Managed-schema ownership guard (#643 — migrations replay as `postgres`; ALTER/DROP TABLE on a Supabase-owned schema fails 42501 on every fresh Preview)
         if: ${{ !cancelled() }}
         run: npm run lint:managed-schema

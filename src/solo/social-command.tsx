@@ -32,7 +32,6 @@
  */
 import React from "react";
 import { Ic } from "./_shared";
-import { PaigeMark } from "@/components/brand/PaigeMark";
 import { useSocialCommand } from "./useSocialCommand";
 import { useSoloPendingActions } from "./data/useSoloPendingActions";
 import { elapsedLabel } from "./data/useSoloActivityFeed";
@@ -109,13 +108,39 @@ function Figure({ value }) {
 }
 
 /**
- * The PAIGE mark as an eclipse — reserved for the surface STATES, where there is nothing else to
- * show and the wait itself is the subject.
+ * The PAIGE command mark's glyph — the platform's CURRENT mark, NOT the retired orbital `PaigeMark`.
  *
- * The mark itself is the shared brand `PaigeMark` (the same one the Paige chat and the menu use) —
- * owner-ruled 2026-09-06 as the ONE correct logo, replacing the retired Solo swirl. The token-built
- * corona (`.social-orb-ring`) sweeps ONLY where motion is safe; `prefers-reduced-motion` stops it in
- * the stylesheet rather than hiding it, because the mark still has to read as the mark when it is still.
+ * Owner-ruled 2026-09-06: the orbital PaigeMark (gold orb + ring + spark) is the old pre-CD marketing
+ * mark; the mark the Paige chat and the menu actually render is the Command Mark — a slash and an orb,
+ * `src/operator/shell/CommandMark.tsx`, whose geometry is the CD pack's, exact
+ * (docs/design-references/cd-packs/super-admin-shell-v3/docs/handoff/design-system-port.md §3). The
+ * `points`/`cx,cy,r` and `stroke-width: 3.2` + `stroke-linejoin: round` below are that geometry,
+ * unchanged. The shared component is operator-pack-locked and its `--cm-*`/`--pg-*` tokens do not
+ * resolve under `.paige-solo`, so this Social surface renders the SAME geometry natively, coloured
+ * from the Solo tokens via `--cmk-slash`/`--cmk-orb` — the contrasting colour variation + bulging
+ * glyph the owner green-lit for this page (2026-09-06). Fills are tokens (§23 theme-aware, no hex).
+ */
+function CmdGlyph({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <polygon
+        points="21,13.6 30.5,13.6 21,34.4 11.5,34.4"
+        fill="var(--cmk-slash)"
+        stroke="var(--cmk-slash)"
+        strokeWidth="3.2"
+        strokeLinejoin="round"
+      />
+      <circle cx="34.5" cy="30.5" r="5.5" fill="var(--cmk-orb)" />
+    </svg>
+  );
+}
+
+/**
+ * The PAIGE presence as an eclipse — reserved for the surface STATES, where there is nothing else to
+ * show and the wait itself is the subject. The command glyph (above) sits in the orb body and BULGES
+ * out of it; the token-built corona (`.social-orb-ring`) sweeps ONLY where motion is safe, and
+ * `prefers-reduced-motion` stops it in the stylesheet rather than hiding it, because the mark still
+ * has to read as the mark when it is still.
  */
 function PaigeOrb() {
   return (
@@ -123,7 +148,7 @@ function PaigeOrb() {
       <span className="social-orb-halo" />
       <span className="social-orb-body" />
       <span className="social-orb-ring" />
-      <PaigeMark className="social-orb-mark" label={null} />
+      <CmdGlyph className="social-orb-mark" />
     </div>
   );
 }
@@ -276,7 +301,9 @@ function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles, 
           (§11) — the work leads, the chrome does not eat the fold. */}
       <div className="social-cmd-bar">
         <div className="social-cmd-brand">
-          <PaigeMark className="social-cmd-mark" label={null} />
+          <span className="social-cmd-mark" data-cmk="indigo" aria-hidden="true">
+            <CmdGlyph className="social-cmd-glyph" />
+          </span>
           <span className="social-cmd-wm">PAIGE</span>
           <span className="social-cmd-div" aria-hidden="true" />
           <span className="social-eyebrow">Social command</span>

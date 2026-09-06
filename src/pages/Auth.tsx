@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -594,7 +594,7 @@ const Auth = () => {
             </div>
           ) : (
             <Link to="/" className="inline-flex items-center gap-2.5 group">
-              <PaigeMark className="h-9 w-9" />
+              <PaigeCommandMark plated={false} className="h-9 w-9" />
               <span className="text-xl font-semibold tracking-tight text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
                 Paige <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
               </span>
@@ -700,7 +700,7 @@ const Auth = () => {
             </div>
           ) : (
             <Link to="/" className="lg:hidden inline-flex items-center gap-2">
-              <PaigeMark className="h-8 w-8" />
+              <PaigeCommandMark plated={false} className="h-8 w-8" />
               <span className="text-lg font-semibold text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
                 Paige <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
               </span>

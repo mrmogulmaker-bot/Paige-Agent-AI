@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { ChevronLeft } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { GlyphPlate } from "./GlyphPlate";
 
 export interface PageHeaderProps {
@@ -71,7 +71,7 @@ export function PageHeader({
         <div className="relative">
           {back && <div className="mb-3 [&_a]:text-white/70 [&_a:hover]:text-white">{back}</div>}
           <div className="flex items-center gap-2.5">
-            {mark && <PaigeMark className="h-7 w-7" />}
+            {mark && <PaigeCommandMark className="h-7 w-7" />}
             {eyebrow && (
               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-light))]">
                 {eyebrow}

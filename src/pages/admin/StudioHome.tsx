@@ -20,7 +20,7 @@ import {
   SectionCard,
   Toolbar,
 } from "@/components/ui/page";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { cn } from "@/lib/utils";
 import { PromptComposer } from "@/components/admin/studio/PromptComposer";
 import { ProjectCard } from "@/components/admin/studio/ProjectCard";
@@ -291,7 +291,7 @@ export default function StudioHome() {
                 atop the `.studio-mark-halo::before` gold breath-bloom. Both rest still only under the
                 explicit Studio "Reduced" choice (`reduce`), never merely because the OS asked. */}
             <span className="studio-mark-halo inline-flex">
-              <PaigeMark className={compactHero ? "h-9 w-9" : "h-11 w-11"} animated={!reduce} />
+              <PaigeCommandMark className={compactHero ? "h-9 w-9" : "h-11 w-11"} animated={!reduce} />
             </span>
             {/* Eyebrow: airier tracking + a dimmer on-hero ink so the H1 clearly outranks it (#2). */}
             <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[hsl(var(--studio-on-hero)/0.7)]">

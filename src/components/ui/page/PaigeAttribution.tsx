@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 
 /**
  * PaigeAttribution — the foundational VP-surfacing byline (#243).
@@ -166,7 +166,8 @@ export function PaigeAttribution({
       )}
     >
       {showMark && (
-        <PaigeMark
+        <PaigeCommandMark
+          plated={false}
           animated={false}
           className={cn("mt-0.5 shrink-0", MARK_SIZE[size])}
         />
