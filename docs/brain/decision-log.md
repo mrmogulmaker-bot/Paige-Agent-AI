@@ -101,8 +101,28 @@
   B1..B19**, adding **B19** (fractional `max_per_day` → `cap_invalid`, no window; a valid integer count cap still
   enforces at its limit → `over_action_count_cap`). Guards green: `lint:migration-versions` (995, no reuse) ·
   `lint:definer-fns` · `lint:managed-schema` · `lint:integration-registry`; §50/§63 clean.
-  **PR #1027 (ready). OUTCOME: MERGING** (§32.a persisted-apply owed post-merge via `deploy-migrations`; authenticated drive
-  owed to PR-3). Flip to MERGED + §32.a CONFIRMED post-merge.
+  **CODEX PEER-GATE ROUND 4 (§39) on head `fdad15e` — ONE P1, PARKED + ESCALATED (not folded, correctly):** "reject
+  parentless grants from representatives" — a tenant `admin` (not only the owner) can author a *parentless* client_period
+  grant (or clear `parent_grant_id` on a child) and get a full allowance, so "delegation can still widen authority."
+  GROUNDED against the substrate: `paige_authority_grants_admin_write` (PR-1 `20261230000000`, UNCHANGED by M1-b) is
+  `FOR ALL USING (is_platform_owner() OR is_tenant_admin(tenant_id))` — a tenant admin is a first-class authorized grantor
+  by deliberate PR-1 design (§51/§53), NOT a "representative" requiring a parent ceiling; the `parent_grant_id` chain (and
+  M1-b's `parent_grant_id IS NOT NULL` fail-closed) is the delegation sub-model, never a claim that only owners author
+  grants. This is a **substrate authorization-model change** (redefining PR-1's `admin_write` RLS / the guard's clear-parent
+  handling), applies to EVERY cap kind (an admin could just use `daily_budget_usd`), and M1-b is DARK (grant authorship
+  authorizes nothing until PR-3 wires execution). So it is PARKED as a **material authorization decision for the owner on
+  the PR-3 / substrate track** — folding a substrate RLS change into a DARK cap-enforcement slice would be scope creep +
+  a §37/§51 hazard + a unilateral material decision. Carried into PR-3 grounding; replied on the thread + resolved.
+  **PR #1027 — OUTCOME: MERGED** (squash `49dde4cf047e9f183bc742ae9b1b40eb58723ec9`, 2026-09-06). **§32.a CONFIRMED on prod
+  (ref `xygzykjyynhzqytbqnzu`), direct query not assumed:** `supabase_migrations.schema_migrations` has `20270103000000`
+  (deploy-migrations applied it); `authority_reserve` on prod carries `cap_invalid` + `client_period_delegation_unsupported`
+  + `FOR SHARE` + the integral-count `trunc()` check; `authority_confirm` + `authority_reconcile` carry the
+  `cap_unreadable_at_settlement` settlement guard — the deployed functions are byte-identical to the B1..B19 proof.
+  **M1's CAP DIMENSION IS COMPLETE**: day/week/month (M1-a) + client_period enforced with full cap-shape validation at
+  reserve AND settlement; campaign fail-closed-unavailable; delegated client_period fail-closed. **Authenticated/live
+  execution drive remains OWED to PR-3** (no producer calls reserve yet). Next: RE-2 PR-3 (first execution lane) — the
+  parked tenant-admin grant-authorship authorization decision is a PR-3 gating question (that is where autonomous spend
+  becomes real).
 
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
