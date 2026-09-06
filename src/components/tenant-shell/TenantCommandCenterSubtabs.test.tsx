@@ -15,6 +15,13 @@ const useSystemsCheck = vi.fn();
 const tenantHarness = vi.hoisted(() => ({
   activeTenantId: "account-a" as string | null,
   activeUserId: "user-a" as string | null,
+  // Fields useTierFeatures reads (via useTenantContext) to resolve the tier. Default to a
+  // Solo standalone so every existing test keeps the full four-tab Command Center.
+  activeTenant: { account_type: "standalone", parent_tenant_id: null } as
+    | { account_type: string | null; parent_tenant_id: string | null }
+    | null,
+  isPlatformStaff: false,
+  loading: false,
 }));
 
 vi.mock("@/hooks/useSystemsCheck", () => ({
@@ -322,6 +329,62 @@ describe("tenant Command Center secondary tabs", () => {
       "/solo/7001001/command-center/business-game-plan",
     );
     act(() => root.unmount());
+  });
+
+  // §60 Solo-only gate for the Trust Compass sub-tab (owner ruling 2026-09-06 — "no subaccount
+  // delivery without explicit release"). The Command Center shell stays universal; only this
+  // sub-tab is gated OFF sub-accounts until an explicit release.
+  it("shows the Trust Compass sub-tab for a Solo workspace", () => {
+    tenantHarness.activeTenant = { account_type: "standalone", parent_tenant_id: null };
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    act(() => root.render(
+      <MemoryRouter initialEntries={["/solo/7001001/command-center/business-game-plan"]}>
+        <Routes>
+          <Route path="/solo/:account/*" element={<CommandHub accountContext={null} openPaige={vi.fn()} />} />
+        </Routes>
+      </MemoryRouter>,
+    ));
+    const tabs = [...host.querySelectorAll('[role="tab"]')].map((t) => t.textContent ?? "");
+    expect(tabs.some((t) => /Trust Compass/.test(t))).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it("HIDES the Trust Compass sub-tab for a sub-account and redirects its URL to the default landing (§60, owner ruling 2026-09-06)", () => {
+    tenantHarness.activeTenant = { account_type: "sub_account", parent_tenant_id: "parent-x" };
+    try {
+      // 1) The tab is gone from the strip — but the shell and its other sub-tabs remain.
+      const host = document.createElement("div");
+      const root = createRoot(host);
+      act(() => root.render(
+        <MemoryRouter initialEntries={["/solo/7001001/command-center/business-game-plan"]}>
+          <Routes>
+            <Route path="/solo/:account/*" element={<CommandHub accountContext={null} openPaige={vi.fn()} />} />
+          </Routes>
+        </MemoryRouter>,
+      ));
+      const tabs = [...host.querySelectorAll('[role="tab"]')].map((t) => t.textContent ?? "");
+      expect(tabs.some((t) => /Trust Compass/.test(t))).toBe(false);
+      expect(tabs.some((t) => /Systems Check/.test(t))).toBe(true); // one sub-tab gated, not the shell
+      act(() => root.unmount());
+
+      // 2) A sub-account that lands on the gated compass URL (a legacy redirect or shared link) is
+      //    bounced to Business Game Plan and never renders the compass panel.
+      const host2 = document.createElement("div");
+      const root2 = createRoot(host2);
+      act(() => root2.render(
+        <MemoryRouter initialEntries={["/solo/7001001/command-center/trust-compass"]}>
+          <Routes>
+            <Route path="/solo/:account/*" element={<><CommandHub accountContext={null} openPaige={vi.fn()} /><LocationProbe /></>} />
+          </Routes>
+        </MemoryRouter>,
+      ));
+      expect(host2.querySelector("[data-location]")?.textContent).toBe("/solo/7001001/command-center/business-game-plan");
+      expect(host2.textContent).toContain("Canonical Solo Game Plan");
+      act(() => root2.unmount());
+    } finally {
+      tenantHarness.activeTenant = { account_type: "standalone", parent_tenant_id: null };
+    }
   });
 });
 

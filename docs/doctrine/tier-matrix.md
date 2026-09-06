@@ -349,22 +349,34 @@ ceiling value/posture/attestation (§4.2). Pending decisions route to the ONE Pa
 inbox (§18). Legacy `/solo/{account}/trust-compass` redirects into the Command Center path (§58); no
 duplicate top-level surface remains.
 
+**TIER GATE (owner ruling 2026-09-06, under the Second Brain delivery contract): SOLO ONLY.** The Command
+Center shell is universal (§35), but the Trust Compass sub-tab is released to **Solo only**; **sub-account is
+DEFERRED** pending an explicit owner release ("no subaccount delivery without explicit release" overrides the
+§60 Solo≡Sub baseline for this one surface). Enforced through the §60 ONE HOME: a new `trust_compass` Feature in
+`src/lib/tier/tierFeatures.ts` (SOLO baseline only), consumed by `useTierFeatures().has("trust_compass")` in
+`CommandCenter.tsx` to filter the tab out of the strip AND redirect a sub-account off the gated
+`/command-center/trust-compass` URL to the default landing. No inline `account_type` gate (lint:tier-features clean).
+
 | Tier | Sees the tab | Can set a knob (`set_tool_autonomy`) |
 |---|---|---|
 | **God / Super Admin** | — (operator governs via `/operator/settings/capabilities`, not this Solo shell) | — |
 | **Agency** (agency-as-tenant) | — (agency shell has its own surfaces) | — |
-| **Standalone Solo** | ✓ | ✓ tenant **admin** on its own tenant · read-only + honest refusal for a non-admin |
-| **Sub-account** | ✓ (shares the Solo shell, §60) | ✓ same gate, scoped to its own tenant |
+| **Standalone Solo** | ✓ (`trust_compass` in SOLO baseline) | ✓ tenant **admin** on its own tenant · read-only + honest refusal for a non-admin |
+| **Sub-account** | **— DEFERRED** (tab gated off; the rest of the Command Center shell stays) | — (surface not reachable until explicit release) |
 | **Client** | — (no Command Center) | — |
 | **Anonymous** | **403** | **403** (`set_tool_autonomy` REVOKEs `anon`) |
 
-**Recorded honestly (§13/§32.c):** code-complete and covered by unit + jsdom-render tests (the
-risk-class copy is drift-guarded against `_shared/action-risk.ts`; the effective/ceiling/held-back
-derivation, accessible `role=slider` knobs, honest read/empty/error/forbidden states, and the routing
-round-trip are all asserted); the production build is green. The **authenticated live-drive is OWED** —
-a real Solo-admin session turning a knob and confirming the `tenant_tool_autonomy` write persists —
-because this build session is headless (no browser, §32.c). So this is an **RC pending merge + owner
-live review**, not yet marked LIVE beyond code.
+**Recorded honestly (§13/§32.c):** **Solo = RC (LIVE-pending)**; **sub-account = DEFERRED (not delivered)**.
+Code-complete and covered by unit + jsdom-render tests (the risk-class copy is drift-guarded against
+`_shared/action-risk.ts`; the effective/ceiling/held-back derivation, tenant-bound reads, the write-serializer
+failure paths, accessible `role=slider` knobs incl. keyboard-normalise, honest read/empty/error/forbidden
+states, the Solo-only tab gate + sub-account redirect, and the routing round-trip are all asserted); the
+production build is green. The **authenticated live-drive is OWED** — a real Solo-admin session turning a knob
+and confirming the `tenant_tool_autonomy` write persists — because this build session is headless (no browser,
+§32.c). **Known limitation (CD/product follow-up, §00):** the pending-decisions preview routes to Paige
+generically (no per-`paige_action` deep-link seam; 4 of N shown) — a Claude-Design/product decision, not a CC
+code fix. So Solo is an **RC pending merge + owner live review**, not yet marked LIVE beyond code; sub-account
+is deferred.
 
 ### Business Game Plan is the DEFAULT Command Center landing on Solo (2026-09-05)
 

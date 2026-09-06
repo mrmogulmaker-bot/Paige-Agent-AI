@@ -1,5 +1,21 @@
 # Decision Log — chronological one-liners
 
+- **PROCESS: the Second Brain is a DELIVERY CONTRACT for every Paige workstream (owner ruling 2026-09-06)** —
+  binding, effective immediately, strengthening §BRAIN/§39/§58. **At the START of every assignment:** read the
+  relevant Second Brain / master-reference entries, decision log, prior handoffs, and active-collision notes
+  BEFORE designing, coding, or recommending; treat them as controlling product context unless a NEWER owner
+  instruction overrides; **call out any conflict between the assignment and the recorded decisions immediately.**
+  **BEFORE any PR is opened, merged, or marked complete:** update the Second Brain with the durable decision,
+  changed contract, known limitation, collision/handoff, and EXACT proof status; record what is
+  **LIVE / PARTIAL / UNAVAILABLE / DEFERRED / PROOF OWED** — never imply a capability is live because a UI or
+  prototype exists; include the NEXT owning workstream and any dependency it must read first; confirm in the
+  closeout EXACTLY where the record was updated. Preserved controlling decisions the owner named: Solo-first
+  scope + no sub-account delivery without explicit release · Admin is a role, never a URL · one tenant-aware
+  Paige workspace, no floating authenticated chat · the current Command Mark replaces the retired orbital
+  PaigeMark · governed action → verified outcome → Rail → Mind/Memory eligibility · MVP cadence after design
+  approval. First application: PR #975 (Trust Compass) — the "Solo + sub-account" claim was reconciled to
+  SOLO-ONLY under this contract (see the Trust Compass entry below).
+
 - **ARCHITECTURE: floating Paige chat is RETIRED from the authenticated platform (owner decision 2026-09-06)** —
   there must be NO floating Paige chat anywhere inside the authenticated platform (no Solo route, Command
   Center, Clients, Campaigns, Settings, Marketplace, Analytics, tenant portal, mobile shell, or embedded
@@ -55,7 +71,24 @@
   capabilityTools.ts` + `useSoloToolGovernance.ts`. Pending decisions route to the ONE dedicated Paige chat
   via `openPaige` (the surviving authenticated command field, not the floating chatbot retired in #981) (§18).
   GREEN headless (unit + jsdom-render, tsc ratchet, relevant lints, prod build). **§32.c authenticated
-  live-drive OWED** (headless session) → recorded as RC, not LIVE. Tier: Solo + sub-account only.
+  live-drive OWED** (headless session) → recorded as RC, not LIVE.
+  **TIER (owner ruling 2026-09-06, under the Second Brain delivery contract): SOLO ONLY. Sub-account DEFERRED**
+  — the Command Center shell is universal, but the Trust Compass sub-tab is gated OFF sub-accounts via a new
+  `trust_compass` feature in the §60 ONE HOME (`src/lib/tier/tierFeatures.ts`, SOLO baseline only; `useTierFeatures().has("trust_compass")`
+  filters the Command Center tab + a redirect bounces a sub-account off the gated URL). Reason: the owner's
+  "no subaccount delivery without explicit release" rule overrides the recorded §60 Solo≡Sub architecture for
+  this surface. Proof status: **Solo = RC (LIVE-pending, §32.c live-drive PROOF OWED); sub-account = DEFERRED (not delivered)**.
+  **KNOWN LIMITATION (CD/product follow-up, §00):** the pending-decisions PREVIEW routes to Paige generically
+  (per-`paige_action` deep-link into the chat has no backend seam; only 4 of N shown) — Codex flagged both as
+  P2; both are Claude-Design / product-flow decisions (in-surface copy, layout, a new routing seam), NOT
+  CC-implementable, so they are routed as design follow-ups, not silently redesigned. The core governed control
+  (the knobs writing `set_tool_autonomy`) is unaffected. Reviewed through Codex rounds 2–5 (tenant-bound reads
+  incl. the catalogue read, full write-authority predicate, per-tool write serialization + failure paths,
+  cancelled-drag discard, keyboard-normalise a mixed domain, removed unsupported chat claim).
+  **Next owning workstream:** (1) the §32.c authenticated Solo live-drive (browser-capable session); (2) a CD/product
+  decision on the pending-decisions preview (deep-link seam + overflow); (3) any future explicit sub-account release
+  (flip `trust_compass` into SUB_ACCOUNT_FEATURES + a §51 sub-account tier verification). Dependency to read first:
+  `docs/doctrine/tier-matrix.md` Trust Compass ledger + this entry.
 
 - **Campaigns → Overview redesigned as the Campaign Command Desk + a tenant-safe Campaign Brief
   foundation (2026-09-05, PR #970 — RC, pending merge approval)** — owner-approved the prototype

@@ -80,6 +80,14 @@ export type Feature =
   // Consumer/client portal invite — THE §60 enforced lock: solo + sub_account +
   // enterprise (the HYBRID tier). A pure agency is excluded on BOTH layers.
   | "customer_portal_invite"
+  // Trust Compass — the Solo Command Center's governed per-capability autonomy control
+  // (its 3rd sub-tab). SOLO ONLY for now: sub-account release is DEFERRED pending an
+  // explicit owner release (owner ruling 2026-09-06 under the Second Brain delivery
+  // contract — "no subaccount delivery without explicit release"). The Command Center
+  // SHELL is universal, but this sub-tab is gated OFF sub-accounts until released.
+  // Enterprise inherits it via the Solo union (harmless — enterprise renders a
+  // different shell); agency/god render different shells and don't carry it.
+  | "trust_compass"
   // Parent-tier only.
   | "subaccount_management"
   // Operator only.
@@ -197,6 +205,7 @@ const SOLO_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...CREATION_SURFACES, // solo runs its own campaigns/Studio
   "customer_portal_invite", // solo owns its own client book → can invite clients
   "skills", // §61 self-use — solo runs the skills engine on its own book
+  "trust_compass", // Solo governs its own per-capability autonomy (Command Center 3rd sub-tab)
 ]);
 
 const SUB_ACCOUNT_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
@@ -205,6 +214,9 @@ const SUB_ACCOUNT_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...CREATION_SURFACES, // a sub-account runs its own campaigns/Studio
   "customer_portal_invite", // a sub-account runs its OWN client book → can invite
   "skills", // §61 self-use — a sub-account runs the skills engine on its own book
+  // NO "trust_compass" — sub-account release DEFERRED pending explicit owner release
+  // (owner ruling 2026-09-06). The Command Center shell is universal, but this sub-tab
+  // is gated OFF sub-accounts for now.
 ]);
 
 const AGENCY_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
