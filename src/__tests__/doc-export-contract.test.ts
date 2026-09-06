@@ -192,6 +192,20 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(md).toContain("Привет мир 你好");
   });
 
+  it("preserves section and chapter numbers in the exported heading (Codex round-8 J3)", async () => {
+    const r = await renderDoc({
+      format: "md",
+      title: "Numbered",
+      content: [
+        { type: "section-header", number: 2, title: "Scope" },
+        { type: "chapter-divider", number: 3, title: "Delivery" },
+      ],
+    });
+    const md = dec(r.bytes);
+    expect(md).toMatch(/^## 2\. Scope$/m);       // section number kept as content (→ H2 under the doc title)
+    expect(md).toMatch(/^## 3\. Delivery$/m);    // chapter number kept
+  });
+
   it("never throws and still produces a file for empty content (title-only)", async () => {
     const r = await renderDoc({ format: "md", title: "Only A Title", content: [] });
     expect(r.ext).toBe("md");
@@ -219,15 +233,14 @@ describe("doc-render binary-format guards (source contract — pdf/pptx use npm 
     expect(SRC).toContain("nonWs >= 8 ? 0.15 : 0.5");
   });
 
-  it("PPTX routes ONLY cover-zone lead onto the title slide; post-break orphan content gets its own section (H4/I1)", () => {
-    expect(SRC).toContain("const lead: string[] = []");
-    expect(SRC).toContain("if (lead.length) s.addText(lead.join");
-    // the old default that headed an orphan-content slide with the doc title (the duplicate) is gone
-    expect(SRC).not.toContain('{ heading: title || "Overview", body: [] }');
-    // Codex round-7 I1 — `lead` is scoped to the cover zone (before the first heading); after a heading,
-    // orphan content (a chapter-divider's post-break kicker) starts its own section, not the title slide.
-    expect(SRC).toContain("let sawHeading = false");
-    expect(SRC).toContain("if (!sawHeading)");
+  it("PPTX heads orphan content with a neutral 'Overview', never the doc title; nothing but the title rides the title slide (H4/I1/J2)", () => {
+    // Codex round-8 J2 — the round-7 `lead → title slide` approach mis-classified intro prose and a first
+    // section's kicker as cover copy. The fix drops lead entirely: orphan content opens an "Overview"
+    // section, and the title slide carries the title ONLY, so no guess about cover metadata is needed.
+    expect(SRC).toContain('{ heading: "Overview", body: [] }');
+    expect(SRC).not.toContain('{ heading: title || "Overview", body: [] }'); // the duplicate-title default is gone
+    expect(SRC).not.toContain("const lead: string[]");                        // no title-slide lead routing at all
+    expect(SRC).not.toContain("sawHeading");
   });
 
   it("inline markdown protects code spans + link URLs before the emphasis passes (H2/H3)", () => {
@@ -247,9 +260,14 @@ describe("export-document edge function — the callable seam (source contract)"
     expect(SRC).toContain('"doc-render"');
   });
 
-  it("is admin/coach gated and re-enforces a TENANT-SCOPED manage role IN-BODY, operators read via service (§9/§59 source contract)", () => {
+  it("authorizes ENTIRELY by tenant-scoped role (owner/admin/coach) or operator — no coarse global gate (§9/§59/§70 source contract)", () => {
     expect(SRC).toContain('authed.auth.getUser()');
-    expect(SRC).toContain('"admin" || r === "super_admin" || r === "platform_admin" || r === "coach"');
+    // Codex round-8 J1 (§70) — the coarse `admin|coach` GLOBAL gate is GONE: it 403'd a freshly-provisioned
+    // Solo owner (global role only `user`; authority is an owner membership is_tenant_admin recognizes)
+    // before the tenant check ran, so they couldn't export their OWN document. Authorization is the
+    // tenant-scoped check (below) or the operator role — nothing else.
+    expect(SRC).not.toContain('"admin" || r === "super_admin" || r === "platform_admin" || r === "coach"');
+    expect(SRC).not.toContain("Admin or coach access required.");
     expect(SRC).toContain('.from("marketing_content")');
     // the tenant the file is filed under is the row's tenant, never the request body
     expect(SRC).toContain("const tenantId = doc.tenant_id");

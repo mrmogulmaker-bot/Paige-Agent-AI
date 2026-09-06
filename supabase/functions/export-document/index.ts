@@ -53,12 +53,13 @@ serve(async (req: Request) => {
     if (uErr || !user) return json(401, { error: "Unauthorized" });
     const { data: roleRows } = await authed.from("user_roles").select("role").eq("user_id", user.id);
     const roles = (roleRows || []).map((r: any) => r.role);
-    // Includes platform_admin (a DELEGATED platform operator whose only role is platform_admin — the
-    // shape accept_platform_invite creates) so the operator export path below is actually reachable for
-    // them (Codex P2); the isOperator branch treats super_admin/platform_admin as cross-tenant-authorized.
-    if (!roles.some((r: string) => r === "admin" || r === "super_admin" || r === "platform_admin" || r === "coach")) {
-      return json(403, { error: "Admin or coach access required." });
-    }
+    // NO coarse global-role gate here. `user_roles` is GLOBAL and tenant-agnostic, and a freshly-provisioned
+    // Solo owner holds ONLY the global `user` role — their authority is an active OWNER membership that
+    // `is_tenant_admin` recognizes (migration 20261180000000, the §59 "WRONGLY REFUSES" half). A coarse
+    // `admin|coach` global gate would 403 that owner before the tenant check even runs — they'd be unable to
+    // export their OWN document (§70). Authorization is decided ENTIRELY by the tenant-scoped check below
+    // (owner/admin via is_tenant_admin, coach via has_tenant_role) OR the platform-operator role — so a
+    // non-member/non-operator still fails there. The global roles are read ONLY to detect operators.
 
     const body = await req.json().catch(() => ({}));
     const format = String(body?.format ?? "").toLowerCase();

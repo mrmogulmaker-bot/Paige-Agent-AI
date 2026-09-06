@@ -182,13 +182,13 @@ function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
     // test pass only on an offset-substring coincidence rather than the real heading prefix.)
     if (t === "section-header") {
       push(asText(b.kicker));          // the small eyebrow label above the section title
-      push(asText(b.title ?? b.text), "heading", 1);
+      push(numberedHeading(b.number, asText(b.title ?? b.text)), "heading", 1); // §-number is content (Codex P2)
       continue;
     }
     if (t === "chapter-divider") {
       out.push({ type: "pagebreak" });
       push(asText(b.kicker));
-      push(asText(b.title ?? b.text), "heading", 1);
+      push(numberedHeading(b.number, asText(b.title ?? b.text)), "heading", 1); // chapter index is content
       push(asText(b.subhead));
       continue;
     }
@@ -299,6 +299,14 @@ function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
 function clampLevel(n: number): number {
   if (!Number.isFinite(n) || n < 1) return 1;
   return n > 3 ? 3 : Math.floor(n);
+}
+
+// section-header / chapter-divider carry an optional `number` (a section index or chapter number) the
+// canvas renders prominently — real content, not decoration (Codex P2). Prefix it to the heading text.
+function numberedHeading(n: unknown, t: string): string {
+  const num = typeof n === "number" && Number.isFinite(n) ? String(Math.trunc(n))
+    : (typeof n === "string" && n.trim() ? n.trim() : "");
+  return num ? `${num}. ${t}`.trim() : t;
 }
 
 // A worksheet-field's ruled-line count: clamp to 1–12, default 3 (mirrors the StudioDocBlock contract).
@@ -593,22 +601,16 @@ async function renderPptx(title: string | undefined, blocks: Block[], _style: Re
     const PptxGen = lib.default ?? lib;
     const pptx = new PptxGen();
 
-    // Group into { heading, body[] } sections. Content BEFORE THE FIRST heading (a deduped cover's subhead)
-    // collects into `lead` and rides the TITLE slide as its subtitle — NOT a separate slide headed with the
-    // document title, which duplicated the title slide (Codex P2). But `lead` is scoped to that cover zone
-    // ONLY: once a heading has been seen, orphan content (e.g. a chapter-divider's kicker after its inserted
-    // page break) starts its OWN neutral-headed section instead of leaking onto the title slide (Codex P2).
+    // Group into { heading, body[] } sections: a heading starts a slide; following paragraphs/list items are
+    // its body. Content with no current heading (a deduped cover's subhead, intro prose, a section's leading
+    // kicker) opens a neutral "Overview" section — NEVER a slide headed with the document TITLE, which
+    // duplicated the title slide (Codex P2). Nothing but the title rides the title slide, so there is no need
+    // to guess which pre-heading paragraphs are cover metadata (a guess the flat block model can't make).
     const slides: { heading: string; body: string[] }[] = [];
     let cur: { heading: string; body: string[] } | null = null;
-    let sawHeading = false;
-    const lead: string[] = [];
-    const pushBody = (line: string) => {
-      if (cur) { cur.body.push(line); return; }
-      if (!sawHeading) { lead.push(line); return; }           // pre-first-heading = cover zone → title slide
-      cur = { heading: " ", body: [line] };                    // orphan after a break = its own section, no title dup
-    };
+    const pushBody = (line: string) => { if (!cur) cur = { heading: "Overview", body: [] }; cur.body.push(line); };
     for (const b of blocks) {
-      if (b.type === "heading") { if (cur) slides.push(cur); cur = { heading: b.text || " ", body: [] }; sawHeading = true; }
+      if (b.type === "heading") { if (cur) slides.push(cur); cur = { heading: b.text || " ", body: [] }; }
       else if (b.type === "list") b.items.forEach((it, i) => pushBody(b.ordered ? `${i + 1}. ${it}` : it));
       else if (b.type === "paragraph") { if ((b).text?.trim()) pushBody((b).text.trim()); }
       // pagebreak: force a new slide boundary
@@ -616,17 +618,12 @@ async function renderPptx(title: string | undefined, blocks: Block[], _style: Re
     }
     if (cur) slides.push(cur);
 
-    // Title slide (carries any pre-heading lead as its centered subtitle).
+    // Title slide (the title ONLY — no body content is placed here, so it never duplicates a section).
     if (title) {
       const s = pptx.addSlide();
       s.addText(title, { x: 0.5, y: 2.4, w: 9, h: 1.2, fontSize: 36, bold: true, align: "center" });
-      if (lead.length) s.addText(lead.join("\n"), { x: 0.5, y: 3.7, w: 9, h: 1.8, fontSize: 18, align: "center", valign: "top" });
-    } else if (lead.length) {
-      // No title, but there IS pre-heading content — give it its own slide so it is never lost.
-      const s = pptx.addSlide();
-      s.addText(lead.map((t) => ({ text: t, options: { bullet: true } })), { x: 0.7, y: 0.6, w: 8.6, h: 5, fontSize: 16, valign: "top" });
     }
-    if (slides.length === 0 && !title && lead.length === 0) {
+    if (slides.length === 0 && !title) {
       const s = pptx.addSlide();
       s.addText("Untitled", { x: 0.5, y: 0.4, w: 9, h: 1, fontSize: 28, bold: true });
     }

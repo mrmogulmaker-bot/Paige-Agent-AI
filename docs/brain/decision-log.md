@@ -155,6 +155,21 @@
   test: it throws before the pdf-lib import with a distinct `doc-render:pdf-charset` tag, so a title-only
   Cyrillic doc's rejection tag proves the guard fired (a Latin doc trips the import with a different tag).
   doc-export 17/17, tsc ratchet 13/13, control-chars none, §50/§63 clean.
+  **ELEVENTH catch — Codex round 8 (one P1 §70 + two P2), all FOLDED:** (J1, P1 §70/§59) the export
+  endpoint's COARSE global-role gate (`admin|coach|super_admin|platform_admin`) 403'd a freshly-provisioned
+  Solo owner — `provision_tenant` grants such an owner only the global `user` role; their authority is an
+  active OWNER membership `is_tenant_admin` recognizes (the §59 "WRONGLY REFUSES" half in migration
+  20261180000000). So an owner could not export their OWN document. Fixed by DELETING the coarse global
+  gate: authorization is now ENTIRELY the tenant-scoped check (owner/admin via is_tenant_admin, coach via
+  has_tenant_role) or the operator role — which still denies non-members/non-operators, but no longer
+  refuses owners. §37: the one producer (document_generate, caller-JWT) still passes; §39: removing the
+  gate admits more LEGITIMATE callers only, never weakens the deny path. (J2) the round-7 pptx `lead → title
+  slide` still misclassified intro prose and a first section's kicker as cover copy (the flat block model
+  can't tell cover metadata from body); dropped `lead` entirely — orphan content now opens a neutral
+  "Overview" section and the title slide carries the title ONLY, resolving the duplicate-title (H4) and the
+  misclassification (I1/J2) together. (J3) `section-header`/`chapter-divider` dropped their optional
+  `number`; a `numberedHeading` helper now prefixes it (real content the canvas renders). doc-export 18/18,
+  tsc ratchet 13/13, control-chars none, §50/§63 clean.
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace
