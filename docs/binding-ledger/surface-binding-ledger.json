@@ -616,7 +616,7 @@
       "surface": "Settings -> Setup (business context)",
       "group": "settings",
       "tier_scope": ["solo"],
-      "owner_component": "src/solo/SoloBusinessContextSetup.tsx (settings.tsx:1774); 5 subtabs per settings-business-context-contract.ts: business-profile, people-email, knowledge-bucket, direction, paige-brief",
+      "owner_component": "src/solo/SoloBusinessContextSetup.tsx (settings.tsx:1774); 6 subtabs per settings-business-context-contract.ts: business-profile, public-presence, people-email, knowledge-bucket, direction, paige-brief",
       "canonical_source": "save_solo_setup_context (write); Spine read get_business_context_readiness (business fields only). Other subtabs: knowledge-bucket authors tenant_knowledge_docs (same source as command-center.mind); direction/paige-brief author Paige's operating brief",
       "chain": {
         "canonical_source": {"status": "real", "note": "Setup is the source for four business fields (website, business_phone, industry, primary_business_email)"},
@@ -636,6 +636,40 @@
       "linked": ["PR #864", "PR #958"],
       "next_slice": "Phase 4.4: authenticated owner runtime proof; keep status+provenance narrow (never a raw value); a setup save does not become Memory. The knowledge-bucket/persona subtabs' binding is a separate, unscoped concern (do not let Mind read them until contracted).",
       "sources": ["docs/brain/paige-spine-and-rail-state.md", "supabase/functions/_shared/paige-spine/domains/business_context.ts", "docs/doctrine/surface-cards/setup.md", "docs/delivery/canonical-readiness-contract.md"]
+    },
+    {
+      "id": "settings.public-presence",
+      "intended_capability": {
+        "read": "Coordinate owner-reviewed canonical public-business facts with source freshness and honest provider availability.",
+        "draft": "Paige may prepare descriptions, categories, metadata, corrections, and connection work only after a server-safe context contract exists.",
+        "auto": "Unavailable until a real provider, exact standing authority policy, and attributable result evidence are implemented.",
+        "confirm": "Provider claims, corrections, review responses, and publishing require effective authority plus a verified provider result.",
+        "prohibited": "Never fabricate connection, claim, sync, listing, indexing, review, reputation, or publish results; never copy canonical identity into a second store.",
+        "completion_criterion": "A tenant-scoped provider result is verified, attributed in Rail, and shown with source and freshness; absent that chain the action remains unavailable."
+      },
+      "surface": "Settings -> Setup -> Public Presence",
+      "group": "settings",
+      "tier_scope": ["solo"],
+      "owner_component": "src/solo/settings-public-presence.tsx mounted by src/solo/SoloBusinessContextSetup.tsx",
+      "canonical_source": "Solo Business Profile via useSoloBusinessContext; Public Presence is a read-only outward coordination surface in this slice",
+      "chain": {
+        "canonical_source": {"status": "real", "note": "Reads Business Profile fields with per-field provenance; edits return to Business Profile"},
+        "tenant_scope": {"status": "client_context_only", "note": "Authenticated shell supplies the tenant-scoped setup context; no new provider read exists"},
+        "safe_context": {"status": "none", "note": "Dedicated Paige handoff is intentionally unavailable until server-safe context assembly is implemented"},
+        "authority": {"status": "none", "note": "No local permission toggle or standing provider authority is claimed"},
+        "governed_write": {"status": "none", "note": "All external actions are rendered unavailable"},
+        "verified_outcome": {"status": "none"},
+        "rail_evidence": {"producer": "none", "read": "n/a", "note": "No external action occurs in this slice"},
+        "mind_eligibility": {"axis_a": "NO", "axis_b": "NO", "note": "Only owner-confirmed facts are marked eligible in the inspector; no Mind handoff is wired"},
+        "memory_retention": {"status": "none"}
+      },
+      "prohibited_context": ["Vault secrets", "provider tokens", "raw billing data", "private documents", "unreviewed uploads", "unconfirmed public facts"],
+      "state": "UNAVAILABLE",
+      "state_reason": "The owner-facing coordination UI is implemented with canonical fact provenance and truthful unavailable provider states. Authenticated provider reads/writes, governed Paige handoff, authority policy, Rail evidence, and production owner proof are not implemented by this slice. The separately mounted legacy BusinessInfrastructureAssessment PublicPresenceSection and paige-write-back public_presence paths read/write business_public_presence; their self-checked booleans and local save result are not canonical facts, provider evidence, or verified public outcomes and are ineligible for this surface, Paige, Mind, and Memory pending retirement or reconciliation.",
+      "evidence_class": ["automated_test", "source_read", "rendered_structural"],
+      "linked": [],
+      "next_slice": "BLOCKED on a missing Integration Capability Registry entry and Registry Steward ownership. After that canonical entry exists, define and authenticate the first approved provider contract, then add server-resolved context, bounded authority, verified result, Rail evidence, and owner runtime proof without changing Integrations ownership.",
+      "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md", "docs/brain/decision-log.md", "docs/doctrine/surface-cards/setup.md", "docs/doctrine/autonomy-architecture.md"]
     },
     {
       "id": "settings.team",

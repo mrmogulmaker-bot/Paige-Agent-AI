@@ -7,6 +7,9 @@
 .setup-intro__actions { display: flex; flex: none; gap: 8px; }
 .setup-button { min-height: 34px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); padding: 0 12px; color: var(--pg-ink); background: var(--pg-raised); font: 700 10px/1 var(--pg-font-sans); cursor: pointer; }
 .setup-button--primary { border-color: var(--pg-violet); color: white; background: var(--pg-violet); }
+.setup-context-actions { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 8px 4px 12px; border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip); background: var(--pg-lift); }
+.setup-context-actions > span { color: var(--pg-muted); font-size: 9px; }
+.setup-context-actions > div { display: flex; gap: 7px; }
 .setup-button:disabled { cursor: not-allowed; opacity: .5; }
 .setup-button:focus-visible, .setup-jump a:focus-visible, .setup-handoff a:focus-visible, .setup-field :is(input,textarea,select):focus-visible, .setup-people input:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 2px; }
 .setup-source-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; padding: 9px 12px; border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip); color: var(--pg-faint); background: var(--pg-lift); font-size: 9px; }
@@ -95,6 +98,7 @@
 @media (prefers-reduced-motion: reduce) { .setup-state > svg { animation: none !important; } }
 @container (max-width: 820px) { .setup-intro { flex-direction: column; }.setup-intro__actions { width: 100%; justify-content: flex-end; }.setup-architecture { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @container (max-width: 620px) { .setup-fields, .setup-email-grid, .setup-architecture, .setup-owner-card { grid-template-columns: 1fr; }.setup-field--wide { grid-column: auto; }.setup-proposal { grid-template-columns: auto minmax(0,1fr); }.setup-proposal > div:last-child { grid-column: 1 / -1; justify-content: flex-end; }.setup-handoff, .setup-ownership__head { align-items: flex-start; flex-direction: column; }.setup-handoff a { width: 100%; justify-content: center; } }
+@container (max-width: 520px) { .setup-context-actions { align-items: stretch; flex-direction: column; padding: 9px; }.setup-context-actions > div { width: 100%; }.setup-context-actions .setup-button { flex: 1; } }
 @container (max-width: 420px) { .setup-intro__actions { flex-direction: column-reverse; }.setup-button { width: 100%; }.setup-source-legend > span:not(.setup-source) { display: none; } }
 
 .setup-paige-brief__actions { display: flex; align-items: center; gap: 9px; }

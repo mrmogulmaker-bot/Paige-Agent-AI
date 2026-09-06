@@ -136,3 +136,17 @@ runtime consumption claim changes.
 - **Required authenticated proof:** a real workspace Owner saves, reloads, reopens, and switches
   away/back; owner/admin/member/anonymous boundaries are exercised. Until then: **Authenticated
   Runtime Proof Owed**.
+
+## Public Presence child — implementation candidate (2026-09-06)
+
+**Home:** `/solo/{account}/settings/setup/public-presence`, second in the Setup child order. The route account segment is not authority. There is no top-level `/settings/presence` or `/admin` route.
+
+**Owner question:** “Can the right people find, recognize, and trust this business online—and what should we do next?” Presence Center, Profiles & Listings, Website & Search, Reviews & Reputation, and Public Facts remain one compact workspace. Business Profile is the canonical edit home. Public Facts is a read-only, focus-contained inspector with Escape and focus restoration.
+
+**Truth floor:** only confirmed canonical provenance may say owner confirmed. Website-on-file never proves discoverability. Every external venue, search, review, response, publish, authority, Rail, Mind/Memory, and PAIGE handoff state is unavailable until an authenticated source-backed contract proves it. Integrations retains connection setup. Unsupported work is shown as a visible explanatory state, not a fake or dead action.
+
+**Scroll and responsive contract:** the existing Settings shell remains the only vertical scroll owner. The internal view switcher may scroll horizontally at narrow widths; panels and venue fold-outs do not create nested vertical scroll regions. Local compiled rendering passed 1536×770, 1366×768, 1024×768, 900×1000, and 390×844 without horizontal page overflow in Mineral and Obsidian. Narrow content uses the page scroll; reduced motion removes button and drawer movement.
+
+**Proof status:** focused tests, changed-file lint, repository ratchets, build, binding-ledger validation, and deterministic responsive geometry are locally proven. Authenticated preview/production state, provider paths, CI, merge, deployment, and exact production SHA remain `PROOF OWED`. The mandatory Integration Capability Registry has no Public Presence entry on refreshed `origin/main`; do not create a competing registry. Notify the Registry Steward and require the canonical capability/scopes/authority/M1/outcome/Rail-Mind-Memory/proof/limitations entry before one complete governed provider lane is designed or enabled.
+
+**Legacy exclusion:** the separately mounted Business Infrastructure Assessment `PublicPresenceSection` and `paige-write-back` `public_presence.*` paths write `business_public_presence`. Their owner-entered URLs, self-check booleans, completion percentage, and local save result are not provider evidence or canonical Public Presence facts and cannot feed this surface, PAIGE, Rail, Mind, or Memory. Retirement/reconciliation belongs to the Business Infrastructure Assessment and `paige-write-back` owners.
