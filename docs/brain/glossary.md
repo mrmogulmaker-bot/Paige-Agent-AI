@@ -150,23 +150,32 @@ PR #406). Build order was L1 → L4 → L2 → L5.
   session (§19/§21/§22). `ProjectNavigator` = the project rail.
 - **Command Mark** — the console/operator brand mark (a slash and orb on a rimmed plate),
   owner-approved 2026-08-22. Source of truth for the mark, wordmark, palette and motion sequence:
-  `../brand/paige-brand-identity.md`. **Rollout scope is tenant + operator surfaces only**, and the
-  port has NOT happened yet — `PaigeSymbol territory="command"` still renders `PaigeMark` today
-  (`src/components/brand/PaigeSymbol.tsx`). The brand doc's "builds into `PaigeSymbol.tsx`" states
-  the intended destination, not shipped state; do not read the Command Mark as already live on a
-  surface without checking what that surface actually renders.
-- **PaigeMark** — the orbital orb + ring + spark + halo mark. **Current, not retired**, in three
-  places at once: it is the marketing site's mark
-  (`../design-references/cd-packs/super-admin-shell-v3/design-system-port.md` §3), it is what
-  `PaigeSymbol territory="command"` renders today, and an owner ruling on 2026-09-06 made it the
-  correct mark on Solo → Campaigns → Growth → Social — "stay to that one and that one only"
-  (`../evidence/ui-delivery/campaigns-social-header-compaction.md`). `PaigeMark.tsx` stays as the
-  backward-compat path; the brand doc says do not rip it out.
-  **Open owner ruling** (`../brand/paige-brand-identity.md` §2, required before Stage 3): swapping
-  what `territory="command"` renders changes the mark on every surface already rendering it,
-  including the §28 approved-frozen marketing landing page. Whether the freeze holds the orb there,
-  or the landing page adopts the Command Mark in the same rollout, is undecided — do not resolve it
-  by editing code.
+  `../brand/paige-brand-identity.md`. Rollout scope is tenant + operator surfaces only.
+  **It is PARTIALLY PORTED, and its live implementation is `src/operator/shell/CommandMark.tsx`** —
+  not `PaigeSymbol`. It renders today on the operator shell (`src/operator/shell/SlotRail.tsx`) and
+  on the Solo / agency / admin command centers (`src/components/tenant-shell/TenantCommandCenterShell.tsx`).
+  What is still outstanding is the narrower `PaigeSymbol territory="command"` migration — that one
+  still renders `PaigeMark` (`src/components/brand/PaigeSymbol.tsx`). Do not read either "the
+  Command Mark is live" or "the port has not happened" as true platform-wide; check what the
+  surface in front of you actually renders.
+- **PaigeMark** — the orbital orb + ring + spark + halo mark. **Current, not retired.** It is
+  imported DIRECTLY by roughly two dozen production surfaces — the marketing landing page
+  (`src/pages/PaigeHome.tsx`), auth and onboarding, the admin and agency layouts, Studio, and
+  `src/solo/social-command.tsx`, where an owner ruling on 2026-09-06 made it the required mark:
+  "stay to that one and that one only"
+  (`../evidence/ui-delivery/campaigns-social-header-compaction.md`). It is also the marketing site's
+  mark per `../design-references/cd-packs/super-admin-shell-v3/design-system-port.md` §3.
+  `PaigeMark.tsx` stays as the backward-compat path — the brand doc says do not rip it out.
+- **The pending `PaigeSymbol` swap is SMALLER than the brand doc implies.**
+  `../brand/paige-brand-identity.md` §2 holds an open owner ruling before Stage 3, resting on the
+  premise that swapping what `territory="command"` renders "changes the mark on every surface that
+  already renders it — including the marketing landing page," which is §28 approved-frozen.
+  **That premise is stale in this tree** (verified 2026-09-06): `PaigeSymbol` has only three
+  consumers and all three live under `src/prototype/`, while the landing page imports `PaigeMark`
+  directly and never goes through `PaigeSymbol`. So the swap cannot reach the landing page on its
+  own. Whether the landing page adopts the Command Mark remains an open OWNER decision — do not
+  resolve it by editing code; equally, do not treat it as a technical blocker on the `PaigeSymbol`
+  migration, because it is not one.
   ("Illuminated Precision" is a superseded label; do not reintroduce it.) `PaigeScene` = the landing
   3D hero (three.js), a separate thing.
 - **MMA / PME** — Mogul Maker Academy / Project Mogul Enterprise: the owner's **tenant** vertical
