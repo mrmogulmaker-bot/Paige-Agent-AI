@@ -814,8 +814,10 @@ const Orb=(()=>{
   function setSearch(q){
     curSearch=(q||"").trim().toLowerCase(); if(engineOk) window.MindOrb.search(curSearch);
     if(curSearch){
-      const hits=DOMAINS.reduce((a,d)=>a+d.facts.filter(f=>(f.name||"").toLowerCase().includes(curSearch)).length,0)
-        + DOMAINS.filter(d=>d.name.toLowerCase().includes(curSearch)).length;
+      // count only records actually present in the CURRENT scenario's orb (partial/unavailable
+      // trim or synthesise nodes), so the announced count never exceeds what is shown.
+      const {nodes}=buildCfg(curScenario);
+      const hits=nodes.filter(n=>!n.ghost && (n.label||"").toLowerCase().includes(curSearch)).length;
       announce(hits+" record"+(hits===1?"":"s")+" match “"+curSearch+"”.");
     }
   }
@@ -971,8 +973,20 @@ const paigeFold=$("#paige header .close"); if(paigeFold)paigeFold.addEventListen
 document.addEventListener("keydown",e=>{const t=document.activeElement,tag=t&&t.tagName;if(e.key==="/"&&tag!=="INPUT"&&tag!=="TEXTAREA"&&tag!=="SELECT"&&!(t&&t.isContentEditable)&&!$(".drawer")){e.preventDefault();$("#search").focus();}});
 
 /* init */
+// Honour the OS reduced-motion setting, not just the toggle: reflect it in the control BEFORE the
+// first orb build (so the engine inits static), and follow live OS changes. This makes the
+// reduced-motion honesty claim (annotations #2/#12) real, not asserted.
+const RM_MQ = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+function reflectReducedMotion(on, announceIt){
+  $("#rm-btn").setAttribute("aria-pressed", String(on));
+  const sw=$("#rm-btn .switch"); if(sw) sw.setAttribute("aria-pressed", String(on));
+  Orb.setReduced(on);
+  if(announceIt) announce(on?"Reduced motion on (system setting). The orb is still.":"Reduced motion off.");
+}
+if(RM_MQ && RM_MQ.matches){ $("#rm-btn").setAttribute("aria-pressed","true"); const sw=$("#rm-btn .switch"); if(sw) sw.setAttribute("aria-pressed","true"); }
 renderCallouts(); renderFocusMenu(); renderAnnotations();
 setTheme("dark"); setViewport("1536x770"); setScenario("populated");
+if(RM_MQ){ const onRM=e=>reflectReducedMotion(e.matches,true); RM_MQ.addEventListener?RM_MQ.addEventListener("change",onRM):RM_MQ.addListener&&RM_MQ.addListener(onRM); }
 </script>
 </body>
 </html>

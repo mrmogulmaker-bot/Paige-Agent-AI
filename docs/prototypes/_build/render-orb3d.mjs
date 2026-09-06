@@ -124,3 +124,15 @@ F.errors = errs2;
 console.log("=== FALLBACK (WebGL disabled) ===");
 console.log(JSON.stringify(F, null, 1));
 await b2.close();
+
+// ---- OS prefers-reduced-motion must hold the orb static at load (M1) ----
+const RM = {};
+const b3 = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: GL_FLAGS });
+const p3 = await b3.newPage({ viewport: { width: 1536, height: 900 }, reducedMotion: "reduce" });
+await p3.goto(FILE, { waitUntil: "load" }); await p3.waitForTimeout(900);
+RM.rmButtonPressed = await p3.$eval("#rm-btn", el => el.getAttribute("aria-pressed"));
+RM.orbStillLit = await litPixels(p3, "#orb");   // still fully rendered, just not animating
+await (await p3.$("#viewport")).screenshot({ path: path.join(OUT, "os_reduced_motion.png") });
+console.log("=== OS prefers-reduced-motion (M1) ===");
+console.log(JSON.stringify(RM, null, 1));
+await b3.close();

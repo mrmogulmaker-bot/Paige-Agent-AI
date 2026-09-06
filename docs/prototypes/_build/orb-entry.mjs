@@ -6,7 +6,8 @@
 // rings, a faceted luminous core, source-coloured instanced record nodes, constellation links,
 // drifting dust, PBR lighting + environment, and real UnrealBloom. Calm continuous idle rotation
 // (autoRotate) that never resets when data changes; OrbitControls drag + keyboard + reset;
-// reduced-motion static; offscreen/hidden pause; adaptive DPR; full disposal.
+// reduced-motion static; offscreen/hidden pause; idle-throttle (render only when dirty while
+// static); DPR capped at 2; full disposal.
 //
 // The engine renders PRESENTATION. Node colours/positions carry a record's canonical source STATE;
 // it never fabricates activity. The page owns the honesty labels, drawer, states and fallback.
@@ -183,6 +184,10 @@ const MindOrb = (() => {
     controls.enablePan = false; controls.minDistance = 2.4; controls.maxDistance = 4.6;
     controls.rotateSpeed = 0.7;
     controls.autoRotate = true; controls.autoRotateSpeed = 0.45; // calm, continuous
+    // mark the frame dirty on any camera change (drag / zoom / damping settle) so the
+    // idle-throttle still renders through user interaction while the orb is static.
+    controls.addEventListener("start", () => { if (S) S.dirty = true; });
+    controls.addEventListener("change", () => { if (S) S.dirty = true; });
 
     // --- post: real UnrealBloom ---
     const composer = new EffectComposer(renderer);
@@ -198,7 +203,7 @@ const MindOrb = (() => {
         coreWire.geometry, coreWire.material, linkGeo, links.material, dustGeo, dust.material, ...ringDisposables],
       raf: 0, running: cfg.running !== false, reduced: !!cfg.reduced, dark: cfg.dark !== false,
       focusKey: null, searchQ: "", onPick: cfg.onPick || (() => {}), t: 0, clock: new THREE.Clock(),
-      visible: true, lowFps: 0, dpr: Math.min(window.devicePixelRatio || 1, DPRcap), canvas };
+      visible: true, dirty: true, dpr: Math.min(window.devicePixelRatio || 1, DPRcap), canvas };
 
     applyTheme(cfg.colors, S.dark);
     resize();
@@ -219,7 +224,8 @@ const MindOrb = (() => {
 
   function bindInteraction() {
     const cv = S.canvas; const drag = { x: 0, y: 0, moved: false, on: false };
-    cv.addEventListener("pointerdown", (e) => { drag.on = true; drag.x = e.clientX; drag.y = e.clientY; drag.moved = false; });
+    cv.addEventListener("pointerdown", (e) => { drag.on = true; drag.x = e.clientX; drag.y = e.clientY; drag.moved = false; if (S) S.dirty = true; });
+    cv.addEventListener("wheel", () => { if (S) S.dirty = true; }, { passive: true });
     cv.addEventListener("pointermove", (e) => { if (drag.on && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4) drag.moved = true; });
     cv.addEventListener("pointerup", (e) => { if (drag.on && !drag.moved) pickAt(e); drag.on = false; });
     cv.addEventListener("keydown", (e) => {
@@ -353,9 +359,13 @@ const MindOrb = (() => {
       if (!S) return;
       // pause when hidden/offscreen
       if (!S.visible || document.hidden) { S.raf = requestAnimationFrame(tick); return; }
-      const still = S.reduced || (!S.running && !S.controls.enableDamping);
-      render();
-      // adaptive quality: if damping settled and not animating, we can idle cheaply — keep rAF but light
+      // Idle-throttle: while animating (running + not reduced) render every frame; while STATIC
+      // (paused or reduced-motion) render only when something changed (drag / zoom / damping /
+      // theme / focus) — the last frame persists on-screen, so no full-bloom composite runs for
+      // a still orb. This is the throttle the old dead `still` line only described.
+      const animating = S.running && !S.reduced;
+      if (animating) render();
+      else if (S.dirty) { render(); S.dirty = false; }
       S.raf = requestAnimationFrame(tick);
     };
     S.raf = requestAnimationFrame(tick);
@@ -369,6 +379,8 @@ const MindOrb = (() => {
     try {
       S.controls.dispose();
       S.disposables.forEach((d) => d && d.dispose && d.dispose());
+      S.coreHalo.material.dispose();                         // sprite material (was leaked)
+      S.hubSprites.forEach(({ sp }) => sp.material.dispose()); // hub-halo sprite materials (were leaked)
       S.inst.dispose(); S.envTex.dispose(); S.pmrem.dispose();
       S.composer.dispose(); S.renderer.dispose();
       S.renderer.forceContextLoss && S.renderer.forceContextLoss();

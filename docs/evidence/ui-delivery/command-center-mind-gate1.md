@@ -67,6 +67,11 @@ WebGL-disabled run (`--disable-webgl --disable-webgl2`):
 - `engineAvailable: false` · `fallbackShown: true` · `fallbackDomains: 6` · `drawerFromFallback: true` ·
   zero errors — the surface degrades to the governed-records list and stays fully usable. **Never blank.**
 
+OS reduced-motion run (Playwright `reducedMotion: "reduce"`):
+- `rmButtonPressed: "true"` (the control reflects the OS setting on load) · orb still fully lit (`0.622`)
+  but not animating — the OS `prefers-reduced-motion` path genuinely holds the orb static, not just the
+  in-app toggle. (Frame: `os_reduced_motion.png`.)
+
 ## Render matrix (headless Chromium + SwiftShader, deviceScaleFactor 1)
 
 Viewports PAIGE-closed in BOTH themes: **1536×770, 1366×768, 1024×768, 900×1000, 390×844 (mobile)**.
@@ -104,10 +109,14 @@ source-coloured nodes, and constellation links now visible; the gold core stays 
 
 ## Performance / cleanup (§13/§22)
 
-DPR capped at 2 · offscreen pause via `IntersectionObserver` + `document.hidden` · single live WebGL
-context (fresh-canvas swap, never accumulating) · full `dispose()` frees every geometry/material/texture,
-the instanced mesh, the ring materials, PMREM, env texture, composer, renderer + `forceContextLoss()` ·
-reduced-motion (toggle **and** OS `prefers-reduced-motion`) holds the orb static but fully rendered.
+DPR capped at 2 (not adaptive) · offscreen pause via `IntersectionObserver` + `document.hidden` ·
+**idle-throttle**: while animating (running + not reduced) the loop renders every frame, but while STATIC
+(paused or reduced-motion) it renders only when something changed (drag / zoom / damping settle / theme /
+focus) — the last frame persists on-screen, so no full-bloom composite runs for a still orb · single live
+WebGL context (fresh-canvas swap, never accumulating) · full `dispose()` frees every geometry/material/
+texture, the instanced mesh, the ring materials, **the core-halo and hub-halo sprite materials**, PMREM,
+env texture, composer, renderer + `forceContextLoss()` · reduced-motion (in-app toggle **and** OS
+`prefers-reduced-motion`, both proven above) holds the orb static but fully rendered.
 
 ## Accessibility
 
@@ -129,12 +138,45 @@ decisions = a governed memory seam exists (Release C: `record_paige_memory`/`get
 "Acme Advisory" is never a real owner account (§63). No pop-culture marks (§50). No finance/credit default
 (§2). Gold spent only on the core/act (§11).
 
-## §58 flag (unchanged, for owner sign-off)
+## §58 flag (for owner sign-off)
 
 This direction continues to **drop Systems Check findings from Mind** (Systems Check owns readiness/blockers;
-four-surfaces boundary §00) and Mind links to Systems Check rather than duplicating it. The canvas-2D orb
-engine from the prior commit is **replaced** by the real three.js engine — same public surface (search,
-focus, pause, zoom, reduced-motion, drawer, states, fallback), higher fidelity; no capability removed.
+four-surfaces boundary §00) and Mind links to Systems Check rather than duplicating it. The prior prototype's
+**SVG/DOM orb-detail panel** is replaced by the real three.js engine — every working capability is preserved
+(search, focus, pause, zoom [new], reduced-motion, drawer, states, fallback [new], confirm/correct routing,
+capture, ask-Paige). Two **non-functional placeholders** the prior legend/data carried were not brought
+across: a `Retired` source-signal legend entry (`--sig-retired`) and the disabled State/Source/Freshness
+filter chips (both were inert in the prior version too). Flagged for sign-off; not an anti-regression of any
+working capability (this is a pre-Gate-1 prototype, so §58's "shipped + approved" trigger does not formally
+bite — recorded for precision).
+
+*Note on the "LIVE" label:* in the annotation overlay, **LIVE = a real read contract exists**, not
+runtime-verified in this prototype. Nothing here is authenticated-runtime LIVE (see the source map above and
+the evidence table's authenticated-runtime row).
+
+## Independent review (§39 peer-gate + §5 compliance) — integrated
+
+Two independent agents read the actual pushed diff (not the author's proof), each bound by §00 (WORKS facts
+only). Both returned **no blockers**. Findings resolved in this same session:
+
+- **Fixed (invisible correctness/honesty — approved look byte-unchanged, verified):** OS
+  `prefers-reduced-motion` is now genuinely wired + proven (was claimed, not implemented); the idle-throttle
+  is now real (the loop's dead `still`/`lowFps`/"adaptive DPR" claims were removed — a paused/reduced orb no
+  longer runs full bloom at 60 fps); `dispose()` now frees the core-halo and hub-halo sprite materials (were
+  leaked); the search hit-count now reflects the current scenario's actual nodes (was counting the full
+  fixture). Plus doc-accuracy fixes (prior panel was SVG/DOM not canvas-2D; the `Retired`/filter-chip drops
+  recorded; the LIVE-label meaning clarified above).
+- **Surfaced, not silently changed (§28 — these touch the approved *look*, so they are the owner's call and
+  are logged as production-port work, not edited on a frozen design):** the engine's structural gold (glass
+  shell, fresnel rim, lat/long lattice, core, halos, dust) is fixed to the dark-palette gold, so in Mineral
+  those structural elements render with dark-theme gold rather than the light-theme gold tokens (only nodes/
+  rings/bloom are theme-aware today); the hub-halo tint does not re-colour on a live theme flip; the
+  `unavailable` harness scenario's synthetic node opens a domain drawer showing the original facts; minor
+  hardcoded hex in the page CSS (`body`/`switch`/`btn--gold`) to tokenise; the focus-domain menu is an
+  incomplete ARIA `menu` pattern (arrow-key nav / Esc-close — a keyboard path already exists via the domain
+  callouts, so nothing is unreachable). **Open CD/owner question:** the token pack is "PAIGE Super Admin
+  Shell v3" (operator) reused on this Solo surface — confirm it is the sanctioned source for Solo Mind vs. a
+  Solo-specific pack (a §6/§00 decision, not a defect).
 
 ## Owed / next
 
