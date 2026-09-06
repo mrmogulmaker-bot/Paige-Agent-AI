@@ -46,7 +46,7 @@ Vercel's SPA rewrite correctly served `index.html` for every path. The client ro
 
 ## Collision and handoff
 
-PR #724's route mount, legacy shell, and setup fallback are superseded; unrelated canonical auth/setup/OAuth behavior was preserved. PR #981's floating-chat retirement was already on main and remains compatible. Origin main advanced during implementation through #985, #986, #987, #969, #993, #991, #994, and #989. The hotfix was rebased after #989 merged; its surface-context handoff wording was corrected to remove the stale Agency/admin destination while preserving the new contract.
+PR #724's route mount, legacy shell, and setup fallback are superseded; unrelated canonical auth/setup/OAuth behavior was preserved. PR #981's floating-chat retirement was already on main and remains compatible. Origin main advanced during implementation through #985, #986, #987, #969, #993, #991, #994, #989, and #990. The hotfix was rebased after #989 and #990 merged; the handoff wording no longer names an admin destination, the retired AdminLayout stayed deleted, and Studio preserved #990's Command Mark while taking the canonical chooser destination.
 
 Current state: `PARTIAL` until merge/deployment. PR #995 CI is green; authenticated production role driving, migration-ledger confirmation, exact production revision, and live production browser proof remain `PROOF OWED`.
 
