@@ -272,12 +272,13 @@ PR #909 merged as 49b9f338. Frontend production deployment is READY on paigeagen
 
 ### Solo Sales Ops — a Solo owner can record what one client agreed to (2026-09-03)
 
-**P0 runtime correction in progress (2026-09-06).** PR #985 merged the owner-approved redesign, but its
+**P0 runtime correction LIVE (2026-09-06).** PR #985 merged the owner-approved redesign, but its
 production adapter's first `loading`→`ready` transition changed React hook order and blanked the route.
-The Sales desk is therefore `PARTIAL`, not safely LIVE, until the same-mount hook-order hotfix is merged,
-the exact production revision is deployed, and the live route is reverified. The fix does not change the
-approved design, route, tier, data, authority, or truth-label contract. Authenticated live-drive stays
-owner-owed (§32.c). Full incident proof: `docs/evidence/ui-delivery/solo-sales-blank-route-hotfix.md`.
+PR #1001 fixed the hook-order defect and merged as `3f7eca584150a0af702451186cc638d863a01f98`;
+Vercel deployment `dpl_5CxRh2iuFiSRgG5Bzwfn6n8RmfPH` is READY on the production aliases. The fix did
+not change the approved design, route, tier, data, authority, or truth-label contract. Authenticated
+owner live-drive stays PROOF OWED (§32.c) because the signed-in browser helper could not attach. Full
+incident proof: `docs/evidence/ui-delivery/solo-sales-blank-route-hotfix.md`.
 Original redesign record: `docs/brain/decision-log.md` (2026-09-06 MVP-close entry) +
 `docs/doctrine/tier-matrix.md` "Sales Command Desk redesign". The merged redesign established an
 evidence-aware **Sales Command Desk**: four internal views via a
