@@ -37,6 +37,24 @@
   render or mint signed URLs) OR the n8n-management edge-proof shape (`integrations.*` key + lease/project);
   so export ships by EXTENDING the `document_generate` baseline tool (§18), not as a Spine capability.
   Generalizing the edge-native executor allow-list is a follow-up.
+  **REVIEW: §5 compliance = SHIP; §39 peer-gate = ITERATE → one BLOCKING §9/§59 finding, FOLDED.** The
+  peer-gate caught a cross-tenant document-export IDOR that §5 missed: `export-document` read the doc by id
+  with the caller JWT and TRUSTED `marketing_content` RLS — but that RLS has the §59 global-`admin`
+  OR-branch (`OR has_role(auth.uid(),'admin')`), and every tenant owner/admin holds the GLOBAL `admin`
+  app_role via the `tenant_members→user_roles` sync, so a tenant-A admin could export a tenant-B document
+  by id. **Fix folded:** an in-body member/operator gate (`is_tenant_member(doc.tenant_id)`, bypassed only
+  for a platform operator super_admin/platform_admin — §59: cross-tenant authority is the operator role,
+  never the tenant app_role) refuses the cross-tenant read before any file is produced; the Rail record is
+  now skipped for operator exports (they aren't members, so the RPC would raise a false-alarm
+  CAPABILITY_RUN_FORBIDDEN — §5 finding). Test renamed to a source contract + asserts the gate; a true
+  two-tenant RLS drive is §32.c-owed (needs a live DB). Re-verified: doc-export 9/9, tsc 0, edge ratchet
+  145. **NEW FINDING surfaced to the owner (pre-existing, platform-wide, OUTSIDE this task — recorded, not
+  fixed here):** the `marketing_content_tenant_manage` RLS OR-branch (`20260711014952`) grants the global
+  `admin` app_role a CROSS-TENANT read of ANY tenant's `marketing_content` via raw PostgREST — a §9/§59 IDOR
+  independent of this function. Fixing the shared RLS is its own slice (§59); my in-body gate closes the
+  export vector regardless. Wording nits corrected (there IS a platform-ops Lovable-gateway Drive path in
+  `ship-26-legacy-cleanup`, so the accurate claim is "no Docs/Sheets/Slides API client + no tenant Drive
+  OAuth scope"; and the Spine registry substrate exists — what's absent is a Google Workspace-docs ENTRY).
 - **Capability System Slice 3 (F05) increment 1 — CRM/scheduling write receipts record an honest Rail outcome (2026-09-06, Task #19, owner-authorized)** —
   three consequential chat acts that recorded ONLY to `paige_audit_log` and left NO capability-Rail row —
   `crm_log_activity`, `calendar_book_meeting`, `crm_create_task` (the write-receipts the §39 Slice-1 verifier

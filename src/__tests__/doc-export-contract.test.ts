@@ -82,13 +82,20 @@ describe("export-document edge function — the callable seam (source contract)"
     expect(SRC).toContain('"doc-render"');
   });
 
-  it("is admin/coach gated and reads the source doc with the CALLER JWT client (§9 tenant scope by RLS)", () => {
+  it("is admin/coach gated, reads with the CALLER JWT, and re-enforces caller tenant scope IN-BODY (§9/§59 source contract)", () => {
     expect(SRC).toContain('authed.auth.getUser()');
     expect(SRC).toContain('"admin" || r === "super_admin" || r === "coach"');
     expect(SRC).toContain('.from("marketing_content")');
-    // the tenant the file is filed under is the RLS-confirmed row's tenant, never the request body
+    // the tenant the file is filed under is the row's tenant, never the request body
     expect(SRC).toContain("const tenantId = doc.tenant_id");
     expect(SRC).not.toContain("body?.tenant_id");
+    // §59 — the caller-JWT read alone is NOT sufficient: marketing_content RLS has a global-`admin`
+    // OR-branch, so a by-id EXPORT reader must RE-ENFORCE membership in-body; cross-tenant is operator-only.
+    expect(SRC).toContain('roles.some((r: string) => r === "super_admin" || r === "platform_admin")');
+    expect(SRC).toContain('authed.rpc("is_tenant_member", { _tenant: tenantId })');
+    expect(SRC).toContain("You don't have access to that document's workspace.");
+    // HONEST SCOPE (§32.c): this is a SOURCE contract that the in-body gate exists — a true two-tenant
+    // RLS drive proving the IDOR is closed needs a live DB and is owed to the authenticated post-deploy pass.
   });
 
   it("offers only the renderer's real formats and degrades honestly, never a fake link (§13)", () => {

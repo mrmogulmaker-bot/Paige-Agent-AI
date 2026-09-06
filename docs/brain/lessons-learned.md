@@ -6,6 +6,26 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 00. A new by-id EXPORT/read edge function that trusts RLS is a cross-tenant IDOR — marketing_content's RLS has a global-admin OR-branch (2026-09-06)
+
+- **Symptom (caught by the §39 peer-gate, missed by §5 compliance).** A new `export-document` edge fn
+  read the source doc with the caller JWT by id only (`.eq("id", contentId)`, no tenant filter) and
+  trusted `marketing_content` RLS to scope it. A tenant-A admin could export a tenant-B document by id and
+  get a working signed download URL.
+- **Root cause.** `marketing_content_tenant_manage` (migration `20260711014952`) is
+  `(tenant_id = current_user_tenant_id() AND has_any_role(...)) OR has_role(auth.uid(),'admin')`. The
+  second branch is the §59 global-role trap: `user_roles` has no `tenant_id`, and EVERY tenant owner/admin
+  holds the GLOBAL `admin` app_role (the `tenant_members→user_roles` sync trigger), so the OR-branch is
+  TRUE for any row. Coaches are unaffected (global `coach`, not `admin`). RLS therefore does NOT scope an
+  admin's by-id read to their own tenant.
+- **Rule (§59).** A NEW by-id data reader/exporter MUST re-enforce caller scope IN-BODY — never trust the
+  RLS grant. Require `is_tenant_member(row.tenant_id)`; allow cross-tenant ONLY for a platform operator
+  (super_admin/platform_admin via the operator role), NEVER the tenant-level app_role. And: a source-grep
+  test titled "tenant scope by RLS" that only greps for the read shape proves nothing about isolation —
+  name it a source contract and owe the real two-tenant drive (§32.c). The underlying RLS OR-branch is a
+  separate platform-wide gap (any tenant admin can read any tenant's marketing_content via raw PostgREST) —
+  fix it in its own slice; the in-body gate closes each new reader regardless.
+
 ## 0. A NEW edge-native Paige capability cannot be a new inline chat tool NOR a Spine `action` today — extend a baseline tool (2026-09-06)
 
 - **Symptom.** Building the document-export capability, the obvious move (a new `export_document` chat

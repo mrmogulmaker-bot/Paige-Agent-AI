@@ -1651,9 +1651,11 @@ read-only scouts (file:line-citable).
   Honest state: **md LIVE** (pure serializer), **pdf LIVE-pending** (pdf-lib Deno-proven), **docx/pptx
   PROOF-OWED** on the Deno runtime (each fail-closed to needs_config), **§32.c owner drive OWED**. GAPS:
   **xlsx** (tabular, needs a new lib — named follow-up); a re-download control on the artifact card
-  (Claude Design's, §00); **native Google Docs/Sheets/Slides = UNAVAILABLE** (provider-gated: no Drive/Docs/
-  Sheets/Slides OAuth scope or API client exists — only gmail.send + calendar.events; an Integration
-  Capability Registry entry + Google provider contract are prerequisites); multi-surface card render,
+  (Claude Design's, §00); **native Google Docs/Sheets/Slides = UNAVAILABLE** (provider-gated: no Docs/Sheets/
+  Slides API client and no tenant Drive OAuth scope — tenant Google carries only gmail.send + calendar.events;
+  a platform-ops-only Lovable-gateway Drive path exists in `ship-26-legacy-cleanup` but is not a tenant
+  authoring seam; an Integration Capability Registry ENTRY + a Google provider contract are prerequisites);
+  multi-surface card render,
   image→campaign routing, other missing types (HTML email_template · video · social-schedule).
 - **Upload/download & inspect files** — **LIVE** (upload+inspect: `useChatDocumentUpload` 10MB pdf/img/docx,
   read-check + approve-to-apply extraction, `kb-ingest-file`; folder-scoped storage RLS + server-side scope

@@ -82,6 +82,22 @@ serve(async (req: Request) => {
     const tenantId = doc.tenant_id as string | null;
     if (!tenantId) return json(422, { error: "That document has no workspace and cannot be exported." });
 
+    // §9/§59 — CLOSE THE GLOBAL-ADMIN IDOR (the §39 peer-gate's blocking finding). `marketing_content`'s
+    // RLS carries an OR-branch that grants the GLOBAL `admin` app_role a cross-tenant read, and EVERY
+    // tenant owner/admin holds that global role (the tenant_members→user_roles sync). So the caller-JWT
+    // read above does NOT by itself scope to the caller's tenant — a tenant-A admin could read a tenant-B
+    // document by id. Per §59, a new by-id data-EXPORT reader must RE-ENFORCE caller scope IN-BODY rather
+    // than trust the grant. Require membership of the DOC's tenant. Cross-tenant authority is ALWAYS the
+    // platform-operator role (super_admin/platform_admin) — never the tenant-level app_role: an operator
+    // legitimately spans tenants (the operator seam), a tenant admin never does. (The pre-existing RLS
+    // OR-branch is a platform-wide §9/§59 gap reachable via raw PostgREST — filed as its own follow-up;
+    // this gate closes the export vector regardless.)
+    const isOperator = roles.some((r: string) => r === "super_admin" || r === "platform_admin");
+    if (!isOperator) {
+      const { data: isMember } = await authed.rpc("is_tenant_member", { _tenant: tenantId });
+      if (!isMember) return json(403, { error: "You don't have access to that document's workspace." });
+    }
+
     // The document body is the block JSON document_generate saved: `{ docType, title, blocks }`. Unwrap
     // to the blocks array; renderDoc coerces defensively, so a legacy/plain body still produces a file.
     let content: unknown = doc.body;
@@ -98,8 +114,16 @@ serve(async (req: Request) => {
       : String((doc.title as string) ?? "Document").slice(0, 200);
 
     const service = createClient(supabaseUrl, supabaseServiceKey);
+    // Rail record is for TENANT (member) callers. `record_capability_run` requires the actor to be a
+    // member of the target tenant (§52), so an OPERATOR export (super_admin/platform_admin, not a member)
+    // would raise CAPABILITY_RUN_FORBIDDEN and log a false-alarm error for a legitimate God action. An
+    // operator export is still audited via the studio_deliverable provenance row + the router audit, so
+    // we skip the Rail row for operators rather than emit a spurious error (§5 finding; §13 — loud logs
+    // for real faults only).
     const record = (outcome: Parameters<typeof recordCapabilityRun>[1]["outcome"]) =>
-      recordCapabilityRun(service, { tenantId, actorId: user.id, capabilityKey: "document_export", outcome });
+      isOperator
+        ? Promise.resolve(false)
+        : recordCapabilityRun(service, { tenantId, actorId: user.id, capabilityKey: "document_export", outcome });
 
     let rendered: Awaited<ReturnType<typeof callModel>>;
     try {
