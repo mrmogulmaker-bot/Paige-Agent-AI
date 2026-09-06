@@ -170,6 +170,17 @@
   misclassification (I1/J2) together. (J3) `section-header`/`chapter-divider` dropped their optional
   `number`; a `numberedHeading` helper now prefixes it (real content the canvas renders). doc-export 18/18,
   tsc ratchet 13/13, control-chars none, §50/§63 clean.
+  **TWELFTH catch — Codex round 9 (three P2), all FOLDED:** (K1) a section/chapter kicker was still emitted
+  as a paragraph BEFORE its heading, so in pptx it attached to the PREVIOUS slide; folded the kicker + number
+  INTO the one heading line (`headingWithKicker` → "Kicker — 2. Title"), eliminating the stray pre-heading
+  paragraph. (K2) `sanitizeWinAnsi` dropped the euro U+20AC to `?` even though WinAnsi (CP1252) encodes it, so
+  `€2,500` shipped as `?2,500` below the charset threshold; the keep-set now includes the CP1252 specials
+  (euro, ™, †‡, Œœ Šš Ÿ Žž ƒ …) so pdf-lib renders them and winAnsiLoss stops false-counting them. (K3) the
+  `.md` exporter still flattened prose via `inlineMdToText`, losing `**bold**`/links — but `.md` IS markdown;
+  threaded a `flattenInline` flag (`format !== "md"`) so binary renderers flatten and md keeps prose RAW.
+  `inlineMdToText` is now export + unit-tested directly (it is binary-only, off the headless md path). Lesson:
+  a shared normalizer feeding multiple serializers must be parameterized by the target format, not one-size.
+  doc-export 20/20, tsc ratchet 13/13, control-chars none, §50/§63 clean.
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace

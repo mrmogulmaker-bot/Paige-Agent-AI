@@ -29,8 +29,22 @@ function loadDocRender() {
   return out;
 }
 
-const { renderDoc } = loadDocRender();
+const { renderDoc, inlineMdToText } = loadDocRender();
 const dec = (u: Uint8Array) => new TextDecoder().decode(u);
+
+describe("inlineMdToText — flatten markdown to clean text for BINARY renderers (Codex round-6/9)", () => {
+  it("strips emphasis, keeps code + balanced-paren URLs verbatim, links → label (url)", () => {
+    // This is the flattening the pdf/docx/pptx renderers apply (they can't parse markdown). The `.md`
+    // exporter does NOT use it — md keeps raw markdown (asserted in the md-serializer suite below).
+    expect(inlineMdToText("We use **three** campaigns")).toBe("We use three campaigns");     // bold stripped
+    expect(inlineMdToText("a *little* thing")).toBe("a little thing");                        // italic stripped
+    expect(inlineMdToText("Set `tenant_id_value` here")).toBe("Set tenant_id_value here");    // code VERBATIM (H2)
+    expect(inlineMdToText("Run `a*b*c` now")).toBe("Run a*b*c now");                          // code metachars kept (H2)
+    expect(inlineMdToText("see [x](https://ex.co/a_(b)?utm_source=s&utm_medium=m)"))
+      .toBe("see x (https://ex.co/a_(b)?utm_source=s&utm_medium=m)");                          // balanced-paren URL whole (H3/G1)
+    expect(inlineMdToText("![logo](https://ex.co/l.png) shown")).toBe("logo shown");          // image → alt, dest dropped
+  });
+});
 
 describe("doc-render md serializer — a real, portable .md file (slice: doc export MVP)", () => {
   it("serializes title + headings + paragraphs + lists to clean markdown", async () => {
@@ -133,9 +147,9 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(md).toContain("The key point");                // callout title is not lost to the body
     expect(md).toContain("Retention beats acquisition.");
     expect(md).toMatch(/^### How it works$/m);            // prose H2 recovered as a real heading (→ H3 under the doc H1)
-    expect(md).toContain("We use three campaigns");       // prose inline **bold** stripped to clean text
-    expect(md).not.toContain("**three**");                // no raw markdown syntax leaks into the export
-    expect(md).toContain("signup form (https://ex.co/x)"); // a prose link keeps its destination as `label (url)`
+    // Codex round-9 K3 — the `.md` exporter KEEPS raw markdown (it IS markdown); only binary renderers flatten.
+    expect(md).toContain("We use **three** campaigns");   // bold markup preserved in the .md file
+    expect(md).toContain("[signup form](https://ex.co/x)"); // link preserved as real markdown, not `label (url)`
     expect(md).toContain("- First");                      // prose list recovered as a real list, not one flat line
     expect(md).toContain("https://ex.co/book");           // the CTA destination is followable, not discarded
   });
@@ -172,7 +186,7 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
       .rejects.toMatchObject({ tag: "doc-render:pdf" });
   });
 
-  it("keeps code spans and balanced-paren link URLs verbatim, and md preserves Unicode (Codex round-6)", async () => {
+  it("md keeps prose's RAW markdown (code spans, links) and preserves Unicode (Codex round-6/9 K3)", async () => {
     const r = await renderDoc({
       format: "md",
       title: "R6",
@@ -182,11 +196,11 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
       ],
     });
     const md = dec(r.bytes);
-    // H2 — inline code is preserved VERBATIM; the `_id_` / `*b*` inside it must not be emphasis-stripped.
-    expect(md).toContain("tenant_id_value");
-    expect(md).toContain("a*b*c");
-    // H3 — a link URL with a balanced `(b)` and query underscores survives whole (not truncated at the `)`).
-    expect(md).toContain("https://ex.co/a_(b)?utm_source=s&utm_medium=m");
+    // K3 — the .md exporter preserves prose markdown verbatim: code spans keep their backticks, links stay
+    // real markdown. (The flattening for binary renderers is proven by the inlineMdToText unit test above.)
+    expect(md).toContain("`tenant_id_value`");
+    expect(md).toContain("`a*b*c`");
+    expect(md).toContain("[x](https://ex.co/a_(b)?utm_source=s&utm_medium=m)"); // full markdown link, URL intact
     expect(md).not.toContain("utmsource");
     // md keeps Unicode — only the PDF path has the WinAnsi (Latin-only) limit.
     expect(md).toContain("Привет мир 你好");
@@ -247,6 +261,19 @@ describe("doc-render binary-format guards (source contract — pdf/pptx use npm 
     expect(SRC).toContain("@@CODE");
     expect(SRC).toContain("@@URL");
     expect(SRC).toContain("restore code verbatim");
+  });
+
+  it("Codex round-9 — kicker folded into the heading (K1), euro kept in WinAnsi (K2), md keeps raw markdown (K3)", () => {
+    // K1 — a section/chapter kicker is part of the single heading block, not a separate pre-heading paragraph
+    // that would attach to the previous pptx slide.
+    expect(SRC).toContain("function headingWithKicker");
+    expect(SRC).not.toContain("push(asText(b.kicker));"); // the old standalone-kicker paragraph is gone
+    // K2 — the CP1252 euro (and other WinAnsi specials) are KEPT by sanitizeWinAnsi, not dropped to `?`.
+    expect(SRC).toContain("\\u20AC");                     // euro is in the keep set
+    // K3 — inline flattening is threaded by format; md keeps raw markdown, binary flattens.
+    expect(SRC).toContain("flattenInline");
+    expect(SRC).toContain('String(input?.format).toLowerCase() !== "md"');
+    expect(SRC).toContain("const clean = flattenInline ? inlineMdToText");
   });
 });
 

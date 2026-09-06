@@ -75,7 +75,9 @@ export async function renderDoc(input: DocRenderInput): Promise<DocRenderResult>
   // than escaping the router. This is the "router never crashes, it degrades" guarantee, end to end (§13).
   try {
     const title = typeof input?.title === "string" ? input.title : undefined;
-    const blocks = normalizeBlocks(input?.content, title);
+    // Flatten inline markdown (strip emphasis, links → `label (url)`) ONLY for the binary renderers, which
+    // can't parse markdown. The `.md` exporter is markdown — it keeps prose's raw markup verbatim (Codex P2).
+    const blocks = normalizeBlocks(input?.content, title, String(input?.format).toLowerCase() !== "md");
     const style = (input?.style && typeof input.style === "object") ? input.style : {};
 
     switch (input?.format) {
@@ -97,20 +99,20 @@ export async function renderDoc(input: DocRenderInput): Promise<DocRenderResult>
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════
 // Content normalization — accept blocks OR markdown/plain, coerce EVERYTHING defensively (§13).
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════
-function normalizeBlocks(content: unknown, title?: string): Block[] {
+function normalizeBlocks(content: unknown, title?: string, flattenInline = true): Block[] {
   // {blocks:[...]} / {content:[...]} wrappers → unwrap to the inner array/string.
   if (content && typeof content === "object" && !Array.isArray(content)) {
     const c = content as Record<string, unknown>;
     // Prefer the wrapper's own title when the caller passed none, so a cover block can dedupe against it.
     const innerTitle = title ?? (typeof c.title === "string" ? c.title : undefined);
-    if (Array.isArray(c.blocks)) return coerceBlockArray(c.blocks, innerTitle);
-    if (Array.isArray(c.content)) return coerceBlockArray(c.content, innerTitle);
+    if (Array.isArray(c.blocks)) return coerceBlockArray(c.blocks, innerTitle, flattenInline);
+    if (Array.isArray(c.content)) return coerceBlockArray(c.content, innerTitle, flattenInline);
     if (typeof c.markdown === "string") return parseMarkdown(c.markdown);
     if (typeof c.text === "string") return parseMarkdown(c.text);
     // Some unknown object — stringify so we still produce a real (if plain) document.
     try { return parseMarkdown(JSON.stringify(content, null, 2)); } catch { return []; }
   }
-  if (Array.isArray(content)) return coerceBlockArray(content, title);
+  if (Array.isArray(content)) return coerceBlockArray(content, title, flattenInline);
   if (typeof content === "string") return parseMarkdown(content);
   if (content == null) return title ? [] : [{ type: "paragraph", text: "" }];
   return parseMarkdown(String(content));
@@ -123,7 +125,7 @@ function asText(v: unknown): string {
   try { return JSON.stringify(v); } catch { return String(v); }
 }
 
-function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
+function coerceBlockArray(arr: unknown[], docTitle?: string, flattenInline = true): Block[] {
   const out: Block[] = [];
   for (const raw of arr) {
     if (typeof raw === "string") { out.push({ type: "paragraph", text: raw }); continue; }
@@ -181,15 +183,16 @@ function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
     // level too deep — a section rendering DEEPER than a plain heading — and would make the `## Scope`
     // test pass only on an offset-substring coincidence rather than the real heading prefix.)
     if (t === "section-header") {
-      push(asText(b.kicker));          // the small eyebrow label above the section title
-      push(numberedHeading(b.number, asText(b.title ?? b.text)), "heading", 1); // §-number is content (Codex P2)
+      // Fold the kicker (eyebrow) + number INTO the one heading, rather than a separate paragraph BEFORE it:
+      // a pre-heading paragraph attaches to the PREVIOUS pptx slide (Codex P2). One heading block, no
+      // ordering hazard, and the kicker/number are still preserved as content.
+      push(headingWithKicker(b.kicker, b.number, asText(b.title ?? b.text)), "heading", 1);
       continue;
     }
     if (t === "chapter-divider") {
       out.push({ type: "pagebreak" });
-      push(asText(b.kicker));
-      push(numberedHeading(b.number, asText(b.title ?? b.text)), "heading", 1); // chapter index is content
-      push(asText(b.subhead));
+      push(headingWithKicker(b.kicker, b.number, asText(b.title ?? b.text)), "heading", 1);
+      push(asText(b.subhead)); // subhead follows the heading (correct order — it is body, not an eyebrow)
       continue;
     }
     if (t === "prose") {
@@ -198,11 +201,15 @@ function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
       // (Codex P2). Parse it into real structural blocks (headings/lists/paragraphs) and strip inline
       // markdown to clean text (links kept as `label (url)`) so every format renders structure, not syntax.
       const md = asText(b.markdown ?? b.text ?? b.content);
+      // Recover structure (headings/lists/paragraphs) for every format. Inline markup is flattened to clean
+      // text ONLY for binary renderers; the `.md` exporter keeps it RAW so `**bold**` / `[x](y)` still render
+      // as markdown (Codex P2 — the `.md` file must not lose its own formatting).
+      const clean = flattenInline ? inlineMdToText : (s: string) => s;
       for (const blk of parseMarkdown(md)) {
-        if (blk.type === "heading") push(inlineMdToText(blk.text), "heading", blk.level);
-        else if (blk.type === "paragraph") push(inlineMdToText(blk.text));
+        if (blk.type === "heading") push(clean(blk.text), "heading", blk.level);
+        else if (blk.type === "paragraph") push(clean(blk.text));
         else if (blk.type === "list") {
-          const items = blk.items.map(inlineMdToText).filter((s) => s.length > 0);
+          const items = blk.items.map(clean).filter((s) => s.length > 0);
           if (items.length) out.push({ type: "list", items, ordered: blk.ordered });
         } else out.push(blk); // pagebreak
       }
@@ -301,12 +308,16 @@ function clampLevel(n: number): number {
   return n > 3 ? 3 : Math.floor(n);
 }
 
-// section-header / chapter-divider carry an optional `number` (a section index or chapter number) the
-// canvas renders prominently — real content, not decoration (Codex P2). Prefix it to the heading text.
-function numberedHeading(n: unknown, t: string): string {
+// section-header / chapter-divider carry an optional `kicker` (eyebrow) and `number` (section index /
+// chapter number) the canvas renders prominently — real content, not decoration (Codex P2). Fold BOTH
+// into the single heading line ("Kicker — 2. Title") so nothing is emitted as a separate pre-heading
+// paragraph (which would attach to the previous pptx slide).
+function headingWithKicker(kicker: unknown, n: unknown, t: string): string {
   const num = typeof n === "number" && Number.isFinite(n) ? String(Math.trunc(n))
     : (typeof n === "string" && n.trim() ? n.trim() : "");
-  return num ? `${num}. ${t}`.trim() : t;
+  const numbered = num ? `${num}. ${t}`.trim() : t;
+  const eyebrow = typeof kicker === "string" ? kicker.trim() : "";
+  return [eyebrow, numbered].filter((s) => s.length > 0).join(" — ");
 }
 
 // A worksheet-field's ruled-line count: clamp to 1–12, default 3 (mirrors the StudioDocBlock contract).
@@ -350,7 +361,7 @@ function parseMarkdown(src: string): Block[] {
 // A link keeps its destination as `label (url)` so the URL survives into every format; bold/italic/
 // code/strike markers are removed rather than shown literally. Used ONLY on `prose` (which is raw
 // markdown by contract) — never on plain-text fields, where a stray `_`/`*` is a literal character.
-function inlineMdToText(s: string): string {
+export function inlineMdToText(s: string): string {
   // Extract link/image destinations into placeholders BEFORE the emphasis passes, so an underscore in a
   // URL (e.g. `?utm_source=…&utm_medium=…`) is never eaten by the italic-underscore rule (Codex P2). The
   // label is left inline and IS emphasis-cleaned (label markdown is real markdown); the raw URL is spliced
@@ -521,20 +532,22 @@ async function renderPdf(title: string | undefined, blocks: Block[], _style: Rec
   }
 }
 
-// pdf-lib's StandardFonts encode WinAnsi only — normalize smart punctuation to ASCII and drop any
-// codepoint it can't encode, so an em-dash or an emoji never throws mid-render (§13 defensive).
+// pdf-lib's StandardFonts encode WinAnsi (CP1252) only — normalize a few smart-punctuation runs to ASCII
+// and drop any codepoint WinAnsi genuinely can't encode, so an emoji never throws mid-render (§13 defensive).
 function sanitizeWinAnsi(text: string): string {
   return String(text)
-    .replace(/[‘’‚‛]/g, "'")
-    .replace(/[“”„‟]/g, '"')
-    .replace(/[–—―]/g, "-")
-    .replace(/[…]/g, "...")
-    .replace(/[ ]/g, " ")
-    .replace(/[•]/g, "•") // keep bullet (WinAnsi 0x95)
-    // Keep tab, newline, printable ASCII, and the Latin-1 supplement (\xA0-\xFF — all defined in
-    // WinAnsi); drop the C1 range (\x7F-\x9F) whose undefined slots make pdf-lib throw mid-render.
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u2013\u2014\u2015]/g, "-")
+    .replace(/[\u2026]/g, "...")
+    .replace(/[\u00A0]/g, " ")
+    // Keep tab, newline, printable ASCII, the Latin-1 supplement (\xA0-\xFF), AND the CP1252 "specials"
+    // that WinAnsi DOES encode but Unicode places above \xFF — the euro (U+20AC), trademark (U+2122),
+    // bullet (U+2022), dagger (U+2020/1), Oe/oe, Sca/sca, Y-diaeresis, Z/z-caron, florin, etc. (Codex P2:
+    // `\u20ac2,500` was becoming `?2,500` because the euro was wrongly dropped). Real non-Latin scripts and
+    // emoji still map to `?`.
     // eslint-disable-next-line no-control-regex
-    .replace(/[^\x09\x0A\x20-\x7E\xA0-\xFF•]/g, "?");
+    .replace(/[^\x09\x0A\x20-\x7E\xA0-\xFF\u0152\u0153\u0160\u0161\u0178\u017D\u017E\u0192\u02C6\u02DC\u2020\u2021\u2022\u2030\u2039\u203A\u20AC\u2122]/g, "?");
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════
