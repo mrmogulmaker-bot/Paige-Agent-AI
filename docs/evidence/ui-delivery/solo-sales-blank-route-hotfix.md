@@ -13,14 +13,14 @@ AUTOMATED_EVIDENCE: PASS: the failing-first same-mount loading-to-ready regressi
 STATIC_EVIDENCE: PASS: TypeScript ratchet 13/13 with no new errors; changed-file ESLint 0 errors and one pre-existing warning; regression, skeleton, and tier-feature lints pass; production build passes
 RENDERED_EVIDENCE: PASS: `npm run drive:sales-ops` passes 536/536 across both themes and all eight required Solo PAIGE/viewport states; the added browser checks drive loading-to-ready on the same mounted Sales instance with no crash or page error; horizontal overflow is zero
 BEHAVIORAL_EVIDENCE: PASS: mounted-browser proof covers the exact failed lifecycle plus the existing first-use, populated, read-error, denied, unavailable, save-refusal, retry, cancellation, and view-switch paths
-AUTHENTICATED_RUNTIME: UNVERIFIED: production HTML and every current Sales bundle dependency were reachable and Vercel reported no server-runtime error, but the signed-in browser helper could not attach; the owner screenshot is symptom evidence, not console or repaired-runtime proof
+AUTHENTICATED_RUNTIME: UNVERIFIED: production HTML and every current Sales bundle dependency were reachable and the exact merge deployed successfully, but the signed-in browser helper failed its permitted reset/retry and could not attach; the owner screenshot is symptom evidence, not console or repaired-runtime proof
 KEYBOARD_FOCUS: PASS: no focus behavior changed; existing Sales subnav and editor keyboard contracts remain covered
 ZOOM_REFLOW: PASS: 536/536 browser checks include the real 439px and 521px constrained content columns with no horizontal overflow
 REDUCED_MOTION: PASS: no motion changed; existing reduced-motion rules remain intact
 STATE_COVERAGE: PASS: exact loading-to-ready transition added to both contract and mounted-browser proof; all previously approved Sales state coverage remains green
 TRUTHFUL_STATE_LABELS: PASS: no commercial truth label or provider claim changed; the route no longer crashes when truthful data becomes ready
 SOLO_UI: YES: Solo Campaigns → Sales only
-UNVERIFIED: authenticated production owner loading-to-ready proof and exact post-merge production revision remain PROOF OWED until deployment verification
+UNVERIFIED: authenticated production owner loading-to-ready proof remains PROOF OWED; exact post-merge production deployment is verified
 
 SOLO_1536X770_PAIGE_CLOSED: PASS: browser-driven, no route crash or horizontal overflow
 SOLO_1536X770_PAIGE_OPEN: PASS: browser-driven at the constrained 521px content column, no route crash or horizontal overflow
@@ -53,6 +53,6 @@ The minimal fix keeps the existing commercial model memo unconditional and above
 
 ## Durable status and handoff
 
-Current status before merge: `PARTIAL` — the code repair, full/static suites, and local route proof are green; PR CI, merge, exact deployment, and authenticated production proof remain outstanding. Existing Sales truth remains: Contracted `PARTIAL`; Actual received, Contract-pending, and scenario persistence `UNAVAILABLE`; authenticated production runtime `PROOF OWED`.
+Current status: `LIVE` for the Sales route lifecycle repair at merge `3f7eca584150a0af702451186cc638d863a01f98`, deployed READY as Vercel production deployment `dpl_5CxRh2iuFiSRgG5Bzwfn6n8RmfPH` on `paigeagent.ai` and `app.paigeagent.ai`. PR #1001 CI, Security Audit, UI evidence, Vercel, and MMA deployment checks all passed. Existing Sales truth remains: Contracted `PARTIAL`; Actual received, Contract-pending, and scenario persistence `UNAVAILABLE`; authenticated production owner runtime `PROOF OWED` because the signed-in browser helper could not attach.
 
 Next owning workstream: shared Solo post-login squeezed-dashboard hotfix. It must first read this record, the Sales Command Desk record, current `main`, and active shared-shell PR collisions; it should treat the owner screenshots as evidence that Command Center and Clients share an initial-login width/hydration defect, not as authority to patch either page locally.

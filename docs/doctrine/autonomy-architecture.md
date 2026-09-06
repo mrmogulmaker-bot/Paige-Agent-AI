@@ -506,3 +506,172 @@ current results passing → `pass`. Same principle, now applied at both levels.
 Observed on live data, which is how it was found: the check correctly returned
 `skip / probe_errored` with `runs_last_25h: 4` — refusing to call it clean while a stale errored
 result from before the column fix sat in the window. Correct verdict, wrong horizon.
+
+---
+
+# 10. The Standing Delegated Authority Contract (§67.2)
+
+> **Owner ruling, 2026-09-06.** *"Paige is intended to be a real operating agent for the business.
+> With owner or authorized-representative authority, she must be able to read, write, strategize,
+> decide within policy, and execute through connected native and external tools — including
+> consequential external actions. The correct authority model is standing delegated authority, not
+> 'confirm every meaningful action.'"* And, the same day: *"do not let `owner_only` become a
+> catch-all for meaningful team or business actions."*
+
+This is the reusable contract every **consequential** capability declares. It is not a new mechanism —
+it is the seven dimensions the existing three-layer model (§2), the metering layer (§8), the decay law
+(§9/§68), `one-approval-gate.md`, and `governed-execution-seam.md` must each answer for a consequential
+capability before it ships. A capability that cannot answer all seven is not ready. It is the home the
+Surface Binding Ledger's `intended_capability.auto` lanes point at, and the rule the
+`binding-ledger-lint` `consequential` tripwire enforces so a lane cannot silently regress to `auto:
+None`.
+
+## 10.1 The seven dimensions
+
+1. **Who may grant it.** The tenant owner, or an explicitly authorized representative — a
+   `tenant_member` holding the required tenant-scoped role/access (§9/§53). A grant is set once, per
+   process (§2 "the human, once per process"), never inferred from a single chat turn. **§53 invariant:
+   a tenant-side grantor can never confer a platform tier** (`super_admin`/`platform_admin`) — that
+   class is frozen and structurally blocked regardless of any delegation. The authorized representative
+   is confined to a **same-tenant** `tenant_member`; a grant never crosses a tenant boundary. A firm or
+   agency acting across another tenant's engagements is a distinct **cross-tenant** model, deferred to a
+   later tier under explicit client-engagement authority boundaries (§9/§51) — never reachable through
+   this same-tenant grant.
+2. **What Paige may do.** Concrete tool actions from `_shared/action-risk.ts` / the capability
+   registry, expressed as a **process** (trigger + conditions + ordered acts, §2), never vague
+   "automation." Each act carries its `action-risk` class (`ordinary | high | owner_only`).
+3. **Boundaries.** The grant carries: tenant/client scope (§9/§51); provider account; dollar cap +
+   daily/monthly budget (read by the §8-M3 budget clamp alongside the ceiling); per-window
+   **action-count / velocity caps** (e.g. "≤N sends/day", "≤M installs/week") — a first-class boundary
+   alongside the dollar budget, decremented **atomically with the budget** under concurrent autonomous
+   execution so two parallel acts cannot both slip past a nearly-exhausted cap; campaign/object scope;
+   time window (the §9 posture expiry / §8 raise-window); allowed recipients; the approval threshold at
+   which `auto` escalates to `confirm`; and explicit **stop conditions**.
+4. **Autonomy lane.** Expressed in the §16 `autonomy_lane` enum — 🟢 `auto` (autonomous within policy),
+   🟡 `confirm` (ask-first above threshold), 🔴 `off`. Effective autonomy is
+   `min(grant, most-restrictive act's floor, ceiling)` (§2) and a process whose trigger has no
+   substrate is `dark`. **`confirm` is an escalation lane, not a ban.**
+5. **Truth & evidence.** Every consequential act records: the pre-action basis, the policy used, the
+   exact action (the server-computed fingerprint of `one-approval-gate.md`), the provider result, the
+   verified outcome, the Rail evidence, and an owner-visible history (`get_solo_rail_activity` →
+   Command Center). A hoped-for outcome is never reported as real (§13/§32); a fire is not a delivery.
+   **Exactly-once:** every autonomous consequential act — above all a payment or an external send —
+   carries an **idempotency key** so a retry, a redelivery, or a race cannot double-fire it; the act is
+   de-duplicated at RE-1's `paige_automation_acts` and the executor honors the key end-to-end through
+   the connected provider. An autonomous money movement or send that cannot prove exactly-once does not
+   ship.
+6. **Controls.** The owner can, at any time: **pause** a process, **revoke** a grant, **tighten** a
+   limit, **raise** the approval threshold, and **emergency-stop immediately**. Lowering the posture is
+   any platform operator (a brake needs no God tier, §8). A grant **decays** and must be re-attested
+   and provably safe (§9/§68) — it never stands permanently. **Emergency-stop halts FUTURE acts** — it
+   cannot recall an act already submitted to a provider; a payment or send already in flight is bounded
+   only by the reversible-where-possible property (§10.6 RE-3), never by a claim of instantaneous recall
+   (§13). The honest guarantee is "no further acts fire," not "the last one is unwound."
+7. **Failure behavior.** Fail closed on missing authority, ambiguous scope, stale context, a failed
+   provider response, or conflicting instructions — the governed-execution seam's thirteen typed
+   fail-closed codes, plus `one-approval-gate.md`'s rule that a turn which cannot persist a decline may
+   read but not mutate. **Never fabricate completion.**
+
+## 10.2 Delegable vs genuinely `owner_only` — `owner_only` is NOT a catch-all
+
+**Owner ruling, 2026-09-06.** An owner or authorized representative **must** be able to grant Paige
+standing authority to perform important company actions within a bounded policy — **including defined
+team-role changes, client operations, bookkeeping actions, payments, purchases, ad-spend management,
+and external execution.** These are `ordinary`/`high` acts governed by the grant + caps + the approval
+threshold; they are **delegable** and must never be fenced as `owner_only`.
+
+Reserve `owner_only` for the genuinely non-delegable:
+
+- transferring business or account ownership;
+- granting or revoking platform-level or break-glass authority;
+- changing the authority policy itself beyond the grantor's own authority;
+- moving or holding money **outside** a valid connected-provider, tenant/client scope, and delegated
+  policy (i.e. the §38 breaches below);
+- actions blocked by law, provider rules, security controls, or an explicit owner prohibition.
+
+Marking a delegable business action `owner_only` (or `auto: None`) to be "safe" is the exact
+over-fence this ruling forbids — it is as wrong as over-claiming autonomy.
+
+**Conflict-of-interest guard (self-dealing).** An act that increases Paige's / the platform's OWN
+revenue from the tenant — e.g. auto-upgrading the tenant's Paige subscription (`settings.billing`) — is
+delegable and §38-clean, but it is a self-dealing class: it **defaults to `confirm`, never `auto` by
+default**, and any standing grant that raises it to `auto` must be explicit and carry a stop condition.
+Paige spending the tenant's money *to Paige's own company* is held to a higher bar than the tenant
+spending on their own operations.
+
+## 10.3 §38 reconciliation (money) — never repealed
+
+"Execute a payment when policy permits" means Paige-the-agent acting as the tenant's delegated operator
+**through the tenant's OWN connected rails** (their QuickBooks, bank, processor, ad account). That is
+operator work and is §38-clean. It is **never** Paige/platform as merchant-of-record, holding tenant
+client funds, or routing tenant→client money through the platform bank — those remain `owner_only`/
+prohibited at every approval strength.
+
+## 10.4 §53 reconciliation (team) — never repealed
+
+Team autonomy stays inside the tenant's own role/access scope: defined role/access changes the owner
+delegated are `high` and delegable. Minting or escalating to a platform operator tier
+(`super_admin`/`platform_admin`) is a structural §53 invariant that no delegation, and no approval
+strength, can cross.
+
+## 10.5 Present runtime truth (§13/§32) — this contract is the TARGET, not all-shipped
+
+State plainly, so no reader mistakes the target for the current runtime:
+
+- **Today, high-impact actions still clamp to confirmation.** `_shared/action-risk.ts` classes the
+  consequential acts (payments, purchases, sends, publishes, role grants, deletes, external effects) as
+  `high`, and the governed-execution seam clamps `auto`→`confirm` for `high` one-directionally
+  (`governed-execution-seam.md` point 6). So a valid standing policy does **not yet** lift a `high` act
+  to autonomous execution at runtime — the human is still in the loop on every high act.
+- **The standing-policy substrate does not exist yet.** The §5 build sequence (A the process record,
+  B the resolver `resolve_automation_autonomy`) is the substrate this contract needs, and neither A nor
+  B has shipped. Until they do, "autonomous within policy" is the declared `intended_capability`, not
+  the runtime.
+- **The ledger reflects this honestly:** every consequential surface keeps its current `state`
+  (PARTIAL / UNAVAILABLE / PROOF_OWED / INTENTIONALLY_ISOLATED); only `intended_capability` was
+  corrected. The gap between the two is the work below.
+
+## 10.6 The runtime enforcement slice (sequenced now — NOT a future-only aspiration)
+
+The operating target is *"an authorized business can let Paige make defined payments, reconcile books,
+manage spend, alter authorized team access, and execute connected-tool work inside its approved policy —
+truthfully, reversibly where possible, visibly, and with immediate pause/revoke controls."* Reaching it
+is a real backend slice, sequenced here so it is built, not admired:
+
+- **RE-1 · Standing-policy substrate (§5-A/B).** `paige_automations` + `paige_automation_acts` +
+  `granted_lane`, and `resolve_automation_autonomy(automation_id) → {granted, asked, ceiling,
+  effective, capped, dark[]}` (CD's arithmetic, in SQL, ONE home). The policy row carries dimension 3:
+  scope, provider account, dollar/budget caps, **per-window action-count / velocity caps**, time window,
+  allowed recipients, threshold, stop conditions. `paige_automation_acts` carries an **idempotency key**
+  per act (dimension 5 exactly-once), and the $-budget and count-cap decrement **atomically** so
+  concurrent autonomous acts cannot both pass a nearly-exhausted limit. Extends the action bus; forks
+  nothing (§18). **These two — exactly-once and velocity caps — MUST land in RE-1/RE-2 before any
+  autonomous act touches a tenant's bank/processor** (the §5 compliance MEDIUM-1/MEDIUM-2 gate).
+- **RE-2 · The governed-execution seam honors a valid standing policy.** Add a `standingPolicy`
+  adapter-assertion input to `governedExecution.ts` (an *assertion*, like tenancy and approval — the
+  seam validates shape and refuses when absent, the adapter proves it true). When — and only when — a
+  valid policy supplies scope + caps + window + provider authority + stop conditions **for this exact
+  capability**, the §68 rung permits (rung ≥ 2, or 4 for full auto), and the budget clamp (§8-M3) is
+  not exhausted, a `high` act on the `auto` lane executes instead of clamping to `confirm`, with the
+  decision recorded. Absent/invalid/expired policy, exhausted budget, or a failed check → the existing
+  `auto`→`confirm` clamp stands (fail-closed). Door-blind and the eleven enforcement points are
+  preserved; this is a new *input*, never a new door. Carries its own §37 producer inventory and §32
+  proof (the exhaustive decision-space sweep already guards the seam).
+- **RE-3 · Controls + audit are first-class in the same slice (§9/§68).** pause / revoke / tighten /
+  raise-threshold / emergency-stop resolve through the same clamp the seam reads; every autonomous
+  high act writes the dimension-5 evidence to the Rail; a revoked or decayed grant drops to `confirm`
+  (Draft), never silently. Reversible-where-possible is a per-capability property recorded on the act.
+
+RE-2 is the load-bearing change that turns *"Paige can ask to make a payment"* into *"an authorized
+business can let Paige make defined payments within its policy."* It ships as its own PR with the crew
+(§1/§5/§39), its §37 inventory, and §32 runtime proof — after this contract + ledger correction land.
+
+## 10.7 Cross-references
+
+§2 (the three-layer ceiling/grant/floor model) · §8 (full auto + the M1–M5 metering/budget layer) ·
+§9/§68 (no authority is permanent — decay, step-down, attest, emergency-stop) · §16 (the
+`autonomy_lane` enum a grant is expressed in) · `one-approval-gate.md` (how a yes is proved) ·
+`governed-execution-seam.md` (the eleven enforcement points RE-2 extends) · `_shared/action-risk.ts`
+(the `ordinary | high | owner_only` classifier) · `docs/binding-ledger/` (the ledger whose
+`consequential` `auto` lanes declare this contract's target) · §38 (money boundary) · §53 (operator
+tiers) · §9/§51 (tenant isolation + tiers).
