@@ -118,8 +118,9 @@ is `NO` for every surface (per the Mind integration matrix). Concretely:
 - **`PROOF_OWED`** (safe read-context implemented + chat-injected + unit-tested; authenticated runtime
   proof absent): `campaigns.pipeline` · `campaigns.social` · `settings.setup` · `settings.team`.
 - **`PARTIAL`** (some links real, gaps named): `command-center.business-game-plan` (the Business
-  Mission governed write — create/revise/transition — is wired + chat-bound via #983; no Rail outcome,
-  no auth-runtime, composite-plan Mind lens still needs #647) · `command-center.trust-compass`
+  Mission governed write — create/revise/transition — is wired + chat-bound via #983; canonical
+  readback now gates a capability-run Rail write, while auth-runtime remains owed and the composite-plan
+  Mind lens still needs #647) · `command-center.trust-compass`
   (authority governed server-side; the visible dial is a non-authoritative fixture) ·
   `settings.integrations` (n8n writes wired to the Rail capability-run write; zero rows in prod) ·
   `settings.billing` (safe status source contract shipped, not injected; secrets isolated) ·
@@ -144,7 +145,7 @@ shrinks the target — it names the gap between present proof and the full opera
 | Surface | State | Completion target (real action) | Why / gap | Next slice |
 |---|---|---|---|---|
 | Paige workspace | `PARTIAL` | Paige acts on a surface's real record via a governed tool, outcome recorded | sole chat surface, server-safe scope; no surface identity, prompt dropped (#771), raw `clientContext` prose | Phase 1: adopt the Surface Context Handoff Contract |
-| Command Center → Business Game Plan | `PARTIAL` | Paige creates/advances a real Business Mission, verified + Rail-recorded (**next runtime slice**) | Business Mission governed write (create/revise/transition) wired + chat-bound (#983); no Rail outcome / auth-runtime; composite-plan Mind lens needs #647 | Phase 4.1: authenticated drive of a mission write; Mind lens via #647 |
+| Command Center → Business Game Plan | `PARTIAL` | Paige creates/advances a real Business Mission, verified + Rail-recorded | persisted-thread-selected Mission context is injected before reasoning; governed write is chat-bound; source tests prove normalized canonical readback gates the existing Rail writer, but authenticated deployed Mission/Rail proof is owed; Mind and Memory remain unavailable | Drive an authenticated Solo owner plus denied/cross-tenant path at the deployed SHA; Mind lens remains separate via #647 |
 | Command Center → Systems Check | `UNAVAILABLE` | A failing check drives a real Paige remediation the next scan verifies | safe lens exists, unwired; needs SCR-2 + SCR-3 | Phase 4.4 read-only context |
 | Command Center → Mind tab | `UNAVAILABLE` | Reviewed facts enter the governed Memory seam and Paige can recall them | a knowledge visualization, not the PAIGE Mind contract | none until #647 |
 | Trust Compass | `PARTIAL` | The visible control performs the real governed autonomy change (or is plainly read-only) | authority governed server-side; visible dial is a non-authoritative fixture | Phase 4.3: reconcile dial to real governed action or mark read-only |
@@ -185,13 +186,15 @@ Phase 0 (this ledger) and Phase 1 (the handoff contract, `docs/doctrine/surface-
 are published. The implementation of individual bindings continues as bounded slices, each of which
 updates its ledger row on merge.
 
-> **THE NEXT RUNTIME SLICE — Business Game Plan + Missions (owner ruling, 2026-09-06).** It must
+> **BUSINESS GAME PLAN + MISSIONS MVP (owner-approved 2026-09-06; authenticated proof owed).** It must
 > demonstrate an **actual governed Paige action with a verified outcome and Rail evidence** — Paige
 > creating / revising / sequencing / advancing a real Business Mission on this surface — **not merely a
 > richer context handoff.** The governed write (`business_mission.create/.revise/.transition`, #983) is
-> already wired and chat-bound; the slice is to DRIVE it end to end (owner-confirmed), verify the state
-> change, and record the outcome on the Rail so the owner sees it. That moves
-> `command-center.business-game-plan` from `PARTIAL` toward `LIVE`.
+> already wired and chat-bound. Current source now resolves the caller tenant and persisted-thread-selected Mission before reasoning,
+> verifies the requested change through a fresh canonical read, and only then calls the existing
+> capability-run Rail writer with a stable request id. This remains `PARTIAL`: authenticated deployed
+> Mission and Rail proof is owed, standing-policy auto execution remains dark, and Mind/Memory are
+> explicitly unavailable. This one lane never makes the Solo Tenant Brain complete.
 
 - **Phase 2** — verified action outcome + Rail backbone (`governedExecution.ts` seam adoption beyond the
   MCP door; `record_capability_run` fed by real acts; owner-visible outcome reading, #746).
