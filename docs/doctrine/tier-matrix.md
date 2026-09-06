@@ -349,20 +349,24 @@ ceiling value/posture/attestation (§4.2). Pending decisions route to the ONE Pa
 inbox (§18). Legacy `/solo/{account}/trust-compass` redirects into the Command Center path (§58); no
 duplicate top-level surface remains.
 
-**TIER GATE (owner ruling 2026-09-06, under the Second Brain delivery contract): SOLO ONLY.** The Command
-Center shell is universal (§35), but the Trust Compass sub-tab is released to **Solo only**; **sub-account is
-DEFERRED** pending an explicit owner release ("no subaccount delivery without explicit release" overrides the
-§60 Solo≡Sub baseline for this one surface). Enforced through the §60 ONE HOME: a new `trust_compass` Feature in
-`src/lib/tier/tierFeatures.ts` (SOLO baseline only), consumed by `useTierFeatures().has("trust_compass")` in
-`CommandCenter.tsx` to filter the tab out of the strip AND redirect a sub-account off the gated
-`/command-center/trust-compass` URL to the default landing. No inline `account_type` gate (lint:tier-features clean).
+**TIER GATE (owner ruling 2026-09-06, under the Second Brain delivery contract): SOLO ONLY.** The Trust Compass
+sub-tab is released to **Solo only**; **sub-account is DEFERRED** pending an explicit owner release ("no
+subaccount delivery without explicit release"). **Routing reality (§13, reconciled against the verified Business
+Game Plan master-doc entry):** a sub-account renders **AgencyApp at `/business`** today — it does **NOT** mount
+`SoloApp` / the Solo Command Center at all (the §60 Solo≡Sub parity is a future §65 slice, "when `/business`
+mounts `SoloApp`"). So the Trust Compass was never actually reaching sub-accounts in the running app; this gate
+does not remove a live sub-account capability. It is a **forward-safe §60 feature-layer gate**: a new
+`trust_compass` Feature in `src/lib/tier/tierFeatures.ts` (SOLO baseline only), consumed by
+`useTierFeatures().has("trust_compass")` in `CommandCenter.tsx`, so that WHEN the §65 slice mounts `SoloApp` at
+`/business`, the Trust Compass sub-tab stays gated OFF sub-accounts (tab filtered out + gated URL redirected)
+until an explicit release. No inline `account_type` gate (lint:tier-features clean).
 
 | Tier | Sees the tab | Can set a knob (`set_tool_autonomy`) |
 |---|---|---|
 | **God / Super Admin** | — (operator governs via `/operator/settings/capabilities`, not this Solo shell) | — |
 | **Agency** (agency-as-tenant) | — (agency shell has its own surfaces) | — |
 | **Standalone Solo** | ✓ (`trust_compass` in SOLO baseline) | ✓ tenant **admin** on its own tenant · read-only + honest refusal for a non-admin |
-| **Sub-account** | **— DEFERRED** (tab gated off; the rest of the Command Center shell stays) | — (surface not reachable until explicit release) |
+| **Sub-account** | **— DEFERRED** (renders AgencyApp at `/business` today → no Solo Command Center at all; the `trust_compass` gate keeps the sub-tab OFF even after the future §65 SoloApp-at-`/business` slice) | — |
 | **Client** | — (no Command Center) | — |
 | **Anonymous** | **403** | **403** (`set_tool_autonomy` REVOKEs `anon`) |
 

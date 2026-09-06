@@ -73,11 +73,17 @@
   GREEN headless (unit + jsdom-render, tsc ratchet, relevant lints, prod build). **§32.c authenticated
   live-drive OWED** (headless session) → recorded as RC, not LIVE.
   **TIER (owner ruling 2026-09-06, under the Second Brain delivery contract): SOLO ONLY. Sub-account DEFERRED**
-  — the Command Center shell is universal, but the Trust Compass sub-tab is gated OFF sub-accounts via a new
-  `trust_compass` feature in the §60 ONE HOME (`src/lib/tier/tierFeatures.ts`, SOLO baseline only; `useTierFeatures().has("trust_compass")`
-  filters the Command Center tab + a redirect bounces a sub-account off the gated URL). Reason: the owner's
-  "no subaccount delivery without explicit release" rule overrides the recorded §60 Solo≡Sub architecture for
-  this surface. Proof status: **Solo = RC (LIVE-pending, §32.c live-drive PROOF OWED); sub-account = DEFERRED (not delivered)**.
+  — the Trust Compass sub-tab is gated OFF sub-accounts via a new `trust_compass` feature in the §60 ONE HOME
+  (`src/lib/tier/tierFeatures.ts`, SOLO baseline only; `useTierFeatures().has("trust_compass")` filters the Command
+  Center tab + a redirect bounces a sub-account off the gated URL). Reason: the owner's "no subaccount delivery
+  without explicit release" rule overrides the recorded §60 Solo≡Sub architecture for this surface.
+  **§13 routing-reality reconciliation (per the delivery contract's conflict-callout):** a sub-account renders
+  **AgencyApp at `/business`** today (`TIER_TREES.sub_account.branches = SUB_ACCOUNT_BRANCHES`, an AgencyApp tree)
+  — it does NOT mount `SoloApp`/the Solo Command Center at all yet, so the Trust Compass was never actually
+  reaching sub-accounts in the running app (the old Trust Compass ledger's "shares the Solo shell ✓" was
+  aspirational, contradicted by the verified BGP master-doc entry). This gate removes NO live sub-account
+  capability; it is forward-safe for the future §65 slice ("when `/business` mounts `SoloApp`"). Proof status:
+  **Solo = RC (LIVE-pending, §32.c live-drive PROOF OWED); sub-account = DEFERRED (never delivered — AgencyApp today, gate holds post-§65)**.
   **KNOWN LIMITATION (CD/product follow-up, §00):** the pending-decisions PREVIEW routes to Paige generically
   (per-`paige_action` deep-link into the chat has no backend seam; only 4 of N shown) — Codex flagged both as
   P2; both are Claude-Design / product-flow decisions (in-surface copy, layout, a new routing seam), NOT
