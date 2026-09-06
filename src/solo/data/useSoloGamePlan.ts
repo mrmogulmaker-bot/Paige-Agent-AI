@@ -28,13 +28,18 @@
  */
 import { useCallback, useMemo } from "react";
 import { useCommandCenter } from "./useCommandCenter";
-import { useSoloSetupBrief } from "./useSoloSetupBrief";
+import { useSoloSetupBrief, type SoloSetupSaveResult } from "./useSoloSetupBrief";
 import { useCatalogOffers } from "../useCatalogOffers";
 import { useSoloKnowledge } from "./useSoloKnowledge";
 import { useSoloPendingActions } from "./useSoloPendingActions";
 import { useSoloActivityFeed, elapsedLabel, departmentLabel, type SoloActivityStatus } from "./useSoloActivityFeed";
 import { useSystemsCheck } from "@/hooks/useSystemsCheck";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useSoloCampaignBriefs, type CampaignBrief } from "../useSoloCampaignBriefs";
+import {
+  prepareOwnerConfirmedBrief, applySetupProposal, EMPTY_SOLO_SETUP_BRIEF,
+  type SoloSetupBrief, type SoloSetupProposal, type SetupFactSource,
+} from "../settings-setup-contract";
 
 /** Where a move or foundation item sends the owner. The COMPONENT maps this to a real route or
  *  to opening the one PAIGE conversation — the hook never emits a URL or an internal name. */
@@ -49,6 +54,94 @@ export type GamePlanDestination =
 
 export type ProofState = "live" | "partial" | "input" | "blocked";
 export type FoundationStatus = "grounded" | "incomplete" | "needs-input";
+
+// ── Strategy-desk view-model (owner-approved reimagination, 2026-09-06) ──────────────────────
+// The desk's SPINE is the owner's approved strategy — not a readiness list. Every value carries a
+// SOURCE class so the owner always sees how sure Paige is (§13). Systems Check is DEMOTED to a
+// supporting dependency, never the backbone.
+export type SourceClass = "fact" | "direction" | "recommendation" | "assumption" | "unavailable" | "owed" | "blocked";
+
+/** The editable planning fields — a strict subset of the business brief, all admin-writable so both
+ *  owners and operational admins can persist them through the existing setup save seam (§18). */
+export type PlanBriefField =
+  | "annualDirection" | "goals90Day" | "currentPriority"
+  | "successDefinition" | "constraints" | "operatingPreferences" | "doNotAssume";
+
+export const PLAN_BRIEF_FIELDS: PlanBriefField[] = [
+  "annualDirection", "goals90Day", "currentPriority",
+  "successDefinition", "constraints", "operatingPreferences", "doNotAssume",
+];
+
+export interface PlanBrief {
+  fields: Record<PlanBriefField, string>;
+  /** Per-field provenance source, so an owner-confirmed direction reads differently from a Paige guess. */
+  provenance: Partial<Record<PlanBriefField, SetupFactSource>>;
+  /** Any planning field is set — the desk has an approved spine to show (vs. first-run). */
+  hasPlan: boolean;
+  canEdit: boolean;
+  saving: boolean;
+  /** A Paige-proposed revision awaiting the owner (apply/dismiss), or null. */
+  pendingProposal: SoloSetupProposal | null;
+  /** True when the pending proposal only touches the plan fields shown here — so an inline Apply
+   *  can never persist unseen identity fields. A mixed proposal is routed to Setup instead (§13). */
+  proposalPlanOnly: boolean;
+  updatedAt?: string;
+  /** Persist an owner edit of the planning fields — merges over the full brief, stamps owner_confirmed
+   *  provenance on changed fields only, optimistic-concurrency guarded. Returns the setup save result. */
+  save: (next: Partial<Record<PlanBriefField, string>>) => Promise<SoloSetupSaveResult>;
+  /** Apply the pending Paige-proposed revision (owner accepts it), then persist. */
+  applyProposal: () => Promise<SoloSetupSaveResult | { ok: false; kind: "failed"; error: string }>;
+  /** Reject the pending proposal — the approved plan is unchanged. */
+  dismissProposal: () => Promise<{ ok: boolean; error?: string }>;
+}
+
+/** A planning horizon the owner switches between; each reveals a slice of the plan. */
+export interface PlanHorizon {
+  id: "annual" | "quarter";
+  label: string;
+  sub: string;
+  direction: string;
+  outcome: string;
+  defined: boolean;
+}
+
+/** A strategic/campaign play, sourced from the owner's real campaign briefs (owner-authored records). */
+export interface PlayCard {
+  id: string;
+  name: string;
+  objective: string;
+  audience: string;
+  angle: string;
+  window: string;
+  channels: string;
+  outcome: string;
+  successSignal: string;
+  offerName: string | null;
+  status: string;
+  blocked: boolean;
+}
+
+export type PlaysStatus = "resolving" | "loading" | "ready" | "error" | "unavailable";
+
+/** A decision or opportunity on the desk, each labelled by how sure Paige is (source class). */
+export interface DecisionItem {
+  id: string;
+  title: string;
+  detail: string;
+  source: SourceClass;
+  /** True when this is waiting on an owner call. */
+  waiting: boolean;
+  destination: GamePlanDestination;
+  evidence: string;
+}
+
+/** A supporting dependency (a demoted Systems Check finding) that can block a play — never the spine. */
+export interface DependencyItem {
+  id: string;
+  title: string;
+  reason: string;
+  blocking: boolean;
+}
 
 export interface FoundationItem {
   key: string;
@@ -121,6 +214,25 @@ export interface SoloGamePlanView {
   motion: GamePlanMotion;
   /** First-run setup steps, only meaningful in the empty state. */
   firstRun: Array<{ label: string; hint: string; destination: GamePlanDestination }>;
+  // ── strategy-desk outputs (owner-approved reimagination) ──────────────────────────────────
+  /** The editable strategy spine (persists via the setup brief seam). */
+  planBrief: PlanBrief;
+  /** Planning horizons the owner switches between. */
+  horizons: PlanHorizon[];
+  /** Strategic/campaign plays from the owner's real campaign briefs. */
+  plays: PlayCard[];
+  playsStatus: PlaysStatus;
+  /** Decision & opportunity desk items, each source-labelled. */
+  decisions: DecisionItem[];
+  /** Whether the drafts read behind `decisions` resolved. On an OUTAGE (`pending.error`) this is
+   *  "unavailable" so the deck never announces "All caught up" over a queue it couldn't check (§13). */
+  decisionsStatus: "ready" | "unavailable";
+  /** Supporting dependencies (demoted Systems Check) that can block a play. */
+  dependencies: DependencyItem[];
+  /** Whether the Systems Check read behind `dependencies` actually resolved. On an OUTAGE
+   *  (`checks.isError`) this is "unavailable" so the card never asserts a verified "All clear"
+   *  over a read that failed (§13) — the same honesty the surface applies to setup/cc. */
+  dependenciesStatus: "ready" | "unavailable";
   refresh: () => void;
 }
 
@@ -168,6 +280,7 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
   const pending = useSoloPendingActions();
   const checks = useSystemsCheck("tenant");
   const activity = useSoloActivityFeed(workspaceId);
+  const campaigns = useSoloCampaignBriefs();
   const { activeTenant, activeTenantId, isPlatformStaff } = useTenantContext();
 
   // §57 identity: the personal greeting belongs to the person WHOSE workspace this is. The
@@ -196,7 +309,8 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     pending.refresh();
     checks.refresh();
     activity.refresh();
-  }, [cc, setup, catalog, knowledge, pending, checks, activity]);
+    campaigns.retry?.();
+  }, [cc, setup, catalog, knowledge, pending, checks, activity, campaigns]);
 
   // ── FOUNDATION — five dimensions this hook actually reads, each source-backed ────────────
   const foundation = useMemo<FoundationItem[]>(() => {
@@ -549,11 +663,19 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     ((cc.attention as AttentionLike)?.follow_ups_due ?? 0);
   // Day-one only when the reads genuinely settled empty — never on a failed read, and deferring to
   // useCommandCenter.empty (which also weighs active clients) so a client-heavy tenant never sees it.
+  // A workspace where the owner has SET a plan direction, or has authored campaign briefs, is NOT
+  // first-run — the first-run screen would falsely claim "no approved direction" and HIDE the real
+  // strategy/plays (§13/§70, Codex P1). Those two signals join the empty decision.
+  const briefRec = (setup.brief ?? {}) as Partial<Record<PlanBriefField, string>>;
+  const hasPlanBriefSet = PLAN_BRIEF_FIELDS.some((fld) => typeof briefRec[fld] === "string" && (briefRec[fld] as string).trim().length > 0);
+  const hasCampaignBriefs = Array.isArray(campaigns.briefs) && campaigns.briefs.length > 0;
   const empty =
     !loading &&
     !!cc.empty &&
     !knowledge.error &&
     !pending.error &&
+    !hasPlanBriefSet &&
+    !hasCampaignBriefs &&
     coverage.grounded === 0 &&
     (Array.isArray(catalog.offers) ? catalog.offers.length : 0) === 0 &&
     (knowledge.documentsIndexed ?? 0) === 0 &&
@@ -635,6 +757,162 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     [],
   );
 
+  // ── STRATEGY-DESK derivations (owner-approved reimagination) ──────────────────────────────
+  // The editable plan spine rides the EXISTING setup-brief save seam (§18 one home) — an owner edit
+  // of these planning fields persists exactly as Solo Settings → Setup does, provenance-stamped and
+  // optimistic-concurrency guarded. Nothing here fabricates strategy: empty fields read as honest
+  // absence, and a Paige suggestion is a pending PROPOSAL the owner applies or dismisses (§13).
+  const setupBrief = (setup.brief ?? EMPTY_SOLO_SETUP_BRIEF) as SoloSetupBrief;
+
+  const planBrief = useMemo<PlanBrief>(() => {
+    const fields = {} as Record<PlanBriefField, string>;
+    const provenance: Partial<Record<PlanBriefField, SetupFactSource>> = {};
+    for (const f of PLAN_BRIEF_FIELDS) {
+      fields[f] = typeof setupBrief[f] === "string" ? (setupBrief[f] as string) : "";
+      const src = setupBrief.provenance?.[f]?.source;
+      if (src) provenance[f] = src;
+    }
+    const hasPlan = PLAN_BRIEF_FIELDS.some((f) => fields[f].trim().length > 0);
+
+    // The confirmation label must reflect when the PLAN fields were confirmed, not the whole-record
+    // `updatedAt` (which advances on any unrelated Setup save, fabricating recency — Codex P2). Use
+    // the latest confirmedAt among the plan fields' own provenance; undefined ⇒ the label omits a date.
+    let planConfirmedAt: string | undefined;
+    for (const f of PLAN_BRIEF_FIELDS) {
+      const at = setupBrief.provenance?.[f]?.confirmedAt;
+      if (typeof at === "string" && (!planConfirmedAt || at > planConfirmedAt)) planConfirmedAt = at;
+    }
+
+    // Is the pending proposal confined to the plan fields THIS surface shows? A proposal patch can
+    // also carry identity fields (legalName/publicName/website); applying those from a banner that
+    // shows only a free-form reason would overwrite unseen business truth (Codex P1). A mixed
+    // proposal is routed to Setup (where every field is shown + staged), never inline-applied here.
+    const proposalPatchKeys = Object.keys(setup.pendingProposal?.patch ?? {});
+    const proposalPlanOnly =
+      proposalPatchKeys.length > 0 && proposalPatchKeys.every((k) => (PLAN_BRIEF_FIELDS as string[]).includes(k));
+
+    const save = (next: Partial<Record<PlanBriefField, string>>) => {
+      const merged: SoloSetupBrief = { ...EMPTY_SOLO_SETUP_BRIEF, ...setupBrief };
+      for (const f of PLAN_BRIEF_FIELDS) if (typeof next[f] === "string") merged[f] = next[f] as string;
+      const confirmed = prepareOwnerConfirmedBrief(merged, new Date().toISOString(), setupBrief, {});
+      // A plain owner edit passes proposalId=null — it must NOT resolve/consume a pending Paige
+      // proposal the owner never acted on (matches the sibling Setup seam; only applyProposal below
+      // passes the proposal id). Consuming it on an unrelated edit is a §13 surprise + §37 divergence.
+      return setup.save(confirmed, setup.businessOwners ?? [], null);
+    };
+    const applyProposal = async () => {
+      const proposal = setup.pendingProposal ?? null;
+      if (!proposal) return { ok: false as const, kind: "failed" as const, error: "No proposal to apply." };
+      // Refuse to apply a proposal that reaches beyond the plan fields shown here — it must be
+      // reviewed in Setup where its identity fields are displayed and staged (Codex P1).
+      const patchKeys = Object.keys(proposal.patch ?? {});
+      if (!(patchKeys.length > 0 && patchKeys.every((k) => (PLAN_BRIEF_FIELDS as string[]).includes(k)))) {
+        return { ok: false as const, kind: "failed" as const, error: "This proposal also changes your business details — review it in Setup." };
+      }
+      const applied = applySetupProposal({ ...EMPTY_SOLO_SETUP_BRIEF, ...setupBrief }, proposal);
+      const confirmed = prepareOwnerConfirmedBrief(applied, new Date().toISOString(), setupBrief, {});
+      return setup.save(confirmed, setup.businessOwners ?? [], proposal.id);
+    };
+    const dismissProposal = () => setup.dismissProposal(setup.pendingProposal?.id ?? "");
+
+    return {
+      fields, provenance, hasPlan,
+      canEdit: !!setup.canEdit,
+      saving: !!setup.saving,
+      pendingProposal: setup.pendingProposal ?? null,
+      proposalPlanOnly,
+      updatedAt: planConfirmedAt,
+      save, applyProposal, dismissProposal,
+    };
+  }, [setupBrief, setup]);
+
+  const horizons = useMemo<PlanHorizon[]>(() => {
+    const f = planBrief.fields;
+    return [
+      { id: "annual", label: "Annual", sub: "This year", direction: f.annualDirection, outcome: f.successDefinition, defined: !!f.annualDirection.trim() },
+      { id: "quarter", label: "This quarter", sub: "90 days", direction: f.currentPriority || f.goals90Day, outcome: f.goals90Day, defined: !!(f.currentPriority.trim() || f.goals90Day.trim()) },
+    ];
+  }, [planBrief.fields]);
+
+  const playsStatus = (campaigns.phase ?? "loading") as PlaysStatus;
+  const plays = useMemo<PlayCard[]>(() => {
+    const rows: CampaignBrief[] = campaigns.phase === "ready" && Array.isArray(campaigns.briefs) ? campaigns.briefs : [];
+    return rows.map((b) => ({
+      id: b.id,
+      name: (b.name || b.objective || "Campaign play").trim(),
+      objective: b.objective || "",
+      audience: b.audience || "",
+      angle: b.positioning || "",
+      window: b.timing || "",
+      channels: Array.isArray(b.channels) ? b.channels.join(", ") : "",
+      outcome: b.desiredOutcome || "",
+      successSignal: b.successDefinition || "",
+      offerName: b.offerName ?? null,
+      status: b.lifecycleStatus || "draft",
+      blocked: b.lifecycleStatus === "blocked",
+    }));
+  }, [campaigns.phase, campaigns.briefs]);
+
+  // Supporting dependencies — the DEMOTED Systems Check (blocking/high fails only), never the spine.
+  const dependencies = useMemo<DependencyItem[]>(() => {
+    const findings = Array.isArray(checks.findings) ? checks.findings : [];
+    return findings
+      .filter((f) => f.status === "fail" && (f.severity_at_finding === "blocking" || f.severity_at_finding === "high"))
+      .sort((a, b) => severityRank(a.severity_at_finding) - severityRank(b.severity_at_finding))
+      .map((f) => ({
+        id: `dep:${f.id}`,
+        title: checkStateTitle(f.paige_interpretation),
+        reason: f.paige_interpretation || "This setup check needs attention before the work it guards can run.",
+        blocking: f.severity_at_finding === "blocking",
+      }));
+  }, [checks.findings]);
+
+  // A failed systems-check read must never render as a verified "All clear" — an empty `findings`
+  // from an ERRORED read is "couldn't check", not "nothing is blocking" (§13, peer-gate MAJOR).
+  const dependenciesStatus: "ready" | "unavailable" = checks.isError ? "unavailable" : "ready";
+
+  // Decision & opportunity desk — real signals only, each source-labelled honestly (§13). Paige-drafted
+  // work and at-risk / follow-up nudges are RECOMMENDATIONS the owner decides on; never fabricated.
+  const decisions = useMemo<DecisionItem[]>(() => {
+    const out: DecisionItem[] = [];
+    const drafts = Array.isArray(pending.items) ? pending.items : [];
+    if (drafts.length > 0) {
+      out.push({
+        id: "decision:drafts",
+        title: `Review ${drafts.length} draft${drafts.length === 1 ? "" : "s"} Paige is holding`,
+        detail: drafts[0]?.rationale || "Paige prepared these and stopped for your approval.",
+        source: "recommendation", waiting: true, destination: "paige",
+        evidence: `${drafts.length} item${drafts.length === 1 ? "" : "s"} Paige drafted, waiting on you.`,
+      });
+    }
+    const at = (cc.attention ?? {}) as AttentionLike;
+    if ((at.at_risk_clients ?? 0) > 0) {
+      const n = at.at_risk_clients as number;
+      out.push({
+        id: "decision:atrisk",
+        title: `Re-engage ${n} client${n === 1 ? "" : "s"} before they lapse`,
+        detail: "These crossed your usual quiet threshold. Paige can draft a note in your voice for each.",
+        source: "recommendation", waiting: false, destination: "clients",
+        evidence: `${n} client${n === 1 ? "" : "s"} flagged at risk in your book.`,
+      });
+    }
+    if ((at.follow_ups_due ?? 0) > 0) {
+      const n = at.follow_ups_due as number;
+      out.push({
+        id: "decision:followups",
+        title: `${n} follow-up${n === 1 ? "" : "s"} due`,
+        detail: "Contacts are due a touch. Paige can prepare each follow-up for your approval.",
+        source: "recommendation", waiting: false, destination: "clients",
+        evidence: `${n} follow-up${n === 1 ? "" : "s"} due in your book.`,
+      });
+    }
+    return out;
+  }, [pending.items, cc.attention]);
+
+  // A failed drafts read must never render as "All caught up" — an empty `decisions` from an errored
+  // pending read is "couldn't check", not "nothing waiting" (§13, Codex P2).
+  const decisionsStatus: "ready" | "unavailable" = pending.error ? "unavailable" : "ready";
+
   return {
     loading,
     error,
@@ -648,6 +926,14 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     coverage,
     motion,
     firstRun,
+    planBrief,
+    horizons,
+    plays,
+    playsStatus,
+    decisions,
+    decisionsStatus,
+    dependencies,
+    dependenciesStatus,
     refresh,
   };
 }

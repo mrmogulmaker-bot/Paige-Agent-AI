@@ -1,5 +1,87 @@
 # Decision Log — chronological one-liners
 
+- **Business Game Plan → Strategy-Desk SLICE A SHIPPED — the in-place production build of the
+  owner-approved reimagination (2026-09-06, branch `claude/business-game-plan-ui-rxuju3`, PR #988).**
+  STATUS: **shipped to `main` (MVP cadence, §4); §32.c authenticated owner live-drive OWED** (this
+  headless CI session has no browser/auth tool — §32 capability-conditional rule). Supersedes the Gate 1
+  "PROTOTYPE ONLY / DEFERRED" entry below — owner approved the redesign and said "you are officially in MVP
+  mode" (2026-09-06). `SoloGamePlanWorkspace` + `useSoloGamePlan` are REPLACED IN PLACE: the spine is now
+  the owner's approved STRATEGY (editable Plan Brief · horizon navigator annual/quarter · Strategic plays
+  from real `campaign_briefs` · Decision & Opportunity swipe deck · Paige operating contribution), and
+  **Systems Check is DEMOTED to a compact collapsible "Plan dependencies"** — never the spine. **Editable &
+  persists (§70):** the Plan Brief rides the EXISTING setup-brief save seam (`useSoloSetupBrief.save` →
+  `save_solo_setup_context` RPC) — §18 compose, NO new table/RPC/edge/migration/tier-flag; all 7 planning
+  fields are a real subset of `SOLO_SETUP_TEXT_FIELDS`, provenance-stamped `owner_confirmed`,
+  optimistic-concurrency guarded; a plain edit passes `proposalId=null` so it never consumes a pending
+  Paige proposal (only Apply does). Every value carries a source class
+  (fact/your-direction/Paige-suggests/assumption/unavailable/proof-owed) derived from real provenance. §9
+  clean — the hook passes NO client `tenant_id`; each composed read self-resolves. **Peer-gate (§39) +
+  compliance (§5) caught 3 defects before ship:** (1) BLOCKER — the edit-drawer focus trap re-ran on every
+  keystroke (unstable `onClose` dep) and stole focus to field #1, making 6 of 7 fields uneditable → fixed
+  (mount-once effect, `onClose` via ref) + a non-first-field regression test; (2) MAJOR — a Systems Check
+  read OUTAGE rendered a false "All clear" → added `dependenciesStatus` + an honest "Couldn't check" state
+  + tests; (3) two `res.error` TS narrowing errors (mock-green but tsc-red) → fixed with `in`-guards.
+  **Verified:** full vitest green (3547+), tsc ratchet green (baseline 13 unchanged — the changed files add
+  0), regression-lint green, render drive 128/128 (8 states × 2 themes × 8 viewports, no crash/overflow),
+  scroll drive 6/6 (owner's scroll bug reproduced + fix proven, incl. dock-open). §11 raw hex in the ported
+  partner-rail/scrim CSS reported to Claude Design (§00 — ported verbatim from the approved pack, not
+  changed here). COLLISION #975 (Solo Trust Compass, open) respected — stayed INSIDE the component/hook/CSS,
+  did NOT touch `CommandCenter.tsx` TABS or `tierBranches.ts`. STILL DEFERRED (net-new, honest §13): a
+  first-class strategic-plan store, structured pillars, and the Mission System (`campaign_briefs.mission_id`
+  reserved/unwritten) — plays come from existing campaign briefs, not a mission store. NEXT OWNER: the
+  owner's live look on the deployed Solo Command Center → Business Game Plan (the §32.c drive owed here),
+  then follow-on slices for the deferred stores.
+- **RULING: the current Command Mark replaces the retired orbital PaigeMark (owner, 2026-09-06)** —
+  the owner ruled the Command Mark (champagne slash + detached orb, `docs/brand/paige-brand-identity.md`,
+  owner-approved 2026-08-22) is now the current brand mark; the orbital PaigeMark (orb + ring + spark +
+  halo, `PaigeMark.tsx`) is RETIRED. This resolves the "Open ruling required before Stage 3" noted in
+  `paige-brand-identity.md` §2. **✓ EXECUTED 2026-09-06 — the production swap this entry deferred was
+  shipped by the "orbital PaigeMark RETIRED platform-wide" entry immediately below (PR #990); the orbital
+  mark is now retired everywhere and `PaigeSymbol`'s command branch renders the Command Mark. The
+  "not executed here / separate workstream" note that followed was accurate only at the time of this
+  ruling and is now superseded by that ship.** The Business Game Plan strategy-desk prototype (below)
+  already uses the Command Mark for its brand plate.
+- **Business Game Plan → Strategy-Desk reimagination — Gate 1 PROTOTYPE ONLY, nothing shipped
+  (2026-09-06, branch `claude/business-game-plan-ui-rxuju3`, PR pending)** — **⚠ SUPERSEDED by the
+  "SLICE A SHIPPED" entry at the top of this log (2026-09-06) — the owner approved the redesign and the
+  production build shipped; this entry describes only the Gate 1 prototype stage and is kept for the
+  audit trail (§58), not as current status.** STATUS (at time of writing): **DEFERRED /
+  PROOF OWED, awaiting owner Gate 1 approval.** No production `src/`/schema/route/contract/deploy
+  changed; the shipped Business Game Plan (#952/#973/#980) is unchanged and still LIVE. Owner ruled
+  the shipped page reads as a Systems-Check-derived readiness/task list (confirmed from code: its
+  priority engine in `useSoloGamePlan.ts` turns a `status:fail severity:blocking` finding into the
+  "Top move · blocked" card) and commissioned a reimagination as the owner's **strategic operating
+  desk**. Deliverable is a throwaway, read-only Flow-Prototype:
+  `docs/design-references/prototypes/solo-business-game-plan-strategy-desk.html` (+ Gate 1 package
+  `…-GATE1.md`). DIRECTION captured: strategy is the spine (Plan Brief · Strategic Pillars/Plays with
+  campaign-strategy-as-a-play · Mission Portfolio · Decision & Opportunity desk), **Systems Check
+  DEMOTED to a compact collapsible "Plan dependencies"** (never the backbone), a horizon navigator
+  (annual/half/quarter/cycle/season/campaign), the **Plan-with-Paige propose→approve loop** (docked
+  Paige rail — NOT a floating chat, consistent with the one-tenant-aware-workspace/#981 rule), a
+  governed-memory alignment indicator + revision history, and every value carries a source class
+  (fact/your-direction/Paige-suggests/assumption/source-unavailable/proof-owed). **Owner ruling
+  2026-09-06:** none of these areas are locked blocks — BOTH owner and Paige can edit/overwrite any
+  area, plus a mobile-style **swipe-away** interaction (Decision desk = swipe deck; missions =
+  swipe-to-dismiss; edit affordance on every area; keyboard/button alternatives for a11y). Ports the
+  shipped `.paige-solo` design system verbatim (§00 — no invented visual direction) and uses the
+  current **Command Mark** (slash+orb) per `docs/brand/paige-brand-identity.md`, not the retired
+  orbital PaigeMark or a "P" letter. Reviewed by 3 independent adversarial passes (truthfulness ·
+  WCAG 2.2 AA · IA-fidelity/collision) — all FIX-THEN-SHIP, findings integrated (Northwind second
+  tenant so the workspace-switch state truly shows no cross-tenant bleed §51; overlays moved inside
+  `.paige-solo` for token/theme resolution; collapsed-detail visibility; icon-only + inline-link +
+  send controls made keyboard-operable; static Command-Center nav instead of a malformed tablist).
+  Render-verified 50/50 (15 states × 4 Solo viewports × 2 themes × Paige open/closed; no overflow, no
+  nested `<button>`, no JS errors). CONTRAST MEASUREMENTS handed to Claude Design (§00 — shipped
+  tokens, not changed here): `--ink-3` on `--surface`/`--surface-sunk` ≈4.1/3.6:1 (light) and ≈4.36:1
+  (dark) fails AA 4.5:1 for ~11–13px body text; `--warn` on `--warn-tint` ≈3.5:1 (light). COLLISION:
+  **#975 Solo Trust Compass (open, non-draft)** edits `CommandCenter.tsx` TABS + `tierBranches.ts` —
+  the production build must stay INSIDE the `plan` tabpanel and coordinate, never both edit the TABS
+  array. NEXT OWNER: production Slice A (read-only strategy spine, in-place replacement of
+  `useSoloGamePlan`/`SoloGamePlanWorkspace`) **only after** owner Gate 1 approval; it will flip the
+  master-doc §4 line + tier-matrix ledger when it ships (nothing to update there now — nothing
+  shipped). NET-NEW contracts named (not built): a first-class strategic-plan store + pillars/plays +
+  strategy-horizon typing + plan draft/revision store + the Mission System (`campaign_briefs.mission_id`
+  is a reserved, unwritten column — no store exists).
 - **BRAND: the orbital PaigeMark is RETIRED platform-wide; the Command Mark is the identity (owner ruling 2026-09-06, PR on branch claude/paige-social-subtab-redesign-kd6hy5)** —
   the legacy orbital PaigeMark (gold orb + orbital ring + companion spark) AND the older blue "PAi" monogram
   rasters are retired from every active product/public surface; the Command Mark (slash + orb) is the current

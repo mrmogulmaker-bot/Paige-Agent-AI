@@ -234,6 +234,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/design-references/OPERATOR-COMMAND-CENTER-IA.md` | Operator Command Center surface hierarchy | Command-center IA |
 | `docs/design-references/STUDIO-VISUAL-QA-HANDOFF.md` | Studio visual-QA handoff (Chrome MCP) | Studio visual QA |
 | `docs/design-references/gallery/{attio,cal-com,framer-marketing,linear,notion,retool,stripe-dashboard,superhuman,vercel-dashboard}/{README,SCREENSHOTS}.md` | Per-reference taste annotations + screenshot capture lists | Comparing a surface to best-in-class |
+| `docs/design-references/prototypes/solo-business-game-plan-strategy-desk.html` (+ `…-GATE1.md`) | Gate 1 prototype — reimagines the Solo Business Game Plan as the owner's strategy desk (Systems Check demoted to a supporting dependency; horizon navigator; Plan-with-Paige propose→approve loop; owner+Paige-editable areas). **Owner-approved 2026-09-06 → Slice A SHIPPED** (production `SoloGamePlanWorkspace`/`useSoloGamePlan` replaced in place; editable Plan Brief persists via the setup-brief seam; PR #988; §32.c owner live-drive owed — see `decision-log.md`). Prototype kept as the design reference | Reference for the shipped strategy desk; deferred net-new stores (strategic-plan/pillars/Mission System) |
 
 ## Comms index (docs/comms/*)
 
