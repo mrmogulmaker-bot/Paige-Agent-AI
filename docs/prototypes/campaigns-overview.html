@@ -1,0 +1,1240 @@
+<title>Campaign Command Desk</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   FLOW PROTOTYPE — Campaigns › Overview becomes the Campaign Command Desk (Solo tier)
+   Throwaway · read-only · zero production mutation · every write is a local mock.
+
+   WHAT THIS IS. The cross-functional operating view for growth initiatives. It does NOT recreate
+   Catalog, Sales, Pipeline, Social, Performance, Vibe Studio, CRM, or the global Command Center —
+   it coordinates a campaign across them and routes into the source-owning subtab to do the work.
+
+   THE ONE TRUTH THAT SHAPES EVERYTHING. useSoloCampaigns() returns campaigns:[] ALWAYS, by design
+   (src/solo/useSoloCampaigns.ts L184-187): "the tenant-campaigns bridge is not tenant-authorized
+   upstream, so Solo deliberately does not call it. Keep Overview unavailable until a server-derived,
+   tenant-scoped all-state contract exists." So there is NO campaign-object store today. A campaign
+   here is an OWNER-SUPPLIED BRIEF (a planned item), never a fabricated running campaign. Its loop
+   stages draw on the real per-domain sources that DO exist, or show an honest absence.
+
+   PALETTE PROVENANCE — nothing visual here is authored:
+     .paige-solo tokens .......... src/solo/solo-tokens.css L2-L25 (Mineral / Obsidian), verbatim,
+                                   mirrored via docs/prototypes/offer-catalog.html L43-L72
+     --pg-canvas ................. src/index.css (dark/light), verbatim
+     .campaigns-* geometry ....... src/solo/solo-campaigns.css, verbatim / adapted
+     truth vocabulary ............ src/solo/growth2.tsx L23-L31 (LIVE/PARTIAL/PROPOSED/UNAVAILABLE)
+     six-view IA + ownership ..... docs/design-references/cd-packs/super-admin-shell-v3/
+                                   campaigns-catalog-sales-spec.md §1 (Active/Catalog/Sales/Pipeline/
+                                   Social/Performance) + §5 (bottom rail, control chrome)
+     real data contract .......... src/solo/useSoloCampaigns.ts (artifacts, submissions,
+                                   pipelineWorkspace, offers via CatalogOffers, recorded payments)
+
+   DATA-SOURCE LEGEND used in every annotation region:
+     LIVE READ     a real tenant-scoped read exists today (Pipeline deals, published Vibe artifacts,
+                   routed form submissions, recorded payments, recorded social handles).
+     OWNER BRIEF   the owner authored/declared it. No system fact is claimed.
+     UNAVAILABLE   the platform cannot know it and does not guess (campaign rollup, attribution,
+                   provider figures). Shown as UNAVAILABLE / not checked / needs confirmation.
+     MOCK          representative prototype data, labeled, for a state that has no live example yet.
+
+   The review harness uses its own --rv-* slate, deliberately OUTSIDE the product palette, so
+   developer chrome can never be mistaken for product surface. Same rule the house prototypes
+   (offer-catalog.html, solo-automations-recovery.html) established.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+*,*::before,*::after{box-sizing:border-box}
+
+/* ── REVIEW HARNESS SLATE — not product ──────────────────────────────────────────────────── */
+:root{
+  --rv-bg:#eceef1;--rv-panel:#f7f8fa;--rv-edge:#ccd2da;--rv-edge-2:#aab4c0;
+  --rv-ink:#1b2027;--rv-ink-2:#48525f;--rv-faint:#6d7885;
+  --rv-live:#1f6f4a;--rv-mock:#8a5a12;--rv-dead:#9a3b30;--rv-focus:#2f6fd0;--rv-new:#5a3f9e;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-rv="light"]){
+  --rv-bg:#14171c;--rv-panel:#1b1f26;--rv-edge:#2e353f;--rv-edge-2:#434c58;
+  --rv-ink:#eef1f5;--rv-ink-2:#b3bcc7;--rv-faint:#8b95a2;
+  --rv-live:#6fc79b;--rv-mock:#e0b268;--rv-dead:#e59287;--rv-focus:#7aa9ee;--rv-new:#b09ae8;
+  color-scheme:dark;
+}}
+html,body{height:100%}
+body{margin:0;background:var(--rv-bg);color:var(--rv-ink);
+  font:400 13px/1.55 "Geist","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+
+/* ── PRODUCT TOKENS — verbatim from src/solo/solo-tokens.css (Mineral) ────────────────────── */
+.paige-solo{
+  --font:'Geist','Söhne',-apple-system,'Segoe UI',sans-serif;--mono:'Geist Mono',ui-monospace,monospace;
+  --canvas:#F6F5F1;--surface:#FFFFFF;--surface-2:#FBFAF7;--surface-sunk:#F0EEE8;
+  --line:#E5E1D8;--line-soft:#EFECE4;
+  --ink:#171331;--ink-2:#4A4566;--ink-3:#7E7995;--ink-inv:#FBFAF7;
+  --rail:#171331;--rail-2:#221C46;--rail-line:#332C5E;--rail-text:#C9C4E0;
+  --gold:#C9860C;--gold-bright:#E9A83A;--gold-tint:#FBF1DE;--gold-line:#EFDCB4;
+  --violet:#5B3FD6;--violet-2:#7A62E8;--violet-tint:#EEEAFD;--violet-line:#DAD1FA;
+  --ok:#1B7A52;--ok-tint:#E4F2EB;--warn:#B4700A;--warn-tint:#FBF0DD;--bad:#B93E37;--bad-tint:#FAE9E7;
+  --r-s:8px;--r-m:12px;--r-l:18px;--r-xl:26px;
+  --sh-1:0 1px 2px rgba(23,19,49,.05);
+  --sh-2:0 2px 4px rgba(23,19,49,.04),0 12px 28px -12px rgba(23,19,49,.14);
+  --sh-3:0 24px 60px -18px rgba(23,19,49,.28);
+  --pg-canvas:#fbf9f5;
+  color-scheme:light;
+}
+/* Obsidian — verbatim from src/solo/solo-tokens.css dark block */
+.paige-solo[data-theme="dark"]{
+  --canvas:#0C0A1B;--surface:#141129;--surface-2:#191637;--surface-sunk:#100D24;
+  --line:#282348;--line-soft:#221D3E;
+  --ink:#EFECFA;--ink-2:#B0AACB;--ink-3:#7D779A;--ink-inv:#141129;
+  --rail:#100D24;--rail-2:#1B1738;--rail-line:#282348;--rail-text:#B0AACB;
+  --gold:#E9A83A;--gold-bright:#F5C266;--gold-tint:#2C2211;--gold-line:#4A3A17;
+  --violet:#8A72F5;--violet-2:#A692FF;--violet-tint:#221C4A;--violet-line:#352C68;
+  --ok:#4CC48C;--ok-tint:#12301F;--warn:#E3A63C;--warn-tint:#2E2311;--bad:#EE7A72;--bad-tint:#331817;
+  --sh-1:0 1px 2px rgba(0,0,0,.3);
+  --sh-2:0 2px 4px rgba(0,0,0,.25),0 12px 28px -12px rgba(0,0,0,.5);
+  --sh-3:0 24px 60px -18px rgba(0,0,0,.6);
+  --pg-canvas:#100e14;
+  color-scheme:dark;
+}
+
+/* ── SHELL PRIMITIVES — src/solo/solo-tokens.css ─────────────────────────────────────────── */
+.paige-solo{background:var(--canvas);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5;height:100%;position:relative;overflow:hidden}
+.paige-solo h1,.paige-solo h2,.paige-solo h3,.paige-solo h4{margin:0;font-weight:600;letter-spacing:-.02em;color:var(--ink)}
+.paige-solo p{margin:0}
+.paige-solo button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer;border:0;background:none}
+.paige-solo input,.paige-solo select,.paige-solo textarea{font-family:inherit;font-size:inherit;color:inherit}
+.paige-solo .eyebrow{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.paige-solo .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.paige-solo .btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-radius:9px;
+  font-size:13px;font-weight:500;border:1px solid var(--line);background:var(--surface);transition:.15s;white-space:nowrap;flex:none}
+.paige-solo .btn:hover{background:var(--surface-sunk)}
+.paige-solo .btn:disabled{opacity:.5;cursor:not-allowed}
+.paige-solo .btn-p{background:var(--ink);color:var(--ink-inv);border-color:var(--ink)}
+.paige-solo[data-theme="dark"] .btn-p{background:var(--violet);border-color:var(--violet);color:#fff}
+.paige-solo .btn-g{background:var(--gold);color:#231a06;border-color:var(--gold)}
+.paige-solo .btn-g:hover{background:var(--gold-bright);border-color:var(--gold-bright)}
+.paige-solo[data-theme="dark"] .btn-g{color:#241a06}
+.paige-solo .btn-s{height:28px;padding:0 10px;font-size:12px;border-radius:8px}
+.paige-solo .btn-icon{width:34px;padding:0;justify-content:center}
+.paige-solo .row{display:flex;align-items:center;gap:12px}
+.paige-solo .grow{flex:1;min-width:0}
+.paige-solo .trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.paige-solo ::-webkit-scrollbar{width:10px;height:10px}
+.paige-solo ::-webkit-scrollbar-thumb{background:var(--line);border-radius:20px;border:3px solid transparent;background-clip:content-box}
+
+/* ── SOLO SHELL CHROME — rail + topbar, matching the shipped surface ─────────────────────── */
+.sh{display:grid;grid-template-columns:var(--rail-w,216px) minmax(0,1fr) var(--paige-w,0px);height:100%;min-height:0;background:var(--canvas)}
+.sh-rail{background:var(--rail);border-right:1px solid var(--rail-line);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.sh-brand{display:flex;align-items:center;gap:10px;padding:16px 18px 14px}
+.sh-brand .mk{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--gold-bright),var(--gold));display:grid;place-items:center;color:#231a06;font:700 13px/1 var(--font);flex:none}
+.sh-brand b{color:#fff;font:600 12.5px/1 var(--font);letter-spacing:.18em}
+.sh-brand small{display:block;color:var(--rail-text);font-size:9.5px;letter-spacing:.12em;margin-top:4px}
+.sh-nav{display:grid;gap:2px;padding:8px 12px;flex:1;min-height:0;align-content:start;overflow:auto}
+.sh-nav button{display:flex;align-items:center;gap:12px;height:40px;padding:0 13px;border-radius:11px;
+  color:var(--rail-text);font-size:13px;text-align:left;width:100%}
+.sh-nav button svg{flex:none;opacity:.85}
+.sh-nav button:hover{background:var(--rail-2)}
+.sh-nav button[aria-current="page"]{background:var(--rail-2);color:#fff;font-weight:600;box-shadow:inset 0 0 0 1px var(--rail-line)}
+.sh-nav button[aria-current="page"] svg{opacity:1;color:var(--gold-bright)}
+.sh-foot{padding:8px 12px 12px;border-top:1px solid var(--rail-line);display:grid;gap:6px}
+.sh-who{display:flex;align-items:center;gap:10px;color:var(--rail-text)}
+.sh-who i{width:30px;height:30px;border-radius:50%;background:var(--violet);color:#fff;display:grid;place-items:center;
+  font:600 11px/1 var(--font);font-style:normal;flex:none}
+.sh-who b{color:#fff;font-size:12px;font-weight:600;display:block}
+.sh-who small{color:var(--rail-text);font-size:10px}
+.sh-main{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;background:var(--canvas)}
+.sh-top{display:flex;align-items:center;gap:14px;padding:10px 20px;border-bottom:1px solid var(--line);background:var(--surface);flex:none}
+.sh-top .crumbs{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-3)}
+.sh-top .crumbs b{color:var(--ink);font-weight:600}
+.sh-top .themeswatch{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink-2);font-size:11.5px}
+.sh-topact{display:flex;align-items:center;gap:8px;margin-left:auto}
+.sh-topbtn{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);display:grid;place-items:center;color:var(--ink-3)}
+.sh-topbtn:hover{color:var(--gold);border-color:var(--gold-line)}
+
+/* PAIGE dock column (only rendered when expanded/docked demo is on) */
+.sh-paige{border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.sh-paige header{padding:12px 16px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:9px}
+.sh-paige header .mk{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--violet-2),var(--violet));display:grid;place-items:center;color:#fff;font:700 12px/1 var(--font)}
+.sh-paige .pbody{flex:1;overflow:auto;padding:14px 16px;display:grid;gap:10px;align-content:start}
+.sh-paige .pmsg{font-size:12.5px;line-height:1.55;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line-soft);border-radius:12px;padding:11px 13px}
+.sh-paige .pmsg b{color:var(--ink)}
+.sh-paige .pfoot{border-top:1px solid var(--line-soft);padding:12px 14px}
+.sh-paige .pfoot .fld{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:11px;background:var(--surface-2);padding:8px 10px;color:var(--ink-3);font-size:12.5px}
+
+/* ── CAMPAIGNS NAV — src/solo/solo-campaigns.css (verbatim geometry) ─────────────────────── */
+.solo-campaigns{height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--pg-canvas);color:var(--ink)}
+.campaigns-nav{min-height:48px;display:flex;align-items:stretch;gap:14px;padding:0 22px;border-bottom:1px solid var(--line);background:var(--pg-canvas);flex:none;min-width:0}
+.campaigns-tabs{display:flex;align-items:stretch;gap:20px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;flex:1 1 auto;min-width:0}
+.campaigns-tabs button{display:flex;align-items:center;gap:7px;flex:none;padding:0;border-bottom:2px solid transparent;margin-bottom:-1px;color:var(--ink-3);font-size:13px;font-weight:500;white-space:nowrap}
+.campaigns-tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--gold);font-weight:650}
+.campaigns-tabs button[aria-selected="true"] svg{color:var(--gold)}
+.campaigns-tabs button:focus-visible{outline:2px solid var(--violet);outline-offset:-2px;border-radius:4px}
+.campaigns-truth-key{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:5px;max-width:340px;align-self:center}
+.campaigns-studio{align-self:center;flex:none}
+.campaigns-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:18px 22px 30px;scrollbar-gutter:stable}
+
+/* truth tags — colours from solo-campaigns.css */
+.campaigns-truth{display:inline-flex;align-items:center;height:20px;padding:0 7px;border:1px solid var(--line);border-radius:999px;font:650 9px/1 var(--mono);letter-spacing:.09em;background:var(--surface-sunk);color:var(--ink-3);text-transform:uppercase}
+.campaigns-truth--live{color:var(--ok)}
+.campaigns-truth--partial{color:var(--violet)}
+.campaigns-truth--proposed{color:var(--warn)}
+.campaigns-truth--unavailable{color:var(--ink-3)}
+.campaigns-truth--owner{color:var(--gold)}
+.campaigns-truth--mock{color:var(--warn);border-style:dashed}
+
+/* ── COMMAND DESK ─────────────────────────────────────────────────────────────────────────── */
+.desk{max-width:1280px;margin:0 auto;display:grid;gap:14px}
+
+/* command header (compact — §11 banner rule, no hero) */
+.cmd{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);box-shadow:var(--sh-1);overflow:hidden}
+.cmd-brief{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start;padding:16px 18px 14px;border-bottom:1px solid var(--line-soft);background:linear-gradient(118deg,var(--surface),var(--surface-2))}
+.cmd-brief .eyebrow{display:flex;align-items:center;gap:8px}
+.cmd-line{margin-top:8px;font-size:14.5px;line-height:1.5;color:var(--ink);letter-spacing:-.01em;max-width:720px}
+.cmd-line b{font-weight:650}
+.cmd-line .moving{color:var(--ok);font-weight:650}
+.cmd-line .blocked{color:var(--bad);font-weight:650}
+.cmd-line .move{color:var(--ink);font-weight:700}
+.cmd-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:11px;font-size:11px;color:var(--ink-3)}
+.cmd-meta span{display:inline-flex;align-items:center;gap:5px}
+.cmd-meta .dot{width:6px;height:6px;border-radius:50%;flex:none}
+.cmd-actions{display:flex;flex-direction:column;gap:8px;align-items:stretch;min-width:184px}
+.cmd-actions .btn{justify-content:center}
+.cmd-actions .hint{font-size:10.5px;color:var(--ink-3);text-align:center;line-height:1.4}
+.cmd-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 18px;background:var(--surface)}
+.cmd-search{flex:1;min-width:190px;display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink-3)}
+.cmd-search input{flex:1;border:0;background:none;outline:none;font-size:13px;color:var(--ink)}
+.cmd-search input::placeholder{color:var(--ink-3)}
+.filterchip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);color:var(--ink-2);font-size:12px}
+.filterchip select{border:0;background:none;outline:none;color:var(--ink);font-weight:500;font-size:12px}
+.filterchip.is-off{opacity:.55}
+.filterchip.is-off .lockmini{color:var(--ink-3)}
+
+/* growth-loop command map */
+.loop{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);box-shadow:var(--sh-1);overflow:hidden}
+.loop-head{display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid var(--line-soft)}
+.loop-head h3{font-size:13.5px}
+.loop-head .sub{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.loop-head .scope{margin-left:auto;font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:7px}
+.loop-head .scope b{color:var(--ink);font-weight:600}
+.loop-track{display:flex;align-items:stretch;gap:0;padding:16px 14px 18px;overflow-x:auto;scrollbar-width:thin}
+.loop-seg{flex:1 1 0;min-width:118px;position:relative;display:flex;flex-direction:column}
+.loop-node{margin:0 5px;padding:11px 11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);
+  display:grid;gap:7px;cursor:pointer;transition:.16s;height:100%;text-align:left;width:calc(100% - 10px)}
+.loop-node:hover{border-color:var(--line-strong,var(--violet-line));transform:translateY(-2px);box-shadow:var(--sh-2)}
+.loop-node:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+.loop-ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none}
+.loop-name{font-size:12px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.loop-state{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600}
+.loop-state .sd{width:7px;height:7px;border-radius:2px;transform:rotate(45deg);flex:none}
+.loop-src{font-size:9.5px;color:var(--ink-3);font-family:var(--mono);letter-spacing:.02em}
+.loop-need{font-size:10.5px;color:var(--ink-2);line-height:1.35;border-top:1px dashed var(--line-soft);padding-top:6px}
+.loop-arrow{align-self:center;color:var(--ink-3);flex:none;margin:0 -2px;opacity:.6}
+.loop-seg:last-child .loop-arrow{display:none}
+
+/* portfolio */
+.pf{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);box-shadow:var(--sh-1);overflow:hidden}
+.pf-head{display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid var(--line-soft)}
+.pf-head h3{font-size:13.5px}
+.pf-head .count{margin-left:auto;font-size:11px;color:var(--ink-3);font-family:var(--mono)}
+.pf-row{border-bottom:1px solid var(--line-soft)}
+.pf-row:last-child{border-bottom:0}
+.pf-main{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:13px;align-items:center;padding:13px 18px;cursor:pointer;transition:background .14s}
+.pf-main:hover{background:var(--surface-2)}
+.pf-phase{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;flex:none;border:1px solid var(--line)}
+.pf-id{min-width:0}
+.pf-id .nm{font-size:14px;font-weight:600;letter-spacing:-.01em;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pf-id .obj{font-size:11.5px;color:var(--ink-3);margin-top:3px;line-height:1.4}
+.pf-facts{display:flex;flex-wrap:wrap;gap:5px 8px;margin-top:8px}
+.pf-fact{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ink-2);background:var(--surface-sunk);border:1px solid var(--line-soft);border-radius:7px;padding:2px 7px}
+.pf-fact .fk{color:var(--ink-3)}
+.pf-fact.warn{color:var(--warn);background:var(--warn-tint);border-color:var(--warn)}
+.pf-fact.dim{color:var(--ink-3)}
+.pf-end{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none;text-align:right}
+.pf-next{font-size:11px;color:var(--ink-2);max-width:190px}
+.pf-next b{color:var(--ink);font-weight:600}
+.pf-caret{color:var(--ink-3);transition:transform .18s}
+.pf-row.open .pf-caret{transform:rotate(90deg)}
+.phasepill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;font-size:10.5px;font-weight:600;border:1px solid var(--line)}
+.phasepill .sd{width:6px;height:6px;border-radius:2px;transform:rotate(45deg)}
+
+/* expand: readiness fold-out */
+.pf-fold{padding:2px 18px 18px;display:grid;gap:14px}
+.rd{border:1px solid var(--line);border-radius:14px;background:var(--surface-2);overflow:hidden}
+.rd-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line-soft)}
+.rd-head h4{font-size:12px}
+.rd-head .note{font-size:10.5px;color:var(--ink-3);margin-left:auto;max-width:340px;text-align:right;line-height:1.35}
+.rd-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line-soft)}
+.rd-item{background:var(--surface);padding:10px 12px;display:grid;gap:5px;min-width:0}
+.rd-item .rk{font-size:11.5px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:7px}
+.rd-item .rs{font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px}
+.rd-item .rmeta{font-size:10px;color:var(--ink-3);line-height:1.35}
+.rd-item .rroute{font-size:10px;color:var(--violet);display:inline-flex;align-items:center;gap:4px;justify-self:start;margin-top:1px}
+.rd-item .rroute:hover{text-decoration:underline}
+.sd{width:7px;height:7px;border-radius:2px;transform:rotate(45deg);flex:none;display:inline-block}
+.st-ready{color:var(--ok)}.st-ready .sd,.sd.st-ready{background:var(--ok)}
+.st-partial{color:var(--violet)}.st-partial .sd,.sd.st-partial{background:var(--violet)}
+.st-await{color:var(--warn)}.st-await .sd,.sd.st-await{background:var(--warn)}
+.st-blocked{color:var(--bad)}.st-blocked .sd,.sd.st-blocked{background:var(--bad)}
+.st-unavail{color:var(--ink-3)}.st-unavail .sd,.sd.st-unavail{background:var(--ink-3)}
+/* "needs setup" is an attention/action-needed status → semantic --warn, NOT the gold act token (§11) */
+.st-setup{color:var(--warn)}.st-setup .sd,.sd.st-setup{background:var(--warn)}
+.st-planned{color:var(--ink-3)}.st-planned .sd,.sd.st-planned{background:var(--ink-3);opacity:.6}
+
+/* work in motion */
+.wm-list{display:grid;gap:8px;padding:2px 4px}
+.wm{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.wm-ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none}
+.wm-t{font-size:12.5px;font-weight:600;color:var(--ink)}
+.wm-s{font-size:11px;color:var(--ink-3);margin-top:2px}
+.wm-src{font-size:9.5px;color:var(--ink-3);font-family:var(--mono);margin-top:4px}
+.desk-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:14px;align-items:start}
+@media(max-width:900px){.desk-grid{grid-template-columns:1fr}}
+
+/* generic state frames (verbatim solo-campaigns.css) */
+.campaigns-state{min-height:200px;display:grid;place-items:center;align-content:center;text-align:center;gap:9px;padding:30px 20px}
+.campaigns-state p{max-width:560px;font-size:12.8px;line-height:1.55;color:var(--ink-2)}
+.campaigns-state h2{font-size:16px;letter-spacing:-.02em}
+.campaigns-spinner{width:22px;height:22px;border:2px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:cspin .8s linear infinite}
+@keyframes cspin{to{transform:rotate(360deg)}}
+.campaigns-skeleton{padding:6px;display:grid;gap:10px}
+.campaigns-skeleton span{height:64px;border-radius:12px;background:linear-gradient(90deg,var(--surface-sunk),var(--surface-2),var(--surface-sunk));background-size:200% 100%;animation:cshim 1.2s linear infinite}
+@keyframes cshim{to{background-position:-200% 0}}
+.err-band{display:flex;align-items:flex-start;gap:11px;padding:13px 15px;border:1px solid var(--warn);border-radius:12px;background:var(--warn-tint);color:var(--ink-2);font-size:12px;line-height:1.5}
+.err-band .btn{margin-left:auto}
+.err-band b{color:var(--ink)}
+
+/* first-run guided sequence */
+.fr{display:grid;gap:14px}
+.fr-hero{border:1px solid var(--line);border-radius:var(--r-l);background:linear-gradient(120deg,var(--surface),var(--surface-2));box-shadow:var(--sh-1);padding:20px 20px 18px}
+.fr-hero .eyebrow{color:var(--ink-3)}
+.fr-hero h2{font-size:19px;margin-top:8px;letter-spacing:-.02em}
+.fr-hero p{font-size:13px;color:var(--ink-2);margin-top:6px;max-width:640px;line-height:1.55}
+.fr-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.fr-step{border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--sh-1);padding:15px;display:grid;gap:8px;align-content:start}
+.fr-step .n{width:26px;height:26px;border-radius:8px;background:var(--violet-tint);color:var(--violet);border:1px solid var(--violet-line);display:grid;place-items:center;font:700 12px/1 var(--mono)}
+.fr-step h4{font-size:13px}
+.fr-step p{font-size:11.5px;color:var(--ink-3);line-height:1.5}
+.fr-step .rroute{font-size:11px;color:var(--violet);display:inline-flex;align-items:center;gap:5px;justify-self:start;margin-top:2px}
+.fr-cta{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+/* ── DOSSIER DRAWER / BRIEF BUILDER (pinned to simulated viewport) ───────────────────────── */
+.dw-scrim{position:absolute;inset:0;z-index:86;background:rgba(18,14,40,.42);backdrop-filter:blur(2px);animation:fade .18s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.dw{position:absolute;z-index:87;top:0;right:0;bottom:0;width:min(496px,94%);display:flex;flex-direction:column;background:var(--surface);border-left:1px solid var(--line);box-shadow:var(--sh-3);animation:slide .22s cubic-bezier(.22,1,.36,1)}
+@keyframes slide{from{transform:translateX(24px);opacity:.6}to{transform:translateX(0);opacity:1}}
+.dw header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:15px 18px;border-bottom:1px solid var(--line)}
+.dw header .eyebrow{color:var(--ink-3)}
+.dw header h2{font-size:16.5px;margin-top:4px;letter-spacing:-.02em}
+.dw header .sub{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+.dw-body{flex:1;overflow:auto;padding:14px 18px 26px;display:grid;gap:14px;align-content:start}
+.dw-foot{border-top:1px solid var(--line);padding:12px 18px;display:flex;gap:9px;flex-wrap:wrap;align-items:center;background:var(--surface)}
+.dw-sec h4{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);font-weight:700;margin-bottom:8px}
+.dw-kv{display:grid;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.dw-kv .r{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;background:var(--surface);padding:9px 12px;font-size:12px}
+.dw-kv .r .k{color:var(--ink-3)}
+.dw-kv .r .v{color:var(--ink);text-align:right;overflow-wrap:anywhere}
+.dw-kv .r .v.dim{color:var(--ink-3)}
+.dw-note{font-size:11px;color:var(--ink-2);line-height:1.5;background:var(--surface-2);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px}
+.dw-links{display:grid;gap:7px}
+.dw-link{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink);font-size:12px;text-align:left;width:100%}
+.dw-link:hover{border-color:var(--violet-line);background:var(--surface)}
+.dw-link .rroute{margin-left:auto;color:var(--violet);display:inline-flex;align-items:center;gap:4px;font-size:11px}
+
+/* brief builder */
+.bb-stages{display:flex;gap:6px;flex-wrap:wrap;padding:0 0 2px}
+.bb-chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid var(--line);border-radius:999px;font-size:11px;color:var(--ink-3);background:var(--surface-2)}
+.bb-chip[data-done="true"]{color:var(--ok);border-color:var(--ok-tint)}
+.bb-chip[aria-current="true"]{color:var(--ink);border-color:var(--violet-line);background:var(--violet-tint);font-weight:600}
+.bb-field{display:grid;gap:6px}
+.bb-field label{font-size:12px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px}
+.bb-field .req{font-size:9.5px;color:var(--bad);font-weight:600;text-transform:uppercase}
+.bb-field .opt{font-size:9.5px;color:var(--ink-3);font-weight:500}
+.bb-field input,.bb-field textarea,.bb-field select{width:100%;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink);padding:9px 11px;font-size:13px;outline:none}
+.bb-field input:focus,.bb-field textarea:focus,.bb-field select:focus{border-color:var(--violet);box-shadow:0 0 0 3px var(--violet-tint)}
+.bb-field textarea{min-height:70px;resize:vertical;line-height:1.5}
+.bb-field .help{font-size:10.5px;color:var(--ink-3);line-height:1.45}
+.bb-field .help.warn{color:var(--warn)}
+.bb-link{display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px dashed var(--line);border-radius:10px;background:var(--surface-2);font-size:11.5px;color:var(--ink-2)}
+.bb-link .rroute{margin-left:auto;color:var(--violet);display:inline-flex;align-items:center;gap:4px}
+.bb-save{display:flex;align-items:center;gap:9px;font-size:11.5px}
+.bb-save.ok{color:var(--ok)}.bb-save.err{color:var(--bad)}.bb-save.saving{color:var(--ink-3)}
+.chips-pick{display:flex;flex-wrap:wrap;gap:6px}
+.chips-pick button{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);font-size:12px;color:var(--ink-2)}
+.chips-pick button[aria-pressed="true"]{border-color:var(--violet-line);background:var(--violet-tint);color:var(--violet);font-weight:600}
+.chips-pick button .lockmini{color:var(--ink-3)}
+.chips-pick button:disabled{opacity:.55;cursor:not-allowed}
+
+/* toast (pinned to viewport) */
+.toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:9px;
+  padding:10px 14px;border-radius:11px;border:1px solid var(--line);background:var(--surface);box-shadow:var(--sh-3);font-size:12.5px;color:var(--ink);max-width:90%}
+.toast.ok{border-color:var(--ok-tint)}.toast.ok .ti{color:var(--ok)}
+.toast.err{border-color:var(--bad-tint)}.toast.err .ti{color:var(--bad)}
+
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* responsive inside simulated viewport */
+@container solo (max-width:1080px){ .cmd-brief{grid-template-columns:1fr} .cmd-actions{flex-direction:row;flex-wrap:wrap;min-width:0} .desk-grid{grid-template-columns:1fr} }
+@container solo (max-width:940px){ .loop-track{padding-inline:8px} .loop-seg{min-width:132px} .rd-grid{grid-template-columns:1fr 1fr} }
+@container solo (max-width:720px){ .campaigns-truth-key{display:none} .rd-grid{grid-template-columns:1fr} .pf-main{grid-template-columns:auto minmax(0,1fr)} .pf-end{grid-column:1/-1;align-items:flex-start;text-align:left;flex-direction:row;flex-wrap:wrap} .cmd-search{min-width:100%} }
+
+@media(prefers-reduced-motion:reduce){.paige-solo *{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
+.paige-solo[data-rm="1"] *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+@media(forced-colors:active){.campaigns-truth,.cmd,.loop,.pf,.rd,.wm,.loop-node,.fr-step{border:1px solid CanvasText}}
+
+/* ═══ REVIEW HARNESS (developer chrome — not product) ═══════════════════════════════════════ */
+.rv-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:9px 14px;background:var(--rv-panel);border-bottom:1px solid var(--rv-edge)}
+.rv-bar h1{font-size:13px;margin:0;font-weight:600;display:flex;align-items:center;gap:9px}
+.rv-bar h1 em{font-style:normal;color:var(--rv-faint);font-weight:400}
+.rv-badge{font:600 9px/1 "Geist Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:#fff;background:var(--rv-new);border-radius:5px;padding:3px 6px}
+.rv-ctl{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--rv-ink-2)}
+.rv-ctl label{color:var(--rv-faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em}
+.rv-ctl select,.rv-ctl button.rv-tog{border:1px solid var(--rv-edge-2);border-radius:7px;background:var(--rv-bg);color:var(--rv-ink);font:inherit;font-size:11px;padding:4px 7px;cursor:pointer}
+.rv-ctl button.rv-tog[aria-pressed="true"]{background:var(--rv-focus);border-color:var(--rv-focus);color:#fff}
+.rv-wrap{display:grid;grid-template-columns:264px minmax(0,1fr);height:calc(100vh - 42px);min-height:0}
+.rv-side{background:var(--rv-panel);border-right:1px solid var(--rv-edge);overflow:auto;padding:12px 13px 30px}
+.rv-side h2{margin:15px 0 7px;font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--rv-faint)}
+.rv-side h2:first-child{margin-top:2px}
+.rv-steps{display:grid;gap:2px}
+.rv-steps button{display:flex;gap:9px;align-items:flex-start;width:100%;text-align:left;padding:7px 8px;border-radius:8px;border:1px solid transparent;background:none;color:var(--rv-ink-2);font:inherit;font-size:11.5px;cursor:pointer;line-height:1.4}
+.rv-steps button:hover{background:var(--rv-bg)}
+.rv-steps button[aria-current="true"]{background:var(--rv-bg);border-color:var(--rv-edge-2);color:var(--rv-ink);font-weight:600}
+.rv-steps button i{flex:none;width:19px;font-style:normal;font-family:"Geist Mono",monospace;font-size:10px;color:var(--rv-faint);padding-top:1px}
+.rv-note{font-size:11px;line-height:1.55;color:var(--rv-ink-2);background:var(--rv-bg);border:1px solid var(--rv-edge);border-radius:9px;padding:10px 11px;margin-top:8px}
+.rv-note b{color:var(--rv-ink)}
+.rv-note code{font:10.5px "Geist Mono",monospace;background:var(--rv-panel);border:1px solid var(--rv-edge);border-radius:4px;padding:0 4px;color:var(--rv-ink-2)}
+.rv-tag{display:inline-block;font:600 8.5px/1.6 "Geist Mono",monospace;letter-spacing:.05em;text-transform:uppercase;padding:0 5px;border-radius:4px;border:1px solid currentColor}
+.t-live{color:var(--rv-live)}.t-mock{color:var(--rv-mock)}.t-dead{color:var(--rv-dead)}.t-new{color:var(--rv-new)}.t-owner{color:var(--rv-mock)}
+.rv-stage{min-height:0;overflow:auto;padding:16px;display:grid;place-items:start center;background:var(--rv-bg)}
+.rv-frame{border:1px solid var(--rv-edge-2);border-radius:10px;overflow:hidden;background:#000;box-shadow:0 10px 34px rgba(0,0,0,.16);display:flex;flex-direction:column}
+.rv-cap{display:flex;align-items:center;gap:9px;padding:5px 10px;background:var(--rv-panel);border-bottom:1px solid var(--rv-edge);font:10.5px "Geist Mono",monospace;color:var(--rv-faint);flex:none}
+.rv-cap b{color:var(--rv-ink);font-weight:600}
+.rv-vp{background:var(--canvas);overflow:hidden;position:relative}
+.rv-approve{border-top:1px solid var(--rv-edge);padding:12px 13px;display:grid;gap:9px}
+.rv-approve textarea{width:100%;border:1px solid var(--rv-edge-2);border-radius:8px;background:var(--rv-bg);color:var(--rv-ink);font:inherit;font-size:11px;padding:7px 8px;min-height:52px;resize:vertical}
+.rv-approve .rv-btns{display:flex;gap:6px}
+.rv-approve .rv-btns button{flex:1;min-width:70px;border:1px solid var(--rv-edge-2);border-radius:7px;background:var(--rv-bg);color:var(--rv-ink);font:inherit;font-size:11px;padding:6px 8px;cursor:pointer}
+.rv-approve .rv-btns button[aria-pressed="true"]{background:var(--rv-focus);border-color:var(--rv-focus);color:#fff}
+.rv-out{font:10.5px/1.5 "Geist Mono",monospace;color:var(--rv-faint);word-break:break-word}
+@media(max-width:860px){.rv-wrap{grid-template-columns:1fr;height:auto}.rv-side{max-height:none}}
+</style>
+
+<div class="rv-bar">
+  <h1><span class="rv-badge">Flow Prototype</span> Campaigns › Overview <em>— the Campaign Command Desk</em></h1>
+  <span class="rv-ctl"><label>Theme</label>
+    <select id="c-th"><option value="light">Mineral (light)</option><option value="dark">Obsidian (dark)</option></select></span>
+  <span class="rv-ctl"><label>Viewport</label>
+    <select id="c-vp">
+      <option value="1536x770">1536 × 770 (docked)</option>
+      <option value="1366x768" selected>1366 × 768 (docked)</option>
+      <option value="1024x768">1024 × 768</option>
+      <option value="900x1000">900 × 1000</option>
+    </select></span>
+  <span class="rv-ctl"><label>PAIGE</label>
+    <select id="c-paige"><option value="off">Closed</option><option value="docked">Docked</option><option value="expanded">Expanded</option></select></span>
+  <span class="rv-ctl"><label>Workspace</label>
+    <select id="c-ws"><option value="meridian">Meridian Advisory</option><option value="northpeak">Northpeak Studio (fresh)</option></select></span>
+  <span class="rv-ctl"><button class="rv-tog" id="c-rm" aria-pressed="false">Reduced motion</button></span>
+  <span class="rv-ctl"><button class="rv-tog" id="c-kb" aria-pressed="false">Keyboard/focus notes</button></span>
+</div>
+
+<div class="rv-wrap">
+  <aside class="rv-side">
+    <h2>States &amp; pathways</h2>
+    <div class="rv-steps" id="c-steps" role="tablist" aria-label="Prototype states"></div>
+    <h2>What this state shows</h2>
+    <div class="rv-note" id="c-note"></div>
+    <div class="rv-approve">
+      <h2 style="margin:2px 0 0">Approval</h2>
+      <div class="rv-out">Owner / Claude Design decision on the Campaign Command Desk direction. This prototype is throwaway, read-only, zero mutation.</div>
+      <div class="rv-btns" role="group" aria-label="Decision">
+        <button id="ap-a" aria-pressed="false">Approve</button>
+        <button id="ap-r" aria-pressed="false">Revise</button>
+        <button id="ap-x" aria-pressed="false">Reject</button>
+      </div>
+      <textarea id="ap-notes" placeholder="Notes for the build slice…"></textarea>
+      <div class="rv-out" id="ap-echo"></div>
+    </div>
+  </aside>
+
+  <div class="rv-stage">
+    <div class="rv-frame">
+      <div class="rv-cap"><span>Solo · Campaigns · Overview</span><span style="flex:1"></span><b id="c-capt">Mineral</b><span id="c-dim">1366 × 768</span></div>
+      <div class="rv-vp" id="c-vp-el">
+        <div class="paige-solo" id="app"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   All data below is a DETERMINISTIC LOCAL MOCK. No network, no mutation. Provenance is annotated
+   per region in the review note and in the on-surface source chips. See the header comment.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+const ICON={
+  bolt:'M13 2 4 14h6l-1 8 9-12h-6z', grid:'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
+  chart:'M4 20V10M10 20V4M16 20v-7M20 20H3', trend:'M3 17l6-6 4 4 8-8M15 7h6v6',
+  users:'M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 20v-2a4 4 0 0 0-3-3.87M16 4.13A4 4 0 0 1 16 12',
+  pulse:'M3 12h4l2-7 4 14 2-7h6', spark:'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6',
+  moon:'M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z', x:'M6 6l12 12M18 6 6 18',
+  chev:'M9 6l6 6-6 6', arrow:'M5 12h14M13 6l6 6-6 6', check:'M5 12l5 5 9-11',
+  alert:'M12 9v4M12 17h.01M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+  shield:'M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6z', plus:'M12 5v14M5 12h14',
+  search:'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3', refresh:'M20 11A8 8 0 1 0 6 6M20 4v5h-5',
+  cal:'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4', link:'M9 15l6-6M8 12l-2 2a3.5 3.5 0 0 0 5 5l2-2M16 12l2-2a3.5 3.5 0 0 0-5-5l-2 2',
+  target:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01',
+  mega:'M3 11v2a1 1 0 0 0 1 1h3l6 4V6L7 10H4a1 1 0 0 0-1 1zM17 8a4 4 0 0 1 0 8', msg:'M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12z',
+  clock:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 8v4l3 2', lock:'M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3',
+  doc:'M6 3h8l4 4v14H6zM14 3v4h4', dot:'M12 12h.01', flag:'M5 21V4h9l-1 3 1 3H5', pause:'M8 5v14M16 5v14', play:'M7 4l12 8-12 8z',
+  edit:'M4 20h4L18 10l-4-4L4 16zM14 6l4 4', route:'M4 6h9a4 4 0 0 1 0 8H8a4 4 0 0 0 0 8h12M18 2l3 4-3 4',
+  eye:'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6'
+};
+const svg=(d,s=16,sw=1.6)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d.split('M').filter(Boolean).map(p=>`<path d="M${p}"/>`).join('')}</svg>`;
+
+/* stage state vocabulary (honest, source-derived) ------------------------------------------ */
+const STATE={
+  ready:{k:'ready',label:'Ready',cls:'st-ready'},
+  partial:{k:'partial',label:'Partial',cls:'st-partial'},
+  await:{k:'await',label:'Awaiting approval',cls:'st-await'},
+  blocked:{k:'blocked',label:'Blocked',cls:'st-blocked'},
+  unavail:{k:'unavail',label:'Unavailable',cls:'st-unavail'},
+  setup:{k:'setup',label:'Needs setup',cls:'st-setup'},
+  planned:{k:'planned',label:'Planned',cls:'st-planned'},
+};
+/* the 7 loop stages + which subtab owns them + the real source posture (workspace scope) ---- */
+const LOOP=[
+  {k:'offer',name:'Offer',ic:ICON.grid,owner:'Catalog',src:'Catalog offers',srcState:'partial',
+   need:'Define or link what this campaign sells.'},
+  {k:'audience',name:'Audience',ic:ICON.users,owner:'Relationships',src:'Segments / People',srcState:'partial',
+   need:'Name the segment this reaches.'},
+  {k:'content',name:'Content',ic:ICON.spark,owner:'Vibe Studio',src:'Published Vibe assets',srcState:'partial',
+   need:'Create the page, funnel or form in Vibe Studio.'},
+  {k:'distribution',name:'Distribution',ic:ICON.mega,owner:'Social',src:'No connected provider',srcState:'unavail',
+   need:'Connect a publishing provider in Social.'},
+  {k:'conversations',name:'Conversations',ic:ICON.msg,owner:'Social / Comms',src:'No connected provider',srcState:'unavail',
+   need:'Connect a messaging/follow-up path.'},
+  {k:'pipeline',name:'Pipeline',ic:ICON.trend,owner:'Pipeline',src:'Deal workspace',srcState:'ready',
+   need:'Route captures to a pipeline stage.'},
+  {k:'outcome',name:'Recorded outcome',ic:ICON.chart,owner:'Sales / Performance',src:'No campaign attribution',srcState:'unavail',
+   need:'Attribution needs a verified source; not available yet.'},
+];
+const OWNER_ROUTE={Catalog:'/growth/catalog',Relationships:'/clients/people',Sales:'/growth/sales','Sales / Performance':'/growth/performance',Pipeline:'/growth/pipeline',Social:'/growth/social','Social / Comms':'/growth/social','Vibe Studio':'Vibe Studio'};
+
+/* readiness rows — 9 items, each sourced + routed. NO percentage, NO green-all. --------------- */
+function readinessFor(c){
+  return [
+    ['Offer ready', c.loop.offer, 'Catalog', c.offer? 'Linked: '+c.offer : 'No offer linked to this brief.'],
+    ['Audience identified', c.loop.audience, 'Relationships', c.audience? 'Segment: '+c.audience : 'No segment recorded.'],
+    ['Source content / creative ready', c.loop.content, 'Vibe Studio', c.contentNote],
+    ['Target channels connected', c.loop.distribution, 'Social', 'No customer-facing social/publishing provider is connected.'],
+    ['Publishing / distribution path', c.loop.distribution, 'Social', 'Depends on a connected provider — not checked.'],
+    ['Conversations / follow-up path', c.loop.conversations, 'Social / Comms', 'No connected messaging provider on this workspace.'],
+    ['Pipeline route ready', c.loop.pipeline, 'Pipeline', c.pipelineNote],
+    ['Tracking / attribution evidence', c.loop.outcome, 'Sales / Performance', 'No order names a campaign, so revenue is never attributed to one.'],
+    ['Approvals complete', c.approvals, 'Overview', c.approvalNote],
+  ];
+}
+
+/* ── WORKSPACES ──────────────────────────────────────────────────────────────────────────── */
+/* Meridian Advisory: an established owner workspace with real records behind several stages.
+   Northpeak Studio: a freshly-provisioned Solo workspace with no briefs (first-run).            */
+const WORKSPACES={
+  meridian:{name:'Meridian Advisory',who:'MV',whoName:'Marcus Vale',role:'Owner'},
+  northpeak:{name:'Northpeak Studio',who:'JL',whoName:'Jordan Lee',role:'Owner'},
+};
+
+/* ── CAMPAIGN BRIEFS (OWNER-SUPPLIED) ─────────────────────────────────────────────────────── */
+/* These are OWNER BRIEFS, not a system rollup. Each stage state is honest given real sources:
+   pipeline reads live, offers/content/audience are partial-real, distribution/conversations/
+   outcome are unavailable (no provider / no attribution). All names/objectives are MOCK. */
+function meridianBriefs(){
+  return [
+  { id:'br1', name:'Spring Masterclass launch', phase:'building',
+    objective:'Fill the April "Advisory Systems" cohort — 20 seats.',
+    offer:'Advisory Systems Masterclass', audience:'Past webinar attendees (warm)',
+    channels:['Landing page','Email'], next:'Finish the landing page in Vibe Studio, then request review.',
+    blocker:null, updated:'2h ago', source:'Owner brief · linked to an offer and Vibe drafts',
+    contentNote:'Landing pages drafted in Vibe Studio, not yet published.',
+    pipelineNote:'Routed to the “Masterclass” pipeline; deal count reads live from Pipeline.',
+    approvals:'ready', approvalNote:'No governed action is waiting on you.',
+    loop:{offer:'ready',audience:'partial',content:'partial',distribution:'setup',conversations:'unavail',pipeline:'ready',outcome:'unavail'} },
+  { id:'br2', name:'Referral partner outreach', phase:'planning',
+    objective:'Land 5 warm partner introductions this quarter.',
+    offer:null, audience:null,
+    channels:[], next:'Link an offer from Catalog so the ask is concrete.',
+    blocker:'No offer linked', updated:'Yesterday', source:'Owner brief · nothing linked yet',
+    contentNote:'No creative created yet.',
+    pipelineNote:'Not routed to a pipeline.',
+    approvals:'ready', approvalNote:'No governed action is waiting on you.',
+    loop:{offer:'setup',audience:'setup',content:'planned',distribution:'planned',conversations:'planned',pipeline:'planned',outcome:'unavail'} },
+  { id:'br3', name:'Quarterly retainer renewals', phase:'active',
+    objective:'Renew the 8 retainers up for renewal in Q2.',
+    offer:'Fractional Advisory Retainer', audience:'Current retainer clients',
+    channels:['Email','1:1 call'], next:'Review the 2 renewals flagged in Pipeline.',
+    blocker:null, updated:'3d ago', source:'Owner brief · linked offer + pipeline deals',
+    contentNote:'Renewal note handled 1:1 — no published asset needed.',
+    pipelineNote:'Deals in the “Renewals” pipeline read live from Pipeline; some need a next action.',
+    approvals:'ready', approvalNote:'No governed action is waiting on you.',
+    mock:true,
+    loop:{offer:'ready',audience:'partial',content:'ready',distribution:'unavail',conversations:'unavail',pipeline:'ready',outcome:'unavail'} },
+  { id:'br4', name:'Podcast guest circuit', phase:'idea',
+    objective:'Book 6 guest spots to grow the top of funnel.',
+    offer:null, audience:'Cold — new audiences',
+    channels:[], next:'Turn this into a brief: pick the objective metric and the offer it feeds.',
+    blocker:null, updated:'1w ago', source:'Owner brief · idea only',
+    contentNote:'No creative created yet.',
+    pipelineNote:'Not routed to a pipeline.',
+    approvals:'ready', approvalNote:'Nothing to approve on an idea.',
+    loop:{offer:'planned',audience:'planned',content:'planned',distribution:'planned',conversations:'planned',pipeline:'planned',outcome:'unavail'} },
+  ];
+}
+
+/* ── STATE ────────────────────────────────────────────────────────────────────────────────── */
+const S={
+  scenario:'multi', theme:'light', vp:'1366x768', paige:'off', ws:'meridian', rm:false, kb:false,
+  filters:{phase:'all', src:'all', q:''},
+  openRow:null, focusCampaign:null, drawer:null, brief:null, briefStage:0, save:'idle',
+  surface:'ready', // ready | loading | error | unavailable | first-run
+  provider:'normal', // normal | off | stale | source-fail
+  readonly:false,
+};
+
+/* scenarios: each configures data + surface + a focused row where useful --------------------- */
+const SCENARIOS=[
+  ['multi','01','Multiple campaigns','The default working desk — several owner briefs in mixed phases, the loop map at workspace scope, and real work in motion.'],
+  ['first-run','02','Empty · first run','A fresh Solo workspace with no briefs. Not a big empty UNAVAILABLE panel — a guided sequence toward the first useful move.'],
+  ['one','03','One planned campaign','A single brief in planning. The desk stays useful with one initiative and points at its single next missing dependency.'],
+  ['partial','04','Partial readiness','A brief expanded to its Launch-readiness fold-out: some stages ready, some unavailable, each sourced and routed. No fake score.'],
+  ['blocked','05','Blocked','A brief with a hard dependency blocker, surfaced on the row and in the command line.'],
+  ['approval','06','Approval required','A brief with a governed action awaiting the owner. Paige prepared it; she does not launch, spend, publish, or send without the gate.'],
+  ['active','07','Active (labeled)','An active brief — the ONLY place representative running data appears, and it is labeled MOCK. Real activity/attribution is never fabricated.'],
+  ['loading','08','Loading','Skeleton while the tenant-scoped reads resolve. No layout jump into content.'],
+  ['source-fail','09','Source failure','One source read failed (e.g. the pipeline workspace). Records unchanged; the affected loop segment shows the failure and a retry.'],
+  ['provider-off','10','Disconnected provider','Distribution/Conversations have no connected provider. Honest UNAVAILABLE, routed to Social — never a fabricated reach/queue figure.'],
+  ['stale','11','Stale evidence','A source’s freshness is old. The value is shown as “needs confirmation / last checked”, never silently presented as current.'],
+  ['brief','12','Brief builder + save','The focused “Create campaign brief” builder — staged, editable, with save-draft / request-review and honest save success / failure / retry.'],
+  ['dossier','13','Dossier drawer','The campaign dossier drawer — brief, audience/offer, dependencies, source-linked evidence, safe edit only where a real write exists. Close / Cancel / Esc.'],
+  ['workspace','14','Workspace switch','Switching workspace clears filters, drawers, pending edits, and prior-workspace data. Never infers status across workspaces.'],
+  ['unavailable','15','No resolved workspace','Fail-closed. No tenant context confirmed → no read, no invented rows.'],
+  ['readonly','16','Read-only member','A member without manage permission. Governed acts are gone, not disabled-and-teasing; the server refuses independently.'],
+];
+
+const NOTES={
+  multi:`The working <b>Campaign Command Desk</b>. <b>Command header</b> = a plain-English operating brief (what’s moving, what’s blocked, the highest-value next move) + workspace-safe search/filters + one gold action (<code>Create campaign brief</code>). <b>Growth-loop map</b> shows each of the 7 stages at workspace scope with its honest source state. <b>Portfolio</b> is expandable rows, not a card grid. <span class="rv-tag t-owner">owner brief</span> the briefs · <span class="rv-tag t-live">live read</span> pipeline/artifacts/payments feeding stages · <span class="rv-tag t-dead">unavailable</span> attribution, provider figures.`,
+  'first-run':`No briefs on a fresh workspace. Instead of the old “Campaign state rollup unavailable” dead panel (<code>growth2.tsx:106</code>), a <b>guided sequence</b>: identify what you sell → choose an objective → define the audience → choose the first distribution/content path → connect sources only when needed. Each step routes to the real owning surface. <span class="rv-tag t-new">redesign</span>`,
+  one:`One brief in planning. The desk is still a desk with a single initiative — the loop map narrows to this campaign, and the header names its single next missing dependency. <span class="rv-tag t-owner">owner brief</span>`,
+  partial:`Row expanded to the <b>Launch readiness</b> fold-out — 9 items, each with an honest state, a source, and a route to the owning surface. Ready / Partial / Needs setup / Unavailable — <b>never a percentage, never a green-all</b>. Where the platform can’t know, it says “not checked / needs confirmation”. <span class="rv-tag t-live">live read</span> offer, content, pipeline · <span class="rv-tag t-dead">unavailable</span> channels, attribution.`,
+  blocked:`A brief with a hard dependency blocker (no connected follow-up path). It surfaces on the row (a <span style="color:var(--rv-dead)">Blocked</span> pill + the blocker line) and in the command header’s “what’s blocked” clause. The next action routes to the owning surface that can clear it.`,
+  approval:`A governed action is waiting on the owner. Paige can <b>recommend, prepare, and route</b> — she must not silently launch, spend, publish, or send. The row shows “Awaiting your approval” and the dossier’s action goes through the existing governed confirm path (mocked). <span class="rv-tag t-new">governed</span>`,
+  active:`An <b>active</b> brief. This is the ONLY state that shows representative running data, and every such value carries a <span class="rv-tag t-mock">MOCK</span> chip. Real sends/opens/reach/revenue/attribution are <b>never</b> fabricated — those stay UNAVAILABLE even here.`,
+  loading:`Skeleton while the six tenant-scoped reads resolve (<code>useSoloCampaigns.ts</code>: pages, funnels, forms, submissions, routing, pipeline). No jump into content. <span class="rv-tag t-live">live behavior today</span>`,
+  'source-fail':`One source read failed. Copy mirrors the shipped error contract: “Your records were not changed.” The affected loop segment shows the failure inline with a <b>Retry</b>; the rest of the desk still renders what did load. <span class="rv-tag t-live">live behavior today</span>`,
+  'provider-off':`Distribution and Conversations have <b>no connected provider</b> (the real state — no customer-facing social/publishing/messaging provider exists yet). Shown as UNAVAILABLE with a route to Social to connect one. <b>No follower, reach, queue, schedule, or placement figure is invented.</b> <span class="rv-tag t-dead">unavailable today</span>`,
+  stale:`A source’s freshness is old. The value renders as “needs confirmation · last checked …”, never silently as current. Freshness is part of the data contract, not decoration.`,
+  brief:`<b>Create campaign brief</b> — a focused, staged, editable builder (drawer), not a long page. Stages: name+objective → offer (link/create in Catalog) → audience+positioning → outcome → channels → timing + optional owner-supplied <b>budget target</b> (explicitly NOT ad spend / forecast / connected media buying) → content needs → conversion + follow-up → success evidence. Footer: <b>Save draft</b> / <b>Request review</b>. Toggle the save result with the buttons in the builder footer: success / failure / retry. <span class="rv-tag t-new">mock write</span>`,
+  dossier:`The <b>dossier drawer</b>: brief, audience+offer, selected channels, dependencies, source-linked evidence, decision/approval state, and safe edit controls only where a real write exists. Full <b>X / Cancel / Escape</b>, scrim click, focus trap, and focus restore to the row. <span class="rv-tag t-live">live read</span> the evidence links · <span class="rv-tag t-owner">owner brief</span> the brief fields.`,
+  workspace:`Switching workspace (top control) clears filters, the open drawer, pending brief edits, and prior-workspace data before the new read. Campaign status is <b>never</b> inferred across workspaces. Switch to <b>Northpeak (fresh)</b> to see first-run appear cleanly.`,
+  unavailable:`Fail-closed. Account context is not confirmed, so no tenant read is issued and no rows are invented. Verbatim posture from <code>growth2.tsx:58</code>. <span class="rv-tag t-live">live behavior today</span>`,
+  readonly:`A member without manage permission. Governed acts (<code>Create brief</code>, approvals, brief writes) are <b>gone, not disabled-and-teasing</b>, and the server refuses independently. Mirrors <code>workspace.canManage</code>, already used by Pipeline. <span class="rv-tag t-live">live read today</span>`,
+};
+
+/* ── render helpers ───────────────────────────────────────────────────────────────────────── */
+const el=id=>document.getElementById(id);
+const esc=(s)=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const truth=(s)=>`<span class="campaigns-truth campaigns-truth--${s.toLowerCase()}">${s}</span>`;
+const stateChip=(k)=>{const s=STATE[k]||STATE.unavail;return `<span class="loop-state ${s.cls}"><span class="sd"></span>${s.label}</span>`;};
+const phaseMap={idea:['Idea','st-planned'],planning:['Planning','st-partial'],building:['Building','st-partial'],awaiting:['Awaiting approval','st-await'],active:['Active','st-ready'],paused:['Paused','st-unavail'],completed:['Completed','st-ready'],blocked:['Blocked','st-blocked'],unavailable:['Unavailable','st-unavail']};
+function phasePill(p){const [lbl,cls]=phaseMap[p]||['—','st-unavail'];return `<span class="phasepill ${cls}"><span class="sd"></span>${lbl}</span>`;}
+const routeChip=(owner)=>`<span class="rroute">Open ${owner} ${svg(ICON.arrow,12)}</span>`;
+
+function briefs(){
+  if(S.ws==='northpeak') return [];
+  let list=meridianBriefs();
+  if(S.scenario==='one') list=[list[1]];
+  if(S.scenario==='blocked'){list=meridianBriefs();list[4]={id:'br5',name:'Discovery-call revival',phase:'blocked',
+    objective:'Re-engage 40 dormant discovery-call no-shows.',offer:'Free Strategy Call',audience:'Dormant leads (90d+)',
+    channels:['Email','SMS'],next:'Connect a messaging provider in Social to send the follow-up.',
+    blocker:'Follow-up path unavailable — no connected messaging provider.',updated:'4h ago',source:'Owner brief · blocked on a provider',
+    contentNote:'Sequence drafted in Vibe Studio, ready.',pipelineNote:'Routed to the “Revival” pipeline; deal count reads live from Pipeline.',
+    approvals:'ready',approvalNote:'Blocked before any governed action is reached.',
+    loop:{offer:'ready',audience:'partial',content:'ready',distribution:'blocked',conversations:'blocked',pipeline:'ready',outcome:'unavail'}};}
+  if(S.scenario==='approval'){list=meridianBriefs();list[0]={...list[0],phase:'awaiting',
+    next:'Approve the launch email Paige prepared — or send it back with changes.',
+    approvals:'await',approvalNote:'1 governed action awaiting you: “Send the launch email to the warm list.”',
+    source:'Owner brief · 1 action awaiting approval',
+    loop:{...list[0].loop,conversations:'await'}};}
+  return list;
+}
+function filtered(list){
+  return list.filter(c=>{
+    if(S.filters.phase!=='all' && c.phase!==S.filters.phase) return false;
+    if(S.filters.q && !(c.name+' '+c.objective).toLowerCase().includes(S.filters.q.toLowerCase())) return false;
+    if(S.filters.src!=='all'){
+      // "Source state" is derivable and honest: a brief is live-backed if any loop stage reads from a
+      // real source (ready/partial); otherwise it is all planned/setup/unavailable.
+      const hasLive=Object.values(c.loop).some(v=>v==='ready'||v==='partial');
+      if(S.filters.src==='live' && !hasLive) return false;
+      if(S.filters.src==='unavail' && hasLive) return false;
+    }
+    return true;
+  });
+}
+
+/* command line — plain English, derived from the briefs, honest ----------------------------- */
+function commandLine(list){
+  if(!list.length) return `Nothing is in motion yet. <b class="move">Start a campaign brief</b> to give this workspace its first initiative.`;
+  const moving=list.filter(c=>['building','active','awaiting'].includes(c.phase)).length;
+  const blocked=list.filter(c=>c.phase==='blocked'||c.blocker).length;
+  const awaiting=list.filter(c=>c.phase==='awaiting').length;
+  let parts=[];
+  parts.push(`<span class="moving">${moving} moving</span>`);
+  if(blocked) parts.push(`<span class="blocked">${blocked} blocked</span>`);
+  const nextC=list.find(c=>c.phase==='awaiting')||list.find(c=>c.phase==='blocked')||list.find(c=>c.blocker)||list.find(c=>c.phase==='building')||list[0];
+  let move;
+  if(awaiting) move=`Highest-value move: <b class="move">approve the action waiting on ${nextC.name}</b>.`;
+  else if(blocked) move=`Highest-value move: <b class="move">clear the blocker on ${nextC.name}</b> — ${nextC.blocker}.`;
+  else move=`Highest-value move: <b class="move">${nextC.next}</b>`;
+  return `${parts.join(' · ')} across ${list.length} initiative${list.length>1?'s':''}. ${move}`;
+}
+
+/* ── loop map (workspace scope, or a focused campaign) --------------------------------------- */
+function loopMap(list){
+  const focus=S.focusCampaign? list.find(c=>c.id===S.focusCampaign):null;
+  const scope=focus? `Campaign · <b>${focus.name}</b>` : `Workspace scope`;
+  const cells=LOOP.map(seg=>{
+    let stKey;
+    if(focus){ stKey=focus.loop[seg.k]; }
+    else {
+      // workspace scope: derive from real source posture + provider scenario
+      stKey=seg.srcState;
+      if((seg.k==='distribution'||seg.k==='conversations')) stKey='unavail';
+      if(seg.k==='pipeline' && S.scenario==='source-fail') stKey='blocked';
+    }
+    const st=STATE[stKey]||STATE.unavail;
+    const failed=(seg.k==='pipeline' && S.scenario==='source-fail');
+    const srcTxt=failed?'Read failed':seg.src;
+    const needTxt = failed? 'The pipeline read failed. Records unchanged.' :
+      (stKey==='ready'?'Source connected.':(stKey==='unavail'?seg.need:(stKey==='setup'?seg.need:seg.need)));
+    return `<div class="loop-seg">
+      <button class="loop-node" data-loop="${seg.k}" aria-label="${seg.name}: ${st.label}. Owned by ${seg.owner}.">
+        <span class="loop-ic ${st.cls}" style="background:var(--surface-sunk)">${svg(seg.ic,16)}</span>
+        <span class="loop-name">${seg.name}</span>
+        ${stateChip(stKey)}
+        <span class="loop-src">${srcTxt}</span>
+        <span class="loop-need">${needTxt} ${routeChip(seg.owner)}</span>
+      </button>
+      <span class="loop-arrow">${svg(ICON.arrow,15)}</span>
+    </div>`;
+  }).join('');
+  return `<section class="loop" aria-label="Growth-loop command map">
+    <div class="loop-head">
+      <span class="loop-ic st-partial" style="background:var(--surface-sunk)">${svg(ICON.route,16)}</span>
+      <div><h3>Growth-loop command map</h3><div class="sub">Offer → Audience → Content → Distribution → Conversations → Pipeline → Recorded outcome</div></div>
+      <div class="scope">${focus?`${svg(ICON.target,13)} ${scope} <button class="btn btn-s" data-act="clear-focus">Workspace scope</button>`:scope}</div>
+    </div>
+    <div class="loop-track">${cells}</div>
+  </section>`;
+}
+
+/* ── readiness fold-out ---------------------------------------------------------------------- */
+function readinessBlock(c){
+  const items=readinessFor(c).map(([label,stKey,owner,meta])=>{
+    const st=STATE[stKey]||STATE.unavail;
+    const routed=OWNER_ROUTE[owner];
+    return `<div class="rd-item">
+      <div class="rk">${label}</div>
+      <div class="rs ${st.cls}"><span class="sd"></span>${st.label}</div>
+      <div class="rmeta">${meta}</div>
+      ${routed?`<button class="rroute" data-route="${owner}">${owner==='Overview'?'Review here':'Open '+owner} ${svg(ICON.arrow,11)}</button>`:''}
+    </div>`;
+  }).join('');
+  return `<div class="rd">
+    <div class="rd-head">${svg(ICON.shield,15)}<h4>Launch readiness</h4>
+      <div class="note">Every item is sourced and routed. No score, no green-all. “Unavailable / needs confirmation” where the platform can’t know.</div></div>
+    <div class="rd-grid">${items}</div>
+  </div>`;
+}
+
+/* ── portfolio rows -------------------------------------------------------------------------- */
+function portfolioRow(c){
+  const open=S.openRow===c.id;
+  const facts=[];
+  facts.push(`<span class="pf-fact ${c.offer?'':'warn'}"><span class="fk">Offer</span>${c.offer||'None linked'}</span>`);
+  facts.push(`<span class="pf-fact ${c.audience?'':'dim'}"><span class="fk">Audience</span>${c.audience||'Not recorded'}</span>`);
+  if(c.channels.length) facts.push(`<span class="pf-fact"><span class="fk">Channels</span>${c.channels.join(' · ')}</span>`);
+  else facts.push(`<span class="pf-fact dim"><span class="fk">Channels</span>None configured</span>`);
+  if(c.blocker) facts.push(`<span class="pf-fact warn">${svg(ICON.alert,11)} ${c.blocker}</span>`);
+  if(c.mock) facts.push(`<span class="campaigns-truth campaigns-truth--mock">MOCK data</span>`);
+  const [ic,cls]=(phaseMap[c.phase]||['',''])[1]?[ICON.flag,(phaseMap[c.phase]||['','st-unavail'])[1]]:[ICON.flag,'st-unavail'];
+  return `<div class="pf-row ${open?'open':''}" data-row="${c.id}">
+    <div class="pf-main" data-rowmain="${c.id}" role="button" tabindex="0" aria-expanded="${open}" aria-label="${c.name}. ${c.objective}. Expand launch readiness.">
+      <span class="pf-phase ${cls}">${svg(c.phase==='active'?ICON.play:c.phase==='paused'?ICON.pause:c.phase==='blocked'?ICON.alert:c.phase==='awaiting'?ICON.clock:ICON.flag,17)}</span>
+      <div class="pf-id">
+        <div class="nm">${c.name} ${phasePill(c.phase)}</div>
+        <div class="obj">${c.objective}</div>
+        <div class="pf-facts">${facts.join('')}</div>
+      </div>
+      <div class="pf-end">
+        <div class="pf-next"><b>Next</b> ${c.next}</div>
+        <div class="row" style="gap:8px">
+          <button class="btn btn-s" data-dossier="${c.id}">Open dossier</button>
+          <span class="pf-caret">${svg(ICON.chev,16)}</span>
+        </div>
+      </div>
+    </div>
+    ${open?`<div class="pf-fold">${readinessBlock(c)}
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button class="btn btn-s" data-focus="${c.id}">${svg(ICON.route,13)} Focus loop map on this</button>
+        <button class="btn btn-s" data-dossier="${c.id}">${svg(ICON.eye,13)} Open dossier</button>
+        <button class="btn btn-s" data-ask="${c.id}">${svg(ICON.spark,13)} Ask PAIGE about this campaign</button>
+      </div></div>`:''}
+  </div>`;
+}
+
+/* ── work in motion (right column) ----------------------------------------------------------- */
+function workInMotion(list){
+  const items=[];
+  const awaiting=list.find(c=>c.phase==='awaiting');
+  if(awaiting) items.push(['await',ICON.clock,'Action awaiting your approval',`${awaiting.name}: “Send the launch email to the warm list.”`,'Owner brief · governed action (mock)']);
+  const building=list.find(c=>c.phase==='building');
+  if(building) items.push(['partial',ICON.edit,'Draft in progress',`${building.name}: landing pages in Vibe Studio, still in Draft.`,'LIVE read · growth_pages.status = draft']);
+  const blocked=list.find(c=>c.blocker);
+  if(blocked) items.push(['blocked',ICON.alert,'Blocked initiative',`${blocked.name}: ${blocked.blocker}`,'Owner brief · dependency unmet']);
+  // a real completed outcome only if we can source it — here, recorded payments (no attribution claim, no invented count)
+  if(S.ws==='meridian') items.push(['ready',ICON.check,'Recorded payments',`Payments read from Sales (bounded to the latest 50 records). No campaign attribution is claimed.`,'LIVE read · recorded payments']);
+  if(!items.length) items.push(['planned',ICON.dot,'Nothing queued yet','Real, attributable work appears here — a prepared brief, a pending approval, a queued item, a blocker, a completed outcome.','No attributable work on record']);
+  const rows=items.map(([st,ic,t,s,src])=>`<div class="wm">
+    <span class="wm-ic ${STATE[st].cls}" style="background:var(--surface-sunk)">${svg(ic,15)}</span>
+    <div><div class="wm-t">${t}</div><div class="wm-s">${s}</div><div class="wm-src">${src}</div></div>
+    ${st==='await'?`<button class="btn btn-s" data-dossier="${awaiting.id}">Review</button>`:''}
+  </div>`).join('');
+  return `<section class="pf" aria-label="Work in motion">
+    <div class="pf-head">${svg(ICON.pulse,16)}<h3>Work in motion</h3></div>
+    <div style="padding:12px 14px 14px"><div class="wm-list">${rows}</div>
+    <button class="btn btn-s" data-ask="workspace" style="margin-top:12px;width:100%;justify-content:center">${svg(ICON.spark,13)} Ask PAIGE to coordinate this campaign</button>
+    <p style="font-size:10.5px;color:var(--ink-3);line-height:1.5;margin-top:9px">PAIGE can recommend, prepare, and route. She does not launch campaigns, spend, publish, or send without a governed approval.</p>
+    </div>
+  </section>`;
+}
+
+/* ── command header -------------------------------------------------------------------------- */
+function header(all){
+  // The operating brief summarizes the WHOLE workspace, never the filtered subset, so hiding rows
+  // with a filter can never make the header contradict reality.
+  const canManage=!S.readonly;
+  return `<section class="cmd" aria-label="Campaign command">
+    <div class="cmd-brief">
+      <div>
+        <div class="eyebrow">${svg(ICON.bolt,13)} Campaign Command · Overview</div>
+        <div class="cmd-line">${commandLine(all)}</div>
+        <div class="cmd-meta">
+          <span><span class="dot" style="background:var(--ok)"></span>Live: Pipeline deals, published Vibe assets, recorded payments</span>
+          <span><span class="dot" style="background:var(--ink-3)"></span>Unavailable: campaign rollup, attribution, provider figures</span>
+          <span>${svg(ICON.refresh,11)} Sources checked just now</span>
+        </div>
+      </div>
+      <div class="cmd-actions">
+        ${canManage?`<button class="btn btn-g" data-act="new-brief">${svg(ICON.plus,14)} Create campaign brief</button>`:''}
+        <button class="btn" data-act="ask-plan">${svg(ICON.spark,14)} Ask Paige to plan a campaign</button>
+        <button class="btn" disabled title="No campaign calendar source is connected yet">${svg(ICON.cal,14)} Campaign calendar</button>
+        <span class="hint">Calendar/timeline appears when a real scheduling source is connected.</span>
+      </div>
+    </div>
+    <div class="cmd-tools">
+      <div class="cmd-search">${svg(ICON.search,15)}<input id="cmd-q" placeholder="Search campaigns, offers, objectives…" value="${S.filters.q}" aria-label="Search campaigns"></div>
+      <span class="filterchip"><label style="color:var(--ink-3);font-size:10px;text-transform:uppercase;letter-spacing:.06em">Phase</label>
+        <select id="f-phase">
+          <option value="all">All phases</option>
+          ${['idea','planning','building','awaiting','active','paused','completed','blocked'].map(p=>`<option value="${p}" ${S.filters.phase===p?'selected':''}>${(phaseMap[p]||[p])[0]}</option>`).join('')}
+        </select></span>
+      <span class="filterchip"><label style="color:var(--ink-3);font-size:10px;text-transform:uppercase;letter-spacing:.06em">Source state</label>
+        <select id="f-src"><option value="all" ${S.filters.src==='all'?'selected':''}>All</option><option value="live" ${S.filters.src==='live'?'selected':''}>Live-backed</option><option value="unavail" ${S.filters.src==='unavail'?'selected':''}>No live source</option></select></span>
+      <span class="filterchip is-off" title="Owner and channel filters need a campaign-object source that does not exist yet">${svg(ICON.lock,12)}<span class="lockmini">Owner · Channel · Date — available with a campaign source</span></span>
+      <button class="btn btn-s" data-act="refresh" style="margin-left:auto">${svg(ICON.refresh,13)} Refresh sources</button>
+    </div>
+  </section>`;
+}
+
+/* ── first-run ------------------------------------------------------------------------------- */
+function firstRun(){
+  const steps=[
+    ['1','Identify what you sell','Define your first offer — a product, service, program, or package. It becomes the thing a campaign points at.','Catalog'],
+    ['2','Choose a campaign objective','Pick the outcome this initiative is for: fill a cohort, book calls, renew retainers, grow the list.','Overview'],
+    ['3','Define the intended audience','Name the segment this reaches — a saved segment, or describe it and Paige drafts the rule.','Relationships'],
+    ['4','Choose the first distribution / content path','A landing page, a form, an email — created in Vibe Studio and routed into a pipeline.','Vibe Studio'],
+    ['5','Connect sources only when needed','Publishing and messaging providers connect in Social when a campaign actually needs them — not before.','Social'],
+  ];
+  return `<div class="fr">
+    <div class="fr-hero">
+      <div class="eyebrow">${svg(ICON.bolt,13)} Campaign Command · Overview</div>
+      <h2>Start your first growth initiative</h2>
+      <p>This workspace has no campaigns yet. A campaign here is a <b>brief you author</b> — an objective, an offer, an audience, and a path through the loop. Nothing is invented for you. Build the first one step by step, or ask Paige to draft it.</p>
+      <div class="fr-cta">
+        <button class="btn btn-g" data-act="new-brief">${svg(ICON.plus,14)} Create campaign brief</button>
+        <button class="btn" data-act="ask-plan">${svg(ICON.spark,14)} Ask Paige to plan a campaign</button>
+      </div>
+    </div>
+    <div class="fr-steps">
+      ${steps.map(([n,h,p,owner])=>`<div class="fr-step"><span class="n">${n}</span><h4>${h}</h4><p>${p}</p>${owner==='Overview'?`<button class="rroute" data-act="new-brief">Start here ${svg(ICON.arrow,12)}</button>`:`<button class="rroute" data-route="${owner}">Open ${owner} ${svg(ICON.arrow,12)}</button>`}</div>`).join('')}
+    </div>
+    <div class="loop" style="opacity:.92">
+      <div class="loop-head">${svg(ICON.route,15)}<div><h3>The loop you’re building toward</h3><div class="sub">Each stage lights up as its real source connects. Nothing here claims data you don’t have.</div></div></div>
+      <div class="loop-track">${LOOP.map(seg=>`<div class="loop-seg"><div class="loop-node" style="cursor:default"><span class="loop-ic st-planned" style="background:var(--surface-sunk)">${svg(seg.ic,16)}</span><span class="loop-name">${seg.name}</span>${stateChip('planned')}<span class="loop-src">${seg.owner}</span></div><span class="loop-arrow">${svg(ICON.arrow,15)}</span></div>`).join('')}</div>
+    </div>
+  </div>`;
+}
+
+/* ── the Overview body ----------------------------------------------------------------------- */
+function overviewBody(){
+  if(S.surface==='unavailable') return `<div class="campaigns-state">${truth('UNAVAILABLE')}<h2>Campaigns needs a resolved workspace</h2><p>No tenant data is read until your account context is confirmed. Nothing is inferred and no rows are invented.</p></div>`;
+  if(S.surface==='loading') return `<div class="desk"><div class="cmd" style="padding:16px 18px"><div class="campaigns-skeleton" style="padding:0"><span style="height:44px"></span></div></div><div class="campaigns-skeleton"><span></span><span></span><span></span></div></div>`;
+  if(S.surface==='first-run') return `<div class="desk">${firstRun()}</div>`;
+
+  const all=briefs();
+  const list=filtered(all);
+  let banner='';
+  if(S.scenario==='source-fail') banner=`<div class="err-band">${svg(ICON.alert,16)}<div><b>The pipeline workspace could not load.</b> Your records were not changed. The rest of the desk shows what did load; the Pipeline stage below is marked failed.</div><button class="btn btn-s" data-act="retry">${svg(ICON.refresh,13)} Retry</button></div>`;
+  if(S.scenario==='stale') banner=`<div class="err-band" style="border-color:var(--line);background:var(--surface-2);color:var(--ink-2)">${svg(ICON.clock,16)}<div><b>Some evidence is stale.</b> The published-assets read was last confirmed 6 days ago. Values below marked “needs confirmation” are shown, not hidden, and never presented as current.</div><button class="btn btn-s" data-act="refresh">${svg(ICON.refresh,13)} Re-check</button></div>`;
+  if(S.scenario==='provider-off') banner=`<div class="err-band" style="border-color:var(--line);background:var(--surface-2);color:var(--ink-2)">${svg(ICON.mega,16)}<div><b>No publishing or messaging provider is connected.</b> Distribution and Conversations can’t run until you connect one in Social. No follower, reach, queue, schedule, or placement figure is shown — none exists on this workspace.</div><button class="btn btn-s" data-route="Social">${svg(ICON.arrow,13)} Open Social</button></div>`;
+
+  const rows = list.length
+    ? list.map(portfolioRow).join('')
+    : `<div class="campaigns-state" style="min-height:150px">${truth('OWNER')}<h2>No campaigns match these filters</h2><p>Clear the filters, or create a brief. Campaign status is never inferred from partial or global records.</p><button class="btn btn-s" data-act="clear-filters">Clear filters</button></div>`;
+
+  return `<div class="desk">
+    ${header(all)}
+    ${banner}
+    ${loopMap(all)}
+    <div class="desk-grid">
+      <section class="pf" aria-label="Campaign portfolio">
+        <div class="pf-head">${svg(ICON.grid,16)}<h3>Campaign portfolio</h3><span class="count">${list.length} of ${all.length} shown</span></div>
+        ${rows}
+      </section>
+      ${workInMotion(list)}
+    </div>
+    <div style="text-align:center;font-size:10.5px;color:var(--ink-3);padding:2px 0 6px">Overview coordinates the campaign across Catalog, Sales, Pipeline, Social, Performance and Vibe Studio. It does not recreate them — every value routes to the surface that owns it.</div>
+  </div>`;
+}
+
+/* ── the Solo shell + campaigns tabs --------------------------------------------------------- */
+const NAV=[['paige','PAIGE',ICON.spark],['home','Command Center',ICON.bolt],['clients','Clients',ICON.users],['growth','Campaigns',ICON.mega],['analytics','Analytics',ICON.chart],['market','Marketplace',ICON.grid],['setup','Setup',ICON.shield]];
+const TABS=[['ov','Overview',ICON.bolt],['catalog','Catalog',ICON.grid],['sales','Sales',ICON.chart],['pipeline','Pipeline',ICON.trend],['social','Social',ICON.users],['performance','Performance',ICON.pulse]];
+
+function shell(){
+  const ws=WORKSPACES[S.ws];
+  // Mirrors SoloApp's --tcs-paige override (TenantCommandCenterShell.tsx:481) as a share of the
+  // simulated viewport: docked minmax(440px,34vw), expanded minmax(620px,52vw).
+  const paigeCol = S.paige==='off' ? '0px' : (S.paige==='expanded'?'clamp(440px,52%,620px)':'clamp(360px,34%,440px)');
+  const paigePane = S.paige==='off' ? '' : `<aside class="sh-paige">
+    <header><span class="mk">P</span><div><b style="font-size:12.5px;color:var(--ink)">PAIGE</b><div style="font-size:10px;color:var(--ink-3)">Your team, in one chat</div></div></header>
+    <div class="pbody">
+      <div class="pmsg">You’re on <b>Campaigns → Overview</b>. You have <b>${S.ws==='northpeak'?'no campaigns yet':'4 briefs'}</b>. Want me to draft a brief, or walk the loop with you?</div>
+      ${S.ws==='meridian'?`<div class="pmsg">Heads up: <b>Referral partner outreach</b> has no offer linked — that’s its one blocker. Want me to suggest one from Catalog?</div>`:''}
+    </div>
+    <div class="pfoot"><div class="fld">${svg(ICON.spark,14)} Ask Paige to plan, draft, or route a campaign…</div></div>
+  </aside>`;
+
+  return `<div class="sh" style="--paige-w:${paigeCol}">
+    <nav class="sh-rail" aria-label="Solo navigation">
+      <div class="sh-brand"><span class="mk">P</span><div><b>PAIGE</b><small>${ws.name.toUpperCase()}</small></div></div>
+      <div class="sh-nav">${NAV.map(([k,l,ic])=>`<button ${k==='growth'?'aria-current="page"':''}>${svg(ic,17)}<span>${l}</span></button>`).join('')}</div>
+      <div class="sh-foot">
+        <div class="sh-who"><i>${ws.who}</i><div><b>${ws.whoName}</b><small>${ws.role} · Solo</small></div></div>
+      </div>
+    </nav>
+    <main class="sh-main">
+      <div class="sh-top">
+        <div class="crumbs">Campaigns <span>${svg(ICON.chev,13)}</span> <b>Overview</b></div>
+        <span class="themeswatch">${svg(S.theme==='light'?ICON.spark:ICON.moon,13)} ${S.theme==='light'?'Mineral':'Obsidian'}</span>
+        <div class="sh-topact">
+          <button class="sh-topbtn" title="Command palette (⌘K)" tabindex="-1">${svg(ICON.search,15)}</button>
+          <button class="sh-topbtn" title="Refresh" tabindex="-1">${svg(ICON.refresh,15)}</button>
+        </div>
+      </div>
+      <div class="solo-campaigns" data-campaigns-view="ov">
+        <div class="campaigns-nav">
+          <div class="campaigns-tabs" role="tablist" aria-label="Campaigns views">
+            ${TABS.map(([k,l,ic])=>`<button role="tab" aria-selected="${k==='ov'}" tabindex="${k==='ov'?0:-1}" ${k!=='ov'?'data-tab="'+k+'"':''}>${svg(ic,14)}<span>${l}</span></button>`).join('')}
+          </div>
+          <div class="campaigns-truth-key" aria-label="Capability truth labels">${truth('LIVE')}${truth('PARTIAL')}${truth('PROPOSED')}${truth('UNAVAILABLE')}</div>
+          <button class="btn btn-s btn-p campaigns-studio" tabindex="-1">${svg(ICON.spark,13)} Vibe Studio</button>
+        </div>
+        <div class="campaigns-scroll" id="scroll" role="tabpanel" aria-label="Overview">${overviewBody()}</div>
+      </div>
+    </main>
+    ${paigePane}
+  </div>`;
+}
+
+/* ── DRAWERS: dossier + brief builder (pinned to viewport) ----------------------------------- */
+function dossierDrawer(c){
+  const rd=readinessFor(c);
+  return `<div class="dw-scrim" data-close="1"></div>
+  <aside class="dw" role="dialog" aria-modal="true" aria-labelledby="dw-title" id="dw">
+    <header>
+      <div><div class="eyebrow">Campaign dossier</div><h2 id="dw-title">${c.name}</h2><div class="sub">${(phaseMap[c.phase]||['—'])[0]} · updated ${c.updated}</div></div>
+      <button class="btn btn-icon" data-close="1" aria-label="Close dossier" id="dw-x">${svg(ICON.x,15)}</button>
+    </header>
+    <div class="dw-body">
+      <div class="dw-sec"><h4>Brief</h4><div class="dw-note">${c.objective}</div></div>
+      <div class="dw-sec"><h4>Audience &amp; offer</h4>
+        <div class="dw-kv">
+          <div class="r"><span class="k">Linked offer</span><span class="v ${c.offer?'':'dim'}">${c.offer||'None linked'}</span></div>
+          <div class="r"><span class="k">Audience</span><span class="v ${c.audience?'':'dim'}">${c.audience||'Not recorded'}</span></div>
+          <div class="r"><span class="k">Channels</span><span class="v ${c.channels.length?'':'dim'}">${c.channels.join(' · ')||'None configured'}</span></div>
+          <div class="r"><span class="k">Phase</span><span class="v">${(phaseMap[c.phase]||['—'])[0]}</span></div>
+          <div class="r"><span class="k">Source</span><span class="v dim">${c.source}</span></div>
+        </div>
+      </div>
+      ${c.blocker?`<div class="dw-note" style="border-color:var(--bad);background:var(--bad-tint);color:var(--bad)">${svg(ICON.alert,13)} Blocker: ${c.blocker}</div>`:''}
+      <div class="dw-sec"><h4>Launch readiness</h4>${readinessBlock(c)}</div>
+      <div class="dw-sec"><h4>Source-linked evidence</h4>
+        <div class="dw-links">
+          <button class="dw-link" data-route="Pipeline">${svg(ICON.trend,14)} ${c.pipelineNote} <span class="rroute">Pipeline ${svg(ICON.arrow,11)}</span></button>
+          <button class="dw-link" data-route="Vibe Studio">${svg(ICON.spark,14)} ${c.contentNote} <span class="rroute">Vibe ${svg(ICON.arrow,11)}</span></button>
+          <button class="dw-link" data-route="Sales / Performance">${svg(ICON.chart,14)} Attribution: no order names a campaign. Revenue is never attributed here. <span class="rroute">Performance ${svg(ICON.arrow,11)}</span></button>
+        </div>
+      </div>
+      <div class="dw-sec"><h4>Decision &amp; approval</h4>
+        <div class="dw-note" style="${c.approvals==='await'?'border-color:var(--warn);background:var(--warn-tint)':''}">
+          ${c.approvals==='await'?svg(ICON.clock,13)+' ':''}${c.approvalNote}
+        </div>
+      </div>
+    </div>
+    <div class="dw-foot">
+      ${c.approvals==='await' && !S.readonly?`<button class="btn btn-g" data-act="approve-action">${svg(ICON.check,14)} Approve action</button><button class="btn" data-act="send-back">Send back with changes</button>`:''}
+      ${!S.readonly?`<button class="btn" data-act="edit-brief" data-brief="${c.id}">${svg(ICON.edit,13)} Edit brief</button>`:`<span style="font-size:11px;color:var(--ink-3);display:inline-flex;gap:6px;align-items:center">${svg(ICON.lock,12)} Read-only — editing is unavailable for this role.</span>`}
+      <button class="btn" data-ask="${c.id}" style="margin-left:auto">${svg(ICON.spark,13)} Ask PAIGE about this</button>
+    </div>
+  </aside>`;
+}
+
+const BB_STAGES=['Name & objective','Offer','Audience','Outcome','Channels','Timing & budget','Content needs','Conversion & follow-up','Success evidence'];
+function briefBuilder(){
+  const st=S.briefStage;
+  const b=S.brief||{};
+  const chips=BB_STAGES.map((s,i)=>`<button class="bb-chip" data-bstage="${i}" data-done="${i<st}" aria-current="${i===st}">${i<st?svg(ICON.check,11):''}${s}</button>`).join('');
+  let body='';
+  if(st===0) body=`
+    <div class="bb-field"><label>Campaign name <span class="req">Required</span></label><input id="bf-name" value="${esc(b.name)}" placeholder="e.g. Spring Masterclass launch"></div>
+    <div class="bb-field"><label>Objective <span class="req">Required</span></label><textarea id="bf-obj" placeholder="The measurable outcome — fill a cohort, book 10 calls, renew the retainers…">${esc(b.obj)}</textarea><span class="help">Plain English. This becomes the “what is this for” the whole loop points at.</span></div>`;
+  else if(st===1) body=`
+    <div class="bb-field"><label>Linked offer <span class="opt">Optional now</span></label>
+      <select id="bf-offer"><option value="">Choose a real offer from Catalog…</option><option ${b.offer==='Advisory Systems Masterclass'?'selected':''}>Advisory Systems Masterclass</option><option ${b.offer==='Fractional Advisory Retainer'?'selected':''}>Fractional Advisory Retainer</option><option ${b.offer==='Free Strategy Call'?'selected':''}>Free Strategy Call</option></select>
+      <span class="help">Offers come from <b>Catalog</b> — this list is your real product records.</span></div>
+    <div class="bb-link">${svg(ICON.plus,13)} No offer yet? Create one in Catalog. <button class="rroute" data-route="Catalog">Open Catalog ${svg(ICON.arrow,11)}</button></div>`;
+  else if(st===2) body=`
+    <div class="bb-field"><label>Target audience</label><input id="bf-aud" value="${esc(b.aud)}" placeholder="A saved segment, or describe who this reaches"><span class="help">Segments come from <b>Relationships</b>. Describe it and Paige can draft the rule — sizing stays honest (unsized if a clause isn’t live).</span></div>
+    <div class="bb-field"><label>Positioning</label><textarea placeholder="The angle — why this audience, why now.">${esc(b.pos)}</textarea></div>`;
+  else if(st===3) body=`
+    <div class="bb-field"><label>Desired business outcome</label><textarea placeholder="What changes for the business if this works.">${esc(b.outcome)}</textarea></div>`;
+  else if(st===4) body=`
+    <div class="bb-field"><label>Channels / tactics</label>
+      <div class="chips-pick">
+        <button aria-pressed="${(b.ch||[]).includes('Landing page')}" data-ch="Landing page">Landing page</button>
+        <button aria-pressed="${(b.ch||[]).includes('Email')}" data-ch="Email">Email</button>
+        <button aria-pressed="${(b.ch||[]).includes('Form')}" data-ch="Form">Form</button>
+        <button aria-pressed="false" disabled title="No connected social provider">${svg(ICON.lock,11)} Social publishing</button>
+        <button aria-pressed="false" disabled title="No connected messaging provider">${svg(ICON.lock,11)} SMS</button>
+      </div>
+      <span class="help warn">Social publishing and SMS are disabled until a provider is connected in Social — the brief never pretends a channel is ready.</span></div>`;
+  else if(st===5) body=`
+    <div class="bb-field"><label>Timing</label><input type="text" placeholder="e.g. Launch April 8, close April 22" value="${esc(b.timing)}"></div>
+    <div class="bb-field"><label>Budget target <span class="opt">Optional</span></label><input id="bf-budget" placeholder="e.g. $500" value="${esc(b.budget)}">
+      <span class="help warn">This is a target you’re setting — <b>not</b> actual ad spend, a forecast, or connected media buying. Real spend needs a connected ad provider, which doesn’t exist yet.</span></div>`;
+  else if(st===6) body=`
+    <div class="bb-field"><label>Content / source-material needs</label><textarea placeholder="What creative this needs — a page, a funnel, a form, an email sequence.">${esc(b.content)}</textarea>
+      <span class="help">Creative is made in <b>Vibe Studio</b>. This just records what’s needed.</span></div>
+    <div class="bb-link">${svg(ICON.spark,13)} Create the creative in Vibe Studio <button class="rroute" data-route="Vibe Studio">Open Studio ${svg(ICON.arrow,11)}</button></div>`;
+  else if(st===7) body=`
+    <div class="bb-field"><label>Conversion destination</label><input placeholder="Where the audience lands — a page, a form, a booking." value="${esc(b.dest)}"></div>
+    <div class="bb-field"><label>Follow-up path</label><input placeholder="How you follow up — 1:1, sequence, call" value="${esc(b.follow)}">
+      <span class="help">Automated follow-up needs a connected messaging provider. Until then, follow-up is manual and the brief says so.</span></div>`;
+  else body=`
+    <div class="bb-field"><label>Success evidence / measurement plan</label><textarea placeholder="How you’ll know it worked — recorded payments, deals moved, seats filled.">${esc(b.success)}</textarea>
+      <span class="help">Only sources that exist can measure it. Cross-campaign attribution isn’t available yet, so name the concrete evidence you’ll check.</span></div>
+    <div class="dw-note">Review: “${esc(b.name)||'Untitled brief'}” — ${esc(b.obj)||'no objective yet'}. Saving files this as a <b>draft</b> on this workspace. Nothing is launched, sent, or published.</div>`;
+
+  const saveEcho = S.save==='saving'?`<span class="bb-save saving">${svg(ICON.refresh,13)} Saving draft…</span>`:
+    S.save==='saved'?`<span class="bb-save ok">${svg(ICON.check,13)} Draft saved to this workspace.</span>`:
+    S.save==='error'?`<span class="bb-save err">${svg(ICON.alert,13)} Couldn’t save. Nothing was changed. <button class="btn btn-s" data-act="save-retry">Retry</button></span>`:'';
+
+  return `<div class="dw-scrim" data-close="1"></div>
+  <aside class="dw" role="dialog" aria-modal="true" aria-labelledby="bb-title" id="dw">
+    <header>
+      <div><div class="eyebrow">${b.id?'Edit brief':'New campaign brief'}</div><h2 id="bb-title">${esc(b.name)||'Untitled campaign'}</h2><div class="sub">Step ${st+1} of ${BB_STAGES.length} · ${BB_STAGES[st]}</div></div>
+      <button class="btn btn-icon" data-close="1" aria-label="Cancel and close" id="dw-x">${svg(ICON.x,15)}</button>
+    </header>
+    <div class="dw-body">
+      <div class="bb-stages">${chips}</div>
+      ${body}
+    </div>
+    <div class="dw-foot">
+      <button class="btn" data-act="bb-prev" ${st===0?'disabled':''}>Back</button>
+      ${st<BB_STAGES.length-1?`<button class="btn btn-p" data-act="bb-next">Continue</button>`:''}
+      <span style="margin-left:auto"></span>
+      ${saveEcho||`<button class="btn" data-act="bb-save-draft">${svg(ICON.doc,13)} Save draft</button>${st===BB_STAGES.length-1?`<button class="btn btn-g" data-act="bb-review">${svg(ICON.check,14)} Request review</button>`:''}`}
+    </div>
+  </aside>`;
+}
+
+/* ── mount ──────────────────────────────────────────────────────────────────────────────────── */
+let lastFocus=null;
+function render(){
+  const app=el('app');
+  app.setAttribute('data-theme', S.theme==='dark'?'dark':'');
+  app.setAttribute('data-rm', S.rm?'1':'0');
+  app.style.setProperty('--rail-w', (S.vp.startsWith('900')||S.vp.startsWith('1024'))?'72px':'232px');
+  // rail compaction below ~1080 — mirror the shipped behavior note
+  let html=shell();
+  if(S.drawer==='dossier' && S.drawerCampaign){ const c=briefs().find(x=>x.id===S.drawerCampaign); if(c) html+=dossierDrawer(c); }
+  if(S.drawer==='brief'){ html+=briefBuilder(); }
+  if(S.toast) html+=`<div class="toast ${S.toast.k}" role="status"><span class="ti">${svg(S.toast.k==='ok'?ICON.check:S.toast.k==='err'?ICON.alert:ICON.spark,15)}</span>${S.toast.msg}</div>`;
+  app.innerHTML=html;
+  wire();
+  // Focus management for drawers. innerHTML replace drops the focused node every render, so recover
+  // focus INTO the drawer whenever it is not already there — that both auto-focuses on open and
+  // keeps focus inside the drawer after an in-drawer re-render (channel chip, stage step), so the
+  // Tab trap is never defeated by focus falling to <body>.
+  if(S.drawer){ const dw=el('dw'), x=el('dw-x'); if(x && dw && !dw.contains(document.activeElement)) x.focus(); }
+}
+/* focus trap — Tab cycles inside an open drawer only (the accessibility claim the shipped surface makes) */
+function trapTab(e){
+  if(e.key!=='Tab' || !S.drawer) return;
+  const dw=el('dw'); if(!dw) return;
+  const f=[...dw.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter(n=>n.offsetParent!==null);
+  if(!f.length) return;
+  const first=f[0], last=f[f.length-1];
+  if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+}
+
+function toast(msg,k='ok'){ S.toast={msg,k}; render(); clearTimeout(toast._t); toast._t=setTimeout(()=>{S.toast=null;render();}, S.rm?1200:2600); }
+function routeToast(owner){ toast(`Prototype: this routes into <b>${owner}</b>${OWNER_ROUTE[owner]&&OWNER_ROUTE[owner].startsWith('/')?` (<span class="mono">/solo/…${OWNER_ROUTE[owner]}</span>)`:''}. Overview coordinates; ${owner} owns the work.`, 'nav'); }
+function paige(ctx){ toast(`Prototype: opens the existing PAIGE chat with campaign context preserved (${ctx}). No second chat system is created.`, 'nav'); }
+
+function closeDrawer(){ S.drawer=null; S.drawerCampaign=null; S.brief=null; S.briefStage=0; S.save='idle'; S._forceSaveFail=false; render(); if(lastFocus&&lastFocus.isConnected){lastFocus.focus();} lastFocus=null; }
+
+function wire(){
+  // loop node routing
+  document.querySelectorAll('[data-loop]').forEach(b=>b.onclick=()=>{const seg=LOOP.find(s=>s.k===b.dataset.loop); routeToast(seg.owner);});
+  document.querySelectorAll('[data-route]').forEach(b=>b.onclick=(e)=>{e.stopPropagation(); routeToast(b.dataset.route);});
+  // portfolio expand
+  document.querySelectorAll('[data-rowmain]').forEach(m=>{
+    const id=m.dataset.rowmain;
+    m.onclick=(e)=>{ if(e.target.closest('[data-dossier]')||e.target.closest('[data-route]'))return; S.openRow=S.openRow===id?null:id; render(); };
+    m.onkeydown=(e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); S.openRow=S.openRow===id?null:id; render(); } };
+  });
+  document.querySelectorAll('[data-dossier]').forEach(b=>b.onclick=(e)=>{e.stopPropagation(); lastFocus=document.activeElement; S.drawer='dossier'; S.drawerCampaign=b.dataset.dossier; S._drawerFocused=false; render();});
+  document.querySelectorAll('[data-focus]').forEach(b=>b.onclick=()=>{ S.focusCampaign=b.dataset.focus; el('scroll').scrollTop=0; render(); });
+  document.querySelectorAll('[data-ask]').forEach(b=>b.onclick=(e)=>{e.stopPropagation(); paige(b.dataset.ask==='workspace'?'whole workspace':'one campaign');});
+  // acts
+  document.querySelectorAll('[data-act]').forEach(b=>b.onclick=(e)=>{e.stopPropagation(); act(b.dataset.act);});
+  // drawer close
+  document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeDrawer);
+  // brief builder stage chips + inputs
+  document.querySelectorAll('[data-bstage]').forEach(b=>b.onclick=()=>{ captureBrief(); S.briefStage=+b.dataset.bstage; render(); });
+  document.querySelectorAll('[data-ch]').forEach(b=>b.onclick=()=>{ S.brief=S.brief||{}; const ch=S.brief.ch||[]; const v=b.dataset.ch; S.brief.ch = ch.includes(v)?ch.filter(x=>x!==v):[...ch,v]; render(); });
+  // tabs (mock — Overview is the built one)
+  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>toast(`Prototype: “${b.querySelector('span').textContent}” is a sibling subtab, unchanged and owned by its team. This prototype builds Overview only.`,'nav'));
+  // search + filters
+  const q=el('cmd-q'); if(q) q.oninput=()=>{ S.filters.q=q.value; const s=el('scroll').scrollTop; renderKeepScroll(s); };
+  const fp=el('f-phase'); if(fp) fp.onchange=()=>{ S.filters.phase=fp.value; render(); };
+  const fs=el('f-src'); if(fs) fs.onchange=()=>{ S.filters.src=fs.value; render(); };
+}
+function renderKeepScroll(top){ render(); const sc=el('scroll'); if(sc) sc.scrollTop=top; const q=el('cmd-q'); if(q){ q.focus(); q.setSelectionRange(q.value.length,q.value.length);} }
+
+function captureBrief(){
+  S.brief=S.brief||{};
+  const g=(id)=>{const e=el(id); return e?e.value:undefined;};
+  if(g('bf-name')!==undefined) S.brief.name=g('bf-name');
+  if(g('bf-obj')!==undefined) S.brief.obj=g('bf-obj');
+  if(g('bf-offer')!==undefined) S.brief.offer=g('bf-offer');
+  if(g('bf-aud')!==undefined) S.brief.aud=g('bf-aud');
+  if(g('bf-budget')!==undefined) S.brief.budget=g('bf-budget');
+}
+
+function act(a){
+  if(a==='new-brief'){ lastFocus=document.activeElement; S.drawer='brief'; S.brief={}; S.briefStage=0; S.save='idle'; S._forceSaveFail=false; render(); return; }
+  if(a==='ask-plan'){ paige('plan a new campaign'); return; }
+  if(a==='refresh'||a==='retry'){ toast('Prototype: re-issues the tenant-scoped source reads. Records are never changed by a refresh.','nav'); return; }
+  if(a==='clear-filters'){ S.filters={phase:'all',src:'all',q:''}; render(); return; }
+  if(a==='clear-focus'){ S.focusCampaign=null; render(); return; }
+  if(a==='edit-brief'){ const c=briefs().find(x=>x.id===S.drawerCampaign); S.drawer='brief'; S.brief={id:c.id,name:c.name,obj:c.objective,offer:c.offer||'',aud:c.audience||''}; S.briefStage=0; S._drawerFocused=false; render(); return; }
+  if(a==='approve-action'){ closeDrawerToToast('ok','Prototype: routes through the existing governed approval path. Paige only acts after your yes — she never sends on her own.'); return; }
+  if(a==='send-back'){ closeDrawerToToast('nav','Prototype: returns the prepared action to Paige with your notes. Nothing was sent.'); return; }
+  if(a==='bb-next'){ captureBrief(); S.briefStage=Math.min(BB_STAGES.length-1,S.briefStage+1); render(); return; }
+  if(a==='bb-prev'){ captureBrief(); S.briefStage=Math.max(0,S.briefStage-1); render(); return; }
+  if(a==='bb-save-draft'||a==='bb-review'){ captureBrief();
+    if(!(S.brief&&S.brief.name&&S.brief.name.trim())){ S.briefStage=0; S.save='idle'; render(); toast('A brief needs a name before it can be saved.','err'); return; }
+    // demonstrate the honest save lifecycle: saving → (saved | error). Toggle error via scenario or random.
+    S.save='saving'; render();
+    const willFail = S._forceSaveFail===true;
+    setTimeout(()=>{ S.save=willFail?'error':'saved'; render(); if(!willFail){ setTimeout(()=>{ closeDrawer(); toast(a==='bb-review'?'Draft saved and sent for review (mock).':'Draft saved to this workspace (mock).','ok'); },700);} }, S.rm?200:850);
+    return; }
+  if(a==='save-retry'){ S._forceSaveFail=false; act('bb-save-draft'); return; }
+}
+function closeDrawerToToast(k,msg){ closeDrawer(); toast(msg,k); }
+
+/* ── apply a scenario ──────────────────────────────────────────────────────────────────────── */
+function applyScenario(sc){
+  S.scenario=sc; S.openRow=null; S.focusCampaign=null; S.drawer=null; S.drawerCampaign=null; S.brief=null; S.briefStage=0; S.save='idle'; S.readonly=false; S.surface='ready'; S._forceSaveFail=false; S._drawerFocused=false;
+  if(sc==='first-run'){ S.ws='northpeak'; S.surface='first-run'; }
+  else if(sc==='unavailable'){ S.surface='unavailable'; }
+  else if(sc==='loading'){ S.surface='loading'; }
+  else if(sc==='readonly'){ S.ws='meridian'; S.readonly=true; }
+  else if(sc==='workspace'){ S.ws='meridian'; }
+  else { if(S.ws==='northpeak' && sc!=='first-run') S.ws='meridian'; }
+  // scenario-specific openers
+  if(sc==='partial'){ S.ws='meridian'; S.openRow='br1'; }
+  if(sc==='blocked'){ S.ws='meridian'; S.openRow='br5'; S.focusCampaign='br5'; }
+  if(sc==='approval'){ S.ws='meridian'; }
+  if(sc==='active'){ S.ws='meridian'; S.openRow='br3'; }
+  if(sc==='dossier'){ S.ws='meridian'; S.drawer='dossier'; S.drawerCampaign='br1'; }
+  if(sc==='brief'){ S.ws='meridian'; S.drawer='brief'; S.brief={name:'Spring Masterclass launch',obj:'Fill the April cohort — 20 seats.'}; S.briefStage=5; S._forceSaveFail=true; }
+  // reflect ws select
+  el('c-ws').value=S.ws;
+  syncNote(); render();
+}
+function syncNote(){ el('c-note').innerHTML=NOTES[S.scenario]||''; document.querySelectorAll('#c-steps button').forEach(b=>b.setAttribute('aria-current', b.dataset.sc===S.scenario)); }
+
+/* ── build harness ─────────────────────────────────────────────────────────────────────────── */
+function buildSteps(){
+  el('c-steps').innerHTML=SCENARIOS.map(([sc,n,t,d])=>`<button data-sc="${sc}" role="tab" aria-current="${sc===S.scenario}"><i>${n}</i><span><b style="color:inherit">${t}</b></span></button>`).join('');
+  document.querySelectorAll('#c-steps button').forEach(b=>b.onclick=()=>applyScenario(b.dataset.sc));
+}
+
+/* viewport sizing */
+const VP={'1536x770':[1536,770],'1366x768':[1366,768],'1024x768':[1024,768],'900x1000':[900,1000]};
+function sizeVp(){
+  const [w,h]=VP[S.vp];
+  const stage=document.querySelector('.rv-stage');
+  const avail=stage.clientWidth-32, availH=stage.clientHeight-32-27; // minus cap
+  const scale=Math.min(1, avail/w, availH/h);
+  const frame=document.querySelector('.rv-frame');
+  frame.style.width=w+'px';
+  const vpEl=el('c-vp-el');
+  vpEl.style.width=w+'px'; vpEl.style.height=h+'px';
+  vpEl.style.containerType='inline-size'; vpEl.style.containerName='solo';
+  frame.style.transform=`scale(${scale})`; frame.style.transformOrigin='top center';
+  frame.style.marginBottom=(scale<1?`${-(h+27)*(1-scale)}px`:'0');
+  el('c-dim').textContent=`${w} × ${h}${scale<1?'  ·  '+Math.round(scale*100)+'%':''}`;
+}
+
+/* controls */
+el('c-th').onchange=e=>{S.theme=e.target.value; el('c-capt').textContent=S.theme==='light'?'Mineral (light)':'Obsidian (dark)'; render();};
+el('c-vp').onchange=e=>{S.vp=e.target.value; render(); sizeVp();};
+el('c-paige').onchange=e=>{S.paige=e.target.value; render(); sizeVp();};
+el('c-ws').onchange=e=>{ // workspace switch clears volatile UI state
+  S.ws=e.target.value; S.openRow=null; S.focusCampaign=null; S.drawer=null; S.drawerCampaign=null; S.brief=null; S.filters={phase:'all',src:'all',q:''}; S.save='idle';
+  if(S.ws==='northpeak'){ S.surface=(S.scenario==='unavailable'||S.scenario==='loading')?S.surface:'first-run'; } else if(S.surface==='first-run'){ S.surface='ready'; }
+  render();
+};
+el('c-rm').onclick=function(){S.rm=!S.rm;this.setAttribute('aria-pressed',S.rm);render();};
+el('c-kb').onclick=function(){S.kb=!S.kb;this.setAttribute('aria-pressed',S.kb);document.querySelector('.rv-frame').style.outline=S.kb?'2px dashed var(--rv-focus)':'none';toast(S.kb?'Keyboard notes on: Tab cycles the desk; a drawer traps focus and Esc closes it, restoring focus to the trigger.':'Keyboard notes off','nav');};
+['ap-a','ap-r','ap-x'].forEach(id=>el(id).onclick=function(){['ap-a','ap-r','ap-x'].forEach(x=>el(x).setAttribute('aria-pressed',x===id));el('ap-echo').textContent=`Decision: ${id==='ap-a'?'APPROVE':id==='ap-r'?'REVISE':'REJECT'} · ${el('ap-notes').value||'(no notes)'} — recorded locally in this prototype only.`;});
+
+/* global keyboard: Escape closes a drawer; Tab is trapped inside it */
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&S.drawer){ e.preventDefault(); closeDrawer(); return; } trapTab(e); });
+window.addEventListener('resize',sizeVp);
+
+/* boot */
+buildSteps(); syncNote(); render(); sizeVp();
+</script>
