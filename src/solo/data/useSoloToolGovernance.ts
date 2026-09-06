@@ -298,7 +298,12 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
       // but keep an authority-read ERROR distinct from a confirmed non-admin: presenting an unproven
       // "read-only" as fact is the same §13 dishonesty as a fabricated value.
       const [res, adminRes, ownerRes] = await Promise.all([
-        rpc("list_tool_autonomy"),
+        // Bind the catalogue read to the initiating workspace, exactly as the ceiling probe and every
+        // write do. list_tool_autonomy carries the same AUTONOMY_FORBIDDEN tenant-mismatch guard, so a
+        // stale read for workspace A that lands after a switch to B is REJECTED for a non-owner (rather
+        // than silently returning B's stored modes onto A's still-mounted surface, §9), and a
+        // platform-owner act-as read stays pinned to the tenant being viewed (§53).
+        rpc("list_tool_autonomy", { _tenant_id: expectedTenant }),
         rpc("is_current_user_tenant_admin"),
         rpc("is_platform_owner"),
       ]);

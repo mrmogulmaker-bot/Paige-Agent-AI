@@ -136,6 +136,15 @@ describe("useSoloToolGovernance — write authority + workspace binding (§70.1/
     expect(g.authorityUnconfirmed).toBe(true);    // but the surface says so + offers retry, not "read-only" as fact
   });
 
+  it("binds the CATALOGUE read (list_tool_autonomy) to the initiating workspace, so a stale cross-workspace read is server-rejected (§9)", async () => {
+    // list_tool_autonomy carries the same tenant-mismatch guard as the write path; passing the epoch is
+    // what lets a non-owner read for A that lands after a switch to B reject instead of showing B's modes.
+    wireRpc(() => ({ data: "auto", error: null }), { admin: true });
+    await mountAndSettle();
+    const listCall = harness.rpc.mock.calls.find((c) => c[0] === "list_tool_autonomy");
+    expect(listCall?.[1]).toMatchObject({ _tenant_id: "tenant-a" });
+  });
+
   it("binds the CEILING probe to the initiating workspace too, so a platform-owner act-as reads the tenant's real ceiling (§13)", async () => {
     // resolve_tool_autonomy does NOT pin a platform owner to current_user_tenant_id; a null tenant
     // there returns the 'confirm' fallback and misreports the ceiling. The probe must pass the epoch.

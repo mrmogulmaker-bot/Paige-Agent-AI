@@ -270,6 +270,22 @@ describe("TrustCompass — the governed surface runs, honest and accessible", ()
     expect(v.setDomainMode).toHaveBeenCalledWith("crm", "confirm");
   });
 
+  it("a keyboard user can normalise a MIXED domain to its displayed value with Enter — parity with the click (§36 #4)", async () => {
+    // Same mixed crm domain (create_contact=confirm, add_note=off) → displayed=confirm, mixed=true.
+    // Arrows/Home/End all move AWAY from the displayed value; Enter must commit it so keyboard users can
+    // normalise, matching the pointer click. (Space is also handled; Enter is asserted here.)
+    const v = govValue([row("crm_create_contact", "confirm"), row("crm_add_note", "off")]);
+    gov.value = v;
+    const h = draw(<TC accountEpoch="t1" />);
+    const knob = [...h.querySelectorAll('[role="slider"]')]
+      .find((s) => /CRM & client records/i.test(s.getAttribute("aria-label") ?? ""))!;
+    await act(async () => {
+      knob.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(v.setDomainMode).toHaveBeenCalledWith("crm", "confirm");
+  });
+
   it("serializes knob writes — a second change waits for the first, and the LAST value wins (§70.1 #1)", async () => {
     // A gated setDomainMode: the first write hangs until released, proving the second does not overlap.
     let release!: () => void;

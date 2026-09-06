@@ -228,7 +228,13 @@ const TcKnob=({value,max,onCommit,ariaLabel,onError,mixed})=>{
  },[maxRank,rank,mixed,drain]);
  const key=e=>{if(disabled)return;let r=shown;
   if(e.key==='ArrowRight'||e.key==='ArrowUp')r=shown+1;else if(e.key==='ArrowLeft'||e.key==='ArrowDown')r=shown-1;
-  else if(e.key==='Home')r=0;else if(e.key==='End')r=maxRank;else return;e.preventDefault();commit(r);};
+  else if(e.key==='Home')r=0;else if(e.key==='End')r=maxRank;
+  // Enter/Space commit the DISPLAYED value. On a mixed domain this normalises every underlying tool to
+  // the shown level (commit bypasses the equality no-op when mixed) — giving keyboard users the same
+  // normalise-to-current action pointer users get from a click, which the arrow/Home/End keys cannot
+  // express (they all move AWAY from the displayed value). On a settled knob it is a harmless no-op.
+  else if(e.key==='Enter'||e.key===' '||e.key==='Spacebar')r=shown;
+  else return;e.preventDefault();commit(r);};
  const S=React.useRef({});
  const down=e=>{if(disabled)return;S.current={x:e.clientX,r:shown};
   try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){/* setPointerCapture can throw in some browsers/jsdom; drag still works without capture */}
