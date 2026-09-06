@@ -2,7 +2,7 @@
 //
 // The edge function returns a STRUCTURED { code, reason, recommendation } body on a size/page/outage
 // failure (see supabase/functions/paige-ai-chat/index.ts — structuredChatError / preflight). This
-// reads that body so the three chat surfaces (PaigeAIChat, PaigeChat, FloatingChatbot) show the
+// reads that body so the dedicated chat surfaces (PaigeAIChat, PaigeChat) show the
 // SPECIFIC message — a 15 MB size limit reads differently from a general outage — instead of the old
 // generic "Failed to send message" toast that swallowed the server's real reason.
 //

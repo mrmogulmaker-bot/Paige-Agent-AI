@@ -169,7 +169,7 @@ the operator's OWN SMS line (PR #408, §9 seam). Store: `operator_conversations`
 | `landing/` | 18 | Marketing homepage sections |
 | `premium-motion/` | 14 | Animation/motion primitives |
 | `credit/` | 14 | Credit-intelligence UI (incl. `SoftPullAuthorizationCard` iSoftPull gate) |
-| `chat/` | 12 | Floating chat / conversational widgets (`MessageAudioButton` TTS play) |
+| `chat/` | 12 | Chat / conversational widgets (`MessageAudioButton` TTS play) |
 | `funding/` · `affiliates/` | 10 each | Funding matches/portfolio · affiliate tracking/apply |
 | `team/` | 8 | Team hub / `TeamViewToggle` (`TEAM_VIEW_ENABLED` gate) |
 | `funding-journey/` | 7 | Funding journey stepper |
@@ -180,7 +180,7 @@ the operator's OWN SMS line (PR #408, §9 seam). Store: `operator_conversations`
 | `analytics/`·`seo/`·`setup/`·`client/` | 2 each | Analytics widgets · MetaPixel/SEO · setup panels · client-portal bits |
 | `voice/`·`marketplace/`·`broker/`·`business/`·`brand/`·`security/`·`approvals/`·`notifications/` … | 1 each | Thin single-component feature areas |
 
-Loose top-level: `FloatingChatbot`, `PaigeCore`/`PaigeScene`/`PaigeHero3D`/`PaigePremiumFigure` (3D hero),
+Loose top-level: `PaigeCore`/`PaigeScene`/`PaigeHero3D`/`PaigePremiumFigure` (3D hero),
 `PlatformUpdateBanner`, `InstallPWA`, `ThemeToggle`, `PageTransition`.
 
 ---

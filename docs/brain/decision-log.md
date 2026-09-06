@@ -1,5 +1,48 @@
 # Decision Log — chronological one-liners
 
+- **ARCHITECTURE: floating Paige chat is RETIRED from the authenticated platform (owner decision 2026-09-06)** —
+  there must be NO floating Paige chat anywhere inside the authenticated platform (no Solo route, Command
+  Center, Clients, Campaigns, Settings, Marketplace, Analytics, tenant portal, mobile shell, or embedded
+  tenant surface). The ONLY tenant-aware Paige experience is the dedicated, authenticated Paige
+  chat/workspace and its explicitly-approved in-surface actions. **This supersedes the prior Slice-1
+  reach item to port the artifact card into a floating platform chat** — that item is REMOVED from the
+  delivery sequence, not owed (the FloatingChatbot port grounding — decision-log 2026-09-06, scout
+  ada5727dbf9f4e3ea — is now moot for the authenticated floating widget). Do not build, port, repair, or
+  render artifact cards in a floating platform chat. **A PUBLIC-website floating assistant may exist LATER
+  as a DIFFERENT product** — a public Product Guide, not Paige's tenant-aware operating chat: it must never
+  receive/retrieve/infer/cache/expose any tenant/workspace/client/contact/conversation/Vault/Mind/Rail/
+  Systems-Check/Pipeline/Campaigns data; no tenant-scoped tools, artifact gen, uploads/downloads, business
+  actions, account context, browser sessions, internal prompts, provider creds, or authenticated user
+  state; it cannot create/modify/send/schedule/execute anything in a tenant workspace; only a platform
+  OPERATOR configures its content/capabilities/routing/model/KB (a tenant owner/admin/member cannot
+  reprogram it), with strict authorization, durable audit, revision history, rollback, and fail-closed
+  behavior. If no safely-separated public-assistant implementation exists, it is **UNAVAILABLE** — never a
+  shortcut of stripping UI from the tenant chat, and never merged without separate final owner approval.
+  Immediate priority: safely retire the authenticated floating-chat path. Work tracked as task #14
+  (grounding scout a197694b4f6de6a14); Capability plan (`outputs/paige-at-cowork/09-...md`) and master §5
+  updated in the same change.
+
+- **Floating-chat retirement — independent context-isolation review = SHIP; findings folded (2026-09-06, PR #981)** —
+  the owner-required independent security review of the pushed diff (383de0fa) returned **SHIP, no blockers**:
+  removal complete/correct, dedicated Paige intact, the retired FAB carried own-row consumer PII (name/email/
+  phone/monthly_revenue/FICO, RLS-gated → a context-boundary leak, not a cross-tenant IDOR) into the tenant
+  `paige-ai-chat` backend while rendering allow-by-default on public + non-shell authenticated routes, so its
+  deletion is a real isolation win; the public Product Guide contract is sound; §58 loss is named not silent.
+  **Folded (verified vs source):** the MAJOR guard-completeness/§13-overclaim finding — the regression guard is
+  hardened to flag any global overlay (`document.body` portal OR `z-[99xx]` fixed FAB) reaching a Paige chat
+  backend inline OR via an imported chat-driver hook, scanning all non-test source, proven non-vacuous by an
+  in-file predicate self-test and false-positive-free on the clean tree (the dedicated shell portals to
+  `paigePortalHost`, not `document.body`); its comment now states honestly it is a backstop, not a proof. Clean
+  current-truth map fixes folded too: `docs/brain/codebase-map.md` + `docs/delivery/PAIGE-CHAT-DELIVERY-MAP.md`.
+  **TRACKED FOLLOW-UP (deferred, §66-honest — not rushed):** doctrine/spec reconciliation of
+  `docs/doctrine/tier-matrix.md` L1295/L1629 (historical sync_status + "five of six callers" echo arithmetic
+  naming `FloatingChatbot`) and `docs/product/agent-ui-placement-spec.md` L14/L140/L161 (spec partially
+  superseded by this decision; tied to the still-open client-portal dedicated-Paige question); plus two
+  comment-only stale `FloatingChatbot` references in `paige-ai-chat/index.ts` + `_shared/client-context.ts`
+  (kept out of this deploy-free UI+docs PR because `supabase/functions/**` edits trigger broad no-op edge
+  redeploys — belongs in an isolated backend commit). Still OWED: §32.c authenticated per-persona browser
+  confirmation to a browser-capable session (the removal is a compile-time fact the hardened guard re-guarantees).
+
 - **Campaigns → Overview redesigned as the Campaign Command Desk + a tenant-safe Campaign Brief
   foundation (2026-09-05, PR #970 — RC, pending merge approval)** — owner-approved the prototype
   (`docs/prototypes/campaigns-overview.html`), then built production. Replaces the "Campaign state
@@ -16,6 +59,7 @@
   master-doc §4 SHIPPED line + `docs/doctrine/tier-matrix.md` surface-ledger LIVE flip (§66 records LIVE,
   not RC) + CI persisted-apply proof (§32.a) + authenticated live Solo drive (§32.c, `Proof Owed`). Evidence:
   `docs/evidence/ui-delivery/campaigns-overview.md`.
+
 - **Business Game Plan — live-data corrections against authenticated prod (2026-09-05, follow-up to #952)** —
   the owner reviewed the shipped Solo default landing on real data (Mogul Maker Academy) and flagged five
   items; verified via authenticated Supabase queries (project xygzykjyynhzqytbqnzu) and fixed in the Game

@@ -130,10 +130,20 @@ matrix "depends-on: Sandbox" for U/Rs is therefore narrowed to "untrusted-exec h
 
 ### Slice 1 — Chat artifact creation + tenant-scoped storage, incl. image generation · **LARGELY LIVE → harden + reach + fill type-gaps**
 Build on: `generate_image`, `document_generate`, copy, pages/funnels/forms, `marketing_content` home,
-draft-until-applied. Net-new: a **download/export action** on the artifact card; render the artifact
-card on **all** chat surfaces (one today); **image→campaign routing**; the missing artifact types
-(campaign_brief · HTML email_template · video · social-schedule) as their own tracked sub-slices;
-regular-chat in-place refine. Each new type declares the artifact contract (§2).
+draft-until-applied. Net-new: a **download/export action** on the artifact card; **image→campaign
+routing**; the missing artifact types (campaign_brief · HTML email_template · video · social-schedule)
+as their own tracked sub-slices; regular-chat in-place refine. Each new type declares the artifact
+contract (§2).
+
+> **RETIRED by owner decision (2026-09-06):** the earlier Slice-1 item "render the artifact card on
+> **all** chat surfaces" is REMOVED. There must be NO floating Paige chat inside the authenticated
+> platform; the only tenant-aware Paige experience is the dedicated authenticated Paige chat/workspace,
+> which already renders the card. Do not port/repair/render artifact cards in a floating platform chat.
+> The remaining reach items (download/export, image→campaign routing, new types, in-place refine) belong
+> to the DEDICATED experience. A public-site Product Guide is a separate, tenant-isolated product (see
+> decision-log 2026-09-06; task #14) — not built here. **Receipt/creation hardening in the dedicated
+> Paige experience is the re-scoped Slice-1 focus** (§13/§70). Slice-1 receipt honesty shipped: #972 +
+> #974 (see §5).
 
 ### Slice 2 — Safe upload/download + file inspection · **LIVE (upload/inspect) + the injection fence is the net-new**
 Build on: `useChatDocumentUpload`, read-check + approve-to-apply extraction, `kb-ingest-file`,
