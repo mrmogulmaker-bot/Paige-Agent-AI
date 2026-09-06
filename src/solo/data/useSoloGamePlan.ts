@@ -34,7 +34,7 @@ import { useSoloKnowledge } from "./useSoloKnowledge";
 import { useSoloPendingActions } from "./useSoloPendingActions";
 import { useSoloActivityFeed, elapsedLabel, departmentLabel, type SoloActivityStatus } from "./useSoloActivityFeed";
 import { useSystemsCheck } from "@/hooks/useSystemsCheck";
-import { CHECK_DESTINATIONS } from "../systems-check-areas";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 /** Where a move or foundation item sends the owner. The COMPONENT maps this to a real route or
  *  to opening the one PAIGE conversation — the hook never emits a URL or an internal name. */
@@ -110,7 +110,8 @@ export interface SoloGamePlanView {
   empty: boolean;
   greeting: { name: string; dateLabel: string; salutation: string };
   narrative: string;
-  attention: Array<{ label: string; tone: ProofState }>;
+  /** Summary chips. Each carries the real surface that backs its claim so it can be opened (§36). */
+  attention: Array<{ label: string; tone: ProofState; destination: GamePlanDestination }>;
   bestMove: GamePlanMove | null;
   priorities: GamePlanMove[];
   foundation: FoundationItem[];
@@ -142,6 +143,23 @@ function severityRank(sev: string | null | undefined): number {
   }
 }
 
+/**
+ * The honest, action-safe TITLE for a failing systems-check move. `paige_interpretation` is owner-
+ * facing "STATE — next step" copy (e.g. "No payment processor declared yet — tell Paige which
+ * processor…"); the STATE clause before the dash is the true present state and makes a title that
+ * never asserts an unachieved goal (§13). Falls back to a neutral action title, never a raw
+ * check_name (corr #3).
+ */
+function checkStateTitle(interp: string | null | undefined): string {
+  const text = (interp || "").trim();
+  if (!text) return "Resolve a setup check";
+  // Split on the em/en dash separator the authored "STATE — next step" copy uses. NOT a bare spaced
+  // hyphen: a STATE clause may legitimately contain " - ", and truncating there would drop real state.
+  const state = text.split(/\s+[—–]\s+/)[0].trim();
+  if (state && state.length <= 90) return state;
+  return "Resolve a setup check";
+}
+
 export function useSoloGamePlan(account: string, workspaceId?: string | null): SoloGamePlanView {
   const cc = useCommandCenter();
   const setup = useSoloSetupBrief();
@@ -150,6 +168,25 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
   const pending = useSoloPendingActions();
   const checks = useSystemsCheck("tenant");
   const activity = useSoloActivityFeed(workspaceId);
+  const { activeTenant, activeTenantId, isPlatformStaff } = useTenantContext();
+
+  // §57 identity: the personal greeting belongs to the person WHOSE workspace this is. The
+  // signed-in user's name is only theirs to show when the active workspace is genuinely their own —
+  // otherwise an operator/super-admin viewing a tenant would see their OWN name pasted over someone
+  // else's HQ (the exact operator-name-over-another-tenant's-workspace mislabel the owner flagged).
+  //
+  // The reliable signal is NOT `owner_user_id`: it is NULL on prod for every sub-account and for
+  // some solo tenants, so keying on it would greet real owners "there" on their own workspace.
+  // Instead: RLS scopes a NON-staff user to only their OWN tenants, and platform staff are never
+  // auto-scoped into a tenant (they reach any tenant only by act-as / the operator switcher). So a
+  // non-staff viewer with an active workspace is, by construction, in their own workspace; a
+  // platform operator is not, and is greeted neutrally rather than with a borrowed identity (§13).
+  //
+  // KNOWN, HONEST LIMITATION (§13): an agency PARENT who switches into a sub-account's Solo shell is
+  // also non-staff, so they would be greeted by their own name over the child workspace. Because a
+  // sub-account carries no `owner_user_id`, distinguishing that case robustly needs a per-workspace
+  // owner seam (get_user_primary_tenant) not read here — documented, not silently assumed away.
+  const viewerOwnsWorkspace = !isPlatformStaff && !!activeTenantId;
 
   const refresh = useCallback(() => {
     cc.refresh();
@@ -276,13 +313,16 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
     const findings = Array.isArray(checks.findings) ? checks.findings : [];
     for (const f of findings) {
       if (f.status !== "fail") continue;
-      const dest = CHECK_DESTINATIONS[f.check_id as keyof typeof CHECK_DESTINATIONS];
       const blocking = f.severity_at_finding === "blocking";
       candidates.push({
         id: `check:${f.id}`,
-        // Neutral fallback title — never leak a raw engineering check_name (corr #3) for an
-        // unmapped id. `paige_interpretation` is owner-facing copy, safe to show.
-        title: dest?.title || "Resolve a system check",
+        // A FAILING check's title must describe the real state, never the achieved GOAL. The
+        // Systems Check `CHECK_DESTINATIONS.title` is a goal-state assertion ("You can take
+        // payment") — true only when the check PASSES, and misleading on a blocked/failing move
+        // (§13; the owner's payment-processor concern). `paige_interpretation` is owner-facing
+        // "STATE — next step" copy, so its STATE clause is the honest title; the full line stays
+        // as the reason. Never leak a raw engineering check_name (corr #3).
+        title: checkStateTitle(f.paige_interpretation),
         why: f.paige_interpretation || "This check needs attention before the work it guards can run.",
         owner: "you",
         proof: blocking ? "blocked" : "partial",
@@ -523,29 +563,46 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
 
   const greeting = useMemo(() => {
     const now = new Date();
+    // Greet by the signed-in person's name only when BOTH hold (§57/§13):
+    //  (1) they own this active workspace (viewerOwnsWorkspace), AND
+    //  (2) the name is a GENUINE personal name — not the business-name fallback.
+    // `cc.greeting.name` (useCommandCenter) resolves to `authName || activeTenant.name || "there"`, so
+    // when the signed-in owner has no display name it silently becomes the WORKSPACE name. Voicing the
+    // business name as if it were a person ("Good evening, <business>") is the same identity mislabel —
+    // so a name equal to the workspace name (or the neutral "there") is treated as "no personal name"
+    // and we greet neutrally rather than voice a business name as a person.
+    const ccName = (cc.greeting?.name || "").trim();
+    const workspaceName = (activeTenant?.name || "").trim();
+    const nameIsPersonal = !!ccName && ccName !== "there" && ccName !== workspaceName;
+    const name = viewerOwnsWorkspace && nameIsPersonal ? firstToken(ccName) : "there";
     return {
-      name: firstToken(cc.greeting?.name || "there"),
+      name,
       dateLabel: now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }),
       salutation: salutationFor(now),
     };
-  }, [cc.greeting?.name]);
+  }, [cc.greeting?.name, activeTenant?.name, viewerOwnsWorkspace]);
 
+  // Each summary chip carries the REAL surface that backs it, so a confident count is never a dead
+  // label — clicking it opens the supporting surface where the evidence lives (owner request, §36).
   const attention = useMemo(() => {
-    const chips: Array<{ label: string; tone: ProofState }> = [];
-    if (bestMove?.proof === "blocked") chips.push({ label: "1 move blocked", tone: "blocked" });
+    const chips: Array<{ label: string; tone: ProofState; destination: GamePlanDestination }> = [];
+    if (bestMove?.proof === "blocked")
+      chips.push({ label: "1 move blocked", tone: "blocked", destination: bestMove.destination });
     const n = cc.counts?.approvals ?? 0;
-    if (n > 0) chips.push({ label: `${n} draft${n === 1 ? "" : "s"} waiting`, tone: "live" });
+    if (n > 0)
+      chips.push({ label: `${n} draft${n === 1 ? "" : "s"} waiting`, tone: "live", destination: "paige" });
     const at = (cc.attention ?? {}) as AttentionLike;
     if ((at.at_risk_clients ?? 0) > 0)
-      chips.push({ label: `${at.at_risk_clients} client${at.at_risk_clients === 1 ? "" : "s"} at risk`, tone: "partial" });
+      chips.push({ label: `${at.at_risk_clients} client${at.at_risk_clients === 1 ? "" : "s"} at risk`, tone: "partial", destination: "clients" });
     if ((at.follow_ups_due ?? 0) > 0)
-      chips.push({ label: `${at.follow_ups_due} follow-up${at.follow_ups_due === 1 ? "" : "s"} due`, tone: "live" });
+      chips.push({ label: `${at.follow_ups_due} follow-up${at.follow_ups_due === 1 ? "" : "s"} due`, tone: "live", destination: "clients" });
     // Honest indicator that a priority signal is BLIND — present regardless of what else surfaced,
-    // so a failed read is never invisible behind an otherwise-confident brief (§13, peer-gate).
-    if (checks.isError) chips.push({ label: "Couldn't check your systems", tone: "partial" });
-    if (pending.error) chips.push({ label: "Couldn't load your drafts", tone: "partial" });
+    // so a failed read is never invisible behind an otherwise-confident brief (§13, peer-gate). It
+    // routes to the surface where the owner can re-check the failed read.
+    if (checks.isError) chips.push({ label: "Couldn't check your systems", tone: "partial", destination: "systems-check" });
+    if (pending.error) chips.push({ label: "Couldn't load your drafts", tone: "partial", destination: "paige" });
     return chips;
-  }, [bestMove?.proof, cc.counts?.approvals, cc.attention, checks.isError, pending.error]);
+  }, [bestMove?.proof, bestMove?.destination, cc.counts?.approvals, cc.attention, checks.isError, pending.error]);
 
   const signalsDegraded = !!checks.isError || !!pending.error;
   const narrative = useMemo(() => {
