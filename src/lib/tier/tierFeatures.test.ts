@@ -129,6 +129,17 @@ describe("§60 other load-bearing cells", () => {
     expect(hasFeature(AGENCY, "skills")).toBe(false);
   });
 
+  it("§60 trust_compass — SOLO-ONLY for now; sub-account DEFERRED (owner ruling 2026-09-06)", () => {
+    // The Command Center shell is universal, but its Trust Compass sub-tab is released to Solo
+    // only until an explicit sub-account release. Enterprise inherits it via the Solo union
+    // (harmless — enterprise renders a different shell). Sub-account, agency, god do NOT get it.
+    expect(hasFeature(SOLO, "trust_compass")).toBe(true);
+    expect(hasFeature(ENTERPRISE, "trust_compass")).toBe(true);
+    expect(hasFeature(SUB, "trust_compass")).toBe(false);
+    expect(hasFeature(AGENCY, "trust_compass")).toBe(false);
+    expect(hasFeature(GOD, "trust_compass")).toBe(false);
+  });
+
   it("enterprise is a superset of agency (never falls below it — even after the growth/studio split)", () => {
     const agencySet = getTierFeatureSet(AGENCY);
     const enterpriseSet = getTierFeatureSet(ENTERPRISE);

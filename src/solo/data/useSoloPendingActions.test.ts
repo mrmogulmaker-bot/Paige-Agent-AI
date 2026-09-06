@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { toPendingAction } from "./useSoloPendingActions";
+// @vitest-environment jsdom
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { toPendingAction, useSoloPendingActions } from "./useSoloPendingActions";
+
+const supa = vi.hoisted(() => ({ from: vi.fn() }));
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { from: supa.from } }));
 
 /**
  * The pure half of the pending-actions read — what a filed action is allowed to claim once the
@@ -55,5 +61,47 @@ describe("toPendingAction — a filed action must earn its modal", () => {
     expect(toPendingAction({ ...base, title: undefined })).toBeNull();
     expect(toPendingAction({ ...base, title: "   " })).toBeNull();
     expect(toPendingAction(null)).toBeNull();
+  });
+});
+
+// F1 (§9): the read is scoped to the VIEWED workspace, never widened by the global-admin operator
+// escape on pa_tenant_staff_read. A null workspace runs no query at all.
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+describe("useSoloPendingActions — tenant scoping (§9)", () => {
+  let root: Root | null = null;
+  afterEach(() => { act(() => root?.unmount()); root = null; supa.from.mockReset(); });
+
+  function build() {
+    const eqCalls: Array<[string, unknown]> = [];
+    const builder: Record<string, unknown> = {};
+    builder.select = () => builder;
+    builder.order = () => builder;
+    builder.eq = (col: string, val: unknown) => { eqCalls.push([col, val]); return builder; };
+    builder.limit = () => Promise.resolve({ data: [], error: null });
+    return { builder, eqCalls };
+  }
+
+  async function mount(tenantId: string | null) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    function Probe() { useSoloPendingActions(tenantId); return null; }
+    act(() => { root!.render(createElement(Probe)); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  }
+
+  it("constrains the query to the viewed tenant_id", async () => {
+    const { builder, eqCalls } = build();
+    supa.from.mockReturnValue(builder);
+    await mount("tenant-x");
+    expect(supa.from).toHaveBeenCalledWith("paige_actions");
+    // The scope filter must be present — without it the operator escape would surface other tenants.
+    expect(eqCalls).toContainEqual(["tenant_id", "tenant-x"]);
+  });
+
+  it("runs NO query when the workspace is unresolved (never an unscoped read)", async () => {
+    await mount(null);
+    expect(supa.from).not.toHaveBeenCalled();
   });
 });
