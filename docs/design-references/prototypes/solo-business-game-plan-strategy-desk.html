@@ -1,0 +1,1354 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap">
+<title>Business Game Plan — Strategy Desk</title>
+<style>
+/* ============================================================================
+   Business Game Plan — Solo Command Center STRATEGY-DESK reimagination.
+   Throwaway, read-only Flow-Prototype (§69/flow-prototype). Design/prototype
+   ONLY — no production src/schema/route/contract touched. Stop at Gate 1.
+
+   §00: this ports the ALREADY-SHIPPED, owner-approved `.paige-solo` design
+   system (src/solo/solo-tokens.css + solo-game-plan-workspace.css) VERBATIM —
+   it invents no visual direction. CC owns IA / states / source-honesty / a11y.
+   Every value carries a SOURCE-CLASS chip (fact / your direction / Paige
+   suggests / assumption / source unavailable / proof owed). All data is
+   FICTIONAL and labeled; the tenant "Clearpath Advisory" is a made-up,
+   universal consulting firm (§63 — never a real owner account). Gold is spent
+   ONLY on the one primary act.
+   ========================================================================== */
+
+/* ---- PRODUCT TOKENS — mirrored verbatim from src/solo/solo-tokens.css ---- */
+.paige-solo{
+  --font:'Geist','Söhne',-apple-system,'Segoe UI',sans-serif;
+  --mono:'Geist Mono',ui-monospace,monospace;
+  --canvas:#F6F5F1;--surface:#FFFFFF;--surface-2:#FBFAF7;--surface-sunk:#F0EEE8;
+  --line:#E5E1D8;--line-soft:#EFECE4;
+  --ink:#171331;--ink-2:#4A4566;--ink-3:#7E7995;--ink-inv:#FBFAF7;
+  --rail:#171331;--rail-2:#221C46;--rail-line:#332C5E;--rail-text:#C9C4E0;
+  --gold:#C9860C;--gold-bright:#E9A83A;--gold-tint:#FBF1DE;--gold-line:#EFDCB4;
+  --violet:#5B3FD6;--violet-2:#7A62E8;--violet-tint:#EEEAFD;--violet-line:#DAD1FA;
+  --ok:#1B7A52;--ok-tint:#E4F2EB;--warn:#B4700A;--warn-tint:#FBF0DD;--bad:#B93E37;--bad-tint:#FAE9E7;
+  --r-s:8px;--r-m:12px;--r-l:18px;--r-xl:26px;
+  --sh-1:0 1px 2px rgba(23,19,49,.05);
+  --sh-2:0 2px 4px rgba(23,19,49,.04),0 12px 28px -12px rgba(23,19,49,.14);
+  --sh-3:0 24px 60px -18px rgba(23,19,49,.28);
+}
+.paige-solo[data-theme="dark"]{
+  --canvas:#0C0A1B;--surface:#141129;--surface-2:#191637;--surface-sunk:#100D24;
+  --line:#282348;--line-soft:#221D3E;
+  --ink:#EFECFA;--ink-2:#B0AACB;--ink-3:#7D779A;--ink-inv:#141129;
+  --rail:#100D24;--rail-2:#1B1738;--rail-line:#282348;--rail-text:#B0AACB;
+  --gold:#E9A83A;--gold-bright:#F5C266;--gold-tint:#2C2211;--gold-line:#4A3A17;
+  --violet:#8A72F5;--violet-2:#A692FF;--violet-tint:#221C4A;--violet-line:#352C68;
+  --ok:#4CC48C;--ok-tint:#12301F;--warn:#E3A63C;--warn-tint:#2E2311;--bad:#EE7A72;--bad-tint:#331817;
+  --sh-1:0 1px 2px rgba(0,0,0,.3);
+  --sh-2:0 2px 4px rgba(0,0,0,.25),0 12px 28px -12px rgba(0,0,0,.5);
+  --sh-3:0 24px 60px -18px rgba(0,0,0,.6);
+}
+
+/* ---- REVIEW CHROME (separate, deliberately-single-look technical skin) ---- */
+:root{
+  --rv-bg:#0b0a12;--rv-panel:#14131f;--rv-panel-2:#1c1b2b;--rv-line:#2a2940;
+  --rv-text:#d7d4e6;--rv-text-2:#8f8bad;--rv-accent:#8A72F5;--rv-gold:#E9A83A;--rv-ok:#4CC48C;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--rv-bg);color:var(--rv-text);
+  font-family:'Geist','Söhne',-apple-system,'Segoe UI',sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  display:flex;flex-direction:column;min-height:100%;
+}
+.rv-topbar{
+  flex:0 0 auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:9px 15px;background:linear-gradient(180deg,#14131f,#100f18);
+  border-bottom:1px solid var(--rv-line);position:sticky;top:0;z-index:40;
+}
+.rv-brand{display:flex;align-items:center;gap:9px;padding-right:11px;border-right:1px solid var(--rv-line)}
+.rv-mark{width:23px;height:23px;border-radius:7px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--rv-accent),#5B3FD6);color:#fff;font-weight:800;font-size:12px}
+.rv-brand b{font-size:13px;letter-spacing:-.01em;display:block}
+.rv-brand span{font-size:10.5px;color:var(--rv-text-2)}
+.rv-group{display:flex;align-items:center;gap:6px}
+.rv-label{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--rv-text-2);margin-right:1px}
+.rv-seg{display:inline-flex;background:var(--rv-panel-2);border:1px solid var(--rv-line);border-radius:9px;padding:3px;gap:2px;flex-wrap:wrap}
+.rv-seg button{font:inherit;font-size:11.5px;color:var(--rv-text-2);background:none;border:0;padding:5px 8px;border-radius:6px;cursor:pointer;white-space:nowrap}
+.rv-seg button:hover{color:var(--rv-text)}
+.rv-seg button[aria-pressed="true"]{background:var(--rv-accent);color:#fff}
+.rv-seg button.rv-warn[aria-pressed="true"]{background:var(--rv-gold);color:#231a06}
+.rv-spacer{flex:1 1 auto;min-width:8px}
+.rv-note{font-size:11px;color:var(--rv-text-2);max-width:340px}
+.rv-note b{color:var(--rv-gold);font-weight:600}
+.rv-toggle{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:var(--rv-text-2);cursor:pointer;user-select:none}
+.rv-toggle input{accent-color:var(--rv-accent);width:15px;height:15px}
+.rv-linkbtn{font:inherit;font-size:11.5px;color:var(--rv-accent);background:none;border:1px solid var(--rv-line);border-radius:8px;padding:5px 9px;cursor:pointer}
+.rv-linkbtn:hover{background:var(--rv-panel-2)}
+.rv-topbar :focus-visible,.rv-stage :focus-visible{outline:2px solid var(--rv-accent);outline-offset:2px}
+
+.rv-stage{flex:1 1 auto;min-height:0;overflow:auto;padding:22px;display:grid;place-items:start center;
+  background:
+    radial-gradient(1200px 500px at 50% -10%, rgba(122,98,232,.10), transparent 60%),
+    repeating-linear-gradient(45deg,transparent,transparent 11px,rgba(255,255,255,.012) 11px,rgba(255,255,255,.012) 12px);
+}
+.rv-frame-wrap{display:flex;flex-direction:column;gap:9px;align-items:center}
+.rv-frame-meta{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--rv-text-2)}
+.rv-frame-meta .fd{width:6px;height:6px;border-radius:50%;background:var(--rv-accent)}
+.rv-device{border-radius:15px;overflow:hidden;background:#000;
+  box-shadow:0 40px 90px -30px rgba(0,0,0,.75),0 0 0 1px rgba(255,255,255,.06);
+  transition:width .3s cubic-bezier(.22,1,.36,1),height .3s cubic-bezier(.22,1,.36,1);}
+/* the app viewport — container-type makes the surface reflow to the SIMULATED device width
+   (not the real browser window), so the viewport switch faithfully shows responsive behavior. */
+.appviewport{width:100%;height:100%;overflow:hidden;background:var(--canvas);container-type:inline-size}
+
+/* ================= SOLO SHELL (minimal, faithful to SoloApp) ================= */
+.paige-solo{height:100%;display:flex;background:var(--canvas);color:var(--ink);
+  font-family:var(--font);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.paige-solo *{box-sizing:border-box}
+.paige-solo h1,.paige-solo h2,.paige-solo h3,.paige-solo h4{margin:0;font-weight:600;letter-spacing:-.02em;color:var(--ink)}
+.paige-solo p{margin:0}
+/* reset stays font/cursor only — must NOT set border/background (the element selector would
+   out-specify class rules and strip the gold act fill — the documented cascade collision). */
+.paige-solo button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer;border:0;background:none}
+.paige-solo a{color:var(--violet);text-decoration:none}
+/* the [hidden] attribute must win over component display rules (e.g. .pdock{display:flex}),
+   matching the Artifact host reset so the dock hides in the committed file too. */
+.paige-solo [hidden]{display:none!important}
+.paige-solo .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.paige-solo ::-webkit-scrollbar{width:9px;height:9px}
+.paige-solo ::-webkit-scrollbar-thumb{background:var(--line);border-radius:20px;border:3px solid transparent;background-clip:content-box}
+
+/* left nav rail (context only) */
+.snav{flex:0 0 auto;width:60px;background:var(--rail);border-right:1px solid var(--rail-line);
+  display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:4px;color:var(--rail-text)}
+.snav .logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;margin-bottom:8px;
+  background:linear-gradient(135deg,#7A62E8,#5B3FD6);color:#fff;font-weight:800;font-size:14px}
+.snav .nItem{width:40px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--rail-text);opacity:.72}
+.snav .nItem.active{background:rgba(255,255,255,.10);opacity:1;color:#fff}
+.snav .nItem svg{width:18px;height:18px}
+.snav .nspring{flex:1}
+@container (max-width:820px){.snav{display:none}}
+
+.smain{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+
+/* command-center tab strip — faithful to CommandHub's 4-surface order */
+.cctabs{flex:0 0 auto;display:flex;align-items:stretch;min-height:44px;
+  padding:0 clamp(14px,2.2vw,30px);gap:4px;background:var(--surface);border-bottom:1px solid var(--line)}
+.cctabs button{position:relative;display:inline-flex;align-items:center;gap:7px;border:0;padding:0 11px;
+  background:transparent;color:var(--ink-3);font-size:11.5px;font-weight:650;cursor:pointer;white-space:nowrap}
+.cctabs button .tdot{width:15px;height:15px;display:grid;place-items:center;color:currentColor}
+.cctabs button .tdot svg{width:15px;height:15px}
+.cctabs button[aria-selected="true"]{color:var(--ink)}
+.cctabs button[aria-selected="true"]::after{content:"";position:absolute;left:9px;right:9px;bottom:0;height:2px;background:var(--gold);border-radius:2px 2px 0 0}
+.cctabs button.reserved{color:var(--ink-3);opacity:.55;cursor:default}
+.cctabs button.reserved .rzz{font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--ink-3);border:1px dashed var(--line);border-radius:5px;padding:1px 4px}
+.cctabs button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;border-radius:6px}
+
+.deskhost{flex:1;min-height:0;min-width:0;display:flex;overflow:hidden}
+
+/* Paige dock (right) — the ONE authenticated Paige conversation, docked. Narrows the field when open. */
+.pdock{flex:0 0 340px;width:340px;min-height:0;display:flex;flex-direction:column;
+  background:linear-gradient(180deg,var(--rail),var(--rail-2));border-left:1px solid var(--rail-line);color:var(--rail-text)}
+@container (max-width:1120px){.pdock{flex-basis:300px;width:300px}}
+@container (max-width:900px){.pdock{display:none}}
+.pdock-hd{flex:0 0 auto;display:flex;align-items:center;gap:9px;padding:13px 15px;border-bottom:1px solid var(--rail-line)}
+.pdock-hd .pav{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:linear-gradient(135deg,#7A62E8,#5B3FD6);color:#fff;font-weight:800;font-size:12px}
+.pdock-hd b{color:#EFECFA;font-size:13px}
+.pdock-hd span{font-size:10.5px;color:var(--rail-text)}
+.pdock-hd .pcls{margin-left:auto;width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--rail-text)}
+.pdock-hd .pcls:hover{background:rgba(255,255,255,.08);color:#fff}
+.pdock-body{flex:1;min-height:0;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:11px}
+.pmsg{max-width:88%;padding:9px 11px;border-radius:12px;font-size:12.5px;line-height:1.5}
+.pmsg-p{align-self:flex-start;background:rgba(255,255,255,.06);color:#E4E1F2;border:1px solid var(--rail-line)}
+.pmsg-u{align-self:flex-end;background:var(--violet);color:#fff}
+.pmsg-lbl{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--rail-text);margin-bottom:3px}
+.pdock-foot{flex:0 0 auto;padding:12px 14px;border-top:1px solid var(--rail-line);display:flex;flex-direction:column;gap:9px}
+.pcompose{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid var(--rail-line);border-radius:11px;padding:9px 11px}
+.pcompose input{flex:1;min-width:0;background:none;border:0;color:#EFECFA;font:inherit;font-size:12.5px;outline:none}
+.pcompose input::placeholder{color:var(--rail-text)}
+.pcompose .psend{width:28px;height:28px;border-radius:8px;background:var(--violet);color:#fff;display:grid;place-items:center;flex:none}
+.pcompose .psend svg{width:15px;height:15px}
+/* the proposal-review card inside the dock */
+.prev{background:rgba(255,255,255,.05);border:1px solid var(--rail-line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:9px}
+.prev-hd{display:flex;align-items:center;gap:8px}
+.prev-hd .pr-ic{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;background:var(--violet-tint);color:var(--violet-2)}
+.prev-hd .pr-ic svg{width:14px;height:14px}
+.prev-hd b{color:#EFECFA;font-size:12.5px}
+.prev-prov{font-size:10.5px;color:var(--rail-text)}
+.prev-diff{font-size:12px;color:#D7D3EC;line-height:1.5;background:rgba(0,0,0,.18);border-radius:9px;padding:9px 10px;display:flex;flex-direction:column;gap:6px}
+.prev-diff .dl{display:flex;gap:7px}
+.prev-diff .dl .dm{flex:none;width:14px;font-weight:800}
+.prev-diff .dl.add .dm{color:var(--ok)}
+.prev-diff .dl.rm .dm{color:var(--bad)}
+.prev-diff .dl.rm span{opacity:.6;text-decoration:line-through}
+.prev-cta{display:flex;gap:7px;flex-wrap:wrap}
+
+/* ================= STRATEGY DESK ================= */
+.sd{flex:1;min-height:0;min-width:0;display:grid;grid-template-rows:auto auto minmax(0,1fr);
+  gap:12px;padding:14px clamp(14px,2.2vw,28px) 16px;overflow:hidden}
+.sd *{box-sizing:border-box}
+
+/* kicker + primary act */
+.sd-top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start}
+.sd-kicker{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);
+  display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+.sd-kicker .sep{opacity:.5}
+.sd-h1{font-size:clamp(18px,2vw,23px);letter-spacing:-.025em;margin-top:6px;text-wrap:balance}
+.sd-sub{font-size:12.5px;color:var(--ink-2);margin-top:3px;max-width:66ch;line-height:1.5}
+.sd-acts{display:flex;gap:8px;flex:none;flex-wrap:wrap;justify-content:flex-end}
+
+/* buttons (gp-btn parity; gold ONLY on .sd-act) */
+.sd-btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:10px;
+  font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  transition:background .15s,transform .12s,box-shadow .15s;white-space:nowrap}
+.sd-btn:hover{background:var(--surface-sunk)}
+.sd-btn:active{transform:translateY(1px)}
+.sd-btn svg{width:15px;height:15px}
+.sd-btn-sm{height:29px;padding:0 10px;font-size:12px;border-radius:9px}
+.sd-btn-quiet{background:transparent}
+.sd-act{background:var(--gold);border-color:var(--gold);color:#231703;box-shadow:0 1px 0 rgba(0,0,0,.05)}
+.paige-solo[data-theme="dark"] .sd-act{color:#20180a}
+.sd-act:hover{background:var(--gold-bright)}
+.sd-btn:focus-visible,.sd-act:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+
+/* horizon navigator */
+.sd-horizon{display:flex;align-items:center;gap:10px;min-width:0}
+.sd-hz-strip{display:flex;gap:3px;background:var(--surface-sunk);border-radius:11px;padding:3px;overflow-x:auto;min-width:0}
+.sd-hz-strip::-webkit-scrollbar{height:0}
+.sd-hz{flex:none;display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;
+  padding:6px 11px;border-radius:8px;color:var(--ink-3);white-space:nowrap;border:0;background:none;text-align:left}
+.sd-hz .hzt{font-size:12px;font-weight:650;color:inherit}
+.sd-hz .hzs{font-size:9.5px;font-weight:600;letter-spacing:.04em;color:var(--ink-3);opacity:.8}
+.sd-hz:hover{color:var(--ink)}
+.sd-hz[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--sh-1)}
+.sd-hz[aria-pressed="true"] .hzs{color:var(--violet)}
+.sd-hz:focus-visible{outline:2px solid var(--violet);outline-offset:1px}
+.sd-hz-meta{flex:none;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-3)}
+.sd-hz-meta .mlbl{font-weight:600;color:var(--ink-2)}
+@container (max-width:900px){.sd-hz-meta{display:none}}
+
+/* operating field: strategy spine | operating rail */
+.sd-field{display:grid;grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);gap:14px;min-height:0}
+.sd-col,.sd-rail{min-height:0;display:flex;flex-direction:column;gap:12px;overflow:auto;padding-right:2px}
+/* scroll-owner children keep their natural height (a card with overflow:hidden would otherwise be
+   crushed by flex-shrink when the column overflows) — the column scrolls instead. */
+.sd-col>*,.sd-rail>*{flex:0 0 auto}
+@container (max-width:1040px){
+  .sd-field{grid-template-columns:minmax(0,1fr);overflow:auto}
+  .sd-col,.sd-rail{overflow:visible}
+}
+
+/* cards */
+.sd-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);box-shadow:var(--sh-1)}
+.sd-card-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 15px 10px}
+.sd-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.sd-eyebrow svg{width:14px;height:14px}
+
+/* SOURCE-CLASS chips — the honesty vocabulary (every value carries one) */
+.sd-src{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:99px;
+  font-size:10px;font-weight:700;letter-spacing:.02em;white-space:nowrap;flex:none}
+.sd-src .sdd{width:5px;height:5px;border-radius:50%;background:currentColor}
+.sd-src-fact{background:var(--ok-tint);color:var(--ok)}
+.sd-src-dir{background:var(--violet-tint);color:var(--violet)}
+.sd-src-rec{background:var(--surface-sunk);color:var(--violet-2)}
+.sd-src-assume{background:var(--warn-tint);color:var(--warn)}
+.sd-src-unavail{background:var(--surface-sunk);color:var(--ink-3)}
+.sd-src-owed{background:transparent;border:1px dashed var(--line);color:var(--ink-3)}
+.sd-src-blocked{background:var(--bad-tint);color:var(--bad)}
+
+/* Plan Brief (the strategic spine's lead) */
+.sd-brief{border:1px solid var(--violet-line);box-shadow:var(--sh-2);position:relative;overflow:hidden}
+.sd-brief::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,var(--violet),var(--violet-2),transparent)}
+.sd-brief-in{padding:14px 16px 15px;display:flex;flex-direction:column;gap:11px}
+.sd-brief-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.sd-approved{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--ok)}
+.sd-approved svg{width:13px;height:13px}
+.sd-brief h2{font-size:clamp(16px,1.7vw,20px);letter-spacing:-.02em;text-wrap:balance;line-height:1.25}
+.sd-brief .bd-outcome{font-size:13px;color:var(--ink-2);line-height:1.5;display:flex;gap:8px;align-items:flex-start}
+.sd-brief .bd-outcome svg{width:16px;height:16px;flex:none;color:var(--violet);margin-top:2px}
+.sd-brief .bd-outcome b{color:var(--ink);font-weight:600}
+.sd-bd-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+@container (max-width:520px){.sd-bd-grid{grid-template-columns:minmax(0,1fr)}}
+.sd-bd-cell{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:var(--r-m);padding:9px 11px}
+.sd-bd-cell .bl{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:flex;align-items:center;gap:6px;justify-content:space-between}
+.sd-bd-cell .bv{font-size:12.5px;color:var(--ink-2);margin-top:5px;line-height:1.45}
+.sd-bd-cell ul{margin:5px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+.sd-bd-cell li{font-size:12.5px;color:var(--ink);display:flex;gap:7px;align-items:flex-start}
+.sd-bd-cell li .lm{flex:none;color:var(--ink-3);font-family:var(--mono);font-size:11px;margin-top:1px}
+
+/* generic expandable rows (pillars/plays/decisions/missions) */
+.sd-list{display:flex;flex-direction:column}
+.sd-item{border-top:1px solid var(--line-soft)}
+.sd-item:first-child{border-top:0}
+.sd-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:11px;align-items:start;
+  width:100%;text-align:left;background:none;border:0;padding:11px 15px;cursor:pointer}
+.sd-row:hover{background:var(--surface-2)}
+.sd-row:focus-visible{outline:2px solid var(--violet);outline-offset:-2px}
+.sd-ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none;margin-top:1px;background:var(--surface-sunk);color:var(--ink-3)}
+.sd-ic svg{width:15px;height:15px}
+.sd-ic.v{background:var(--violet-tint);color:var(--violet)}
+.sd-ic.ok{background:var(--ok-tint);color:var(--ok)}
+.sd-ic.warn{background:var(--warn-tint);color:var(--warn)}
+.sd-ic.bad{background:var(--bad-tint);color:var(--bad)}
+.sd-main{min-width:0}
+.sd-title{font-size:13.5px;font-weight:650;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sd-note{font-size:12px;color:var(--ink-3);margin-top:3px;line-height:1.45}
+.sd-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;align-items:center}
+.sd-caret{flex:none;color:var(--ink-3);transition:transform .2s;width:28px;height:28px;display:grid;place-items:center;border-radius:8px}
+.sd-caret:hover{background:var(--surface-sunk);color:var(--ink)}
+.sd-caret:focus-visible{outline:2px solid var(--violet);outline-offset:1px}
+.sd-caret svg{width:17px;height:17px}
+.sd-item[data-open="true"] .sd-caret{transform:rotate(180deg)}
+.sd-detail{display:grid;grid-template-rows:0fr;transition:grid-template-rows .26s cubic-bezier(.22,1,.36,1)}
+.sd-item[data-open="true"] .sd-detail{grid-template-rows:1fr}
+.sd-detail>div{overflow:hidden}
+.sd-detail-in{padding:2px 15px 13px 54px;display:flex;flex-direction:column;gap:9px}
+.sd-fact{display:grid;grid-template-columns:118px minmax(0,1fr);gap:10px;font-size:12.5px;align-items:start}
+.sd-fact .fl{color:var(--ink-3);font-weight:600}
+.sd-fact .fv{color:var(--ink-2);line-height:1.45}
+.sd-detail-cta{display:flex;gap:8px;flex-wrap:wrap;margin-top:3px}
+
+/* "not defined yet" honest placeholder */
+.sd-todo{padding:11px 15px 11px 54px;font-size:12.5px;color:var(--ink-3);display:flex;gap:8px;align-items:flex-start;border-top:1px solid var(--line-soft)}
+.sd-todo svg{width:15px;height:15px;flex:none;margin-top:1px;color:var(--ink-3)}
+.sd-todo a{color:var(--violet);font-weight:600;cursor:pointer}
+
+/* campaign play card (a play with the full field set) */
+.sd-play{border-top:1px solid var(--line-soft);padding:0}
+.sd-play-blocked{background:var(--bad-tint)}
+
+/* dependency (Systems Check demoted) */
+.sd-dep{border:1px solid var(--line)}
+.sd-dep .sd-card-hd{cursor:pointer}
+.sd-dep-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .24s ease}
+.sd-dep[data-open="true"] .sd-dep-body{grid-template-rows:1fr}
+.sd-dep-body>div{overflow:hidden}
+.sd-dep-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;
+  padding:10px 15px;border-top:1px solid var(--line-soft);width:100%;text-align:left;background:none;cursor:pointer}
+.sd-dep-row:hover{background:var(--surface-2)}
+.sd-dep-row:focus-visible{outline:2px solid var(--violet);outline-offset:-2px}
+.sd-dep-ic{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;flex:none;background:var(--bad-tint);color:var(--bad)}
+.sd-dep-ic svg{width:14px;height:14px}
+.sd-dep-name{font-size:12.5px;font-weight:600;color:var(--ink)}
+.sd-dep-note{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+.sd-dep-go{font-size:11.5px;font-weight:600;color:var(--ink-3);display:flex;align-items:center;gap:4px;white-space:nowrap}
+.sd-dep-go svg{width:14px;height:14px}
+.sd-dep-count{font-size:11px;font-weight:700;color:var(--bad);background:var(--bad-tint);border-radius:99px;padding:2px 8px}
+
+/* Paige contribution + alignment */
+.sd-partner{background:linear-gradient(135deg,var(--rail),var(--rail-2));border-color:var(--rail-line)}
+.sd-partner .sd-eyebrow{color:#B9B2E0}
+.sd-partner-in{padding:0 15px 14px;display:flex;flex-direction:column;gap:10px}
+.sd-align{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid var(--rail-line);border-radius:10px;padding:9px 11px}
+.sd-align .al-ic{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;flex:none;background:rgba(122,98,232,.2);color:#C9C4E0}
+.sd-align .al-ic svg{width:14px;height:14px}
+.sd-align .al-t{font-size:12px;color:#E4E1F2;font-weight:600}
+.sd-align .al-s{font-size:10.5px;color:var(--rail-text)}
+.sd-align .al-hist{margin-left:auto;font-size:11px;font-weight:600;color:#C9C4E0;background:rgba(255,255,255,.06);border:1px solid var(--rail-line);border-radius:8px;padding:5px 8px;white-space:nowrap}
+.sd-align .al-hist:hover{background:rgba(255,255,255,.12);color:#fff}
+.sd-contrib{display:flex;flex-direction:column;gap:7px}
+.sd-contrib .cr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:center;
+  background:rgba(255,255,255,.04);border:1px solid var(--rail-line);border-radius:9px;padding:8px 10px}
+.sd-contrib .cr .ci{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;flex:none;background:rgba(255,255,255,.06);color:#C9C4E0}
+.sd-contrib .cr .ci svg{width:13px;height:13px}
+.sd-contrib .cr .ct{font-size:12px;color:#E4E1F2}
+.sd-contrib .cr .cl{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--rail-text);white-space:nowrap}
+.sd-contrib .honest{font-size:11px;color:var(--rail-text);line-height:1.45;padding:2px 2px 0;display:flex;gap:7px}
+.sd-contrib .honest svg{width:13px;height:13px;flex:none;margin-top:2px}
+
+/* empty first-run hero */
+.sd-first{grid-row:1 / -1;display:grid;place-items:center;padding:10px;overflow:auto}
+.sd-first-in{max-width:560px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px}
+.sd-first-badge{width:56px;height:56px;border-radius:18px;display:grid;place-items:center;background:linear-gradient(135deg,#7A62E8,#5B3FD6);color:#fff;box-shadow:var(--sh-2)}
+.sd-first-badge svg{width:26px;height:26px}
+.sd-first h1{font-size:clamp(20px,2.4vw,26px);letter-spacing:-.02em}
+.sd-first p{font-size:13.5px;color:var(--ink-2);max-width:52ch;line-height:1.55}
+.sd-first-steps{display:grid;gap:9px;width:100%;max-width:470px;text-align:left;margin-top:4px}
+.sd-first-step{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:11px;align-items:center;
+  padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);width:100%;text-align:left;cursor:pointer}
+.sd-first-step:hover{background:var(--surface-2)}
+.sd-first-step:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+.sd-first-step .num{width:22px;height:22px;border-radius:7px;background:var(--violet-tint);color:var(--violet);display:grid;place-items:center;font-weight:800;font-size:11px;font-family:var(--mono)}
+.sd-first-step .st b{font-size:13px;font-weight:600;color:var(--ink);display:block}
+.sd-first-step .st span{font-size:11.5px;color:var(--ink-3)}
+.sd-first-step .go{color:var(--ink-3);display:flex}
+.sd-first-step .go svg{width:16px;height:16px}
+
+/* skeleton / error / freshness */
+.sd-sk{background:linear-gradient(90deg,var(--surface-sunk) 25%,var(--line-soft) 37%,var(--surface-sunk) 63%);
+  background-size:400% 100%;animation:sd-shim 1.3s ease infinite;border-radius:7px}
+@keyframes sd-shim{0%{background-position:100% 0}100%{background-position:-100% 0}}
+.sd-errbox{padding:20px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.sd-errbox .ei{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--bad-tint);color:var(--bad)}
+.sd-errbox .ei svg{width:19px;height:19px}
+.sd-errbox h3{font-size:14px}
+.sd-errbox p{font-size:12.5px;color:var(--ink-3);max-width:42ch;line-height:1.45}
+.sd-fresh{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;color:var(--warn);background:var(--warn-tint);border-radius:99px;padding:2px 8px}
+.sd-fresh svg{width:12px;height:12px}
+
+/* attention banner (owner-decision-waiting / blocked / stale / proposal) */
+.sd-banner{grid-column:1 / -1;display:flex;align-items:center;gap:11px;padding:10px 14px;border-radius:var(--r-m);font-size:12.5px}
+.sd-banner svg{width:17px;height:17px;flex:none}
+.sd-banner .bt{color:var(--ink);font-weight:600}
+.sd-banner .bs{color:var(--ink-2)}
+.sd-banner .bact{margin-left:auto;flex:none}
+.sd-banner-decide{background:var(--violet-tint);border:1px solid var(--violet-line);color:var(--violet)}
+.sd-banner-block{background:var(--bad-tint);border:1px solid var(--bad);color:var(--bad)}
+.sd-banner-stale{background:var(--warn-tint);border:1px solid var(--gold-line);color:var(--warn)}
+.sd-banner-prop{background:var(--violet-tint);border:1px solid var(--violet-line);color:var(--violet)}
+
+/* reveal (from a visible rest; disabled under reduced motion / rm flag) */
+.sd .sd-card,.sd-brief,.sd-top,.sd-horizon{animation:sd-rise .5s cubic-bezier(.22,1,.36,1) backwards}
+.sd .sd-rail>*:nth-child(2){animation-delay:.05s}
+.sd .sd-rail>*:nth-child(3){animation-delay:.1s}
+@keyframes sd-rise{from{opacity:0;transform:translateY(8px)}}
+.paige-solo.rm .sd *,.paige-solo.rm .sd-card,.paige-solo.rm .sd-brief{animation:none!important;transition:none!important}
+@media (prefers-reduced-motion:reduce){.paige-solo .sd *,.paige-solo .sd-card,.paige-solo .sd-brief{animation:none!important}}
+
+/* ================= LIVING AREAS: edit affordance + swipe deck ================= */
+/* every area is editable by the owner AND updatable by Paige — never a locked block */
+.sd-edit{width:27px;height:27px;border-radius:8px;display:inline-grid;place-items:center;color:var(--ink-3);border:1px solid transparent;flex:none}
+.sd-edit:hover{background:var(--surface-sunk);color:var(--ink)}
+.sd-edit:focus-visible{outline:2px solid var(--violet);outline-offset:1px}
+.sd-edit svg{width:15px;height:15px}
+.sd-living{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:var(--ink-3);white-space:nowrap}
+.sd-living svg{width:12px;height:12px;color:var(--violet)}
+.sd-hdacts{display:flex;align-items:center;gap:6px}
+
+/* swipe deck — a stack you swipe away (mouse or touch), next card pops up */
+.sd-deck{padding:12px 15px 14px;display:flex;flex-direction:column;gap:11px}
+.sd-deck-stack{position:relative;touch-action:pan-y}
+.sd-dcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);box-shadow:var(--sh-1);
+  padding:13px 14px;display:flex;flex-direction:column;gap:9px;min-height:172px}
+.sd-dcard.peek{position:absolute;inset:0;pointer-events:none;z-index:1}
+.sd-dcard.peek1{transform:translateY(9px) scale(.965);opacity:.6}
+.sd-dcard.peek2{transform:translateY(18px) scale(.93);opacity:.32}
+.sd-dcard.top{position:relative;z-index:3;cursor:grab;touch-action:pan-y;transition:transform .28s cubic-bezier(.22,1,.36,1),opacity .28s}
+.sd-dcard.top.dragging{transition:none;cursor:grabbing}
+.sd-dcard.gone-left{transform:translateX(-140%) rotate(-11deg)!important;opacity:0!important}
+.sd-dcard.gone-right{transform:translateX(140%) rotate(11deg)!important;opacity:0!important}
+.paige-solo.rm .sd-dcard.top{transition:none}
+.sd-dcard-top{display:flex;align-items:flex-start;justify-content:space-between;gap:9px}
+.sd-dcard-ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none;background:var(--surface-sunk);color:var(--ink-3)}
+.sd-dcard-ic.v{background:var(--violet-tint);color:var(--violet)}
+.sd-dcard-ic.ok{background:var(--ok-tint);color:var(--ok)}
+.sd-dcard-ic.warn{background:var(--warn-tint);color:var(--warn)}
+.sd-dcard-ic svg{width:15px;height:15px}
+.sd-dcard h4{font-size:14px;letter-spacing:-.01em;line-height:1.3;text-wrap:balance}
+.sd-dcard .dc-note{font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.sd-dcard .dc-ev{font-size:11.5px;color:var(--ink-3);display:flex;gap:6px;align-items:flex-start;margin-top:auto}
+.sd-dcard .dc-ev svg{width:13px;height:13px;flex:none;margin-top:1px}
+.sd-dcard .dc-acts{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:2px}
+/* drag intent labels that fade in on the card as you pull it */
+.sd-dcard .dc-hint{position:absolute;top:12px;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  padding:4px 8px;border-radius:7px;opacity:0;transition:opacity .12s}
+.sd-dcard .dc-hint.l{right:12px;color:var(--ink-3);background:var(--surface-sunk)}
+.sd-dcard .dc-hint.r{left:12px;color:var(--ok);background:var(--ok-tint)}
+.paige-solo.rm .sd-dcard .dc-hint{transition:none}
+.sd-deck-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sd-deck-dots{display:flex;gap:5px;align-items:center}
+.sd-deck-dots i{width:6px;height:6px;border-radius:50%;background:var(--line)}
+.sd-deck-dots i.on{background:var(--violet);width:16px;border-radius:3px}
+.sd-deck-count{font-size:11px;color:var(--ink-3);font-family:var(--mono)}
+.sd-deck-swipehint{font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:6px}
+.sd-deck-swipehint svg{width:14px;height:14px}
+.sd-deck-empty{padding:24px 14px;display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center}
+.sd-deck-empty .de-ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--ok-tint);color:var(--ok)}
+.sd-deck-empty .de-ic svg{width:19px;height:19px}
+.sd-deck-empty h4{font-size:14px}
+.sd-deck-empty p{font-size:12.5px;color:var(--ink-3);max-width:34ch}
+
+/* swipe-to-dismiss on an individual row (missions) */
+.sd-swipe{position:relative;overflow:hidden}
+.sd-swipe-under{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding:0 16px;
+  background:var(--surface-sunk);color:var(--ink-3);font-size:11.5px;font-weight:600;gap:6px}
+.sd-swipe-under svg{width:14px;height:14px}
+.sd-swipe-fg{position:relative;z-index:1;background:var(--surface);touch-action:pan-y;transition:transform .26s cubic-bezier(.22,1,.36,1),opacity .26s}
+.sd-swipe-fg.dragging{transition:none}
+.sd-swipe.gone .sd-swipe-fg{transform:translateX(-102%);opacity:0}
+.paige-solo.rm .sd-swipe-fg{transition:none}
+
+/* ================= OVERLAYS (drawers / popouts) ================= */
+.ov-scrim{position:fixed;inset:0;z-index:60;background:rgba(12,10,27,.5);backdrop-filter:blur(3px);
+  display:grid;opacity:0;transition:opacity .2s}
+.ov-scrim.show{opacity:1}
+.paige-solo.rm .ov-scrim{transition:none}
+.ov-sheet{background:var(--surface);color:var(--ink);box-shadow:var(--sh-3);display:flex;flex-direction:column;min-height:0}
+.ov-scrim[data-kind="drawer"]{justify-items:end}
+.ov-scrim[data-kind="drawer"] .ov-sheet{width:min(500px,96vw);height:100%;border-left:1px solid var(--line);transform:translateX(24px);transition:transform .24s cubic-bezier(.22,1,.36,1)}
+.ov-scrim[data-kind="drawer"].show .ov-sheet{transform:none}
+.ov-scrim[data-kind="modal"]{place-items:center;padding:20px}
+.ov-scrim[data-kind="modal"] .ov-sheet{width:min(680px,94vw);max-height:90%;border:1px solid var(--line);border-radius:var(--r-xl);transform:translateY(10px);transition:transform .24s cubic-bezier(.22,1,.36,1)}
+.ov-scrim[data-kind="modal"].show .ov-sheet{transform:none}
+.paige-solo.rm .ov-sheet{transition:none!important;transform:none!important}
+.ov-hd{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--line-soft)}
+.ov-hd .oh-ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;background:var(--violet-tint);color:var(--violet)}
+.ov-hd .oh-ic svg{width:16px;height:16px}
+.ov-hd h3{font-size:15px}
+.ov-hd .oh-sub{font-size:11.5px;color:var(--ink-3)}
+.ov-hd .oh-x{margin-left:auto;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--ink-3);flex:none}
+.ov-hd .oh-x:hover{background:var(--surface-sunk);color:var(--ink)}
+.ov-hd .oh-x svg{width:17px;height:17px}
+.ov-body{flex:1;min-height:0;overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:13px}
+.ov-foot{flex:0 0 auto;display:flex;gap:9px;justify-content:flex-end;padding:13px 18px;border-top:1px solid var(--line-soft);flex-wrap:wrap}
+.ov-field{display:flex;flex-direction:column;gap:6px}
+.ov-field label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ov-field .fin{border:1px solid var(--line);border-radius:10px;background:var(--surface-2);padding:9px 11px;font:inherit;font-size:13px;color:var(--ink);line-height:1.5}
+.ov-field textarea.fin{resize:none;min-height:60px}
+.ov-legend{display:flex;flex-direction:column;gap:9px}
+.ov-legend .lg{display:grid;grid-template-columns:auto minmax(0,1fr);gap:11px;align-items:start}
+.ov-legend .lg .lgt{font-size:13px;font-weight:600;color:var(--ink)}
+.ov-legend .lg .lgd{font-size:12px;color:var(--ink-3);margin-top:2px;line-height:1.45}
+.ov-hist{display:flex;flex-direction:column;gap:0}
+.ov-hist .hr{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;padding:11px 0;border-top:1px solid var(--line-soft)}
+.ov-hist .hr:first-child{border-top:0}
+.ov-hist .hr .hd-dot{width:11px;height:11px;border-radius:50%;background:var(--surface-sunk);border:2px solid var(--line);margin-top:3px}
+.ov-hist .hr.cur .hd-dot{background:var(--ok);border-color:var(--ok)}
+.ov-hist .hr .hv{font-size:13px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px}
+.ov-hist .hr .hm{font-size:12px;color:var(--ink-3);margin-top:2px}
+.ov-hist .hr .hd-date{font-size:11px;color:var(--ink-3);font-family:var(--mono)}
+.ov-proto{font-size:11.5px;color:var(--ink-3);background:var(--surface-2);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;display:flex;gap:8px;line-height:1.45}
+.ov-proto svg{width:15px;height:15px;flex:none;margin-top:1px;color:var(--violet)}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(12px);z-index:80;
+  background:var(--ink);color:var(--ink-inv);border-radius:11px;padding:11px 15px;font-size:12.5px;font-weight:500;
+  box-shadow:var(--sh-3);opacity:0;transition:opacity .2s,transform .2s;max-width:min(420px,92vw);display:flex;gap:9px;align-items:center}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.toast svg{width:16px;height:16px;flex:none;color:var(--violet-2)}
+.paige-solo.rm .toast{transition:none}
+</style>
+
+<div class="rv-topbar" role="region" aria-label="Prototype review controls">
+  <div class="rv-brand"><div class="rv-mark">P</div><div><b>Business Game Plan</b><span>Strategy-desk prototype · read-only</span></div></div>
+  <div class="rv-group"><span class="rv-label">State</span><div class="rv-seg" id="segState" role="group" aria-label="Surface state"></div></div>
+  <div class="rv-group"><span class="rv-label">Theme</span><div class="rv-seg" id="segTheme" role="group" aria-label="Theme">
+    <button data-theme="light" aria-pressed="true">Mineral</button><button data-theme="dark" aria-pressed="false">Obsidian</button></div></div>
+  <div class="rv-group"><span class="rv-label">Viewport</span><div class="rv-seg" id="segVp" role="group" aria-label="Viewport"></div></div>
+  <div class="rv-group"><span class="rv-label">Paige</span><div class="rv-seg" id="segPaige" role="group" aria-label="Paige dock">
+    <button data-paige="0" aria-pressed="true">Closed</button><button data-paige="1" aria-pressed="false">Open</button></div></div>
+  <label class="rv-toggle"><input type="checkbox" id="rmToggle"> Reduced motion</label>
+  <button class="rv-linkbtn" id="legendBtn">Source legend</button>
+  <div class="rv-spacer"></div>
+  <div class="rv-note" id="frameNote"></div>
+</div>
+
+<div class="rv-stage">
+  <div class="rv-frame-wrap">
+    <div class="rv-frame-meta"><span class="fd"></span><span id="frameMeta"></span></div>
+    <div class="rv-device" id="device">
+      <div class="appviewport">
+        <div class="paige-solo" id="app" data-theme="light">
+          <nav class="snav" aria-label="Solo workspace">
+            <div class="logo">P</div>
+            <div class="nItem active" title="Command Center" data-ic="target"></div>
+            <div class="nItem" title="Clients" data-ic="people"></div>
+            <div class="nItem" title="Growth" data-ic="growth"></div>
+            <div class="nItem" title="Campaigns" data-ic="mega"></div>
+            <div class="nItem" title="Analytics" data-ic="chart"></div>
+            <div class="nspring"></div>
+            <div class="nItem" title="Settings" data-ic="gear"></div>
+          </nav>
+          <div class="smain">
+            <div class="cctabs" role="tablist" aria-label="Command Center">
+              <button role="tab" aria-selected="true"><span class="tdot" data-ic="target"></span> Business Game Plan</button>
+              <button role="tab" aria-selected="false"><span class="tdot" data-ic="activity"></span> Systems Check</button>
+              <button class="reserved" title="Trust Compass — reserved 3rd tab (PR #975)"><span class="tdot" data-ic="compass"></span> Trust Compass <span class="rzz">soon</span></button>
+              <button role="tab" aria-selected="false"><span class="tdot" data-ic="brain"></span> Mind</button>
+            </div>
+            <div class="deskhost">
+              <div class="sd" id="desk" role="tabpanel" aria-label="Business Game Plan"></div>
+            </div>
+          </div>
+          <aside class="pdock" id="pdock" aria-label="Plan with Paige" hidden></aside>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="overlayRoot"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+"use strict";
+/* ---------------- inline icons (lucide-style, no dependency) ---------------- */
+const ICONS = {
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
+  compass:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
+  brain:'<path d="M9 5a3 3 0 0 0-3 3 3 3 0 0 0-1 5.8V16a3 3 0 0 0 4 2.8"/><path d="M15 5a3 3 0 0 1 3 3 3 3 0 0 1 1 5.8V16a3 3 0 0 1-4 2.8"/><path d="M9 5a3 3 0 0 1 6 0M12 5v14"/>',
+  activity:'<path d="M3 12h4l3 8 4-16 3 8h4"/>',
+  layers:'<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+  flag:'<path d="M5 21V4M5 4h11l-1.5 4L16 12H5"/>',
+  scale:'<path d="M12 4v16M7 8h10M6 20h12"/><path d="M7 8l-3 6a3 3 0 0 0 6 0zM17 8l-3 6a3 3 0 0 0 6 0z"/>',
+  plug:'<path d="M9 3v6M15 3v6M7 9h10v2a5 5 0 0 1-10 0zM12 16v5"/>',
+  sparkles:'<path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7zM19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+  arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  chevron:'<path d="M6 9l6 6 6-6"/>',
+  lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  check:'<path d="M20 6L9 17l-5-5"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  alert:'<path d="M12 3l9 16H3zM12 10v4M12 17h.01"/>',
+  refresh:'<path d="M20 11a8 8 0 1 0-1 5M20 5v6h-6"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>',
+  cal:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  edit:'<path d="M12 20h8M15.5 4.5l3.9 3.9L8 20l-4 1 1-4z"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 4v4h4M12 8v4l3 2"/>',
+  people:'<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 6a3 3 0 0 1 0 6M18 20a6 6 0 0 0-3-5"/>',
+  growth:'<path d="M4 19h16M6 19V9m5 10V5m5 14v-7"/>',
+  mega:'<path d="M4 10v4h3l7 4V6L7 10z"/><path d="M18 9a3 3 0 0 1 0 6"/>',
+  chart:'<path d="M4 20V4M4 20h16M8 16v-4m4 4V8m4 8v-6"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M6 18l2-2M16 8l2-2"/>',
+  route:'<circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6a4 4 0 0 0 0-8H8"/>',
+  send:'<path d="M4 12l16-8-6 16-2-6z"/>',
+  star:'<path d="M12 3l2.6 6.3L21 10l-5 4 1.6 7L12 17.5 6.4 21 8 14l-5-4 6.4-.7z"/>',
+  pause:'<rect x="7" y="5" width="3.5" height="14" rx="1"/><rect x="13.5" y="5" width="3.5" height="14" rx="1"/>',
+  shield:'<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
+  eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+};
+function svg(name,cls){return '<svg class="'+(cls||'')+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(ICONS[name]||'')+'</svg>';}
+
+/* ---------------- source-class helpers (the honesty vocabulary) ---------------- */
+const SRC = {
+  fact:['sd-src-fact','Fact'], dir:['sd-src-dir','Your direction'], rec:['sd-src-rec','Paige suggests'],
+  assume:['sd-src-assume','Assumption'], unavail:['sd-src-unavail','Source unavailable'], owed:['sd-src-owed','Proof owed'],
+  blocked:['sd-src-blocked','Blocked'],
+};
+function src(k){const s=SRC[k]||SRC.rec;return '<span class="sd-src '+s[0]+'"><span class="sdd"></span>'+s[1]+'</span>';}
+
+/* ---------------- fictional, labeled model (universal consulting tenant) ---------------- */
+const TENANTS = {
+  clearpath:{ name:'Clearpath Advisory', tier:'Standalone', owner:'Dana', date:'Sat · Sep 6' },
+  northwind:{ name:'Northwind Studio', tier:'Sub-account', owner:'Priya', date:'Sat · Sep 6' },
+};
+const HORIZONS = [
+  {id:'annual', t:'Annual', s:'2026 direction'},
+  {id:'h2', t:'H2', s:'Jul–Dec'},
+  {id:'q3', t:'Q3', s:'This quarter'},
+  {id:'cycle', t:'Cycle', s:'Sep sprint'},
+  {id:'season', t:'Fall', s:'Renewal season'},
+  {id:'campaign', t:'Q3 Launch', s:'Campaign play'},
+];
+// per-horizon plan brief (Clearpath). Each field carries a source class.
+const BRIEF = {
+  annual:{ dir:'Become the default operations advisor for Series-A founders in the Northeast.',
+    outcome:'Reach $20k/mo in retained advisory revenue by December.',
+    milestone:'Annual review · Dec 15', milestoneWhy:'You set this as the year-end checkpoint.',
+    priorities:[['P1','Build a repeatable referral engine','dir'],['P2','Productize the ops-audit into a paid offer','dir'],['P3','Establish 2 anchor case studies','rec']],
+    constraints:'Solo capacity — you cap at 8 active retained clients.', assume:'~$2.5k average monthly retainer (from your 2 signed clients).' },
+  h2:{ dir:'Turn warm inbound into signed retainers before year-end pricing resets.',
+    outcome:'Sign 6 new retained clients across H2.',
+    milestone:'Pricing reset · Jan 1', milestoneWhy:'Rates rise in the new year — H2 closes at current pricing.',
+    priorities:[['P1','Convert the current warm pipeline','rec'],['P2','Launch the ops-audit offer','dir'],['P3','Re-engage lapsed H1 clients','rec']],
+    constraints:'No paid-ads budget in H2.', assume:'Fall is your strongest renewal window.' },
+  q3:{ dir:'Land 6 retained clients from warm referrals and the new ops-audit offer.',
+    outcome:'6 retained clients at ~$4k/mo signed by Sep 30.',
+    milestone:'Q3 close · Sep 30', milestoneWhy:'This is the revenue checkpoint the plan is built around.',
+    priorities:[['P1','Convert the 3 warm referrals in the pipeline','rec'],['P2','Ship the ops-audit offer page','dir'],['P3','Publish the Q3 launch campaign','dir']],
+    constraints:'Max 8 active clients; no paid-ads budget this quarter.', assume:'Referral close rate ~40% (Paige estimate from 2 prior quarters).' },
+  cycle:{ dir:'This sprint: get the ops-audit offer live and the launch campaign ready to send.',
+    outcome:'Offer page published + campaign approved for send this cycle.',
+    milestone:'Sprint end · Sep 19', milestoneWhy:'Two-week operating cycle you run the plan in.',
+    priorities:[['P1','Finish the ops-audit landing page','dir'],['P2','Approve the launch campaign brief','dir'],['P3','Clear the 2 blocking dependencies','rec']],
+    constraints:'One build focus at a time — offer page first.', assume:'Page ships in ~4 working days (Paige estimate).' },
+  season:{ dir:'Use the fall renewal window to lift retention and re-sign lapsed clients.',
+    outcome:'Re-engage 4 lapsed clients before renewal season peaks.',
+    milestone:'Renewal peak · Oct 15', milestoneWhy:'Historically your clients renew mid-October.',
+    priorities:[['P1','Re-engage the 2 lapsed clients who re-opened your note','rec'],['P2','Prepare renewal outreach','dir'],['P3','Refresh case studies for renewal calls','rec']],
+    constraints:'Renewal outreach stays personal — no bulk sends.', assume:'Fall renewals convert ~1.5× a normal quarter.' },
+  campaign:null, // campaign horizon focuses the campaign play (rendered in the spine)
+};
+const PILLARS = [
+  { id:'referral', ic:'people', t:'Referral engine', src:'dir',
+    note:'Turn happy clients and warm intros into a repeatable pipeline.',
+    why:'Your 2 signed clients both came from referrals — this is what already works.',
+    evidence:'Pipeline shows 3 warm referrals sourced this quarter (from your Clients data).',
+    outcome:'A standing intro sequence + case studies that make referrals easy to ask for.',
+    plays:[
+      {t:'Warm-intro sequence', src:'dir', note:'A 3-touch sequence Paige can draft for each new referral.', authorized:'Paige can draft each sequence for your approval.'},
+      {t:'Client-outcome case studies', src:'rec', note:'Two anchor stories from your signed clients.', authorized:'Paige can draft from your delivery notes.'},
+    ]},
+  { id:'offer', ic:'layers', t:'Productized ops-audit offer', src:'dir',
+    note:'A fixed-scope paid diagnostic that converts into a retainer.',
+    why:'A paid entry offer shortens the path from interest to retainer.',
+    evidence:'Offer not yet published — Catalog shows a draft ops-audit product.',
+    outcome:'A live offer page + a $500 paid diagnostic that leads into the retainer.',
+    plays:[
+      {t:'Ops-audit landing page', src:'dir', note:'The page that sells the diagnostic.', authorized:'Paige can build the page draft in the Studio.'},
+      {t:'$500 paid diagnostic', src:'dir', note:'The entry offer price and scope.', authorized:'Pricing is your decision — Paige has drafted a recommendation.'},
+    ]},
+];
+const CAMPAIGN = {
+  id:'q3launch', t:'Q3 Launch campaign', src:'dir',
+  note:'The launch that puts the ops-audit offer in front of your warm audience.',
+  outcome:'20 booked diagnostics from the launch window.',
+  offer:'Ops-audit paid diagnostic ($500).',
+  audience:'Warm list + the 3 referrals + lapsed H1 clients.',
+  angle:'“Find the 3 operations leaks costing you a hire” — a specific, outcome-first hook.',
+  window:'Sep 22 – Oct 3 (before renewal season).',
+  channels:'Email to your list + 1:1 outreach to referrals. No paid ads (constraint).',
+  evidence:'Diagnostics booked + reply rate on the outreach (expected).',
+  mission:'Prepare launch campaign (Active)',
+  decision:'You still decide the send date and final offer price.',
+  deps:'Blocked — sending identity not verified.',
+  authorized:'Paige can prepare the campaign brief, draft the emails, and research the referral list — send stays your approval.',
+};
+const MISSIONS = [
+  {id:'m1', t:'Nurture 3 warm referrals', status:'active', ic:'sparkles',
+    note:'Paige is researching each referral and drafting a first-touch note.',
+    play:'Referral engine', owner:'Paige drafts · you approve each send',
+    outcome:'A personal first note out to all 3 this cycle.', authorized:'Draft + research authorized; sending waits on you.'},
+  {id:'m2', t:'Ops-audit page build', status:'active', ic:'layers',
+    note:'Building the offer landing page in the Studio.',
+    play:'Productized ops-audit offer', owner:'Paige builds · you review',
+    outcome:'A published page that sells the diagnostic.', authorized:'Build authorized; publish waits on your review.'},
+  {id:'m3', t:'Fall re-engagement', status:'paused', ic:'pause',
+    note:'Paused until the renewal window opens in October.',
+    play:'Referral engine', owner:'You paused this',
+    outcome:'Re-sign lapsed clients during renewal season.', authorized:'Paused — nothing runs until you resume it.'},
+  {id:'m4', t:'H1 pricing test', status:'completed', ic:'check',
+    note:'Completed in June — informed the $4k retainer anchor.',
+    play:'Productized ops-audit offer', owner:'Completed',
+    outcome:'Confirmed $4k/mo as the retainer anchor.', authorized:'Done — closed with a result recorded.'},
+];
+const DECISIONS = [
+  {id:'d1', t:'Approve the $500 paid-diagnostic price?', kind:'rec', ic:'scale', waiting:true,
+    note:'Paige recommends $500 as the entry price into the retainer.',
+    detail:'Paige suggests $500 based on your $4k retainer anchor and a ~1-week scope. This is a recommendation — the price is your call.',
+    evidence:'Anchored on your confirmed $4k/mo retainer (Fact).'},
+  {id:'d2', t:'Re-engage 2 lapsed clients who re-opened your note?', kind:'rec', ic:'sparkles', waiting:false,
+    note:'2 lapsed clients opened your last note twice this week.',
+    detail:'Activity shows 2 lapsed clients re-opened your August note. Paige suggests a light re-engagement touch. The opens are a Fact; the move is a suggestion.',
+    evidence:'2 re-opens recorded in your workspace activity (Fact).'},
+  {id:'d3', t:'Pipeline shows 3 warm referrals', kind:'fact', ic:'people', waiting:false,
+    note:'Sourced from your Clients pipeline this quarter.',
+    detail:'Three contacts are tagged as warm referrals in your pipeline. This is read directly from your Clients data — a Fact, not an estimate.',
+    evidence:'Clients pipeline (Fact).'},
+  {id:'d4', t:'Fall is your strongest renewal window', kind:'assume', ic:'cal', waiting:false,
+    note:'A model assumption — not yet confirmed from your own history.',
+    detail:'Paige is assuming fall renewals convert above average. This is a model assumption; your own renewal history has only 1 prior cycle, so it is not yet a fact.',
+    evidence:'Model assumption — 1 prior cycle only.'},
+  {id:'d5', t:'Ad performance', kind:'unavail', ic:'chart', waiting:false,
+    note:'No ad account is connected, so there is nothing to read.',
+    detail:'The plan makes no claim about ad performance because no ad account is connected. Shown as an honest absence, never a guessed number.',
+    evidence:'Source unavailable — no ad account connected.'},
+  {id:'d6', t:'40% referral close rate', kind:'owed', ic:'clock', waiting:false,
+    note:'Used in the Q3 target, but needs one more quarter to prove.',
+    detail:'The Q3 outcome leans on a ~40% referral close rate. That rests on 2 prior quarters — proof is owed after 1 more quarter of data before it becomes a fact.',
+    evidence:'Proof owed — 2 quarters of data so far.'},
+];
+const DEPS = [
+  {id:'dep1', t:'Sending identity not verified', note:'Blocks the Q3 launch campaign send.', affects:'Q3 Launch campaign'},
+  {id:'dep2', t:'Payment processor not connected', note:'Blocks the $500 paid diagnostic.', affects:'Ops-audit offer'},
+];
+const REVISIONS = [
+  {v:'v4', d:'Sep 4', cur:true, m:'You approved the Q3 target of 6 retained clients and the launch window.', by:'You approved'},
+  {v:'v3', d:'Aug 28', cur:false, m:'Paige proposed adding the ops-audit offer as a pillar. You edited the price note.', by:'Paige proposed · you edited'},
+  {v:'v2', d:'Aug 14', cur:false, m:'Set the annual direction and the referral engine pillar.', by:'You approved'},
+  {v:'v1', d:'Aug 2', cur:false, m:'First draft from your onboarding conversation with Paige.', by:'Paige proposed'},
+];
+
+/* ---------------- runtime state ---------------- */
+const ST = {
+  state:'grounded', theme:'light', vp:'1536', paige:false, rm:false,
+  tenant:'clearpath', horizon:'q3', openItems:new Set(), depOpen:false,
+  deckDismissed:new Set(), missionDismissed:new Set(),
+};
+const STATES = [
+  ['grounded','Grounded'],['first-use','First use'],['partial','Partial'],['blocked','Blocked dep'],
+  ['decision','Decision waiting'],['mission-active','Mission · active'],['mission-paused','Mission · paused'],
+  ['mission-completed','Mission · done'],['proposal','Paige proposes'],['loading','Loading'],
+  ['read-failure','Read failure'],['denied','Denied'],['stale','Stale'],['switch','Workspace switch'],['reduced','Reduced motion'],
+];
+const VIEWPORTS = {'1536':[1536,770],'1366':[1366,768],'1024':[1024,768],'900':[900,1000]};
+
+/* ---------------- helpers ---------------- */
+function el(html){const t=document.createElement('template');t.innerHTML=html.trim();return t.content.firstElementChild;}
+let toastT;
+function toast(msg){const t=document.getElementById('toast');t.innerHTML=svg('info')+'<span>'+msg+'</span>';t.hidden=false;
+  requestAnimationFrame(()=>t.classList.add('show'));clearTimeout(toastT);toastT=setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.hidden=true,220);},2600);}
+
+/* ---------------- render: shell chrome from state ---------------- */
+function paintIcons(root){root.querySelectorAll('[data-ic]').forEach(n=>{if(!n.dataset.painted){n.innerHTML=svg(n.dataset.ic);n.dataset.painted='1';}});}
+
+function applyChrome(){
+  const app=document.getElementById('app');
+  app.setAttribute('data-theme',ST.theme);
+  app.classList.toggle('rm',ST.rm);
+  const dock=document.getElementById('pdock');
+  const showDock = ST.paige || ST.state==='proposal';
+  dock.hidden=!showDock;
+  if(showDock) renderDock();
+  // device size
+  const [w,h]=VIEWPORTS[ST.vp];const d=document.getElementById('device');d.style.width=w+'px';d.style.height=h+'px';
+  document.getElementById('frameMeta').textContent=w+'×'+h+' · '+(ST.theme==='light'?'Mineral':'Obsidian')+' · Paige '+(showDock?'open':'closed');
+  const stObj=STATES.find(s=>s[0]===ST.state);
+  document.getElementById('frameNote').innerHTML='State: <b>'+(stObj?stObj[1]:ST.state)+'</b> — every value carries a source class; all data is fictional & labeled.';
+}
+
+/* ---------------- render: the desk ---------------- */
+function briefCard(){
+  const T=TENANTS[ST.tenant];
+  if(ST.horizon==='campaign') return campaignSpine();
+  const b=BRIEF[ST.horizon];
+  const isPartial = ST.state==='partial';
+  const dir = isPartial && ST.horizon!=='q3' ? null : b.dir;
+  return '<div class="sd-card sd-brief"><div class="sd-brief-in">'
+    +'<div class="sd-brief-top"><span class="sd-eyebrow">'+svg('flag')+' Plan brief · '+hzLabel(ST.horizon)+'</span>'
+    + (ST.state==='proposal'
+        ? '<span class="sd-src sd-src-rec"><span class="sdd"></span>Revision proposed</span>'
+        : '<span class="sd-approved">'+svg('check')+' Currently approved · '+REVISIONS[0].d+'</span>')+'</div>'
+    +'<h2>'+b.dir+'</h2>'
+    +'<div class="bd-outcome">'+svg('target',null)+'<span><b>Desired outcome.</b> '+b.outcome+'  '+src('dir')+'</span></div>'
+    +'<div class="sd-bd-grid">'
+      +'<div class="sd-bd-cell"><div class="bl"><span>Top priorities</span></div><ul>'
+        + b.priorities.map(p=>'<li><span class="lm">'+p[0]+'</span><span>'+p[1]+' '+src(p[2])+'</span></li>').join('')
+      +'</ul></div>'
+      +'<div class="sd-bd-cell"><div class="bl"><span>Next milestone</span>'+src('dir')+'</div>'
+        +'<div class="bv"><span class="mono">'+b.milestone+'</span> — '+b.milestoneWhy+'</div></div>'
+      +'<div class="sd-bd-cell"><div class="bl"><span>Constraints</span>'+src('dir')+'</div><div class="bv">'+b.constraints+'</div></div>'
+      +'<div class="sd-bd-cell"><div class="bl"><span>Assumption</span>'+src('assume')+'</div><div class="bv">'+b.assume+'</div></div>'
+    +'</div>'
+    +'<div class="sd-detail-cta"><button class="sd-btn sd-btn-sm" data-act="edit-brief">'+svg('edit')+' Edit brief</button>'
+      +'<button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="evidence" data-arg="brief">'+svg('eye')+' Where this comes from</button>'
+      +'<span class="sd-living" style="margin-left:auto">'+svg('sparkles')+' You or Paige can change this anytime</span></div>'
+  +'</div></div>';
+}
+function campaignSpine(){
+  const c=CAMPAIGN;const blocked=ST.state==='blocked';
+  const fields=[['Outcome',c.outcome,'dir'],['Offer',c.offer,'dir'],['Audience',c.audience,'rec'],['Angle / message',c.angle,'rec'],
+    ['Window / timing',c.window,'dir'],['Channels',c.channels,'dir'],['Expected evidence',c.evidence,'assume'],
+    ['Active mission',c.mission,'fact'],['Owner decision',c.decision,'dir'],['Dependencies / risk',blocked?c.deps:'Sending identity verification pending.',blocked?'blocked':'owed']];
+  return '<div class="sd-card sd-brief'+(blocked?'':'')+'"><div class="sd-brief-in">'
+    +'<div class="sd-brief-top"><span class="sd-eyebrow">'+svg('mega')+' Campaign play · Q3 Launch</span>'
+      +'<span class="sd-approved">'+svg('check')+' Approved · Sep 4</span></div>'
+    +'<h2>'+c.t+'</h2>'
+    +'<div class="bd-outcome">'+svg('sparkles')+'<span>'+c.note+'</span></div>'
+    +'<div class="sd-bd-grid">'
+      + fields.map(f=>'<div class="sd-bd-cell"><div class="bl"><span>'+f[0]+'</span>'+src(f[2])+'</div><div class="bv">'+f[1]+'</div></div>').join('')
+    +'</div>'
+    +(blocked?'<div class="sd-banner sd-banner-block" style="grid-column:auto;margin-top:2px">'+svg('lock')+'<span class="bt">Send blocked — verify your sending identity.</span><button class="sd-btn sd-btn-sm bact" data-act="systems">Open Systems Check '+svg('arrow')+'</button></div>':'')
+    +'<div class="sd-detail-cta"><button class="sd-btn sd-btn-sm" data-act="plan-paige">'+svg('sparkles')+' Refine with Paige</button>'
+      +'<div class="sd-src sd-src-rec" style="height:29px;padding:0 10px"><span class="sdd"></span>Paige is authorized to prepare this — send waits on you</div></div>'
+  +'</div></div>';
+}
+
+function pillarsCard(){
+  const partial = ST.state==='partial';
+  const rows = PILLARS.map((p,i)=>{
+    const open=ST.openItems.has(p.id);
+    const showPlays = !(partial && i>0); // partial: 2nd pillar "not defined yet"
+    return '<div class="sd-item" data-open="'+open+'">'
+      +'<div class="sd-row" data-toggle="'+p.id+'">'
+        +'<span class="sd-ic v">'+svg(p.ic)+'</span>'
+        +'<span class="sd-main"><span class="sd-title">'+p.t+' '+src(p.src)+'</span>'
+          +'<span class="sd-note">'+p.note+'</span>'
+          +'<span class="sd-tags">'+(showPlays?p.plays.map(pl=>'<span class="sd-src sd-src-unavail"><span class="sdd"></span>'+pl.t+'</span>').join(''):'<span class="sd-src sd-src-owed"><span class="sdd"></span>Plays not defined yet</span>')+'</span>'
+        +'</span>'
+        +'<span class="sd-hdacts"><button class="sd-edit" data-act="edit-area" data-arg="Pillar" data-arg2="'+p.id+'" aria-label="Edit '+p.t.replace(/"/g,'')+'">'+svg('edit')+'</button>'
+          +'<button class="sd-caret" data-toggle="'+p.id+'" aria-expanded="'+open+'" aria-label="Expand '+p.t.replace(/"/g,'')+'">'+svg('chevron')+'</button></span>'
+      +'</div>'
+      +'<div class="sd-detail"><div><div class="sd-detail-in">'
+        +'<div class="sd-fact"><span class="fl">Why this pillar</span><span class="fv">'+p.why+'</span></div>'
+        +'<div class="sd-fact"><span class="fl">Evidence</span><span class="fv">'+p.evidence+'</span></div>'
+        +'<div class="sd-fact"><span class="fl">What it produces</span><span class="fv">'+p.outcome+'</span></div>'
+        +(showPlays
+          ? p.plays.map(pl=>'<div class="sd-fact"><span class="fl">Play · '+pl.t.split(' ')[0]+'</span><span class="fv">'+pl.t+' '+src(pl.src)+' — '+pl.note+'<br><span style="color:var(--ink-3)">'+pl.authorized+'</span></span></div>').join('')
+          : '<div class="sd-todo" style="padding-left:0;border:0">'+svg('info')+'<span>No plays defined for this pillar yet. <a data-act="plan-paige">Shape them with Paige</a>.</span></div>')
+        +'<div class="sd-detail-cta"><button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="plan-paige">'+svg('sparkles')+' Work this with Paige</button></div>'
+      +'</div></div></div>'
+    +'</div>';
+  }).join('');
+  const campaignRow = (()=>{ const c=CAMPAIGN;const open=ST.openItems.has(c.id);const blocked=ST.state==='blocked';
+    return '<div class="sd-item" data-open="'+open+'">'
+      +'<div class="sd-row" data-toggle="'+c.id+'">'
+        +'<span class="sd-ic '+(blocked?'bad':'v')+'">'+svg('mega')+'</span>'
+        +'<span class="sd-main"><span class="sd-title">'+c.t+' '+src(c.src)+(blocked?' '+src('blocked'):'')+'</span>'
+          +'<span class="sd-note">Campaign strategy as a business play — the WHY behind the campaign.</span>'
+          +'<span class="sd-tags"><span class="sd-src sd-src-unavail"><span class="sdd"></span>'+c.window+'</span><span class="sd-src sd-src-rec"><span class="sdd"></span>'+c.mission+'</span></span>'
+        +'</span><span class="sd-hdacts"><button class="sd-edit" data-act="edit-area" data-arg="Campaign play" data-arg2="'+c.id+'" aria-label="Edit campaign play">'+svg('edit')+'</button>'
+          +'<button class="sd-caret" data-toggle="'+c.id+'" aria-expanded="'+open+'" aria-label="Expand campaign play">'+svg('chevron')+'</button></span></div>'
+      +'<div class="sd-detail"><div><div class="sd-detail-in">'
+        +'<div class="sd-fact"><span class="fl">Outcome</span><span class="fv">'+c.outcome+'</span></div>'
+        +'<div class="sd-fact"><span class="fl">Offer · audience</span><span class="fv">'+c.offer+' → '+c.audience+'</span></div>'
+        +'<div class="sd-fact"><span class="fl">Angle</span><span class="fv">'+c.angle+'</span></div>'
+        +'<div class="sd-fact"><span class="fl">Window · channels</span><span class="fv">'+c.window+' · '+c.channels+'</span></div>'
+        +'<div class="sd-fact"><span class="fl">Paige authorized</span><span class="fv">'+c.authorized+'</span></div>'
+        +'<div class="sd-detail-cta"><button class="sd-btn sd-btn-sm" data-act="open-horizon" data-arg="campaign">Open full campaign play '+svg('arrow')+'</button>'
+          +(blocked?'<button class="sd-btn sd-btn-sm" data-act="systems">'+svg('lock')+' Resolve dependency</button>':'')+'</div>'
+      +'</div></div></div>'
+    +'</div>';
+  })();
+  return '<div class="sd-card"><div class="sd-card-hd"><span class="sd-eyebrow">'+svg('layers')+' Strategic pillars &amp; plays</span>'
+    +'<div class="sd-hdacts"><span class="sd-living">'+svg('sparkles')+' You or Paige can change this</span>'
+      +'<button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="edit-area" data-arg="Strategic pillars">'+svg('edit')+' Edit</button></div></div>'
+    +'<div class="sd-list">'+rows+campaignRow+'</div></div>';
+}
+
+function deckList(){
+  const base = (ST.state==='partial'?DECISIONS.slice(2):DECISIONS);
+  return base.filter(d=>!ST.deckDismissed.has(d.id));
+}
+function deckCardHTML(d, cls){
+  const ic={fact:'ok',rec:'v',assume:'warn',unavail:'',owed:''}[d.kind]||'';
+  const waiting = d.waiting || (ST.state==='decision'&&d.id==='d1');
+  const top = cls.indexOf('top')>=0;
+  const primary = waiting ? ['approve','Approve','sd-act']
+    : d.kind==='rec' ? ['act','Have Paige act','']
+    : d.kind==='owed'||d.kind==='unavail' ? ['fix','Fix the source','']
+    : ['open','Open','']; // fact
+  return '<div class="sd-dcard '+cls+'" data-id="'+d.id+'"'+(top?' tabindex="0" role="group" aria-label="'+d.t.replace(/"/g,'')+'. Swipe or use the buttons."':' aria-hidden="true"')+'>'
+    + (top?'<span class="dc-hint l">Not now</span><span class="dc-hint r">'+(waiting?'Approve':'Handle it')+'</span>':'')
+    + '<div class="sd-dcard-top"><span class="sd-dcard-ic '+ic+'">'+svg(d.ic)+'</span>'
+      + '<div class="sd-hdacts">'+src(d.kind)+(waiting?' <span class="sd-src sd-src-dir"><span class="sdd"></span>Waiting on you</span>':'')
+        + (top?'<button class="sd-edit" data-act="edit-area" data-arg="Decision" data-arg2="'+d.id+'" aria-label="Edit this decision">'+svg('edit')+'</button>':'')+'</div></div>'
+    + '<h4>'+d.t+'</h4>'
+    + '<div class="dc-note">'+d.detail+'</div>'
+    + '<div class="dc-ev">'+svg('info')+'<span>'+d.evidence+'</span></div>'
+    + (top?'<div class="dc-acts"><button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="deck-dismiss" data-arg="'+d.id+'">'+svg('x')+' Not now</button>'
+        +'<button class="sd-btn sd-btn-sm '+primary[2]+'" data-act="deck-act" data-arg="'+d.id+'" data-kind="'+primary[0]+'">'+primary[1]+' '+svg('arrow')+'</button></div>':'')
+  + '</div>';
+}
+function decisionCard(){
+  const list = deckList();
+  let body;
+  if(list.length===0){
+    body='<div class="sd-deck"><div class="sd-deck-empty"><div class="de-ic">'+svg('check')+'</div>'
+      +'<h4>All caught up</h4><p>New decisions and opportunities land here as things change — from your data or from Paige.</p>'
+      +'<button class="sd-btn sd-btn-sm" data-act="deck-restore">'+svg('refresh')+' Bring them back</button></div></div>';
+  } else {
+    const peeks = list.slice(1,3).map((d,i)=>deckCardHTML(d,'peek peek'+(i+1))).join('');
+    const dotsTotal = (ST.state==='partial'?DECISIONS.slice(2):DECISIONS).length;
+    const dots = Array.from({length:dotsTotal}).map((_,i)=>'<i class="'+(i===dotsTotal-list.length?'on':'')+'"></i>').join('');
+    body='<div class="sd-deck"><div class="sd-deck-stack">'+peeks+deckCardHTML(list[0],'top')+'</div>'
+      +'<div class="sd-deck-foot"><div class="sd-deck-dots">'+dots+'</div>'
+        +'<div class="sd-deck-swipehint">'+svg('route')+' Swipe a card, or use the buttons</div>'
+        +'<div class="sd-deck-count">'+list.length+' left</div></div></div>';
+  }
+  return '<div class="sd-card"><div class="sd-card-hd"><span class="sd-eyebrow">'+svg('scale')+' Decision &amp; opportunity desk</span>'
+    +'<div class="sd-hdacts"><span class="sd-living">'+svg('sparkles')+' You or Paige can change this</span>'
+      +'<button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="legend">'+svg('info')+' Labels</button></div></div>'
+    + body +'</div>';
+}
+
+function missionsCard(){
+  if(ST.state==='read-failure'){
+    return '<div class="sd-card"><div class="sd-card-hd"><span class="sd-eyebrow">'+svg('sparkles')+' Mission portfolio</span></div>'
+      +'<div class="sd-errbox"><div class="ei">'+svg('alert')+'</div><h3>Couldn\'t load missions</h3><p>The connected read didn\'t respond. Nothing is lost — your plan is still shown above.</p>'
+      +'<button class="sd-btn sd-btn-sm" data-act="retry">'+svg('refresh')+' Retry</button></div></div>';
+  }
+  const empty = ST.state==='partial';
+  const stale = ST.state==='stale';
+  const focus = ST.state==='mission-active'?'m1':ST.state==='mission-paused'?'m3':ST.state==='mission-completed'?'m4':null;
+  const list = empty ? [] : MISSIONS.filter(m=>!ST.missionDismissed.has(m.id));
+  const rows = list.map(m=>{
+    const open = ST.openItems.has(m.id) || m.id===focus;
+    const cls = m.status==='active'?'v':m.status==='paused'?'warn':m.status==='completed'?'ok':'';
+    const badge = m.status==='active'?'<span class="sd-src sd-src-rec"><span class="sdd"></span>Active</span>'
+      :m.status==='paused'?'<span class="sd-src sd-src-assume"><span class="sdd"></span>Paused</span>'
+      :'<span class="sd-src sd-src-fact"><span class="sdd"></span>Completed</span>';
+    return '<div class="sd-item sd-swipe" data-open="'+open+'" data-mid="'+m.id+'">'
+      +'<div class="sd-swipe-under" aria-hidden="true">'+svg('x')+' Archive</div>'
+      +'<div class="sd-swipe-fg">'
+        +'<div class="sd-row" data-toggle="'+m.id+'">'
+          +'<span class="sd-ic '+cls+'">'+svg(m.ic)+'</span>'
+          +'<span class="sd-main"><span class="sd-title">'+m.t+' '+badge+'</span><span class="sd-note">'+m.note+'</span></span>'
+          +'<span class="sd-hdacts"><button class="sd-edit" data-act="edit-area" data-arg="Mission" data-arg2="'+m.id+'" aria-label="Edit '+m.t.replace(/"/g,'')+'">'+svg('edit')+'</button>'
+            +'<button class="sd-edit" data-act="mission-dismiss" data-arg="'+m.id+'" aria-label="Archive '+m.t.replace(/"/g,'')+'">'+svg('x')+'</button>'
+            +'<button class="sd-caret" data-toggle="'+m.id+'" aria-expanded="'+open+'" aria-label="Expand '+m.t.replace(/"/g,'')+'">'+svg('chevron')+'</button></span></div>'
+        +'<div class="sd-detail"><div><div class="sd-detail-in">'
+          +'<div class="sd-fact"><span class="fl">Serves</span><span class="fv">'+m.play+'</span></div>'
+          +'<div class="sd-fact"><span class="fl">Who runs it</span><span class="fv">'+m.owner+'</span></div>'
+          +'<div class="sd-fact"><span class="fl">Outcome</span><span class="fv">'+m.outcome+'</span></div>'
+          +'<div class="sd-fact"><span class="fl">Authority</span><span class="fv">'+m.authorized+'</span></div>'
+          +'<div class="sd-detail-cta"><button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="edit-area" data-arg="Mission" data-arg2="'+m.id+'">'+svg('edit')+' Edit</button>'
+            +'<button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="plan-paige">'+svg('sparkles')+' Ask Paige to update</button></div>'
+        +'</div></div></div>'
+      +'</div></div>';
+  }).join('');
+  const body = empty
+    ? '<div class="sd-todo" style="padding:14px 15px;border:0">'+svg('info')+'<span>No missions yet. As you approve plays, Paige turns them into missions here. <a data-act="plan-paige">Start one with Paige</a>.</span></div>'
+    : (list.length? '<div class="sd-list">'+rows+'</div>'
+        : '<div class="sd-todo" style="padding:14px 15px;border:0">'+svg('check')+'<span>All missions archived. <a data-act="mission-restore">Bring them back</a>.</span></div>');
+  return '<div class="sd-card"><div class="sd-card-hd"><span class="sd-eyebrow">'+svg('sparkles')+' Mission portfolio</span>'
+    +'<div class="sd-hdacts"><span class="sd-living">'+svg('sparkles')+' Swipe to archive · editable</span>'
+      + (stale?'<span class="sd-fresh">'+svg('clock')+' 3 days ago</span>':'<span class="sd-src sd-src-owed"><span class="sdd"></span>Prototype</span>')+'</div></div>'
+    + body +'</div>';
+}
+
+function depsCard(){
+  const open = ST.depOpen || ST.state==='blocked';
+  return '<div class="sd-card sd-dep" data-open="'+open+'">'
+    +'<div class="sd-card-hd" role="button" tabindex="0" data-act="toggle-dep" aria-expanded="'+open+'">'
+      +'<span class="sd-eyebrow">'+svg('plug')+' Plan dependencies</span>'
+      +'<span style="display:flex;align-items:center;gap:8px"><span class="sd-dep-count">'+DEPS.length+' affect this plan</span><span class="sd-caret" style="'+(open?'transform:rotate(180deg)':'')+'">'+svg('chevron')+'</span></span>'
+    +'</div>'
+    +'<div class="sd-dep-body"><div>'
+      + DEPS.map(d=>'<button class="sd-dep-row" data-act="systems"><span class="sd-dep-ic">'+svg('alert')+'</span>'
+          +'<span><span class="sd-dep-name">'+d.t+'</span><span class="sd-dep-note">'+d.note+'</span></span>'
+          +'<span class="sd-dep-go">Systems Check '+svg('arrow')+'</span></button>').join('')
+      +'<div class="sd-todo" style="border-top:1px solid var(--line-soft);padding:10px 15px 12px">'+svg('info')+'<span>Systems Check is a <b style="color:var(--ink-2);font-weight:600">supporting check</b> here — it can block a play, but it is never the plan. Fixes happen in Systems Check.</span></div>'
+    +'</div></div></div>';
+}
+
+function contribCard(){
+  if(ST.state==='denied'){
+    return '<div class="sd-card sd-partner"><div class="sd-card-hd"><span class="sd-eyebrow">'+svg('sparkles')+' Paige\'s contribution</span></div>'
+      +'<div class="sd-partner-in"><div class="sd-align"><span class="al-ic">'+svg('lock')+'</span><span><span class="al-t">Not available here</span><span class="al-s">You don\'t have access to this workspace\'s Paige activity.</span></span></div></div></div>';
+  }
+  return '<div class="sd-card sd-partner"><div class="sd-card-hd"><span class="sd-eyebrow">'+svg('sparkles')+' Paige\'s operating contribution</span></div>'
+    +'<div class="sd-partner-in">'
+      +'<div class="sd-align"><span class="al-ic">'+svg('shield')+'</span><span><span class="al-t">Paige is aligned to this approved plan</span><span class="al-s">'+REVISIONS[0].v+' · approved '+REVISIONS[0].d+'</span></span>'
+        +'<button class="al-hist" data-act="history">'+svg('history')+' History</button></div>'
+      +'<div class="sd-contrib">'
+        +'<div class="cr"><span class="ci">'+svg('edit')+'</span><span class="ct">Draft the warm-intro sequence</span><span class="cl">Drafts for you</span></div>'
+        +'<div class="cr"><span class="ci">'+svg('eye')+'</span><span class="ct">Research the 3 referrals</span><span class="cl">On its own</span></div>'
+        +'<div class="cr"><span class="ci">'+svg('mega')+'</span><span class="ct">Prepare the launch campaign brief</span><span class="cl">Drafts for you</span></div>'
+        +'<div class="honest">'+svg('info')+'<span>Sends and price changes stay your approval — nothing goes out on its own. What Paige may do is set by your Trust Compass.</span></div>'
+      +'</div>'
+      +'<button class="sd-btn sd-partner-open" data-act="plan-paige" style="background:#fff;color:#171331;border-color:#fff;align-self:flex-start">'+svg('sparkles')+' Plan with Paige</button>'
+    +'</div></div>';
+}
+
+function renderDesk(){
+  const desk=document.getElementById('desk');
+  const T=TENANTS[ST.tenant];
+
+  if(ST.state==='loading'){
+    desk.innerHTML='<div class="sd-top"><div><div class="sd-sk" style="width:200px;height:11px"></div>'
+      +'<div class="sd-sk" style="width:55%;height:24px;margin:10px 0"></div><div class="sd-sk" style="width:70%;height:12px"></div></div>'
+      +'<div class="sd-sk" style="width:150px;height:34px;border-radius:10px"></div></div>'
+      +'<div class="sd-sk" style="height:40px;border-radius:11px"></div>'
+      +'<div class="sd-field"><div class="sd-col"><div class="sd-sk" style="height:200px;border-radius:18px"></div><div class="sd-sk" style="height:220px;border-radius:18px"></div></div>'
+      +'<div class="sd-rail"><div class="sd-sk" style="height:180px;border-radius:18px"></div><div class="sd-sk" style="height:120px;border-radius:18px"></div></div></div>';
+    paintIcons(desk);return;
+  }
+  if(ST.state==='first-use'){
+    desk.innerHTML='<div class="sd-first"><div class="sd-first-in"><div class="sd-first-badge">'+svg('target')+'</div>'
+      +'<h1>Let\'s build your game plan with Paige.</h1>'
+      +'<p>This is where your business strategy lives — the direction, the outcomes that matter, and the plays to get there. There\'s no approved direction yet. Talk it through with Paige and she\'ll propose a first plan for you to approve.</p>'
+      +'<div class="sd-first-steps">'
+        +'<button class="sd-first-step" data-act="plan-paige"><span class="num">1</span><span class="st"><b>Tell Paige where the business is going</b><span>Direction, the outcome that matters, what\'s in your way.</span></span><span class="go">'+svg('arrow')+'</span></button>'
+        +'<button class="sd-first-step" data-act="plan-paige"><span class="num">2</span><span class="st"><b>Paige proposes a plan</b><span>A structured draft you review — nothing is saved until you approve.</span></span><span class="go">'+svg('arrow')+'</span></button>'
+        +'<button class="sd-first-step" data-act="plan-paige"><span class="num">3</span><span class="st"><b>Approve it — it becomes your game plan</b><span>Paige stays aligned to the approved plan from then on.</span></span><span class="go">'+svg('arrow')+'</span></button>'
+      +'</div>'
+      +'<button class="sd-btn sd-act" data-act="plan-paige" style="margin-top:4px">'+svg('sparkles')+' Plan with Paige</button>'
+    +'</div></div>';
+    paintIcons(desk);return;
+  }
+
+  // banner (contextual)
+  let banner='';
+  if(ST.state==='decision') banner='<div class="sd-banner sd-banner-decide">'+svg('scale')+'<span><span class="bt">One decision is waiting on you.</span> <span class="bs">Paige recommends a $500 diagnostic price — your call.</span></span><button class="sd-btn sd-btn-sm bact" data-act="decision" data-arg="d1">Review decision</button></div>';
+  else if(ST.state==='blocked') banner='<div class="sd-banner sd-banner-block">'+svg('lock')+'<span><span class="bt">A dependency is blocking a play.</span> <span class="bs">The Q3 launch can\'t send until your sending identity is verified.</span></span><button class="sd-btn sd-btn-sm bact" data-act="systems">Open Systems Check</button></div>';
+  else if(ST.state==='stale') banner='<div class="sd-banner sd-banner-stale">'+svg('clock')+'<span><span class="bt">Some supporting data is 3 days old.</span> <span class="bs">Your approved plan is current; mission activity below may lag.</span></span><button class="sd-btn sd-btn-sm bact" data-act="retry">Refresh</button></div>';
+  else if(ST.state==='proposal') banner='<div class="sd-banner sd-banner-prop">'+svg('sparkles')+'<span><span class="bt">Paige has proposed a plan revision.</span> <span class="bs">Review it in the conversation — approve, edit, or reject.</span></span><button class="sd-btn sd-btn-sm bact" data-act="plan-paige">Review proposal</button></div>';
+  else if(ST.state==='switch') banner='<div class="sd-banner sd-banner-stale">'+svg('refresh')+'<span><span class="bt">Workspace switched to '+T.name+'.</span> <span class="bs">This plan is '+T.name+'\'s only — nothing from the previous workspace is shown.</span></span></div>';
+
+  const kicker='<div class="sd-kicker">'+[T.name,T.tier,T.date].map((s,i)=>(i>0?'<span class="sep">·</span>':'')+s).join('')+'</div>';
+  const top='<div class="sd-top"><div>'+kicker
+    +'<h1>'+greet()+', '+T.owner+'.</h1>'
+    +'<p class="sd-sub">'+subline()+'</p></div>'
+    +'<div class="sd-acts"><button class="sd-btn sd-btn-quiet sd-btn-sm" data-act="retry">'+svg('refresh')+' Refresh</button>'
+      +'<button class="sd-btn sd-act" data-act="plan-paige">'+svg('sparkles')+' Plan with Paige</button></div></div>';
+
+  const horizon='<div class="sd-horizon"><div class="sd-hz-strip" role="group" aria-label="Planning horizon">'
+    + HORIZONS.map(h=>'<button class="sd-hz" data-hz="'+h.id+'" aria-pressed="'+(ST.horizon===h.id)+'"><span class="hzt">'+h.t+'</span><span class="hzs">'+h.s+'</span></button>').join('')
+    +'</div>'
+    +'<div class="sd-hz-meta"><span class="mlbl">Now:</span><span>'+hzLabel(ST.horizon)+'</span></div></div>';
+
+  const field='<div class="sd-field"><div class="sd-col">'+briefCard()+pillarsCard()+decisionCard()+'</div>'
+    +'<div class="sd-rail">'+missionsCard()+depsCard()+contribCard()+'</div></div>';
+
+  desk.innerHTML = top + banner + horizon + field;
+  paintIcons(desk);
+  wireInteractions();
+}
+function greet(){const h=new Date().getHours();return h<12?'Good morning':h<18?'Good afternoon':'Good evening';}
+function hzLabel(id){const h=HORIZONS.find(x=>x.id===id);return h?(h.t+' — '+h.s):id;}
+function subline(){
+  if(ST.state==='partial') return 'Your direction is set. A few pillars and plays aren\'t defined yet — Paige can help you shape them.';
+  if(ST.state==='blocked') return 'The plan is on track, but one play is blocked by a setup dependency below.';
+  if(ST.state==='switch') return 'A fresh workspace, a fresh plan. Everything here is '+TENANTS[ST.tenant].name+'\'s.';
+  return 'Here\'s where the business is going and what matters most now — the strategy you and Paige run together.';
+}
+
+/* ---------------- Paige dock ---------------- */
+function renderDock(){
+  const dock=document.getElementById('pdock');
+  const proposal = ST.state==='proposal';
+  dock.innerHTML='<div class="pdock-hd"><span class="pav">P</span><span><b>Paige</b><br><span>Your operating partner</span></span>'
+    +'<button class="pcls" data-act="close-paige" aria-label="Close Paige">'+svg('x')+'</button></div>'
+    +'<div class="pdock-body">'
+      +'<div class="pmsg pmsg-p"><div class="pmsg-lbl">Paige</div>Here\'s where your Q3 plan stands. Want to talk through the launch window, or the referral nurture?</div>'
+      +'<div class="pmsg pmsg-u">Let\'s tighten the Q3 target. I think 6 clients is aggressive.</div>'
+      +'<div class="pmsg pmsg-p"><div class="pmsg-lbl">Paige</div>Fair. Based on 3 warm referrals at ~40% close plus the new offer, 4–5 is the grounded range. I can propose that as a revision to your plan — you approve it before anything changes.</div>'
+      + (proposal
+        ? '<div class="prev"><div class="prev-hd"><span class="pr-ic">'+svg('sparkles')+'</span><b>Proposed plan revision</b></div>'
+          +'<div class="prev-prov">Proposed by Paige · from this conversation · Sep 6 · not yet approved</div>'
+          +'<div class="prev-diff"><div class="dl rm"><span class="dm">−</span><span>Q3 outcome: 6 retained clients at ~$4k/mo</span></div>'
+          +'<div class="dl add"><span class="dm">+</span><span>Q3 outcome: 4–5 retained clients at ~$4k/mo</span></div></div>'
+          +'<div class="prev-cta"><button class="sd-btn sd-act sd-btn-sm" data-act="approve-prop">'+svg('check')+' Approve</button>'
+            +'<button class="sd-btn sd-btn-sm" data-act="edit-prop" style="background:rgba(255,255,255,.9)">'+svg('edit')+' Edit</button>'
+            +'<button class="sd-btn sd-btn-sm" data-act="reject-prop" style="background:rgba(255,255,255,.9)">'+svg('x')+' Reject</button></div></div>'
+        : '<div class="pmsg pmsg-p"><div class="pmsg-lbl">Paige</div>Say the word and I\'ll draft that revision for your approval.</div>')
+    +'</div>'
+    +'<div class="pdock-foot">'
+      +'<div class="pcompose"><input placeholder="Message Paige…" aria-label="Message Paige" '+(proposal?'':'')+'><span class="psend" data-act="mock-send">'+svg('send')+'</span></div>'
+      +'<div style="font-size:10.5px;color:var(--rail-text);display:flex;gap:7px;align-items:flex-start">'+svg('info')+'<span>Prototype — messages are mocked. This is the one authenticated Paige conversation; plan changes only happen through a proposal you approve.</span></div>'
+    +'</div>';
+  paintIcons(dock);
+}
+
+/* ---------------- overlays (focus-trapped) ---------------- */
+let lastFocus=null;
+function openOverlay(kind,html){
+  closeOverlay(true);
+  lastFocus=document.activeElement;
+  const scrim=el('<div class="ov-scrim" data-kind="'+kind+'" role="dialog" aria-modal="true"><div class="ov-sheet">'+html+'</div></div>');
+  document.getElementById('overlayRoot').appendChild(scrim);
+  paintIcons(scrim);
+  requestAnimationFrame(()=>scrim.classList.add('show'));
+  scrim.addEventListener('mousedown',e=>{if(e.target===scrim)closeOverlay();});
+  const f=scrim.querySelector('button,[href],input,textarea,[tabindex]:not([tabindex="-1"])');if(f)f.focus();
+  scrim.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){e.preventDefault();closeOverlay();}
+    if(e.key==='Tab'){
+      const nodes=[...scrim.querySelectorAll('button,[href],input,textarea,select,[tabindex]:not([tabindex="-1"])')].filter(n=>!n.disabled&&n.offsetParent!==null);
+      if(!nodes.length)return;const first=nodes[0],last=nodes[nodes.length-1];
+      if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+      else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+    }
+  });
+}
+function closeOverlay(silent){
+  const s=document.getElementById('overlayRoot').firstElementChild;if(!s)return;
+  s.classList.remove('show');setTimeout(()=>s.remove(),200);
+  if(!silent&&lastFocus&&lastFocus.focus)lastFocus.focus();
+}
+function ohead(icon,title,sub){return '<div class="ov-hd"><span class="oh-ic">'+svg(icon)+'</span><div><h3>'+title+'</h3>'+(sub?'<div class="oh-sub">'+sub+'</div>':'')+'</div><button class="oh-x" data-act="close-ov" aria-label="Close">'+svg('x')+'</button></div>';}
+
+function drawerEditBrief(){
+  const b=BRIEF[ST.horizon==='campaign'?'q3':ST.horizon];
+  openOverlay('drawer',ohead('edit','Edit plan brief','Changes are proposed to Paige — the approved plan updates only when you confirm')
+    +'<div class="ov-body">'
+      +'<div class="ov-proto">'+svg('info')+'<span>Prototype — fields are read-only here. In production, editing proposes a revision (the business-brief propose→approve seam) with provenance; Paige never rewrites your strategy silently.</span></div>'
+      +'<div class="ov-field"><label>Direction '+src('dir')+'</label><textarea class="fin" readonly>'+b.dir+'</textarea></div>'
+      +'<div class="ov-field"><label>Desired outcome '+src('dir')+'</label><textarea class="fin" readonly>'+b.outcome+'</textarea></div>'
+      +'<div class="ov-field"><label>Constraints '+src('dir')+'</label><input class="fin" readonly value="'+b.constraints+'"></div>'
+      +'<div class="ov-field"><label>Assumption '+src('assume')+'</label><input class="fin" readonly value="'+b.assume+'"></div>'
+    +'</div>'
+    +'<div class="ov-foot"><button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="close-ov">Cancel</button>'
+      +'<button class="sd-btn sd-btn-sm sd-act" data-act="mock-propose">'+svg('sparkles')+' Propose changes to Paige</button></div>');
+}
+function modalDecision(id){
+  const d=DECISIONS.find(x=>x.id===id)||DECISIONS[0];
+  const waiting=d.waiting||(ST.state==='decision'&&d.id==='d1');
+  openOverlay('modal',ohead(d.ic,d.t,'Decision &amp; opportunity desk')
+    +'<div class="ov-body">'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap">'+src(d.kind)+(waiting?'<span class="sd-src sd-src-dir"><span class="sdd"></span>Waiting on you</span>':'')+'</div>'
+      +'<p style="font-size:13px;color:var(--ink-2);line-height:1.55">'+d.detail+'</p>'
+      +'<div class="sd-fact" style="font-size:13px"><span class="fl">Evidence</span><span class="fv">'+d.evidence+'</span></div>'
+      +'<div class="ov-proto">'+svg('info')+'<span>Every desk item is labeled by how sure Paige is: a <b>Fact</b> is read from your data; <b>Your direction</b> is something you decided; <b>Paige suggests</b> is a recommendation; an <b>Assumption</b> is a model estimate; <b>Source unavailable</b> is an honest gap; <b>Proof owed</b> means the claim needs more data.</span></div>'
+    +'</div>'
+    +'<div class="ov-foot"><button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="close-ov">Close</button>'
+      +(waiting?'<button class="sd-btn sd-btn-sm" data-act="mock-write">Ask Paige to revise</button><button class="sd-btn sd-btn-sm sd-act" data-act="mock-write">'+svg('check')+' Approve $500 price</button>'
+        :(d.kind==='rec'?'<button class="sd-btn sd-btn-sm sd-act" data-act="mock-write">'+svg('sparkles')+' Have Paige act on it</button>':(d.kind==='owed'||d.kind==='unavail'?'<button class="sd-btn sd-btn-sm" data-act="systems">Fix the source</button>':'')))+'</div>');
+}
+function modalHistory(){
+  openOverlay('modal',ohead('history','Plan revision history','Every change is provenance-stamped; the approved version is marked')
+    +'<div class="ov-body"><div class="ov-hist">'
+      + REVISIONS.map(r=>'<div class="hr'+(r.cur?' cur':'')+'"><span class="hd-dot"></span><div><div class="hv">'+r.v+(r.cur?' <span class="sd-src sd-src-fact"><span class="sdd"></span>Currently approved</span>':'')+' <span class="hd-date">'+r.d+'</span></div><div class="hm">'+r.m+'</div><div class="hm" style="color:var(--violet)">'+r.by+'</div></div></div>').join('')
+    +'</div><div class="ov-proto">'+svg('info')+'<span>Prototype. In production this reads from governed memory — approved plan facts carry provenance and can be revoked; a future change is a <b>proposed</b> revision, never a silent overwrite.</span></div></div>'
+    +'<div class="ov-foot"><button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="close-ov">Close</button></div>');
+}
+function modalEvidence(){
+  openOverlay('modal',ohead('eye','Where this plan comes from','Source map for the plan brief')
+    +'<div class="ov-body"><div class="ov-legend">'
+      +'<div class="lg">'+src('dir')+'<div><div class="lgt">Direction, outcome, constraints</div><div class="lgd">From your confirmed business context (the setup brief) — owner-stated, provenance-stamped.</div></div></div>'
+      +'<div class="lg">'+src('assume')+'<div><div class="lgt">Referral close-rate assumption</div><div class="lgd">A Paige estimate from 2 prior quarters — shown as an assumption, not a fact.</div></div></div>'
+      +'<div class="lg">'+src('fact')+'<div><div class="lgt">3 warm referrals</div><div class="lgd">Read directly from your Clients pipeline.</div></div></div>'
+      +'<div class="lg">'+src('owed')+'<div><div class="lgt">40% close rate in the Q3 target</div><div class="lgd">Needs one more quarter of data before it becomes a fact.</div></div></div>'
+    +'</div>'
+    +'<div class="ov-proto">'+svg('info')+'<span>Prototype. In a first release these compose real reads (business brief, campaign briefs, clients pipeline, governed memory); a durable strategic-plan store with revisions is a named net-new build.</span></div></div>'
+    +'<div class="ov-foot"><button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="close-ov">Close</button></div>');
+}
+function modalLegend(){
+  openOverlay('modal',ohead('info','What the source labels mean','Every value on this desk is labeled by how sure Paige is')
+    +'<div class="ov-body"><div class="ov-legend">'
+      +'<div class="lg">'+src('fact')+'<div><div class="lgt">Fact</div><div class="lgd">Read straight from your data — a pipeline count, a recorded event.</div></div></div>'
+      +'<div class="lg">'+src('dir')+'<div><div class="lgt">Your direction</div><div class="lgd">Something you decided and Paige is holding to.</div></div></div>'
+      +'<div class="lg">'+src('rec')+'<div><div class="lgt">Paige suggests</div><div class="lgd">A recommendation from Paige — yours to accept, edit, or reject.</div></div></div>'
+      +'<div class="lg">'+src('assume')+'<div><div class="lgt">Assumption</div><div class="lgd">A model estimate standing in until real data confirms it.</div></div></div>'
+      +'<div class="lg">'+src('unavail')+'<div><div class="lgt">Source unavailable</div><div class="lgd">An honest gap — Paige shows nothing rather than guessing.</div></div></div>'
+      +'<div class="lg">'+src('owed')+'<div><div class="lgt">Proof owed</div><div class="lgd">A claim the plan leans on that still needs data to prove.</div></div></div>'
+    +'</div></div>'
+    +'<div class="ov-foot"><button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="close-ov">Close</button></div>');
+}
+
+/* ---------------- interactions ---------------- */
+function toggleItem(id){if(ST.openItems.has(id))ST.openItems.delete(id);else ST.openItems.add(id);renderDesk();}
+let suppressClick=false;
+function afterAnim(el,cb){ if(ST.rm||!el){cb();return;} let done=false;const fin=()=>{if(done)return;done=true;cb();};
+  el.addEventListener('transitionend',fin,{once:true}); setTimeout(fin,380); }
+function deckAdvance(id,dir,msg){
+  const top=document.querySelector('.sd-dcard.top');
+  if(top&&!ST.rm){ top.classList.add(dir<0?'gone-left':'gone-right'); afterAnim(top,()=>{ST.deckDismissed.add(id);renderDesk();}); }
+  else { ST.deckDismissed.add(id); renderDesk(); }
+  if(msg) toast(msg);
+}
+function deckAct(id){
+  const d=DECISIONS.find(x=>x.id===id)||{};
+  const waiting=d.waiting||(ST.state==='decision'&&id==='d1');
+  const msg = waiting?'Approved (prototype — no data changed).'
+    : d.kind==='rec'?'Paige will take it from here (prototype).'
+    : (d.kind==='owed'||d.kind==='unavail')?'Would open the source to fix it (prototype).':'Opened (prototype).';
+  deckAdvance(id,+1,msg);
+}
+function missionDismiss(id){
+  const item=document.querySelector('.sd-swipe[data-mid="'+id+'"]');
+  if(item&&!ST.rm){ item.classList.add('gone'); afterAnim(item.querySelector('.sd-swipe-fg'),()=>{ST.missionDismissed.add(id);renderDesk();}); }
+  else { ST.missionDismissed.add(id); renderDesk(); }
+  toast('Archived (prototype — swipe or the × ; restore anytime).');
+}
+function areaItem(label,id){
+  if(label==='Decision')return DECISIONS.find(d=>d.id===id);
+  if(label==='Mission')return MISSIONS.find(m=>m.id===id);
+  if(label==='Pillar')return PILLARS.find(p=>p.id===id);
+  if(label==='Campaign play')return CAMPAIGN;
+  return null;
+}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function drawerEditArea(label,id){
+  const it=areaItem(label,id);
+  const title=it?(it.t||label):(label||'this area');
+  const note=it?(it.note||it.detail||''):'';
+  openOverlay('drawer',ohead('edit','Edit '+label.toLowerCase(),'You can change this — and so can Paige from your chat')
+    +'<div class="ov-body">'
+      +'<div class="ov-proto">'+svg('info')+'<span>Prototype — this is where you edit '+esc(label.toLowerCase())+' directly. Nothing here is locked: you can overwrite it, and when Paige is strategizing with you in chat she proposes the same change for your approval.</span></div>'
+      +'<div class="ov-field"><label>Title '+src('dir')+'</label><input class="fin" value="'+esc(title)+'"></div>'
+      +'<div class="ov-field"><label>Notes</label><textarea class="fin">'+esc(note)+'</textarea></div>'
+      +'<div class="ov-field"><label>Who can change it</label><div class="ov-legend">'
+        +'<div class="lg">'+src('dir')+'<div><div class="lgt">You</div><div class="lgd">Edit it here anytime — it saves as your direction.</div></div></div>'
+        +'<div class="lg">'+src('rec')+'<div><div class="lgt">Paige</div><div class="lgd">Proposes the change from your chat; you approve before it lands.</div></div></div></div></div>'
+    +'</div>'
+    +'<div class="ov-foot"><button class="sd-btn sd-btn-sm sd-btn-quiet" data-act="close-ov">Cancel</button>'
+      +'<button class="sd-btn sd-btn-sm" data-act="mock-propose">'+svg('sparkles')+' Ask Paige to revise</button>'
+      +'<button class="sd-btn sd-btn-sm sd-act" data-act="mock-write">'+svg('check')+' Save changes</button></div>');
+}
+function handleAct(a){
+  const act=a.dataset.act, arg=a.dataset.arg, arg2=a.dataset.arg2;
+  switch(act){
+    case 'plan-paige': if(!ST.paige){ST.paige=true;setSeg('segPaige','paige','1');}applyChrome();toast('Opened the Paige conversation. Plan changes happen through a proposal you approve.');break;
+    case 'close-paige': ST.paige=false;setSeg('segPaige','paige','0');if(ST.state!=='proposal')applyChrome();else toast('This state keeps Paige open to show the proposal.');break;
+    case 'edit-brief': drawerEditBrief();break;
+    case 'edit-area': drawerEditArea(arg,arg2);break;
+    case 'evidence': modalEvidence();break;
+    case 'decision': modalDecision(arg);break;
+    case 'history': modalHistory();break;
+    case 'legend': modalLegend();break;
+    case 'toggle-dep': ST.depOpen=!ST.depOpen;renderDesk();break;
+    case 'open-horizon': ST.horizon=arg;renderDesk();break;
+    case 'systems': toast('Would route to Systems Check to fix this dependency (prototype).');break;
+    case 'retry': toast('Refreshed (prototype — no data changed).');break;
+    case 'deck-dismiss': deckAdvance(arg,-1,'Set aside — it comes back when you restore.');break;
+    case 'deck-act': deckAct(arg);break;
+    case 'deck-restore': ST.deckDismissed.clear();renderDesk();break;
+    case 'mission-dismiss': missionDismiss(arg);break;
+    case 'mission-restore': ST.missionDismissed.clear();renderDesk();break;
+    case 'mock-send': toast('Prototype — messages to Paige are mocked here.');break;
+    case 'mock-propose': closeOverlay();toast('Paige would draft this as a revision for your approval.');break;
+    case 'mock-write': closeOverlay();toast('Prototype — no data was changed. In production this is a governed, approval-gated edit.');break;
+    case 'approve-prop': toast('Approved. The plan brief updates and Paige re-aligns (prototype).');break;
+    case 'edit-prop': toast('You could edit the proposed revision before approving (prototype).');break;
+    case 'reject-prop': toast('Rejected — your approved plan is unchanged (prototype).');break;
+    case 'close-ov': closeOverlay();break;
+  }
+}
+document.addEventListener('click',e=>{
+  if(suppressClick){suppressClick=false;e.preventDefault();e.stopPropagation();return;}
+  const hz=e.target.closest('[data-hz]');
+  if(hz){ST.horizon=hz.dataset.hz;ST.openItems.clear();renderDesk();return;}
+  const actEl=e.target.closest('[data-act]');
+  const togEl=e.target.closest('[data-toggle]');
+  if(actEl && (!togEl || togEl.contains(actEl))){ handleAct(actEl); return; }
+  if(togEl){ toggleItem(togEl.dataset.toggle); return; }
+});
+document.addEventListener('keydown',e=>{
+  const dcard=e.target.closest('.sd-dcard.top');
+  if(dcard&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){e.preventDefault();
+    if(e.key==='ArrowLeft')deckAdvance(dcard.dataset.id,-1,'Set aside — restore anytime.'); else deckAct(dcard.dataset.id);return;}
+  if((e.key==='Enter'||e.key===' ')){
+    // carets are native <button>s (Enter/Space fire click natively); only the div role=button
+    // dependency header needs manual key handling.
+    if(e.target.matches('[data-act="toggle-dep"]')){e.preventDefault();ST.depOpen=!ST.depOpen;renderDesk();return;}
+  }
+});
+
+/* pointer-drag: deck swipe + mission swipe-to-dismiss (attached each render) */
+function wireInteractions(){
+  const top=document.querySelector('.sd-dcard.top'); if(top)attachDeckDrag(top);
+  document.querySelectorAll('.sd-swipe-fg').forEach(attachRowDrag);
+}
+function attachDeckDrag(card){
+  if(card._wired)return; card._wired=true;
+  let sx=0,sy=0,drag=false,dx=0;
+  const hl=card.querySelector('.dc-hint.l'), hr=card.querySelector('.dc-hint.r');
+  card.addEventListener('pointerdown',e=>{ if(e.target.closest('button'))return;
+    sx=e.clientX;sy=e.clientY;drag=true;dx=0;try{card.setPointerCapture(e.pointerId);}catch(_){}card.classList.add('dragging'); });
+  card.addEventListener('pointermove',e=>{ if(!drag)return; dx=e.clientX-sx; const dy=e.clientY-sy;
+    if(Math.abs(dx)<6&&Math.abs(dx)<Math.abs(dy))return;
+    card.style.transform='translateX('+dx+'px) rotate('+(dx*0.04)+'deg)';
+    card.style.opacity=String(Math.max(.35,1-Math.abs(dx)/380));
+    if(hr)hr.style.opacity=dx>24?String(Math.min(1,dx/120)):'0';
+    if(hl)hl.style.opacity=dx<-24?String(Math.min(1,-dx/120)):'0'; });
+  const end=()=>{ if(!drag)return; drag=false; card.classList.remove('dragging'); const id=card.dataset.id;
+    if(dx<-90){suppressClick=true;deckAdvance(id,-1,'Set aside — it comes back when you restore.');}
+    else if(dx>90){suppressClick=true;deckAct(id);}
+    else{card.style.transform='';card.style.opacity='';if(hr)hr.style.opacity='0';if(hl)hl.style.opacity='0';} };
+  card.addEventListener('pointerup',end); card.addEventListener('pointercancel',end);
+}
+function attachRowDrag(fg){
+  if(fg._wired)return; fg._wired=true;
+  const item=fg.closest('.sd-swipe'); if(!item)return;
+  let sx=0,sy=0,drag=false,dx=0,decided=false;
+  fg.addEventListener('pointerdown',e=>{ if(e.target.closest('button'))return; sx=e.clientX;sy=e.clientY;drag=true;dx=0;decided=false; });
+  fg.addEventListener('pointermove',e=>{ if(!drag)return; dx=e.clientX-sx; const dy=e.clientY-sy;
+    if(!decided){ if(Math.abs(dx)>8&&Math.abs(dx)>Math.abs(dy)){decided=true;fg.classList.add('dragging');try{fg.setPointerCapture(e.pointerId);}catch(_){}} else if(Math.abs(dy)>8){drag=false;return;} }
+    if(decided){ fg.style.transform='translateX('+Math.min(0,dx)+'px)'; if(dx<-40)item.querySelector('.sd-swipe-under').style.color='var(--bad)'; } });
+  const end=()=>{ if(!drag)return; drag=false; if(!decided)return; fg.classList.remove('dragging'); suppressClick=true;
+    if(dx<-70){missionDismiss(item.dataset.mid);} else {fg.style.transform='';} };
+  fg.addEventListener('pointerup',end); fg.addEventListener('pointercancel',end);
+}
+
+/* ---------------- review chrome wiring ---------------- */
+function setSeg(segId,attr,val){document.querySelectorAll('#'+segId+' button').forEach(b=>b.setAttribute('aria-pressed',b.dataset[attr]===val));}
+function buildSegs(){
+  const s=document.getElementById('segState');
+  s.innerHTML=STATES.map(x=>'<button data-state="'+x[0]+'" aria-pressed="'+(x[0]===ST.state)+'">'+x[1]+'</button>').join('');
+  const v=document.getElementById('segVp');
+  v.innerHTML=Object.keys(VIEWPORTS).map(k=>'<button data-vp="'+k+'" aria-pressed="'+(k===ST.vp)+'">'+k+'</button>').join('');
+}
+document.getElementById('segState').addEventListener('click',e=>{const b=e.target.closest('[data-state]');if(!b)return;
+  ST.state=b.dataset.state;ST.openItems.clear();ST.depOpen=false;
+  ST.tenant = ST.state==='switch'?'northwind':'clearpath';
+  if(ST.state==='reduced'){ST.rm=true;document.getElementById('rmToggle').checked=true;}
+  setSeg('segState','state',ST.state);
+  applyChrome();renderDesk();});
+document.getElementById('segTheme').addEventListener('click',e=>{const b=e.target.closest('[data-theme]');if(!b)return;
+  ST.theme=b.dataset.theme;setSeg('segTheme','theme',ST.theme);applyChrome();});
+document.getElementById('segVp').addEventListener('click',e=>{const b=e.target.closest('[data-vp]');if(!b)return;
+  ST.vp=b.dataset.vp;setSeg('segVp','vp',ST.vp);applyChrome();});
+document.getElementById('segPaige').addEventListener('click',e=>{const b=e.target.closest('[data-paige]');if(!b)return;
+  ST.paige=b.dataset.paige==='1';setSeg('segPaige','paige',b.dataset.paige);applyChrome();});
+document.getElementById('rmToggle').addEventListener('change',e=>{ST.rm=e.target.checked;applyChrome();});
+document.getElementById('legendBtn').addEventListener('click',modalLegend);
+
+/* ---------------- boot ---------------- */
+buildSegs();
+paintIcons(document.getElementById('app'));
+applyChrome();
+renderDesk();
+</script>
