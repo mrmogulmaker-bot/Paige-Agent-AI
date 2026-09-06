@@ -4093,20 +4093,49 @@ and `resolve_automation_autonomy` is untouched (the floor-lift is PR-2). A `high
   exactly-once guarantee (§10.7 "never silently retry a consequential action without idempotency").
 - `paige_authority_budget_windows` — the atomic velocity + spend ledger (per grant × window kind × start).
 - Primitives (SECURITY DEFINER, §59 in-body scope): `authority_grant_active`, `authority_reserve`
-  (atomic FOR-UPDATE reserve — active + narrowest-limit-wins across every declared cap window; fail-closed
-  on any exhausted/unreadable layer; idempotent replay), `authority_consume` (records the provider-
-  confirmed result; never fabricates success), `authority_release` (reverses a reservation atomically),
-  `authority_remaining_capacity` (the §10.9 "show remaining capacity" read).
+  (atomic reserve serialized by the GRANT-ROW `FOR UPDATE` lock — active + single-action cap + every
+  declared day/week/month window; a declared cap it cannot yet evaluate — campaign/client_period — is
+  REFUSED `unenforceable_cap_kind`, not silently ignored, so "narrowest-limit-wins" is TRUE by
+  construction; idempotent replay of a reserved/succeeded key, fail-closed `prior_attempt_failed` on a
+  failed/released key; records `reserved_windows` so release reverses exactly what it touched),
+  `authority_consume` (records the provider-confirmed result; never fabricates success),
+  `authority_release` (reverses EXACTLY the recorded windows atomically), `authority_remaining_capacity`
+  (the §10.9 "show remaining capacity" read).
+- Integrity trigger `paige_authority_grants_guard` — forces `granted_by = auth.uid()` on JWT writes (no
+  spoofing, §10.9) + fences `parent_grant_id`/`automation_id` to the SAME tenant (§9/§51) + maintains
+  `updated_at`. Platform-side grant authoring is super_admin only (`is_platform_owner`, §53), NOT a
+  delegated platform_admin; reads stay member/operator-visible.
+
+**Crew (§1/§5/§39).** §5 compliance = **FIX-FIRST** (architecture sound: the separate grants table is
+correct not a §18 fork; §59 in-body scope clean; grant-row-lock concurrency best-in-class; honest §32
+posture) + 2 blockers. §39 adversarial-against-diff = **FIX-FIRST**, confirming the same two + catching
+the version collision (below). Both folded into this slice before merge (not a revert): (1)
+campaign/client_period caps were declared-but-silently-UNENFORCED (fail-OPEN + §13 overclaim) → reserve
+now REFUSES any unenforceable cap kind and the "every cap" comments are corrected; (2) `granted_by` was
+spoofable → the integrity trigger forces it to `auth.uid()` on JWT writes. Plus the cheap-now hardening:
+same-tenant fences on parent/automation, failed/released replay fail-closed (`prior_attempt_failed`),
+robust release via `reserved_windows` (no over-reversal if caps are edited mid-flight), receipt-INSERT
+before window-increment (no orphan +1), `cost_usd >= 0` CHECK, and the §53 super_admin write tightening.
+
+**Version collision (caught by §39, remediated).** The first cut shipped as `20261229000000`, colliding
+with #1004's `campaign_brief_tool_autonomy_catalogue` (which landed on main concurrently); `db push` keys
+on version alone and would have SILENTLY SKIPPED this migration on merge (CI green, objects never
+created — the exact false-green `lint:migration-versions` exists to catch, which passed at author time
+only because #1004 was not yet on main). Renumbered to `20261230000000` (unique vs origin/main);
+`lint:migration-versions` ✓.
 
 **Proof (§32).** Pre-merge `BEGIN..ROLLBACK` on prod (ref xygzykjyynhzqytbqnzu): (a) FULL migration
-applies clean (`FULL_MIGRATION_APPLIES_OK`); (b) behavioral drive of the primitives — reserve ok,
-idempotent replay returns the same receipt, over-action-count / over-single-action / over-spend all
-refuse, consume→succeeded, release frees capacity so the next reserve succeeds, paused + revoked →
-`grant_inactive`, re-consume a settled receipt → `not_reserved` (no fabricated success). Guards:
-`lint:definer-fns` ✓ (no anon-reachable DEFINER), `lint:migration-versions` ✓. Post-merge §32.a
-PERSISTED-APPLY (CI deploy-migrations → schema_migrations advanced + objects exist) confirmed after merge.
-Authenticated end-to-end drive is honestly OWED to PR-3 when a real execution lane exists (§32.c) — this
-slice has no producer.
+applies clean; (b) behavioral drive of the primitives — reserve ok, idempotent replay returns the same
+receipt, over-action-count / over-single-action / over-spend / unenforceable-cap-kind all refuse,
+failed-key replay → `prior_attempt_failed`, consume→succeeded, release reverses exactly the recorded
+windows so the next reserve succeeds, paused + revoked → `grant_inactive`, granted_by-spoof +
+cross-tenant parent/automation rejected, re-consume a settled receipt → `not_reserved` (no fabricated
+success). Guards: `lint:definer-fns` ✓ (no anon-reachable DEFINER), `lint:migration-versions` ✓.
+**§32.a PERSISTED-APPLY is OWED POST-MERGE** — a `BEGIN..ROLLBACK` proof proves the SQL EXECUTES, never
+that it is persisted (§32, this entry's own rule). It must be re-confirmed after CI `deploy-migrations`
+against version `20261230000000` (the `schema_migrations` row advanced AND the 3 tables + 5 `authority_*`
+functions + the guard trigger exist on prod). Authenticated end-to-end drive is honestly OWED to PR-3
+when a real execution lane exists (§32.c) — this slice has no producer.
 
 **Next:** RE-2 PR-2 (policy-aware resolver floor-lift — lift a `high` act's floor ONLY when a valid
 grant authorizes the exact action, else fail closed), then M1 (real spend metering), then PR-3 (wire the

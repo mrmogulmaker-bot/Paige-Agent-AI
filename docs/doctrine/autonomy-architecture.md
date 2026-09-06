@@ -714,6 +714,12 @@ contract, credential, or a material legal/financial decision is the only thing t
    caps + action-count limits**; **atomic reserve/consume/release** primitives; immediate
    **pause / revoke / expiry / emergency-stop**; per-tenant, and where applicable per-client,
    per-provider-account, per-campaign, and per-action **scope**.
+   *Implementation-status note (§13, shipped `20261230000000`):* the reserve primitive enforces the
+   single-action cap and the **day/week/month** action-count + spend caps. **Campaign and client-period
+   budget caps are NOT enforced by the substrate yet** — they need a `campaign_id` / client-period
+   boundary in scope to derive a window (PR-3). Until then a grant that DECLARES one is **refused**
+   (`unenforceable_cap_kind`), never silently under-enforced — so PR-2/PR-3 must not assume PR-1 caps a
+   campaign budget.
 2. **RE-2 PR-2 — policy-aware resolver:** lift the blanket `high`-action `confirm` floor ONLY when a
    specific valid standing policy authorizes the exact action; **no global "high is now automatic"
    switch**; missing/expired/revoked/ambiguous/stale/over-cap/cross-scope fails closed; `confirm`

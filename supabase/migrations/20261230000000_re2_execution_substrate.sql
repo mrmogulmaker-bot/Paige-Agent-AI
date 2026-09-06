@@ -33,8 +33,11 @@
 --          `parent_grant_id` chain + the ceiling checks are enforced in PR-2's resolver; the columns
 --          exist here). A grant can never authorize a platform-tier or ownership/authority-policy act.
 --   §68  — a grant decays: `expires_at` is a hard stop; pause/revoke/emergency-stop are immediate.
---   narrowest-limit-wins (§10.9) — the reserve primitive enforces EVERY applicable cap window; any one
---          exhausted, or any layer unreadable, fails closed.
+--   narrowest-limit-wins (§10.9) — the reserve primitive enforces the single-action cap and every DECLARED
+--          day/week/month action-count + spend window; any one exhausted fails closed. A grant that
+--          declares a cap this slice cannot yet evaluate (campaign_budget_usd / client_period_budget_usd —
+--          PR-3) is REFUSED at reserve, not silently under-enforced, so "any layer unreadable, fails
+--          closed" holds by construction rather than by comment.
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 1. THE STANDING POLICY / SPENDING GRANT — first-class and citable
@@ -49,7 +52,7 @@ CREATE TABLE IF NOT EXISTS public.paige_authority_grants (
   tenant_id          uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
   -- WHO granted it (§10.9). `granted_by` is the grantor; a representative-created grant names the owner
   -- grant it descends from, so PR-2 can enforce "a representative can never exceed the owner ceiling".
-  granted_by         uuid NOT NULL,                    -- auth.uid() of the grantor at creation
+  granted_by         uuid NOT NULL DEFAULT auth.uid(), -- the grantor; a BEFORE-INSERT trigger forces this = auth.uid() on JWT writes so it cannot be spoofed (§10.9 audit integrity). Service-role (headless) writes supply the real grantor.
   parent_grant_id    uuid REFERENCES public.paige_authority_grants(id) ON DELETE CASCADE,
   -- WHAT process it powers, when process-scoped (§67). NULL = a standing grant not tied to one process.
   automation_id      uuid REFERENCES public.paige_automations(id) ON DELETE CASCADE,
@@ -99,11 +102,13 @@ CREATE INDEX IF NOT EXISTS paige_authority_grants_parent_idx    ON public.paige_
 
 ALTER TABLE public.paige_authority_grants ENABLE ROW LEVEL SECURITY;
 
--- READ: a tenant member (and platform operator) may see their own tenant's grants — the §10.9 "show the
--- current grant, remaining capacity … visibly to the owner and permitted representative". WRITE is
--- admin-only here (an owner/admin authors a grant); the representative-ceiling enforcement + Paige's own
--- confirmation-gated grant authoring are PR-2 work, so this migration keeps writes to tenant admins and
--- the service role, never a broad authenticated write.
+-- READ: a tenant member (and any platform operator) may see their own tenant's grants — the §10.9 "show
+-- the current grant, remaining capacity … visibly to the owner and permitted representative".
+-- WRITE is admin-only, and deliberately ASYMMETRIC to READ (§53): a tenant admin authors their OWN
+-- tenant's grant, but on the PLATFORM side only super_admin (is_platform_owner) — NOT a delegated
+-- platform_admin — may author a tenant's SPENDING authority. Authoring a tenant's spending authority is a
+-- God-tier act, not a delegated-operator one, so it does not ride is_platform_operator(). The
+-- representative-ceiling enforcement + Paige's own confirmation-gated grant authoring are PR-2 work.
 DROP POLICY IF EXISTS paige_authority_grants_read ON public.paige_authority_grants;
 CREATE POLICY paige_authority_grants_read ON public.paige_authority_grants
   FOR SELECT TO authenticated
@@ -112,8 +117,52 @@ CREATE POLICY paige_authority_grants_read ON public.paige_authority_grants
 DROP POLICY IF EXISTS paige_authority_grants_admin_write ON public.paige_authority_grants;
 CREATE POLICY paige_authority_grants_admin_write ON public.paige_authority_grants
   FOR ALL TO authenticated
-  USING (public.is_platform_operator() OR public.is_tenant_admin(tenant_id))
-  WITH CHECK (public.is_platform_operator() OR public.is_tenant_admin(tenant_id));
+  USING (public.is_platform_owner() OR public.is_tenant_admin(tenant_id))
+  WITH CHECK (public.is_platform_owner() OR public.is_tenant_admin(tenant_id));
+
+-- INTEGRITY TRIGGER (§10.9 audit integrity + §9/§51 tenant seam). Fires on every write to
+-- paige_authority_grants:
+--   • granted_by cannot be spoofed — a JWT write (auth.uid() present) has granted_by FORCED to auth.uid(),
+--     so a caller can never author a grant "as" someone else. A service-role/headless write (auth.uid()
+--     IS NULL) is Paige's trusted runtime and supplies the real grantor (the NOT NULL column makes an
+--     omitted grantor fail closed).
+--   • the delegation chain never crosses the tenant seam — parent_grant_id and automation_id must both
+--     reference rows in the SAME tenant as the grant (§9/§51). SECURITY DEFINER so the EXISTS checks are
+--     authoritative regardless of the writer's own read grants; it mutates nothing and is EXECUTE-granted
+--     to no one (a trigger runs as the table owner), so it is outside the lint:definer-fns anon surface.
+--   • updated_at is maintained on every write.
+CREATE OR REPLACE FUNCTION public.paige_authority_grants_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL THEN
+    NEW.granted_by := auth.uid();   -- forbid spoofing the grantor on a JWT write
+  END IF;
+  IF NEW.parent_grant_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM public.paige_authority_grants p
+                      WHERE p.id = NEW.parent_grant_id AND p.tenant_id = NEW.tenant_id) THEN
+    RAISE EXCEPTION 'parent_grant_id % must belong to tenant %', NEW.parent_grant_id, NEW.tenant_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.automation_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM public.paige_automations a
+                      WHERE a.id = NEW.automation_id AND a.tenant_id = NEW.tenant_id) THEN
+    RAISE EXCEPTION 'automation_id % must belong to tenant %', NEW.automation_id, NEW.tenant_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.paige_authority_grants_guard() FROM PUBLIC;
+
+DROP TRIGGER IF EXISTS trg_paige_authority_grants_guard ON public.paige_authority_grants;
+CREATE TRIGGER trg_paige_authority_grants_guard
+  BEFORE INSERT OR UPDATE ON public.paige_authority_grants
+  FOR EACH ROW EXECUTE FUNCTION public.paige_authority_grants_guard();
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. IDEMPOTENCY / REPLAY RECEIPTS — exactly-once per (grant, act, idempotency key)
@@ -130,7 +179,11 @@ CREATE TABLE IF NOT EXISTS public.paige_authority_act_runs (
   automation_id     uuid REFERENCES public.paige_automations(id) ON DELETE SET NULL,
   act_key           text NOT NULL,                      -- the action_kind or tool_key being run
   idempotency_key   text NOT NULL,                      -- caller-derived, provider-honored exactly-once token
-  cost_usd          numeric(12,4) NOT NULL DEFAULT 0,   -- the reserved cost (estimate until M1 confirms real spend)
+  cost_usd          numeric(12,4) NOT NULL DEFAULT 0 CHECK (cost_usd >= 0), -- reserved cost (estimate until M1 confirms real spend); reserve also guards this, CHECK is defense-in-depth
+  -- The exact velocity/spend window kinds this receipt incremented (e.g. ["day","week"]). RELEASE reverses
+  -- PRECISELY these, so a cap edited between reserve and release can never make release touch a window the
+  -- reserve did not increment (§32 correctness — the release-over-reversal MINOR).
+  reserved_windows  jsonb NOT NULL DEFAULT '[]'::jsonb,
   status            text NOT NULL DEFAULT 'reserved'
                     CHECK (status IN ('reserved','succeeded','failed','released')),
   provider_ref      text,                               -- the provider's own id, once returned
@@ -217,10 +270,13 @@ END;
 $$;
 
 -- 4b. ATOMIC RESERVE. The load-bearing primitive. Returns a receipt when — and only when — the grant is
--- active AND every applicable cap window has room for one more action and `_cost_usd` more spend. It
--- locks the window rows FOR UPDATE so concurrent reservations serialize (§10.9 narrowest-limit-wins,
--- and "two parallel acts cannot both slip past a nearly-exhausted cap"). Idempotent: a repeat of the
--- same (grant, idempotency_key) returns the existing receipt and reserves nothing new.
+-- active AND the single-action cap plus every DECLARED day/week/month cap window has room for one more
+-- action and `_cost_usd` more spend. Serialization is provided by the GRANT-ROW `FOR UPDATE` lock (a
+-- concurrent same-grant reserve blocks on it until this txn commits), so two parallel acts cannot both
+-- slip past a nearly-exhausted cap (§10.9 narrowest-limit-wins). The window-row `FOR UPDATE` below cannot
+-- do this alone — it locks nothing when the window row does not yet exist — so the grant-row lock is the
+-- load-bearing serialization point; do not weaken it. Idempotent: a repeat of the same
+-- (grant, idempotency_key) returns the existing receipt and reserves nothing new.
 --
 -- Returns jsonb: { ok, receipt_id, replay?, reason? }. On any failure it returns ok:false with a reason
 -- and writes NOTHING — the caller must treat ok:false as "clamp to confirm / escalate" (fail closed).
@@ -237,15 +293,17 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 DECLARE
-  _g          record;
-  _existing   record;
-  _cost       numeric := COALESCE(_cost_usd, 0);
-  _today      date := (now() AT TIME ZONE 'UTC')::date;
-  _wk         date := date_trunc('week',  now() AT TIME ZONE 'UTC')::date;
-  _mo         date := date_trunc('month', now() AT TIME ZONE 'UTC')::date;
-  _win        record;
-  _cap_actions int;
-  _cap_spend  numeric;
+  _g                record;
+  _existing         record;
+  _cost             numeric := COALESCE(_cost_usd, 0);
+  _today            date := (now() AT TIME ZONE 'UTC')::date;
+  _wk               date := date_trunc('week',  now() AT TIME ZONE 'UTC')::date;
+  _mo               date := date_trunc('month', now() AT TIME ZONE 'UTC')::date;
+  _win              record;
+  _used_actions     int;
+  _used_spend       numeric;
+  _reserved_windows jsonb := '[]'::jsonb;
+  _receipt_id       uuid;
 BEGIN
   IF _idempotency_key IS NULL OR length(_idempotency_key) = 0 THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'idempotency_key_required');
@@ -254,7 +312,8 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'negative_cost');
   END IF;
 
-  -- Lock the grant row so its lifecycle cannot flip (pause/revoke) mid-reservation.
+  -- Lock the GRANT ROW — the load-bearing serialization point (see the header comment). Held to
+  -- end-of-transaction; its lifecycle cannot flip (pause/revoke) mid-reservation.
   SELECT * INTO _g FROM public.paige_authority_grants WHERE id = _grant_id FOR UPDATE;
   IF NOT FOUND THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'grant_not_found');
@@ -267,12 +326,20 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'not_authorized');
   END IF;
 
-  -- Idempotent replay: same key on same grant returns the existing receipt, reserves nothing.
+  -- Idempotent replay: same key on same grant.
+  --   reserved  → a LIVE reservation already exists; return it (proceed, exactly-once).
+  --   succeeded → the act already ran exactly once; return it (the caller must NOT re-execute).
+  --   failed/released → the prior attempt's reserved capacity was ALREADY given back, so there is no live
+  --     reservation under this key. Returning ok:true would be a §13 lie that lets PR-3 proceed
+  --     reservation-less; fail closed — a consequential retry must mint a NEW idempotency key.
   SELECT * INTO _existing
     FROM public.paige_authority_act_runs
    WHERE grant_id = _grant_id AND idempotency_key = _idempotency_key;
   IF FOUND THEN
-    RETURN jsonb_build_object('ok', true, 'receipt_id', _existing.id, 'replay', true, 'status', _existing.status);
+    IF _existing.status IN ('reserved','succeeded') THEN
+      RETURN jsonb_build_object('ok', true, 'receipt_id', _existing.id, 'replay', true, 'status', _existing.status);
+    END IF;
+    RETURN jsonb_build_object('ok', false, 'reason', 'prior_attempt_failed', 'status', _existing.status);
   END IF;
 
   -- Active? (state/window/expiry/stops). Inlined rather than calling authority_grant_active so the
@@ -290,35 +357,67 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'over_single_action_cap');
   END IF;
 
-  -- Per-window caps. For each window kind the grant declares, lock-or-create the row, check headroom for
-  -- one more action AND _cost more spend; if ANY window is exhausted, return refused WITHOUT writing
-  -- (every UPDATE below only runs after all checks pass — see the two-pass structure).
-  -- PASS 1: verify headroom for every declared window under a row lock.
+  -- FAIL-CLOSED on any DECLARED cap kind this primitive cannot yet evaluate (§10.7 "any layer unreadable,
+  -- fails closed"). Only the single-action cap and the day/week/month action-count + spend caps are
+  -- enforced here. A grant that declares campaign_budget_usd / client_period_budget_usd (which need a
+  -- campaign_id / client-period boundary in scope to derive a window_start — PR-3 work) is REFUSED, not
+  -- silently under-enforced. This makes "narrowest-limit-wins across every declared cap" TRUE by
+  -- construction: reserve cannot pass a grant carrying a cap it does not enforce.
+  IF EXISTS (
+    SELECT 1 FROM jsonb_object_keys(_g.caps) AS k(key)
+     WHERE k.key NOT IN ('max_per_action_usd','max_per_day','max_per_week','max_per_month',
+                         'daily_budget_usd','weekly_budget_usd','monthly_budget_usd')
+  ) THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'unenforceable_cap_kind');
+  END IF;
+
+  -- PASS 1: verify headroom for every DECLARED day/week/month window under a row lock, and record which
+  -- windows this reservation will touch so RELEASE later reverses EXACTLY these (robust to a cap edited
+  -- between reserve and release). If ANY window is exhausted, return refused having written NOTHING.
   FOR _win IN
     SELECT * FROM (VALUES
-      ('day',           _today, (_g.caps->>'max_per_day')::int,   (_g.caps->>'daily_budget_usd')::numeric),
-      ('week',          _wk,    (_g.caps->>'max_per_week')::int,  (_g.caps->>'weekly_budget_usd')::numeric),
-      ('month',         _mo,    (_g.caps->>'max_per_month')::int, (_g.caps->>'monthly_budget_usd')::numeric)
+      ('day',   _today, (_g.caps->>'max_per_day')::int,   (_g.caps->>'daily_budget_usd')::numeric),
+      ('week',  _wk,    (_g.caps->>'max_per_week')::int,  (_g.caps->>'weekly_budget_usd')::numeric),
+      ('month', _mo,    (_g.caps->>'max_per_month')::int, (_g.caps->>'monthly_budget_usd')::numeric)
     ) AS v(window_kind, window_start, cap_actions, cap_spend)
     WHERE v.cap_actions IS NOT NULL OR v.cap_spend IS NOT NULL
   LOOP
-    -- Lock (or conjure a zeroed) window row.
-    SELECT actions_used, spend_used_usd INTO _cap_actions, _cap_spend
+    SELECT actions_used, spend_used_usd INTO _used_actions, _used_spend
       FROM public.paige_authority_budget_windows
      WHERE grant_id = _grant_id AND window_kind = _win.window_kind AND window_start = _win.window_start
      FOR UPDATE;
     IF NOT FOUND THEN
-      _cap_actions := 0; _cap_spend := 0;
+      _used_actions := 0; _used_spend := 0;
     END IF;
-    IF _win.cap_actions IS NOT NULL AND _cap_actions + 1 > _win.cap_actions THEN
+    IF _win.cap_actions IS NOT NULL AND _used_actions + 1 > _win.cap_actions THEN
       RETURN jsonb_build_object('ok', false, 'reason', 'over_action_count_cap', 'window', _win.window_kind);
     END IF;
-    IF _win.cap_spend IS NOT NULL AND _cap_spend + _cost > _win.cap_spend THEN
+    IF _win.cap_spend IS NOT NULL AND _used_spend + _cost > _win.cap_spend THEN
       RETURN jsonb_build_object('ok', false, 'reason', 'over_spend_cap', 'window', _win.window_kind);
     END IF;
+    _reserved_windows := _reserved_windows || to_jsonb(_win.window_kind);
   END LOOP;
 
-  -- PASS 2: all windows have room — commit the decrements. (Same lock still held in this txn.)
+  -- Mint the receipt BEFORE incrementing windows, so a duplicate-key race returns the winner's row
+  -- WITHOUT leaving an orphaned window increment (the increment-then-insert order could leak a +1 on the
+  -- unique_violation path). The grant-row lock already prevents a concurrent same-key reserve from
+  -- reaching here; this ordering is defense-in-depth if that lock is ever weakened.
+  BEGIN
+    INSERT INTO public.paige_authority_act_runs
+      (tenant_id, grant_id, automation_id, act_key, idempotency_key, cost_usd, reserved_windows)
+    VALUES (_g.tenant_id, _grant_id, _g.automation_id, _act_key, _idempotency_key, _cost, _reserved_windows)
+    RETURNING id INTO _receipt_id;
+  EXCEPTION WHEN unique_violation THEN
+    SELECT * INTO _existing FROM public.paige_authority_act_runs
+      WHERE grant_id = _grant_id AND idempotency_key = _idempotency_key;
+    IF _existing.status IN ('reserved','succeeded') THEN
+      RETURN jsonb_build_object('ok', true, 'receipt_id', _existing.id, 'replay', true, 'status', _existing.status);
+    END IF;
+    RETURN jsonb_build_object('ok', false, 'reason', 'prior_attempt_failed', 'status', _existing.status);
+  END;
+
+  -- PASS 2: all windows have room and the receipt exists — commit the decrements for EXACTLY the windows
+  -- verified in PASS 1. (Grant + window locks still held in this txn.)
   FOR _win IN
     SELECT * FROM (VALUES
       ('day',   _today, (_g.caps->>'max_per_day')::int,   (_g.caps->>'daily_budget_usd')::numeric),
@@ -335,20 +434,7 @@ BEGIN
                     updated_at = now();
   END LOOP;
 
-  -- Mint the receipt (status reserved). The UNIQUE(grant_id, idempotency_key) makes a concurrent
-  -- duplicate reserve fail the insert; we catch it and return the winner's row (belt-and-suspenders
-  -- with the SELECT replay above, which handles the sequential case).
-  BEGIN
-    INSERT INTO public.paige_authority_act_runs (tenant_id, grant_id, automation_id, act_key, idempotency_key, cost_usd)
-    VALUES (_g.tenant_id, _grant_id, _g.automation_id, _act_key, _idempotency_key, _cost)
-    RETURNING id INTO _existing;
-  EXCEPTION WHEN unique_violation THEN
-    SELECT * INTO _existing FROM public.paige_authority_act_runs
-      WHERE grant_id = _grant_id AND idempotency_key = _idempotency_key;
-    RETURN jsonb_build_object('ok', true, 'receipt_id', _existing.id, 'replay', true);
-  END;
-
-  RETURN jsonb_build_object('ok', true, 'receipt_id', _existing.id, 'replay', false);
+  RETURN jsonb_build_object('ok', true, 'receipt_id', _receipt_id, 'replay', false);
 END;
 $$;
 
@@ -395,10 +481,9 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 DECLARE
-  _r     record;
-  _today date;
-  _wk    date;
-  _mo    date;
+  _r      record;
+  _kind   text;
+  _wstart date;
 BEGIN
   SELECT * INTO _r FROM public.paige_authority_act_runs WHERE id = _receipt_id FOR UPDATE;
   IF NOT FOUND THEN
@@ -414,17 +499,27 @@ BEGIN
     RETURN jsonb_build_object('ok', true, 'receipt_id', _receipt_id, 'status', _r.status, 'noop', true);
   END IF;
 
-  _today := (_r.reserved_at AT TIME ZONE 'UTC')::date;
-  _wk    := date_trunc('week',  _r.reserved_at AT TIME ZONE 'UTC')::date;
-  _mo    := date_trunc('month', _r.reserved_at AT TIME ZONE 'UTC')::date;
-
-  -- Reverse exactly what this receipt reserved, clamped at zero (never drive a counter negative).
-  UPDATE public.paige_authority_budget_windows
-     SET actions_used = GREATEST(0, actions_used - 1),
-         spend_used_usd = GREATEST(0, spend_used_usd - _r.cost_usd),
-         updated_at = now()
-   WHERE grant_id = _r.grant_id
-     AND (window_kind, window_start) IN (('day',_today),('week',_wk),('month',_mo));
+  -- Reverse EXACTLY the windows this receipt incremented (recorded in reserved_windows at reserve time),
+  -- recomputing each window_start from the receipt's OWN reserved_at so the reversed window matches the
+  -- reserved one across a day/week/month boundary. Not a fixed day/week/month assumption — so a cap
+  -- added to the grant after this receipt reserved can never make release decrement a window this
+  -- receipt never touched (§32 correctness). Clamped at zero (never drive a counter negative).
+  FOR _kind IN SELECT jsonb_array_elements_text(_r.reserved_windows)
+  LOOP
+    _wstart := CASE _kind
+                 WHEN 'day'   THEN (_r.reserved_at AT TIME ZONE 'UTC')::date
+                 WHEN 'week'  THEN date_trunc('week',  _r.reserved_at AT TIME ZONE 'UTC')::date
+                 WHEN 'month' THEN date_trunc('month', _r.reserved_at AT TIME ZONE 'UTC')::date
+                 ELSE NULL
+               END;
+    IF _wstart IS NOT NULL THEN
+      UPDATE public.paige_authority_budget_windows
+         SET actions_used = GREATEST(0, actions_used - 1),
+             spend_used_usd = GREATEST(0, spend_used_usd - _r.cost_usd),
+             updated_at = now()
+       WHERE grant_id = _r.grant_id AND window_kind = _kind AND window_start = _wstart;
+    END IF;
+  END LOOP;
 
   UPDATE public.paige_authority_act_runs
      SET status = CASE WHEN _failed THEN 'failed' ELSE 'released' END, settled_at = now()
@@ -502,4 +597,4 @@ GRANT EXECUTE ON FUNCTION public.authority_remaining_capacity(uuid) TO authentic
 COMMENT ON TABLE public.paige_authority_grants IS
   'RE-2 standing delegated authority grant (owner ruling 2026-09-06, autonomy-architecture.md §10.7-§10.9). First-class + citable; SUBSTRATE ONLY — no execution path reads it yet (PR-2/PR-3).';
 COMMENT ON FUNCTION public.authority_reserve(uuid, text, text, numeric) IS
-  'Atomic reserve for an autonomous act: fail-closed unless the grant is active AND every applicable cap window has room. Idempotent per (grant, idempotency_key). SUBSTRATE — no producer yet (RE-2 PR-1).';
+  'Atomic reserve for an autonomous act: fail-closed unless the grant is active AND the single-action cap plus every declared day/week/month cap window has room; a declared cap this slice cannot evaluate (campaign_budget_usd/client_period_budget_usd) is REFUSED (unenforceable_cap_kind). Idempotent per (grant, idempotency_key); a failed/released key fails closed (prior_attempt_failed). SUBSTRATE — no producer yet (RE-2 PR-1).';
