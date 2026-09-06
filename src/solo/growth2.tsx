@@ -139,13 +139,26 @@ function Catalog({ data, setDetail, initialType }) {
   </section>;
 }
 
-function Sales({ data, setDetail, onOpenCatalog, onOpenClients }) {
-  const routed = data.submissions.filter((row)=>row.contactId||row.dealId);
+function Sales({ data, setDetail, onOpenCatalog, onOpenClients, onOpenPipeline }) {
+  // The Sales Command Desk owns its own layout, subtabs and the routed-capture foldout now — the
+  // wrapper only hands it the tenant-scoped reads the shell already resolved (§18: one drawer,
+  // shared here; §58: the routed-capture references + their honesty copy moved INTO SalesOps, not
+  // dropped). `deals` and `stages` come from the Campaigns snapshot; Sales reads, never re-queries.
   return <section className="campaigns-surface">
-    <SalesOps setDetail={setDetail} deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]} dealsPhase={data.phase} onOpenCatalog={onOpenCatalog} onOpenClients={onOpenClients} truth={TRUTH.sales}/>
-
-    <div className="so-band so-form-activity"><div className="so-band-head"><h3>Form activity</h3><small>Recorded contact and deal references only — never estimated revenue or campaign attribution.</small></div>
-    <StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<p className="so-absent">No routed form activity. Recorded client or deal references will appear here; a submission is not a sale.</p>:<details><summary>View {routed.length} recent form records</summary><div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div></details>}</StateFrame></div></section>;
+    <SalesOps
+      setDetail={setDetail}
+      deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]}
+      stages={(data.pipelineWorkspace&&data.pipelineWorkspace.stages)||[]}
+      dealsPhase={data.phase}
+      submissions={data.submissions||[]}
+      submissionsPhase={data.phase}
+      submissionsRetry={data.retry}
+      onOpenCatalog={onOpenCatalog}
+      onOpenClients={onOpenClients}
+      onOpenPipeline={onOpenPipeline}
+      truth={TRUTH.sales}
+    />
+  </section>;
 }
 
 function PipelineStageRow({ stage, index, stages, pipeline, canManage, busy, save }) {
@@ -408,7 +421,7 @@ export const GrowthHub=()=>{
   let body=<Overview data={data} setDetail={setDetail}/>;
   if(legacy) body=<CompatibilityLanding legacy={legacy} returnToAssets={returnToAssets}/>;
   else if(tab==="catalog") body=<Catalog data={data} setDetail={setDetail} initialType={requestedType}/>;
-  else if(tab==="sales") body=<Sales data={data} setDetail={setDetail} onOpenCatalog={openCatalogOffers} onOpenClients={openClients}/>;
+  else if(tab==="sales") body=<Sales data={data} setDetail={setDetail} onOpenCatalog={openCatalogOffers} onOpenClients={openClients} onOpenPipeline={openPipeline}/>;
   else if(tab==="pipeline") body=<PipelineSurface data={data} setDetail={setDetail}/>;
   else if(tab==="social") body=<Social data={data} onOpenCompass={openCompass} onOpenPipeline={openPipeline}/>;
   else if(tab==="performance") body=<Performance data={data}/>;

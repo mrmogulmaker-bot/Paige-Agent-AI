@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { GrowthHub } from "@/solo/growth2";
 import { setSalesHarnessMode, type Mode } from "./useSoloSalesOps-stub";
 import { setAgreementsHarnessMode, type AgreementsMode } from "./useSoloAgreements-stub";
+import { setCampaignsHarnessMode, type CampaignsMode } from "./useSoloCampaigns-stub";
 import "@/index.css";
 import "@/solo/solo-tokens.css";
 
@@ -20,6 +21,8 @@ const MODES: readonly Mode[] = [
   "loading", "resolving", "unavailable", "error", "save-refused",
 ];
 
+const CAMPAIGN_MODES: readonly CampaignsMode[] = ["evidence", "sparse"];
+
 function Harness() {
   const [theme, setTheme] = React.useState<"light" | "dark">("light");
   React.useEffect(() => {
@@ -29,17 +32,25 @@ function Harness() {
   }, [theme]);
 
   return (
+    // A two-row grid: reviewer controls (auto) over the mounted shell (1fr). The drive HIDES the
+    // controls (`display:none`) except for the instant it clicks one, so at a 439px column they
+    // neither intercept a SubNav click nor consume height that would fake a vertical overflow — the
+    // `auto` track collapses to 0 when the controls are hidden and the shell gets the true height.
     <div style={{ height: "100vh", display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
       <aside
         aria-label="Reviewer controls"
         data-harness-controls
+        data-harness-chrome
         style={{
-          display: "flex", alignItems: "center", gap: 8, padding: "0 14px", flexWrap: "wrap",
+          display: "flex", alignItems: "center", gap: 8, padding: "4px 10px", flexWrap: "wrap",
           borderBottom: "1px solid #d4d0c8", background: "#f4f1eb",
-          font: "12px system-ui", color: "#302d36",
+          font: "11px system-ui", color: "#302d36",
         }}
       >
         <strong style={{ marginRight: 6 }}>LOCAL REVIEW · NO LIVE DATA</strong>
+        {CAMPAIGN_MODES.map((m) => (
+          <button key={m} data-campaigns={m} onClick={() => setCampaignsHarnessMode(m)}>pipe:{m}</button>
+        ))}
         {AGREEMENT_MODES.map((mode) => (
           <button key={mode} data-agreements={mode} onClick={() => setAgreementsHarnessMode(mode)}>
             terms:{mode}

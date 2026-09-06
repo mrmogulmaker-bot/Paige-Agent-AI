@@ -426,3 +426,210 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .paige-solo[data-theme] .so .btn-p,.paige-solo[data-theme] .so-editor .btn-p { background:color-mix(in srgb,var(--violet) 80%,#000); border-color:color-mix(in srgb,var(--violet) 80%,#000); color:#fff; }
 .paige-solo[data-theme] .so .btn-p:hover,.paige-solo[data-theme] .so-editor .btn-p:hover { background:color-mix(in srgb,var(--violet) 70%,#000); border-color:color-mix(in srgb,var(--violet) 70%,#000); color:#fff; }
 .so .pill-n { color:var(--ink-2); background:var(--surface-sunk); border:1px solid var(--line); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * SALES COMMAND DESK — the four-view desk (Sales Command · Commercial Terms · Revenue & Collections
+ * · Sales Scenarios). Every value is a solo-tokens.css token; no hex, no gold (§11 — gold stays on
+ * the act, which on this surface is the violet primary, AA in both themes). Laid out to fit the
+ * viewport per view with foldouts and caps rather than a long or nested scroll (owner build
+ * acceptance #1). The one scroll owner remains the shared `.campaigns-scroll`.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* Sales-internal sub-navigation — roving-tabindex pills, responsive overflow, never a tiny 2nd strip. */
+.so .so-subnav { display:flex; gap:3px; margin:0 0 12px; padding:3px; border:1px solid var(--line);
+  border-radius:11px; background:var(--surface-sunk); overflow-x:auto; scrollbar-width:none; }
+.so .so-subnav::-webkit-scrollbar { height:0; }
+.so .so-subnav button { flex:none; height:32px; padding:0 14px; border-radius:8px; font:500 12.5px/1 var(--font);
+  color:var(--ink-3); white-space:nowrap; transition:background .14s,color .14s; }
+.so .so-subnav button:hover { color:var(--ink-2); }
+.so .so-subnav button[aria-selected="true"] { background:var(--surface); color:var(--ink); box-shadow:var(--sh-1); }
+.so .so-subnav button:focus-visible { outline:2px solid var(--violet); outline-offset:2px; }
+.so .so-view { min-width:0; }
+
+/* ── Sales Command ─────────────────────────────────────────────────────────────────────────── */
+.so-cmd { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.so-cmd-head { display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+.so-cmd-lead { flex:1; min-width:240px; }
+.so-cmd-eyebrow { display:flex; align-items:center; gap:9px; margin-bottom:5px; }
+.so-cmd-eyebrow .so-eyebrow { color:var(--violet); }
+.so-cmd-lead h2 { font:600 24px/1.12 var(--font); letter-spacing:-.026em; color:var(--ink); text-wrap:balance; }
+.so-cmd-brief { margin-top:6px; font-size:12.5px; line-height:1.5; color:var(--ink-2); max-width:64ch; text-wrap:pretty; }
+.so-cmd-act { display:flex; align-items:center; gap:9px; flex:none; flex-wrap:wrap; }
+.so-cmd-side { display:flex; flex-direction:column; gap:12px; min-width:0; }
+
+/* Commercial Pulse — five evidence-aware tiles */
+/* The pulse holds five tiles across at a full column and WRAPS to fewer as the Solo content column
+ * narrows (down to 439px with PAIGE expanded), so it never forces a horizontal/nested scroll —
+ * proven by drive:sales-ops across the real column widths. */
+.so-pulse { display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr)); gap:10px; min-width:0; }
+.so-pl { min-width:0; display:flex; flex-direction:column; gap:6px; padding:12px 13px;
+  border:1px solid var(--violet-line); border-radius:var(--r-m);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--violet-tint) 40%,var(--surface)) 0%,var(--surface) 66px),var(--surface);
+  box-shadow:var(--sh-1); }
+.so-pl-top { display:flex; align-items:center; gap:8px; min-width:0; }
+.so-pl-ic { width:30px; height:30px; border-radius:9px; display:grid; place-items:center; flex:none;
+  background:color-mix(in srgb,var(--violet) 14%,transparent); color:var(--violet); }
+.so-pl-ic-received { background:color-mix(in srgb,var(--ok) 16%,transparent); color:var(--ok); }
+.so-pl-ic-renewals { background:color-mix(in srgb,var(--warn) 16%,transparent); color:var(--warn); }
+.so-pl-ic-delivery { background:color-mix(in srgb,var(--ok) 16%,transparent); color:var(--ok); }
+.so-pl-lab { font-size:11.5px; font-weight:500; color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.so-pv { font:600 23px/1 var(--font); letter-spacing:-.02em; color:var(--ink); font-variant-numeric:tabular-nums; }
+.so-pv-u { font-size:13px; font-weight:500; color:var(--ink-3); }
+.so-pv-dash { color:var(--ink-3); font-weight:500; font-size:19px; }
+.so-pl-sub { font-size:11px; color:var(--ink-3); margin-top:-2px; }
+.so-pl-meta { display:flex; align-items:center; justify-content:space-between; gap:6px 10px; flex-wrap:wrap; min-width:0; margin-top:auto; }
+
+/* evidence-class chips (Actual/Contracted/Dated/Open/Modeled/Unknown) — never gold */
+.so-ec { display:inline-flex; align-items:center; height:18px; padding:0 7px; border-radius:5px;
+  font:700 9.5px/1 var(--font); letter-spacing:.06em; text-transform:uppercase; flex:none; }
+.so-ec-actual { background:var(--ok-tint); color:var(--ok); }
+.so-ec-contracted { background:var(--violet-tint); color:var(--violet); }
+.so-ec-dated { background:var(--surface-sunk); color:var(--ink-2); border:1px solid var(--line); }
+.so-ec-open { background:var(--surface-sunk); color:var(--ink-3); }
+.so-ec-modeled { background:transparent; color:var(--ink-3); border:1px dashed var(--line); }
+.so-ec-unknown { background:var(--warn-tint); color:var(--warn); }
+.so-src { font-size:10px; color:var(--ink-3); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.so-src b { color:var(--ink-2); font-weight:600; }
+
+/* two-column desk body */
+.so-2col { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); gap:12px; align-items:start; min-width:0; }
+.so-2col > * { min-width:0; }
+@media(max-width:1080px){ .so-2col { grid-template-columns:minmax(0,1fr); } }
+
+/* Commercial Readiness Ladder — wraps rather than horizontally scrolling (no nested scroll). The
+ * stage NUMBER carries the sequence, so wrapping to 3×2 / 2×3 never loses the progression. */
+.so-ladder-band { padding:14px 16px; }
+.so-ladder { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:1px; margin-top:10px;
+  background:var(--line-soft); border:1px solid var(--line); border-radius:var(--r-s); overflow:hidden; }
+@media(max-width:1180px){ .so-ladder { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(max-width:680px){ .so-ladder { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+.so-lad-col { background:var(--surface); display:flex; flex-direction:column; min-height:118px; min-width:0; }
+.so-lad-hd { position:relative; padding:9px 10px 8px; border-bottom:1px solid var(--line-soft); }
+.so-lad-n { display:inline-grid; place-items:center; width:18px; height:18px; border-radius:50%;
+  font:700 10px/1 var(--font); color:#fff; margin-bottom:5px; background:var(--ink-3); }
+.so-lad-n-live { background:var(--violet); } .so-lad-n-part { background:var(--warn); } .so-lad-n-unavailable { background:var(--ink-3); }
+.so-lad-hd b { display:block; font-size:11.5px; font-weight:600; color:var(--ink); }
+.so-lad-hd small { font-size:9.5px; color:var(--ink-3); }
+.so-lad-st { position:absolute; top:9px; right:9px; font:700 8.5px/1 var(--font); letter-spacing:.05em;
+  text-transform:uppercase; padding:2px 5px; border-radius:4px; }
+.so-lad-st-live { background:var(--ok-tint); color:var(--ok); }
+.so-lad-st-part { background:var(--warn-tint); color:var(--warn); }
+.so-lad-st-unavailable { background:var(--surface-sunk); color:var(--ink-3); border:1px dashed var(--line); }
+.so-lad-body { flex:1; display:flex; flex-direction:column; gap:6px; padding:8px; min-width:0; }
+.so-lad-card { width:100%; display:block; text-align:left; padding:8px 9px; border:1px solid var(--line);
+  border-radius:8px; background:var(--surface-2); cursor:pointer; transition:border-color .14s,box-shadow .14s,transform .14s; }
+.so-lad-card:hover { border-color:var(--violet); box-shadow:0 2px 8px -3px color-mix(in srgb,var(--violet) 40%,transparent); transform:translateY(-1px); }
+.so-lad-card:focus-visible { outline:2px solid var(--violet); outline-offset:2px; }
+.so-lad-card b { display:block; font-size:12px; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.so-lad-co { display:block; font-size:10.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.so-lad-flag { margin-top:6px; display:inline-flex; align-items:center; gap:5px; font:600 9.5px/1 var(--font); }
+.so-lad-flag .dot { width:6px; height:6px; border-radius:50%; }
+.so-lad-flag-ok { color:var(--ok); } .so-lad-flag-ok .dot { background:var(--ok); }
+.so-lad-flag-warn { color:var(--warn); } .so-lad-flag-warn .dot { background:var(--warn); }
+.so-lad-flag-bad { color:var(--bad); } .so-lad-flag-bad .dot { background:var(--bad); }
+.so-lad-flag-v { color:var(--violet); } .so-lad-flag-v .dot { background:var(--violet); }
+.so-lad-more { align-self:flex-start; font:600 10.5px/1 var(--font); color:var(--violet); padding:4px 2px; }
+.so-lad-more:focus-visible { outline:2px solid var(--violet); outline-offset:2px; }
+.so-lad-empty { margin:auto 0; padding:12px 8px; text-align:center; color:var(--ink-3); font-size:10.5px; line-height:1.5; }
+.so-lad-tenant { display:flex; flex-direction:column; align-items:flex-start; gap:7px; padding:4px 2px; }
+.so-lad-tenant p { font-size:10.5px; color:var(--ink-2); line-height:1.45; }
+
+/* Top Commercial Moves */
+.so-moves { display:flex; flex-direction:column; }
+.so-move { display:grid; grid-template-columns:34px minmax(0,1fr) auto; gap:11px; align-items:center;
+  padding:11px 4px; border-bottom:1px solid var(--line-soft); text-align:left; width:100%; transition:background .14s; }
+.so-move:last-child { border-bottom:0; }
+.so-move:hover { background:var(--violet-tint); }
+.so-move:focus-visible { outline:2px solid var(--violet); outline-offset:-2px; border-radius:6px; }
+.so-move-ic { width:34px; height:34px; border-radius:9px; background:var(--violet-tint); color:var(--violet); display:grid; place-items:center; }
+.so-move-t b { display:block; font-size:12.5px; font-weight:600; color:var(--ink); }
+.so-move-t small { font-size:11px; color:var(--ink-2); text-wrap:pretty; }
+.so-move-r { display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex:none; }
+.so-move-who { font-size:10.5px; color:var(--ink-3); }
+
+/* Open Commercial Work (compact) */
+.so-owt { display:flex; flex-direction:column; }
+.so-owt-row { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) auto 22px; gap:10px; align-items:center;
+  padding:10px 4px; border-bottom:1px solid var(--line-soft); text-align:left; width:100%; transition:background .14s; }
+.so-owt-row:last-child { border-bottom:0; }
+.so-owt-row:hover { background:var(--violet-tint); }
+.so-owt-row:focus-visible { outline:2px solid var(--violet); outline-offset:-2px; border-radius:6px; }
+.so-owt-cli { display:flex; align-items:center; gap:9px; min-width:0; }
+.so-owt-av { width:26px; height:26px; border-radius:7px; display:grid; place-items:center; flex:none;
+  font:700 10px/1 var(--font); background:var(--violet-tint); color:var(--violet); }
+.so-owt-cli b { font-size:12.5px; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.so-owt-off { font-size:11.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.so-owt-go { color:var(--ink-3); justify-self:end; }
+.so-owt-row:hover .so-owt-go { color:var(--violet); }
+@media(max-width:680px){ .so-owt-row { grid-template-columns:minmax(0,1fr) auto; } .so-owt-off { display:none; } }
+
+/* foldout */
+.so-fold { border:1px solid var(--line); border-radius:var(--r-s); background:var(--surface); padding:4px 12px; }
+.so-fold > summary { cursor:pointer; color:var(--violet); font-size:12px; font-weight:600; padding:8px 2px; }
+.so-fold > summary:focus-visible { outline:2px solid var(--violet); outline-offset:2px; }
+
+/* ── Revenue & Collections ─────────────────────────────────────────────────────────────────── */
+.so-rev-lead { display:block; margin-bottom:10px; }
+.so-rev-lead h3 { padding-left:11px; position:relative; }
+.so-rev-lead h3::before { content:""; position:absolute; left:0; top:50%; transform:translateY(-50%); width:3px; height:14px; border-radius:2px; background:var(--violet); }
+.so-rev-lead small { display:block; margin-top:4px; font-size:11.5px; color:var(--ink-2); max-width:82ch; }
+.so-rev-top { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
+@media(max-width:840px){ .so-rev-top { grid-template-columns:minmax(0,1fr); } }
+.so-rev-card { padding:14px 16px; }
+.so-rev-card .so-band-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.so-rev-card .so-band-head h3 { flex:1; }
+.so-rev-empty { display:flex; flex-direction:column; align-items:flex-start; gap:10px; }
+.so-rev-figure { display:flex; align-items:baseline; gap:10px; }
+.so-rev-figure .so-num { font:600 24px/1 var(--font); letter-spacing:-.02em; color:var(--ink); }
+.so-rev-fnote { font-size:11px; color:var(--ink-3); }
+.so-rev-facts { display:flex; gap:18px; flex-wrap:wrap; margin-top:10px; padding-top:9px; border-top:1px solid var(--line-soft); font-size:12px; color:var(--ink-2); }
+.so-rev-facts b { color:var(--ink); }
+
+/* ── Sales Scenario Lab ────────────────────────────────────────────────────────────────────── */
+.so-lab { display:grid; grid-template-columns:300px minmax(0,1fr); gap:12px; align-items:start; min-width:0; }
+@media(max-width:1080px){ .so-lab { grid-template-columns:minmax(0,1fr); } }
+.so-lab-inputs { padding:14px 16px; display:flex; flex-direction:column; gap:11px; }
+.so-labf { display:grid; gap:5px; min-width:0; }
+.so-labf > span { display:flex; align-items:center; gap:7px; font:600 11px/1.2 var(--font); color:var(--ink-2); }
+.so-labf input, .so-labf select { height:36px; padding:0 11px; border:1px solid var(--line); border-radius:8px;
+  background:var(--surface); color:var(--ink); font:400 13px/1 var(--font); }
+.so-labf input:focus-visible, .so-labf select:focus-visible { outline:2px solid var(--violet); outline-offset:1px; border-color:var(--violet); }
+.so-labhint { font-size:10.5px; color:var(--ink-3); }
+.so-labfixed { margin:0; font:600 15px/1.2 var(--font); color:var(--ink); }
+.so-labfixed small { font-weight:400; }
+.so-lab-right { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.so-lab-paths { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+@media(max-width:760px){ .so-lab-paths { grid-template-columns:minmax(0,1fr); } }
+.so-path { border:1px solid var(--line); border-radius:var(--r-m); padding:12px; background:var(--surface-2);
+  display:flex; flex-direction:column; gap:8px; min-width:0; }
+.so-path-evi { border-color:var(--violet-line); background:linear-gradient(180deg,var(--violet-tint) 0,var(--surface-2) 56px); }
+.so-path-h { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.so-path-h b { font-size:12.5px; font-weight:600; color:var(--ink); }
+.so-path-big { font:600 22px/1 var(--font); letter-spacing:-.02em; color:var(--ink); font-variant-numeric:tabular-nums; }
+.so-path-big.so-pv-dash { color:var(--ink-3); font-size:16px; }
+.so-path-li { display:flex; justify-content:space-between; gap:10px; font-size:11.5px; color:var(--ink-2); padding:3px 0; border-top:1px dashed var(--line-soft); }
+.so-path-li .mono { color:var(--ink); }
+.so-lab-reason { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+@media(max-width:760px){ .so-lab-reason { grid-template-columns:minmax(0,1fr); } }
+.so-reason { border:1px solid var(--line); border-radius:var(--r-s); padding:11px 12px; background:var(--surface); }
+.so-reason h4 { font:700 10px/1.2 var(--font); letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); margin:0 0 6px; }
+.so-reason ul { margin:0; padding-left:16px; font-size:11.5px; color:var(--ink-2); line-height:1.55; }
+.so-reason li { margin-bottom:3px; }
+.so-lab-act { display:flex; flex-wrap:wrap; gap:8px; margin-left:auto; flex:none; }
+
+/* shared inline banners */
+.so-banner { display:flex; align-items:flex-start; flex-wrap:wrap; gap:10px; padding:11px 13px; border-radius:var(--r-s); font-size:12px; line-height:1.5; }
+.so-banner > span { min-width:0; }
+.so-banner svg { flex:none; margin-top:1px; }
+.so-banner-warn { background:var(--warn-tint); color:var(--warn); border:1px solid color-mix(in srgb,var(--warn) 30%,transparent); }
+.so-banner-info { background:var(--violet-tint); color:var(--ink); border:1px solid var(--violet-line); }
+.so-banner-info svg { color:var(--violet); }
+.so-banner b { color:var(--ink); font-weight:600; }
+.so-banner-warn b { color:var(--warn); }
+
+@media (prefers-reduced-motion:reduce){ .so-lad-card, .so-move, .so-owt-row, .so-subnav button { transition:none; } }
+@media (forced-colors:active){
+  .so-pl, .so-lad-col, .so-path, .so-reason, .so-rev-card, .so-fold { border:1px solid CanvasText; }
+  .so-ec { border:1px solid CanvasText; }
+  .so-subnav button[aria-selected="true"] { outline:2px solid Highlight; }
+}

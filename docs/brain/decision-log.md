@@ -3306,3 +3306,27 @@ fleet-wide rows (#46 — the door checks the caller, not the query); the approva
 the refusals back into executions (#47); splitting arming out of the stage-automation rule tools,
 which can arm unattended sending in one call (#48); four inconsistencies the mapping surfaced in
 existing policy (#49).
+
+## 2026-09-06 · Campaigns → Sales redesigned into the four-view Sales Command Desk (Solo)
+
+Same surface and tiers as Sales Operations Slice A — no gating change, no new feature key, no route,
+no migration (§66 ledger in `docs/doctrine/tier-matrix.md`, same commit). The single-scroll screen
+became an evidence-aware desk switched by a Sales-local `?view=` param (allow-listed, `command`
+fallback, never the shell subtab registry): **Sales Command** (Commercial Pulse · Commercial
+Readiness Ladder of 6 stages · Top Commercial Moves · Open Commercial Work · routed-capture foldout),
+**Commercial Terms**, **Revenue & Collections**, **Sales Scenarios** (a model that writes nothing).
+
+New pure modules `src/solo/sales/deriveSalesCommand.ts` + `salesScenario.ts` carry the honest
+derivation (unit-tested). Truth boundary: Actual received always unavailable (`tenant_orders` never
+summed); Contracted = active one-time terms, recurring shown monthly-equivalent, em-dash — never
+`$0`/"Free" — when there is no one-time value; a deal carries no monetary value (open is a count);
+Contract-pending unavailable (no Vault/contract backend, no deal↔term linkage); Scenario Lab refuses
+the Evidence-supported path without real pipeline evidence.
+
+Verification: full suite 3563/3563; tsc ratchet 13/13; `drive:sales-ops` 524/524 with **zero
+horizontal/nested overflow** across all four views × the real Solo content-column widths (down to
+439px PAIGE-expanded) × both themes. The render driver was tightened to the true column widths (the
+prior one used the full window, so 439px was never tested) and caught the pulse + scenario-banner
+overflow, now fixed. The §39 peer-gate caught a BLOCKING `money(0)`→"Free" defect the render proof
+missed (pure-recurring retainer read "Free"), fixed with an em-dash guard + tests; the §58 read-only
+terms guidance the redesign had dropped was restored. Authenticated live-drive OWED (§32.c). PR: <URL>.

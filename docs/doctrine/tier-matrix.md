@@ -3539,6 +3539,64 @@ rollback, which proves the SQL runs and proves nothing about it being live (§32
 *Authenticated runtime:* **OWED.** No route to the deployed origin and no test-tenant credential
 from this session.
 
+### Campaigns → Sales — the Sales Command Desk redesign, `/solo/{account}/growth/sales` (2026-09-06)
+
+**§66, same commit as the change.** Tier gating is UNCHANGED from the Sales Operations Slice A row
+above — this is a content/experience redesign of the same surface, same `growth` feature key, same
+tiers (God with a tenant selected · Solo · Sub-account · Enterprise; Agency/Client/Anonymous
+excluded). No new feature key, no new route, no migration.
+
+**What the change is.** The single-scroll Sales-operations screen became a four-view **Sales Command
+Desk** switched by a Sales-local `?view=` param (deep-linkable, allow-listed with a `command`
+fallback, never the shell subtab registry): **Sales Command** (default operating desk — Commercial
+Pulse of 5 evidence-aware tiles, Commercial Readiness Ladder of 6 stages, Top Commercial Moves, Open
+Commercial Work, and the phase-aware routed-capture foldout) · **Commercial Terms** (recorded terms +
+offers table + terms editor) · **Revenue & Collections** (Actual received unavailable, Contracted
+value on record, renewals, declared payment-handling band) · **Sales Scenarios** (an evidence-aware
+Scenario Lab that writes nothing). The six-tab Campaigns nav and shared Campaigns chrome are untouched.
+
+**Truth boundaries, encoded and tested.** Actual received is always unavailable (`tenant_orders`
+never summed); Contracted is Σ active one-time terms, recurring shown monthly-equivalent, never
+annualized, never cross-currency, and **an em-dash — never `$0`/"Free" — when there is no one-time
+value**; a pipeline deal carries no monetary value (open is a count); Contract-pending is unavailable
+(no Vault/contract backend, no deal↔term linkage); the Scenario Lab refuses the Evidence-supported
+path without real pipeline evidence and changes no price/offer/deal/campaign/payment/Mission.
+
+**§58 — nothing removed.** Payment-handling editor, the §38 money-boundary copy, the routed-capture
+band, the Catalog offers table + quick-create, and the client-terms editor all survive and are
+reachable across the new views. The redesign initially dropped the terms band's read-only guidance
+("An owner or admin records this."); the render proof caught it and it was restored + pinned by a
+contract test (§58/§36 — a reader who cannot write is told who may, never a silently missing button).
+
+**Evidence, separated (§13).**
+- *Automated:* full suite **3563/3563** green (237 files); `sales-ops.contract.test.tsx` +
+  `src/solo/sales/*.test.ts` cover the truth boundary, incl. the pure-recurring "never Free" case at
+  both the derivation and the Revenue render. The two new pure modules `deriveSalesCommand.ts` /
+  `salesScenario.ts` are type-checked (the surface component keeps the house `// @ts-nocheck`).
+- *Rendered:* `npm run drive:sales-ops` — **524/524 checks, horizontal overflow 0** across all four
+  views × the **real Solo content-column widths** (797/521/685/439 docked & PAIGE-expanded + 1024/900
+  overlay) × both themes + the required states. The driver was tightened to the true column widths
+  (the prior driver used the full window, so 439px was never tested) and caught two real form-fit
+  defects, now fixed: the pulse forced five columns at every width, and the scenario banner's action
+  group did not wrap at 439px.
+- *Form-fit measurement, handed to CD (§00), not a CC judgement.* No horizontal/nested scroll at any
+  width (the hard requirement). Vertical scroll within the shell's own `.campaigns-scroll` remains in
+  44/48 column states: heaviest on the content-dense **command** (scrollH ~1.4k–2.2k px) and
+  **scenarios** views, lightest on terms/revenue (which fit at 900×1000); the tall states are the
+  narrow PAIGE-expanded columns where every section stacks single-column. A concrete alternative if a
+  shorter default is wanted: collapse Top Commercial Moves / Open Commercial Work into fold-out rows
+  like the routed-capture foldout. Decision is CD/owner's.
+- *Static/build:* `ci:tsc` clean against the ratchet (13/13, no new errors); `lint:gold` clean on the
+  changed files; `eslint` 0 errors on changed files; `ci:regression`, `lint:skeleton` pass.
+- *§13 CORRECTION, recorded not quietly amended:* the §39 peer-gate found a BLOCKING defect a green
+  render proof missed — `money(0)` renders "Free", so a pure-recurring retainer (or an
+  active-but-unsummable term) read **"Free"** for contracted value on the Revenue card and pulse tile.
+  Fixed with an em-dash guard at both sites + a unit test + a render test. Non-blocking peer/compliance
+  findings fixed the same pass: open-work Pill tone `"v"` rendered neutral (now `"opportunity"`), the
+  delivery-window had no lower bound, and the Scenario Lab counted missing-stage deals as open.
+- *UNVERIFIED — authenticated runtime (§32.c):* OWED to a browser-capable session against live prod;
+  the local render proof stubs the network reads. See the PR's live-drive checklist.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

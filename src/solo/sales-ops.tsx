@@ -42,6 +42,8 @@ import { useSoloAgreements } from "./useSoloAgreements";
 import "./sales-ops.css";
 import { SalesDialogPortal, useSalesDraftExit } from "./sales-dialog";
 import { useLocation, useNavigate } from "react-router-dom";
+import { deriveSalesCommand } from "./sales/deriveSalesCommand";
+import { deriveScenario } from "./sales/salesScenario";
 
 /**
  * The five shapes a Solo business can sell on. Deliberately not narrower: the owner's instruction
@@ -769,7 +771,173 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
  * this adds no second drawer (§18) and inherits its focus trap and Escape handling. `deals` arrives
  * from the Campaigns snapshot rather than a fifth tenant read.
  */
-export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCatalog, onOpenClients, truth }) {
+// ── Sales Command Desk — presentational helpers (file-local) ─────────────────────────────────
+// The four Sales views. IDs are the `?view=` values; the shell six-tab nav is untouched.
+const SALES_VIEWS = [
+  ["command", "Sales Command"],
+  ["terms", "Commercial Terms"],
+  ["revenue", "Revenue & Collections"],
+  ["scenarios", "Sales Scenarios"],
+];
+const EC_LABEL = { actual: "Actual", contracted: "Contracted", dated: "Dated", open: "Open", modeled: "Modeled", unknown: "Unknown" };
+// The evidence class of a FIGURE — separate from the surface TRUTH label. Never gold (§11).
+function EcChip({ e }) {
+  return <span className={`so-ec so-ec-${e}`}>{EC_LABEL[e] || e}</span>;
+}
+// A small icon set for moves; `Ic` has no card/refresh/target, so these few live here.
+function MoveIcon({ name }) {
+  const c = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" };
+  const body = {
+    card: <><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M3 10h18" /></>,
+    doc: <><path d="M6 3h9l3 3v15H6z" /><path d="M9 12h6M9 16h6" /></>,
+    refresh: <><path d="M4 12a8 8 0 0113.7-5.7L20 8" /><path d="M20 4v4h-4" /><path d="M20 12a8 8 0 01-13.7 5.7L4 16" /><path d="M4 20v-4h4" /></>,
+    chat: <path d="M4 5h16v11H9l-5 4V5z" />,
+    target: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></>,
+  }[name] || <circle cx="12" cy="12" r="8" />;
+  return <svg viewBox="0 0 24 24" width="16" height="16" {...c} aria-hidden="true">{body}</svg>;
+}
+// The Sales-local sub-navigation. Roving tabindex + arrow/Home/End, exactly like the shell strip,
+// but scoped to Sales and driven by the `?view=` param so a view is deep-linkable and testable.
+function SubNav({ view, setView }) {
+  const onKey = (event, index) => {
+    if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === "Home" ? 0 : event.key === "End" ? SALES_VIEWS.length - 1
+      : (index + (event.key === "ArrowRight" ? 1 : -1) + SALES_VIEWS.length) % SALES_VIEWS.length;
+    const nextId = SALES_VIEWS[next][0];
+    setView(nextId);
+    // The buttons persist across a view change (only aria-selected/tabindex flip), so focusing the
+    // sibling directly is safe and keeps keyboard users on the roving item.
+    document.getElementById(`sales-view-${nextId}`)?.focus();
+  };
+  return (
+    <div className="so-subnav" role="tablist" aria-label="Sales views">
+      {SALES_VIEWS.map(([id, label], index) => (
+        <button key={id} id={`sales-view-${id}`} role="tab" aria-selected={view === id} aria-controls="sales-view-panel"
+          tabIndex={view === id ? 0 : -1} onClick={() => setView(id)} onKeyDown={(event) => onKey(event, index)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// A pulse tile value: an honest count, a formatted amount, or an em-dash — never a coerced zero.
+function PulseValue({ tile }) {
+  if (tile.unavailable) return <span className="so-pv so-pv-dash">—</span>;
+  if (tile.count != null) return <span className="so-pv">{tile.count}{tile.unit ? <span className="so-pv-u"> {tile.unit}</span> : null}</span>;
+  if (tile.amountMinor != null) return <span className="so-pv mono">{money(tile.amountMinor, tile.currency) ?? "—"}</span>;
+  return <span className="so-pv so-pv-dash">—</span>;
+}
+
+// ── Sales Scenario Lab (file-local) ──────────────────────────────────────────────────────────
+// A MODEL, never an action. It reads the current price from Catalog (source-backed) and the
+// close-rate / opportunity evidence from the tenant's own pipeline outcomes; everything else is an
+// owner assumption, labelled as one. It writes NOTHING — no price, offer, deal, campaign, payment,
+// or Mission. Save-as-artifact and link-to-Mission are UNAVAILABLE until those records exist.
+function ScenarioLab({ offers, deals, stages, onAskPaige }) {
+  const offerList = offers.offers || [];
+  const [offerId, setOfferId] = React.useState("");
+  const chosen = offerList.find((o) => o.id === offerId) || offerList[0] || null;
+  const lead = chosen ? (chosen.prices.filter((p) => p.active && typeof p.unitAmount === "number")[0] || null) : null;
+  const currency = (lead?.currency || "usd").toLowerCase();
+  const currentPriceMinor = lead ? lead.unitAmount : null;
+  const [proposed, setProposed] = React.useState("");
+  const [capacity, setCapacity] = React.useState("Limited");
+  const [period, setPeriod] = React.useState("Next 2 quarters");
+  const [closeAssume, setCloseAssume] = React.useState("");
+  const [oppsAssume, setOppsAssume] = React.useState("");
+
+  // Evidence from the tenant's OWN pipeline outcomes. A close rate needs enough closed history to
+  // be evidence rather than noise; below the threshold it is honestly absent.
+  // A deal whose stage is not in `stages` is NOT counted as open — matching deriveSalesCommand,
+  // so a phantom stage can never inflate the opportunity/close evidence the model gates on.
+  const stageTypeOf = (d) => { const s = stages.find((x) => x.id === d.stageId); return s ? s.stageType : null; };
+  const won = deals.filter((d) => stageTypeOf(d) === "won").length;
+  const lost = deals.filter((d) => stageTypeOf(d) === "lost").length;
+  const closed = won + lost;
+  const closeEvidence = closed >= 3 ? Math.round((100 * won) / closed) : null;
+  const openCount = deals.filter((d) => stageTypeOf(d) === "open").length;
+  const oppsEvidence = openCount > 0 ? openCount : null;
+
+  const digits = minorUnitDigits(currency);
+  const proposedMajor = proposed.trim() === "" ? null : Number(proposed);
+  const proposedMinor = proposedMajor != null && Number.isFinite(proposedMajor) && proposedMajor >= 0
+    ? Math.round(proposedMajor * 10 ** digits) : null;
+
+  const model = deriveScenario({
+    currentPriceMinor,
+    proposedPriceMinor: proposedMinor,
+    currency,
+    closeRatePct: closeEvidence != null ? closeEvidence : (closeAssume.trim() === "" ? null : Number(closeAssume)),
+    closeRateFromEvidence: closeEvidence != null,
+    opportunities: oppsEvidence != null ? oppsEvidence : (oppsAssume.trim() === "" ? null : Number(oppsAssume)),
+    opportunitiesFromEvidence: oppsEvidence != null,
+  });
+
+  const askTest = () => onAskPaige(
+    `Prepare the smallest safe test of moving ${chosen?.name || "this offer"} from ${money(currentPriceMinor, currency) ?? "its current price"} to ${proposedMinor != null ? money(proposedMinor, currency) : "a proposed price"}. Draft the pitch for the next few qualified leads and track the close rate against ${closeEvidence != null ? `the ${closeEvidence}% my pipeline shows` : "my assumption"}. Do not change the live Catalog price, any deal, or any campaign.`,
+  );
+
+  return (
+    <div className="so-lab">
+      <div className="so-band so-lab-inputs">
+        <div className="so-band-head"><h3>Scenario inputs</h3></div>
+        <label className="so-labf"><span>Offer <EcChip e="contracted" /></span>
+          <select value={offerId || (chosen?.id || "")} onChange={(e) => setOfferId(e.target.value)}>
+            {offerList.length === 0 ? <option value="">No offers recorded</option> : offerList.map((o) => <option key={o.id} value={o.id}>{o.name || "Untitled offer"}</option>)}
+          </select>
+          <small className="so-labhint">{lead ? `Current price ${money(currentPriceMinor, currency) ?? "—"} · from Catalog` : "This offer has no recorded price"}</small>
+        </label>
+        <label className="so-labf"><span>Proposed price <EcChip e="modeled" /></span>
+          <input inputMode="decimal" value={proposed} placeholder="Owner-entered" onChange={(e) => setProposed(e.target.value)} />
+        </label>
+        <label className="so-labf"><span>Delivery capacity <EcChip e="modeled" /></span>
+          <select value={capacity} onChange={(e) => setCapacity(e.target.value)}><option>Limited</option><option>Comfortable</option><option>Open</option></select>
+        </label>
+        <div className="so-labf"><span>Observed close rate {closeEvidence != null ? <EcChip e="dated" /> : <EcChip e="unknown" />}</span>
+          {closeEvidence != null
+            ? <p className="so-labfixed mono">{closeEvidence}%<small className="so-labhint"> · from {closed} closed deals in your pipeline</small></p>
+            : <><input inputMode="decimal" value={closeAssume} placeholder="No history — enter an assumption" onChange={(e) => setCloseAssume(e.target.value)} /><small className="so-labhint">No close-rate evidence yet</small></>}
+        </div>
+        <div className="so-labf"><span>Opportunities {oppsEvidence != null ? <EcChip e="open" /> : <EcChip e="unknown" />}</span>
+          {oppsEvidence != null
+            ? <p className="so-labfixed mono">{oppsEvidence}<small className="so-labhint"> · open in your pipeline</small></p>
+            : <><input inputMode="numeric" value={oppsAssume} placeholder="Enter an assumption" onChange={(e) => setOppsAssume(e.target.value)} /><small className="so-labhint">No real opportunity count</small></>}
+        </div>
+        <label className="so-labf"><span>Time period <EcChip e="modeled" /></span>
+          <select value={period} onChange={(e) => setPeriod(e.target.value)}><option>Next quarter</option><option>Next 2 quarters</option><option>Next 12 months</option></select>
+        </label>
+      </div>
+
+      <div className="so-lab-right">
+        {!model.hasEvidence && <p className="so-banner so-banner-warn"><Ic.shield size={15} /><span><b>No historical evidence yet.</b> With no closed-deal history, the Evidence-supported path can't be computed — enter your own assumptions to model Conservative and Stretch, clearly marked as assumptions.</span></p>}
+        <div className="so-lab-paths">
+          {model.paths.map((p) => (
+            <div key={p.key} className={`so-path${p.key === "evidence" ? " so-path-evi" : ""}`}>
+              <div className="so-path-h"><b>{p.label}</b>{p.evidence === "modeled" ? <EcChip e="modeled" /> : <EcChip e="unknown" />}</div>
+              <div className={`so-path-big${p.outcomeMinor == null ? " so-pv-dash" : " mono"}`}>{p.outcomeMinor == null ? "—" : money(p.outcomeMinor, currency)}</div>
+              <div className="so-labhint">{p.note}</div>
+              <div className="so-path-li"><span>Price</span><span className="mono">{proposedMinor != null ? money(proposedMinor, currency) : "—"}</span></div>
+              <div className="so-path-li"><span>Close rate</span><span className="mono">{p.closeRatePct != null ? `${p.closeRatePct}%` : "—"}</span></div>
+              <div className="so-path-li"><span>Opportunities</span><span className="mono">{p.opportunities != null ? p.opportunities : "—"}</span></div>
+            </div>
+          ))}
+        </div>
+        <div className="so-lab-reason">
+          <div className="so-reason"><h4>What would need to be true</h4><ul><li>Price rises without dropping close rate below {closeEvidence != null ? `about ${Math.max(0, closeEvidence - 4)}%` : "your assumed rate"}.</li><li>{capacity.toLowerCase()} capacity absorbs the new load.</li><li>Enough qualified opportunities in the window.</li></ul></div>
+          <div className="so-reason"><h4>What supports it</h4><ul>{closeEvidence != null ? <><li>{closed} closed deals inform the {closeEvidence}% close rate.</li><li>{openCount} open in the pipeline now.</li></> : <li className="so-quiet">No closed-deal history yet — results rest on your assumptions.</li>}<li>The current price is source-backed from Catalog.</li></ul></div>
+          <div className="so-reason"><h4>What could invalidate it</h4><ul><li>Close rate drops as price rises.</li><li>Fewer opportunities than assumed.</li><li>Capacity limits fulfilment.</li></ul></div>
+          <div className="so-reason"><h4>Smallest safe test Paige can prepare</h4><ul><li>Offer the new price to the next few qualified leads and compare close rate.</li><li>Paige drafts the pitch and tracks the result — no live price change.</li></ul></div>
+        </div>
+        <p className="so-banner so-banner-info"><Ic.shield size={15} /><span><b>This is a model.</b> Saving it as a planning artifact or linking it to a Business Mission is not available yet — no scenario or mission store exists. It never changes a live price, offer, deal, campaign, or payment.</span>
+          <span className="so-lab-act"><button className="btn btn-s" disabled title="Not available yet — no scenario store">Save scenario</button><button className="btn btn-s btn-p" onClick={askTest}>Ask Paige to prepare the test</button></span></p>
+      </div>
+    </div>
+  );
+}
+
+export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages = [], submissions = [], submissionsPhase = "ready", submissionsRetry, onOpenCatalog, onOpenClients, onOpenPipeline, truth }) {
   const sales = useSoloSalesOps();
   const agreements = useSoloAgreements();
   const [offerSearch, setOfferSearch] = React.useState("");
@@ -783,9 +951,25 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
   const [success, setSuccess] = React.useState("");
   const location = useLocation();
   const navigate = useNavigate();
+  // The Sales-internal view lives in a Sales-local `?view=` param — deep-linkable and testable,
+  // and it never touches the shell's `useSubtabRoute` growth-subtab registry. `command` is the bare
+  // default, so the desk opens on the operating view with no query.
+  const rawView = new URLSearchParams(location.search).get("view");
+  const view = SALES_VIEWS.some(([id]) => id === rawView) ? rawView : "command";
+  const setView = React.useCallback((next) => {
+    const q = new URLSearchParams(location.search);
+    if (next === "command") q.delete("view"); else q.set("view", next);
+    q.delete("resume");
+    const search = q.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : "" });
+  }, [navigate, location.pathname, location.search]);
   React.useEffect(() => {
     if (new URLSearchParams(location.search).get("resume") === "terms" && agreements.phase === "ready" && offers.phase === "ready") {
-      setEditor("agreement"); navigate(location.pathname, { replace: true });
+      setEditor("agreement");
+      // Land on Commercial Terms so the editor opens over its own view, and strip the one-shot param.
+      const q = new URLSearchParams(location.search);
+      q.delete("resume"); q.set("view", "terms");
+      navigate({ pathname: location.pathname, search: `?${q.toString()}` }, { replace: true });
     }
   }, [location.search, agreements.phase, offers.phase, navigate, location.pathname]);
 
@@ -892,6 +1076,62 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
     note: "Catalog owns this record. Sales reads it and never keeps a second copy of the price.",
   });
 
+  // The honest Sales Command model — every figure derived from a real record (deriveSalesCommand).
+  // Null until both commercial reads are ready; the Command and Revenue views render a loading or
+  // error state rather than a partial figure.
+  const commercialReady = agreements.phase === "ready" && offers.phase === "ready";
+  const commercialError = agreements.phase === "error" || offers.phase === "error";
+  const model = React.useMemo(() => (commercialReady ? deriveSalesCommand({
+    agreements: agreements.agreements,
+    clients: agreements.clients,
+    offers: offers.offers,
+    referencedOffers: offers.referencedOffers,
+    orders: sales.orders,
+    ordersReadable: sales.ordersReadable,
+    deals,
+    stages,
+    processor: sales.processor,
+    processorUnrecognised: sales.processorUnrecognised,
+  }) : null), [commercialReady, agreements.agreements, agreements.clients, offers.offers, offers.referencedOffers, sales.orders, sales.ordersReadable, deals, stages, sales.processor, sales.processorUnrecognised]);
+
+  // Route a move / open-work / ladder target to the REAL surface. No dead ends (§70).
+  const go = (target) => {
+    if (!target) return;
+    switch (target.kind) {
+      case "view": setView(target.view); break;
+      case "catalog": if (onOpenCatalog) onOpenCatalog(); break;
+      case "pipeline": if (onOpenPipeline) onOpenPipeline(); else if (onOpenCatalog) onOpenCatalog(); break;
+      case "clients": if (onOpenClients) onOpenClients(); break;
+      case "payment": setEditor("payment"); break;
+      case "paige": window.dispatchEvent(new CustomEvent("paige:open", { detail: { prompt: target.prompt } })); break;
+      default: break;
+    }
+  };
+  const askPaige = (prompt) => window.dispatchEvent(new CustomEvent("paige:open", { detail: { prompt } }));
+
+  // The operating brief, DERIVED from real records — never a hardcoded sentence.
+  const brief = (() => {
+    if (!model) return "Reading your commercial records…";
+    const f = model.facts; const parts = [];
+    if (!f.paymentReady && f.activeTermCount > 0) parts.push(`${f.activeTermCount} active term${f.activeTermCount === 1 ? "" : "s"} awaiting a payment path`);
+    if (f.proposedTermCount > 0) parts.push(`${f.proposedTermCount} proposed to confirm`);
+    if (f.renewalsSoonCount > 0) parts.push(`${f.renewalsSoonCount} renewing soon`);
+    if (parts.length === 0) return f.activeTermCount > 0 ? "Your commercial desk is up to date." : "Record what a client agreed to pay to start your desk.";
+    const s = parts.join(" · ");
+    return `${s.charAt(0).toUpperCase()}${s.slice(1)}.`;
+  })();
+  // Recorded capture references only — never a sale, revenue, or attribution. Shown as a foldout.
+  const routed = (submissions || []).filter((row) => row.contactId || row.dealId);
+  // Active terms with a dated renewal/end inside the 60-day window — a real dated read for Revenue.
+  const nowMs = Date.now();
+  const renewalRows = agreements.agreements.filter((row) => {
+    if (row.status !== "active") return false;
+    const raw = row.renewsOn || row.endsOn; const t = raw ? Date.parse(raw) : NaN;
+    return !Number.isNaN(t) && t >= nowMs && t <= nowMs + 60 * 86400000;
+  });
+
+  const contractedCurrency = model?.facts.contractedCurrency || "usd";
+
   return (
     <div className="so">
       {success && <div className="so-success" role="status">{success}<button className="btn btn-p" onClick={() => onOpenCatalog()}>Continue setup in Catalog</button></div>}
@@ -916,14 +1156,154 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
         />
       ) : null}
 
-      <header className="so-workbench-head"><div><span className="so-eyebrow">SALES WORKBENCH</span><h2>Your next client starts here</h2><p>Find an offer. Record the terms. Keep the next step clear.</p></div></header>
+      <SubNav view={view} setView={setView} />
+      <div id="sales-view-panel" role="tabpanel" aria-labelledby={`sales-view-${view}`} className="so-view">
+
+      {view === "command" && (
+        <div className="so-cmd">
+          <header className="so-cmd-head">
+            <div className="so-cmd-lead">
+              <div className="so-cmd-eyebrow"><span className="so-eyebrow">Sales Command</span>{truth && <span className={`campaigns-truth campaigns-truth--${String(truth[0]).toLowerCase()}`}>{truth[0]}</span>}</div>
+              <h2>Turn agreed value into received value.</h2>
+              <p className="so-cmd-brief">{brief}</p>
+            </div>
+            <div className="so-cmd-act">
+              <button className="btn" onClick={() => askPaige("Give me a plain-English read of my commercial readiness right now — what is agreed, what is awaiting a payment path, what is renewing, and the single next move. Use only my recorded terms, pipeline and payment handling; never invent revenue or attribution.")}><Ic.spark size={14} />Ask Paige</button>
+              {agreements.canManage && <button className="btn btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}><Ic.doc size={14} />Record commercial terms</button>}
+            </div>
+          </header>
+
+          {commercialError ? (
+            <p className="so-absent" role="alert">Your commercial records could not be read, so this is unknown rather than empty. Nothing was changed. <button className="btn btn-s" onClick={() => { agreements.retry(); offers.retry(); }}><Ic.arrow size={13} />Retry</button></p>
+          ) : !model ? (
+            <div className="campaigns-skeleton" role="status" aria-label="Reading commercial records"><span /><span /><span /></div>
+          ) : (<>
+            <div className="so-pulse" aria-label="Commercial pulse">
+              {model.pulse.map((t) => (
+                <div className="so-pl" key={t.key}>
+                  <div className="so-pl-top"><span className={`so-pl-ic so-pl-ic-${t.key}`}><MoveIcon name={t.key === "received" ? "card" : t.key === "open" ? "target" : t.key === "renewals" ? "refresh" : "doc"} /></span><span className="so-pl-lab">{t.label}</span></div>
+                  <PulseValue tile={t} />
+                  <div className="so-pl-sub">{t.sub}</div>
+                  <div className="so-pl-meta"><EcChip e={t.evidence} /><span className="so-src">Source: <b>{t.sourceLabel}</b></span></div>
+                </div>
+              ))}
+            </div>
+
+            <div className="so-2col">
+              <section className="so-band so-ladder-band">
+                <div className="so-band-head"><h3>Commercial Readiness Ladder</h3><small>Every state shows a real record or an honest gap — drawn from pipeline, recorded terms and payment handling. Deals and terms aren’t linked yet, so this is a readiness overview, not one deal’s journey.</small></div>
+                <div className="so-ladder">
+                  {model.ladder.map((col) => (
+                    <div className="so-lad-col" key={col.n}>
+                      <div className="so-lad-hd">
+                        <span className={`so-lad-n so-lad-n-${col.status}`}>{col.n}</span>
+                        <b>{col.name}</b><small>{col.sub}</small>
+                        <span className={`so-lad-st so-lad-st-${col.status}`}>{col.status === "live" ? "Live" : col.status === "part" ? "Partial" : "No source"}</span>
+                      </div>
+                      <div className="so-lad-body">
+                        {col.tenantLevel ? (
+                          <div className={`so-lad-tenant ${col.tenantLevel.ready ? "is-ready" : "is-missing"}`}>
+                            <Pill tone={col.tenantLevel.ready ? "ok" : "warn"}>{col.tenantLevel.ready ? "Ready" : "Not set up"}</Pill>
+                            <p>{col.emptyNote}</p>
+                            {!col.tenantLevel.ready && agreements.canManage ? <button className="btn btn-s" onClick={() => setEditor("payment")}>Record payment handling</button> : null}
+                          </div>
+                        ) : col.status === "unavailable" || col.items.length === 0 ? (
+                          <p className="so-lad-empty">{col.emptyNote}</p>
+                        ) : (<>
+                          {col.items.slice(0, 4).map((item) => (
+                            <button className="so-lad-card" key={item.id} onClick={() => go(item.target)}>
+                              <b>{item.client}</b>{item.offer && <span className="so-lad-co">{item.offer}</span>}
+                              {item.flag && <span className={`so-lad-flag so-lad-flag-${item.flag.tone}`}><span className="dot" />{item.flag.label}</span>}
+                            </button>
+                          ))}
+                          {col.items.length > 4 && <button className="so-lad-more" onClick={() => go(col.items[0].target)}>+{col.items.length - 4} more</button>}
+                        </>)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <div className="so-cmd-side">
+                <section className="so-band">
+                  <div className="so-band-head"><h3>Top Commercial Moves</h3></div>
+                  {model.moves.length === 0 ? (
+                    <p className="so-absent">No commercial move needs you right now. New proposals, renewals and payment gaps will surface here.</p>
+                  ) : (
+                    <div className="so-moves">
+                      {model.moves.map((m) => (
+                        <button className="so-move" key={m.id} onClick={() => go(m.target)}>
+                          <span className="so-move-ic"><MoveIcon name={m.icon} /></span>
+                          <span className="so-move-t"><b>{m.title}</b><small>{m.detail}</small></span>
+                          <span className="so-move-r"><span className="so-move-who">{m.who}</span><span className="so-src">{m.sourceLabel}</span></span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="so-band">
+                  <div className="so-band-head"><h3>Open Commercial Work</h3>{model.openWork.length > 5 ? <button className="btn btn-s" onClick={() => setView("terms")}>View all</button> : null}</div>
+                  {model.openWork.length === 0 ? (
+                    <p className="so-absent">No open commercial work. Recorded terms and open deals that need a next step appear here.</p>
+                  ) : (
+                    <div className="so-owt">
+                      {model.openWork.slice(0, 5).map((r) => (
+                        <button className="so-owt-row" key={r.id} onClick={() => go(r.target)}>
+                          <span className="so-owt-cli"><span className="so-owt-av">{r.initials}</span><b>{r.client}</b></span>
+                          <span className="so-owt-off">{r.offer || "—"}</span>
+                          <span><Pill tone={r.stateTone}>{r.stateLabel}</Pill></span>
+                          <span className="so-owt-go"><Ic.chev size={14} /></span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>
+
+            {/* Routed captures moved here from the wrapper (§58): the read stays phase-aware — a
+              * failed or unresolved snapshot read is UNKNOWN, never an empty "no activity". */}
+            <details className="so-fold so-form-activity" open={submissionsPhase === "error" || submissionsPhase === "unavailable"}><summary>Recorded captures — references only (never a sale)</summary>
+              {submissionsPhase === "resolving" ? (
+                <div className="campaigns-state" role="status"><span className="campaigns-spinner" />Resolving this account’s Campaigns workspace…</div>
+              ) : submissionsPhase === "loading" ? (
+                <div className="campaigns-skeleton" role="status" aria-label="Loading routed capture activity"><span /><span /><span /></div>
+              ) : submissionsPhase === "unavailable" ? (
+                <div className="campaigns-state"><span className="campaigns-truth campaigns-truth--unavailable">UNAVAILABLE</span><h2>Campaigns needs a resolved workspace</h2><p>No tenant data is read until your account context is confirmed.</p></div>
+              ) : submissionsPhase === "error" ? (
+                <div className="campaigns-state" role="alert"><span className="campaigns-truth campaigns-truth--unavailable">UNAVAILABLE</span><h2>Campaigns could not load</h2><p>Your records were not changed. Try the tenant-scoped read again.</p>{submissionsRetry && <button className="btn btn-s" onClick={submissionsRetry}><Ic.arrow size={13} />Retry</button>}</div>
+              ) : routed.length === 0 ? (
+                <p className="so-absent">No routed form activity. Recorded contact and deal references only — never estimated revenue or campaign attribution; a submission is not a sale.</p>
+              ) : (
+                <div className="campaigns-list">{routed.map((row) => (
+                  <button className="campaigns-list-row" key={row.id} onClick={() => setDetail({ title: "Captured activity", rows: [["Source", row.source], ["Recorded", when(row.createdAt)], ["Contact reference", row.contactId ? "Recorded" : "Not recorded"], ["Deal reference", row.dealId ? "Recorded" : "Not recorded"]], note: "No monetary value or campaign attribution is inferred." })}><span><strong>{row.source}</strong><small>{when(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14} /></span></button>
+                ))}</div>
+              )}
+            </details>
+          </>)}
+        </div>
+      )}
+
+      {view === "scenarios" && (
+        commercialError ? <p className="so-absent" role="alert">Your commercial records could not be read. <button className="btn btn-s" onClick={() => { offers.retry(); }}><Ic.arrow size={13} />Retry</button></p>
+        : offers.phase !== "ready" ? <div className="campaigns-skeleton" role="status" aria-label="Loading scenarios"><span /><span /><span /></div>
+        : <ScenarioLab offers={offers} deals={deals} stages={stages} onAskPaige={askPaige} />
+      )}
+
+      {view === "terms" && (<>
       {/* ── what each client pays ─────────────────────────────────────────────────────────── */}
       <section className="so-band so-terms">
         <div className="so-band-head">
           <h3>Commercial terms and retainers</h3>
           {agreements.phase === "ready" && agreements.agreementsReadable && <Pill tone={agreements.agreements.length ? "ok" : "opportunity"}>{agreements.agreements.length ? "Records available" : "Nothing recorded yet"}</Pill>}
           {truth && <span className={`campaigns-truth campaigns-truth--${String(truth[0]).toLowerCase()}`}>{truth[0]}</span>}
-          {agreements.canManage && <button className="btn btn-s btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>Record terms</button>}
+          {agreements.canManage
+            ? <button className="btn btn-s btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>Record terms</button>
+            : agreements.phase === "ready" && agreements.agreementsReadable
+              // A reader who cannot write is told WHO may — never a silently missing button (§36/§70).
+              ? <span className="so-quiet">An owner or admin records this.</span>
+              : null}
           {/* Disambiguated in place rather than renamed. "Agreement" already means a SIGNED
             * DOCUMENT everywhere else in this product — including `clients.agreement_signed_at`
             * on the very table this reads, and an "Agreements" card on the same client's portal
@@ -1062,6 +1442,54 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
         )}
         <div className="so-page-controls"><span>Page {offerPage + 1} · up to 5 offers</span><button className="btn btn-s" disabled={offerPage === 0 || offers.phase !== "ready"} onClick={() => setOfferPage((p) => p - 1)}>Previous offers</button><button className="btn btn-s" disabled={!offers.hasMore || offers.phase !== "ready"} onClick={() => setOfferPage((p) => p + 1)}>Next offers</button></div>
       </section>
+      </>)}
+
+      {view === "revenue" && (<>
+      <div className="so-band-head so-rev-lead"><h3>Revenue &amp; Collections</h3><small>A sales-facing commercial view — not a payment processor. Paige never holds this money; it reaches you directly. Nothing here is charged, collected, or settled.</small></div>
+      <div className="so-rev-top">
+        <section className="so-band so-rev-card">
+          <div className="so-band-head"><h3>Actual received</h3><EcChip e="unknown" /></div>
+          <div className="so-rev-empty">
+            <p className="so-absent">{sales.processor === null ? "You haven’t recorded how your clients pay you." : "Payment handling is recorded, but no verified receipts are imported — Paige doesn’t connect your processor or move money."} Actual received stays empty until a real source proves it.</p>
+            {sales.canManage && <button className="btn btn-s btn-p" onClick={() => setEditor("payment")}>{sales.processor === null ? "Record payment handling" : "Change payment handling"}</button>}
+          </div>
+        </section>
+        <section className="so-band so-rev-card">
+          <div className="so-band-head"><h3>Contracted value on record</h3><EcChip e="contracted" /></div>
+          {!model ? <div className="campaigns-skeleton" role="status"><span /></div> : (<>
+            <div className="so-rev-figure"><span className="so-num mono">{model.facts.contractedOnceMinor > 0 ? (money(model.facts.contractedOnceMinor, contractedCurrency) ?? "—") : "—"}</span><span className="so-rev-fnote">{model.facts.activeTermCount === 0 ? "No active terms recorded" : model.facts.contractedOnceMinor > 0 ? "One-time on active terms" : "No one-time value — recurring shown monthly"}</span></div>
+            <div className="so-rev-facts">
+              <span><b className="mono">{model.facts.contractedMrrMinor > 0 ? (money(model.facts.contractedMrrMinor, contractedCurrency) ?? "—") : "—"}</b>/mo recurring</span>
+              <span><b className="mono">{model.facts.activeTermCount}</b> active {model.facts.activeTermCount === 1 ? "term" : "terms"}</span>
+              {model.facts.mixedCurrency && <span className="so-quiet">+ other currencies, not summed</span>}
+            </div>
+            <p className="so-src">Source: <b>Recorded terms</b> · recurring shown monthly, never annualized</p>
+          </>)}
+        </section>
+      </div>
+
+      <section className="so-band">
+        <div className="so-band-head"><h3>Renewals &amp; expiring terms</h3><EcChip e="dated" /></div>
+        {renewalRows.length === 0 ? (
+          <p className="so-absent">No active terms renew or end in the next 60 days. This is a real read of your recorded renewal and end dates — never an invented reminder.</p>
+        ) : (
+          <div className="so-table" role="table" aria-label="Renewals and expiring terms">
+            {renewalRows.map((row) => {
+              const client = agreements.clients.find((c) => c.id === row.contactId);
+              const raw = row.renewsOn || row.endsOn;
+              const days = Math.max(0, Math.round((Date.parse(raw) - nowMs) / 86400000));
+              return (
+                <div className="so-tr so-tr-4" role="row" key={row.id}>
+                  <span role="cell" className="so-cell-name">{client?.name || (agreements.clientsReadable ? "Not recorded" : "Not readable here")}</span>
+                  <span role="cell" className="so-quiet">{row.renewsOn ? "Renews" : "Ends"} {when(raw, true)}</span>
+                  <span role="cell"><Pill tone={days <= 30 ? "warn" : "opportunity"}>{days}d</Pill></span>
+                  <span role="cell"><button className="btn btn-s" onClick={() => askPaige(`Prepare a renewal note for ${client?.name || "this client"} — their terms ${row.renewsOn ? "renew" : "end"} ${when(raw, true)}. Review the value delivered from my records; do not send anything.`)}>Prepare with Paige</button></span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <section className="so-band so-payment"><div className="so-band-head"><h3>Payment handling</h3><small>Records how you accept payment. No processor connection or money collection.</small></div>
         <ReadyRow
@@ -1141,6 +1569,9 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", onOpenCa
           </div></details>
         )}
       </section>
+      </>)}
+
+      </div>
     </div>
   );
 }
