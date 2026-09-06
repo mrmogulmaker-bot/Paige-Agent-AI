@@ -1877,6 +1877,20 @@ outcomes); Spine/Mind retain only scoped sourced facts (F02 Memory contract — 
 refresh discipline (owner-directed):** at each completed slice this record updates with what shipped, exact
 evidence, what remains UNAVAILABLE/proof-owed, the next owning workstream, and any dependency-order change.
 
+**Secure Browser / Twin Phase-0 audit (2026-09-06) — a DECISION OWED, not a capability.** A read-only
+current-main + deployed-state audit of the "Paige Secure Browser / Twin" direction confirms the state
+above against live code: public research is **LIVE/PARTIAL** (`deep_research`/`web_search` reachable in
+chat; `browse_public_url` skill PARTIAL, flag-gated + G5); the **credentialed** modes (owner-assisted
+sign-in with MFA handoff, connected-accounts) are **UNAVAILABLE**; there is **no in-chat live browser
+window**; and **no browser provider is wired** (Browserbase = inert/undeployed stub; **Twin exists only
+in strategy research** and, per its own public docs, its raw-credential vault is "coming soon" with no
+MCP — **not install-ready**). The full packet — collision map vs the five slices above, current-state
+matrix, provider evaluation (Browserbase/Anchor/Steel/Twin), three-mode security architecture, Phase 0–4
+roadmap, and Phase-1 security/flow plan — is `docs/audits/paige-secure-browser-audit-2026-09-06.md`.
+**Phase-0 exit = an owner round-table decision on credential-custody model + build-vs-buy provider
+(§00/§4/§69); nothing installs until then.** The credentialed modes must ride the §10 Standing Delegated
+Authority Contract + §68, not a new autonomy system.
+
 ### Solo n8n connection clarity — historical UI slice, 2026-09-03
 
 The owner approved separate API connection and Paige tools (MCP) tabs and independent tile/overview states. This earlier UI slice preserved stored credentials while OAuth was blocked. Superseded by released PR #909: standard OAuth is live with the owner-accepted gateway logging risk; only final owner consent/provider verification remains Proof Owed. Current API saved status/count/timestamp does not prove fresh health; the UI must not claim it does. No callback, backend credential, tool-authority, workflow execution, Chat or Spine changes are included. Delivery and proof: `docs/delivery/solo-n8n-connection-clarity.md`. Authenticated owner acceptance is recorded separately from automated/build/deployment evidence.
