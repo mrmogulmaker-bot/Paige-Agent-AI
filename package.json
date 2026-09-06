@@ -89,7 +89,9 @@
     "lint:approval-gate": "node scripts/ci/one-approval-gate-lint.mjs",
     "lint:approval-gate:test": "node scripts/ci/one-approval-gate-lint.mjs --self-test",
     "lint:chat-tool-registry": "node scripts/ci/chat-tool-registry-lint.mjs",
-    "lint:chat-tool-registry:test": "node scripts/ci/chat-tool-registry-lint.mjs --self-test"
+    "lint:chat-tool-registry:test": "node scripts/ci/chat-tool-registry-lint.mjs --self-test",
+    "lint:binding-ledger": "node scripts/ci/binding-ledger-lint.mjs",
+    "lint:binding-ledger:test": "node scripts/ci/binding-ledger-lint.mjs --self-test"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",

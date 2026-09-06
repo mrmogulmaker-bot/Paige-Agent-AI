@@ -32,6 +32,7 @@
  */
 import React from "react";
 import { Ic } from "./_shared";
+import { PaigeMark } from "@/components/brand/PaigeMark";
 import { useSocialCommand } from "./useSocialCommand";
 import { useSoloPendingActions } from "./data/useSoloPendingActions";
 import { elapsedLabel } from "./data/useSoloActivityFeed";
@@ -108,31 +109,13 @@ function Figure({ value }) {
 }
 
 /**
- * The small command-mark lockup for the header. The Solo shell's own gold orbital mark — NOT the
- * operator console's `CommandMark` (its file records being mounted in the wrong context once) and
- * NOT the marketing `PaigeMark`. Built from `--gold*` tokens, static, so PAIGE is present in the
- * header without the header spending the space a full mark would.
- */
-function CommandLockupMark() {
-  return (
-    <span className="social-cmd-mark" aria-hidden="true">
-      <svg viewBox="0 0 32 32" fill="none" width="17" height="17">
-        <ellipse cx="16" cy="16" rx="8" ry="8" stroke="var(--gold-bright)" strokeWidth="2" />
-        <ellipse cx="16" cy="16" rx="13.5" ry="5" transform="rotate(-22 16 16)" stroke="var(--gold-bright)" strokeWidth="1.5" opacity=".7" />
-        <circle cx="16" cy="16" r="2.8" fill="var(--gold-bright)" />
-      </svg>
-    </span>
-  );
-}
-
-/**
  * The PAIGE mark as an eclipse — reserved for the surface STATES, where there is nothing else to
  * show and the wait itself is the subject.
  *
- * Built from tokens only — there is no orb token in the Solo shell (the pack's `--cm-orb` family is
- * `--pg-*`-derived and resolves to nothing under `.paige-solo`). The corona sweeps ONLY where motion
- * is safe; `prefers-reduced-motion` stops it in the stylesheet rather than hiding it, because the
- * mark still has to read as the mark when it is still.
+ * The mark itself is the shared brand `PaigeMark` (the same one the Paige chat and the menu use) —
+ * owner-ruled 2026-09-06 as the ONE correct logo, replacing the retired Solo swirl. The token-built
+ * corona (`.social-orb-ring`) sweeps ONLY where motion is safe; `prefers-reduced-motion` stops it in
+ * the stylesheet rather than hiding it, because the mark still has to read as the mark when it is still.
  */
 function PaigeOrb() {
   return (
@@ -140,11 +123,7 @@ function PaigeOrb() {
       <span className="social-orb-halo" />
       <span className="social-orb-body" />
       <span className="social-orb-ring" />
-      <svg className="social-orb-mark" viewBox="0 0 32 32" fill="none" width="40" height="40">
-        <ellipse cx="16" cy="16" rx="8.4" ry="8.4" stroke="var(--gold-bright)" strokeWidth="2.1" />
-        <ellipse cx="16" cy="16" rx="14.5" ry="5.4" transform="rotate(-22 16 16)" stroke="var(--gold-bright)" strokeWidth="1.7" opacity=".8" />
-        <circle cx="16" cy="16" r="3.1" fill="var(--gold-bright)" />
-      </svg>
+      <PaigeMark className="social-orb-mark" label={null} />
     </div>
   );
 }
@@ -297,7 +276,7 @@ function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles, 
           (§11) — the work leads, the chrome does not eat the fold. */}
       <div className="social-cmd-bar">
         <div className="social-cmd-brand">
-          <CommandLockupMark />
+          <PaigeMark className="social-cmd-mark" label={null} />
           <span className="social-cmd-wm">PAIGE</span>
           <span className="social-cmd-div" aria-hidden="true" />
           <span className="social-eyebrow">Social command</span>
@@ -331,10 +310,6 @@ function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles, 
         <div className="social-cmd-brief">
           <h2 className="social-headline">{brief.headline}</h2>
           <p className="social-hero-body">{brief.body}</p>
-          <p className="social-signature">
-            <strong>PAIGE</strong>
-            <span>Your chief of staff. She only tells you what she can prove.</span>
-          </p>
         </div>
 
         {!canManage && (

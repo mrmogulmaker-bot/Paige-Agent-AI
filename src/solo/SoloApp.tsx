@@ -23,6 +23,7 @@ import { Analytics2 } from "./analytics2";
 import { Marketplace } from "./marketplace";
 import { SoloSettings } from "./settings";
 import { SOLO_SETTINGS_DESTINATIONS } from "./settings-contract";
+import { canShowVaultNavigation, useVaultAccess } from "./vault/useBusinessVault";
 import { VibeStudio } from "./vibe";
 import { TenantCommandCenterShell } from "@/components/tenant-shell/TenantCommandCenterShell";
 import { resolveTenantAccountContext } from "@/components/tenant-shell/tenantShellRoutes";
@@ -34,8 +35,10 @@ import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPane
 
 // Trust Compass is reached through Command Center (its third sub-tab), not a top-level rail entry
 // (owner-ruled 2026-09-05). The legacy `/solo/{account}/trust-compass` address redirects into it.
+// (Merge: keep the compass OUT of the top nav — this PR moved it into Command Center — while taking
+// main's NAV2, which relocated Business Vault out of the second rail; do not resurrect it, §58.)
 const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
-const NAV2=[['market','Marketplace',()=><Ic.store/>],['vault','Business Vault',()=><Ic.vault/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
+const NAV2=[['market','Marketplace',()=><Ic.store/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
 const LEGACY_SETTINGS={setup:'setup',team:'team',integrations:'integrations','business-vault':'vault'};
 const SETTINGS_ICONS={setup:Building2,team:Users,connections:Link2,integrations:Blocks,'security-data':ShieldCheck,vault:FileLock2,billing:CircleDollarSign};
 
@@ -160,6 +163,7 @@ const go = (k) => {
 // Acts ONLY once the caller's own account_number is known, so a mid-load null never
 // bounces.
 const { activeTenant, activeTenantId, activeUserId } = useTenantContext();
+const vaultAccess = useVaultAccess();
 const paigeTabEpochRef=React.useRef(activeTenantId);
 React.useLayoutEffect(()=>{if(paigeTabEpochRef.current===activeTenantId)return;paigeTabEpochRef.current=activeTenantId;setPaigeDockedTab('chat')},[activeTenantId]);
 const urlSplat = urlParams["*"] || "";
@@ -265,7 +269,7 @@ const contextualNavigation=route==='settings'&&urlDriven?{
   backHref:branchPath('solo',urlAccount,'command-center'),
   backLabel:'Back to PAIGE',
   activeId:settingsActive,
-  items:SOLO_SETTINGS_DESTINATIONS.map(item=>({id:item.key,label:item.label,href:`/solo/${urlAccount}/settings/${item.key}${location.search}`,icon:SETTINGS_ICONS[item.key]})),
+  items:SOLO_SETTINGS_DESTINATIONS.filter(item=>item.key!=='vault'||canShowVaultNavigation(vaultAccess)).map(item=>({id:item.key,label:item.label,href:`/solo/${urlAccount}/settings/${item.key}${location.search}`,icon:SETTINGS_ICONS[item.key]})),
 }:undefined;
 // Presentation only; authorization stays in the owning server/RLS contracts.
 // `owner_user_id` and the authenticated subject both come from useTenantContext,
