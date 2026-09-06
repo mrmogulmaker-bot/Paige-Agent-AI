@@ -23,11 +23,23 @@ import "@/solo/solo-tokens.css";
 
 const params = new URLSearchParams(window.location.search);
 const theme = params.get("theme") === "dark" ? "dark" : "light";
+// `?wrap=block` reproduces the SHIPPED-BUT-BROKEN production tabpanel (a plain block `height:100%`),
+// which does NOT bound `.gp` (flex:1) so its internal column-scroll never activates and content
+// below the fold is unreachable — the owner's 2026-09-06 scroll bug. Default (`flex`) is the FIX:
+// the plan tabpanel is a flex column, matching src/solo/CommandCenter.tsx, so `.gp` is height-bounded
+// and the intended scroll works. This wrapper now mirrors the REAL CommandHub chain (content div →
+// tabpanel → .gp) so the harness can finally reproduce a shell-only regression it previously missed.
+const wrap = params.get("wrap") === "block" ? "block" : "flex";
 
 // Applied before first paint so a frame can never capture a pre-toggle state.
 document.documentElement.setAttribute("data-pg", theme);
 document.documentElement.classList.toggle("dark", theme === "dark");
 document.documentElement.classList.toggle("light", theme === "light");
+
+const tabpanelStyle =
+  wrap === "block"
+    ? ({ height: "100%" } as const)
+    : ({ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } as const);
 
 function Harness() {
   return (
@@ -36,14 +48,19 @@ function Harness() {
       data-theme={theme}
       style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--canvas)" }}
     >
-      <MemoryRouter initialEntries={["/solo/review/command-center/business-game-plan"]}>
-        <Routes>
-          <Route
-            path="/solo/:account/*"
-            element={<SoloGamePlanWorkspace openPaige={() => {}} accountContext={{ accountName: "Clearpath Advisory", accountType: "standalone", parentTenantId: null }} workspaceId="review" />}
-          />
-        </Routes>
-      </MemoryRouter>
+      {/* Faithful reproduction of the real CommandHub content region (CommandCenter.tsx). */}
+      <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
+        <div role="tabpanel" data-gp-tabpanel style={tabpanelStyle}>
+          <MemoryRouter initialEntries={["/solo/review/command-center/business-game-plan"]}>
+            <Routes>
+              <Route
+                path="/solo/:account/*"
+                element={<SoloGamePlanWorkspace openPaige={() => {}} accountContext={{ accountName: "Clearpath Advisory", accountType: "standalone", parentTenantId: null }} workspaceId="review" />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </div>
+      </div>
     </div>
   );
 }
