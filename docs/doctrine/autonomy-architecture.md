@@ -688,7 +688,100 @@ business can let Paige make defined payments within its policy."* It ships as it
 (§1/§5/§39), its §37 inventory, and §32 runtime proof — RE-1's core is already live, so RE-2 (plus
 RE-1's idempotency/velocity additions) is the next build.
 
-## 10.7 Cross-references
+## 10.7 The governing rule (owner ruling 2026-09-06) — the one sentence every RE-2 slice serves
+
+> **Paige may autonomously take a consequential real-world action when a valid owner/authorized-
+> representative standing policy grants that SPECIFIC authority, the action remains inside its
+> measurable limits, the connected provider confirms the result, and the action is recorded
+> truthfully. Paige must pause/escalate when a policy boundary, provider condition, tenant/client
+> scope, law, or factual certainty is missing.**
+
+Every guard in RE-2/RE-3 is a clause of this sentence: *specific* authority (scope for the exact
+action, not a blanket switch); *measurable limits* (caps/velocity/budget/window/expiry); *provider
+confirms* (a real provider result, never a hoped-for one, §13/§32); *recorded truthfully* (Rail
+evidence, dimension 5); and *pause/escalate on missing certainty* (fail-closed — absent/expired/
+revoked/ambiguous/stale/over-cap/cross-scope policy, or a missing provider/law/scope/fact, all clamp
+to `confirm`).
+
+## 10.8 Build order + what every standing policy must specify (owner ruling 2026-09-06)
+
+**Build as small, mergeable MVP slices; do not stop for routine approval between them** (a NEW provider
+contract, credential, or a material legal/financial decision is the only thing that stops — those are
+§4/§69 boundaries). Update the Second Brain + ledger at each merged slice (§0/§BRAIN.3/§66).
+
+1. **RE-2 PR-1 — execution substrate (additive, ZERO behavioral change until a valid policy + a
+   released execution lane exist):** durable per-policy **idempotency/replay receipts**; **velocity
+   caps + action-count limits**; **atomic reserve/consume/release** primitives; immediate
+   **pause / revoke / expiry / emergency-stop**; per-tenant, and where applicable per-client,
+   per-provider-account, per-campaign, and per-action **scope**.
+   *Implementation-status note (§13, shipped `20261230000000`):* the reserve primitive enforces the
+   single-action cap and the **day/week/month** action-count + spend caps. **Campaign and client-period
+   budget caps are NOT enforced by the substrate yet** — they need a `campaign_id` / client-period
+   boundary in scope to derive a window (PR-3). Until then a grant that DECLARES one is **refused**
+   (`unenforceable_cap_kind`), never silently under-enforced — so PR-2/PR-3 must not assume PR-1 caps a
+   campaign budget.
+2. **RE-2 PR-2 — policy-aware resolver:** lift the blanket `high`-action `confirm` floor ONLY when a
+   specific valid standing policy authorizes the exact action; **no global "high is now automatic"
+   switch**; missing/expired/revoked/ambiguous/stale/over-cap/cross-scope fails closed; `confirm`
+   becomes the escalation lane (above threshold, outside scope, uncertain intent, changed
+   recipient/vendor/campaign, or a provider risk condition).
+3. **M1 — real money/spend metering (immediately after PR-2; a delivery dependency, not a halt):**
+   currency-aware **atomic reservations** + actual provider-confirmed spend/payment results against the
+   correct tenant, client, provider account, policy, and period. Dollar-affecting acts must NOT rely on
+   estimated totals. Paige never becomes merchant of record, holds funds, or routes client money
+   outside an authorized connected provider (§38).
+4. **RE-2 PR-3 onward — release real autonomous lanes ONE action family at a time,** only when that
+   family's provider execution loop, policy controls, and outcome evidence are genuinely present. Ship a
+   real owner-facing control surface for authority grants, caps, scope, schedule, pause/revoke, and
+   history.
+
+**Every standing policy must specify, at minimum:** grantor + authorized representative; tenant / client
+/ provider-account scope; the exact permitted actions; purpose or Mission/campaign/business need;
+single-action + periodic caps; velocity, time window, and expiry; recipient / vendor / campaign / asset
+boundaries where relevant; escalation rules + stop conditions; an immediate pause/revoke mechanism; and
+evidence + notification requirements.
+
+**For every autonomous act, record:** the policy basis, the decision inputs, the pre-action reservation,
+the provider request/result, the verified outcome, the Rail evidence, and any failure/escalation. Never
+manufacture success; never silently retry a financially or externally consequential action without
+idempotency protection.
+
+## 10.9 Spending authority — the grantor sets Paige's spending power, never Paige (owner ruling 2026-09-06)
+
+**The business owner, or an authorized representative acting within their OWN granted authority,
+determines Paige's spending power.** Paige never chooses her own budget, expands her own cap, or treats
+a past action as permission for a larger one. (A completed act is evidence, never an authorization —
+§10.8 "never treat a past action as permission.")
+
+**A valid spending grant must let the grantor set:**
+- the tenant and, for agencies / accounting firms, the exact **client/business scope**;
+- the connected **provider and financial/ad account**;
+- **permitted action types**;
+- a **single-action cap**;
+- **daily, weekly, monthly, campaign, and/or client-period caps** as applicable;
+- allowed **vendors, payees, campaigns, offers, or categories**;
+- **effective date, expiry date, and schedule**;
+- **escalation threshold and notification recipients**;
+- **pause, revoke, and emergency-stop** controls.
+
+**Delegation never widens authority (§51/§53).** Authorized representatives may only create, alter, or
+delegate Paige spending authority **up to the ceiling the owner granted them**. They cannot increase
+their own ceiling, grant authority they do not possess, alter ownership / platform authority, or bypass
+an owner-imposed limit.
+
+**Narrowest-limit-wins.** Paige enforces the **narrowest applicable limit** across the owner policy, the
+representative's authority, the client-engagement scope, the provider/account rules, the campaign
+budget, and law/provider controls. This is the same `min(...)` discipline as §2's effective-autonomy
+arithmetic, extended to spend: the effective spending ceiling is the minimum of every layer that
+applies, and any layer that cannot be read fails closed.
+
+**Visible + cited.** Show the current grant, remaining capacity, recent actions, and the pause/revoke
+control visibly to the owner and the permitted representative (the RE-2 PR-3 owner-facing control
+surface). **Every approved autonomous act must cite the specific authority grant that allowed it** — the
+grant id is part of the dimension-5 Rail evidence, so "why was Paige allowed to do this?" always has a
+concrete answer.
+
+## 10.10 Cross-references
 
 §2 (the three-layer ceiling/grant/floor model) · §8 (full auto + the M1–M5 metering/budget layer) ·
 §9/§68 (no authority is permanent — decay, step-down, attest, emergency-stop) · §16 (the
