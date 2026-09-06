@@ -225,6 +225,12 @@ earlier to be true.
 
 **A and B are the substrate.** Until they exist, every other item has nowhere to land.
 
+> **UPDATE (§13 correction, 2026-09-06):** A and B have since SHIPPED and are applied to prod —
+> `paige_automations` et al. (`20261022000000`) and `resolve_automation_autonomy` (`20261024000000`),
+> both consumed by `paige-ai-chat`. Read "until they exist" as satisfied. The remaining runtime gap is
+> not the substrate but the consequential-act floor lift under a valid standing policy — see §10.5/§10.6
+> (RE-2).
+
 ---
 
 ## 6. What this changes about work already shipped
@@ -623,10 +629,21 @@ State plainly, so no reader mistakes the target for the current runtime:
   `high`, and the governed-execution seam clamps `auto`→`confirm` for `high` one-directionally
   (`governed-execution-seam.md` point 6). So a valid standing policy does **not yet** lift a `high` act
   to autonomous execution at runtime — the human is still in the loop on every high act.
-- **The standing-policy substrate does not exist yet.** The §5 build sequence (A the process record,
-  B the resolver `resolve_automation_autonomy`) is the substrate this contract needs, and neither A nor
-  B has shipped. Until they do, "autonomous within policy" is the declared `intended_capability`, not
-  the runtime.
+- **The standing-policy substrate EXISTS and is wired — the gap is the high-act floor, not the
+  substrate (§13 correction 2026-09-06).** §5-A (`paige_automations` + `paige_automation_acts` +
+  `paige_automation_triggers`, `20261022000000`) and §5-B (the resolver
+  `resolve_automation_autonomy(uuid)`, `20261024000000`) are BOTH **applied to prod** (ref
+  `xygzykjyynhzqytbqnzu`, verified 2026-09-06 by `to_regclass`/`to_regprocedure` + both versions in
+  `schema_migrations`) and are **called at runtime** by `paige-ai-chat/index.ts` (≈L8671/8760/8796).
+  An earlier draft of this section (and §5's "until they exist") claimed neither had shipped — that was
+  stale and is corrected here. **Why a `high` act still clamps to `confirm` today** is not an absent
+  substrate but the per-act **FLOOR**: `resolve_automation_autonomy` computes
+  `effective = min(grant, act-floor, ceiling)`, and a consequential act's floor is `confirm` — the
+  `paige_action_kinds` CHECK `default_autonomy_lane <> 'auto' OR executor IN ('record_only','workflow')`
+  makes a send/external/money act's default lane un-`auto` by database law, and `resolve_tool_autonomy`
+  carries that as the floor — so `min(...)` caps a consequential act at `confirm` no matter how high the
+  process grant is set. Lifting that, safely, under a valid standing policy, is RE-2 below — and it is
+  genuinely not built.
 - **The ledger reflects this honestly:** every consequential surface keeps its current `state`
   (PARTIAL / UNAVAILABLE / PROOF_OWED / INTENTIONALLY_ISOLATED); only `intended_capability` was
   corrected. The gap between the two is the work below.
@@ -638,33 +655,38 @@ manage spend, alter authorized team access, and execute connected-tool work insi
 truthfully, reversibly where possible, visibly, and with immediate pause/revoke controls."* Reaching it
 is a real backend slice, sequenced here so it is built, not admired:
 
-- **RE-1 · Standing-policy substrate (§5-A/B).** `paige_automations` + `paige_automation_acts` +
-  `granted_lane`, and `resolve_automation_autonomy(automation_id) → {granted, asked, ceiling,
-  effective, capped, dark[]}` (CD's arithmetic, in SQL, ONE home). The policy row carries dimension 3:
-  scope, provider account, dollar/budget caps, **per-window action-count / velocity caps**, time window,
-  allowed recipients, threshold, stop conditions. `paige_automation_acts` carries an **idempotency key**
-  per act (dimension 5 exactly-once), and the $-budget and count-cap decrement **atomically** so
-  concurrent autonomous acts cannot both pass a nearly-exhausted limit. Extends the action bus; forks
-  nothing (§18). **These two — exactly-once and velocity caps — MUST land in RE-1/RE-2 before any
-  autonomous act touches a tenant's bank/processor** (the §5 compliance MEDIUM-1/MEDIUM-2 gate).
-- **RE-2 · The governed-execution seam honors a valid standing policy.** Add a `standingPolicy`
-  adapter-assertion input to `governedExecution.ts` (an *assertion*, like tenancy and approval — the
-  seam validates shape and refuses when absent, the adapter proves it true). When — and only when — a
-  valid policy supplies scope + caps + window + provider authority + stop conditions **for this exact
-  capability**, the §68 rung permits (rung ≥ 2, or 4 for full auto), and the budget clamp (§8-M3) is
-  not exhausted, a `high` act on the `auto` lane executes instead of clamping to `confirm`, with the
-  decision recorded. Absent/invalid/expired policy, exhausted budget, or a failed check → the existing
-  `auto`→`confirm` clamp stands (fail-closed). Door-blind and the eleven enforcement points are
-  preserved; this is a new *input*, never a new door. Carries its own §37 producer inventory and §32
-  proof (the exhaustive decision-space sweep already guards the seam).
+- **RE-1 · Standing-policy substrate — SHIPPED (§5-A/B) and wired; two additions still owed.**
+  `paige_automations` + `paige_automation_acts` + `paige_automation_triggers` (`20261022000000`) and
+  `resolve_automation_autonomy(uuid) → {granted, asked, ceiling, effective, capped_by, dark[]}`
+  (`20261024000000`, CD's arithmetic in SQL, ONE home) are applied to prod and consumed by
+  `paige-ai-chat`. **Still owed within RE-1 before any autonomous MONEY act (the §5 compliance
+  MEDIUM-1/MEDIUM-2 gate):** an **idempotency key** per act on `paige_automation_acts` (dimension 5
+  exactly-once) and per-window **action-count / velocity caps** on the policy row, decremented
+  **atomically** with the dollar budget — audit the shipped schema and add whichever is absent.
+- **RE-2 · Lift the consequential-act FLOOR under a valid standing policy — the load-bearing change,
+  NOT built.** Today `resolve_automation_autonomy` floors a consequential act at `confirm`
+  (`min(grant, act-floor, ceiling)`, and the act-floor is `confirm` by the `paige_action_kinds` CHECK +
+  `resolve_tool_autonomy`, §10.5). RE-2 adds a policy-aware path so that — when, and ONLY when, a valid
+  standing policy supplies scope + caps + window + provider authority + stop conditions **for this exact
+  capability**, the §68 rung permits (rung 4 / full-auto for a `high` act), and the §8-M3 budget +
+  velocity caps are not exhausted — a `high` act's **effective** lane resolves to `auto` for that
+  process's run instead of being floored to `confirm`. It must NOT weaken the safe DEFAULT: the
+  `paige_action_kinds` CHECK stays law; the lift is a per-process standing GRANT override, never a new
+  default. Absent/invalid/expired policy, exhausted budget/velocity, or a failed §68 check → the
+  `confirm` floor stands (fail-closed). Two runtime homes carry it: `resolve_automation_autonomy`'s
+  floor computation (the path that runs today) and, when the shared `governedExecution.ts` seam is
+  adopted, a matching `standingPolicy` adapter-assertion (door-blind, a new input never a new door).
+  Carries its own §37 producer inventory and §32 runtime proof (the resolver's `SET ROLE` proof + the
+  seam's exhaustive decision-space sweep).
 - **RE-3 · Controls + audit are first-class in the same slice (§9/§68).** pause / revoke / tighten /
-  raise-threshold / emergency-stop resolve through the same clamp the seam reads; every autonomous
+  raise-threshold / emergency-stop resolve through the same clamp the runtime reads; every autonomous
   high act writes the dimension-5 evidence to the Rail; a revoked or decayed grant drops to `confirm`
   (Draft), never silently. Reversible-where-possible is a per-capability property recorded on the act.
 
 RE-2 is the load-bearing change that turns *"Paige can ask to make a payment"* into *"an authorized
 business can let Paige make defined payments within its policy."* It ships as its own PR with the crew
-(§1/§5/§39), its §37 inventory, and §32 runtime proof — after this contract + ledger correction land.
+(§1/§5/§39), its §37 inventory, and §32 runtime proof — RE-1's core is already live, so RE-2 (plus
+RE-1's idempotency/velocity additions) is the next build.
 
 ## 10.7 Cross-references
 
