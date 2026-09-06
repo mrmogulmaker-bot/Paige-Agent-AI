@@ -48,6 +48,12 @@
   the contract test now exercises a table). **(c) reduced-motion (peer-gate P2, pre-existing):** the
   shared `DropdownMenuContent`/`SubContent` animated with no `motion-reduce` guard; added
   `motion-reduce:animate-none` at the primitive layer so the popover honestly respects the preference.
+  **(d) full-suite regression the diff review missed (caught by running `npm run test`, §37/§32):**
+  mounting the chip in `SoloPaigeWorkspace` made `paige-team-approval.render.test.tsx` (which mounts the
+  real workspace) throw an unhandled rejection — the chip's `useSoloToolGovernance` fires
+  `supabase.rpc` on mount and that test's supabase mock has no `.rpc`. Fixed by mocking the governance
+  hook to a benign resting state in that test (same pattern as `SoloPaigeWorkspace.contract.test.tsx`);
+  the other 8 workspace-referencing tests were confirmed clean. Full suite 3742/3742, exit 0.
   The pre-existing gold-as-background violation in the untouched `BusinessCreditDashboard.tsx:271` is
   out of this PR's scope (CI scopes gold to changed files) — noted, not fixed here.
 - **Capability Slice 2 — campaign-brief conversational create/list/revise reach (2026-09-06, Task #16, owner-authorized)** —
