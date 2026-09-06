@@ -10,6 +10,7 @@ import { SalesOps } from "./sales-ops";
 import { SocialCommand } from "./social-command";
 import { PipelineDelete } from "./PipelineDelete";
 import { PipelineCommandDesk } from "./PipelineCommandDesk";
+import CampaignOverview from "./campaign-desk";
 import "./solo-campaigns.css";
 
 // Vibe Studio still imports this project-only fixture. Campaigns never renders it;
@@ -100,13 +101,14 @@ function DetailDrawer({ detail, onClose }) {
   </aside></>;
 }
 
-function Overview({ data, setDetail }) {
-  const [filter, setFilter] = React.useState("all");
-  const statuses = [...new Set(data.campaigns.map((campaign) => campaign.status))];
-  const shown = filter === "all" ? data.campaigns : data.campaigns.filter((campaign) => campaign.status === filter);
-  return <section className="campaigns-surface"><SurfaceHead truthKey="overview" title="Campaign overview" description="All campaign states belong here once a tenant-authorized rollup is available." action={<label className="campaigns-filter"><span>State</span><select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">All available</option>{statuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>}/>
-    <StateFrame phase={data.phase} retry={data.retry} noun="campaigns">{shown.length===0?<div className="campaigns-state"><TruthTag state="UNAVAILABLE"/><h2>Campaign state rollup unavailable</h2><p>Active, paused, draft, completed, scheduled, failed, and inactive states are not inferred from a partial or globally scoped source.</p></div>:<div className="campaigns-list">{shown.map((campaign)=><button className="campaigns-list-row" key={campaign.id} onClick={()=>setDetail({title:campaign.name,rows:[["State",campaign.status],["Active",campaign.activeCount == null ? "Not recorded" : String(campaign.activeCount)],["Completed",campaign.completedCount == null ? "Not recorded" : String(campaign.completedCount)],["Last activity",formatDate(campaign.lastActivityAt)]],note:"Only fields returned by a tenant-authorized campaign owner are shown."})}><span><strong>{campaign.name}</strong><small>Last activity: {formatDate(campaign.lastActivityAt)}</small></span><span className="campaigns-row-end"><span className="campaigns-status">{campaign.status}</span><Ic.chev size={14}/></span></button>)}</div>}</StateFrame>
-  </section>;
+// Overview is the Campaign Command Desk (docs/prototypes/campaigns-overview.html, owner-approved
+// 2026-09-05). It COORDINATES a campaign across the source-owning subtabs and fabricates no campaign
+// state. The old "Campaign state rollup unavailable" panel is replaced: a campaign is now an
+// owner-authored brief (campaign_briefs / useSoloCampaignBriefs), and each growth-loop stage is a
+// real source fact or an honest absence. `data` supplies the loop-source reads (pipeline, artifacts);
+// keyed by tenant so a workspace switch clears the desk's filters, drawers and pending edits.
+function Overview({ data, onRoute }) {
+  return <CampaignOverview key={data.tenantId || "none"} data={data} onRoute={onRoute}/>;
 }
 
 // Catalog holds TWO durable concepts under one tab (owner ruling, Gate 1 2026-09-02):
@@ -382,6 +384,16 @@ export const GrowthHub=()=>{
   const openClients=React.useCallback(()=>{
     navigate(`${subtabPath("solo",params.account,"clients","people")}?origin=sales`);
   },[navigate,params.account]);
+  // The Command Desk's single router. Overview coordinates; each target opens the subtab that OWNS
+  // that stage of the loop (Vibe Studio opens through the existing handoff). Overview never does
+  // their work — it routes.
+  const onRoute=React.useCallback((target)=>{
+    const account=params.account; if(!account) return;
+    if(target==="studio"){ window.dispatchEvent(new CustomEvent("paige-studio",{detail:{}})); return; }
+    if(target==="clients"){ navigate(subtabPath("solo",account,"clients","people")); return; }
+    // catalog · sales · pipeline · social · performance are Campaigns subtabs.
+    navigate(subtabPath("solo",account,"growth",target));
+  },[navigate,params.account]);
   const previousWorkspace=React.useRef({tenantId:data.tenantId,account:params.account});
   const workspaceChanged=(!!previousWorkspace.current.tenantId && previousWorkspace.current.tenantId!==data.tenantId) || previousWorkspace.current.account!==params.account;
   React.useEffect(()=>{
@@ -407,7 +419,7 @@ export const GrowthHub=()=>{
   // without duplicating the state.
   React.useEffect(()=>{setDetailSnapshot(null);},[tab,segment,data.tenantId,params.account]);
   React.useEffect(()=>{if(segment!=="active")return;const account=params.account;if(account)navigate(`/solo/${account}/growth/overview${location.search}`,{replace:true});},[segment,params.account,location.search,navigate]);
-  let body=<Overview data={data} setDetail={setDetail}/>;
+  let body=<Overview data={data} onRoute={onRoute}/>;
   if(legacy) body=<CompatibilityLanding legacy={legacy} returnToAssets={returnToAssets}/>;
   else if(tab==="catalog") body=<Catalog data={data} setDetail={setDetail} initialType={requestedType}/>;
   else if(tab==="sales") body=<Sales data={data} setDetail={setDetail} onOpenCatalog={openCatalogOffers} onOpenClients={openClients}/>;

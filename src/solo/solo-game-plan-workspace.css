@@ -53,6 +53,12 @@
 .paige-solo .gp-chip-unavail { background: var(--surface-sunk); color: var(--ink-3); }
 .paige-solo .gp-chip-blocked { background: var(--bad-tint); color: var(--bad); }
 .paige-solo .gp-chip-ghost { background: transparent; border: 1px solid var(--line); color: var(--ink-3); font-weight: 600; }
+/* A summary chip that opens its backing surface. Same pill, now a real control (§36 drill-down). */
+.paige-solo .gp-chip-act { border: 0; cursor: pointer; transition: filter .12s ease; }
+.paige-solo .gp-chip-act:hover { filter: brightness(0.96); }
+.paige-solo .gp-chip-act:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.paige-solo .gp-chip-act .gp-chip-go { width: 11px; height: 11px; margin: 0 -2px 0 1px; opacity: .6; }
+@media (prefers-reduced-motion: reduce) { .paige-solo .gp-chip-act { transition: none; } }
 
 /* ── owner badge ── */
 .paige-solo .gp-own {

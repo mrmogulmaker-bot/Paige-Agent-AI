@@ -20,6 +20,7 @@
 //     card here needs a BACKEND change first (emit the frame from `broker-paige-chat`), not a client insert.
 // The client portal (PaigeChat) needs no wiring: document/image tools are admin/coach-gated, so it never
 // emits a frame. StudioChat is unaffected — it consumes its own studioSessionId frame onto the canvas.
+// UI delivery evidence for this comment correction: docs/evidence/ui-delivery/paige-artifact-card-port-readiness-comment.md
 //
 // ONE home (§18): this is the single artifact-handoff card for every regular chat surface. It REUSES
 // the Studio renderer — loadDocument() hydrates a document and DocumentPreview draws it (both the full

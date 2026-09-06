@@ -23,27 +23,50 @@ import "@/solo/solo-tokens.css";
 
 const params = new URLSearchParams(window.location.search);
 const theme = params.get("theme") === "dark" ? "dark" : "light";
+// `?wrap=block` reproduces the SHIPPED-BUT-BROKEN production tabpanel (a plain block `height:100%`),
+// which does NOT bound `.gp` (flex:1) so its internal column-scroll never activates and content
+// below the fold is unreachable — the owner's 2026-09-06 scroll bug. Default (`flex`) is the FIX:
+// the plan tabpanel is a flex column, matching src/solo/CommandCenter.tsx, so `.gp` is height-bounded
+// and the intended scroll works. This wrapper now mirrors the REAL CommandHub chain (content div →
+// tabpanel → .gp) so the harness can finally reproduce a shell-only regression it previously missed.
+const wrap = params.get("wrap") === "block" ? "block" : "flex";
+// `?dock=<px>` FAITHFULLY reproduces the Paige-dock-open geometry: the VIEWPORT stays wide (so the
+// `@media (max-width:1040px)` breakpoint keys on the viewport, keeping the real two-column path) while
+// the CONTENT region is narrowed to <px>. Shrinking the whole viewport instead (the older approach)
+// crosses the 1040px breakpoint and tests the WRONG single-column scroller for a wide-viewport dock.
+const dockRaw = params.get("dock");
+const dockW = dockRaw && /^\d+$/.test(dockRaw) ? Number(dockRaw) : null;
 
 // Applied before first paint so a frame can never capture a pre-toggle state.
 document.documentElement.setAttribute("data-pg", theme);
 document.documentElement.classList.toggle("dark", theme === "dark");
 document.documentElement.classList.toggle("light", theme === "light");
 
+const tabpanelStyle =
+  wrap === "block"
+    ? ({ height: "100%" } as const)
+    : ({ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } as const);
+
 function Harness() {
   return (
     <div
       className="paige-solo"
       data-theme={theme}
-      style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--canvas)" }}
+      style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--canvas)", width: dockW ? `${dockW}px` : undefined, marginInline: dockW ? "auto" : undefined }}
     >
-      <MemoryRouter initialEntries={["/solo/review/command-center/business-game-plan"]}>
-        <Routes>
-          <Route
-            path="/solo/:account/*"
-            element={<SoloGamePlanWorkspace openPaige={() => {}} accountContext={{ accountName: "Clearpath Advisory", accountType: "standalone", parentTenantId: null }} workspaceId="review" />}
-          />
-        </Routes>
-      </MemoryRouter>
+      {/* Faithful reproduction of the real CommandHub content region (CommandCenter.tsx). */}
+      <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
+        <div role="tabpanel" data-gp-tabpanel style={tabpanelStyle}>
+          <MemoryRouter initialEntries={["/solo/review/command-center/business-game-plan"]}>
+            <Routes>
+              <Route
+                path="/solo/:account/*"
+                element={<SoloGamePlanWorkspace openPaige={() => {}} accountContext={{ accountName: "Clearpath Advisory", accountType: "standalone", parentTenantId: null }} workspaceId="review" />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </div>
+      </div>
     </div>
   );
 }

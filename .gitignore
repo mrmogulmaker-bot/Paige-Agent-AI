@@ -58,3 +58,8 @@ scripts/live-drive/zz-*
 # committed by accident in ec96762ea and only noticed when a local ratchet run
 # reported them as deletions).
 deno-ratchet-evidence/
+
+# Campaigns Overview prototype — rendered PNG frames (8+ MB) are reproducible via
+# `SHOOT=1 node docs/prototypes/campaigns-overview.drive.mjs`; the committed evidence
+# record cites them and the repo keeps the script, not the binaries (house pattern).
+docs/evidence/ui-delivery/campaigns-overview/

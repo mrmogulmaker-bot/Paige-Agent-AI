@@ -57,7 +57,10 @@ const groundedView = (): SoloGamePlanView => ({
   loading: false, error: false, empty: false,
   greeting: { name: "Jordan", dateLabel: "Thursday, September 3", salutation: "Good afternoon" },
   narrative: "Foundations are set and work is moving.",
-  attention: [{ label: "3 drafts waiting", tone: "live" }, { label: "2 clients at risk", tone: "partial" }],
+  attention: [
+    { label: "3 drafts waiting", tone: "live", destination: "paige" },
+    { label: "2 clients at risk", tone: "partial", destination: "clients" },
+  ],
   bestMove: {
     id: "attn:atrisk", title: "Re-engage 2 clients before they lapse", why: "Both crossed your quiet threshold.",
     owner: "paige", proof: "live", evidence: "2 clients flagged at risk.", outcome: "PAIGE drafts; you approve.",
@@ -160,6 +163,22 @@ describe("SoloGamePlanWorkspace", () => {
     mount();
     clickText(".gp-fnd-row", "Business identity");
     expect(loc.value).toBe("/solo/42/settings/setup");
+  });
+
+  it("every summary chip is a real control that opens its backing surface (§36 drill-down)", () => {
+    const openPaige = vi.fn();
+    hooked.view = groundedView();
+    mount(openPaige);
+    const chips = [...container.querySelectorAll(".gp-chip-act")] as HTMLButtonElement[];
+    // Both chips render as buttons (not dead spans).
+    expect(chips.length).toBe(2);
+    chips.forEach((c) => expect(c.tagName).toBe("BUTTON"));
+    // "2 clients at risk" opens the Clients surface for real.
+    clickText(".gp-chip-act", "clients at risk");
+    expect(loc.value).toBe("/solo/42/clients/people");
+    // "3 drafts waiting" opens the one PAIGE conversation (no dead-end).
+    clickText(".gp-chip-act", "drafts waiting");
+    expect(openPaige).toHaveBeenCalledTimes(1);
   });
 
   it("a priority row is keyboard-expandable (aria-expanded toggles)", () => {
