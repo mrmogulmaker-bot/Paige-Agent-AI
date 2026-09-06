@@ -71,7 +71,7 @@ const govValue = (rows: ReturnType<typeof row>[], ceiling = {}, over: Record<str
   return {
     loading: false, configured: true, error: null,
     domains: d.domains, byTool: d.byTool, ceilingLimiting: d.ceilingLimiting,
-    ceilingUnconfirmed: false, canWrite,
+    ceilingUnconfirmed: false, canWrite, authorityUnconfirmed: false,
     setDomainMode: vi.fn(async () => ({ ok: true })),
     setToolMode: vi.fn(async () => ({ ok: true })),
     refresh: vi.fn(), ...over,
@@ -160,13 +160,13 @@ describe("MiniCompass — what the owner is told, in each state the read can be 
  */
 describe("TrustCompass — the governed surface runs, honest and accessible", () => {
   it("while the governance read is loading, says so — not an empty grid", () => {
-    gov.value = { loading: true, configured: false, error: null, domains: [], byTool: {}, ceilingLimiting: false, ceilingUnconfirmed: false, canWrite: false, setDomainMode: vi.fn(), setToolMode: vi.fn(), refresh: vi.fn() };
+    gov.value = { loading: true, configured: false, error: null, domains: [], byTool: {}, ceilingLimiting: false, ceilingUnconfirmed: false, canWrite: false, authorityUnconfirmed: false, setDomainMode: vi.fn(), setToolMode: vi.fn(), refresh: vi.fn() };
     const text = draw(<TC accountEpoch="t1" />).textContent ?? "";
     expect(text).toMatch(/Reading what this workspace lets Paige do/i);
   });
 
   it("on a FAILED governance read, says it couldn't be read — never an open/empty workspace", () => {
-    gov.value = { loading: false, configured: false, error: "boom", domains: [], byTool: {}, ceilingLimiting: false, ceilingUnconfirmed: false, canWrite: false, setDomainMode: vi.fn(), setToolMode: vi.fn(), refresh: vi.fn() };
+    gov.value = { loading: false, configured: false, error: "boom", domains: [], byTool: {}, ceilingLimiting: false, ceilingUnconfirmed: false, canWrite: false, authorityUnconfirmed: false, setDomainMode: vi.fn(), setToolMode: vi.fn(), refresh: vi.fn() };
     const h = draw(<TC accountEpoch="t1" />);
     const t = h.textContent ?? "";
     expect(t).toMatch(/couldn.t be read/i);
@@ -217,6 +217,18 @@ describe("TrustCompass — the governed surface runs, honest and accessible", ()
     expect(h.textContent ?? "").toMatch(/read-only access/i);
     // No editable control is rendered — the effective state is shown, never a slider that only fails on write.
     expect(h.querySelectorAll('[role="slider"]')).toHaveLength(0);
+  });
+
+  it("an UNPROVEN authority read says so with a retry — never asserts read-only as fact (§13)", () => {
+    // canWrite=false but the authority read itself failed → don't claim the user lacks access.
+    gov.value = govValue([row("crm_create_contact", "auto")], {}, { authorityUnconfirmed: true }, false);
+    const h = draw(<TC accountEpoch="t1" />);
+    const text = h.textContent ?? "";
+    expect(text).toMatch(/couldn.t confirm your access/i);
+    expect(text).toMatch(/not a record that you lack it/i);
+    // It offers a retry and does NOT flatly state "read-only access" as a confirmed fact.
+    expect([...h.querySelectorAll("button")].some((b) => /try again/i.test(b.textContent ?? ""))).toBe(true);
+    expect(text).not.toMatch(/you have read-only access/i);
   });
 
   it("a MIXED domain commits its displayed level on a click, normalising all tools rather than no-op (#3)", async () => {

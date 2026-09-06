@@ -109,11 +109,18 @@ export interface SoloToolGovernance {
    */
   ceilingUnconfirmed: boolean;
   /**
-   * Whether the current viewer may change settings here — mirrors the server authority
-   * `set_tool_autonomy` enforces (`is_current_user_tenant_admin`). Fail-closed: false on a failed or
-   * pending admin read, so a non-admin never sees an editable control that would only fail on write.
+   * Whether the current viewer may change settings here — mirrors the EXACT server predicate
+   * `set_tool_autonomy` enforces (`is_current_user_tenant_admin` OR `is_platform_owner`). Fail-closed:
+   * false on a failed or pending authority read, so a non-admin never sees an editable control that
+   * would only fail on write (§70.1).
    */
   canWrite: boolean;
+  /**
+   * True when the authority read itself could not be completed (a transient error), so `canWrite`
+   * being false is UNPROVEN rather than a confirmed non-admin. The surface says "couldn't confirm your
+   * access" with a retry instead of asserting read-only as fact (§13) — writes stay fail-closed.
+   */
+  authorityUnconfirmed: boolean;
   setDomainMode: (key: CapabilityKey, mode: ToolMode) => Promise<{ ok: boolean; error?: string }>;
   setToolMode: (toolKey: string, mode: ToolMode) => Promise<{ ok: boolean; error?: string }>;
   refresh: () => void;
@@ -140,6 +147,7 @@ const EMPTY: SoloToolGovernance = {
   ceilingLimiting: false,
   ceilingUnconfirmed: false,
   canWrite: false,
+  authorityUnconfirmed: false,
   setDomainMode: async () => ({ ok: false, error: "not ready" }),
   setToolMode: async () => ({ ok: false, error: "not ready" }),
   refresh: () => {},
@@ -260,31 +268,49 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
     rows: CatalogueRow[] | null;
     ceilingByStored: Partial<Record<ToolMode, ToolMode>>;
     ceilingUnconfirmed: boolean;
-    isAdmin: boolean;
+    canWrite: boolean;
+    authorityUnconfirmed: boolean;
     error: string | null;
-  }>({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, isAdmin: false, error: null });
+  }>({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, canWrite: false, authorityUnconfirmed: false, error: null });
   const [reloadKey, setReloadKey] = useState(0);
 
   const refresh = useCallback(() => setReloadKey((k) => k + 1), []);
 
+  // The tenant this surface is bound to. Passed as `_tenant_id` to every write (set_tool_autonomy's
+  // tenant-mismatch guard REJECTS a write that lands after the admin switched workspaces, §9/§51) AND
+  // to every ceiling probe — a platform owner acting-as a tenant is NOT pinned to current_user_tenant_id
+  // by resolve_tool_autonomy, so a null tenant there returns the 'confirm' fallback and would misreport
+  // the ceiling (even raising a stored 'off' to 'confirm'). Passing the real tenant keeps both honest.
+  const expectedTenant: string | null =
+    typeof accountEpoch === "string" && accountEpoch ? accountEpoch : null;
+
   useEffect(() => {
     let active = true;
-    setState({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, isAdmin: false, error: null });
+    setState({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, canWrite: false, authorityUnconfirmed: false, error: null });
     // The epoch contract (mirrors useSoloTrust): a null epoch means the account is not resolved yet.
     if (accountEpoch === null) return () => { active = false; };
 
     void (async () => {
-      // Whether this viewer may write is the SAME authority set_tool_autonomy enforces
-      // (is_current_user_tenant_admin). Read it fail-closed so a non-admin renders read-only rather
-      // than an active control that only fails on the server (§70.1); a failed/absent read → false.
-      const [res, adminRes] = await Promise.all([
+      // Whether this viewer may write is EXACTLY the predicate set_tool_autonomy enforces:
+      // is_current_user_tenant_admin OR is_platform_owner (a super-admin acting-as a tenant has no
+      // tenant_members row but the write contract still authorises them, §53). Fail-closed so a
+      // non-admin renders read-only, never an active control that only fails on the server (§70.1) —
+      // but keep an authority-read ERROR distinct from a confirmed non-admin: presenting an unproven
+      // "read-only" as fact is the same §13 dishonesty as a fabricated value.
+      const [res, adminRes, ownerRes] = await Promise.all([
         rpc("list_tool_autonomy"),
         rpc("is_current_user_tenant_admin"),
+        rpc("is_platform_owner"),
       ]);
       if (!active) return;
       const isAdmin = !adminRes.error && adminRes.data === true;
+      const isOwner = !ownerRes.error && ownerRes.data === true;
+      const canWrite = isAdmin || isOwner;
+      // Authority is CONFIRMED when we can write, or when BOTH reads succeeded and both said no.
+      // If a read errored and neither granted, we cannot claim "read-only" as fact.
+      const authorityUnconfirmed = !canWrite && (Boolean(adminRes.error) || Boolean(ownerRes.error));
       if (res.error) {
-        setState({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, isAdmin, error: res.error.message });
+        setState({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, canWrite, authorityUnconfirmed, error: res.error.message });
         return;
       }
       const rows = ((res.data as CatalogueRow[] | null) ?? []).filter((r) => r.tool_key in TOOL_MAP);
@@ -300,7 +326,7 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
       let ceilingProbeOk = true;
       await Promise.all(
         [...distinct.entries()].map(async ([mode, toolKey]) => {
-          const rr = await rpc("resolve_tool_autonomy", { _tenant_id: null, _tool_key: toolKey });
+          const rr = await rpc("resolve_tool_autonomy", { _tenant_id: expectedTenant, _tool_key: toolKey });
           // A missing probe leaves that mode's bucket unset, and deriveGovernance then falls back to
           // the UNNARROWED stored mode — i.e. it fails toward MORE permissive. Silently degrading a
           // real ceiling into "unrestricted" is exactly the §13 dishonesty we must not ship, so we
@@ -311,17 +337,11 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
         }),
       );
       if (!active) return;
-      setState({ rows, ceilingByStored, ceilingUnconfirmed: !ceilingProbeOk, isAdmin, error: null });
+      setState({ rows, ceilingByStored, ceilingUnconfirmed: !ceilingProbeOk, canWrite, authorityUnconfirmed, error: null });
     })();
 
     return () => { active = false; };
-  }, [accountEpoch, reloadKey]);
-
-  // The tenant this surface is bound to. Passed to every write as `_tenant_id` so set_tool_autonomy's
-  // existing tenant-mismatch guard REJECTS a write that lands after the admin switched workspaces —
-  // a delayed request can never mutate the destination workspace instead of the one it began in (§9/§51).
-  const expectedTenant: string | null =
-    typeof accountEpoch === "string" && accountEpoch ? accountEpoch : null;
+  }, [accountEpoch, reloadKey, expectedTenant]);
 
   const setToolMode = useCallback(
     async (toolKey: string, mode: ToolMode): Promise<{ ok: boolean; error?: string }> => {
@@ -372,14 +392,15 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
         byTool: {},
         ceilingLimiting: false,
         ceilingUnconfirmed: false,
-        canWrite: false,
+        canWrite: state.canWrite,
+        authorityUnconfirmed: state.authorityUnconfirmed,
         setDomainMode,
         setToolMode,
         refresh,
       };
     }
 
-    const { domains, byTool, ceilingLimiting } = deriveGovernance(state.rows ?? [], state.ceilingByStored, state.isAdmin);
+    const { domains, byTool, ceilingLimiting } = deriveGovernance(state.rows ?? [], state.ceilingByStored, state.canWrite);
     return {
       loading: false,
       configured: true,
@@ -388,7 +409,8 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
       byTool,
       ceilingLimiting,
       ceilingUnconfirmed: state.ceilingUnconfirmed,
-      canWrite: state.isAdmin,
+      canWrite: state.canWrite,
+      authorityUnconfirmed: state.authorityUnconfirmed,
       setDomainMode,
       setToolMode,
       refresh,

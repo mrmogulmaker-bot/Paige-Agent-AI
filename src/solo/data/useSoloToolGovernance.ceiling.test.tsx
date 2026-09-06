@@ -28,17 +28,21 @@ const latest = () => seen[seen.length - 1];
 // One ordinary tool (crm_create_contact) stored at 'auto', in the shape list_tool_autonomy returns.
 const listRows = [{ tool_key: "crm_create_contact", label: "Create contact", category: "crm", mode: "auto", is_default: false }];
 
-/** list_tool_autonomy → the catalogue; resolve_tool_autonomy → whatever the test wires; the admin
- *  read defaults to true (an admin using the surface) unless the test overrides it. */
+/** list_tool_autonomy → the catalogue; resolve_tool_autonomy → whatever the test wires; the authority
+ *  reads default to tenant-admin=true / platform-owner=false unless a test overrides them. `adminError`
+ *  makes is_current_user_tenant_admin fail, to exercise the unproven-authority path. */
 function wireRpc(
-  resolve: () => { data: unknown; error: { message: string } | null },
-  opts: { admin?: boolean } = {},
+  resolve: (args?: Record<string, unknown>) => { data: unknown; error: { message: string } | null },
+  opts: { admin?: boolean; owner?: boolean; adminError?: boolean } = {},
 ) {
   const admin = opts.admin ?? true;
-  harness.rpc.mockImplementation((fn: string) => {
+  const owner = opts.owner ?? false;
+  harness.rpc.mockImplementation((fn: string, args?: Record<string, unknown>) => {
     if (fn === "list_tool_autonomy") return Promise.resolve({ data: listRows, error: null });
-    if (fn === "resolve_tool_autonomy") return Promise.resolve(resolve());
-    if (fn === "is_current_user_tenant_admin") return Promise.resolve({ data: admin, error: null });
+    if (fn === "resolve_tool_autonomy") return Promise.resolve(resolve(args));
+    if (fn === "is_current_user_tenant_admin")
+      return Promise.resolve(opts.adminError ? { data: null, error: { message: "boom" } } : { data: admin, error: null });
+    if (fn === "is_platform_owner") return Promise.resolve({ data: owner, error: null });
     return Promise.resolve({ data: null, error: null });
   });
 }
@@ -110,5 +114,34 @@ describe("useSoloToolGovernance — write authority + workspace binding (§70.1/
     // The Probe reads for "tenant-a"; set_tool_autonomy must carry it so the RPC's tenant-mismatch
     // guard rejects a write that lands after the admin switched workspaces (§9/§51).
     expect(call?.[1]).toMatchObject({ _tool_key: "crm_create_contact", _mode: "confirm", _tenant_id: "tenant-a" });
+  });
+
+  it("a platform owner with NO tenant_members row can still write — canWrite mirrors the full server predicate (§53)", async () => {
+    // is_current_user_tenant_admin=false (act-as → no membership) but is_platform_owner=true; the
+    // write contract authorises is_platform_owner, so the surface must NOT render read-only.
+    wireRpc(() => ({ data: "auto", error: null }), { admin: false, owner: true });
+    await mountAndSettle();
+    const g = latest();
+    expect(g.canWrite).toBe(true);
+    expect(g.authorityUnconfirmed).toBe(false);
+    expect(g.byTool["crm_create_contact"].settable).toBe(true);
+  });
+
+  it("a FAILED authority read is unproven, not a confirmed read-only (§13): authorityUnconfirmed + fail-closed", async () => {
+    wireRpc(() => ({ data: "auto", error: null }), { adminError: true, owner: false });
+    await mountAndSettle();
+    const g = latest();
+    expect(g.configured).toBe(true);
+    expect(g.canWrite).toBe(false);               // still fail-closed — no active control
+    expect(g.authorityUnconfirmed).toBe(true);    // but the surface says so + offers retry, not "read-only" as fact
+  });
+
+  it("binds the CEILING probe to the initiating workspace too, so a platform-owner act-as reads the tenant's real ceiling (§13)", async () => {
+    // resolve_tool_autonomy does NOT pin a platform owner to current_user_tenant_id; a null tenant
+    // there returns the 'confirm' fallback and misreports the ceiling. The probe must pass the epoch.
+    wireRpc(() => ({ data: "auto", error: null }), { admin: true });
+    await mountAndSettle();
+    const probe = harness.rpc.mock.calls.find((c) => c[0] === "resolve_tool_autonomy");
+    expect(probe?.[1]).toMatchObject({ _tenant_id: "tenant-a" });
   });
 });

@@ -481,8 +481,12 @@ return <div className="fade-in pg" style={{width:'100%',maxWidth:1440,margin:'0 
    <Ic.shield size={15} style={{color:'var(--violet)',flex:'none'}}/><span className="sub" style={{fontSize:12}}>Platform policy is currently limiting some unattended actions further, on top of your settings.</span></div>}
   {gov.ceilingUnconfirmed&&<div className="card" role="status" style={{padding:'11px 15px',display:'flex',gap:9,alignItems:'center',borderLeft:'3px solid var(--warn)'}}>
    <Ic.shield size={15} style={{color:'var(--warn)',flex:'none'}}/><span className="sub" style={{fontSize:12}}>Platform limits couldn’t be confirmed just now, so what’s shown may be more permissive than policy actually allows. Your own settings are unaffected.</span></div>}
-  {!gov.canWrite&&<div className="card" role="note" style={{padding:'11px 15px',display:'flex',gap:9,alignItems:'center',borderLeft:'3px solid var(--ink-3)'}}>
-   <Ic.shield size={15} style={{color:'var(--ink-3)',flex:'none'}}/><span className="sub" style={{fontSize:12}}>You have read-only access here. A workspace admin can change what Paige may do on her own.</span></div>}
+  {!gov.canWrite&&(gov.authorityUnconfirmed
+   ? <div className="card" role="status" style={{padding:'11px 15px',display:'flex',gap:9,alignItems:'center',borderLeft:'3px solid var(--warn)'}}>
+      <Ic.shield size={15} style={{color:'var(--warn)',flex:'none'}}/><span className="sub" style={{fontSize:12}}>We couldn’t confirm your access just now, so editing is disabled — this is not a record that you lack it.</span>
+      <button className="btn btn-s" style={{marginLeft:'auto',flex:'none'}} onClick={gov.refresh}>Try again</button></div>
+   : <div className="card" role="note" style={{padding:'11px 15px',display:'flex',gap:9,alignItems:'center',borderLeft:'3px solid var(--ink-3)'}}>
+      <Ic.shield size={15} style={{color:'var(--ink-3)',flex:'none'}}/><span className="sub" style={{fontSize:12}}>You have read-only access here. A workspace admin can change what Paige may do on her own.</span></div>)}
   <div className="tc2-instrument" style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1.15fr) minmax(0,1fr)',gap:16,alignItems:'start'}}>
    <div style={{display:'grid',gap:14}}>{left.map(d=><KnobCard key={d.key} domain={d} open={open===d.key} onToggle={()=>setOpen(open===d.key?null:d.key)} onSetDomain={setDomain} onSetTool={setTool} onError={onError} readOnly={!gov.canWrite} side="lft"/>)}</div>
    <TcCompass domains={domains} reduced={reduced}/>
