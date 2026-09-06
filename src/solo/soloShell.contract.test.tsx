@@ -80,6 +80,20 @@ describe("the canonical Solo shell is one shell for every tenant", () => {
     const decls = [...app.matchAll(/const\s+full\s*=/g)];
     expect(decls.length, "one full-bleed declaration").toBe(1);
   });
+
+  it("keeps the shared Solo workspace stretched after client-side login navigation", () => {
+    // Direct refresh always creates the wrapper inside its final shell geometry. A
+    // client-side auth/account-selection handoff does not get that second layout
+    // pass, so the shared frame must own its inline size instead of depending on
+    // the previous route's intrinsic alignment. Without this floor, each screen
+    // can collapse to a different content width while the outer shell stays full.
+    const app = code(read("src/solo/SoloApp.tsx"));
+    const frame = app.match(/<div className="paige-solo"[^>]*style=\{\{([^}]*)\}\}/)?.[1] ?? "";
+
+    expect(frame, "the canonical Solo frame owns the full shell width").toMatch(/width\s*:\s*['"]100%['"]/);
+    expect(frame, "the canonical Solo frame stretches in its shell parent").toMatch(/alignSelf\s*:\s*['"]stretch['"]/);
+    expect(frame, "the canonical Solo frame may shrink internally without shrinking itself").toMatch(/minWidth\s*:\s*0/);
+  });
 });
 
 /** Repo-wide JSX scan kept in-process so the contract runs on every CI image. */
