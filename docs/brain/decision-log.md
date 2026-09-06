@@ -47,6 +47,20 @@
   versions snapshot can never be silently dropped. All three re-proven: db-proof 12/12 (adds forge-freeze +
   scalar/array-meta cases), vitest 8/8, `lint:definer-fns`/`lint:migration-versions`/`lint:managed-schema`
   green.
+  **CODEX-FOLD ROUND 2 (3 more P2 findings on the fold, 6d34b702→next commit, PR #992):** the re-review of
+  the security-sensitive fold (worth requesting — it found real follow-ons). (P2-A) the freeze trigger keyed
+  on the content_id *changing*, so a client could bump `last_image_anchor_at` alone to a future value and
+  keep an old image eligible past the 30-min window → trigger now freezes whenever the row RETAINS a non-null
+  content_id (covers timestamp-only bumps), still allowing clear-to-NULL (FK cascade / expiry). (P2-B) the
+  `throw` guards on the generate-image invoke (`error`/`img.error`) executed BEFORE the end maintenance block,
+  so a hard-failed generation left a stale anchor → the anchor is now CLEARED UP-FRONT (before the invoke,
+  after the reuse target is captured), so any throw leaves it null; the end block only ADVANCES on a filed
+  success. (P2-C) the service-role anchor write was fenced only on `caller_user_id`, so a multi-tenant caller
+  submitting an inactive-workspace thread id could stamp an active-tenant image id into that other tenant's
+  thread → both the pre-clear and the advance are now fenced with `.eq("tenant_id", personaCtx.tenant_id)` +
+  a `personaCtx?.tenant_id` guard (the image is filed under the active tenant, so the anchored thread must
+  match it). Re-proven: db-proof 12/12 (adds the timestamp-bump-freeze case), vitest 8/8, ci:tsc clean,
+  esbuild clean, lints green, §50 clean.
 
 - **PAIGE Mind — the owner-approved 3D knowledge orb ported LIVE onto the Solo surface (2026-09-06, MVP mode)** —
   the §28-frozen, Gate-1-approved Three.js "knowledge orb" prototype (`docs/prototypes/command-center-mind-gate1.html`)

@@ -31,14 +31,18 @@ describe("Task #15 — migrations exist and carry the safety clauses", () => {
     expect(m).toMatch(/ADD COLUMN IF NOT EXISTS last_image_anchor_at timestamptz/);
   });
 
-  it("the anchor is SERVER-OWNED: a BEFORE UPDATE trigger freezes client attempts to set a non-null anchor, but not a clear-to-NULL (Codex P2/§59)", () => {
+  it("the anchor is SERVER-OWNED: a BEFORE UPDATE trigger freezes client writes while a non-null anchor remains (incl. timestamp-only bumps), but not a clear-to-NULL (Codex P2/§59)", () => {
     const m = readFileSync(ANCHOR_MIG, "utf8");
     expect(m).toMatch(/CREATE TRIGGER trg_paige_chat_threads_freeze_image_anchor\s+BEFORE UPDATE ON public\.paige_chat_threads/);
     // only trusted server roles may write; anyone else is reverted
     expect(m).toMatch(/current_user NOT IN \('service_role', 'supabase_admin', 'postgres'\)/);
-    // freeze is scoped to SETTING a non-null value → a transition TO NULL (FK cascade, expiry clear) still works
-    expect(m).toMatch(/NEW\.last_image_content_id IS NOT NULL\s*\n\s*AND NEW\.last_image_content_id IS DISTINCT FROM OLD\.last_image_content_id/);
+    // freeze fires WHENEVER the row retains a non-null id (covers a timestamp-only bump), NOT only on an
+    // id change → a transition TO NULL (FK cascade, expiry clear) still works. Keying on "id DISTINCT
+    // FROM old" was the Codex P2 the timestamp bump slipped through, so that predicate must be gone.
+    expect(m).toMatch(/AND NEW\.last_image_content_id IS NOT NULL THEN/);
+    expect(m).not.toMatch(/IS DISTINCT FROM OLD\.last_image_content_id/);
     expect(m).toMatch(/NEW\.last_image_content_id\s*:=\s*OLD\.last_image_content_id/);
+    expect(m).toMatch(/NEW\.last_image_anchor_at\s*:=\s*OLD\.last_image_anchor_at/);
     // INVOKER, not DEFINER — the trigger function must NOT declare SECURITY DEFINER (else current_user
     // would mask the connected role). Behaviorally proven by the db-proof's forge test; asserted here
     // only on the function definition, since the header comment legitimately names the phrase.
@@ -83,16 +87,21 @@ describe("Task #15 — the server-owned anchor is wired safely into paige-ai-cha
     expect(chat).toMatch(/\? refineImageAnchor\.id/);
   });
 
-  it("ADVANCES on a filed content_id and CLEARS on a failed/unfiled generation, via the SERVICE-ROLE writer, dedicated chat only", () => {
-    // filedId is the content_id ONLY on a genuine success with a filed id, else null (→ clear)
-    expect(chat).toMatch(/const filedId = \(\(result as any\)\?\.success === true[\s\S]{0,120}artifactProduced\("saved_id", \(result as any\)\?\.content_id\)\)[\s\S]{0,80}:\s*null;/);
+  it("CLEARS the anchor up-front (so a thrown/hard-failed generation can't leave a stale anchor) then ADVANCES only on a filed success, via the tenant-fenced SERVICE-ROLE writer, dedicated chat only", () => {
+    // (Codex P2) pre-clear BEFORE the generate-image invoke, so a throw at the invoke guards can't
+    // leave a stale anchor — sets both columns to null, tenant-fenced, service-role, logged
+    expect(chat).toMatch(/refine anchor pre-clear/);
+    expect(chat).toMatch(/\.update\(\{ last_image_content_id: null, last_image_anchor_at: null \}\)[\s\S]{0,200}\.eq\("caller_user_id", user\.id\)[\s\S]{0,80}\.eq\("tenant_id", personaCtx\.tenant_id\)/);
+    // advance runs ONLY on a genuine success with a filed content_id (no clear-else — the pre-clear
+    // already handled every non-filed path)
+    expect(chat).toMatch(/personaCtx\?\.tenant_id\s*\n\s*&& \(result as any\)\?\.success === true\s*\n\s*&& artifactProduced\("saved_id", \(result as any\)\?\.content_id\)\) \{/);
     // server-owned: written through the service-role `supabase` client (never the JWT `supabaseClient`),
-    // so the freeze trigger admits it; the ownership fence is reproduced explicitly
-    expect(chat).toMatch(/await supabase\.from\("paige_chat_threads"\)[\s\S]{0,260}\.eq\("caller_user_id", user\.id\)/);
-    // advance sets the filed id + now; clear sets both to null
-    expect(chat).toMatch(/last_image_content_id: filedId,[\s\S]{0,120}last_image_anchor_at: filedId \? new Date\(\)\.toISOString\(\) : null/);
+    // and fenced to caller AND active tenant (Codex P2 — no cross-workspace thread contamination)
+    expect(chat).toMatch(/last_image_content_id: String\(\(result as any\)\.content_id\)[\s\S]{0,260}\.eq\("caller_user_id", user\.id\)\s*\n\s*\.eq\("tenant_id", personaCtx\.tenant_id\)/);
     // best-effort but LOGGED, never swallowed silently (§13/§32)
-    expect(chat).toMatch(/refine anchor \$\{filedId \? "advance" : "clear"\} failed/);
+    expect(chat).toMatch(/refine anchor advance failed/);
+    // the anchor write NEVER uses the JWT client for these columns (must be the service-role `supabase`)
+    expect(chat).not.toMatch(/supabaseClient\.from\("paige_chat_threads"\)\s*\n\s*\.update\(\{ last_image_content_id/);
   });
 
   it("does NOT regress the Studio canvas clamp (still keyed on canvasArtifact)", () => {

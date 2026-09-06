@@ -250,6 +250,11 @@ try {
     // (3) authenticated tries to REDIRECT it to a different non-null id → frozen (stays imgA)
     await psql(`set role authenticated; update public.paige_chat_threads set last_image_content_id='${imgB}' where id='${th}'; reset role;`);
     assert((await scalar(`select last_image_content_id from public.paige_chat_threads where id='${th}';`)) === imgA, "authenticated redirect to another id must be frozen");
+    // (3b) authenticated tries a TIMESTAMP-ONLY bump (id unchanged, future anchor_at to extend the
+    // recency window) → frozen (anchor_at unchanged). This is the Codex P2 the "id changed" predicate missed.
+    const beforeTs = await scalar(`select last_image_anchor_at from public.paige_chat_threads where id='${th}';`);
+    await psql(`set role authenticated; update public.paige_chat_threads set last_image_anchor_at = now() + interval '1 day' where id='${th}'; reset role;`);
+    assert((await scalar(`select last_image_anchor_at from public.paige_chat_threads where id='${th}';`)) === beforeTs, "authenticated timestamp-only bump must be frozen");
     // (4) authenticated CLEAR to NULL → allowed (owner: clear on failed generation; also lets the FK cascade work)
     await psql(`set role authenticated; update public.paige_chat_threads set last_image_content_id=null, last_image_anchor_at=null where id='${th}'; reset role;`);
     assert((await scalar(`select coalesce(last_image_content_id::text,'NULL') from public.paige_chat_threads where id='${th}';`)) === "NULL", "clearing the anchor to NULL must be allowed");

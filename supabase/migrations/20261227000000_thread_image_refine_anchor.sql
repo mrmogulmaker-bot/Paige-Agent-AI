@@ -53,11 +53,15 @@ AS $$
 BEGIN
   -- Trusted server roles (paige-ai-chat's service-role client; migrations/data-fixes as owner) write
   -- the anchor freely. Any other caller (a JWT client → `authenticated`) may CLEAR it but may not
-  -- forge a non-null authority: a client attempt to set/change last_image_content_id to a non-null
-  -- value is reverted to the prior server-set values, leaving its other thread-row edits intact.
+  -- forge or extend a non-null authority. The freeze fires WHENEVER the row would retain a non-null
+  -- last_image_content_id — reverting BOTH columns to their prior server-set values. Keying on
+  -- "retains a non-null id" (not merely "the id changed") is deliberate: it also blocks a
+  -- TIMESTAMP-ONLY bump that leaves the id unchanged but pushes last_image_anchor_at into the future
+  -- to keep an old image eligible past its recency window (Codex P2). The client's other thread-row
+  -- edits (e.g. summary) are untouched. A transition TO NULL is NOT frozen, so the FK ON DELETE SET
+  -- NULL cascade and a genuine clear-to-NULL still succeed.
   IF current_user NOT IN ('service_role', 'supabase_admin', 'postgres')
-     AND NEW.last_image_content_id IS NOT NULL
-     AND NEW.last_image_content_id IS DISTINCT FROM OLD.last_image_content_id THEN
+     AND NEW.last_image_content_id IS NOT NULL THEN
     NEW.last_image_content_id := OLD.last_image_content_id;
     NEW.last_image_anchor_at  := OLD.last_image_anchor_at;
   END IF;

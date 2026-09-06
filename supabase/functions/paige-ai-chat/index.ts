@@ -10303,6 +10303,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 : (!canvasArtifact && refineImageAnchor && args.target_content_id === refineImageAnchor.id)
                 ? refineImageAnchor.id
                 : null;
+              // Task #15 (Codex P2) — CLEAR the dedicated-chat refine anchor BEFORE the generation runs.
+              // This turn's reuse target was already captured into `reuseImageId` above, so clearing the
+              // stored anchor now is safe for this turn — and it guarantees a HARD failure (the `throw`
+              // guards on the invoke below) can never leave a stale anchor that a later refine would
+              // overwrite an OLDER image through. A genuine success re-ADVANCES the anchor to the new
+              // filed id at the end of this branch. Dedicated chat only; SERVICE-ROLE (the freeze trigger
+              // admits it); fenced to (thread ∧ caller ∧ ACTIVE tenant); best-effort + LOGGED (§13/§32).
+              if (!studioSessionId && !canvasArtifact && payloadThreadId && personaCtx?.tenant_id) {
+                const { error: clearErr } = await supabase.from("paige_chat_threads")
+                  .update({ last_image_content_id: null, last_image_anchor_at: null })
+                  .eq("id", payloadThreadId)
+                  .eq("caller_user_id", user.id)
+                  .eq("tenant_id", personaCtx.tenant_id);
+                if (clearErr) console.warn("[task#15] refine anchor pre-clear failed:", clearErr.message);
+              }
               const { data: img, error } = await supabaseClient.functions.invoke("generate-image", {
                 body: {
                   prompt: args.prompt,
@@ -10374,34 +10389,30 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (studioSessionId && (result as any)?.success === true && !artifactProduced("saved_id", (result as any)?.content_id)) {
                 result = { success: false, error: IMAGE_NOT_FILED_ERROR };
               }
-              // Task #15 — maintain the server-owned refine anchor for this (tenant, thread). DEDICATED
-              // chat only (Studio uses its canvas + studio_artifact_versions). A generate_image attempt
-              // ran in this branch, so exactly one of two things is now true:
-              //   * it FILED a content_id → ADVANCE the anchor to it (fresh timestamp) so the next
-              //     "make it brighter" refine stacks onto this image;
-              //   * it did NOT file one (a usable url but a best-effort library save failed, a
-              //     needs_config, or a hard failure) → CLEAR the anchor. The owner requires it cleared
-              //     on failed generation; leaving the prior image anchored would let the next refine
-              //     overwrite an OLDER artifact rather than the image the user was just shown (Codex P1).
-              // The write goes through the SERVICE-ROLE client (`supabase`), and the migration trigger
-              // trg_paige_chat_threads_freeze_image_anchor rejects any `authenticated` attempt to SET a
-              // non-null anchor — so the anchor is genuinely SERVER-OWNED (Codex P2 / §59: a browser
-              // cannot forge a content_id or future timestamp as refine authority). `.eq("caller_user_id",
-              // user.id)` reproduces the thread-ownership fence the service-role write bypasses, so it can
-              // only ever touch the caller's own thread. Best-effort: LOGGED, never swallowed (§13/§32).
-              if (!studioSessionId && !canvasArtifact && payloadThreadId) {
-                const filedId = ((result as any)?.success === true
-                  && artifactProduced("saved_id", (result as any)?.content_id))
-                  ? String((result as any).content_id)
-                  : null;
+              // Task #15 — ADVANCE the server-owned refine anchor when this generation genuinely FILED a
+              // content_id, so the next "make it brighter" refine stacks onto this image. DEDICATED chat
+              // only (Studio uses its canvas + studio_artifact_versions). The anchor was CLEARED up-front
+              // above, so the unfiled / needs_config / hard-fail (throw) paths need no work here — the
+              // anchor is already null (owner: clear on failed generation; Codex P1).
+              // The write is SERVICE-ROLE (`supabase`): the freeze trigger trg_paige_chat_threads_freeze_image_anchor
+              // admits only a server role to set a non-null anchor (§59 — a browser cannot forge one). It
+              // is fenced to (thread id ∧ caller ∧ ACTIVE tenant): `.eq("caller_user_id", user.id)`
+              // reproduces the thread-ownership half of RLS, and `.eq("tenant_id", personaCtx.tenant_id)`
+              // the tenant half the service-role write bypasses — so a MULTI-TENANT caller can never stamp
+              // an active-tenant image id into a thread of an INACTIVE workspace (Codex P2). The image was
+              // filed under personaCtx.tenant_id, so the anchored thread must match it. Best-effort: LOGGED.
+              if (!studioSessionId && !canvasArtifact && payloadThreadId && personaCtx?.tenant_id
+                  && (result as any)?.success === true
+                  && artifactProduced("saved_id", (result as any)?.content_id)) {
                 const { error: anchorErr } = await supabase.from("paige_chat_threads")
                   .update({
-                    last_image_content_id: filedId,
-                    last_image_anchor_at: filedId ? new Date().toISOString() : null,
+                    last_image_content_id: String((result as any).content_id),
+                    last_image_anchor_at: new Date().toISOString(),
                   })
                   .eq("id", payloadThreadId)
-                  .eq("caller_user_id", user.id);
-                if (anchorErr) console.warn(`[task#15] refine anchor ${filedId ? "advance" : "clear"} failed:`, anchorErr.message);
+                  .eq("caller_user_id", user.id)
+                  .eq("tenant_id", personaCtx.tenant_id);
+                if (anchorErr) console.warn("[task#15] refine anchor advance failed:", anchorErr.message);
               }
             } else if (tc.function.name === "calendar_book_meeting") {
               // Confirm is enforced by the central autonomy gate above (a booking
