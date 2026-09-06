@@ -9,7 +9,7 @@ MATERIAL_FLOW_CHANGE: YES: Validation refusal, duplicate-start locking, provider
 FLOW_PROTOTYPE: PASS: A deterministic read-only state prototype covered ready, invalid, permission denied, missing configuration, starting, accepted, rejected, callback retry, completed, expiry, recovery, and exit; the owner's hotfix brief explicitly approved these required states and copy boundaries, and the throwaway controls were absorbed into this state map rather than shipped.
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: Active Solo owner, admin, or coach initiates one authorized outbound call and sees provider-backed state in Conversations.
 VISUAL_DIRECTION: PASS: Existing approved Solo dialer and status-pill system retained; only compact actionable and truthful state copy changed.
-AUTOMATED_EVIDENCE: PASS: Voice handler 48 assertions, callback and repair smokes, tenant and auth smokes, focused UI tests, duplicate protection, and provider rejection coverage passed.
+AUTOMATED_EVIDENCE: PASS: Voice handler 49 assertions, callback and repair smokes, tenant and auth smokes, focused UI tests, duplicate protection, provider rejection, missing provider binding, and custom-route preservation coverage passed.
 STATIC_EVIDENCE: PASS: Changed Edge Functions passed Deno check; TypeScript ratchet, targeted lint with zero errors, build, governance, and readiness checks passed.
 RENDERED_EVIDENCE: UNVERIFIED: Browser-control runtime crashed before a new screenshot matrix could be captured; the screenshot supplied by the owner proves only that the existing dialer opened.
 BEHAVIORAL_EVIDENCE: UNVERIFIED: No safe authenticated browser drive or real provider call was completed; automated state and handler behavior passed.
@@ -98,8 +98,8 @@ outcomes. It does not prove whether each child leg was answered, rejected, or fa
 - Rendered Solo matrix (1536x770, 1366x768, 1024x768, 900x1000; PAIGE open/closed):
   **UNVERIFIED**. Only short inline status copy changed; no geometry or scroll contract changed.
 - Controlled provider call and callback persistence: **Proof Owed**.
-- Staged production provider-app repair and deployment persistence: **Proof Owed** until the reviewed
-  repair helper is deployed and returns sanitized success before the strict handler ships.
+- Staged production provider-app and incoming-number repair: **PASS** — revised helper version 2 returned sanitized HTTP 200 success separately for the configured tenant and operator scopes, with no binding or custom-route stop condition.
+- Strict handler deployment persistence: **Proof Owed** until the reviewed commit is merged, the affected functions deploy, and their live versions are verified.
 
 ## Tenant and Rail result
 
