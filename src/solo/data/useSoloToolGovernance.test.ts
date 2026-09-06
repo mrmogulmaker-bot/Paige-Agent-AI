@@ -46,6 +46,36 @@ describe("deriveGovernance — effective = min(stored, ceiling, risk)", () => {
     expect(byTool["crm_create_contact"].heldBack?.by).toBe("policy");
   });
 
+  it("a HIGH tool whose ceiling ALSO narrows is attributed to RISK, not policy (the cap is permanent)", () => {
+    // Both the risk cap (confirm) and the ceiling (auto→confirm) would bring a stored 'auto' to
+    // confirm. Lifting the ceiling would NOT change the outcome — risk still caps it — so the honest,
+    // permanent reason is risk, and the platform is not the binding constraint (ceilingLimiting false).
+    const { byTool, ceilingLimiting } = deriveGovernance([row("crm_delete_contact", "auto")], { auto: "confirm" });
+    const t = byTool["crm_delete_contact"];
+    expect(t.effective).toBe("confirm");
+    expect(t.heldBack).toEqual({ by: "risk", reason: "This action is consequential, so it still asks first." });
+    expect(ceilingLimiting).toBe(false);
+  });
+
+  it("a HIGH tool whose ceiling is STRICTLY below the risk cap is attributed to policy", () => {
+    // Ceiling forces off, which is more restrictive than the risk cap (confirm), so the ceiling is the
+    // binding reason and the hold is honestly policy — and the platform IS limiting here.
+    const { byTool, ceilingLimiting } = deriveGovernance([row("crm_delete_contact", "auto")], { auto: "off" });
+    const t = byTool["crm_delete_contact"];
+    expect(t.effective).toBe("off");
+    expect(t.heldBack?.by).toBe("policy");
+    expect(ceilingLimiting).toBe(true);
+  });
+
+  it("a MISSING ceiling bucket falls back to the unnarrowed stored mode (why the hook flags ceilingUnconfirmed)", () => {
+    // The probe for 'auto' failed, so its bucket is unset. derive falls back to stored — i.e. it fails
+    // toward MORE permissive. That is precisely why the hook raises ceilingUnconfirmed so the surface
+    // says the limit is unverified rather than presenting this as confirmed-unrestricted (§13).
+    const { byTool, ceilingLimiting } = deriveGovernance([row("crm_create_contact", "auto")], {});
+    expect(byTool["crm_create_contact"].effective).toBe("auto");
+    expect(ceilingLimiting).toBe(false);
+  });
+
   it("owner_only reads as Your call, is not settable, and is never 'held back'", () => {
     const { byTool, domains } = deriveGovernance([row("automation_set_grant", "off")], {});
     const t = byTool["automation_set_grant"];
@@ -111,5 +141,14 @@ describe("deriveGovernance — domain aggregation", () => {
     const { domains } = deriveGovernance([], {});
     expect(domains.length).toBeGreaterThan(0);
     for (const d of domains) expect(d.tools.length).toBe(0);
+  });
+
+  it("clamps the domain read-back level to the domain cap (never a level above domainMax, §70.1)", () => {
+    // A domain whose only settable tool is HIGH (cap confirm) but happens to be stored 'auto' must not
+    // read 'auto' on the domain knob — that would be aria-valuenow above aria-valuemax on the control.
+    const { domains } = deriveGovernance([row("crm_delete_contact", "auto")], {});
+    const crm = domains.find((d) => d.key === "crm")!;
+    expect(crm.domainMax).toBe("confirm");
+    expect(crm.level).toBe("confirm");
   });
 });

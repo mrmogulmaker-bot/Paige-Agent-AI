@@ -98,6 +98,12 @@ export interface SoloToolGovernance {
   byTool: Readonly<Record<string, GovernedTool>>;
   /** True when the platform ceiling is currently narrowing at least one tool below its setting. */
   ceilingLimiting: boolean;
+  /**
+   * True when at least one ceiling probe could not be read, so the displayed modes may be shown MORE
+   * permissive than the platform ceiling would actually allow. The surface says so honestly rather
+   * than implying it confirmed no narrowing (§13) — a failed probe must never read as "unrestricted".
+   */
+  ceilingUnconfirmed: boolean;
   setDomainMode: (key: CapabilityKey, mode: ToolMode) => Promise<{ ok: boolean; error?: string }>;
   setToolMode: (toolKey: string, mode: ToolMode) => Promise<{ ok: boolean; error?: string }>;
   refresh: () => void;
@@ -122,6 +128,7 @@ const EMPTY: SoloToolGovernance = {
   domains: [],
   byTool: {},
   ceilingLimiting: false,
+  ceilingUnconfirmed: false,
   setDomainMode: async () => ({ ok: false, error: "not ready" }),
   setToolMode: async () => ({ ok: false, error: "not ready" }),
   refresh: () => {},
@@ -161,11 +168,15 @@ export function deriveGovernance(
 
     let heldBack: GovernedTool["heldBack"] = null;
     if (meta.risk !== "owner_only" && rankOfMode(effective) < rankOfMode(stored)) {
-      // Which constraint is binding? Ceiling first (it applies before the risk cap folds in).
-      if (rankOfMode(ceilingEff) < rankOfMode(stored)) {
-        heldBack = { by: "policy", reason: "Further limited by platform policy right now." };
-        ceilingLimiting = true;
-      } else {
+      // Which constraint is binding, and which is the HONEST reason to show? Risk is a PERMANENT cap;
+      // the ceiling is a possibly-temporary platform narrowing. `riskClamped` is what the risk cap
+      // ALONE would allow. Attribute the hold to risk whenever the risk cap already fully explains it
+      // (it is the binding or co-binding constraint), so a consequential tool is never mislabeled as
+      // "limited by policy right now" — a phrase that implies the limit could lift when the risk cap
+      // never will. Only when the ceiling is STRICTLY more restrictive than the risk cap is the
+      // ceiling the binding reason, and only then is the platform actually narrowing the outcome.
+      const riskClamped = clampModeToRisk(stored, meta.risk);
+      if (rankOfMode(riskClamped) <= rankOfMode(ceilingEff) && rankOfMode(riskClamped) < rankOfMode(stored)) {
         heldBack = {
           by: "risk",
           reason:
@@ -173,6 +184,9 @@ export function deriveGovernance(
               ? "This action is consequential, so it still asks first."
               : "Held below your setting.",
         };
+      } else {
+        heldBack = { by: "policy", reason: "Further limited by platform policy right now." };
+        ceilingLimiting = true;
       }
     }
 
@@ -197,11 +211,15 @@ export function deriveGovernance(
       .sort((a, b) => a.label.localeCompare(b.label));
     const counts: Record<Posture, number> = { guardrails: 0, asks: 0, held: 0, your_call: 0, not_ready: 0 };
     for (const t of tools) counts[postureOf(t.effective, t.risk)] += 1;
-    const { level, mixed } = domainLevelOf(tools);
     const domainMax = tools.reduce<ToolMode>(
       (m, t) => (rankOfMode(t.maxSettable) > rankOfMode(m) ? t.maxSettable : m),
       "off",
     );
+    // The knob's read-back level is the common desired level, but it can never exceed the domain's
+    // own cap — otherwise the domain knob would render aria-valuenow above aria-valuemax (§70.1).
+    const raw = domainLevelOf(tools);
+    const level: ToolMode = rankOfMode(raw.level) > rankOfMode(domainMax) ? domainMax : raw.level;
+    const mixed = raw.mixed;
     // Aggregate posture: the most restrictive effective among the tools that Paige can act through.
     const actable = tools.filter((t) => t.risk !== "owner_only");
     const posture: Posture = !actable.length
@@ -227,15 +245,16 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
   const [state, setState] = useState<{
     rows: CatalogueRow[] | null;
     ceilingByStored: Partial<Record<ToolMode, ToolMode>>;
+    ceilingUnconfirmed: boolean;
     error: string | null;
-  }>({ rows: null, ceilingByStored: {}, error: null });
+  }>({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, error: null });
   const [reloadKey, setReloadKey] = useState(0);
 
   const refresh = useCallback(() => setReloadKey((k) => k + 1), []);
 
   useEffect(() => {
     let active = true;
-    setState({ rows: null, ceilingByStored: {}, error: null });
+    setState({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, error: null });
     // The epoch contract (mirrors useSoloTrust): a null epoch means the account is not resolved yet.
     if (accountEpoch === null) return () => { active = false; };
 
@@ -243,7 +262,7 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
       const res = await rpc("list_tool_autonomy");
       if (!active) return;
       if (res.error) {
-        setState({ rows: null, ceilingByStored: {}, error: res.error.message });
+        setState({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, error: res.error.message });
         return;
       }
       const rows = ((res.data as CatalogueRow[] | null) ?? []).filter((r) => r.tool_key in TOOL_MAP);
@@ -256,16 +275,21 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
         if (!distinct.has(m)) distinct.set(m, r.tool_key);
       }
       const ceilingByStored: Partial<Record<ToolMode, ToolMode>> = {};
+      let ceilingProbeOk = true;
       await Promise.all(
         [...distinct.entries()].map(async ([mode, toolKey]) => {
           const rr = await rpc("resolve_tool_autonomy", { _tenant_id: null, _tool_key: toolKey });
-          // resolve_tool_autonomy raises for a tenant only on a real permission problem; if it does,
-          // degrade to "no ceiling narrowing observed" rather than blocking the whole surface.
+          // A missing probe leaves that mode's bucket unset, and deriveGovernance then falls back to
+          // the UNNARROWED stored mode — i.e. it fails toward MORE permissive. Silently degrading a
+          // real ceiling into "unrestricted" is exactly the §13 dishonesty we must not ship, so we
+          // record that the ceiling could not be confirmed and the surface says so, rather than
+          // presenting an unverified permissive read as fact.
           if (!rr.error && typeof rr.data === "string") ceilingByStored[mode] = asMode(rr.data);
+          else ceilingProbeOk = false;
         }),
       );
       if (!active) return;
-      setState({ rows, ceilingByStored, error: null });
+      setState({ rows, ceilingByStored, ceilingUnconfirmed: !ceilingProbeOk, error: null });
     })();
 
     return () => { active = false; };
@@ -317,6 +341,7 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
         domains: [],
         byTool: {},
         ceilingLimiting: false,
+        ceilingUnconfirmed: false,
         setDomainMode,
         setToolMode,
         refresh,
@@ -331,6 +356,7 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
       domains,
       byTool,
       ceilingLimiting,
+      ceilingUnconfirmed: state.ceilingUnconfirmed,
       setDomainMode,
       setToolMode,
       refresh,

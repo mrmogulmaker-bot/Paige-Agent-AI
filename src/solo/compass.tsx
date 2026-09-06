@@ -6,7 +6,7 @@ import { useSoloPendingActions, type SoloPendingAction } from "./data/useSoloPen
 import { useSoloTrust } from "./data/useSoloTrust";
 import { useSoloToolGovernance } from "./data/useSoloToolGovernance";
 import {
-  CAPABILITY_DOMAINS, POSTURE_LABEL, rankOfMode, modeOfRank, maxModeForRisk,
+  CAPABILITY_DOMAINS, POSTURE_LABEL, rankOfMode, modeOfRank, maxModeForRisk, clampModeToRisk,
   type Posture, type ToolMode,
 } from "./data/capabilityTools";
 
@@ -189,9 +189,16 @@ const TcKnob=({value,max,onCommit,ariaLabel,onError})=>{
  const[pending,setPending]=React.useState(null);
  const[saving,setSaving]=React.useState(false);
  const shown=pending!=null?pending:rank;
+ // When a saved change is re-read, the real `value` prop arrives and the optimistic hold is dropped
+ // in the SAME frame it lands — clearing `pending` inside the success callback instead would snap the
+ // knob back to the stale prop for a frame first (the post-save flicker). On success we therefore keep
+ // the optimistic value until the refreshed prop replaces it; on failure we clear it at once.
+ React.useEffect(()=>{setPending(null);},[value]);
  const commit=React.useCallback((r)=>{r=Math.max(0,Math.min(maxRank,r));if(r===rank){setPending(null);return;}
   setPending(r);setSaving(true);
-  Promise.resolve(onCommit(modeOfRank(r))).then(res=>{setSaving(false);setPending(null);if(res&&res.ok===false){onError&&onError(res.error);}});
+  Promise.resolve(onCommit(modeOfRank(r)))
+   .then(res=>{setSaving(false);if(res&&res.ok===false){setPending(null);onError&&onError(res.error);}})
+   .catch(err=>{setSaving(false);setPending(null);onError&&onError(err);});
  },[maxRank,rank,onCommit,onError]);
  const key=e=>{if(disabled)return;let r=shown;
   if(e.key==='ArrowRight'||e.key==='ArrowUp')r=shown+1;else if(e.key==='ArrowLeft'||e.key==='ArrowDown')r=shown-1;
@@ -343,7 +350,7 @@ const KnobCard=({domain,open,onToggle,onSetDomain,onSetTool,onError,side})=>{
       {!t.heldBack&&t.isDefault&&<span className="sub" style={{fontSize:10.4,display:'block',marginTop:1}}>Platform default</span>}
      </span>
      {t.settable
-      ? <TcKnob value={t.stored} max={maxModeForRisk(t.risk)} ariaLabel={'How much “'+t.label+'” may run on its own'} onError={onError}
+      ? <TcKnob value={clampModeToRisk(t.stored,t.risk)} max={maxModeForRisk(t.risk)} ariaLabel={'How much “'+t.label+'” may run on its own'} onError={onError}
          onCommit={(m)=>onSetTool(t.toolKey,m)}/>
       : <span className="pill pill-n" title="Owner-only — always your call" style={{flex:'none'}}>Your call</span>}
      <span style={{fontSize:11,fontWeight:600,color:tp.col,minWidth:96,textAlign:'right'}}>{tp.label}</span>
@@ -445,6 +452,8 @@ return <div className="fade-in pg" style={{width:'100%',maxWidth:1440,margin:'0 
  :<>
   {gov.ceilingLimiting&&<div className="card" role="note" style={{padding:'11px 15px',display:'flex',gap:9,alignItems:'center',borderLeft:'3px solid var(--violet)'}}>
    <Ic.shield size={15} style={{color:'var(--violet)',flex:'none'}}/><span className="sub" style={{fontSize:12}}>Platform policy is currently limiting some unattended actions further, on top of your settings.</span></div>}
+  {gov.ceilingUnconfirmed&&<div className="card" role="status" style={{padding:'11px 15px',display:'flex',gap:9,alignItems:'center',borderLeft:'3px solid var(--warn)'}}>
+   <Ic.shield size={15} style={{color:'var(--warn)',flex:'none'}}/><span className="sub" style={{fontSize:12}}>Platform limits couldn’t be confirmed just now, so what’s shown may be more permissive than policy actually allows. Your own settings are unaffected.</span></div>}
   <div className="tc2-instrument" style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1.15fr) minmax(0,1fr)',gap:16,alignItems:'start'}}>
    <div style={{display:'grid',gap:14}}>{left.map(d=><KnobCard key={d.key} domain={d} open={open===d.key} onToggle={()=>setOpen(open===d.key?null:d.key)} onSetDomain={setDomain} onSetTool={setTool} onError={onError} side="lft"/>)}</div>
    <TcCompass domains={domains} reduced={reduced}/>
