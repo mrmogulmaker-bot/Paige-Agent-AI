@@ -3,14 +3,17 @@
 // Task #15 — dedicated Paige chat in-place image refinement. Structural + safety-invariant guard on
 // the server-owned refine anchor. The end-to-end runtime behavior (the model refining an image in
 // place in an authenticated dedicated chat) is §32.c-owed to a browser-capable session; the SQL
-// version-preservation behavior is proven on real Postgres by scripts/marketing-content-refine-db-proof.mjs
-// (9/9). This test locks the wiring + the OWNER SAFETY CONSTRAINTS into source so a refactor cannot
-// silently regress them:
-//   * the trust anchor is SERVER-OWNED (read from the thread row), never an arbitrary client id;
+// version-preservation + server-owned-anchor behavior is proven on real Postgres by
+// scripts/marketing-content-refine-db-proof.mjs (12/12). This test locks the wiring + the OWNER SAFETY
+// CONSTRAINTS into source so a refactor cannot silently regress them:
+//   * the trust anchor is SERVER-OWNED — read from the thread row AND written only by the service-role
+//     client behind a BEFORE UPDATE trigger that freezes client forge attempts (Codex P2/§59);
 //   * reuse in the dedicated chat happens ONLY when the model echoes the exact server anchor id;
-//   * the anchor advances only on a genuine success with a FILED content_id;
+//   * the anchor ADVANCES on a genuine success with a FILED content_id and CLEARS on a failed/unfiled
+//     generation (owner: clear on failed generation → never refine a stale older image, Codex P1);
 //   * the Studio canvas clamp is untouched;
-//   * the reuse UPDATE preserves prior versions (meta.versions snapshot before overwrite), tenant-scoped.
+//   * the reuse UPDATE preserves prior versions (meta.versions snapshot before overwrite), tenant-scoped,
+//     and normalizes scalar/array p_meta so the snapshot is never silently dropped (Codex P2).
 import { readFileSync, existsSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 
@@ -28,6 +31,20 @@ describe("Task #15 — migrations exist and carry the safety clauses", () => {
     expect(m).toMatch(/ADD COLUMN IF NOT EXISTS last_image_anchor_at timestamptz/);
   });
 
+  it("the anchor is SERVER-OWNED: a BEFORE UPDATE trigger freezes client attempts to set a non-null anchor, but not a clear-to-NULL (Codex P2/§59)", () => {
+    const m = readFileSync(ANCHOR_MIG, "utf8");
+    expect(m).toMatch(/CREATE TRIGGER trg_paige_chat_threads_freeze_image_anchor\s+BEFORE UPDATE ON public\.paige_chat_threads/);
+    // only trusted server roles may write; anyone else is reverted
+    expect(m).toMatch(/current_user NOT IN \('service_role', 'supabase_admin', 'postgres'\)/);
+    // freeze is scoped to SETTING a non-null value → a transition TO NULL (FK cascade, expiry clear) still works
+    expect(m).toMatch(/NEW\.last_image_content_id IS NOT NULL\s*\n\s*AND NEW\.last_image_content_id IS DISTINCT FROM OLD\.last_image_content_id/);
+    expect(m).toMatch(/NEW\.last_image_content_id\s*:=\s*OLD\.last_image_content_id/);
+    // INVOKER, not DEFINER — the trigger function must NOT declare SECURITY DEFINER (else current_user
+    // would mask the connected role). Behaviorally proven by the db-proof's forge test; asserted here
+    // only on the function definition, since the header comment legitimately names the phrase.
+    expect(m).not.toMatch(/RETURNS trigger[\s\S]*?SECURITY DEFINER[\s\S]*?\$\$/);
+  });
+
   it("the version-preservation migration snapshots the prior image before the tenant-scoped reuse UPDATE", () => {
     expect(existsSync(VERSION_MIG)).toBe(true);
     const m = readFileSync(VERSION_MIG, "utf8");
@@ -35,6 +52,8 @@ describe("Task #15 — migrations exist and carry the safety clauses", () => {
     expect(m).toMatch(/_versions\s*:=\s*_cur\.meta\s*->\s*'versions'/);
     // only snapshot when the image actually changes
     expect(m).toMatch(/_new_image IS NOT NULL AND _cur\.image_url IS NOT NULL AND _new_image <> _cur\.image_url/);
+    // scalar/array p_meta is normalized to an object so versions can never be silently dropped (Codex P2)
+    expect(m).toMatch(/jsonb_typeof\(_merged_meta\) <> 'object'/);
     // append prior image + cap
     expect(m).toMatch(/jsonb_set\(_merged_meta, '\{versions\}'/);
     expect(m).toMatch(/jsonb_array_length\(_versions\) > 20/);
@@ -64,11 +83,16 @@ describe("Task #15 — the server-owned anchor is wired safely into paige-ai-cha
     expect(chat).toMatch(/\? refineImageAnchor\.id/);
   });
 
-  it("advances the anchor only on a genuine success with a FILED content_id, dedicated chat only", () => {
-    expect(chat).toMatch(/!canvasArtifact && payloadThreadId && \(result as any\)\?\.success === true[\s\S]{0,80}artifactProduced\("saved_id", \(result as any\)\?\.content_id\)/);
-    expect(chat).toMatch(/\.update\(\{ last_image_content_id: \(result as any\)\.content_id, last_image_anchor_at:/);
+  it("ADVANCES on a filed content_id and CLEARS on a failed/unfiled generation, via the SERVICE-ROLE writer, dedicated chat only", () => {
+    // filedId is the content_id ONLY on a genuine success with a filed id, else null (→ clear)
+    expect(chat).toMatch(/const filedId = \(\(result as any\)\?\.success === true[\s\S]{0,120}artifactProduced\("saved_id", \(result as any\)\?\.content_id\)\)[\s\S]{0,80}:\s*null;/);
+    // server-owned: written through the service-role `supabase` client (never the JWT `supabaseClient`),
+    // so the freeze trigger admits it; the ownership fence is reproduced explicitly
+    expect(chat).toMatch(/await supabase\.from\("paige_chat_threads"\)[\s\S]{0,260}\.eq\("caller_user_id", user\.id\)/);
+    // advance sets the filed id + now; clear sets both to null
+    expect(chat).toMatch(/last_image_content_id: filedId,[\s\S]{0,120}last_image_anchor_at: filedId \? new Date\(\)\.toISOString\(\) : null/);
     // best-effort but LOGGED, never swallowed silently (§13/§32)
-    expect(chat).toMatch(/refine anchor advance failed/);
+    expect(chat).toMatch(/refine anchor \$\{filedId \? "advance" : "clear"\} failed/);
   });
 
   it("does NOT regress the Studio canvas clamp (still keyed on canvasArtifact)", () => {

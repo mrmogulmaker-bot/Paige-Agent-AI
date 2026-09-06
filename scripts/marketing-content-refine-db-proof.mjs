@@ -5,8 +5,11 @@
 //     marketing_content.meta.versions[] before overwriting the live image (never silently lost);
 //   * no spurious versions: an idempotent re-save of the same image, and a text reuse, add none;
 //   * the 20-entry cap drops the oldest;
+//   * scalar/array p_meta is normalized so a versions snapshot is never silently dropped (Codex P2);
 //   * §9: a cross-tenant p_id is rejected CONTENT_NOT_FOUND (P0002), no cross-tenant write;
-//   * the anchor migration applies (columns + FK) and ON DELETE SET NULL clears a deleted image.
+//   * the anchor migration applies (columns + FK) and ON DELETE SET NULL clears a deleted image;
+//   * the anchor is SERVER-OWNED: the freeze trigger blocks an `authenticated` client from forging a
+//     non-null anchor while allowing a clear-to-NULL and the service-role writer (Codex P2 / §59).
 //
 // Never touches production, PGHOST, cloud creds, or a configured project connection.
 // Persisted-apply on prod is §32.a via deploy-migrations.yml; this proves the LOGIC.
@@ -126,6 +129,15 @@ create table public.paige_chat_threads (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid, caller_user_id uuid
 );
+-- Reproduce the REAL Supabase condition the freeze trigger defends against: a table-level
+-- GRANT UPDATE TO authenticated (which is exactly why a column-level REVOKE could not express
+-- "server-owned"). service_role stands in for paige-ai-chat's writer.
+do $$ begin
+  if not exists (select from pg_roles where rolname='authenticated') then create role authenticated; end if;
+  if not exists (select from pg_roles where rolname='service_role') then create role service_role; end if;
+end $$;
+grant usage on schema public to authenticated, service_role;
+grant select, update on public.paige_chat_threads to authenticated, service_role;
 `;
 
 async function cleanup() {
@@ -223,6 +235,42 @@ try {
     assert((await scalar(`select last_image_content_id from public.paige_chat_threads where id='${th}';`)) === id, "anchor should be set");
     await psql(`delete from public.marketing_content where id='${id}';`);
     assert((await scalar(`select coalesce(last_image_content_id::text,'NULL') from public.paige_chat_threads where id='${th}';`)) === "NULL", "anchor should clear when the image is deleted");
+  });
+
+  await test("anchor is SERVER-OWNED: an `authenticated` client cannot FORGE a non-null anchor; service_role can", async () => {
+    const imgA = await saveImage(TA, "srv-a.png");
+    const imgB = await saveImage(TA, "srv-b.png");
+    const th = await scalar(`insert into public.paige_chat_threads(tenant_id, caller_user_id) values ('${TA}', gen_random_uuid()) returning id;`);
+    // (1) authenticated tries to SET a non-null anchor from NULL → frozen (reverted to prior NULL)
+    await psql(`set role authenticated; update public.paige_chat_threads set last_image_content_id='${imgA}', last_image_anchor_at=now() where id='${th}'; reset role;`);
+    assert((await scalar(`select coalesce(last_image_content_id::text,'NULL') from public.paige_chat_threads where id='${th}';`)) === "NULL", "authenticated forge from NULL must be frozen");
+    // (2) service_role (paige-ai-chat's writer) sets it → allowed
+    await psql(`set role service_role; update public.paige_chat_threads set last_image_content_id='${imgA}', last_image_anchor_at=now() where id='${th}'; reset role;`);
+    assert((await scalar(`select last_image_content_id from public.paige_chat_threads where id='${th}';`)) === imgA, "service_role must be able to set the anchor");
+    // (3) authenticated tries to REDIRECT it to a different non-null id → frozen (stays imgA)
+    await psql(`set role authenticated; update public.paige_chat_threads set last_image_content_id='${imgB}' where id='${th}'; reset role;`);
+    assert((await scalar(`select last_image_content_id from public.paige_chat_threads where id='${th}';`)) === imgA, "authenticated redirect to another id must be frozen");
+    // (4) authenticated CLEAR to NULL → allowed (owner: clear on failed generation; also lets the FK cascade work)
+    await psql(`set role authenticated; update public.paige_chat_threads set last_image_content_id=null, last_image_anchor_at=null where id='${th}'; reset role;`);
+    assert((await scalar(`select coalesce(last_image_content_id::text,'NULL') from public.paige_chat_threads where id='${th}';`)) === "NULL", "clearing the anchor to NULL must be allowed");
+  });
+
+  await test("scalar/array p_meta does not silently DROP the versions snapshot (jsonb_set object-key contract)", async () => {
+    // scalar (JSON string) meta
+    const s = await saveImage(TA, "sm1.png");
+    await saveImage(TA, "sm2.png", s); // versions=[sm1]
+    await psql(`select public.save_marketing_content('image','T',null,null,'sm3.png','/p/sm3.png','square','b','"scalar-meta"'::jsonb,'${s}','${TA}');`);
+    let v = await versions(s);
+    assert(v.length === 2 && v[0].image_url === "sm1.png" && v[1].image_url === "sm2.png", `scalar meta dropped versions: ${JSON.stringify(v.map((x)=>x.image_url))}`);
+    assert((await scalar(`select jsonb_typeof(meta) from public.marketing_content where id='${s}';`)) === "object", "meta must be normalized to an object");
+    assert((await liveImage(s)) === "sm3.png", "live image should be sm3");
+    // array meta (the "incompatible array path" case the reviewer flagged)
+    const a = await saveImage(TA, "am1.png");
+    await saveImage(TA, "am2.png", a); // versions=[am1]
+    await psql(`select public.save_marketing_content('image','T',null,null,'am3.png','/p/am3.png','square','b','[1,2,3]'::jsonb,'${a}','${TA}');`);
+    v = await versions(a);
+    assert(v.length === 2 && v[0].image_url === "am1.png" && v[1].image_url === "am2.png", `array meta dropped versions: ${JSON.stringify(v.map((x)=>x.image_url))}`);
+    assert((await scalar(`select jsonb_typeof(meta) from public.marketing_content where id='${a}';`)) === "object", "array meta must be normalized to an object");
   });
 
   const failed = results.filter((r) => r.status === "FAIL");

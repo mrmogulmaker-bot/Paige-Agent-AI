@@ -18,10 +18,11 @@
   `WHERE id=p_id AND tenant_id=_tenant`; cross-tenant id → CONTENT_NOT_FOUND → fresh insert under caller's tenant).
   §37: Studio canvas clamp + §33 critique-loop byte-unchanged (additive). Also folded the two deferred stale
   `FloatingChatbot` comments (paige-ai-chat, `_shared/client-context.ts`) since this PR redeploys paige-ai-chat.
-  **PROOF:** `scripts/marketing-content-refine-db-proof.mjs` 10/10 on real Postgres 16 (snapshot-on-change,
-  server-owned versions un-wipeable/un-forgeable, no
-  spurious versions on idempotent/text reuse, cap 20, §9 CONTENT_NOT_FOUND, FK auto-clear); wiring+safety guard
-  `src/__tests__/dedicated-chat-image-refine-anchor.test.ts` 7/7; edge fn transpiles clean. **PROOF OWED (§32.c):**
+  **PROOF:** `scripts/marketing-content-refine-db-proof.mjs` 12/12 on real Postgres 16 (snapshot-on-change,
+  server-owned versions un-wipeable/un-forgeable, scalar/array-meta normalization, no
+  spurious versions on idempotent/text reuse, cap 20, §9 CONTENT_NOT_FOUND, FK auto-clear, server-owned
+  freeze-trigger); wiring+safety guard
+  `src/__tests__/dedicated-chat-image-refine-anchor.test.ts` 8/8; edge fn transpiles clean. **PROOF OWED (§32.c):**
   the frontend version-history UI + the authenticated live-drive of an end-to-end dedicated-chat refine (headless
   session cannot render/drive it). Earlier grounding (superseded here): the §9-question decision-log line for this
   item is RESOLVED — the tenant-ownership check exists; and the reuse anchor is server-owned, not model-supplied.
@@ -33,6 +34,19 @@
   browser-writable column, is the enforced §9 fence — confirmed not cross-tenant-exploitable); added the §66
   tier-matrix Surface-ledger row. §5 flagged the 30-min recency window as a user-observable knob (kept 30 min;
   surfaced to owner, not blocking).
+  **CODEX-FOLD (3 findings, commit 84da896, PR #992):** (P2) the anchor is now GENUINELY server-owned — a
+  `BEFORE UPDATE` trigger (`trg_paige_chat_threads_freeze_image_anchor`, INVOKER, gated on `current_user`)
+  freezes any `authenticated` attempt to SET a non-null anchor, and the edge-fn write moved from the JWT
+  `supabaseClient` to the service-role `supabase` client + `.eq("caller_user_id", user.id)` ownership fence.
+  The trigger deliberately allows a transition TO NULL, so the FK `ON DELETE SET NULL` cascade and clear-on-fail
+  still work (this is why the earlier "the column is browser-writable, only the reuse fence enforces §9" caveat
+  is now obsolete — the column itself is enforced). (P1) the anchor now CLEARS on a failed/unfiled generation
+  (usable url but best-effort save failed, needs_config, hard fail) instead of leaving a stale older image
+  anchored — matches the owner's "clear on failed generation" so the next refine never overwrites the wrong
+  image. (P2) `save_marketing_content` normalizes scalar/array `p_meta` to an object before `jsonb_set`, so the
+  versions snapshot can never be silently dropped. All three re-proven: db-proof 12/12 (adds forge-freeze +
+  scalar/array-meta cases), vitest 8/8, `lint:definer-fns`/`lint:migration-versions`/`lint:managed-schema`
+  green.
 
 - **PAIGE Mind — the owner-approved 3D knowledge orb ported LIVE onto the Solo surface (2026-09-06, MVP mode)** —
   the §28-frozen, Gate-1-approved Three.js "knowledge orb" prototype (`docs/prototypes/command-center-mind-gate1.html`)

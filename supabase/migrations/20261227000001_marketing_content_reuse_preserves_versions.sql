@@ -89,7 +89,14 @@ BEGIN
         WHERE ord > jsonb_array_length(_versions) - 20;
       END IF;
     END IF;
-    -- server-owned versions ALWAYS win over any caller-supplied meta.versions (forge/wipe-proof)
+    -- server-owned versions ALWAYS win over any caller-supplied meta.versions (forge/wipe-proof).
+    -- p_meta is arbitrary jsonb (its generated client type permits strings/numbers/booleans/arrays),
+    -- and jsonb_set cannot install an object key into a scalar/array root — it would return the root
+    -- unchanged and SILENTLY DROP the versions snapshot, breaking the un-wipeable-history contract
+    -- (Codex P2). Normalize a non-object merged meta to an object first so `versions` always persists.
+    IF _merged_meta IS NULL OR jsonb_typeof(_merged_meta) <> 'object' THEN
+      _merged_meta := '{}'::jsonb;
+    END IF;
     _merged_meta := jsonb_set(_merged_meta, '{versions}', _versions, true);
 
     UPDATE public.marketing_content SET

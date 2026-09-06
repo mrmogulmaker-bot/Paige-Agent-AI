@@ -36,7 +36,42 @@ CREATE INDEX IF NOT EXISTS idx_paige_chat_threads_last_image_content_id
   ON public.paige_chat_threads (last_image_content_id)
   WHERE last_image_content_id IS NOT NULL;
 
+-- §59 (Codex P2): the anchor is the reuse AUTHORITY, so it must be genuinely SERVER-OWNED — the
+-- table-level `GRANT UPDATE ... TO authenticated` + the `threads_update_self` RLS policy otherwise
+-- let a browser set an arbitrary same-tenant content_id / future timestamp and have paige-ai-chat
+-- trust it. A column-level REVOKE cannot express this (a table-level UPDATE grant permits every
+-- column regardless of a column REVOKE), so a BEFORE UPDATE trigger freezes CLIENT attempts to SET a
+-- non-null anchor. It deliberately does NOT touch a transition TO NULL, so the FK ON DELETE SET NULL
+-- cascade and any client-initiated clear still succeed — only forging a non-null authority is blocked.
+-- INVOKER (never DEFINER): current_user must reflect the CONNECTED role (authenticated vs service_role),
+-- which a SECURITY DEFINER body would mask.
+CREATE OR REPLACE FUNCTION public.paige_chat_threads_freeze_image_anchor()
+  RETURNS trigger
+  LANGUAGE plpgsql
+  SET search_path TO 'public'
+AS $$
+BEGIN
+  -- Trusted server roles (paige-ai-chat's service-role client; migrations/data-fixes as owner) write
+  -- the anchor freely. Any other caller (a JWT client → `authenticated`) may CLEAR it but may not
+  -- forge a non-null authority: a client attempt to set/change last_image_content_id to a non-null
+  -- value is reverted to the prior server-set values, leaving its other thread-row edits intact.
+  IF current_user NOT IN ('service_role', 'supabase_admin', 'postgres')
+     AND NEW.last_image_content_id IS NOT NULL
+     AND NEW.last_image_content_id IS DISTINCT FROM OLD.last_image_content_id THEN
+    NEW.last_image_content_id := OLD.last_image_content_id;
+    NEW.last_image_anchor_at  := OLD.last_image_anchor_at;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_paige_chat_threads_freeze_image_anchor ON public.paige_chat_threads;
+CREATE TRIGGER trg_paige_chat_threads_freeze_image_anchor
+  BEFORE UPDATE ON public.paige_chat_threads
+  FOR EACH ROW
+  EXECUTE FUNCTION public.paige_chat_threads_freeze_image_anchor();
+
 COMMENT ON COLUMN public.paige_chat_threads.last_image_content_id IS
-  'Task #15: in-place-image-refine anchor — the immediately-eligible Paige-created marketing_content image id for THIS (tenant, thread). paige-ai-chat WRITES it only after a successful generate_image with a filed content_id (server-writer convention, defense-in-depth). The ENFORCED safety fence is NOT this column (RLS is row-level, so a thread owner can set it) but the reuse itself: save_marketing_content reuses `WHERE id=p_id AND tenant_id=_tenant`, so a forged foreign-tenant id → CONTENT_NOT_FOUND → fresh insert (no cross-tenant read/write); a forged own-tenant id only redirects onto a row the admin/coach may already edit, and the prior image is snapshotted. ON DELETE SET NULL auto-clears a deleted image.';
+  'Task #15: in-place-image-refine anchor — the immediately-eligible Paige-created marketing_content image id for THIS (tenant, thread). SERVER-OWNED: the trg_paige_chat_threads_freeze_image_anchor BEFORE UPDATE trigger rejects any non-service-role attempt to SET a non-null value here, so only paige-ai-chat''s service-role writer (after a successful generate_image with a filed content_id) can set it — a browser cannot forge it. Reuse is doubly fenced by save_marketing_content (`WHERE id=p_id AND tenant_id=_tenant`): a foreign-tenant id → CONTENT_NOT_FOUND → fresh insert (no cross-tenant read/write). Clearing to NULL is always allowed (FK ON DELETE SET NULL auto-clears a deleted image; the writer clears on failed generation/expiry).';
 COMMENT ON COLUMN public.paige_chat_threads.last_image_anchor_at IS
   'Task #15: when last_image_content_id was set — bounds refine eligibility to a recency window (expiry clear).';
