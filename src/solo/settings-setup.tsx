@@ -384,7 +384,7 @@ export function SoloSetupView({ account }: { account: string }) {
 
   const selectedRepresentatives = data.representatives.filter((person) => draft.representativeUserIds.includes(person.id));
   const representativesUnavailable = data.representativesLoading || Boolean(data.representativesError);
-  const connectionsPath = account ? `/solo/${account}/settings/connections?segment=communications` : "/admin";
+  const connectionsPath = account ? `/solo/${account}/settings/connections?segment=communications` : "/choose-account";
 
   return <div className="setup-brief" aria-busy={data.saving}>
     {confirmDialog}

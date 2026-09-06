@@ -77,7 +77,7 @@ export default function Onboarding() {
       ]);
       if (!mounted) return;
       if (staff || owned?.id || member?.tenant_id) {
-        window.location.assign("/admin");
+        window.location.assign("/choose-account");
         return;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

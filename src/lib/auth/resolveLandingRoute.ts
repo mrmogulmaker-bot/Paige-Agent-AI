@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { GOD_CONSOLE } from "@/lib/auth/operatorTarget";
+import { workspaceRootForTenant } from "@/lib/auth/workspaceEntry";
 
 // Pre-portal onboarding is now just two gates: welcome + agreement.
 // Anything beyond signing_agreement lands the client directly in /workspace,
@@ -173,6 +174,14 @@ async function resolveAgencyLanding(userId: string): Promise<string | null> {
  * would stand up a workspace without payment. Real tenant owners/members are already
  * caught by branch 4 (→ /admin) BEFORE this fallback, so paid users are unaffected.
  */
+type LandingTenant = {
+  id: string;
+  account_type?: string | null;
+  parent_tenant_id?: string | null;
+  account_number?: string | number | null;
+  features?: Record<string, unknown> | null;
+};
+
 export async function resolveLandingRoute(userId: string): Promise<string> {
   try {
     const [rolesRes, clientRes, ownedTenantRes, memberTenantRes, agencyTeamRes] = await Promise.all([
@@ -182,7 +191,7 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
         .select("id, onboarding_stage")
         .eq("linked_user_id", userId)
         .maybeSingle(),
-      supabase.from("tenants").select("id").eq("owner_user_id", userId).limit(1).maybeSingle(),
+      supabase.from("tenants").select("id, account_type, parent_tenant_id, account_number").eq("owner_user_id", userId).limit(1).maybeSingle(),
       supabase.from("tenant_members").select("tenant_id").eq("user_id", userId).limit(1).maybeSingle(),
       // Agency-team invitees don't get a tenant_members row — they live in
       // agency_team_members. Without this signal they fall through to
@@ -229,7 +238,7 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     // a non-agency operator, or one who prefers 'last_account', falls to /admin.
     if (roles.includes("admin") || roles.includes("coach")) {
       const agencyRoute = await resolveAgencyLanding(userId);
-      return agencyRoute ?? "/admin";
+      return agencyRoute ?? "/choose-account";
     }
     if (roles.includes("broker") || roles.includes("broker_team_member")) {
       return "/broker/app";
@@ -262,8 +271,12 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     // Owns or belongs to a tenant but the app_role sync hasn't landed yet
     // (defensive — the provision trigger normally grants 'admin'): still a
     // tenant operator, so send them to the tenant admin, not the consumer app.
-    if (ownedTenantRes.data?.id || memberTenantRes.data?.tenant_id) {
-      return "/admin";
+    const ownedTenant = ownedTenantRes.data as unknown as LandingTenant | null;
+    if (ownedTenant?.id) {
+      return workspaceRootForTenant(ownedTenant) ?? "/choose-account";
+    }
+    if (memberTenantRes.data?.tenant_id) {
+      return "/choose-account";
     }
 
     // Agency-team invitee — belongs to an agency via agency_team_members but has

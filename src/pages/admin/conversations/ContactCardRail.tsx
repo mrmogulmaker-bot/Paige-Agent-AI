@@ -12,7 +12,8 @@
 // are honestly disabled or omitted, never faked (§13).
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { formatDistanceToNow, format } from "date-fns";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { tenantRoutePrefixForPath } from "@/components/tenant-shell/tenantShellRoutes";
 import { SectionCard, EmptyState, StatePill, GlyphPlate } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -186,6 +187,8 @@ export function ContactCardRail({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const location = useLocation();
+  const tenantRoot = tenantRoutePrefixForPath(location.pathname);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
@@ -620,7 +623,7 @@ export function ContactCardRail({
               )}
 
               <Button variant="outline" size="sm" className="mt-1 w-full" asChild>
-                <Link to={`/admin/contacts/${contact.id}`}>
+                <Link to={tenantRoot ? `${tenantRoot}/clients/people?contact=${encodeURIComponent(contact.id)}` : "/choose-account"}>
                   <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Open full profile
                 </Link>
               </Button>

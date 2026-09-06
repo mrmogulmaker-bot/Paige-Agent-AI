@@ -9,7 +9,9 @@ import { ArrowLeft } from "lucide-react";
 export default function WorkflowRunDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
   const [run, setRun] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
   const [registry, setRegistry] = useState<any>(null);
 
   useEffect(() => {
@@ -61,7 +63,7 @@ export default function WorkflowRunDetail() {
           {run.status}
         </Badge>
         {registry && (
-          <Link to={`/admin/workflows/${registry.key}`} className="text-sm text-primary hover:underline">
+          <Link to={"/choose-account"} className="text-sm text-primary hover:underline">
             {registry.label}
           </Link>
         )}

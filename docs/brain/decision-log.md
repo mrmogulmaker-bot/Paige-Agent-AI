@@ -156,6 +156,18 @@
   than a raw value; only status + provenance may surface), then this ledger row + `docs/brain/codebase-map.md`
   "Solo Command Center governed-record surface".
   Ledger: `docs/doctrine/tier-matrix.md` "PAIGE Mind — the approved 3D knowledge orb"; PR #969.
+- **ARCHITECTURE: Admin is a role, never a URL (owner decision 2026-09-06; supersedes legacy route plan)** —
+  the product must never mount, redirect to, or generate the retired privileged route or any descendant.
+  Direct requests follow the ordinary immediate unknown-route behavior; there is no compatibility redirect
+  and no replacement privileged shell. Canonical entry is server-resolved: `/auth` for authentication,
+  `/choose-account` for account selection, `/solo/{account}/...`, `/business/{account}/...`,
+  `/agency/{account}/...`, or `/operator/...` for an authorized platform operator. Setup uses the canonical
+  tier route; OAuth callbacks keep explicit callback routes; durable notification targets are validated and
+  invalid legacy targets normalize to `/choose-account`. Preserve database role names, RLS predicates, and
+  server-side permission checks. This supersedes the smart-redirect/deprecation window and legacy-shell flag
+  dependencies recorded in older taxonomy and master-reference entries. PR #981's floating-chat retirement is
+  compatible and already present on current main; PR #724's unrelated auth/setup/OAuth behavior must be preserved
+  while its legacy privileged-route mount and fallback behavior are superseded. Proof: `docs/evidence/ui-delivery/retire-admin-route.md`.
 
 - **ARCHITECTURE: floating Paige chat is RETIRED from the authenticated platform (owner decision 2026-09-06)** —
   there must be NO floating Paige chat anywhere inside the authenticated platform (no Solo route, Command

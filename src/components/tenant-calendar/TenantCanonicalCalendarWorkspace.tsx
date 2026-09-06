@@ -81,7 +81,7 @@ export function TenantCanonicalCalendarWorkspace({ tier, openPaige, owner = "dir
     // (`origin` + an allowlisted `returnTo`) so the trip back is one click.
     const soloConnections = routeRoot
       ? `${routeRoot}/settings/connections${clientsCalendarRoot ? `?origin=calendar&returnTo=${encodeURIComponent(clientsCalendarRoot)}` : ""}`
-      : "/admin/setup/integrations";
+      : "/choose-account";
     return (
       <SoloCalendarWorkspace
         key={activeTenantId}
@@ -108,7 +108,7 @@ export function TenantCanonicalCalendarWorkspace({ tier, openPaige, owner = "dir
       activeTenantId={activeTenantId}
       activeTab={activeTab}
       onTabChange={onTabChange}
-      connectionsHref={routeRoot ? `${routeRoot}/integrations` : "/admin/setup/integrations"}
+      connectionsHref={routeRoot ? `${routeRoot}/integrations` : "/choose-account"}
       openPaige={openPaige}
       tenantMode
       soloSettings={soloClientsOwner}

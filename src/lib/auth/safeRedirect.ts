@@ -16,7 +16,11 @@
 
 const ALLOWED_PREFIXES = [
   "/app",
-  "/admin",
+  "/solo",
+  "/business",
+  "/agency",
+  "/operator",
+  "/choose-account",
   "/auth",
   "/onboard",
   "/join",

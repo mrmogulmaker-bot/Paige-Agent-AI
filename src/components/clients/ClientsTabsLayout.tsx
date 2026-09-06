@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 
 export default function ClientsTabsLayout() {
   const { pathname } = useLocation();
-  const isConversationsInbox = pathname === "/admin/clients-hub/conversations";
+  const isConversationsInbox = pathname === "/choose-account";
 
   // AdminLayout gives this hub the unpadded, constrained viewport well. This is
   // now the single padding owner: no negative margins, no shifted 100%-height box,

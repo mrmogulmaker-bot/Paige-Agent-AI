@@ -126,9 +126,9 @@ export function TenantCommandCenterCore({
 }) {
   const location = useLocation();
   const destinations = tenantShellDestinationsForPath(location.pathname);
-  const clientsHref = destinations.find((item) => item.id === "clients")?.href ?? "/admin/clients-hub";
+  const clientsHref = destinations.find((item) => item.id === "clients")?.href ?? "/choose-account";
   const calendarHref = tenantCalendarHrefForPath(location.pathname);
-  const settingsHref = destinations.find((item) => item.id === "settings")?.href ?? "/admin/setup";
+  const settingsHref = destinations.find((item) => item.id === "settings")?.href ?? "/choose-account";
   const [window, setWindow] = useState<"today" | "week" | "all">("today");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [resolved, setResolved] = useState(() => new Set<string>());

@@ -149,11 +149,11 @@ const KPI_META: Record<
 };
 
 const RAIL_META: Record<RailKey, { icon: LucideIcon; label: string; href: string; value: (a?: import("@/hooks/usePracticeDashboard").PracticeAttention) => number | undefined }> = {
-  at_risk_clients: { icon: AlertTriangle, label: "At-risk clients", href: "/admin/clients", value: (a) => a?.at_risk_clients },
-  follow_ups_due: { icon: Clock, label: "Follow-ups due", href: "/admin/approvals", value: (a) => a?.follow_ups_due },
-  upcoming_sessions_7d: { icon: CalendarClock, label: "Sessions next 7 days", href: "/admin/calendar", value: (a) => a?.upcoming_sessions_7d },
-  tasks_due: { icon: CheckSquare, label: "Tasks due", href: "/admin/planning", value: (a) => a?.tasks_due },
-  onboarding_in_progress: { icon: UserPlus, label: "Onboarding in progress", href: "/admin/clients", value: (a) => a?.onboarding_in_progress },
+  at_risk_clients: { icon: AlertTriangle, label: "At-risk clients", href: "/choose-account", value: (a) => a?.at_risk_clients },
+  follow_ups_due: { icon: Clock, label: "Follow-ups due", href: "/choose-account", value: (a) => a?.follow_ups_due },
+  upcoming_sessions_7d: { icon: CalendarClock, label: "Sessions next 7 days", href: "/choose-account", value: (a) => a?.upcoming_sessions_7d },
+  tasks_due: { icon: CheckSquare, label: "Tasks due", href: "/choose-account", value: (a) => a?.tasks_due },
+  onboarding_in_progress: { icon: UserPlus, label: "Onboarding in progress", href: "/choose-account", value: (a) => a?.onboarding_in_progress },
 };
 
 export function PracticeOverview({ children }: { children?: ReactNode }) {
@@ -284,7 +284,7 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
             description="Add your first client and Paige starts working both sides — onboarding them and surfacing your next move here."
             action={
               <Button asChild variant="gold">
-                <Link to="/admin/clients">Add your first client</Link>
+                <Link to="/choose-account">Add your first client</Link>
               </Button>
             }
           />
@@ -306,7 +306,7 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
             icon={Inbox}
             actions={
               <Button asChild variant="ghost" size="sm">
-                <Link to="/admin/conversations">
+                <Link to="/choose-account">
                   Open inbox <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
                 </Link>
               </Button>
@@ -319,7 +319,7 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
                   label: "Drafts awaiting you",
                   value: comms.draftsAwaiting,
                   icon: PenLine,
-                  href: "/admin/conversations?filter=drafts",
+                  href: "/choose-account",
                   hint: "ready for a one-click send",
                 },
                 {
@@ -327,7 +327,7 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
                   label: "No reply in 3+ days",
                   value: comms.awaitingClientReply,
                   icon: MailQuestion,
-                  href: "/admin/conversations?filter=awaiting-reply",
+                  href: "/choose-account",
                   hint: "you spoke last — time for a nudge",
                 },
                 {
@@ -335,7 +335,7 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
                   label: "Waking today",
                   value: comms.wakingToday,
                   icon: AlarmClock,
-                  href: "/admin/conversations?filter=waking-today",
+                  href: "/choose-account",
                   hint: "snoozed threads coming back",
                 },
                 {
@@ -343,7 +343,7 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
                   label: "Scheduled to send",
                   value: comms.scheduledSends,
                   icon: Send,
-                  href: "/admin/conversations?filter=scheduled",
+                  href: "/choose-account",
                   hint: "queued to go out later",
                 },
               ].map((t) => (
@@ -407,7 +407,7 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
               icon={TrendingUp}
               actions={
                 <Button asChild variant="ghost" size="sm">
-                  <Link to="/admin/pipeline">
+                  <Link to="/choose-account">
                     Open pipeline <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
                   </Link>
                 </Button>

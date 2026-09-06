@@ -118,8 +118,8 @@ function windowDays(v: DateRangeValue): number {
   return Math.max(1, Math.round(ms / 86_400_000));
 }
 
-const FLEET_HREF = "/admin/platform/tenants";
-const PAIGE_HREF = "/admin/playbook";
+const FLEET_HREF = "/choose-account";
+const PAIGE_HREF = "/choose-account";
 const ATTENTION_ANCHOR = "operator-attention-queue";
 
 export default function OperatorCommandCenter() {

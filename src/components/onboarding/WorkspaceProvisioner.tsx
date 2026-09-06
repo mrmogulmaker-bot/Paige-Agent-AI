@@ -182,7 +182,7 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
         /* not JSON */
       }
       if (code === "already_subscribed" || code === "already_provisioned") {
-        window.location.assign("/admin");
+        window.location.assign("/choose-account");
         return;
       }
       throw new Error(code || error.message || "checkout_failed");
@@ -211,7 +211,7 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
     // enforced by RequireSetupComplete) to CHOOSE their playbook/pipeline/calendar.
     toast({ title: "Workspace ready", description: "Welcome to Paige — this is yours to run." });
     if (onProvisioned) onProvisioned();
-    else window.location.assign("/admin");
+    else window.location.assign("/choose-account");
   };
 
   const submit = async () => {

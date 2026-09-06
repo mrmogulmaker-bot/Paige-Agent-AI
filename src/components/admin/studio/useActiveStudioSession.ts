@@ -43,7 +43,7 @@ const EMPTY_ARTIFACTS: SessionArtifactRef[] = [];
 
 /**
  * Load + own the active studio session. `enabled` is false on the dashboard (no :sessionId) and
- * on `/admin/studio/new`, so the rail doesn't try to resolve a non-session route.
+ * on "/choose-account", so the rail doesn't try to resolve a non-session route.
  */
 export function useActiveStudioSession(
   tenantId: string | null,

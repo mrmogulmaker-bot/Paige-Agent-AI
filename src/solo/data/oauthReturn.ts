@@ -33,7 +33,8 @@ export function isSafeReturnPath(value: unknown): value is string {
   // `//host` is protocol-relative and leaves the origin; a backslash is treated
   // as a separator by some parsers, so `/\evil.com` would too.
   if (value.startsWith("//") || value.includes("\\")) return false;
-  return !value.includes("://");
+  if (value.includes("://")) return false;
+  return !/^\/admin(?:\/|\?|#|$)/i.test(value);
 }
 
 export function rememberOAuthReturn(path: string): void {

@@ -1,6 +1,6 @@
 import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Settings } from "lucide-react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -360,12 +360,12 @@ describe("tenant shell owns one PAIGE surface", () => {
     host.remove();
   });
 
-  it("preserves operator ownership and Studio's immersive bypass", () => {
-    const admin = source("src/components/admin/AdminLayout.tsx");
-    expect(admin).toContain("if (!godMode)");
-    expect(admin).toContain('isStudio ? (');
-    expect(admin).toContain('<div className="h-dvh min-h-0 overflow-hidden bg-background">{children}</div>');
-    expect(admin.indexOf('isStudio ? (')).toBeLessThan(admin.indexOf('<TenantCommandCenterShell'));
+  it("keeps operator authority in the canonical operator tree after the legacy shell is retired", () => {
+    expect(existsSync(resolve(process.cwd(), "src/components/admin/AdminLayout.tsx"))).toBe(false);
+    const operator = source("src/operator/OperatorEntry.tsx");
+    expect(operator).toContain("<RequireOperator>");
+    expect(operator).toContain("<OperatorApp />");
+    expect(operator.indexOf("<RequireOperator>")).toBeLessThan(operator.indexOf("<OperatorApp />"));
   });
 
   it("reuses the existing immersive Vibe Studio from Campaigns and returns through its owner", () => {

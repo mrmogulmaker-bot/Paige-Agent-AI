@@ -63,7 +63,7 @@ export default function MetaIntegrationConfig() {
           </div>
           <div className="flex gap-2">
             <Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
-            <Button asChild variant="outline"><Link to="/admin/social">Open Social</Link></Button>
+            <Button asChild variant="outline"><Link to="/choose-account">Open Social</Link></Button>
           </div>
         </CardContent>
       </Card>

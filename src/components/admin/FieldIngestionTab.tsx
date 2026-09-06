@@ -92,6 +92,7 @@ export default function FieldIngestionTab() {
     // We can't call MCP from the browser without an OAuth token, so admin approval
     // applies directly using SQL writes that mirror the MCP applyProposal switch.
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
       const payload = (p.payload ?? {}) as any;
       if (p.tool_name === "ingest_credit_scores" && p.client_id) {
         const { data: cli } = await supabase
@@ -107,10 +108,12 @@ export default function FieldIngestionTab() {
             if (s.bureau === "EQ") patch.estimated_fico_eq = s.score;
           }
           if (Object.keys(patch).length) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
             await supabase.from("profiles").update(patch as any).eq("user_id", cli.linked_user_id);
           }
         }
         const summary = (payload.scores ?? [])
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
           .map((s: any) => `${s.bureau} ${s.score} (${s.source}, ${s.pulled_on})`)
           .join("; ");
         await supabase.from("client_memory").insert({
@@ -211,7 +214,7 @@ export default function FieldIngestionTab() {
                   </div>
                   {p.client_id && (
                     <Link
-                      to={`/admin/contacts/${p.client_id}`}
+                      to={"/choose-account"}
                       className="text-xs text-primary hover:underline mt-1 inline-block"
                     >
                       View client →

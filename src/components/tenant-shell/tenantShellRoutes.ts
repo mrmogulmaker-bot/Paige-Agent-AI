@@ -102,67 +102,67 @@ export function resolveTenantAccountContext(
  * canonical route, but its visible owner is the Clients or Relationships surface.
  */
 export const TENANT_SHELL_DESTINATIONS: TenantShellDestination[] = [
-  { id: "command", label: "Command Center", href: "/admin", icon: Sparkles, aliases: ["/admin/playbook"] },
+  { id: "command", label: "Command Center", href: "", icon: Sparkles, aliases: [""] },
   {
     id: "clients",
     label: "Clients",
-    href: "/admin/clients-hub",
+    href: "",
     icon: Users,
-    aliases: ["/admin/contacts", "/admin/clients", "/admin/leads", "/admin/pipeline"],
+    aliases: ["", "", "", ""],
   },
   {
     id: "studio",
     label: "Studio",
-    href: "/admin/studio",
+    href: "",
     icon: WandSparkles,
-    aliases: ["/admin/campaigns", "/admin/growth"],
+    aliases: ["", ""],
   },
   {
     id: "insights",
     label: "Insights",
-    href: "/admin/analytics",
+    href: "",
     icon: BarChart3,
-    aliases: ["/admin/observability"],
+    aliases: [""],
   },
   {
     id: "settings",
     label: "Settings",
-    href: "/admin/setup",
+    href: "",
     icon: Settings,
     aliases: [
-      "/admin/settings",
-      "/admin/team",
-      "/admin/members",
-      "/admin/coaches",
-      "/admin/marketplace",
-      "/admin/integrations",
-      "/admin/workflows",
-      "/admin/agreement",
-      "/admin/agreements",
-      "/admin/support",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
     ],
   },
 ];
 
 /** Solo's approved durable work homes. Existing route owners remain unchanged. */
 const SOLO_SHELL_DESTINATIONS: TenantShellDestination[] = [
-  { id: "command", label: "Command Center", href: "/admin", icon: Sparkles, aliases: ["/admin/playbook"] },
+  { id: "command", label: "Command Center", href: "", icon: Sparkles, aliases: [""] },
   {
     id: "clients",
     label: "Clients",
-    href: "/admin/clients-hub",
+    href: "",
     icon: Users,
-    aliases: ["/admin/contacts", "/admin/clients", "/admin/leads", "/admin/pipeline"],
+    aliases: ["", "", "", ""],
   },
-  { id: "campaigns", label: "Campaigns", href: "/admin/growth", icon: Megaphone, aliases: [] },
-  { id: "marketplace", label: "Marketplace", href: "/admin/marketplace", icon: Store, aliases: [] },
-  { id: "analytics", label: "Analytics", href: "/admin/analytics", icon: BarChart3, aliases: [] },
+  { id: "campaigns", label: "Campaigns", href: "", icon: Megaphone, aliases: [] },
+  { id: "marketplace", label: "Marketplace", href: "", icon: Store, aliases: [] },
+  { id: "analytics", label: "Analytics", href: "", icon: BarChart3, aliases: [] },
   {
     id: "settings",
     label: "Settings",
-    href: "/admin/setup",
+    href: "",
     icon: Settings,
-    aliases: ["/admin/settings", "/admin/team", "/admin/integrations"],
+    aliases: ["", "", ""],
   },
 ];
 
@@ -188,7 +188,7 @@ export function tenantRoutePrefixForPath(pathname: string): string | null {
 /** Build the canonical Calendar address without making Calendar a visible shell home. */
 export function tenantCalendarHrefForPath(pathname: string): string {
   const root = tenantRoutePrefixForPath(pathname);
-  return root ? `${root}/${TENANT_BRANCHES.calendar.slug}` : "/admin/calendar";
+  return root ? `${root}/${TENANT_BRANCHES.calendar.slug}` : "/choose-account";
 }
 
 /** Keep visible shell homes inside the route tree that owns the active account. */
@@ -206,7 +206,11 @@ export function tenantShellDestinationsForPath(
   const destinations = registry.map((destination) =>
     destination.id === "clients" ? { ...destination, label: relationshipLabel } : destination,
   );
-  if (!root) return destinations;
+  if (!root) return destinations.map((destination) => ({
+    ...destination,
+    href: "/choose-account",
+    aliases: [],
+  }));
 
   return destinations.map((destination) => {
     const branch = destination.id === "settings" && root.startsWith("/solo/")
@@ -221,7 +225,7 @@ export function tenantShellDestinationsForPath(
 }
 
 function pathMatches(pathname: string, href: string): boolean {
-  if (href === "/admin") return pathname === "/admin";
+  if (!href) return false;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -235,9 +239,7 @@ export function resolveTenantShellDestination(
   const canonicalCalendarHref = tenantCalendarHrefForPath(pathname);
   const isCalendarAddress = tenantRoot
     ? pathMatches(pathname, canonicalCalendarHref)
-    : ["/admin/calendar", "/admin/bookings", "/admin/planning", "/admin/tasks"].some((href) =>
-        pathMatches(pathname, href),
-      );
+    : false;
 
   if (isCalendarAddress) return clientsDestination;
 

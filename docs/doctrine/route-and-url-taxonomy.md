@@ -3,6 +3,20 @@
 **Owner-locked 2026-08-17 (Antonio via Cowork).** The canonical map of every user-facing
 URL → (tier × capability × user mental model), plus the migration plan that renames the
 incoherent routes to intuitive ones **without breaking anything** (§58). Modeled on the
+
+> **SUPERSEDING OWNER DECISION — 2026-09-06:** Admin is a role, never a URL. The staged
+> smart-redirect/deprecation plan below is historical and MUST NOT be implemented. The retired route,
+> trailing slash, and every deep variant now fall through immediately to the standard unknown-route
+> surface. They do not hydrate an auth shell, reveal account existence, or redirect by role. Canonical
+> destinations are selected only after server-derived identity, membership, active tenant, account type,
+> and operator authority are known:
+>
+> | Need | Canonical destination |
+> |---|---|
+> | Sign in / account selection | `/auth` / `/choose-account` |
+> | Solo / Business / Agency workspace | `/solo/{account}/...` / `/business/{account}/...` / `/agency/{account}/...` |
+> | Platform operator capability | `/operator/...`, guarded by server-proven platform authority |
+> | Setup / OAuth / notification | tier-owned Setup; explicit callback route; validated safe tenant destination or chooser |
 §51 tier matrix (`docs/doctrine/tier-matrix.md`).
 
 This is **PR 1: the taxonomy + matrix + migration plan.** It contains **zero code renames.**

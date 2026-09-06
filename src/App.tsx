@@ -78,7 +78,6 @@ const CreditIntelligence = lazyWithReload(() => import("./pages/CreditIntelligen
 const FundingMatches = lazyWithReload(() => import("./pages/FundingMatches"));
 const FundingJourney = lazyWithReload(() => import("./pages/FundingJourney"));
 const FinancialProfile = lazyWithReload(() => import("./pages/FinancialProfile"));
-const Admin = lazyWithReload(() => import("./pages/Admin"));
 // Agency Operator side (§9) — its own top-level shell, peer to the God console.
 // AgencyEntry (§65 R0-slice-2) dispatches `/agency/*`: a numeric first segment
 // (/agency/{account}/…) → the new URL-driven AgencyApp shell; anything else → the
@@ -86,12 +85,12 @@ const Admin = lazyWithReload(() => import("./pages/Admin"));
 const AgencyEntry = lazyWithReload(() => import("./agency/AgencyEntry"));
 // Sub-account operator side (§65 R3c-i) — the same AgencyApp shell (mode=
 // "subaccount"), its own top-level address (/business/{account}), peer to
-// /agency and /admin.
+// /agency and the canonical tenant shells.
 const BusinessEntry = lazyWithReload(() => import("./business/BusinessEntry"));
 // Tenant-account redesign prototype — local representative data only; no backend seams.
 const TenantRedesign = lazyWithReload(() => import("./prototype/TenantRedesign"));
 // Solo operator side (§65 R3d-i) — the SoloApp shell, its own top-level
-// address (/solo/{account}), peer to /business and /admin.
+// address (/solo/{account}), peer to /business and /agency.
 const SoloEntry = lazyWithReload(() => import("./solo/SoloEntry"));
 const ChooseAccount = lazyWithReload(() => import("./pages/ChooseAccount"));
 const ResetPassword = lazyWithReload(() => import("./pages/ResetPassword"));
@@ -163,9 +162,9 @@ const queryClient = new QueryClient({
 });
 
 // Neutral, surface-agnostic route-chunk fallback: this wraps EVERY route — public/marketing
-// (/, /signup, /portal/:slug…), auth, AND admin — so it must NOT paint admin chrome (a
-// PageSkeleton would flash the admin shell on the landing page). Admin surfaces render their
-// own PageSkeleton from Admin.tsx once their chunk loads; here we only bridge the chunk fetch.
+// (/, /signup, /portal/:slug…), auth, and product routes — so it stays shell-neutral (a
+// product shell would flash on the landing page). Canonical surfaces render their
+// own loading state once their chunk loads; here we only bridge the chunk fetch.
 const SuspenseFallback = () => (
   <div className="grid min-h-[60vh] place-items-center bg-background" role="status" aria-label="Loading">
     <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-[hsl(var(--primary))]" />
@@ -216,7 +215,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         {/* Global platform auto-update banner (#177) — outside <Routes> so it
-            persists across navigation and is visible on every surface (admin,
+            persists across navigation and is visible on every surface (operator,
             public, tenant custom domains). Client-side → domain-agnostic. */}
         <PlatformUpdateBanner />
         <BrowserRouter>
@@ -290,17 +289,16 @@ const App = () => (
             {/* Setup gate (owner 2026-08-16): a tenant with no chosen playbook is held on
                 the marketplace/Setup chooser — nested INSIDE RequireCompleteSignup so signup
                 (provision + agreement) still comes first. NO-OP for operators/God, clients,
-                and any tenant that already chose a playbook. Chooser (/admin/marketplace) is
+                and any tenant that already chose a playbook. Canonical Setup is
                 reachable while gated — no loop. */}
-            <Route path="/admin/*" element={<RequireCompleteSignup><RequireSetupComplete><PageSuspense><Admin /></PageSuspense></RequireSetupComplete></RequireCompleteSignup>} />
             {/* /agency is the agency-MANAGER console — an agency never picks a business
                 playbook (§61), so it is NOT wrapped in RequireSetupComplete (that gate is
                 for Solo/Sub-account business tenants only). The gate also no-ops for the
-                agency tier defensively, so a stray /admin hit by an agency owner is safe too. */}
+                agency tier defensively. */}
             <Route path="/agency/*" element={<RequireCompleteSignup><PageSuspense><AgencyEntry /></PageSuspense></RequireCompleteSignup>} />
             {/* /business is a SUB-ACCOUNT's own address (§65 R3c-i) — a real business
                 tenant (picks a playbook like Solo), so it carries the SAME Setup gate
-                as /admin, unlike /agency (a manager tier that never picks one, §61). */}
+                as /solo, unlike /agency (a manager tier that never picks one, §61). */}
             <Route path="/business/*" element={<RequireCompleteSignup><RequireSetupComplete><PageSuspense><BusinessEntry /></PageSuspense></RequireSetupComplete></RequireCompleteSignup>} />
             {/* /solo is a SOLO tenant's own address (§65 R3d-i) — same wrapping as
                 /business (a real business tenant that picks a playbook). */}
@@ -316,7 +314,7 @@ const App = () => (
             <Route path="/about" element={<PageSuspense><About /></PageSuspense>} />
             <Route path="/pricing" element={<PageSuspense><Pricing /></PageSuspense>} />
             {/* Post-checkout wait page — absorbs the webhook↔session race, polls for
-                the provisioned tenant, then forwards to /admin (B-Platform). */}
+                the provisioned tenant, then forwards through canonical account selection. */}
             <Route path="/welcome" element={<PageSuspense><Welcome /></PageSuspense>} />
             <Route path="/blog" element={<PageSuspense><Blog /></PageSuspense>} />
             <Route path="/affiliates" element={<PageSuspense><AffiliateApply /></PageSuspense>} />
@@ -368,9 +366,6 @@ const App = () => (
                 lands on the real storefront. */}
 
             {/* Backward-compat: bare /clients links route into the admin workspace */}
-            <Route path="/clients" element={<Navigate to="/admin/clients" replace />} />
-            <Route path="/clients/user/:userId" element={<Navigate to="/admin/clients" replace />} />
-            <Route path="/clients/internal/:clientId" element={<Navigate to="/admin/clients" replace />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

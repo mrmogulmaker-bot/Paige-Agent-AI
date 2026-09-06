@@ -503,10 +503,10 @@ const AgencyAppContent = ({ mode = "agency" }) => {
   const syncIntoChild = React.useCallback(async (childId) => {
     const { error } = await supabase.rpc("agency_enter_subaccount", { _child: childId });
     if (error) throw error;
-    // Record the entry, same as the two producers that hand off to `/admin`
+    // Record the entry, same as the two producers that hand off to `/choose-account`
     // (AccountSwitcher, AgencyBoard). This path stays inside the agency shell, so
     // nothing breaks without it — but the operator's active context IS now the
-    // child, and if they later open `/admin` the door would ask them to choose a
+    // child, and if they later open `/choose-account` the door would ask them to choose a
     // workspace they already deliberately entered. Completing the inventory here
     // costs a line; leaving one producer out is how the last two rounds went.
     rememberWorkspaceEntered(childId);

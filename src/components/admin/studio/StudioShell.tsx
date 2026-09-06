@@ -1738,7 +1738,7 @@ export function StudioShell({
     if (!tenantId || !sessionId) return;
     try {
       await setSessionStatus({ tenantId, sessionId, status: "archived" });
-      navigate("/admin/studio");
+      navigate("/choose-account");
     } catch (err) {
       patch({ error: asStudioError(err, "SAVE_FAILED") });
       toast({
@@ -2221,7 +2221,7 @@ export function StudioShell({
               description="It may have been removed, or it belongs to another workspace. Head back to the Studio to pick up another one — or start something new."
               action={
                 <Button asChild variant="default">
-                  <Link to="/admin/studio">Back to the Studio</Link>
+                  <Link to="/choose-account">Back to the Studio</Link>
                 </Button>
               }
             />

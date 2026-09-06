@@ -22,7 +22,7 @@ import {
  * (resolved from the URL slug via the registry) and `setKey(key)` navigates to that
  * sub-tab's canonical path.
  *
- * DUAL-MODE (§58): when mounted WITHOUT a `:account` param (the sub-account `/admin`
+ * DUAL-MODE (§58): when mounted WITHOUT a `:account` param (the sub-account `/choose-account`
  * inline takeover, §51 Gate B — whose `/business` tree lands in R3), it degrades to
  * plain local state so that path is byte-unchanged. All hooks are called unconditionally
  * before any branch (rules-of-hooks safe).

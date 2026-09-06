@@ -155,7 +155,7 @@ export default function ApprovalDetail() {
       return toast.error(`Send failed: ${error?.message || (data as any)?.error}`);
     }
     toast.success("Sent");
-    navigate("/admin/approvals");
+    navigate("/choose-account");
   };
 
   const setStatus = async (status: "approved" | "rejected" | "skipped" | "escalated" | "changes_requested") => {
@@ -175,7 +175,7 @@ export default function ApprovalDetail() {
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success(`Marked ${status.replace("_", " ")}`);
-    navigate("/admin/approvals");
+    navigate("/choose-account");
   };
 
   const reassign = async (userId: string) => {
@@ -205,7 +205,7 @@ export default function ApprovalDetail() {
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center gap-3 flex-wrap">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/admin/approvals")}>
+        <Button variant="ghost" size="sm" onClick={() => navigate("/choose-account")}>
           <ArrowLeft className="w-4 h-4 mr-1" /> Inbox
         </Button>
         <Badge variant="secondary">{CATEGORY_LABEL[cat] ?? cat}</Badge>
@@ -366,7 +366,7 @@ export default function ApprovalDetail() {
                       <><EyeOff className="w-3 h-3 text-muted-foreground" /><span className="text-muted-foreground">Client has no portal login — internal only</span></>
                     )}
                   </div>
-                  <Link to={`/admin/contacts/${contact.id}`} className="text-xs text-primary hover:underline block pt-2">
+                  <Link to={"/choose-account"} className="text-xs text-primary hover:underline block pt-2">
                     Open full profile →
                   </Link>
                 </>

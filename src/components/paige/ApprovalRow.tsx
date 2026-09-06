@@ -164,7 +164,7 @@ export function ApprovalRow({
               {/* Edit-then-approve routes to the full detail surface (§18 — no inline
                   duplicate editor); "Decline" is neutral/ghost (gold stays on Approve). */}
               <Button asChild size="sm" variant="ghost" className="h-7">
-                <Link to={`/admin/approvals/${a.id}`}>{showDecline ? "Edit" : "View"}</Link>
+                <Link to={"/choose-account"}>{showDecline ? "Edit" : "View"}</Link>
               </Button>
               {showDecline && (
                 <Button size="sm" variant="ghost" className="h-7 text-muted-foreground" onClick={() => setDeclining((d) => !d)} disabled={busy || approved}>

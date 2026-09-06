@@ -8,5 +8,5 @@ import { PlanningHub } from "@/components/planning/PlanningHub";
  * here, not only in the chat (HubSpot/Asana/GHL parity).
  */
 export default function PlanningAdmin() {
-  return <PlanningHub staff paigeHref="/admin/playbook" />;
+  return <PlanningHub staff paigeHref="/choose-account" />;
 }

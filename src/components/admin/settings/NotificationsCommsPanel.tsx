@@ -26,7 +26,7 @@ export function NotificationsCommsPanel() {
             automatic dead-lettering after 5 failed attempts.
           </p>
           <Button asChild variant="outline" size="sm">
-            <Link to="/admin/communications">
+            <Link to="/choose-account">
               Open communications log
               <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
             </Link>
@@ -47,7 +47,7 @@ export function NotificationsCommsPanel() {
             <li>• Onboarding step &rarr; transactional email</li>
           </ul>
           <Button asChild variant="outline" size="sm">
-            <Link to="/admin/support">
+            <Link to="/choose-account">
               Open support center
               <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
             </Link>

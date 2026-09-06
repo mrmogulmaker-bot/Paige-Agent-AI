@@ -15,6 +15,7 @@ export default function BankingAdmin() {
 
   useEffect(() => {
     void (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
       const sb = supabase as any;
       const cfg = await sb.from("paige_config").select("plaid_activated").eq("id", 1).maybeSingle();
       setActivated(!!cfg.data?.plaid_activated);
@@ -37,7 +38,7 @@ export default function BankingAdmin() {
             <div className="font-medium mb-1">Plaid scaffolding — activation pending</div>
             <p className="text-muted-foreground">
               All tables, edge functions, and screens are in place. Connect Plaid credentials and toggle
-              <code className="mx-1">plaid_activated</code> in <a href="/admin/integrations/plaid" className="underline">Plaid Integration Config</a> to enable.
+              <code className="mx-1">plaid_activated</code> in <a href="/choose-account" className="underline">Plaid Integration Config</a> to enable.
             </p>
           </CardContent>
         </Card>

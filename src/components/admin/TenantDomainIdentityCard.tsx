@@ -86,7 +86,7 @@ export function TenantDomainIdentityCard() {
             </Button>
             {outboundReady ? (
               <Button asChild variant="gold" size="sm">
-                <Link to="/admin/clients-hub/conversations?compose=1">
+                <Link to="/choose-account">
                   <MessageSquare className="mr-1.5 h-3.5 w-3.5" /> Message a client
                 </Link>
               </Button>

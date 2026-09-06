@@ -15,7 +15,7 @@ import { WORKSPACE_CHOOSER_PATH, decideWorkspaceEntry } from "@/lib/auth/workspa
  * machinery, tier-parameterized rather than forked).
  *
  * Unlike `/agency/*`, there is no legacy standalone board to fork against here
- * — a sub-account has only ever rendered inline at `/admin` (Admin.tsx Gate B),
+ * — a sub-account has only ever rendered inline at `the retired privileged route` (Admin.tsx Gate B),
  * never at its own top-level route — so this dispatcher has a single leg.
  *
  * IT NOW GUARDS LIKE ITS SIBLING (§18). This entry used to check only

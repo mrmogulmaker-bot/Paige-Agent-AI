@@ -18,13 +18,13 @@ export default function ClientsPipelinePane() {
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <span className="mr-1 text-xs font-medium text-muted-foreground">Funding:</span>
           <Button asChild variant="outline" size="sm">
-            <Link to="/admin/funding"><DollarSign className="h-4 w-4" /> Portfolio</Link>
+            <Link to="/choose-account"><DollarSign className="h-4 w-4" /> Portfolio</Link>
           </Button>
           <Button asChild variant="outline" size="sm">
-            <Link to="/admin/funding-pipeline"><Briefcase className="h-4 w-4" /> Journey</Link>
+            <Link to="/choose-account"><Briefcase className="h-4 w-4" /> Journey</Link>
           </Button>
           <Button asChild variant="outline" size="sm">
-            <Link to="/admin/funding-lens"><TrendingUp className="h-4 w-4" /> Readiness Lens</Link>
+            <Link to="/choose-account"><TrendingUp className="h-4 w-4" /> Readiness Lens</Link>
           </Button>
         </div>
       </FundingGate>
