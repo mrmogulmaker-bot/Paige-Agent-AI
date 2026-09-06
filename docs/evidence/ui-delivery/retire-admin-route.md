@@ -3,24 +3,32 @@
 Owner decision 2026-09-05: Admin is a role, never a URL. This hotfix removes the legacy client route and shell, replaces every executable producer with canonical tenant, account-selection, setup, OAuth, notification, and operator destinations, and makes every old variant behave as an ordinary unknown route.
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
-FLOW_BY_FLOW: PASS: current main, SPA fallback, client router, auth hydration, tenant entry, setup gate, OAuth returns, notification persistence, operator guard, active PRs, and production symptom were grounded before editing.
-PAIGE_UI_DESIGN: PASS: owner-directed route retirement; no replacement privileged shell or visual redesign.
-MATERIAL_FLOW_CHANGE: YES: the legacy destination is removed and existing canonical flows are the only entrances.
-FLOW_PROTOTYPE: NOT_REQUIRED: no new interaction was designed.
-PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: old URLs receive the normal 404; authenticated entry remains server-resolved.
-AUTOMATED_EVIDENCE: PASS (local): 249 test files / 3,630 tests passed on the final rebased commit. Focused post-rebase route/security suite: 59/59; newly merged Vault collision suite: 29/29. One unchanged responsive Clients test timed out once under full-suite load, then passed 39/39 alone and the complete rerun passed 3,630/3,630. Added exact route-retirement, OAuth poison, landing-field minimization, act-as canonical path, account mismatch, non-manager denial, platform-operator routing, and authority-resolution failure coverage.
-STATIC_EVIDENCE: PASS (local): TypeScript check and production build passed; changed-source ESLint passed with 0 errors (10 pre-existing hook/refresh warnings); forbidden URL producer lint and its eight-class self-test passed; migration-version and SECURITY DEFINER grants guards passed; diff-check passed; no Admin chunk is emitted. The hotfix migration was renumbered to the next free version after current main introduced a timestamp collision.
-RENDERED_EVIDENCE: PASS (local production build): standard 404 rendered for the base, trailing-slash, and deep retired variants at 1366x768, 390x844, and 900x1000 with no page errors or horizontal overflow.
-BEHAVIORAL_EVIDENCE: PASS (local production build): direct navigation, refresh, back/forward, anonymous Solo redirect, account-selection redirect, and both explicit OAuth callback routes were driven in Chromium. Old-route render completed in 645-1,578 ms, not the former nine-second auth wait.
-AUTHENTICATED_RUNTIME: PROOF OWED: no owner/member/tenant-admin/platform-operator production credential was used. Automated server-authority tests pass, but a signed-in production role matrix must not be inferred from them.
-KEYBOARD_FOCUS: PASS: first Tab on the unknown-route surface focuses Return to Home.
-ZOOM_REFLOW: PASS: 390x844 and 900x1000 production-build drives rendered without horizontal overflow.
-REDUCED_MOTION: NOT_APPLICABLE: no motion introduced.
-STATE_COVERAGE: PASS locally for anonymous, expired/signed-out, account mismatch, non-manager, platform staff, authority error, valid tenant roots, setup, OAuth callback, notification sanitization, refresh, and history navigation. Authenticated production personas remain PROOF OWED.
-TRUTHFUL_STATE_LABELS: PASS locally: unknown is 404; missing callback inputs are stated; authorization resolution errors refuse rather than mount.
-SOLO_UI: YES: canonical Solo entry/setup contracts pass; no Solo layout redesign.
-INDEPENDENT_REVIEW: CODE SHIP: review covered authorization bypass, information leakage, redirect loops, stale route resurrection, account mismatch, notification migration, and act-as routing. It caught and caused repair of a duplicated command-center suffix and an over-broad tenant landing query.
-CI_PR_DEPLOYMENT: PROOF OWED until PR checks, merge, migration persistence, exact production SHA, and live browser verification complete.
+FLOW_BY_FLOW: PASS: current main, SPA fallback, client router, auth hydration, tenant entry, setup gate, OAuth returns, notification persistence, operator guard, active PRs, and the production symptom were grounded before editing; durable flow record is this file
+PAIGE_UI_DESIGN: PASS: the owner-directed change removes a route and reuses the existing NotFound and canonical shells; no new visual system, component language, or privileged shell was introduced
+MATERIAL_FLOW_CHANGE: YES: the legacy privileged destination and its delayed auth-loading branch are removed; every old variant now exits immediately through the standard unknown-route behavior
+FLOW_PROTOTYPE: PASS: owner approval in the hotfix assignment explicitly fixes the interaction contract as standard safe unknown-route behavior and forbids a replacement privileged route or shell
+PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: any visitor to an old URL receives the ordinary 404; authenticated users enter only through server-resolved canonical tenant, account-selection, setup, callback, or operator contexts
+VISUAL_DIRECTION: PASS: preserve the existing product NotFound presentation and canonical authenticated shell; the approved correction is route taxonomy and loading behavior, not a redesign
+AUTOMATED_EVIDENCE: PASS: 249 test files and 3,630 tests passed on the final rebased commit; focused post-rebase route/security suite 59/59 and newly merged Vault collision suite 29/29
+STATIC_EVIDENCE: PASS: TypeScript and production build passed; changed-source ESLint passed with 0 errors and 10 pre-existing warnings; route-producer, migration-version, SECURITY DEFINER, regression, and diff guards passed
+RENDERED_EVIDENCE: PASS: local production Chromium rendered the base, trailing-slash, and deep retired variants as the standard 404 at 1366x768, 390x844, and 900x1000 with no page errors or horizontal overflow
+BEHAVIORAL_EVIDENCE: PASS: local production Chromium covered direct navigation, refresh, back/forward, anonymous Solo and account-selection redirects, and both explicit OAuth callback routes; old-route render completed in 645-1,578 ms
+AUTHENTICATED_RUNTIME: UNVERIFIED: no owner, member, tenant-admin, or platform-operator production credential was used; server-authority automation passes but the deployed signed-in role matrix remains proof owed
+KEYBOARD_FOCUS: PASS: first Tab on the local production unknown-route surface focused Return to Home
+ZOOM_REFLOW: PASS: 390x844 and 900x1000 local production drives rendered the unknown-route surface without horizontal overflow
+REDUCED_MOTION: NOT_APPLICABLE: the hotfix adds no motion, transition, or animation
+STATE_COVERAGE: PASS: local automation and browser proof cover anonymous, expired or signed-out, account mismatch, non-manager, platform staff, authority error, valid tenant roots, setup, OAuth callback, notification sanitization, refresh, and history navigation
+TRUTHFUL_STATE_LABELS: PASS: unknown is 404, missing callback inputs are stated, authorization errors refuse rather than mount, and production persona evidence remains explicitly unverified
+SOLO_UI: YES: canonical Solo entry and setup contracts are preserved and tested, although no Solo workspace layout was redesigned
+UNVERIFIED: authenticated production persona driving, production migration-ledger persistence, exact deployed revision, and the eight authenticated Solo PAIGE open or closed viewport states remain proof owed because no production credential was used locally
+SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: authenticated Solo production session unavailable locally; no Solo layout styling changed
+SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: authenticated Solo production session unavailable locally; no Solo layout styling changed
+SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: authenticated Solo production session unavailable locally; only the public unknown-route surface was rendered at this viewport
+SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: authenticated Solo production session unavailable locally; no Solo layout styling changed
+SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: authenticated Solo production session unavailable locally; no Solo layout styling changed
+SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: authenticated Solo production session unavailable locally; no Solo layout styling changed
+SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: authenticated Solo production session unavailable locally; only the public unknown-route surface was rendered at this viewport
+SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: authenticated Solo production session unavailable locally; no Solo layout styling changed
 
 ## Root cause
 
