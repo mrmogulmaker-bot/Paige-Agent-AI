@@ -4235,11 +4235,15 @@ failed-key replay → `prior_attempt_failed`, consume→succeeded, release rever
 windows so the next reserve succeeds, paused + revoked → `grant_inactive`, granted_by-spoof +
 cross-tenant parent/automation rejected, re-consume a settled receipt → `not_reserved` (no fabricated
 success). Guards: `lint:definer-fns` ✓ (no anon-reachable DEFINER), `lint:migration-versions` ✓.
-**§32.a PERSISTED-APPLY is OWED POST-MERGE** — a `BEGIN..ROLLBACK` proof proves the SQL EXECUTES, never
-that it is persisted (§32, this entry's own rule). It must be re-confirmed after CI `deploy-migrations`
-against version `20261230000000` (the `schema_migrations` row advanced AND the 3 tables + 5 `authority_*`
-functions + the guard trigger exist on prod). Authenticated end-to-end drive is honestly OWED to PR-3
-when a real execution lane exists (§32.c) — this slice has no producer.
+**§32.a PERSISTED-APPLY — CONFIRMED on prod 2026-09-06** (merged #1006 → squash `2445418`;
+`deploy-migrations` run 34049734133 GREEN, incl. its own "Verify prod is caught up (PERSISTED, not just
+ran — §32)" step). CC re-confirmed independently on prod (ref xygzykjyynhzqytbqnzu): `schema_migrations`
+version `20261230000000` row present (count 1); `to_regclass` resolves all 3 tables
+(`paige_authority_grants`/`_act_runs`/`_budget_windows`); `to_regprocedure` resolves all 5 `authority_*`
+functions + `paige_authority_grants_guard`; `trg_paige_authority_grants_guard` present (count 1); the
+crew-fix `paige_authority_act_runs.reserved_windows` column present (count 1). A `BEGIN..ROLLBACK` proof
+proves the SQL EXECUTES; this query proves it is PERSISTED. Authenticated end-to-end drive is honestly
+OWED to PR-3 when a real execution lane exists (§32.c) — this slice has no producer.
 
 **Next:** RE-2 PR-2 (policy-aware resolver floor-lift — lift a `high` act's floor ONLY when a valid
 grant authorizes the exact action, else fail closed), then M1 (real spend metering), then PR-3 (wire the
@@ -4264,3 +4268,74 @@ execution loop + owner control surface, one action family at a time). §66: no t
 PR #1007 is **LIVE** as merge revision `9557c3ee2b1762b8e1d59cb5dd4f5856342a0d7c`. GitHub audit, UI-evidence validation, Supabase Preview, and both production Vercel deployments passed. `paigeagent.ai/version.json` reports that exact revision (build suffix `mtq311r5`), both production domains and the affected Solo deep route return HTTP 200, and the deployed `SoloEntry-BPfYCgaU.js` contains all four full-width frame invariants.
 
 Authenticated login/account-selection into Command Center and Clients without refresh remains **PROOF OWED** because the browser attachment service could not attach to the owner session. This limitation does not downgrade deployment persistence, but it prevents claiming the exact owner interaction as production-passed. Next owner: authenticated production verification; read `docs/evidence/ui-delivery/solo-login-workspace-width-hotfix.md` first and record the owner-session result without changing the shell contract.
+
+## 2026-09-06 — RE-2 PR-2: the policy-aware resolver (floor-lift oracle) — owner-authorized, DARK (PR #1010)
+
+**Owner ruling (2026-09-06, autonomy-architecture.md §10.8 build order item 2):** after PR-1's substrate,
+build the policy-aware resolver — lift the blanket `high`-action `confirm` floor ONLY when a specific
+valid standing policy authorizes the exact action; no global switch; fail closed otherwise; dark until PR-3.
+
+**What shipped (`supabase/migrations/20261231000000_re2_policy_aware_resolver.sql`) — ONE new read-only
+oracle, ZERO behavioral change:** `resolve_execution_autonomy(_automation_id, _act_key, _act_is_kind,
+_cost_usd) → jsonb` (SECURITY DEFINER, service_role-only EXECUTE, §59 in-body scope). Per act it returns
+the shipped `min(process grant, act floor, ceiling)` base; then a SINGLE active, in-scope standing grant
+(`paige_authority_grants`, PR-1) with cap headroom lifts THIS act to `auto`. It REUSES every shipped
+piece (`autonomy_lane_rank/_of_rank`, `trust_effective_rung` ceiling, the `paige_action_kinds` act-floor,
+`resolve_tool_autonomy`, PR-1's `authority_grant_active`/`authority_remaining_capacity`) and forks none
+(§18). Every non-ideal branch fails CLOSED to the base floor and cites `reason`
+(no_matching_grant / ambiguous_grant / over_cap / unenforceable_cap_kind / capacity_unreadable);
+a lift cites `grant_id` (§10.9).
+
+**Semantics decision (grounded, not from memory):** the grant SUPERSEDES the process's default `confirm`
+posture — necessary because `trg_paige_automation_acts_changed` re-clamps `paige_automations.granted_lane`
+to `confirm` on every step change, so a grant that deferred to it could never fire. The §67/§68 ceiling
+STILL binds, and an EXPLICIT process `off` (human kill switch) is never overridden. The grant lifts the
+ACT-FLOOR only (§10.8 "lift the high-action confirm floor").
+
+**DARK by construction (§13/§32).** `resolve_automation_autonomy`, `resolve_tool_autonomy`,
+`trust_effective_rung`, and both `paige_action_kinds` CHECKs are UNTOUCHED; the new oracle has ZERO
+producers; the 3 paige-ai-chat reporting tools deliberately STILL read the unchanged
+`resolve_automation_autonomy` (re-pointing them would over-claim `auto` with no execution loop — the
+§13 lie this slice avoids). §37: the only runtime caller of `resolve_automation_autonomy` is those 3
+tools; PR-2 changes no existing signature/body, so every producer is unaffected by construction.
+
+**Crew (§1/§14/§39) — both FIX-FIRST, folded pre-merge.** Design/architecture + §37-inventory scout done
+(plan at `scratchpad/re2_pr2_design.md`). §5 compliance and §39 adversarial verifier both ran the pushed
+diff and both returned FIX-FIRST, confirming darkness / grants / tenant-scope / cap-lockstep clean and
+CONVERGING on two fail-closed correctness defects the green proof structurally could not reach — folded
+into the shipping migration before merge (un-applied file, so cheap, doctrine-determined, no round-table):
+- **F1 (both crews): an `off` act-floor was lifted.** The lift ignored `_act_floor`, so a deliberately
+  disabled tool/kind (`resolve_tool_autonomy='off'` or a kind `default_autonomy_lane='off'`) got raised to
+  `auto`. Fixed: an `off` act-floor (like an `off` process posture) is a hard stop a grant never
+  overrides (§10.9). Proof case F1 added (real off-kind `talent.flag_role_gap` → stays `off`, `capped_by:floor`).
+- **F2 (both crews; §39 proved it live): only 2 of ~11 target/rail sub-scope keys failed closed.** A grant
+  narrowed by `allowed_recipients`/`allowed_payees`/etc. (or rail-bound via `provider_account`) lifted to
+  `auto` wholesale. Fixed with a WHITELIST — the oracle lifts ONLY grants whose scope keys ⊆
+  {allowed_action_kinds, allowed_tool_keys} AND with no `provider_account`; any target-narrowed or
+  rail-bound grant fails closed (PR-3 verifies the concrete target/rail). Proof cases F2a/F2b added.
+- **F4 + §39-Finding-2 (honesty):** corrected the `COMMENT ON FUNCTION` ("process grant still binds" was
+  false) and made `reason` honest — `'lifted'` only when the effective actually reached `auto`, else
+  `grant_present_but_off` / `grant_present_ceiling_capped` (a matched grant still cites `grant_id`).
+Carried as explicit PR-3 obligations (not baked): §5 F3 — whether a grant should override a DELIBERATE
+process `confirm` (vs only the re-clamp default) is an owner call at the PR-3 gate; §39 Findings 3/4 —
+PR-3's executor must independently gate `state='live'` and guard an allowlisted-but-unknown action_kind;
+§5 F8 — PR-3 must reconcile the per-process (reporting) and per-act (execution) resolvers so §57
+source-of-truth cannot diverge.
+
+**Proof (§32).** `BEGIN..ROLLBACK` on prod (ref xygzykjyynhzqytbqnzu) — 22 behavioral asserts PROOF_OK
+against the shipping SQL: structural (SECURITY DEFINER + no anon EXECUTE + service_role EXECUTE); lift →
+auto; darkness (`resolve_automation_autonomy` still `confirm` for the same granted act); fail-closed
+no-grant / out-of-scope / cross-tenant / expired / revoked / paused / emergency-stopped / over-cap /
+unenforceable-cap-kind / ambiguous; negative control (revoke→confirm, restore→auto); explicit `off`
+kill-switch (→off, grant still cited); ceiling binds at rung 1 (→confirm, capped_by ceiling, grant
+cited); §59 non-member → found:false. `trust_effective_rung` was an honest double for the run (to drive
+rungs 2 then 1), reverted on ROLLBACK; everything else is the shipped object. Guards: `lint:definer-fns`
+✓, `lint:managed-schema` ✓, `lint:migration-versions` ✓ (unique). **§32.a persisted-apply OWED
+post-merge** via `deploy-migrations` (schema_migrations 20261231000000 + `resolve_execution_autonomy`
+exists on prod). Authenticated end-to-end drive OWED to PR-3 (no execution lane consumes it yet).
+
+**Next:** M1 (real spend metering — carry the trace into `platform_metered_events`), then RE-2 PR-3
+(wire the execution loop that CONSUMES this oracle + `authority_reserve`, one action family at a time,
+plus the owner-facing grant/caps/history surface, at which point the reporting tools become grant-aware
+and must say `auto` only when a lane is released). §66: no tier gating changed (no-op); no surface
+changed state (dark oracle) — surfaces move when PR-3 wires a lane.
