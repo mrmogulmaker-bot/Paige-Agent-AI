@@ -4131,11 +4131,15 @@ failed-key replay → `prior_attempt_failed`, consume→succeeded, release rever
 windows so the next reserve succeeds, paused + revoked → `grant_inactive`, granted_by-spoof +
 cross-tenant parent/automation rejected, re-consume a settled receipt → `not_reserved` (no fabricated
 success). Guards: `lint:definer-fns` ✓ (no anon-reachable DEFINER), `lint:migration-versions` ✓.
-**§32.a PERSISTED-APPLY is OWED POST-MERGE** — a `BEGIN..ROLLBACK` proof proves the SQL EXECUTES, never
-that it is persisted (§32, this entry's own rule). It must be re-confirmed after CI `deploy-migrations`
-against version `20261230000000` (the `schema_migrations` row advanced AND the 3 tables + 5 `authority_*`
-functions + the guard trigger exist on prod). Authenticated end-to-end drive is honestly OWED to PR-3
-when a real execution lane exists (§32.c) — this slice has no producer.
+**§32.a PERSISTED-APPLY — CONFIRMED on prod 2026-09-06** (merged #1006 → squash `2445418`;
+`deploy-migrations` run 34049734133 GREEN, incl. its own "Verify prod is caught up (PERSISTED, not just
+ran — §32)" step). CC re-confirmed independently on prod (ref xygzykjyynhzqytbqnzu): `schema_migrations`
+version `20261230000000` row present (count 1); `to_regclass` resolves all 3 tables
+(`paige_authority_grants`/`_act_runs`/`_budget_windows`); `to_regprocedure` resolves all 5 `authority_*`
+functions + `paige_authority_grants_guard`; `trg_paige_authority_grants_guard` present (count 1); the
+crew-fix `paige_authority_act_runs.reserved_windows` column present (count 1). A `BEGIN..ROLLBACK` proof
+proves the SQL EXECUTES; this query proves it is PERSISTED. Authenticated end-to-end drive is honestly
+OWED to PR-3 when a real execution lane exists (§32.c) — this slice has no producer.
 
 **Next:** RE-2 PR-2 (policy-aware resolver floor-lift — lift a `high` act's floor ONLY when a valid
 grant authorizes the exact action, else fail closed), then M1 (real spend metering), then PR-3 (wire the
