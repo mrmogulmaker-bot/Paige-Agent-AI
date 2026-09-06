@@ -320,7 +320,7 @@ an integration entry point updates this file in the same commit (§BRAIN.3). Ver
 
 ## Business Vault Phase 2 security foundation (2026-09-06)
 
-**Release state at PR #986 head `39a875ab`: PARTIAL / green pre-merge, production PROOF OWED.**
+**Release state: PARTIAL / deployed at merge `809faec3`; authenticated runtime PROOF OWED.**
 
 - **Solo surface and route:** `src/solo/SoloApp.tsx`, `src/solo/settings.tsx`, `src/solo/vault.tsx`,
   and `src/solo/vault.css` own Settings → Business Vault. Navigation is shown only after
@@ -346,9 +346,13 @@ an integration entry point updates this file in the same commit (§BRAIN.3). Ver
 - **Proof:** 5 focused files / 29 tests; 71 count-enforced actor/database assertions; two-session
   duplicate/cleanup serialization; affected lint, Deno ratchet, TypeScript ratchet, build, audit,
   contract, database-contract, UI-evidence, and full CI verification PASS. Three independent
-  security/routing/test reviews PASS. Authenticated owner/admin/member/cross-tenant drives, real
-  Edge/storage bytes, applied production migrations, production aliases, and runtime logs remain
-  PROOF OWED until deployment and signed-in verification.
+  security/routing/test reviews PASS. PR #986 squash-merged as `809faec3`; post-merge CI passed;
+  `db-live` and `edge-live` both point to that exact SHA; Vercel Production status succeeded
+  (deployment `6MT79LnaSVWixnZXWQwStnVsNW2F`), and `paigeagent.ai` plus
+  `app.paigeagent.ai` returned HTTP 200 with the live Solo chunk
+  `SoloApp-GsPt1vrB.js` containing the four fail-closed Vault fingerprints. Authenticated
+  owner/admin/member/cross-tenant drives, real inspection/quarantine bytes, and a Vercel runtime-log
+  scan remain PROOF OWED.
 - **Collision handoff:** PR #724 is adjacent to the tenant/Settings seam. PR #917 overlaps the
   Settings dispatch/header and `supabase/config.toml` tail. Preserve both Integrations and Vault
   `openPaige` wiring, `solo-settings--vault`, Vault outer-header suppression, current Connections
