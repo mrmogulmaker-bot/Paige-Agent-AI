@@ -2,7 +2,7 @@
 
 Date: 2026-09-06
 Owner scope: all canonical Solo dashboards
-Status: READY FOR PR; production remains PROOF OWED
+Status: LIVE on production revision 9557c3ee2b1762b8e1d59cb5dd4f5856342a0d7c; authenticated login-transition interaction remains PROOF OWED
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
 FLOW_BY_FLOW: PASS: current main, owner production captures, auth/account-selection handoff, canonical Solo shell, dashboard roots, PAIGE docking, responsive policy, deployment behavior, Second Brain, and active collisions were grounded before editing
@@ -22,7 +22,7 @@ REDUCED_MOTION: NOT_APPLICABLE: no animation, transition, or motion behavior cha
 STATE_COVERAGE: PASS: PAIGE open and closed, initial mount and refresh, and both affected dashboard owners are covered by browser geometry plus focused component tests
 TRUTHFUL_STATE_LABELS: PASS: no capability, provider, audit, role, or data-status claim changed; authenticated production proof remains explicitly unverified
 SOLO_UI: YES: the one canonical Solo shell frame shared by Command Center, Clients, Campaigns, Marketplace, Analytics, and Settings
-UNVERIFIED: authenticated production login/account-selection into Command Center and Clients without refresh remains PROOF OWED until the merged revision is deployed and driven in an owner session
+UNVERIFIED: authenticated production login/account-selection into Command Center and Clients without refresh remains PROOF OWED until driven in an owner session; deployment and bundle persistence are independently verified
 
 SOLO_1536X770_PAIGE_CLOSED: PASS: browser-driven shared frame equals shell main width with no horizontal overflow or page error
 SOLO_1536X770_PAIGE_OPEN: PASS: browser-driven docked PAIGE state preserves the canonical frame width with no page error
@@ -44,7 +44,7 @@ This is a shared Solo-shell defect, not MMA-specific tenant data. The fix contai
 
 Every `.paige-solo` frame must fill the authenticated shell's main content owner on initial client-side entry, navigation, and refresh. Individual dashboards may manage their internal grids, but may not determine the outer workspace width. Tenant identity and role remain server-resolved inputs and do not influence geometry.
 
-## Proof status before PR
+## Proof status
 
 - PASS — failing-first source contract reproduced the missing width and stretch invariants on current `main`; the same test passes after the fix.
 - PASS — 89 focused Solo shell, Command Center, Clients, and PAIGE ownership tests.
@@ -53,7 +53,10 @@ Every `.paige-solo` frame must fill the authenticated shell's main content owner
 - PASS — TypeScript ratchet reports no new errors; the repository retains 13 unrelated baseline errors.
 - PASS — Chromium at 1536x770, 1366x768, 1024x768, and 900x1000: frame width and left edge exactly match the shell main owner on initial mount and refresh; no horizontal overflow or page errors.
 - INVALID FOR THIS HOTFIX — legacy `solo-shell-drive.mjs` expects button-based top-level navigation retired by the canonical link shell, so its navigation timeouts are harness drift rather than product failures.
-- PROOF OWED — authenticated production login-to-dashboard transition on the deployed commit, followed by Command Center and Clients navigation without refresh.
+- PASS — PR #1007 merged as `9557c3ee2b1762b8e1d59cb5dd4f5856342a0d7c`; post-merge audit, UI evidence, Supabase Preview, and production Vercel deployments passed.
+- PASS — `https://paigeagent.ai/version.json` reports build `9557c3ee2b1762b8e1d59cb5dd4f5856342a0d7c-mtq311r5`; both production domains and the affected deep route return HTTP 200.
+- PASS — production lazy asset `SoloEntry-BPfYCgaU.js` contains the shipped `width:100%`, `maxWidth:none`, `minWidth:0`, and `alignSelf:stretch` invariants.
+- PROOF OWED — authenticated production login-to-dashboard transition, followed by Command Center and Clients navigation without refresh. The browser attachment service failed independently of the application, so this interaction is not claimed as passed.
 
 ## Collision and handoff
 
