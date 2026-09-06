@@ -48,6 +48,13 @@ describe("Business Mission durable contract",()=>{
     expect(read("supabase/functions/_shared/paige-spine/domains/business_mission.ts"))
       .toContain("/solo/:account/command-center/business-game-plan");
   });
+  it("keeps governed Mission writes visible in the existing Trust Compass catalogue",()=>{
+    const catalogue=read("supabase/migrations/20261226000000_business_mission_tool_autonomy_catalogue.sql");
+    expect(catalogue).toContain("('mission_create'");
+    expect(catalogue).toContain("('mission_revise'");
+    expect(catalogue).toContain("('mission_transition'");
+    expect(catalogue).toContain("CREATE OR REPLACE FUNCTION public.list_tool_autonomy");
+  });
   it("requires honest close-out, permits blocked closure, and records safe audit attribution",()=>{
     expect(sql).toContain("MISSION_OUTCOME_REQUIRED");
     expect(sql).toContain("closure_outcome is not null and outcome_summary is not null");

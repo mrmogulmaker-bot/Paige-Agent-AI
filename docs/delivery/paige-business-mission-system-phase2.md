@@ -32,6 +32,7 @@ Reused contracts:
 - `current_user_tenant_id()` and canonical `is_tenant_owner(actor, tenant)`.
 - Existing Paige pending-confirmation approval and refusal path.
 - Existing action-risk and governed MCP-door enforcement.
+- Existing Trust Compass `list_tool_autonomy` catalogue, extended with visible controls for the three Mission record mutations.
 - Existing `paige_audit_log` for safe owner mutation attribution.
 
 ## Business Game Plan redesign ownership
@@ -79,10 +80,11 @@ No Business Game Plan UI replacement, Rail integration, Work Orders, internal/ex
 Automated/local proof present:
 
 - Mission source-contract tests.
-- Action-risk, one-approval-gate, chat registry, governed MCP-door, definer-function, migration-version, write-target, and Rail-grant checks.
+- Action-risk, one-approval-gate, chat registry, governed MCP-door, tool-autonomy catalogue, definer-function, migration-version, write-target, and Rail-grant checks.
 - TypeScript ratchet and production build.
 - The executable SQL contract passed 30/30 assertions in a disposable loopback PostgreSQL 16 database, covering owner/co-owner/member and workspace boundaries, direct-table denial, immutable briefs, lifecycle validation, stale revision, idempotency, and exact receipt/audit counts. Because standalone PostgreSQL did not provide pgTAP, the repository SQL body ran unchanged with transaction-local compatibility assertion helpers and rolled back.
 - The true concurrent harness passed: duplicate create produced one Mission plus one replay; competing same-revision updates produced one commit plus one revision conflict.
+- Native Supabase CI passed a zero-to-head database reset, the 30-assertion pgTAP Mission suite, and the concurrent replay/revision harness.
 - Independent pre- and post-current-main collision review.
 
 Proof Owed before final release consideration:
