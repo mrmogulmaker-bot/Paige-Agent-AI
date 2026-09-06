@@ -125,13 +125,19 @@ describe("buildOrbNodes — geometry + honesty", () => {
     expect(nodes.every((n) => Number.isFinite(n.dir.x) && Number.isFinite(n.dir.y) && Number.isFinite(n.dir.z))).toBe(true);
   });
 
-  it("adds ghost satellites ONLY to empty domains, and ghosts carry no record", () => {
+  it("adds ghost satellites to empty domains but NEVER to an UNAVAILABLE one, and ghosts carry no record", () => {
     const domains = buildMindDomains(EMPTY);
     const nodes = buildOrbNodes(domains, resolve);
     const ghosts = nodes.filter((n) => n.ghost);
-    // 6 empty domains x 2 ghosts
-    expect(ghosts).toHaveLength(12);
+    // With all-empty inputs, 5 domains are empty-but-partial (identity/people/goals/systems/knowledge)
+    // and get 2 ghosts each; offers is UNAVAILABLE and gets NONE — a "pending"-coloured satellite
+    // around an "unavailable" hub would read as "items awaiting you" when nothing is on file (§13/§70).
+    expect(ghosts).toHaveLength(10);
     expect(ghosts.every((n) => !n.record)).toBe(true);
+    // the UNAVAILABLE domain (offers) has its hub but no ghosts
+    const offersNodes = nodes.filter((n) => n.domain === "offers");
+    expect(offersNodes.some((n) => n.hub)).toBe(true);
+    expect(offersNodes.some((n) => n.ghost)).toBe(false);
     // a populated domain gets no ghosts
     const knowledgeNodes = buildOrbNodes(buildMindDomains(FULL), resolve).filter((n) => n.domain === "knowledge");
     expect(knowledgeNodes.some((n) => n.ghost)).toBe(false);

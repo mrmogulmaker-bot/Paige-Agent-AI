@@ -202,9 +202,13 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     camera.position.set(0, 0.05, 3.25);
     scene.add(camera);
 
-    // environment for PBR reflection on glass/nodes
+    // environment for PBR reflection on glass/nodes. RoomEnvironment is a throwaway Scene of lit
+    // boxes PMREM bakes into a cube map once — dispose its geometries/materials immediately after
+    // baking so they don't leak for the life of the orb (§32/§13: clean up what we allocate).
     const pmrem = new THREE.PMREMGenerator(renderer);
-    const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const roomEnv = new RoomEnvironment();
+    const envTex = pmrem.fromScene(roomEnv, 0.04).texture;
+    roomEnv.dispose();
     scene.environment = envTex;
 
     const world = new THREE.Group(); scene.add(world);

@@ -45,11 +45,14 @@ const SIGNAL_FALLBACK: Record<"dark" | "light", Record<MindSignalState, number>>
 };
 
 // Resolve the six --sig-* tokens to hex ints in the CURRENT theme. Reads the live CSS chain via a
-// throwaway probe under an on-page [data-pg] host; falls back to the pack values when unavailable.
+// throwaway probe placed under `.mind-workspace` — the element that DEFINES --sig-* (they map to the
+// theme's --pg-* chain). Falls back to the pack values when that element is not yet in the DOM (first
+// paint / SSR / jsdom); never probes an element that lacks the tokens (that would return the inherited
+// ink colour for all six and silently collapse the palette).
 function resolveSignalColors(dark: boolean): Record<MindSignalState, number> {
   const fallback = SIGNAL_FALLBACK[dark ? "dark" : "light"];
   if (typeof document === "undefined" || typeof getComputedStyle === "undefined") return { ...fallback };
-  const host = document.querySelector("[data-pg]") ?? document.body;
+  const host = document.querySelector(".mind-workspace");
   if (!host) return { ...fallback };
   const probe = document.createElement("span");
   probe.setAttribute("aria-hidden", "true");
@@ -140,14 +143,14 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
             words: N8N_API_WORDS[n8n.data.api.state],
             action: N8N_ACTION_WORDS[n8n.data.api.actionNeeded],
             lastSuccessfulCheck: n8n.data.api.lastSuccessfulCheck,
-            actionNeeded: !!n8n.data.api.actionNeeded,
+            actionNeeded: n8n.data.api.actionNeeded !== "none", // enum, not boolean: only "none" means no action
             detail: `Workflow count: ${n8n.data.api.workflowCount ?? "unavailable"}. ${N8N_ACTION_WORDS[n8n.data.api.actionNeeded]}. API visibility does not grant MCP authority. Current-state evidence, not Rail history.`,
           },
           mcp: {
             words: N8N_MCP_WORDS[n8n.data.mcp.state],
             action: N8N_ACTION_WORDS[n8n.data.mcp.actionNeeded],
             lastSuccessfulCheck: n8n.data.mcp.lastSuccessfulCheck,
-            actionNeeded: !!n8n.data.mcp.actionNeeded,
+            actionNeeded: n8n.data.mcp.actionNeeded !== "none", // enum, not boolean: only "none" means no action
             detail: `Approved workflows: ${n8n.data.mcp.approvedWorkflowCount ?? "unavailable"}. Approved tools: ${n8n.data.mcp.approvedToolCount ?? "unavailable"}. ${N8N_ACTION_WORDS[n8n.data.mcp.actionNeeded]}. OAuth consent is not approval to execute. Current-state evidence, not Rail history.`,
           },
         }
@@ -212,7 +215,8 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   }, []);
 
   const onPick = useCallback((node: MindOrbNodeLite) => {
-    if (node.record) { chooseRecord(node.record); return; }
+    // Return focus to the orb (not <body>) when a record is opened via keyboard/click on the canvas.
+    if (node.record) { chooseRecord(node.record, document.querySelector<HTMLElement>(".mind-canvas")); return; }
     // A hub (or ghost) pick focuses that domain and filters the list to it.
     setDomainFilter(node.domain);
     const def = MIND_DOMAINS.find((d) => d.key === node.domain);
@@ -323,13 +327,22 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
                   </div>
                 )}
 
-                {/* Orbital controls */}
+                {/* Orb controls. The presentation preferences (orbit pause, reduced motion) persist
+                    per user+tenant and apply wherever the orb DOES start, so they stay available even
+                    on a device that fell back to the list — reduced-motion is an accessibility control
+                    and must never disappear when a feature degrades (§70). The orb-NAVIGATION
+                    affordances (drag/scroll/keyboard hint, Reset view) act only on a live canvas, so
+                    they are hidden when the 3D view is unavailable rather than shown as dead controls. */}
                 <div className="mind-orb-controls" role="group" aria-label="Orbit controls">
-                  <span className="mind-orb-hint" aria-hidden="true"><Rotate3D size={13} /> Drag · scroll · keyboard</span>
+                  {!orbUnavailable && (
+                    <span className="mind-orb-hint" aria-hidden="true"><Rotate3D size={13} /> Drag · scroll · keyboard</span>
+                  )}
                   <button type="button" aria-pressed={!presentationOrbit} onClick={togglePresentationOrbit}>
                     {presentationOrbit ? <Pause size={13} /> : <Play size={13} />}{presentationOrbit ? "Pause orbit" : "Resume orbit"}
                   </button>
-                  <button type="button" onClick={resetView}><Rotate3D size={13} />Reset view</button>
+                  {!orbUnavailable && (
+                    <button type="button" onClick={resetView}><Rotate3D size={13} />Reset view</button>
+                  )}
                   <button type="button" aria-pressed={reducedToggle} onClick={toggleReduced}>Reduced motion</button>
                 </div>
 

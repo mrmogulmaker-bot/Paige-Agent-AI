@@ -72,6 +72,10 @@ function MindOrbCanvasInner({
   onPickRef.current = onPick;
   const onUnavailableRef = useRef(onUnavailable);
   onUnavailableRef.current = onUnavailable;
+  // Latest focus target, so a re-mount (structure change) re-applies it once the engine finishes its
+  // async load — the focus effect below runs before handleRef exists and would otherwise never re-run.
+  const focusDomainRef = useRef(focusDomain);
+  focusDomainRef.current = focusDomain;
 
   // Mount / unmount the engine once. `three` loads here via the dynamic import (code-split).
   useEffect(() => {
@@ -111,6 +115,12 @@ function MindOrbCanvasInner({
           return;
         }
         handleRef.current = result.handle;
+        // Re-apply the active domain filter after an async (re)mount: the focus effect below runs
+        // once, synchronously, while handleRef is still null (the engine chunk is still loading),
+        // so its focus call is a no-op. On a structure-change re-mount that would silently desync
+        // the orb from the parent's active filter — so re-assert it here, from the ref (§13 honesty:
+        // the surface always reflects the real filter state, never a stale one).
+        handleRef.current.focus(focusDomainRef.current ?? null);
 
         // Pause when scrolled offscreen (the engine also pauses on document.hidden).
         io = new IntersectionObserver((entries) => {

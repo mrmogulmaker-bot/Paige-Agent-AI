@@ -1,5 +1,23 @@
 # Decision Log — chronological one-liners
 
+- **PAIGE Mind — the owner-approved 3D knowledge orb ported LIVE onto the Solo surface (2026-09-06, MVP mode)** —
+  the §28-frozen, Gate-1-approved Three.js "knowledge orb" prototype (`docs/prototypes/command-center-mind-gate1.html`)
+  is wired into the real `SoloMindWorkspace` as the Mind subtab's primary instrument. Engine promoted verbatim
+  from the frozen prototype into `src/solo/mind-orb/engine.ts` (`createMindOrb` factory; byte-identical rendering,
+  §28) and code-split behind a dynamic `import("./engine")` so `three` ships as a lazy chunk, never in the main
+  bundle. Nodes bind to REAL read contracts, honest source-signal states, tenant-scoped by the existing hooks:
+  Knowledge resources ← `tenant_knowledge_docs` (LIVE), Connected sources ← n8n readiness (LIVE, status only),
+  Operating decisions ← pending approvals (LIVE); Business context + Client relationships render honest ABSENCE
+  (no frontend hook yet); Offers & services is honest UNAVAILABLE. §58 held (no Systems Check finding surfaced as
+  a Mind record). §32 loud degrade: WebGL probed before `three` loads; probe/mount/render throws all `console.error`
+  and route to the parent record-list fallback with every record still reachable. Read-only surface — no Mind
+  create/update/delete on any tier. Tier VISIBILITY unchanged (redesign of an existing surface, §66/§58): Solo +
+  Sub-account + Enterprise see it, Agency/God/Client/Anon do not. Proof: 28 unit tests + full solo suite 1595
+  passing, `tsc` clean, eslint clean, headless env smoke `scripts/mind-orb-smoke.mjs`. **OWED (§32.c):**
+  authenticated live drive of the deployed subtab at the four viewports in both themes — no session here holds a
+  browser that can reach the authenticated Solo surface, so it is owed to the next capable session, not claimed.
+  Ledger: `docs/doctrine/tier-matrix.md` "PAIGE Mind — the approved 3D knowledge orb"; PR #969.
+
 - **Sandboxed Research & External Execution — APPROVED MVP DIRECTION, not a live capability (owner-directed
   2026-09-05)** — Paige as an active AI COO/orchestrator: PAIGE is the governed decision layer; native tools
   act inside the tenant platform; n8n/Zapier/MCP/future integrations are controlled external workers, never a

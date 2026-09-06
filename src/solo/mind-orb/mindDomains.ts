@@ -338,7 +338,11 @@ export function buildOrbNodes(
         record,
       });
     });
-    if (!domain.records.length) {
+    // Ghost satellites make an empty-but-live/partial hub read as present-but-sparse. An UNAVAILABLE
+    // domain gets NONE: a "pending" (needs_confirmation-coloured) satellite around an "unavailable"
+    // hub reads as "items awaiting you" when the honest truth is there is genuinely nothing on file
+    // (§13/§70). An unavailable hub therefore stands alone.
+    if (!domain.records.length && domain.verdict !== "UNAVAILABLE") {
       for (let i = 0; i < 2; i += 1) {
         const seed = hash(`${domain.def.key}:ghost:${i}`);
         nodes.push({
