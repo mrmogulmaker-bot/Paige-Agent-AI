@@ -166,6 +166,18 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // Both halves are fixed — the entry below, and `configure` added to MUTATION_VERB.
   ["pipeline_configure", "ordinary", "saves a pipeline draft the operator reviews; activation is a separate act"],
   ["propose_business_brief_update", "ordinary", "stages a suggestion the operator approves before it applies"],
+  // Campaign briefs, added 2026-09-06 (owner authority correction). A brief is an owner-authored
+  // PLANNING record — reversible, in-tenant, and it launches, sends, publishes, and spends nothing.
+  // `ordinary` on purpose: it is the class the runtime clamp leaves eligible for a standing `auto`
+  // grant, which is exactly the point — a tenant owner may grant Paige autonomous authority to draft
+  // and revise briefs within their approved scope, and `confirm` stays the escalation lane (the
+  // platform default, and where the RPC itself refuses out-of-policy/ambiguous/unavailable-link/
+  // version-conflict). Classifying these `high` would force a blanket confirm on every planning
+  // write, which is the exact model the correction forbids. The honest boundary is not softened by
+  // the class: a brief is intent, never proof — the "active" lifecycle state is a planning label the
+  // owner sets, not evidence a campaign is running.
+  ["campaign_brief_create", "ordinary", "saves a campaign PLANNING brief the operator can edit or archive; it launches, sends, and publishes nothing"],
+  ["campaign_brief_revise", "ordinary", "edits a campaign PLANNING brief; nothing is launched, sent, or published"],
   ["deal_create", "ordinary", "adds an opportunity"],
   ["deal_move_stage", "ordinary", "moves a deal between stages"],
   // The client seat's ONLY write, and on the portal it is the client editing their own profile.
