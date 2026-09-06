@@ -14,9 +14,21 @@
 --   • client_period_budget_usd  → ENFORCED. tenant_client_agreements IS a canonical client-engagement
 --       boundary (tenant_id NOT NULL → tenants; a real period starts_on/ends_on; a lifecycle status
 --       draft|active|paused|completed|cancelled). The grant must name ONE engagement in
---       scope.client_agreement_id. Every §9 / state / period failure fails CLOSED with a SPECIFIC reason;
+--       scope.client_agreement_id. Every cap-shape / delegation / §9 / state / period failure fails CLOSED
+--       with a SPECIFIC reason (client_period_cap_invalid · client_period_delegation_unsupported ·
+--       client_period_boundary_unspecified · client_agreement_id_invalid · client_agreement_not_found ·
+--       not_authorized · client_agreement_inactive · client_agreement_not_started · client_agreement_ended);
 --       the cap is NEVER silently skipped. A person-level (clients.id) scope is deliberately NOT accepted —
 --       a person has many engagements, so it is ambiguous, and ambiguity fails closed here.
+--       CODEX P1 FOLD (2026-09-06, peer-gate on 2e5c9f9 — three real fail-opens the §5/§39 crews missed, now
+--       closed IN reserve; §37 lockstep held because a fail-closed reserve creates no window for the other
+--       four primitives to walk): (a) a DELEGATED grant (parent_grant_id set) is refused — windows are keyed
+--       strictly per grant with no ancestor rollup, so a child could otherwise reserve a FRESH full cap on an
+--       ancestor's engagement (widening the delegator's ceiling, breaching "delegation never widens
+--       authority"); (b) a JSON null / non-number / negative declared cap is refused — presence (caps ? key)
+--       is TRUE for JSON null, which would cast to SQL NULL, drop the window row, and return ok:true
+--       UNENFORCED; (c) the agreement row is read FOR SHARE — an unlocked read let a concurrent lifecycle
+--       UPDATE (pause/cancel/re-date) close the boundary between the read and the reserve commit (TOCTOU).
 --
 --   • campaign_budget_usd       → FAIL-CLOSED-UNAVAILABLE. There is NO canonical durable campaign boundary:
 --       no campaigns table exists; campaign_briefs (20261225000000) is an owner-authored PLANNING record
@@ -186,6 +198,33 @@ BEGIN
   -- specific reason BEFORE any window is touched; the cap is NEVER silently skipped. reserve is SECURITY
   -- DEFINER (RLS-bypassing), so the tenant match below is the §9 gate, done in-body.
   IF (_g.caps ? 'client_period_budget_usd') THEN
+    -- (Codex P1-b, folded) PRESENCE MUST NOT FAIL OPEN. caps ? 'client_period_budget_usd' is TRUE even when
+    -- the value is JSON null; that would cast to SQL NULL, drop the client_period row from the VALUES filter
+    -- below, and let reserve return ok:true having validated the agreement but ENFORCED NOTHING — a fail-OPEN
+    -- of a real-money control (pre-M1-b this key was refused wholesale). Require a REAL, non-negative JSON
+    -- number; else fail CLOSED. Two IFs (not one OR): PostgreSQL does not guarantee OR short-circuit, so the
+    -- ::numeric cast must be reached only after jsonb_typeof has proven the value is a number (a JSON string
+    -- "abc" would otherwise raise invalid_text_representation instead of a clean refusal).
+    IF jsonb_typeof(_g.caps->'client_period_budget_usd') <> 'number' THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'client_period_cap_invalid');
+    END IF;
+    IF (_g.caps->>'client_period_budget_usd')::numeric < 0 THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'client_period_cap_invalid');
+    END IF;
+    -- (Codex P1-a, folded) A DELEGATED (child) GRANT MUST NOT OPEN A FRESH ENGAGEMENT ALLOWANCE. Budget
+    -- windows are keyed strictly per grant (grant_id is in the PK; there is no ancestor/shared rollup in
+    -- reserve OR authority_remaining_capacity — verified), so a child grant (parent_grant_id set) targeting
+    -- an ancestor's engagement would start at zero client_period usage and reserve its FULL cap again,
+    -- widening the delegator's client-period ceiling — a direct breach of the substrate invariant
+    -- "delegation never widens authority" (20261230000000). No shared-window / ancestor-sum mechanism exists
+    -- yet (building one is a substrate change with a genuine per-grant-cap-aggregation design decision), so
+    -- per the owner rule ("no safe boundary ⇒ fail closed, state it unavailable, never silently widen") a
+    -- DELEGATED grant's client_period cap fails CLOSED here. An owner's OWN grant (parent_grant_id NULL)
+    -- enforces normally. PARKED (out of DARK M1-b scope): the per-ENGAGEMENT rollup across multiple top-level
+    -- owner grants, and spend by grants that never declare the cap, are target-aware PR-3 concerns.
+    IF _g.parent_grant_id IS NOT NULL THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'client_period_delegation_unsupported');
+    END IF;
     _cp_agreement := NULLIF(_g.scope->>'client_agreement_id', '');
     IF _cp_agreement IS NULL THEN
       RETURN jsonb_build_object('ok', false, 'reason', 'client_period_boundary_unspecified');
@@ -193,8 +232,15 @@ BEGIN
     IF _cp_agreement !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
       RETURN jsonb_build_object('ok', false, 'reason', 'client_agreement_id_invalid');
     END IF;
+    -- (Codex P1-c, folded) LOCK THE AGREEMENT ROW for the rest of this transaction. FOR SHARE conflicts with
+    -- the FOR NO KEY UPDATE that set_client_agreement_status / save_client_agreement take on a plain UPDATE,
+    -- so a concurrent pause/complete/cancel/re-date serializes with this authorization check: reserve either
+    -- reads the already-updated (closed) row and fails closed, or holds the share lock until it commits and
+    -- the lifecycle change applies AFTER — never the TOCTOU where reserve reads a stale 'active' row and then
+    -- commits a reservation against a boundary that has since closed. (The grant row is already FOR UPDATE;
+    -- lock order grants→agreement is consistent, no new deadlock cycle.)
     SELECT tenant_id, status, starts_on, ends_on INTO _agr
-      FROM public.tenant_client_agreements WHERE id = _cp_agreement::uuid;
+      FROM public.tenant_client_agreements WHERE id = _cp_agreement::uuid FOR SHARE;
     IF NOT FOUND THEN
       RETURN jsonb_build_object('ok', false, 'reason', 'client_agreement_not_found');
     END IF;

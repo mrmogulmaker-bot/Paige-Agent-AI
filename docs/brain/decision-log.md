@@ -61,7 +61,26 @@
   **§32 RE-PROVED after the fold — PROOF_OK (constant anchor)**: B1..B14, adding **B14** (a grant whose `effective_at` is
   100 days ago still anchors its window to the constant, and two reserves accumulate in the ONE window — the direct
   behavioral rebuttal of the fail-open). Guards green: `lint:migration-versions` / `lint:definer-fns` / `lint:managed-schema`.
-  **PR #1027 (draft). OUTCOME: MERGING** (§32.a persisted-apply owed post-merge via `deploy-migrations`; authenticated drive
+  **CODEX PEER-GATE (§39) on head `2e5c9f9` caught THREE more real fail-opens the §5/§39 crews missed — the layered-defense
+  point exactly (a green crew never waives the independent read of the real diff); all THREE folded FIX-FIRST, all IN
+  `authority_reserve`, §37 lockstep held (a fail-closed reserve creates no window for the other four primitives to walk):**
+  (P1-a, delegation) budget windows are keyed strictly per grant with NO ancestor rollup (verified in reserve +
+  `authority_remaining_capacity`), so a DELEGATED child grant (`parent_grant_id` set) targeting an ancestor's engagement
+  would start at zero client_period usage and reserve its FULL cap again — widening the delegator's ceiling, breaching the
+  substrate invariant "delegation never widens authority". No shared-window/ancestor-sum mechanism exists yet, so per the
+  owner rule a delegated grant's client_period cap fails CLOSED (`client_period_delegation_unsupported`); the owner's OWN
+  grant (`parent_grant_id` NULL) enforces normally. (P1-b, null cap) `caps ? 'client_period_budget_usd'` is TRUE for JSON
+  `null`, which casts to SQL NULL, drops the window row, and returns `ok:true` UNENFORCED — a fail-OPEN; now `jsonb_typeof <>
+  'number'` OR negative fails CLOSED (`client_period_cap_invalid`), two IFs so a JSON-string never reaches the `::numeric`
+  cast (no `invalid_text_representation`). (P1-c, TOCTOU) the agreement read is now `FOR SHARE` — it conflicts with the
+  `FOR NO KEY UPDATE` a lifecycle `UPDATE` takes, serializing pause/cancel/re-date against the reserve so a stale-`active`
+  read can't commit a reservation against a since-closed boundary. **PARKED (§13, out of DARK M1-b scope):** the broader
+  per-ENGAGEMENT rollup across multiple top-level owner grants, and spend by grants that never declare the cap, are
+  target-aware PR-3 concerns. **§32 RE-PROVED after the Codex fold — PROOF_OK: B1..B16**, adding **B15** (null/negative/
+  string cap each fail closed, no window written) and **B16** (delegated child fails closed writing no window; the top-level
+  owner grant still reserves ok — delegation-specific, not a blanket refusal). Guards green after the fold:
+  `lint:migration-versions` (995, no reuse) · `lint:definer-fns` · `lint:managed-schema` · `lint:integration-registry`; §50/§63 clean.
+  **PR #1027 (ready). OUTCOME: MERGING** (§32.a persisted-apply owed post-merge via `deploy-migrations`; authenticated drive
   owed to PR-3). Flip to MERGED + §32.a CONFIRMED post-merge.
 
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
