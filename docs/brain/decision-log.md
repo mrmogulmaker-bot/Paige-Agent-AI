@@ -55,6 +55,19 @@
   export vector regardless. Wording nits corrected (there IS a platform-ops Lovable-gateway Drive path in
   `ship-26-legacy-cleanup`, so the accurate claim is "no Docs/Sheets/Slides API client + no tenant Drive
   OAuth scope"; and the Spine registry substrate exists — what's absent is a Google Workspace-docs ENTRY).
+  **CODEX (third layer) then caught TWO more real ones on the fold — both FOLDED.** **P1 (correctness, §70):**
+  the export unwrapped `document_generate`'s RICH block schema (cover/section-header/prose/callout/pricing-table/
+  cta/…) but `doc-render`'s `coerceBlockArray` understood only heading/list/paragraph and read text/content/value
+  — so a real generated proposal exported as basically just its TITLE while still returning success + a signed
+  URL (a §70 usability lie my md smoke test missed because it drove the renderer's INTERNAL block shape, not the
+  real contract — the peer-gate's false-green warning made concrete). Fixed: `coerceBlockArray` now maps every
+  `document_generate` block type to the flat model (cover→H1+subhead, section-header→H2, prose→markdown,
+  pricing-table→list of rows+total, cta→headline+action, …), and a NEW test drives the REAL schema (fails
+  pre-fix). **P2 (authz):** the initial role gate omitted `platform_admin`, so a delegated operator (only role
+  = platform_admin, the accept_platform_invite shape) was rejected before reaching the operator branch — added.
+  Re-verified: doc-export 10/10 (incl. the rich-block regression), tsc 0, edge ratchet 145, full suite
+  3790/3790, §50/§63 clean. The §39 IDOR + Codex P1 correctness bug are exactly why this MVP got three
+  independent review layers before merge.
 - **Capability System Slice 3 (F05) increment 1 — CRM/scheduling write receipts record an honest Rail outcome (2026-09-06, Task #19, owner-authorized)** —
   three consequential chat acts that recorded ONLY to `paige_audit_log` and left NO capability-Rail row —
   `crm_log_activity`, `calendar_book_meeting`, `crm_create_task` (the write-receipts the §39 Slice-1 verifier

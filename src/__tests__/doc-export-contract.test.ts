@@ -60,6 +60,39 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(dec(r.bytes)).toContain("Body.");
   });
 
+  it("renders the REAL document_generate block schema (cover/section-header/prose/list/pricing-table/cta), not just the title", async () => {
+    // Codex P1 regression: coerceBlockArray previously understood only heading/list/paragraph, so a real
+    // generated proposal exported as basically its title while still returning success. This drives the
+    // ACTUAL on-canvas block contract document_generate persists and asserts every block's content lands.
+    const r = await renderDoc({
+      format: "md",
+      title: "Growth Proposal",
+      content: [
+        { type: "cover", eyebrow: "For Acme", title: "Growth Proposal", subhead: "A plan to scale" },
+        { type: "section-header", title: "Scope" },
+        { type: "prose", markdown: "We will run three campaigns." },
+        { type: "callout", variant: "key-insight", body: "Focus on retention first." },
+        { type: "list", style: "bullet", items: ["Audit", "Build", "Launch"] },
+        { type: "pull-quote", quote: "This changed our business", attribution: "A client" },
+        { type: "stat", value: "3x", label: "pipeline growth" },
+        { type: "pricing-table", caption: "Investment", rows: [{ item: "Retainer", amount: "$2,500/mo" }], total: "$30,000/yr" },
+        { type: "cta", headline: "Ready to start?", action: "Approve & start" },
+      ],
+    });
+    const md = dec(r.bytes);
+    expect(md).toContain("A plan to scale");            // cover subhead
+    expect(md).toContain("## Scope");                    // section-header → H2 (below the H1 title)
+    expect(md).toContain("We will run three campaigns."); // prose markdown
+    expect(md).toContain("Focus on retention first.");   // callout body
+    expect(md).toContain("- Audit");                     // list
+    expect(md).toContain("This changed our business");   // pull-quote
+    expect(md).toContain("3x");                          // stat value
+    expect(md).toContain("Retainer");                    // pricing-table row item
+    expect(md).toContain("$2,500/mo");                   // pricing-table amount
+    expect(md).toContain("Total: $30,000/yr");           // pricing-table total
+    expect(md).toContain("Approve & start");             // cta action
+  });
+
   it("never throws and still produces a file for empty content (title-only)", async () => {
     const r = await renderDoc({ format: "md", title: "Only A Title", content: [] });
     expect(r.ext).toBe("md");
@@ -84,7 +117,7 @@ describe("export-document edge function — the callable seam (source contract)"
 
   it("is admin/coach gated, reads with the CALLER JWT, and re-enforces caller tenant scope IN-BODY (§9/§59 source contract)", () => {
     expect(SRC).toContain('authed.auth.getUser()');
-    expect(SRC).toContain('"admin" || r === "super_admin" || r === "coach"');
+    expect(SRC).toContain('"admin" || r === "super_admin" || r === "platform_admin" || r === "coach"');
     expect(SRC).toContain('.from("marketing_content")');
     // the tenant the file is filed under is the row's tenant, never the request body
     expect(SRC).toContain("const tenantId = doc.tenant_id");

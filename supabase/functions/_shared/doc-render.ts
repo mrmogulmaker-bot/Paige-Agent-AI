@@ -140,9 +140,60 @@ function coerceBlockArray(arr: unknown[]): Block[] {
     if (t === "list" || t === "bullets" || t === "ul" || t === "ol") {
       const itemsRaw = Array.isArray(b.items) ? b.items : Array.isArray(b.content) ? b.content : [];
       const items = itemsRaw.map(asText).filter((s) => s.length > 0);
-      out.push({ type: "list", items, ordered: t === "ol" || b.ordered === true });
+      out.push({ type: "list", items, ordered: t === "ol" || b.ordered === true || b.style === "numbered" });
       continue;
     }
+    // ── document_generate's RICH block schema (the on-canvas document contract: cover · section-header ·
+    //    chapter-divider · toc · prose · callout · pull-quote · stat · worksheet-field · pricing-table ·
+    //    cta). Map each to the renderer's flat model so an exported proposal/guide/one-pager carries its
+    //    REAL content, not just its title (Codex P1 — the normalizer previously read only text/content/
+    //    value, so a `prose` block's `markdown`, a `cover`'s `title`, a `pricing-table`'s `rows`, etc.
+    //    were all silently dropped and the file exported near-empty). Each maps to a heading/paragraph/
+    //    list/pagebreak; nothing is dropped without a reason.
+    const push = (text: string, kind: "heading" | "paragraph" = "paragraph", level = 1) => {
+      const s = text.trim();
+      if (s) out.push(kind === "heading" ? { type: "heading", text: s, level: clampLevel(level) } : { type: "paragraph", text: s });
+    };
+    if (t === "cover") {
+      push(asText(b.eyebrow));
+      push(asText(b.title ?? b.text), "heading", 1);
+      push(asText(b.subhead));
+      continue;
+    }
+    if (t === "section-header") { push(asText(b.title ?? b.text), "heading", 2); continue; }
+    if (t === "chapter-divider") {
+      out.push({ type: "pagebreak" });
+      push(asText(b.title ?? b.text), "heading", 1);
+      push(asText(b.subhead));
+      continue;
+    }
+    if (t === "prose") { push(asText(b.markdown ?? b.text ?? b.content)); continue; }
+    if (t === "callout") { push(asText(b.body ?? b.text)); continue; }
+    if (t === "pull-quote") {
+      const q = asText(b.quote).trim();
+      const attr = asText(b.attribution).trim();
+      if (q) push(attr ? `"${q}" — ${attr}` : `"${q}"`);
+      continue;
+    }
+    if (t === "stat") { push([asText(b.value), asText(b.label)].map((s) => s.trim()).filter(Boolean).join(" — ")); continue; }
+    if (t === "worksheet-field") { push(asText(b.label)); continue; }
+    if (t === "cta") { push([asText(b.headline), asText(b.action)].map((s) => s.trim()).filter(Boolean).join(" — ")); continue; }
+    if (t === "pricing-table") {
+      const caption = asText(b.caption).trim();
+      if (caption) out.push({ type: "heading", text: caption, level: 3 });
+      const rows = Array.isArray(b.rows) ? b.rows : [];
+      const items = rows.map((r) => {
+        const rr = (r && typeof r === "object") ? r as Record<string, unknown> : {};
+        const label = asText(rr.item).trim() + (asText(rr.detail).trim() ? ` (${asText(rr.detail).trim()})` : "");
+        const amount = asText(rr.amount).trim();
+        return [label, amount].filter(Boolean).join(": ");
+      }).filter((s) => s.length > 0);
+      const total = asText(b.total).trim();
+      if (total) items.push(`Total: ${total}`);
+      if (items.length) out.push({ type: "list", items, ordered: false });
+      continue;
+    }
+    if (t === "toc") { continue; } // the table of contents auto-builds on the canvas; a flat export omits it
     // paragraph / text / anything else
     out.push({ type: "paragraph", text: asText(b.text ?? b.content ?? b.value ?? "") });
   }

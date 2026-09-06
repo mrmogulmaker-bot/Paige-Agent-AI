@@ -53,7 +53,10 @@ serve(async (req: Request) => {
     if (uErr || !user) return json(401, { error: "Unauthorized" });
     const { data: roleRows } = await authed.from("user_roles").select("role").eq("user_id", user.id);
     const roles = (roleRows || []).map((r: any) => r.role);
-    if (!roles.some((r: string) => r === "admin" || r === "super_admin" || r === "coach")) {
+    // Includes platform_admin (a DELEGATED platform operator whose only role is platform_admin — the
+    // shape accept_platform_invite creates) so the operator export path below is actually reachable for
+    // them (Codex P2); the isOperator branch treats super_admin/platform_admin as cross-tenant-authorized.
+    if (!roles.some((r: string) => r === "admin" || r === "super_admin" || r === "platform_admin" || r === "coach")) {
       return json(403, { error: "Admin or coach access required." });
     }
 
