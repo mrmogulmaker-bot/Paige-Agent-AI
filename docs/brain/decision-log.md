@@ -4,7 +4,7 @@
   foundation (2026-09-05, PR #970 — RC, pending merge approval)** — owner-approved the prototype
   (`docs/prototypes/campaigns-overview.html`), then built production. Replaces the "Campaign state
   rollup unavailable" panel. NEW: `campaign_briefs` table + `get_campaign_briefs`/`configure_campaign_brief`
-  RPCs (migration `20261224000000`), modeled verbatim on the pipeline governed seam — SECURITY DEFINER,
+  RPCs (migration `20261225000000`), modeled verbatim on the pipeline governed seam — SECURITY DEFINER,
   tenant re-resolved from auth (§9/§59), tenant-admin/owner write gate (§53), version + idempotency, audit;
   RLS tenant-scoped read-only, writes via RPC. A brief is OWNER-AUTHORED, never proof of a live campaign
   (still no tenant-authorized campaign-state source — `useSoloCampaigns` keeps `campaigns:[]`). Two
@@ -16,6 +16,62 @@
   master-doc §4 SHIPPED line + `docs/doctrine/tier-matrix.md` surface-ledger LIVE flip (§66 records LIVE,
   not RC) + CI persisted-apply proof (§32.a) + authenticated live Solo drive (§32.c, `Proof Owed`). Evidence:
   `docs/evidence/ui-delivery/campaigns-overview.md`.
+- **Capability System slice 1 — artifact receipts DONE; the "render the card on all chat surfaces" item is NOT a clean port (grounded 2026-09-06)** —
+  the truthful-artifact-receipt foundation shipped and is hardened (#972 + the #974 Codex folds; all through the
+  §39 + §5 + Codex layers). Grounding the NEXT Slice-1 item (render `PaigeArtifactCard` on the other chat
+  surfaces) disproved the component header's "~15 lines of SSE handling each" claim: **FloatingChatbot** posts to
+  the same `paige-ai-chat` backend (frame can arrive) but its `Message` type has no `artifacts` field, its stream
+  update replaces the whole message object (would clobber an artifact), it has **no tenantId in scope** for the
+  card's required prop, and it is a **client-persona** surface (hidden on /admin+/agency) where the document/image
+  create tools are admin/coach-gated — so whether a frame is ever PRODUCED there is unconfirmed (wiring it risks a
+  dead render path, §10/§13). **BrokerPaigeSession** posts to a DIFFERENT backend (`broker-paige-chat`) that
+  re-emits only `{delta}` and NEVER emits `paige_artifact` — the frame never arrives, so it needs a backend
+  emission change first, not a client insert. Corrected the misleading component comment (§13/§58). **Honest
+  Slice-1 sequencing state:** the remaining reach items are (a) frontend/rendered-proof — card-render, download
+  button, in-place-refine UI — which a HEADLESS session cannot render-verify (§32.c owes the rendered/authenticated
+  proof to a browser-capable session, and card-render additionally needs the non-trivial per-surface work above);
+  (b) marginal backend — `campaign_brief` doc_type (the model can already produce the content as a `guide`);
+  (c) backend-with-a-§9-question — regular-chat in-place refine (honoring a model-supplied `content_id` for reuse
+  needs a tenant-ownership check); (d) substrate/flag-gated — HTML email_template, video (UNAVAILABLE), social-schedule
+  (Meta flag off). Surfaced to the owner for sequencing rather than churning filler (§31) or shipping an unverifiable
+  frontend port (§70). Grounding lives in scouts a5b49b1463ad074bd (item triage) + ada5727dbf9f4e3ea (port surfaces).
+- **Capability System slice 1.1 — two Codex P2 receipt edge-cases folded forward (2026-09-05, after #972 merged)** —
+  Codex's post-merge review of #972 (the third layer after the §39 + §5 reviews both SHIPped) caught two
+  real honesty edge-cases the same class the slice fixes — the documented §39 "layered defenses, none alone
+  sufficient" pattern. (P2#1) A **Studio-session** `generate_image` where the file uploaded (url present) but
+  the best-effort `save_marketing_content` returned no `content_id` reported success while the canvas linkage
+  (which needs `content_id`) silently got nothing; now a Studio image with no filed id degrades to an honest
+  `IMAGE_NOT_FILED_ERROR` — checked AFTER the §33 critique loop so a rescue regeneration that DID file still
+  counts, and Studio-only (regular chat keeps a null-content_id url as a usable success, since the URL is a
+  real downloadable file). (P2#2) `content-draft` normalizes a content-less model item to `{ content: "" }`,
+  so a non-empty drafts array was not proof of usable copy; a new pure `usableDrafts()` filters to drafts
+  carrying non-whitespace `content` and the guard fails honestly if none remain. **Proof:** 24 contract tests
+  (7 new, falsifiable); 174 green across the source-asserting suite; §50 clean; transpiles clean.
+- **Capability System slice 1 · increment 1 — truthful artifact-creation receipts (2026-09-05, PR #972)** —
+  five chat artifact-creation handlers (`generate_image`, `draft_marketing_content`, `content_save`,
+  `document_generate`, `growth_page_save`) could emit a `success:true` receipt when the edge fn / RPC
+  returned HTTP 200 carrying no real artifact (null public URL, empty drafts array, null saved id). A
+  200-with-empty-payload does not throw, so one dishonest field became a dishonest receipt in three
+  places at once (model narration, the `describeStep` status label, the artifact-card push) — the
+  §13/§70 defect. New pure module `supabase/functions/_shared/artifact-receipt.ts` is the one home
+  (§18) for the decision "did the sub-call actually produce the artifact this kind promises?"
+  (`artifactProduced(shape, value)` + non-leaky `ARTIFACT_ABSENT_ERROR`); each handler wraps its own
+  success shape in it, so the model, status label, card, and audit outcome all inherit the honest
+  signal. `generate_image` gains a no-url branch mirroring the guard the §33 regenerate helper already
+  had; `document_generate` keeps its blocks/placeholder guards + adds the saved-id check;
+  `growth_funnel_build` already threw on missing ids (untouched). **Out of scope, named:** the two
+  going-live PUBLISH handlers (external-publishing, slice 6/7 — needs the publish RPCs' URL return
+  contract verified to avoid a §37 false-negative); Rail (`record_capability_run`) wiring of these
+  tools (slice 3 / F05); and — flagged by the §39 verifier — the CRM/scheduling **write receipts**
+  `crm_log_activity` / `calendar_book_meeting`, which carry the same 200-empty-id class but are writes
+  with their own rail/audit path, not chat artifacts, so they belong to a future write-receipt slice.
+  The draft-only generators (`growth_page_generate` / `growth_funnel_generate`) persist nothing and are
+  correctly excluded (not a gap). Both independent reviews (§39 adversarial verifier + §5 compliance)
+  returned SHIP with no blocking findings. **Proof (§13):** 17 behavioural + wiring contract tests
+  (`artifact-receipt-contract.test.ts`); the 9 tests asserting on `paige-ai-chat/index.ts` source stay
+  green (167 total); §50 clean; all three files transpile clean; tenant scoping unchanged (§9). **Owed:**
+  authenticated owner §32.c live-drive of the deployed edge fn (headless session). Edge deploy via CI on
+  merge (`deploy-edge-functions.yml`).
 
 - **The Paige Capability System — OWNER-LOCKED full-range MVP direction (2026-09-05)** — PAIGE is the
   tenant's governed operating environment; chat is the front door to a FULL capability range, NOT chat-only/
@@ -3164,3 +3220,65 @@ identical tree; Vercel production is `READY`, all five production aliases point 
 Connections route returned HTTP 200, the live Solo bundle carries the release fingerprints, and the
 one-hour runtime-error scan was clean. Authenticated provider behavior, signed-in production tenant
 truth, and the owner live-drive remain **UNVERIFIED**.
+
+---
+
+## 2026-09-05 — All 119 MCP tools pass one governed door; the 68 mutations refuse (task #45, PR #960)
+
+**Owner ruling, verbatim:** *"An MCP connection authorizes access to the MCP door; it does not
+authorize consequential action."* All 119 tools pass one governed execution door. The 51 genuinely
+read-only tools remain available only when tenant, tier, scope, actor identity and the
+server-resolved workspace all check out. The 68 mutation/effectful tools refuse by default until
+they can receive a valid approval through Paige's existing one-approval-gate model — no
+MCP-specific approval mechanism, no parallel confirmation inbox, no caller-supplied approval flag,
+no approval implied by OAuth or an API credential.
+
+**What the split rests on.** All 119 handler bodies were read and their effect recorded with
+`file:line` evidence, never inferred from a name — 51 read, 68 mutate. That correction matters:
+twenty tools mutate behind read-looking names (`handle_data_subject_request` is a GDPR erasure,
+`suspend_tenant`, `confirm_proposal`, `append_client_memory`), and four read-only tools carry
+write-looking names (`get_workflow_run`, `get_skill_run`, `list_communication_log`,
+`list_email_send_log`). An earlier name-based estimate said 70/49 and it was wrong in both
+directions.
+
+**One classifier, not two.** The intersection between `action-risk.ts`'s 62 keys and the 119 MCP
+tool names was exactly ONE (`delegate_to_subagent`), so the surface classified `unclassified` 118
+times. Eleven MCP tools turned out to perform acts already named and reuse nine of those keys; the
+rest had no
+twin and were added to `action-risk.ts` itself. Two candidate reuses were REJECTED on evidence
+rather than adopted for tidiness — `add_contact_note` is not `crm_add_note` (different column, and
+`clients.current_notes` IS client-readable), `propose_subagent` is not `forge_subagent` (its
+default `soft` path auto-ships an enabled specialist).
+
+**Why the refusal is structural rather than lane-driven.** Measured on production the same day:
+`resolve_tool_autonomy` returns `COALESCE(_mode,'confirm')`, and `tenant_tool_autonomy` already
+holds six `auto` rows on `n8n_*` canonical keys. All six are `high`, so the clamp catches them
+today — luck, not design. One `auto` row on an `ordinary` canonical would be an external connector
+executing a change with no code change and nothing in CI to notice. The door therefore refuses
+every mutation regardless of lane, declares `not_resolved` rather than implying one, and needs no
+database round trip to decide.
+
+**The seam gained a `principal`.** Four of the six doors `governedExecution.ts` declares
+(`automation`, `agent`, `skill`, `mcp`) routinely have no `auth.uid()`, and its identity check
+demanded one — so every one was refused `unauthenticated` before it could be adopted.
+`GovernedCaller.principal` defaults to `"person"` and buys a verified machine credential exactly one
+thing: reaching the checks. The same change closes the hole it would open —
+`service_principal_may_not_mutate` refuses a machine on the seam's one auto-execute path, placed
+AFTER the `owner_only` check so an act's own ceiling stays the more specific truth.
+
+**Two §58 regressions, both deliberate.** Sixty-eight tools that worked stop working. The
+`mcp.command` Rail feed goes to zero, because all twenty of its client-acting labels are mutations
+and the emitter is never reached — correct, a refusal is not a command, but an operator rail that
+read "External command: added a new client" now shows nothing.
+
+**Blast radius, measured, not guessed.** Zero in-repo producers break: every in-repo path to
+`paige-mcp` is outbound (Paige as MCP *client* to a tenant's own n8n or Zapier), static source
+analysis, or a non-`tools/call` method. The population that feels this is one live external OAuth
+client — "Claude", holding all fourteen scopes including every write scope — plus the two platform
+keys. Neither of the two `tenant_mcp_connections` rows loops back at the platform's own door.
+
+**Filed rather than fixed here:** thirteen of the 51 reads have no tenant predicate and return
+fleet-wide rows (#46 — the door checks the caller, not the query); the approval channel that turns
+the refusals back into executions (#47); splitting arming out of the stage-automation rule tools,
+which can arm unattended sending in one call (#48); four inconsistencies the mapping surfaced in
+existing policy (#49).

@@ -111,20 +111,47 @@ function currentActor(): ActorCtx {
   return actorStore.getStore() ?? { kind: "platform", user_id: null, client_id: null, scopes: [] };
 }
 
-async function audit(action: string, target_type: string | null, target_id: string | null, payload: Record<string, unknown>) {
-  try {
-    const a = currentActor();
-    await admin.from("paige_audit_log").insert({
-      actor_user_id: a.user_id,
-      actor_role: a.kind === "user" ? "mcp:user" : "mcp:platform",
-      action,
-      target_type,
-      target_id,
-      payload: { ...payload, ...(a.client_id ? { mcp_client_id: a.client_id } : {}) },
-    });
-  } catch (e) {
-    console.error("[paige-mcp] audit failed", (e as Error).message);
-  }
+/** `paige_audit_log.target_id` is a UUID column. Anything else Postgres rejects with 22P02, and this
+ *  helper used to hand it whatever the call site had — a template_key, a slug, a TOOL NAME — and then
+ *  swallow the error. That is why this surface has no audit history: not because nothing happened, but
+ *  because the writer threw and said nothing. Proven against production: inserting
+ *  target_id='create_contact' returns `22P02 invalid input syntax for type uuid`. The `tier_denied`
+ *  rows the chokepoint has written since it shipped went the same way.
+ *
+ *  Any non-UUID identifier now travels as `payload.target_ref`, which is queryable and loses nothing. */
+const AUDIT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function audit(
+  action: string,
+  target_type: string | null,
+  target_id: string | null,
+  payload: Record<string, unknown>,
+  // THE WORKSPACE THIS ROW IS ABOUT, optional and defaulting to none. The tenant-admin read policy
+  // on `paige_audit_log` gates on `tenant_id = current_user_tenant_id()`, so a row written without
+  // it is one the workspace owner cannot read — the table's own index misses it too. Every existing
+  // call site keeps its current behaviour by omitting it; the governed door passes the tenant it
+  // already resolved server-side, and the remaining call sites are a tracked follow-up rather than
+  // something to guess at from here.
+  tenantId?: string | null,
+) {
+  const a = currentActor();
+  const isUuid = typeof target_id === "string" && AUDIT_UUID.test(target_id);
+  const { error } = await admin.from("paige_audit_log").insert({
+    actor_user_id: a.user_id,
+    actor_role: a.kind === "user" ? "mcp:user" : "mcp:platform",
+    action,
+    ...(tenantId ? { tenant_id: tenantId } : {}),
+    target_type,
+    target_id: isUuid ? target_id : null,
+    payload: {
+      ...payload,
+      ...(a.client_id ? { mcp_client_id: a.client_id } : {}),
+      ...(!isUuid && target_id ? { target_ref: target_id } : {}),
+    },
+  });
+  // Loud, not swallowed (§32). An audit write that fails silently turns every later question about
+  // what happened into a guess, which is the state this helper was in for the life of the surface.
+  if (error) console.error(`[paige-mcp] AUDIT WRITE FAILED action=${action}:`, error.message);
 }
 
 // Workflow dispatcher lives in _shared so the pg_cron sweeper
@@ -134,6 +161,9 @@ import { canonicalDirectFunctionName, isMarketplaceDirectFunctionBlocked, resolv
 // §200: the god/platform actor has no tenant of its own; resolve the operator's
 // designated system tenant from config-as-data (fail-closed null when unset).
 import { platformOperatorTenantId } from "../_shared/platform-operator-tenant.ts";
+// The governed door (task #45). One decision for all 119 tools; see the adapter's header for why
+// a mutation refuses here rather than being left to a workspace autonomy row.
+import { decideMcpToolCall, mcpGovernedAuditRow } from "../_shared/paige-mcp/governed-adapter.ts";
 // Tier Rail Spine (Phase D): one shared tier resolver, off the same declared rail
 // (public.get_actor_access) a human resolves through — so Paige's tier == a human's.
 import { getActorTier, isClientSeatByScopes } from "../_shared/actorTier.ts";
@@ -1620,10 +1650,21 @@ async function resolveTenantId(explicit?: string | null): Promise<string | null>
     }
     return null;
   }
-  const tenantId = await actorTenantId();
-  if (tenantId) return tenantId;
-  const { data: mma } = await admin.from("tenants").select("id").eq("slug", "mma").maybeSingle();
-  return (mma?.id as string) ?? null;
+  // §200: FAIL CLOSED. This used to fall back to a hardcoded `slug = 'mma'` lookup, so any caller
+  // whose workspace did not resolve silently wrote into Mogul Maker Academy — a real production
+  // account — through five call sites, four of which also accept a caller-supplied tenant_id.
+  //
+  // The same §200 repair was already made 40 lines above in `actorTenantId`, whose comment reads
+  // "was a hardcoded (and stale/phantom) MMA_TENANT_ID … or null when none is designated (every
+  // consumer below fails closed on null — strictly safer than pinning to a phantom)". That cleanup
+  // simply did not reach this function. `actorTenantId` ALREADY resolves the operator's designated
+  // system tenant for a platform actor, so there is nothing left for a fallback to add: if it
+  // returned null, the honest answer is null.
+  //
+  // This matters to the governed door specifically. The gate resolves tenancy server-side and
+  // asserts `tenantSource: "server"`; a resolver that invents a tenant would have the gate govern
+  // one workspace while the handler wrote to another, and stamp that as server-derived.
+  return await actorTenantId();
 }
 
 // ---------- Contacts (extended) ----------
@@ -2404,6 +2445,16 @@ mcp.tool("send_transactional_email", {
 
 // ---------- send_sms ----------
 // Legacy send_sms stays fail-closed until governed outbound authorization exists.
+//
+// THIS TOOL IS DECLARED `effect: "read"` IN `_shared/paige-mcp/capability-policy.ts`, AND THAT IS
+// ONLY TRUE WHILE THE HANDLER BELOW STAYS INERT. It is truthful today — the whole body is a length
+// check, a uuid, an append-only audit row and a `blocked_…` status; there is no provider call. But
+// the governed door's read branch returns BEFORE classification, clamp, approval and outcome, so
+// re-arming the Twilio send under this tool name would put a real outbound send behind a `read`
+// declaration and it would execute ungoverned. If you re-arm it, change that row to
+// `effect: "mutate"` in the SAME commit. R6 of `mcp-governed-door-lint` catches the accident —
+// a `fetch(` or a provider helper appearing in this span fails CI — but it cannot catch a send
+// routed through a module it does not follow. The row and this comment are a pair; keep both.
 mcp.tool("send_sms", {
   description:
     "SMS sending is unavailable from this legacy tool. Tenant messages must use the governed Communications sender after that tenant's A2P registration is approved.",
@@ -3188,6 +3239,10 @@ mcp.tool("list_subagents", {
     domain: z.string().optional().describe("Filter by domain (partial match)."),
   }),
   handler: async ({ query, domain }) => {
+    // This is the one read on the surface whose only outbound call is a helper. `tool_search` routes
+    // to the orchestrator's `searchSubagents`, which is a single `.select()` over `paige_subagents`;
+    // the invocation-logging write lives on `tool_invoke`, which is `delegate_to_subagent`'s path.
+    // mcp-read-fetch-exempt: tool_search reaches searchSubagents, one select over paige_subagents
     const r = await callOrchestrator({ action: "tool_search", query, domain });
     if (r.status >= 300) return err(`orchestrator_error_${r.status}`);
     return ok(r.body);
@@ -3602,6 +3657,9 @@ mcp.tool("list_subagent_proposals", {
     // workspace's proposals to any MCP caller.
     const listTenantId = await actorTenantId();
     if (!listTenantId) return err("tenant_not_resolved");
+    // The forge's `list` action is a `.select()` over `paige_subagent_proposals`, ordered and
+    // limited — no insert, update, delete or provider call anywhere on that branch.
+    // mcp-read-fetch-exempt: subagent-forge action list is a select over the proposals table
     const r = await fetch(`${SUPABASE_URL}/functions/v1/subagent-forge`, {
       method: "POST",
       headers: {
@@ -5224,7 +5282,7 @@ async function resolveBearer(presented: string): Promise<ActorCtx | null> {
 async function enforceTierAndScope(
   body: any,
   actor: ActorCtx,
-): Promise<{ ok: true } | { ok: false; status: 403; error: string }> {
+): Promise<{ ok: true } | { ok: false; status: 403; code: string; error: string }> {
   // NOTE: this inspects a single JSON-RPC object's `.method`. A JSON-RPC batch
   // ARRAY has no top-level `.method` and would slip past — that is safe TODAY
   // only because the transport (StreamableHttpTransport, no session adapter)
@@ -5241,9 +5299,12 @@ async function enforceTierAndScope(
   try {
     tier = await actorStore.run(actor, () => deriveTier(actor));
   } catch (e) {
-    if (operatorNotification) return { ok: false, status: 403, error: "This action is unavailable." };
+    if (operatorNotification) return { ok: false, status: 403, code: "unavailable", error: "This action is unavailable." };
     console.error("[paige-mcp] tier resolution failed", (e as Error)?.message);
-    return { ok: false, status: 403, error: "tier_resolution_failed" };
+    await actorStore.run(actor, () => audit("mcp_gate_refuse", "mcp_tool", toolName ?? null, {
+      refusal_code: "tier_resolution_failed", enforcement: "enforced",
+    })).catch(() => {});
+    return { ok: false, status: 403, code: "tier_resolution_failed", error: "tier_resolution_failed" };
   }
 
   // These legacy operator tools must not emit named denial/audit payloads or
@@ -5251,7 +5312,7 @@ async function enforceTierAndScope(
   if (operatorNotification) {
     return tier === "god" && (actor.kind === "platform" || actor.scopes.includes(TOOL_SCOPE[toolName]))
       ? { ok: true }
-      : { ok: false, status: 403, error: "This action is unavailable." };
+      : { ok: false, status: 403, code: "unavailable", error: "This action is unavailable." };
   }
 
   // ── TIER GATE (audience) ──
@@ -5264,7 +5325,7 @@ async function enforceTierAndScope(
       audit("tier_denied", "mcp_tool", toolName ?? null, { required_tier: requiredTier, caller_tier: tier }))
       .catch(() => {});
     return {
-      ok: false, status: 403,
+      ok: false, status: 403, code: "tier_forbidden",
       error: `tier_forbidden: '${toolName}' requires '${requiredTier}', caller is '${tier}'`,
     };
   }
@@ -5272,11 +5333,118 @@ async function enforceTierAndScope(
   // ── SCOPE GATE (operation) — unchanged semantics ──
   if (actor.kind === "platform") return { ok: true };
   const required = TOOL_SCOPE[toolName];
-  if (!required) return { ok: false, status: 403, error: `unknown_tool:${toolName}` };
+  // THE SCOPE REFUSALS ARE RECORDED TOO, so "did anything try to reach my workspace over MCP" has a
+  // truthful answer rather than one covering only the denials somebody remembered to write down.
+  // The tier branch above already wrote its row; these two did not, and the governed door beyond
+  // them records every attempt — so these were the last two silent exits on the path.
+  //
+  // The `operatorNotification` branches deliberately stay silent, and that is not an oversight: an
+  // audit row naming those two tools would confirm to a non-operator that they exist, which is the
+  // named denial `platform-notification-tool-boundary.test.ts` exists to forbid.
+  if (!required) {
+    await actorStore.run(actor, () => audit("mcp_gate_refuse", "mcp_tool", toolName ?? null, {
+      refusal_code: "unknown_tool", caller_tier: tier, enforcement: "enforced",
+    })).catch(() => {});
+    return { ok: false, status: 403, code: "unknown_tool", error: `unknown_tool:${toolName}` };
+  }
   if (!actor.scopes.includes(required)) {
-    return { ok: false, status: 403, error: `insufficient_scope: tool '${toolName}' requires '${required}'` };
+    await actorStore.run(actor, () => audit("mcp_gate_refuse", "mcp_tool", toolName ?? null, {
+      refusal_code: "insufficient_scope", required_scope: required, caller_tier: tier, enforcement: "enforced",
+    })).catch(() => {});
+    return { ok: false, status: 403, code: "insufficient_scope", error: `insufficient_scope: tool '${toolName}' requires '${required}'` };
   }
   return { ok: true };
+}
+
+/**
+ * THE GOVERNED DOOR — the single place a `tools/call` is decided, and the last thing that runs
+ * before dispatch.
+ *
+ * WHAT IT ADDS TO THE GATE ABOVE. `enforceTierAndScope` answers audience ("may this tier see this
+ * tool?") and operation ("does this token hold the scope?"). Both are necessary and neither asks
+ * the question this function exists for: **is this act a change, and may a connected app make it?**
+ * For 68 of the 119 tools the answer is no, whatever the tier and whatever the scope — because an
+ * MCP connection authorizes access to the door, not consequential action. See
+ * `_shared/paige-mcp/governed-adapter.ts` for the full reasoning, including why the refusal is a
+ * property of the channel rather than of a workspace's autonomy row.
+ *
+ * ORDER IS LOAD-BEARING, IN BOTH DIRECTIONS.
+ *  - It runs AFTER the tier/scope gate, so `access` is a verdict that was actually reached rather
+ *    than a permissive default — the gate's own `ok` is what is handed in, and moving this call
+ *    above the gate does not compile.
+ *  - It runs BEFORE `httpHandler`, so a refused mutation never reaches a handler and therefore
+ *    never has a side effect to undo. A gate that refuses after the write is a log entry, not a
+ *    gate.
+ *
+ * NOTHING IN THE REQUEST REACHES A GOVERNANCE INPUT. The tenant is `actorTenantId()`, the identity
+ * is the resolved bearer, the access verdict is the gate's, and the effect comes from the
+ * capability policy. `params.arguments` is passed through as the call's arguments and is read for
+ * nothing else, which is what makes a forged `tenant_id`, `role`, `confirm` or `autonomy` in the
+ * model's JSON inert rather than merely discouraged.
+ *
+ * EVERY ATTEMPT LEAVES A RECORD, allowed or refused, and the record carries no arguments, no
+ * headers, no credentials and no provider output — only what was decided and why.
+ */
+async function governMcpToolCall(
+  body: unknown,
+  actor: ActorCtx,
+  access: { allowed: boolean; reason?: string },
+): Promise<{ ok: true } | { ok: false; status: 403; code: string; message: string }> {
+  // A JSON-RPC BATCH has no top-level `.method`, so it would slip past this and the gate above.
+  // The transport rejects arrays with a 400 today, which makes the hole theoretical — and a
+  // guarantee that rests on a distant library's current behaviour is not a guarantee. Refused here
+  // so it rests on this file instead. No working client is affected: an array never got through.
+  if (Array.isArray(body)) {
+    await actorStore.run(actor, () => audit("mcp_gate_refuse", "mcp_tool", null, {
+      refusal_code: "batch_not_governed", enforcement: "enforced",
+    })).catch(() => {});
+    return {
+      ok: false, status: 403, code: "batch_not_governed",
+      message: "Batched calls are not accepted on this connection. Send one request at a time.",
+    };
+  }
+  const rpc = body as { method?: unknown; params?: { name?: unknown; arguments?: unknown } } | null;
+  if (rpc?.method !== "tools/call") return { ok: true };
+
+  const startedAtMs = Date.now();
+  const toolName = typeof rpc?.params?.name === "string" ? rpc.params.name : "";
+
+  // The workspace, resolved SERVER-SIDE. A throw here fails closed: `null` reaches the seam as
+  // `tenant_unresolved` rather than becoming an unscoped call.
+  let tenantId: string | null = null;
+  try {
+    tenantId = await actorStore.run(actor, () => actorTenantId());
+  } catch (e) {
+    console.error("[paige-mcp] governed door: tenant resolution failed", (e as Error)?.message);
+  }
+
+  const { outcome, audit: record } = decideMcpToolCall({
+    tool: toolName,
+    args: rpc?.params?.arguments,
+    // `resolveBearer` matched a platform key or an unexpired, unrevoked OAuth token before dispatch
+    // reached here; an unmatched bearer returned 401 and never gets this far.
+    authenticated: true,
+    userId: actor.user_id,
+    actorKind: actor.kind,
+    tenantId,
+    access,
+    startedAtMs,
+    nowIso: new Date().toISOString(),
+  });
+
+  const row = mcpGovernedAuditRow(record);
+  // Awaited, not detached: a governance decision nobody recorded is the state this surface was
+  // already in. `audit()` logs loudly on failure and never throws.
+  //
+  // THE COST, NAMED. This is one insert on every call, reads included, so all 51 reads carry a
+  // database round trip they did not before and the table grows a row per attempt rather than per
+  // write. That is deliberate — "which of my tools did that connector reach, and what did the door
+  // say" is unanswerable from a table that only records the ones that got through — but it is a
+  // real trade, and no retention bound is set on it yet.
+  await actorStore.run(actor, () => audit(row.action, row.target_type, row.target_id, row.payload, row.tenant_id));
+
+  if (outcome.kind === "allow") return { ok: true };
+  return { ok: false, status: outcome.status, code: outcome.code, message: outcome.message };
 }
 
 // ── Paige Context Rail — MCP producer (§7/§8/§12) ────────────────────────────
@@ -5601,8 +5769,28 @@ app.all("/*", async (c) => {
     if (!gate.ok) {
       return c.json({
         jsonrpc: "2.0", id: peekedBody?.id ?? null,
-        error: { code: -32001, message: gate.error },
+        // `data.refusal_code` is additive and the sentence is unchanged, so no existing consumer
+        // breaks. It exists because the governed door below returns the SAME http 403 and the same
+        // JSON-RPC -32001, and telling the two apart by which one LACKS a `data` key is
+        // discrimination by absence — the kind a consumer gets wrong once and then hard-codes.
+        // A tier denial is about who is asking; a governed refusal is about what was asked for.
+        error: { code: -32001, message: gate.error, data: { refusal_code: gate.code } },
       }, gate.status, CORS);
+    }
+    // The governed door. `gate.ok` is the access verdict this branch just established — passing it
+    // rather than a literal is what stops this call being moved above the gate.
+    const governed = await governMcpToolCall(peekedBody, actor, { allowed: gate.ok });
+    if (!governed.ok) {
+      return c.json({
+        jsonrpc: "2.0", id: peekedBody?.id ?? null,
+        error: {
+          code: -32001,
+          message: `${governed.code}: ${governed.message}`,
+          // Machine-readable alongside the sentence, so a client can tell "ask a person to approve
+          // this in Paige" apart from "this is never available here" without parsing prose.
+          data: { refusal_code: governed.code },
+        },
+      }, governed.status, CORS);
     }
   }
 

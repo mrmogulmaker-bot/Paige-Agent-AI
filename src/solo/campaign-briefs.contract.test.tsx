@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(__dirname, "..", "..");
-const migration = readFileSync(join(root, "supabase/migrations/20261224000000_solo_campaign_briefs_foundation.sql"), "utf8");
+const migration = readFileSync(join(root, "supabase/migrations/20261225000000_solo_campaign_briefs_foundation.sql"), "utf8");
 const hook = readFileSync(join(root, "src/solo/useSoloCampaignBriefs.ts"), "utf8");
 const desk = readFileSync(join(root, "src/solo/campaign-desk.tsx"), "utf8");
 
