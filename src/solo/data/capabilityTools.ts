@@ -13,8 +13,15 @@
  * `supabase/functions/_shared/action-risk.ts` (§18). This file carries a COPY of the class for each
  * tenant-relevant tool only so the browser can render the knob's ceiling without importing edge
  * code into the app bundle — and `capabilityTools.test.ts` imports the real policy and FAILS if any
- * copied class drifts from it, or if a governed tool the catalogue exposes is left unmapped. A copy
+ * copied class drifts from it, or if a mapped tool is a ghost the catalogue does not expose. A copy
  * guarded by a test is not a second source of truth; an unguarded copy would be.
+ *
+ * A CURATED SUBSET, NOT THE WHOLE CATALOGUE. `list_tool_autonomy` is a SHARED contract: it also
+ * carries the MCP-door / operator acts (`tenant_create`, `agency_*`, `platform_post_notification`,
+ * cross-tenant/privacy acts) that a Solo tenant's Trust Compass must NOT front (§9/§53). So this map
+ * deliberately covers only the Solo-capability tools; the test records that subset relationship
+ * (mapped ⊂ catalogue) rather than forcing every cross-tier act onto a Solo knob. Extending the Solo
+ * surface to newly-catalogued Solo-relevant tools is a scoped §00 product decision, tracked separately.
  *
  * WHAT A RISK CLASS MEANS FOR A KNOB (mirrors the runtime clamp in `paige-ai-chat`):
  *   • ordinary   — the owner may set off / confirm / auto. The full range is real.

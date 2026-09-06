@@ -131,6 +131,41 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### The inbound MCP door — 119 tools, one governed decision, 68 mutations refused (2026-09-05, PR #960)
+
+**Owner ruling:** *"An MCP connection authorizes access to the MCP door; it does not authorize
+consequential action."*
+
+**LIVE.** Every `tools/call` on `paige-mcp` passes one governed chokepoint — after the existing tier
+and scope gate, before dispatch — so a refused act never reaches a handler. Effect was verified by
+reading all 119 handler bodies with `file:line` evidence: **51 reads, 68 mutations**. Reads proceed
+once tenant, tier, scope, actor identity and the server-resolved workspace check out. Mutations
+refuse: **67 `approval_required`, exactly one (`create_tenant`) `owner_only`**. An unmapped tool
+refuses `capability_unmapped`, and CI fails the build before it can ship.
+
+**Do we HAVE MCP governance? Yes, at the caller layer, and this is the honest boundary.** The door
+decides who may ask for what. It does NOT scope the query a handler then runs: thirteen of the 51
+reads have no tenant predicate and return fleet-wide rows (tracked as task #46). No autonomy lane is
+resolved on this surface — the door declares `not_resolved` rather than implying one, and refuses
+every mutation regardless.
+
+**One classifier, extended rather than forked.** `action-risk.ts` gained 52 canonical keys (62 → 114)
+for MCP acts with no Chat twin; eleven MCP acts reuse existing keys. `list_tool_autonomy` gained the
+matching catalogue rows AND the matching `WRITE_TARGET` entries, because a classified act with no
+catalogue row is governed invisibly and one with no attribution target files a row saying only that
+something happened. Classifying an act is a membership in three registries, not a label.
+
+**Guards:** `lint:mcp-governed-door` (R1 every tool mapped · R2 no stale entries · R3 count parity ·
+R4 the chokepoint still calls the adapter · R5 no second door · R6 no read-declared handler calls out
+· R7 every canonical resolves in the one classifier), plus `lint:action-risk` taught the MCP
+declaring surface and `lint:tool-catalogue` unchanged. 44 assertions over the real catalogue.
+
+**Two deliberate §58 regressions:** 68 tools that worked stop working, and the `mcp.command` Rail feed
+goes to zero because all twenty of its client-acting labels are mutations.
+
+**Next slice (#47):** the approval channel that lets a person's approval, given inside Paige, reach
+the door — which is what turns the refusals back into executions.
+
 ### Solo Campaigns → Social — a business can record the accounts it posts from (2026-09-05)
 
 **What shipped.** `/solo/{account}/growth/social` was one fixed UNAVAILABLE panel. It is now a Social
@@ -323,6 +358,13 @@ cannot crash the turn.
    decision (§38), not a code fix to make unilaterally.
 2. **God/super_admin cannot reach the four comms tools at all** — the role gate is
    `admin || coach` with no `is_platform_owner()` branch. Owner-routed to its own PR.
+   **RESOLVED 2026-09-05 (Communications closeout, Slice B):** the role gate now admits
+   `super_admin` (`roles.includes("super_admin")`), so a verified God-tier operator can manage a
+   tenant's Communications while acting inside that tenant (`operator_enter_tenant`). Admits
+   super_admin ONLY — NOT `platform_admin` (a distinct role string) — the frozen super_admin grant
+   (§53). Proven by 9 executed per-role assertions against the real handler
+   (`scripts/client-memory-authz/check.mjs` §25), incl. denial-before-provider and
+   caller-supplied-role-ignored.
 
 ### PAIGE Spine — `team.authority`, and both readiness reads bound to their workspace (2026-09-03)
 
@@ -370,6 +412,15 @@ unapplied until the next successful run. Recorded on incident #198.
 
 **Status: RELEASED.** PR #864, merge `7ad98cff`, migration `20261112000000`. The Spine registry now
 carries **two** capabilities, and this is the first **workspace-level** one.
+
+> **Amended 2026-09-05 — PR #958, migration `20261221000000`.** Every fact this capability returns is
+> now derived from **`public.business_identity_readiness`**, one internal resolver
+> `tenant_comms_readiness` also reads, because the two were answering the same question differently
+> for two real workspaces. New state `legacy_sourced` / source `legacy_brand` (present only in the
+> legacy `tenants.brand` record, never confirmed) and a new `next_action` column on every row. The
+> gate, the four `field_key`s and the always-four-rows promise are unchanged; no Systems Check
+> verdict moves. See the §10 entry "Two readiness reads disagree…" and
+> `docs/delivery/canonical-readiness-contract.md`.
 
 **What PAIGE and Systems Check can now accurately know.** For the caller's own workspace, the status
 and provenance of four Setup fields — `website`, `business_phone`, `industry`,
@@ -801,6 +852,14 @@ Six vertical slices, each independently reviewed by an adversarial agent, repair
   Pre-existing, NOT introduced by this branch. It is scope-enforced (`workflows.run` etc.), not
   lane-enforced. Deliberately not fixed here: MCP callers have no confirm affordance, so gating it
   would make every MCP write un-executable — the exact failure R1 exists to undo.
+  - **SUPERSEDED 2026-09-05 (PR #960), and the prediction was right.** All 119 MCP tools now pass
+    one governed door; the 68 verified mutations refuse (67 `approval_required`, `create_tenant`
+    `owner_only`), which IS "every MCP write un-executable", ruled for explicitly by the owner:
+    an MCP connection authorizes access to the door, not consequential action. The lane is still
+    not resolved on that surface — the door declares `not_resolved` and refuses regardless, so the
+    refusal is a property of the channel rather than of a workspace setting. Giving MCP a way to
+    carry a person's consent is the named next slice; the note above is kept because it named the
+    cost before it was paid.
 - **Approval on five of the six chat surfaces is still MODEL-ASSERTED.** A new request proves a
   person sent another message, not that the message was a yes. Only a surface that renders the
   summary and echoes back its fingerprint proves a human approved THAT call, and one surface does
@@ -1344,6 +1403,8 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
 - ✅ **Gap 3 (Tashia live-drive) — approval-Send "no email on file" + headless-approval guard** (PR #464 frontend + PR #465 backend, merged 2026-08-11). Owner live-drive: Send on a queued approval linked to a contact WITH a valid email rendered "Contact has no email on file". §30: `ApprovalDetail.sendDraft` read ONLY `contact?.email`, populated only when `approval.contact_id` is non-null — an approval filed UNLINKED (contact_id NULL, the downstream effect of the #462 contact-search false-miss) always tripped the guard. **#464:** `sendDraft` now mirrors the backend `execute-approval` resolution (snapshot `draft_content.to` → live contact → re-resolve `clients.email` by id), passes `contact_id ?? null` (send-message pins a null-contact send to the caller's tenant, §9). **#465 fast-follow (owner "make sure it never happens again"):** live-prod audit found 4 approvals, 2 orphans, BOTH with no `contact_id` AND no `draft_content.to` AND no recoverable recipient signal → **0 backfillable** (§13, no guessing); the deliverable is the guard — migration `20260825000000` adds a `NOT VALID` CHECK (`category NOT IN ('email','sms') OR contact_id IS NOT NULL OR draft_content->>'to' IS NOT NULL`) grandfathering the 2 legacy rows + enforcing on all new send approvals, plus an app-level clean-error guard in `paige-ai-chat` (no raw constraint error). §32.a rollback-proven (headless blocked · recipient'd allowed · workflow untouched · legacy grandfathered); §37: paige-ai-chat email/sms sends guarded, paige-mcp workflow_run approvals unaffected (category NULL). §32.a persisted-apply via deploy-migrations. §32.c live-drive owed.
 - ✅ **#127 — Paige contact-lookup false-negative + lookup-honesty** (PR #462, merged 2026-08-11). Owner live-drive: Paige told the operator "no contact named Tashia Anderson on file" when the contact existed. **§30 diagnosis found TWO independent defects wearing one face (§13):** (1) the CRM search matched the WHOLE query phrase against EACH single column (`or(first_name.ilike.%Tashia Anderson%, …)`), so a real row with `first_name="Tashia"` + `last_name="Anderson"` (SEPARATE columns) matched 0 rows — every multi-word/full-name lookup false-missed; (2) an UNRELATED nested tool (content-draft/generate-image) 500'd and its error was narrated as if the *lookup* failed — the owner conflated the two symptoms. **Fix (§18 one home):** new `supabase/functions/_shared/contact-search.ts` tokenizes the query — each token ORs across `[first_name,last_name,email,entity_name,phone]`, tokens AND-combine via chained PostgREST `.or()` (`and(or(tok0…),or(tok1…))`); single-token queries are byte-identical to the old one-group behavior (no regression). Wired into all 3 lookup tools: `paige-ai-chat crm_search_contacts` (all-mode), `paige-mcp search_contacts` (all-mode), `paige-mcp search_clients_fuzzy` (any-mode + `city`, preserves the isGod §9 scope branch). Plus a **LOOKUP HONESTY** prompt block: found / found-nothing / could-not-check are three distinct outcomes, NEVER collapsed into "no record." CI regression guard `src/__tests__/contact-search.test.ts` (11 tests, imports the pure helper). **§32.b PROVEN on prod** (old filter 0 hits, new all-mode 1 hit, any-mode 1 hit, single-token 1 hit for the real Tashia Anderson row). tsc 0 · vitest green. §32.c owner live-drive owed (Tashia resolves on MMA + other sub-accounts).
 
+- ✅ **Solo Business Game Plan — the new DEFAULT Command Center landing** (branch `claude/business-game-plan-ui-rxuju3`, owner-approved visual direction 2026-09-05). The Solo Command Center gains a first sub-tab, **Business Game Plan** (`src/solo/SoloGamePlanWorkspace.tsx`), and it becomes the default landing: bare `/command-center` and legacy `/command-center/overview` redirect (`replace`) to `/command-center/business-game-plan` (the `business-game-plan` slug carries `overview` as a `SOLO_BRANCHES` alias). Sub-tab order is now **Business Game Plan → Systems Check → Mind** — three REAL tabs; Trust Compass's slot 3 is reserved for its owner (no dead/placeholder tab, §58). **No new table/RPC/edge/migration/tier-flag** — a §18 composition hook (`src/solo/data/useSoloGamePlan.ts`) over already-released tenant-safe reads (`useCommandCenter`, `useSoloSetupBrief`, `useCatalogOffers`, `useSoloKnowledge`, `useSoloPendingActions`, `useSystemsCheck("tenant")`, `useSoloActivityFeed`), passing **no** client-supplied `tenant_id` (§9). Every visible figure is a real numerator/denominator over five grounding foundations or says "incomplete"/"couldn't load"; an empty recorded feed reads "No recorded work yet" (§13); every primary action routes to a real, authorized surface or opens the one PAIGE conversation (§corr #4); no route string/provider name/internal id reaches visible copy (§corr #3). **§70 fix caught in build:** the kicker read `accountContext?.name` when the resolved prop is `{accountName, accountType, accountTypeLabel}`, so the owner's account name never rendered — now resolves via `resolveTenantAccountContext` and emits the canonical `data-tenant-account-name`/`-tier` shell markers (§65). Tiers: Standalone Solo ✓ (default landing) · Sub-account — (sequenced: sub-accounts render via `AgencyApp` at `/business` today, so they still land on the Agency Core; the §60 parity gap closes when `/business` mounts `SoloApp` — a separate §65 slice) · Agency/God — separate shells (—) · Client/Anonymous 403. **Verified:** full vitest suite green (3416), build green, typecheck-clean typed files, 64/64 headless render drive (all states × light/dark × 4 Solo viewports). **§32.c authenticated owner live-drive OWED** (headless CI sandbox has no browser/auth tool). Tier-matrix Surface ledger updated same-PR (§66).
+
 ### Backend seams
 
 - ✅ 231+ edge functions across auth/comms/paige-core/marketplace/growth/tenant-admin/integration/credit-funding/cron
@@ -1411,9 +1472,144 @@ Grouped:
   status + provenance for four fields and never a raw value; nothing lets Paige write any of them.
   A write tool needs the one-approval-gate contract, an action-risk classification and Rail events.
 
+### Solo Settings → Connections Add channel (PR #967, LIVE 2026-09-05)
+
+- ✅ **The generic Available catalogue is now the business-channel control desk.** `connections/available`
+  is visibly **Add channel**, grouped by Email and inbox, Phone and messaging, and Calendar and
+  booking. It shows only source-backed operating channels, withholds its one best-next recommendation
+  while required reads are unresolved or unavailable, and routes setup to Communications,
+  Registration, Health, or Calendars. External apps, automations, APIs, social/data systems, and
+  specialist tools have one explicit Integrations handoff; Integrations itself was not redesigned.
+- ✅ **Operating-state truth is tenant-safe and fail-closed.** Prior-workspace identity/readiness values
+  are synchronously masked. A sender counts only when its canonical identity is active or its Google
+  sending account is proven connected; a phone counts only when the canonical readiness record proves
+  `can_send_sms`. Pending, configured-unverified, degraded, registration-required, resolving,
+  failed-read, and unavailable remain distinct. The Add-channel surface performs no provider mutation.
+- ✅ **Exact release proof.** Owner approved exact source head `a1b317d8`; PR #967 squash-merged as
+  `bc89d79c`, whose tree equals the approved head tree (`bd2cf4b4`). Vercel production deployment
+  `dpl_8n1eP8n1Qyik2XVXZCeDLSKKTer1` is `READY` for `bc89d79c`; `paigeagent.ai`,
+  `app.paigeagent.ai`, and the three Vercel aliases point to it. The public Connections route returned
+  HTTP 200, its live Solo bundle contained the five release fingerprints, and the one-hour Vercel
+  runtime-error scan was clean.
+- 🟡 **OWED — authenticated owner live-drive.** Local proof is 188 focused tests plus 170 real-shell
+  checks across all four Solo viewports, both themes, two synthetic tenant contexts, PAIGE open/closed,
+  keyboard/focus, reflow, and reduced motion. No signed-in production owner session or real provider
+  account was exercised, so authenticated tenant/provider behavior remains **UNVERIFIED**.
+
 ---
 
 ## 5. Current focus + known gaps
+### Connections after Add channel — remaining real-provider and runtime proof gaps (2026-09-05)
+
+Inbound mailbox reading and non-SMS business messaging remain **UNAVAILABLE** because no supported
+read/permission contract is proven. Calendar and booking state remains owned and verified inside
+Calendars rather than duplicated in Add channel. Provider OAuth completion, real-account
+permissions, production tenant truth, and authenticated workspace switching remain **UNVERIFIED**
+until the post-deploy owner drive. Integrations retains external apps, automations, APIs, social
+tools, data systems, and specialist tools; this release does not redesign that page.
+
+### The Paige Capability System — OWNER-LOCKED full-range MVP direction (2026-09-05; a DECISION + matrix, NOT live capability claims)
+
+Owner-locked: **PAIGE is the tenant's governed operating environment; chat is the front door to a FULL
+range of real capabilities** — do NOT narrow to chat-only / read-only / recommendation-only. This is ONE
+**Paige Capability System** (governed capability contracts), not unrelated chat widgets. Full plan +
+capability contracts + the 7-slice sequencing: `outputs/paige-at-cowork/09-paige-capability-system.md`.
+Every consequential capability is tenant-isolated, authorization-gated, records a Rail outcome, and
+preserves source/provenance; connected workers (n8n/Zapier/MCP/provider APIs/browser) are execution
+workers UNDER Paige's authority, never a bypass; one approval path for send/publish/spend (no chat
+shortcut); no capability called live on a static UI/prototype/helper (§13/§32/§70). Grounded by six
+read-only scouts (file:line-citable).
+
+**Dependency-ordered capability matrix — honest state (2026-09-05):**
+- **Read & understand** — LIVE/PARTIAL (RLS + `current_user_tenant_id()`; Spine `evidence` provenance).
+- **Create artifacts in chat (image·document·copy·page·funnel·form)** — **LIVE core** (`generate_image`
+  4-provider, `document_generate` 8-type, copy, growth studio; durable home `marketing_content`
+  `status='draft'`; `save_marketing_content`; `chatArtifacts`→`PaigeArtifactCard`; `studio_artifact_versions`).
+  GAPS: download button, multi-surface card render, image→campaign routing, missing types
+  (campaign_brief · HTML email_template · video · social-schedule).
+- **Upload/download & inspect files** — **LIVE** (upload+inspect: `useChatDocumentUpload` 10MB pdf/img/docx,
+  read-check + approve-to-apply extraction, `kb-ingest-file`; folder-scoped storage RLS + server-side scope
+  refusal). PARTIAL: no generic chat→file download. **REAL SECURITY GAP:** uploaded file **content is
+  inlined raw with NO prompt-injection fence** (only anti-hallucination guards), though the fence exists
+  elsewhere (team-context/MCP/Zapier) — a first-class slice-2 hardening item. **Accurate threat (Codex P1,
+  verified `paige-ai-chat/index.ts:7451`):** an attachment request takes the direct-stream branch; the
+  tool-executing agentic loop is gated to NON-document turns, so malicious file content can steer the
+  answer/extraction but cannot directly drive Paige's mutating tools on that turn (the fence stays
+  warranted, and is load-bearing once attachments are ever routed into the tool loop).
+- **Write & operate native records** — LIVE (wired: `deal_move_stage` honest outcome S1/S1.1, content/
+  document/growth writes) / PARTIAL (~43 consequential actions still write only `paige_audit_log`, not the
+  Rail — F05 continuation).
+- **Research (bounded web)** — LIVE/PARTIAL (`deep_research` + `web_search` + `browse_public_url`; gaps per §5
+  Sandboxed-Research entry below).
+- **External execution / integrations** — PARTIAL (chat path governed; `paige-mcp` tier+scope only, no risk
+  gate; sub-agent downstream ungoverned; `decideGovernedExecution` unwired).
+- **Communications/publishing/spend** — PARTIAL/approval-gated (comms LIVE; §38 money boundary; one approval
+  path exists but not unified across MCP/sub-agent).
+- **Sandbox (isolated untrusted/generated-code exec)** — UNAVAILABLE/greenfield (substrate under files/
+  research/advanced actions).
+- **Evidence (Rail/Spine/Mind)** — Rail **PARTIAL/proof-owed** (`record_capability_run` 6 outcomes, RPC
+  deployed + wired via S1/S1.1, but §32.c live-drive OWED — 0 prod rows, end-to-end unproven, Codex P1);
+  Mind PARTIAL (`paige_owner_memory` schema LIVE, no tenant writer — F02 handoff dep).
+
+**Seven owner-sequenced slices (LOCKED):** (1) chat artifact creation + tenant-scoped storage incl image gen
+[LIVE→harden+reach+fill-types] → (2) safe upload/download + inspection [+the injection fence, net-new] → (3)
+governed native writes [F05 continuation] → (4) bounded browser research → (5) governed worker dispatch → (6)
+one approval path [unify across all doors] → (7) advanced browser automation/publishing/comms/paid-media/
+recurring [PLANNED; §67/§68, §64]. Each capability declares its contract (tenant isolation, authz, audit/
+outcome, provenance, safe-failure, durable home). **Same-slice refresh discipline:** each completed slice
+updates this matrix with shipped/evidence/proof-owed/next-owner/dep-order (§0/§66/§BRAIN.3).
+
+**Slice 1 progress (2026-09-05):** _increment 1 — truthful artifact-creation receipts_ (PR #972). Five
+creation handlers (`generate_image`, `draft_marketing_content`, `content_save`, `document_generate`,
+`growth_page_save`) no longer emit a `success:true` receipt on a 200-with-empty-payload (null url / empty
+drafts / null saved id); a new pure home `_shared/artifact-receipt.ts` (`artifactProduced` +
+`ARTIFACT_ABSENT_ERROR`) degrades an absent artifact to an honest `success:false`, so the model narration,
+the status label, and the artifact card all inherit the honest signal (§13/§70). **Proof:** 17 contract
+tests + 167 green across the source-asserting suite; §50 clean; transpiles clean. **Proof owed:**
+authenticated owner §32.c live-drive (headless). **Still in slice 1:** download/export action, render the
+artifact card on all chat surfaces, image→campaign routing, the missing types (campaign_brief · HTML
+email_template · video · social-schedule), regular-chat in-place refine — the visible items run the §00
+Claude-Design pack (CC ports, does not design). **Deferred to their slices, named:** the two going-live
+PUBLISH receipts (slice 6/7) and Rail wiring of these tools (slice 3 / F05).
+
+### Sandboxed Research & External Execution — a COMPONENT of the Paige Capability System (above); APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
+
+Owner-directed MVP capability so Paige is an active AI COO/orchestrator, not a chat interface that
+describes what to do. **This is an approved DIRECTION + dependency-ordered plan — no sandbox is "live"
+because a design or handler exists (§13/§32/§70).** Full plan + honest state labels + file:line grounding:
+`outputs/paige-at-cowork/08-sandboxed-research-external-execution.md`. Operating model: PAIGE is the
+governed decision layer; native tools operate inside the tenant platform; n8n/Zapier/MCP/future
+integrations are **controlled external workers, never a bypass** around authority/tenant-isolation/
+approvals/outcome-recording; a **sandbox** is the contained workbench for untrusted/generated-code/
+browser/file/external execution — not a replacement for Paige or the governed tool system.
+
+**The honest state split (grounded by four read-only scouts, 2026-09-05):**
+- **Research half — largely LIVE/PARTIAL, harden+reach not build (§18).** `deep_research` (a real
+  multi-hop engine with a hard anti-fabrication citation gate) and `web_search` are LIVE Paige-chat
+  tools; the `browse_public_url` skill + the SSRF-hardened `paige-browser` Fly service ship with the
+  tenant-scoped `paige_browser_usage` audit rail (§32.a confirmed; §32.c live-drive OWED). Public
+  browsing blocks **Paige-DRIVEN** writes (login/submit/click/download steps rejected by the allowlist);
+  a visited page's own JS could still POST to a public host (the `page.route` interceptor gates host/SSRF
+  only, not HTTP method — a named **G5** hardening gap, Codex P1 2026-09-05), so it is **PARTIAL on the
+  no-external-write axis, NOT read-only-by-construction**. `FIRECRAWL_API_KEY` config-gating +
+  DNS-rebinding (#138) + the two unequal SSRF guards are the other named PARTIAL/PROOF-OWED gaps.
+- **Sandbox half — genuinely GREENFIELD/UNAVAILABLE.** An exhaustive grep found **no untrusted-execution
+  sandbox** (the only "sandboxes" are the two read-only Fly Playwright services; Browserbase is an inert
+  stub). Governing worker **downstream** actions is also UNAVAILABLE — `delegate_to_subagent` runs the
+  orchestrator as service-role and the specialist acts outside the risk gate; `paige-mcp` enforces
+  tier+scope but no approval/risk gate; the `decideGovernedExecution` seam exists as a pure module,
+  unwired. Per-worker network isolation, budget/cost + Trust-Compass consult on the execution path
+  (why `trigger-workflow` is fail-closed disabled), and recurring-autonomous scheduling are all PLANNED.
+
+**Five dependency-ordered slices:** (1) browser research MVP [LIVE/PARTIAL — harden+reach] → (2) governed
+worker dispatch [PARTIAL — unify the gate across regimes + govern downstream] → (3) sandboxed file/code/data
+work [UNAVAILABLE/greenfield] → (4) advanced browser automation [UNAVAILABLE; only via the governed action
+path] → (5) recurring autonomous [PLANNED; governed by §67/§68, cloud-native §64]. Every meaningful
+external/sandboxed action records a safe attributable Rail outcome (reuse `capability-record.ts`, 6
+outcomes); Spine/Mind retain only scoped sourced facts (F02 Memory contract — handoff dep). **Same-slice
+refresh discipline (owner-directed):** at each completed slice this record updates with what shipped, exact
+evidence, what remains UNAVAILABLE/proof-owed, the next owning workstream, and any dependency-order change.
+
 ### Solo n8n connection clarity — historical UI slice, 2026-09-03
 
 The owner approved separate API connection and Paige tools (MCP) tabs and independent tile/overview states. This earlier UI slice preserved stored credentials while OAuth was blocked. Superseded by released PR #909: standard OAuth is live with the owner-accepted gateway logging risk; only final owner consent/provider verification remains Proof Owed. Current API saved status/count/timestamp does not prove fresh health; the UI must not claim it does. No callback, backend credential, tool-authority, workflow execution, Chat or Spine changes are included. Delivery and proof: `docs/delivery/solo-n8n-connection-clarity.md`. Authenticated owner acceptance is recorded separately from automated/build/deployment evidence.
@@ -2524,7 +2720,8 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
  - **2026-09-05 — The Solo Trust Compass became a real, tenant-governed control surface — and it is
    recorded as an RC, not a shipped claim, because the authenticated live-drive is OWED.** #780's
    parked state (the dial's numbers were fixtures and its buttons only closed a modal) is closed in
-   CODE: Trust Compass is now the third Command Center sub-tab (Systems Check → Trust Compass → Mind),
+   CODE: Trust Compass is now the third Command Center sub-tab (Business Game Plan → Systems Check →
+   Trust Compass → Mind),
    and its per-capability knobs write REAL per-tool autonomy through `set_tool_autonomy` — the one
    tenant-writable governance seam, JWT-scoped to a tenant admin (§59) — read back through
    `list_tool_autonomy` / `resolve_tool_autonomy`. Effective = `min(stored, ceiling, risk cap)`:
@@ -2539,6 +2736,68 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
    build session has no browser. So this is an RC pending merge + the owner's live review; the §4/#780
    line below stays true until it merges, and the tier-matrix Surface ledger carries the per-tier
    Trust Compass entry.
+ - **2026-09-05 — five chat artifact-creation tools reported success on a 200-with-empty-payload
+   (SHIPPED §13/§70 dishonesty, fixed in PR #972).** `generate_image`, `draft_marketing_content`,
+   `content_save`, `document_generate` and `growth_page_save` emitted `{ success: true, … }` even
+   when the underlying edge fn / RPC returned HTTP 200 carrying no real artifact — a null public URL,
+   an empty drafts array, or a null saved id — because a 200-with-empty-payload does not throw. That
+   one dishonest field then drove three consumers at once: the model narrated a fake success, the
+   `describeStep` status label showed "done"/"image ready", and the artifact card pushed with no
+   artifact. Corrected: a new pure home `supabase/functions/_shared/artifact-receipt.ts`
+   (`artifactProduced(shape, value)` + non-leaky `ARTIFACT_ABSENT_ERROR`) degrades an absent artifact
+   to an honest `success:false`, and each handler wraps its own success shape in it. `growth_funnel_build`
+   already threw on missing ids (untouched). Two independent reviews (§39 adversarial verifier + §5
+   compliance) confirmed no false negatives against the real return shapes and SHIP. **Scope note:**
+   the going-live PUBLISH receipts (`growth_page_publish`/`growth_funnel_publish`) and the CRM/scheduling
+   write receipts (`crm_log_activity`, `calendar_book_meeting`) carry the same 200-empty-id class and are
+   deferred to their own slices (external-publishing = slice 6/7; a write-receipt slice) rather than fixed
+   here; the draft-only generators (`growth_page_generate`/`growth_funnel_generate`) persist nothing and
+   are correctly excluded. Authenticated owner §32.c live-drive of the deployed edge fn remains owed.
+ - **2026-09-05 — Connections treated configured resources as operating and could paint the prior
+   workspace during a switch.** The Add-channel candidate originally classified any non-empty
+   `default_email_sender` as Connected without reading `default_email_status`, and listed any
+   assigned phone number under Operating channels even when `can_send_sms=false` or carrier
+   registration was absent. Its best-next card also treated unresolved or failed reads as absence.
+   Independent pre-release review found that the identity/readiness hooks returned their prior
+   `value` for one render after the active tenant changed, allowing the prior workspace's sender
+   address or phone number to appear under the next workspace. Corrected before release: returned
+   values/errors are synchronously tenant-matched, recommendation ranking waits for every owning
+   read, and only canonically active/send-ready resources count as operating. Delayed-switch and
+   independent-source-failure regressions now lock the boundary.
+ - **2026-09-05 — the Communications buy flow told the tenant they were being billed; they are not
+   (Slice A).** `comms-purchase-number` returns `charge_wired:false` on every exit — the PLATFORM is
+   the provider account holder and pays the provider cost for MVP; solo tenants are NOT billed for
+   Communications. Yet the `comms_buy_number` tool description ("THIS SPENDS REAL MONEY… the operator
+   IS being billed"), the server confirmation prompt ("This starts a recurring charge of $X/month"),
+   and the workspace Rail (`_workspace_event_display`: "(monthly charge)" + the unrecorded-outcome
+   summary "a charge or a change has landed") all asserted a tenant charge that does not exist — a §13
+   falsehood on the `audience:'owner'` Rail. Corrected the BACKEND truthfulness layer (paige-ai-chat
+   strings + migration `20261222000000`, which reproduces the Rail function verbatim except the two
+   money strings). NO tenant-billing write was created (§38 preserved). The FRONTEND copy
+   (`src/solo/settings.tsx`, `NumbersTab.tsx`, `src/lib/integrations/connectError.ts`) carries the same
+   claim and is a Claude Design hand-off (§00); the `list_tool_autonomy` toggle label is a parked
+   follow-up. Not a permanent pricing decision — "currently platform-provided, no tenant billing
+   applied."
+
+ - **2026-09-05 — I counted the MCP surface from tool NAMES and reported the count as measurement.**
+   The scoping for the governed MCP door (PR #960) opened with *"70 mutations / 49 reads"*, and that
+   number reached the PR body, the seam's own header and a CI comment. It came from matching tool
+   names against a mutation-verb pattern, which is exactly the inference the resulting policy file
+   forbids. Reading all 119 handler bodies gave **51 reads / 68 mutations** — wrong in both
+   directions, and wrong in the expensive one: twenty tools mutate behind read-looking names
+   (`handle_data_subject_request` is a GDPR erasure, `suspend_tenant`, `confirm_proposal`,
+   `append_client_memory`) while four read-only tools carry write-looking ones (`get_workflow_run`,
+   `get_skill_run`, `list_communication_log`, `list_email_send_log`). A name-derived count is not a
+   measurement; the same two comments also said the surface had **117** tools when it has **119**,
+   which is why `MCP_TOOL_COUNT` is now asserted by CI rather than written in a sentence.
+ - **2026-09-05 — the tier matrix said the autonomy lane could not be brought to MCP without
+   breaking every write, and it was right; the owner ruled for that cost anyway.** The matrix
+   recorded, correctly, that `paige-mcp` performed zero autonomy resolution, and argued against
+   closing the gap on the grounds that doing so *"would make every gated MCP write permanently
+   un-executable."* That is precisely what the governed door now does, by explicit owner ruling. The
+   paragraph is kept rather than deleted: its prediction was accurate, and the entry that matters is
+   that the sequence changed rather than the reasoning — the door closes first, the approval channel
+   opens second (#47), and refusing an act nobody approved is the safe half to ship alone.
  - **2026-09-03 — I swept for the instance that had just bitten me, not for the class I had just
    learned, and reported it as a sweep.** Commit `eb0dbd83` on #792 was titled *"swept R2 and R3 for
    R1's and R4's blind spot — a NEGATIVE result, asserted"*. The measurement was real and the result
@@ -3353,6 +3612,48 @@ reads afterwards is not optional and does not need one.
 still be wrong against the platform. `20261160000000` was verified by executing the flags it
 repaired, and never by asking what else already answered the same question.
 
+**RESOLVED 2026-09-05 — PR #958, migration `20261221000000`.** Not by picking a winner. Both reads
+were lossy: two independent facts had been compressed into one field — **A**, does a value exist at
+all (yes, in the legacy record); **B**, did the owner confirm it in Setup (no). Comms answered A and
+dropped B; business_context answered B and dropped A. Choosing between their answers would have
+preserved one true fact by continuing to erase the other, so the canonical state now carries both,
+via the new state `legacy_sourced` / source `legacy_brand` — which **extends** the
+`connection_sourced`/`connections` vs `owner_confirmed`/`setup` distinction this contract already
+made for `primary_business_email` rather than inventing a vocabulary.
+
+Both reads now derive every identity fact from **one internal resolver**,
+`public.business_identity_readiness`, while keeping their **different** caller gates (this one
+tenant-scoped, comms on the §59 global predicate) — making either call the other would have imposed
+one read's authorization on the other's callers. The resolver takes a tenant parameter and is
+therefore unreachable by any caller: `EXECUTE` revoked from `PUBLIC`, `anon`, `authenticated` and
+`service_role`.
+
+**The sweep the contradiction did not announce.** Asking the same question of the neighbouring facts
+found `industry` wrong in exactly the same way for **four** workspaces — twice as many — with no
+second reader to contradict it, and `primary_business_email` defaulting to
+`connection_sourced`/`connections` for **all three** workspaces holding a `support_email` with no
+provenance recorded, naming a connected account as the proof for a value no connection ever wrote.
+
+**The email correction was drafted and then WITHDRAWN by the §39 peer-gate, which is the part worth
+remembering.** A THIRD reader of that same field exists — `get_solo_business_context()` and
+`src/solo/data/useSoloBusinessContext.ts`, rendered as Setup's "Connection-sourced" badge — and it
+makes the same inference. All three agree today, so flipping only the readiness reader would have
+made PAIGE say "never confirmed" while Setup said "Connection-sourced" about one field in the same
+second: the exact defect class being fixed, newly created by the fix. Unbundled into its own slice
+that must move all three together. **Seven rows move in total; `primary_business_email` moves on
+zero; zero Systems Check verdicts and zero comms booleans move**, asserted per tenant across all 14
+production tenants rather than reasoned about. A contradiction is not the
+defect — it is the only symptom loud enough to be seen.
+
+**A further answer is named, not changed:** `get_tenant_a2p_registration_status().profile` echoes
+`tenant_legal_profile` with no brand fallback, so it reports a null website for these workspaces.
+A raw-value echo rather than a readiness contract, zero callers in-repo, A2P out of scope — recorded
+in the contract doc so it is found named rather than re-discovered.
+
+Contract, states, never-infer rules and the measured before/after:
+`docs/delivery/canonical-readiness-contract.md`. Authenticated runtime proof on the deployed
+surfaces is **OWED, not claimed** (§32.c).
+
 ### get_tenant_people(): the resting state is not the capability (2026-09-03)
 
 **§58 near-miss, caught by peer review before merge (PR #885).** The `has_role(auth.uid(),'admin')`
@@ -3505,3 +3806,41 @@ Owner direction authorizes implementation through green-gated release for reusab
 The first repair closes a confirmed A2P workspace-switch defect. The editor is keyed by workspace, delayed responses are fenced, handlers pass a captured-workspace precondition, prompt context is explicitly tenant-scoped, and the save/insert trigger rejects a changed tenant rather than redirecting the write. Ordinary Solo owners/admins gain the same captured-tenant preparation authority using is_tenant_admin_as and a current-workspace SELECT policy. Carrier submission is still absent; this repair does not make SMS registration ready.
 
 Automated evidence: UI and actual-handler tests with injected database/model ports; isolated PostgreSQL role, replay and lock-wait race tests. Independent adversarial source review passed after two additional races were corrected. Authenticated production owner-flow proof remains owed. No real customer record, workflow, campaign, carrier submission or sender identity was changed to produce proof.
+
+### Mind / Rail / Spine / Memory / PAIGE-chat recovery lane — PR #956 (2026-09-05)
+
+Re-grounded the stale drafts against current `main` (972 migrations applied == repo, zero drift;
+#925/#939/#947 are the live Rail baseline) and shipped **small current-main releases** rather than
+merging any old branch. Detail + proof-by-class: `docs/brain/decision-log.md` (Release A/B/C entries),
+`docs/brain/paige-memory-contract.md`, and PR #956.
+
+- **Release A — PAIGE Knowledge tenant safety (re-ground #591).** Four of #591's five protections were
+  already delivered by the superseding SAFETY-FIRST STREAMING seam (`revalidateTenantKnowledgeScope` +
+  revocation latch + `409 ACTIVE_ACCOUNT_CHANGED` before egress + per-round tool guards); the
+  `sync-credit-report-data` crossing is moot (proposal-first, §70). The one still-absent protection ships
+  here: `paige-ai-chat` confirms `personaCtx.tenant_id == profiles.active_tenant_id` before searching
+  tenant Knowledge, refusing the `current_user_tenant_id()` oldest-membership fallback at the knowledge
+  boundary (fail closed — no embed/retrieval/telemetry). `test:knowledge-scope` group 24 failing-first;
+  §39 peer-gate SHIP. Blast radius measured on prod: 1 profile (null active + membership).
+- **Release B — Mind safe evidence contract (re-ground #644).** #644 is superseded/regressive (returns
+  forbidden `contact_id`, raw active_tenant_id, wrong flat shape) — the shipped `resolveEvidence.safeSignal`
+  19-key allowlist already enforces the contract, and the binding test bans a Rail-reading resolver. Added
+  `lint:rail-grants` (CI) fencing browser roles out of the raw Rail (`paige_client_events` /
+  `paige_workspace_events`) — the #746 defect class. #644 → recommend close.
+- **Release C — governed Memory backend contract.** Migration `20261223000000` adds three §59/§45-clean
+  RPCs (`record_/get_/forget_paige_memory`) over the existing `paige_owner_memory` (no new store, §18) —
+  the governed seam giving conversation + agent memory a home with all six governance fields (source,
+  scope, freshness, visibility, correction, deletion). Pre-merge `BEGIN..ROLLBACK` prod proof (anon
+  denied, JWT confined, 42501 fail-closed); §39 peer-gate SHIP (vocab `'identity'` fix applied).
+  Chat-runtime auto-write is DEFERRED (slice 4b), labeled — the seam ships.
+- **Stale-PR recovery:** #776 fully superseded by Slice B → recommend close; #729 findings 1/2/4 are on
+  `main`, finding 3 (a sync **transport rejection** left the extraction claim stuck `applied` with nothing
+  applied) ported with a failing-first test; #591/#644 → recommend close. #917 handed to the orchestration
+  owner with a 3-lane split + the Release A authority dependency.
+- **Relationship Context & Governed Memory contract** — `docs/doctrine/relationship-context-and-governed-memory-contract.md`:
+  the source-of-truth + handoff map across canonical CRM facts (People/Clients, §202), governed
+  relationship context (Mind/Memory), future Conversations/Transcription evidence ingestion, and
+  Marketplace templates. A bounded architecture doc — no schema, UI, Marketplace feature, or transcript pipeline.
+
+**Authenticated production runtime proof is OWED across this lane** (no signed-in owner drove the deployed
+surfaces this session; `LIVE_DRIVE_*` unset). The migration's persisted-apply is CI's (`deploy-migrations.yml`).

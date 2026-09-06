@@ -126,6 +126,21 @@ Rail's properties (no history, no citation, no attribution, no freshness boundar
 current as of the call). Its `chatBinding`/`mindBinding` are `PARTIAL`: `paige-ai-chat` injects the
 block into every tenant turn's system context, unit-tested, with no authenticated UI drive yet.
 
+**Updated 2026-09-05 (PR #958, migration `20261221000000`).** Every fact this capability returns is
+now derived from **`public.business_identity_readiness`**, one internal resolver that
+`tenant_comms_readiness` also reads — because the two were contradicting each other about the same
+two real workspaces, one reporting `needs_confirmation` while the other reported the value as on
+file. The resolver is deliberately **not** a registered capability and is **unreachable by any
+caller**: it takes a tenant parameter, so `EXECUTE` is revoked from `PUBLIC`, `anon`, `authenticated`
+and `service_role`, leaving only the already-gated `SECURITY DEFINER` parents able to invoke it. The
+two readers keep their **different** caller gates on purpose (this one tenant-scoped, comms on the
+§59 global predicate), which is why the fix is a shared resolver rather than one reader calling the
+other. The status vocabulary gains `legacy_sourced` / source `legacy_brand` — present only in the
+legacy `tenants.brand` record, never confirmed — and every row gains `next_action`. Nothing here is
+ever reported `stale`: no source in this domain declares a TTL, and the registry's required
+`staleAfterDays` is satisfied trivially rather than enforced. Contract:
+`docs/delivery/canonical-readiness-contract.md`.
+
 The third is **`team.authority`** (2026-09-03, PR **#876**, migration `20261150000000`) — exactly two
 Team-owned facts about the CALLER: `viewer_permission` (the raw `tenant_members.role`) and
 `viewer_is_legal_owner` (`is_tenant_owner(caller, tenant)`, **both arguments**). Same evidence class as
@@ -202,7 +217,7 @@ claims it does and does not support:
 | The migration persisted | `schema_migrations` row for `20261112000000` went **0 → 1**; the function object went **0 → 1**. Baseline captured on prod BEFORE the merge, so this proves the deploy acted rather than confirming what was already there | production catalog |
 | The shipped gate is the tenant-scoped one | `pg_get_functiondef` on prod, comment lines stripped: executable code contains `is_tenant_admin` and does NOT contain `has_any_role`. The literal gate line is `and not (public.is_tenant_admin(v_tenant) or public.is_platform_owner())` | production catalog |
 | The grant surface is right | on prod: `anon` cannot execute; `authenticated` and `service_role` can; `SECURITY DEFINER` with `search_path` pinned | production catalog |
-| **The defect was real and is fixed** | tenant `d8a0a880` holds website, phone AND industry in `tenant_legal_profile` while `tenants.brand` held **none** of them — it was being told all three were missing. Executing the deployed function as that workspace's real owner returns `website: owner_confirmed`, `business_phone: owner_confirmed`, `industry: owner_confirmed` (source `setup`, with freshness), and `primary_business_email: connection_sourced` (source `connections`) | **authenticated runtime, server-side** |
+| **The defect was real and is fixed** | tenant `d8a0a880` holds website, phone AND industry in `tenant_legal_profile` while `tenants.brand` held **none** of them — it was being told all three were missing. Executing the deployed function as that workspace's real owner returns `website: owner_confirmed`, `business_phone: owner_confirmed`, `industry: owner_confirmed` (source `setup`, with freshness), and `primary_business_email: connection_sourced` (source `connections`) — **corrected 2026-09-05 (PR #958): that email row now reads `legacy_sourced` / `legacy_brand`. Its `connections` provenance was invented — no connection ever wrote it, and no `primary_email_provenance.source` was recorded for any of the three workspaces holding a support_email** | **authenticated runtime, server-side** |
 | The role gate refuses a non-staff caller | **NOT provable on prod today** — there are currently **zero** active `tenant_members` whose role is not owner/admin, so no such caller exists to test with. Proven instead by the CI pgTAP file (18 assertions, mutation-tested: reverting to the global predicate turns 3 of them red). On production it is a forward-looking guard protecting the first member or client ever added | automated test |
 | The consumer path is live | `deploy-edge-functions` shipped `paige-ai-chat`, `systems-check-run-change`, `systems-check-run-onboarding`, `systems-check-run-scheduled`; `edge-live..main` drift is zero | production catalog |
 | The owner's own UI flow | **STILL OWED.** Not "no browser" — see the correction below | UNVERIFIED |
@@ -222,6 +237,16 @@ old reader said "present". Neither has a published growth page, so `website_conn
 pass → fail for both, and `comms_configured`'s phone half flips for `7eaf8859`. That is literally
 true ("the owner has not saved this in Setup") and is the direction the source-of-truth rule points,
 but it IS a visible change for those workspaces (§58: flagged, not silent).
+
+**Superseded 2026-09-05 (PR #958) — and the "owner decision" turned out not to be one.**
+`needs_confirmation` was itself lossy: it says "no value anywhere" about a value that demonstrably
+exists. It contradicted `tenant_comms_readiness`, which reported the same fields as on file, and
+picking between those two answers would have kept erasing one true fact. Those two tenants now read
+**`legacy_sourced`** / source `legacy_brand` — the value exists, in the legacy record, unconfirmed —
+and both readers derive it from one resolver. **The Systems Check verdicts described above do not
+change**: `isConfirmed()` is true only for `owner_confirmed`, so `website_connected` and the
+`comms_configured` phone half flip exactly as stated. See
+`docs/delivery/canonical-readiness-contract.md`.
 
 **No department other than Pipeline and Setup's business context is declared in the registry.** The
 Team and Setup surface cards (`../doctrine/surface-cards/`) each say the same of themselves,

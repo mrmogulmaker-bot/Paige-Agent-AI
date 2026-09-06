@@ -14,6 +14,14 @@ import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
 // owns WHICH of the six outcomes these four acts landed in (§18: one home each).
 import { recordCapabilityRun, type CapabilityOutcome } from "../_shared/capability-record.ts";
 import { classifyCommsRun } from "../_shared/comms-capability-outcome.ts";
+// Phase 2 · S1 — Pipeline write acts (starting deal_move_stage) record an honest outcome
+// through the SAME ratified pattern (#947): capability-record owns HOW, this owns WHICH.
+import { classifyPipelineRun } from "../_shared/pipeline-capability-outcome.ts";
+// Capability System · slice 1 — truthful artifact-creation receipts (§13/§70). A 200 carrying
+// no real artifact (null url, empty drafts, null saved id) must degrade to an honest failure,
+// not a success-shaped receipt. ONE pure home for that decision (§18); handlers wrap their
+// own success shape in it so the model, the status label and the artifact card all inherit it.
+import { artifactProduced, ARTIFACT_ABSENT_ERROR, usableDrafts, IMAGE_NOT_FILED_ERROR } from "../_shared/artifact-receipt.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -1792,6 +1800,52 @@ JSON:`;
       // fallback here; if this value is wrong, the persona resolver is the thing to fix.
       const tkTenantId = personaCtx.tenant_id;
 
+      // §9/§51 — CONFIRM the resolved scope IS the caller's DECLARED active workspace before
+      // searching, not a COALESCE fallback. `personaCtx.tenant_id` comes (via
+      // get_paige_persona_context() → current_user_tenant_id(), migration 20261213000000) from
+      //   COALESCE(<active_tenant_id, only when non-null AND entitled>,
+      //            <oldest active membership: tenant_members ORDER BY joined_at ASC LIMIT 1>).
+      // When active_tenant_id is null OR set-but-unentitled (stale/revoked), that silently
+      // resolves to the OLDEST membership — a workspace the caller is a member of but is not
+      // operating as. Neither the RPC's own guard (it re-checks p_tenant_id against the SAME
+      // resolver) nor revalidateTenantKnowledgeScope() (it compares two reads of that resolver,
+      // so it catches a mid-turn CHANGE but never the substitution itself) can see it. So read the
+      // caller's OWN declared active workspace directly — the same profiles.active_tenant_id the
+      // §9 working-context capture reads ~600 lines below — through the caller's JWT, and only
+      // search when it EQUALS the resolved scope. This is a fail-closed CONFIRMATION, never a new
+      // tenant pick or a second resolver (§18): current_user_tenant_id()'s fallback is deliberately
+      // untouched because 68 live RLS policies depend on it. It drops no legitimate turn — a turn
+      // that searches KB today already has personaCtx.tenant_id == current_user_tenant_id(), which
+      // equals a non-null, entitled active_tenant_id in every case except the fallback this refuses.
+      // §13: null/read-failure/mismatch → no embed (a paid call), no retrieval, no telemetry, logged.
+      let tkScopeIsDeclaredActive = false;
+      if (tkTenantId != null) {
+        let declaredActiveTenantId: string | null = null;
+        let declaredActiveReadFailed = false;
+        try {
+          const { data: declaredProfile, error: declaredError } = await supabaseClient
+            .from("profiles")
+            .select("active_tenant_id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (declaredError) declaredActiveReadFailed = true;
+          else declaredActiveTenantId = (declaredProfile?.active_tenant_id as string | null) ?? null;
+        } catch (_declaredErr) {
+          declaredActiveReadFailed = true;
+        }
+        tkScopeIsDeclaredActive = !declaredActiveReadFailed && declaredActiveTenantId === tkTenantId;
+        if (!tkScopeIsDeclaredActive) {
+          console.error(
+            "[paige] tenant Knowledge scope is not the caller's DECLARED active workspace — searching no tenant Knowledge this turn (fail closed)",
+            JSON.stringify({
+              resolved_tenant_id: tkTenantId,
+              declared_active_tenant_id: declaredActiveReadFailed ? null : declaredActiveTenantId,
+              declared_read_failed: declaredActiveReadFailed,
+            }),
+          );
+        }
+      }
+
       // Unresolved authoritative scope does NO tenant work: no embedding (a paid call), no
       // retrieval, no tenant telemetry. A tenant-less caller — the Platform Operator — must
       // never be handed some arbitrary account's knowledge, and `null` is not a scope to
@@ -1811,7 +1865,7 @@ JSON:`;
       // re-asserted at each boundary that carries this content further — before the sync's
       // provider egress, after it returns, and at stream close — and the reply is withheld
       // behind `holdProtectedContent` until the last of those passes.
-      if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId) {
+      if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId && tkScopeIsDeclaredActive) {
         const tkQuery = lastUserMessage.content.trim();
         // Reuse the embedding from the rag block when available, else compute.
         const tkEmbedding = await embedText(tkQuery);
@@ -6242,12 +6296,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "comms_buy_number",
-              description: "Admin only. BUY a phone number for this business. THIS SPENDS REAL MONEY — a monthly charge that starts immediately — so always show the number and its exact monthly price from comms_search_numbers and get a clear yes before calling with confirm:true. Never buy a number the operator did not name. Provider inventory goes stale between a search and a buy, so a refusal here is normal and final for that number: pick another rather than retrying the same one. If the reply says the number was bought but could not be recorded, the operator IS being billed for it — tell them so and do NOT buy a replacement.",
+              description: "Admin only. BUY a phone number for this business. This provisions a REAL number from the provider at a recurring monthly cost — the platform currently covers that cost, so the business is NOT billed for it, but a wrong or duplicate number is still a real waste, so always show the number and its exact monthly price from comms_search_numbers and get a clear yes before calling with confirm:true. Never buy a number the operator did not name. Provider inventory goes stale between a search and a buy, so a refusal here is normal and final for that number: pick another rather than retrying the same one. If the reply says the number was bought but could not be recorded, a real number was provisioned that the platform cannot see — do NOT buy a replacement (that would provision a second one); tell the operator to check the provider before trying again.",
               parameters: {
                 type: "object",
                 properties: {
                   phone_number: { type: "string", description: "E.164, exactly as comms_search_numbers returned it, e.g. +14045550123." },
-                  monthly_cents: { type: "integer", description: "The exact monthly_cents comms_search_numbers returned for THIS number. It is shown to the operator in the approval prompt and verified against the real price before anything is bought, so a number you did not get from a search will be refused rather than charged." },
+                  monthly_cents: { type: "integer", description: "The exact monthly_cents comms_search_numbers returned for THIS number — its listed recurring monthly price (which the platform currently covers; the business is not billed for it). It is shown to the operator in the approval prompt and verified against the real price before anything is bought, so a number you did not get from a search will be refused rather than bought." },
                   friendly_name: { type: "string", description: "Optional label, e.g. 'Intake line'." }
                 },
                 required: ["phone_number", "monthly_cents"]
@@ -7026,10 +7080,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // read as an approvable proposal — an earlier revision said "an amount Paige could
           // not quote", which invited a yes to a purchase with no number in it.
           const cents = typeof a?.monthly_cents === "number" ? a.monthly_cents : null;
-          const price = cents !== null
-            ? `$${(cents / 100).toFixed(2)}/month`
-            : "an unquoted amount — this will be refused; run a search first";
-          return `Buy ${a?.phone_number || "that number"} for this business${a?.friendly_name ? ` and label it "${a.friendly_name}"` : ""}. This starts a recurring charge of ${price}.`;
+          const label = a?.friendly_name ? ` and label it "${a.friendly_name}"` : "";
+          const buy = `Buy ${a?.phone_number || "that number"} for this business${label}.`;
+          // §38: the number carries a real recurring cost — the platform pays the provider and
+          // currently covers it, so the business is NOT billed for it in this slice. The figure
+          // shown is the LISTED price (`monthly_cents` is retail: wholesale + the platform's fee,
+          // not the raw provider cost), so it is named "listed price", not "provider cost". The
+          // caution kept here is the true one: a duplicate or unused number is a real waste, not a bill.
+          return cents !== null
+            ? `${buy} Its listed price is $${(cents / 100).toFixed(2)}/month, which the platform currently covers — the business isn't billed for it, but buy it deliberately: a duplicate or unused number is a real waste.`
+            : `${buy} You've passed an unquoted amount, so this will be refused — run a search first so the real monthly price can be shown.`;
         }
         case "comms_name_number":
           return String(a?.friendly_name ?? "").trim()
@@ -8885,7 +8945,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             .eq("user_id", user.id);
           const roles = (roleRows || []).map((r: any) => r.role);
           // n8n has its own exact owner/session/tenant lease check; global CRM roles are unrelated.
-          const allowed = N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) || roles.includes("admin") || roles.includes("coach");
+          //
+          // `super_admin` is admitted so a verified God-tier operator can manage a tenant's CRM/
+          // Communications while acting inside that tenant (operator_enter_tenant → the tools then
+          // resolve that tenant via current_user_tenant_id()); at rest, tenant-less, the read tools
+          // still answer `tenant_not_resolved`, which is correct. This is the frozen super_admin-only
+          // grant (§53) — NOT `is_platform_operator()`, which would also admit `platform_admin`; the
+          // role string here is the same one `is_platform_owner()`/`is_super_admin()` gate on, and
+          // `platform_admin` is a DISTINCT string that stays denied. Server-derived from the JWT
+          // (user.id) — a caller-supplied role can never reach this array.
+          const allowed = N8N_MANAGEMENT_TOOL_NAMES.has(tc.function.name) || roles.includes("admin") || roles.includes("coach") || roles.includes("super_admin");
           if (!allowed) {
             toolResults.push({
               tool_call_id: tc.id,
@@ -8970,6 +9039,37 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               console.error("[paige] comms capability run not recorded:", (e as Error)?.message);
             }
           };
+          // ── Phase 2 · S1 — Pipeline acts record an honest outcome too ────────────
+          // Same executor-recording pattern as comms (§18/#947): classify from this seam's
+          // OWN result shape, record at most once per iteration (result XOR catch), never
+          // fail the turn. deal_move_stage operates on `personaCtx.tenant_id` (index.ts
+          // ~9758), so the run is attributed to that tenant — the workspace the move hit.
+          // A tenant-less refusal ("no workspace in context") has no tenant to attribute
+          // to, so recordCapabilityRun no-ops it — correct: there is no filed act.
+          const recordPipelineRun = async (
+            input: { result?: unknown; thrown?: unknown; threw?: boolean; writeAttempted?: boolean },
+          ): Promise<void> => {
+            try {
+              const outcome: CapabilityOutcome | null = classifyPipelineRun({
+                capability: tc.function.name,
+                ...input,
+              });
+              if (!outcome) return;
+              await recordCapabilityRun(supabase, {
+                tenantId: personaCtx?.tenant_id ?? null,
+                actorId: user.id,
+                capabilityKey: tc.function.name,
+                outcome,
+              });
+            } catch (e) {
+              console.error("[paige] pipeline capability run not recorded:", (e as Error)?.message);
+            }
+          };
+          // Pre/post-write boundary for the pipeline capability recorder (Codex P2, 2026-09-05):
+          // set TRUE immediately before a pipeline write act dispatches its external UPDATE, so a
+          // throw caught below is classified honestly — a pre-write throw (parse/client/lookup)
+          // is `capability_failed` (nothing changed), only a post-write throw is `outcome_unknown`.
+          let pipelineWriteAttempted = false;
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
             const admin = createClient(supabaseUrl, supabaseServiceKey);
@@ -9126,6 +9226,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // DIRECT table read here (`comms_list_numbers`) does not get that for free and is
             // filtered explicitly — see the note on that branch (§9/§18).
             if (tc.function.name === "comms_connection_summary") {
+              // A tenant-less operator (a super_admin at rest, before entering a workspace via
+              // operator_enter_tenant) has no tenant to read. `tenant_comms_readiness()` would then
+              // RAISE `COMMS_READINESS_NO_TENANT`, and because a PostgREST error is a plain object the
+              // shared catch below reports it as an opaque "Unknown error" — NOT the `tenant_not_resolved`
+              // these reads promise at rest. Answer that plainly here, the same guard
+              // `comms_list_numbers` uses. (§13 — the surfaced state must be the true one.)
+              if (!crmTenantId) {
+                toolResults.push({
+                  tool_call_id: tc.id,
+                  role: "tool",
+                  content: JSON.stringify({ success: false, error: "tenant_not_resolved" }),
+                });
+                continue;
+              }
               // Point 3 of the owner's brief: a tenant-scoped, SAFE capability summary.
               //
               // Safe is a construction here, not an intention. It reads two seams that hold no
@@ -9297,6 +9411,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (e) throw e;
               result = { success: true, number: d };
             } else if (tc.function.name === "comms_registration_status") {
+              // Same at-rest guard as comms_connection_summary / comms_list_numbers: a tenant-less
+              // operator gets the documented `tenant_not_resolved`, never an opaque "Unknown error"
+              // from the `tenant_comms_readiness()` RAISE. (§13)
+              if (!crmTenantId) {
+                toolResults.push({
+                  tool_call_id: tc.id,
+                  role: "tool",
+                  content: JSON.stringify({ success: false, error: "tenant_not_resolved" }),
+                });
+                continue;
+              }
               const { data: d, error: e } = await supabaseClient.rpc("tenant_comms_readiness");
               if (e) throw e;
               const r = (d ?? {}) as Record<string, unknown>;
@@ -9759,8 +9884,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (!tenantId) {
                 result = { success: false, error: "No workspace in context — pick a workspace first." };
               } else {
-                const { data: stage } = await admin.from("pipeline_stages")
+                const { data: stage, error: stageErr } = await admin.from("pipeline_stages")
                   .select("id, stage_type, label, pipeline_id").eq("id", args.stage_id).eq("tenant_id", tenantId).is("archived_at", null).maybeSingle();
+                // Distinguish an OPERATIONAL lookup failure (PostgREST outage, malformed-UUID
+                // 22P02) from a genuine "not in your workspace" (Codex P2, 2026-09-05). A thrown
+                // query error is a PRE-WRITE failure → recorded as capability_failed, never a false
+                // `refused` ("Not allowed"). Only a clean null-with-no-error is the real guard
+                // rejection handled below.
+                if (stageErr) throw stageErr;
                 if (!stage) {
                   result = { success: false, error: "That stage isn't in your workspace." };
                 } else {
@@ -9769,6 +9900,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   // Keep pipeline_id in lockstep with the stage: if the target stage lives in a
                   // different pipeline of the same tenant, the deal moves to THAT pipeline — never a
                   // row whose stage_id and pipeline_id disagree (which would vanish off the board).
+                  // Mark the external write as dispatched: a throw AT OR AFTER this point may have
+                  // applied → capability_outcome_unknown; any earlier throw stays capability_failed.
+                  pipelineWriteAttempted = true;
                   const { data: moved, error: merr } = await admin.from("deals")
                     .update({ stage_id: stage.id, pipeline_id: stage.pipeline_id, status, actual_close_date: status === "open" ? null : today })
                     .eq("id", args.deal_id).eq("tenant_id", tenantId)
@@ -10142,7 +10276,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               if ((cd as any)?.error) throw new Error((cd as any).error);
-              result = { success: true, channel: (cd as any)?.channel, drafts: (cd as any)?.drafts ?? [] };
+              // §13/§70 — a 200 can carry an empty drafts array, OR a non-empty array of
+              // content-less items (content-draft normalizes a missing `content` to ""), so filter
+              // to drafts that actually carry copy before reporting success (Codex P2). Return only
+              // the usable drafts so the model never narrates an empty one.
+              const _usableDrafts = usableDrafts((cd as any)?.drafts);
+              result = artifactProduced("draft_list", _usableDrafts)
+                ? { success: true, channel: (cd as any)?.channel, drafts: _usableDrafts }
+                : { success: false, error: ARTIFACT_ABSENT_ERROR.draft_list };
             } else if (tc.function.name === "generate_image") {
               // #292 — reuse the on-canvas image row (stack its versions) ONLY when the model targets
               // the exact image that's actually on the canvas. Any other id → treat as a new asset
@@ -10164,6 +10305,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 result = { success: false, needs_config: true, message: (img as any).error };
               } else if ((img as any)?.error) {
                 throw new Error((img as any).error);
+              } else if (!artifactProduced("file_url", (img as any)?.url)) {
+                // §13/§70 — the edge fn can return 200 with publicUrl=null (generate-image/index.ts:
+                // publicUrl = pub?.publicUrl ?? null). An image with no file is not a success; degrade
+                // to an honest failure so the model, the status label and the artifact card all agree
+                // there's nothing to show. (The §33 regenerate helper already guards `!rimg.url`.)
+                result = { success: false, error: ARTIFACT_ABSENT_ERROR.file_url };
               } else {
                 // content_id is load-bearing for the Studio session link (#292) — without it the
                 // image never reaches the project canvas. Keep it on the result. provider is the one
@@ -10203,6 +10350,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // BOTH this path and the Vibe Studio frontend capture (§18 one home). Capturing here too
                 // would double-write.
               }
+              // §13/§70 (Codex P2) — FINAL Studio check, after any §33 critique regeneration. In a
+              // STUDIO session the image must be FILED (content_id) to reach the canvas — the linkage
+              // below (link_session_artifact / save_artifact_version) requires r.content_id — so a
+              // created-but-unfiled image (url present, best-effort save failed → content_id null, from
+              // the first gen OR a regen) would report success while the canvas gets nothing. Fail
+              // honestly. REGULAR chat keeps a null-content_id url as a usable success (the URL is a
+              // real downloadable file), so this is Studio-only; running it AFTER the critique loop
+              // lets a rescue regeneration that DID file count as a real success.
+              if (studioSessionId && (result as any)?.success === true && !artifactProduced("saved_id", (result as any)?.content_id)) {
+                result = { success: false, error: IMAGE_NOT_FILED_ERROR };
+              }
             } else if (tc.function.name === "calendar_book_meeting") {
               // Confirm is enforced by the central autonomy gate above (a booking
               // is a real event → defaults to 'confirm'); here we're cleared to book.
@@ -10230,7 +10388,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 p_tenant_id: personaCtx?.tenant_id ?? null,
               });
               if (error) throw error;
-              result = { success: true, content_id: cid };
+              // §13/§70 — a 200 with no returned id means the row may not have persisted.
+              result = artifactProduced("saved_id", cid)
+                ? { success: true, content_id: cid }
+                : { success: false, error: ARTIFACT_ABSENT_ERROR.saved_id };
             } else if (tc.function.name === "document_generate") {
               // #119/#292 — the agent authored the whole document as design blocks; persist it as a
               // marketing_content row kind='document' (body = the block JSON). Keep only known block
@@ -10301,7 +10462,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   p_tenant_id: personaCtx?.tenant_id ?? null,
                 });
                 if (error) throw error;
-                result = { success: true, content_id: cid, title: docTitle, doc_type: docType, blocks: blocks.length };
+                // §13/§70 — blocks/placeholder guards above prove the CONTENT is real; this proves it
+                // PERSISTED (a 200 with no returned id means it may not have saved).
+                result = artifactProduced("saved_id", cid)
+                  ? { success: true, content_id: cid, title: docTitle, doc_type: docType, blocks: blocks.length }
+                  : { success: false, error: ARTIFACT_ABSENT_ERROR.saved_id };
               }
             } else if (tc.function.name === "growth_list") {
               // Caller-authed read, EXPLICITLY tenant-pinned (§9). Don't rely on RLS
@@ -10401,7 +10566,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 });
                 if (!fErr) formsCreated.push(fslug);
               }
-              result = { success: true, page_id: (row as any)?.id, slug: (row as any)?.slug, status: (row as any)?.status, forms_created: formsCreated };
+              // §13/§70 — a 200 with no returned row id means the page draft may not have saved.
+              result = artifactProduced("saved_id", (row as any)?.id)
+                ? { success: true, page_id: (row as any)?.id, slug: (row as any)?.slug, status: (row as any)?.status, forms_created: formsCreated }
+                : { success: false, error: ARTIFACT_ABSENT_ERROR.saved_id };
             } else if (tc.function.name === "growth_page_publish") {
               // Going-live action (confirm-gated by the autonomy gate above). The RPC
               // validates the draft (rejects unfilled [PLACEHOLDER]s, §15) and returns the
@@ -10890,7 +11058,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
 
             // The result the model is about to be handed is the same evidence the owner
             // gets. Classified inside the recorder from the seam's OWN codes, not `success:false`.
+            // Result XOR catch: both recorders are total try/catch and never throw, so this
+            // result-path call cannot fall into the catch below and double-record (S1 review m1).
             await recordCommsRun({ result });
+            await recordPipelineRun({ result });
 
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
           } catch (err) {
@@ -10900,6 +11071,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // instead, so `NUMBER_NOT_ACTIVE` reaches the Rail as a refusal even though
             // the model is told only that something went wrong.
             await recordCommsRun({ thrown: err, threw: true });
+            await recordPipelineRun({ thrown: err, threw: true, writeAttempted: pipelineWriteAttempted });
 
             toolResults.push({
               tool_call_id: tc.id,
@@ -11274,6 +11446,65 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         comms_draft_registration: "tenant_a2p_registrations",
         pipeline_configure: "pipelines",
         propose_business_brief_update: "tenants",
+        // ── The inbound MCP door's acts, added 2026-09-05 with task #45.
+        //
+        // WHY THEY ARE HERE AT ALL, since Chat cannot perform any of them. This map is keyed off
+        // `mutatingTools()` — the classifier — not off Chat's own tool list, and CI check 19.8
+        // requires every EXECUTABLE classified mutation to name the entity it touches. Classifying
+        // the 52 MCP acts enrolled them here the same way it enrolled them in the autonomy
+        // catalogue: a classified act with no target files an attribution row that says only
+        // "something happened", and the rail's per-client membership is derived from this map
+        // (`WRITE_TARGET[name] === "clients"`), so a wrong answer here is a wrong feed later.
+        //
+        // Each value is the record the operator ACTED ON, read off the verified handler evidence
+        // rather than the tool's name — and where a handler touches several tables, the subject is
+        // the one a person tracing "what changed" would want, not the trigger cascade behind it.
+        // `approval_decide` writes `paige_actions` and a notification through triggers; the record
+        // is still the approval. `crm_advance_journey_stage` writes a transition row; the record is
+        // still the client.
+        //
+        // The staging/committing pair is the one judgement worth naming: `ingest_credit_scores`,
+        // `ingest_banking_snapshot`, `ingest_client_memory` and `crm_propose_contact_update` all
+        // STAGE onto `paige_ingestion_proposals`, so that is their record, while
+        // `ingest_confirm_proposal` is the act that lands the change on the client — following the
+        // same split the file already draws between `growth_page_save` and `growth_page_publish`.
+        crm_append_contact_notes: "clients", crm_update_lifecycle_stage: "clients",
+        crm_advance_journey_stage: "clients", client_log_progress: "clients",
+        privacy_handle_request: "clients", ingest_confirm_proposal: "clients",
+        crm_update_task: "tasks", crm_delete_task: "tasks",
+        crm_propose_contact_update: "paige_ingestion_proposals",
+        ingest_credit_scores: "paige_ingestion_proposals",
+        ingest_banking_snapshot: "paige_ingestion_proposals",
+        ingest_client_memory: "paige_ingestion_proposals",
+        ingest_reject_proposal: "paige_ingestion_proposals",
+        approval_create: "paige_pending_approvals", approval_decide: "paige_pending_approvals",
+        approval_claim: "paige_pending_approvals", approval_comment: "paige_approval_comments",
+        readiness_approve_proposal: "paige_readiness_proposals",
+        readiness_reject_proposal: "paige_readiness_proposals",
+        workflow_run: "paige_workflow_runs", workflow_cancel_run: "paige_workflow_runs",
+        workflow_register: "paige_workflow_registry",
+        automation_rule_create: "stage_automation_rules",
+        automation_rule_update: "stage_automation_rules",
+        automation_rule_delete: "stage_automation_rules",
+        skill_run: "paige_skill_runs",
+        subagent_create: "paige_subagent_proposals", subagent_approve_proposal: "paige_subagents",
+        comms_draft_email: "paige_subagent_invocations",
+        comms_send_email: "email_send_log", comms_send_bulk_email: "email_send_log",
+        comms_send_email_choosing_the_sender: "email_send_log",
+        comms_upsert_email_template: "email_templates",
+        comms_add_email_domain: "tenant_email_domains",
+        comms_set_primary_email_domain: "tenant_email_domains",
+        billing_create_invoice: "paige_invoices", billing_send_invoice: "paige_invoices",
+        business_create: "businesses", business_update: "businesses",
+        business_verify: "business_verification_runs",
+        coach_update_profile: "profiles",
+        coach_grant_role_globally: "user_roles", coach_revoke_role_globally: "user_roles",
+        team_invite_mint: "invitations",
+        agency_create_subaccount: "tenants", tenant_create: "tenants",
+        tenant_set_status: "tenants", tenant_set_features: "tenants",
+        update_social_accounts: "tenants",
+        agency_enter_subaccount: "tenant_members", agency_exit_subaccount: "profiles",
+        platform_post_notification: "paige_admin_notifications",
       };
 
       /**

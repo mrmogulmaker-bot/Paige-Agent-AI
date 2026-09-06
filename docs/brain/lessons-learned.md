@@ -2003,3 +2003,128 @@ the other traced the mechanism (reachable by real shipped callers). The resoluti
 verdict but a third reading: the proposed fix would have introduced a false FAIL, so only the honest
 half — an over-claiming sentence — was changed, and the reasoning was written into the module header
 so the next session does not re-argue it.
+
+## When two readers disagree, the bug is usually that BOTH are lossy (2026-09-05, Spine #40)
+
+**The shape.** Two readers answered the same question about the same workspace and gave opposite
+answers. The instinct — the one that had to be actively resisted — is to work out which reader is
+*right* and make the other match it. That instinct was wrong, and it would have shipped a
+regression while looking like a fix.
+
+**Why.** The two readers were not answering the same question badly. They were answering
+**different questions** and both presenting the answer as if it were the whole truth:
+
+- *Does a value exist at all?* — yes, in a legacy record.
+- *Did the owner confirm it?* — no.
+
+One reader answered the first and dropped the second; the other did the reverse. Each was locally
+defensible. **Picking a winner would have preserved one true fact by continuing to erase the
+other** — which is why "make the wrong one match the right one" is not a reconciliation, it is
+choosing which half of the truth to keep losing.
+
+**The tell that this is the case you are in.** Both answers survive contact with the data. If you
+can look at the source rows and say "well, they're both sort of right", you are not looking at one
+bug and one correct reader — you are looking at **one field carrying two facts**, and the fix is to
+decompose it, not to arbitrate it.
+
+**The corollary that found a second defect.** Once the fields were decomposed, the same question was
+asked of every neighbouring fact rather than only the two that contradicted. `industry` turned out
+to be wrong in exactly the same way for **twice as many** workspaces — and nobody had ever noticed,
+because it had no second reader to contradict it. A contradiction is not the defect; it is the
+**only symptom loud enough to be seen**. Sweep the siblings, or you fix the one that made noise and
+leave the ones that did not.
+
+**And a third, in the opposite direction.** `primary_business_email` defaulted to
+"present from a connected account" whenever a value existed with no provenance recorded — on
+production, that was every workspace holding one. The first defect invented *absence* from a value
+that existed; this one invented a *source* from a provenance that did not. Both are the same rule
+broken: **state only what a row proves.** A default that fills in a plausible provenance is a
+fabricated fact wearing the clothes of a sensible fallback.
+
+**Where the fix goes when the readers have different caller gates.** The obvious move — have one
+reader call the other — was wrong here, and the reason generalises: the two gates were genuinely
+different (one tenant-scoped, one the §59 global predicate), so calling through would have imposed
+one reader's authorization on the other's callers. Measurement said every current user passes both,
+which is precisely the argument that tempts you to collapse them. **A latent difference is not a
+licence to collapse it.** The shape that works is a shared *internal resolver* both readers derive
+from, with each keeping its own gate, its own tenant resolution and its own response shape.
+
+**Sweeping the siblings is not the same as finding the other READERS, and the section that enumerates
+readers is the one most likely to stop early.** This change carried a section titled "A third answer
+exists, and is deliberately left alone" — written precisely to catch a reader nobody had inventoried.
+It named one (an A2P echo) and stopped. The §39 peer-gate then found a **third reader of a different
+field**: Setup's own `get_solo_business_context()` and its client hook both default
+`primary_business_email` to `connection_sourced`, exactly as the readiness reader did. Correcting the
+readiness reader alone would have made PAIGE and the Setup badge disagree about one field in the same
+second — **the defect being fixed, newly created by the fix.**
+
+Two things generalise. First: **finding one third reader feels like having finished**, and that
+feeling is the bug; the enumeration is per FIELD, not per change. Second, and sharper: **a correction
+that leaves two of three readers untouched is not a partial fix, it is a new defect.** Three readers
+agreeing on a falsehood is a smaller problem than two readers disagreeing, because the disagreement
+is what a human sees. The right move was to unbundle the correction and ship it where it can move all
+three together — even though that meant shipping *less* truth in this change than the draft claimed.
+
+**Make the resolver unreachable rather than defended.** It takes a tenant parameter, which is
+exactly the input a caller must never supply. Rather than adding a third gate inside it, `EXECUTE`
+was revoked from `PUBLIC`, `anon`, `authenticated` and `service_role` — so only the already-gated
+`SECURITY DEFINER` parents can invoke it, and the surface that would accept a caller-supplied tenant
+does not exist. A gate can be reasoned around; an absent grant cannot.
+
+## A `file:line` citation is a moving target, and a rotted one is worse than none (2026-09-05, #45)
+
+The governed MCP door shipped a capability policy whose whole selling point, stated in its own
+header, is that a reviewer can re-verify any verdict without re-reading a 5,900-line file. Every one
+of its 350 line citations was correct when written and wrong by the time it merged: three later
+commits in the same session inserted 163 lines above them.
+
+**The failure is not "the numbers drifted", it is that a confident wrong pointer is worse than no
+pointer.** No citation makes a reviewer read the handler. A wrong citation sends them somewhere
+specific, they find unrelated code, and the honest conclusions of the whole table become
+un-checkable in one motion. Evidence that cannot be re-derived is indistinguishable from evidence
+nobody gathered — which is the exact §13 property the field exists to provide.
+
+**The fix that would have been wrong: applying the offset.** The peer gate measured the drift as
+uniformly +3 and offered that as the repair. It was +3 against the commit the gate read, and already
+larger by the time the fix was written — a second wrong-but-confident answer, arrived at more
+carefully. **An offset is a claim about a diff; a mapping is the diff.** Rebuilding old→new line
+numbers with a line-level `SequenceMatcher` and rewriting through it costs the same effort and does
+not go stale mid-repair.
+
+**And the repair has to prove itself, not merely be internally consistent.** A remap that renumbers
+every reference coherently can still be uniformly wrong. The assertion that mattered was
+content-identity: for each of the 350, the line it now names must be *byte-identical* to the line it
+named at verification. That check is what turns "I remapped them" into "they are right", and it runs
+in seconds.
+
+**Generalises to any evidence that names a position rather than a thing.** Line numbers, array
+indices, migration ordinals, screenshot coordinates. If a citation must survive later commits in the
+same branch, either re-derive it at the merge commit with a self-proving remap, or cite something
+stable — a symbol name, a unique string — instead of a position.
+
+## A completion check over a set nothing has populated yet is trivially true (2026-09-05, #45)
+
+A CI watcher declared **"ALL CHECKS COMPLETE"** on a freshly pushed head and it was reported as
+green. It was not: at the moment it polled, GitHub had registered only the two preview checks on
+that commit, and `all(status == "completed")` over those two was true. The five workflows that
+actually matter — including the one carrying the full test suite and every lint — had not been
+created yet.
+
+**`all(...)` over an empty or barely-populated collection returns true, and that is the whole bug.**
+The predicate was written to answer "has everything finished?" and instead answered "has everything
+I can currently see finished?", which at t+2s is a different question with a much more comfortable
+answer. The same shape appears anywhere a guard iterates a list it did not first prove was complete:
+zero findings from a parser that matched nothing, zero leaks from a scan whose glob missed the
+directory, zero failures from a suite that collected no tests.
+
+**The fix is a floor, not a smarter predicate.** Require a minimum population before the completion
+question is allowed to be asked at all — *at least four runs must exist* before "all complete" can
+mean anything — and fail closed below it. Several guards in this repo already do exactly this
+(`policy.length < 40`, `chat.declared.length < 50`, `keys.size < 40`, each with a comment saying a
+regex that matches nothing reports a clean bill of health). The watcher was written without one.
+
+**The second half: a watcher must emit on failure, not only on success.** The same script filtered
+to terminal conclusions but had no floor and no explicit failure line, so a red run and a run that
+never started produced identical silence. Silence read as "still fine". Before arming any watch, ask
+what it would print if the thing being watched had already crashed — if the answer is "nothing", the
+filter is wrong.

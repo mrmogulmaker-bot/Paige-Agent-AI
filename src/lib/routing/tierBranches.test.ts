@@ -203,7 +203,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
 
   it("verified Solo counts + first-is-default per the live-screen audit", () => {
     const count = (slug: string) => branchBySlug("solo", slug)?.subtabs?.length ?? 0;
-    expect(count("command-center")).toBe(3);
+    expect(count("command-center")).toBe(4);
     expect(count("paige")).toBe(4);
     expect(count("automations")).toBe(3);
     expect(count("clients")).toBe(6);
@@ -213,10 +213,9 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(count("marketplace")).toBe(4);
     expect(count("settings")).toBe(7);
     const total = SOLO_BRANCHES.reduce((n, b) => n + (b.subtabs?.length ?? 0), 0);
-    expect(total).toBe(45);
-    // first sub-tab is the screen's default (bare branch renders it). Trust Compass sits SECOND
-    // under command-center, so the default stays Systems Check.
-    expect(defaultSubtabSlug("solo", "command-center")).toBe("systems-check");
+    expect(total).toBe(46);
+    // first sub-tab is the screen's default (bare branch renders it) — now Business Game Plan.
+    expect(defaultSubtabSlug("solo", "command-center")).toBe("business-game-plan");
     expect(defaultSubtabSlug("solo", "paige")).toBe("chat");
     expect(defaultSubtabSlug("solo", "settings")).toBe("setup");
   });
@@ -226,10 +225,12 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
       expect(subtabBySlug("solo", branch, slug)?.key, `solo/${branch}/${slug}`).toBe(key);
       expect(subtabByKey("solo", branch, key)?.slug, `solo/${branch} key ${key}`).toBe(slug);
     };
+    roundTrip("command-center", "business-game-plan", "plan");
     roundTrip("command-center", "systems-check", "sys");
     roundTrip("command-center", "trust-compass", "compass");
     roundTrip("command-center", "mind", "mind");
-    expect(subtabBySlug("solo", "command-center", "overview")?.key).toBe("sys");
+    // `overview` is now a compatibility alias of the new default landing, Business Game Plan.
+    expect(subtabBySlug("solo", "command-center", "overview")?.key).toBe("plan");
     expect(subtabBySlug("solo", "command-center", "directory")?.key).toBe("mind");
     expect(subtabBySlug("solo", "command-center", "history")?.key).toBe("mind");
     roundTrip("paige", "knowledge", "knowledge");

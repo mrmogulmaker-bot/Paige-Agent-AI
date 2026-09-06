@@ -55,14 +55,31 @@ describe("capabilityTools — no drift from the action-risk policy (§18)", () =
     }
   });
 
-  it("covers exactly the catalogue: every catalogue tool is mapped or explicitly excluded", () => {
-    const accountedFor = new Set([...Object.keys(TOOL_MAP), ...UNMAPPED_CATALOGUE_TOOLS]);
+  it("fronts no ghost tool — every tool it maps or names is really in the catalogue", () => {
     const catalogue = new Set(CATALOGUE_KEYS);
-    // No catalogue tool is governed invisibly (present in the catalogue, absent from the surface).
-    for (const tool of catalogue) expect(accountedFor.has(tool)).toBe(true);
-    // No mapped tool is a ghost that the catalogue does not actually expose.
+    // A knob (or a named phantom) must correspond to a tool the catalogue actually exposes; a mapped
+    // key the catalogue does not carry would be a control for an action the runtime never governs.
     for (const tool of Object.keys(TOOL_MAP)) expect(catalogue.has(tool)).toBe(true);
     for (const tool of UNMAPPED_CATALOGUE_TOOLS) expect(catalogue.has(tool)).toBe(true);
+  });
+
+  it("curates a Solo-capability SUBSET of the cross-surface catalogue — never claims to cover it whole", () => {
+    // `list_tool_autonomy` is a SHARED contract: it now also carries the MCP-door / operator acts
+    // (`tenant_create`, `agency_*`, `platform_post_notification`, cross-tenant/privacy acts) that a
+    // Solo tenant's Trust Compass must NOT front (§9/§53). So the Solo surface deliberately fronts a
+    // subset, not the whole catalogue. Which of the newly-catalogued tools belong on the Solo surface
+    // is a §00 product decision, tracked as its own follow-up — this test records the subset
+    // relationship honestly rather than forcing every cross-tier act onto the Solo knobs (§13).
+    const accountedFor = new Set([...Object.keys(TOOL_MAP), ...UNMAPPED_CATALOGUE_TOOLS]);
+    const catalogue = new Set(CATALOGUE_KEYS);
+    expect(accountedFor.size).toBeLessThan(catalogue.size); // strict subset — the catalogue is larger
+    for (const tool of accountedFor) expect(catalogue.has(tool)).toBe(true);
+    // Known OPERATOR / cross-tenant acts are in the catalogue but are explicitly NOT on the Solo
+    // surface — a mapping guard against accidentally putting a platform-tier knob on a Solo tenant.
+    for (const op of ["tenant_create", "agency_create_subaccount", "platform_post_notification"]) {
+      expect(catalogue.has(op)).toBe(true);
+      expect(accountedFor.has(op)).toBe(false);
+    }
   });
 });
 

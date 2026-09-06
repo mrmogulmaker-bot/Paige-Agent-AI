@@ -2,10 +2,18 @@
 /**
  * Campaigns › Social — the Social Command surface.
  *
- * WHAT THIS SURFACE IS FOR. One question, answered in the first few seconds: what is on record for
- * this business socially, and what is not. It is not a scheduler and it is not a placements report,
- * because the platform holds neither for a tenant — and the layout says which of those it is
- * missing rather than leaving a plausible-looking zero where a number would go.
+ * WHAT THIS SURFACE IS FOR. One question, answered in the first few seconds: what is PAIGE doing to
+ * grow this business socially right now — and, just as loudly, what she cannot yet see. It is not a
+ * scheduler and it is not a placements report, because the platform holds neither for a tenant — and
+ * the layout says which of those it is missing rather than leaving a plausible-looking zero where a
+ * number would go.
+ *
+ * THE REDESIGN (owner-commissioned 2026-09-05): "executive mission control meets luxury AI operating
+ * system." This is a RESKIN of the honest surface, not a new set of claims. The premium comes from
+ * the desk ground, the command-header lockup, the signal cards, the connected pipeline and the
+ * token-built eclipse — never from data the backend does not hold. Where the reference draws a
+ * capability the platform has no seam for (a live channel connection, a publishing/ad pipeline,
+ * measured telemetry), the surface renders the honest absence instead of a dead control.
  *
  * THE RULE THIS FILE IS BUILT AROUND. Every figure comes from `social-truth.ts`, where its source
  * and its state were decided in a function a test can call. Nothing is computed inline here, and
@@ -16,7 +24,7 @@
  * WHAT SURVIVES FROM THE PANEL THIS REPLACES (§58). The five non-inferences it made out loud — no
  * accounts, followers, publishing queue, schedules or placements are inferred — are each still made,
  * now attached to the specific tile that would otherwise imply one. Its Vibe Studio redirect and its
- * "placements are recorded by a provider" precondition are both kept.
+ * "placements are recorded by a provider" precondition are both kept. So is the one write.
  *
  * WHAT IS NEW. An owner can RECORD the accounts their business posts from, here, and that write is
  * the first one `tenants.features->social_handles` has ever had. Systems Check #3 points at this
@@ -59,13 +67,28 @@ const DESK_GLYPH = {
   owner_ops: Ic.grid,
 };
 
+/**
+ * A glyph per pipeline stage. Same plumbing/caveat as DESK_GLYPH — it names the step, it claims
+ * nothing, and it carries no colour of its own. Keyed by the stage id `social-truth.ts` produces.
+ */
+const STAGE_GLYPH = {
+  ideas: Ic.spark,
+  drafting: Ic.doc,
+  review: Ic.bell,
+  scheduled: Ic.clock,
+  published: Ic.check,
+  repair: Ic.bolt,
+};
+
 function PanelHead({ glyph, title, sub, state }) {
   return (
     <div className="social-panel-head">
-      <span className="social-panel-glyph">{React.createElement(Ic[glyph] ?? Ic.grid, { size: 15 })}</span>
-      <div>
-        <h3>{title}</h3>
-        <p>{sub}</p>
+      <div className="social-panel-lhs">
+        <span className="social-panel-glyph">{React.createElement(Ic[glyph] ?? Ic.grid, { size: 15 })}</span>
+        <div>
+          <h3>{title}</h3>
+          <p>{sub}</p>
+        </div>
       </div>
       <Truth state={state} />
     </div>
@@ -85,10 +108,29 @@ function Figure({ value }) {
 }
 
 /**
- * The PAIGE mark, drawn as an intelligence presence rather than a decoration.
+ * The small command-mark lockup for the header. The Solo shell's own gold orbital mark — NOT the
+ * operator console's `CommandMark` (its file records being mounted in the wrong context once) and
+ * NOT the marketing `PaigeMark`. Built from `--gold*` tokens, static, so PAIGE is present in the
+ * header without the header spending the space a full mark would.
+ */
+function CommandLockupMark() {
+  return (
+    <span className="social-cmd-mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" fill="none" width="17" height="17">
+        <ellipse cx="16" cy="16" rx="8" ry="8" stroke="var(--gold-bright)" strokeWidth="2" />
+        <ellipse cx="16" cy="16" rx="13.5" ry="5" transform="rotate(-22 16 16)" stroke="var(--gold-bright)" strokeWidth="1.5" opacity=".7" />
+        <circle cx="16" cy="16" r="2.8" fill="var(--gold-bright)" />
+      </svg>
+    </span>
+  );
+}
+
+/**
+ * The PAIGE mark as an eclipse — reserved for the surface STATES, where there is nothing else to
+ * show and the wait itself is the subject.
  *
  * Built from tokens only — there is no orb token in the Solo shell (the pack's `--cm-orb` family is
- * `--pg-*`-derived and resolves to nothing under `.paige-solo`). The ring rotates ONLY where motion
+ * `--pg-*`-derived and resolves to nothing under `.paige-solo`). The corona sweeps ONLY where motion
  * is safe; `prefers-reduced-motion` stops it in the stylesheet rather than hiding it, because the
  * mark still has to read as the mark when it is still.
  */
@@ -98,7 +140,7 @@ function PaigeOrb() {
       <span className="social-orb-halo" />
       <span className="social-orb-body" />
       <span className="social-orb-ring" />
-      <svg className="social-orb-mark" viewBox="0 0 32 32" fill="none" width="34" height="34">
+      <svg className="social-orb-mark" viewBox="0 0 32 32" fill="none" width="40" height="40">
         <ellipse cx="16" cy="16" rx="8.4" ry="8.4" stroke="var(--gold-bright)" strokeWidth="2.1" />
         <ellipse cx="16" cy="16" rx="14.5" ry="5.4" transform="rotate(-22 16 16)" stroke="var(--gold-bright)" strokeWidth="1.7" opacity=".8" />
         <circle cx="16" cy="16" r="3.1" fill="var(--gold-bright)" />
@@ -233,7 +275,7 @@ function NextMove({ move, onRecord, onOpenStudio, onOpenCompass, onOpenPipeline,
 
   return (
     <section className="social-next" aria-labelledby="social-next-title">
-      <span className="social-next-glyph"><Ic.bolt size={15} /></span>
+      <span className="social-next-glyph"><Ic.bolt size={16} /></span>
       <div className="social-next-body">
         <span className="social-eyebrow">Do this next</span>
         <h2 id="social-next-title">{move.headline}</h2>
@@ -246,30 +288,20 @@ function NextMove({ move, onRecord, onOpenStudio, onOpenCompass, onOpenPipeline,
   );
 }
 
-/* ─────────────────────────── hero ─────────────────────────── */
+/* ─────────────────────────── command header ─────────────────────────── */
 
 function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles, authorityUnknown, onRetry }) {
   return (
     <header className="social-hero">
-      <div className="social-hero-top">
-      <div className="social-hero-brief">
-        <span className="social-eyebrow">Social command</span>
-        <h2 className="social-headline">{brief.headline}</h2>
-        <p className="social-hero-body">{brief.body}</p>
-        <p className="social-signature">
-          <strong>PAIGE</strong>
-          <span>Your chief of staff. She only tells you what she can prove.</span>
-        </p>
-      </div>
-
-      <div className="social-hero-mark">
-        <PaigeOrb />
-        <blockquote className="social-quote">
-          A number nobody can source<br />is worse than no number at all.
-        </blockquote>
-      </div>
-
-      <div className="social-hero-act">
+      {/* The command bar: the brand lockup on the left, the acts on the right. Compact by design
+          (§11) — the work leads, the chrome does not eat the fold. */}
+      <div className="social-cmd-bar">
+        <div className="social-cmd-brand">
+          <CommandLockupMark />
+          <span className="social-cmd-wm">PAIGE</span>
+          <span className="social-cmd-div" aria-hidden="true" />
+          <span className="social-eyebrow">Social command</span>
+        </div>
         <div className="social-hero-actions">
           <button type="button" className="btn btn-s" onClick={onAskPaige}>
             <Ic.spark size={13} />Ask PAIGE
@@ -293,26 +325,41 @@ function SocialHero({ brief, kpis, onRecord, onAskPaige, canManage, hasHandles, 
             </button>
           )}
         </div>
-        {!canManage && (
-          <p className="social-hero-permission" role={authorityUnknown ? "alert" : undefined}>
-            {authorityUnknown
-              ? "Your access could not be checked, so no permission is assumed either way. Nothing was changed."
-              : "Read-only access — an owner or admin records these."}
-          </p>
-        )}
-      </div>
       </div>
 
-      {/* The strip is a full-width row rather than a column beside the brief, because every tile
-          carries the sentence that says where its figure came from or why there is none. That
+      <div className="social-hero-top">
+        <div className="social-cmd-brief">
+          <h2 className="social-headline">{brief.headline}</h2>
+          <p className="social-hero-body">{brief.body}</p>
+          <p className="social-signature">
+            <strong>PAIGE</strong>
+            <span>Your chief of staff. She only tells you what she can prove.</span>
+          </p>
+        </div>
+
+        {!canManage && (
+          <div className="social-hero-act">
+            <p className="social-hero-permission" role={authorityUnknown ? "alert" : undefined}>
+              {authorityUnknown
+                ? "Your access could not be checked, so no permission is assumed either way. Nothing was changed."
+                : "Read-only access — an owner or admin records these."}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* The signal strip is a full-width row rather than a column beside the brief, because every
+          tile carries the sentence that says where its figure came from or why there is none. That
           sentence is the point of the tile, and it does not fit in a quarter-width column. */}
       <div className="social-kpis">
         {kpis.map((kpi) => (
           <article key={kpi.id} className="social-kpi">
-            <span className="social-kpi-glyph">{React.createElement(Ic[kpi.glyph] ?? Ic.grid, { size: 14 })}</span>
+            <div className="social-kpi-top">
+              <span className="social-kpi-glyph">{React.createElement(Ic[kpi.glyph] ?? Ic.grid, { size: 14 })}</span>
+              <Truth state={kpi.figure.state} />
+            </div>
             <Figure value={kpi.figure.value} />
             <h3>{kpi.label}</h3>
-            <Truth state={kpi.figure.state} />
             <p>{kpi.figure.value === null ? kpi.figure.note : kpi.detail}</p>
           </article>
         ))}
@@ -371,7 +418,7 @@ function PaigeSeesPanel({ items, loading, error, onRetry }) {
       <PanelHead glyph="pulse" title="PAIGE sees" state={!loading && !error && growth.length ? "PARTIAL" : "UNAVAILABLE"}
         sub="What she has ready for you, from marketing, sales and client work." />
       {loading ? (
-        <div className="social-skeleton" role="status" aria-label="Loading what PAIGE has ready"><span /><span /><span /></div>
+        <div className="social-skeleton" role="status" aria-label="Loading what PAIGE has ready"><span className="social-sk-s" /><span className="social-sk-s" /><span className="social-sk-s" /></div>
       ) : error ? (
         <div className="social-empty" role="alert">
           <h4>This could not be read</h4>
@@ -424,6 +471,7 @@ function ContentPipelinePanel({ stages }) {
       <ol className="social-pipeline">
         {stages.map((stage) => (
           <li key={stage.id} className={`social-stage social-stage--${stage.tone}`}>
+            <span className="social-stage-glyph">{React.createElement(STAGE_GLYPH[stage.id] ?? Ic.grid, { size: 14 })}</span>
             <Figure value={stage.figure.value} />
             <h4>{stage.label}</h4>
             <p>{stage.figure.value === null ? stage.figure.note : stage.detail}</p>
@@ -486,7 +534,7 @@ function ChannelTelemetryPanel({ channels, onRecord, canManage, notPermitted, ha
             {channels.map((channel) => (
               <li key={channel.network}>
                 <div className="social-channel-id">
-                  <span className={`social-channel-dot social-channel-dot--${channel.network}`} aria-hidden="true" />
+                  <span className="social-channel-dot" aria-hidden="true" />
                   <div>
                     <h4>{channel.label}</h4>
                     <small className="mono">{channel.handle}</small>
@@ -628,7 +676,10 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompa
   if (social.phase === "resolving" || campaigns.phase === "resolving") {
     return (
       <div className="social-page">
-        <div className="social-state" role="status"><span className="social-spinner" />Resolving this account's Social workspace…</div>
+        <div className="social-state" role="status">
+          <span className="social-spinner" />
+          <p>Resolving this account's Social workspace…</p>
+        </div>
       </div>
     );
   }
@@ -636,6 +687,7 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompa
     return (
       <div className="social-page">
         <div className="social-state">
+          <PaigeOrb />
           <Truth state="UNAVAILABLE" />
           <h2>Social needs a resolved workspace</h2>
           <p>Nothing loads until PAIGE knows which account you are in.</p>
@@ -647,6 +699,7 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompa
     return (
       <div className="social-page">
         <div className="social-state" role="alert">
+          <PaigeOrb />
           <Truth state="UNAVAILABLE" />
           <h2>This workspace's social record could not be read</h2>
           <p>Nothing was changed. This failing to load is not the same as having nothing on record, so nothing is claimed either way.</p>
@@ -658,7 +711,9 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompa
   if (social.phase === "loading") {
     return (
       <div className="social-page">
-        <div className="social-skeleton" role="status" aria-label="Loading Social"><span /><span /><span /></div>
+        <div className="social-skeleton" role="status" aria-label="Loading Social">
+          <span className="social-sk-h" /><span className="social-sk-s" /><span className="social-sk-r" />
+        </div>
       </div>
     );
   }
@@ -692,16 +747,20 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompa
       />
 
       <div className="social-grid">
-        <ActiveMissionsPanel onOpenStudio={onOpenStudio} />
-        <PaigeSeesPanel items={pending.items ?? []} loading={pending.loading} error={pending.error} onRetry={pending.refresh} />
-        <ContentPipelinePanel stages={stages} />
-        <ChannelTelemetryPanel
-          channels={channels}
-          onRecord={openRecord}
-          canManage={social.canManage}
-          notPermitted={social.notPermitted}
-          handlesUnknown={Boolean(social.handlesUnknown)}
-        />
+        <div className="social-col">
+          <PaigeSeesPanel items={pending.items ?? []} loading={pending.loading} error={pending.error} onRetry={pending.refresh} />
+          <ContentPipelinePanel stages={stages} />
+        </div>
+        <div className="social-col">
+          <ChannelTelemetryPanel
+            channels={channels}
+            onRecord={openRecord}
+            canManage={social.canManage}
+            notPermitted={social.notPermitted}
+            handlesUnknown={Boolean(social.handlesUnknown)}
+          />
+          <ActiveMissionsPanel onOpenStudio={onOpenStudio} />
+        </div>
       </div>
 
       <TrustCompassSocialStatus trust={trust} />

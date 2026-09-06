@@ -29,6 +29,9 @@ vi.mock("@/solo/SoloSystemsCheckWorkspace", () => ({
 vi.mock("@/solo/SoloMindWorkspace", () => ({
   SoloMindWorkspace: () => <div>Canonical Solo Mind</div>,
 }));
+vi.mock("@/solo/SoloGamePlanWorkspace", () => ({
+  SoloGamePlanWorkspace: () => <div>Canonical Solo Game Plan</div>,
+}));
 
 import { CommandHub } from "@/solo/CommandCenter";
 
@@ -107,7 +110,7 @@ describe("tenant Command Center secondary tabs", () => {
     });
   });
 
-  it("keeps non-Solo owners unchanged while Solo exposes only Systems Check and Mind", () => {
+  it("keeps non-Solo owners unchanged while Solo leads with Business Game Plan, then Systems Check and Mind", () => {
     expect(OPERATOR_SLOTS.find((slot) => slot.id === "fleet")).toMatchObject({
       label: "Fleet",
       views: ["Systems check", "Directory", "History"],
@@ -128,13 +131,13 @@ describe("tenant Command Center secondary tabs", () => {
     // Trust Compass became Command Center's third sub-tab (owner-ruled 2026-09-05):
     // Business Game Plan → Systems Check → Trust Compass → Mind (Game Plan not built yet).
     expect(solo?.subtabs?.map((tab) => tab.label)).toEqual([
-      "Systems Check", "Trust Compass", "Mind",
+      "Business Game Plan", "Systems Check", "Trust Compass", "Mind",
     ]);
-    expect(solo?.subtabs?.[0]).toMatchObject({ slug: "systems-check", key: "sys" });
+    expect(solo?.subtabs?.[0]).toMatchObject({ slug: "business-game-plan", key: "plan" });
   });
 
   it.each([
-    ["src/solo/CommandCenter.tsx", ["Systems Check", "Trust Compass", "Mind"]],
+    ["src/solo/CommandCenter.tsx", ["Business Game Plan", "Systems Check", "Trust Compass", "Mind"]],
     ["src/agency/CommandCenter.tsx", ["Systems Check", "Directory", "History"]],
   ])("renders the ruled secondary labels in %s", (path, labels) => {
     const screen = source(path);
@@ -178,10 +181,10 @@ describe("tenant Command Center secondary tabs", () => {
     expect(html).not.toContain("Passing");
   });
 
-  it("makes the Solo root the canonical Systems Check owner while Agency keeps its Core owner", () => {
+  it("makes the Solo root land on Business Game Plan while Agency keeps its Core owner", () => {
     const solo = source("src/solo/CommandCenter.tsx");
     const agency = source("src/agency/CommandCenter.tsx");
-    expect(solo).toContain('useSubtabRoute("solo", "command-center", "sys")');
+    expect(solo).toContain('useSubtabRoute("solo", "command-center", "plan")');
     expect(solo).not.toContain('tab === "home"');
     expect(solo).not.toContain("SystemsCheckTile");
     expect(solo).toContain("SoloSystemsCheckWorkspace");
@@ -301,7 +304,7 @@ describe("tenant Command Center secondary tabs", () => {
   it.each([
     "/solo/7001001/command-center",
     "/solo/7001001/command-center/overview",
-  ])("resolves the Solo compatibility entry %s to one canonical Systems Check address", (entry) => {
+  ])("resolves the Solo compatibility entry %s to the canonical Business Game Plan landing", (entry) => {
     const host = document.createElement("div");
     const root = createRoot(host);
     act(() => root.render(
@@ -314,9 +317,9 @@ describe("tenant Command Center secondary tabs", () => {
         </Routes>
       </MemoryRouter>,
     ));
-    expect(host.textContent).toContain("Canonical Solo Systems Check");
+    expect(host.textContent).toContain("Canonical Solo Game Plan");
     expect(host.querySelector("[data-location]")?.textContent).toBe(
-      "/solo/7001001/command-center/systems-check",
+      "/solo/7001001/command-center/business-game-plan",
     );
     act(() => root.unmount());
   });

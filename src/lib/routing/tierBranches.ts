@@ -116,13 +116,17 @@ export interface TierTree {
 export const SOLO_BRANCHES: Branch[] = [
   {
     slug: "command-center", key: "home", label: "Command Center", group: "main",
-    // Systems Check is the canonical Solo landing surface. The former overview
-    // address remains a compatibility alias of the same owner.
+    // Business Game Plan is the default Command Center landing (owner-approved 2026-09-05).
+    // subtabs[0] is the default the bare `/command-center` renders; the former `overview`
+    // address is a compatibility alias of this new default owner (moved off Systems Check).
+    // Trust Compass takes position 3 (between Systems Check and Mind) in the intended final
+    // order — but ONLY when its owner ships a real Command Center sub-tab. It is deliberately
+    // NOT declared here as a dead/placeholder tab (owner ruling 2026-09-05; four-surfaces §4).
     subtabs: [
-      { slug: "systems-check", aliases: ["overview"], key: "sys", label: "Systems Check" },
+      { slug: "business-game-plan", aliases: ["overview"], key: "plan", label: "Business Game Plan" },
+      { slug: "systems-check", key: "sys", label: "Systems Check" },
       // Trust Compass is the third Command Center surface (owner-ruled 2026-09-05):
-      // Business Game Plan → Systems Check → Trust Compass → Mind. Game Plan is not built yet,
-      // so it is not listed; the order of the built surfaces is preserved.
+      // Business Game Plan → Systems Check → Trust Compass → Mind.
       { slug: "trust-compass", key: "compass", label: "Trust Compass" },
       { slug: "mind", aliases: ["directory", "history"], key: "mind", label: "Mind" },
     ],
