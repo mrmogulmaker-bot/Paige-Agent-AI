@@ -1,0 +1,50 @@
+type ProviderError = { code?: number | string };
+
+/** Normalize supported destinations without guessing an international country. */
+export function normalizeDialNumber(raw: string): string {
+  const trimmed = raw.trim();
+  const digits = trimmed.replace(/[^\d]/g, "");
+  if (trimmed.startsWith("+")) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return digits;
+}
+
+export function isDialableNumber(value: string): boolean {
+  return /^\+[1-9]\d{7,14}$/.test(value);
+}
+
+export function acquireCallStart(
+  lock: { current: boolean },
+  hasActiveCall: boolean,
+): boolean {
+  if (hasActiveCall || lock.current) return false;
+  lock.current = true;
+  return true;
+}
+
+/** Safe owner-facing categories; never surface raw provider messages or payloads. */
+export function providerCallErrorMessage(error: unknown): string {
+  const code = String((error as ProviderError | null)?.code ?? "");
+  if (code === "21211" || code === "21217") {
+    return "Enter a valid phone number, including the country code.";
+  }
+  if (code === "20101" || code === "31205") {
+    return "Your calling session expired. Retry the call.";
+  }
+  if (code === "31005" || code === "31009") {
+    return "We could not reach the calling provider. Retry.";
+  }
+  return "The provider rejected this call. Check the number and retry.";
+}
+
+export function voiceHistoryStatus(status: string): {
+  label: "Initiated" | "Completed" | "Failed" | "Received";
+  state: "pending" | "success" | "error";
+} | null {
+  if (status === "queued") return { label: "Initiated", state: "pending" };
+  if (status === "delivered" || status === "read") return { label: "Completed", state: "success" };
+  if (status === "failed") return { label: "Failed", state: "error" };
+  if (status === "received") return { label: "Received", state: "success" };
+  return null;
+}

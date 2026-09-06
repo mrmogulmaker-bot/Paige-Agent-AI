@@ -127,6 +127,16 @@ console.log("voice-twiml statusCallback smoke\n");
   check("an UNSIGNED operator call gets no callback url", url === "");
 }
 
+// 7b. API-key deployments have no master Auth Token. Their operator TwiML App
+// carries a purpose-bound proof and the child-leg callback must retain it.
+{
+  const proof = "ov1_operator-proof";
+  const url = resolveStatusCallbackUrl({
+    base: BASE, signatureVerified: true, tenantId: null, tenantSecret: proof,
+  });
+  check("a verified operator proof is stamped on the callback", url === `${BASE}?t=${encodeURIComponent(proof)}`);
+}
+
 // 8. Unconfigured base is still "" on every path (unchanged behaviour).
 {
   for (const signatureVerified of [true, false]) {

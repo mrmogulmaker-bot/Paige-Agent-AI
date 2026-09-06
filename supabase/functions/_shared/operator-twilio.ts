@@ -84,6 +84,35 @@ export function operatorVoiceCallerId(): string {
 }
 
 /**
+ * Dedicated bearer proof for the operator TwiML Application. The production account uses
+ * scoped API keys and intentionally has no account Auth Token, so Twilio signature validation
+ * is unavailable. Derive a purpose-bound value from the API-key secret instead of placing that
+ * credential itself in a webhook URL. Rotation changes the proof automatically.
+ */
+export async function deriveOperatorVoiceWebhookSecret(): Promise<string | null> {
+  const creds = masterCreds();
+  if (!creds?.authToken || !creds.accountSid) return null;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(creds.authToken),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signed = new Uint8Array(await crypto.subtle.sign(
+    "HMAC",
+    key,
+    enc.encode(`paige:operator:voice-webhook:v1:${creds.accountSid}`),
+  ));
+  const encoded = btoa(String.fromCharCode(...signed))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+  return `ov1_${encoded}`;
+}
+
+/**
  * Resolve operator Twilio creds from env, or null when not configured (honest degrade,
  * §13 — callers surface `needs_config`, never send with an empty credential).
  *

@@ -40,6 +40,7 @@ const CONTACT = "c0ffee00-3333-4333-8333-333333333333";
 const OPERATOR_SEAT = "44444444-4444-4444-8444-444444444444";
 const OTHER_TENANT = "9999aaaa-5555-4555-8555-555555555555";
 const OTHER_SECRET = "OTHER-TENANT-SECRET-" + "x".repeat(30);
+const SUBACCOUNT = "subaccount-row-1";
 const OPERATOR_NUMBER = "+14700009999";
 const TENANT_NUMBER = "+15550001111";
 const WEBHOOK_SECRET = "WEBHOOK-SECRET-" + "s".repeat(40);
@@ -59,6 +60,7 @@ const ENV = {
   TWILIO_OPERATOR_CALLER_ID: OPERATOR_NUMBER,
   TWILIO_AUTH_TOKEN: undefined, // the production posture: no master token
 };
+let failWriteTable = null;
 
 // ── Supabase stub. Chainable, returns canned rows by table. ─────────────────
 //
@@ -75,7 +77,10 @@ function makeAdmin() {
     if (table === "tenant_phone_numbers") {
       if (filters.phone_number && filters.phone_number !== TENANT_NUMBER) return [];
       if (filters.tenant_id && filters.tenant_id !== TENANT) return [];
-      return [{ tenant_id: TENANT, phone_number: TENANT_NUMBER, is_primary: true }];
+      return [{
+        tenant_id: TENANT, phone_number: TENANT_NUMBER, is_primary: true,
+        subaccount_id: SUBACCOUNT, twilio_sid: "PNprovider", capabilities: { voice: true },
+      }];
     }
     if (table === "tenant_members") {
       if (filters.tenant_id !== TENANT) return [];
@@ -99,8 +104,12 @@ function makeAdmin() {
     if (table === "tenant_twilio_subaccounts") {
       // The distinguishing fixture: each tenant has its OWN secret, so stamping the
       // wrong tenant's is observable instead of indistinguishable.
-      if (filters.tenant_id === TENANT) return [{ inbound_webhook_secret: WEBHOOK_SECRET }];
-      if (filters.tenant_id === OTHER_TENANT) return [{ inbound_webhook_secret: OTHER_SECRET }];
+      if (filters.inbound_webhook_secret === WEBHOOK_SECRET || filters.tenant_id === TENANT) {
+        return [{ id: SUBACCOUNT, tenant_id: TENANT, inbound_webhook_secret: WEBHOOK_SECRET, active: true, status: "active" }];
+      }
+      if (filters.inbound_webhook_secret === OTHER_SECRET || filters.tenant_id === OTHER_TENANT) {
+        return [{ id: "subaccount-row-2", tenant_id: OTHER_TENANT, inbound_webhook_secret: OTHER_SECRET, active: true, status: "active" }];
+      }
       return [];
     }
     return [];
@@ -111,6 +120,7 @@ function makeAdmin() {
   const builder = (table) => {
     const filters = {};
     let inFilter = null;
+    let operation = "read";
     const q = {
       select: () => q,
       eq: (k, v) => { filters[k] = v; return q; },
@@ -130,10 +140,14 @@ function makeAdmin() {
         const r = rowsFor(table, filters, inFilter);
         return { data: r[0] ?? { id: `${table}-row-1` }, error: null };
       },
-      insert: (payload) => { writes.push({ table, op: "insert", payload }); return q; },
-      update: (payload) => { writes.push({ table, op: "update", payload }); return q; },
+      insert: (payload) => { operation = "insert"; writes.push({ table, op: "insert", payload }); return q; },
+      update: (payload) => { operation = "update"; writes.push({ table, op: "update", payload }); return q; },
       upsert: (payload) => { writes.push({ table, op: "upsert", payload }); return q; },
-      then: (res) => { reads.push(table); res({ data: rowsFor(table, filters, inFilter), error: null }); },
+      then: (res) => {
+        reads.push(table);
+        const error = operation !== "read" && table === failWriteTable ? { code: "transient_write_failure" } : null;
+        res({ data: rowsFor(table, filters, inFilter), error });
+      },
     };
     return q;
   };
@@ -196,9 +210,11 @@ globalThis.Deno = {
 await import(pathToFileURL(outFile).href);
 assert.ok(typeof handler === "function", "FAILED: did not capture the Deno.serve handler");
 
-const post = async (body, { admin } = {}) => {
+const post = async (body, { admin, secret = null } = {}) => {
   globalThis.__ADMIN__ = admin ?? makeAdmin();
-  const res = await handler(new Request("https://ref.functions.supabase.co/functions/v1/voice-twiml", {
+  const url = "https://ref.functions.supabase.co/functions/v1/voice-twiml" +
+    (secret ? `?t=${encodeURIComponent(secret)}` : "");
+  const res = await handler(new Request(url, {
     method: "POST", body, headers: { "content-type": "application/x-www-form-urlencoded" },
   }));
   return { status: res.status, xml: await res.text(), admin: globalThis.__ADMIN__ };
@@ -207,45 +223,75 @@ const post = async (body, { admin } = {}) => {
 let n = 0;
 const check = (label, cond) => { n++; assert.ok(cond, `FAILED: ${label}`); console.log(`  ok  ${label}`); };
 
-console.log("voice-twiml handler smoke (real handler, unsigned requests)\n");
+console.log("voice-twiml handler smoke (real handler, fail-closed tenant auth)\n");
 
 // ── 1. INBOUND, unsigned. The cheap attack: the dialed number is PUBLIC. ─────
 {
   const { status, xml, admin } = await post(
     `To=${encodeURIComponent(TENANT_NUMBER)}&From=%2B15559998888&CallSid=CAattackerchosen`);
-  check("inbound unsigned still answers with TwiML (the call is not broken)",
-    status === 200 && xml.includes("<Response>"));
+  check("inbound request without tenant proof is refused", status === 401);
   check("inbound unsigned leaks NO webhook secret", !xml.includes(WEBHOOK_SECRET));
   check("inbound unsigned emits NO statusCallback", !xml.includes("statusCallback"));
   check("inbound unsigned mints NO co-pilot stream token", !xml.includes("streamToken"));
   check("inbound unsigned opens NO media stream at all", !xml.includes("<Stream"));
-  check("inbound unsigned never even READS the credential table",
-    !admin.reads.includes("tenant_twilio_subaccounts"));
-  // Non-vacuity: the handler really did take the ring path rather than a degrade.
-  // Deliberately NOT asserted on the tenant/seat UUIDs: those being in the response is
-  // F5 (recorded in this PR as a real, pre-existing leak), and pinning them here would
-  // turn its eventual fix into a red build labelled "path not short-circuited".
-  check("...and it really did ring a seat (path not short-circuited)",
-    xml.includes("<Client") && !xml.includes("<Say"));
+  check("inbound unsigned resolves only the dialed tenant's proof/credentials",
+    admin.reads.includes("tenant_twilio_subaccounts"));
+  check("inbound unsigned creates no tenant history", admin.writes.length === 0 && admin.rpcs.length === 0);
 }
 
 // ── 2. OUTBOUND, unsigned, naming a tenant in From. The original attack. ─────
 {
   const { status, xml, admin } = await post(
     `From=${encodeURIComponent(`client:${TENANT}.${SEAT}`)}&To=%2B15559998888&CallSid=CAx`);
-  check("outbound unsigned still answers with TwiML", status === 200 && xml.includes("<Response>"));
+  check("outbound request without tenant proof is refused", status === 401);
   check("outbound unsigned leaks NO webhook secret", !xml.includes(WEBHOOK_SECRET));
   check("outbound unsigned emits NO statusCallback", !xml.includes("statusCallback"));
   check("outbound unsigned mints NO co-pilot stream token", !xml.includes("streamToken"));
-  check("outbound unsigned never even READS the credential table",
-    !admin.reads.includes("tenant_twilio_subaccounts"));
-  check("...and it really did bridge the dial (path not short-circuited)", xml.includes("<Dial"));
+  check("outbound unsigned resolves only the claimed tenant's proof/credentials",
+    admin.reads.includes("tenant_twilio_subaccounts"));
+  check("outbound unsigned creates no tenant history", admin.writes.length === 0 && admin.rpcs.length === 0);
 }
 
-// ── 3. NON-VACUITY, the load-bearing case. Flip ONLY the auth posture: set the
-//       master token and sign the request. Everything the assertions above deny
-//       must now APPEAR — otherwise those assertions were passing because the
-//       handler never emits these things at all.
+// A tenant-stamped VoiceUrl proves which tenant owns the TwiML Application. The
+// request body must resolve to that SAME tenant before any caller ID, seat, or
+// history operation is allowed.
+{
+  const outbound = await post(
+    `From=${encodeURIComponent(`client:${TENANT}.${SEAT}`)}&To=%2B15559998888&CallSid=CAtenant`,
+    { secret: WEBHOOK_SECRET },
+  );
+  check("tenant-secret outbound request is accepted", outbound.status === 200 && outbound.xml.includes("<Dial"));
+  check("tenant-secret outbound request emits a terminal callback", outbound.xml.includes("statusCallback"));
+  check("tenant-secret outbound writes only the proven tenant", outbound.admin.rpcs.some((r) =>
+    r.name === "create_and_attach_conversation" && r.args?.p_tenant_id === TENANT));
+
+  const forged = await post(
+    `From=${encodeURIComponent(`client:${OTHER_TENANT}.${SEAT}`)}&To=%2B15559998888&CallSid=CAforged`,
+    { secret: WEBHOOK_SECRET },
+  );
+  check("tenant A proof cannot authorize tenant B identity", forged.status === 403);
+  check("cross-tenant refusal creates no history", forged.admin.writes.length === 0 && forged.admin.rpcs.length === 0);
+
+  const inbound = await post(
+    `To=${encodeURIComponent(TENANT_NUMBER)}&From=%2B15559998888&CallSid=CAtenantinbound`,
+    { secret: WEBHOOK_SECRET },
+  );
+  check("tenant-secret inbound request is accepted", inbound.status === 200 && inbound.xml.includes("<Dial"));
+  check("tenant-secret inbound stamps the terminal callback", inbound.xml.includes(`?t=${encodeURIComponent(WEBHOOK_SECRET)}`));
+  check("tenant-secret inbound mints a tenant-bound co-pilot token", inbound.xml.includes("streamToken"));
+
+  failWriteTable = "messages";
+  const unaudited = await post(
+    `From=${encodeURIComponent(`client:${TENANT}.${SEAT}`)}&To=%2B15559998888&CallSid=CAauditfailure`,
+    { secret: WEBHOOK_SECRET },
+  );
+  failWriteTable = null;
+  check("history persistence failure returns a spoken unavailable response", unaudited.xml.includes("<Say"));
+  check("history persistence failure never emits a dial bridge", !unaudited.xml.includes("<Dial"));
+}
+
+// ── 3. MASTER SIGNATURES ARE OPERATOR-ONLY. A valid master-account signature
+//       must not authorize a tenant caller ID, tenant history, or tenant secret.
 {
   const { computeTwilioSignature } = await (async () => {
     const f = path.join(outDir, "sig.mjs");
@@ -261,46 +307,14 @@ console.log("voice-twiml handler smoke (real handler, unsigned requests)\n");
   const sig = await computeTwilioSignature(TOKEN, url, body);
 
   globalThis.__ADMIN__ = makeAdmin();
-  const admin3 = globalThis.__ADMIN__;
   const res = await handler(new Request(url, {
     method: "POST", body,
     headers: { "content-type": "application/x-www-form-urlencoded", "x-twilio-signature": sig },
   }));
   const xml = await res.text();
-
-  check("a SIGNED inbound call DOES stamp the secret", xml.includes(WEBHOOK_SECRET));
-  check("a SIGNED inbound call DOES emit a statusCallback", xml.includes("statusCallback"));
-  check("a SIGNED inbound call DOES mint a co-pilot stream token", xml.includes("streamToken"));
-  // The inbound-path regression the callback suite could not see: the tenant here
-  // is the OWNER OF THE DIALED NUMBER, not anything in `From`. A bare URL would
-  // be refused 401 by the fail-closed callback endpoint.
-  check("...and the inbound callback is STAMPED, not bare", xml.includes(`?t=${encodeURIComponent(WEBHOOK_SECRET)}`));
-  check("...with THIS tenant's secret, not another tenant's", !xml.includes(OTHER_SECRET));
-  // WHERE it lands, not merely that it is present. statusCallback is an attribute of
-  // the dial NOUN (<Number>/<Client>). On the <Dial> VERB Twilio ignores it, the child
-  // leg never reports, and the voice row stays queued forever — silently, and
-  // indistinguishably from the defect this branch exists to fix.
-  check("the callback is on the dial NOUN, not the <Dial> verb", /<Client[^>]*\sstatusCallback=/.test(xml));
-  check("...and <Dial> itself carries no statusCallback", !/<Dial[^>]*\sstatusCallback=/.test(xml));
-  {
-    const conv = admin3.rpcs.find((r) => r.name === "create_and_attach_conversation");
-    check("the conversation RPC ran", !!conv);
-    check("...stamped with THIS tenant", conv?.args?.p_tenant_id === TENANT);
-  }
-
-  // Decode the minted token and assert on its PAYLOAD, not merely its presence.
-  // Presence alone cannot see a §9 scoping error inside it — an unscoped contact
-  // lookup silently yields a token with no contact link, and the co-pilot then
-  // no-ops its client linkage while every "a token was minted" assertion stays green.
-  {
-    const m = xml.match(/name="streamToken" value="([^"]+)"/);
-    check("the minted token is well-formed", !!m && m[1].split(".").length === 3);
-    const payload = JSON.parse(Buffer.from(
-      m[1].split(".")[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
-    check("...bound to THIS tenant", payload.t === TENANT);
-    check("...bound to THIS call", payload.c === "CAsigned");
-    check("...and carrying the tenant-scoped contact it resolved", payload.ct === CONTACT);
-  }
+  check("master-signed tenant inbound is rejected", res.status === 403);
+  check("master-signed tenant inbound exposes no tenant secret", !xml.includes(WEBHOOK_SECRET));
+  check("master-signed tenant inbound creates no history", globalThis.__ADMIN__.writes.length === 0);
 
   // A bad signature is a hard refusal, not a silent unsigned accept.
   globalThis.__ADMIN__ = makeAdmin();
@@ -310,12 +324,7 @@ console.log("voice-twiml handler smoke (real handler, unsigned requests)\n");
   }));
   check("a BAD signature is rejected 403", bad.status === 403);
 
-  // ── 4. THE OTHER THREE BRANCHES, SIGNED. ────────────────────────────────
-  // The suite previously exercised 2 of the handler's 4 terminal branches, and
-  // only 1 of 4 on the signed path — which is the ONLY path where a wrong-tenant
-  // or bare callback is observable at all. So the per-branch fix was unguarded on
-  // three of the four branches it changed. Each case below is a branch, not a
-  // variation: tenant outbound, operator outbound, operator inbound.
+  // ── 4. SIGNED BRANCH BINDING. ───────────────────────────────────────────
   const signedPost = async (b) => {
     const sg = await computeTwilioSignature(TOKEN, url, b);
     globalThis.__ADMIN__ = makeAdmin();
@@ -323,21 +332,16 @@ console.log("voice-twiml handler smoke (real handler, unsigned requests)\n");
       method: "POST", body: b,
       headers: { "content-type": "application/x-www-form-urlencoded", "x-twilio-signature": sg },
     }));
-    return { xml: await r.text(), admin: globalThis.__ADMIN__ };
+    return { status: r.status, xml: await r.text(), admin: globalThis.__ADMIN__ };
   };
 
-  // 4a. Tenant OUTBOUND. Tenant = the authenticated `client:` identity.
+  // 4a. A master signature cannot unlock tenant outbound.
   {
     const r = await signedPost(
       `From=${encodeURIComponent(`client:${TENANT}.${SEAT}`)}&To=%2B15559998888&CallSid=CAob`);
-    check("signed tenant OUTBOUND stamps a callback", r.xml.includes("statusCallback"));
-    check("...with THIS tenant's secret", r.xml.includes(`?t=${encodeURIComponent(WEBHOOK_SECRET)}`));
-    check("...never another tenant's", !r.xml.includes(OTHER_SECRET));
-    check("...and it is not bare", !r.xml.includes(`statusCallback="${CALLBACK_BASE}"`));
-    check("...on the dial NOUN, not the <Dial> verb", /<Number[^>]*\sstatusCallback=/.test(r.xml));
-    check("...and <Dial> itself carries none", !/<Dial[^>]*\sstatusCallback=/.test(r.xml));
-    const conv = r.admin.rpcs.find((c) => c.name === "create_and_attach_conversation");
-    check("...and the conversation row is stamped with THIS tenant", conv?.args?.p_tenant_id === TENANT);
+    check("master-signed tenant outbound is rejected", r.status === 403);
+    check("...exposes no tenant callback secret", !r.xml.includes(WEBHOOK_SECRET));
+    check("...and creates no tenant history", r.admin.writes.length === 0 && r.admin.rpcs.length === 0);
   }
 
   // 4b. Operator OUTBOUND. Tenant-less by construction (§9/§53): the master leg
@@ -380,11 +384,42 @@ console.log("voice-twiml handler smoke (real handler, unsigned requests)\n");
     const r = await signedPost(`To=%2B15550009999&From=%2B15559998888&CallSid=CAstray`);
     check("an unowned, non-operator number does NOT ring operator seats",
       !r.xml.includes(`operator.${OPERATOR_SEAT}`) && !r.xml.includes("<Client"));
-    check("...and degrades to a spoken message", r.xml.includes("<Say"));
+    check("...and is refused before any TwiML is returned", r.status === 403 && !r.xml.includes("<Say"));
     check("...and rings no tenant seat either", !r.xml.includes(`${TENANT}.${SEAT}`));
   }
 
   ENV.TWILIO_AUTH_TOKEN = undefined;
+}
+
+// ── 5. OPERATOR HMAC PROOF. Production intentionally has no master Auth Token,
+// so the purpose-bound proof must authenticate both the call and its callback URL.
+{
+  ENV.TWILIO_ACCOUNT_SID = "ACmaster0000000000000000000000000";
+  ENV.TWILIO_API_KEY_SID = "SKmaster0000000000000000000000000";
+  ENV.TWILIO_API_KEY_SECRET = "master-api-key-secret";
+  const helperFile = path.join(outDir, "operator-proof.mjs");
+  await build({
+    entryPoints: ["supabase/functions/_shared/operator-twilio.ts"],
+    outfile: helperFile, bundle: true, format: "esm", platform: "neutral", target: "es2022",
+  });
+  const { deriveOperatorVoiceWebhookSecret } = await import(pathToFileURL(helperFile).href);
+  const proof = await deriveOperatorVoiceWebhookSecret();
+  const r = await post(
+    `From=${encodeURIComponent(`client:operator.${OPERATOR_SEAT}`)}&To=%2B15559998888&CallSid=CAoperatorproof`,
+    { secret: proof },
+  );
+  check("derived operator proof authenticates without a master Auth Token", r.status === 200 && r.xml.includes("<Dial"));
+  check("derived operator proof is retained on the child callback", r.xml.includes(`?t=${encodeURIComponent(proof)}`));
+  check("derived operator proof touches no tenant data store", !r.admin.touched().some(TENANT_DATA_TABLES));
+
+  const bad = await post(
+    `From=${encodeURIComponent(`client:operator.${OPERATOR_SEAT}`)}&To=%2B15559998888&CallSid=CAoperatorbad`,
+    { secret: `${proof}x` },
+  );
+  check("wrong operator proof is refused", bad.status === 403 && bad.admin.writes.length === 0);
+  ENV.TWILIO_ACCOUNT_SID = undefined;
+  ENV.TWILIO_API_KEY_SID = undefined;
+  ENV.TWILIO_API_KEY_SECRET = undefined;
 }
 
 console.log(`\n${n} assertions passed.`);

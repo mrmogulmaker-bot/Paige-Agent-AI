@@ -34,6 +34,13 @@ import type { Call, Device, TwilioError } from "@twilio/voice-sdk";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import {
+  acquireCallStart,
+  isDialableNumber,
+  normalizeDialNumber,
+  providerCallErrorMessage,
+} from "./voiceCallSafety";
+export { isDialableNumber, normalizeDialNumber } from "./voiceCallSafety";
+import {
   useLiveTranscript,
   type TranscriptLine,
   type TranscriptState,
@@ -184,14 +191,6 @@ async function mintToken(): Promise<MintResult> {
   }
 }
 
-/** Best-effort E.164-ish normalisation: keep a leading +, strip everything non-digit. */
-export function normalizeDialNumber(raw: string): string {
-  const trimmed = raw.trim();
-  const hasPlus = trimmed.startsWith("+");
-  const digits = trimmed.replace(/[^\d]/g, "");
-  return hasPlus ? `+${digits}` : digits;
-}
-
 export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [reason, setReason] = useState<string | null>(null);
@@ -288,6 +287,9 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
+  // Armed before microphone/device awaits so rapid clicks cannot create two
+  // provider calls before callRef receives the first Call object.
+  const callStartingRef = useRef(false);
   // The ringing inbound Call, held until the operator accepts or rejects it (A3).
   const incomingRef = useRef<Call | null>(null);
   // Guards concurrent boots (pad opens + click-to-call fire together).
@@ -363,10 +365,7 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
         // state). So only surface a Device-level error when there is NO active call.
         if (callRef.current) return;
         safeSet(setStatus, "error");
-        safeSet(
-          setReason,
-          err?.message ? `Calling error: ${err.message}` : "A calling error occurred.",
-        );
+        safeSet(setReason, providerCallErrorMessage(err));
       });
 
       // §32: SHORT token refresh. Twilio fires this ~10s before expiry — re-mint and
@@ -492,7 +491,7 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       call.on("reject", end);
       call.on("error", (err: TwilioError.TwilioError) => {
         safeSet(setStatus, "error");
-        safeSet(setReason, err?.message ? `Call failed: ${err.message}` : "The call failed.");
+        safeSet(setReason, providerCallErrorMessage(err));
         callRef.current = null;
         safeSet(setActiveCall, null);
       });
@@ -503,12 +502,12 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
   const call = useCallback(
     async (rawNumber: string) => {
       const number = normalizeDialNumber(rawNumber);
-      if (!number) {
+      if (!isDialableNumber(number)) {
         safeSet(setStatus, "error");
-        safeSet(setReason, "Enter a number to call.");
+        safeSet(setReason, "Enter a valid phone number, including the country code.");
         return;
       }
-      if (callRef.current) return; // already in a call — A3 owns multi-call
+      if (!acquireCallStart(callStartingRef, !!callRef.current)) return;
 
       // Mic is required for outbound audio. Probe FIRST so a denial is a clear,
       // handled state (§13) instead of an opaque Device failure mid-connect.
@@ -522,11 +521,15 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
           setReason,
           "Microphone access is blocked. Allow the mic in your browser to place calls.",
         );
+        callStartingRef.current = false;
         return;
       }
 
       const device = await bootDevice();
-      if (!device) return; // status already set to needs_config/error honestly
+      if (!device) {
+        callStartingRef.current = false;
+        return;
+      }
 
       safeSet(setStatus, "connecting");
       // callSid is unknown until the call is accepted (set in wireCall's accept handler).
@@ -534,10 +537,12 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       try {
         const outbound = await device.connect({ params: { To: number } });
         wireCall(outbound, number);
-      } catch {
+      } catch (error) {
         safeSet(setStatus, deviceRef.current ? "ready" : "error");
-        safeSet(setReason, "Couldn't place the call. Try again.");
+        safeSet(setReason, providerCallErrorMessage(error));
         safeSet(setActiveCall, null);
+      } finally {
+        callStartingRef.current = false;
       }
     },
     [bootDevice, wireCall, safeSet],

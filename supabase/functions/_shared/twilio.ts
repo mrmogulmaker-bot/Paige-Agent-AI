@@ -722,15 +722,19 @@ function clampVoiceTtl(requested?: number): number {
  * be created, and storing the intended URL now means the webhook slice doesn't have to
  * re-point every app. Overridable via VOICE_TWIML_URL for non-default deployments.
  */
-function defaultVoiceTwimlUrl(): string | null {
+function defaultVoiceTwimlUrl(secret?: string | null): string | null {
   const explicit = Deno.env.get("VOICE_TWIML_URL");
-  if (explicit && explicit.length > 0) return explicit;
-  const base = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
-  // §13: return null (not a bogus host) when the base URL is absent. ensureTwimlApp then
-  // degrades to needs_config rather than minting a TwiML app pointed at an invalid VoiceUrl
-  // that would silently misconfigure the subaccount until re-pointed. SUPABASE_URL is always
-  // injected in the edge runtime, so this only guards a genuinely misconfigured deployment.
-  return base ? `${base}/functions/v1/voice-twiml` : null;
+  const baseUrl = explicit && explicit.length > 0
+    ? explicit
+    : (() => {
+      const base = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
+      return base ? `${base}/functions/v1/voice-twiml` : null;
+    })();
+  if (!baseUrl) return null;
+  if (!secret) return baseUrl;
+  const url = new URL(baseUrl);
+  url.searchParams.set("t", secret);
+  return url.toString();
 }
 
 /** Minimal shape of the tenant_twilio_subaccounts row ensureTwimlApp reads (C-2v). */
@@ -739,7 +743,10 @@ interface SubaccountVoiceRow {
   api_key_sid: string | null;
   auth_token_vault_ref: string | null;
   twiml_app_sid: string | null;
+  inbound_webhook_secret: string | null;
+  config: Record<string, unknown> | null;
 }
+const VOICE_WEBHOOK_AUTH_VERSION = "tenant_secret_v1";
 
 export interface EnsureTwimlAppResult {
   /** AP… — the tenant subaccount's TwiML Application SID. */
@@ -765,7 +772,7 @@ export interface EnsureTwimlAppResult {
 export async function ensureTwimlApp(
   supabaseAdmin: SupabaseAdminLike,
   tenantId: string,
-  opts: { voiceUrl?: string; creds?: TwilioCreds } = {},
+  opts: { voiceUrl?: string; creds?: TwilioCreds; forceRepair?: boolean } = {},
 ): Promise<TwilioResult<EnsureTwimlAppResult>> {
   if (!tenantId) {
     return { ok: false, status: 0, error: "twilio_missing_tenant_id", data: null };
@@ -773,7 +780,7 @@ export async function ensureTwimlApp(
 
   const { data, error: rowErr } = await supabaseAdmin
     .from("tenant_twilio_subaccounts")
-    .select("subaccount_sid:twilio_subaccount_sid, api_key_sid, auth_token_vault_ref, twiml_app_sid")
+    .select("subaccount_sid:twilio_subaccount_sid, api_key_sid, auth_token_vault_ref, twiml_app_sid, inbound_webhook_secret, config")
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (rowErr) {
@@ -784,12 +791,14 @@ export async function ensureTwimlApp(
     return { ok: false, status: 0, error: "twilio_subaccount_not_provisioned", data: null, needs_config: true };
   }
 
-  // Idempotent: already minted → reuse. Never mint a second app for a subaccount.
-  if (row.twiml_app_sid) {
+  if (!row.inbound_webhook_secret) {
+    return { ok: false, status: 0, error: "voice_webhook_secret_missing", data: null, needs_config: true };
+  }
+  if (!opts.forceRepair && row.twiml_app_sid && row.config?.voice_webhook_auth === VOICE_WEBHOOK_AUTH_VERSION) {
     return { ok: true, status: 200, error: null, data: { applicationSid: row.twiml_app_sid, created: false } };
   }
 
-  // Resolve creds (given, or via the Vault bridge) to create the app on the subaccount.
+  // Resolve creds (given, or via the Vault bridge) to create or repair the app on the subaccount.
   let creds = opts.creds;
   if (!creds) {
     const r = await resolveTwilioCreds(supabaseAdmin, tenantId);
@@ -802,11 +811,51 @@ export async function ensureTwimlApp(
     return { ok: false, status: 0, error: "twilio_subaccount_api_key_missing", data: null, needs_config: true };
   }
 
-  const voiceUrl = opts.voiceUrl && opts.voiceUrl.length > 0 ? opts.voiceUrl : defaultVoiceTwimlUrl();
+  const baseVoiceUrl = opts.voiceUrl && opts.voiceUrl.length > 0
+    ? opts.voiceUrl
+    : defaultVoiceTwimlUrl(null);
+  let voiceUrl: string | null = null;
+  if (baseVoiceUrl) {
+    try {
+      const stamped = new URL(baseVoiceUrl);
+      stamped.searchParams.set("t", row.inbound_webhook_secret);
+      voiceUrl = stamped.toString();
+    } catch {
+      voiceUrl = null;
+    }
+  }
   // §13: refuse to mint a TwiML app without a real VoiceUrl (see defaultVoiceTwimlUrl). Better a
   // needs_config than a subaccount app silently pointed at an invalid host.
   if (!voiceUrl) {
     return { ok: false, status: 0, error: "voice_twiml_url_unavailable", data: null, needs_config: true };
+  }
+
+  // Existing apps must be repaired too. A stored Application SID proves neither
+  // that the provider resource still exists nor that its VoiceUrl carries the
+  // tenant proof required by voice-twiml. Updating the same resource is
+  // idempotent and avoids creating a parallel app.
+  if (row.twiml_app_sid) {
+    const repaired = await twilioRequest(
+      creds.accountSid,
+      creds.authToken,
+      `/2010-04-01/Accounts/${encodeURIComponent(creds.accountSid)}/Applications/${encodeURIComponent(row.twiml_app_sid)}.json`,
+      "POST",
+      { VoiceUrl: voiceUrl, VoiceMethod: "POST" },
+      creds.apiKeySid,
+    );
+    if (!repaired.ok) {
+      return { ok: false, status: repaired.status, error: repaired.error, data: null, needs_config: repaired.needs_config };
+    }
+    const { error: markerError } = await supabaseAdmin
+      .from("tenant_twilio_subaccounts")
+      .update({ config: { ...(row.config ?? {}), voice_webhook_auth: VOICE_WEBHOOK_AUTH_VERSION } })
+      .eq("tenant_id", tenantId);
+    if (markerError) {
+      console.error("[twilio] repaired VoiceUrl but could not persist repair marker", {
+        code: (markerError as { code?: string })?.code ?? null,
+      });
+    }
+    return { ok: true, status: repaired.status, error: null, data: { applicationSid: row.twiml_app_sid, created: false } };
   }
   const res = await twilioRequest(
     creds.accountSid, // URL path addresses the SUBaccount
@@ -829,7 +878,10 @@ export async function ensureTwimlApp(
   // is single-threaded provisioning, so the race is rare).
   const { error: uErr } = await supabaseAdmin
     .from("tenant_twilio_subaccounts")
-    .update({ twiml_app_sid: appSid })
+    .update({
+      twiml_app_sid: appSid,
+      config: { ...(row.config ?? {}), voice_webhook_auth: VOICE_WEBHOOK_AUTH_VERSION },
+    })
     .eq("tenant_id", tenantId)
     .is("twiml_app_sid", null);
   if (uErr) {
