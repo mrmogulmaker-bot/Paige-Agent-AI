@@ -10,9 +10,17 @@
 -- Design (additive, lowest-blast-radius): the history lives in the existing `meta jsonb` on the same
 -- row — no new table, no schema change, and NO touch to the shipped, session-coupled
 -- `studio_artifact_versions` or its RLS (§18 one home, §58-safe, §9 unchanged: the UPDATE stays
--- `WHERE id = p_id AND tenant_id = _tenant`). The history is SERVER-OWNED: it is based on the row's
--- existing `meta.versions`, NOT on caller-supplied p_meta (a caller cannot forge or wipe history), and
--- capped to the most-recent 20 so it cannot grow without bound.
+-- `WHERE id = p_id AND tenant_id = _tenant`). Through THIS RPC the history is SERVER-OWNED: it is based
+-- on the row's existing `meta.versions`, NOT on caller-supplied p_meta (a caller driving Paige's refine
+-- through this function cannot forge or wipe it), capped to the most-recent 20 so it cannot grow without
+-- bound. HONEST SCOPE (§13, Codex round-5): this is NOT a security boundary. `marketing_content` carries
+-- a `marketing_content_tenant_manage` FOR ALL policy, so a tenant admin/coach can still edit their OWN
+-- tenant's `meta.versions` (or replace image_url without a snapshot) by direct Data-API DML — that is
+-- their shipped, tenant-scoped capability, never a cross-tenant leak. The lineage is a within-tenant
+-- convenience audit of Paige's refine chain, and the invariant it guarantees is exactly "the RPC never
+-- silently loses a prior image," which holds. Enforcing lineage at the raw-table boundary (a trigger on
+-- `marketing_content` protecting the `versions` key) is a possible FUTURE hardening, deliberately out of
+-- this slice's scope (task #15 is the dedicated-chat refine, not a rewrite of the core library's RLS).
 --
 -- Snapshot fires ONLY when the image is genuinely being REPLACED with a DIFFERENT one — a text/document
 -- reuse (no p_image_url) or an idempotent re-save of the same url records no version. Every other line

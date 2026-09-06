@@ -81,6 +81,19 @@
   authentic server lineage; the insert now strips `versions` from an object meta (mirrors the reuse branch;
   a non-versions caller key is preserved). Re-proven: db-proof 13/13 (adds INSERT-strip), vitest 9/9 (adds
   the canvasArtifact server-gating test), ci:tsc + lints + §50 green.
+  **CODEX-FOLD ROUND 5 → DECISION: honest scope, NOT scope-expand (1 P2, PR #992).** Codex flagged (accurately)
+  that `meta.versions` is server-owned only THROUGH the RPC: `marketing_content` carries a
+  `marketing_content_tenant_manage` FOR ALL policy, so a tenant admin/coach can edit their OWN tenant's
+  `meta.versions` (or replace image_url without a snapshot) via direct Data-API DML, bypassing the RPC
+  stripping. VERDICT (stopping rule): this is WITHIN-tenant and AUTHORIZED (their shipped capability) — no
+  cross-tenant leak, no auth bypass; the lineage is a within-tenant convenience audit of Paige's refine
+  chain, not a security boundary. Its real invariant ("the RPC never silently loses a prior image") holds.
+  So NOT merge-blocking pre-launch, and NOT worth a trigger on the core `marketing_content` table (out of
+  task #15 scope, touches a shipped RLS-managed capability). §13 fix applied: the migration header now
+  scopes the "server-owned/un-forgeable" claim to the RPC path and names the raw-table boundary honestly.
+  Raw-table-boundary enforcement is logged here as a POSSIBLE FUTURE HARDENING, deferred. Merge decision:
+  proceed on green CI (5 review rounds, 10 findings folded/decided; core §9 tenant-isolation + server-owned
+  anchor invariants proven). ROUND 5 is comment/doc-only — no functional change, no new Codex round requested.
 
 - **Business Game Plan → Strategy-Desk SLICE A SHIPPED — the in-place production build of the
   owner-approved reimagination (2026-09-06, branch `claude/business-game-plan-ui-rxuju3`, PR #988).**
