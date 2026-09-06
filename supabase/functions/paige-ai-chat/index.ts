@@ -1347,7 +1347,14 @@ JSON:`;
           if (urlResponse.ok) {
             const urlData = await urlResponse.json();
             if (urlData.success) {
-              fetchedUrlContent = `\n\n=== FETCHED URL CONTENT ===\nURL: ${urlData.url}\nContent:\n${urlData.content}\n===========================\n`;
+              // §9/§13 injection fence (Slice 2 inc 2, folded on §39/§5 review) — this is the WORST
+              // co-located surface: arbitrary attacker-controlled WEB PAGE text, on the privileged
+              // (non-client) coach/admin seat, reaching a tool-executing turn. A fetched page could
+              // forge the trusted `=== TENANT KNOWLEDGE ===`/`=== END KNOWLEDGE BASE ===` markers that
+              // downstream instructions key on and steer a mutating tool call. Sanitize the url + body
+              // (drop bidi/zero-width/controls; break any `===` run) and lead with the untrusted notice.
+              // Fenced at the BUILD site so BOTH interpolation paths (funding + neutral core) inherit it.
+              fetchedUrlContent = `\n\n=== FETCHED URL CONTENT ===\n${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}\nURL: ${sanitizeUntrustedText(urlData.url).replace(/[\r\n]+/g, " ").trim().slice(0, 500)}\nContent:\n${sanitizeUntrustedText(urlData.content)}\n===========================\n`;
             }
           }
         } catch (error) {
@@ -1428,7 +1435,10 @@ JSON:`;
         let tokenEstimate = 0;
         const included: string[] = [];
         for (const mem of sorted) {
-          const entry = `• [${mem.memory_type.replace(/_/g, ' ').toUpperCase()}] (${new Date(mem.created_at).toLocaleDateString()}): ${mem.content}`;
+          // §9/§13 injection fence (Slice 2 inc 2, folded) — memory is DURABLE and CROSS-PRINCIPAL: a
+          // client's OCR'd upload lands a report_upload row in client_memory that later re-enters the
+          // COACH's session. Sanitize the remembered content so it cannot forge a trusted marker.
+          const entry = `• [${mem.memory_type.replace(/_/g, ' ').toUpperCase()}] (${new Date(mem.created_at).toLocaleDateString()}): ${sanitizeUntrustedText(mem.content)}`;
           const entryTokens = Math.ceil(entry.length / 4);
           if (tokenEstimate + entryTokens > 1000) break;
           tokenEstimate += entryTokens;
@@ -1443,7 +1453,7 @@ JSON:`;
             ? `PAST CHAT (${hit.memory_type})`
             : hit.memory_type.replace(/_/g, ' ').toUpperCase();
           const sim = typeof hit.similarity === "number" ? ` ~${(hit.similarity * 100).toFixed(0)}% match` : "";
-          const entry = `• [${label}${sim}]: ${hit.content?.slice(0, 400) || ""}`;
+          const entry = `• [${label}${sim}]: ${sanitizeUntrustedText(hit.content).slice(0, 400)}`;
           if (!includedContents.has(entry.toLowerCase())) {
             const t = Math.ceil(entry.length / 4);
             if (tokenEstimate + t > 1500) break;
@@ -1456,7 +1466,10 @@ JSON:`;
           const semanticBlock = semanticEntries.length > 0
             ? `\n\n--- Semantically-relevant past context for this question ---\n${semanticEntries.join("\n")}`
             : "";
-          memoryBlock = `\n\n=== PAIGE MEMORY — What I know about this client from previous sessions ===\n${included.join("\n")}${semanticBlock}\n=== END MEMORY ===\n\nIMPORTANT: Honor any user_preference items (tone, length, formats) in every response. Use the rest of the memory to personalize. If this is the start of a new conversation (only 1 user message), open with a personalized greeting that references what you know.\n`;
+          // The remembered spans above are sanitized; lead the block with the untrusted-data notice so
+          // an embedded directive/tool-call/permission-change is never obeyed. The trusted instruction
+          // below still scopes what to honor to tone/length/format PREFERENCES — data, not authority.
+          memoryBlock = `\n\n=== PAIGE MEMORY — What I know about this client from previous sessions ===\n${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}\n${included.join("\n")}${semanticBlock}\n=== END MEMORY ===\n\nIMPORTANT: Honor any user_preference items (tone, length, formats) in every response. Use the rest of the memory to personalize. If this is the start of a new conversation (only 1 user message), open with a personalized greeting that references what you know.\n`;
         }
       }
     } catch (err) {
@@ -1688,13 +1701,16 @@ JSON:`;
       const sanitizedContent = lastUserMessage.content.replace(/[\\%_]/g, '\\$&').substring(0, 200);
       const { data: knowledge } = await supabase.from("knowledge_base").select("title, content, summary, framework, category").textSearch('content', sanitizedContent).limit(5);
       if (knowledge && knowledge.length > 0) {
-        // §13 honest scoping (Slice 2 inc 2) — knowledge_base is OPERATOR-authored platform canon
-        // (src/operator/data/useKnowledge.ts), a different trust class from the OCR-fed tenant KB and
-        // client-derived rag stores, so it does NOT carry the untrusted-DATA notice. It DOES route
+        // §13 honest scoping (Slice 2 inc 2) — knowledge_base is OPERATOR-authored / OPERATOR-APPROVED
+        // platform canon: it is written by the operator surface (src/operator/data/useKnowledge.ts) AND
+        // by kb-promote-to-network, which inserts operator-APPROVED tenant-contributed docs (framework
+        // 'tenant_contributed', gated on is_platform_owner()). Either way an operator gate stands
+        // between the content and this block, a different trust class from the OCR-fed tenant KB and
+        // client-derived rag stores — so it does NOT carry the untrusted-DATA notice. It DOES route
         // through the same §18 sanitizer for marker/control HYGIENE (break any `===` run; drop bidi/
-        // zero-width) — cheap belt-and-suspenders so no retrieval span can forge a marker, with no
-        // behavior change for ordinary operator text. If knowledge_base ever ingests tenant/document
-        // content it inherits the full fence.
+        // zero-width) — cheap belt-and-suspenders so even a promoted span cannot forge a marker, with
+        // no behavior change for ordinary text. (The operator approval is a QUALITY review, not an
+        // injection audit, so the hygiene is what actually neutralizes a forged marker here.)
         relevantKnowledge = "\n\nRelevant Knowledge Base:\n" + knowledge.map(k => `### ${sanitizeUntrustedText(k.title)} (${sanitizeUntrustedText(k.framework)} - ${sanitizeUntrustedText(k.category)})\n${sanitizeUntrustedText(k.content)}`).join("\n\n");
       }
     }

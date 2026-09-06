@@ -159,18 +159,22 @@ agentic and document-direct-stream paths inherit it; behavior-preserving (§37 �
 `src/solo/untrusted-fence.test.ts` (10 tests) + source-contract guard. Accurate scope (Codex P1, verified):
 the attachment turn does NOT execute model-emitted tool calls, so today the fence guards against *steered
 answer/extraction*; it becomes load-bearing the moment attachments are routed into the tool loop.
-**Increment 2 SHIPPED (Task #20, 2026-09-06):** the SECOND unfenced surface named above — the retrieved-KB
-block (`index.ts` `=== TENANT KNOWLEDGE ===`, `match_tenant_knowledge`) where OCR'd upload content re-enters —
-is now fenced, together with its equally-untrusted sibling `ragContext` (`match_rag_documents`, fed by
-client-financial/artifact ingest). Both retrieval blocks carry `RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE` and
-sanitize each retrieved chunk (title+content) via the reused `_shared/untrusted-fence.ts` `sanitizeUntrustedText`
-(§18 — no fourth spelling); the operator-authored `knowledge_base` block gets marker/control HYGIENE only (no
-distrust notice — trusted canon, honest three-way scoping §13). This surface is MORE load-bearing than inc-1's
-attachment fence: retrieval runs on turns that DO execute model tool calls. Behavior-preserving (§37 — every
-load-bearing outer marker the funding/RAG instructions depend on is preserved). Proof: `src/solo/untrusted-fence.test.ts`
-(25). **STILL OPEN in this slice (named):** a generic chat→file **download** primitive; executable/content
-sniffing beyond the MIME allow-list. Untrusted-exec hardening ties to Sb. **§32.c authenticated malicious-doc
-drive OWED** (headless).
+**Increment 2 SHIPPED (Task #20, 2026-09-06):** FIVE co-located UNTRUSTED, marker-capable content blocks that
+reach the SAME tool-executing system prompt are now fenced. Initial three: the retrieved-KB block
+(`=== TENANT KNOWLEDGE ===`, `match_tenant_knowledge`, OCR-fed) + `ragContext` (`match_rag_documents`,
+client-financial/artifact-fed) carry `RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE` + per-chunk `sanitizeUntrustedText`
+(§18 reuse of `untrusted-fence.ts` — no fourth spelling); the operator-authored/approved `knowledge_base` gets
+marker/control HYGIENE only (trusted, honest scoping §13). **Folded on review** — the §39 peer-gate + §5
+compliance BOTH caught the §37 half-fix (fencing 3 blocks while co-located marker-capable ones stayed raw), so
+the two WORST surfaces were folded before merge: **`fetchedUrlContent`** (arbitrary attacker web content on the
+privileged non-client seat) and **`memoryBlock`** (durable, cross-principal — a client's OCR'd upload resurfaces
+in the coach's session) now carry the notice + sanitized spans. MORE load-bearing than inc-1's attachment fence:
+these reach turns that DO execute model tool calls. Behavior-preserving (§37 — every load-bearing outer marker
+preserved). Proof: `src/solo/untrusted-fence.test.ts` (27). **NAMED next increment (not silently dropped):**
+`sessionDocContext` / `clientContext` (its `sanitizeClientContextForTier` is a §2 credit filter, not a fence) /
+funding `userContext` — lower-severity, same class. **STILL OPEN in this slice:** a generic chat→file **download**
+primitive; executable/content sniffing beyond the MIME allow-list. Untrusted-exec hardening ties to Sb. **§32.c
+authenticated malicious-content drive OWED** (headless).
 
 ### Slice 3 — Governed native record writes · **increment 1 SHIPPED → continue F05 coverage**
 Build on: `deal_move_stage` (honest outcome, S1/S1.1), `content_save`/`document_generate`/`growth_*`,

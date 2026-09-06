@@ -224,4 +224,24 @@ describe("paige-ai-chat fences the retrieved-knowledge surfaces (source contract
     // (trusted operator canon — honest scoping, §13). Guard the exact adjacency, not global absence.
     expect(SRC).not.toContain("Relevant Knowledge Base:\\n${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}");
   });
+
+  // Folded on §39/§5 review — the two co-located BLOCKING surfaces the crews caught as the §37 half-fix.
+  it("fences fetchedUrlContent — arbitrary web content on the privileged tool-executing seat", () => {
+    // notice leads the block, and BOTH interpolated spans (url + content) are sanitized at the build site
+    expect(SRC).toContain("=== FETCHED URL CONTENT ===\\n${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}");
+    expect(SRC).toContain("URL: ${sanitizeUntrustedText(urlData.url)");
+    expect(SRC).toContain("Content:\\n${sanitizeUntrustedText(urlData.content)}");
+    // the raw, unfenced interpolation is gone
+    expect(SRC).not.toContain("Content:\\n${urlData.content}\\n===========================");
+  });
+
+  it("fences memoryBlock — durable, cross-principal remembered content", () => {
+    expect(SRC).toContain("=== PAIGE MEMORY — What I know about this client from previous sessions ===\\n${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}");
+    // both remembered spans (recent + semantic) are sanitized
+    expect(SRC).toContain("): ${sanitizeUntrustedText(mem.content)}");
+    expect(SRC).toContain("]: ${sanitizeUntrustedText(hit.content).slice(0, 400)}");
+    // the raw interpolations are gone
+    expect(SRC).not.toContain("): ${mem.content}`");
+    expect(SRC).not.toContain("${hit.content?.slice(0, 400) || \"\"}");
+  });
 });

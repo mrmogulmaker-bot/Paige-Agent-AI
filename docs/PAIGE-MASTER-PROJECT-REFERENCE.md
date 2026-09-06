@@ -1656,15 +1656,18 @@ read-only scouts (file:line-citable).
   direct-stream branch; the tool-executing agentic loop is gated to NON-document turns, so malicious file
   content can steer the answer/extraction but cannot directly drive Paige's mutating tools on that turn (the
   fence guards the steer today and is load-bearing once attachments are ever routed into the tool loop).
-  **RETRIEVED-CONTENT FENCE — SHIPPED (Slice 2 inc 2, Task #20, 2026-09-06):** the SECOND unfenced surface —
-  the retrieved-KB block (`=== TENANT KNOWLEDGE ===`, `match_tenant_knowledge`, OCR'd-upload-fed) — plus its
-  equally-untrusted sibling `ragContext` (`match_rag_documents`, client-financial/artifact-fed) now carry
-  `RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE` + per-chunk `sanitizeUntrustedText` (§18 reuse of `untrusted-fence.ts`);
-  the operator-authored `knowledge_base` block gets marker/control hygiene only (trusted canon, honest three-way
-  scoping §13). MORE load-bearing than the attachment fence: retrieval reaches tool-executing turns. Behavior-
-  preserving (§37, all load-bearing markers preserved); `src/solo/untrusted-fence.test.ts` (25). **STILL OPEN:**
-  a generic chat→file download primitive + content-sniffing beyond the MIME allow-list. §32.c authenticated
-  malicious-doc drive OWED (headless).
+  **RETRIEVED/FETCHED/REMEMBERED-CONTENT FENCE — SHIPPED (Slice 2 inc 2, Task #20, 2026-09-06):** FIVE
+  co-located UNTRUSTED, marker-capable content blocks that reach the SAME tool-executing system prompt are now
+  fenced — the retrieved-KB block (`=== TENANT KNOWLEDGE ===`, OCR-fed) + `ragContext` (`match_rag_documents`,
+  client-financial-fed) carry `RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE` + per-chunk `sanitizeUntrustedText`; the
+  operator-authored/approved `knowledge_base` gets marker/control hygiene only (trusted); and — folded after the
+  §39 + §5 crews caught the §37 half-fix — the two WORST surfaces `fetchedUrlContent` (arbitrary web content on
+  the privileged seat) and `memoryBlock` (durable, cross-principal) now carry the notice + sanitized spans (§18
+  reuse of `untrusted-fence.ts`). MORE load-bearing than the attachment fence: these reach tool-executing turns.
+  Behavior-preserving (§37, all load-bearing markers preserved); `src/solo/untrusted-fence.test.ts` (27).
+  **NAMED next increment:** `sessionDocContext` / `clientContext` / funding `userContext` (lower-severity, same
+  class). **STILL OPEN:** a generic chat→file download primitive + content-sniffing beyond the MIME allow-list.
+  §32.c authenticated malicious-content drive OWED (headless).
 - **Write & operate native records** — LIVE (wired: `deal_move_stage` honest outcome S1/S1.1; the three
   CRM/scheduling write-receipts `crm_log_activity`/`calendar_book_meeting`/`crm_create_task` now file a
   capability-Rail outcome too — Slice 3 increment 1, Task #19, `_shared/crm-capability-outcome.ts`; content/
