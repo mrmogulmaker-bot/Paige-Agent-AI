@@ -18,6 +18,217 @@
   browser that can reach the authenticated Solo surface, so it is owed to the next capable session, not claimed.
   Ledger: `docs/doctrine/tier-matrix.md` "PAIGE Mind — the approved 3D knowledge orb"; PR #969.
 
+- **ARCHITECTURE: floating Paige chat is RETIRED from the authenticated platform (owner decision 2026-09-06)** —
+  there must be NO floating Paige chat anywhere inside the authenticated platform (no Solo route, Command
+  Center, Clients, Campaigns, Settings, Marketplace, Analytics, tenant portal, mobile shell, or embedded
+  tenant surface). The ONLY tenant-aware Paige experience is the dedicated, authenticated Paige
+  chat/workspace and its explicitly-approved in-surface actions. **This supersedes the prior Slice-1
+  reach item to port the artifact card into a floating platform chat** — that item is REMOVED from the
+  delivery sequence, not owed (the FloatingChatbot port grounding — decision-log 2026-09-06, scout
+  ada5727dbf9f4e3ea — is now moot for the authenticated floating widget). Do not build, port, repair, or
+  render artifact cards in a floating platform chat. **A PUBLIC-website floating assistant may exist LATER
+  as a DIFFERENT product** — a public Product Guide, not Paige's tenant-aware operating chat: it must never
+  receive/retrieve/infer/cache/expose any tenant/workspace/client/contact/conversation/Vault/Mind/Rail/
+  Systems-Check/Pipeline/Campaigns data; no tenant-scoped tools, artifact gen, uploads/downloads, business
+  actions, account context, browser sessions, internal prompts, provider creds, or authenticated user
+  state; it cannot create/modify/send/schedule/execute anything in a tenant workspace; only a platform
+  OPERATOR configures its content/capabilities/routing/model/KB (a tenant owner/admin/member cannot
+  reprogram it), with strict authorization, durable audit, revision history, rollback, and fail-closed
+  behavior. If no safely-separated public-assistant implementation exists, it is **UNAVAILABLE** — never a
+  shortcut of stripping UI from the tenant chat, and never merged without separate final owner approval.
+  Immediate priority: safely retire the authenticated floating-chat path. Work tracked as task #14
+  (grounding scout a197694b4f6de6a14); Capability plan (`outputs/paige-at-cowork/09-...md`) and master §5
+  updated in the same change.
+
+- **Floating-chat retirement — independent context-isolation review = SHIP; findings folded (2026-09-06, PR #981)** —
+  the owner-required independent security review of the pushed diff (383de0fa) returned **SHIP, no blockers**:
+  removal complete/correct, dedicated Paige intact, the retired FAB carried own-row consumer PII (name/email/
+  phone/monthly_revenue/FICO, RLS-gated → a context-boundary leak, not a cross-tenant IDOR) into the tenant
+  `paige-ai-chat` backend while rendering allow-by-default on public + non-shell authenticated routes, so its
+  deletion is a real isolation win; the public Product Guide contract is sound; §58 loss is named not silent.
+  **Folded (verified vs source):** the MAJOR guard-completeness/§13-overclaim finding — the regression guard is
+  hardened to flag any global overlay (`document.body` portal OR `z-[99xx]` fixed FAB) reaching a Paige chat
+  backend inline OR via an imported chat-driver hook, scanning all non-test source, proven non-vacuous by an
+  in-file predicate self-test and false-positive-free on the clean tree (the dedicated shell portals to
+  `paigePortalHost`, not `document.body`); its comment now states honestly it is a backstop, not a proof. Clean
+  current-truth map fixes folded too: `docs/brain/codebase-map.md` + `docs/delivery/PAIGE-CHAT-DELIVERY-MAP.md`.
+  **TRACKED FOLLOW-UP (deferred, §66-honest — not rushed):** doctrine/spec reconciliation of
+  `docs/doctrine/tier-matrix.md` L1295/L1629 (historical sync_status + "five of six callers" echo arithmetic
+  naming `FloatingChatbot`) and `docs/product/agent-ui-placement-spec.md` L14/L140/L161 (spec partially
+  superseded by this decision; tied to the still-open client-portal dedicated-Paige question); plus two
+  comment-only stale `FloatingChatbot` references in `paige-ai-chat/index.ts` + `_shared/client-context.ts`
+  (kept out of this deploy-free UI+docs PR because `supabase/functions/**` edits trigger broad no-op edge
+  redeploys — belongs in an isolated backend commit). Still OWED: §32.c authenticated per-persona browser
+  confirmation to a browser-capable session (the removal is a compile-time fact the hardened guard re-guarantees).
+
+- **Campaigns → Overview redesigned as the Campaign Command Desk + a tenant-safe Campaign Brief
+  foundation (2026-09-05, PR #970 — RC, pending merge approval)** — owner-approved the prototype
+  (`docs/prototypes/campaigns-overview.html`), then built production. Replaces the "Campaign state
+  rollup unavailable" panel. NEW: `campaign_briefs` table + `get_campaign_briefs`/`configure_campaign_brief`
+  RPCs (migration `20261225000000`), modeled verbatim on the pipeline governed seam — SECURITY DEFINER,
+  tenant re-resolved from auth (§9/§59), tenant-admin/owner write gate (§53), version + idempotency, audit;
+  RLS tenant-scoped read-only, writes via RPC. A brief is OWNER-AUTHORED, never proof of a live campaign
+  (still no tenant-authorized campaign-state source — `useSoloCampaigns` keeps `campaigns:[]`). Two
+  tenant-validated links only: `offer_id`→`tenant_products`, `pipeline_id`→`pipelines`. Client:
+  `useSoloCampaignBriefs` (own hook, keeps the four-reads contract on `useSoloCampaigns`), `campaign-desk.tsx`
+  (Command Desk), `growth2.tsx` Overview → thin wrapper. Rides under the `growth` tier gate (Solo/Sub/
+  Enterprise/God; Agency excluded — no new bit). Verified: 18/18 throwaway-Postgres RLS/RPC proof, 1633
+  solo tests, vite build, all migration/definer/write-target/governed/tier lints. **Owed on merge:** the
+  master-doc §4 SHIPPED line + `docs/doctrine/tier-matrix.md` surface-ledger LIVE flip (§66 records LIVE,
+  not RC) + CI persisted-apply proof (§32.a) + authenticated live Solo drive (§32.c, `Proof Owed`). Evidence:
+  `docs/evidence/ui-delivery/campaigns-overview.md`.
+
+- **Business Game Plan — live-data corrections against authenticated prod (2026-09-05, follow-up to #952)** —
+  the owner reviewed the shipped Solo default landing on real data (Mogul Maker Academy) and flagged five
+  items; verified via authenticated Supabase queries (project xygzykjyynhzqytbqnzu) and fixed in the Game
+  Plan's own files only (no shared seam touched). (1) **Greeting identity (§57):** `useCommandCenter`
+  resolved the greeting name from the GLOBAL signed-in user's auth metadata, never re-scoped to the active
+  workspace — so an operator/super-admin viewing a tenant would see their OWN name over that tenant's HQ.
+  MMA is owned by `mogulmakeracademy@gmail.com` (metadata "Antonio"), so the owner's own login was
+  coincidentally correct, but the SOURCE was wrong. Fixed IN `useSoloGamePlan` (not the shared
+  `useCommandCenter`, to leave Systems Check untouched): the personal name shows only when the viewer
+  genuinely owns the active workspace — a **NON-staff viewer is RLS-scoped to their own tenants**, so
+  `!isPlatformStaff && activeTenantId` is the reliable ownership signal; a platform operator reaches
+  other tenants only by act-as and is greeted neutrally. The **§39 peer-gate caught a MAJOR** here: an
+  earlier draft keyed on `tenants.owner_user_id` AND read the name from `cc.greeting.name`, which
+  `useCommandCenter` resolves to `authName || activeTenant.name || "there"` — so (a) `owner_user_id` is
+  NULL on prod for every sub-account + 3/8 solo tenants (verified), which would greet real owners
+  "there"; and (b) an owner with no auth display name would be voiced as their BUSINESS name ("Good
+  evening, Mogul"). Both fixed: the membership signal replaces `owner_user_id`, and the greeting also
+  requires a genuine personal name (≠ workspace name, ≠ "there"). KNOWN, HONEST limit (§13): an agency
+  PARENT switching into a sub-account's Solo shell is also non-staff, so they'd be greeted by their own
+  name over the child — robustly distinguishing that needs `get_user_primary_tenant` (not the reported
+  bug; documented).
+  (2) **Drill-able claims (§36):** the summary chips ("N clients at risk / drafts waiting / 1 move blocked /
+  follow-ups due") were dead labels; each now carries a real `destination` and renders as a button that
+  opens the backing surface (Clients / PAIGE / Systems Check). (3) **Payment-processor title (§13/§38):** a
+  blocked check titled itself "You can take payment" (the CHECK_DESTINATIONS goal-state) — false on a
+  BLOCKED move; now titled from the honest STATE clause of `paige_interpretation` ("No payment processor
+  declared yet"), with the declare-oriented copy kept as the reason. MMA genuinely has no processor declared
+  (`payment_processor_declared` null) and the runner copy was already §38-clean ("declare which processor",
+  never "can't take payment"). (4) **Work-in-motion:** rows can't open their underlying record —
+  `get_solo_rail_activity` deliberately strips the per-row ref and the Rail RPC is out of scope — so the
+  caveat now states the source (recorded workspace activity) + freshness honestly instead of implying a
+  drill. The "Zapier PAIGE tools test succeeded" row is a REAL event (zapier_mcp_connection, 2026-09-05
+  14:08). (5) **Trust Compass** stays OUT — 3 real tabs, slot reserved, no dead tab (§58). Full suite 3457
+  green, build green, tsc clean, 128/128 render drive, §39 peer-gate ran and its MAJOR + minors resolved
+  (greeting robustness, stub destinations, checkStateTitle dash). §32.c authenticated browser render still owed;
+  the DATA layer is verified against prod. **Lesson: a headless session CAN do authenticated verification —
+  by querying the real database, not only by driving the browser; the owner's live look surfaced an
+  identity SOURCE bug whose displayed value happened to be right.**
+
+- **Capability System slice 1 — artifact receipts DONE; the "render the card on all chat surfaces" item is NOT a clean port (grounded 2026-09-06)** —
+  the truthful-artifact-receipt foundation shipped and is hardened (#972 + the #974 Codex folds; all through the
+  §39 + §5 + Codex layers). Grounding the NEXT Slice-1 item (render `PaigeArtifactCard` on the other chat
+  surfaces) disproved the component header's "~15 lines of SSE handling each" claim: **FloatingChatbot** posts to
+  the same `paige-ai-chat` backend (frame can arrive) but its `Message` type has no `artifacts` field, its stream
+  update replaces the whole message object (would clobber an artifact), it has **no tenantId in scope** for the
+  card's required prop, and it is a **client-persona** surface (hidden on /admin+/agency) where the document/image
+  create tools are admin/coach-gated — so whether a frame is ever PRODUCED there is unconfirmed (wiring it risks a
+  dead render path, §10/§13). **BrokerPaigeSession** posts to a DIFFERENT backend (`broker-paige-chat`) that
+  re-emits only `{delta}` and NEVER emits `paige_artifact` — the frame never arrives, so it needs a backend
+  emission change first, not a client insert. Corrected the misleading component comment (§13/§58). **Honest
+  Slice-1 sequencing state:** the remaining reach items are (a) frontend/rendered-proof — card-render, download
+  button, in-place-refine UI — which a HEADLESS session cannot render-verify (§32.c owes the rendered/authenticated
+  proof to a browser-capable session, and card-render additionally needs the non-trivial per-surface work above);
+  (b) marginal backend — `campaign_brief` doc_type (the model can already produce the content as a `guide`);
+  (c) backend-with-a-§9-question — regular-chat in-place refine (honoring a model-supplied `content_id` for reuse
+  needs a tenant-ownership check); (d) substrate/flag-gated — HTML email_template, video (UNAVAILABLE), social-schedule
+  (Meta flag off). Surfaced to the owner for sequencing rather than churning filler (§31) or shipping an unverifiable
+  frontend port (§70). Grounding lives in scouts a5b49b1463ad074bd (item triage) + ada5727dbf9f4e3ea (port surfaces).
+- **Capability System slice 1.1 — two Codex P2 receipt edge-cases folded forward (2026-09-05, after #972 merged)** —
+  Codex's post-merge review of #972 (the third layer after the §39 + §5 reviews both SHIPped) caught two
+  real honesty edge-cases the same class the slice fixes — the documented §39 "layered defenses, none alone
+  sufficient" pattern. (P2#1) A **Studio-session** `generate_image` where the file uploaded (url present) but
+  the best-effort `save_marketing_content` returned no `content_id` reported success while the canvas linkage
+  (which needs `content_id`) silently got nothing; now a Studio image with no filed id degrades to an honest
+  `IMAGE_NOT_FILED_ERROR` — checked AFTER the §33 critique loop so a rescue regeneration that DID file still
+  counts, and Studio-only (regular chat keeps a null-content_id url as a usable success, since the URL is a
+  real downloadable file). (P2#2) `content-draft` normalizes a content-less model item to `{ content: "" }`,
+  so a non-empty drafts array was not proof of usable copy; a new pure `usableDrafts()` filters to drafts
+  carrying non-whitespace `content` and the guard fails honestly if none remain. **Proof:** 24 contract tests
+  (7 new, falsifiable); 174 green across the source-asserting suite; §50 clean; transpiles clean.
+
+- **Capability System slice 1 · increment 1 — truthful artifact-creation receipts (2026-09-05, PR #972)** —
+  five chat artifact-creation handlers (`generate_image`, `draft_marketing_content`, `content_save`,
+  `document_generate`, `growth_page_save`) could emit a `success:true` receipt when the edge fn / RPC
+  returned HTTP 200 carrying no real artifact (null public URL, empty drafts array, null saved id). A
+  200-with-empty-payload does not throw, so one dishonest field became a dishonest receipt in three
+  places at once (model narration, the `describeStep` status label, the artifact-card push) — the
+  §13/§70 defect. New pure module `supabase/functions/_shared/artifact-receipt.ts` is the one home
+  (§18) for the decision "did the sub-call actually produce the artifact this kind promises?"
+  (`artifactProduced(shape, value)` + non-leaky `ARTIFACT_ABSENT_ERROR`); each handler wraps its own
+  success shape in it, so the model, status label, card, and audit outcome all inherit the honest
+  signal. `generate_image` gains a no-url branch mirroring the guard the §33 regenerate helper already
+  had; `document_generate` keeps its blocks/placeholder guards + adds the saved-id check;
+  `growth_funnel_build` already threw on missing ids (untouched). **Out of scope, named:** the two
+  going-live PUBLISH handlers (external-publishing, slice 6/7 — needs the publish RPCs' URL return
+  contract verified to avoid a §37 false-negative); Rail (`record_capability_run`) wiring of these
+  tools (slice 3 / F05); and — flagged by the §39 verifier — the CRM/scheduling **write receipts**
+  `crm_log_activity` / `calendar_book_meeting`, which carry the same 200-empty-id class but are writes
+  with their own rail/audit path, not chat artifacts, so they belong to a future write-receipt slice.
+  The draft-only generators (`growth_page_generate` / `growth_funnel_generate`) persist nothing and are
+  correctly excluded (not a gap). Both independent reviews (§39 adversarial verifier + §5 compliance)
+  returned SHIP with no blocking findings. **Proof (§13):** 17 behavioural + wiring contract tests
+  (`artifact-receipt-contract.test.ts`); the 9 tests asserting on `paige-ai-chat/index.ts` source stay
+  green (167 total); §50 clean; all three files transpile clean; tenant scoping unchanged (§9). **Owed:**
+  authenticated owner §32.c live-drive of the deployed edge fn (headless session). Edge deploy via CI on
+  merge (`deploy-edge-functions.yml`).
+
+- **The Paige Capability System — OWNER-LOCKED full-range MVP direction (2026-09-05)** — PAIGE is the
+  tenant's governed operating environment; chat is the front door to a FULL capability range, NOT chat-only/
+  read-only/recommendation-only. ONE Capability System (governed contracts), not unrelated chat widgets.
+  Recorded as a DECISION + dependency-ordered capability matrix (master §5 + plan
+  `outputs/paige-at-cowork/09-paige-capability-system.md`), subsuming the Sandboxed-Research plan (08) as a
+  component (§18). Grounded by 6 read-only scouts. Honest matrix: **artifact creation + image gen is LARGELY
+  LIVE** (`generate_image` 4-provider, `document_generate`, copy, growth studio; durable home
+  `marketing_content` draft-until-applied; `chatArtifacts`/`PaigeArtifactCard`/`studio_artifact_versions`) —
+  gaps: download button, multi-surface render, campaign routing, missing types (campaign_brief/HTML
+  email_template/video/social-schedule); **upload+inspect LIVE** (`useChatDocumentUpload` + read-check +
+  `kb-ingest-file`; folder-scoped storage RLS + server-side scope refusal) with a **REAL SECURITY GAP — no
+  prompt-injection fence on uploaded file content** (fence exists elsewhere: team-context/MCP/Zapier;
+  accurate threat per Codex P1 verified at `paige-ai-chat/index.ts:7451` — the attachment turn takes the
+  direct-stream branch and does NOT execute model-emitted tool calls, so content can steer the
+  answer/extraction but not drive mutating tools on that turn; fence still warranted); Rail is
+  PARTIAL/proof-owed (RPC deployed + wired via S1/S1.1 but §32.c live-drive owed, 0 prod rows); native
+  writes LIVE core (~43 still audit-log-only, F05 continuation); research
+  LIVE/PARTIAL; external execution PARTIAL (MCP tier+scope only, sub-agent downstream ungoverned,
+  `decideGovernedExecution` unwired); comms/publishing/spend approval-gated; **sandbox UNAVAILABLE/greenfield**.
+  7 owner-sequenced slices: artifact-creation+image-gen → upload/download+injection-fence → native writes →
+  browser research → worker dispatch → one approval path → advanced browser/publishing/comms/paid-media/
+  recurring (§67/§68/§64). Each capability declares a contract (tenant isolation/authz/audit-outcome/
+  provenance/safe-failure/durable-home). No capability called live on a static UI/prototype/helper (§13/§32/§70).
+
+- **Business Game Plan is the DEFAULT Solo Command Center landing, and a §70 identity bug hid behind a
+  green build (2026-09-05, branch `claude/business-game-plan-ui-rxuju3`)** — the Solo Command Center
+  gains a first sub-tab, **Business Game Plan** (`SoloGamePlanWorkspace`), made the default landing
+  (bare `/command-center` + legacy `/overview` redirect to `/command-center/business-game-plan`);
+  sub-tabs are now Business Game Plan → Systems Check → Mind (Trust Compass slot 3 reserved, no dead
+  tab). It is a §18 composition hook (`useSoloGamePlan`) over already-released tenant-safe reads — no
+  new table/RPC/edge/migration/tier-flag, no client-supplied `tenant_id` (§9). **The bug the tests
+  caught:** the kicker read `accountContext?.name` while the resolved prop is
+  `{accountName, accountType, accountTypeLabel}`, so the owner's real account name silently never
+  rendered — a §70 "compiles but the human can't see their identity" miss. Fixed by resolving through
+  `resolveTenantAccountContext` and emitting the canonical `data-tenant-account-name`/`-tier` shell
+  markers every mounted Command Center surface carries (§65); the integration test that verifies
+  tenant-identity resolution on the default landing then went green because the identity actually flows
+  now. Full suite 3416 green · build green · typecheck-clean typed files · 64/64 headless render drive.
+  **§32.c authenticated owner live-drive OWED** (headless sandbox, no browser/auth tool). **The §39
+  peer-gate (independent adversarial read of the pushed diff) then caught two REAL §13 honesty
+  defects the author's green tests missed, both fixed + locked with failing-first tests before
+  merge:** (1) MAJOR — the priority engine read only `checks.findings`/`pending.items`, never their
+  `loading`/`error`, so a FAILED systems-check or drafts read was coerced to `[]` and rendered the
+  all-clear fallback ("Nothing is blocked or waiting") — an errored read reading as "you have
+  nothing"; now the surface waits for those reads and, on a settled failure, says "couldn't fully
+  check" with an honest attention chip. (2) MINOR — a catalog/knowledge read OUTAGE was counted in
+  the coverage roll-up as owner work "to finish"; now a `degraded` foundation is counted apart
+  ("N couldn't load right now"). A PLAUSIBLE §60 finding (sub-accounts render via `/business` →
+  Agency Core, so they do NOT yet get the Business Game Plan) was confirmed a real parity gap and
+  documented honestly rather than papered over — it closes with the separate `/business` → `SoloApp`
+  §65 slice. **Lesson: a default-landing swap silently deletes whatever the old default rendered —
+  here the account-name shell marker — and only a test that reads the human-visible identity, not
+  the build, catches it; and an all-clear is a claim that must be gated on the reads that back it
+  actually answering.**
 - **Sandboxed Research & External Execution — APPROVED MVP DIRECTION, not a live capability (owner-directed
   2026-09-05)** — Paige as an active AI COO/orchestrator: PAIGE is the governed decision layer; native tools
   act inside the tenant platform; n8n/Zapier/MCP/future integrations are controlled external workers, never a
@@ -3076,3 +3287,100 @@ held no browser-driving tool.
 
 Full contract, the eight-state table and the six never-infer rules:
 `docs/delivery/canonical-readiness-contract.md`.
+
+## 2026-09-05 · Connections Available becomes Add channel; operating means proven
+
+**Owner decision.** Settings → Connections is the business-channel control desk. Mailboxes and
+sending identities, business phone/SMS/voice/messaging, calendars/booking, channel compliance, and
+channel health belong here. External apps, automations, APIs, social/data systems, and specialist
+tools belong in Integrations. A vendor may appear in both only for explicitly distinct capabilities,
+never as duplicate setup cards. The owner approved the Flow Prototype and then authorized this
+implementation to supersede draft PR #674 while retaining its A2P/domain ideas as separate follow-up
+scope; Integrations UI is not redesigned by this release.
+
+**Shipped interaction contract (PR #967, 2026-09-05).** The former
+`connections/available` provider catalogue is visibly
+**Add channel**, grouped by business job. It begins with confirmed operating channels, one
+source-backed next action, and one Integrations handoff. Each option states outcome, current state,
+requirements, Paige-visible scope, owner/source, and a focused action. Detail uses the approved
+drawer with X, Cancel, Escape, backdrop dismissal, focus containment/return, and tenant/user/account
+scope reset.
+
+**Truth and tenant correction caught before release.** The first candidate treated a stored sender
+address as Connected regardless of activation status, treated an assigned-but-unregistered phone as
+operating, ranked a next action while reads were pending/failed, and returned the previous hook value
+for one render after a workspace switch. The repaired contract synchronously masks values unless
+their recorded tenant matches the active tenant; only an active sender/connected Google sending
+account and a canonical `can_send_sms` phone count as operating; pending, configured-unverified,
+degraded, registration-required, resolving, failed-read, and unavailable remain distinct; ranking
+fails closed until all owning reads required for the decision succeed.
+
+**Evidence boundary.** 188 focused tests and 170 real-shell rendered/behavioral checks pass across
+the four Solo viewports, both themes, two synthetic tenant contexts, PAIGE open/closed, keyboard,
+focus, reflow, and reduced motion. Exact source head `a1b317d8` squash-merged as `bc89d79c` with an
+identical tree; Vercel production is `READY`, all five production aliases point to it, the public
+Connections route returned HTTP 200, the live Solo bundle carries the release fingerprints, and the
+one-hour runtime-error scan was clean. Authenticated provider behavior, signed-in production tenant
+truth, and the owner live-drive remain **UNVERIFIED**.
+
+---
+
+## 2026-09-05 — All 119 MCP tools pass one governed door; the 68 mutations refuse (task #45, PR #960)
+
+**Owner ruling, verbatim:** *"An MCP connection authorizes access to the MCP door; it does not
+authorize consequential action."* All 119 tools pass one governed execution door. The 51 genuinely
+read-only tools remain available only when tenant, tier, scope, actor identity and the
+server-resolved workspace all check out. The 68 mutation/effectful tools refuse by default until
+they can receive a valid approval through Paige's existing one-approval-gate model — no
+MCP-specific approval mechanism, no parallel confirmation inbox, no caller-supplied approval flag,
+no approval implied by OAuth or an API credential.
+
+**What the split rests on.** All 119 handler bodies were read and their effect recorded with
+`file:line` evidence, never inferred from a name — 51 read, 68 mutate. That correction matters:
+twenty tools mutate behind read-looking names (`handle_data_subject_request` is a GDPR erasure,
+`suspend_tenant`, `confirm_proposal`, `append_client_memory`), and four read-only tools carry
+write-looking names (`get_workflow_run`, `get_skill_run`, `list_communication_log`,
+`list_email_send_log`). An earlier name-based estimate said 70/49 and it was wrong in both
+directions.
+
+**One classifier, not two.** The intersection between `action-risk.ts`'s 62 keys and the 119 MCP
+tool names was exactly ONE (`delegate_to_subagent`), so the surface classified `unclassified` 118
+times. Eleven MCP tools turned out to perform acts already named and reuse nine of those keys; the
+rest had no
+twin and were added to `action-risk.ts` itself. Two candidate reuses were REJECTED on evidence
+rather than adopted for tidiness — `add_contact_note` is not `crm_add_note` (different column, and
+`clients.current_notes` IS client-readable), `propose_subagent` is not `forge_subagent` (its
+default `soft` path auto-ships an enabled specialist).
+
+**Why the refusal is structural rather than lane-driven.** Measured on production the same day:
+`resolve_tool_autonomy` returns `COALESCE(_mode,'confirm')`, and `tenant_tool_autonomy` already
+holds six `auto` rows on `n8n_*` canonical keys. All six are `high`, so the clamp catches them
+today — luck, not design. One `auto` row on an `ordinary` canonical would be an external connector
+executing a change with no code change and nothing in CI to notice. The door therefore refuses
+every mutation regardless of lane, declares `not_resolved` rather than implying one, and needs no
+database round trip to decide.
+
+**The seam gained a `principal`.** Four of the six doors `governedExecution.ts` declares
+(`automation`, `agent`, `skill`, `mcp`) routinely have no `auth.uid()`, and its identity check
+demanded one — so every one was refused `unauthenticated` before it could be adopted.
+`GovernedCaller.principal` defaults to `"person"` and buys a verified machine credential exactly one
+thing: reaching the checks. The same change closes the hole it would open —
+`service_principal_may_not_mutate` refuses a machine on the seam's one auto-execute path, placed
+AFTER the `owner_only` check so an act's own ceiling stays the more specific truth.
+
+**Two §58 regressions, both deliberate.** Sixty-eight tools that worked stop working. The
+`mcp.command` Rail feed goes to zero, because all twenty of its client-acting labels are mutations
+and the emitter is never reached — correct, a refusal is not a command, but an operator rail that
+read "External command: added a new client" now shows nothing.
+
+**Blast radius, measured, not guessed.** Zero in-repo producers break: every in-repo path to
+`paige-mcp` is outbound (Paige as MCP *client* to a tenant's own n8n or Zapier), static source
+analysis, or a non-`tools/call` method. The population that feels this is one live external OAuth
+client — "Claude", holding all fourteen scopes including every write scope — plus the two platform
+keys. Neither of the two `tenant_mcp_connections` rows loops back at the platform's own door.
+
+**Filed rather than fixed here:** thirteen of the 51 reads have no tenant predicate and return
+fleet-wide rows (#46 — the door checks the caller, not the query); the approval channel that turns
+the refusals back into executions (#47); splitting arming out of the stage-automation rule tools,
+which can arm unattended sending in one call (#48); four inconsistencies the mapping surfaced in
+existing policy (#49).

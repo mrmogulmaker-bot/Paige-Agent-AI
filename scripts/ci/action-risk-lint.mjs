@@ -15,6 +15,15 @@
  * It also guards the reverse: a classification for a tool that no longer exists is a line nobody
  * will ever delete, and a policy full of ghosts stops being read.
  *
+ * TWO SURFACES DECLARE ACTS, NOT ONE — added 2026-09-05 with the governed MCP door. The policy was
+ * written when Chat was the only caller, so "does the handler still declare this?" meant one file.
+ * `paige-mcp` now maps its 119 tools onto canonical keys in
+ * `_shared/paige-mcp/capability-policy.ts`, forty-nine of which exist for that door alone. Those
+ * are not ghosts — a live registry points at every one of them — and the ghost rule had to learn
+ * the second surface or it would have demanded the deletion of the classifications that make the
+ * MCP door work. The rule itself is unchanged in spirit: a classified key that NO surface points
+ * at is still a line nobody reads.
+ *
  *   node scripts/ci/action-risk-lint.mjs
  *   node scripts/ci/action-risk-lint.mjs --self-test
  */
@@ -22,6 +31,7 @@ import fs from "node:fs";
 
 const POLICY = "supabase/functions/_shared/action-risk.ts";
 const CHAT = "supabase/functions/paige-ai-chat/index.ts";
+const MCP_POLICY = "supabase/functions/_shared/paige-mcp/capability-policy.ts";
 
 /** Every classified action, as `[tool, class, reason]`, read from the policy's own table. */
 export function parsePolicy(src) {
@@ -46,6 +56,17 @@ export function parseChat(src, importedTools = []) {
   };
 }
 
+/**
+ * The canonical keys the MCP door points at, read from its capability policy. That file holds no
+ * classification of its own — it is a tool-name → key mapping — so this only asks WHICH keys are
+ * referenced, never what they are worth.
+ */
+export function parseMcpCanonicals(src) {
+  const start = src.indexOf("export const MCP_CAPABILITY_POLICY");
+  if (start === -1) return [];
+  return [...src.slice(start).matchAll(/^\s*canonical:\s*"([a-z0-9_]+)",/gm)].map((m) => m[1]);
+}
+
 export function parseExemptions(src) {
   const at = src.indexOf("const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([");
   if (at < 0) return null;
@@ -61,7 +82,7 @@ const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|insta
 /** The rule: destroys, changes permissions, or goes public ⇒ never `ordinary`. */
 const IRREVERSIBLE_OR_OUTWARD = /(^|_)(delete|remove|revoke|publish|uninstall|install)(_|$)|(^|_)grant(_|$)/;
 
-export function findings({ policy, exemptions, chat, verbSourceMatches }) {
+export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanonicals = [] }) {
   const out = [];
   const classified = new Map(policy.map((p) => [p.tool, p.risk]));
   const exempt = new Set(exemptions.map((e) => e.tool));
@@ -81,8 +102,10 @@ export function findings({ policy, exemptions, chat, verbSourceMatches }) {
     out.push(`${tool} reads as a write but has no entry in ${POLICY}. Classify it (ordinary | high | owner_only), or add it to NON_MUTATING_EXEMPT with the reason it persists nothing.`);
   }
 
-  // 2. No ghosts: a classification for a tool the handler no longer offers.
-  const declared = new Set(chat.declared);
+  // 2. No ghosts: a classification NO surface points at. Chat declares tools by name; the MCP door
+  //    declares them indirectly, by mapping a tool onto a canonical key. Either reference keeps a
+  //    classification alive — an entry with neither is the line nobody deletes.
+  const declared = new Set([...chat.declared, ...mcpCanonicals]);
   for (const { tool } of policy) {
     // Containment tombstones are deliberately classified while not being dispatched, so a future
     // accidental re-registration cannot inherit read semantics. They are named here rather than
@@ -154,6 +177,19 @@ function selfTest() {
   bad += ok("a ghost classification is caught",
     findings({ ...base, policy: [...base.policy, { tool: "gone_create_thing", risk: "ordinary", reason: "a sufficiently long reason" }] })
       .some((f) => f.includes("gone_create_thing")));
+  bad += ok("a key only the MCP door points at is NOT a ghost",
+    !findings({ ...base, policy: [...base.policy, { tool: "mcp_only_create_thing", risk: "ordinary", reason: "a sufficiently long reason" }],
+      mcpCanonicals: ["mcp_only_create_thing"] })
+      .some((f) => f.includes("mcp_only_create_thing")));
+  bad += ok("a key NEITHER surface points at is still a ghost",
+    findings({ ...base, policy: [...base.policy, { tool: "orphan_create_thing", risk: "ordinary", reason: "a sufficiently long reason" }],
+      mcpCanonicals: ["something_else"] })
+      .some((f) => f.includes("orphan_create_thing")));
+  bad += ok("the MCP canonical parser reads a real-shaped table",
+    parseMcpCanonicals('export const MCP_CAPABILITY_POLICY = {\n  a: {\n    canonical: "x_create_y",\n  },\n};')
+      .join() === "x_create_y");
+  bad += ok("the MCP canonical parser does not invent keys from an absent table",
+    parseMcpCanonicals("no table here").length === 0);
   bad += ok("a re-introduced hand-list is caught",
     findings({ ...base, chat: { ...base.chat, hasHandList: true } }).some((f) => f.includes("drift")));
   bad += ok("a handler that stopped gating on the policy is caught",
@@ -190,7 +226,19 @@ if (chatSrc.includes('...N8N_MANAGEMENT_TOOLS')) {
   importedTools = [...source.matchAll(/^\s*(n8n_[a-z_]+):\{provider:/gm)].map(m => m[1]);
   if (!importedTools.length) throw new Error('n8n catalog could not be parsed');
 }
-const problems = findings({ policy, exemptions, chat: parseChat(chatSrc, importedTools), verbSourceMatches });
+if (chatSrc.includes('...BUSINESS_MISSION_TOOLS')) {
+  if (!/import\s*\{[^}]*BUSINESS_MISSION_TOOLS[^}]*\}\s*from\s*['"]\.\.\/_shared\/paige-spine\/domains\/business_mission\.ts['"]/.test(chatSrc)) throw new Error('Unresolved Business Mission catalog import');
+  const source = fs.readFileSync('supabase/functions/_shared/paige-spine/domains/business_mission.ts', 'utf8');
+  const missionTools = [...source.matchAll(/\bname:\s*"(mission_[a-z_]+)"/g)].map(m => m[1]);
+  if (!missionTools.length) throw new Error('Business Mission catalog could not be parsed');
+  importedTools.push(...missionTools);
+}
+const mcpCanonicals = parseMcpCanonicals(fs.readFileSync(MCP_POLICY, "utf8"));
+if (!mcpCanonicals.length) {
+  console.error(`✗ action-risk-lint: read no canonical keys out of ${MCP_POLICY}. That file is the MCP door's second declaring surface, so an empty read would silently condemn every MCP-only classification as a ghost. Fix this guard rather than letting it pass.`);
+  process.exit(1);
+}
+const problems = findings({ policy, exemptions, chat: parseChat(chatSrc, importedTools), verbSourceMatches, mcpCanonicals });
 
 if (problems.length) {
   console.error(`✗ action-risk-lint: ${problems.length} problem(s).\n`);

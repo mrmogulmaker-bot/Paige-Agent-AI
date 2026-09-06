@@ -5,11 +5,18 @@
  * depend on the whitespace difference between `overflow-x: clip` and `overflow-x:clip`. Nothing
  * here needs to touch it, so nothing here does.
  *
- * TOKENS ONLY. Every colour is a `.paige-solo` token, so the light theme is authored the moment the
- * dark one is (§23) and no surface is pinned to one theme. `--danger` does NOT exist in this shell
- * — `--bad` is the negative. There is no orb token either: the pack's `--cm-orb` family is
- * `--pg-*`-derived and resolves to nothing under `.paige-solo`, so the mark below is built from
- * `--gold*` and `--violet*`.
+ * THE REDESIGN (owner-commissioned 2026-09-05): "executive mission control meets luxury AI
+ * operating system." The premium is built from DEPTH, not darkness (§22/§23) — a layered surface
+ * stack, a hairline grid ground with soft corner glows, a command-header lockup with one gold
+ * accent, signal cards, a connected pipeline flow, and a token-built eclipse for the empty/loading/
+ * error centrepieces. It is a RESKIN of the honest surface: every value still comes from
+ * `social-truth.ts`, and every capability the platform does not hold still renders its absence.
+ *
+ * TOKENS ONLY. Every colour is a `.paige-solo` token or a `color-mix()` of one — so the light
+ * theme (Mineral) is authored the moment the dark one (Obsidian) is (§23) and no surface is pinned
+ * to one theme. `--danger`/`--success` do NOT exist in this shell — `--bad`/`--ok` are the
+ * semantics. The one place a literal colour is allowed is inside a `mask` (a mask is a shape, not a
+ * paint), which is where the `#000` below lives.
  *
  * SCROLL. `.campaigns-scroll` is the one scroll owner for this tab and `.paige-solo main` is
  * clipped `!important`. Nothing here may grow the host: every grid child carries `min-width:0`,
@@ -28,9 +35,39 @@
      identical defect in the sibling file and the identical fix. */
   container-type: inline-size;
   container-name: social;
+  position: relative;
+  isolation: isolate;
   display: grid;
   gap: 14px;
   align-content: start;
+  /* Local desk vocabulary — every value derived from a base `.paige-solo` token so both themes are
+     authored at once. These are the extra elevation/glow steps the base scale does not name. */
+  --sd-line-strong: color-mix(in srgb, var(--line), var(--ink) 15%);
+  --sd-panel: linear-gradient(180deg, var(--surface-2), var(--surface));
+  --sd-raise: color-mix(in srgb, var(--surface-2), var(--ink) 4%);
+  --sd-glow-violet: color-mix(in srgb, var(--violet) 15%, transparent);
+  --sd-glow-gold: color-mix(in srgb, var(--gold) 9%, transparent);
+  --sd-grid-line: color-mix(in srgb, var(--ink) 4%, transparent);
+  /* Soft corner glows over the shell canvas — the "operating environment" ground. Kept faint so
+     dense content never fights it (§11: dense, not cluttered). */
+  background:
+    radial-gradient(132% 104% at 86% -10%, var(--sd-glow-violet), transparent 46%),
+    radial-gradient(92% 72% at 3% -6%, var(--sd-glow-gold), transparent 42%);
+}
+/* The hairline grid, faded with a mask so it reads as texture near the top and vanishes below. It
+   sits behind everything via z-index within the page's own isolated stacking context. */
+.social-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--sd-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--sd-grid-line) 1px, transparent 1px);
+  background-size: 34px 34px;
+  -webkit-mask: radial-gradient(128% 74% at 50% 0%, #000, transparent 78%);
+  mask: radial-gradient(128% 74% at 50% 0%, #000, transparent 78%);
 }
 .social-page > * { min-width: 0; }
 
@@ -47,14 +84,14 @@
    this sheet stands alone rather than depending on a frozen file's selector order. */
 .social-truth {
   display: inline-flex; align-items: center; flex: none;
-  height: 19px; padding: 0 7px;
+  height: 19px; padding: 0 8px;
   border: 1px solid var(--line); border-radius: 999px;
   background: var(--surface-sunk); color: var(--ink-3);
-  font: 650 9px/1 var(--mono); letter-spacing: .09em;
+  font: 650 8.5px/1 var(--mono); letter-spacing: .1em;
 }
-.social-truth--live { color: var(--ok); }
-.social-truth--partial { color: var(--violet); }
-.social-truth--proposed { color: var(--warn); }
+.social-truth--live { color: var(--ok); border-color: var(--ok-tint); }
+.social-truth--partial { color: var(--violet); border-color: var(--violet-line); }
+.social-truth--proposed { color: var(--warn); border-color: var(--warn-tint); }
 .social-truth--unavailable { color: var(--ink-3); }
 
 /* A figure and its absence are the same size and weight on purpose: an em-dash that shrinks reads
@@ -67,92 +104,106 @@
 }
 .social-figure--absent { color: var(--ink-3); font-weight: 400; }
 
-/* ── hero ─────────────────────────────────────────────────────────────────── */
+/* ── command header ───────────────────────────────────────────────────────── */
+/* NOT a masthead (§11) and NOT a `pg-hd` banner — a compact command bar. The work leads: the brief
+   answers "where do I stand", the actions sit inline, and the one gold act is the record write. */
 
 .social-hero {
   min-width: 0;
+  position: relative;
   display: grid;
-  gap: 18px;
-  padding: 22px 22px 18px;
+  gap: 11px;
+  padding: 13px 18px 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-l);
-  /* Depth from a layered wash between two surface tokens plus a hairline — not from darkening. */
-  background:
-    radial-gradient(120% 140% at 78% 0%, var(--surface-2), transparent 62%),
-    linear-gradient(140deg, var(--surface), var(--surface-sunk));
+  background: var(--sd-panel);
   box-shadow: var(--sh-2);
+  overflow: hidden;
 }
+/* The single gold accent — a hairline sweep along the top edge, the desk's one warm signal. */
+.social-hero::after {
+  content: "";
+  position: absolute; left: 20px; right: 20px; top: 0; height: 2px;
+  background: linear-gradient(90deg, var(--gold-line), transparent 46%);
+}
+.social-cmd-bar {
+  min-width: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  flex-wrap: wrap;
+}
+.social-cmd-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* The shared brand PaigeMark, bare and small — the way the Paige chat and the menu render it.
+   No plate: the mark carries its own gold, and boxing it would re-skin the one correct logo. */
+.social-cmd-mark { width: 25px; height: 25px; flex: none; }
+.social-cmd-wm { font: 700 12.5px/1 var(--font); letter-spacing: .2em; color: var(--ink); }
+.social-cmd-div { width: 1px; height: 15px; background: var(--sd-line-strong); flex: none; }
+.social-cmd-brief { min-width: 0; }
+
 .social-hero-top {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) auto minmax(0, .85fr);
-  gap: 24px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  gap: 18px 24px;
+  align-items: end;
 }
 .social-hero-top > * { min-width: 0; }
 
+/* Compact by owner ruling (2026-09-06): the brief must not eat the fold restating why you are on
+   the tab. A modest bold line, not a display headline; the body carries the real status beneath it. */
 .social-headline {
-  margin-top: 8px;
-  font-size: 27px;
-  line-height: 1.16;
-  letter-spacing: -.035em;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -.01em;
   text-wrap: balance;
 }
 .social-hero-body {
-  margin-top: 9px;
-  max-width: 52ch;
-  font-size: 13px;
-  line-height: 1.6;
+  margin-top: 4px;
+  max-width: 78ch;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--ink-2);
 }
-.social-signature {
-  display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
-  margin-top: 14px; padding-top: 12px;
-  border-top: 1px solid var(--line-soft);
-}
-.social-signature strong { font: 650 11px/1 var(--font); letter-spacing: .18em; color: var(--gold); }
-.social-signature span { font-size: 11.5px; color: var(--ink-3); }
 
-.social-hero-mark { display: grid; justify-items: center; gap: 12px; }
-.social-quote {
-  margin: 0; max-width: 22ch; text-align: center;
-  font-size: 12.5px; line-height: 1.5; color: var(--ink-2);
-}
-
-.social-hero-act { display: grid; align-content: start; gap: 8px; justify-items: end; }
+.social-hero-act { display: grid; align-content: end; gap: 8px; justify-items: end; }
 .social-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.social-hero-permission { font-size: 11.5px; color: var(--ink-3); text-align: right; }
+.social-hero-permission { max-width: 40ch; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); text-align: right; }
 
-/* ── the mark ─────────────────────────────────────────────────────────────── */
+/* ── the mark (eclipse) ───────────────────────────────────────────────────── */
+/* Reserved now for the SURFACE STATES, where there is nothing else to show and the wait itself is
+   the subject. A token-built eclipse: a planet, a travelling gold corona, the command mark at
+   centre. The corona sweeps rather than pulses — a pulse on a surface with nothing running reads as
+   live traffic, which here would be a lie. */
 
-.social-orb { position: relative; width: 116px; height: 116px; display: grid; place-items: center; }
+.social-orb { position: relative; width: 128px; aspect-ratio: 1; display: grid; place-items: center; }
 .social-orb-halo,
 .social-orb-body,
 .social-orb-ring { position: absolute; inset: 0; border-radius: 50%; }
 .social-orb-halo {
-  background: radial-gradient(circle at 50% 50%, var(--gold-tint), transparent 68%);
-  opacity: .85;
+  inset: 6%;
+  background: radial-gradient(circle at 50% 50%, var(--gold-tint), transparent 66%);
+  opacity: .9;
 }
 .social-orb-body {
-  inset: 13px;
-  background: radial-gradient(circle at 34% 28%, var(--surface-2), var(--surface-sunk) 58%, var(--canvas));
+  inset: 12%;
+  background: radial-gradient(circle at 36% 28%, var(--surface-2), var(--surface-sunk) 60%, var(--canvas));
   border: 1px solid var(--line);
-  box-shadow: var(--sh-2), inset 0 1px 0 var(--line-soft);
+  box-shadow: var(--sh-2);
 }
-/* The rim light. A conic sweep so the highlight travels rather than pulsing — a pulse on a surface
-   with nothing running reads as live traffic, which on this surface would be a lie. */
 .social-orb-ring {
-  inset: 9px;
-  background: conic-gradient(from 0deg, transparent 0deg, var(--gold-bright) 42deg, transparent 96deg, transparent 360deg);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
-  opacity: .8;
-  animation: social-orb-turn 14s linear infinite;
+  inset: 8%;
+  background: conic-gradient(from 208deg, transparent 0deg, var(--gold) 46deg, var(--gold-bright) 74deg, transparent 128deg, transparent 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  filter: drop-shadow(0 0 7px var(--gold-tint));
+  animation: social-orb-turn 22s linear infinite;
 }
-.social-orb-mark { position: relative; z-index: 1; }
+.social-orb-mark { position: relative; z-index: 1; width: 46px; height: 46px; }
 @keyframes social-orb-turn { to { transform: rotate(360deg); } }
 
-/* ── KPI strip ────────────────────────────────────────────────────────────── */
+/* ── signal strip ─────────────────────────────────────────────────────────── */
+/* The four/five questions, answered from the real model. Every tile carries the sentence that says
+   where its figure came from or why there is none — that sentence is the point of the tile. */
 
 .social-kpis {
   min-width: 0;
@@ -162,19 +213,26 @@
 }
 .social-kpi {
   min-width: 0;
-  display: grid; align-content: start; gap: 5px;
+  position: relative;
+  display: grid; align-content: start; gap: 6px;
   padding: 13px 13px 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-m);
   background: var(--surface);
+  box-shadow: var(--sh-1);
 }
-.social-kpi-glyph { color: var(--violet); display: inline-flex; }
+.social-kpi-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.social-kpi-glyph {
+  display: grid; place-items: center; flex: none;
+  width: 26px; height: 26px; border-radius: 8px;
+  background: var(--violet-tint); color: var(--violet);
+}
 .social-kpi h3 { font-size: 12px; font-weight: 600; letter-spacing: -.01em; }
 .social-kpi p { font-size: 11px; line-height: 1.45; color: var(--ink-3); text-wrap: pretty; }
 .social-kpi .social-truth { justify-self: start; }
 
 /* ── the next move ────────────────────────────────────────────────────────── */
-/* Sits between the brief and the panels, and is the only element on the page besides the hero act
+/* Sits between the brief and the panels, and is the only element on the page besides the record act
    that carries gold — because it is the only other thing here that is an act. */
 
 .social-next {
@@ -183,13 +241,14 @@
   padding: 15px 18px;
   border: 1px solid var(--gold-line);
   border-radius: var(--r-l);
-  background: linear-gradient(120deg, var(--gold-tint), var(--surface) 62%);
+  background: linear-gradient(118deg, var(--gold-tint), var(--surface) 60%);
   box-shadow: var(--sh-1);
 }
 .social-next-glyph {
   display: grid; place-items: center; flex: none;
-  width: 32px; height: 32px; border-radius: 10px;
+  width: 34px; height: 34px; border-radius: 10px;
   background: var(--surface); border: 1px solid var(--gold-line); color: var(--gold);
+  box-shadow: var(--sh-1);
 }
 .social-next-body { min-width: 0; flex: 1; }
 .social-next-body h2 { margin-top: 4px; font-size: 15.5px; letter-spacing: -.02em; }
@@ -201,51 +260,56 @@
 .social-grid {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.42fr) minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
 .social-grid > * { min-width: 0; }
+/* The two columns each stack their own panels. */
+.social-col { min-width: 0; display: grid; gap: 14px; align-content: start; }
+.social-col > * { min-width: 0; }
 
 .social-panel {
   min-width: 0;
   display: flex; flex-direction: column;
   border: 1px solid var(--line);
   border-radius: var(--r-l);
-  background: var(--surface);
+  background: var(--sd-panel);
   box-shadow: var(--sh-1);
   overflow: hidden;
 }
 .social-panel-head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
-  padding: 15px 17px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--line-soft);
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--surface-2), transparent 30%);
 }
 .social-panel-head > div { min-width: 0; }
+.social-panel-head .social-panel-lhs { display: flex; align-items: center; gap: 11px; min-width: 0; }
 /* The plate the reference gives every section header. Chrome: it names the section, it claims
-   nothing. Same size and radius as `.social-feed-glyph` so the sheet has one plate, not three. */
+   nothing. */
 .social-panel-glyph {
   display: grid; place-items: center; flex: none;
-  width: 28px; height: 28px; border-radius: 9px;
-  background: var(--surface-sunk); color: var(--ink-3);
+  width: 30px; height: 30px; border-radius: 9px;
+  background: var(--violet-tint); color: var(--violet);
 }
-.social-panel-head h3 { font-size: 14px; letter-spacing: -.02em; }
-.social-panel-head p { margin-top: 3px; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
+.social-panel-head h3 { font-size: 13.5px; letter-spacing: -.02em; }
+.social-panel-head p { margin-top: 3px; font-size: 11px; line-height: 1.45; color: var(--ink-3); }
 .social-panel-foot {
-  padding: 11px 17px 14px;
+  padding: 11px 16px 14px;
   border-top: 1px solid var(--line-soft);
-  font-size: 11.5px; line-height: 1.5; color: var(--ink-3);
+  font-size: 11px; line-height: 1.5; color: var(--ink-3);
 }
 
 .social-empty {
   display: grid; place-items: center; align-content: center; justify-items: center;
-  gap: 8px; padding: 30px 22px; text-align: center; flex: 1;
+  gap: 9px; padding: 28px 22px; text-align: center; flex: 1;
 }
 .social-empty-glyph {
   display: grid; place-items: center;
-  width: 38px; height: 38px; border-radius: 12px;
+  width: 42px; height: 42px; border-radius: 13px;
   background: var(--surface-sunk); color: var(--ink-3);
+  border: 1px solid var(--line);
 }
 .social-empty h4 { font-size: 13.5px; }
 .social-empty p { max-width: 48ch; font-size: 12px; line-height: 1.55; color: var(--ink-3); }
@@ -255,14 +319,14 @@
 .social-feed { display: grid; margin: 0; padding: 0; list-style: none; }
 .social-feed li {
   display: flex; gap: 11px; align-items: flex-start;
-  padding: 13px 17px;
+  padding: 13px 16px;
   border-bottom: 1px solid var(--line-soft);
 }
 .social-feed li:last-child { border-bottom: 0; }
 .social-feed li > div { min-width: 0; }
 .social-feed-glyph {
   display: grid; place-items: center; flex: none;
-  width: 28px; height: 28px; border-radius: 9px;
+  width: 30px; height: 30px; border-radius: 9px;
   background: var(--violet-tint); color: var(--violet);
 }
 .social-feed-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
@@ -273,81 +337,99 @@
 .social-feed small { display: block; margin-top: 5px; font-size: 11px; color: var(--ink-3); }
 
 /* ── pipeline ─────────────────────────────────────────────────────────────── */
+/* Source → live, read as one flow. A hairline connector with a small arrowhead joins DOM-adjacent
+   stages; a stage takes its semantic accent (amber for work held for you, green for work published)
+   only when it genuinely carries a sourced figure — never gold, which is spent on the act alone. */
 
 .social-pipeline {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0; padding: 14px 17px; list-style: none;
+  gap: 18px;
+  margin: 0; padding: 15px 16px; list-style: none;
 }
 .social-stage {
   min-width: 0;
-  display: grid; align-content: start; gap: 4px;
-  padding: 12px 11px;
+  position: relative;
+  display: grid; align-content: start; gap: 5px;
+  padding: 12px 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-m);
   background: var(--surface-sunk);
-  /* The connector. A hairline between stages reads as flow without a decorative arrow glyph that
-     would need its own reduced-motion and forced-colors handling. */
-  position: relative;
 }
+.social-stage-glyph { color: var(--ink-3); display: inline-flex; }
 .social-stage + .social-stage::before {
-  content: ""; position: absolute; left: -8px; top: 50%;
-  width: 8px; height: 1px; background: var(--line);
+  content: ""; position: absolute; left: -13px; top: 50%;
+  width: 9px; height: 1px; background: var(--sd-line-strong);
+}
+.social-stage + .social-stage::after {
+  content: ""; position: absolute; left: -6px; top: 50%; transform: translateY(-50%);
+  border: 3px solid transparent; border-left-color: var(--sd-line-strong);
 }
 .social-stage h4 { font-size: 11.5px; font-weight: 600; }
 .social-stage p { font-size: 10.5px; line-height: 1.4; color: var(--ink-3); text-wrap: pretty; }
 .social-stage .social-figure { font-size: 21px; }
 /* Semantic, never decorative: attention marks work genuinely held for a person, positive marks work
    this workspace has actually produced. A stage with no source gets neither. */
-.social-stage--attention:has(.social-figure:not(.social-figure--absent)) { border-color: var(--warn); }
+.social-stage--attention:has(.social-figure:not(.social-figure--absent)) {
+  border-color: var(--warn); background: linear-gradient(180deg, var(--warn-tint), var(--surface-sunk));
+}
 .social-stage--attention:has(.social-figure:not(.social-figure--absent)) .social-figure { color: var(--warn); }
 .social-stage--failing:has(.social-figure:not(.social-figure--absent)) { border-color: var(--bad); }
 .social-stage--failing:has(.social-figure:not(.social-figure--absent)) .social-figure { color: var(--bad); }
-.social-stage--positive:has(.social-figure:not(.social-figure--absent)) { border-color: var(--ok); }
+.social-stage--positive:has(.social-figure:not(.social-figure--absent)) { border-color: var(--ok-tint); }
 .social-stage--positive:has(.social-figure:not(.social-figure--absent)) .social-figure { color: var(--ok); }
 
-/* ── channels ─────────────────────────────────────────────────────────────── */
+/* ── channels (dock) ──────────────────────────────────────────────────────── */
+/* A card per account on record. Networks are infrastructure beneath this surface, so no brand
+   fills — one neutral tokenised dot, and the honest absence where a telemetry number would be. */
 
-.social-channels { display: grid; margin: 0; padding: 0; list-style: none; }
+.social-channels {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px; margin: 0; padding: 14px 16px; list-style: none;
+}
 .social-channels li {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  padding: 12px 17px;
-  border-bottom: 1px solid var(--line-soft);
+  min-width: 0;
+  display: grid; gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  background: var(--surface);
 }
-.social-channels li:last-child { border-bottom: 0; }
-.social-channel-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.social-channel-id { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .social-channel-id > div { min-width: 0; }
-.social-channel-id h4 { font-size: 12.8px; }
-.social-channel-id small { display: block; margin-top: 2px; font-size: 11px; color: var(--ink-3); overflow-wrap: anywhere; }
-/* One neutral dot per channel, tokenised. Network brand colours are deliberately NOT used: the
-   networks are infrastructure beneath this surface, and six brand fills would out-shout the one
-   accent this shell spends on the act. */
+.social-channel-id h4 { font-size: 12.5px; }
+.social-channel-id small { display: block; margin-top: 2px; font-size: 10.5px; color: var(--ink-3); overflow-wrap: anywhere; }
 .social-channel-dot {
-  flex: none; width: 9px; height: 9px; border-radius: 50%;
-  background: var(--violet); opacity: .85;
+  flex: none; width: 22px; height: 22px; border-radius: 7px;
+  display: grid; place-items: center;
+  background: var(--violet-tint); color: var(--violet);
 }
-.social-channel-metric { text-align: right; min-width: 0; }
-.social-channel-metric .social-figure { font-size: 17px; }
-.social-channel-metric small { display: block; margin-top: 2px; max-width: 34ch; font-size: 10.5px; line-height: 1.4; color: var(--ink-3); }
+.social-channel-dot::after {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--violet); opacity: .9;
+}
+.social-channel-metric { min-width: 0; }
+.social-channel-metric .social-figure { font-size: 15px; }
+.social-channel-metric small { display: block; margin-top: 2px; max-width: 40ch; font-size: 10px; line-height: 1.4; color: var(--ink-3); }
 
-/* ── governance ───────────────────────────────────────────────────────────── */
+/* ── governance (Trust Compass, reflected) ────────────────────────────────── */
 
 .social-governance {
   min-width: 0;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; align-items: center;
   padding: 14px 17px 15px;
   border: 1px solid var(--line);
-  border-radius: var(--r-m);
+  border-radius: var(--r-l);
   background: var(--surface-sunk);
 }
 .social-governance-head { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
 .social-governance-head h3 { font-size: 12.5px; font-weight: 600; }
 .social-governance ul {
   display: flex; flex-wrap: wrap; gap: 8px 16px;
-  margin: 10px 0 0; padding: 0; list-style: none;
+  margin: 0; padding: 0; list-style: none;
 }
 .social-governance li { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.social-governance > p { margin-top: 10px; font-size: 11px; line-height: 1.5; color: var(--ink-3); }
+.social-governance > p { grid-column: 1 / -1; margin-top: 2px; font-size: 11px; line-height: 1.5; color: var(--ink-3); }
 .social-lane {
   display: inline-flex; align-items: center; flex: none;
   height: 19px; padding: 0 8px; border-radius: 999px;
@@ -360,37 +442,42 @@
 
 .social-record-stamp { font-size: 11px; line-height: 1.5; color: var(--ink-3); }
 
-/* ── states ───────────────────────────────────────────────────────────────── */
+/* ── whole-surface states ─────────────────────────────────────────────────── */
 
 .social-state {
-  min-height: 240px;
+  min-height: 300px;
   display: grid; place-items: center; align-content: center; justify-items: center;
-  gap: 9px; padding: 34px 20px; text-align: center;
-  border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface);
+  gap: 12px; padding: 46px 24px; text-align: center;
+  border: 1px solid var(--line); border-radius: var(--r-l);
+  background: var(--sd-panel); box-shadow: var(--sh-2);
 }
-.social-state h2 { font-size: 16px; letter-spacing: -.02em; }
-.social-state p { max-width: 56ch; font-size: 12.8px; line-height: 1.55; color: var(--ink-2); }
+.social-state h2 { font-size: 19px; letter-spacing: -.02em; }
+.social-state p { max-width: 54ch; font-size: 12.8px; line-height: 1.55; color: var(--ink-2); }
 .social-spinner {
-  width: 22px; height: 22px; border: 2px solid var(--line);
+  width: 24px; height: 24px; border: 2px solid var(--line);
   border-top-color: var(--gold); border-radius: 50%;
   animation: social-spin .8s linear infinite;
 }
 @keyframes social-spin { to { transform: rotate(360deg); } }
-.social-skeleton { display: grid; gap: 9px; padding: 18px; }
+.social-skeleton { display: grid; gap: 12px; padding: 4px; }
 .social-skeleton span {
-  height: 58px; border-radius: 10px;
+  border-radius: var(--r-l);
   background: linear-gradient(90deg, var(--surface-sunk), var(--surface-2), var(--surface-sunk));
   background-size: 200% 100%;
-  animation: social-shimmer 1.2s linear infinite;
+  animation: social-shimmer 1.3s linear infinite;
+  border: 1px solid var(--line-soft);
 }
+.social-skeleton .social-sk-h { height: 108px; }
+.social-skeleton .social-sk-s { height: 92px; }
+.social-skeleton .social-sk-r { height: 168px; }
 @keyframes social-shimmer { to { background-position: -200% 0; } }
 
-/* ── the record form ──────────────────────────────────────────────────────── */
+/* ── the record form (popout) ─────────────────────────────────────────────── */
 
 .social-scrim {
   position: fixed; inset: 0; z-index: 88;
-  background: rgb(18 14 40 / .42);
-  backdrop-filter: blur(2px);
+  background: color-mix(in srgb, var(--rail) 62%, transparent);
+  backdrop-filter: blur(3px);
 }
 .social-dialog {
   position: fixed; z-index: 89; inset: 50% auto auto 50%;
@@ -398,7 +485,7 @@
   width: min(560px, calc(100vw - 32px));
   max-height: min(86vh, 760px);
   display: flex; flex-direction: column;
-  border: 1px solid var(--line); border-radius: var(--r-l);
+  border: 1px solid var(--sd-line-strong); border-radius: var(--r-l);
   background: var(--surface); box-shadow: var(--sh-3);
   overflow: hidden;
 }
@@ -438,30 +525,29 @@
    ~641px is a docked 1366 session and ~395px is one with PAIGE expanded, so both now resolve to a
    single-column grid instead of two columns at 352px and 275px. */
 
-@container social (max-width: 900px) {
+@container social (max-width: 960px) {
   .social-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container social (max-width: 900px) {
   .social-pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   /* The connector joins DOM-adjacent siblings, so once the row wraps it would join the wrong pair. */
-  .social-stage + .social-stage::before { display: none; }
+  .social-stage + .social-stage::before,
+  .social-stage + .social-stage::after { display: none; }
 }
 @container social (max-width: 760px) {
-  .social-hero-top { grid-template-columns: minmax(0, 1fr); justify-items: start; }
-  .social-hero-mark { justify-items: start; }
-  .social-quote { text-align: left; }
+  .social-hero-top { grid-template-columns: minmax(0, 1fr); align-items: start; }
   .social-hero-act { justify-items: start; }
   .social-hero-actions { justify-content: flex-start; }
   .social-hero-permission { text-align: left; }
   .social-grid { grid-template-columns: minmax(0, 1fr); }
-  .social-headline { font-size: 23px; }
   .social-next { align-items: flex-start; flex-wrap: wrap; }
+  .social-governance { grid-template-columns: minmax(0, 1fr); }
 }
 @container social (max-width: 520px) {
-  .social-hero { padding: 18px 16px 16px; }
+  .social-hero { padding: 12px 14px; }
   .social-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .social-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .social-channels li { align-items: flex-start; flex-direction: column; gap: 8px; }
-  .social-channel-metric { text-align: left; }
-  .social-headline { font-size: 20px; }
+  .social-channels { grid-template-columns: minmax(0, 1fr); }
   .social-feed-line { flex-wrap: wrap; }
 }
 
@@ -487,7 +573,9 @@
 }
 @media (forced-colors: active) {
   .social-hero, .social-panel, .social-kpi, .social-stage, .social-governance,
-  .social-state, .social-dialog, .social-truth, .social-next, .social-panel-glyph { border: 1px solid CanvasText; }
-  .social-orb-halo, .social-orb-ring { display: none; }
+  .social-state, .social-dialog, .social-truth, .social-next, .social-panel-glyph,
+  .social-channels li { border: 1px solid CanvasText; }
+  .social-page { background: Canvas; }
+  .social-page::before, .social-orb-halo, .social-orb-ring { display: none; }
   .social-scrim { background: Canvas; }
 }

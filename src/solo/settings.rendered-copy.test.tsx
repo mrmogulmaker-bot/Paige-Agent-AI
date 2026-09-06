@@ -252,6 +252,27 @@ describe("Solo Settings rendered customer copy", () => {
    * that #657 ships a real Integrations destination is the owner's call and
    * that lane's, not this PR's.
    */
+  it("replaces the Available provider wall with a job-led Add channel workspace", () => {
+    testState.tab = "connections";
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/solo/1971670/settings/connections?segment=available"]}>
+        <Routes><Route path="/solo/:account/settings/:tab" element={<SoloSettings />} /></Routes>
+      </MemoryRouter>,
+    );
+    const text = renderedText(html);
+
+    expect(html).toMatch(/aria-selected="true"[^>]*>Add channel</);
+    for (const copy of ["Add a communication channel", "Email and inbox", "Phone and messaging", "Calendar and booking", "Go to Integrations"]) {
+      expect(text).toContain(copy);
+    }
+    expect(text).toContain("Receiving mail and sending mail are different permissions.");
+    expect(text).toContain("Unavailable");
+    expect(text).not.toContain("PARTIAL");
+    for (const provider of ["n8n", "Zapier", "Make.com", "MCP", "Direct APIs"]) expect(text).not.toContain(provider);
+    expect(html.match(/Go to Integrations/g)).toHaveLength(1);
+    expect(html).toContain(`/solo/1971670/settings/integrations`);
+  });
+
   it("keeps readiness, delivery, and messaging billing under Health", () => {
     testState.tab = "connections";
     const html = renderToStaticMarkup(

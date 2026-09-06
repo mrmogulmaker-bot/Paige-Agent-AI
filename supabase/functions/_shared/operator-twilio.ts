@@ -84,6 +84,40 @@ export function operatorVoiceCallerId(): string {
 }
 
 /**
+ * Dedicated bearer proof for the operator TwiML Application. It is deliberately independent
+ * of the Twilio API-key secret: rotating provider credentials must not invalidate the URL that
+ * Twilio has already stored. An explicit independently-rotatable proof may be configured; the
+ * service-role secret is the existing stable fallback. Only a purpose-bound HMAC leaves this
+ * process, never either source credential itself.
+ */
+export async function deriveOperatorVoiceWebhookSecret(): Promise<string | null> {
+  const creds = masterCreds();
+  if (!creds?.accountSid) return null;
+  const proofKey = Deno.env.get("TWILIO_OPERATOR_WEBHOOK_SECRET")
+    ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+    ?? "";
+  if (!proofKey) return null;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(proofKey),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signed = new Uint8Array(await crypto.subtle.sign(
+    "HMAC",
+    key,
+    enc.encode(`paige:operator:voice-webhook:v1:${creds.accountSid}`),
+  ));
+  const encoded = btoa(String.fromCharCode(...signed))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+  return `ov1_${encoded}`;
+}
+
+/**
  * Resolve operator Twilio creds from env, or null when not configured (honest degrade,
  * §13 — callers surface `needs_config`, never send with an empty credential).
  *

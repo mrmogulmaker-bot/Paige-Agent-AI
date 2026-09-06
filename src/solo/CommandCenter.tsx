@@ -1,13 +1,18 @@
 // @ts-nocheck
 import React, { useEffect, useRef } from "react";
-import { Activity, BrainCircuit } from "lucide-react";
+import { Activity, BrainCircuit, Target } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { SoloMindWorkspace } from "./SoloMindWorkspace";
 import { SoloSystemsCheckWorkspace } from "./SoloSystemsCheckWorkspace";
+import { SoloGamePlanWorkspace } from "./SoloGamePlanWorkspace";
 
+// Business Game Plan is the default Command Center landing (owner-approved 2026-09-05).
+// Three REAL tabs only. Trust Compass's slot (position 3, between Systems Check and Mind) is
+// reserved for its owner to add a real Command Center sub-tab — never a dead/placeholder tab.
 const TABS = [
+  ["plan", "Business Game Plan", Target],
   ["sys", "Systems Check", Activity],
   ["mind", "Mind", BrainCircuit],
 ];
@@ -19,20 +24,23 @@ const TABS = [
 const CommandCenter = ({ accountContext, openPaige, workspaceId }) => <SoloSystemsCheckWorkspace accountContext={accountContext} openPaige={openPaige} workspaceId={workspaceId} />;
 
 const CommandHub = ({ accountContext, openPaige }) => {
-  const [tab, setTab] = useSubtabRoute("solo", "command-center", "sys");
+  const [tab, setTab] = useSubtabRoute("solo", "command-center", "plan");
   const { activeTenantId, activeUserId } = useTenantContext();
   const location = useLocation();
   const navigate = useNavigate();
   const tabRefs = useRef([]);
   const [routeAnnouncement, setRouteAnnouncement] = React.useState("");
 
+  // Bare `/command-center` and the legacy `/command-center/overview` both open the new default
+  // landing, Business Game Plan. `replace` so Back does not trap the owner in a redirect loop
+  // (the regex intentionally does NOT match `/command-center/business-game-plan`, so no loop).
   useEffect(() => {
     if (!/\/command-center(?:\/overview)?\/?$/.test(location.pathname)) return;
     const pathname = location.pathname.replace(
       /\/command-center(?:\/overview)?\/?$/,
-      "/command-center/systems-check",
+      "/command-center/business-game-plan",
     );
-    setRouteAnnouncement("Command Center opened Systems Check.");
+    setRouteAnnouncement("Command Center opened Business Game Plan.");
     navigate(`${pathname}${location.search}${location.hash}`, { replace: true });
   }, [location.hash, location.pathname, location.search, navigate]);
 
@@ -99,7 +107,11 @@ const CommandHub = ({ accountContext, openPaige }) => {
       </nav>
       <span aria-live="polite" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clipPath: "inset(50%)" }}>{routeAnnouncement}</span>
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
-        {tab === "sys" ? (
+        {tab === "plan" ? (
+          <div role="tabpanel" id="command-panel-plan" aria-labelledby="command-tab-plan" style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+            <SoloGamePlanWorkspace key={activeTenantId ?? "unresolved"} accountContext={accountContext} openPaige={openPaige} workspaceId={activeTenantId} />
+          </div>
+        ) : tab === "sys" ? (
           <div role="tabpanel" id="command-panel-sys" aria-labelledby="command-tab-sys" style={{ height: "100%" }}>
             <CommandCenter key={activeTenantId ?? "unresolved"} accountContext={accountContext} openPaige={openPaige} workspaceId={activeTenantId} />
           </div>

@@ -15,10 +15,11 @@ const env: Record<string, string | undefined> = {
   TWILIO_ACCOUNT_SID: "AC00000000000000000000000000000000",
   TWILIO_API_KEY_SID: "SKmaster1111111111111111111111111",
   TWILIO_API_KEY_SECRET: "mastersecret",
+  SUPABASE_URL: "https://ref.functions.supabase.co",
 };
 (globalThis as unknown as { Deno?: unknown }).Deno = { env: { get: (k: string) => env[k] } };
 
-const { createSubaccountApiKey, resolveTwilioCreds } = await import(
+const { createSubaccountApiKey, ensureTwimlApp, resolveTwilioCreds } = await import(
   "../supabase/functions/_shared/twilio.ts"
 );
 
@@ -74,15 +75,72 @@ const realFetch = globalThis.fetch;
 
 globalThis.fetch = realFetch;
 
+// ── Case 8: the durable marker avoids a provider write on every token refresh ──
+{
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls++;
+    return new Response("unexpected", { status: 500 });
+  }) as typeof fetch;
+  const admin = makeAdmin(
+    {
+      subaccount_sid: SUB_SID,
+      api_key_sid: "SKsub4444444444444444444444444444",
+      auth_token_vault_ref: "ref",
+      twiml_app_sid: "APexisting",
+      inbound_webhook_secret: "tenant-proof",
+      config: { voice_webhook_auth: "tenant_secret_v1" },
+    },
+    "vaultedApiKeySecret",
+  );
+  const result = await ensureTwimlApp(admin, "tenant-voice");
+  check("voice app: durable repair marker reuses the app without a provider write",
+    result.ok && providerCalls === 0);
+}
+
+globalThis.fetch = realFetch;
+
+// ── Case 9: staged release repair always verifies the provider, even with a marker ──
+{
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls++;
+    return new Response(JSON.stringify({ sid: "APexisting" }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  const admin = makeAdmin(
+    {
+      subaccount_sid: SUB_SID,
+      api_key_sid: "SKsub4444444444444444444444444444",
+      auth_token_vault_ref: "ref",
+      twiml_app_sid: "APexisting",
+      inbound_webhook_secret: "tenant-proof",
+      config: { voice_webhook_auth: "tenant_secret_v1" },
+    },
+    "vaultedApiKeySecret",
+  );
+  const result = await ensureTwimlApp(admin, "tenant-voice", { forceRepair: true });
+  check("voice app: forceRepair contacts the provider despite a durable marker",
+    result.ok && providerCalls === 1);
+}
+
+globalThis.fetch = realFetch;
+
 // ── Fake supabase admin for resolveTwilioCreds ───────────────────────────────
 function makeAdmin(row: Record<string, unknown> | null, secret: string | null) {
   return {
     from(_table: string) {
-      return {
-        select(_cols: string) { return this; },
-        eq(_col: string, _val: string) { return this; },
+      const q = {
+        select(_cols: string) { return q; },
+        eq(_col: string, _val: string) { return q; },
+        update(_payload: Record<string, unknown>) { return q; },
         maybeSingle() { return Promise.resolve({ data: row, error: null }); },
+        then(resolve: (value: { data: null; error: null }) => void) {
+          resolve({ data: null, error: null });
+        },
       };
+      return q;
     },
     rpc(fn: string, _args?: Record<string, unknown>) {
       if (fn === "read_channel_secret") return Promise.resolve({ data: secret, error: null });
@@ -122,6 +180,41 @@ function makeAdmin(row: Record<string, unknown> | null, secret: string | null) {
   const creds = await resolveTwilioCreds(admin, "tenant-3");
   check("resolve: no row => twilio_subaccount_not_provisioned needs_config", !creds.ok && creds.needs_config === true && creds.error === "twilio_subaccount_not_provisioned");
 }
+
+// ── Case 7: an existing app is repaired with tenant-authenticated VoiceUrl ──
+{
+  const tenantSecret = "tenant-proof-" + "z".repeat(48);
+  const admin = makeAdmin(
+    {
+      subaccount_sid: SUB_SID,
+      api_key_sid: "SKsub4444444444444444444444444444",
+      auth_token_vault_ref: "ref",
+      twiml_app_sid: "APexisting",
+      inbound_webhook_secret: tenantSecret,
+      status: "active",
+    },
+    "vaultedApiKeySecret",
+  );
+  let capturedUrl = "";
+  let capturedBody = "";
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    capturedUrl = String(url);
+    capturedBody = String(init?.body ?? "");
+    return new Response(JSON.stringify({ sid: "APexisting" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  const result = await ensureTwimlApp(admin, "tenant-voice");
+  check("voice app: existing provider resource is repaired, not blindly trusted",
+    result.ok && result.data?.applicationSid === "APexisting" && result.data.created === false);
+  check("voice app: update targets the stored application",
+    capturedUrl.includes(`/Applications/APexisting.json`), capturedUrl);
+  check("voice app: VoiceUrl carries the tenant proof",
+    capturedBody.includes("VoiceUrl=") && capturedBody.includes(encodeURIComponent(tenantSecret)));
+}
+
+globalThis.fetch = realFetch;
 
 console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — ${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

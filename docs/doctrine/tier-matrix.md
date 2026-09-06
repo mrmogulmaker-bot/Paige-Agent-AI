@@ -44,6 +44,8 @@ tier that customizes on top of its (Agency) baseline. Owner-locked cells (2026-0
 - **`growth` + `studio` (Vibe Studio + Campaigns) = Solo · Sub-account · Enterprise · God — NOT Agency**
 - **Solo Campaigns -> Pipeline (Gate 1 approved; draft, not live as of 2026-08-31):** follows the existing Growth exception: Solo + Sub-account + Enterprise + God, not Agency. The base capability is tenant-owned multiple pipelines, explicit stage lifecycle management, board-first deal context, and compact focused-stage operation. Read-only members receive the projection but not stage/pipeline writes. This row remains **DRAFT / UNVERIFIED** until Gate 2, merge, persisted migration apply, and authenticated owner-flow proof; it must not be represented as shipped beforehand.
 
+- **Bounded empty-pipeline deletion (2026-09-03):** the new `delete_empty_pipeline` exception is narrower than general Growth access: active canonical Owner of the server-resolved top-level standalone Solo tenant only. Admin-only/member, child/sub-account, Agency, Enterprise and Operator contexts receive no new deletion capability. `get_pipeline_workspace.can_delete` is server-proven. Existing Pipeline catalogue/configure permissions are unchanged. See `docs/delivery/solo-pipeline-empty-delete.md` for proof/release status; rendered fixtures do not prove authenticated production access.
+
   (#125; agency manages sub-accounts, not its own campaign book; god dogfoods per §35). Route-gated via
   `RequireFeature` (`/admin/campaigns`, `/admin/studio`), not nav-only.
 - **`subaccount_management` = Agency + Enterprise; `fleet_console` = God** only.
@@ -332,6 +334,80 @@ what a commit intends to deliver — ticking a box because the slice "is going t
 class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
+
+### Business Game Plan is the DEFAULT Command Center landing on Solo (2026-09-05)
+
+The Solo Command Center gained a first sub-tab, **Business Game Plan** (`SoloGamePlanWorkspace`), and
+it is now the **default landing** for the Solo shell. Bare `/command-center` and the legacy
+`/command-center/overview` both redirect (`replace`) to `/command-center/business-game-plan`; the
+`business-game-plan` slug carries `overview` as an alias in `SOLO_BRANCHES` so old deep links resolve.
+Command Center sub-tabs are now **Business Game Plan → Systems Check → Mind** — three REAL tabs;
+Trust Compass's slot (position 3) is reserved for its owner to add a real sub-tab, never a
+dead/placeholder tab (§58).
+
+**No new table, RPC, edge function, migration, or tier flag.** The surface is a §18 composition hook
+(`useSoloGamePlan`) over already-released, tenant-safe reads (`useCommandCenter`, `useSoloSetupBrief`,
+`useCatalogOffers`, `useSoloKnowledge`, `useSoloPendingActions`, `useSystemsCheck("tenant")`,
+`useSoloActivityFeed`). It passes **no** client-supplied `tenant_id` (§9); every read is scoped by the
+session the sub-hooks already resolve. Every visible number is a real numerator/denominator over five
+grounding foundations, or it says "incomplete"/"couldn't load"; an empty recorded feed reads
+"No recorded work yet" (§13). The server-resolved account name + tier render in the kicker and in the
+canonical `data-tenant-account-name`/`-tier` shell markers (§65/§70).
+
+| Tier | Sees Business Game Plan as its Command Center landing |
+|---|---|
+| **God / Super Admin** | — operator runs its own OperatorEntry command center, not the Solo shell |
+| **Agency** (agency-as-tenant) | — AgencyApp is a different shell; the Solo CommandHub is Solo-only |
+| **Standalone Solo** | **✓** default landing |
+| **Sub-account** | **— (sequenced, §60 parity gap noted honestly)** — a sub-account renders through `AgencyApp` at `/business/{account}` today, so its Command Center landing is the shared Agency Core, NOT the Business Game Plan (`canonical-app-url` still resolves `sub_account → …/command-center/overview`). §60 says Solo ≡ Sub-account except billing, so this is a real parity gap; it closes when `/business` mounts `SoloApp` (a separate §65 route-taxonomy slice, another workstream). This slice deliberately touched only `SOLO_BRANCHES`. |
+| **Client** | **403** — denied at the Solo route gate |
+| **Anonymous** | **403** — denied at the Solo route gate |
+
+**`UNVERIFIED` — authenticated owner runtime proof (§32.c).** Every claim above is from the component
+bodies, the composed released reads, automated tests (full suite green), typecheck-clean typed files,
+and a 64/64 headless render drive across all states × light/dark × four Solo viewports. No browser
+drove this surface as a signed-in owner on any tier in this session (the headless CI sandbox has no
+browser/auth tool) — the live-drive is **owed to the next capable session**, not claimed.
+
+### The inbound MCP door — `paige-mcp`, all 119 tools, one governed decision (2026-09-05)
+
+**What is LIVE.** Every `tools/call` passes one chokepoint, after the tier and scope gate and before
+dispatch, so a refused act never reaches a handler and has no side effect to undo. Effect was
+verified by reading all 119 handler bodies with `file:line` evidence, never inferred from a name:
+**51 reads, 68 mutations.** Reads proceed once tenant, tier, scope, actor identity and the
+server-resolved workspace all check out. Mutations refuse — **67 `approval_required`, exactly one
+(`create_tenant`) `owner_only`** — because an MCP connection authorizes access to the door, not
+consequential action. A tool with no capability entry refuses `capability_unmapped`; CI fails the
+build first.
+
+| Tier | Reads (51) | Mutations (68) | How the tier is decided |
+|---|---|---|---|
+| 1 God / Super Admin | ✓ after tier + scope | **403 refused** | unchanged — `deriveTier`, then the door |
+| 2 Agency | ✓ for its own tier's tools | **403 refused** | unchanged |
+| 3 Standalone tenant | ✓ for its own tier's tools | **403 refused** | unchanged |
+| 4 Sub-account | ✓ for its own tier's tools | **403 refused** | unchanged |
+| 5 Client seat | ✓ for `self.*` tools only | **403 refused** — including the four `me_*` writes | sealed tier, unchanged |
+| 6 Anonymous | 401 before the door | 401 before the door | no bearer resolves |
+| Platform key (not a tier — a service credential) | ✓, as a `service` principal with no person behind it | **403 refused**, byte-identical codes to a person's | `resolveBearer` matches a configured key |
+
+**The door does not widen anything.** Tier and scope still own audience and still run first, and the
+door is handed the gate's own verdict rather than a literal — moving the call above the gate does not
+compile. Nothing in `params.arguments` reaches a governance input: the tenant is `actorTenantId()`,
+the identity is the resolved bearer, the effect comes from the capability policy. A forged
+`tenant_id`, `role`, `confirm`, `approved`, `claimedArgs` or `autonomy_lane` in the model's own JSON
+changes no decision for any of the 119 and reaches no audit field.
+
+**Two §58 regressions, both deliberate and owner-ruled.** (1) Sixty-eight tools that worked yesterday
+now return 403 — the whole point, and the reason the approval channel is the named next slice.
+(2) The `mcp.command` Rail feed goes to zero: its twenty client-acting labels are all mutations, so
+the emitter is never reached. That is correct — a refusal is not a command — but an operator rail
+that used to read "External command: added a new client" now shows nothing.
+
+**What is NOT live, stated so nobody reads more into it.** The door checks the CALLER; it does not
+scope the QUERY. Thirteen of the 51 reads have no tenant predicate in their handler and return
+fleet-wide rows to any caller who clears tier and scope. That predates this change and is tracked
+separately. No autonomy lane is resolved on this surface, and the door declares `not_resolved`
+rather than implying one.
 
 ### The Rail records what PAIGE DID, not only what was connected (SCR-2026-09-05, 2026-09-05)
 
@@ -1018,7 +1094,7 @@ Legend as above: **✓** live · **—** not built · **N/A** tier not opened ye
 | `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
 | `connections/registration` | Carrier (10DLC) registration: **PAIGE drafts the regulatory copy**, **the reviewed copy is saved**, and **the business facts blocking the filing are editable here** — a second EDITOR of the one canonical record, not a second record. Setup still owns the full record and its own five-subtab surface | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce. The business-record editor writes through `save_solo_business_context`, the same seam Setup uses, so the two surfaces cannot disagree (§57); it is Owner-only and mounts the canonical adapter only when opened. The four carrier-required representative identity columns are **derived** by `sync_a2p_representative_identity` (20261201000700) — before it, no writer populated them and brand filing could never start. The grading ladder stays in `communications`; this area holds the acts (§18) | N/A | N/A | ✓ | N/A | — |
 | `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
-| `connections/available` | The provider catalogue with per-provider truth badges | **structure-only** — a static catalogue, deliberately | N/A | N/A | ✓ | N/A | — |
+| `connections/available` (visible label: **Add channel**) | A job-led control desk for Email and inbox, Phone and messaging, and Calendar and booking, plus one deliberate Integrations handoff | **source-backed orchestration surface** — lists only canonically operating channels; distinguishes pending, unverified, registration-required, failed-read and unavailable states; withholds the best-next action until owning reads resolve; delegates writes to Communications, Registration, Health or Calendars and performs no provider mutation itself | N/A | N/A | ✓ | N/A | — |
 
 **The caller-ID defect this slice found, recorded because it shipped invisibly (§13).**
 `tenant_phone_numbers.is_primary` decides which number a workspace's outbound calls and texts come
@@ -1680,21 +1756,35 @@ sections, none of B's, and not a teammate's commitment inside its own tenant.
 **§13 — an unavailable read renders NOTHING.** "Nothing outstanding" is a claim, and a read that
 failed is not entitled to make it. The failure is logged instead.
 
-**THE AUTONOMY LANE GOVERNS `paige-ai-chat`, NOT `paige-mcp` — stated rather than implied.** An
-earlier commit message said two tools "both default to confirm now"; that is true inside the chat
-function and NOT over MCP. `paige-mcp` performs zero autonomy resolution for ANY tool — this is a
-pre-existing architectural gap, not a regression introduced with the gate — so an MCP caller
-(including the Super Admin connector) reaches `delegate_to_subagent` and every other write governed
-only by its permission scope (`workflows.run`, enforced at `paige-mcp/index.ts:5159`), never by the
-tenant's autonomy setting or the Trust Compass ceiling.
+**THE AUTONOMY LANE GOVERNS `paige-ai-chat`, NOT `paige-mcp` — SUPERSEDED 2026-09-05, and the
+paragraph is kept because its prediction was right and the owner overruled it deliberately.**
 
-It is recorded here rather than fixed in passing, deliberately. MCP callers have no confirm
-affordance at all, so bolting the lane onto that surface would make every gated MCP write
-permanently un-executable — which is precisely the failure the confirm-gate repair above exists to
-undo, repeated on a second surface. Closing it properly means giving MCP a way to carry consent
-(the proposal token is the obvious candidate, since it needs no UI), and that is its own slice with
-its own §37 producer inventory. Until then the honest statement is the one above: two different
-boundaries, both real, governing different things.
+What it recorded was true when written: `paige-mcp` performed zero autonomy resolution for any
+tool, so an MCP caller — the Super Admin connector included — reached `delegate_to_subagent` and
+every other write governed only by its permission scope, never by the tenant's autonomy setting or
+the Trust Compass ceiling. It then argued against closing the gap in passing, on the grounds that
+"bolting the lane onto that surface would make every gated MCP write permanently un-executable."
+
+**That cost is exactly what the governed door now charges, and the owner ruled for it explicitly:**
+*"An MCP connection authorizes access to the MCP door; it does not authorize consequential action."*
+All 119 tools pass one door. The 51 verified reads stay available behind tenant, tier, scope, actor
+and server-resolved-workspace checks. The 68 verified mutations refuse — 67 `approval_required`,
+`create_tenant` `owner_only` — because the only caller-controlled field in a `tools/call` body is
+`params.arguments`, which is the model's own JSON, so an approval placed there is the model
+approving itself.
+
+The paragraph's own proposed fix — give MCP a way to carry consent — is not abandoned; it is the
+named next slice, and it is what turns the refusals back into executions. What changed is the
+sequence: the door closed first, and the channel opens second. Refusing an act nobody approved is
+the safe half to ship alone.
+
+**The lane is still not resolved on this surface, and the door says so rather than implying one.**
+It declares `not_resolved` and refuses every mutation regardless, so the refusal is a property of
+the CHANNEL rather than of a workspace setting. That distinction is load-bearing: measured on
+production 2026-09-05, `tenant_tool_autonomy` already holds six `auto` rows on `n8n_*` canonical
+keys — all six `high`, so the clamp catches them today. One `auto` row on an `ordinary` canonical
+would have been an external connector executing a change, with no code change and nothing in CI to
+notice.
 
 ### PAIGE Chat — a proposal you did not act on is reachable again
 

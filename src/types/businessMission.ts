@@ -1,0 +1,6 @@
+export type MissionState = "proposed" | "active" | "blocked" | "paused" | "completed" | "stopped";
+export type MissionOutcome = "achieved" | "partly_achieved" | "blocked" | "stopped";
+export interface BusinessMissionSummary { id:string; title:string; state:MissionState; state_reason:string|null; next_action:string|null; revision:number; created_at:string; updated_at:string; deadline_on:string|null; desired_outcome:string; success_definition:string; brief_version:number; closure_outcome:MissionOutcome|null; outcome_summary:string|null; }
+export interface MissionBrief { id:string; version:number; desired_outcome:string; deadline_on:string|null; baseline:string; strategy:string; constraints:string[]; success_definition:string; owner_authority:string; assumptions:string[]; missing_information:string[]; revision_reason:string; created_at:string; }
+export interface BusinessMissionDetail { mission:BusinessMissionSummary & { outcome_unknowns:string|null; request_source:"owner_ui"|"paige_chat"; request_thread_id:string|null }; brief:MissionBrief; }
+export interface MissionBriefInput { title:string; desiredOutcome:string; deadlineOn:string|null; baseline:string; strategy:string; constraints:string[]; successDefinition:string; ownerAuthority:string; assumptions:string[]; missingInformation:string[]; nextAction:string|null; }
