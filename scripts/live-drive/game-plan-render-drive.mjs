@@ -30,7 +30,7 @@ const FRAMES = [
   { name: "open-614x768", width: 614, height: 768 },
   { name: "open-490x1000", width: 490, height: 1000 },
 ];
-const MODES = ["grounded", "partial", "empty", "blocked", "owner", "motion", "loading", "error"];
+const MODES = ["grounded", "partial", "empty", "blocked", "proposal", "motion", "loading", "error"];
 const THEMES = ["light", "dark"];
 
 const results = [];

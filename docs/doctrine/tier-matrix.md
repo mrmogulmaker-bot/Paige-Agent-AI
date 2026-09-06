@@ -398,11 +398,23 @@ entry above), never a dead/placeholder tab (§58).
 **No new table, RPC, edge function, migration, or tier flag.** The surface is a §18 composition hook
 (`useSoloGamePlan`) over already-released, tenant-safe reads (`useCommandCenter`, `useSoloSetupBrief`,
 `useCatalogOffers`, `useSoloKnowledge`, `useSoloPendingActions`, `useSystemsCheck("tenant")`,
-`useSoloActivityFeed`). It passes **no** client-supplied `tenant_id` (§9); every read is scoped by the
-session the sub-hooks already resolve. Every visible number is a real numerator/denominator over five
-grounding foundations, or it says "incomplete"/"couldn't load"; an empty recorded feed reads
-"No recorded work yet" (§13). The server-resolved account name + tier render in the kicker and in the
-canonical `data-tenant-account-name`/`-tier` shell markers (§65/§70).
+`useSoloActivityFeed`, `useSoloCampaignBriefs`). It passes **no** client-supplied `tenant_id` (§9); every
+read is scoped by the session the sub-hooks already resolve. Every visible number is a real
+numerator/denominator over five grounding foundations, or it says "incomplete"/"couldn't load"; an empty
+recorded feed reads "No recorded work yet" (§13). The server-resolved account name + tier render in the
+kicker and in the canonical `data-tenant-account-name`/`-tier` shell markers (§65/§70).
+
+**Slice A reshape — SHIPPED 2026-09-06 (owner-approved reimagination, PR #988).** The surface is
+REPLACED IN PLACE from a Systems-Check-derived readiness list into the owner's **strategy desk**: the
+spine is now the owner's approved strategy (an **editable Plan Brief** · a horizon navigator ·
+Strategic plays from real `campaign_briefs` via the added `useSoloCampaignBriefs` read · a Decision &
+Opportunity swipe deck · a Paige operating-contribution card), and **Systems Check is DEMOTED to a
+compact collapsible "Plan dependencies"** — never the spine (a Systems Check read OUTAGE shows an
+honest "Couldn't check", never a false "All clear", §13). The Plan Brief is genuinely **editable and
+persists (§70)** — it rides the EXISTING `useSoloSetupBrief.save` → `save_solo_setup_context` seam (no
+new write path); a plain edit passes `proposalId=null` so it never consumes a pending Paige proposal.
+**Tier visibility is UNCHANGED by this reshape** — the table below still holds (Standalone Solo default
+landing; the sub-account §60 parity gap is unchanged and unrelated to this slice).
 
 | Tier | Sees Business Game Plan as its Command Center landing |
 |---|---|
@@ -414,10 +426,11 @@ canonical `data-tenant-account-name`/`-tier` shell markers (§65/§70).
 | **Anonymous** | **403** — denied at the Solo route gate |
 
 **`UNVERIFIED` — authenticated owner runtime proof (§32.c).** Every claim above is from the component
-bodies, the composed released reads, automated tests (full suite green), typecheck-clean typed files,
-and a 64/64 headless render drive across all states × light/dark × four Solo viewports. No browser
-drove this surface as a signed-in owner on any tier in this session (the headless CI sandbox has no
-browser/auth tool) — the live-drive is **owed to the next capable session**, not claimed.
+bodies, the composed released reads, automated tests (full suite green), the tsc ratchet (no new type
+errors), a **128/128** headless render drive (8 states × light/dark × 8 Solo viewports, no crash/overflow)
+and a **6/6** scroll drive (the owner's scroll bug reproduced + the fix proven reachable, incl. dock-open).
+No browser drove this surface as a signed-in owner on any tier in this session (the headless CI sandbox
+has no browser/auth tool) — the live-drive is **owed to the next capable session**, not claimed.
 
 ### The inbound MCP door — `paige-mcp`, all 119 tools, one governed decision (2026-09-05)
 

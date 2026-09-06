@@ -1,52 +1,66 @@
 /**
- * Dev-only stub of `useSoloGamePlan` for the Business Game Plan render harness.
+ * Dev-only stub of `useSoloGamePlan` for the Business Game Plan (Strategy Desk) render harness.
  *
  * MOCK THE PROVIDER, NEVER THE CONTRACT. The REAL `SoloGamePlanWorkspace`, its REAL CSS and the
  * REAL Solo shell chain render against these deterministic view-models — only the composed reads
  * are stubbed. The mode is read from `?mode=` on load, so each frame is a fixed, reproducible
  * state. This proves GEOMETRY, STATE RENDERING and both palettes; it does NOT prove the
  * authenticated production surface — §32.c stays owed to a session that can drive the deployed app.
+ * All data below is fictional and labelled.
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 const vi = () => {}; // no-op refresh for the harness
+const okSave = async () => ({ ok: true, kind: "saved" });
 
 function grounded() {
   return {
     loading: false, error: false, empty: false,
-    greeting: { name: "Jordan", dateLabel: "Thursday, September 3", salutation: "Good afternoon" },
-    narrative: "Foundations are set and work is moving. Here's what needs you and the best move to make now.",
-    attention: [
-      { label: "3 drafts waiting", tone: "live", destination: "paige" },
-      { label: "2 clients at risk", tone: "partial", destination: "clients" },
-      { label: "5 follow-ups due", tone: "live", destination: "clients" },
-    ],
-    bestMove: {
-      id: "attn:atrisk", title: "Re-engage 2 clients before they lapse",
-      why: "Both crossed your usual quiet threshold. PAIGE can draft a note in your voice for each.",
-      owner: "paige", proof: "live", evidence: "2 clients flagged at risk in your book.",
-      outcome: "PAIGE drafts the outreach; you approve and she sends.", destination: "clients", ctaLabel: "See the clients",
-    },
-    priorities: [
-      { id: "gap:offers", title: "Publish your Q4 offer page", why: "Publishing turns the draft into a real link you can send and track.", owner: "you", proof: "partial", evidence: "A draft page is ready.", outcome: "The page goes live and the intake wires to your pipeline.", destination: "catalog", ctaLabel: "Open Catalog" },
-      { id: "attn:followups", title: "5 follow-ups due", why: "Contacts are due a touch. PAIGE can prepare each for your approval.", owner: "paige", proof: "live", evidence: "5 follow-ups due in your book.", outcome: "PAIGE drafts them; you approve and she sends.", destination: "clients", ctaLabel: "See what's due" },
-      { id: "gap:knowledge", title: "Add a knowledge source", why: "More of your material lets PAIGE answer with depth.", owner: "you", proof: "partial", evidence: "PAIGE has little of your material.", outcome: "PAIGE reindexes and can answer with your content.", destination: "knowledge", ctaLabel: "Open Knowledge" },
-    ],
-    foundation: [
-      { key: "identity", label: "Business identity", status: "grounded", note: "Clearpath Advisory", destination: "setup" },
-      { key: "website", label: "Website", status: "grounded", note: "clearpath.example", destination: "setup" },
-      { key: "offers", label: "Offers", status: "grounded", note: "3 active offers", destination: "catalog" },
-      { key: "sender", label: "Sending identity", status: "grounded", note: "Email sending is set up", destination: "connections" },
-      { key: "knowledge", label: "Knowledge", status: "incomplete", note: "2 sources — add more for depth", destination: "knowledge" },
-    ],
-    coverage: { grounded: 4, partial: 1, total: 5, caption: "4 grounded, 1 to finish. PAIGE has enough to plan and act with you." },
-    motion: { status: "ready", items: [], freshness: "No recorded work yet" },
+    greeting: { name: "Jordan", dateLabel: "Saturday, September 6", salutation: "Good afternoon" },
+    narrative: "", attention: [], bestMove: null, priorities: [], foundation: [],
+    coverage: { grounded: 0, partial: 0, degraded: 0, total: 5, caption: "" },
     firstRun: [],
+    planBrief: {
+      fields: {
+        annualDirection: "Become the default operations advisor for Series-A ops leaders in the Northeast.",
+        goals90Day: "6 retained clients at ~$4k/mo signed by the end of the quarter.",
+        currentPriority: "Convert the 3 warm referrals and ship the ops-audit offer page.",
+        successDefinition: "$20k/mo in retained advisory revenue by December.",
+        constraints: "Solo capacity — max 8 active clients; no paid-ads budget this quarter.",
+        operatingPreferences: "Keep outreach personal; Paige drafts, you approve every send.",
+        doNotAssume: "Don't assume a client wants a call before a written summary.",
+      },
+      provenance: { annualDirection: "owner_confirmed", currentPriority: "owner_confirmed", goals90Day: "owner_confirmed", successDefinition: "owner_confirmed", constraints: "owner_confirmed" },
+      hasPlan: true, canEdit: true, saving: false, pendingProposal: null, proposalPlanOnly: false, updatedAt: "2026-09-04T00:00:00Z",
+      save: okSave, applyProposal: okSave, dismissProposal: async () => ({ ok: true }),
+    },
+    horizons: [
+      { id: "annual", label: "Annual", sub: "This year", direction: "Become the default operations advisor for Series-A ops leaders in the Northeast.", outcome: "$20k/mo in retained advisory revenue by December.", defined: true },
+      { id: "quarter", label: "This quarter", sub: "90 days", direction: "Convert the 3 warm referrals and ship the ops-audit offer page.", outcome: "6 retained clients at ~$4k/mo signed by the end of the quarter.", defined: true },
+    ],
+    playsStatus: "ready",
+    plays: [
+      { id: "p1", name: "Q3 Launch campaign", objective: "Put the ops-audit offer in front of the warm list before renewal season.", audience: "Warm list + the 3 referrals + lapsed clients", angle: "Find the 3 operations leaks costing you a hire", window: "Sep 22 – Oct 3", channels: "Email, 1:1 outreach", outcome: "20 booked diagnostics from the launch window.", successSignal: "Diagnostics booked + reply rate.", offerName: "Ops-audit diagnostic", status: "approved", blocked: false },
+      { id: "p2", name: "Referral engine", objective: "Turn warm intros into a repeatable pipeline.", audience: "Past clients", angle: "", window: "", channels: "", outcome: "A standing intro sequence + case studies.", successSignal: "", offerName: null, status: "draft", blocked: false },
+    ],
+    decisions: [
+      { id: "d1", title: "Review 3 drafts Paige is holding", detail: "Paige prepared these and stopped for your approval.", source: "recommendation", waiting: true, destination: "paige", evidence: "3 items Paige drafted, waiting on you." },
+      { id: "d2", title: "Re-engage 2 clients before they lapse", detail: "These crossed your usual quiet threshold. Paige can draft a note in your voice for each.", source: "recommendation", waiting: false, destination: "clients", evidence: "2 clients flagged at risk in your book." },
+    ],
+    decisionsStatus: "ready",
+    dependencies: [
+      { id: "dep1", title: "Sending identity not verified", reason: "Blocks the Q3 launch campaign send.", blocking: true },
+      { id: "dep2", title: "No payment processor declared yet", reason: "Blocks the paid diagnostic.", blocking: true },
+    ],
+    dependenciesStatus: "ready",
+    motion: { status: "ready", items: [], freshness: "No recorded work yet" },
     refresh: vi,
   };
 }
 
 function withPatch(patch: any) {
-  return { ...grounded(), ...patch };
+  const base = grounded();
+  return { ...base, ...patch, planBrief: { ...base.planBrief, ...(patch.planBrief ?? {}) } };
 }
 
 export function viewFor(mode: string) {
@@ -66,41 +80,26 @@ export function viewFor(mode: string) {
       });
     case "partial":
       return withPatch({
-        narrative: "PAIGE has grounded 2 of 5 foundations. 3 are left — the next move builds from what you set.",
-        attention: [{ label: "2 drafts waiting", tone: "live", destination: "paige" }],
-        bestMove: { id: "gap:offers", title: "Add your first offer in Catalog", why: "Everything commercial waits on one real offer.", owner: "you", proof: "input", evidence: "You have no offer yet.", outcome: "PAIGE builds pricing and follow-ups around it.", destination: "catalog", ctaLabel: "Open Catalog" },
-        foundation: [
-          { key: "identity", label: "Business identity", status: "grounded", note: "Clearpath Advisory", destination: "setup" },
-          { key: "website", label: "Website", status: "grounded", note: "clearpath.example", destination: "setup" },
-          { key: "offers", label: "Offers", status: "needs-input", note: "No offer yet — blocks revenue moves", destination: "catalog" },
-          { key: "sender", label: "Sending identity", status: "incomplete", note: "Confirm your sender", destination: "connections" },
-          { key: "knowledge", label: "Knowledge", status: "needs-input", note: "Add a source", destination: "knowledge" },
+        planBrief: {
+          fields: { annualDirection: "Grow the advisory to a full book of retained clients.", goals90Day: "", currentPriority: "", successDefinition: "", constraints: "", operatingPreferences: "", doNotAssume: "" },
+          provenance: { annualDirection: "owner_confirmed" }, hasPlan: true,
+        },
+        horizons: [
+          { id: "annual", label: "Annual", sub: "This year", direction: "Grow the advisory to a full book of retained clients.", outcome: "", defined: true },
+          { id: "quarter", label: "This quarter", sub: "90 days", direction: "", outcome: "", defined: false },
         ],
-        coverage: { grounded: 2, partial: 1, total: 5, caption: "2 grounded, 1 to finish, 2 needed. PAIGE plans from what you've set." },
+        plays: [], decisions: [], dependencies: [],
+      });
+    case "proposal":
+      return withPatch({
+        planBrief: {
+          pendingProposal: { id: "prop1", reason: "From your Sep 6 conversation — narrow the quarter target to 4–5 clients.", proposedAt: "2026-09-06T00:00:00Z", patch: { currentPriority: "Convert the 3 warm referrals and land 4–5 retained clients." } },
+          proposalPlanOnly: true,
+        },
       });
     case "blocked":
       return withPatch({
-        narrative: "Your plan is ready, but the top move is blocked. Clear the blocker and PAIGE can act.",
-        attention: [{ label: "1 move blocked", tone: "blocked", destination: "connections" }, { label: "3 drafts waiting", tone: "live", destination: "paige" }],
-        bestMove: {
-          id: "check:sender", title: "Launch the re-engagement sequence",
-          why: "8 quiet clients, drafts ready in your voice. This is the move — but email can't leave the building yet.",
-          owner: "paige", proof: "blocked",
-          blockedReason: "Your sending identity isn't verified, so no email can be sent. Verify it in Connections and this move unblocks — the drafts are kept.",
-          evidence: "From this workspace's latest system check.", outcome: "The drafts are kept; the move runs once sending is verified.",
-          destination: "connections", ctaLabel: "Verify sending identity",
-        },
-      });
-    case "owner":
-      return withPatch({
-        narrative: "PAIGE has done what she can without you. One decision only you can make is holding three moves.",
-        attention: [{ label: "1 decision needs you", tone: "input", destination: "catalog" }, { label: "3 moves waiting", tone: "partial", destination: "paige" }],
-        bestMove: {
-          id: "gap:offers", title: "Confirm your core offer price",
-          why: "PAIGE found two prices for your flagship program. She can't pick for you, and pricing pages, proposals and the funnel all wait on the answer.",
-          owner: "you", proof: "input", evidence: "Two different prices are on record.", outcome: "The plan and pages update to the price you set.",
-          destination: "catalog", ctaLabel: "Set the price in Catalog",
-        },
+        plays: [{ id: "p1", name: "Q3 Launch campaign", objective: "Put the ops-audit offer in front of the warm list.", audience: "Warm list", angle: "Find the 3 leaks", window: "Sep 22 – Oct 3", channels: "Email", outcome: "20 booked diagnostics.", successSignal: "Bookings.", offerName: "Ops-audit diagnostic", status: "blocked", blocked: true }],
       });
     case "motion":
       return withPatch({

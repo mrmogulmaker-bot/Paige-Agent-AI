@@ -1,5 +1,16 @@
 # Solo Business Game Plan — Command Center UI (prototype + shipped production implementation)
 
+> **⚠ SUPERSEDED IN PART by the Strategy-Desk reimagination — Slice A SHIPPED 2026-09-06 (PR #988).**
+> This doc describes the ORIGINAL **readiness-list** Game Plan (the "prioritized moves" design). The
+> owner then commissioned and approved a reimagination: the surface is now the owner's **strategy desk**
+> — an editable Plan Brief (persists via the setup-brief seam, §70), a horizon navigator, Strategic
+> plays from real `campaign_briefs`, a Decision & Opportunity swipe deck, and **Systems Check demoted to
+> a collapsible "Plan dependencies"** (never the spine). The current record of what shipped is
+> `docs/brain/decision-log.md` (top entry), `docs/doctrine/tier-matrix.md` (Surface ledger, "Slice A
+> reshape"), and `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4. The sections below that describe
+> readiness "moves"/`bestMove`/`priorities`/`coverage` as the primary UI are historical; the tenant-safe
+> composition, honesty, and §9/§70 principles they document still hold and carried into Slice A.
+
 **Status:** PRODUCTION IMPLEMENTED — owner-approved 2026-09-05, built end-to-end under MVP cadence.
 Visual direction approved via the prototype; the five owner corrections were applied. No schema, edge
 function (beyond the pure canonical-url route constant), or tenant record changed. Verified: the **full
