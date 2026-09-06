@@ -135,7 +135,39 @@ describe("Settings Public Presence", () => {
     await act(async () => root.unmount());
   });
 
-  it("uses a compact five-view workspace and explains disabled provider actions", async () => {
+  it("keeps first-use remediation on Business Profile when phone and location are populated but unconfirmed", async () => {
+    const { host, root } = await mountBrief(
+      cleanSoloSetupBrief({
+        publicName: "Northstar Studio",
+        phone: "+1 555 010 2020",
+        serviceArea: "Greater Raleigh",
+        website: "https://northstar.example",
+        provenance: {
+          publicName: {
+            source: "owner_confirmed",
+            confidence: "confirmed",
+            confirmedAt: "2026-09-05T14:30:00.000Z",
+          },
+          phone: { source: "needs_confirmation", confidence: "unknown" },
+          serviceArea: {
+            source: "connection_sourced",
+            confidence: "observed",
+          },
+        },
+      }),
+    );
+    expect(host.textContent).toContain("Needs review");
+    expect(host.textContent).toContain(
+      "Confirm the public facts people should recognize",
+    );
+    expect(control(host, "Review Business Profile")).toBeTruthy();
+    expect(host.textContent).not.toContain(
+      "Website saved; public verification is unavailable",
+    );
+    await act(async () => root.unmount());
+  });
+
+  it("uses a compact five-view workspace and explains unavailable provider work", async () => {
     const { host, root } = await mount();
     expect(
       Array.from(host.querySelectorAll('[role="tab"]')).map((tab) =>

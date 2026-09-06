@@ -318,7 +318,15 @@ export function SettingsPublicPresence({
   const identity = identityFact.value;
   const identitySource = identityFact.provenance;
   const identityConfirmed = isApproved(identitySource);
-  const factsMissing = !identityConfirmed || !brief.phone || !(brief.address || brief.serviceArea);
+  const phoneConfirmed = Boolean(brief.phone) && isApproved(brief.provenance.phone);
+  const locationFact = brief.address
+    ? { value: brief.address, provenance: brief.provenance.address }
+    : {
+        value: brief.serviceArea,
+        provenance: brief.provenance.serviceArea,
+      };
+  const locationConfirmed = Boolean(locationFact.value) && isApproved(locationFact.provenance);
+  const factsMissing = !identityConfirmed || !phoneConfirmed || !locationConfirmed;
 
   const pulse = useMemo<Array<{ label: string; status: string; tone: "ok" | "review" | "off"; source: string; checked: string }>>(
     () => [

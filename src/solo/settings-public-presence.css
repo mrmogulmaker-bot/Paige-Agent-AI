@@ -93,7 +93,7 @@
 .presence-facts-preview span,
 .presence-next > span,
 .presence-setup-flow > span,
-.presence-drawer header span { font-size: 9px; }
+.presence-drawer header span { font-size: 10px; }
 .presence-heading p,
 .presence-panel header p,
 .presence-readiness header p,
@@ -109,12 +109,12 @@
 .presence-venue-detail strong,
 .presence-readiness small,
 .presence-fact-list span,
-.presence-fact-list small { font-size: 9px; }
+.presence-fact-list small { font-size: 10px; }
 .presence-pulse strong,
 .presence-setup-flow li strong,
 .presence-venue-detail p,
-.presence-fact-list strong { font-size: 10px; }
-.presence-status { font-size: 8px; }
+.presence-fact-list strong { font-size: 11px; }
+.presence-status { font-size: 10px; }
 .presence-view-tabs button { min-height: 36px; font-size: 10px; }
 .presence-unavailable { display: inline-grid; max-width: 220px; gap: 2px; justify-items: start; padding: 6px 8px; border: 1px solid var(--pg-line-soft); border-radius: 8px; color: var(--pg-muted); background: var(--pg-lift); }
 .presence-unavailable { min-width: 0; }
@@ -122,3 +122,4 @@
 @container (max-width: 700px) { .presence-button, .presence-view-tabs button { min-height: 44px; }.presence-icon-button { width: 44px; height: 44px; }.presence-setup-flow li .presence-unavailable { min-height: 44px; align-content: center; } }
 .presence-setup-flow li { grid-template-columns: 24px minmax(0,1fr) 160px; }
 .presence-setup-flow li .presence-unavailable { width: 160px; max-width: 160px; }
+.presence-unavailable strong, .presence-unavailable small { font-size: 10px; }
