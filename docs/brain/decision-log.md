@@ -16,8 +16,9 @@
   the 8 spend-capable providers (Stripe, QuickBooks, Twilio, Meta, DocuSign, Platform Marketplace, n8n, Zapier +
   roadmap ad/subscription paths) are guard-enforced, and unqualified "M1" is rejected. **Go-forward only —
   historical closeouts NOT rewritten (§58).** **§13 pricing honesty:** this planning slice verified NO live
-  vendor prices — every `pricing_checked_as_of` is null with the official source URL recorded; no price invented,
-  no free plan assumed, custom/enterprise recorded honestly. **§38/R10:** provider API fees are recorded SEPARATELY
+  vendor prices — every `pricing_checked_as_of` is null, with the official source URL recorded where a provider
+  exists and an explicit `none — <reason>` where none is selected/internal (vault-ocr-dlp, paige-mcp-door, the
+  directory-network roadmap item); no price invented, no free plan assumed, custom/enterprise recorded honestly. **§38/R10:** provider API fees are recorded SEPARATELY
   from customer money movement; Paige never merchant of record. **NOT a provider build** — installs nothing, holds
   no credentials, calls no API, creates no billing commitment. **CI-enforced:** `scripts/ci/integration-registry-lint.mjs`
   extended (require an expense block per provider + roadmap item; cost-responsibility/pricing-model/cost-driver/M1-track
