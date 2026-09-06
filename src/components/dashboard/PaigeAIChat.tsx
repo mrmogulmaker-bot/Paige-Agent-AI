@@ -298,7 +298,7 @@ const PaigeAIChatInner = ({
 
   // Document attachment (#480) — PDF/image/DOCX. Shared hook (§18 one home): docx
   // is extracted to text client-side, pdf/image ride as base64; 10MB cap. In-session
-  // only (no turn-persistence of the attachment), matching PaigeChat/FloatingChatbot.
+  // only (no turn-persistence of the attachment), matching PaigeChat.
   const {
     attachedDoc,
     isDragOver,
