@@ -272,12 +272,15 @@ PR #909 merged as 49b9f338. Frontend production deployment is READY on paigeagen
 
 ### Solo Sales Ops — a Solo owner can record what one client agreed to (2026-09-03)
 
-**Redesign shipping under MVP mode (2026-09-06).** The owner lifted the final release gate to MVP
-cadence (design + intended function approved) and authorized the release path; PR #985 is being merged
-to `main` and is LIVE on prod once the merge deploy completes. Authenticated live-drive stays
-owner-owed (§32.c). Full record: `docs/brain/decision-log.md` (2026-09-06 MVP-close entry) +
-`docs/doctrine/tier-matrix.md` "Sales Command Desk redesign". The original build (below) read: The
-Sales subtab is being rebuilt into an evidence-aware **Sales Command Desk**: four internal views via a
+**P0 runtime correction in progress (2026-09-06).** PR #985 merged the owner-approved redesign, but its
+production adapter's first `loading`→`ready` transition changed React hook order and blanked the route.
+The Sales desk is therefore `PARTIAL`, not safely LIVE, until the same-mount hook-order hotfix is merged,
+the exact production revision is deployed, and the live route is reverified. The fix does not change the
+approved design, route, tier, data, authority, or truth-label contract. Authenticated live-drive stays
+owner-owed (§32.c). Full incident proof: `docs/evidence/ui-delivery/solo-sales-blank-route-hotfix.md`.
+Original redesign record: `docs/brain/decision-log.md` (2026-09-06 MVP-close entry) +
+`docs/doctrine/tier-matrix.md` "Sales Command Desk redesign". The merged redesign established an
+evidence-aware **Sales Command Desk**: four internal views via a
 Sales-local `?view=` param — Sales Command (Commercial Pulse · 6-stage Commercial Readiness Ladder ·
 Top Commercial Moves · Open Commercial Work), Commercial Terms, Revenue & Collections, and a Sales
 Scenario Lab (a model that writes nothing). Same surface, same tiers, no gating/route/migration change.
@@ -286,7 +289,7 @@ active one-time terms with recurring shown monthly (em-dash, never "$0"/"Free"),
 unavailable. Verified: full suite 3563/3563, tsc ratchet 13/13, `drive:sales-ops` 524/524 with zero
 horizontal/nested overflow across the real Solo content-column widths (to 439px). Authenticated
 live-drive OWED (§32.c). Full §66 ledger: `docs/doctrine/tier-matrix.md` → "the Sales Command Desk
-redesign". Awaiting the owner's live review + final release gate before merge.
+redesign".
 
 **Current usability status: PARTIAL.** Owner feedback explicitly rejects treating the current Sales UX as complete. PR #895 fixed recurring-date display only. **Release 1 usability repair is implemented in PR #903** on `codex/solo-sales-usability-r1`, refreshed onto main `bd32fd6`: functional drawer close/discard, reachable commercial-term editing, workspace cleanup, clearer controls, canonical Catalog/Clients return paths and removal of the oversized client-billing banner. The owner cleared the historical #706 shared-file collision; Pipeline implementation and six Campaigns tabs stay intact. See `docs/delivery/solo-sales-usability-r1.md` for the live product record and evidence. Local eight-frame drawer interaction proof passed; authenticated production persistence and owner acceptance remain **Proof Owed**. Merge and deployment evidence are recorded on PR #903.
 
