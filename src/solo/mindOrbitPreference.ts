@@ -74,3 +74,38 @@ export function writeMindMotionChoice(
     // Private mode or disabled storage must not break the in-session control.
   }
 }
+
+// Dismissed record cards — a NON-DESTRUCTIVE, per-viewer hide of individual activity cards from the
+// list (§13/§70: the governed record is never touched; it stays in the orb and is restorable). Stored
+// as a set of record ids per user+tenant. Stale ids (records that no longer exist) simply never match.
+const MIND_DISMISSED_PREFIX = "paige.mind.dismissed";
+
+export function mindDismissedPreferenceKey(scope: MindOrbitPreferenceScope): string {
+  return `${MIND_DISMISSED_PREFIX}.${scope.userId}.${scope.tenantId}`;
+}
+
+export function readMindDismissed(scope?: MindOrbitPreferenceScope | null): Set<string> {
+  if (!scope) return new Set();
+  try {
+    const raw = window.localStorage.getItem(mindDismissedPreferenceKey(scope));
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.filter((v): v is string => typeof v === "string")) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function writeMindDismissed(
+  scope: MindOrbitPreferenceScope | null | undefined,
+  ids: Set<string>,
+): void {
+  if (!scope) return;
+  try {
+    const key = mindDismissedPreferenceKey(scope);
+    if (ids.size === 0) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, JSON.stringify([...ids]));
+  } catch {
+    // Private mode or disabled storage must not break the in-session control.
+  }
+}

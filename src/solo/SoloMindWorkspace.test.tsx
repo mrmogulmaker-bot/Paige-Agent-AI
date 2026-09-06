@@ -8,7 +8,7 @@ vi.mock("./data/useSoloKnowledge", () => ({ useSoloKnowledge: () => harness.know
 vi.mock("./data/useCommandCenter", () => ({ useCommandCenter: () => harness.command() }));
 
 import { SoloMindWorkspace } from "./SoloMindWorkspace";
-import { mindOrbitPreferenceKey, mindMotionPreferenceKey, type MindOrbitPreferenceScope } from "./mindOrbitPreference";
+import { mindOrbitPreferenceKey, mindMotionPreferenceKey, mindDismissedPreferenceKey, type MindOrbitPreferenceScope } from "./mindOrbitPreference";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -161,6 +161,25 @@ describe("Solo Mind workspace — orb port", () => {
     expect(window.localStorage.getItem(mindMotionPreferenceKey(scope))).toBe("full");
     expect(button("Pause orbit")).toBeTruthy();
     expect(button("Reduced motion")!.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("clears a record card non-destructively; the choice persists and is restorable", () => {
+    const scope = { userId: "user-d", tenantId: "tenant-d" };
+    render(scope);
+    expect(records()).toHaveLength(3);
+    // Clearing a card hides it from the list and persists the choice — the record is NOT deleted.
+    act(() => host.querySelector<HTMLButtonElement>(".mind-record-dismiss")!.click());
+    expect(records()).toHaveLength(2);
+    expect(window.localStorage.getItem(mindDismissedPreferenceKey(scope))).toBeTruthy();
+    // Persists across a fresh mount for the same scope.
+    act(() => root.unmount());
+    root = createRoot(host);
+    render(scope);
+    expect(records()).toHaveLength(2);
+    // Restore brings every cleared card back and clears storage (§70 — a way back).
+    act(() => button("Restore")!.click());
+    expect(records()).toHaveLength(3);
+    expect(window.localStorage.getItem(mindDismissedPreferenceKey(scope))).toBeNull();
   });
 
   it("refresh re-reads the live sources and never calls it a scan", () => {
