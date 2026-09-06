@@ -45,8 +45,10 @@ window CustomEvent 'paige:open'  →  readPaigeOpenScope (src/solo/paigeClientSc
 1. **Raw page payload.** The chat request carries a client-built `clientContext` **prose block (≤50k)**
    (`PaigeAIChat.tsx:827-851`). That is exactly the "raw page payload" the program forbids. The
    contract replaces it with a **server-resolved** safe context keyed to an intent.
-2. **The intended question is silently dropped (#771).** Four of five `paige:open` dispatchers pass a
+2. **The intended question is silently dropped (#771).** All nine `paige:open` dispatch sites pass a
    `{ prompt }`, and **no listener consumes it** — "Ask Paige about X" opens the fold but never asks.
+   Only one site (`growth2.tsx:274`) additionally carries a `clientId`, and that is the one thing that
+   survives the handoff.
 3. **No surface identity.** The chat has no idea *which* surface the owner opened Paige from, so it
    cannot orient ("you're on the Pipeline for client Acme; want the recorded stage history?").
 
@@ -128,8 +130,11 @@ self-tested, run against `main` first to prove zero false-positives — the repo
    `clientLabel` / `prompt` during migration); a key outside the allowlist (e.g. `tenantId`, `role`,
    `token`, `secret`, raw `context`/`html`) fails. Companion to the existing floating-chat guard.
 2. **No "Open Paige" handler bypasses the safe contract.** New `paige:open` dispatchers go through the
-   shared helper; the current five raw dispatchers (`growth2.tsx` ×3, `campaign-desk.tsx` ×2,
-   `FundingMatches.tsx`) are the frozen migration baseline (a ratchet that may shrink, not grow).
+   shared helper; the current **nine** raw dispatch sites across **four** files
+   (`src/solo/PipelineCommandDesk.tsx` ×2, `src/solo/campaign-desk.tsx` ×2, `src/solo/growth2.tsx` ×4,
+   `src/pages/FundingMatches.tsx` ×1 — enumerate with `grep -rn 'new CustomEvent("paige:open"' src/` at
+   build time rather than hardcoding a count) are the frozen migration baseline (a ratchet that may
+   shrink, not grow).
 3. **(program item)** No local authority control that does not invoke its governed backend contract —
    covered where it overlaps the Trust Compass reconciliation (`command-center.trust-compass`, Phase 4.3).
 
@@ -139,7 +144,7 @@ self-tested, run against `main` first to prove zero false-positives — the repo
 2. Extend `paigeClientScope.ts` → `SurfaceContextIntent` type + allowlist + a single `emitPaigeOpen`
    helper; add the listener path that resolves the server-side safe context and consumes `ask` (closes
    #771). Ship the two guards alongside.
-3. Migrate the five call sites to the helper; add surface identity to the resolved context.
+3. Migrate the nine call sites (four files) to the helper; add surface identity to the resolved context.
 4. Retire the raw `clientContext` prose payload in favour of the server-resolved summary.
 
 Each slice updates the `paige.workspace` row in `docs/binding-ledger/surface-binding-ledger.json` on

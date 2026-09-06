@@ -19,7 +19,9 @@ The authoritative machine-readable form is **`surface-binding-ledger.json`** (th
 README is its human-readable companion: the vocabulary, the release rule, the honest platform
 position, and a compact per-surface summary. **The JSON is the source of truth for full per-field
 detail** (safe facts, prohibited fields, per-link status, linked PRs/issues, next slice, grounding
-sources). The two are kept in step by CI (`lint:binding-ledger`).
+sources). **CI (`lint:binding-ledger`) validates the JSON only** — it enforces the JSON's structural
+completeness and honesty invariants; it does not parse this README, so the summary table below is a
+hand-maintained companion that must be updated alongside the JSON (§BRAIN.3).
 
 ## What this is NOT
 
@@ -68,15 +70,18 @@ is `NO` for every surface (per the Mind integration matrix). Concretely:
 
 - **`PROOF_OWED`** (safe read-context implemented + chat-injected + unit-tested; authenticated runtime
   proof absent): `campaigns.pipeline` · `campaigns.social` · `settings.setup` · `settings.team`.
-- **`PARTIAL`** (some links real, gaps named): `command-center.trust-compass` (authority governed
-  server-side; the visible dial is a non-authoritative fixture) · `settings.integrations` (n8n writes
-  wired to the Rail capability-run write; zero rows in prod) · `settings.billing` (safe status source
-  contract shipped, not injected; secrets isolated) · `paige.workspace` (handoff carries client scope
-  but drops the intended prompt, #771, and still accepts raw prose).
+- **`PARTIAL`** (some links real, gaps named): `command-center.business-game-plan` (the Business
+  Mission governed write — create/revise/transition — is wired + chat-bound via #983; no Rail outcome,
+  no auth-runtime, composite-plan Mind lens still needs #647) · `command-center.trust-compass`
+  (authority governed server-side; the visible dial is a non-authoritative fixture) ·
+  `settings.integrations` (n8n writes wired to the Rail capability-run write; zero rows in prod) ·
+  `settings.billing` (safe status source contract shipped, not injected; secrets isolated) ·
+  `paige.workspace` (handoff carries client scope but drops the intended prompt, #771, and still
+  accepts raw prose).
 - **`INTENTIONALLY_ISOLATED`**: `settings.vault` · `settings.security-data`.
 - **`UNAVAILABLE`** (contract not built, sourceless, or awaiting a Spine Change Request): the rest —
-  Command Center (Game Plan / Systems Check / Mind tab), all Clients surfaces, Calendar, Catalog,
-  Sales, Overview, Analytics, Marketplace, Connections, Vibe Studio, and the intentionally-separate
+  Command Center (Systems Check / Mind tab), all Clients surfaces, Calendar, Catalog, Sales, Overview,
+  Performance, Analytics, Marketplace, Connections, Vibe Studio, and the intentionally-separate
   Operator console.
 
 `paige.workspace` is recorded `PARTIAL`, not PROOF_OWED — the workspace is the *consumer* of bindings;
@@ -87,7 +92,7 @@ its own gap is the handoff seam Phase 1 addresses.
 | Surface | State | Why / gap | Next slice |
 |---|---|---|---|
 | Paige workspace | `PARTIAL` | sole chat surface, server-safe scope; no surface identity, prompt dropped (#771), raw `clientContext` prose | Phase 1: adopt the Surface Context Handoff Contract |
-| Command Center → Business Game Plan | `UNAVAILABLE` | no Paige-safe lens/write; needs CC Change Request (#647) | Phase 4.1 via redesign-owned adapter |
+| Command Center → Business Game Plan | `PARTIAL` | Business Mission governed write (create/revise/transition) wired + chat-bound (#983); no Rail outcome / auth-runtime; composite-plan Mind lens needs #647 | Phase 4.1: authenticated drive of a mission write; Mind lens via #647 |
 | Command Center → Systems Check | `UNAVAILABLE` | safe lens exists, unwired; needs SCR-2 + SCR-3 | Phase 4.4 read-only context |
 | Command Center → Mind tab | `UNAVAILABLE` | a knowledge visualization, not the PAIGE Mind contract | none until #647 |
 | Trust Compass | `PARTIAL` | authority governed server-side; visible dial is a non-authoritative fixture | Phase 4.3: reconcile dial to real governed action or mark read-only |
@@ -95,7 +100,8 @@ its own gap is the handoff seam Phase 1 addresses.
 | Campaigns → Catalog | `UNAVAILABLE` | real source, no Paige lens; SCR-1/2 | reference `get_pipeline_routing_evidence` shape |
 | Campaigns → Sales | `UNAVAILABLE` | Rail producer dead (#787) | none until #787 decided |
 | Campaigns → Pipeline | `PROOF_OWED` | the one Mind lens; authenticated drive never run + signal never produced | produce one real Rail row, then drive |
-| Campaigns → Social | `PROOF_OWED` | `social.presence` read+write wired/tested; no auth drive; metrics UNAVAILABLE | authenticated drive |
+| Campaigns → Social | `PROOF_OWED` | `social.presence` read+write wired/tested; no auth drive (supersedes the pre-2026-09-05 matrix) | authenticated drive |
+| Campaigns → Performance | `UNAVAILABLE` | no metrics source; the model for how Mind should decline | none; point Mind away |
 | Campaigns → Vibe Studio | `UNAVAILABLE` | creative overlay, not a data binding | out of scope (§26 creative memory) |
 | Clients → People | `UNAVAILABLE` | no Mind-safe lens; owner's own UI write emits no Rail (#757 "do not start") | resolve producer gap first |
 | Clients → Conversations | `UNAVAILABLE` | message bodies forbidden to Mind | future transcript-evidence ingestion |

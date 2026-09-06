@@ -100,7 +100,8 @@ export function validateLedger(ledger) {
       const cs = chain && chain.canonical_source && chain.canonical_source.status;
       const sc = chain && chain.safe_context && chain.safe_context.status;
       if (cs === "none") findings.push(`${id}: state LIVE but canonical_source is 'none'`);
-      if (sc === "none") findings.push(`${id}: state LIVE but safe_context is 'none'`);
+      if (sc === "none" || sc === "isolated")
+        findings.push(`${id}: state LIVE but safe_context is '${sc}' — a LIVE binding needs a real safe context, not none/isolated`);
     }
     if (s.state === "PROOF_OWED" && hasAuthRuntime)
       findings.push(`${id}: state PROOF_OWED but evidence_class includes 'authenticated_runtime' — if the proof exists it is LIVE, not PROOF_OWED`);
@@ -131,6 +132,7 @@ if (process.argv.includes("--self-test")) {
     ["passes a valid LIVE surface with auth runtime", { ...base, surfaces: [surface({ state: "LIVE", evidence_class: ["authenticated_runtime", "automated_test"] })] }, 0],
     ["FAILS LIVE without authenticated_runtime", { ...base, surfaces: [surface({ state: "LIVE", evidence_class: ["automated_test"] })] }, 1],
     ["FAILS LIVE with a 'none' canonical_source", { ...base, surfaces: [surface({ state: "LIVE", evidence_class: ["authenticated_runtime"], chain: { ...fullChain(), canonical_source: { status: "none" } } })] }, 1],
+    ["FAILS LIVE with an 'isolated' safe_context", { ...base, surfaces: [surface({ state: "LIVE", evidence_class: ["authenticated_runtime"], chain: { ...fullChain(), safe_context: { status: "isolated" } } })] }, 1],
     ["FAILS PROOF_OWED that claims authenticated_runtime", { ...base, surfaces: [surface({ state: "PROOF_OWED", evidence_class: ["authenticated_runtime"] })] }, 1],
     ["FAILS INTENTIONALLY_ISOLATED without isolation_note", { ...base, surfaces: [surface({ state: "INTENTIONALLY_ISOLATED" })] }, 1],
     ["passes INTENTIONALLY_ISOLATED with isolation_note", { ...base, surfaces: [surface({ state: "INTENTIONALLY_ISOLATED", isolation_note: "never crosses" })] }, 0],
