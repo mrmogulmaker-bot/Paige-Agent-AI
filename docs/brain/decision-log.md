@@ -101,8 +101,38 @@
   B1..B19**, adding **B19** (fractional `max_per_day` → `cap_invalid`, no window; a valid integer count cap still
   enforces at its limit → `over_action_count_cap`). Guards green: `lint:migration-versions` (995, no reuse) ·
   `lint:definer-fns` · `lint:managed-schema` · `lint:integration-registry`; §50/§63 clean.
-  **PR #1027 (ready). OUTCOME: MERGING** (§32.a persisted-apply owed post-merge via `deploy-migrations`; authenticated drive
-  owed to PR-3). Flip to MERGED + §32.a CONFIRMED post-merge.
+  **CODEX PEER-GATE ROUND 4 (§39) on head `fdad15e` — ONE P1, PARKED + ESCALATED (not folded, correctly):** "reject
+  parentless grants from representatives" — a tenant `admin` (not only the owner) can author a *parentless* client_period
+  grant (or clear `parent_grant_id` on a child) and get a full allowance, so "delegation can still widen authority."
+  GROUNDED against the substrate: `paige_authority_grants_admin_write` (PR-1 `20261230000000`, UNCHANGED by M1-b) is
+  `FOR ALL USING (is_platform_owner() OR is_tenant_admin(tenant_id))`, so a tenant admin may WRITE a grant row; the
+  `parent_grant_id` chain (and M1-b's `parent_grant_id IS NOT NULL` fail-closed) is the delegation sub-model, and M1-b is
+  DARK (grant authorship authorizes nothing until PR-3 wires execution). **CORRECTION (Codex round-4 follow-up on #1028,
+  §13 — the earlier "tenant admin is a first-class owner-equivalent grantor, nothing owed" framing was too dismissive):**
+  RLS write-permission establishes *who may submit a row*, NOT *how much authority it confers*. The binding contract
+  `autonomy-architecture.md` §10.9 (owner ruling 2026-09-06, L776-779) is explicit: "**Delegation never widens authority
+  (§51/§53). Authorized representatives may only create, alter, or delegate Paige spending authority up to the ceiling the
+  owner granted them.**" Today NOTHING enforces that grantor-ceiling: `resolve_execution_autonomy` (PR-2) has no
+  parent/grantor-ceiling check, and `authority_reserve` blocks a delegated `client_period` grant only when
+  `parent_grant_id IS NOT NULL` — so a tenant-admin-authored PARENTLESS grant (or a child with its parent cleared) would,
+  once PR-3 wires execution, confer authority up to the ACCOUNT ceiling rather than the OWNER's granted ceiling, violating
+  §10.9. So this is recorded NOT as an open owner preference but as a **REQUIRED PRE-PR-3 AUTHORIZATION FIX**: PR-3 must
+  bind a representative's effective spending authority to `min(..., owner-granted ceiling)` (a grantor/parent-ceiling check
+  in the resolver + reserve, or a parent-required rule for non-owner grantors — the exact mechanism is the PR-3 design, and
+  whether PR-1's `admin_write` RLS itself should tighten is the owner call). It stays OUT of DARK M1-b's cap-ENFORCEMENT
+  scope (folding an authorization-layer change into a cap-enforcement slice would be scope creep + a §37/§51 hazard), but it
+  is a hard gate on PR-3, not a soft "maybe." Carried into PR-3 grounding as a blocking authorization requirement; replied
+  on both threads.
+  **PR #1027 — OUTCOME: MERGED** (squash `49dde4cf047e9f183bc742ae9b1b40eb58723ec9`, 2026-09-06). **§32.a CONFIRMED on prod
+  (ref `xygzykjyynhzqytbqnzu`), direct query not assumed:** `supabase_migrations.schema_migrations` has `20270103000000`
+  (deploy-migrations applied it); `authority_reserve` on prod carries `cap_invalid` + `client_period_delegation_unsupported`
+  + `FOR SHARE` + the integral-count `trunc()` check; `authority_confirm` + `authority_reconcile` carry the
+  `cap_unreadable_at_settlement` settlement guard — the deployed functions are byte-identical to the B1..B19 proof.
+  **M1's CAP DIMENSION IS COMPLETE**: day/week/month (M1-a) + client_period enforced with full cap-shape validation at
+  reserve AND settlement; campaign fail-closed-unavailable; delegated client_period fail-closed. **Authenticated/live
+  execution drive remains OWED to PR-3** (no producer calls reserve yet). Next: RE-2 PR-3 (first execution lane) — the
+  parked tenant-admin grant-authorship authorization decision is a PR-3 gating question (that is where autonomous spend
+  becomes real).
 
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
