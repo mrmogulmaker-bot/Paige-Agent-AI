@@ -93,9 +93,9 @@ describe("Solo Campaigns rendered flows", () => {
     expect(host.querySelector('[role="dialog"] button[disabled]')?.textContent).toContain("Send customer invite");
   });
 
-  it("opens the full blank Pipeline configuration workspace from New deal without presets", () => {
+  it("opens the full blank Pipeline configuration workspace from New pipeline without presets", () => {
     renderAt("/solo/42/growth/pipeline");
-    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement).click());
     expect(host.querySelector(".pipeline-config-workspace")?.textContent).toContain("Pipeline configuration");
     expect(host.textContent).toContain("Create blank pipeline");
     expect(host.textContent).toContain("Start with zero stages");
@@ -104,7 +104,7 @@ describe("Solo Campaigns rendered flows", () => {
     expect(host.textContent).not.toMatch(/starter|preset/i);
     act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent?.includes("Back to board")) as HTMLButtonElement).click());
     expect(host.querySelector(".pipeline-config-workspace")).toBeNull();
-    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Manage") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Manage pipeline") as HTMLButtonElement).click());
     expect(host.textContent).toContain("Add a stage");
     expect(host.textContent).toContain("Archive");
     expect(host.textContent).not.toContain("Delete stage");
@@ -201,7 +201,7 @@ describe("Solo Campaigns rendered flows", () => {
     const picker = host.querySelector(".pipeline-actions select") as HTMLSelectElement;
     expect([...picker.options].map((option)=>option.textContent)).toEqual(["Client onboarding · PPL-4K8MX", "Client onboarding · PPL-7Q2NZ"]);
     act(()=>{picker.value="pipeline-duplicate";picker.dispatchEvent(new Event("change",{bubbles:true}));});
-    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Manage") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Manage pipeline") as HTMLButtonElement).click());
     expect(host.querySelector(".pipeline-compact-meta")?.textContent).toContain("PPL-7Q2NZ");
     expect(host.querySelector(".pipeline-compact-meta")?.textContent).toContain("paige");
     act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Archive pipeline") as HTMLButtonElement).click());
@@ -232,7 +232,7 @@ describe("Solo Campaigns rendered flows", () => {
       return { ok: true, message: "Custom pipeline created", data: { pipeline_id: "pipeline-2" } };
     });
     renderAt("/solo/42/growth/pipeline");
-    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement).click());
     const name = host.querySelector('.pipeline-create-fields input') as HTMLInputElement;
     const stageName = host.querySelector('.pipeline-create-stage input') as HTMLInputElement;
     act(() => {
@@ -249,7 +249,7 @@ describe("Solo Campaigns rendered flows", () => {
     expect(action).toHaveBeenCalledWith(expect.objectContaining({
       type: "create-pipeline",
       name: "Retention workflow",
-      stages: [{ label: "Welcome", description: "", movePolicy: "direct" }],
+      stages: [{ label: "Welcome", description: "", movePolicy: "direct", stageType: "open" }],
     }));
     expect((host.querySelector(".pipeline-actions select") as HTMLSelectElement).value).toBe("pipeline-2");
     expect(host.querySelector(".pipeline-lane h3")?.textContent).toBe("Welcome");
@@ -262,7 +262,7 @@ describe("Solo Campaigns rendered flows", () => {
     action.mockClear();
     action.mockResolvedValueOnce({ ok: true, message: "Blank pipeline created", data: {} });
     renderAt("/solo/42/growth/pipeline");
-    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement).click());
     const name = host.querySelector('.pipeline-create-fields input') as HTMLInputElement;
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Owner-built workflow");
@@ -286,7 +286,7 @@ describe("Solo Campaigns rendered flows", () => {
     action.mockClear();
     action.mockImplementationOnce(() => pending);
     renderAt("/solo/42/growth/pipeline");
-    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Manage") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Manage pipeline") as HTMLButtonElement).click());
     const name = host.querySelector(".pipeline-new-stage input") as HTMLInputElement;
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Review");
@@ -303,7 +303,7 @@ describe("Solo Campaigns rendered flows", () => {
   it("keeps the creation workspace open and surfaces a failed save", async () => {
     (harness.state.pipelineAction as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: false, message: "Pipeline could not be created" });
     renderAt("/solo/42/growth/pipeline");
-    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement).click());
     const name = host.querySelector('.pipeline-create-fields input') as HTMLInputElement;
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Campaign follow-up");
@@ -323,7 +323,7 @@ describe("Solo Campaigns rendered flows", () => {
     action.mockClear();
     action.mockImplementationOnce(() => pending);
     renderAt("/solo/42/growth/pipeline");
-    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement).click());
     const name = host.querySelector('.pipeline-create-fields input') as HTMLInputElement;
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Campaign follow-up");
@@ -339,7 +339,7 @@ describe("Solo Campaigns rendered flows", () => {
 
   it("closes and clears pipeline creation when the tenant changes", () => {
     renderAt("/solo/42/growth/pipeline");
-    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement).click());
     expect(host.querySelector('.pipeline-config-workspace')).not.toBeNull();
     harness.state.tenantId = "tenant-2";
     act(() => root.render(<MemoryRouter initialEntries={["/solo/42/growth/pipeline"]}><Routes><Route path="/solo/:account/growth/sales" element={<LocationProbe/>}/><Route path="/solo/:account/*" element={<><GrowthHub/><LocationProbe/></>}/></Routes></MemoryRouter>));
@@ -348,7 +348,7 @@ describe("Solo Campaigns rendered flows", () => {
 
   it("returns from configuration on Escape and restores the opener", () => {
     renderAt("/solo/42/growth/pipeline");
-    const opener = [...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement;
+    const opener = [...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement;
     opener.focus();
     act(() => opener.click());
     const workspace = host.querySelector('.pipeline-config-workspace') as HTMLElement;
@@ -356,7 +356,7 @@ describe("Solo Campaigns rendered flows", () => {
     expect(document.activeElement).toBe(name);
     act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(host.querySelector('.pipeline-config-workspace')).toBeNull();
-    expect(document.activeElement?.textContent).toBe("New deal");
+    expect(document.activeElement?.textContent).toBe("New pipeline");
   });
 
   it("moves a deal through the governed command on pointer drop", async () => {
@@ -402,9 +402,9 @@ describe("Solo Campaigns rendered flows", () => {
     workspace.canManage = false;
     renderAt("/solo/42/growth/pipeline");
     expect((host.querySelector(".pipeline-card") as HTMLElement).draggable).toBe(false);
-    expect([...host.querySelectorAll("button")].some((button)=>button.textContent==="Move deal")).toBe(false);
+    expect([...host.querySelectorAll("button")].some((button)=>button.textContent==="Move")).toBe(false);
     expect(([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).disabled).toBe(true);
-    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Manage") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Manage pipeline") as HTMLButtonElement).click());
     expect(host.textContent).toContain("Read-only access");
     workspace.canManage = true;
   });

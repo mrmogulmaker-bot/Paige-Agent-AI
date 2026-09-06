@@ -33,3 +33,17 @@ Pipeline and stage coach policies must include the active tenant, and all catalo
 ## Verification owed before release
 
 The draft includes static and rendered tests for duplicate names, zero deals, compact metadata, wrong-reference refusal, and exact-reference archive. The first Supabase preview truthfully exposed one unattributed V1 global pipeline; the revised migration preserves and quarantines it without inventing ownership. A green replay, real Edge Function typecheck, and authenticated owner browser proof remain required before Gate 2 because Docker, Deno, and Chrome control were unavailable locally.
+
+
+## Solo Pipeline operating-desk contract (2026-09-05)
+
+This section is the durable rule for any future Pipeline board, outcome, Chat, Spine, Rail, or Mind work.
+
+- **No preset taxonomy.** A tenant may have zero or many pipelines. Every stage name, description, position, lifecycle state, movement policy, and role is tenant-owned. Product code must not infer Won, Lost, Not a fit, or any business meaning from a stage label.
+- **Outcomes are records, not columns.** Won, Lost, Not a fit, Closed without decision, and Reopened are separate durable decisions. Moving toward a closing stage must open the outcome contract; a card must never disappear through an ambiguous drag.
+- **One domain policy, governed entrypoints.** Owner-board writes extend the canonical Pipeline core. PAIGE deal movement stays behind the service-only governed executor and cannot enter through the generic core. Both resolve the active workspace on the server, enforce the same open/closing-stage semantics, require versions plus idempotency, and fail closed. Approval-stage targets require the existing operator-card claim; Pipeline must not create a second approval queue. UI state, a URL, or a model-supplied tenant/actor may not select authority.
+- **Operational truth.** Every count, next action, owner, relationship, date, source, and activity needs a tenant-safe source. If the source is incomplete, render Unavailable rather than zero or a guess. Revenue, probability, ROI, payments, client health, messages, enrollments, and portal activity are never inferred.
+- **Accessible movement and detail.** Drag-and-drop is optional enhancement. Keyboard and explicit Move controls are required. A card opens contextual detail in the same workspace; narrow or PAIGE-open layouts use a focused-stage mechanism rather than an unreadable stage wall or document-wide horizontal scroll.
+- **Governed decisions and evidence.** Successful mutations write deal activity and tenant audit. A linked-client Rail event is written only for a real linked client. Pipeline-level work must not fabricate a client Rail. Mind/Chat may consume only proven scoped records, and PAIGE direct-write reachability remains PARTIAL until its callable tool is authenticated end to end.
+- **Portal slot stays honest.** The deal workspace may reserve a customer-portal activity/invite slot, but it remains UNAVAILABLE until the portal owns a durable tenant-safe contract.
+- **Release truth.** Local fixtures, rendered harnesses, and structural tests never prove authenticated RLS, production persistence, or PAIGE execution. Those claims stay UNVERIFIED until driven through the deployed owner and second-tenant contexts.

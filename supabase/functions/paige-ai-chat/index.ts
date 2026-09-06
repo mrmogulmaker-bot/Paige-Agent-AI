@@ -9066,8 +9066,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // Pre/post-write boundary for the pipeline capability recorder (Codex P2, 2026-09-05):
           // set TRUE immediately before a pipeline write act dispatches its external UPDATE, so a
           // throw caught below is classified honestly — a pre-write throw (parse/client/lookup)
-          // is `capability_failed` (nothing changed), only a post-write throw is `outcome_unknown`.
-          let pipelineWriteAttempted = false;
+          // is `capability_failed` (nothing changed). This branch is now fail-closed, so no write can have an unknown outcome.
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
             const admin = createClient(supabaseUrl, supabaseServiceKey);
@@ -9874,50 +9873,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 }
               }
             } else if (tc.function.name === "deal_move_stage") {
-              // Move a deal across stages — the chat twin of dragging a card. Both the target stage
-              // and the deal are pinned to the caller's tenant, so neither can reach another
-              // workspace. Won/lost stamps status + close date; anything else reopens (matches
-              // PipelineAdmin.onDrop). Logs a timeline activity so the move shows in the CRM.
-              const tenantId = personaCtx?.tenant_id;
-              if (!tenantId) {
-                result = { success: false, error: "No workspace in context — pick a workspace first." };
-              } else {
-                const { data: stage, error: stageErr } = await admin.from("pipeline_stages")
-                  .select("id, stage_type, label, pipeline_id").eq("id", args.stage_id).eq("tenant_id", tenantId).is("archived_at", null).maybeSingle();
-                // Distinguish an OPERATIONAL lookup failure (PostgREST outage, malformed-UUID
-                // 22P02) from a genuine "not in your workspace" (Codex P2, 2026-09-05). A thrown
-                // query error is a PRE-WRITE failure → recorded as capability_failed, never a false
-                // `refused` ("Not allowed"). Only a clean null-with-no-error is the real guard
-                // rejection handled below.
-                if (stageErr) throw stageErr;
-                if (!stage) {
-                  result = { success: false, error: "That stage isn't in your workspace." };
-                } else {
-                  const today = new Date().toISOString().slice(0, 10);
-                  const status = stage.stage_type === "won" ? "won" : stage.stage_type === "lost" ? "lost" : "open";
-                  // Keep pipeline_id in lockstep with the stage: if the target stage lives in a
-                  // different pipeline of the same tenant, the deal moves to THAT pipeline — never a
-                  // row whose stage_id and pipeline_id disagree (which would vanish off the board).
-                  // Mark the external write as dispatched: a throw AT OR AFTER this point may have
-                  // applied → capability_outcome_unknown; any earlier throw stays capability_failed.
-                  pipelineWriteAttempted = true;
-                  const { data: moved, error: merr } = await admin.from("deals")
-                    .update({ stage_id: stage.id, pipeline_id: stage.pipeline_id, status, actual_close_date: status === "open" ? null : today })
-                    .eq("id", args.deal_id).eq("tenant_id", tenantId)
-                    .select("id").maybeSingle();
-                  if (merr) throw merr;
-                  if (!moved) {
-                    result = { success: false, error: "That deal isn't in your workspace." };
-                  } else {
-                    await recordWrite("deal_activities:stage_changed", admin.from("deal_activities").insert({
-                      deal_id: args.deal_id, type: "stage_changed",
-                      summary: `Moved to ${stage.label}${args.reason ? ` — ${String(args.reason).slice(0, 200)}` : ""}`,
-                      actor_user_id: user.id, payload: { stage_id: stage.id, source: "paige" },
-                    }));
-                    result = { success: true, deal_id: args.deal_id, stage: stage.label, status };
-                  }
-                }
-              }
+              // The historical direct service-role update bypassed custom stage policy, durable outcomes, versions, idempotency, and automation-impact review.
+              // Fail closed until the canonical stored-proposal gate calls the owning executor. PAIGE may still read and prepare an editable request.
+              result = {
+                success: false,
+                error: "Pipeline moves in Chat are temporarily unavailable while the governed approval connection is completed. Open Pipeline to move this deal with the current stage and automation impact visible.",
+              };
             } else if (tc.function.name === "pipeline_catalogue") {
               const tenantId = personaCtx?.tenant_id;
               if (tenantId && (args.pipeline_id !== undefined || args.pipeline_ref !== undefined)) {
@@ -11043,7 +11004,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // instead, so `NUMBER_NOT_ACTIVE` reaches the Rail as a refusal even though
             // the model is told only that something went wrong.
             await recordCommsRun({ thrown: err, threw: true });
-            await recordPipelineRun({ thrown: err, threw: true, writeAttempted: pipelineWriteAttempted });
+            await recordPipelineRun({ thrown: err, threw: true, writeAttempted: false });
 
             toolResults.push({
               tool_call_id: tc.id,
