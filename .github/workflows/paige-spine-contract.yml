@@ -8,6 +8,7 @@ on:
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/business_context_readiness.sql"
       - "supabase/tests/team_authority_readiness.sql"
+      - "supabase/tests/business_mission_foundation.sql"
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
@@ -18,6 +19,7 @@ on:
       - "supabase/functions/handle-resend-webhook/**"
       - "supabase/tests/resend_receipt_reliability.sql"
       - "scripts/proof/resend-receipt-concurrency.mjs"
+      - "scripts/proof/business-mission-concurrency.mjs"
       - "src/__tests__/paige-spine-*.test.ts"
       - "src/solo/paigeClientScope.ts"
       - "src/solo/paigeClientScope.test.ts"
@@ -33,6 +35,7 @@ on:
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/business_context_readiness.sql"
       - "supabase/tests/team_authority_readiness.sql"
+      - "supabase/tests/business_mission_foundation.sql"
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
@@ -43,6 +46,7 @@ on:
       - "supabase/functions/handle-resend-webhook/**"
       - "supabase/tests/resend_receipt_reliability.sql"
       - "scripts/proof/resend-receipt-concurrency.mjs"
+      - "scripts/proof/business-mission-concurrency.mjs"
       - "src/__tests__/paige-spine-*.test.ts"
       - "src/solo/paigeClientScope.ts"
       - "src/solo/paigeClientScope.test.ts"
@@ -71,7 +75,7 @@ jobs:
       # workflow ran on their changes without running them — they were only covered by the
       # repo-wide vitest in `verify`. A proof a workflow claims to gate and does not run is worse
       # than one it never claimed.
-      - run: npx vitest run src/__tests__/paige-spine-registry.test.ts src/__tests__/paige-spine-sql-contract.test.ts src/__tests__/paige-spine-chat-binding.test.ts src/__tests__/paige-spine-mind-binding.test.ts src/__tests__/paige-spine-business-context-readiness.test.ts src/__tests__/paige-spine-team-authority.test.ts src/solo/paigeClientScope.test.ts
+      - run: npx vitest run src/__tests__/paige-spine-registry.test.ts src/__tests__/paige-spine-sql-contract.test.ts src/__tests__/paige-spine-chat-binding.test.ts src/__tests__/paige-spine-mind-binding.test.ts src/__tests__/paige-spine-business-context-readiness.test.ts src/__tests__/paige-spine-team-authority.test.ts src/__tests__/paige-spine-business-mission.test.ts src/solo/paigeClientScope.test.ts
 
   database-contract:
     runs-on: ubuntu-latest
@@ -107,3 +111,8 @@ jobs:
       # loudly. Every real member on production has the two agreeing, so a proof built on
       # real-shaped data alone would pass while either defect shipped.
       - run: supabase test db supabase/tests/team_authority_readiness.sql
+      # Business Mission owner/RLS/lifecycle proof and true concurrent replay/CAS proof.
+      - run: supabase test db supabase/tests/business_mission_foundation.sql
+      - run: node scripts/proof/business-mission-concurrency.mjs
+        env:
+          BUSINESS_MISSION_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres

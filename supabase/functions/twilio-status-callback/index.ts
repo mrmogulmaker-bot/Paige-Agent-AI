@@ -58,6 +58,7 @@
 // when Twilio provides them (null otherwise — never fabricated, §13; recording is not enabled on the
 // <Dial> yet, so today they are null — the read is defensive so enabling it later needs no code change).
 import { authenticateTwilioWebhook, type WebhookAuthOutcome } from "../_shared/twilio-webhook-auth.ts";
+import { deriveOperatorVoiceWebhookSecret } from "../_shared/operator-twilio.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { mapCallStatus, callMatchSids, parseCallDuration, nonEmptyOrNull } from "./call-status.ts";
 
@@ -94,6 +95,7 @@ const RANK: Record<string, number> = {
 // only advance. A non-terminal row (queued/sent/failed/draft) may take the
 // mapped status (e.g. sent -> failed on a late undelivered).
 function shouldApply(current: string, mapped: string): boolean {
+  if (current === "failed") return false;
   if (current === "delivered" || current === "read") {
     return current === "delivered" && mapped === "read";
   }
@@ -132,9 +134,9 @@ async function verifyTwilio(
   req: Request,
   rawBody: string,
   admin: WebhookAdmin,
-): Promise<{ auth: WebhookAuthOutcome; tenantId: string | null }> {
+): Promise<{ auth: WebhookAuthOutcome; scope: { kind: "tenant"; tenantId: string } | { kind: "operator" } | null }> {
   const offered = new URL(req.url).searchParams.get("t");
-  let tenantId: string | null = null;
+  let proofScope: { kind: "tenant"; tenantId: string } | { kind: "operator" } | null = null;
   let expectedSecret: string | null = null;
   if (offered) {
     const { data } = await admin
@@ -143,12 +145,18 @@ async function verifyTwilio(
       .eq("inbound_webhook_secret", offered)
       .maybeSingle();
     if (data?.tenant_id) {
-      tenantId = data.tenant_id as string;
+      proofScope = { kind: "tenant", tenantId: data.tenant_id as string };
       expectedSecret = data.inbound_webhook_secret as string;
+    } else {
+      expectedSecret = await deriveOperatorVoiceWebhookSecret();
+      if (expectedSecret) proofScope = { kind: "operator" };
     }
   }
   const auth = await authenticateTwilioWebhook(req, rawBody, { expectedSecret });
-  return { auth, tenantId };
+  const scope = auth.ok
+    ? (auth.via === "signature" ? { kind: "operator" as const } : proofScope)
+    : null;
+  return { auth, scope };
 }
 
 /** The REAL call facts a completion callback carries — resolved once, applied to whichever store owns the row. */
@@ -159,6 +167,7 @@ interface CallFacts {
   transcript: string | null;
   twilioStatus: string;
   callSid: string;
+  errorCode: string | null;
 }
 
 /**
@@ -190,6 +199,7 @@ async function applyCallUpdate(
     provider_status: f.twilioStatus,
     mapped_status: f.mapped,
     updated_at: nowIso,
+    error_code: f.errorCode,
   };
   if (f.duration !== null) call.duration_seconds = f.duration;
 
@@ -198,6 +208,11 @@ async function applyCallUpdate(
   // column that doesn't exist, which would 42703-fail the whole update and lose the real facts).
   if (table === "messages") update.updated_at = nowIso;
   if (advance) update.status = f.mapped;
+  if (table === "messages" && advance && f.mapped === "failed") {
+    update.error = f.errorCode
+      ? `The provider rejected this call (error ${f.errorCode}).`
+      : "The provider rejected this call.";
+  }
   // Duration / recording / transcript are stamped whenever Twilio reports them, independent of the
   // advance-only status guard. null ⇒ omitted (never overwrites a prior real value with null, §13).
   if (f.duration !== null) update.call_duration_seconds = f.duration;
@@ -206,12 +221,12 @@ async function applyCallUpdate(
 
   const { error: updErr } = await admin.from(table).update(update).eq("id", row.id);
   if (updErr) {
-    console.error(`[twilio-status-callback] ${table} voice update_error`, updErr, "callSid=", f.callSid);
-    return new Response("ok", { status: 200, headers: corsHeaders });
+    console.error(`[twilio-status-callback] ${table} voice update_error`, { code: updErr.code ?? null });
+    return new Response("retry", { status: 503, headers: { ...corsHeaders, "Retry-After": "5" } });
   }
 
   console.log(
-    `[twilio-status-callback] ${table} voice callSid=${f.callSid} twilio="${f.twilioStatus}" mapped=${f.mapped} ` +
+    `[twilio-status-callback] ${table} voice twilio="${f.twilioStatus}" mapped=${f.mapped} ` +
       `from=${currentStatus} applied=${advance}${f.duration !== null ? ` dur=${f.duration}s` : ""}` +
       `${f.recordingUrl ? " +rec" : ""}${f.transcript ? " +transcript" : ""}`,
   );
@@ -228,7 +243,7 @@ async function applyCallUpdate(
  * the scope by WHERE the row is, never by guessing: try TENANT public.messages first, then OPERATOR
  * public.operator_messages. A tenant call updates only messages; an operator call updates only
  * operator_messages — the two scopes never cross. No matching row in either ⇒ log + 200, never a fabricated
- * row (§13). Ack 200 on every DB blip so Twilio doesn't hammer retries.
+ * row (§13). Database failures return 503 so Twilio can retry reconciliation.
  */
 async function handleCallStatus(
   params: URLSearchParams,
@@ -244,12 +259,12 @@ async function handleCallStatus(
    * reach it would be a tenant→platform crossing (§53), not merely a
    * tenant→tenant one.
    */
-  authedTenantId: string | null,
+  authScope: { kind: "tenant"; tenantId: string } | { kind: "operator" },
 ): Promise<Response> {
   const parentCallSid = params.get("ParentCallSid") ?? "";
   const mapped = mapCallStatus(twilioStatus);
   if (!mapped) {
-    console.log(`[twilio-status-callback] unmapped CallStatus="${twilioStatus}" callSid=${callSid} — ack, no update`);
+    console.log(`[twilio-status-callback] unmapped CallStatus="${twilioStatus}" — ack, no update`);
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
   const sids = callMatchSids(callSid, parentCallSid);
@@ -263,6 +278,7 @@ async function handleCallStatus(
     transcript: nonEmptyOrNull(params.get("TranscriptionText")),
     twilioStatus,
     callSid,
+    errorCode: nonEmptyOrNull(params.get("ErrorCode")),
   };
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -271,30 +287,26 @@ async function handleCallStatus(
 
   // 1) TENANT store. channel_type='voice' is defensive scoping (provider_message_id is globally unique,
   //    so a message row could never collide, but this guarantees we never touch a non-voice row).
-  const voiceBase = admin
-    .from("messages")
-    .select("id, status, meta")
-    .in("provider_message_id", sids)
-    .eq("channel_type", "voice");
-  const { data: tRow, error: tErr } = await (
-    authedTenantId ? voiceBase.eq("tenant_id", authedTenantId) : voiceBase
-  ).maybeSingle();
-  if (tErr) {
-    console.error("[twilio-status-callback] messages voice lookup_error", tErr, "sids=", sids.join("|"));
+  if (authScope.kind === "tenant") {
+    const { data: tRow, error: tErr } = await admin
+      .from("messages")
+      .select("id, status, meta")
+      .in("provider_message_id", sids)
+      .eq("channel_type", "voice")
+      .eq("tenant_id", authScope.tenantId)
+      .maybeSingle();
+    if (tErr) {
+      console.error("[twilio-status-callback] messages voice lookup_error", { code: tErr.code ?? null });
+      return new Response("retry", { status: 503, headers: { ...corsHeaders, "Retry-After": "5" } });
+    }
+    if (tRow) return await applyCallUpdate(admin, "messages", "meta", tRow, facts);
+    console.log("[twilio-status-callback] no tenant messages row for callback — operator store not consulted");
     return new Response("ok", { status: 200, headers: corsHeaders });
-  }
-  if (tRow) {
-    return await applyCallUpdate(admin, "messages", "meta", tRow, facts);
   }
 
   // 2) OPERATOR store (§9/§53). Reached ONLY when no tenant row matched — the SID lives in one store, so
   //    this is scope-resolution by the row, never a guess. Operator rows carry NO tenant_id.
   // A tenant secret never reaches the platform-tier operator store.
-  if (authedTenantId) {
-    console.log(`[twilio-status-callback] no tenant messages row for call sids=${sids.join("|")} — not consulting the operator store for a tenant-authenticated callback`);
-    return new Response("ok", { status: 200, headers: corsHeaders });
-  }
-
   const { data: oRow, error: oErr } = await admin
     .from("operator_messages")
     .select("id, status, metadata")
@@ -302,8 +314,8 @@ async function handleCallStatus(
     .eq("channel_type", "voice")
     .maybeSingle();
   if (oErr) {
-    console.error("[twilio-status-callback] operator_messages voice lookup_error", oErr, "sids=", sids.join("|"));
-    return new Response("ok", { status: 200, headers: corsHeaders });
+    console.error("[twilio-status-callback] operator_messages voice lookup_error", { code: oErr.code ?? null });
+    return new Response("retry", { status: 503, headers: { ...corsHeaders, "Retry-After": "5" } });
   }
   if (oRow) {
     return await applyCallUpdate(admin, "operator_messages", "metadata", oRow, facts);
@@ -311,7 +323,7 @@ async function handleCallStatus(
 
   // No voice row in EITHER store (e.g. the start-of-call write was skipped on an honest degrade).
   // Log + 200; NEVER fabricate a row (§13).
-  console.log(`[twilio-status-callback] no voice row (tenant or operator) for callSid=${callSid} parent=${parentCallSid} — ack, no fabrication`);
+  console.log("[twilio-status-callback] no voice row in authenticated scope — ack, no fabrication");
   return new Response("ok", { status: 200, headers: corsHeaders });
 }
 
@@ -321,9 +333,10 @@ Deno.serve(async (req) => {
 
   const rawBody = await req.text();
   const authAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const { auth, tenantId: authedTenantId } = await verifyTwilio(req, rawBody, authAdmin);
-  if (!auth.ok) {
-    console.error(`[twilio-status-callback] REFUSED unauthenticated callback: ${auth.reason}`);
+  const { auth, scope: authScope } = await verifyTwilio(req, rawBody, authAdmin);
+  if (!auth.ok || !authScope) {
+    const reason = auth.ok ? "proof_scope_missing" : auth.reason;
+    console.error(`[twilio-status-callback] REFUSED unauthenticated callback: ${reason}`);
     return new Response("unauthenticated", { status: 401 });
   }
 
@@ -334,7 +347,7 @@ Deno.serve(async (req) => {
   const callSid = params.get("CallSid") ?? "";
   const callStatusRaw = (params.get("CallStatus") ?? "").trim();
   if (callSid && callStatusRaw) {
-    return await handleCallStatus(params, callSid, callStatusRaw, authedTenantId);
+    return await handleCallStatus(params, callSid, callStatusRaw, authScope);
   }
 
   const messageSid = params.get("MessageSid") ?? params.get("SmsSid") ?? "";
@@ -346,6 +359,13 @@ Deno.serve(async (req) => {
   // do nothing (§13: nothing real to record).
   if (!messageSid) {
     console.warn("[twilio-status-callback] no MessageSid on callback — ignoring");
+    return new Response("ok", { status: 200, headers: corsHeaders });
+  }
+
+  // This endpoint has no operator SMS-row reconciler. An operator proof or master
+  // signature must never be reinterpreted as authority over tenant messages.
+  if (authScope.kind === "operator") {
+    console.log("[twilio-status-callback] operator SMS callback has no configured reconciler — ack, no tenant lookup");
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
@@ -364,29 +384,24 @@ Deno.serve(async (req) => {
 
   // Look up the row this DLR belongs to (globally-unique provider_message_id).
   // Scoped to the tenant whose stamped secret authenticated this callback, so a
-  // tenant's own secret cannot advance another tenant's message. A
-  // signature-authenticated callback carries no tenant and keeps global scope,
-  // because a valid Twilio signature is itself account-bound proof.
+  // tenant's own secret cannot advance another tenant's message. Operator proof
+  // and master signatures returned above, before this tenant-only branch.
   const base = admin
     .from("messages")
     .select("id, status, meta, error, tenant_id")
     .eq("provider_message_id", messageSid);
-  const { data: row, error: lookupErr } = await (
-    authedTenantId ? base.eq("tenant_id", authedTenantId) : base
-  ).maybeSingle();
+  const { data: row, error: lookupErr } = await base.eq("tenant_id", authScope.tenantId).maybeSingle();
 
   if (lookupErr) {
-    // A DB error is ours, not Twilio's — log it, but still 200 so Twilio does not
-    // hammer retries against a transient blip (§13: we did not record a status).
-    console.error("[twilio-status-callback] lookup_error", lookupErr, "sid=", messageSid);
-    return new Response("ok", { status: 200, headers: corsHeaders });
+    console.error("[twilio-status-callback] lookup_error", { code: lookupErr.code ?? null });
+    return new Response("retry", { status: 503, headers: { ...corsHeaders, "Retry-After": "5" } });
   }
 
   if (!row) {
     // No matching outbound row (e.g. a send we never persisted, or a number-level
     // callback for a message from another system). Log + 200; NEVER fabricate a
     // row (§13). Twilio would retry on a non-2xx.
-    console.log(`[twilio-status-callback] no messages row for sid=${messageSid} — ack, no fabrication`);
+    console.log("[twilio-status-callback] no messages row in authenticated scope — ack, no fabrication");
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
@@ -428,13 +443,12 @@ Deno.serve(async (req) => {
   // §9: scope the write to the single matched row by primary key.
   const { error: updErr } = await admin.from("messages").update(update).eq("id", row.id);
   if (updErr) {
-    console.error("[twilio-status-callback] update_error", updErr, "sid=", messageSid);
-    // Ack anyway; a retry would re-run the same idempotent advance-only merge.
-    return new Response("ok", { status: 200, headers: corsHeaders });
+    console.error("[twilio-status-callback] update_error", { code: updErr.code ?? null });
+    return new Response("retry", { status: 503, headers: { ...corsHeaders, "Retry-After": "5" } });
   }
 
   console.log(
-    `[twilio-status-callback] sid=${messageSid} twilio="${twilioStatus}" mapped=${mapped} ` +
+    `[twilio-status-callback] twilio="${twilioStatus}" mapped=${mapped} ` +
       `from=${currentStatus} applied=${advance}${errorCode ? ` errorCode=${errorCode}` : ""}`,
   );
   return new Response("ok", { status: 200, headers: corsHeaders });

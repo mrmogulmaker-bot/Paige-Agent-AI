@@ -37,8 +37,6 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 // Vercel Speed Insights — Core Web Vitals from real visitors. This is a Vite +
 // React SPA, so we use the framework-agnostic /react entry (NOT /next).
 import { SpeedInsights } from "@vercel/speed-insights/react";
-import { FloatingChatbot } from "./components/FloatingChatbot";
-import { shouldRenderFloatingChatbot } from "./lib/routing/floatingChatVisibility";
 import { MetaPixel } from "./components/seo/MetaPixel";
 import { TenantProvider } from "./hooks/useTenantContext";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
@@ -178,15 +176,15 @@ const PageSuspense = ({ children }: { children: React.ReactNode }) => (
   <React.Suspense fallback={<SuspenseFallback />}>{children}</React.Suspense>
 );
 
-// The support-style floating widget belongs only to technically separate public or
-// customer-facing properties. Every authenticated PAIGE-owned shell has its own
-// persistent workspace/edge/mobile entry; rendering the widget there creates a
-// second PAIGE. The pure policy is separately regression-tested for shell roots,
-// nested routes, and trailing slashes.
-const GatedChatbot = () => {
-  const { pathname } = useLocation();
-  return shouldRenderFloatingChatbot(pathname) ? <FloatingChatbot /> : null;
-};
+// RETIRED 2026-09-06 (owner architecture decision): there is NO floating Paige chat anywhere.
+// The floating support-style widget (FloatingChatbot) used to render globally, gated by a
+// route deny-list, which leaked it onto authenticated surfaces (broker, portal, onboarding,
+// welcome, choose-account) AND onto public marketing pages where a signed-in visitor's session
+// would have carried tenant/consumer context into it. The ONLY tenant-aware Paige experience is
+// the dedicated authenticated Paige chat/workspace. A public "Product Guide" is a separate,
+// tenant-isolated product and is UNAVAILABLE today — never a stripped-down tenant chat
+// (docs/product/public-product-guide-contract.md). The regression guard in
+// src/__tests__/no-floating-platform-chat.test.ts fails if any floating Paige chat is re-mounted.
 
 const AppInner = () => {
   useHostRouting();
@@ -376,7 +374,6 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-          <GatedChatbot />
         </BrowserRouter>
         </ImpersonationProvider>
         </DashboardModeProvider>

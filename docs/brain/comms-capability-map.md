@@ -286,9 +286,16 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   the contact rail — both exist for non-Solo.
 - `paige-stt` live-call co-pilot: deployed, default OFF, and now additionally gated on request
   authentication. **Whether it was ever activated on prod cannot be determined from the repo.**
-- Tenant call-completion callbacks are dormant: `voice-twiml` emits no `statusCallback` on an
-  unverified request, and the master auth token is intentionally absent. The named remedy is
-  per-subaccount signature validation, binding the signing subaccount to the tenant in `From`.
+- **2026-09-05 hotfix candidate:** tenant Voice webhook authentication no longer depends on retaining
+  subaccount Auth Tokens. `ensureTwimlApp` repairs both new and stored TwiML Applications so their
+  VoiceUrl carries the tenant's existing high-entropy webhook proof. `voice-twiml` fails closed,
+  resolves the proof server-side, and requires the outbound identity or inbound number owner to match
+  that tenant before caller-ID, contact, history, or stream work. Authenticated calls now receive a
+  tenant-stamped child-leg `statusCallback`; callback rejection codes and terminal state persist.
+  The master-account operator app uses a purpose-bound derived proof (never the API-key secret), and
+  operator callbacks are scoped exclusively to operator history. Release must stage the internal
+  single-target app repair before strict enforcement; an ordinary same-commit deploy is insufficient.
+  This remains a release candidate until CI/deployment and a controlled authenticated call prove it.
 
 ### A gap that blocks tenant inbound voice entirely
 `purchaseNumber` (`_shared/twilio.ts:470-504`) sets `SmsUrl` and `StatusCallback` and **never sets

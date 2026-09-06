@@ -111,7 +111,7 @@ const CommandHub = ({ accountContext, openPaige }) => {
       <span aria-live="polite" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clipPath: "inset(50%)" }}>{routeAnnouncement}</span>
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
         {tab === "plan" ? (
-          <div role="tabpanel" id="command-panel-plan" aria-labelledby="command-tab-plan" style={{ height: "100%" }}>
+          <div role="tabpanel" id="command-panel-plan" aria-labelledby="command-tab-plan" style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
             <SoloGamePlanWorkspace key={activeTenantId ?? "unresolved"} accountContext={accountContext} openPaige={openPaige} workspaceId={activeTenantId} />
           </div>
         ) : tab === "sys" ? (
