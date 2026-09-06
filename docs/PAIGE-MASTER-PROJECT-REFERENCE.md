@@ -1565,12 +1565,17 @@ creation handlers (`generate_image`, `draft_marketing_content`, `content_save`, 
 drafts / null saved id); a new pure home `_shared/artifact-receipt.ts` (`artifactProduced` +
 `ARTIFACT_ABSENT_ERROR`) degrades an absent artifact to an honest `success:false`, so the model narration,
 the status label, and the artifact card all inherit the honest signal (§13/§70). **Proof:** 17 contract
-tests + 167 green across the source-asserting suite; §50 clean; transpiles clean. **Proof owed:**
-authenticated owner §32.c live-drive (headless). **Still in slice 1:** download/export action, render the
-artifact card on all chat surfaces, image→campaign routing, the missing types (campaign_brief · HTML
-email_template · video · social-schedule), regular-chat in-place refine — the visible items run the §00
-Claude-Design pack (CC ports, does not design). **Deferred to their slices, named:** the two going-live
-PUBLISH receipts (slice 6/7) and Rail wiring of these tools (slice 3 / F05).
+tests + 167 green across the source-asserting suite; §50 clean; transpiles clean. Increment 1.1 (PR #974)
+folded two Codex-caught edge-cases (Studio image needs a filed `content_id`; a drafts array of
+content-less items isn't usable copy). **Proof owed:** authenticated owner §32.c live-drive (headless).
+**Still in slice 1 — re-scoped to the DEDICATED Paige experience (owner decision 2026-09-06):**
+download/export action, image→campaign routing, the missing types (campaign_brief · HTML email_template ·
+video · social-schedule), regular-chat in-place refine. **RETIRED:** "render the artifact card on all chat
+surfaces" — there is NO floating Paige chat inside the authenticated platform; the dedicated authenticated
+Paige chat/workspace is the only tenant-aware experience and already renders the card (see §10 corrections
++ decision-log 2026-09-06; retirement work = task #14). A public-site Product Guide is a separate,
+tenant-isolated product, not built here. **Deferred to their slices, named:** the two going-live PUBLISH
+receipts (slice 6/7) and Rail wiring of these tools (slice 3 / F05).
 
 ### Sandboxed Research & External Execution — a COMPONENT of the Paige Capability System (above); APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
 

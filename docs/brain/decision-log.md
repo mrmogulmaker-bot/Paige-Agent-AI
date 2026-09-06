@@ -1,5 +1,27 @@
 # Decision Log — chronological one-liners
 
+- **ARCHITECTURE: floating Paige chat is RETIRED from the authenticated platform (owner decision 2026-09-06)** —
+  there must be NO floating Paige chat anywhere inside the authenticated platform (no Solo route, Command
+  Center, Clients, Campaigns, Settings, Marketplace, Analytics, tenant portal, mobile shell, or embedded
+  tenant surface). The ONLY tenant-aware Paige experience is the dedicated, authenticated Paige
+  chat/workspace and its explicitly-approved in-surface actions. **This supersedes the prior Slice-1
+  reach item to port the artifact card into a floating platform chat** — that item is REMOVED from the
+  delivery sequence, not owed (the FloatingChatbot port grounding — decision-log 2026-09-06, scout
+  ada5727dbf9f4e3ea — is now moot for the authenticated floating widget). Do not build, port, repair, or
+  render artifact cards in a floating platform chat. **A PUBLIC-website floating assistant may exist LATER
+  as a DIFFERENT product** — a public Product Guide, not Paige's tenant-aware operating chat: it must never
+  receive/retrieve/infer/cache/expose any tenant/workspace/client/contact/conversation/Vault/Mind/Rail/
+  Systems-Check/Pipeline/Campaigns data; no tenant-scoped tools, artifact gen, uploads/downloads, business
+  actions, account context, browser sessions, internal prompts, provider creds, or authenticated user
+  state; it cannot create/modify/send/schedule/execute anything in a tenant workspace; only a platform
+  OPERATOR configures its content/capabilities/routing/model/KB (a tenant owner/admin/member cannot
+  reprogram it), with strict authorization, durable audit, revision history, rollback, and fail-closed
+  behavior. If no safely-separated public-assistant implementation exists, it is **UNAVAILABLE** — never a
+  shortcut of stripping UI from the tenant chat, and never merged without separate final owner approval.
+  Immediate priority: safely retire the authenticated floating-chat path. Work tracked as task #14
+  (grounding scout a197694b4f6de6a14); Capability plan (`outputs/paige-at-cowork/09-...md`) and master §5
+  updated in the same change.
+
 - **Business Game Plan — live-data corrections against authenticated prod (2026-09-05, follow-up to #952)** —
   the owner reviewed the shipped Solo default landing on real data (Mogul Maker Academy) and flagged five
   items; verified via authenticated Supabase queries (project xygzykjyynhzqytbqnzu) and fixed in the Game
