@@ -46,8 +46,10 @@ const EXPENSE_STR_FIELDS = [
   "renewal_deprecation_review", "data_privacy_retention", "receipt_reconciliation", "rail_outcome",
   "pause_revoke_path", "next_owner", "next_slice",
 ];
-// A base m1_dependency string that uses the token "M1" must QUALIFY it — bare "M1" is prohibited.
-const QUALIFIED_M1 = /M1 real-money spend control|M1-a|M1-b/i;
+// The QUALIFIED forms of "M1" a base m1_dependency may use. Everything else is a bare, prohibited "M1".
+// checkBaseM1 STRIPS these first, then flags any remaining bare "M1" — so a qualified token elsewhere
+// in the string can no longer immunize a separate bare "M1" (the §39 verifier's tripwire hole).
+const QUALIFIED_M1_FORMS = /M1 real-money spend control|M1-[ab]\b/gi;
 
 const TOP_LEVEL = [
   "doc", "schema_version", "cardinal_rule", "status_vocabulary", "authority_lanes",
@@ -92,9 +94,11 @@ function validateExpenseBlock(eo, tag, E) {
   }
 }
 
-/** A base m1_dependency string that uses "M1" must qualify it (real-money / M1-a / M1-b). */
+/** A base m1_dependency string that uses "M1" must qualify EVERY occurrence (real-money / M1-a / M1-b). */
 function checkBaseM1(m1, tag, E) {
-  if (nonEmptyStr(m1) && /\bM1\b/i.test(m1) && !QUALIFIED_M1.test(m1)) {
+  if (!nonEmptyStr(m1)) return;
+  const stripped = m1.replace(QUALIFIED_M1_FORMS, ""); // remove the allowed forms; a bare "M1" left over is unqualified
+  if (/\bM1\b/i.test(stripped)) {
     E(`${tag}: m1_dependency uses the unqualified token "M1" — name the track ("M1 real-money spend control" for spend, "internal LLM-cost metering" for model usage, or "none") (owner ruling 2026-09-06)`);
   }
 }
@@ -311,6 +315,9 @@ function selfTest() {
   });
   mustFail("unqualified M1 in base m1_dependency", (r) => {
     r.providers[0].m1_dependency = "must meter (M1) before autonomous use";
+  });
+  mustFail("unqualified M1 immunized by a qualified token", (r) => {
+    r.providers[0].m1_dependency = "meter M1 first, then M1-b caps apply";
   });
   mustFail("missing cost_tracks", (r) => { delete r.cost_tracks; });
   mustFail("cost_tracks missing real-money track", (r) => { delete r.cost_tracks.m1_real_money_spend_control; });
