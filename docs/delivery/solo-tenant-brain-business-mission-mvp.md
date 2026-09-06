@@ -51,6 +51,7 @@ A verified Solo owner can ask Paige to create, revise or transition a Business M
 | Full automated regression | `PASS` | 259/259 test files; 3,776/3,776 tests |
 | Repository typecheck | `FAIL` baseline | Raw `tsc` retains unrelated pre-existing failures; no Mission helper error remains. Ratcheted CI check is the release gate |
 | TypeScript ratchet | `PASS` | No new type errors; baseline remains 13 |
+| Deno edge ratchet | `PASS` | First PR run caught nullable tenant input (TS2322); repaired with an explicit pre-mutation `MISSION_TENANT_NOT_RESOLVED` exit; repaired head passed the real-Deno ratchet |
 | Contract/security linters | `PASS` | binding ledger, chat registry, action risk, write targets, one approval gate, governed execution, Rail grants, definer functions and managed schema |
 | Build | `PASS` | Production Vite build completed; pre-existing chunk/deprecation warnings remain |
 | Dependency audit | `PARTIAL` | Baseline reports 2 moderate React Router advisories and 1 high Vite development-server advisory; this slice changes no dependency |
@@ -59,7 +60,8 @@ A verified Solo owner can ask Paige to create, revise or transition a Business M
 | Production Rail row/read projection | `PROOF OWED` | Must match same request UUID and deployed SHA |
 | Mind | `UNAVAILABLE` | Deliberately not added |
 | Memory | `UNAVAILABLE` | Deliberately not added |
-| Deployment | pending | Record exact PR, merge SHA, edge-live state and URL/environment here at closeout |
+| Deployment | `LIVE` infrastructure | PR #1016 squash-merged as `68d7c10f4381dd66a5d930d82f9400d004d189b5`; `deploy-migrations` run 34057655392 and `deploy-edge-functions` run 34057655408 succeeded; both `db-live` and `edge-live` point to that SHA; Vercel Production succeeded and `paigeagent.ai/version.json` reports build `68d7c10f4381dd66a5d930d82f9400d004d189b5-mtq9a8x3` |
+| Integration Capability Registry dependency | `UNAVAILABLE` | No controlling Integration Capability Registry artifact or Supabase infrastructure entry exists in current main/shared workspaces. This slice adds no customer provider integration, scopes or provider execution authority; existing `config-registry.md` supplied the already-established Supabase deploy path. Do not invent an entry; Registry Steward must add/cross-link the controlling infrastructure entry before later provider-facing expansion. An attempted notification to an unverified coordinator task was refused, so steward receipt is not claimed |
 
 ## Security review focus
 
@@ -71,4 +73,4 @@ A verified Solo owner can ask Paige to create, revise or transition a Business M
 
 ## Release truth
 
-This slice may move `command-center.business-game-plan` forward while it remains `PARTIAL`. It must not be called `LIVE` until authenticated deployed Mission and Rail proof exist, and it must never be described as completion of the Solo Tenant Brain.
+The code, migration and edge composition are deployed at `68d7c10f4381dd66a5d930d82f9400d004d189b5`, but `command-center.business-game-plan` remains `PARTIAL`. The canonical Mission and Rail paths are proven by database/automated contracts, not by a signed-in production owner row. Authenticated Solo-owner, denied-role and cross-tenant runtime proof remain `PROOF OWED`; Mind and Memory remain `UNAVAILABLE`. This slice must never be described as completion of the Solo Tenant Brain.
