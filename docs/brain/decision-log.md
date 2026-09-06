@@ -12,6 +12,22 @@
   capabilityTools.ts` + `useSoloToolGovernance.ts`. Pending decisions route to the ONE Paige chat (§18).
   GREEN headless (unit + jsdom-render, tsc ratchet, relevant lints, prod build). **§32.c authenticated
   live-drive OWED** (headless session) → recorded as RC, not LIVE. Tier: Solo + sub-account only.
+- **Campaigns → Overview redesigned as the Campaign Command Desk + a tenant-safe Campaign Brief
+  foundation (2026-09-05, PR #970 — RC, pending merge approval)** — owner-approved the prototype
+  (`docs/prototypes/campaigns-overview.html`), then built production. Replaces the "Campaign state
+  rollup unavailable" panel. NEW: `campaign_briefs` table + `get_campaign_briefs`/`configure_campaign_brief`
+  RPCs (migration `20261225000000`), modeled verbatim on the pipeline governed seam — SECURITY DEFINER,
+  tenant re-resolved from auth (§9/§59), tenant-admin/owner write gate (§53), version + idempotency, audit;
+  RLS tenant-scoped read-only, writes via RPC. A brief is OWNER-AUTHORED, never proof of a live campaign
+  (still no tenant-authorized campaign-state source — `useSoloCampaigns` keeps `campaigns:[]`). Two
+  tenant-validated links only: `offer_id`→`tenant_products`, `pipeline_id`→`pipelines`. Client:
+  `useSoloCampaignBriefs` (own hook, keeps the four-reads contract on `useSoloCampaigns`), `campaign-desk.tsx`
+  (Command Desk), `growth2.tsx` Overview → thin wrapper. Rides under the `growth` tier gate (Solo/Sub/
+  Enterprise/God; Agency excluded — no new bit). Verified: 18/18 throwaway-Postgres RLS/RPC proof, 1633
+  solo tests, vite build, all migration/definer/write-target/governed/tier lints. **Owed on merge:** the
+  master-doc §4 SHIPPED line + `docs/doctrine/tier-matrix.md` surface-ledger LIVE flip (§66 records LIVE,
+  not RC) + CI persisted-apply proof (§32.a) + authenticated live Solo drive (§32.c, `Proof Owed`). Evidence:
+  `docs/evidence/ui-delivery/campaigns-overview.md`.
 - **Business Game Plan — live-data corrections against authenticated prod (2026-09-05, follow-up to #952)** —
   the owner reviewed the shipped Solo default landing on real data (Mogul Maker Academy) and flagged five
   items; verified via authenticated Supabase queries (project xygzykjyynhzqytbqnzu) and fixed in the Game
