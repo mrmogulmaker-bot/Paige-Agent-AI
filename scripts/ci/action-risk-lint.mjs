@@ -233,6 +233,13 @@ if (chatSrc.includes('...BUSINESS_MISSION_TOOLS')) {
   if (!missionTools.length) throw new Error('Business Mission catalog could not be parsed');
   importedTools.push(...missionTools);
 }
+if (chatSrc.includes('...CAMPAIGN_BRIEF_TOOLS')) {
+  if (!/import\s*\{[^}]*CAMPAIGN_BRIEF_TOOLS[^}]*\}\s*from\s*['"]\.\.\/_shared\/paige-spine\/domains\/campaigns\.ts['"]/.test(chatSrc)) throw new Error('Unresolved Campaign Brief catalog import');
+  const source = fs.readFileSync('supabase/functions/_shared/paige-spine/domains/campaigns.ts', 'utf8');
+  const campaignTools = [...source.matchAll(/\bname:\s*"(campaign_brief_[a-z_]+)"/g)].map(m => m[1]);
+  if (!campaignTools.length) throw new Error('Campaign Brief catalog could not be parsed');
+  importedTools.push(...campaignTools);
+}
 const mcpCanonicals = parseMcpCanonicals(fs.readFileSync(MCP_POLICY, "utf8"));
 if (!mcpCanonicals.length) {
   console.error(`✗ action-risk-lint: read no canonical keys out of ${MCP_POLICY}. That file is the MCP door's second declaring surface, so an empty read would silently condemn every MCP-only classification as a ghost. Fix this guard rather than letting it pass.`);

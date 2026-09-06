@@ -1704,6 +1704,29 @@ Paige chat/workspace is the only tenant-aware experience and already renders the
 tenant-isolated product, not built here. **Deferred to their slices, named:** the two going-live PUBLISH
 receipts (slice 6/7) and Rail wiring of these tools (slice 3 / F05).
 
+**Slice 2 — campaign-brief conversational create/list/revise reach: SHIPPED (2026-09-06, task #16).** Paige can now,
+in the dedicated Solo chat, draft / revise / list a workspace's **campaign briefs** — an owner-authored PLANNING
+record of a campaign's intent (objective, audience, positioning, intended channels, desired outcome, budget TARGET,
+timing). REGISTERED, not hand-wired: new Spine domain `_shared/paige-spine/domains/campaigns.ts` (`campaign.create`/
+`.revise`/`.list` + compact `CAMPAIGN_BRIEF_TOOLS`), added to the registry; the Chat handler consumes via
+`...CAMPAIGN_BRIEF_TOOLS` + a name-keyed dispatch branch (owner Spine ruling 2026-09-01; `chat-tool-registry`
+baseline unchanged at 94). Consumes the EXISTING secure RPCs UNCHANGED — `configure_campaign_brief` +
+`get_campaign_briefs` (merged migration `20261225000000`) — via the caller JWT with `_actor_kind:'paige'`, so the
+SECURITY DEFINER RPC re-resolves tenant from auth (never the arg, §9/§59) and gates on tenant-admin/owner (§53). No
+RPC/table change → no §37 producer break. **AUTHORITY (owner correction 2026-09-06):** create/revise are classified
+`ordinary` — the class the runtime clamp leaves eligible for a standing `auto` grant, so a tenant owner/authorized
+rep CAN grant Paige autonomous authority to draft/revise briefs within their approved scope; `confirm` is the
+ESCALATION lane (platform default, and where the RPC refuses out-of-policy / ambiguous / unavailable-linked-record /
+version-conflict). A blanket draft/confirm on every planning write was explicitly rejected. New migration
+`20261229000000` adds the two writes to the `list_tool_autonomy` catalogue so the operator can see + set their lane.
+**PROVEN:** `scripts/campaign-brief-db-proof.mjs` 12/12 on real Postgres 16 (create/version/tenant-scope, §9
+cross-tenant FORBIDDEN 42501 no-leak, §53 non-admin FORBIDDEN, optimistic VERSION_CONFLICT 40001, idempotency
+replay-returns-stored + conflict 22023, offer tenant-mismatch 23514, operator bypass); structural guard 14/14; full
+vitest 3722/3722; all governance lints + tsc + registry validator green. **HONEST BOUNDARY:** a brief is INTENT —
+never proof ads are active, money was spent, content was published, or results occurred; those need their own
+connected governed actions and verified outcomes. **Proof owed (§32.c):** authenticated end-to-end Solo-chat
+create/revise/list live-drive (headless session cannot render/drive it) — owed to a browser-capable session.
+
 ### Sandboxed Research & External Execution — a COMPONENT of the Paige Capability System (above); APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
 
 Owner-directed MVP capability so Paige is an active AI COO/orchestrator, not a chat interface that
