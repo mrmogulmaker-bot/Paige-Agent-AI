@@ -35,6 +35,7 @@ const RULES = [
   ["retired PaigeMark JSX tag", /<PaigeMark[\s/>]/, "render <PaigeCommandMark /> instead"],
   ["import of the retired PaigeMark module", /(?:brand\/PaigeMark|\.\/PaigeMark)['"]/, "import { PaigeCommandMark } from \"@/components/brand/PaigeCommandMark\""],
   ["re-declared PaigeMark component", /\b(?:function|const)\s+PaigeMark\b/, "the orbital PaigeMark is retired — do not re-create it; use PaigeCommandMark"],
+  ["re-drawn orbital ring (rotated stroked ellipse)", /<ellipse\b[^>]*\btransform\s*=\s*["']\s*rotate/i, "the retired orbital mark's tilted-ring geometry — do not re-draw it; use PaigeCommandMark"],
 ];
 
 const TEXT_EXT = /\.(tsx?|jsx?|css|scss|html|svg)$/i;
@@ -53,6 +54,8 @@ function* walk(dir) {
 function scanFiles() {
   const targets = [];
   for (const p of walk(join(ROOT, "src"))) targets.push(p);
+  // Also scan public/ — an orbital SVG asset dropped there ships just like source.
+  try { for (const p of walk(join(ROOT, "public"))) targets.push(p); } catch { /* no public dir */ }
   targets.push(join(ROOT, "index.html"));
   const offenders = [];
   const selfPath = join(ROOT, "scripts", "ci", "legacy-mark-lint.mjs");
@@ -84,6 +87,7 @@ function selfTest() {
     'import { PaigeMark } from "./PaigeMark";',
     'export function PaigeMark({ className }) {',
     'const PaigeMark = () => null;',
+    '<ellipse cx="16" cy="16" rx="14.5" ry="5.4" transform="rotate(-22 16 16)" stroke="var(--gold-bright)" />',
   ];
   const shouldNotFire = [
     'import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";',
@@ -92,6 +96,7 @@ function selfTest() {
     'border-color: #F0C86A;', // general brand gold, fine
     'className={cn("paige-halo-pulse")}', // reused by the cutscene aurora, fine
     'export function PaigeCommandMark({ className }) {',
+    '<ellipse cx="24" cy="24" rx="18" ry="7.5" fill="none" />', // a plain (non-rotated) ellipse is not the orbital ring
     '// historical: the old PaigeMark orbital mark  legacy-mark-exempt: doctrine note',
   ];
   const fires = (s) => RULES.some(([, re]) => re.test(s));

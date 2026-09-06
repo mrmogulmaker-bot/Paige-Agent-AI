@@ -1721,16 +1721,29 @@ All colors MUST be HSL.
   /* Studio motion preference (owner 2026-07-19): the living mark + build-cutscene motion — the marquee
      "video-game" moment (§22) — plays by DEFAULT even under an OS reduce flag, and rests only on the
      explicit "Reduced" choice. These `.paige-*`/`.build-*` classes are ONLY ever applied INSIDE the
-     Studio (PaigeMark renders them solely when `animated`, which is true only on the Studio hero, the
+     Studio (the animated Command Mark renders them solely when `animated`, which is true only on the Studio hero, the
      generation stage, and the cutscene — never on the public landing/sign-up mark), so gating on
-     `.studio-surface.studio-motion-reduced` covers every place they appear. */
+     `.studio-surface.studio-motion-reduced` covers every place they appear. The animated Command Mark
+     renders the cutscene layers; its own breathe follows the SAME rule (see the override below). */
   .studio-surface.studio-motion-reduced .paige-halo-pulse,
   .studio-surface.studio-motion-reduced .paige-halo-pulse-b,
   .studio-surface.studio-motion-reduced .build-orbit-1,
   .studio-surface.studio-motion-reduced .build-orbit-2,
   .studio-surface.studio-motion-reduced .build-orbit-3,
   .studio-surface.studio-motion-reduced .build-pushin,
+  .studio-surface.studio-motion-reduced .pcm--animated .pcm-glyph,
   .studio-surface.studio-motion-reduced .build-drift-slow { animation: none; }
+}
+
+/* The animated Command Mark's breathe (pcm-breathe, defined in paige-command-mark.css, which rests it
+   under an OS reduce flag everywhere by default) follows the SAME Studio-motion rule as the halo/build
+   layers above (owner 2026-07-19): INSIDE the Studio it plays by default even under OS reduce, resting
+   only on the explicit "Reduced" choice — so the cutscene mark never freezes while the field keeps
+   moving. Higher specificity than the component's own OS-reduce rest, so it wins inside the Studio. */
+@media (prefers-reduced-motion: reduce) {
+  .studio-surface:not(.studio-motion-reduced) .pcm--animated .pcm-glyph {
+    animation: pcm-breathe 3.4s ease-in-out infinite;
+  }
 }
 
 /* #292/#119 — Print / Save as PDF for a Studio document. The button toggles `paige-doc-printing`

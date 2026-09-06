@@ -8,7 +8,7 @@
 // framer-motion (no Canvas/WebGL this pass — that's #301):
 //   1. a themed seam (--gp-* spread in, app --primary fallback so it's never un-themed),
 //   2. a drifting brand-toned AURORA replacing the flat wash,
-//   3. a LIVING PaigeMark (two-period halo + orbiting satellites + a spring entrance),
+//   3. a LIVING Command Mark (two-period halo + orbiting satellites + a spring entrance),
 //   4. CHOREOGRAPHED narration that branches STRICTLY on regime,
 //   5. parallax depth planes + a slow autonomous push-in, and
 //   6. (owned by the caller) an AnimatePresence hand-off so the swap resolves, never hard-cuts.
@@ -141,9 +141,9 @@ function auroraBlob(
   };
 }
 
-/** The LIVING entity — PaigeMark, wrapped in a two-period halo, orbiting satellite sparks, and a
- *  spring entrance. PaigeMark itself is untouched (it's shared with the landing/sign-up surfaces);
- *  the "alive" upgrade is composed around it here so no other surface is affected (§18). */
+/** The LIVING entity — the Command Mark (PaigeCommandMark), wrapped in a two-period halo, orbiting
+ *  satellite sparks, and a spring entrance. The mark component itself is untouched (it's the shared
+ *  brand mark); the "alive" upgrade is composed around it here so no other surface is affected (§18). */
 function LivingMark({ reduce }: { reduce: boolean }) {
   const haloBg =
     "radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--build-primary) 42%, transparent), transparent 70%)";

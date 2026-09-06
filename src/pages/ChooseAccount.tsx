@@ -208,7 +208,7 @@ export default function ChooseAccount() {
     <main className="min-h-dvh bg-[radial-gradient(circle_at_top,#f4f0ff_0,#f8f8fb_38%,#eef0f5_100%)] px-4 py-8 text-slate-950 dark:bg-[radial-gradient(circle_at_top,#28203f_0,#15131b_42%,#0d0c10_100%)] dark:text-white sm:py-14">
       <section className="mx-auto w-full max-w-xl rounded-3xl border border-slate-200/80 bg-white/95 p-6 shadow-[0_24px_80px_rgba(30,22,55,.14)] backdrop-blur dark:border-white/10 dark:bg-[#17151d]/95 sm:p-9" aria-labelledby="account-picker-title">
         <div className="mb-8 flex items-center gap-3">
-          <PaigeCommandMark className="h-10 w-10" />
+          <PaigeCommandMark plated={false} className="h-10 w-10" />
           <div>
             <div className="text-sm font-semibold">Paige Agent AI</div>
             <div className="text-xs text-slate-500 dark:text-slate-400">Secure workspace access</div>

@@ -12,10 +12,13 @@
   as the Command Mark. **Social** got an owner-authorised contrasting variation (indigo plate + gold slash/orb,
   bulging glyph) — a local treatment, NOT a new logo. **Removed:** `src/components/brand/PaigeMark.tsx` + its
   dead orbital keyframes (`paige-orbit-spin`/`-orb-breathe`/`-spark-drift`; `paige-halo-pulse` KEPT — the Studio
-  cutscene uses it) + 3 legacy monogram rasters. **Guard (prevents return):** `scripts/ci/legacy-mark-lint.mjs`
-  (`lint:legacy-mark` + self-test, wired in ci.yml) + eslint `no-restricted-imports`. **PROOF status:** LIVE in
-  code — tsc ratchet 13→13, `vite build` green, guard PASS + self-test (17 cases), full suite 3569/3569, keystone
-  rendered both Mineral+Obsidian with no shell. **PROOF OWED (§32.c):** owner live-drive of the authenticated
+  cutscene uses it) + 3 legacy monogram rasters. **Guard (backstops common return paths, not absolute):**
+  `scripts/ci/legacy-mark-lint.mjs` (`lint:legacy-mark` + self-test, wired in ci.yml) scans src/** + public/** +
+  index.html for the component/import/tag, distinctive hexes, orbital animation classes, and a re-drawn
+  tilted-ring <ellipse>; eslint `no-restricted-imports` bans the legacy paths. **PROOF status:** LIVE in code —
+  tsc ratchet 13→13, `vite build` green, guard PASS + self-test (19 cases), full suite 3569/3569, keystone
+  rendered Mineral+Obsidian AND under the app's `.dark` class with OS-light (plate correctly dark). Independent
+  §39/§5 review folded pre-merge (theme-signal BLOCKER, non-square MAJOR, guard-holes MAJOR all fixed). **PROOF OWED (§32.c):** owner live-drive of the authenticated
   full-page in-shell render across surfaces. **OWED (ops, UNAVAILABLE from a code PR):** the Supabase-storage
   email logo `email-assets/paige-logo-transparent.png` (used by ~11 transactional templates) needs a Command
   Mark PNG uploaded to the storage bucket. **KEPT (not a mark):** `paige-ai-avatar.png` (Paige persona character).
