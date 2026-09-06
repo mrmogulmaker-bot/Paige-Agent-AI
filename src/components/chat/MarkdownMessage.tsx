@@ -39,8 +39,10 @@ export function MarkdownMessage({ content, className }: MarkdownMessageProps) {
         "[&_pre>code]:bg-transparent [&_pre>code]:p-0",
         // Blockquote
         "[&_blockquote]:border-l-2 [&_blockquote]:border-accent [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-muted-foreground [&_blockquote]:my-2",
-        // Tables (GFM)
-        "[&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-[12px] [&_table]:sm:text-[13px]",
+        // Tables (GFM) — the table self-scrolls inside its own wrapper (see the `table` override
+        // below), so a wide table is reachable, never clipped, under a transcript that hides its own
+        // horizontal overflow. Vertical margin lives on that wrapper, not the table.
+        "[&_table]:w-full [&_table]:border-collapse [&_table]:text-[12px] [&_table]:sm:text-[13px]",
         "[&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:bg-muted [&_th]:text-left [&_th]:font-semibold",
         "[&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1",
         // Horizontal rule
@@ -54,6 +56,14 @@ export function MarkdownMessage({ content, className }: MarkdownMessageProps) {
           // Force links to open in a new tab safely
           a: ({ node, ...props }) => (
             <a {...props} target="_blank" rel="noopener noreferrer" />
+          ),
+          // A wide GFM table is genuinely wide content: it self-scrolls in its own container so every
+          // column stays reachable, even under a transcript that hides its own horizontal overflow
+          // (the skill's wide-content pattern — never hidden/clipped).
+          table: ({ node, ...props }) => (
+            <div className="my-2 max-w-full overflow-x-auto">
+              <table {...props} />
+            </div>
           ),
         }}
       >

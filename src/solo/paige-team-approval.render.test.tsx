@@ -37,6 +37,18 @@ vi.mock("./data/useSoloSkills", () => ({
   useSoloSkills: () => ({ loading: false, error: null, empty: true, skills: [], refresh: vi.fn() }),
 }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: "test" } } })) } } }));
+// SoloPaigeWorkspace now mounts the composer permission chip, whose useSoloToolGovernance fires real
+// governance RPCs on mount. This test's supabase mock has no `.rpc`, and this test is about the Team
+// approval flow, not the chip — so mock the hook to a benign resting state (the chip's real governance
+// behavior is covered in PaigeComposerAutonomyChip.test.tsx). Without this the chip's effect throws an
+// unhandled rejection against the incomplete supabase mock.
+vi.mock("./data/useSoloToolGovernance", () => ({
+  useSoloToolGovernance: () => ({
+    loading: false, configured: false, error: null, domains: [], byTool: {},
+    ceilingLimiting: false, ceilingUnconfirmed: false, canWrite: false, authorityUnconfirmed: false,
+    setDomainMode: vi.fn(async () => ({ ok: true })), setToolMode: vi.fn(async () => ({ ok: true })), refresh: vi.fn(),
+  }),
+}));
 vi.mock("@/hooks/usePaigeThreads", () => ({
   usePaigeThreads: () => ({
     threads: [

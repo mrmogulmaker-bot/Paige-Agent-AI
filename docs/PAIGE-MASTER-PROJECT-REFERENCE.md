@@ -1727,6 +1727,26 @@ never proof ads are active, money was spent, content was published, or results o
 connected governed actions and verified outcomes. **Proof owed (§32.c):** authenticated end-to-end Solo-chat
 create/revise/list live-drive (headless session cannot render/drive it) — owed to a browser-capable session.
 
+**P1 UI hotfix — dedicated Paige chat scrollbar + real permission chip: SHIPPED (2026-09-06, task #17).** Two fixes
+to the dedicated Solo Paige workspace chat (`paige.workspace`). **(1) Horizontal scrollbar fixed at the SOURCE:** the
+message bubble (the app-branch flex item every live mount uses) lacked `min-w-0` so it couldn't shrink and pushed the
+transcript wide; fixed with `min-w-0` + user-text `whitespace-pre-wrap break-words` + transcript `overflow-x-hidden`
+(safe because content now wraps — nothing clipped) + `EntityDiagramCard` self-scroll for genuinely-wide org-charts.
+The transcript stays the one vertical scroll owner; the composer action row is `flex-wrap`. **(2) Real permission
+chip** in the composer (`PaigeComposerAutonomyChip`, Solo-only via a new `composerAutonomyControl` prop): reflects the
+workspace's REAL effective posture via `useSoloToolGovernance` (the canonical `set_tool_autonomy` seam); "Ask first"
+is a real admin-gated persisted brake (bulk `set_tool_autonomy=confirm`); "Act within my policy"/"Custom permissions"
+route to the real Trust Compass controls. No global posture seam exists, so the chip never blanket-enables `auto` and
+never fakes a write (§13/§18); a pre-existing FAKE static "Ask first" header badge was removed (§13 correction).
+Radix DropdownMenu (keyboard/Escape/focus-restore); neutral/violet, gold reserved for Send. **PROVEN:** DOM-contract
+overflow guard + chip authority-state tests (pure `deriveChipView` all states + trigger render) + Solo workspace
+contract green; ci:tsc/gold-discipline/tier-features/binding-ledger green; full vitest + build green. **KNOWN LIMIT
+(§18 follow-up):** a true non-destructive *global* posture-override layer belongs to the pending Trust Compass
+reconciliation slice — this hotfix reuses the one per-tool seam, does not fork it. **Proof owed (§32.c):**
+rendered-pixel + authenticated-runtime verification (no-scrollbar layout + live chip write/route) at the five
+viewports × both themes × PAIGE open/closed — owed to a browser-capable session (headless, no browser). Evidence:
+`docs/evidence/ui-delivery/dedicated-paige-chat-scrollbar-and-permission-chip.md`.
+
 ### Sandboxed Research & External Execution — a COMPONENT of the Paige Capability System (above); APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
 
 Owner-directed MVP capability so Paige is an active AI COO/orchestrator, not a chat interface that
