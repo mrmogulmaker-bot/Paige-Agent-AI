@@ -7,7 +7,7 @@ MATERIAL_FLOW_CHANGE: YES: adds the owner/admin Vault workspace and truthful una
 FLOW_PROTOTYPE: PASS: owner approved `outputs/paige-business-vault-prototype.html` at Gate 1 before Phase 2
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: owner/admin evidence and continuity desk; primary live actions are governed metadata, contract, obligation, review, and archive operations
 VISUAL_DIRECTION: PASS: approved Mineral/Obsidian direction, Continuity Pulse first, focused inspector, restrained gold actions, violet proposed/unavailable state
-AUTOMATED_EVIDENCE: PASS: 5 Vault files / 27 tests; 71 executable actor/database assertions; two-session duplicate serialization proof
+AUTOMATED_EVIDENCE: PASS: 5 Vault files / 29 tests; 71 executable actor/database assertions; two-session duplicate serialization proof
 STATIC_EVIDENCE: PASS: affected ESLint clean; TypeScript ratchet has no new errors; production build passes; diff check clean
 RENDERED_EVIDENCE: PASS: owner-approved representative Gate 1 matrix has 16 primary renders and 26 state renders; authenticated Phase 2 implementation rendering remains explicitly unverified
 BEHAVIORAL_EVIDENCE: PASS: automated drawer/dialog, workspace-switch, authorization-denial, focus restoration, and unavailable-action coverage; authenticated runtime drive remains unverified
@@ -45,7 +45,7 @@ An owner or authorized administrator enters a tenant-bound Vault, sees only sour
 
 - Owner-approved design: `outputs/paige-business-vault-prototype.html` and `outputs/paige-business-vault-gate-1-verification.md`.
 - Representative render matrix: `outputs/vault-prototype-evidence/matrix-*.png`.
-- Automated UI/security: `npm test -- --run src/solo/vault` — 5 files, 27 tests.
+- Automated UI/security: `npm test -- --run src/solo/vault` — 5 files, 29 tests.
 - Executable database: `supabase/tests/business_vault_phase2_security.sql` — 71 count-enforced assertions on disposable PostgreSQL 16.
 - Concurrency: `scripts/proof/business-vault-concurrency-proof.mjs` — two real sessions, one inspection candidate and one cleanup duplicate.
 - Static: affected ESLint PASS; `npm run ci:tsc` PASS with existing baseline 13/current 13; `npm run build` PASS.

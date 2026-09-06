@@ -174,4 +174,84 @@ describe("Business Vault authorization load", () => {
     await act(async () => Promise.resolve());
     expect(latest).toEqual({ state: "denied", hasSnapshot: false });
   });
+
+  it("keeps transport failure distinct from denial and recovers after authorization returns", async () => {
+    harness.rpc
+      .mockResolvedValueOnce({ data: { allowed: true, can_archive: true }, error: null })
+      .mockResolvedValueOnce({ data: { available: false }, error: null })
+      .mockResolvedValueOnce({ data: { records: [{ id: "record-a" }], obligations: [], contracts: [], facts: [] }, error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: "network" } })
+      .mockResolvedValueOnce({ data: { allowed: true }, error: null })
+      .mockResolvedValueOnce({ data: { allowed: true, can_archive: true }, error: null })
+      .mockResolvedValueOnce({ data: { available: false }, error: null })
+      .mockResolvedValueOnce({ data: { records: [{ id: "record-a" }], obligations: [], contracts: [], facts: [] }, error: null });
+    const { useBusinessVault } = await import("./useBusinessVault");
+    let latest: { state: string; hasSnapshot: boolean; error: string | null } | null = null;
+    function Probe() {
+      const vault = useBusinessVault();
+      latest = { state: vault.state, hasSnapshot: vault.snapshot !== null, error: vault.error };
+      return null;
+    }
+    await act(async () => root.render(<Probe />));
+    await act(async () => Promise.resolve());
+    expect(latest).toEqual({ state: "allowed", hasSnapshot: true, error: null });
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await act(async () => Promise.resolve());
+    expect(latest).toEqual(expect.objectContaining({ state: "error", hasSnapshot: false }));
+    expect(latest?.error).toContain("authorization could not be confirmed");
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await act(async () => Promise.resolve());
+    await act(async () => Promise.resolve());
+    expect(latest).toEqual({ state: "allowed", hasSnapshot: true, error: null });
+  });
+
+  it("hides shell navigation when the page authorization check fails and restores both after recovery", async () => {
+    harness.rpc
+      .mockResolvedValueOnce({ data: { allowed: true }, error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: "network" } })
+      .mockResolvedValueOnce({ data: { allowed: true }, error: null })
+      .mockResolvedValueOnce({ data: { allowed: true }, error: null })
+      .mockResolvedValueOnce({ data: { allowed: true, can_archive: true }, error: null })
+      .mockResolvedValueOnce({ data: { available: false }, error: null })
+      .mockResolvedValueOnce({
+        data: {
+          records: [{ id: "record-a" }],
+          obligations: [],
+          contracts: [],
+          facts: [],
+        },
+        error: null,
+      });
+    const { useBusinessVault, useVaultAccess } = await import("./useBusinessVault");
+    let latest: {
+      navigation: string;
+      content: string;
+      hasSnapshot: boolean;
+    } | null = null;
+    function Probe() {
+      const navigation = useVaultAccess();
+      const vault = useBusinessVault();
+      latest = {
+        navigation,
+        content: vault.state,
+        hasSnapshot: vault.snapshot !== null,
+      };
+      return null;
+    }
+    await act(async () => root.render(<Probe />));
+    await act(async () => Promise.resolve());
+    expect(latest).toEqual({
+      navigation: "error",
+      content: "error",
+      hasSnapshot: false,
+    });
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await act(async () => Promise.resolve());
+    await act(async () => Promise.resolve());
+    expect(latest).toEqual({
+      navigation: "allowed",
+      content: "allowed",
+      hasSnapshot: true,
+    });
+  });
 });

@@ -13,9 +13,11 @@ type VaultRpcClient = {
 const vaultClient = supabase as unknown as VaultRpcClient;
 const VAULT_ACCESS_DENIED_EVENT = "paige:vault-access-denied";
 
-function broadcastVaultDenied(tenantId: string) {
+type VaultAccessLoss = "denied" | "error";
+
+function broadcastVaultDenied(tenantId: string, reason: VaultAccessLoss) {
   window.dispatchEvent(
-    new CustomEvent(VAULT_ACCESS_DENIED_EVENT, { detail: { tenantId } }),
+    new CustomEvent(VAULT_ACCESS_DENIED_EVENT, { detail: { tenantId, reason } }),
   );
 }
 
@@ -29,7 +31,7 @@ export function useVaultAccess() {
   const { activeTenantId } = useTenantContext();
   const [result, setResult] = useState<{
     tenantId: string | null;
-    state: "loading" | "allowed" | "denied";
+    state: VaultLoadState;
   }>({ tenantId: activeTenantId, state: "loading" });
   const requestRef = useRef(0);
 
@@ -46,14 +48,21 @@ export function useVaultAccess() {
       const allowed = !error && data?.allowed === true;
       setResult({
         tenantId: activeTenantId,
-        state: allowed ? "allowed" : "denied",
+        state: allowed ? "allowed" : error ? "error" : "denied",
       });
-      if (!allowed) broadcastVaultDenied(activeTenantId);
+      if (!allowed) broadcastVaultDenied(activeTenantId, error ? "error" : "denied");
     };
     const onDenied = (event: Event) => {
-      if ((event as CustomEvent<{ tenantId?: string }>).detail?.tenantId === activeTenantId) {
+      const detail = (event as CustomEvent<{
+        tenantId?: string;
+        reason?: VaultAccessLoss;
+      }>).detail;
+      if (detail?.tenantId === activeTenantId) {
         requestRef.current += 1;
-        setResult({ tenantId: activeTenantId, state: "denied" });
+        setResult({
+          tenantId: activeTenantId,
+          state: detail.reason === "error" ? "error" : "denied",
+        });
       }
     };
     const onFocus = () => void checkAccess();
@@ -88,7 +97,12 @@ export function useBusinessVault() {
   const [error, setError] = useState<string | null>(null);
   const [canArchive, setCanArchive] = useState(false);
   const [uploadAvailable, setUploadAvailable] = useState(false);
+  const stateRef = useRef<VaultLoadState>("loading");
   const requestRef = useRef(0);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const load = useCallback(async () => {
     const request = ++requestRef.current;
@@ -109,10 +123,12 @@ export function useBusinessVault() {
         "Vault authorization could not be confirmed. No record details were returned.",
       );
       setState("error");
+      broadcastVaultDenied(activeTenantId, "error");
       return;
     }
     if (access.data?.allowed !== true) {
       setState("denied");
+      broadcastVaultDenied(activeTenantId, "denied");
       return;
     }
     setCanArchive(access.data?.can_archive === true);
@@ -155,27 +171,28 @@ export function useBusinessVault() {
       );
       if (cancelled || tenantRef.current !== activeTenantId) return;
       if (access.error || access.data?.allowed !== true) {
-        requestRef.current += 1;
-        setSnapshot(null);
-        setCanArchive(false);
-        setUploadAvailable(false);
-        setError(
-          access.error
-            ? "Vault authorization could not be confirmed. No record details were returned."
-            : null,
-        );
-        setState(access.error ? "error" : "denied");
-        broadcastVaultDenied(activeTenantId);
+        broadcastVaultDenied(activeTenantId, access.error ? "error" : "denied");
+        return;
       }
+      if (stateRef.current !== "allowed") void load();
     };
     const onDenied = (event: Event) => {
-      if ((event as CustomEvent<{ tenantId?: string }>).detail?.tenantId !== activeTenantId) return;
+      const detail = (event as CustomEvent<{
+        tenantId?: string;
+        reason?: VaultAccessLoss;
+      }>).detail;
+      if (detail?.tenantId !== activeTenantId) return;
       requestRef.current += 1;
       setSnapshot(null);
       setCanArchive(false);
       setUploadAvailable(false);
-      setError(null);
-      setState("denied");
+      const isError = detail.reason === "error";
+      setError(
+        isError
+          ? "Vault authorization could not be confirmed. No record details were returned."
+          : null,
+      );
+      setState(isError ? "error" : "denied");
     };
     const onFocus = () => void revalidateAccess();
     const onVisibility = () => {
@@ -196,7 +213,7 @@ export function useBusinessVault() {
       document.removeEventListener("visibilitychange", onVisibility);
       authListener.subscription.unsubscribe();
     };
-  }, [activeTenantId]);
+  }, [activeTenantId, load]);
 
   const upload = useCallback(
     async (body: FormData, signal?: AbortSignal) => {
