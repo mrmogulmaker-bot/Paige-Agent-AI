@@ -254,6 +254,19 @@ async function main() {
         if (theme === "dark") { await clickControl(page, "[data-theme-toggle]"); await settle(page); }
         const tag = `${theme}/${frame.name}`;
 
+        // — Route lifecycle · LOADING → READY on the SAME mounted SalesOps instance. The production
+        // adapters always begin here; starting every harness frame at ready missed the hook-order
+        // crash that blanked the live Sales route.
+        await clickData(page, "mode", "loading");
+        check(await page.locator('[aria-label="Loading sales operations"]').count() === 1,
+          `${tag}: Sales route exposes its real loading state`);
+        await clickData(page, "mode", "first-use");
+        await settle(page);
+        let lifecycle = await measure(page);
+        check(!lifecycle.crashed && lifecycle.soMounted,
+          `${tag}: Sales route survives loading-to-ready on one mount`);
+        check(pageErrors.length === 0, `${tag}: loading-to-ready raises no page error`, pageErrors.join(" | "));
+
         // — Command · FIRST USE (no terms, no processor): payment-path unavailable state.
         await clickData(page, "campaigns", "sparse");
         await clickData(page, "agreements", "none");

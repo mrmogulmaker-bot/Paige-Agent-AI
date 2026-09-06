@@ -979,6 +979,24 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
   // client name bound to a negotiated amount.
   React.useEffect(() => { setEditor(null); setEditing(null); setSuccess(""); setOfferSearch(""); setOfferPage(0); setTermSearch(""); setTermStatus("all"); setTermPage(0); }, [sales.tenantId, agreements.tenantId]);
 
+  // Hooks must run in the same order while the production adapters advance from loading to ready.
+  // Keeping this memo above every phase return prevents React from aborting the Sales route on the
+  // first successful read. The memo remains null until both commercial sources are ready.
+  const commercialReady = agreements.phase === "ready" && offers.phase === "ready";
+  const commercialError = agreements.phase === "error" || offers.phase === "error";
+  const model = React.useMemo(() => (commercialReady ? deriveSalesCommand({
+    agreements: agreements.agreements,
+    clients: agreements.clients,
+    offers: offers.offers,
+    referencedOffers: offers.referencedOffers,
+    orders: sales.orders,
+    ordersReadable: sales.ordersReadable,
+    deals,
+    stages,
+    processor: sales.processor,
+    processorUnrecognised: sales.processorUnrecognised,
+  }) : null), [commercialReady, agreements.agreements, agreements.clients, offers.offers, offers.referencedOffers, sales.orders, sales.ordersReadable, deals, stages, sales.processor, sales.processorUnrecognised]);
+
   if (sales.phase === "resolving") {
     return (
       <div className="campaigns-state" role="status">
@@ -1076,23 +1094,6 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
     note: "Catalog owns this record. Sales reads it and never keeps a second copy of the price.",
   });
 
-  // The honest Sales Command model — every figure derived from a real record (deriveSalesCommand).
-  // Null until both commercial reads are ready; the Command and Revenue views render a loading or
-  // error state rather than a partial figure.
-  const commercialReady = agreements.phase === "ready" && offers.phase === "ready";
-  const commercialError = agreements.phase === "error" || offers.phase === "error";
-  const model = React.useMemo(() => (commercialReady ? deriveSalesCommand({
-    agreements: agreements.agreements,
-    clients: agreements.clients,
-    offers: offers.offers,
-    referencedOffers: offers.referencedOffers,
-    orders: sales.orders,
-    ordersReadable: sales.ordersReadable,
-    deals,
-    stages,
-    processor: sales.processor,
-    processorUnrecognised: sales.processorUnrecognised,
-  }) : null), [commercialReady, agreements.agreements, agreements.clients, offers.offers, offers.referencedOffers, sales.orders, sales.ordersReadable, deals, stages, sales.processor, sales.processorUnrecognised]);
 
   // Route a move / open-work / ladder target to the REAL surface. No dead ends (§70).
   const go = (target) => {

@@ -97,17 +97,19 @@ vi.mock("./useSoloAgreements", async (importOriginal) => {
 let host: HTMLDivElement;
 let root: Root | null = null;
 
+const appAt = (path: string) => (
+  <MemoryRouter initialEntries={[path]}>
+    <Routes><Route path="/solo/:account/*" element={<GrowthHub />} /></Routes>
+  </MemoryRouter>
+);
+
 function renderAt(path: string) {
   if (root) act(() => root!.unmount());
   host?.remove();
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  act(() => root!.render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes><Route path="/solo/:account/*" element={<GrowthHub />} /></Routes>
-    </MemoryRouter>,
-  ));
+  act(() => root!.render(appAt(path)));
 }
 // Each Sales view is a Sales-local `?view=` param; command is the bare default.
 const salesPath = (view?: string) => `/solo/42/growth/sales${view ? `?view=${view}` : ""}`;
@@ -228,6 +230,16 @@ describe("§58 — behaviour that shipped on Sales and must survive the command-
     harness.sales.phase = "loading";
     render();
     expect(host.querySelector(".campaigns-skeleton")).not.toBeNull();
+  });
+
+  it("survives the production loading-to-ready transition without changing hook order", () => {
+    harness.sales.phase = "loading";
+    render();
+    expect(host.querySelector('[aria-label="Loading sales operations"]')).not.toBeNull();
+
+    harness.sales.phase = "ready";
+    expect(() => act(() => root!.render(appAt(salesPath())))).not.toThrow();
+    expect(host.textContent).toContain("Turn agreed value into received value");
   });
 });
 
