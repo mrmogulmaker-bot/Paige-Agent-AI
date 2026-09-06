@@ -34,7 +34,10 @@
 --       edited to null/non-number AFTER the reservation is recorded as a cap_unreadable_at_settlement anomaly
 --       (forcing escalate), never a silently-skipped breach check or a raise-on-cast. (A cap SNAPSHOT at
 --       reserve time would additionally immunize a valid-but-changed cap — PARKED: needs a receipt column + a
---       mid-flight-cap-change semantics decision, out of DARK M1-b scope.)
+--       mid-flight-cap-change semantics decision, out of DARK M1-b scope.) Round 3 (head e1302fc) — (e) the
+--       three action-COUNT caps (max_per_day/week/month) are cast to ::int downstream, and PostgreSQL ROUNDS,
+--       so a fractional 0.9 would become 1 and over-authorize; the shape loop now also requires them INTEGRAL
+--       and within int range (dollar caps stay fractional-OK).
 --
 --   • campaign_budget_usd       → FAIL-CLOSED-UNAVAILABLE. There is NO canonical durable campaign boundary:
 --       no campaigns table exists; campaign_briefs (20261225000000) is an owner-authored PLANNING record
@@ -208,6 +211,16 @@ BEGIN
       RETURN jsonb_build_object('ok', false, 'reason', 'cap_invalid', 'cap', _cap_key);
     END IF;
     IF (_g.caps->>_cap_key)::numeric < 0 THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'cap_invalid', 'cap', _cap_key);
+    END IF;
+    -- (Codex round-3 P1) The three action-COUNT caps are cast to ::int downstream, and PostgreSQL ROUNDS that
+    -- cast — so a fractional 0.9 would become 1 and permit an action against a sub-1 cap (over-authorization),
+    -- and a value above int range would overflow the cast. Require these three to be INTEGRAL and within int
+    -- range. (Dollar caps legitimately allow fractions and are not integrality-checked.) Reached only after
+    -- jsonb_typeof proved a number, so the ::numeric cast here is safe.
+    IF _cap_key IN ('max_per_day','max_per_week','max_per_month')
+       AND ( (_g.caps->>_cap_key)::numeric <> trunc((_g.caps->>_cap_key)::numeric)
+             OR (_g.caps->>_cap_key)::numeric > 2147483647 ) THEN
       RETURN jsonb_build_object('ok', false, 'reason', 'cap_invalid', 'cap', _cap_key);
     END IF;
   END LOOP;

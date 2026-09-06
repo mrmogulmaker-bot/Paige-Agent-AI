@@ -92,8 +92,15 @@
   M1-b scope):** a cap SNAPSHOT recorded at reserve time would additionally immunize a valid-but-CHANGED cap (needs a
   receipt column + a mid-flight-cap-change semantics decision). **§32 RE-PROVED after round 2 — PROOF_OK: B1..B18**,
   adding **B17** (valid client_period + null daily → `cap_invalid` on `daily_budget_usd`, no window written) and **B18**
-  (cap edited to null/string AFTER reserve → confirm ESCALATES, no silent breach-miss, no raise-on-string). Guards green:
-  `lint:migration-versions` (995, no reuse) · `lint:definer-fns` · `lint:managed-schema` · `lint:integration-registry`; §50/§63 clean.
+  (cap edited to null/string AFTER reserve → confirm ESCALATES, no silent breach-miss, no raise-on-string).
+  **CODEX PEER-GATE ROUND 3 (§39) on head `e1302fc` — ONE more P1:** the three action-COUNT caps
+  (`max_per_day`/`week`/`month`) are cast `::int` downstream and PostgreSQL ROUNDS, so a fractional `0.9` would
+  become `1` and over-authorize an action against a sub-1 cap (and a huge value would overflow the cast). The
+  round-2 shape loop only checked `>= 0`; it now ALSO requires the three count caps to be INTEGRAL and within int
+  range (`cap_invalid` + cap key), dollar caps unchanged (fractions OK). **§32 RE-PROVED after round 3 — PROOF_OK:
+  B1..B19**, adding **B19** (fractional `max_per_day` → `cap_invalid`, no window; a valid integer count cap still
+  enforces at its limit → `over_action_count_cap`). Guards green: `lint:migration-versions` (995, no reuse) ·
+  `lint:definer-fns` · `lint:managed-schema` · `lint:integration-registry`; §50/§63 clean.
   **PR #1027 (ready). OUTCOME: MERGING** (§32.a persisted-apply owed post-merge via `deploy-migrations`; authenticated drive
   owed to PR-3). Flip to MERGED + §32.a CONFIRMED post-merge.
 
