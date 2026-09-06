@@ -26,8 +26,11 @@ const MOUNT = path.resolve(import.meta.dirname, "harness/game-plan-mount");
 // Heights small enough that the grounded content (tall best-move card + priority path + foundation +
 // work-in-motion) overflows — matching the owner's real, over-full laptop viewport.
 const FRAMES = [
-  { name: "desktop-1440x680", width: 1440, height: 680, wide: true },
-  { name: "narrow-900x680", width: 900, height: 680, wide: false },
+  { name: "desktop-1440x680", width: 1440, height: 680 },
+  { name: "narrow-900x680", width: 900, height: 680 },
+  // Paige-dock-open, done FAITHFULLY (Codex #980 P1): a 1366px viewport keeps the real two-column
+  // path (media query keys on the viewport, not the 956px content column the dock leaves).
+  { name: "dock-open-1366vp-956content", width: 1366, height: 680, dock: 956 },
 ];
 
 const results = [];
@@ -68,9 +71,12 @@ async function stopTree(child) {
 function probe() {
   const tp = document.querySelector("[data-gp-tabpanel]");
   const gp = document.querySelector(".gp");
+  const b = document.body;
   const vh = window.innerHeight;
   const tpH = tp ? Math.round(tp.getBoundingClientRect().height) : -1;
   const gpH = gp ? Math.round(gp.getBoundingClientRect().height) : -1;
+  const bodyOX = b.scrollWidth - b.clientWidth;
+  const gpOX = gp ? gp.scrollWidth - gp.clientWidth : -1;
   // `.gp` taller than its container ⇒ the excess is clipped by the overflow:hidden ancestor and
   // no ancestor scrolls to reveal it — the owner's unreachable-content bug.
   const gpOverflowsParent = gpH > tpH + 1;
@@ -91,7 +97,7 @@ function probe() {
       lastBottom: r ? Math.round(r.bottom) : -1,
     };
   });
-  return { tpH, gpH, gpOverflowsParent, wide, vh, regions, rows: document.querySelectorAll(".gp-pp-row").length };
+  return { tpH, gpH, gpOverflowsParent, bodyOX, gpOX, wide, vh, regions, rows: document.querySelectorAll(".gp-pp-row").length };
 }
 
 (async () => {
@@ -111,9 +117,11 @@ function probe() {
       });
       const page = await ctx.newPage();
 
+      const dockQ = frame.dock ? `&dock=${frame.dock}` : "";
+
       // 1) Reproduce the bug: the plain-block tabpanel leaves `.gp` unbounded, so it grows taller
       //    than its container and the excess is clipped with no way to scroll to it.
-      await page.goto(`${BASE}?mode=grounded&theme=light&wrap=block`, { waitUntil: "load" });
+      await page.goto(`${BASE}?mode=grounded&theme=light&wrap=block${dockQ}`, { waitUntil: "load" });
       await page.waitForTimeout(450);
       const bug = await page.evaluate(probe);
       check(
@@ -122,17 +130,18 @@ function probe() {
         `gpH=${bug.gpH} tpH=${bug.tpH} overflows=${bug.gpOverflowsParent} vh=${bug.vh}`,
       );
 
-      // 2) Prove the fix: the flex-column tabpanel bounds `.gp` to its container, and every intended
-      //    scroll region can bring its bottom-most content into view — the buttons are reachable.
-      await page.goto(`${BASE}?mode=grounded&theme=light&wrap=flex`, { waitUntil: "load" });
+      // 2) Prove the fix: the flex-column tabpanel bounds `.gp` to its container, every intended
+      //    scroll region can bring its bottom-most content into view (buttons reachable), AND the
+      //    surface never scrolls horizontally (incl. the dock's narrow two-column content column).
+      await page.goto(`${BASE}?mode=grounded&theme=light&wrap=flex${dockQ}`, { waitUntil: "load" });
       await page.waitForTimeout(450);
       const fixed = await page.evaluate(probe);
       const allReachable = fixed.regions.every((r) => r.present && r.bottomReachable);
       const detail = fixed.regions.map((r) => `${r.sel}[canScroll=${r.canScroll} to=${r.scrolledTo} bottom=${r.lastBottom} reach=${r.bottomReachable}]`).join(" ");
       check(
-        fixed.rows > 0 && !fixed.gpOverflowsParent && allReachable,
-        `${frame.name} · flex(fix): .gp bounded, every region's bottom reachable`,
-        `gpH=${fixed.gpH} tpH=${fixed.tpH} overflows=${fixed.gpOverflowsParent} vh=${fixed.vh} ${detail}`,
+        fixed.rows > 0 && !fixed.gpOverflowsParent && allReachable && fixed.bodyOX <= 0 && fixed.gpOX <= 0,
+        `${frame.name} · flex(fix): .gp bounded, every region reachable, no h-overflow`,
+        `gpH=${fixed.gpH} tpH=${fixed.tpH} overflows=${fixed.gpOverflowsParent} bodyOX=${fixed.bodyOX} gpOX=${fixed.gpOX} wide=${fixed.wide} vh=${fixed.vh} ${detail}`,
       );
 
       await ctx.close();
