@@ -3871,3 +3871,14 @@ viewports in both themes. No session in this work holds a browser that can reach
 Solo surface, so the browser-driven live check is owed to the next capable session (Cowork/Chrome) —
 it is not claimed here. The rendering itself is the §28-frozen, Gate-1-approved prototype; what is
 owed is the authenticated in-app render of the ported surface, not a fresh design review.
+
+**Conflict check vs recorded decisions (all clear, §BRAIN contract):** the Mind surface renders NO
+`PaigeMark`/`PaigeSymbol` component (the retired orbital brand mark is not used — the Command-Mark
+decision is preserved; the orb is the Gate-1-approved data-viz, a different object from the logo);
+"Open PAIGE" uses the ONE existing workspace (no floating authenticated chat); Mind is READ-ONLY (it
+displays governed records, never writes Mind/Memory eligibility); tier visibility UNCHANGED — Solo +
+Sub-account already received Mind pre-PR (row above, PR #933), so this is a REDESIGN, not new
+sub-account delivery (no "explicit release" rule triggered). **Next owning workstream:** the
+Business-context + Client-relationships frontend read-hooks (to light those two `UNAVAILABLE/DEFERRED`
+domains); **first-read dependency:** `docs/handoff/solo-setup-business-context-spine-handoff.md` (the
+narrower safe-field projection contract — status + provenance only, never a raw value).

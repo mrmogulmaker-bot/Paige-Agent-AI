@@ -13,9 +13,24 @@
   and route to the parent record-list fallback with every record still reachable. Read-only surface — no Mind
   create/update/delete on any tier. Tier VISIBILITY unchanged (redesign of an existing surface, §66/§58): Solo +
   Sub-account + Enterprise see it, Agency/God/Client/Anon do not. Proof: 28 unit tests + full solo suite 1595
-  passing, `tsc` clean, eslint clean, headless env smoke `scripts/mind-orb-smoke.mjs`. **OWED (§32.c):**
-  authenticated live drive of the deployed subtab at the four viewports in both themes — no session here holds a
-  browser that can reach the authenticated Solo surface, so it is owed to the next capable session, not claimed.
+  passing, `tsc` clean, eslint clean, headless env smoke `scripts/mind-orb-smoke.mjs`.
+  **Proof status (explicit):** the three wired domains (Knowledge / Connected sources / Operating decisions) =
+  **LIVE** in code, proven by unit + build, but **PROOF OWED** on the authenticated runtime — §32.c live drive of the
+  deployed subtab at the four viewports in both themes is OWED (no session here holds a browser that can reach the
+  authenticated Solo surface; owed to the next capable session — Cowork/Chrome — not claimed). Business context +
+  Client relationships domains = **UNAVAILABLE in this view / DEFERRED** (governed store exists server-side; the
+  frontend read-hook is a fast-follow). Offers & services = **UNAVAILABLE** (catalog lives in Campaigns, not a
+  governed fact). No capability is implied LIVE because the orb renders — the render is the §28-frozen prototype;
+  the DATA states are as typed here.
+  **Conflict check vs recorded decisions (all clear):** renders NO `PaigeMark`/`PaigeSymbol` (the retired orbital
+  brand mark is not used — Command-Mark decision preserved); "Open PAIGE" uses the ONE existing workspace, no
+  floating chat; Mind is READ-ONLY (never writes Mind/Memory eligibility); tier visibility UNCHANGED — Solo +
+  Sub-account already received Mind pre-PR (ledger row PR #933), so this is a redesign, NOT new sub-account delivery.
+  **Next owning workstream:** the Business-context + Client-relationships frontend read-hooks (to light those two
+  domains from `business_context.readiness` + governed memory). **Dependency it must read FIRST:**
+  `docs/handoff/solo-setup-business-context-spine-handoff.md` (the safe-field projection contract — it is NARROWER
+  than a raw value; only status + provenance may surface), then this ledger row + `docs/brain/codebase-map.md`
+  "Solo Command Center governed-record surface".
   Ledger: `docs/doctrine/tier-matrix.md` "PAIGE Mind — the approved 3D knowledge orb"; PR #969.
 
 - **ARCHITECTURE: floating Paige chat is RETIRED from the authenticated platform (owner decision 2026-09-06)** —
