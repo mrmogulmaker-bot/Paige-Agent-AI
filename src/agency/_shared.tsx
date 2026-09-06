@@ -53,7 +53,7 @@ layers:I(<><path d="M12 3.5l8 4.2-8 4.2-8-4.2z"/><path d="M4 12l8 4.2 8-4.2M4 16
 swap:I(<><path d="M4 7.5h13M13.5 4l3.5 3.5-3.5 3.5"/><path d="M20 16.5H7M10.5 20L7 16.5l3.5-3.5"/></>),
 };
 
-export const Logo=({size=26})=>(<svg width={size} height={size} viewBox="0 0 32 32" fill="none"><ellipse cx="16" cy="16" rx="8.4" ry="8.4" stroke="var(--gold-bright)" strokeWidth="2.1"/><ellipse cx="16" cy="16" rx="14.5" ry="5.4" transform="rotate(-22 16 16)" stroke="var(--gold-bright)" strokeWidth="1.7" opacity=".8"/><circle cx="16" cy="16" r="3.1" fill="var(--gold-bright)"/></svg>);
+export const Logo=({size=26})=>(<svg width={size} height={size} viewBox="0 0 48 48" fill="none"><polygon points="21,13.6 30.5,13.6 21,34.4 11.5,34.4" fill="var(--gold-bright)" stroke="var(--gold-bright)" strokeWidth="3.2" strokeLinejoin="round"/><circle cx="34.5" cy="30.5" r="5.5" fill="var(--gold-bright)"/></svg>);
 export const Avatar=({name,size=28,tone})=>{const init=name.split(' ').map(w=>w[0]).slice(0,2).join('');const tones=['var(--violet)','var(--gold)','#2E7D8F','#8A5A9E','#3F7A4B'];const c=tone||tones[name.charCodeAt(0)%5];
 return <div style={{width:size,height:size,borderRadius:'50%',background:c,color:'#fff',display:'grid',placeItems:'center',fontSize:size*.36,fontWeight:600,flex:'none',letterSpacing:'.02em'}}>{init}</div>};
 

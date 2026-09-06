@@ -9,7 +9,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { PaigeConsoleSaveBar } from "./PaigeConsoleSaveBar";
 import { PaigeConsoleRail, PaigeConsoleRailMobile, type ConsoleSection, type RailCounts } from "./PaigeConsoleRail";
 import { PersonaSection } from "./sections/PersonaSection";
@@ -67,7 +67,7 @@ export function PaigeConsole({
         >
           <SheetHeader className="px-5 py-4 border-b bg-primary text-primary-foreground text-left space-y-2">
             <div className="flex items-center gap-2">
-              <PaigeMark className="h-6 w-6" />
+              <PaigeCommandMark className="h-6 w-6" />
               <SheetTitle className="text-primary-foreground">Customize Paige</SheetTitle>
             </div>
             <SheetDescription className="text-primary-foreground/70">

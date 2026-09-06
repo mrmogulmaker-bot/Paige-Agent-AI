@@ -16,7 +16,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Building2, LineChart, Wallet, ArrowUpRight, Info } from "lucide-react";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 import { GlyphPlate } from "@/components/ui/page";
 import { supabase } from "@/integrations/supabase/client";
@@ -60,7 +60,7 @@ export function PaigePlatformDesk() {
       <div className="sticky top-0 z-20 border-b bg-primary/[0.04] backdrop-blur supports-[backdrop-filter]:bg-primary/[0.04]">
         <div className="flex flex-col gap-3 px-4 py-2.5 md:flex-row md:items-center md:justify-between lg:px-6">
           <div className="flex min-w-0 items-start gap-3">
-            <PaigeMark className="mt-0.5 h-9 w-9 shrink-0" />
+            <PaigeCommandMark className="mt-0.5 h-9 w-9 shrink-0" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="truncate text-base font-semibold">Your Paige</h1>
@@ -113,7 +113,7 @@ export function PaigePlatformDesk() {
           // personalized on first paint (no generic-then-swap flash). Near-instant for a
           // logged-in operator (cached session).
           <div className="flex h-full items-center justify-center">
-            <PaigeMark className="h-10 w-10 animate-pulse opacity-70 motion-reduce:animate-none" />
+            <PaigeCommandMark plated={false} className="h-10 w-10 animate-pulse opacity-70 motion-reduce:animate-none" />
           </div>
         ) : (
           <PaigeAIChat

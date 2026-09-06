@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
-import paigeLogo from "@/assets/paige-logo-mark.png";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
@@ -90,12 +90,9 @@ export function Header({ autoHide = false }: { autoHide?: boolean }) {
     >
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-20 items-center justify-between">
-          <Link to="/" className="flex items-center">
-            <img
-              src={paigeLogo}
-              alt="Paige Agent AI"
-              className="h-12 md:h-14 w-auto"
-            />
+          <Link to="/" className="flex items-center gap-2.5">
+            <PaigeCommandMark className="h-11 md:h-12" label="Paige Agent AI" />
+            <span className="text-xl md:text-2xl font-bold tracking-tight text-foreground">Paige</span>
           </Link>
 
           <div className="hidden md:flex md:items-center md:space-x-8">

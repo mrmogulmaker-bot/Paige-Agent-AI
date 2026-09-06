@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -96,7 +96,7 @@ export default function Welcome() {
           animate={reduce ? undefined : { scale: [1, 1.06, 1] }}
           transition={reduce ? undefined : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
         >
-          <PaigeMark className="h-16 w-16" animated={!reduce} />
+          <PaigeCommandMark className="h-16 w-16" animated={!reduce} />
         </motion.div>
 
         {!timedOut ? (

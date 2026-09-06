@@ -23,7 +23,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { MailCheck, MailX, ShieldOff, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 
 type Status = "loading" | "valid" | "already" | "invalid" | "success" | "error";
 
@@ -90,7 +90,7 @@ const Unsubscribe = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
-        <PaigeMark className="mx-auto mb-5 h-11 w-11" />
+        <PaigeCommandMark className="mx-auto mb-5 h-11 w-11" />
 
         {status === "loading" && (
           <>

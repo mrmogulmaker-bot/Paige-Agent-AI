@@ -1,5 +1,29 @@
 # Decision Log — chronological one-liners
 
+- **BRAND: the orbital PaigeMark is RETIRED platform-wide; the Command Mark is the identity (owner ruling 2026-09-06, PR on branch claude/paige-social-subtab-redesign-kd6hy5)** —
+  the legacy orbital PaigeMark (gold orb + orbital ring + companion spark) AND the older blue "PAi" monogram
+  rasters are retired from every active product/public surface; the Command Mark (slash + orb) is the current
+  Paige identity. Keystone: `src/components/brand/PaigeCommandMark.tsx` — surface-agnostic (self-contained
+  theme-aware colours that resolve with OR without a `data-pg` shell, unlike the operator `CommandMark`),
+  API-compatible with the old PaigeMark (`className`/`animated`/`label`) plus `plated`. **Migrated LIVE:** 25
+  PaigeMark importers → PaigeCommandMark; PaigeSymbol's command branch; the inline orbital `Logo` in
+  `src/solo/_shared.tsx` + `src/agency/_shared.tsx`; the `index.html` pre-React splash; the landing Header /
+  ResetPassword / AppNav `<img>` logos; `public/favicon.png`, `pwa-192`, `pwa-512`, `og-image.jpg` regenerated
+  as the Command Mark. **Social** got an owner-authorised contrasting variation (indigo plate + gold slash/orb,
+  bulging glyph) — a local treatment, NOT a new logo. **Removed:** `src/components/brand/PaigeMark.tsx` + its
+  dead orbital keyframes (`paige-orbit-spin`/`-orb-breathe`/`-spark-drift`; `paige-halo-pulse` KEPT — the Studio
+  cutscene uses it) + 3 legacy monogram rasters. **Guard (backstops common return paths, not absolute):**
+  `scripts/ci/legacy-mark-lint.mjs` (`lint:legacy-mark` + self-test, wired in ci.yml) scans src/** + public/** +
+  index.html for the component/import/tag, distinctive hexes, orbital animation classes, and a re-drawn
+  tilted-ring <ellipse>; eslint `no-restricted-imports` bans the legacy paths. **PROOF status:** LIVE in code —
+  tsc ratchet 13→13, `vite build` green, guard PASS + self-test (19 cases), full suite 3569/3569, keystone
+  rendered Mineral+Obsidian AND under the app's `.dark` class with OS-light (plate correctly dark). Independent
+  §39/§5 review folded pre-merge (theme-signal BLOCKER, non-square MAJOR, guard-holes MAJOR all fixed). **PROOF OWED (§32.c):** owner live-drive of the authenticated
+  full-page in-shell render across surfaces. **OWED (ops, UNAVAILABLE from a code PR):** the Supabase-storage
+  email logo `email-assets/paige-logo-transparent.png` (used by ~11 transactional templates) needs a Command
+  Mark PNG uploaded to the storage bucket. **KEPT (not a mark):** `paige-ai-avatar.png` (Paige persona character).
+  Next owning workstream: whoever ships email/brand assets does the storage upload; any new brand surface reads
+  this entry + `docs/brain/glossary.md` (Command Mark) first.
 - **PAIGE Mind — the owner-approved 3D knowledge orb ported LIVE onto the Solo surface (2026-09-06, MVP mode)** —
   the §28-frozen, Gate-1-approved Three.js "knowledge orb" prototype (`docs/prototypes/command-center-mind-gate1.html`)
   is wired into the real `SoloMindWorkspace` as the Mind subtab's primary instrument. Engine promoted verbatim

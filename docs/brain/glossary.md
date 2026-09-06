@@ -148,42 +148,45 @@ PR #406). Build order was L1 → L4 → L2 → L5.
   "Blueprints" = the one-click vertical install layer (`docs/doctrine/paige-practice-blueprints…`).
 - **Vibe Studio** — the tenant creative surface (Campaigns tab): pages, funnels, forms, images, in one
   session (§19/§21/§22). `ProjectNavigator` = the project rail.
-- **Command Mark** — the console/operator brand mark (a slash and orb on a rimmed plate),
-  owner-approved 2026-08-22. Source of truth for the mark, wordmark, palette and motion sequence:
-  `../brand/paige-brand-identity.md`. Rollout scope is tenant + operator surfaces only.
-  **It is PARTIALLY PORTED and LIVE — via `src/operator/shell/CommandMark.tsx`, not `PaigeSymbol`.**
-  That component renders on the operator shell (`src/operator/shell/SlotRail.tsx`) and on the Solo /
-  agency / admin command centers (`src/components/tenant-shell/TenantCommandCenterShell.tsx`).
-  **But it is NOT the only copy.** Four files embed the slash-and-orb geometry independently
-  (verified 2026-09-06 — `grep "21,13.6 30.5,13.6" src`): `CommandMark.tsx` (the 38px rail plaque),
-  `operator/shell/CommandBar.tsx`, `operator/shell/spine/SpineHeader.tsx`, and
-  `operator/surfaces/relationships/SegmentsSurface.tsx`. None of the latter three is sourced from
-  `CommandMark.tsx`, and `SpineHeader`'s copy is DELIBERATE per its own header comment (CommandMark
-  renders the rail variant; the spine mark is a bare 26px glyph) — so do not "consolidate" it
-  without reading that comment first. **A change to the mark's geometry touches four files, not
-  one.** `OperatorSpine.tsx` imports only the `CommandMarkState` type, not the geometry.
-  Separately, the `PaigeSymbol territory="command"` migration is still outstanding — that one still
-  renders `PaigeMark` (`src/components/brand/PaigeSymbol.tsx`). Do not read either "the Command Mark
-  is live" or "the port has not happened" as true platform-wide; check what the surface in front of
-  you actually renders.
-- **PaigeMark** — the orbital orb + ring + spark + halo mark. **Current, not retired.** It is
-  imported DIRECTLY by roughly two dozen production surfaces — the marketing landing page
-  (`src/pages/PaigeHome.tsx`), auth and onboarding, the admin and agency layouts, Studio, and
-  `src/solo/social-command.tsx`, where an owner ruling on 2026-09-06 made it the required mark:
-  "stay to that one and that one only"
-  (`../evidence/ui-delivery/campaigns-social-header-compaction.md`). It is also the marketing site's
-  mark per `../design-references/cd-packs/super-admin-shell-v3/design-system-port.md` §3.
-  `PaigeMark.tsx` stays as the backward-compat path — the brand doc says do not rip it out.
-- **The pending `PaigeSymbol` swap is SMALLER than the brand doc implies.**
-  `../brand/paige-brand-identity.md` §2 holds an open owner ruling before Stage 3, resting on the
-  premise that swapping what `territory="command"` renders "changes the mark on every surface that
-  already renders it — including the marketing landing page," which is §28 approved-frozen.
-  **That premise is stale in this tree** (verified 2026-09-06): `PaigeSymbol` has only three
-  consumers and all three live under `src/prototype/`, while the landing page imports `PaigeMark`
-  directly and never goes through `PaigeSymbol`. So the swap cannot reach the landing page on its
-  own. Whether the landing page adopts the Command Mark remains an open OWNER decision — do not
-  resolve it by editing code; equally, do not treat it as a technical blocker on the `PaigeSymbol`
-  migration, because it is not one.
+- **Command Mark** — the CURRENT and authoritative Paige brand mark (a slash + an orb),
+  owner-approved 2026-08-22 and, per the owner ruling 2026-09-06, the Paige identity across the ACTIVE
+  product AND the public/marketing experience (this supersedes the earlier "tenant + operator surfaces
+  only" rollout scope). Source of truth for the mark, wordmark, palette and motion sequence:
+  `../brand/paige-brand-identity.md`. **Two component homes:** the operator
+  `src/operator/shell/CommandMark.tsx` (plate variant, coloured by `--pg`/`--cm` tokens, only resolves
+  inside a `data-pg` shell — renders on the operator shell `SlotRail.tsx` and on the Solo/agency/admin
+  command centers via `TenantCommandCenterShell.tsx`); and the surface-agnostic
+  `src/components/brand/PaigeCommandMark.tsx` (the keystone — self-contained theme-aware colours that
+  resolve WITH or WITHOUT a shell; renders anywhere — marketing/auth/chrome; API
+  `className`/`animated`/`label`/`plated`; consumed by the ~25 migrated surfaces + `PaigeSymbol`'s
+  command branch).
+  **The slash-and-orb geometry is embedded independently in EIGHT files** (verified 2026-09-06,
+  post-retirement — `grep "21,13.6 30.5,13.6" src`): the four OPERATOR copies — `operator/shell/CommandMark.tsx`
+  (the 38px rail plaque), `operator/shell/CommandBar.tsx`, `operator/shell/spine/SpineHeader.tsx`,
+  `operator/surfaces/relationships/SegmentsSurface.tsx` (none of the latter three is sourced from
+  `CommandMark.tsx`, and `SpineHeader`'s copy is DELIBERATE per its own header comment: rail variant vs.
+  the bare spine glyph — do NOT "consolidate" without reading that comment; `OperatorSpine.tsx` imports
+  only the `CommandMarkState` type, not the geometry) — plus the shared keystone
+  `components/brand/PaigeCommandMark.tsx` and the small inline copies in `solo/_shared.tsx`,
+  `agency/_shared.tsx`, and `solo/social-command.tsx`. **A geometry change touches all eight, not one.**
+  **Social** carries an owner-authorised contrasting local variation (indigo plate + gold slash/orb,
+  bulging glyph) — a local treatment, NOT a new logo.
+- **PaigeMark — RETIRED (owner ruling 2026-09-06).** The orbital orb + ring + companion spark + halo
+  mark — and the older blue "PAi" monogram rasters it replaced — is retired and PROHIBITED from active
+  product/public surfaces; `src/components/brand/PaigeMark.tsx` is DELETED. It was formerly imported
+  DIRECTLY by ~two dozen production surfaces (marketing landing `src/pages/PaigeHome.tsx`, auth &
+  onboarding, the admin + agency layouts, Studio, `src/solo/social-command.tsx`) — ALL migrated to the
+  Command Mark (`PaigeCommandMark`, and `PaigeSymbol`'s command branch now renders it). The 2026-09-06
+  Social ruling "stay to that one and that one only" was CORRECTED the same day: the one mark is the
+  Command Mark, not the orbital PaigeMark. Guard: `lint:legacy-mark`
+  (`scripts/ci/legacy-mark-lint.mjs` — scans `src/**` + `public/**` + `index.html` for the
+  component/import/tag, the distinctive orbital hexes, the orbital animation classes, and a re-drawn
+  tilted-ring `<ellipse>`) + eslint `no-restricted-imports` on the legacy import paths. See decision-log
+  2026-09-06 (BRAND) + `../evidence/ui-delivery/legacy-mark-retirement-command-mark.md`.
+  **KEPT (not a mark):** `src/assets/paige-ai-avatar.png` (the Paige persona character). **Known
+  archival exception:** descriptive code COMMENTS in the Studio cutscene primitives + a stale comment in
+  the locked operator `CommandMark.tsx` still say "PaigeMark" — harmless prose drift, not a live render;
+  the guard does not (and must not) trip on the bare word in a comment.
   ("Illuminated Precision" is a superseded label; do not reintroduce it.) `PaigeScene` = the landing
   3D hero (three.js), a separate thing.
 - **MMA / PME** — Mogul Maker Academy / Project Mogul Enterprise: the owner's **tenant** vertical

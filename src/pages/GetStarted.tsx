@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageShell, SectionCard, EmptyState } from "@/components/ui/page";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 
 /**
  * /get-started?invite=<token> — the PUBLIC invite-consume page (B-Platform-v2).
@@ -123,7 +123,7 @@ export default function GetStarted() {
           transition={{ duration: 0.35 }}
         >
           <div className="mb-6 flex items-center justify-center gap-2.5">
-            <PaigeMark className="h-9 w-9" animated={!reduce} />
+            <PaigeCommandMark className="h-9 w-9" animated={!reduce} />
             <span className="font-display text-lg font-semibold text-white">Paige</span>
           </div>
 

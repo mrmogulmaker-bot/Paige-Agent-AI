@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 import { operatorTarget } from "@/lib/auth/operatorTarget";
@@ -122,7 +122,7 @@ export default function OperatorLogin() {
     <div className="min-h-dvh flex items-center justify-center px-5 py-16" style={theme}>
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center text-center mb-8">
-          <PaigeMark className="h-11 w-11 mb-4" />
+          <PaigeCommandMark className="h-11 w-11 mb-4" />
           <div className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[#EBB94C]">
             <ShieldCheck className="w-3.5 h-3.5" /> God View · Operator Access
           </div>
