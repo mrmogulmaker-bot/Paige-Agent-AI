@@ -32,7 +32,13 @@ import { dirname, join, relative } from "node:path";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const EXEMPT = /legacy-mark-exempt:/;
 
-/** Signals unique to the RETIRED orbital mark. Each: [label, regex, hint]. */
+/**
+ * Signals unique to the RETIRED orbital mark. Each: [label, regex, hint, crossLine?].
+ * `crossLine` marks a MULTI-ATTRIBUTE tag rule whose match can legitimately span physical lines
+ * (its `[^>]*` / `\s*` already cross newlines); those get the extra full-text pass in scanText.
+ * The single-token rules (hex, class, import, JSX tag, component decl) can only occur on one line,
+ * so they need no cross-line pass.
+ */
 const RULES = [
   ["retired orbital gradient stop (#FCE7B6)", /#FCE7B6/i, "the retired PaigeMark orb highlight — use PaigeCommandMark / the gold tokens"],
   ["retired orbital gradient stop (#FFF4D8)", /#FFF4D8/i, "the retired PaigeMark spark highlight — use PaigeCommandMark / the gold tokens"],
@@ -42,7 +48,7 @@ const RULES = [
   ["retired PaigeMark JSX tag", /<PaigeMark[\s/>]/, "render <PaigeCommandMark /> instead"],
   ["import of the retired PaigeMark module", /(?:brand\/PaigeMark|\.\/PaigeMark)['"]/, "import { PaigeCommandMark } from \"@/components/brand/PaigeCommandMark\""],
   ["re-declared PaigeMark component", /\b(?:function|const)\s+PaigeMark\b/, "the orbital PaigeMark is retired — do not re-create it; use PaigeCommandMark"],
-  ["re-drawn orbital ring (rotated stroked ellipse)", /<ellipse\b[^>]*\btransform\s*=\s*["']\s*rotate/i, "the retired orbital mark's tilted-ring geometry — do not re-draw it; use PaigeCommandMark"],
+  ["re-drawn orbital ring (rotated stroked ellipse)", /<ellipse\b[^>]*\btransform\s*=\s*["']\s*rotate/i, "the retired orbital mark's tilted-ring geometry — do not re-draw it; use PaigeCommandMark", true],
 ];
 
 const TEXT_EXT = /\.(tsx?|jsx?|css|scss|html|svg)$/i;
@@ -59,11 +65,14 @@ function* walk(dir) {
 }
 
 /**
- * Scan one file's TEXT. Two passes, both honouring a per-line `legacy-mark-exempt:` marker:
- *   1) per-line — precise line numbers;
- *   2) across-lines — the NON-exempt lines joined + whitespace-collapsed, so a multi-attribute tag
- *      split over several physical lines (e.g. an `<ellipse>` whose `transform="rotate(...)"` is on a
- *      later line) is reconstructed and matched. A rule already caught per-line is not re-reported.
+ * Scan one file's TEXT. Two passes, both honouring a `legacy-mark-exempt:` marker:
+ *   1) per-line — every rule, precise line numbers, a marker on that line opts the line out;
+ *   2) cross-line — only the `crossLine` (multi-attribute tag) rules, matched against the FULL text
+ *      so a tag split over several physical lines is caught (`[^>]*`/`\s*` already span newlines).
+ *      Exemption is honoured at the TAG level: a `legacy-mark-exempt:` marker on ANY physical line
+ *      the matched tag occupies — from the line of the match through the line bearing its closing
+ *      `>`, each checked IN FULL — suppresses it. So a marker on the opening line, the transform
+ *      line, or in a trailing comment on the closing line all hold (Codex #996 P2).
  * Returns [{ line, label, hint }]; line === 0 means "matched across lines".
  */
 function scanText(text) {
@@ -76,9 +85,17 @@ function scanText(text) {
       if (re.test(line)) { offenders.push({ line: i + 1, label, hint }); hitPerLine.add(label); }
     }
   });
-  const flat = lines.filter((l) => !EXEMPT.test(l)).join(" ").replace(/\s+/g, " ");
-  for (const [label, re, hint] of RULES) {
-    if (!hitPerLine.has(label) && re.test(flat)) offenders.push({ line: 0, label: `${label} (across lines)`, hint });
+  const lineOf = (idx) => text.slice(0, idx).split(/\r?\n/).length - 1; // 0-based physical line
+  for (const [label, re, hint, crossLine] of RULES) {
+    if (!crossLine || hitPerLine.has(label)) continue; // per-line already reported single-line hits
+    const m = re.exec(text);
+    if (!m) continue;
+    const gt = text.indexOf(">", m.index);
+    const tagEnd = gt === -1 ? text.length : gt + 1;
+    // the physical lines the tag occupies, checked in full — a marker in a trailing comment on the
+    // closing line counts, matching the documented "exempt anywhere in the tag holds".
+    if (lines.slice(lineOf(m.index), lineOf(tagEnd) + 1).some((l) => EXEMPT.test(l))) continue;
+    offenders.push({ line: 0, label: `${label} (across lines)`, hint });
   }
   return offenders;
 }
@@ -148,14 +165,21 @@ function selfTest() {
     if (fires(s)) fails.push(`should NOT fire but did: ${s}`);
   }
 
-  // Scan-level cases — the file-scan behaviour (cross-line reconstruction + per-line EXEMPT), not
+  // Scan-level cases — the file-scan behaviour (cross-line reconstruction + tag-level EXEMPT), not
   // just the regexes. A rotated <ellipse> whose `transform` sits on a LATER line must still be caught,
-  // and a per-line exempt marker on any line of the tag must still hold.
+  // and an exempt marker on ANY line of the tag (opening, transform, OR closing) must suppress it.
   const scanCases = [
     // a re-drawn orbital ring split across lines, token-coloured (no banned hex/class) — must FIRE
     ['<ellipse cx="16" cy="16" rx="14.5" ry="5.4"\n  transform="rotate(-22 16 16)"\n  stroke="var(--gold-bright)" fill="none" />', true],
-    // same tag, but the rotate line carries an exempt marker — must NOT fire
-    ['<ellipse cx="16" cy="16" rx="14.5" ry="5.4"\n  transform="rotate(-22 16 16)" stroke="var(--gold)" /> <!-- legacy-mark-exempt: archival ring -->', false],
+    // exempt marker on the transform line — must NOT fire
+    ['<ellipse cx="16" cy="16" rx="14.5" ry="5.4"\n  transform="rotate(-22 16 16)" /* legacy-mark-exempt: archival */\n  stroke="var(--gold)" />', false],
+    // exempt marker in a TRAILING COMMENT on the closing line, after the transform (Codex #996 P2) — must NOT fire
+    ['<ellipse cx="16" cy="16" rx="14.5" ry="5.4"\n  transform="rotate(-22 16 16)"\n  stroke="var(--gold)" />  <!-- legacy-mark-exempt: archival ring -->', false],
+    // exempt marker on the OPENING line, before the transform — must NOT fire
+    ['<ellipse cx="16" cy="16" data-note="legacy-mark-exempt: archival ring"\n  transform="rotate(-22 16 16)"\n  stroke="var(--gold)" />', false],
+    // exempt marker on a SEPARATE line the tag does NOT occupy (after its closing />) — must FIRE
+    // (an exemption must be ON the tag, matching the strict per-line model)
+    ['<ellipse cx="16" cy="16"\n  transform="rotate(-22 16 16)"\n  stroke="var(--gold)" />\n<!-- legacy-mark-exempt: not on the tag -->', true],
     // a plain (non-rotated) ellipse split across lines — must NOT fire
     ['<ellipse cx="24" cy="24" rx="18" ry="7.5"\n  fill="none" stroke="var(--border)" />', false],
     // a banned hex split onto its own line is still caught per-line — must FIRE
