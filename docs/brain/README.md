@@ -230,6 +230,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/design-references/OPERATOR-COMMAND-CENTER-IA.md` | Operator Command Center surface hierarchy | Command-center IA |
 | `docs/design-references/STUDIO-VISUAL-QA-HANDOFF.md` | Studio visual-QA handoff (Chrome MCP) | Studio visual QA |
 | `docs/design-references/gallery/{attio,cal-com,framer-marketing,linear,notion,retool,stripe-dashboard,superhuman,vercel-dashboard}/{README,SCREENSHOTS}.md` | Per-reference taste annotations + screenshot capture lists | Comparing a surface to best-in-class |
+| `docs/design-references/prototypes/solo-business-game-plan-strategy-desk.html` (+ `…-GATE1.md`) | Throwaway Gate 1 prototype — reimagines the Solo Business Game Plan as the owner's strategy desk (Systems Check demoted to a supporting dependency; horizon navigator; Plan-with-Paige propose→approve loop; owner+Paige-editable, swipe-away "living" areas). Read-only, mocked writes, fonts-only network. **DEFERRED — awaiting owner Gate 1 approval; nothing shipped.** Delete/absorb after approval | Gate 1 review of the Business Game Plan reimagination only |
 
 ## Comms index (docs/comms/*)
 

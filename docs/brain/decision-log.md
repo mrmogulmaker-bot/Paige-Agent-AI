@@ -1,5 +1,53 @@
 # Decision Log — chronological one-liners
 
+- **RULING: the current Command Mark replaces the retired orbital PaigeMark (owner, 2026-09-06)** —
+  the owner ruled the Command Mark (champagne slash + detached orb, `docs/brand/paige-brand-identity.md`,
+  owner-approved 2026-08-22) is now the current brand mark; the orbital PaigeMark (orb + ring + spark +
+  halo, `PaigeMark.tsx`) is RETIRED. This resolves the "Open ruling required before Stage 3" noted in
+  `paige-brand-identity.md` §2. **Not executed in production here:** `PaigeSymbol territory="command"`
+  still renders the orbital `PaigeMark`, and swapping it changes the mark on every surface including the
+  §28-approved-frozen marketing landing page — that production swap + the brand-doc status update is a
+  SEPARATE brand/`PaigeSymbol` workstream (do it, verify the frozen surfaces, THEN mark the doc resolved,
+  so the doc never claims resolved while code renders the old mark). The Business Game Plan strategy-desk
+  prototype (below) already uses the Command Mark for its brand plate.
+- **Business Game Plan → Strategy-Desk reimagination — Gate 1 PROTOTYPE ONLY, nothing shipped
+  (2026-09-06, branch `claude/business-game-plan-ui-rxuju3`, PR pending)** — STATUS: **DEFERRED /
+  PROOF OWED, awaiting owner Gate 1 approval.** No production `src/`/schema/route/contract/deploy
+  changed; the shipped Business Game Plan (#952/#973/#980) is unchanged and still LIVE. Owner ruled
+  the shipped page reads as a Systems-Check-derived readiness/task list (confirmed from code: its
+  priority engine in `useSoloGamePlan.ts` turns a `status:fail severity:blocking` finding into the
+  "Top move · blocked" card) and commissioned a reimagination as the owner's **strategic operating
+  desk**. Deliverable is a throwaway, read-only Flow-Prototype:
+  `docs/design-references/prototypes/solo-business-game-plan-strategy-desk.html` (+ Gate 1 package
+  `…-GATE1.md`). DIRECTION captured: strategy is the spine (Plan Brief · Strategic Pillars/Plays with
+  campaign-strategy-as-a-play · Mission Portfolio · Decision & Opportunity desk), **Systems Check
+  DEMOTED to a compact collapsible "Plan dependencies"** (never the backbone), a horizon navigator
+  (annual/half/quarter/cycle/season/campaign), the **Plan-with-Paige propose→approve loop** (docked
+  Paige rail — NOT a floating chat, consistent with the one-tenant-aware-workspace/#981 rule), a
+  governed-memory alignment indicator + revision history, and every value carries a source class
+  (fact/your-direction/Paige-suggests/assumption/source-unavailable/proof-owed). **Owner ruling
+  2026-09-06:** none of these areas are locked blocks — BOTH owner and Paige can edit/overwrite any
+  area, plus a mobile-style **swipe-away** interaction (Decision desk = swipe deck; missions =
+  swipe-to-dismiss; edit affordance on every area; keyboard/button alternatives for a11y). Ports the
+  shipped `.paige-solo` design system verbatim (§00 — no invented visual direction) and uses the
+  current **Command Mark** (slash+orb) per `docs/brand/paige-brand-identity.md`, not the retired
+  orbital PaigeMark or a "P" letter. Reviewed by 3 independent adversarial passes (truthfulness ·
+  WCAG 2.2 AA · IA-fidelity/collision) — all FIX-THEN-SHIP, findings integrated (Northwind second
+  tenant so the workspace-switch state truly shows no cross-tenant bleed §51; overlays moved inside
+  `.paige-solo` for token/theme resolution; collapsed-detail visibility; icon-only + inline-link +
+  send controls made keyboard-operable; static Command-Center nav instead of a malformed tablist).
+  Render-verified 50/50 (15 states × 4 Solo viewports × 2 themes × Paige open/closed; no overflow, no
+  nested `<button>`, no JS errors). CONTRAST MEASUREMENTS handed to Claude Design (§00 — shipped
+  tokens, not changed here): `--ink-3` on `--surface`/`--surface-sunk` ≈4.1/3.6:1 (light) and ≈4.36:1
+  (dark) fails AA 4.5:1 for ~11–13px body text; `--warn` on `--warn-tint` ≈3.5:1 (light). COLLISION:
+  **#975 Solo Trust Compass (open, non-draft)** edits `CommandCenter.tsx` TABS + `tierBranches.ts` —
+  the production build must stay INSIDE the `plan` tabpanel and coordinate, never both edit the TABS
+  array. NEXT OWNER: production Slice A (read-only strategy spine, in-place replacement of
+  `useSoloGamePlan`/`SoloGamePlanWorkspace`) **only after** owner Gate 1 approval; it will flip the
+  master-doc §4 line + tier-matrix ledger when it ships (nothing to update there now — nothing
+  shipped). NET-NEW contracts named (not built): a first-class strategic-plan store + pillars/plays +
+  strategy-horizon typing + plan draft/revision store + the Mission System (`campaign_briefs.mission_id`
+  is a reserved, unwritten column — no store exists).
 - **Campaigns → Overview redesigned as the Campaign Command Desk + a tenant-safe Campaign Brief
   foundation (2026-09-05, PR #970 — RC, pending merge approval)** — owner-approved the prototype
   (`docs/prototypes/campaigns-overview.html`), then built production. Replaces the "Campaign state

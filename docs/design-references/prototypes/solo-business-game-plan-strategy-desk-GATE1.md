@@ -155,13 +155,37 @@ Design's call — the owner's Gate 1 approval IS the design + intended-function 
 
 - Headless Chromium render pass **50/50**: all 15 states render with no crash and **zero horizontal
   overflow** at all four Solo viewports (1536×770 · 1366×768 · 1024×768 · 900×1000) × Mineral/Obsidian ×
-  Paige open/closed; overlays open/trap-focus/Escape-close; pillar/mission fold-outs; **swipe deck advances**;
-  **mission archive removes**; **edit drawer opens**; **no nested `<button>`**; reduced-motion honored; **no
-  JS errors**. Independent adversarial review (truthfulness · WCAG 2.2 AA · IA-fidelity/collision) —
-  findings integrated (see PR).
+  Paige open/closed; overlays open/trap-focus/Escape-close and are theme-aware (asserted: dark `--surface`
+  resolves inside the app); pillar/mission fold-outs; **swipe deck advances**; **mission archive removes**;
+  **edit drawer opens**; **no nested `<button>`**; reduced-motion honored; **no JS errors**.
+- **Three independent adversarial reviews run and integrated** (§1/§5/§39 + owner-required): truthfulness/
+  source-boundary, WCAG 2.2 AA accessibility, IA-fidelity/Systems-Check-duplication/collision — all returned
+  FIX-THEN-SHIP (no blockers). Integrated: a distinct second tenant (Northwind Studio) so the
+  workspace-switch state truthfully shows no cross-tenant bleed (§51); overlays/toast moved inside
+  `.paige-solo` so tokens + theme resolve; collapsed accordion/dependency detail hidden from the tab order
+  (not just clipped); the send control + inline "link" actions made real keyboard-operable buttons; the
+  Command-Center strip made a static nav (Trust Compass reserved + `disabled`) instead of a malformed
+  tablist; dialog `aria-labelledby`; reduced-motion also disables transitions under the OS setting; focus
+  restored after every in-desk re-render; Mission Portfolio keeps its "Prototype / net-new store" label in
+  every state; "Active mission" relabeled off the Fact class; a "Your direction" decision item added so all
+  six source classes are exercised; the campaign play carries its "Paige authorized to" field; developer
+  jargon in visible copy plain-languaged; the internal "PR #975" tooltip removed. Also switched the brand
+  plate to the current **Command Mark** (slash+orb, `docs/brand/paige-brand-identity.md`), not the retired
+  orbital PaigeMark.
 - **UNVERIFIED (honest, §32):** this is a self-contained prototype, not the deployed authenticated Solo
   surface; production data composition, real RLS/tenant behavior, and an authenticated live drive are owed
   to the production build. A 400%/320px browser-zoom pass is owed.
+
+## 9a. Measurements handed to Claude Design (§00 — CC reports, CD decides)
+
+These are facts about the **shipped `.paige-solo` tokens** the prototype ports verbatim; CC did not change
+the approved palette. They apply to production wherever these tokens carry small text:
+- `--ink-3` on `--surface` ≈ **4.1:1** (light) and on `--surface-sunk` ≈ **3.6:1**; ≈ **4.36:1** (dark) —
+  below WCAG AA 4.5:1 for ~11–13px body text (used by notes, field labels, captions, meta lines).
+- `--warn` on `--warn-tint` ≈ **3.5:1** (light) — below 4.5:1 for the small "Assumption"/"Paused"/freshness
+  chips.
+  Recommendation is Claude Design's call (e.g. darken `--ink-3`/`--warn` in light, lighten in dark). Not a
+  CC change.
 
 ## 10. The one owner decision
 
