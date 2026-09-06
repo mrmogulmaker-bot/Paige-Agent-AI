@@ -350,4 +350,3 @@ exception when others then
 end$$;
 revoke all on function public.execute_pipeline_deal_move_as_paige(uuid,uuid,jsonb,text,text) from public,anon,authenticated;
 grant execute on function public.execute_pipeline_deal_move_as_paige(uuid,uuid,jsonb,text,text) to service_role;
-
