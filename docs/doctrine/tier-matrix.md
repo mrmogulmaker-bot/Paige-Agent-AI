@@ -372,9 +372,13 @@ until an explicit release. No inline `account_type` gate (lint:tier-features cle
 
 **Recorded honestly (§13/§32.c):** **Solo = RC (LIVE-pending)**; **sub-account = DEFERRED (not delivered)**.
 Code-complete and covered by unit + jsdom-render tests (the risk-class copy is drift-guarded against
-`_shared/action-risk.ts`; the effective/ceiling/held-back derivation, tenant-bound reads, the write-serializer
-failure paths, accessible `role=slider` knobs incl. keyboard-normalise, honest read/empty/error/forbidden
-states, the Solo-only tab gate + sub-account redirect, and the routing round-trip are all asserted); the
+`_shared/action-risk.ts`; the effective/ceiling/held-back derivation, tenant-bound reads — incl. the
+pending-actions read now scoped to the VIEWED tenant so the global-admin operator escape can't surface
+other tenants' actions (§9), and the `resolve_tool_autonomy` stale-read guard added in migration
+`20261227000000` (§32.a persisted-apply owed on merge) — the write-serializer failure paths, accessible
+`role=slider` knobs incl. keyboard-normalise, honest read/empty/error/forbidden states, the undispatched
+containment tombstones kept OFF the surface (§70.1), the Solo-only tab gate + sub-account redirect, and the
+routing round-trip are all asserted); the
 production build is green. The **authenticated live-drive is OWED** — a real Solo-admin session turning a knob
 and confirming the `tenant_tool_autonomy` write persists — because this build session is headless (no browser,
 §32.c). **Known limitation (CD/product follow-up, §00):** the pending-decisions preview routes to Paige

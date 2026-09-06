@@ -64,9 +64,13 @@ describe("pending decisions read the real action bus and route to the one Paige 
     // so it passed with every call site deleted). Counting the actual invocations is what
     // distinguishes wiring from mentioning it. The two false-affordance modals (TcApprove/TcEscalate)
     // are gone; the pending count is now read ONCE, on the page, and each item routes to Paige.
-    const calls = src.match(/useSoloPendingActions\(\)/g) ?? [];
+    // Matches the invocation regardless of its argument — the hook is now called with the viewed
+    // workspace (`accountEpoch`) so the read is tenant-scoped (§9), not with empty parens.
+    const calls = src.match(/useSoloPendingActions\(/g) ?? [];
     expect(calls.length).toBe(1);
     expect(src).toContain('from "./data/useSoloPendingActions"');
+    // And it is scoped to the viewed workspace, never an unscoped read.
+    expect(src).toMatch(/useSoloPendingActions\(accountEpoch/);
   });
 
   it("routes the decision to the one Paige chat, not a second approve button (§18/§70.1)", () => {

@@ -604,7 +604,7 @@ export function SocialCommand({ campaigns, onOpenStudio, onAskPaige, onOpenCompa
   const social = useSocialCommand();
   // Owned here rather than lifted into GrowthHub: the other five Campaigns tabs would otherwise pay
   // for two reads they never render.
-  const pending = useSoloPendingActions();
+  const pending = useSoloPendingActions(social.tenantId ?? null); // §9 — scope to the viewed workspace
   const trust = useSoloTrust(social.tenantId);
   const [recording, setRecording] = React.useState(false);
   const opener = React.useRef(null);

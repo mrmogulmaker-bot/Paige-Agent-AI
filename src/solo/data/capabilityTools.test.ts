@@ -49,9 +49,18 @@ describe("capabilityTools — no drift from the action-risk policy (§18)", () =
     }
   });
 
-  it("the deliberately-unmapped catalogue tools are indeed unclassified phantoms", () => {
+  it("the deliberately-unmapped catalogue tools are unclassified phantoms OR undispatched tombstones", () => {
+    // Two reasons a catalogue tool stays off the Solo knobs: `pipeline_create` / `pipeline_add_stage`
+    // are UNCLASSIFIED phantoms; `marketplace_install` / `marketplace_uninstall` / `n8n_delete_workflow`
+    // are CLASSIFIED containment tombstones that no runtime dispatches (lint-exempted in
+    // action-risk-lint) — a knob for either would be a §70.1 false affordance, so both are excluded.
+    const TOMBSTONES = new Set(["marketplace_install", "marketplace_uninstall", "n8n_delete_workflow"]);
     for (const tool of UNMAPPED_CATALOGUE_TOOLS) {
-      expect(classifyAction(tool)).toBe("unclassified");
+      if (TOMBSTONES.has(tool)) {
+        expect({ tool, unclassified: classifyAction(tool) === "unclassified" }).toEqual({ tool, unclassified: false });
+      } else {
+        expect({ tool, class: classifyAction(tool) }).toEqual({ tool, class: "unclassified" });
+      }
     }
   });
 

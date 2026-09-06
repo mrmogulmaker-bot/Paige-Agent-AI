@@ -88,9 +88,21 @@
   (per-`paige_action` deep-link into the chat has no backend seam; only 4 of N shown) — Codex flagged both as
   P2; both are Claude-Design / product-flow decisions (in-surface copy, layout, a new routing seam), NOT
   CC-implementable, so they are routed as design follow-ups, not silently redesigned. The core governed control
-  (the knobs writing `set_tool_autonomy`) is unaffected. Reviewed through Codex rounds 2–5 (tenant-bound reads
+  (the knobs writing `set_tool_autonomy`) is unaffected. Reviewed through Codex rounds 2–6 (tenant-bound reads
   incl. the catalogue read, full write-authority predicate, per-tool write serialization + failure paths,
   cancelled-drag discard, keyboard-normalise a mixed domain, removed unsupported chat claim).
+  **Round-6 §9/§70.1 fixes (real, CC-actionable — NOT design):** (1) **P1 §9 pending-actions cross-tenant leak** —
+  `useSoloPendingActions` read `paige_actions` UNSCOPED, and `pa_tenant_staff_read`'s `OR has_role(auth.uid(),'admin')`
+  is a GLOBAL (tenant-agnostic, §53/§59) operator escape, so a platform-operator act-as / any global-admin saw OTHER
+  tenants' action titles on the viewed Compass. Fixed: the hook takes the viewed tenant + filters `.eq('tenant_id', …)`;
+  a null workspace runs NO query. §37 producer inventory — ALL 3 callers now scope: compass (`accountEpoch`),
+  `useSoloGamePlan` (`workspaceId`), `social-command` (`social.tenantId`). (2) **P2 §70.1 tombstone knobs** —
+  `marketplace_install`/`marketplace_uninstall`/`n8n_delete_workflow` are lint-exempted undispatched containment
+  tombstones; mapping them rendered working-looking knobs that govern nothing → removed to `UNMAPPED_CATALOGUE_TOOLS`.
+  (3) **P2 §9 ceiling probe** — `resolve_tool_autonomy` silently discarded `_tenant_id` for non-owners (no mismatch
+  guard, unlike set/list), so the round-2 ceiling binding could not reject a stale read. Migration `20261227000000`
+  adds the same guard (safe across all 5 callers — the chat gate wraps it in try/catch → safe 'confirm' default).
+  **§32.a persisted-apply proof of that migration is OWED on merge (deploy-migrations CI); §32.c multi-workspace live proof owed.**
   **Next owning workstream:** (1) the §32.c authenticated Solo live-drive (browser-capable session); (2) a CD/product
   decision on the pending-decisions preview (deep-link seam + overflow); (3) any future explicit sub-account release
   (flip `trust_compass` into SUB_ACCOUNT_FEATURES + a §51 sub-account tier verification). Dependency to read first:

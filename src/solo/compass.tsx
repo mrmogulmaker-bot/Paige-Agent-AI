@@ -443,7 +443,7 @@ const gov=useSoloToolGovernance(accountEpoch);
 // The active workspace, plumbed in as `accountEpoch`, re-keys every read on a switch and
 // invalidates anything in flight, so no previous workspace's row survives even for a frame.
 const activity=useSoloActivityFeed(accountEpoch);
-const pending=useSoloPendingActions();
+const pending=useSoloPendingActions(accountEpoch??null); // §9 — scope the pending read to the VIEWED workspace
 const{depts,configured:trustConfigured}=useTrustDepartments(accountEpoch);
 const[open,setOpen]=React.useState(null);
 const[full,setFull]=React.useState(null);

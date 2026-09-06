@@ -126,7 +126,8 @@ export const TOOL_MAP: Readonly<Record<string, { capability: CapabilityKey; risk
   n8n_create_workflow: { capability: "autos", risk: "high" },
   n8n_update_workflow: { capability: "autos", risk: "high" },
   n8n_archive_workflow: { capability: "autos", risk: "high" },
-  n8n_delete_workflow: { capability: "autos", risk: "high" },
+  // n8n_delete_workflow is a containment tombstone (see UNMAPPED_CATALOGUE_TOOLS) — no runtime
+  // dispatches it, so a knob for it would govern nothing. Deliberately NOT mapped (§70.1).
   zapier_run_action: { capability: "autos", risk: "high" },
   delegate_to_subagent: { capability: "autos", risk: "high" },
   forge_subagent: { capability: "autos", risk: "ordinary" },
@@ -145,12 +146,27 @@ export const TOOL_MAP: Readonly<Record<string, { capability: CapabilityKey; risk
   team_invite_member: { capability: "account", risk: "high" },
   team_invite_resend: { capability: "account", risk: "high" },
   team_invite_revoke: { capability: "account", risk: "high" },
-  marketplace_install: { capability: "account", risk: "high" },
-  marketplace_uninstall: { capability: "account", risk: "high" },
+  // marketplace_install / marketplace_uninstall are containment tombstones (see below) — no runtime
+  // dispatches them, so a knob would render as a working control and report a successful save for a
+  // capability nothing can execute or govern. Deliberately NOT mapped (§70.1).
 };
 
-/** Catalogue rows that are intentionally NOT governable knobs — phantom/unclassified tools. */
-export const UNMAPPED_CATALOGUE_TOOLS: readonly string[] = ["pipeline_create", "pipeline_add_stage"];
+/**
+ * Catalogue rows that are intentionally NOT governable knobs.
+ * - `pipeline_create` / `pipeline_add_stage`: phantom/unclassified tools.
+ * - `marketplace_install` / `marketplace_uninstall` / `n8n_delete_workflow`: containment TOMBSTONES —
+ *   classified in the autonomy policy and lint-exempted (`action-risk-lint.mjs`) precisely because no
+ *   runtime dispatches them (`20261020300000_tool_autonomy_catalogue_covers_the_gate.sql`). Governing
+ *   them from the Trust Compass would be a §70.1 false affordance; they stay off the surface until a
+ *   real dispatch path exists.
+ */
+export const UNMAPPED_CATALOGUE_TOOLS: readonly string[] = [
+  "pipeline_create",
+  "pipeline_add_stage",
+  "marketplace_install",
+  "marketplace_uninstall",
+  "n8n_delete_workflow",
+];
 
 const MODE_RANK: Readonly<Record<ToolMode, number>> = { off: 0, confirm: 1, auto: 2 };
 const RANK_MODE: readonly ToolMode[] = ["off", "confirm", "auto"];
