@@ -1,5 +1,34 @@
 # UI delivery evidence — Command Center → Mind (Gate 1 prototype)
 
+UI_DELIVERY_EVIDENCE_VERSION: 1
+FLOW_BY_FLOW: PASS: Flow-by-Flow pre-edit packet + honest data map (this session); prototype-first per the skill.
+PAIGE_UI_DESIGN: PASS: paige-ui-design + flow-prototype skills followed; ports the installed --pg-* pack (design-system-port.md), zero CC design taste (§00).
+MATERIAL_FLOW_CHANGE: YES: the Mind surface is redesigned around the living 3D knowledge orb (new hero, domain callouts, source-signal legend, orbital controls).
+FLOW_PROTOTYPE: PASS: docs/prototypes/command-center-mind-gate1.html — owner Gate-1 visual sign-off 2026-09-06 (APPROVED-FROZEN §28, recorded in this file).
+PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: audience = Solo operator; purpose = see what PAIGE knows by domain with honest provenance; primary action = open a record's evidence.
+VISUAL_DIRECTION: PASS: owner reference image + the installed --pg-* pack (Mineral/Obsidian); real three.js r0.169; gold only on the core/act.
+AUTOMATED_EVIDENCE: PASS: headless Playwright render + behavioural asserts across the full matrix (render-orb3d.mjs); all asserts pass.
+STATIC_EVIDENCE: PASS: self-contained single file; token values lifted verbatim from design-system-port.md; engine bundled from pinned three@0.169.
+RENDERED_EVIDENCE: PASS: 21-frame headless SwiftShader matrix at all four Solo viewports x Mineral/Obsidian + states + focus/search/drawer/reduced-motion + WebGL-off fallback (scratchpad/orb3dshots/, matrix section below).
+BEHAVIORAL_EVIDENCE: PASS: orb paints in every mode (pixel-lit proof), focus/reset/pause/search/keyboard-orbit, drawer open→focus→Esc→return, and WebGL-off → governed-records list with a working drawer — all exercised headless.
+AUTHENTICATED_RUNTIME: NOT_APPLICABLE: standalone prototype consuming no live contract; production wiring + authenticated proof are the separate production-port slice (command-center-mind-production-port.md).
+KEYBOARD_FOCUS: PASS: canvas role=img + aria-label + keyboard orbit/Enter; Reset control; drawer focus-in, Esc, focus-return, Tab-trap — asserted in the render script.
+ZOOM_REFLOW: PASS: container-query breakpoints (@container .viewport) collapse callouts/legend and re-column at 1024/900; verified in the viewport presets.
+REDUCED_MOTION: PASS: the in-app toggle AND OS prefers-reduced-motion hold the orb static but fully rendered (proven with a reducedMotion:reduce context).
+STATE_COVERAGE: PASS: populated, first-use empty, partial, source-unavailable, loading, workspace-switching, evidence drawer, reduced-motion, WebGL-off fallback.
+TRUTHFUL_STATE_LABELS: PASS: nodes carry each record's canonical source state; annotation overlay maps every region to its real source or honest absence; nothing authenticated-runtime LIVE is claimed.
+SOLO_UI: YES: Solo Command Center → Mind subtab (prototype of the redesign).
+SOLO_1536X770_PAIGE_CLOSED: PASS: vp_1536x770 Obsidian + Mineral headless frames (render matrix below).
+SOLO_1536X770_PAIGE_OPEN: PASS: paige_open_dark frame at 1536x770.
+SOLO_1366X768_PAIGE_CLOSED: PASS: vp_1366x768 Obsidian + Mineral headless frames.
+SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: prototype captured Paige-open at 1536x770 only; this viewport's Paige-open frame not captured (the container-query reflow is identical to the verified 1536 case).
+SOLO_1024X768_PAIGE_CLOSED: PASS: vp_1024x768 Obsidian + Mineral headless frames.
+SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: prototype captured Paige-open at 1536x770 only; not captured at this viewport.
+SOLO_900X1000_PAIGE_CLOSED: PASS: vp_900x1000 Obsidian + Mineral headless frames.
+SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: prototype captured Paige-open at 1536x770 only; not captured at this viewport.
+UNVERIFIED: Paige-open frames at 1366/1024/900 were not separately captured (reflow identical to the verified 1536 case); authenticated production runtime is N/A at prototype stage and owed at the production-port slice (command-center-mind-production-port.md); a real screen-reader pass is still owed.
+
+
 **Surface:** Solo Command Center → Mind subtab (redesign).
 **Deliverable:** clickable interactive prototype for owner visual approval (Gate 1). **No production UI changed.**
 **Artifact:** `docs/prototypes/command-center-mind-gate1.html` (self-contained single file; no network beyond fonts).
