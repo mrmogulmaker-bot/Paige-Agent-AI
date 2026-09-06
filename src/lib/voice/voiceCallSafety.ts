@@ -23,13 +23,34 @@ export function acquireCallStart(
   return true;
 }
 
+export function isExpiredVoiceSessionError(error: unknown): boolean {
+  const code = String((error as ProviderError | null)?.code ?? "");
+  return code === "20101" || code === "20104" || code === "31205";
+}
+
+/** Drop an expired SDK Device so retry must mint a fresh tenant-scoped token. */
+export function discardExpiredVoiceDevice<T extends { destroy: () => void }>(
+  error: unknown,
+  device: T,
+  holder: { current: T | null },
+): boolean {
+  if (!isExpiredVoiceSessionError(error)) return false;
+  if (holder.current === device) holder.current = null;
+  try {
+    device.destroy();
+  } catch {
+    // The stale reference is already gone; a failed SDK teardown cannot be reused.
+  }
+  return true;
+}
+
 /** Safe owner-facing categories; never surface raw provider messages or payloads. */
 export function providerCallErrorMessage(error: unknown): string {
   const code = String((error as ProviderError | null)?.code ?? "");
   if (code === "21211" || code === "21217") {
     return "Enter a valid phone number, including the country code.";
   }
-  if (code === "20101" || code === "20104" || code === "31205") {
+  if (isExpiredVoiceSessionError(error)) {
     return "Your calling session expired. Retry the call.";
   }
   if (code === "31005" || code === "31009") {

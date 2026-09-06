@@ -56,6 +56,10 @@ async function repairTenantIncomingVoiceNumbers(
     return { ok: false, status: 0, error: "voice_url_unavailable" };
   }
 
+  // Preflight every active voice number before mutating any of them. Twilio has no
+  // transaction spanning incoming-number resources, so discovering a later custom
+  // route after an earlier POST would leave a partially migrated tenant.
+  const plannedUpdates: string[] = [];
   for (const row of data ?? []) {
     if (row?.capabilities?.voice !== true) continue;
     if (!/^PN[0-9A-Za-z]{16,}$/.test(row.twilio_sid ?? "")) {
@@ -83,6 +87,12 @@ async function repairTenantIncomingVoiceNumbers(
     if (currentBase !== new URL(bareUrl).toString()) {
       return { ok: false, status: 409, error: "custom_voice_url" };
     }
+    plannedUpdates.push(path);
+  }
+
+  // All fail-closed validation has passed. The writes are idempotent, so a provider
+  // failure partway through this phase is safe to retry without widening scope.
+  for (const path of plannedUpdates) {
     const updated = await twilioRequest(
       creds.data.accountSid,
       creds.data.authToken,

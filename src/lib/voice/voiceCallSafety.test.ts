@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   acquireCallStart,
+  discardExpiredVoiceDevice,
   isDialableNumber,
   normalizeDialNumber,
   providerCallErrorMessage,
@@ -28,6 +29,22 @@ describe("voice call safety", () => {
       "The provider rejected this call. Check the number and retry.",
     );
     expect(providerCallErrorMessage({ code: 99999, message: raw })).not.toContain(raw);
+  });
+
+  it("discards an expired Device so retry must mint a fresh token", () => {
+    let destroyed = 0;
+    const device = { destroy: () => { destroyed += 1; } };
+    const holder = { current: device };
+
+    expect(discardExpiredVoiceDevice({ code: 20104 }, device, holder)).toBe(true);
+    expect(holder.current).toBeNull();
+    expect(destroyed).toBe(1);
+
+    const healthy = { destroy: () => { destroyed += 1; } };
+    const healthyHolder = { current: healthy };
+    expect(discardExpiredVoiceDevice({ code: 31005 }, healthy, healthyHolder)).toBe(false);
+    expect(healthyHolder.current).toBe(healthy);
+    expect(destroyed).toBe(1);
   });
 
   it("allows only one outbound start before the provider returns a Call object", () => {

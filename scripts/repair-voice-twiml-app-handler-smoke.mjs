@@ -11,6 +11,8 @@ const SECRET = "tenant-proof-secret";
 let providerCalls = 0;
 let phoneSid = "PNtenant0000000000000000000000000";
 let providerVoiceUrl = "https://voice.proxy.test/route";
+let phoneRows = null;
+const providerVoiceUrls = new Map();
 let targetedTenant = null;
 const providerWrites = [];
 
@@ -35,7 +37,7 @@ function makeAdmin() {
           : { data: null, error: null },
         then(resolve) {
           resolve(table === "tenant_phone_numbers"
-            ? { data: [{ twilio_sid: phoneSid, capabilities: { voice: true } }], error: null }
+            ? { data: phoneRows ?? [{ twilio_sid: phoneSid, capabilities: { voice: true } }], error: null }
             : { data: null, error: null });
         },
       };
@@ -80,10 +82,11 @@ globalThis.Deno = { env: { get: (key) => ENV[key] }, serve: (fn) => { handler = 
 globalThis.fetch = async (_url, init = {}) => {
   providerCalls++;
   if (init.method === "GET") {
+    const sid = String(_url).match(/IncomingPhoneNumbers\/([^/.]+)\.json/)?.[1] ?? "";
     return new Response(JSON.stringify({
-      sid: "PNtenant0000000000000000000000000",
+      sid,
       voice_application_sid: "",
-      voice_url: providerVoiceUrl,
+      voice_url: providerVoiceUrls.get(sid) ?? providerVoiceUrl,
     }), { status: 200, headers: { "content-type": "application/json" } });
   }
   providerWrites.push(String(init.body ?? ""));
@@ -106,26 +109,35 @@ const missingBinding = await invoke({ scope: "tenant", tenant_id: TENANT }, "cro
 assert.equal(missingBinding.status, 409, "active voice number without provider binding must fail the migration closed");
 assert.equal(providerCalls, 1, "missing provider binding is refused after the app repair and before number traffic");
 phoneSid = "PNtenant0000000000000000000000000";
-providerVoiceUrl = "https://custom-routing.example.test/voice";
+const firstPhoneSid = "PNfirst00000000000000000000000000";
+const secondPhoneSid = "PNsecond0000000000000000000000000";
+phoneRows = [
+  { twilio_sid: firstPhoneSid, capabilities: { voice: true } },
+  { twilio_sid: secondPhoneSid, capabilities: { voice: true } },
+];
+providerVoiceUrls.set(firstPhoneSid, ENV.VOICE_TWIML_URL);
+providerVoiceUrls.set(secondPhoneSid, "https://custom-routing.example.test/voice");
 const writesBeforeCustom = providerWrites.length;
 const customRoute = await invoke({ scope: "tenant", tenant_id: TENANT }, "cron-ok");
 assert.equal(customRoute.status, 409, "custom incoming Voice URL must stop the migration");
-assert.equal(providerWrites.length, writesBeforeCustom + 1, "custom route is read but never overwritten; only the app repair ran");
+assert.equal(providerWrites.length, writesBeforeCustom + 1, "all number routes are preflighted before mutation; only the app repair ran");
 providerVoiceUrl = ENV.VOICE_TWIML_URL;
+phoneRows = null;
+providerVoiceUrls.clear();
 
 const tenantResponse = await invoke({ scope: "tenant", tenant_id: TENANT }, "cron-ok");
 const tenantBody = await tenantResponse.text();
 assert.equal(tenantResponse.status, 200);
 assert.equal(targetedTenant, TENANT, "repair must use exactly the authorized target");
-assert.equal(providerCalls, 6, "tenant repair must update the app and inspect and stamp the active incoming number");
+assert.equal(providerCalls, 7, "tenant repair must update the app and inspect and stamp the active incoming number");
 assert.ok(providerWrites.some((body) => body.includes(encodeURIComponent(ENV.VOICE_TWIML_URL)) && body.includes(encodeURIComponent(SECRET))), "incoming number keeps the configured Voice URL and receives tenant proof");
 assert.ok(!tenantBody.includes(TENANT) && !tenantBody.includes(SECRET), "response must contain no target or secret");
 
 const operatorResponse = await invoke({ scope: "operator" }, "cron-ok");
 const operatorBody = await operatorResponse.text();
 assert.equal(operatorResponse.status, 200);
-assert.equal(providerCalls, 7, "operator repair contacts only the operator application after the tenant repair");
+assert.equal(providerCalls, 8, "operator repair contacts only the operator application after the tenant repair");
 assert.ok(providerWrites.at(-1).includes(encodeURIComponent(ENV.VOICE_TWIML_URL)), "operator repair honors the configured Voice URL");
 assert.ok(!operatorBody.includes("APoperator") && !operatorBody.includes("master-api-key-secret"));
 
-console.log("PASS — repair endpoint auth, one-target scope, forced provider write, and redacted response");
+console.log("PASS — repair auth, tenant scope, all-number preflight, provider write, and redacted response");

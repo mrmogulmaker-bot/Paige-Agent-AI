@@ -35,6 +35,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import {
   acquireCallStart,
+  discardExpiredVoiceDevice,
   isDialableNumber,
   normalizeDialNumber,
   providerCallErrorMessage,
@@ -364,6 +365,7 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
         // failures are owned by call.on("error") below (which clears the call + resets
         // state). So only surface a Device-level error when there is NO active call.
         if (callRef.current) return;
+        discardExpiredVoiceDevice(err, device, deviceRef);
         safeSet(setStatus, "error");
         safeSet(setReason, providerCallErrorMessage(err));
       });
@@ -538,7 +540,8 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
         const outbound = await device.connect({ params: { To: number } });
         wireCall(outbound, number);
       } catch (error) {
-        safeSet(setStatus, deviceRef.current ? "ready" : "error");
+        const discarded = discardExpiredVoiceDevice(error, device, deviceRef);
+        safeSet(setStatus, !discarded && deviceRef.current ? "ready" : "error");
         safeSet(setReason, providerCallErrorMessage(error));
         safeSet(setActiveCall, null);
       } finally {
