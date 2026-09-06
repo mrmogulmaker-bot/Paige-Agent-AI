@@ -288,6 +288,30 @@ describe("TrustCompass — the governed surface runs, honest and accessible", ()
     expect(modes).toEqual(["confirm", "off"]); // the queued last choice runs once the first settles
   });
 
+  it("a FAILED knob write still runs the newer queued choice — never strands the last value (§70.1 #2)", async () => {
+    // The first write hangs then FAILS; the second choice queues behind it and must still be attempted.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const modes: string[] = [];
+    const setDomainMode = vi.fn(async (_k: string, m: string) => {
+      modes.push(m);
+      if (modes.length === 1) { await gate; return { ok: false, error: "denied" }; } // first FAILS
+      return { ok: true };
+    });
+    gov.value = govValue([row("crm_create_contact", "auto")], {}, { setDomainMode });
+    const h = draw(<TC accountEpoch="t1" />);
+    const knob = [...h.querySelectorAll('[role="slider"]')]
+      .find((s) => /CRM & client records/i.test(s.getAttribute("aria-label") ?? ""))!;
+    // First ArrowLeft → confirm (in flight, gated, will FAIL). Second ArrowLeft → off (queued behind it).
+    await act(async () => { knob.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })); });
+    await act(async () => { knob.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })); });
+    expect(modes).toEqual(["confirm"]);
+    await act(async () => { release(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    // The confirm write failed, but the newer queued choice (off) is the user's final intent and is still
+    // attempted — the drain does not abandon it behind the superseded failure.
+    expect(modes).toEqual(["confirm", "off"]);
+  });
+
   it("routes pending decisions to the ONE Paige chat, never a second approve button", () => {
     const openPaige = vi.fn();
     gov.value = govValue([row("crm_add_note", "confirm")]);

@@ -179,4 +179,78 @@ describe("useSoloToolGovernance — write authority + workspace binding (§70.1/
     await act(async () => { release(); await dom; await child; await Promise.resolve(); });
     expect(modes).toEqual(["off", "auto"]); // the queued last choice wins, written after the first settles
   });
+
+  it("a FAILED in-flight write still pursues the newer queued choice, and the coalesced caller gets the REAL result — never a premature ok (§70.1/§13)", async () => {
+    wireRpc(() => ({ data: "auto", error: null }), { admin: true });
+    await mountAndSettle();
+    const g = latest();
+    // Gate the FIRST set_tool_autonomy for crm_create_contact and make it FAIL on release; later writes
+    // to that tool succeed. This is the exact failure branch of the serializer.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const modes: string[] = [];
+    let firstGated = true;
+    harness.rpc.mockImplementation((fn: string, args?: Record<string, unknown>) => {
+      if (fn === "set_tool_autonomy" && args?._tool_key === "crm_create_contact") {
+        modes.push(String(args?._mode));
+        if (firstGated) { firstGated = false; return gate.then(() => ({ data: null, error: { message: "denied" } })); }
+        return Promise.resolve({ data: null, error: null });
+      }
+      if (fn === "set_tool_autonomy") return Promise.resolve({ data: null, error: null });
+      if (fn === "list_tool_autonomy") return Promise.resolve({ data: listRows, error: null });
+      if (fn === "resolve_tool_autonomy") return Promise.resolve({ data: "auto", error: null });
+      if (fn === "is_current_user_tenant_admin") return Promise.resolve({ data: true, error: null });
+      if (fn === "is_platform_owner") return Promise.resolve({ data: false, error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+    // A domain write (auto) gates on crm_create_contact; a child write then queues the FINAL choice off.
+    let dom!: Promise<{ ok: boolean }>, child!: Promise<{ ok: boolean }>;
+    await act(async () => {
+      dom = g.setDomainMode("crm", "auto") as Promise<{ ok: boolean }>;
+      child = g.setToolMode("crm_create_contact", "off") as Promise<{ ok: boolean }>;
+      await Promise.resolve();
+    });
+    expect(modes).toEqual(["auto"]); // only the first (gated) write is in flight
+    let childRes!: { ok: boolean };
+    await act(async () => { release(); childRes = (await child) as { ok: boolean }; await dom; await Promise.resolve(); });
+    // The first (auto) write FAILED, but the drain then pursued the newer queued value (off) — the user's
+    // final, MORE-restrictive choice is never stranded behind a superseded write's failure.
+    expect(modes).toEqual(["auto", "off"]);
+    // The coalesced child caller's promise reflects the REAL settlement of its final choice (off), not a
+    // premature ok returned before its write ran.
+    expect(childRes.ok).toBe(true);
+  });
+
+  it("reports a FAILED final choice as failed to the coalesced caller — no premature ok when the last write genuinely fails (§13)", async () => {
+    wireRpc(() => ({ data: "auto", error: null }), { admin: true });
+    await mountAndSettle();
+    const g = latest();
+    // Every crm_create_contact write FAILS; capture the modes and the result the coalesced caller gets.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let firstGated = true;
+    harness.rpc.mockImplementation((fn: string, args?: Record<string, unknown>) => {
+      if (fn === "set_tool_autonomy" && args?._tool_key === "crm_create_contact") {
+        if (firstGated) { firstGated = false; return gate.then(() => ({ data: null, error: { message: "denied" } })); }
+        return Promise.resolve({ data: null, error: { message: "denied" } });
+      }
+      if (fn === "set_tool_autonomy") return Promise.resolve({ data: null, error: null });
+      if (fn === "list_tool_autonomy") return Promise.resolve({ data: listRows, error: null });
+      if (fn === "resolve_tool_autonomy") return Promise.resolve({ data: "auto", error: null });
+      if (fn === "is_current_user_tenant_admin") return Promise.resolve({ data: true, error: null });
+      if (fn === "is_platform_owner") return Promise.resolve({ data: false, error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+    let child!: Promise<{ ok: boolean }>;
+    await act(async () => {
+      void g.setDomainMode("crm", "auto");
+      child = g.setToolMode("crm_create_contact", "off") as Promise<{ ok: boolean }>;
+      await Promise.resolve();
+    });
+    let childRes!: { ok: boolean };
+    await act(async () => { release(); childRes = (await child) as { ok: boolean }; await Promise.resolve(); });
+    // The final choice (off) genuinely failed, so the caller is told the truth — the queue never turns a
+    // failed restrictive write into a false success.
+    expect(childRes.ok).toBe(false);
+  });
 });

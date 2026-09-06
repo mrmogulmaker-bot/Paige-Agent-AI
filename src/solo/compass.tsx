@@ -210,10 +210,15 @@ const TcKnob=({value,max,onCommit,ariaLabel,onError,mixed})=>{
    while(desired.current!=null){
     const target=desired.current;desired.current=null;
     if(mounted.current)setSaving(true);
-    let res;
-    try{res=await Promise.resolve(onCommit(modeOfRank(target)));}
-    catch(err){if(mounted.current)setPending(null);onError&&onError(err);return;}
-    if(res&&res.ok===false){if(mounted.current)setPending(null);onError&&onError(res.error);return;}
+    let failed=false,errVal;
+    try{const res=await Promise.resolve(onCommit(modeOfRank(target)));
+     if(res&&res.ok===false){failed=true;errVal=res.error;}}
+    catch(err){failed=true;errVal=err;}
+    // A newer choice queued while this write was in flight is the user's CURRENT intent — pursue it
+    // (loop again) rather than reverting to it; only a failure with nothing newer queued is final, and
+    // only then do we drop the optimistic hold and surface the error. Never silently strand the last
+    // choice behind a superseded write's failure (§70.1/§13).
+    if(failed&&desired.current==null){if(mounted.current)setPending(null);onError&&onError(errVal);return;}
    }
   }finally{draining.current=false;if(mounted.current)setSaving(false);}
  },[onCommit,onError]);

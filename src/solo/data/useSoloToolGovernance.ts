@@ -349,30 +349,46 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
   // write per tool is in flight; a newer request updates the queued target and the drain writes it
   // next. (The knob's own queue serializes rapid input WITHIN one knob; this coordinates ACROSS the
   // two knob instances that can target the same tool.)
-  const toolWrites = useRef(new Map<string, { latest: ToolMode; running: boolean }>());
+  const toolWrites = useRef(
+    new Map<string, { latest: ToolMode; running: boolean; waiters: Array<(r: { ok: boolean; error?: string }) => void> }>(),
+  );
   const writeOneTool = useCallback(
     (toolKey: string, mode: ToolMode): Promise<{ ok: boolean; error?: string }> => {
       const q = toolWrites.current;
-      const entry = q.get(toolKey) ?? { latest: mode, running: false };
+      const entry = q.get(toolKey) ?? { latest: mode, running: false, waiters: [] };
       entry.latest = mode;
       q.set(toolKey, entry);
-      // A drain is already serializing this tool; it will pick up the latest value, so resolve
-      // optimistically — the queue guarantees the last write wins.
-      if (entry.running) return Promise.resolve({ ok: true });
-      entry.running = true;
-      return (async () => {
-        let last: { ok: boolean; error?: string } = { ok: true };
-        let writing = true;
-        while (writing) {
-          const target = entry.latest;
-          const res = await rpc("set_tool_autonomy", { _tool_key: toolKey, _mode: target, _tenant_id: expectedTenant });
-          last = res.error ? { ok: false, error: res.error.message } : { ok: true };
-          // Stop on failure (the refresh re-reads real state), or when no newer value arrived mid-write.
-          writing = last.ok && entry.latest !== target;
-        }
-        entry.running = false;
-        return last;
-      })();
+      // EVERY caller — the one that starts the drain and any that coalesce into it — gets a promise
+      // that resolves with the drain's REAL settlement, never an optimistic `ok` before its write has
+      // run (§13). A premature success would let `setDomainMode` miss a failed per-tool write, and would
+      // report a discarded restrictive choice (e.g. `off`) as saved (§70.1).
+      const settled = new Promise<{ ok: boolean; error?: string }>((resolve) => { entry.waiters.push(resolve); });
+      if (!entry.running) {
+        entry.running = true;
+        void (async () => {
+          let result: { ok: boolean; error?: string } = { ok: true };
+          for (;;) {
+            const target = entry.latest;
+            const res = await rpc("set_tool_autonomy", { _tool_key: toolKey, _mode: target, _tenant_id: expectedTenant });
+            if (res.error) {
+              // A newer choice queued mid-write is the user's CURRENT intent — pursue it rather than
+              // abandoning it because an older, now-superseded write failed. Only a failure of the
+              // LATEST requested value (nothing newer queued) is final.
+              if (entry.latest !== target) continue;
+              result = { ok: false, error: res.error.message };
+              break;
+            }
+            // Success. Done only when the value just written is still the latest requested; otherwise a
+            // newer value arrived while writing — keep going so the last choice actually lands.
+            if (entry.latest === target) { result = { ok: true }; break; }
+          }
+          entry.running = false;
+          const waiters = entry.waiters;
+          entry.waiters = [];
+          for (const w of waiters) w(result);
+        })();
+      }
+      return settled;
     },
     [expectedTenant],
   );
