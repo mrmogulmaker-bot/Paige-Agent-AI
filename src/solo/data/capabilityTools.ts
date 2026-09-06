@@ -63,7 +63,10 @@ export const CAPABILITY_DOMAINS: readonly CapabilityDomain[] = [
   { key: "comms", title: "Communications", icon: "mail", blurb: "Phone numbers, carrier registration, and meetings." },
   { key: "content", title: "Content & Studio", icon: "spark", blurb: "Marketing drafts, images, documents, pages, and funnels." },
   { key: "autos", title: "Automations & connected apps", icon: "bolt", blurb: "Workflows, connected-app actions, and the action bus." },
-  { key: "account", title: "Team & marketplace", icon: "shield", blurb: "Teammate access, invitations, and installs." },
+  // Marketplace install/uninstall are undispatched tombstones (UNMAPPED_CATALOGUE_TOOLS), so this
+  // domain governs only teammate access + invitations — the label must not claim "marketplace/installs"
+  // it cannot affect (§70.1/§13). Rename here if a real install-governance seam ever lands.
+  { key: "account", title: "Team access", icon: "shield", blurb: "Teammate roles, permissions, and invitations." },
 ] as const;
 
 export type CapabilityKey = (typeof CAPABILITY_DOMAINS)[number]["key"];
@@ -138,7 +141,7 @@ export const TOOL_MAP: Readonly<Record<string, { capability: CapabilityKey; risk
   action_advance: { capability: "autos", risk: "ordinary" },
   author_event_kind: { capability: "autos", risk: "ordinary" },
 
-  // ── Team & marketplace ────────────────────────────────────────────────────────────────────
+  // ── Team access (marketplace install/uninstall are undispatched tombstones — see below) ─────
   member_grant_role: { capability: "account", risk: "high" },
   member_revoke_role: { capability: "account", risk: "high" },
   team_set_work_profile: { capability: "account", risk: "ordinary" },

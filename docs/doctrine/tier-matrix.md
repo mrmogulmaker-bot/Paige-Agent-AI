@@ -374,8 +374,7 @@ until an explicit release. No inline `account_type` gate (lint:tier-features cle
 Code-complete and covered by unit + jsdom-render tests (the risk-class copy is drift-guarded against
 `_shared/action-risk.ts`; the effective/ceiling/held-back derivation, tenant-bound reads — incl. the
 pending-actions read now scoped to the VIEWED tenant so the global-admin operator escape can't surface
-other tenants' actions (§9), and the `resolve_tool_autonomy` stale-read guard added in migration
-`20261227000000` (§32.a persisted-apply owed on merge) — the write-serializer failure paths, accessible
+other tenants' actions (§9) — the write-serializer failure paths, accessible
 `role=slider` knobs incl. keyboard-normalise, honest read/empty/error/forbidden states, the undispatched
 containment tombstones kept OFF the surface (§70.1), the Solo-only tab gate + sub-account redirect, and the
 routing round-trip are all asserted); the

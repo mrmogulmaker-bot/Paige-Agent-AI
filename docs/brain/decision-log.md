@@ -99,10 +99,19 @@
   `useSoloGamePlan` (`workspaceId`), `social-command` (`social.tenantId`). (2) **P2 §70.1 tombstone knobs** —
   `marketplace_install`/`marketplace_uninstall`/`n8n_delete_workflow` are lint-exempted undispatched containment
   tombstones; mapping them rendered working-looking knobs that govern nothing → removed to `UNMAPPED_CATALOGUE_TOOLS`.
-  (3) **P2 §9 ceiling probe** — `resolve_tool_autonomy` silently discarded `_tenant_id` for non-owners (no mismatch
-  guard, unlike set/list), so the round-2 ceiling binding could not reject a stale read. Migration `20261227000000`
-  adds the same guard (safe across all 5 callers — the chat gate wraps it in try/catch → safe 'confirm' default).
-  **§32.a persisted-apply proof of that migration is OWED on merge (deploy-migrations CI); §32.c multi-workspace live proof owed.**
+  (3) **P2 §9 ceiling probe** — `resolve_tool_autonomy` silently discards `_tenant_id` for non-owners (no mismatch
+  guard, unlike set/list), so the round-2 ceiling binding cannot reject a stale read. A round-6 migration adding that
+  guard was **REVERTED in round 7**: Codex F-B caught that `resolve_tool_autonomy` is the SHARED resolver
+  `resolve_automation_autonomy` calls to resolve an automation in ANY tenant the caller is a MEMBER of (not just the
+  active one), so a mismatch guard aborts that legitimate cross-membership call (§37 miss — a half-hardened resolver
+  that 4xxs a legit caller is worse than the narrow race). So the ceiling probe stays advisory for non-owners; the
+  stale-read protection is the tenant-bound CATALOGUE read (which DOES reject) plus the `accountEpoch` re-key that
+  cancels the effect the instant the workspace changes — documented in `useSoloToolGovernance.ts`, NOT
+  server-enforceable on the shared resolver.
+  **Round-7 follow-ons (Codex round-6 review):** F-B above (migration reverted); F-A — removing the marketplace
+  tombstones left the `account` domain label claiming "marketplace/installs" it no longer governs, corrected to
+  "Team access / Teammate roles, permissions, and invitations" (§70.1/§13, a factual fix to CC-authored config my own
+  change falsified). The two pending-preview P2s remain §00 design follow-ups.
   **Next owning workstream:** (1) the §32.c authenticated Solo live-drive (browser-capable session); (2) a CD/product
   decision on the pending-decisions preview (deep-link seam + overflow); (3) any future explicit sub-account release
   (flip `trust_compass` into SUB_ACCOUNT_FEATURES + a §51 sub-account tier verification). Dependency to read first:

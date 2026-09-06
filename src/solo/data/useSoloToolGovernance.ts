@@ -276,11 +276,19 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
 
   const refresh = useCallback(() => setReloadKey((k) => k + 1), []);
 
-  // The tenant this surface is bound to. Passed as `_tenant_id` to every write (set_tool_autonomy's
-  // tenant-mismatch guard REJECTS a write that lands after the admin switched workspaces, §9/§51) AND
-  // to every ceiling probe — a platform owner acting-as a tenant is NOT pinned to current_user_tenant_id
-  // by resolve_tool_autonomy, so a null tenant there returns the 'confirm' fallback and would misreport
-  // the ceiling (even raising a stored 'off' to 'confirm'). Passing the real tenant keeps both honest.
+  // The tenant this surface is bound to. Passed as `_tenant_id` to every write and read.
+  //  • WRITES + the CATALOGUE read (set_tool_autonomy / list_tool_autonomy): their tenant-mismatch guard
+  //    REJECTS a request that lands after the admin switched workspaces (§9/§51), so a stale cross-workspace
+  //    write or catalogue read is server-refused.
+  //  • The CEILING probe (resolve_tool_autonomy): passing the tenant is REQUIRED for a platform-owner act-as
+  //    (that function does NOT pin an owner to current_user_tenant_id, so a null tenant would return the
+  //    'confirm' fallback and misreport the ceiling). For a NON-owner it is advisory only: resolve_tool_autonomy
+  //    pins to current_user_tenant_id() and does NOT carry a mismatch guard — and it deliberately cannot, because
+  //    it is the SHARED resolver `resolve_automation_autonomy` calls to resolve an automation in ANY tenant the
+  //    caller is a member of (not just the active one); a mismatch guard there would abort that legitimate
+  //    cross-membership call (Codex round-6 F-B). So the stale-read protection for the ceiling is the
+  //    tenant-bound CATALOGUE read above (which rejects) plus the `accountEpoch` re-key that cancels this whole
+  //    effect the instant the active workspace changes — not a guard on the shared resolver.
   const expectedTenant: string | null =
     typeof accountEpoch === "string" && accountEpoch ? accountEpoch : null;
 
