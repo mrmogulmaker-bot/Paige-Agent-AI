@@ -4080,7 +4080,7 @@ still says is missing.
 approval between slices; governing rule + build order + spending-authority spec captured in
 `autonomy-architecture.md` §10.7–§10.9. This is the first build slice.
 
-**What shipped (`supabase/migrations/20261229000000_re2_execution_substrate.sql`) — SUBSTRATE ONLY,
+**What shipped (`supabase/migrations/20261230000000_re2_execution_substrate.sql`) — SUBSTRATE ONLY,
 ZERO behavioral change:** nothing reads these for execution yet (no execution loop exists; that is PR-3),
 and `resolve_automation_autonomy` is untouched (the floor-lift is PR-2). A `high` act still clamps to
 `confirm` exactly as before.
