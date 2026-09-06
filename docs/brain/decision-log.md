@@ -22,6 +22,27 @@
   (grounding scout a197694b4f6de6a14); Capability plan (`outputs/paige-at-cowork/09-...md`) and master §5
   updated in the same change.
 
+- **Floating-chat retirement — independent context-isolation review = SHIP; findings folded (2026-09-06, PR #981)** —
+  the owner-required independent security review of the pushed diff (383de0fa) returned **SHIP, no blockers**:
+  removal complete/correct, dedicated Paige intact, the retired FAB carried own-row consumer PII (name/email/
+  phone/monthly_revenue/FICO, RLS-gated → a context-boundary leak, not a cross-tenant IDOR) into the tenant
+  `paige-ai-chat` backend while rendering allow-by-default on public + non-shell authenticated routes, so its
+  deletion is a real isolation win; the public Product Guide contract is sound; §58 loss is named not silent.
+  **Folded (verified vs source):** the MAJOR guard-completeness/§13-overclaim finding — the regression guard is
+  hardened to flag any global overlay (`document.body` portal OR `z-[99xx]` fixed FAB) reaching a Paige chat
+  backend inline OR via an imported chat-driver hook, scanning all non-test source, proven non-vacuous by an
+  in-file predicate self-test and false-positive-free on the clean tree (the dedicated shell portals to
+  `paigePortalHost`, not `document.body`); its comment now states honestly it is a backstop, not a proof. Clean
+  current-truth map fixes folded too: `docs/brain/codebase-map.md` + `docs/delivery/PAIGE-CHAT-DELIVERY-MAP.md`.
+  **TRACKED FOLLOW-UP (deferred, §66-honest — not rushed):** doctrine/spec reconciliation of
+  `docs/doctrine/tier-matrix.md` L1295/L1629 (historical sync_status + "five of six callers" echo arithmetic
+  naming `FloatingChatbot`) and `docs/product/agent-ui-placement-spec.md` L14/L140/L161 (spec partially
+  superseded by this decision; tied to the still-open client-portal dedicated-Paige question); plus two
+  comment-only stale `FloatingChatbot` references in `paige-ai-chat/index.ts` + `_shared/client-context.ts`
+  (kept out of this deploy-free UI+docs PR because `supabase/functions/**` edits trigger broad no-op edge
+  redeploys — belongs in an isolated backend commit). Still OWED: §32.c authenticated per-persona browser
+  confirmation to a browser-capable session (the removal is a compile-time fact the hardened guard re-guarantees).
+
 - **Business Game Plan — live-data corrections against authenticated prod (2026-09-05, follow-up to #952)** —
   the owner reviewed the shipped Solo default landing on real data (Mogul Maker Academy) and flagged five
   items; verified via authenticated Supabase queries (project xygzykjyynhzqytbqnzu) and fixed in the Game
