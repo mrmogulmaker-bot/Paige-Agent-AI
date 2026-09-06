@@ -15,20 +15,26 @@
 --       boundary (tenant_id NOT NULL → tenants; a real period starts_on/ends_on; a lifecycle status
 --       draft|active|paused|completed|cancelled). The grant must name ONE engagement in
 --       scope.client_agreement_id. Every cap-shape / delegation / §9 / state / period failure fails CLOSED
---       with a SPECIFIC reason (client_period_cap_invalid · client_period_delegation_unsupported ·
+--       with a SPECIFIC reason (cap_invalid+cap · client_period_delegation_unsupported ·
 --       client_period_boundary_unspecified · client_agreement_id_invalid · client_agreement_not_found ·
 --       not_authorized · client_agreement_inactive · client_agreement_not_started · client_agreement_ended);
 --       the cap is NEVER silently skipped. A person-level (clients.id) scope is deliberately NOT accepted —
 --       a person has many engagements, so it is ambiguous, and ambiguity fails closed here.
---       CODEX P1 FOLD (2026-09-06, peer-gate on 2e5c9f9 — three real fail-opens the §5/§39 crews missed, now
---       closed IN reserve; §37 lockstep held because a fail-closed reserve creates no window for the other
---       four primitives to walk): (a) a DELEGATED grant (parent_grant_id set) is refused — windows are keyed
---       strictly per grant with no ancestor rollup, so a child could otherwise reserve a FRESH full cap on an
---       ancestor's engagement (widening the delegator's ceiling, breaching "delegation never widens
---       authority"); (b) a JSON null / non-number / negative declared cap is refused — presence (caps ? key)
---       is TRUE for JSON null, which would cast to SQL NULL, drop the window row, and return ok:true
---       UNENFORCED; (c) the agreement row is read FOR SHARE — an unlocked read let a concurrent lifecycle
---       UPDATE (pause/cancel/re-date) close the boundary between the read and the reserve commit (TOCTOU).
+--       CODEX P1 FOLD (2026-09-06, TWO peer-gate rounds — real fail-opens the §5/§39 crews missed, all closed
+--       IN the primitives; §37 lockstep held because a fail-closed reserve creates no window for the others to
+--       walk). Round 1 (head 2e5c9f9): (a) a DELEGATED grant (parent_grant_id set) is refused
+--       (client_period_delegation_unsupported) — windows are keyed strictly per grant with no ancestor rollup,
+--       so a child could otherwise reserve a FRESH full cap on an ancestor's engagement, widening the
+--       delegator's ceiling; (c) the agreement row is read FOR SHARE — an unlocked read let a concurrent
+--       lifecycle UPDATE (pause/cancel/re-date) close the boundary between the read and the reserve commit
+--       (TOCTOU). Round 2 (head e8ec654) — the round-1 null-cap fix was too NARROW: (b) reserve now validates
+--       the SHAPE of EVERY declared cap (all 8 recognized keys, not just client_period) before building any
+--       window — a JSON null / non-number / negative value fails CLOSED (cap_invalid + the offending cap key);
+--       (d) authority_confirm AND authority_reconcile read the LIVE (mutable) cap under a shape-guard — a cap
+--       edited to null/non-number AFTER the reservation is recorded as a cap_unreadable_at_settlement anomaly
+--       (forcing escalate), never a silently-skipped breach check or a raise-on-cast. (A cap SNAPSHOT at
+--       reserve time would additionally immunize a valid-but-changed cap — PARKED: needs a receipt column + a
+--       mid-flight-cap-change semantics decision, out of DARK M1-b scope.)
 --
 --   • campaign_budget_usd       → FAIL-CLOSED-UNAVAILABLE. There is NO canonical durable campaign boundary:
 --       no campaigns table exists; campaign_briefs (20261225000000) is an owner-authored PLANNING record
@@ -113,6 +119,7 @@ DECLARE
   _cp_agreement     text;                       -- M1-b: scope.client_agreement_id (the named engagement)
   _agr              record;                     -- M1-b: the canonical engagement boundary row
   _win              record;
+  _cap_key          text;                        -- M1-b (Codex P1 fold): iterates recognized cap keys for shape validation
   _used_actions     int;
   _used_spend       numeric;
   _reserved_windows jsonb := '[]'::jsonb;
@@ -164,24 +171,17 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'grant_inactive');
   END IF;
 
-  -- Single-action cap (§10.9).
-  IF (_g.caps ? 'max_per_action_usd')
-     AND _cost > (_g.caps->>'max_per_action_usd')::numeric THEN
-    RETURN jsonb_build_object('ok', false, 'reason', 'over_single_action_cap');
-  END IF;
-
   -- M1-b: campaign-scoped budget has NO canonical boundary (no durable campaigns table; campaign_briefs is a
   -- planning record, not live-campaign state; scope.campaign_id/ad_account are EXTERNAL provider ids with no
   -- internal row). Per the owner rule, REFUSE with a SPECIFIC reason so the unavailability is legible — never
-  -- the generic unenforceable_cap_kind, and never silently ignored.
+  -- the generic unenforceable_cap_kind, and never silently ignored. (Key-presence only; a null value is
+  -- irrelevant — a campaign grant fails closed regardless.)
   IF (_g.caps ? 'campaign_budget_usd') THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'campaign_boundary_unavailable');
   END IF;
 
   -- FAIL-CLOSED on any DECLARED cap kind this primitive cannot yet evaluate (§10.7 "any layer unreadable,
-  -- fails closed"). Enforced here: the single-action cap, the day/week/month action-count + spend caps, and
-  -- (M1-b) client_period_budget_usd. A grant that declares any OTHER cap kind is REFUSED, not silently
-  -- under-enforced — "narrowest-limit-wins across every declared cap" stays TRUE by construction.
+  -- fails closed"). A grant that declares any OTHER (unknown) cap kind is REFUSED, not silently under-enforced.
   -- (campaign_budget_usd is handled above with its own specific reason and never reaches here.)
   IF EXISTS (
     SELECT 1 FROM jsonb_object_keys(_g.caps) AS k(key)
@@ -192,25 +192,39 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'unenforceable_cap_kind');
   END IF;
 
+  -- (Codex P1 fold — the SHAPE of EVERY declared cap, not just client_period.) jsonb key-presence (caps ? key)
+  -- is TRUE for a JSON null, which casts to SQL NULL, drops that window from the PASS-1/PASS-2 VALUES filter,
+  -- and fails OPEN on that limit (e.g. a null daily_budget_usd on a grant that ALSO declares a valid
+  -- client_period would silently ignore the daily cap); a JSON string would instead RAISE at the ::numeric
+  -- cast. "narrowest-limit-wins across every declared cap" is only TRUE if EVERY declared cap is a real number
+  -- >= 0 — so validate ALL recognized caps HERE, before any value is read or any window is built, making every
+  -- downstream read (single-action, day/week/month, client_period) safe. Two nested IFs, never one OR
+  -- (PostgreSQL does not guarantee OR short-circuit; the cast is reached only after jsonb_typeof proves a number).
+  FOR _cap_key IN SELECT k.key FROM jsonb_object_keys(_g.caps) AS k(key)
+   WHERE k.key IN ('max_per_action_usd','daily_budget_usd','weekly_budget_usd','monthly_budget_usd',
+                   'client_period_budget_usd','max_per_day','max_per_week','max_per_month')
+  LOOP
+    IF jsonb_typeof(_g.caps->_cap_key) <> 'number' THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'cap_invalid', 'cap', _cap_key);
+    END IF;
+    IF (_g.caps->>_cap_key)::numeric < 0 THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'cap_invalid', 'cap', _cap_key);
+    END IF;
+  END LOOP;
+
+  -- Single-action cap (§10.9). Safe now — max_per_action_usd shape validated above.
+  IF (_g.caps ? 'max_per_action_usd')
+     AND _cost > (_g.caps->>'max_per_action_usd')::numeric THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'over_single_action_cap');
+  END IF;
+
   -- M1-b: client/engagement-scoped budget — enforce ONLY against a canonical engagement boundary.
   -- tenant_client_agreements is that boundary. The grant must name ONE engagement in scope.client_agreement_id
   -- (a person/client_id is ambiguous and fails closed). Every §9 / state / period failure fails CLOSED with a
   -- specific reason BEFORE any window is touched; the cap is NEVER silently skipped. reserve is SECURITY
-  -- DEFINER (RLS-bypassing), so the tenant match below is the §9 gate, done in-body.
+  -- DEFINER (RLS-bypassing), so the tenant match below is the §9 gate, done in-body. (The cap VALUE is already
+  -- validated as a non-negative number by the shape loop above.)
   IF (_g.caps ? 'client_period_budget_usd') THEN
-    -- (Codex P1-b, folded) PRESENCE MUST NOT FAIL OPEN. caps ? 'client_period_budget_usd' is TRUE even when
-    -- the value is JSON null; that would cast to SQL NULL, drop the client_period row from the VALUES filter
-    -- below, and let reserve return ok:true having validated the agreement but ENFORCED NOTHING — a fail-OPEN
-    -- of a real-money control (pre-M1-b this key was refused wholesale). Require a REAL, non-negative JSON
-    -- number; else fail CLOSED. Two IFs (not one OR): PostgreSQL does not guarantee OR short-circuit, so the
-    -- ::numeric cast must be reached only after jsonb_typeof has proven the value is a number (a JSON string
-    -- "abc" would otherwise raise invalid_text_representation instead of a clean refusal).
-    IF jsonb_typeof(_g.caps->'client_period_budget_usd') <> 'number' THEN
-      RETURN jsonb_build_object('ok', false, 'reason', 'client_period_cap_invalid');
-    END IF;
-    IF (_g.caps->>'client_period_budget_usd')::numeric < 0 THEN
-      RETURN jsonb_build_object('ok', false, 'reason', 'client_period_cap_invalid');
-    END IF;
     -- (Codex P1-a, folded) A DELEGATED (child) GRANT MUST NOT OPEN A FRESH ENGAGEMENT ALLOWANCE. Budget
     -- windows are keyed strictly per grant (grant_id is in the PK; there is no ancestor/shared rollup in
     -- reserve OR authority_remaining_capacity — verified), so a child grant (parent_grant_id set) targeting
@@ -416,6 +430,7 @@ DECLARE
   _confirmed numeric := COALESCE(_confirmed_cost_usd, 0);
   _delta     numeric;
   _kind      text;
+  _cap_key   text;
   _wstart    date;
   _before    numeric;
   _after     numeric;
@@ -487,10 +502,27 @@ BEGIN
     IF NOT FOUND THEN _before := 0; END IF;
     UPDATE public.paige_authority_budget_windows SET spend_used_usd = GREATEST(0, _before + _delta), updated_at = now()
      WHERE grant_id = _r.grant_id AND window_kind = _kind AND window_start = _wstart RETURNING spend_used_usd INTO _after;
-    _cap := CASE _kind WHEN 'day' THEN (_g.caps->>'daily_budget_usd')::numeric
-              WHEN 'week' THEN (_g.caps->>'weekly_budget_usd')::numeric
-              WHEN 'month' THEN (_g.caps->>'monthly_budget_usd')::numeric
-              WHEN 'client_period' THEN (_g.caps->>'client_period_budget_usd')::numeric ELSE NULL END;
+    -- (Codex P1 fold) Read the LIVE declared cap under a SHAPE-GUARD. caps are MUTABLE and re-read here at
+    -- settlement; if this cap was edited to a JSON null / non-number AFTER the reservation, the raw
+    -- (_g.caps->>key)::numeric would produce SQL NULL (silently skipping the breach check → over_cap_breach
+    -- stays false: a fail-OPEN of breach detection) or RAISE on a string. Instead: a present-but-unreadable cap
+    -- is recorded as a cap_unreadable_at_settlement anomaly (which forces escalate below), never silently
+    -- skipped; an ABSENT cap is a genuine no-limit (NULL, normal). Nested IFs so the ::numeric cast is reached
+    -- only after jsonb_typeof proves a number. (A cap SNAPSHOT taken at reserve time would also immunize a
+    -- valid-but-changed cap — the more robust design — PARKED: needs a receipt column + a mid-flight-cap-change
+    -- semantics decision, out of DARK M1-b scope.)
+    _cap_key := CASE _kind WHEN 'day' THEN 'daily_budget_usd' WHEN 'week' THEN 'weekly_budget_usd'
+                  WHEN 'month' THEN 'monthly_budget_usd' WHEN 'client_period' THEN 'client_period_budget_usd' ELSE NULL END;
+    _cap := NULL;
+    IF _cap_key IS NOT NULL AND (_g.caps ? _cap_key) THEN
+      IF jsonb_typeof(_g.caps->_cap_key) <> 'number' THEN
+        _anomaly := COALESCE(_anomaly, '[]'::jsonb) || jsonb_build_object('kind','cap_unreadable_at_settlement','window',_kind,'cap_key',_cap_key);
+      ELSIF (_g.caps->>_cap_key)::numeric < 0 THEN
+        _anomaly := COALESCE(_anomaly, '[]'::jsonb) || jsonb_build_object('kind','cap_unreadable_at_settlement','window',_kind,'cap_key',_cap_key);
+      ELSE
+        _cap := (_g.caps->>_cap_key)::numeric;
+      END IF;
+    END IF;
     IF _cap IS NOT NULL AND _after > _cap THEN
       _breach := true;
       _anomaly := COALESCE(_anomaly, '[]'::jsonb) || jsonb_build_object('kind','over_cap','window',_kind,'cap',_cap,'confirmed',_confirmed,'window_spend',_after);
@@ -540,6 +572,7 @@ DECLARE
   _applied_delta numeric;
   _existing     record;
   _kind         text;
+  _cap_key      text;
   _wstart       date;
   _before       numeric;
   _after        numeric;
@@ -669,10 +702,22 @@ BEGIN
       WHERE grant_id = _r.grant_id AND window_kind = _kind AND window_start = _wstart FOR UPDATE;
     IF NOT FOUND THEN _before := 0; END IF;
     _after := GREATEST(0, _before + _applied_delta);
-    _cap := CASE _kind WHEN 'day' THEN (_g.caps->>'daily_budget_usd')::numeric
-              WHEN 'week' THEN (_g.caps->>'weekly_budget_usd')::numeric
-              WHEN 'month' THEN (_g.caps->>'monthly_budget_usd')::numeric
-              WHEN 'client_period' THEN (_g.caps->>'client_period_budget_usd')::numeric ELSE NULL END;
+    -- (Codex P1 fold) SHAPE-GUARDED live cap read — identical rationale to authority_confirm: a cap edited to
+    -- a JSON null / non-number after the reservation must not silently skip the breach check (fail-OPEN) nor
+    -- RAISE on a string. A present-but-unreadable cap → cap_unreadable_at_settlement anomaly (forces escalate);
+    -- an absent cap → genuine no-limit (NULL). Nested IFs so the ::numeric cast runs only on a proven number.
+    _cap_key := CASE _kind WHEN 'day' THEN 'daily_budget_usd' WHEN 'week' THEN 'weekly_budget_usd'
+                  WHEN 'month' THEN 'monthly_budget_usd' WHEN 'client_period' THEN 'client_period_budget_usd' ELSE NULL END;
+    _cap := NULL;
+    IF _cap_key IS NOT NULL AND (_g.caps ? _cap_key) THEN
+      IF jsonb_typeof(_g.caps->_cap_key) <> 'number' THEN
+        _anomaly := COALESCE(_anomaly,'[]'::jsonb) || jsonb_build_object('kind','cap_unreadable_at_settlement','window',_kind,'cap_key',_cap_key);
+      ELSIF (_g.caps->>_cap_key)::numeric < 0 THEN
+        _anomaly := COALESCE(_anomaly,'[]'::jsonb) || jsonb_build_object('kind','cap_unreadable_at_settlement','window',_kind,'cap_key',_cap_key);
+      ELSE
+        _cap := (_g.caps->>_cap_key)::numeric;
+      END IF;
+    END IF;
     IF _cap IS NOT NULL AND _after > _cap THEN
       _breach := true;
       _anomaly := COALESCE(_anomaly,'[]'::jsonb) || jsonb_build_object('kind','over_cap','window',_kind,'cap',_cap,'window_spend',_after);

@@ -9,8 +9,9 @@
   silently ignore the narrower cap") **per selector, against grounded reality:**
   - **`client_period_budget_usd` → ENFORCED** against `public.tenant_client_agreements` (the canonical client-engagement
     boundary: `tenant_id NOT NULL`, a real `starts_on`/`ends_on` period, a lifecycle `status`). The grant names ONE
-    engagement in a new `scope.client_agreement_id` key. Grant-CUMULATIVE window (one per grant), anchored to
-    `(grant.effective_at)::date` — derived identically in all 5 primitives, no magic literal, no drift. Every §9 /
+    engagement in a new `scope.client_agreement_id` key. Grant-CUMULATIVE window (one per grant), anchored to a
+    FIXED non-calendar sentinel `CLIENT_PERIOD_ANCHOR = DATE '2000-01-01'` — derived identically in all 5 primitives,
+    immune to grant mutation (see the fold notes below; NOT `effective_at`, which is mutable). Every §9 /
     state / period failure fails CLOSED with a SPECIFIC reason (`client_period_boundary_unspecified` /
     `client_agreement_id_invalid` / `client_agreement_not_found` / `not_authorized` (foreign tenant, §9) /
     `client_agreement_inactive` / `client_agreement_not_started` / `client_agreement_ended`) — never silently skipped.
@@ -76,9 +77,22 @@
   `FOR NO KEY UPDATE` a lifecycle `UPDATE` takes, serializing pause/cancel/re-date against the reserve so a stale-`active`
   read can't commit a reservation against a since-closed boundary. **PARKED (§13, out of DARK M1-b scope):** the broader
   per-ENGAGEMENT rollup across multiple top-level owner grants, and spend by grants that never declare the cap, are
-  target-aware PR-3 concerns. **§32 RE-PROVED after the Codex fold — PROOF_OK: B1..B16**, adding **B15** (null/negative/
-  string cap each fail closed, no window written) and **B16** (delegated child fails closed writing no window; the top-level
-  owner grant still reserves ok — delegation-specific, not a blanket refusal). Guards green after the fold:
+  target-aware PR-3 concerns. **§32 RE-PROVED after the round-1 fold — PROOF_OK: B1..B16.**
+  **CODEX PEER-GATE ROUND 2 (§39) on head `e8ec654` caught THREE MORE (2×P1, 1×P2) — the round-1 null-cap fix was too
+  NARROW; all folded FIX-FIRST:** (P1, all-caps shape) reserve now validates the SHAPE of EVERY declared cap (all 8
+  recognized keys, not just client_period) BEFORE building any window — a JSON null / non-number / negative value on ANY
+  cap (e.g. a null `daily_budget_usd` on a grant that also declares a valid client_period) fails CLOSED with
+  `cap_invalid` + the offending `cap` key (this SUPERSEDES the round-1 `client_period_cap_invalid`, which is removed); two
+  nested IFs so a JSON-string never reaches the `::numeric` cast. (P1, settlement) `authority_confirm` AND
+  `authority_reconcile` read the LIVE (mutable) cap at settlement — a cap edited to null/non-number AFTER the reservation
+  would silently skip the breach check (`over_cap_breach`/`escalate` false = fail-OPEN) or RAISE on a string; both now
+  read the cap under a shape-guard and record a `cap_unreadable_at_settlement` anomaly (forcing `escalate`), never a
+  silent skip or a raise. (P2, doc) the decision-log lead bullet still said the window anchored to `effective_at` — a
+  self-contradiction with the round-1 fold; corrected above to the constant sentinel. **PARKED (more robust, out of DARK
+  M1-b scope):** a cap SNAPSHOT recorded at reserve time would additionally immunize a valid-but-CHANGED cap (needs a
+  receipt column + a mid-flight-cap-change semantics decision). **§32 RE-PROVED after round 2 — PROOF_OK: B1..B18**,
+  adding **B17** (valid client_period + null daily → `cap_invalid` on `daily_budget_usd`, no window written) and **B18**
+  (cap edited to null/string AFTER reserve → confirm ESCALATES, no silent breach-miss, no raise-on-string). Guards green:
   `lint:migration-versions` (995, no reuse) · `lint:definer-fns` · `lint:managed-schema` · `lint:integration-registry`; §50/§63 clean.
   **PR #1027 (ready). OUTCOME: MERGING** (§32.a persisted-apply owed post-merge via `deploy-migrations`; authenticated drive
   owed to PR-3). Flip to MERGED + §32.a CONFIRMED post-merge.
