@@ -1,18 +1,23 @@
 import { ArrowLeft, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { workspaceRootForTenant, WORKSPACE_CHOOSER_PATH } from "@/lib/auth/workspaceEntry";
 
 export function AdminViewBanner() {
   const { isImpersonating, target, stop } = useImpersonation();
   const navigate = useNavigate();
+  const { activeTenant } = useTenantContext();
 
   if (!isImpersonating || !target) return null;
 
   const handleExit = async () => {
     const contactId = target.contactId;
     await stop();
-    try { sessionStorage.removeItem("paige_stay_in_client_view"); } catch {}
-    navigate(contactId ? `/admin/contacts/${contactId}` : "/admin");
+    try { sessionStorage.removeItem("paige_stay_in_client_view"); } catch { /* best-effort cleanup */ }
+    const landing = workspaceRootForTenant(activeTenant);
+    const clients = landing?.replace(/\/command-center$/, "/clients/people");
+    navigate(clients ? `${clients}${contactId ? `?contact=${encodeURIComponent(contactId)}` : ""}` : WORKSPACE_CHOOSER_PATH);
   };
 
 

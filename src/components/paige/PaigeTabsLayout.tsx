@@ -11,7 +11,7 @@ export default function PaigeTabsLayout() {
   // The chat index is full-bleed and owns its own height; the three PageShell
   // pages expect the normal <main> padding, which this layout cancels below. So
   // re-add that padding for the non-chat routes only (repo precedent: AdminLayout.isStudio).
-  const isChat = useLocation().pathname === "/admin/playbook";
+  const isChat = useLocation().pathname === "/choose-account";
   return (
     // Cancel <main>'s p-3/4/6 so the strip is flush and chat can fill — this is the
     // bleed PaigeWorkspace used to own itself (now one home, here).

@@ -24,9 +24,9 @@ import { PLATFORM_SCOPE_PROSE, PLATFORM_CHIPS, buildPlatformGreeting } from "./p
 
 /** Real platform surfaces we LINK to (§18 — never re-render another home's data). */
 const DESKS: Array<{ to: string; label: string; blurb: string; icon: typeof Building2 }> = [
-  { to: "/admin/platform/tenants", label: "Tenants", blurb: "The fleet & growth", icon: Building2 },
-  { to: "/admin/platform/money", label: "Platform revenue", blurb: "MRR & billing", icon: Wallet },
-  { to: "/admin/platform/analytics", label: "Analytics", blurb: "Platform metrics", icon: LineChart },
+  { to: "/choose-account", label: "Tenants", blurb: "The fleet & growth", icon: Building2 },
+  { to: "/choose-account", label: "Platform revenue", blurb: "MRR & billing", icon: Wallet },
+  { to: "/choose-account", label: "Analytics", blurb: "Platform metrics", icon: LineChart },
 ];
 
 export function PaigePlatformDesk() {

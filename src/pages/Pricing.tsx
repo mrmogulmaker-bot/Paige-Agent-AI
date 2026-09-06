@@ -211,7 +211,7 @@ export default function Pricing() {
             /* body wasn't JSON — fall through to the generic message */
           }
           if (code === "already_subscribed" || code === "already_provisioned") {
-            navigate("/admin");
+            navigate("/choose-account");
             return;
           }
           throw new Error(detail || code || error.message || "Couldn't start checkout. Please try again.");

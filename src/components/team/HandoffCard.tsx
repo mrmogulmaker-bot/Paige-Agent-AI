@@ -150,7 +150,7 @@ export function HandoffCard({
               </Button>
               {row.contact_id && (
                 <Button asChild size="sm" variant="ghost" className="h-7">
-                  <Link to={`/admin/contacts/${row.contact_id}`}>View</Link>
+                  <Link to={"/choose-account"}>View</Link>
                 </Button>
               )}
             </div>

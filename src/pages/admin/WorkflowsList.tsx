@@ -107,7 +107,7 @@ export default function WorkflowsList({ embedded = false }: { embedded?: boolean
         )}
         <div className="flex items-center gap-2 ml-auto">
           <Button asChild variant="outline" size="sm">
-            <Link to="/admin/workflows/runs">Recent runs</Link>
+            <Link to="/choose-account">Recent runs</Link>
           </Button>
         </div>
       </div>
@@ -154,7 +154,7 @@ export default function WorkflowsList({ embedded = false }: { embedded?: boolean
             {items.map((w) => (
               <Link
                 key={w.id}
-                to={`/admin/workflows/${w.key}`}
+                to={"/choose-account"}
                 className="block p-4 rounded-md border hover:border-accent hover:bg-muted/30 transition-colors"
               >
                 <div className="flex items-start justify-between gap-2">

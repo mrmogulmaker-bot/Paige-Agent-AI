@@ -171,8 +171,8 @@ export function StorefrontPanel() {
       {
         body: {
           action: "start_onboarding",
-          return_url: `${window.location.origin}/admin/settings?tab=storefront`,
-          refresh_url: `${window.location.origin}/admin/settings?tab=storefront`,
+          return_url: `${window.location.origin}${window.location.pathname}`,
+          refresh_url: `${window.location.origin}${window.location.pathname}`,
         },
       },
     );
@@ -530,6 +530,7 @@ function CreateProductDialog({
       toast.error("Add at least one billing plan");
       return;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
     const pricesPayload: any[] = [];
     for (const p of plans) {
       const unit = Math.round(parseFloat(p.amount) * 100);
@@ -575,6 +576,7 @@ function CreateProductDialog({
       },
     );
     setCreating(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
     const serverErr = (data as any)?.error;
     if (error || serverErr) {
       console.error("tenant-product-upsert failed", { error, data });

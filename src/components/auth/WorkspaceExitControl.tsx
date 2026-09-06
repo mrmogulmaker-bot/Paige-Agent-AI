@@ -22,7 +22,7 @@ import { toast } from "sonner";
  * previously mounted `MemberAccountSwitcher`, which rendered EVERY tenant the
  * caller could read — sub-accounts and agencies included, with no status filter —
  * and on selection PERSISTED `profiles.active_tenant_id` before hard-navigating
- * to `/admin`, landing the person in whichever shell the new tier implied. That
+ * to `/choose-account`, landing the person in whichever shell the new tier implied. That
  * is the in-shell account picker the ruling forbids, and it is how an owner left
  * Solo without meaning to. The capability to reach another authorized workspace
  * is preserved here in full; only the place the choice happens has moved, from
@@ -30,7 +30,7 @@ import { toast } from "sonner";
  *
  * WHERE IT IS MOUNTED, AND WHERE IT IS NOT (§13 — an earlier draft of this
  * comment claimed more than the code did). It is mounted in the Solo shell
- * (`SoloApp`) and in the legacy `/admin` shell (`AdminLayout`), which together
+ * (`SoloApp`) and in the legacy `/choose-account` shell (`AdminLayout`), which together
  * cover every Solo owner whether or not their tenant carries
  * `solo_shell_enabled`. It is NOT mounted in the sub-account shell: `/business/*`
  * renders `AgencyApp`, whose account slot resolves to `null` for a member who
@@ -41,7 +41,7 @@ import { toast } from "sonner";
  *
  * So this control is the recovery path for the shells it is IN. What keeps an
  * owner out of the shell it is missing from is the entry rule, not this button:
- * `/admin` now asks a multi-context person which workspace they want instead of
+ * `/choose-account` now asks a multi-context person which workspace they want instead of
  * resuming whichever one `active_tenant_id` was parked on.
  *
  * Its visibility does not depend on the current workspace's tier — the old

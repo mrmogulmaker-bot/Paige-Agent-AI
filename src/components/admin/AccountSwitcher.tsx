@@ -38,7 +38,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { toast } from "sonner";
 import { consumeSwitchNotice, stashSwitchNotice } from "@/lib/agency/switchNotice";
-import { rememberWorkspaceEntered } from "@/lib/auth/workspaceEntry";
+import { authorizedRootForTier, rememberWorkspaceEntered } from "@/lib/auth/workspaceEntry";
 
 interface ManagedSub {
   id: string;
@@ -46,6 +46,7 @@ interface ManagedSub {
   name: string;
   account_type: string;
   status: string;
+  account_number: number | string;
 }
 
 /** Map an RPC failure to a human, mogul-direct line (§3). */
@@ -123,7 +124,9 @@ export function AccountSwitcher() {
       // shipped agency capability was nearly broken for the third time (§58/§37:
       // `/admin` is a DESTINATION, and every producer of it has to be inventoried).
       rememberWorkspaceEntered(child.id);
-      window.location.assign("/admin");
+      const root = authorizedRootForTier("sub_account", child.account_number);
+      if (!root) throw new Error("This account does not have a valid workspace address.");
+      window.location.assign(root);
     } catch (e) {
       toast.error(switchError(e));
       setSwitching(false);

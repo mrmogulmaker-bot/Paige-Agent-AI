@@ -187,17 +187,17 @@ describe("resolveLandingRoute — agency landing (§65)", () => {
   it("honors the 'last_account' preference by falling through to /admin", async () => {
     mockCtx(MANAGER);
     mockTables({ agencyLoginDefault: "last_account" });
-    expect(await resolveLandingRoute("u1")).toBe("/admin");
+    expect(await resolveLandingRoute("u1")).toBe("/choose-account");
   });
 
   it("falls through to /admin when the caller is not an agency manager", async () => {
     mockCtx({ is_agency_manager: false, agency_account_number: null });
-    expect(await resolveLandingRoute("u1")).toBe("/admin");
+    expect(await resolveLandingRoute("u1")).toBe("/choose-account");
   });
 
   it("falls through to /admin when the RPC throws", async () => {
     rpc.mockImplementation(() => Promise.reject(new Error("boom")));
-    expect(await resolveLandingRoute("u1")).toBe("/admin");
+    expect(await resolveLandingRoute("u1")).toBe("/choose-account");
   });
 
   // §53 — BOTH operator tiers land on the operator console.

@@ -296,7 +296,7 @@ export default function CustomFieldsSettings() {
         eyebrow="Contacts"
         title="Custom Fields"
         description="Define your own fields for contacts — cohort, T-shirt size, whatever your practice tracks — and Paige-built forms can capture them directly."
-        backHref="/admin/settings"
+        backHref="/choose-account"
         actions={
           <Button onClick={openAdd} disabled={!activeTenantId}>
             <Plus className="h-4 w-4 mr-1.5" aria-hidden />

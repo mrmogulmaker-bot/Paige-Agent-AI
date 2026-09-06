@@ -221,7 +221,7 @@ export default function SetupBilling() {
             action={
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button asChild variant="outline">
-                  <Link to="/admin/setup/general">Manage your client billing</Link>
+                  <Link to="/choose-account">Manage your client billing</Link>
                 </Button>
                 <span className="inline-flex items-center rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                   Your usage — coming soon
@@ -273,7 +273,7 @@ export default function SetupBilling() {
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button variant="outline" onClick={() => void load()}>Try again</Button>
                 <Button asChild variant="ghost">
-                  <Link to="/admin/support">Contact support</Link>
+                  <Link to="/choose-account">Contact support</Link>
                 </Button>
               </div>
             }
@@ -351,7 +351,7 @@ function CurrentPlanCard({ sub, plan }: { sub: CurrentSub; plan: Plan | null }) 
       <p className="mt-5 border-t border-border/60 pt-4 text-sm text-muted-foreground">
         Need to change or cancel your plan?{" "}
         <Link
-          to="/admin/support"
+          to="/choose-account"
           className="rounded font-medium text-[hsl(var(--primary))] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
         >
           Contact support
@@ -393,7 +393,7 @@ function PlanChooser({
           description="Plans aren't published right now. Reach out and we'll get you set up."
           action={
             <Button asChild variant="outline">
-              <Link to="/admin/support">Contact support</Link>
+              <Link to="/choose-account">Contact support</Link>
             </Button>
           }
         />
@@ -528,7 +528,7 @@ function ContactSalesCard({ plan }: { plan: Plan }) {
       {plan.description && <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{plan.description}</p>}
       <div className="mt-auto pt-5">
         <Button asChild variant="outline" className="w-full">
-          <Link to="/admin/support">Contact sales</Link>
+          <Link to="/choose-account">Contact sales</Link>
         </Button>
       </div>
     </div>

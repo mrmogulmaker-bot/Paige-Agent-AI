@@ -126,7 +126,7 @@ export default function CalendarAdmin({
   activeTenantId: suppliedTenantId,
   activeTab,
   onTabChange,
-  connectionsHref = "/admin/setup/integrations",
+  connectionsHref = "/choose-account",
   openPaige,
   tenantMode = false,
   soloSettings = false,

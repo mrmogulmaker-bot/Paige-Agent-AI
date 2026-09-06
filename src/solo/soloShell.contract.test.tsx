@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -44,7 +44,7 @@ describe("the canonical Solo shell is one shell for every tenant", () => {
     // Any OTHER component rendering the host would be a second page host — the
     // thing the contract forbids. Selectors and assertions that merely REFERENCE
     // it are fine, so this looks for the JSX attribute form specifically.
-    const others = execFileSyncGrep().filter((f) => f !== "src/solo/SoloApp.tsx");
+    const others = filesRenderingSoloHost().filter((f) => f !== "src/solo/SoloApp.tsx");
     expect(others, "only SoloApp renders [data-solo-screen-host]").toEqual([]);
   });
 
@@ -82,12 +82,20 @@ describe("the canonical Solo shell is one shell for every tenant", () => {
   });
 });
 
-/** Repo-wide search for the JSX attribute, kept out of the assertion for clarity. */
-function execFileSyncGrep(): string[] {
-  const out = execFileSync(
-    "grep",
-    ["-rl", "--include=*.tsx", "-e", "data-solo-screen-host [^=]", "-e", "data-solo-screen-host>", "-e", "data-solo-screen-host ", "src"],
-    { encoding: "utf8" },
-  ).trim();
-  return out ? out.split("\n").filter((f) => !f.endsWith(".test.tsx")) : [];
+/** Repo-wide JSX scan kept in-process so the contract runs on every CI image. */
+function filesRenderingSoloHost(): string[] {
+  const matches: string[] = [];
+  const visit = (rel: string): void => {
+    for (const entry of readdirSync(resolve(process.cwd(), rel), { withFileTypes: true })) {
+      const child = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) {
+        visit(child);
+        continue;
+      }
+      if (!entry.isFile() || !child.endsWith(".tsx") || child.endsWith(".test.tsx")) continue;
+      if (/data-solo-screen-host(?:\s[^=]|\s*>|>)/.test(read(child))) matches.push(child);
+    }
+  };
+  visit("src");
+  return matches;
 }

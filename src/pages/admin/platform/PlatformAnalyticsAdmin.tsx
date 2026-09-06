@@ -9,7 +9,7 @@ export default function PlatformAnalyticsAdmin() {
       title="Analytics"
       purpose="Onboarding funnel, trial-to-paid conversion, and revenue-stage graduation across the fleet."
       relatedLabel="Current operator analytics"
-      relatedHref="/admin/analytics"
+      relatedHref="/choose-account"
     />
   );
 }

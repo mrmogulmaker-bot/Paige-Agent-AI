@@ -81,7 +81,7 @@ const mount = () => {
       <MemoryRouter initialEntries={["/operator/fleet/tenants"]}>
         <Routes>
           <Route path="/operator/login" element={<div>DOOR</div>} />
-          <Route path="/admin" element={<div>LEGACY_ADMIN</div>} />
+          <Route path="/app" element={<div>STANDARD_APP</div>} />
           <Route
             path="/operator/:section/*"
             element={
@@ -176,7 +176,7 @@ describe("RequireOperator — a grant belongs to a person, not to a browser", ()
     // B is not an operator: the honest end of the window is the old console, not the new one.
     await answerRpc(false);
     expect(screen()).not.toContain("OPERATOR_CONSOLE");
-    expect(screen()).toContain("LEGACY_ADMIN");
+    expect(screen()).toContain("STANDARD_APP");
   });
 
   it("still spares the SAME operator a flash when they re-enter the subtree", async () => {
@@ -225,7 +225,7 @@ describe("RequireOperator — a grant belongs to a person, not to a browser", ()
     mount();
     await settle();
     await answerRpc(false);
-    expect(screen()).toContain("LEGACY_ADMIN");
+    expect(screen()).toContain("STANDARD_APP");
     unmount();
 
     pendingRpc = [];

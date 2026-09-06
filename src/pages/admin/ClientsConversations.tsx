@@ -37,6 +37,7 @@ import {
   useCommsAttachments,
 } from "./conversations/inbox-shared";
 import { voiceHistoryStatus } from "@/lib/voice/voiceCallSafety";
+import { tenantRoutePrefixForPath } from "@/components/tenant-shell/tenantShellRoutes";
 import { ComposeThreadDialog } from "./conversations/ComposeThreadDialog";
 import { FirstRunOnboarding } from "./conversations/FirstRunOnboarding";
 import { ThreadRow } from "./conversations/ThreadRow";
@@ -724,7 +725,12 @@ export default function ClientsConversations() {
 
   const selectedThread = useMemo(() => dbThreads.find((t) => t.thread_key === selectedKey) ?? null, [dbThreads, selectedKey]);
   const soloLinks = buildSoloConversationLinks(soloAccountAddress, selectedThread?.contact_id ?? null);
-  const connectionsHref = isSolo ? soloLinks.connections : "/admin/integrations/email";
+  const tenantRoot = tenantRoutePrefixForPath(location.pathname);
+  const connectionsHref = isSolo
+    ? soloLinks.connections
+    : tenantRoot
+      ? `${tenantRoot}/integrations`
+      : "/choose-account";
 
   // selected view = DbThread + its loaded messages (all fields the composer/approve need)
   const selected = useMemo((): SelectedView | null => {

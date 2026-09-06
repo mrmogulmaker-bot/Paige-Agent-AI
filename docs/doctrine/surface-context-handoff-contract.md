@@ -15,7 +15,7 @@ Companion to `governed-execution-seam.md` (how an *action* is governed once requ
 surface hands Paige a **safe, structured context** so she opens already knowing what the owner is
 looking at — never a blind chat window, never a raw page payload.
 
-## The real current state (grounded 2026-09-06, `origin/main` 0b48f26)
+## The real current state (grounded 2026-09-06, `origin/main` a013be41 plus the route-retirement hotfix)
 
 The only surface → chat handoff that exists today:
 
@@ -25,8 +25,8 @@ window CustomEvent 'paige:open'  →  readPaigeOpenScope (src/solo/paigeClientSc
 ```
 
 - **Sole chat surface.** `PaigeAIChat.tsx` is the one client that calls `paige-ai-chat`; wrapped by
-  `SoloPaigeWorkspace` (Solo) and `PaigeWorkspace` (Agency/admin), mounted via the
-  `TenantCommandCenterShell` slot. The floating chat was retired (#981) with a standing regression
+  `SoloPaigeWorkspace` (Solo) and the shell-owned `PaigeWorkspace` wrapper (Agency), mounted via the
+  `TenantCommandCenterShell` slot. No privileged URL or separate admin site mounts either workspace; platform-operator access remains role-gated in the canonical operator context. The floating chat was retired (#981) with a standing regression
   guard (`src/__tests__/no-floating-platform-chat.test.ts`), because it "carried own-row consumer PII
   into the tenant `paige-ai-chat` backend."
 - **One listener** — `SoloApp.tsx:228`. It sets the client scope (if named) and `expandRail()`. Agency

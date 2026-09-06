@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 
 export default function ConversationsTabsLayout() {
   const { pathname } = useLocation();
-  const isInbox = pathname === "/admin/clients-hub/conversations";
+  const isInbox = pathname === "/choose-account";
 
   return (
     <div className={cn("flex h-full min-h-0 flex-col", isInbox && "flex-1 overflow-hidden")}>

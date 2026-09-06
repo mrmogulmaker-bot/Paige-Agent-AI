@@ -208,7 +208,7 @@ export default function StageAutomationRules() {
   return (
     <div className="space-y-4 max-w-6xl">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/admin/settings")}>
+        <Button variant="ghost" size="sm" onClick={() => navigate("/choose-account")}>
           <ArrowLeft className="w-4 h-4 mr-1" /> Back to settings
         </Button>
       </div>
@@ -315,7 +315,7 @@ export default function StageAutomationRules() {
             <p className="text-sm text-muted-foreground py-6 text-center">Loading…</p>
           ) : stages.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">
-              This pipeline has no stages yet. Add stages in <a className="underline" href="/admin/settings/pipelines">Pipeline Settings</a> first.
+              This pipeline has no stages yet. Add stages in <a className="underline" href="/choose-account">Pipeline Settings</a> first.
             </p>
           ) : (
             <div className="overflow-x-auto">

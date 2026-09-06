@@ -6,14 +6,11 @@ const ROOT = process.cwd();
 const SOURCE_EXT = /\.(?:[cm]?[jt]sx?|json|ya?ml|sql)$/i;
 const ADMIN_STRING = /["'`](?:https:\/\/(?:www\.|app\.)?paigeagent\.ai)?\/admin(?:\/|\b)/i;
 
-// The only acceptable old-path literals are inbound router compatibility shims.
-// External producers, outbound copy, and destination builders are never allowlisted.
-const LEGACY_INBOUND_ALLOWLIST = [
-  { file: "src/App.tsx", pattern: /<Route path="\/admin\/\*"/ },
-  { file: "src/pages/Admin.tsx", pattern: /\/admin REDIRECTS/ },
-  { file: "src/agency/AgencyEntry.tsx", pattern: /legacy.*\/admin/i },
-  { file: "src/solo/SoloEntry.tsx", pattern: /\/admin.*redirect/i },
-];
+// The retired path has no inbound compatibility mount. Negative regression fixtures and the
+// one data-cleanup migration may name it; executable product destinations may not.
+const RETIREMENT_FIXTURES = new Set([
+  "supabase/migrations/20261227000000_retire_admin_notification_urls.sql",
+]);
 
 function filesUnder(relative) {
   const start = path.join(ROOT, relative);
@@ -40,16 +37,12 @@ function isCommentOnly(line) {
   return trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("<!--");
 }
 
-function allowedInbound(file, line) {
-  const rel = relative(file);
-  return LEGACY_INBOUND_ALLOWLIST.some((entry) => entry.file === rel && entry.pattern.test(line));
-}
-
 const CLASSES = [
   {
     name: "frontend callers",
-    files: () => filesUnder("src"),
-    line: (line) => /success_path|cancel_path|redirectTo|actionUrl|reviewUrl|paige_url|externalUrl/i.test(line),
+    files: () => filesUnder("src").filter((file) =>
+      !/\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(file) && !relative(file).startsWith("src/__tests__/")),
+    line: () => true,
   },
   {
     name: "sibling edge functions",
@@ -58,12 +51,12 @@ const CLASSES = [
   },
   {
     name: "database triggers",
-    files: () => filesUnder("supabase/migrations"),
+    files: () => filesUnder("supabase/migrations").filter((file) => !RETIREMENT_FIXTURES.has(relative(file))),
     line: (line) => /trigger|link_to|http|request|payload|body|url/i.test(line),
   },
   {
     name: "pg_cron and pg_net migrations",
-    files: () => filesUnder("supabase/migrations"),
+    files: () => filesUnder("supabase/migrations").filter((file) => !RETIREMENT_FIXTURES.has(relative(file))),
     line: (line) => /cron|pg_net|net\.http|http_post|schedule|url|body/i.test(line),
   },
   {
@@ -97,7 +90,6 @@ function scanText(file, text, classDef) {
   const hits = [];
   for (const [index, line] of text.split(/\r?\n/).entries()) {
     if (isCommentOnly(line) || !classDef.line(line) || !ADMIN_STRING.test(line)) continue;
-    if (allowedInbound(file, line)) continue;
     hits.push({ file: relative(file), line: index + 1, text: line.trim() });
   }
   return hits;
@@ -122,7 +114,7 @@ function selfTest() {
   if (ADMIN_STRING.test('const role = "admin";') || ADMIN_STRING.test('import x from "@/components/admin/X"')) {
     throw new Error("self-test confused an admin role/import with a URL");
   }
-  console.log(`user-facing-admin-producer-lint self-test: ${CLASSES.length}/8 producer classes covered`);
+  console.log(`user-facing-admin-producer-lint self-test: ${CLASSES.length} producer classes covered`);
 }
 
 if (process.argv.includes("--self-test")) {
@@ -146,11 +138,11 @@ for (const classDef of CLASSES) {
 
 const unique = new Map(violations.map((hit) => [`${hit.file}:${hit.line}:${hit.text}`, hit]));
 if (unique.size) {
-  console.error("User-facing /admin producers found (legacy inbound redirects are the only allowed use):");
+  console.error("Retired privileged-route producers found:");
   for (const hit of unique.values()) {
     console.error(`  [${hit.className}] ${hit.file}:${hit.line} ${hit.text}`);
   }
   process.exit(1);
 }
 
-console.log(`user-facing-admin-producer-lint: clean across ${CLASSES.length}/8 producer classes`);
+console.log(`user-facing-admin-producer-lint: clean across ${CLASSES.length} producer classes`);

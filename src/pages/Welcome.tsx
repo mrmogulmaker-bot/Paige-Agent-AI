@@ -64,7 +64,7 @@ export default function Welcome() {
       if (await hasWorkspace()) {
         if (cancelled) return;
         settledRef.current = true;
-        navigate("/admin", { replace: true });
+        navigate("/choose-account", { replace: true });
         return;
       }
 
@@ -130,7 +130,7 @@ export default function Welcome() {
               dashboard — if your workspace isn't ready yet, refresh in a moment, and reach out any time
               and we'll finish setting it up for you.
             </p>
-            <Button variant="gold" className="w-full" onClick={() => navigate("/admin", { replace: true })}>
+            <Button variant="gold" className="w-full" onClick={() => navigate("/choose-account", { replace: true })}>
               Go to dashboard
             </Button>
             <Button asChild variant="outline" className="w-full">

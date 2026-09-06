@@ -625,7 +625,7 @@ export default function ContactsAdmin() {
                   />
                 </TableCell>
                 <TableCell>
-                  <button className="text-left" onClick={() => navigate(`/admin/contacts/${c.id}`)}>
+                  <button className="text-left" onClick={() => navigate("/choose-account")}>
                     <div className="font-medium flex items-center gap-2">
                       {name}
                       {c.do_not_contact && (
@@ -732,7 +732,7 @@ export default function ContactsAdmin() {
                       <TooltipContent>Delete contact (admin)</TooltipContent>
                     </Tooltip>
                   )}
-                  <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/contacts/${c.id}`)}>
+                  <Button variant="ghost" size="sm" onClick={() => navigate("/choose-account")}>
                     Open
                   </Button>
                 </TableCell>
@@ -753,7 +753,7 @@ export default function ContactsAdmin() {
         <NewContactDialog
           open={newOpen}
           onOpenChange={setNewOpen}
-          onCreated={(id) => navigate(`/admin/contacts/${id}`)}
+          onCreated={(id) => navigate("/choose-account")}
         />
 
         <EditContactDialog

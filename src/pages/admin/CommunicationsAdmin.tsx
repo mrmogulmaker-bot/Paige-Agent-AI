@@ -32,7 +32,7 @@ const isFailedStatus = (status: string) => status === "failed" || status === "bo
 
 // The messaging-CONFIG panels moved to Conversations > Settings (§45 tier decompose, §18 one home).
 // Old deep-links land here as ?tab=<key>; redirect them to their new home so nothing dead-ends (§37).
-const SETTINGS_HOME = "/admin/clients-hub/conversations/settings";
+const SETTINGS_HOME = "/choose-account";
 const MOVED_CONFIG_TABS = new Set(["numbers", "a2p", "consent", "signatures", "notifications"]);
 
 const CommunicationsAdmin = () => {
@@ -57,7 +57,7 @@ const CommunicationsAdmin = () => {
     ? MOVED_CONFIG_TABS.has(requestedTab)
       ? `${SETTINGS_HOME}?panel=${requestedTab}`
       : requestedTab === "snippets"
-        ? "/admin/clients-hub/conversations/snippets"
+        ? "/choose-account"
         : null
     : null;
 

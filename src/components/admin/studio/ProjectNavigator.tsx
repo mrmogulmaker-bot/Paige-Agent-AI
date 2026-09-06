@@ -187,7 +187,7 @@ export function ProjectNavigator({
       session.applyMeta(next);
       const fresh = next.artifacts.find((a) => !before.has(`${a.kind}:${a.id}`));
       // Open the fresh page onto the #292 canvas (not the legacy ?pageId stage, §21).
-      if (fresh) navigate(`/admin/studio/${sessionId}?open=page:${fresh.id}`);
+      if (fresh) navigate("/choose-account");
     } catch (err) {
       toast({
         title: "Couldn't add a page",
@@ -211,7 +211,7 @@ export function ProjectNavigator({
       <div className="px-2 pb-1">
         <button
           type="button"
-          onClick={() => navigate("/admin/studio")}
+          onClick={() => navigate("/choose-account")}
           title={collapsed ? "All projects" : undefined}
           className={cn(
             "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors",

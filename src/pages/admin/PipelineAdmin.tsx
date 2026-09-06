@@ -151,7 +151,7 @@ export default function PipelineAdmin() {
           description="Set up your first pipeline and start moving deals toward the close."
           action={
             <Button asChild variant="gold">
-              <Link to="/admin/settings/pipelines">Create your first pipeline</Link>
+              <Link to="/choose-account">Create your first pipeline</Link>
             </Button>
           }
         />
@@ -173,7 +173,7 @@ export default function PipelineAdmin() {
                 {pipelines.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}{p.is_default ? " · default" : ""}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Button asChild variant="outline" size="sm"><Link to="/admin/settings/pipelines"><Settings className="w-4 h-4 mr-1" /> Configure</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link to="/choose-account"><Settings className="w-4 h-4 mr-1" /> Configure</Link></Button>
             <Button variant="outline" size="sm" onClick={() => setShowFromProgram(true)}><Sparkles className="w-4 h-4 mr-1" /> Build from a program</Button>
             <Button variant="gold" size="sm" onClick={() => { setNewStage(null); setShowNew(true); }}><Plus className="w-4 h-4 mr-1" /> New Deal</Button>
           </>

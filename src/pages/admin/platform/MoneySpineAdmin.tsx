@@ -9,7 +9,7 @@ export default function MoneySpineAdmin() {
       title="Money Spine"
       purpose="Platform revenue: subscriptions, marketplace transactions, metered usage, dunning and refunds."
       relatedLabel="Platform financials in Analytics"
-      relatedHref="/admin/analytics"
+      relatedHref="/choose-account"
     />
   );
 }

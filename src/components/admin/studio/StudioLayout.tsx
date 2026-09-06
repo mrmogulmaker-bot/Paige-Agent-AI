@@ -68,7 +68,7 @@ function StudioNavItem({
   const Icon = item.icon;
   return (
     <Link
-      to={`/admin/studio?view=${item.view}`}
+      to={"/choose-account"}
       aria-current={active ? "page" : undefined}
       title={collapsed ? item.label : undefined}
       className={cn(
@@ -167,20 +167,20 @@ export default function StudioLayout() {
 
   // Builder routes (/admin/studio/new, /admin/studio/:id) default the rail to a thin icon spine
   // so it doesn't compete with the builder's own 380px chat column; the bare home is expanded.
-  const onBuilder = location.pathname.startsWith("/admin/studio/");
+  const onBuilder = location.pathname.startsWith("/choose-account");
   const onHome = !onBuilder;
 
-  // Are we INSIDE a project? `/admin/studio/:sessionId` (but NOT `/admin/studio/new`, which is the
+  // Are we INSIDE a project? "/choose-account" (but NOT "/choose-account", which is the
   // create-and-redirect entry, not a session). When we are, the rail sheds the platform gallery
   // nav and becomes THIS project's own navigator (the owner's Lovable ask) — and the session is
   // loaded ONCE here, then shared with both the rail and the stage (<Outlet context>) so a single
   // source of truth drives both and they can never diverge.
-  const projectMatch = useMatch("/admin/studio/:sessionId");
+  const projectMatch = useMatch("/choose-account");
   const projectId =
     projectMatch &&
     projectMatch.params.sessionId &&
     projectMatch.params.sessionId !== "new" &&
-    // `/admin/studio/library` also matches :sessionId — it's the Media Library, a
+    // "/choose-account" also matches :sessionId — it's the Media Library, a
     // GALLERY-level destination, not a project. Excluding it keeps the gallery rail
     // (VIEW_NAV) + the workspace exit on that route (not a phantom project navigator).
     projectMatch.params.sessionId !== "library"
@@ -229,7 +229,7 @@ export default function StudioLayout() {
       if (e.key !== "Escape" || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-      navigate("/admin/campaigns");
+      navigate("/choose-account");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -306,7 +306,7 @@ export default function StudioLayout() {
           ) : (
             <div className="flex h-8 shrink-0 items-center px-3 pt-1">
               <Link
-                to="/admin/campaigns"
+                to="/choose-account"
                 aria-label="Back to Growth"
                 className="group flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--studio-glass-border)/0.3)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
               >
@@ -324,7 +324,7 @@ export default function StudioLayout() {
         {collapsed && !onProject && (
           <div className="flex shrink-0 justify-center pt-2">
             <Link
-              to="/admin/campaigns"
+              to="/choose-account"
               aria-label="Back to Growth"
               title="Back to Growth"
               className="rounded-md p-1.5 text-muted-foreground hover:bg-[hsl(var(--studio-glass-border)/0.3)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
@@ -340,7 +340,7 @@ export default function StudioLayout() {
             expands; the gold New-project button below anchors the collapsed rail. */}
         <div className={cn("flex h-14 shrink-0 items-center px-3", collapsed ? "justify-center" : "gap-2")}>
           {!collapsed && (
-            <Link to="/admin/studio" className="flex min-w-0 items-center gap-2" aria-label="Vibe Studio home">
+            <Link to="/choose-account" className="flex min-w-0 items-center gap-2" aria-label="Vibe Studio home">
               <PaigeCommandMark className="h-7 w-7 shrink-0" />
               <span className="truncate font-display text-sm font-semibold">Vibe Studio</span>
             </Link>
@@ -362,7 +362,7 @@ export default function StudioLayout() {
         {/* the single GOLD act — New project (§11 gold budget) */}
         <div className="px-3 pb-2">
           <Button asChild variant="gold" className={cn("w-full", collapsed && "px-0")}>
-            <Link to="/admin/studio/new" aria-label="New project" title={collapsed ? "New project" : undefined}>
+            <Link to="/choose-account" aria-label="New project" title={collapsed ? "New project" : undefined}>
               <Plus className="h-4 w-4" aria-hidden />
               {!collapsed && "New project"}
             </Link>
@@ -387,7 +387,7 @@ export default function StudioLayout() {
                 NAME, not a type-picker: it's one destination, filtered by kind inside (§18/§21). */}
             <li className="pt-1">
               <Link
-                to="/admin/studio/library"
+                to="/choose-account"
                 aria-current={location.pathname.endsWith("/studio/library") ? "page" : undefined}
                 title={collapsed ? "Saved library" : undefined}
                 className={cn(

@@ -100,18 +100,18 @@ describe("workspace entry containment", () => {
   // `Admin.tsx` each promise to be byte-unchanged while they are unset. A resolver
   // that routed on tier alone would hand the un-canaried shell to a tenant whose
   // operator has not enabled it — overriding a decision that is not ours to make.
-  it("refuses to route into a shell whose per-tenant canary is OFF", () => {
+  it("uses canonical workspace routes independently of retired route-era canaries", () => {
     expect(workspaceRootForTenant({ account_type: "standalone", parent_tenant_id: null, account_number: 1, features: {} }))
-      .toBeNull();
+      .toBe("/solo/1/command-center");
     expect(workspaceRootForTenant({ account_type: "standalone", parent_tenant_id: null, account_number: 1, features: null }))
-      .toBeNull();
+      .toBe("/solo/1/command-center");
     expect(workspaceRootForTenant({ account_type: "sub_account", parent_tenant_id: "p", account_number: 2, features: {} }))
-      .toBeNull();
+      .toBe("/business/2/command-center");
     expect(workspaceRootForTenant({ account_type: "agency", parent_tenant_id: null, account_number: 3, features: {} }))
-      .toBeNull();
+      .toBe("/agency/3/command-center");
     // The flags are not interchangeable: a Solo flag does not open the agency shell.
     expect(workspaceRootForTenant({ account_type: "agency", parent_tenant_id: null, account_number: 3, features: soloOn }))
-      .toBeNull();
+      .toBe("/agency/3/command-center");
   });
 
   // Copied from the Solo gate's own reasoning: `resolveTierKey` fail-safes an

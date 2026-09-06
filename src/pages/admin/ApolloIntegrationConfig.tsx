@@ -91,7 +91,7 @@ export default function ApolloIntegrationConfig() {
             <pre className="md:col-span-2 mt-2 rounded-md border bg-muted/40 p-3 text-xs overflow-x-auto">{JSON.stringify(result, null, 2)}</pre>
           )}
           <div className="md:col-span-2">
-            <Button asChild variant="outline"><Link to="/admin/leads/enrichment">View enrichment history</Link></Button>
+            <Button asChild variant="outline"><Link to="/choose-account">View enrichment history</Link></Button>
           </div>
         </CardContent>
       </Card>

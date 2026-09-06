@@ -1,6 +1,6 @@
 // Comms C-2s-B-2 — A2P registration. Extends the CommunicationsAdmin hub as its "A2P"
 // tab (§18: one home per capability — the tenant comms hub already exists at
-// /admin/communications; no redundant /app/settings/comms/a2p route is scaffolded,
+// the canonical tenant communications surface; no redundant client route is scaffolded,
 // exactly as NumbersTab did in C-2s-B-1).
 //
 // THE BEAT-GHL SURFACE (§36): a coach fills a short brand form and one line about what
@@ -40,7 +40,8 @@
 // the generated types (RLS scopes it to the caller's tenant).
 // §2: A2P copy is coaching-generic (produced by comms-a2p-draft); this tab adds no
 // finance wording. §11: gold is spent ONLY on the one act button; rings stay indigo.
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { tenantRoutePrefixForPath } from "@/components/tenant-shell/tenantShellRoutes";
 import { draftFromRegistration, hasLeftPreparation } from "./a2pDraftResume";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -198,6 +199,13 @@ const REFUSAL_COPY: Record<string, { title: string; description: string }> = {
 
 export function A2PTab() {
   const { toast } = useToast();
+  const location = useLocation();
+  const tenantRoot = tenantRoutePrefixForPath(location.pathname);
+  const businessProfileHref = tenantRoot
+    ? tenantRoot.startsWith("/solo/")
+      ? `${tenantRoot}/settings/setup/business-profile`
+      : `${tenantRoot}/setup`
+    : "/choose-account";
 
   // Existing registration (status surface).
   const [reg, setReg] = useState<A2PRegistration | null>(null);
@@ -224,7 +232,7 @@ export function A2PTab() {
   // and the difference decides whether we invite a paid re-draft over reviewed copy.
   const [regUnreadable, setRegUnreadable] = useState(false);
   const [needsLegalProfile, setNeedsLegalProfile] = useState(false);
-  // Who can actually FIX a missing legal business name. /admin/setup/legal is AdminOnly,
+  // Who can actually fix a missing legal business name is still role-gated server-side,
   // while the route that mounts this tab has no gate and comms-a2p-draft admits `coach` —
   // so an unconditional link handed coaches a control that denies them. Offer the link to
   // whoever can use it, and tell everyone else who to ask.
@@ -691,7 +699,7 @@ export function A2PTab() {
                 profile has one. Nothing was saved.
               </span>{" "}
               {isAdmin ? (
-                <Link to="/admin/setup/legal?tab=templates" className="underline underline-offset-2">
+                <Link to={businessProfileHref} className="underline underline-offset-2">
                   Open business profile
                 </Link>
               ) : (
