@@ -1,5 +1,24 @@
 # Decision Log — chronological one-liners
 
+- **Capability System slice 1 — artifact receipts DONE; the "render the card on all chat surfaces" item is NOT a clean port (grounded 2026-09-06)** —
+  the truthful-artifact-receipt foundation shipped and is hardened (#972 + the #974 Codex folds; all through the
+  §39 + §5 + Codex layers). Grounding the NEXT Slice-1 item (render `PaigeArtifactCard` on the other chat
+  surfaces) disproved the component header's "~15 lines of SSE handling each" claim: **FloatingChatbot** posts to
+  the same `paige-ai-chat` backend (frame can arrive) but its `Message` type has no `artifacts` field, its stream
+  update replaces the whole message object (would clobber an artifact), it has **no tenantId in scope** for the
+  card's required prop, and it is a **client-persona** surface (hidden on /admin+/agency) where the document/image
+  create tools are admin/coach-gated — so whether a frame is ever PRODUCED there is unconfirmed (wiring it risks a
+  dead render path, §10/§13). **BrokerPaigeSession** posts to a DIFFERENT backend (`broker-paige-chat`) that
+  re-emits only `{delta}` and NEVER emits `paige_artifact` — the frame never arrives, so it needs a backend
+  emission change first, not a client insert. Corrected the misleading component comment (§13/§58). **Honest
+  Slice-1 sequencing state:** the remaining reach items are (a) frontend/rendered-proof — card-render, download
+  button, in-place-refine UI — which a HEADLESS session cannot render-verify (§32.c owes the rendered/authenticated
+  proof to a browser-capable session, and card-render additionally needs the non-trivial per-surface work above);
+  (b) marginal backend — `campaign_brief` doc_type (the model can already produce the content as a `guide`);
+  (c) backend-with-a-§9-question — regular-chat in-place refine (honoring a model-supplied `content_id` for reuse
+  needs a tenant-ownership check); (d) substrate/flag-gated — HTML email_template, video (UNAVAILABLE), social-schedule
+  (Meta flag off). Surfaced to the owner for sequencing rather than churning filler (§31) or shipping an unverifiable
+  frontend port (§70). Grounding lives in scouts a5b49b1463ad074bd (item triage) + ada5727dbf9f4e3ea (port surfaces).
 - **Capability System slice 1.1 — two Codex P2 receipt edge-cases folded forward (2026-09-05, after #972 merged)** —
   Codex's post-merge review of #972 (the third layer after the §39 + §5 reviews both SHIPped) caught two
   real honesty edge-cases the same class the slice fixes — the documented §39 "layered defenses, none alone
