@@ -65,7 +65,7 @@ describe("Registration's editor and the Setup contract admit the same workspaces
     // Freshly provisioned, account_type not yet set: routed nowhere rather than into a
     // shell whose Setup contract would then refuse it.
     expect(workspaceRootForTenant(tenant({ account_type: null }))).toBeNull();
-    // The operator canary is still the operator's decision to make.
-    expect(workspaceRootForTenant(tenant({ features: {} }))).toBeNull();
+    // Retired rollout flags cannot divert an authorized tenant from its canonical shell.
+    expect(workspaceRootForTenant(tenant({ features: {} }))).toBe("/solo/1971670/command-center");
   });
 });

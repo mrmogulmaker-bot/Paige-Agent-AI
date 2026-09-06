@@ -85,9 +85,9 @@ describe("the canonical Solo shell is one shell for every tenant", () => {
 /** Repo-wide search for the JSX attribute, kept out of the assertion for clarity. */
 function execFileSyncGrep(): string[] {
   const out = execFileSync(
-    "grep",
-    ["-rl", "--include=*.tsx", "-e", "data-solo-screen-host [^=]", "-e", "data-solo-screen-host>", "-e", "data-solo-screen-host ", "src"],
+    "rg",
+    ["-l", "--glob", "*.tsx", "-e", "data-solo-screen-host [^=]", "-e", "data-solo-screen-host>", "-e", "data-solo-screen-host ", "src"],
     { encoding: "utf8" },
   ).trim();
-  return out ? out.split("\n").filter((f) => !f.endsWith(".test.tsx")) : [];
+  return out ? out.split(/\r?\n/).map((f) => f.split("\\").join("/")).filter((f) => !f.endsWith(".test.tsx")) : [];
 }

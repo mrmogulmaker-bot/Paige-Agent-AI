@@ -9,13 +9,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { tenantAccountLabel } from "@/lib/auth/accountSelection";
 import { allowAccountSwitch } from "@/lib/auth/accountSwitchGuard";
 import {
-  WORKSPACE_CHOOSER_SETTLED_PARAM,
   clearWorkspaceScopedState,
   doorWouldAskAgain,
   enterableWorkspaces,
   rememberWorkspaceEntered,
   workspaceRootForTenant,
 } from "@/lib/auth/workspaceEntry";
+import { GOD_CONSOLE } from "@/lib/auth/operatorTarget";
 
 type Membership = { tenant_id: string; role: string };
 type Choice = { tenant: TenantSummary; role: string };
@@ -31,9 +31,6 @@ type Choice = { tenant: TenantSummary; role: string };
  * between here and the door on every click, one hop per click, forever. It
  * survives only the immediate hop, which is precisely the hop that needs saving.
  */
-function leaveFor(root: string | null): string {
-  return root ?? `/admin?${WORKSPACE_CHOOSER_SETTLED_PARAM}=1`;
-}
 
 function roleLabel(role: string): string {
   return role === "owner" ? "Owner" : role === "admin" ? "Admin" : role === "coach" ? "Team member" : role;
@@ -138,17 +135,21 @@ export default function ChooseAccount() {
       // tenants through the audited operator seam, not this chooser, so they are
       // never sent into a tenant workspace root by it.
       if (context.isPlatformStaff) {
-        navigate("/admin", { replace: true });
+        navigate(GOD_CONSOLE, { replace: true });
         return;
       }
       if (choices.length === 1) {
         const only = choices[0].tenant;
         if (!(await enterWorkspace(only))) return;
         const root = workspaceRootForTenant(only);
+        if (!root) {
+          setError("Paige couldn't confirm this account's canonical workspace address. Your access has not changed.");
+          return;
+        }
         // A real switch just happened, so re-resolve every provider from scratch
         // rather than carry the previous workspace's caches across.
-        if (only.id !== context.activeTenantId) window.location.assign(leaveFor(root));
-        else navigate(leaveFor(root), { replace: true });
+        if (only.id !== context.activeTenantId) window.location.assign(root);
+        else navigate(root, { replace: true });
         return;
       }
       // The SAME predicate the door runs (§18), not a copy of it. An earlier copy
@@ -167,7 +168,9 @@ export default function ChooseAccount() {
         );
         return;
       }
-      navigate(leaveFor(null), { replace: true });
+      setError(
+        "Paige couldn't confirm a workspace for this account. Sign in with a different account or contact support.",
+      );
     })();
   }, [
     choices,
@@ -185,10 +188,13 @@ export default function ChooseAccount() {
       setSwitchingTo(null);
       return;
     }
-    // Enter at the workspace's OWN root rather than routing back through `/admin`,
-    // which is the door that resumes a parked context — except for a tenant whose
-    // shell canary is off, whose shell only exists inline at `/admin`.
-    window.location.assign(leaveFor(workspaceRootForTenant(choice.tenant)));
+    const root = workspaceRootForTenant(choice.tenant);
+    if (!root) {
+      setSwitchingTo(null);
+      setError("Paige couldn't confirm this account's canonical workspace address. Your access has not changed.");
+      return;
+    }
+    window.location.assign(root);
   };
 
   const handleDifferentGoogleAccount = async () => {

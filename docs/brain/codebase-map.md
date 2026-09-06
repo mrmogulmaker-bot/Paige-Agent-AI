@@ -1,5 +1,14 @@
 # Codebase Map — shipped surface area (routes · components · edge functions · gates · integrations)
 
+> **Route topology correction — 2026-09-06:** the legacy privileged router and page described in
+> historical sections below are retired. Current product entry lives in `src/App.tsx`; tenant shells are
+> account-addressed under `/solo/{account}`, `/business/{account}`, and `/agency/{account}`; platform
+> operator capability lives under `/operator` and remains server-authorized. The removed URL and all
+> descendants are ordinary unknown routes with no auth hydration shell. Historical component folder
+> names containing `admin` and database roles named `admin` remain implementation/permission identifiers,
+> not destinations and not authority grants. Current status and proof:
+> `docs/evidence/ui-delivery/retire-admin-route.md`.
+
 The brain's answer to *"do we have surface/feature X **built**?"* — a navigable index of the real
 shipped code, so a session stops answering "is this built?" from memory (the §BRAIN.2 / false-confidence
 trap: "if it's not in the brain it doesn't exist"). This complements `config-registry.md` (which records

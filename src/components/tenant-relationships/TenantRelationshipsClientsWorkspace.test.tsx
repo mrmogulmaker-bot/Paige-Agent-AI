@@ -855,8 +855,6 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(html).toContain("Files and agreements");
     expect(html).toContain("Configuration remains owner/admin gated");
     expect(html).toContain("Choose a client to manage access");
-    const adminRoutes = readFileSync(resolve("src/pages/Admin.tsx"), "utf8");
-    expect(adminRoutes).toMatch(/path="portal"[\s\S]*?<AdminOnly>/);
     const source = readFileSync(resolve("src/components/tenant-relationships/TenantRelationshipsClientsWorkspace.tsx"), "utf8");
     expect(source).toContain("<RoleGate allow={[\"admin\"]}");
     expect(source).toContain("<PortalStudio key={activeTenantId} />");

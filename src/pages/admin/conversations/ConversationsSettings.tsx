@@ -73,7 +73,7 @@ export function ConversationsSettings() {
       <p className="mt-4 text-sm text-muted-foreground">
         Looking for saved replies?{" "}
         <Link
-          to="/admin/clients-hub/conversations/snippets"
+          to="/choose-account"
           className="inline-flex items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
         >
           They live in the Snippets tab

@@ -90,7 +90,7 @@ export default function GmailCallback() {
       // open — so the flow never closed where they were working. `takeOAuthReturn`
       // is read-and-clear and refuses anything but a same-origin absolute path,
       // which is what keeps this from becoming an open redirect.
-      const dest = takeOAuthReturn() ?? "/admin/integrations/email";
+      const dest = takeOAuthReturn() ?? "/app/settings?tab=accounts";
       setTimeout(() => {
         if (returnOrigin && returnOrigin !== window.location.origin) {
           window.location.replace(`${returnOrigin}${dest}`);

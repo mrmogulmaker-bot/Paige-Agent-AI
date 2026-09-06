@@ -33,6 +33,7 @@ export function FundingPipelineView() {
         .from("coach_client_profiles_safe")
         .select("user_id, full_name")
         .in("user_id", userIds);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
       const nameMap = new Map((profiles || []).map((p: any) => [p.user_id, p.full_name]));
 
       const rows: PipelineRow[] = (apps || []).map((a) => ({
@@ -98,7 +99,7 @@ export function FundingPipelineView() {
               {active.map((app) => (
                 <button
                   key={app.id}
-                  onClick={() => navigate(`/admin/clients/user/${app.user_id}`)}
+                  onClick={() => navigate("/choose-account")}
                   className="w-full flex items-center justify-between gap-3 p-3 rounded-md border border-border hover:bg-muted/50 transition-colors text-left"
                 >
                   <div className="flex-1 min-w-0">

@@ -68,7 +68,7 @@ export default function CampaignsHub() {
     const sp = new URLSearchParams();
     sp.set("mode", mode);
     if (studioPageId) sp.set("pageId", studioPageId);
-    return <Navigate to={`/admin/studio?${sp.toString()}`} replace />;
+    return <Navigate to={"/choose-account"} replace />;
   }
 
   return (
@@ -113,7 +113,7 @@ export default function CampaignsHub() {
             description="Your logo, colors, and voice now live in one place — Setup › Brand — so every page, email, and asset Paige builds is drawn from the same source."
           >
             <Button asChild>
-              <Link to="/admin/setup/brand">
+              <Link to="/choose-account">
                 Go to Brand
                 <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
               </Link>

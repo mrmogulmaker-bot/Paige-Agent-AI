@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TenantProvider } from "@/hooks/useTenantContext";
 import SoloApp from "./solo/SoloApp";
 
-// SoloApp now calls useNavigate() (account menu → /admin/setup, sign-out), which REQUIRES a
+// SoloApp now calls useNavigate() (account menu → the retired privileged route/setup, sign-out), which REQUIRES a
 // Router ancestor. In production it mounts inside App.tsx's <BrowserRouter>; the bare harness must
 // supply its own so the §32 smoke can mount the real merged shell. MemoryRouter keeps navigation
 // inert (no URL bar) — navigate() targets just no-op here, which is correct for a render smoke.

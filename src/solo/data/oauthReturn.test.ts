@@ -21,6 +21,8 @@ describe("isSafeReturnPath", () => {
       "https://evil.example/x",            // absolute URL
       "/\\evil.example",                   // backslash, treated as a separator by some parsers
       "javascript:alert(1)",               // scheme
+      "/admin",                             // retired product route
+      "/admin/deep/link",                   // retired deep link
       "settings/connections",              // relative
       "/",                                 // no destination
       "",
@@ -55,6 +57,12 @@ describe("remember / take", () => {
 
   it("refuses a poisoned entry written by something else, and clears it", () => {
     window.sessionStorage.setItem(KEY, JSON.stringify({ path: "//evil.example", at: Date.now() }));
+    expect(takeOAuthReturn()).toBeNull();
+    expect(window.sessionStorage.getItem(KEY)).toBeNull();
+  });
+
+  it("refuses and clears a stale retired admin return", () => {
+    window.sessionStorage.setItem(KEY, JSON.stringify({ path: "/admin/setup", at: Date.now() }));
     expect(takeOAuthReturn()).toBeNull();
     expect(window.sessionStorage.getItem(KEY)).toBeNull();
   });

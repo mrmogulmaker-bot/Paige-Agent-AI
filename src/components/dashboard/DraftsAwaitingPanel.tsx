@@ -95,7 +95,7 @@ export function DraftsAwaitingPanel({
           ))}
           {overflow > 0 && (
             <Button asChild variant="ghost" size="sm" className="w-full justify-center">
-              <Link to="/admin/approvals">
+              <Link to="/choose-account">
                 Open all {ranked.length} <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
               </Link>
             </Button>

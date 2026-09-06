@@ -100,7 +100,7 @@ export function PaigeWhosHere() {
               size="sm"
               className="mt-1 h-auto p-0 px-0.5 text-xs text-muted-foreground hover:text-accent"
             >
-              <Link to="/admin/team">View all ({people.length})</Link>
+              <Link to="/choose-account">View all ({people.length})</Link>
             </Button>
           )}
         </>

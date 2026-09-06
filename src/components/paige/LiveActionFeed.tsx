@@ -185,10 +185,10 @@ export function LiveActionFeed({ approvals, approvalsLoading, focused }: Props) 
         <div className="mt-1 flex items-center justify-between">
           {focused && crossScopeMore > 0 ? (
             <Button asChild variant="link" size="sm" className="h-auto p-0 px-0.5 text-xs text-accent">
-              <Link to="/admin/approvals">{crossScopeMore} more across all customers <ArrowRight className="ml-0.5 inline h-3 w-3" /></Link>
+              <Link to="/choose-account">{crossScopeMore} more across all customers <ArrowRight className="ml-0.5 inline h-3 w-3" /></Link>
             </Button>
           ) : <span />}
-          <ViewAll to="/admin/approvals" n={focusedApprovals.length} />
+          <ViewAll to="/choose-account" n={focusedApprovals.length} />
         </div>
       </section>
 
@@ -226,7 +226,7 @@ export function LiveActionFeed({ approvals, approvalsLoading, focused }: Props) 
           )}
           {inMotion.length > MAX_ROWS && (
             <Button asChild variant="link" size="sm" className="mt-1 h-auto p-0 px-0.5 text-xs text-muted-foreground hover:text-accent">
-              <Link to={`/admin/contacts/${focused.id}`}>View all ({inMotion.length})</Link>
+              <Link to={"/choose-account"}>View all ({inMotion.length})</Link>
             </Button>
           )}
         </section>
@@ -253,7 +253,7 @@ export function LiveActionFeed({ approvals, approvalsLoading, focused }: Props) 
             ))}
           </ul>
         )}
-        <ViewAll to="/admin/notifications" n={notifications.length} />
+        <ViewAll to="/choose-account" n={notifications.length} />
       </section>
 
       {/* Group 4 — Follow-ups (tenant-wide) */}
@@ -292,7 +292,7 @@ export function LiveActionFeed({ approvals, approvalsLoading, focused }: Props) 
             ))}
           </ul>
         )}
-        <ViewAll to="/admin/tasks" n={openTasks.length} />
+        <ViewAll to="/choose-account" n={openTasks.length} />
       </section>
     </div>
   );

@@ -145,24 +145,24 @@ describe("tenant Command Center shell routing", () => {
   });
 
   it("keeps Delivery and canonical Calendar addresses under Clients ownership", () => {
-    expect(resolveTenantShellDestination("/admin/clients-hub/delivery").id).toBe("clients");
-    expect(resolveTenantShellDestination("/admin/calendar").id).toBe("clients");
-    expect(resolveTenantShellDestination("/admin/planning").id).toBe("clients");
-    expect(resolveTenantShellDestination("/admin/bookings").id).toBe("clients");
-    expect(resolveTenantShellDestination("/admin/tasks").id).toBe("clients");
+    expect(resolveTenantShellDestination("/solo/123/clients/delivery").id).toBe("clients");
+    expect(resolveTenantShellDestination("/solo/123/calendar").id).toBe("clients");
+    expect(resolveTenantShellDestination("/solo/123/client-support").id).toBe("clients");
+    expect(resolveTenantShellDestination("/solo/123/calendar").id).toBe("clients");
+    expect(resolveTenantShellDestination("/solo/123/client-support").id).toBe("clients");
   });
 
   it("keeps the client relationship surfaces under Clients", () => {
-    expect(resolveTenantShellDestination("/admin/clients-hub/conversations").id).toBe("clients");
-    expect(resolveTenantShellDestination("/admin/clients-hub/pipeline").id).toBe("clients");
-    expect(resolveTenantShellDestination("/admin/contacts/example").id).toBe("clients");
+    expect(resolveTenantShellDestination("/solo/123/clients/conversations").id).toBe("clients");
+    expect(resolveTenantShellDestination("/solo/123/clients/pipeline").id).toBe("clients");
+    expect(resolveTenantShellDestination("/solo/123/clients/example").id).toBe("clients");
   });
 
   it("maps the remaining canonical live routes without inventing pages", () => {
-    expect(resolveTenantShellDestination("/admin").id).toBe("command");
-    expect(resolveTenantShellDestination("/admin/studio/new").id).toBe("studio");
-    expect(resolveTenantShellDestination("/admin/analytics").id).toBe("insights");
-    expect(resolveTenantShellDestination("/admin/setup/integrations").id).toBe("settings");
+    expect(resolveTenantShellDestination("/solo/123/command-center").id).toBe("command");
+    expect(resolveTenantShellDestination("/agency/123/growth/new").id).toBe("studio");
+    expect(resolveTenantShellDestination("/solo/123/analytics").id).toBe("insights");
+    expect(resolveTenantShellDestination("/solo/123/settings/integrations").id).toBe("settings");
   });
 
   it.each([

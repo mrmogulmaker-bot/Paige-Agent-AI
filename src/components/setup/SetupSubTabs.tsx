@@ -57,21 +57,21 @@ const coachVisible = () => true;
 // Kept local (not exported): the router implements the same paths independently, so
 // this stays the strip's single source of truth without a shared-export coupling.
 const SETUP_TABS: SetupTab[] = [
-  { key: "general", label: "General", href: "/admin/setup/general", dept: "Operations", icon: SlidersHorizontal, canSee: adminOrStaff },
-  { key: "brand", label: "Brand", href: "/admin/setup/brand", dept: "Marketing", icon: Palette, canSee: coachVisible },
-  { key: "automations", label: "Automations", href: "/admin/setup/automations", dept: "Technology", icon: Workflow, canSee: coachVisible },
-  { key: "integrations", label: "Integrations", href: "/admin/setup/integrations", dept: "Technology", icon: Plug, canSee: adminOnly },
-  { key: "legal", label: "Legal", href: "/admin/setup/legal", dept: "Legal & Compliance", icon: Scale, canSee: adminOnly },
+  { key: "general", label: "General", href: "/choose-account", dept: "Operations", icon: SlidersHorizontal, canSee: adminOrStaff },
+  { key: "brand", label: "Brand", href: "/choose-account", dept: "Marketing", icon: Palette, canSee: coachVisible },
+  { key: "automations", label: "Automations", href: "/choose-account", dept: "Technology", icon: Workflow, canSee: coachVisible },
+  { key: "integrations", label: "Integrations", href: "/choose-account", dept: "Technology", icon: Plug, canSee: adminOnly },
+  { key: "legal", label: "Legal", href: "/choose-account", dept: "Legal & Compliance", icon: Scale, canSee: adminOnly },
   // §217: a sub-account's platform billing is managed by its parent agency — hide the
   // tab for it (defense-in-depth; the route/page also guards). Standalone + agency keep it.
-  { key: "billing", label: "Billing", href: "/admin/setup/billing", dept: "Finance", icon: CreditCard, canSee: (a) => adminOnly(a) && !a.isSubAccount },
-  { key: "playbook", label: "Playbook & Paige", href: "/admin/setup/playbook", dept: "Product", icon: BookOpen, canSee: adminOnly },
+  { key: "billing", label: "Billing", href: "/choose-account", dept: "Finance", icon: CreditCard, canSee: (a) => adminOnly(a) && !a.isSubAccount },
+  { key: "playbook", label: "Playbook & Paige", href: "/choose-account", dept: "Product", icon: BookOpen, canSee: adminOnly },
   // Team is NOT a Setup sub-tab — it has its own main-nav hub (/admin/team → TeamHub).
   // A Setup › Team tab would be pure nav duplication (§18), so it lives only in the
   // main nav; the People department is reached there, not here.
 ];
 
-const GENERAL_HREF = "/admin/setup/general";
+const GENERAL_HREF = "/choose-account";
 
 export function SetupSubTabs() {
   const { pathname } = useLocation();
@@ -100,7 +100,7 @@ export function SetupSubTabs() {
   // to it. The eight leaf keys are mutually non-prefixing, so `=== href || startsWith
   // href + "/"` is unambiguous for the rest.
   const isActive = (href: string) => {
-    if (href === GENERAL_HREF && pathname === "/admin/setup") return true;
+    if (href === GENERAL_HREF && pathname === "/choose-account") return true;
     return pathname === href || pathname.startsWith(href + "/");
   };
 

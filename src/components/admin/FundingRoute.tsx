@@ -18,7 +18,7 @@ import { useTenantFeature } from "@/hooks/useTenantFeature";
 export function FundingRoute({ children }: { children: React.ReactNode }) {
   const { enabled, loading } = useTenantFeature("funding_readiness");
   if (loading) return null;
-  return enabled ? <>{children}</> : <Navigate to="/admin" replace />;
+  return enabled ? <>{children}</> : <Navigate to="/choose-account" replace />;
 }
 
 /**

@@ -81,7 +81,7 @@ export function computeTenantHostRedirect(
 // TEMPORARILY REVERTED TO DORMANT: activating this before app.paigeagent.ai
 // resolves and app.* is registered in Supabase Auth + Google OAuth redirect
 // URLs breaks navigation — on the app host every in-app nav to "/" was 301'd to
-// /auth (logo/"back to home" loop) and auth/admin routes bounced toward a host
+// /auth (logo/"back to home" loop) and privileged routes could bounce toward a host
 // that isn't wired yet, locking the operator out of the God console. Re-enable
 // only as a deliberate cutover once those preconditions are confirmed live.
 export const HOST_SPLIT_ENABLED = false;
@@ -90,7 +90,7 @@ export const HOST_SPLIT_ENABLED = false;
 const APP_PREFIXES = [
   "/auth", "/operator", "/join-platform", "/signup", "/reset-password",
   "/accept-invite", "/join/", "/mcp/authorize", "/app", "/dashboard",
-  "/admin", "/onboard", "/broker/app", "/workspace",
+  "/solo", "/business", "/agency", "/onboard", "/broker/app", "/workspace",
 ];
 
 // Marketing-only routes. Hit on the app host → send back to the apex (canonical).

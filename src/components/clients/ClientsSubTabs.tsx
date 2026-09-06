@@ -18,12 +18,12 @@ type Access = { isAdmin: boolean; isPlatformOwner: boolean; isPlatformStaff: boo
 type Tab = { label: string; href: string; icon: LucideIcon; canSee: (a: Access) => boolean };
 
 const TABS: Tab[] = [
-  { label: "People", href: "/admin/clients-hub", icon: Users, canSee: () => true },
-  { label: "Pipeline", href: "/admin/clients-hub/pipeline", icon: KanbanSquare, canSee: () => true },
-  { label: "Conversations", href: "/admin/clients-hub/conversations", icon: MessagesSquare, canSee: () => true },
-  { label: "Delivery", href: "/admin/clients-hub/delivery", icon: CalendarDays, canSee: () => true },
+  { label: "People", href: "/choose-account", icon: Users, canSee: () => true },
+  { label: "Pipeline", href: "/choose-account", icon: KanbanSquare, canSee: () => true },
+  { label: "Conversations", href: "/choose-account", icon: MessagesSquare, canSee: () => true },
+  { label: "Delivery", href: "/choose-account", icon: CalendarDays, canSee: () => true },
   // Client Portal — MIRRORS AdminOnly on the route (RoleGate allow=["admin"], allowOwner default).
-  { label: "Client Portal", href: "/admin/clients-hub/portal", icon: LayoutTemplate, canSee: (a) => a.isAdmin || a.isPlatformOwner },
+  { label: "Client Portal", href: "/choose-account", icon: LayoutTemplate, canSee: (a) => a.isAdmin || a.isPlatformOwner },
 ];
 
 export function ClientsSubTabs() {
@@ -51,7 +51,7 @@ export function ClientsSubTabs() {
   // be exact-match because /admin/clients-hub is a prefix of every other tab —
   // otherwise People would light up on every sub-route.
   const isActive = (href: string) =>
-    href === "/admin/clients-hub" ? pathname === "/admin/clients-hub" : pathname.startsWith(href);
+    href === "/choose-account" ? pathname === "/choose-account" : pathname.startsWith(href);
 
   const tabs = TABS.filter((t) => t.canSee(access));
   if (tabs.length <= 1) return null; // nothing to switch between → no strip clutter

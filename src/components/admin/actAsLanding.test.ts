@@ -1,54 +1,30 @@
-// §58 / §37 regression guard — the agency act-as landing.
-//
-// `/admin` is not only a door a person opens; it is a DESTINATION that shipped
-// code redirects to. Two controls drill an agency operator into an authorized
-// sub-account — `AccountSwitcher`'s row and `AgencyBoard`'s card — and both do the
-// same two things: call `agency_enter_subaccount(child)`, which repoints
-// `active_tenant_id` server-side, then `window.location.assign("/admin")`.
-//
-// The entry gate added to that door asks a multi-context person which workspace
-// they want. An agency owner is ALWAYS multi-context — provisioning gives them an
-// active owner membership in every child they create — so unless these producers
-// record that the act-as IS the choice, the door intercepts a drill-down that has
-// already happened and sends them to the chooser instead of the child. That broke
-// a shipped capability, and it is the third distinct way this repair has done so.
-//
-// This is a STRUCTURAL guard, and it is honest about what that can and cannot
-// see. It reads the source rather than driving the components, which are heavy
-// and network-bound. It fails if either producer drops the call, reorders it
-// after the hand-off, or passes the wrong child. It CANNOT see a call made
-// unreachable — inside a false branch, or after an early return — so it is a
-// removal guard, not a proof of runtime behaviour. That is the authenticated
-// drive's job, and this file does not stand in for it.
+// §58 / §37 regression guard — canonical agency act-as landing.
+// Every producer must call the server-authorized transition, remember the chosen
+// child, and navigate to the full canonical path derived from the server roster.
+// This structural guard inventories all three producers; authenticated runtime
+// proof remains separate.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-// The child-id expression each producer must pass, so a call that survives with
-// the wrong argument (or none) is not mistaken for the wiring being intact.
 const PRODUCERS = [
-  { file: "src/components/admin/AccountSwitcher.tsx", arg: "child.id" },
-  { file: "src/pages/admin/AgencyBoard.tsx", arg: "childId" },
-  // The third producer. It stays inside the agency shell rather than handing off to
-  // `/admin`, so it never reaches the entry door — but a §37 inventory that lists two
-  // of three producers is the shape of the miss it exists to prevent, and a later
-  // change could route this one through the door without anyone noticing the gap.
-  { file: "src/agency/AgencyApp.tsx", arg: "childId" },
+  { file: "src/components/admin/AccountSwitcher.tsx", arg: "child.id", navigates: true },
+  { file: "src/pages/admin/AgencyBoard.tsx", arg: "childId", navigates: true },
+  { file: "src/agency/AgencyApp.tsx", arg: "childId", navigates: false },
 ] as const;
 
-describe("agency act-as landing on /admin", () => {
-  it.each(PRODUCERS)("$file records the entry before handing off to the /admin door", ({ file, arg }) => {
+describe("agency act-as canonical landing", () => {
+  it.each(PRODUCERS)("$file records the chosen context before canonical navigation", ({ file, arg, navigates }) => {
     const src = readFileSync(file, "utf8");
-
-    // It really is a producer of an act-as transition.
     expect(src).toContain("agency_enter_subaccount");
 
-    // And it settles the door before leaving, WITH THE CHILD IT JUST ENTERED.
-    // Asserting the argument matters: a call left in place with the wrong value —
-    // or none — reads as intact wiring and settles the door against nothing.
     const remembers = src.indexOf(`rememberWorkspaceEntered(${arg})`);
     expect(remembers).toBeGreaterThan(-1);
-    // Where the producer hands off to the door, the record must be written first.
-    const assigns = src.indexOf('window.location.assign("/admin")');
-    if (assigns > -1) expect(remembers).toBeLessThan(assigns);
+
+    if (navigates) {
+      expect(src).toContain('authorizedRootForTier("sub_account",');
+      expect(src).toContain("window.location.assign(root)");
+      expect(src).not.toMatch(/`\$\{root\}\/command-center`/);
+      expect(remembers).toBeLessThan(src.indexOf("window.location.assign(root)"));
+    }
   });
 });

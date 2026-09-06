@@ -120,7 +120,7 @@ export default function ClientJourney() {
       ]);
       if (stagesRes.error) throw stagesRes.error;
       if (contactRes.error) throw contactRes.error;
-      if (!contactRes.data) { toast.error("Contact not found"); navigate("/admin/contacts"); return; }
+      if (!contactRes.data) { toast.error("Contact not found"); navigate("/choose-account"); return; }
       const stageList = ((stagesRes.data || []) as Stage[])
         .slice()
         .sort((a, b) => a.display_order - b.display_order);
@@ -341,7 +341,7 @@ export default function ClientJourney() {
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/contacts/${client.id}`)}>
+        <Button variant="ghost" size="sm" onClick={() => navigate("/choose-account")}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to contact
         </Button>
         {stages.length > 0 && (
@@ -466,13 +466,13 @@ export default function ClientJourney() {
             <CardTitle className="text-base">Quick actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Button variant="outline" className="w-full justify-start" onClick={() => navigate(`/admin/campaigns`)}>
+            <Button variant="outline" className="w-full justify-start" onClick={() => navigate("/choose-account")}>
               <Send className="mr-2 h-4 w-4" /> Enroll in campaign
             </Button>
             <Button variant="outline" className="w-full justify-start" onClick={() => toast.info("Compose coming in Wave 3")}>
               <Mail className="mr-2 h-4 w-4" /> Send one-off message
             </Button>
-            <Button variant="outline" className="w-full justify-start" onClick={() => navigate(`/admin/contacts/${client.id}`)}>
+            <Button variant="outline" className="w-full justify-start" onClick={() => navigate("/choose-account")}>
               <MessageSquare className="mr-2 h-4 w-4" /> Open conversation
             </Button>
             <Button variant="outline" className="w-full justify-start" onClick={() => toast.info("Cal.com scheduler coming")}>

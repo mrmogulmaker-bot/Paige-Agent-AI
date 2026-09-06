@@ -33,10 +33,9 @@
 //  §3   Plain, jargon-free copy — no product/table names, no "AI".
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Link } from "react-router-dom";
 import {
   Radio, X, Loader2, AudioLines, Lightbulb, AlertTriangle, ClipboardCheck,
-  PenLine, ArrowUpRight,
+  PenLine,
 } from "lucide-react";
 import { SectionCard } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
@@ -369,12 +368,12 @@ function DraftReadyBar({ draft, reduce }: { draft: DraftReady | null; reduce: bo
       transition={{ type: "spring", stiffness: 380, damping: 32 }}
       className="shrink-0 border-t border-border/60 p-2.5"
     >
-      <Link
-        to={`/admin/approvals/${draft.approvalId}`}
+      <div
+        role="status"
+        aria-label="Follow-up draft saved; direct review is unavailable here"
         className={cn(
-          "group flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors",
-          "border border-[hsl(var(--primary)/0.3)] bg-[hsl(var(--primary)/0.06)] hover:bg-[hsl(var(--primary)/0.12)]",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+          "flex items-center gap-2.5 rounded-lg px-3 py-2",
+          "border border-[hsl(var(--primary)/0.3)] bg-[hsl(var(--primary)/0.06)]",
         )}
       >
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))]">
@@ -385,14 +384,10 @@ function DraftReadyBar({ draft, reduce }: { draft: DraftReady | null; reduce: bo
             Follow-up drafted
           </span>
           <span className="block truncate text-[11px] leading-tight text-muted-foreground">
-            {draft.subject ? draft.subject : "Review it in approvals"}
+            {draft.subject ? draft.subject : "Saved for later review"}
           </span>
         </span>
-        <ArrowUpRight
-          className="h-4 w-4 shrink-0 text-muted-foreground motion-safe:transition-transform motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:translate-x-0.5"
-          aria-hidden
-        />
-      </Link>
+      </div>
     </motion.div>
   );
 }

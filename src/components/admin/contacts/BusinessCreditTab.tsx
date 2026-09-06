@@ -10,6 +10,7 @@ type Profile = {
   business_name: string | null;
   ein: string | null;
   scores: Record<string, number> | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
   trade_lines: any[] | null;
   history: Array<{ pulled_at: string; scores: Record<string, number> }> | null;
   last_pulled_at: string | null;
@@ -66,7 +67,7 @@ export function BusinessCreditTab({ contactId }: { contactId: string }) {
       <Card>
         <CardContent className="py-10 text-center text-sm text-muted-foreground">
           No business credit profile on file. Connect Nav.com from{" "}
-          <a href="/admin/integrations/nav" className="text-primary hover:underline">Integrations → Nav</a> to start pulling.
+          <a href="/choose-account" className="text-primary hover:underline">Integrations → Nav</a> to start pulling.
         </CardContent>
       </Card>
     );

@@ -44,6 +44,7 @@ const BrokerWorkspaceInner = () => {
         .from("user_roles")
         .select("role")
         .eq("user_id", session.user.id);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
       const roleList = (roles || []).map((r: any) => r.role);
       setIsStaff(roleList.includes("admin") || roleList.includes("coach"));
     });
@@ -106,9 +107,9 @@ const BrokerWorkspaceInner = () => {
                 </div>
               )}
               {isStaff && (
-                <Button variant="outline" size="sm" onClick={() => navigate("/admin")}>
+                <Button variant="outline" size="sm" onClick={() => navigate("/choose-account")}>
                   <ArrowLeft className="h-4 w-4 mr-2" />
-                  Admin Dashboard
+                  Choose workspace
                 </Button>
               )}
               <Button variant="ghost" size="sm" onClick={handleSignOut}>

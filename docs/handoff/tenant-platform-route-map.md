@@ -1,5 +1,17 @@
 # PAIGE tenant platform route and sub-view map
 
+> **2026-09-06 route-retirement handoff (controls this historical map):** the legacy privileged URL
+> and all descendants are retired, not redirected. The table below records the former implementation
+> homes for archaeology only; none is a valid destination. Current tenant homes are account-addressed
+> `/solo/{account}`, `/business/{account}`, and `/agency/{account}` trees. Platform-operator tools live
+> only in the existing `/operator` tree and require server-proven platform authority. Login is `/auth`,
+> account selection is `/choose-account`, setup is tier-owned, OAuth callbacks are explicit, and invalid
+> durable notification targets fail to the chooser. Unknown paths render the ordinary 404 immediately.
+>
+> **Status:** implementation hotfix in progress; deployment and authenticated persona proof are
+> `PROOF OWED` until CI, merge, persistence, and production verification complete. Next owner is this
+> hotfix workstream; any follow-up must first read `docs/evidence/ui-delivery/retire-admin-route.md`.
+
 This is the target design architecture over the **existing** operational route graph. Existing routes remain canonical until a connected nested destination reuses the same component and passes its matrix acceptance test.
 
 | Primary destination | Target sub-views | Current canonical implementation homes |

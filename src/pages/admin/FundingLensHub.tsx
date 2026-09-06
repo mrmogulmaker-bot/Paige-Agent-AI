@@ -192,7 +192,7 @@ export default function FundingLensHub() {
                 </TableCell>
                 <TableCell className="text-right">
                   <Button asChild size="sm" variant="ghost">
-                    <Link to={`/admin/contacts/${r.contact_id}?tab=funding-lens`}>Open</Link>
+                    <Link to={"/choose-account"}>Open</Link>
                   </Button>
                 </TableCell>
               </TableRow>

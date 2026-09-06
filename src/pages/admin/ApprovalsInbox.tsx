@@ -87,7 +87,7 @@ export default function ApprovalsInbox() {
   const toggle = (id: string, on: boolean) =>
     setSelected((p) => {
       const n = new Set(p);
-      on ? n.add(id) : n.delete(id);
+      if (on) n.add(id); else n.delete(id);
       return n;
     });
 
@@ -234,6 +234,7 @@ export default function ApprovalsInbox() {
 
 function KpiCard({
   icon: Icon, label, value, accent,
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
 }: { icon: any; label: string; value: number; accent?: string }) {
   return (
     <Card>
@@ -256,6 +257,7 @@ function ApprovalRow({
   const dc = a.draft_content as Record<string, unknown> | string | null;
   const fallback =
     typeof dc === "object" && dc !== null
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
       ? String((dc as any).subject ?? (dc as any).body ?? (dc as any).preview ?? "")
       : String(dc ?? "");
   const preview = a.summary ?? fallback;
@@ -263,7 +265,7 @@ function ApprovalRow({
   return (
     <div className={`flex items-start gap-3 p-3 rounded-md border transition-colors ${selected ? "bg-muted/60 border-accent" : "hover:bg-muted/40"}`}>
       <Checkbox checked={selected} onCheckedChange={(c) => onToggle(c === true)} className="mt-1" />
-      <Link to={`/admin/approvals/${a.id}`} className="min-w-0 flex-1 flex items-start justify-between gap-3">
+      <Link to={"/choose-account"} className="min-w-0 flex-1 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-1.5">
             {a.risk_level && (

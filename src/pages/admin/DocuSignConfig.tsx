@@ -72,10 +72,13 @@ export default function DocuSignConfig() {
       },
     });
     setSending(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
     if (error || (data as any)?.error) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
       toast.error((data as any)?.error ?? error?.message ?? "Failed");
       return;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
     toast.success(`Envelope sent: ${(data as any)?.envelopeId}`);
     void load();
   };
@@ -165,7 +168,7 @@ export default function DocuSignConfig() {
             <CardTitle>Recent envelopes</CardTitle>
             <CardDescription>Last 50 envelopes across all types.</CardDescription>
           </div>
-          <Button asChild variant="outline" size="sm"><Link to="/admin/signatures">All signatures</Link></Button>
+          <Button asChild variant="outline" size="sm"><Link to="/choose-account">All signatures</Link></Button>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">

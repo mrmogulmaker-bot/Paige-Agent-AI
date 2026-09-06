@@ -295,25 +295,14 @@ export function workspaceRootForTenant(tenant: {
   features?: Record<string, unknown> | null;
 } | null | undefined): string | null {
   if (!tenant) return null;
-  const features = tenant.features ?? {};
   const tier = resolveTierKey({
     account_type: tenant.account_type ?? null,
     parent_tenant_id: tenant.parent_tenant_id ?? null,
     isPlatformStaff: false,
   });
-  // The literal `standalone` compare below is copied verbatim from the Solo gate
-  // in `Admin.tsx` (`soloStandalone`), so the two entrances cannot disagree about
-  // who the Solo shell belongs to. `resolveTierKey` fail-safes an unknown
-  // account_type to "solo", so the literal compare is what stops a
-  // freshly-provisioned tenant being routed into that shell mid-setup.
-  const flagged =
-    tier === "solo"
-      ? features.solo_shell_enabled === true &&
-        // tier-feature-exempt: tier ROUTING (which shell to enter), not a feature toggle.
-        tenant.account_type === "standalone" &&
-        (tenant.parent_tenant_id ?? null) === null
-      : features.agency_shell_enabled === true;
-  if (!flagged) return null;
+  // Unknown account types fail safe to Solo, so require the literal top-level
+  // standalone classification before emitting a Solo address.
+  if (tier === "solo" && (tenant.account_type !== "standalone" || tenant.parent_tenant_id != null)) return null;
   return authorizedRootForTier(tier, tenant.account_number ?? null);
 }
 

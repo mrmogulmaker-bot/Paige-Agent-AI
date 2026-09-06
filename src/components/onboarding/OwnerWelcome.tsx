@@ -61,7 +61,7 @@ const STANDALONE_STEPS: Step[] = [
     label: "Activate your Paige email",
     description:
       "Confirm your included sending address, then email a client from Conversations in minutes. Your own domain stays optional.",
-    href: "/admin/integrations/email",
+    href: "/choose-account",
     icon: Mail,
     cta: "Activate email",
   },
@@ -70,7 +70,7 @@ const STANDALONE_STEPS: Step[] = [
     label: "Add and message your first client",
     description:
       "Create the client inside Conversations, write the first email, and keep every reply in the same thread.",
-    href: "/admin/clients-hub/conversations?compose=1",
+    href: "/choose-account",
     icon: UserPlus,
     cta: "Start a conversation",
   },
@@ -79,7 +79,7 @@ const STANDALONE_STEPS: Step[] = [
     label: "Meet Paige & shape your Playbook",
     description:
       "Say hello, then teach her your voice, the questions you ask, and how you run your practice — she's native to your work, not a generic bot.",
-    href: "/admin/playbook",
+    href: "/choose-account",
     icon: Sparkles,
     cta: "Open Your Paige",
   },
@@ -88,7 +88,7 @@ const STANDALONE_STEPS: Step[] = [
     label: "Invite your team",
     description:
       "Bring your people in so the work is shared — Paige surfaces what each person needs and drafts the next move.",
-    href: "/admin/members",
+    href: "/choose-account",
     icon: Users,
     cta: "Invite your team",
   },
@@ -96,7 +96,7 @@ const STANDALONE_STEPS: Step[] = [
 
 // §65 R0 / §58 — the two agency steps below DELIBERATELY keep their bare `/agency`
 // and `/agency/team` hrefs (the LEGACY `AgencyLayout` board) rather than the numeric
-// `/agency/{account_number}/…` shell the landing route + `/admin` Gate A now emit.
+// `/agency/{account_number}/…` shell the landing route + `/choose-account` Gate A now emit.
 // The account number IS reachable here (PracticeOverview, this component's only
 // caller, already holds `activeTenant.account_number` from `useTenantContext`), so
 // this is a capability decision, not a plumbing limitation:
@@ -117,7 +117,7 @@ const AGENCY_STEPS: Step[] = [
     label: "Activate your Paige email",
     description:
       "Confirm your included sending address, then email a client from Conversations in minutes. Your own domain stays optional.",
-    href: "/admin/integrations/email",
+    href: "/choose-account",
     icon: Mail,
     cta: "Activate email",
   },
@@ -144,7 +144,7 @@ const AGENCY_STEPS: Step[] = [
     label: "Meet Paige & shape your Playbook",
     description:
       "Say hello, then set the Playbook your whole book inherits — every sub-account starts native to how you work.",
-    href: "/admin/playbook",
+    href: "/choose-account",
     icon: Sparkles,
     cta: "Open Your Paige",
   },

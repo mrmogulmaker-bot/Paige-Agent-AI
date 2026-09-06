@@ -8,6 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export default function WorkflowRuns() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -26,7 +27,7 @@ export default function WorkflowRuns() {
   return (
     <div className="space-y-4 max-w-4xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link to="/admin/workflows"><ArrowLeft className="w-4 h-4 mr-1" /> Workflows</Link>
+        <Link to="/choose-account"><ArrowLeft className="w-4 h-4 mr-1" /> Workflows</Link>
       </Button>
       <Card>
         <CardHeader><CardTitle className="text-base">Recent runs</CardTitle></CardHeader>
@@ -36,12 +37,13 @@ export default function WorkflowRuns() {
           {rows.map((r) => (
             <Link
               key={r.id}
-              to={`/admin/workflows/runs/${r.id}`}
+              to={"/choose-account"}
               className="flex items-center justify-between gap-3 p-3 rounded-md border hover:bg-muted/40 text-sm"
             >
               <div className="min-w-0">
                 <div className="font-medium truncate">
-                  {(r as any).paige_workflow_registry?.label ?? "(deleted workflow)"}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
+                  {(r as { paige_workflow_registry?: { label?: string } }).paige_workflow_registry?.label ?? "(deleted workflow)"}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {formatDistanceToNow(new Date(r.triggered_at), { addSuffix: true })}

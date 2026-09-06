@@ -937,7 +937,7 @@ function MarketplaceDetailDialog({
             )
           ) : locked ? (
             <Button asChild variant="outline" size="sm">
-              <a href="/admin/your-paige">Manage in Your Paige</a>
+              <a href="/choose-account">Manage in Your Paige</a>
             </Button>
           ) : (
             <span className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">

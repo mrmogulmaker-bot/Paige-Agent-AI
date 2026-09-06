@@ -9,6 +9,7 @@ type Connection = {
   id: string;
   institution_name: string | null;
   status: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
   accounts: any[] | null;
   last_synced_at: string | null;
   connected_at: string;
@@ -57,7 +58,7 @@ export function BankingTab({ contactId }: { contactId: string }) {
       <Card>
         <CardContent className="py-10 text-center text-sm text-muted-foreground">
           No bank connections. Have the client link a bank from{" "}
-          <a href="/admin/integrations/plaid" className="text-primary hover:underline">Integrations → Plaid</a>.
+          <a href="/choose-account" className="text-primary hover:underline">Integrations → Plaid</a>.
         </CardContent>
       </Card>
     );

@@ -14,6 +14,7 @@ import { useCreditAlerts } from "@/hooks/useCreditAlerts";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 
+import { safeRedirectOr } from "@/lib/auth/safeRedirect";
 export const NotificationBell = () => {
   const navigate = useNavigate();
   const {
@@ -59,11 +60,13 @@ export const NotificationBell = () => {
     return <Info className="w-4 h-4 text-blue-500" />;
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
   const handleNotificationClick = (notification: any) => {
     markNotifRead(notification.id);
-    if (notification.action_url) navigate(notification.action_url);
+    if (notification.action_url) navigate(safeRedirectOr(notification.action_url, "/choose-account"));
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing type debt; hotfix changes only the retired route destination
   const handleAlertClick = (alert: any) => {
     markAlertRead(alert.id);
     navigate("/app/credit");
