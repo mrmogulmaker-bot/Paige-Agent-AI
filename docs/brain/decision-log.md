@@ -4084,3 +4084,10 @@ still says is missing.
 **Proof.** Failing-first regression: PASS. Focused tests: 89 PASS. Changed-file lint: PASS. Production build: PASS. TypeScript ratchet: PASS with 13 unchanged repository baseline errors. Chromium width/overflow proof at 1536x770, 1366x768, 1024x768, and 900x1000: PASS. The retired button-navigation `solo-shell-drive.mjs` is stale harness evidence and was not counted.
 
 **Collision/handoff.** No product-code collision at the pre-PR gate. PR #907 owns the master reference and Brain index, so this decision is recorded in the collision-safe decision log plus `docs/evidence/ui-delivery/solo-login-workspace-width-hotfix.md`. Next owner: shared Solo shell/auth navigation; read that evidence record before changing frame sizing or login handoff behavior.
+
+
+### Production closeout — Solo workspace width hotfix (2026-09-06)
+
+PR #1007 is **LIVE** as merge revision `9557c3ee2b1762b8e1d59cb5dd4f5856342a0d7c`. GitHub audit, UI-evidence validation, Supabase Preview, and both production Vercel deployments passed. `paigeagent.ai/version.json` reports that exact revision (build suffix `mtq311r5`), both production domains and the affected Solo deep route return HTTP 200, and the deployed `SoloEntry-BPfYCgaU.js` contains all four full-width frame invariants.
+
+Authenticated login/account-selection into Command Center and Clients without refresh remains **PROOF OWED** because the browser attachment service could not attach to the owner session. This limitation does not downgrade deployment persistence, but it prevents claiming the exact owner interaction as production-passed. Next owner: authenticated production verification; read `docs/evidence/ui-delivery/solo-login-workspace-width-hotfix.md` first and record the owner-session result without changing the shell contract.
