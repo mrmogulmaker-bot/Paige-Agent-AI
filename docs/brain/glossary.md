@@ -148,11 +148,44 @@ PR #406). Build order was L1 → L4 → L2 → L5.
   "Blueprints" = the one-click vertical install layer (`docs/doctrine/paige-practice-blueprints…`).
 - **Vibe Studio** — the tenant creative surface (Campaigns tab): pages, funnels, forms, images, in one
   session (§19/§21/§22). `ProjectNavigator` = the project rail.
-- **Command Mark** — the current PAIGE brand mark, owner-approved 2026-08-22. Source of truth for
-  the mark, wordmark, palette and motion sequence: `../brand/paige-brand-identity.md`; it builds into
-  `src/components/brand/PaigeSymbol.tsx`. **It replaces the retired orbital PaigeMark** — do not cite
-  PaigeMark as the current primitive. ("Illuminated Precision" is a superseded label; do not
-  reintroduce it.) `PaigeScene` = the landing 3D hero (three.js), a separate thing.
+- **Command Mark** — the console/operator brand mark (a slash and orb on a rimmed plate),
+  owner-approved 2026-08-22. Source of truth for the mark, wordmark, palette and motion sequence:
+  `../brand/paige-brand-identity.md`. Rollout scope is tenant + operator surfaces only.
+  **It is PARTIALLY PORTED and LIVE — via `src/operator/shell/CommandMark.tsx`, not `PaigeSymbol`.**
+  That component renders on the operator shell (`src/operator/shell/SlotRail.tsx`) and on the Solo /
+  agency / admin command centers (`src/components/tenant-shell/TenantCommandCenterShell.tsx`).
+  **But it is NOT the only copy.** Four files embed the slash-and-orb geometry independently
+  (verified 2026-09-06 — `grep "21,13.6 30.5,13.6" src`): `CommandMark.tsx` (the 38px rail plaque),
+  `operator/shell/CommandBar.tsx`, `operator/shell/spine/SpineHeader.tsx`, and
+  `operator/surfaces/relationships/SegmentsSurface.tsx`. None of the latter three is sourced from
+  `CommandMark.tsx`, and `SpineHeader`'s copy is DELIBERATE per its own header comment (CommandMark
+  renders the rail variant; the spine mark is a bare 26px glyph) — so do not "consolidate" it
+  without reading that comment first. **A change to the mark's geometry touches four files, not
+  one.** `OperatorSpine.tsx` imports only the `CommandMarkState` type, not the geometry.
+  Separately, the `PaigeSymbol territory="command"` migration is still outstanding — that one still
+  renders `PaigeMark` (`src/components/brand/PaigeSymbol.tsx`). Do not read either "the Command Mark
+  is live" or "the port has not happened" as true platform-wide; check what the surface in front of
+  you actually renders.
+- **PaigeMark** — the orbital orb + ring + spark + halo mark. **Current, not retired.** It is
+  imported DIRECTLY by roughly two dozen production surfaces — the marketing landing page
+  (`src/pages/PaigeHome.tsx`), auth and onboarding, the admin and agency layouts, Studio, and
+  `src/solo/social-command.tsx`, where an owner ruling on 2026-09-06 made it the required mark:
+  "stay to that one and that one only"
+  (`../evidence/ui-delivery/campaigns-social-header-compaction.md`). It is also the marketing site's
+  mark per `../design-references/cd-packs/super-admin-shell-v3/design-system-port.md` §3.
+  `PaigeMark.tsx` stays as the backward-compat path — the brand doc says do not rip it out.
+- **The pending `PaigeSymbol` swap is SMALLER than the brand doc implies.**
+  `../brand/paige-brand-identity.md` §2 holds an open owner ruling before Stage 3, resting on the
+  premise that swapping what `territory="command"` renders "changes the mark on every surface that
+  already renders it — including the marketing landing page," which is §28 approved-frozen.
+  **That premise is stale in this tree** (verified 2026-09-06): `PaigeSymbol` has only three
+  consumers and all three live under `src/prototype/`, while the landing page imports `PaigeMark`
+  directly and never goes through `PaigeSymbol`. So the swap cannot reach the landing page on its
+  own. Whether the landing page adopts the Command Mark remains an open OWNER decision — do not
+  resolve it by editing code; equally, do not treat it as a technical blocker on the `PaigeSymbol`
+  migration, because it is not one.
+  ("Illuminated Precision" is a superseded label; do not reintroduce it.) `PaigeScene` = the landing
+  3D hero (three.js), a separate thing.
 - **MMA / PME** — Mogul Maker Academy / Project Mogul Enterprise: the owner's **tenant** vertical
   (funding-coaching) — a *tenant's* config, **never** a platform default (§2/§9).
 - **`db-live` / `edge-live` tags** — git tags the CI pipelines move to the last commit whose
