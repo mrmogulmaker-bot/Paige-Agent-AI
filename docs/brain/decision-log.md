@@ -4043,3 +4043,42 @@ reframed as the consequential-act floor lift in the runtime clamp that actually 
 honest-note; and this entry. Lesson (§BRAIN.2/§13): a doc's "not shipped" claim must be re-verified
 against live migrations/prod before it is repeated — a later slice can have shipped the thing the doc
 still says is missing.
+
+## 2026-09-06 — RE-2 PR-1: the execution substrate for standing delegated authority (owner-authorized)
+
+**Owner ruling (2026-09-06):** build RE-2 as small mergeable MVP slices at MVP cadence, no routine
+approval between slices; governing rule + build order + spending-authority spec captured in
+`autonomy-architecture.md` §10.7–§10.9. This is the first build slice.
+
+**What shipped (`supabase/migrations/20261229000000_re2_execution_substrate.sql`) — SUBSTRATE ONLY,
+ZERO behavioral change:** nothing reads these for execution yet (no execution loop exists; that is PR-3),
+and `resolve_automation_autonomy` is untouched (the floor-lift is PR-2). A `high` act still clamps to
+`confirm` exactly as before.
+- `paige_authority_grants` — the first-class, CITABLE standing policy / spending grant: scope + caps +
+  escalation (jsonb, §10 config-as-data), provider_account (§38 tenant's own rail), effective/expiry/
+  schedule, state + paused_at/revoked_at/emergency_stopped_at (immediate controls, §68), granted_by +
+  parent_grant_id (the delegation chain PR-2 uses to enforce "a representative never exceeds the owner
+  ceiling", §51/§53). CHECK: a spend cap requires a provider_account.
+- `paige_authority_act_runs` — idempotency/replay receipts; UNIQUE(grant_id, idempotency_key) is the
+  exactly-once guarantee (§10.7 "never silently retry a consequential action without idempotency").
+- `paige_authority_budget_windows` — the atomic velocity + spend ledger (per grant × window kind × start).
+- Primitives (SECURITY DEFINER, §59 in-body scope): `authority_grant_active`, `authority_reserve`
+  (atomic FOR-UPDATE reserve — active + narrowest-limit-wins across every declared cap window; fail-closed
+  on any exhausted/unreadable layer; idempotent replay), `authority_consume` (records the provider-
+  confirmed result; never fabricates success), `authority_release` (reverses a reservation atomically),
+  `authority_remaining_capacity` (the §10.9 "show remaining capacity" read).
+
+**Proof (§32).** Pre-merge `BEGIN..ROLLBACK` on prod (ref xygzykjyynhzqytbqnzu): (a) FULL migration
+applies clean (`FULL_MIGRATION_APPLIES_OK`); (b) behavioral drive of the primitives — reserve ok,
+idempotent replay returns the same receipt, over-action-count / over-single-action / over-spend all
+refuse, consume→succeeded, release frees capacity so the next reserve succeeds, paused + revoked →
+`grant_inactive`, re-consume a settled receipt → `not_reserved` (no fabricated success). Guards:
+`lint:definer-fns` ✓ (no anon-reachable DEFINER), `lint:migration-versions` ✓. Post-merge §32.a
+PERSISTED-APPLY (CI deploy-migrations → schema_migrations advanced + objects exist) confirmed after merge.
+Authenticated end-to-end drive is honestly OWED to PR-3 when a real execution lane exists (§32.c) — this
+slice has no producer.
+
+**Next:** RE-2 PR-2 (policy-aware resolver floor-lift — lift a `high` act's floor ONLY when a valid
+grant authorizes the exact action, else fail closed), then M1 (real spend metering), then PR-3 (wire the
+execution loop + owner control surface, one action family at a time). §66: no tier gating changed
+(no-op). Ledger: no surface changed state (substrate only) — surfaces move when PR-3 wires a lane.
