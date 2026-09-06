@@ -116,6 +116,30 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(md).toContain("I agree to the terms");        // checkbox field: prompt
   });
 
+  it("preserves prose markdown structure/links, the CTA destination, a callout title, and TOC entries (Codex round-4 fidelity)", async () => {
+    const r = await renderDoc({
+      format: "md",
+      title: "Fidelity",
+      content: [
+        { type: "toc", title: "Inside", entries: ["Overview", "Pricing"] },
+        { type: "callout", variant: "key-insight", title: "The key point", body: "Retention beats acquisition." },
+        { type: "prose", markdown: "## How it works\n\nWe use **three** campaigns and a [signup form](https://ex.co/x).\n\n- First\n- Second" },
+        { type: "cta", headline: "Ready?", action: "Book a call", href: "https://ex.co/book" },
+      ],
+    });
+    const md = dec(r.bytes);
+    expect(md).toContain("Overview");                     // toc entries survive as content, not dropped
+    expect(md).toContain("Pricing");
+    expect(md).toContain("The key point");                // callout title is not lost to the body
+    expect(md).toContain("Retention beats acquisition.");
+    expect(md).toMatch(/^### How it works$/m);            // prose H2 recovered as a real heading (→ H3 under the doc H1)
+    expect(md).toContain("We use three campaigns");       // prose inline **bold** stripped to clean text
+    expect(md).not.toContain("**three**");                // no raw markdown syntax leaks into the export
+    expect(md).toContain("signup form (https://ex.co/x)"); // a prose link keeps its destination as `label (url)`
+    expect(md).toContain("- First");                      // prose list recovered as a real list, not one flat line
+    expect(md).toContain("https://ex.co/book");           // the CTA destination is followable, not discarded
+  });
+
   it("never throws and still produces a file for empty content (title-only)", async () => {
     const r = await renderDoc({ format: "md", title: "Only A Title", content: [] });
     expect(r.ext).toBe("md");

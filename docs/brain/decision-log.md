@@ -108,6 +108,18 @@
   §50/§63 clean. That is SIX independent review-layer catches on one MVP — two of them (§39 IDOR, F2
   global-role trap) real cross-tenant leaks the green suite could not see. §32.c multi-tenant RLS/role
   drive of the closed IDOR is owed to the authenticated post-deploy pass (needs a live DB).
+  **SEVENTH catch — Codex round 4 flagged TWO more lossy `coerceBlockArray` projections (prose markdown
+  printed as literal syntax; a CTA's `href` dropped). Rather than fix one block type per round, did a
+  COMPREHENSIVE fidelity audit of the whole mapping vs `StudioDocBlock` and fixed every content-bearing
+  drop in one pass:** `prose` now parses its raw markdown into real heading/list/paragraph blocks and
+  strips inline syntax to clean text (links kept as `label (url)`) via a new `inlineMdToText` (reusing the
+  existing `parseMarkdown`, §18) — so docx/pptx/pdf no longer show `**bold**`/`[x](y)`; `cta` emits its
+  `href`; `callout` emits its `title` (not just body); `toc` emits its `entries` as a list (not dropped);
+  `section-header`/`chapter-divider` emit their `kicker`. The only remaining omissions are `number` (a
+  numbering hint the flat outline supplies) and callout `variant` (a VISUAL treatment, not content —
+  §00/§13), both deliberate. This is the fidelity floor: every content-bearing field of every rich block
+  now survives to the file. Regression test extended (11/11). tsc ratchet 13/13, §50/§63 clean. SEVEN
+  independent review-layer catches on one MVP.
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace

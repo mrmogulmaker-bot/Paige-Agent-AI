@@ -180,15 +180,39 @@ function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
     // the same depth a generic heading-level-1 lands at. (Coercing to level 2 would push it to H3, one
     // level too deep — a section rendering DEEPER than a plain heading — and would make the `## Scope`
     // test pass only on an offset-substring coincidence rather than the real heading prefix.)
-    if (t === "section-header") { push(asText(b.title ?? b.text), "heading", 1); continue; }
+    if (t === "section-header") {
+      push(asText(b.kicker));          // the small eyebrow label above the section title
+      push(asText(b.title ?? b.text), "heading", 1);
+      continue;
+    }
     if (t === "chapter-divider") {
       out.push({ type: "pagebreak" });
+      push(asText(b.kicker));
       push(asText(b.title ?? b.text), "heading", 1);
       push(asText(b.subhead));
       continue;
     }
-    if (t === "prose") { push(asText(b.markdown ?? b.text ?? b.content)); continue; }
-    if (t === "callout") { push(asText(b.body ?? b.text)); continue; }
+    if (t === "prose") {
+      // prose carries raw MARKDOWN (the canvas renders it via ReactMarkdown). Pushing it as one flat
+      // paragraph leaks literal `**bold**` / `[label](url)` / heading / list syntax into docx/pptx/pdf
+      // (Codex P2). Parse it into real structural blocks (headings/lists/paragraphs) and strip inline
+      // markdown to clean text (links kept as `label (url)`) so every format renders structure, not syntax.
+      const md = asText(b.markdown ?? b.text ?? b.content);
+      for (const blk of parseMarkdown(md)) {
+        if (blk.type === "heading") push(inlineMdToText(blk.text), "heading", blk.level);
+        else if (blk.type === "paragraph") push(inlineMdToText(blk.text));
+        else if (blk.type === "list") {
+          const items = blk.items.map(inlineMdToText).filter((s) => s.length > 0);
+          if (items.length) out.push({ type: "list", items, ordered: blk.ordered });
+        } else out.push(blk); // pagebreak
+      }
+      continue;
+    }
+    if (t === "callout") {
+      push(asText(b.title));            // a titled callout ("Key insight: …") keeps its title, not just its body
+      push(asText(b.body ?? b.text));
+      continue;
+    }
     if (t === "pull-quote") {
       const q = asText(b.quote).trim();
       const attr = asText(b.attribution).trim();
@@ -223,7 +247,12 @@ function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
       }
       continue;
     }
-    if (t === "cta") { push([asText(b.headline), asText(b.action)].map((s) => s.trim()).filter(Boolean).join(" — ")); continue; }
+    if (t === "cta") {
+      push([asText(b.headline), asText(b.action)].map((s) => s.trim()).filter(Boolean).join(" — "));
+      const href = asText(b.href).trim();
+      if (href) push(href); // the destination the canvas links — a flat export shows the URL so it's followable (Codex P2)
+      continue;
+    }
     if (t === "pricing-table") {
       const caption = asText(b.caption).trim();
       if (caption) out.push({ type: "heading", text: caption, level: 3 });
@@ -239,7 +268,16 @@ function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
       if (items.length) out.push({ type: "list", items, ordered: false });
       continue;
     }
-    if (t === "toc") { continue; } // the table of contents auto-builds on the canvas; a flat export omits it
+    if (t === "toc") {
+      // The canvas auto-builds the TOC with live anchors; a flat export can't link, but the ENTRIES are
+      // real content, so emit them as a plain list under the (optional) title rather than dropping them.
+      const entries = Array.isArray(b.entries) ? b.entries.map(asText).map((s) => s.trim()).filter((s) => s.length > 0) : [];
+      if (entries.length) {
+        push((asText(b.title).trim() || "Contents"), "heading", 1);
+        out.push({ type: "list", items: entries, ordered: false });
+      }
+      continue;
+    }
     // paragraph / text / anything else
     out.push({ type: "paragraph", text: asText(b.text ?? b.content ?? b.value ?? "") });
   }
@@ -286,6 +324,22 @@ function parseMarkdown(src: string): Block[] {
   }
   flushAll();
   return out;
+}
+
+// Strip inline markdown to clean, readable text for the flat block model (which has no inline runs).
+// A link keeps its destination as `label (url)` so the URL survives into every format; bold/italic/
+// code/strike markers are removed rather than shown literally. Used ONLY on `prose` (which is raw
+// markdown by contract) — never on plain-text fields, where a stray `_`/`*` is a literal character.
+function inlineMdToText(s: string): string {
+  return String(s)
+    .replace(/^\s*>\s?/gm, "")                          // blockquote markers
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")           // image → alt text (before links)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)")     // link → label (url)
+    .replace(/(\*\*|__)(.+?)\1/g, "$2")                 // bold
+    .replace(/(\*|_)([^*_]+?)\1/g, "$2")                // italic
+    .replace(/~~(.+?)~~/g, "$1")                        // strikethrough
+    .replace(/`([^`]+)`/g, "$1")                        // inline code
+    .trim();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════
