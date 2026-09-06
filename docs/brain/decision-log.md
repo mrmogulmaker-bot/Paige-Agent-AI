@@ -4330,9 +4330,12 @@ unenforceable-cap-kind / ambiguous; negative control (revoke→confirm, restore�
 kill-switch (→off, grant still cited); ceiling binds at rung 1 (→confirm, capped_by ceiling, grant
 cited); §59 non-member → found:false. `trust_effective_rung` was an honest double for the run (to drive
 rungs 2 then 1), reverted on ROLLBACK; everything else is the shipped object. Guards: `lint:definer-fns`
-✓, `lint:managed-schema` ✓, `lint:migration-versions` ✓ (unique). **§32.a persisted-apply OWED
-post-merge** via `deploy-migrations` (schema_migrations 20261231000000 + `resolve_execution_autonomy`
-exists on prod). Authenticated end-to-end drive OWED to PR-3 (no execution lane consumes it yet).
+✓, `lint:managed-schema` ✓, `lint:migration-versions` ✓ (unique). **§32.a persisted-apply CONFIRMED
+on prod (ref xygzykjyynhzqytbqnzu) 2026-09-06** — squash-merged as `7939476` (#1010); `deploy-migrations`
+run `34053142635` = success; independent MCP query returned `schema_migrations` row `20261231000000`
+present + `to_regprocedure('public.resolve_execution_autonomy(uuid,text,boolean,numeric)')` resolves,
+`prosecdef=true`, `anon` EXECUTE=false (§59), `service_role` EXECUTE=true. Authenticated end-to-end
+drive OWED to PR-3 (no execution lane consumes it yet).
 
 **Next:** M1 (real spend metering — carry the trace into `platform_metered_events`), then RE-2 PR-3
 (wire the execution loop that CONSUMES this oracle + `authority_reserve`, one action family at a time,
