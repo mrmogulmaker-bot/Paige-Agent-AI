@@ -217,6 +217,13 @@ describes the gap to that target, it does not narrow the target to what is built
 runtime slice — Business Game Plan + Missions — must demonstrate a real governed Paige action (create/
 revise/sequence/advance a Business Mission) with a verified outcome and Rail evidence, not a richer
 context handoff.**
+
+### Solo Tenant Brain — Business Mission vertical slice deployed PARTIAL (2026-09-06)
+
+- PR #1016 is squash-merged and deployed at `68d7c10f4381dd66a5d930d82f9400d004d189b5`. `deploy-migrations` run 34057655392 and `deploy-edge-functions` run 34057655408 passed; `db-live` and `edge-live` both point to that SHA; the production version marker reports the same SHA.
+- Paige now resolves the selected Mission from the persisted chat thread under the caller's server-resolved active Solo tenant, supplies bounded source/revision/lifecycle/freshness context before reasoning, uses the existing approval-gated Mission RPCs, and verifies every normalized canonical persisted field before calling the existing Rail writer. Mission request UUID is the stable Rail run identity.
+- This is `PARTIAL`, not Tenant Brain completion. Authenticated production Solo-owner, denied-role, cross-tenant, canonical Mission-row and matching Rail-row/read-projection proof remain `PROOF OWED`. Mission Mind and durable Memory remain `UNAVAILABLE`; no external business action or outcome is implied by a Mission record change.
+- The owner-mandated Integration Capability Registry has no current Supabase infrastructure entry in the repository/shared workspaces. This slice created no customer provider capability or authority and did not create a competing registry. Registry Steward must add/cross-link the controlling entry before later provider-facing expansion; no verified Steward destination was available, so receipt is not claimed.
 ### Business Vault Phase 2 owner/admin foundation — deployed PARTIAL at `809faec3` (2026-09-06)
 
 - 🟡 **PARTIAL / DEPLOYED.** Tenant-bound owner/admin Vault navigation, Overview, Library metadata, Contracts, Obligations, focused record inspector, archive/fact-revocation lifecycle, and truthful member denial shipped in PR #986 merge `809faec3`. Server functions resolve the active workspace and current role; client-supplied tenant or authority values are never trusted. Authenticated production behavior is not yet proven.
