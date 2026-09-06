@@ -169,7 +169,11 @@ export function EntityDiagramCard({ data }: Props) {
   return (
     <div
       ref={cardRef}
-      className="rounded-xl my-3 w-full"
+      // max-w-full keeps the card inside the (now min-w-0) message bubble; overflow-x-auto lets a
+      // genuinely wide org-chart (fixed-width entity boxes + the SVG connector overlay) scroll
+      // WITHIN its own container instead of pushing the transcript wide or being clipped by the
+      // transcript's overflow-x-hidden. Wide content self-scrolls; it is never hidden (§ paige-ui).
+      className="rounded-xl my-3 w-full max-w-full overflow-x-auto"
       style={{
         background: NAVY,
         border: `2px solid ${GOLD}`,

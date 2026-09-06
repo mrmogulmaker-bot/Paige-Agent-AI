@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  LockKeyhole,
   LogOut,
   Moon,
   Maximize2,
@@ -649,7 +648,11 @@ function PaigeWorkspace({
           <strong>PAIGE</strong>
           <span>Your live operating partner</span>
         </div>
-        {content && <span className="tcs-paige-authority" style={{ display: "inline-flex", alignItems: "center", gap: 5, marginLeft: "auto", padding: "5px 8px", border: "1px solid var(--pg-line)", borderRadius: 999, color: "var(--pg-ink-2)", background: "var(--pg-surface)", fontSize: 10, whiteSpace: "nowrap" }}><LockKeyhole aria-hidden size={13} />Ask first</span>}
+        {/* §13 correction (P1 hotfix): a STATIC "Ask first" badge lived here with no data binding,
+            no handler, and no CSS backing — a permissions claim that reflected nothing and could not
+            be changed. The REAL, tenant-writable permissions control now lives in the composer action
+            bar (PaigeComposerAutonomyChip), reflecting + controlling the canonical set_tool_autonomy
+            seam. A fake indicator is worse than none, so it is removed rather than left to mislead. */}
         {content && !full && onToggleWide && (
           <button type="button" className="tcs-icon-button" onClick={onToggleWide} aria-label={wide ? "Return PAIGE to docked panel" : "Expand PAIGE panel"} title={wide ? "Return to docked panel" : "Expand panel"}>
             {wide ? <PanelLeftClose aria-hidden /> : <PanelLeftOpen aria-hidden />}

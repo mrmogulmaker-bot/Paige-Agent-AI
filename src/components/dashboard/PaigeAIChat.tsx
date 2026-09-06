@@ -213,6 +213,14 @@ export interface PaigeAIChatProps {
    * Omitted by every existing non-Solo caller, preserving their current behavior.
    */
   soloTenantSafety?: boolean;
+  /**
+   * An optional caller-owned control rendered in the Solo composer action bar, next to the
+   * attachment/mic controls. The dedicated Solo workspace passes the real Paige-permissions chip
+   * here; every other mount omits it, so the chip never leaks onto a non-Solo surface. Rendered only
+   * in the `soloTenantSafety` composer branch. It is a ReactNode the caller wires to the real
+   * governance seam — this component makes no authority claim of its own.
+   */
+  composerAutonomyControl?: React.ReactNode;
 }
 
 /** Everything a caller-supplied history rail needs, and nothing it could corrupt. */
@@ -250,6 +258,7 @@ const PaigeAIChatInner = ({
   activeThreadId: controlledThreadId,
   onActiveThreadIdChange,
   soloTenantSafety = false,
+  composerAutonomyControl,
 }: PaigeAIChatProps) => {
   /** Claude Design's operator chrome. Presentation only — never a second engine. */
   const cd = presentation === "operator";
@@ -1416,7 +1425,14 @@ const PaigeAIChatInner = ({
               data-paige-transcript-scroll={soloTenantSafety ? "true" : undefined}
               onScroll={soloTenantSafety ? (event) => syncTranscriptPosition(event.currentTarget) : undefined}
               className={cn(
-                "flex-1 min-h-0 overflow-y-auto",
+                // overflow-x-hidden is DEFENCE-IN-DEPTH, not a cover-up: the real cause (a flex
+                // message bubble missing min-w-0, plus unwrapped user text) is fixed below, so
+                // content wraps and nothing is clipped. Without this, `overflow-y-auto` makes the
+                // browser compute overflow-x:auto too, rendering the reported horizontal scrollbar
+                // right above the composer the instant any child exceeds the width. Genuinely wide
+                // children (entity diagrams) self-scroll in their own overflow-x-auto container, so
+                // they stay reachable (§ paige-ui: never hide content with clipping).
+                "flex-1 min-h-0 overflow-y-auto overflow-x-hidden",
                 cd ? "px-4 py-3.5 space-y-4" : "p-6 space-y-4",
               )}
             >
@@ -1440,7 +1456,14 @@ const PaigeAIChatInner = ({
                         ? "max-w-[76%] min-w-0 rounded-[14px_14px_4px_14px] border border-border bg-muted px-[13px] py-2.5 text-[13.5px] leading-[1.6]"
                         : "min-w-0 flex-1 text-[13.5px] leading-[1.66]"
                       : cn(
-                          "max-w-[80%] rounded-lg p-4",
+                          // min-w-0 is the ROOT-CAUSE fix: this bubble is the sole flex item of the
+                          // row above, and a flex item defaults to min-width:auto, which refuses to
+                          // shrink below its content's min-content width — so a wide child (a long
+                          // token, a code block, a diagram) pushed the whole transcript wider than
+                          // the panel and produced the horizontal scrollbar. The operator (`cd`)
+                          // branch already carried min-w-0; the app branch every live mount uses did
+                          // not. max-w-full keeps the bubble within the wrapped column.
+                          "max-w-[80%] min-w-0 rounded-lg p-4",
                           message.role === "user"
                             ? "bg-primary text-primary-foreground"
                             : "bg-muted/30 border border-border",
@@ -1529,7 +1552,10 @@ const PaigeAIChatInner = ({
                       {message.documentFileName && (
                         <DocumentMessageBubble fileName={message.documentFileName} kind={message.documentKind} />
                       )}
-                      {message.content && <p className="text-sm">{message.content}</p>}
+                      {/* whitespace-pre-wrap preserves the user's own line breaks; break-words wraps
+                          a long unbroken token (a URL, path, or id) instead of forcing the bubble —
+                          and thus the transcript — wider than the panel (overflow cause #3). */}
+                      {message.content && <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>}
                     </>
                   )}
                   {/* Hover-revealed meta: timestamp + copy (both roles), regenerate
@@ -1816,8 +1842,11 @@ const PaigeAIChatInner = ({
                   />
                   <div
                     data-solo-composer-actions
-                    className="flex min-w-0 items-center gap-1.5 border-t border-border/70 px-2.5 py-2"
+                    className="flex min-w-0 flex-wrap items-center gap-1.5 border-t border-border/70 px-2.5 py-2"
                   >
+                    {/* The real Paige-permissions chip (Solo only). It reflects + controls the
+                        canonical per-tool autonomy seam; it never gates or claims authority here. */}
+                    {composerAutonomyControl}
                     {micButton}
                     {attachButton}
                     {clearComposerButton}

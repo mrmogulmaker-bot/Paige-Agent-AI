@@ -1,5 +1,37 @@
 # Decision Log — chronological one-liners
 
+- **P1 UI hotfix — dedicated Paige chat horizontal scrollbar + real permission chip (2026-09-06, Task #17, owner-authorized)** —
+  TWO fixes to the dedicated Solo Paige workspace chat (`paige.workspace`: `PaigeAIChat` in `SoloPaigeWorkspace`).
+  **(1) Horizontal scrollbar — fixed at the SOURCE, not clipped.** Root cause (grounded, not guessed): the message
+  bubble is the lone flex item of its row and, in the `cd=false` (app) branch every live mount uses, lacked
+  `min-w-0`, so it refused to shrink below content min-content width and pushed the transcript wider than the
+  panel; `overflow-y-auto` with no `overflow-x` then rendered the bar above the composer. Fix: `min-w-0` on the
+  bubble (the real cause) + `whitespace-pre-wrap break-words` on the user's own text (long tokens wrap) +
+  `overflow-x-hidden` on the transcript (defense-in-depth, safe because content now wraps — nothing clipped) +
+  `max-w-full overflow-x-auto` on `EntityDiagramCard` so a wide org-chart self-scrolls in its own container
+  (reachable, never hidden — the skill's wide-content pattern). The transcript stays the ONE vertical scroll
+  owner; the Solo composer action row is `flex-wrap` so controls reflow on narrow widths.
+  **(2) Real permission chip in the composer** (`src/components/dashboard/paige/PaigeComposerAutonomyChip.tsx`,
+  mounted only by `SoloPaigeWorkspace` via a new `composerAutonomyControl` prop — no non-Solo mount renders it).
+  Reflects the workspace's REAL effective posture from `useSoloToolGovernance` (the canonical
+  `list_/resolve_tool_autonomy` seam) — "Ask first" / "Within policy" / honest loading/unconfigured labels, never
+  an unbacked claim. **"Ask first" is a real persisted brake** (bulk `set_tool_autonomy(confirm)` via
+  `setDomainMode`, admin-gated exactly as the server predicate, honestly non-atomic + honest toast); **"Act within
+  my policy" / "Custom permissions" route to the real Trust Compass controls** (`/solo/{account_number}/command-center/trust-compass`).
+  No global posture seam exists (Ceiling+Grant+Floor), so granting autonomy stays deliberate/bounded (§67/§68) —
+  the chip NEVER blanket-enables `auto` and NEVER fakes a write (§13); the true non-destructive global override
+  layer is left to the pending Trust Compass reconciliation slice (§18 — reuse the one seam, don't fork).
+  **Removed a pre-existing FAKE static "Ask first" badge** in the shell header (`TenantCommandCenterShell.tsx` —
+  no data binding/handler; §13 correction, §58 flagged: a fake indicator, not a real shipped capability).
+  Radix DropdownMenu → keyboard/Escape/focus-restore; neutral/violet, gold reserved for Send. **PROOF:**
+  `dedicated-chat-overflow-contract.test.ts` (DOM-contract guard for all 4 overflow fixes + fake-badge removal) +
+  `PaigeComposerAutonomyChip.test.tsx` (pure `deriveChipView` across every authority state + trigger render:
+  accessible name, reflected label, no-gold) + `SoloPaigeWorkspace.contract.test.tsx` green with the chip mounted;
+  ci:tsc ratchet green (no new errors), gold-discipline + tier-features clean, full suite + build (see closeout).
+  **PROOF OWED (§32.c — headless, no browser):** rendered-pixel + authenticated-runtime verification of the
+  no-scrollbar layout and the live chip write/route at 1536×770/1366×768/1024×768/900×1000/narrow, both themes,
+  PAIGE open/closed — owed to a browser-capable session. Evidence:
+  `docs/evidence/ui-delivery/dedicated-paige-chat-scrollbar-and-permission-chip.md`.
 - **Capability Slice 2 — campaign-brief conversational create/list/revise reach (2026-09-06, Task #16, owner-authorized)** —
   Paige can now, in chat, draft / revise / list a Solo workspace's **campaign briefs** (a brief = owner-authored
   PLANNING intent, NEVER proof a campaign is live/spent/published — the tool descriptions, RPC messages, and chat

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { BookOpen, Bot, Brain, MessageSquarePlus, MessagesSquare, RotateCw, Search, Sparkles, Wrench, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { PaigeAIChat, type ChatRailApi } from "@/components/dashboard/PaigeAIChat";
+import { PaigeComposerAutonomyChip } from "@/components/dashboard/paige/PaigeComposerAutonomyChip";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { useSoloKnowledge } from "./data/useSoloKnowledge";
@@ -337,6 +338,7 @@ export function SoloPaigeWorkspace({
           fill
           enableHistory
           soloTenantSafety
+          composerAutonomyControl={<PaigeComposerAutonomyChip accountEpoch={activeTenantId} />}
           renderRail={(api) => <SoloHistoryRail api={api} />}
           greeting="What are we moving? Tell me the outcome, and I’ll show what I can read, draft, or ask you to approve."
           clientId={clientScope?.clientId ?? null}
