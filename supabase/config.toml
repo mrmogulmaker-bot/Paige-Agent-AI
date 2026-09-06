@@ -482,3 +482,8 @@ verify_jwt = true
 # Zapier cannot present a Supabase JWT. A high-entropy route token resolves one immutable
 # tenant route in-function; no tenant identity is accepted from the body.
 verify_jwt = false
+
+[functions.repair-voice-twiml-app]
+# Internal staged hotfix repair for one explicit target. pg_net supplies the Vault-backed
+# cron token; the function also accepts service-role and otherwise fails closed.
+verify_jwt = false

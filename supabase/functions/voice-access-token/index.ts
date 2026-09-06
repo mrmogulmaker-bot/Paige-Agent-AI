@@ -27,6 +27,7 @@
 //      (Deepgram = Slice B1; Vapi = Marketplace #154) is touched here.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { mintVoiceAccessToken, mintOperatorVoiceAccessToken, type SupabaseAdminLike } from "../_shared/twilio.ts";
+import { classifyVoiceReadiness, hasTenantVoiceAuthority } from "./authorization.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -108,17 +109,65 @@ Deno.serve(async (req) => {
   }
 
   // ── TENANT path — UNCHANGED behavior (§37 byte-identical for every tenant caller). ──
-  // Platform owner OR a tenant admin/coach may mint (same authority that owns the number).
+  // Platform owner OR an active owner/admin/coach IN THIS TENANT may mint. A
+  // global user_roles row is not tenant authority and must never unlock another
+  // workspace's billable Voice token.
   const { data: isOwner } = await userClient.rpc("is_platform_owner");
-  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
-  const { data: isCoach } = await admin.rpc("has_role", { _user_id: user.id, _role: "coach" });
-  if (isOwner !== true && isAdmin !== true && isCoach !== true) {
-    return json({ error: "forbidden" }, 403);
-  }
-
   // §9: the tenant is the caller's OWN tenant (JWT-scoped), never a body value.
   if (!tenantId || typeof tenantId !== "string") {
     return json({ needs_config: true, error: "tenant_not_resolved" });
+  }
+  const { data: membership, error: membershipError } = await admin
+    .from("tenant_members")
+    .select("tenant_id, role, status")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .maybeSingle();
+  if (membershipError) {
+    console.error("[voice-access-token] tenant authority lookup failed", { code: membershipError.code ?? null });
+    return json({ error: "authorization_unavailable", message: "We couldn't verify calling access. Try again." }, 503);
+  }
+  if (!hasTenantVoiceAuthority({
+    isPlatformOwner: isOwner === true,
+    membershipTenantId: typeof membership?.tenant_id === "string" ? membership.tenant_id : null,
+    activeTenantId: tenantId,
+    membershipStatus: typeof membership?.status === "string" ? membership.status : null,
+    membershipRole: typeof membership?.role === "string" ? membership.role : null,
+  })) {
+    return json({ error: "forbidden", message: "You don't have permission to place calls for this workspace." }, 403);
+  }
+
+  // Voice readiness is stricter than “a token can be signed.” The caller ID
+  // must be the single active primary number, voice-capable, provider-bound,
+  // and owned by the same active subaccount the token will use.
+  const { data: subaccount, error: subaccountError } = await admin
+    .from("tenant_twilio_subaccounts")
+    .select("id, active, status")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (subaccountError) {
+    console.error("[voice-access-token] calling configuration lookup failed", { code: subaccountError.code ?? null });
+    return json({ error: "calling_configuration_unavailable", message: "We couldn't verify calling configuration. Try again." }, 503);
+  }
+  const { data: primaryNumbers, error: numberError } = await admin
+    .from("tenant_phone_numbers")
+    .select("subaccount_id, twilio_sid, capabilities")
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .eq("is_primary", true)
+    .limit(2);
+  if (numberError) {
+    console.error("[voice-access-token] caller-id readiness lookup failed", { code: numberError.code ?? null });
+    return json({ error: "calling_configuration_unavailable", message: "We couldn't verify your calling number. Try again." }, 503);
+  }
+  const readiness = classifyVoiceReadiness(subaccount, primaryNumbers);
+  if (!readiness.ok) {
+    return json({
+      needs_config: true,
+      error: readiness.code,
+      message: readiness.message,
+    });
   }
 
   // §9/§13: identity is derived SERVER-SIDE from the verified JWT (tenant + user), NEVER
@@ -141,7 +190,7 @@ Deno.serve(async (req) => {
     // a real failure is a 502. Never a fabricated token.
     return json({
       needs_config: minted.needs_config === true,
-      error: minted.error ?? "voice_token_unavailable",
+      error: minted.needs_config === true ? "calling_not_configured" : "voice_token_unavailable",
       message: minted.needs_config
         ? "Voice isn't set up for this practice yet. Once your phone number is provisioned you'll be able to call from the browser."
         : "Voice token is temporarily unavailable.",

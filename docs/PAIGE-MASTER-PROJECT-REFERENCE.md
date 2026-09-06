@@ -1577,12 +1577,17 @@ creation handlers (`generate_image`, `draft_marketing_content`, `content_save`, 
 drafts / null saved id); a new pure home `_shared/artifact-receipt.ts` (`artifactProduced` +
 `ARTIFACT_ABSENT_ERROR`) degrades an absent artifact to an honest `success:false`, so the model narration,
 the status label, and the artifact card all inherit the honest signal (§13/§70). **Proof:** 17 contract
-tests + 167 green across the source-asserting suite; §50 clean; transpiles clean. **Proof owed:**
-authenticated owner §32.c live-drive (headless). **Still in slice 1:** download/export action, render the
-artifact card on all chat surfaces, image→campaign routing, the missing types (campaign_brief · HTML
-email_template · video · social-schedule), regular-chat in-place refine — the visible items run the §00
-Claude-Design pack (CC ports, does not design). **Deferred to their slices, named:** the two going-live
-PUBLISH receipts (slice 6/7) and Rail wiring of these tools (slice 3 / F05).
+tests + 167 green across the source-asserting suite; §50 clean; transpiles clean. Increment 1.1 (PR #974)
+folded two Codex-caught edge-cases (Studio image needs a filed `content_id`; a drafts array of
+content-less items isn't usable copy). **Proof owed:** authenticated owner §32.c live-drive (headless).
+**Still in slice 1 — re-scoped to the DEDICATED Paige experience (owner decision 2026-09-06):**
+download/export action, image→campaign routing, the missing types (campaign_brief · HTML email_template ·
+video · social-schedule), regular-chat in-place refine. **RETIRED:** "render the artifact card on all chat
+surfaces" — there is NO floating Paige chat inside the authenticated platform; the dedicated authenticated
+Paige chat/workspace is the only tenant-aware experience and already renders the card (see §10 corrections
++ decision-log 2026-09-06; retirement work = task #14). A public-site Product Guide is a separate,
+tenant-isolated product, not built here. **Deferred to their slices, named:** the two going-live PUBLISH
+receipts (slice 6/7) and Rail wiring of these tools (slice 3 / F05).
 
 ### Sandboxed Research & External Execution — a COMPONENT of the Paige Capability System (above); APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
 
@@ -2056,6 +2061,18 @@ subset only: `docs/handoff/platform-billing-spine-source-contract.md` (PROPOSED/
 
 ### NEXT REQUIRED LANE — Pipeline Chat Write Bridge (owner direction 2026-09-02; NOT STARTED, NOT IN THE MIND BRANCH)
 
+**Owner decision update, 2026-09-04:** the owner explicitly approved canonical PAIGE approval for approval-required Pipeline moves, with the same stage rules enforced in Chat and on the board instead of a separate Pipeline queue. The historical NOT STARTED heading above describes the earlier state; bounded implementation grounding is now active on `codex/solo-pipeline-spine-connectivity`. See `docs/architecture/paige-spine-foundation.md`, SCR-2026-09-04. Shared Chat adapter review, implementation and authenticated proof are still pending; no capability or production release is claimed.
+
+**Local implementation checkpoint, 2026-09-04 — NOT LIVE:** exact caller-scoped Pipeline reads and move preparation are implemented locally; the additive `execute_pipeline_deal_move_as_paige` executor is in `20260904052832_solo_pipeline_governed_move_executor.sql`. It uses the existing canonical gate's server-only channel, not a new approval mechanism, and rechecks explicit active workspace, tenant/admin authorization, exact pipeline/deal/target identity and versions, target policy, and current `deal_move_stage` autonomy. It preserves status/close-date semantics, records attributed activity/audit/idempotent outcomes, and rolls back a linked-client Rail failure. No old held requests or production records were changed.
+
+Proof checkpoint: 30 focused Node checks pass; 29 isolated PostgreSQL cases pass against the actual migration with **synthetic authorization/autonomy/Rail dependencies** (`scripts/pipeline-move-db-proof.mjs`; evidence `outputs/pipeline-move-db-proof/run-NqU035/`). Migration SHA-256 `8638df7813468171bb9d774675e8479502e873af223dbf7636150994f331d51e`; the disposable database was stopped. This is not full-schema replay, authenticated Chat/browser proof, or a green release. Shared Chat/board wiring remains paused for the owning Chat compatibility response, per coordinator direction. Remaining work includes closing legacy/alternate move callers, supported deal creation/edit paths, workspace Rail and Mind integration, actual role/Rail compatibility, interruption/retry and cross-surface proof. The existing Mind text saying no Pipeline write tools exist must not be mistaken for the intended capability boundary; evidence remains read-only, while separately authorized actions use owning contracts.
+
+**Checkpoint refresh, 2026-09-04 — NOT LIVE:** the command now carries `pipelineId` as required by its executor; malformed selection input refuses without throwing. The linked-client Rail call uses the existing service path only after Pipeline authorization, clears/restores both subject claim representations, and records the requesting actor in its payload. Focused Node checks: 40 PASS. Isolated PostgreSQL checks: 33 PASS, including unchanged prepared-command execution, foreign-client refusal, claim restoration and rollback. Evidence: `outputs/pipeline-move-db-proof/run-5l0P5L/`; migration SHA-256 `adbfc1336bf43228d9b18795584186309deea14a1c48e0ed6c3468cb42818144`. Dependencies remain synthetic; actual shared-helper and authenticated runtime proof remain UNVERIFIED.
+
+Chat-owner review clears the narrow adapter direction but requires preservation of PR #914, stored-command/version/idempotency binding, exact stored-target revalidation, and editable board context without automatic sending. Its inherited canonical proposal-store integrity finding remains a release blocker for trustworthy approval. Resolve with the canonical Chat authority owner, not a Pipeline-specific approval store. The owner authorized completion and deployment conditionally on readiness; no merge, deployment or production data mutation has occurred. Cross-task forwarding of the security finding was blocked by automatic review pending specific sharing permission.
+
+This is one domain slice of the AI COO architecture, not authority to redesign Trust Compass, Systems Check or other departments. The owning command must supply tenant-safe evidence, governed execution and attributable durable outcomes usable by Rail and Mind. Existing pending requests and unrelated domain data must be preserved.
+
 PAIGE Chat is intended to become Pipeline **write-capable**. The read-only Mind evidence slice above is the first
 foundation, not the endpoint. The initial write slice focuses on real deal work: create or link a deal to an
 existing client, update permitted deal details, and move a deal through existing tenant-owned stages. Every write
@@ -2310,6 +2327,10 @@ implementation begins from it.
 - Truth status, CORRECTED 2026-09-02: the structural-harness and static results below still stand, and **migration persistence is now CONFIRMED on prod** (`20261039000000`, `20261040000000` in `schema_migrations`; five `team_*` rows returned by `list_tool_autonomy()`). ~~*Do not merge or deploy without the separate final go-live approval.*~~ — it merged via #728. **Still UNVERIFIED:** authenticated save/reload, real invitation delivery, permission refusal/retry, account-switch and preview runtime. No leg has been driven on the live authenticated platform. ~~25/25 structural-harness checks~~ remain as recorded: 25/25 at 1536×770, 1366×768, 1024×768 and 900×1000; focused tests, type ratchet, security linters and production build green.
 
 ### Solo Campaigns -> Pipeline board (Gate 1 approved 2026-08-31; draft PR, NOT LIVE)
+
+**Later bounded deletion hotfix, 2026-09-03:** current implementation and release evidence lives in `docs/delivery/solo-pipeline-empty-delete.md`, not this historical Gate 1 heading. Solo Owners can explicitly confirm the exact UUID-backed PPL reference for an empty pipeline; server transaction refuses deals, routes, automation, approvals and retained history. No Catalog, billing, client/payment, campaign, survivor, shell, or Chat-write redesign. Owner authorized this bounded slice through green release without another routine gate. No production data deletion is allowed for proof. Future agents must read the linked ledger and `docs/doctrine/surface-cards/pipeline.md` before touching deletion.
+
+
 
 - **Canonical Solo ownership contract (owner-locked 2026-09-01).** There is exactly one Solo shell
   for every current and future Solo tenant. `src/solo/SoloEntry.tsx` dispatches the authenticated
@@ -3787,6 +3808,32 @@ Owner superseded competing Sales PR #905; its separate Clients fix remains with 
 
 The owner superseded the earlier callback zero-log release block for the standard OAuth connection. Hosted gateway retention of temporary code/state URL metadata is an accepted post-release hardening risk; it is not claimed encrypted or eliminated. Existing token encryption, S256 PKCE, exact redirect, owner/session/workspace binding, replay/expiry checks and read-only initial authority remain mandatory. Scope is the entire Solo shell, with independent per-workspace connections and API health. Implementation and proof: `docs/delivery/solo-n8n-oauth-mvp.md`. This entry records the approved release contract, not successful deployment or owner consent.
 Owner follow-up: OAuth must request workflow:read and workflow:write. Initial connection verification remains read-only; no workflow:execute or automatic mutation is granted. Workflow writes remain subject to the governed action path and explicit approval.
+
+### Solo Conversations outbound Voice hotfix — 2026-09-05 (candidate)
+
+The shared Solo Voice path had two coupled defects: the public TwiML handler accepted unproved
+tenant fields and could create false owner-attributed Conversations history, while the production
+API-key credential posture omitted call-status callbacks, leaving provider acceptance/rejection
+unreconciled. The candidate repair stamps each tenant TwiML Application VoiceUrl with its existing
+tenant webhook proof, repairs stored applications on token mint, binds provider proof to the active
+tenant before any service-role work, requires a provider-bound voice-capable primary caller ID on the
+same active subaccount, and scopes token authority to the caller's active tenant membership. Browser
+calls are single-flight, common US local input is normalized to E.164, raw provider messages are not
+shown, and Conversations labels Voice rows Initiated / Completed / Failed from persisted provider
+evidence. Call history remains in `messages`; no new Rail writer was introduced.
+
+Strict webhook enforcement has a staged release prerequisite: deploy the internal single-target
+repair helper first, obtain sanitized provider success for every configured tenant app and the
+operator app, then deploy the strict handler. The helper is service-role/verified-cron gated, never
+enumerates tenants, forces a provider update even when a database marker exists, and returns no ids,
+numbers, URLs, secrets, or payloads. Same-commit deployment without this repair is not sufficient.
+
+Production data inspection found the reported workspace fully configured in the database and six
+recent Voice rows stuck queued. Other standalone Solo workspaces had no comparable fully configured,
+active Voice path, so this is a platform-path defect currently observable in that workspace—not a
+workspace-only setup gap. Retrospective child-leg provider outcomes, authenticated browser behavior,
+deployment persistence, and one owner-approved controlled live call remain **Proof Owed** until
+performed.
 
 - 2026-09-03 n8n owner-pass correction: PR #909 deployed but the first real consent failed before state consumption. The hosted gateway rewrites the runtime callback path/origin; public-URL-only fixtures missed this. Bounded handler repair preserves fixed redirect URI and all state/owner/session guards, fixes the 404 fallback, and is documented in docs/delivery/solo-n8n-oauth-mvp.md. Do not label the tenant connected until fresh owner consent succeeds.
 

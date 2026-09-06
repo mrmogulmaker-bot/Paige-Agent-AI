@@ -23,7 +23,7 @@ function stage(over: Partial<PipelineStage>): PipelineStage {
   return { id: "s1", pipelineId: "p1", label: "Stage", description: "", orderIndex: 0, archivedAt: null, movePolicy: "direct", stageType: "open", version: 1, ...over };
 }
 function deal(over: Partial<PipelineDeal>): PipelineDeal {
-  return { id: "d1", title: "Deal", pipelineId: "p1", stageId: "s1", clientId: null, clientName: "Prospect Co", owner: "", status: "open", source: "", nextAction: "", updatedAt: NOW.toISOString(), version: 1, history: [], ...over };
+  return { id: "d1", title: "Deal", pipelineId: "p1", stageId: "s1", clientId: null, clientName: "Prospect Co", owner: "", status: "open", source: "", nextAction: "", tags: [], notes: "", createdAt: NOW.toISOString(), actualCloseDate: null, lostReason: null, outcomes: [], updatedAt: NOW.toISOString(), version: 1, history: [], ...over };
 }
 function base(over: Partial<SalesCommandInput> = {}): SalesCommandInput {
   return {

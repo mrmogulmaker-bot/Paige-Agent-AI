@@ -71,6 +71,20 @@ vi.mock("./data/useSoloTrust", () => ({
 }));
 vi.mock("./useSoloCampaigns", () => ({ useSoloCampaigns: () => harness.state }));
 vi.mock("./useCatalogOffers", () => ({ useCatalogOffers: () => harness.offers }));
+// Overview (the Campaign Command Desk) reads owner briefs through its own tenant-scoped adapter;
+// this suite renders all six tabs, so stub the briefs read ready/empty (its own proof is in
+// campaign-briefs.contract.test.tsx).
+vi.mock("./useSoloCampaignBriefs", () => ({
+  useSoloCampaignBriefs: () => ({
+    tenantId: harness.state.tenantId, phase: "ready", briefs: [], archivedCount: 0, canManage: true,
+    retry: () => {}, saveBrief: async () => ({ ok: true, message: "" }),
+    transitionBrief: async () => ({ ok: true, message: "" }), archiveBrief: async () => ({ ok: true, message: "" }),
+  }),
+}));
+// The Sales-operations adapter is mocked HERE so this file proves the SURFACE. What the adapter
+// itself sends to the database — tenant scoping, fail-closed ordering, the refusal-only expected
+// tenant — is proved separately in `useSoloSalesOps.adapter.test.tsx` against a recording client.
+// Mocking it there too would prove nothing about either.
 vi.mock("./useSoloSalesOps", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./useSoloSalesOps")>();
   return { ...actual, useSoloSalesOps: () => harness.sales };
