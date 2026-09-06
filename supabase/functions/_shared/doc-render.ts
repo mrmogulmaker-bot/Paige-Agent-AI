@@ -143,10 +143,11 @@ function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
       const itemsRaw = Array.isArray(b.items) ? b.items : Array.isArray(b.content) ? b.content : [];
       // A `checklist`-styled list is a real checkbox list on canvas; a flat export must keep that job
       // (Codex P2 — dropping the style rendered checkboxes as ordinary bullets). Prefix each item with an
-      // empty ballot box (U+2610) so every serializer (md/docx/pptx/pdf) shows an unchecked box, no
-      // GFM-task-list support required; a checklist is never ordered.
+      // ASCII empty checkbox `[ ]`: it survives the PDF WinAnsi sanitizer (a Unicode `☐` is transcoded to
+      // `?` by sanitizeWinAnsi — Codex P2), renders in md/docx/pptx/pdf, and is the GFM task-list form so a
+      // markdown viewer shows a real checkbox. A checklist is never ordered.
       const isChecklist = b.style === "checklist";
-      const items = itemsRaw.map(asText).filter((s) => s.length > 0).map((s) => (isChecklist ? `☐ ${s}` : s));
+      const items = itemsRaw.map(asText).filter((s) => s.length > 0).map((s) => (isChecklist ? `[ ] ${s}` : s));
       out.push({ type: "list", items, ordered: !isChecklist && (t === "ol" || b.ordered === true || b.style === "numbered") });
       continue;
     }
@@ -212,7 +213,7 @@ function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
         const maxL = asText(b.maxLabel).trim();
         push([minL, nums.join(" — "), maxL].filter((s) => s.length > 0).join("   "));
       } else if (kind === "checkbox") {
-        push(`☐ ${RULE}`);
+        push(`[ ] ${RULE}`); // ASCII checkbox (PDF-safe; a Unicode ☐ becomes `?` under sanitizeWinAnsi)
       } else if (kind === "box") {
         for (let i = 0; i < 4; i++) push(RULE); // an open box → a small area of write-lines in a flat export
       } else {

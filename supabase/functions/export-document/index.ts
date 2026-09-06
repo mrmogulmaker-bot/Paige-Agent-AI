@@ -70,9 +70,20 @@ serve(async (req: Request) => {
       return json(400, { error: "A valid document content_id is required." });
     }
 
-    // §9 — read the source document with the CALLER's JWT client; RLS confirms they own it. A row they
-    // cannot see returns null (indistinguishable from missing), which is the correct fail-closed.
-    const { data: doc, error: docErr } = await authed
+    // A platform operator (super_admin/platform_admin, §53) can export ACROSS tenants. Derive that from
+    // the VERIFIED JWT's global roles (user_roles) — those two ARE platform-global tiers by design (§53),
+    // so reading them here is correct, not §59's global-role trap (that trap is about TENANT-level roles).
+    const isOperator = roles.some((r: string) => r === "super_admin" || r === "platform_admin");
+    const service = createClient(supabaseUrl, supabaseServiceKey);
+
+    // §9/§59 — READ. `marketing_content` RLS admits only `is_platform_owner()` (super_admin) cross-tenant,
+    // so a platform_admin's caller-JWT read returns null → a misleading 404 (Codex F1). Operators therefore
+    // read via the SERVICE-ROLE client (RLS-bypassing, justified: operator status was verified from the
+    // VERIFIED JWT above, never a body value). A NON-operator reads with their OWN JWT, so RLS still
+    // fails-closed to a 404 when they have no visibility at all; the tenant-scoped role check below — not
+    // this read — is the authorization decision.
+    const reader = isOperator ? service : authed;
+    const { data: doc, error: docErr } = await reader
       .from("marketing_content")
       .select("id, tenant_id, title, body, kind")
       .eq("id", contentId)
@@ -85,20 +96,24 @@ serve(async (req: Request) => {
     const tenantId = doc.tenant_id as string | null;
     if (!tenantId) return json(422, { error: "That document has no workspace and cannot be exported." });
 
-    // §9/§59 — CLOSE THE GLOBAL-ADMIN IDOR (the §39 peer-gate's blocking finding). `marketing_content`'s
-    // RLS carries an OR-branch that grants the GLOBAL `admin` app_role a cross-tenant read, and EVERY
-    // tenant owner/admin holds that global role (the tenant_members→user_roles sync). So the caller-JWT
-    // read above does NOT by itself scope to the caller's tenant — a tenant-A admin could read a tenant-B
-    // document by id. Per §59, a new by-id data-EXPORT reader must RE-ENFORCE caller scope IN-BODY rather
-    // than trust the grant. Require membership of the DOC's tenant. Cross-tenant authority is ALWAYS the
-    // platform-operator role (super_admin/platform_admin) — never the tenant-level app_role: an operator
-    // legitimately spans tenants (the operator seam), a tenant admin never does. (The pre-existing RLS
-    // OR-branch is a platform-wide §9/§59 gap reachable via raw PostgREST — filed as its own follow-up;
-    // this gate closes the export vector regardless.)
-    const isOperator = roles.some((r: string) => r === "super_admin" || r === "platform_admin");
+    // §9/§59 — AUTHORIZE (the real access decision). The endpoint is admin/coach-only, but `user_roles`
+    // is GLOBAL and tenant-agnostic, so the coarse role gate above (and `marketing_content`'s own RLS,
+    // which carries a global-`admin` OR-branch) would let a caller who is admin in workspace A but only a
+    // PLAIN member of the doc's tenant B export B's documents (Codex F2 — §59's global-role trap; the
+    // documented pattern in 20261180000000). A bare `is_tenant_member` check does NOT close it — a plain
+    // member passes. RE-ENFORCE a MANAGE role IN THE DOC'S TENANT, tenant-scoped on the caller's own
+    // auth.uid(): owner/admin via `is_tenant_admin`, or coach via `has_tenant_role` (both SECURITY DEFINER,
+    // keyed on the caller's own identity — never a passed actor). Operators span tenants and skip this.
+    // (The RLS OR-branch is a platform-wide §9/§59 gap reachable via raw PostgREST — its own follow-up
+    // (#1023); this gate closes the export vector regardless.)
     if (!isOperator) {
-      const { data: isMember } = await authed.rpc("is_tenant_member", { _tenant: tenantId });
-      if (!isMember) return json(403, { error: "You don't have access to that document's workspace." });
+      const { data: isAdmin } = await authed.rpc("is_tenant_admin", { _tenant: tenantId });
+      let allowed = isAdmin === true;
+      if (!allowed) {
+        const { data: isCoach } = await authed.rpc("has_tenant_role", { _user_id: user.id, _tenant_id: tenantId, _role: "coach" });
+        allowed = isCoach === true;
+      }
+      if (!allowed) return json(403, { error: "You don't have manage access to that document's workspace." });
     }
 
     // The document body is the block JSON document_generate saved: `{ docType, title, blocks }`. Unwrap
@@ -116,7 +131,6 @@ serve(async (req: Request) => {
       ? body.title.trim().slice(0, 200)
       : String((doc.title as string) ?? "Document").slice(0, 200);
 
-    const service = createClient(supabaseUrl, supabaseServiceKey);
     // Rail record is for TENANT (member) callers. `record_capability_run` requires the actor to be a
     // member of the target tenant (§52), so an OPERATOR export (super_admin/platform_admin, not a member)
     // would raise CAPABILITY_RUN_FORBIDDEN and log a false-alarm error for a legitimate God action. An

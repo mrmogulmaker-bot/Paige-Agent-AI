@@ -102,8 +102,10 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     // twice. Assert exactly one `# Growth Proposal` and NO `## Growth Proposal` duplicate heading.
     expect((md.match(/^# Growth Proposal$/gm) || []).length).toBe(1);
     expect(md).not.toContain("## Growth Proposal");
-    // Codex P2 — a `checklist` list keeps its checkbox job in the export (empty ballot box, not a bullet).
-    expect(md).toContain("☐ Sign contract");
+    // Codex P2 — a `checklist` list keeps its checkbox job as an ASCII `[ ]` (PDF-safe; a Unicode ☐ is
+    // transcoded to `?` by the PDF WinAnsi sanitizer), never flattened to a plain bullet.
+    expect(md).toContain("[ ] Sign contract");
+    expect(md).not.toContain("☐");                       // the Unicode box must never reach the export
     // Codex P1 — a worksheet-field is a REAL printable blank: the prompt AND a place to write/rate/check.
     expect(md).toContain("Your top goal");               // lines field: prompt
     expect(md).toMatch(/_{10,}/);                        // lines field: an actual ruled write-line
@@ -136,20 +138,26 @@ describe("export-document edge function — the callable seam (source contract)"
     expect(SRC).toContain('"doc-render"');
   });
 
-  it("is admin/coach gated, reads with the CALLER JWT, and re-enforces caller tenant scope IN-BODY (§9/§59 source contract)", () => {
+  it("is admin/coach gated and re-enforces a TENANT-SCOPED manage role IN-BODY, operators read via service (§9/§59 source contract)", () => {
     expect(SRC).toContain('authed.auth.getUser()');
     expect(SRC).toContain('"admin" || r === "super_admin" || r === "platform_admin" || r === "coach"');
     expect(SRC).toContain('.from("marketing_content")');
     // the tenant the file is filed under is the row's tenant, never the request body
     expect(SRC).toContain("const tenantId = doc.tenant_id");
     expect(SRC).not.toContain("body?.tenant_id");
-    // §59 — the caller-JWT read alone is NOT sufficient: marketing_content RLS has a global-`admin`
-    // OR-branch, so a by-id EXPORT reader must RE-ENFORCE membership in-body; cross-tenant is operator-only.
+    // Codex F1 — a platform_admin can't read marketing_content via RLS (it admits only is_platform_owner()
+    // = super_admin cross-tenant), so operators read via the SERVICE-ROLE client; non-operators via JWT.
     expect(SRC).toContain('roles.some((r: string) => r === "super_admin" || r === "platform_admin")');
-    expect(SRC).toContain('authed.rpc("is_tenant_member", { _tenant: tenantId })');
-    expect(SRC).toContain("You don't have access to that document's workspace.");
-    // HONEST SCOPE (§32.c): this is a SOURCE contract that the in-body gate exists — a true two-tenant
-    // RLS drive proving the IDOR is closed needs a live DB and is owed to the authenticated post-deploy pass.
+    expect(SRC).toContain("const reader = isOperator ? service : authed");
+    // Codex F2 / §59 global-role trap — a plain member of the doc's tenant who holds a GLOBAL admin role
+    // from ANOTHER tenant must NOT export. The in-body gate requires a MANAGE role IN THE DOC'S TENANT
+    // (owner/admin via is_tenant_admin, coach via has_tenant_role), tenant-scoped — never is_tenant_member.
+    expect(SRC).toContain('authed.rpc("is_tenant_admin", { _tenant: tenantId })');
+    expect(SRC).toContain('authed.rpc("has_tenant_role", { _user_id: user.id, _tenant_id: tenantId, _role: "coach" })');
+    expect(SRC).not.toContain('.rpc("is_tenant_member"'); // the any-role membership CALL was the F2 leak (a comment may still name it)
+    expect(SRC).toContain("You don't have manage access to that document's workspace.");
+    // HONEST SCOPE (§32.c): this is a SOURCE contract that the in-body gate exists — a true multi-tenant
+    // RLS/role drive proving the IDOR is closed needs a live DB and is owed to the authenticated post-deploy pass.
   });
 
   it("offers only the renderer's real formats and degrades honestly, never a fake link (§13)", () => {

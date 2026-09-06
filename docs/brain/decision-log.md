@@ -91,6 +91,23 @@
   a worksheet's blank), not just its text — dropping the affordance is a §70 loss that still returns
   success. Regression test extended to drive checklist + all worksheet-field kinds + assert no title
   dup. Re-verified: doc-export 10/10, tsc ratchet 13/13 (no new errors), §50/§63 clean.
+  **SIXTH catch — Codex re-review of that head found TWO real §9/§59 authority bugs + a PDF-render bug,
+  all FOLDED (grounded on the real helpers, not invented):** (F1, P2) a `platform_admin` operator's
+  caller-JWT read of `marketing_content` returned null — RLS admits only `is_platform_owner()`
+  (super_admin) cross-tenant — so the delegated-operator export path 404'd. Fixed: operators
+  (super_admin/platform_admin, §53) now read via the SERVICE-ROLE client (RLS-bypass justified by the
+  verified-JWT operator check). (F2, P1 — §59 GLOBAL-ROLE TRAP) the in-body gate accepted `is_tenant_member`
+  at ANY role, so a caller who is admin in tenant A (global `admin` in `user_roles`) but a plain member of
+  the doc's tenant B could export B's admin-gated docs. Fixed: RE-ENFORCE a MANAGE role IN THE DOC'S TENANT
+  — owner/admin via `is_tenant_admin` (auth.uid()-keyed) or coach via `has_tenant_role` — the exact
+  pattern in `20261180000000` (the same trap's fourth sighting). (F3, P2) the checklist/checkbox `☐`
+  (U+2610) was transcoded to `?` by `renderPdf`'s `sanitizeWinAnsi`; switched to the ASCII `[ ]`
+  (WinAnsi-safe, GFM task-list form). §37 producer inventory: the ONE producer (`document_generate` →
+  export-document) forwards the caller's `Authorization`, so the Studio admin/coach still passes for their
+  own tenant. Re-verified: doc-export 10/10, tsc ratchet 13/13, chat-tool-registry 94, spine PASS,
+  §50/§63 clean. That is SIX independent review-layer catches on one MVP — two of them (§39 IDOR, F2
+  global-role trap) real cross-tenant leaks the green suite could not see. §32.c multi-tenant RLS/role
+  drive of the closed IDOR is owed to the authenticated post-deploy pass (needs a live DB).
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace
