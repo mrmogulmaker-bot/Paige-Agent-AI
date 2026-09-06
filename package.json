@@ -72,6 +72,8 @@
     "lint:conversation-tenant": "node scripts/comms-conversation-tenant-lint.mjs",
     "smoke:voice-twiml-callback": "node scripts/voice-twiml-callback-smoke.mjs",
     "smoke:voice-twiml-handler": "node scripts/voice-twiml-handler-smoke.mjs",
+    "smoke:voice-status-callback": "node scripts/twilio-status-callback-handler-smoke.mjs",
+    "smoke:repair-voice-twiml-app": "node scripts/repair-voice-twiml-app-handler-smoke.mjs",
     "test:deno-ratchet": "node scripts/ci/__tests__/deno-edge-ratchet.test.mjs",
     "test:client-memory-authz": "node --import ./scripts/client-memory-authz/register.mjs scripts/client-memory-authz/check.mjs",
     "test:token-pricing": "node --import ./scripts/client-memory-authz/register.mjs scripts/token-pricing/check.mjs",

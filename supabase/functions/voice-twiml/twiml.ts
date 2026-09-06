@@ -96,15 +96,16 @@ export function resolveStatusCallbackUrl(input: {
   signatureVerified: boolean;
   /** Receiving tenant, or null for an operator/master-account call. */
   tenantId: string | null;
-  /** That tenant's `inbound_webhook_secret`, or null when it could not be resolved. */
+  /** Tenant secret, or the purpose-bound operator proof; null only for signature-authenticated operator calls. */
   tenantSecret: string | null;
 }): string {
   const { base, signatureVerified, tenantId, tenantSecret } = input;
   if (!base) return "";
   // The gate. Never emit a credential-bearing URL to a request we did not authenticate.
   if (!signatureVerified) return "";
-  if (!tenantId) return base; // operator/master call — authenticated downstream by signature
-  return tenantSecret ? `${base}?t=${encodeURIComponent(tenantSecret)}` : "";
+  if (tenantSecret) return `${base}?t=${encodeURIComponent(tenantSecret)}`;
+  if (!tenantId) return base; // signature-authenticated operator/master call
+  return "";
 }
 
 /**

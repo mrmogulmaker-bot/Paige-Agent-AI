@@ -3792,6 +3792,32 @@ Owner superseded competing Sales PR #905; its separate Clients fix remains with 
 The owner superseded the earlier callback zero-log release block for the standard OAuth connection. Hosted gateway retention of temporary code/state URL metadata is an accepted post-release hardening risk; it is not claimed encrypted or eliminated. Existing token encryption, S256 PKCE, exact redirect, owner/session/workspace binding, replay/expiry checks and read-only initial authority remain mandatory. Scope is the entire Solo shell, with independent per-workspace connections and API health. Implementation and proof: `docs/delivery/solo-n8n-oauth-mvp.md`. This entry records the approved release contract, not successful deployment or owner consent.
 Owner follow-up: OAuth must request workflow:read and workflow:write. Initial connection verification remains read-only; no workflow:execute or automatic mutation is granted. Workflow writes remain subject to the governed action path and explicit approval.
 
+### Solo Conversations outbound Voice hotfix — 2026-09-05 (candidate)
+
+The shared Solo Voice path had two coupled defects: the public TwiML handler accepted unproved
+tenant fields and could create false owner-attributed Conversations history, while the production
+API-key credential posture omitted call-status callbacks, leaving provider acceptance/rejection
+unreconciled. The candidate repair stamps each tenant TwiML Application VoiceUrl with its existing
+tenant webhook proof, repairs stored applications on token mint, binds provider proof to the active
+tenant before any service-role work, requires a provider-bound voice-capable primary caller ID on the
+same active subaccount, and scopes token authority to the caller's active tenant membership. Browser
+calls are single-flight, common US local input is normalized to E.164, raw provider messages are not
+shown, and Conversations labels Voice rows Initiated / Completed / Failed from persisted provider
+evidence. Call history remains in `messages`; no new Rail writer was introduced.
+
+Strict webhook enforcement has a staged release prerequisite: deploy the internal single-target
+repair helper first, obtain sanitized provider success for every configured tenant app and the
+operator app, then deploy the strict handler. The helper is service-role/verified-cron gated, never
+enumerates tenants, forces a provider update even when a database marker exists, and returns no ids,
+numbers, URLs, secrets, or payloads. Same-commit deployment without this repair is not sufficient.
+
+Production data inspection found the reported workspace fully configured in the database and six
+recent Voice rows stuck queued. Other standalone Solo workspaces had no comparable fully configured,
+active Voice path, so this is a platform-path defect currently observable in that workspace—not a
+workspace-only setup gap. Retrospective child-leg provider outcomes, authenticated browser behavior,
+deployment persistence, and one owner-approved controlled live call remain **Proof Owed** until
+performed.
+
 - 2026-09-03 n8n owner-pass correction: PR #909 deployed but the first real consent failed before state consumption. The hosted gateway rewrites the runtime callback path/origin; public-URL-only fixtures missed this. Bounded handler repair preserves fixed redirect URI and all state/owner/session guards, fixes the 404 fallback, and is documented in docs/delivery/solo-n8n-oauth-mvp.md. Do not label the tenant connected until fresh owner consent succeeds.
 
 ### Solo orchestration MVP — A2P workspace repair, 2026-09-04 (candidate)

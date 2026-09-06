@@ -13,7 +13,7 @@ import { Delete, Loader2, Mic, MicOff, Phone, PhoneCall, PhoneOff } from "lucide
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useVoiceDevice, normalizeDialNumber } from "@/lib/voice/VoiceDeviceProvider";
+import { useVoiceDevice, isDialableNumber, normalizeDialNumber } from "@/lib/voice/VoiceDeviceProvider";
 
 const KEYS: { d: string; sub?: string }[] = [
   { d: "1" }, { d: "2", sub: "ABC" }, { d: "3", sub: "DEF" },
@@ -52,7 +52,10 @@ export function DialPad() {
 
   const inCall = status === "in_call" || (status === "connecting" && activeCall != null);
   const normalized = normalizeDialNumber(draft);
-  const canCall = normalized.length > 0 && status !== "connecting";
+  const canCall = isDialableNumber(normalized) && status !== "connecting";
+  const validationReason = draft.trim().length > 0 && !isDialableNumber(normalized)
+    ? "Enter a valid phone number, including the country code."
+    : null;
 
   function press(k: string) {
     setDraft(draft + k);
@@ -124,7 +127,7 @@ export function DialPad() {
             {activeCall?.number ?? normalized}
           </p>
           <p className="text-xs tabular-nums text-muted-foreground">
-            {status === "connecting" ? "Connecting…" : timer}
+            {status === "connecting" ? "Connecting…" : `Call initiated · ${timer}`}
           </p>
         </div>
 
@@ -220,8 +223,8 @@ export function DialPad() {
       </div>
 
       {/* Honest error line (§13) — a real reason, never a fake "connected". */}
-      {status === "error" && reason && (
-        <p role="alert" className="text-center text-xs text-destructive">{reason}</p>
+      {(validationReason || (status === "error" && reason)) && (
+        <p role="alert" className="text-center text-xs text-destructive">{validationReason ?? reason}</p>
       )}
     </div>
   );
