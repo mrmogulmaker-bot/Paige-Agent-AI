@@ -302,6 +302,7 @@ export function workspaceRootForTenant(tenant: {
   });
   // Unknown account types fail safe to Solo, so require the literal top-level
   // standalone classification before emitting a Solo address.
+  // tier-feature-exempt: tenant route classification validates canonical shell ownership; it is not a feature gate.
   if (tier === "solo" && (tenant.account_type !== "standalone" || tenant.parent_tenant_id != null)) return null;
   return authorizedRootForTier(tier, tenant.account_number ?? null);
 }
