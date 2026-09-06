@@ -85,10 +85,12 @@ scoped-autonomy target — a bare `auto: "None"` is a regression the guard rejec
 funds / routing tenant→client money through the platform (connected-provider payments run on the
 **tenant's own** rails); §53 platform-tier escalation; and actions blocked by law, provider, or an
 explicit owner prohibition. The full contract is `docs/doctrine/autonomy-architecture.md` §10 (§67.2).
-**Honest note (§13/§32):** high-impact acts still clamp `auto`→`confirm` at the runtime seam today; the
-governed-execution slice that lifts a `high` act under a valid standing policy is sequenced there
-(RE-1/RE-2/RE-3), not yet shipped — so consequential surfaces keep their current `state` while
-`intended_capability` declares the target.
+**Honest note (§13/§32):** high-impact acts still clamp `auto`→`confirm` at runtime today. The
+standing-policy substrate (RE-1 — `paige_automations` + `resolve_automation_autonomy`) is **live and
+wired into `paige-ai-chat`**; what is not built is **RE-2** — lifting the consequential-act *floor*
+under a valid standing policy (the floor is `confirm` by the `paige_action_kinds` CHECK +
+`resolve_tool_autonomy`, so no grant currently lifts a `high` act). Until RE-2 ships, consequential
+surfaces keep their current `state` while `intended_capability` declares the target.
 
 ## The release/regression contract (CI-enforced)
 

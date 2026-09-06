@@ -4017,3 +4017,29 @@ into this PR before merge:
 Guard after folds: self-test 35 cases; real ledger 26 rows clean; §67/§68 laundering caught; §38 fence
 intact. The remaining PR-2 requirements (idempotency + velocity enforcement in code) are recorded in
 §10.6 RE-1/RE-2.
+
+### §13 CORRECTION (2026-09-06) — the standing-policy substrate EXISTS; PR-1 said it didn't
+
+Grounding PR-2 against the live code caught a §13 error shipped in PR-1 (#1002). PR-1's
+`autonomy-architecture.md` §10.5/§10.6 (inheriting the doc's stale §5 "until they exist") said **"the
+standing-policy substrate does not exist yet — neither §5-A nor §5-B has shipped."** That is **false**.
+Verified on prod (ref `xygzykjyynhzqytbqnzu`, `to_regclass`/`to_regprocedure` + `schema_migrations`):
+- `paige_automations`, `paige_automation_acts`, `paige_automation_triggers` — EXIST (`20261022000000`, §67 Slice A);
+- `resolve_automation_autonomy(uuid)` — EXISTS (`20261024000000`, §67 Slice B);
+- both migration versions are in `schema_migrations` (applied);
+- the resolver is CALLED at runtime by `paige-ai-chat/index.ts` (≈L8671/8760/8796).
+
+**The present-runtime-truth claim ("high acts still clamp to `confirm` today") stays TRUE — only the
+REASON was wrong.** It is not a missing substrate; it is the per-act **FLOOR**:
+`resolve_automation_autonomy` computes `min(grant, act-floor, ceiling)`, and a consequential act's floor
+is `confirm` by the `paige_action_kinds` CHECK (`default_autonomy_lane <> 'auto' OR executor IN
+('record_only','workflow')`) carried through `resolve_tool_autonomy`. So no process grant lifts a
+`high`/send/money act to `auto` — that floor-lift under a valid standing policy is the real RE-2 work,
+genuinely not built.
+
+**Corrected (this docs PR):** `autonomy-architecture.md` §5 (UPDATE note), §10.5 (substrate-exists +
+floor-is-the-reason), §10.6 (RE-1 marked SHIPPED with idempotency/velocity as the owed additions; RE-2
+reframed as the consequential-act floor lift in the runtime clamp that actually runs); the ledger README
+honest-note; and this entry. Lesson (§BRAIN.2/§13): a doc's "not shipped" claim must be re-verified
+against live migrations/prod before it is repeated — a later slice can have shipped the thing the doc
+still says is missing.

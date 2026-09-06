@@ -196,11 +196,14 @@ and truthful-status components are Claude Design's.
    authority; moving/holding money outside a valid connected-provider+scope+policy per §38; law/provider/
    security/explicit-owner prohibition). 15 surfaces marked `consequential: true`; a new
    `binding-ledger-lint` tripwire blocks a bare-`None` regression. The contract lives in
-   `docs/doctrine/autonomy-architecture.md` §10 (§67.2). **Honest runtime truth (§13/§32):** high-impact
-   acts still clamp `auto`→`confirm` at the seam today; the governed-execution slice that lifts a `high`
-   act under a valid standing policy is **sequenced** (RE-1 standing-policy substrate → RE-2 seam honors
-   a `standingPolicy` assertion → RE-3 pause/revoke/audit) as the next PR, not shipped in this docs
-   change. **Current guard:** self-test 33 cases; runs clean on all 26 rows. Every surface `state`
+   `docs/doctrine/autonomy-architecture.md` §10 (§67.2). **Honest runtime truth (§13/§32, corrected 2026-09-06):** high-impact
+   acts still clamp `auto`→`confirm` at runtime today. The standing-policy substrate (RE-1 —
+   `paige_automations` + `resolve_automation_autonomy`, `20261022000000`/`20261024000000`) is **live on
+   prod and wired into `paige-ai-chat`** (an earlier draft wrongly said it wasn't — §13 correction, see
+   decision-log). The reason a `high` act clamps is the per-act **floor** (`paige_action_kinds` CHECK +
+   `resolve_tool_autonomy`), not a missing substrate. The remaining build is **RE-2** — lifting that
+   consequential-act floor under a valid standing policy (+ RE-1's owed idempotency/velocity additions,
+   RE-3 controls/audit) — sequenced as the next PR, not shipped in this docs change. **Current guard:** self-test 33 cases; runs clean on all 26 rows. Every surface `state`
    unchanged by the correction (target changed, not proof). §66: no tier gating changed.
 
 **UPDATE (owner ruling, 2026-09-06) — the ledger now carries a SECOND dimension so absent proof cannot
