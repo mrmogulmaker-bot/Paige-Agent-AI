@@ -1,5 +1,35 @@
 # Decision Log — chronological one-liners
 
+- **Capability Slice 2 — campaign-brief conversational create/list/revise reach (2026-09-06, Task #16, owner-authorized)** —
+  Paige can now, in chat, draft / revise / list a Solo workspace's **campaign briefs** (a brief = owner-authored
+  PLANNING intent, NEVER proof a campaign is live/spent/published — the tool descriptions, RPC messages, and chat
+  receipts all say so). **Registered, not hand-wired:** new Spine domain `_shared/paige-spine/domains/campaigns.ts`
+  (`campaign.create`/`.revise`/`.list` capabilities + compact `CAMPAIGN_BRIEF_TOOLS`), added to `registry.ts`; the
+  Chat handler consumes via `...CAMPAIGN_BRIEF_TOOLS` + a name-keyed dispatch branch (owner ruling 2026-09-01,
+  `chat-tool-registry-lint` green, baseline unchanged at 94). **Consumes the EXISTING secure RPCs unchanged** —
+  `configure_campaign_brief` (create-brief/update-brief) + `get_campaign_briefs` (list) from merged migration
+  `20261225000000` — via the caller JWT (`supabaseClient.rpc`, `_actor_kind:'paige'`), so the SECURITY DEFINER RPC
+  re-resolves tenant from auth (never the arg, §9/§59) and gates on tenant-admin/owner (§53). No RPC/table change →
+  no §37 producer-contract break. **AUTHORITY MODEL (owner correction 2026-09-06):** create/revise classified
+  `ordinary` in `action-risk.ts` — NOT `high`. `ordinary` is the class the runtime clamp leaves eligible for a
+  standing `auto` grant, so a tenant owner/authorized rep CAN grant Paige autonomous authority to draft/revise
+  briefs within their approved scope; `confirm` is the ESCALATION lane (the platform default via
+  `resolve_tool_autonomy`, and where the RPC itself refuses out-of-policy / ambiguous / unavailable-linked-record /
+  version-conflict). A blanket draft/confirm on every planning write was explicitly rejected. Idempotency key
+  settled at the gate before the fingerprint (mirrors the mission `request_key` pattern) so the confirm→approve
+  round-trip redeems ONE key. **PROOF:** `scripts/campaign-brief-db-proof.mjs` 12/12 on real Postgres 16
+  (create→version 1 tenant-scoped; get_campaign_briefs can_manage; §9 cross-tenant read+write FORBIDDEN 42501 +
+  no leaked row; §53 non-admin FORBIDDEN; optimistic VERSION_CONFLICT 40001; version-bump trigger + key-presence
+  merge; idempotency replay returns stored result & writes no 2nd row; idempotency conflict 22023; offer
+  tenant-mismatch 23514; operator cross-tenant bypass). Structural guard `src/__tests__/campaign-brief-chat-reach.test.ts`
+  14/14; Spine registry validates (23 caps, 0 findings); action-risk / write-targets / tool-catalogue /
+  chat-tool-registry / one-approval-gate / migration-versions / tier-features / governed-execution / binding-ledger
+  / ci:tsc all green; edge fns transpile clean; deno-ratchet 145/0 (real-deno leg in CI). New migration
+  `20261229000000_campaign_brief_tool_autonomy_catalogue.sql` adds the two writes to `list_tool_autonomy` so the
+  operator can SEE + set their lane (tool-catalogue-lint green). **PROOF OWED (§32.c):** authenticated live-drive of
+  an end-to-end Solo-chat create/revise/list (headless session cannot render/drive it) — owed to a browser-capable
+  session. **HONEST BOUNDARY:** a brief is intent; active/live campaign status, spend, publication, and results
+  require their own connected governed actions and verified outcomes — none of which this slice claims.
 - **P0 Solo Campaigns Sales blank route — client hook-order hotfix (2026-09-06, owner-authorized)** — Production `/solo/{account}/growth/sales` served the SPA and all deployed chunks successfully but the Sales component returned during `loading` before a later `useMemo`; the same mount gained that hook at `ready`, so React aborted with `Rendered more hooks than during the previous render` and left a blank surface. The exact failing-first regression now drives `loading`→`ready` on the same real GrowthHub/Sales root, and the minimal fix moves the existing memo above every phase return while keeping it null until sources are ready. No route, design, tier, data, permission, or truth-label contract changed. Proof: full repository 3,708/3,708, focused Campaigns 220/220, Sales browser 536/536, Campaigns nav 218/218, production build/type/static gates, independent review, and all PR #1001 checks passed. **LIVE:** merge `3f7eca584150a0af702451186cc638d863a01f98` is READY on production deployment `dpl_5CxRh2iuFiSRgG5Bzwfn6n8RmfPH` and aliased to `paigeagent.ai`/`app.paigeagent.ai`. **PROOF OWED:** authenticated owner loading-to-ready runtime because the signed-in browser helper failed its permitted reset/retry. Active PR #905 rewrites the same Sales files from a stale base and must be superseded or rebased after this hotfix; #907/#706 do not overlap the hotfix files. Durable evidence: `docs/evidence/ui-delivery/solo-sales-blank-route-hotfix.md`. Next: shared Solo post-login squeezed-dashboard incident must read this entry and inspect the shared shell rather than patching page-local widths.
 - **Capability Slice 1 — dedicated Paige chat in-place image refine, BACKEND (2026-09-06, Task #15, owner-authorized)** —
   in the dedicated (owner "Your Paige" / Solo) chat, refining an image Paige just made now version-stacks the

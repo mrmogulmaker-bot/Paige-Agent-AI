@@ -1,4 +1,5 @@
 import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_mission.ts';
+import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.ts';
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -163,6 +164,10 @@ function describeStep(
     case "mission_create": return out?.replayed === true ? { label: "That proposed Mission was already saved", group: "owner", detail: "replay · no duplicate change" } : { label: failed ? "Could not create that Mission" : "Created the proposed Mission", group: "owner", detail: failed ? "nothing changed" : "record only · no work ran" };
     case "mission_revise": return out?.replayed === true ? { label: "That Mission revision was already saved", group: "owner", detail: "replay · no duplicate change" } : { label: failed ? "Could not revise that Mission" : "Saved a new Mission brief version", group: "owner", detail: failed ? "nothing changed" : "record only · no work ran" };
     case "mission_transition": return out?.replayed === true ? { label: "That Mission state was already saved", group: "owner", detail: "replay · no duplicate change" } : { label: failed ? "Could not change that Mission" : "Changed the Mission state", group: "owner", detail: failed ? "nothing changed" : "record only · no work ran" };
+    // Campaign briefs (owner) — a brief is a PLANNING record, never proof a campaign is live.
+    case "campaign_brief_create": return { label: failed ? "Could not save that campaign brief" : "Saved a campaign brief", group: "owner", detail: failed ? "nothing changed" : "record only · nothing launched" };
+    case "campaign_brief_revise": return { label: failed ? "Could not revise that campaign brief" : "Revised a campaign brief", group: "owner", detail: failed ? "nothing changed" : "record only · nothing launched" };
+    case "campaign_brief_list": return { label: failed ? "Couldn't read your campaign briefs" : "Checked your campaign briefs", group: "owner" };
     // CRM (client)
     case "crm_search_contacts": return { label: "Looking through your contacts", group: "client", detail: typeof out?.count === "number" ? `${out.count} found` : undefined };
     case "crm_get_contact_summary": return { label: "Pulling up the contact", group: "client" };
@@ -6057,6 +6062,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
           },
           ...BUSINESS_MISSION_TOOLS,
+          ...CAMPAIGN_BRIEF_TOOLS,
           {
             type: "function",
             function: {
@@ -6897,6 +6903,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       mission_create: "creating a proposed Business Mission",
       mission_revise: "revising a Business Mission brief",
       mission_transition: "changing a Business Mission state",
+      campaign_brief_create: "saving a campaign brief",
+      campaign_brief_revise: "revising a campaign brief",
+      campaign_brief_list: "checking your campaign briefs",
       update_client_data: "saving details to a client's file",
       delegate_to_subagent: "handing work to one of her specialists",
       comms_buy_number: "buying a phone number",
@@ -7156,6 +7165,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             return `Archive the exact folder "${a?.command?.confirmedName || "selected folder"}"${folderCount === null ? "" : ` with ${folderCount} assigned pipeline record${folderCount === 1 ? "" : "s"}`}. Every assigned pipeline moves to Unfiled and keeps its current lifecycle status; no pipeline, deal, stage, or history is deleted.`;
           }
           return `Run the requested governed pipeline change (${String(a?.command?.type || "configuration").replaceAll("-", " ")}).`;
+        case "campaign_brief_create":
+          return `Save a campaign brief "${String(a?.name || "Untitled").slice(0, 120)}" for this workspace — a planning record of the campaign's intent. This launches, sends, and publishes nothing.`;
+        case "campaign_brief_revise":
+          return `Revise the campaign brief you just read${a?.expectedVersion ? ` (version ${a.expectedVersion})` : ""} — a change to the planning record only. It launches, sends, and publishes nothing.`;
         case "deal_create":
           return `Add a deal "${a?.title || "Untitled"}"${typeof a?.value_cents === "number" ? ` worth ${(a.value_cents / 100).toLocaleString(undefined, { style: "currency", currency: a?.currency || "USD" })}` : ""} to the pipeline.`;
         case "deal_move_stage":
@@ -7703,6 +7716,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           try { gateArgs = JSON.parse(tc.function.arguments || "{}"); } catch { gateArgs = {}; }
           if ((tc.function.name === "mission_create" || tc.function.name === "mission_revise" || tc.function.name === "mission_transition") && !gateArgs.request_key) {
             gateArgs.request_key = crypto.randomUUID();
+            tc.function.arguments = JSON.stringify(gateArgs);
+          }
+          // Campaign briefs get a stable idempotency key SETTLED HERE, before the fingerprint, for
+          // the same reason missions settle request_key: the gate stores and later executes these
+          // exact arguments, so the confirm→approve round-trip (and any auto-path re-parse) must
+          // redeem ONE key. `configure_campaign_brief` ledgers it — a replay with the same key
+          // returns the stored result rather than writing a second brief.
+          if ((tc.function.name === "campaign_brief_create" || tc.function.name === "campaign_brief_revise") && !gateArgs.idempotency_key) {
+            gateArgs.idempotency_key = crypto.randomUUID();
             tc.function.arguments = JSON.stringify(gateArgs);
           }
           // ── ONE CANONICAL PERMISSION VALUE, SETTLED BEFORE ANYTHING READS IT ────────────────
@@ -11353,6 +11375,60 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false,error:"The mission was not changed.",note:"No work ran and no Mission success may be claimed." }) });
           }
+        } else if (tc.function.name === "campaign_brief_create" || tc.function.name === "campaign_brief_revise" || tc.function.name === "campaign_brief_list") {
+          // Campaign-brief reach. Writes use the CALLER JWT (supabaseClient) so auth.uid() resolves
+          // inside the SECURITY DEFINER RPC, which re-resolves the tenant from auth (never the arg,
+          // §9/§59) and gates on tenant-admin/owner (§53). A brief is a PLANNING record only — no
+          // Action Bus, worker, provider, Mind, or Rail write is reachable here, and nothing is
+          // launched, sent, published, or spent. `_actor_kind:'paige'` marks provenance; the write
+          // authority is still the caller's own.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const tid = personaCtx?.tenant_id ?? null;
+            if (tc.function.name === "campaign_brief_list") {
+              const { data: listData, error: listErr } = await supabaseClient.rpc("get_campaign_briefs", { _tenant_id: tid });
+              if (listErr) {
+                const msg = String(listErr.message || "");
+                const friendly = msg.includes("CAMPAIGN_BRIEF_FORBIDDEN")
+                  ? "You don't have access to this workspace's campaign briefs."
+                  : "Could not read the campaign briefs. Reopen the workspace and try again.";
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:friendly }) });
+              } else {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:true, ...(listData && typeof listData === "object" ? listData : { briefs: listData }), note:"These are PLANNING briefs. A brief's lifecycle status is a state the owner set — it is not proof any campaign is active, spent, published, or producing results." }) });
+              }
+            } else {
+              // Build the governed command from ONLY the fields the model supplied, so an absent field
+              // never becomes a null the RPC's key-presence merge would treat as a clear (§10/§37).
+              const CMD_FIELDS = ["name","objective","audience","positioning","channels","desiredOutcome","successDefinition","budgetTarget","timing","constraints","contentNeeds","conversionDestination","followupPath","offerId","pipelineId"] as const;
+              const command: Record<string, unknown> = tc.function.name === "campaign_brief_create"
+                ? { type: "create-brief" }
+                : { type: "update-brief", briefId: args.briefId, expectedVersion: args.expectedVersion };
+              for (const f of CMD_FIELDS) if (args[f] !== undefined) command[f] = args[f];
+              const { data: result, error } = await supabaseClient.rpc("configure_campaign_brief", {
+                _tenant_id: tid,
+                _command: command,
+                _idempotency_key: args.idempotency_key,
+                _actor_kind: "paige",
+              });
+              if (error) {
+                const message = String(error.message || "");
+                const friendly =
+                    message.includes("CAMPAIGN_BRIEF_VERSION_CONFLICT") ? "This brief changed since you read it. List the briefs again to get the current version, then revise."
+                  : message.includes("CAMPAIGN_BRIEF_NOT_FOUND") ? "That campaign brief isn't in this workspace."
+                  : message.includes("CAMPAIGN_BRIEF_OFFER_TENANT_MISMATCH") ? "That offer isn't one this workspace owns, so it can't be linked. Leave the offer out or pick one from this workspace."
+                  : message.includes("CAMPAIGN_BRIEF_PIPELINE_TENANT_MISMATCH") ? "That pipeline isn't one this workspace owns, so it can't be linked. Leave the pipeline out or pick one from this workspace."
+                  : message.includes("CAMPAIGN_BRIEF_NAME_REQUIRED") ? "A campaign brief needs a name."
+                  : message.includes("CAMPAIGN_BRIEF_IDEMPOTENCY_CONFLICT") ? "That looks like a changed retry of an earlier save. Start the change again so it can be saved cleanly."
+                  : message.includes("CAMPAIGN_BRIEF_FORBIDDEN") ? "Only an owner or admin of this workspace can save campaign briefs."
+                  : "The campaign brief was not saved. Reopen the workspace and try again.";
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:friendly, note:"Nothing was changed. Do not claim the brief was saved." }) });
+              } else {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:true, ...(result && typeof result === "object" ? result : { result }), note:"The campaign brief PLANNING record committed. Report only the saved brief — nothing is launched, sent, published, or spent, and no campaign results are proven." }) });
+              }
+            }
+          } catch (e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"The campaign brief was not saved.", note:"No work ran and no campaign result may be claimed." }) });
+          }
         } else if (
           tc.function.name === "plan_set_reminder" ||
           tc.function.name === "plan_create" ||
@@ -11538,6 +11614,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         forge_subagent: "paige_subagents", delegate_to_subagent: "paige_subagents",
         save_to_knowledge_base: "knowledge_base",
         mission_create: "business_missions", mission_revise: "business_missions", mission_transition: "business_missions",
+        campaign_brief_create: "campaign_briefs", campaign_brief_revise: "campaign_briefs",
         plan_create: "plans", plan_add_milestone: "plans", plan_set_reminder: "plans",
         plan_update_item: "plans", plan_remove_item: "plans",
         author_event_kind: "paige_event_kinds",
