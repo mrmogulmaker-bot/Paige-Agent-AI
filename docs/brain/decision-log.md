@@ -105,14 +105,24 @@
   parentless grants from representatives" — a tenant `admin` (not only the owner) can author a *parentless* client_period
   grant (or clear `parent_grant_id` on a child) and get a full allowance, so "delegation can still widen authority."
   GROUNDED against the substrate: `paige_authority_grants_admin_write` (PR-1 `20261230000000`, UNCHANGED by M1-b) is
-  `FOR ALL USING (is_platform_owner() OR is_tenant_admin(tenant_id))` — a tenant admin is a first-class authorized grantor
-  by deliberate PR-1 design (§51/§53), NOT a "representative" requiring a parent ceiling; the `parent_grant_id` chain (and
-  M1-b's `parent_grant_id IS NOT NULL` fail-closed) is the delegation sub-model, never a claim that only owners author
-  grants. This is a **substrate authorization-model change** (redefining PR-1's `admin_write` RLS / the guard's clear-parent
-  handling), applies to EVERY cap kind (an admin could just use `daily_budget_usd`), and M1-b is DARK (grant authorship
-  authorizes nothing until PR-3 wires execution). So it is PARKED as a **material authorization decision for the owner on
-  the PR-3 / substrate track** — folding a substrate RLS change into a DARK cap-enforcement slice would be scope creep +
-  a §37/§51 hazard + a unilateral material decision. Carried into PR-3 grounding; replied on the thread + resolved.
+  `FOR ALL USING (is_platform_owner() OR is_tenant_admin(tenant_id))`, so a tenant admin may WRITE a grant row; the
+  `parent_grant_id` chain (and M1-b's `parent_grant_id IS NOT NULL` fail-closed) is the delegation sub-model, and M1-b is
+  DARK (grant authorship authorizes nothing until PR-3 wires execution). **CORRECTION (Codex round-4 follow-up on #1028,
+  §13 — the earlier "tenant admin is a first-class owner-equivalent grantor, nothing owed" framing was too dismissive):**
+  RLS write-permission establishes *who may submit a row*, NOT *how much authority it confers*. The binding contract
+  `autonomy-architecture.md` §10.9 (owner ruling 2026-09-06, L776-779) is explicit: "**Delegation never widens authority
+  (§51/§53). Authorized representatives may only create, alter, or delegate Paige spending authority up to the ceiling the
+  owner granted them.**" Today NOTHING enforces that grantor-ceiling: `resolve_execution_autonomy` (PR-2) has no
+  parent/grantor-ceiling check, and `authority_reserve` blocks a delegated `client_period` grant only when
+  `parent_grant_id IS NOT NULL` — so a tenant-admin-authored PARENTLESS grant (or a child with its parent cleared) would,
+  once PR-3 wires execution, confer authority up to the ACCOUNT ceiling rather than the OWNER's granted ceiling, violating
+  §10.9. So this is recorded NOT as an open owner preference but as a **REQUIRED PRE-PR-3 AUTHORIZATION FIX**: PR-3 must
+  bind a representative's effective spending authority to `min(..., owner-granted ceiling)` (a grantor/parent-ceiling check
+  in the resolver + reserve, or a parent-required rule for non-owner grantors — the exact mechanism is the PR-3 design, and
+  whether PR-1's `admin_write` RLS itself should tighten is the owner call). It stays OUT of DARK M1-b's cap-ENFORCEMENT
+  scope (folding an authorization-layer change into a cap-enforcement slice would be scope creep + a §37/§51 hazard), but it
+  is a hard gate on PR-3, not a soft "maybe." Carried into PR-3 grounding as a blocking authorization requirement; replied
+  on both threads.
   **PR #1027 — OUTCOME: MERGED** (squash `49dde4cf047e9f183bc742ae9b1b40eb58723ec9`, 2026-09-06). **§32.a CONFIRMED on prod
   (ref `xygzykjyynhzqytbqnzu`), direct query not assumed:** `supabase_migrations.schema_migrations` has `20270103000000`
   (deploy-migrations applied it); `authority_reserve` on prod carries `cap_invalid` + `client_period_delegation_unsupported`
