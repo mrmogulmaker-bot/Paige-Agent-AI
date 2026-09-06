@@ -65,37 +65,42 @@ function* walk(dir) {
 }
 
 /**
- * Scan one file's TEXT. Two passes, both honouring a `legacy-mark-exempt:` marker:
- *   1) per-line — every rule, precise line numbers, a marker on that line opts the line out;
- *   2) cross-line — only the `crossLine` (multi-attribute tag) rules, matched against the FULL text
- *      so a tag split over several physical lines is caught (`[^>]*`/`\s*` already span newlines).
- *      Exemption is honoured at the TAG level: a `legacy-mark-exempt:` marker on ANY physical line
- *      the matched tag occupies — from the line of the match through the line bearing its closing
- *      `>`, each checked IN FULL — suppresses it. So a marker on the opening line, the transform
- *      line, or in a trailing comment on the closing line all hold (Codex #996 P2).
- * Returns [{ line, label, hint }]; line === 0 means "matched across lines".
+ * Scan one file's TEXT. Two disjoint passes, both honouring a `legacy-mark-exempt:` marker:
+ *   1) per-line — the single-token rules (NOT `crossLine`), precise line numbers, a marker on the
+ *      line opts that line out. `forEach` visits every line, so a real hit is never hidden behind an
+ *      exempt one on another line.
+ *   2) full-text — the `crossLine` (multi-attribute tag) rules, whose match can legitimately span
+ *      lines (`[^>]*`/`\s*` already cross newlines). It iterates EVERY match (global regex), not just
+ *      the first, so a real tag is caught even when an exempt tag precedes it (Codex #998 P2).
+ *      Exemption is honoured at the TAG level: a marker on ANY physical line the matched tag occupies
+ *      — from the match line through the line bearing its closing `>`, each checked IN FULL — skips
+ *      THAT tag and scanning continues; a marker on a line the tag does not occupy does not.
+ * Returns [{ line, label, hint }], line ≥ 1 (the tag's opening line for a cross-line match).
  */
 function scanText(text) {
   const lines = text.split(/\r?\n/);
   const offenders = [];
-  const hitPerLine = new Set();
+  const lineOf = (idx) => text.slice(0, idx).split(/\r?\n/).length - 1; // 0-based physical line
   lines.forEach((line, i) => {
     if (EXEMPT.test(line)) return;
-    for (const [label, re, hint] of RULES) {
-      if (re.test(line)) { offenders.push({ line: i + 1, label, hint }); hitPerLine.add(label); }
+    for (const [label, re, hint, crossLine] of RULES) {
+      if (crossLine) continue; // handled by the full-text pass below
+      if (re.test(line)) offenders.push({ line: i + 1, label, hint });
     }
   });
-  const lineOf = (idx) => text.slice(0, idx).split(/\r?\n/).length - 1; // 0-based physical line
   for (const [label, re, hint, crossLine] of RULES) {
-    if (!crossLine || hitPerLine.has(label)) continue; // per-line already reported single-line hits
-    const m = re.exec(text);
-    if (!m) continue;
-    const gt = text.indexOf(">", m.index);
-    const tagEnd = gt === -1 ? text.length : gt + 1;
-    // the physical lines the tag occupies, checked in full — a marker in a trailing comment on the
-    // closing line counts, matching the documented "exempt anywhere in the tag holds".
-    if (lines.slice(lineOf(m.index), lineOf(tagEnd) + 1).some((l) => EXEMPT.test(l))) continue;
-    offenders.push({ line: 0, label: `${label} (across lines)`, hint });
+    if (!crossLine) continue;
+    const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+    let m;
+    while ((m = g.exec(text)) !== null) {
+      if (m.index === g.lastIndex) g.lastIndex++; // defensive: never spin on a zero-width match
+      const gt = text.indexOf(">", m.index);
+      const tagEnd = gt === -1 ? text.length : gt + 1;
+      // the physical lines this tag occupies, checked in full — a marker in a trailing comment on the
+      // closing line counts; skip only THIS tag and keep scanning for a later, non-exempt one.
+      if (lines.slice(lineOf(m.index), lineOf(tagEnd) + 1).some((l) => EXEMPT.test(l))) continue;
+      offenders.push({ line: lineOf(m.index) + 1, label, hint });
+    }
   }
   return offenders;
 }
@@ -180,6 +185,8 @@ function selfTest() {
     // exempt marker on a SEPARATE line the tag does NOT occupy (after its closing />) — must FIRE
     // (an exemption must be ON the tag, matching the strict per-line model)
     ['<ellipse cx="16" cy="16"\n  transform="rotate(-22 16 16)"\n  stroke="var(--gold)" />\n<!-- legacy-mark-exempt: not on the tag -->', true],
+    // TWO multi-line rings, exemption on the FIRST only — the second must still be caught (Codex #998 P2)
+    ['<ellipse cx="1" cy="1"\n  transform="rotate(1)" />  <!-- legacy-mark-exempt: archival -->\n<ellipse cx="2" cy="2"\n  transform="rotate(2)" stroke="var(--gold)" />', true],
     // a plain (non-rotated) ellipse split across lines — must NOT fire
     ['<ellipse cx="24" cy="24" rx="18" ry="7.5"\n  fill="none" stroke="var(--border)" />', false],
     // a banned hex split onto its own line is still caught per-line — must FIRE
