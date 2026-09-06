@@ -108,9 +108,18 @@ follows tier-matrix §61 default unless an owner exception is recorded. Values: 
 - **R6** Role/authority is separate from tier; Admin is a role, never a URL or tier.
 - **R7** Workers (n8n / Zapier / MCP / provider APIs / browser) run **under** Paige's authority, never
   a bypass (door-blindness).
-- **R8** Every consequential external effect owes a canonical provider receipt, a Rail outcome, and
-  (for metered/spend effects) an M1 metering dependency.
+- **R8** Every consequential external effect owes a canonical provider receipt, a Rail outcome, and a
+  declared cost-track dependency. For any effect that moves **real money** (purchase, payment, ad spend,
+  bookkeeping effect, financial obligation, or other real external spend) the dependency is **M1
+  real-money spend control** (§10) — **never** satisfied by internal LLM-token metering (owner ruling
+  2026-09-06).
 - **R9** §2 finance is never a platform default; credit is monitoring-only, never repair (§194).
+- **R10** Provider API fees are recorded **separately** from customer money movement
+  (`expense_and_operations`). Paige is never merchant of record and never silently charges a tenant's
+  provider account (§38). The expense layer makes operating **cost + ownership** visible; M1 real-money
+  spend control governs external spend **authority + caps**. Never invent a price, assume a free plan,
+  or turn an unknown commercial term into a number — record the official source URL + a checked-as-of
+  date; custom/enterprise is recorded honestly (§13).
 
 ## The delivery rule (MANDATORY — §0 / §66 / §BRAIN.3)
 
@@ -125,16 +134,47 @@ Enforced by: this README + the JSON, `docs/brain/README.md` (index + read-first 
 and the structural guard `scripts/ci/integration-registry-lint.mjs`
 (`npm run lint:integration-registry`).
 
+## API Expense & Operations Layer (v1.1) — cost, ownership, and the "M1" disambiguation
+
+Every provider (and every Public Presence roadmap item) carries an `expense_and_operations` block
+making **operating cost + ownership** visible, separate from customer money movement (R10/§38). The
+human-readable, 4-section derived view is **[`expense-and-operations-report.md`](./expense-and-operations-report.md)**:
+(1) current platform operating dependencies · (2) tenant-authorized integrations · (3) future
+Agency/Enterprise capabilities · (4) the Public Presence roadmap (approved order). The JSON is the
+source of truth; the report is a hand-maintained companion (§BRAIN.3).
+
+**The "M1" disambiguation (owner ruling 2026-09-06) — `cost_tracks` in the JSON.** "M1" unqualified is
+prohibited. Two distinct tracks:
+
+- **Internal LLM-cost metering** — operating-cost *visibility* for model/token usage
+  (`paige_llm_trace → platform_metered_events`, §8.4). Not authority to spend money.
+- **M1 real-money spend control** — the external-provider spend backbone (currency-aware caps, atomic
+  reserve/adjust/release, provider-confirmed actuals, reconciliation, receipts, Rail; §10). **Required**
+  for any provider that can create purchases, payments, ad spend, bookkeeping effects, financial
+  obligations, or other real external spend — **never** satisfied by LLM-token metering.
+
+Each entry declares `money_movement.m1_dependency_track`; the guard **fails CI** if a provider whose
+`can_move_real_money=true` uses anything but `m1_real_money_spend_control`. The 8 real-money-spend
+providers today: **Stripe, QuickBooks, Twilio, Meta (ads), DocuSign, Platform Marketplace (paid
+install), n8n, Zapier** (plus roadmap ad/subscription paths). **Honesty stance:** this planning slice
+did not verify live vendor prices — every `pricing_checked_as_of` is null with the official source URL
+recorded for a human/next-owner to verify; no price is invented, no free plan assumed, custom/
+enterprise recorded honestly (§13).
+
 ## The structural guard (CI-safe, concise — clones `lint:binding-ledger`)
 
 `scripts/ci/integration-registry-lint.mjs` fails CI when the JSON is structurally incomplete or
-dishonest: a missing top-level section; a provider missing a required field; an unknown status /
-authority lane / taxonomy id / tier value; a duplicate id; a `LIVE` entry without a real canonical
-provider receipt (that would be an unproven claim); a `marketplace_metadata_only` entry that carries a
-per-tenant credential/usage/purchase/billing field (rule R4); or a taxonomy group with no catalogued
-provider. It is regex/JSON-only and dependency-free, with a `--self-test`. It is a **tripwire** for the
-honesty invariants, not a semantic parser — whether a lane mapping is correct stays a human §5/§39
-responsibility.
+dishonest: a missing top-level section (incl. `cost_tracks`, `expense_and_operations_schema`,
+`public_presence_roadmap`); a provider missing a required field or its `expense_and_operations` block;
+an unknown status / authority lane / taxonomy id / tier value / cost-responsibility / pricing-model /
+cost-driver / M1-track; a duplicate id; a `LIVE` entry without a real canonical provider receipt; a
+`marketplace_metadata_only` entry that carries per-tenant credential/usage/purchase/billing data (R4);
+a taxonomy group with no catalogued provider; a **real-money-moving provider whose M1 track is not
+`m1_real_money_spend_control`** (owner ruling); an **unqualified "M1"** in a base `m1_dependency`; a
+**date-stamped price with no official source**; or a malformed `public_presence_roadmap` item. It is
+regex/JSON-only and dependency-free, with a `--self-test` (29 mutations). It is a **tripwire** for the
+honesty invariants, not a semantic parser — whether a lane mapping or a cost figure is materially
+correct stays a human §5/§39 responsibility.
 
 ## Honest platform position (grounding SHA)
 

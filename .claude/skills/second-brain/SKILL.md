@@ -73,7 +73,7 @@ The last step of the work, **in the same change**. Not a follow-up.
 | A capability shipped | What it does **and what it does not** — the edges, not just the feature | `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4; the area's capability map |
 | A defect was found | The lesson, not only the fix: **what class of proof missed it** | `docs/brain/lessons-learned.md` |
 | Config or an integration changed | Names, IDs, and which seam reads them — **never a secret value** | `docs/brain/config-registry.md` |
-| A provider integration was proposed/changed/shipped | Its actual capability, authority lane, proof (or `PROOF_OWED`), limitations, next owner — same commit | `docs/integration-registry/integration-capability-registry.json` (+ the README summary table); re-run `npm run lint:integration-registry` |
+| A provider integration was proposed/changed/shipped | Its actual capability, authority lane, proof (or `PROOF_OWED`), limitations, next owner, **AND its `expense_and_operations` block** (cost responsibility, billing/operational owner, pricing model + dated official source, cost driver, money-movement + M1 real-money-spend-control dependency where spend-capable) — same commit | `docs/integration-registry/integration-capability-registry.json` (+ the README summary + `expense-and-operations-report.md`); re-run `npm run lint:integration-registry` |
 | A decision or ruling landed | The decision, dated, and what it supersedes | `docs/brain/decision-log.md` |
 | A reusable pattern or skill emerged | The mechanic, so the next task inherits it | `docs/brain/` + its index row in `README.md` |
 | Tier, surface, or gating changed | The per-tier reality **as shipped** | `docs/doctrine/tier-matrix.md` |

@@ -15,13 +15,17 @@ Durable record of the platform's integration configuration so no future session 
 
 **Verification legend:** ✅ verified this session (method noted) · ⚠ unverified/in-flight (confirm).
 
-**This file is WIRING only (names/IDs).** The capability, authority lane, M1 metering dependency,
-canonical provider receipt, Rail/Mind/Memory boundary, and honest delivery status of each provider
-live in the **Integration Capability Registry** (`docs/integration-registry/` — the JSON is the source
-of truth). Read that registry's entry **before** proposing/implementing/opening a PR for/changing any
-provider integration, and update it **before merge** (the delivery rule; enforced by
-`npm run lint:integration-registry`). This file never restates that governance, and that registry
-never restates these names/IDs (§18).
+**This file is WIRING only (names/IDs).** The capability, authority lane, cost-track dependency,
+operating cost + ownership (the API Expense & Operations Layer), canonical provider receipt,
+Rail/Mind/Memory boundary, and honest delivery status of each provider live in the **Integration
+Capability Registry** (`docs/integration-registry/` — the JSON is the source of truth; the derived
+cost view is `expense-and-operations-report.md`). Read that registry's entry **before**
+proposing/implementing/opening a PR for/changing any provider integration, and update it **before
+merge** (the delivery rule; enforced by `npm run lint:integration-registry`). This file never restates
+that governance, and that registry never restates these names/IDs (§18). **"M1" is disambiguated there
+(owner ruling 2026-09-06):** internal LLM-cost metering (operating-cost visibility, §8.4) vs M1
+real-money spend control (external spend backbone, §10) — a spend-capable provider always points to
+the real-money track, never LLM metering.
 
 Last full verification pass: **2026-08-09**.
 
