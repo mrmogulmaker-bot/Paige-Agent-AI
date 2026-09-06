@@ -3613,7 +3613,7 @@ and every tile carries its own.
 | Accounts on record (KPI + Channels + the record form) | **LIVE** | `public.get_social_presence_evidence` / `public.record_social_handles` over `tenants.features->'social_handles'` |
 | Waiting on you (KPI) · PAIGE sees | **PARTIAL** | `paige_actions` at `status='filed'`, `autonomy_lane='confirm'`, filtered to the growth desks, via `useSoloPendingActions` |
 | Captured responses (KPI) · Published outputs · Held for you · Needs repair (pipeline) | **PARTIAL** | `useSoloCampaigns` — `growth_pages`/`_funnels`/`_forms`/`_form_submissions`, all tenant-scoped |
-| Trust Compass lanes | **PARTIAL** | `useSoloTrust` — platform-default lanes, labelled as platform defaults, read-only |
+| Trust Compass lanes (this Growth context) | **PARTIAL** | `useSoloTrust` — platform-default DEPARTMENT lanes, labelled as platform defaults, read-only (unchanged). The **per-tool** autonomy is now a real governed control on the Command Center Trust Compass tab (`set_tool_autonomy`) — see the "Trust Compass — the governed control surface" ledger entry above; this Growth row still refers only to the read-only department-lane read. |
 | Publishing queue · Recorded placements · Scheduled · Ideas · Drafting · every per-channel metric | **UNAVAILABLE** | No tenant-scoped record exists. Each renders an em-dash and the sentence naming what would have to exist |
 | Active missions | **UNAVAILABLE** | Nothing stores a mission, cadence or progress. `tenant_workflows` mirrors n8n and carries neither a cadence nor a target |
 

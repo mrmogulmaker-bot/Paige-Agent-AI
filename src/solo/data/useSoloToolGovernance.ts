@@ -296,8 +296,12 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
         tools.map((t) => rpc("set_tool_autonomy", { _tool_key: t, _mode: clampModeToRisk(mode, TOOL_MAP[t].risk) })),
       );
       const failed = results.find((r) => r.error);
-      if (failed?.error) return { ok: false, error: failed.error.message };
+      // A domain write is many per-tool writes and is NOT atomic: on a transient per-call error some
+      // may have persisted. Re-read the real state on EVERY outcome so the display can never show a
+      // stale level while the DB holds a partial change (§13). The caller words its toast to not
+      // claim atomicity the operation does not have.
       refresh();
+      if (failed?.error) return { ok: false, error: failed.error.message };
       return { ok: true };
     },
     [refresh],

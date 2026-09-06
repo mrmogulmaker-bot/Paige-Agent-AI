@@ -402,9 +402,12 @@ const[fold,setFold]=React.useState(null);
 const[toast,setToast]=React.useState(null);
 const toastMsg=React.useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),3200)},[]);
 const onError=React.useCallback(err=>{
+ // A non-admin's write is refused uniformly (all-or-nothing), so "not changed" is accurate there. A
+ // transient failure on a domain (bulk) write may be partial, so the generic message does NOT claim
+ // nothing changed — the hook has already re-read the real state, which the knob now reflects (§13).
  const m=/AUTONOMY_FORBIDDEN|forbidden|42501|admin/i.test(String(err||''))
   ? "That change needs an admin on this workspace — your setting was not changed."
-  : "That change didn't save, so nothing was changed. Try again in a moment.";
+  : "That didn't fully save — I've re-read your current settings.";
  toastMsg(m);
 },[toastMsg]);
 const setDomain=React.useCallback((k,m)=>gov.setDomainMode(k,m),[gov]);

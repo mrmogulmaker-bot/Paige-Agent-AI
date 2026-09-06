@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import {
   TOOL_MAP,
   UNMAPPED_CATALOGUE_TOOLS,
@@ -12,27 +14,27 @@ import {
 // is what makes the copied classes in capabilityTools.ts a guarded copy rather than a second source.
 import { classifyAction } from "../../../supabase/functions/_shared/action-risk";
 
-// The catalogue `list_tool_autonomy` exposes, verbatim from
-// supabase/migrations/20261040000000_the_catalogue_carries_the_team_tools.sql. If a migration adds a
-// governed tool, this list must grow and the tool must be mapped or explicitly excluded — otherwise
-// the surface would govern it invisibly (the exact failure that migration's header warns about).
-const CATALOGUE_KEYS: readonly string[] = [
-  "crm_update_contact", "crm_create_contact", "crm_delete_contact", "crm_update_pipeline_stage",
-  "crm_assign_coach", "crm_assign_contact", "crm_create_task", "crm_log_activity", "crm_add_note",
-  "crm_file_document", "pipeline_create", "pipeline_add_stage", "member_grant_role",
-  "member_revoke_role", "calendar_book_meeting", "program_enroll", "draft_marketing_content",
-  "generate_image", "content_save", "growth_page_save", "growth_page_publish", "growth_funnel_build",
-  "growth_funnel_publish", "action_file", "action_advance", "update_client_data",
-  "delegate_to_subagent", "forge_subagent", "save_to_knowledge_base", "update_business_profile",
-  "deal_create", "deal_move_stage", "document_generate", "author_event_kind", "n8n_run_workflow",
-  "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
-  "n8n_archive_workflow", "n8n_delete_workflow", "zapier_run_action", "plan_set_reminder",
-  "plan_create", "plan_add_milestone", "plan_assign_task", "plan_update_item", "plan_remove_item",
-  "automation_draft", "automation_set_grant", "automation_set_state", "marketplace_install",
-  "marketplace_uninstall", "propose_business_brief_update", "pipeline_configure", "comms_buy_number",
-  "comms_set_primary_number", "comms_name_number", "comms_draft_registration", "team_set_work_profile",
-  "team_set_permission", "team_invite_member", "team_invite_resend", "team_invite_revoke",
-];
+// The catalogue `list_tool_autonomy` exposes — DERIVED from the LATEST migration that defines the
+// function, not hand-transcribed. A hand copy silently goes stale when a migration adds a governed
+// tool, which is the exact "governed invisibly" failure the catalogue's own header warns about; a
+// derived list makes that a hard test failure the moment the migration lands.
+function catalogueKeysFromMigration(): string[] {
+  const dir = path.join(process.cwd(), "supabase/migrations");
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
+  // list_tool_autonomy is CREATE OR REPLACE'd across several migrations; the highest-versioned file
+  // that defines it holds the live catalogue.
+  const defining = files.filter((f) =>
+    /CREATE OR REPLACE FUNCTION public\.list_tool_autonomy/.test(fs.readFileSync(path.join(dir, f), "utf8")),
+  );
+  if (!defining.length) throw new Error("no migration defines list_tool_autonomy");
+  const sql = fs.readFileSync(path.join(dir, defining[defining.length - 1]), "utf8");
+  // Each catalogue row is `('<tool_key>', '<label>', '<category>'),`. Tool keys are lower_snake with
+  // no spaces, so the first single-quoted lower-snake token after an opening paren is the key; labels
+  // and categories (which start uppercase or contain spaces) never match this shape.
+  const keys = [...sql.matchAll(/\(\s*'([a-z0-9_]+)'\s*,/g)].map((m) => m[1]);
+  return [...new Set(keys)];
+}
+const CATALOGUE_KEYS: readonly string[] = catalogueKeysFromMigration();
 
 describe("capabilityTools — no drift from the action-risk policy (§18)", () => {
   it("every mapped tool's copied risk class matches action-risk.ts exactly", () => {
