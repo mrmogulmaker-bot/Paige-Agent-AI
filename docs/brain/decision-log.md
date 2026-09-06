@@ -31,6 +31,15 @@
   chat→file download primitive + content-sniffing beyond the MIME allow-list (Slice 2 secondary items);
   (c) `runGeneralDocumentExtraction` still undefined (#749). **§32.c authenticated live-drive OWED** (a
   real malicious-doc drive against the deployed edge fn — headless session, no browser).
+  **§39 + §5 REVIEW: both SHIP, no blocking finding** (peer-gate verified the fence reaches the only
+  text path, the no-tool-loop scope claim is TRUE, no §37/Deno-type regression; compliance verified §18
+  one-home, §13 honesty, §9/§59 clean, doctrine hygiene). Their LOW hardening notes were folded before
+  merge (defense-in-depth on the fence's own primitive): `stripControl` now removes zero-width + bidi
+  format chars (so a zero-width can't split a forged `===` run past the neutralizer, and the module's
+  "more hardened than team-context" claim is now true); `neutralizeMarkers` generalized to break ANY
+  `===` run (a forged TRUSTED sibling header echoed by a file, not only this fence's own markers); the
+  file NAME is neutralized too (it's interpolated into the header line); and a stale "zero-width break"
+  comment was corrected (§13 doc-accuracy in the new file). +3 tests (13 total).
 - **P1 UI hotfix — dedicated Paige chat horizontal scrollbar + real permission chip (2026-09-06, Task #17, owner-authorized)** —
   TWO fixes to the dedicated Solo Paige workspace chat (`paige.workspace`: `PaigeAIChat` in `SoloPaigeWorkspace`).
   **(1) Horizontal scrollbar — fixed at the SOURCE, not clipped.** Root cause (grounded, not guessed): the message
