@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { BrainCircuit, ChevronLeft, ExternalLink, Maximize2, Minimize2, Pause, Play, RefreshCw, Rotate3D, X } from "lucide-react";
+import { BrainCircuit, ChevronLeft, ExternalLink, Maximize2, Minimize2, Pause, Play, RefreshCw, Rotate3D, RotateCcw, X } from "lucide-react";
 import { useN8nSpineReadiness } from "./data/useN8nSpineReadiness";
 import { N8N_ACTION_WORDS, N8N_API_WORDS, N8N_MCP_WORDS } from "../../supabase/functions/_shared/paige-spine/domains/n8nReadiness";
 import { useCommandCenter } from "./data/useCommandCenter";
@@ -7,6 +7,11 @@ import { useSoloKnowledge } from "./data/useSoloKnowledge";
 import {
   readMindOrbitEnabled,
   writeMindOrbitEnabled,
+  readMindMotionChoice,
+  writeMindMotionChoice,
+  readMindDismissed,
+  writeMindDismissed,
+  type MindMotionChoice,
   type MindOrbitPreferenceScope,
 } from "./mindOrbitPreference";
 import { MindOrbCanvas } from "./mind-orb/MindOrbCanvas";
@@ -96,14 +101,16 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   const [selected, setSelected] = useState<MindRecord | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [presentationOrbit, setPresentationOrbit] = useState(() => readMindOrbitEnabled(preferenceScope));
-  const [reducedToggle, setReducedToggle] = useState(false);
+  const [motionChoice, setMotionChoice] = useState<MindMotionChoice>(() => readMindMotionChoice(preferenceScope));
   const [osReduced, setOsReduced] = useState(false);
+  const [dismissed, setDismissed] = useState<Set<string>>(() => readMindDismissed(preferenceScope));
   const [orbUnavailable, setOrbUnavailable] = useState<string | null>(null);
   const [resetToken, setResetToken] = useState(0);
   const [dark, setDark] = useState(true);
   const [announcement, setAnnouncement] = useState("Mind presentation orbit is visual only. Tenant activity is unchanged.");
 
   const rootRef = useRef<HTMLElement>(null);
+  const recordsRef = useRef<HTMLDivElement>(null);
   const launcherRef = useRef<HTMLElement | null>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
@@ -114,7 +121,13 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   // is exactly what the old canvas being removed produces) must NOT clear it, or the restore no-ops.
   const orbHadFocus = useRef(false);
 
-  const reduced = reducedToggle || osReduced;
+  // Effective reduced-motion: an explicit user choice OVERRIDES the OS default in both directions;
+  // absent a choice ("system"), follow the OS. This is what lets the ambient orbit run for a user
+  // who wants it even when their OS asks to reduce motion — and still respects the OS by default.
+  const reduced = motionChoice === "reduced" ? true : motionChoice === "full" ? false : osReduced;
+  // The orb is ACTUALLY orbiting only when the presentation orbit is enabled AND motion is not
+  // reduced — so the control label/state reflects that, never "Pause orbit" over a still orb.
+  const orbiting = presentationOrbit && !reduced;
 
   // Honour the OS reduced-motion setting, not just the toggle (a11y honesty).
   useEffect(() => {
@@ -165,10 +178,17 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
 
   const domains = useMemo(() => buildMindDomains(inputs), [inputs]);
   const records = useMemo(() => allRecords(domains), [domains]);
-  const visible = useMemo(
+  const inDomain = useMemo(
     () => (domainFilter === "all" ? records : records.filter((r) => r.domain === domainFilter)),
     [domainFilter, records],
   );
+  // Non-destructive dismissal: a dismissed card is hidden from the list only (the record stays in the
+  // orb and is restorable) — §13/§70, nothing governed is deleted.
+  const visible = useMemo(() => inDomain.filter((r) => !dismissed.has(r.id)), [inDomain, dismissed]);
+  const dismissedCount = useMemo(() => records.filter((r) => dismissed.has(r.id)).length, [records, dismissed]);
+  // Dismissed WITHIN the current filter — so an all-cleared filtered view says "cleared", not the
+  // domain's honest-empty copy (a record that's merely dismissed still exists, §13).
+  const dismissedInDomain = useMemo(() => inDomain.filter((r) => dismissed.has(r.id)).length, [inDomain, dismissed]);
 
   // Resolve the live --sig-* tokens in a POST-COMMIT effect, not in render: resolveSignalColors
   // mutates the DOM (appends/removes a probe span), which is impure in a useMemo (concurrent-mode
@@ -295,15 +315,48 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
     }));
   };
   const togglePresentationOrbit = () => {
-    const next = !presentationOrbit;
-    writeMindOrbitEnabled(preferenceScope, next);
-    setPresentationOrbit(next);
-    setAnnouncement(next ? "Presentation orbit resumed. It does not represent tenant activity." : "Presentation orbit paused. Tenant activity is unchanged.");
+    if (orbiting) {
+      writeMindOrbitEnabled(preferenceScope, false);
+      setPresentationOrbit(false);
+      setAnnouncement("Presentation orbit paused. Tenant activity is unchanged.");
+      return;
+    }
+    // Resume: enable the orbit AND, if motion was reduced (by the OS or a prior choice), lift that
+    // block so one click reliably starts the orbit whatever had frozen it (explicit user opt-in).
+    writeMindOrbitEnabled(preferenceScope, true);
+    setPresentationOrbit(true);
+    if (reduced) { writeMindMotionChoice(preferenceScope, "full"); setMotionChoice("full"); }
+    setAnnouncement("Presentation orbit resumed. It does not represent tenant activity.");
   };
   const toggleReduced = () => {
-    setReducedToggle((v) => { const next = !v; setAnnouncement(next ? "Reduced motion on. The orb is still." : "Reduced motion off."); return next; });
+    // Explicit override, persisted per user+tenant: flip AWAY from the current effective state so one
+    // click always changes what the viewer sees, whatever the OS default was.
+    const next: MindMotionChoice = reduced ? "full" : "reduced";
+    writeMindMotionChoice(preferenceScope, next);
+    setMotionChoice(next);
+    setAnnouncement(next === "reduced" ? "Reduced motion on. The orb is still." : "Reduced motion off. The orb resumes its calm orbit.");
   };
   const resetView = () => { setDomainFilter("all"); setResetToken((t) => t + 1); setAnnouncement("View reset. Showing all domains, recentred."); };
+  const dismissRecord = useCallback((id: string, title: string, fromEl?: HTMLElement | null) => {
+    // Record the clicked X's position so focus can move to whatever fills its slot after the re-render
+    // (never dropped to <body> — the same standard this file holds for the drawer and orb re-mount).
+    const before = recordsRef.current ? [...recordsRef.current.querySelectorAll<HTMLElement>(".mind-record-dismiss")] : [];
+    const idx = fromEl ? before.indexOf(fromEl) : -1;
+    setDismissed((cur) => { const next = new Set(cur); next.add(id); writeMindDismissed(preferenceScope, next); return next; });
+    setAnnouncement(`${title} cleared from the activity list. The record stays in the orb — restore it with Restore dismissed.`);
+    requestAnimationFrame(() => {
+      const after = recordsRef.current ? [...recordsRef.current.querySelectorAll<HTMLElement>(".mind-record-dismiss")] : [];
+      const target = (idx >= 0 && after[Math.min(idx, after.length - 1)])
+        || recordsRef.current?.querySelector<HTMLElement>(".mind-records-restore")
+        || recordsRef.current;
+      target?.focus?.();
+    });
+  }, [preferenceScope]);
+  const restoreDismissed = useCallback(() => {
+    writeMindDismissed(preferenceScope, new Set());
+    setDismissed(new Set());
+    setAnnouncement("Dismissed cards restored to the activity list.");
+  }, [preferenceScope]);
 
   const domainVerdict = (key: MindDomainKey) => domains.find((d) => d.def.key === key)?.verdict ?? "PARTIAL";
   const domainSignalState = (key: MindDomainKey): MindSignalState => {
@@ -394,13 +447,13 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
                   {!orbUnavailable && (
                     <span className="mind-orb-hint" aria-hidden="true"><Rotate3D size={13} /> Drag · scroll · keyboard</span>
                   )}
-                  <button type="button" aria-pressed={!presentationOrbit} onClick={togglePresentationOrbit}>
-                    {presentationOrbit ? <Pause size={13} /> : <Play size={13} />}{presentationOrbit ? "Pause orbit" : "Resume orbit"}
+                  <button type="button" aria-pressed={!orbiting} onClick={togglePresentationOrbit}>
+                    {orbiting ? <Pause size={13} /> : <Play size={13} />}{orbiting ? "Pause orbit" : "Resume orbit"}
                   </button>
                   {!orbUnavailable && (
                     <button type="button" onClick={resetView}><Rotate3D size={13} />Reset view</button>
                   )}
-                  <button type="button" aria-pressed={reducedToggle} onClick={toggleReduced}>Reduced motion</button>
+                  <button type="button" aria-pressed={reduced} onClick={toggleReduced}>Reduced motion</button>
                 </div>
 
                 {/* Source-signal legend (the approved palette) */}
@@ -428,16 +481,35 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
                 })}
               </div>
 
-              {/* Record list — the accessible instrument (orb is not a novelty that buries records) */}
-              <div className="mind-records" role="group" aria-label="Grounded Mind records">
+              {/* Record list — the accessible instrument (orb is not a novelty that buries records).
+                  Each card can be CLEARED from the activity list (non-destructive: the record stays in
+                  the orb and is restorable), so the viewer can work down what's in the brain. */}
+              <div className="mind-records" role="group" aria-label="Grounded Mind records" ref={recordsRef} tabIndex={-1}>
                 {visible.map((record) => (
-                  <button key={record.id} type="button" data-mind-record onClick={(event) => chooseRecord(record, event.currentTarget)}>
-                    <i style={{ background: `var(${SIGNAL_TOKEN[record.state]})` }} />
-                    <span><strong>{record.title}</strong><small>{record.owner} · {record.when}</small></span>
-                    <b>{record.truth}</b>
-                  </button>
+                  <div key={record.id} className="mind-record-card">
+                    <button type="button" data-mind-record onClick={(event) => chooseRecord(record, event.currentTarget)}>
+                      <i style={{ background: `var(${SIGNAL_TOKEN[record.state]})` }} />
+                      <span><strong>{record.title}</strong><small>{record.owner} · {record.when}</small></span>
+                      <b>{record.truth}</b>
+                    </button>
+                    <button type="button" className="mind-record-dismiss" aria-label={`Clear ${record.title} from the activity list`}
+                      onClick={(event) => dismissRecord(record.id, record.title, event.currentTarget)}><X size={12} /></button>
+                  </div>
                 ))}
-                {!visible.length && <p>{domainFilter === "all" ? "Nothing durable is indexed here yet. No sample records or invented relationships are substituted." : `${MIND_DOMAINS.find((d) => d.key === domainFilter)?.name}: ${domains.find((d) => d.def.key === domainFilter)?.empty?.body ?? "Nothing on file yet."}`}</p>}
+                {!visible.length && <p>{
+                  dismissedInDomain > 0
+                    ? (domainFilter === "all"
+                        ? "You've cleared every card from the activity list. The records still live in the orb — restore them below."
+                        : `${MIND_DOMAINS.find((d) => d.key === domainFilter)?.name}: every card here is cleared. The records still live in the orb — restore them below.`)
+                    : (domainFilter === "all"
+                        ? "Nothing durable is indexed here yet. No sample records or invented relationships are substituted."
+                        : `${MIND_DOMAINS.find((d) => d.key === domainFilter)?.name}: ${domains.find((d) => d.def.key === domainFilter)?.empty?.body ?? "Nothing on file yet."}`)
+                }</p>}
+                {dismissedCount > 0 && (
+                  <button type="button" className="mind-records-restore" onClick={restoreDismissed}>
+                    <RotateCcw size={12} />Restore {dismissedCount} dismissed
+                  </button>
+                )}
               </div>
             </section>
           </>
