@@ -222,6 +222,8 @@
 .bb-link .rroute{margin-left:auto}
 .bb-save{display:flex;align-items:center;gap:9px;font-size:11.5px}
 .bb-save.err{color:var(--bad)}.bb-save.saving{color:var(--ink-3)}
+.bb-pagerow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:10.5px;color:var(--ink-3)}
+.bb-pagerow [role="status"]{margin-right:auto}
 .chips-pick{display:flex;flex-wrap:wrap;gap:6px}
 .chips-pick button{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);font-size:12px;color:var(--ink-2);cursor:pointer}
 .chips-pick button[aria-pressed="true"]{border-color:var(--violet-line);background:var(--violet-tint);color:var(--violet);font-weight:600}

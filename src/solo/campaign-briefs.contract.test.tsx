@@ -93,3 +93,40 @@ describe("Campaign brief seam — client contract", () => {
     expect(desk).toContain("No campaign attribution");
   });
 });
+
+// Regression lock for the §39 peer-gate findings, so a later edit cannot silently reintroduce them.
+describe("Campaign desk — §39 peer-gate invariants", () => {
+  it("portals the drawers so the focus-trap `inert` cannot make the drawer itself non-interactive (BLOCKER)", () => {
+    // The desk renders inside `.campaigns-scroll`, which `useDrawerA11y` marks inert. Rendered inline
+    // a drawer would inert itself; it must portal to `.solo-campaigns` (a sibling, still theme-scoped).
+    expect(desk).toContain('import { createPortal } from "react-dom"');
+    expect(desk).toContain('closest(".solo-campaigns")');
+    expect((desk.match(/createPortal\(/g) || []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("threads a stable idempotency key so a double-submit cannot double-create (MAJOR)", () => {
+    // The hook must accept a caller key and only fall back to a random one — a per-call random key
+    // makes the ledger dead. The builder mints one key per submit and a synchronous latch blocks a
+    // second in-flight submit.
+    expect(hook).toMatch(/saveBrief:\s*\(draft: BriefDraft, idempotencyKey\?: string\)/);
+    expect(hook).toContain("idempotencyKey && idempotencyKey.trim() ? idempotencyKey : crypto.randomUUID()");
+    expect(desk).toContain("submitting.current");
+    expect(desk).toContain("idemRef.current");
+  });
+
+  it("links offers through a REAL Catalog picker, never a pasted UUID (MAJOR)", () => {
+    expect(desk).toContain("useCatalogOffers");
+    expect(desk).not.toContain("Paste a Catalog offer id");
+  });
+
+  it("derives the workspace-scope Offer state from a real read and never fakes Audience (MAJOR)", () => {
+    // `offerSignal` comes from the Catalog read; audience has no segment source, so it is honestly setup.
+    expect(desk).toContain("offerSignal");
+    expect(desk).toMatch(/audience:\s*"setup"/);
+    expect(desk).not.toMatch(/offer:\s*"partial",\s*\n\s*audience:\s*"partial"/);
+  });
+
+  it("reports honestly when a save persists but the review transition fails (MAJOR)", () => {
+    expect(desk).toContain("could not be sent for review");
+  });
+});

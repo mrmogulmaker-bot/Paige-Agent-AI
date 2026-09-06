@@ -188,35 +188,50 @@ begin
 
   if _action='create_brief' then
     if coalesce(btrim(_command->>'name'),'')='' then raise exception 'CAMPAIGN_BRIEF_NAME_REQUIRED' using errcode='22023'; end if;
+    -- Generate id + short_ref up front so create is a SINGLE insert (version stays 1 — the returned
+    -- version is the row's real version, not a value that assumes a follow-up write).
+    _id := gen_random_uuid();
     insert into public.campaign_briefs(
-      tenant_id, name, objective, audience, positioning, channels, desired_outcome, success_definition,
+      id, short_ref, tenant_id, name, objective, audience, positioning, channels, desired_outcome, success_definition,
       budget_target, timing, constraints, content_needs, conversion_destination, followup_path,
       offer_id, pipeline_id, lifecycle_status, created_through, created_by)
     values(
+      _id, 'CB-'||upper(left(replace(_id::text,'-',''),6)),
       _tenant, btrim(_command->>'name'), nullif(btrim(_command->>'objective'),''), nullif(btrim(_command->>'audience'),''),
       nullif(btrim(_command->>'positioning'),''), _channels, nullif(btrim(_command->>'desiredOutcome'),''),
       nullif(btrim(_command->>'successDefinition'),''), nullif(btrim(_command->>'budgetTarget'),''),
       nullif(btrim(_command->>'timing'),''), nullif(btrim(_command->>'constraints'),''),
       nullif(btrim(_command->>'contentNeeds'),''), nullif(btrim(_command->>'conversionDestination'),''),
-      nullif(btrim(_command->>'followupPath'),''), _offer, _pipeline, 'draft', _created_through, _caller)
-    returning id into _id;
-    update public.campaign_briefs set short_ref = 'CB-'||upper(left(replace(_id::text,'-',''),6)) where id=_id;
-    _result := jsonb_build_object('ok',true,'outcome','created','brief_id',_id,'version',2,'message','Campaign brief saved as a draft on this workspace. Nothing is launched, sent, or published.');
+      nullif(btrim(_command->>'followupPath'),''), _offer, _pipeline, 'draft', _created_through, _caller);
+    _result := jsonb_build_object('ok',true,'outcome','created','brief_id',_id,'version',1,'message','Campaign brief saved as a draft on this workspace. Nothing is launched, sent, or published.');
 
   elsif _action='update_brief' then
     select * into _brief from public.campaign_briefs where id=(_command->>'briefId')::uuid and tenant_id=_tenant for update;
     if not found then raise exception 'CAMPAIGN_BRIEF_NOT_FOUND' using errcode='22023'; end if;
     _expected := coalesce((_command->>'expectedVersion')::bigint,0);
     if _brief.version <> _expected then raise exception 'CAMPAIGN_BRIEF_VERSION_CONFLICT' using errcode='40001'; end if;
-    if coalesce(btrim(_command->>'name'),'')='' then raise exception 'CAMPAIGN_BRIEF_NAME_REQUIRED' using errcode='22023'; end if;
+    if (_command ? 'name') and coalesce(btrim(_command->>'name'),'')='' then raise exception 'CAMPAIGN_BRIEF_NAME_REQUIRED' using errcode='22023'; end if;
+    -- Key-presence MERGE (§10/§37). An ABSENT key keeps the row's current value, so a partial command
+    -- (e.g. Paige changing only the objective) never silently wipes audience, channels, or the
+    -- offer/pipeline links; a PRESENT key sets it (empty string clears it). The React builder always
+    -- sends the full draft, so from the UI this replaces every field exactly as the person edited it.
     update public.campaign_briefs set
-      name=btrim(_command->>'name'), objective=nullif(btrim(_command->>'objective'),''),
-      audience=nullif(btrim(_command->>'audience'),''), positioning=nullif(btrim(_command->>'positioning'),''),
-      channels=_channels, desired_outcome=nullif(btrim(_command->>'desiredOutcome'),''),
-      success_definition=nullif(btrim(_command->>'successDefinition'),''), budget_target=nullif(btrim(_command->>'budgetTarget'),''),
-      timing=nullif(btrim(_command->>'timing'),''), constraints=nullif(btrim(_command->>'constraints'),''),
-      content_needs=nullif(btrim(_command->>'contentNeeds'),''), conversion_destination=nullif(btrim(_command->>'conversionDestination'),''),
-      followup_path=nullif(btrim(_command->>'followupPath'),''), offer_id=_offer, pipeline_id=_pipeline, updated_at=now()
+      name=case when _command ? 'name' then btrim(_command->>'name') else name end,
+      objective=case when _command ? 'objective' then nullif(btrim(_command->>'objective'),'') else objective end,
+      audience=case when _command ? 'audience' then nullif(btrim(_command->>'audience'),'') else audience end,
+      positioning=case when _command ? 'positioning' then nullif(btrim(_command->>'positioning'),'') else positioning end,
+      channels=case when _command ? 'channels' then _channels else channels end,
+      desired_outcome=case when _command ? 'desiredOutcome' then nullif(btrim(_command->>'desiredOutcome'),'') else desired_outcome end,
+      success_definition=case when _command ? 'successDefinition' then nullif(btrim(_command->>'successDefinition'),'') else success_definition end,
+      budget_target=case when _command ? 'budgetTarget' then nullif(btrim(_command->>'budgetTarget'),'') else budget_target end,
+      timing=case when _command ? 'timing' then nullif(btrim(_command->>'timing'),'') else timing end,
+      constraints=case when _command ? 'constraints' then nullif(btrim(_command->>'constraints'),'') else constraints end,
+      content_needs=case when _command ? 'contentNeeds' then nullif(btrim(_command->>'contentNeeds'),'') else content_needs end,
+      conversion_destination=case when _command ? 'conversionDestination' then nullif(btrim(_command->>'conversionDestination'),'') else conversion_destination end,
+      followup_path=case when _command ? 'followupPath' then nullif(btrim(_command->>'followupPath'),'') else followup_path end,
+      offer_id=case when _command ? 'offerId' then _offer else offer_id end,
+      pipeline_id=case when _command ? 'pipelineId' then _pipeline else pipeline_id end,
+      updated_at=now()
     where id=_brief.id;
     _result := jsonb_build_object('ok',true,'outcome','updated','brief_id',_brief.id,'version',_brief.version+1,'message','Campaign brief saved.');
 

@@ -11,8 +11,10 @@
 // no connected provider, no campaign attribution — and say so. No counts, revenue, reach, ad spend,
 // audience size, active status, or completion is invented.
 import React from "react";
+import { createPortal } from "react-dom";
 import { Ic } from "./_shared";
 import { useSoloCampaignBriefs } from "./useSoloCampaignBriefs";
+import { useCatalogOffers } from "./useCatalogOffers";
 
 // ── vocab ──────────────────────────────────────────────────────────────────────────────────────
 const ST = {
@@ -62,14 +64,22 @@ function briefLoop(b) {
     outcome:       "unavail",
   };
 }
-// Workspace-scope loop posture, derived from the real reads that exist in `data`.
-function workspaceLoop(data) {
+// Workspace-scope loop posture, derived ONLY from real reads. Every non-"setup"/"unavail" state
+// here is backed by a fact this workspace actually holds — never a decorative default (§13).
+//   • offer   — the tenant's Catalog read (`offerSignal`): "partial" only when offers really exist,
+//               "blocked" if that read failed, "setup" when the workspace has none / not yet read.
+//   • audience — there is NO segment source wired into this workspace, so it is honestly "setup".
+//               (A per-brief audience is owner-authored text, handled in `briefLoop`.)
+//   • content  — the published-Vibe artifacts read.
+//   • pipeline — the tenant-scoped pipeline workspace read.
+function workspaceLoop(data, offerSignal) {
   const hasArtifacts = (data.artifacts || []).length > 0;
   const hasPipelines = ((data.pipelineWorkspace && data.pipelineWorkspace.pipelines) || []).length > 0;
   const pipelineFailed = data.phase === "error";
+  const offer = offerSignal === "error" ? "blocked" : offerSignal === "has" ? "partial" : "setup";
   return {
-    offer:         "partial",
-    audience:      "partial",
+    offer,
+    audience:      "setup",
     content:       hasArtifacts ? "partial" : "setup",
     distribution:  "unavail",
     conversations: "unavail",
@@ -83,7 +93,9 @@ function loopNeed(seg, stKey, b, data) {
     return `Linked to “${b.pipelineName || "a pipeline"}” · ${b.pipelineDealCount} deal${b.pipelineDealCount === 1 ? "" : "s"} read live from Pipeline.`;
   }
   if (seg.k === "pipeline" && stKey === "blocked") return "The pipeline read failed. Your records were not changed.";
+  if (seg.k === "offer" && stKey === "blocked") return "The Catalog read failed. Your records were not changed.";
   if (seg.k === "offer" && stKey === "ready" && b) return `Linked offer: ${b.offerName || "recorded in Catalog"}.`;
+  if (seg.k === "offer" && stKey === "partial" && !b) return "Offers are recorded in Catalog. Link one to a brief to make the ask concrete.";
   if (seg.k === "distribution" || seg.k === "conversations") return "No connected provider. Connect one in Social — no reach, queue or schedule is shown.";
   if (seg.k === "outcome") return "Attribution needs a verified source; not available yet.";
   if (stKey === "ready") return "Source connected.";
@@ -94,8 +106,8 @@ function loopNeed(seg, stKey, b, data) {
 }
 
 // ── growth-loop command map ──────────────────────────────────────────────────────────────────
-function LoopMap({ data, focus, onClearFocus, onRoute }) {
-  const loop = focus ? briefLoop(focus) : workspaceLoop(data);
+function LoopMap({ data, focus, onClearFocus, onRoute, offerSignal }) {
+  const loop = focus ? briefLoop(focus) : workspaceLoop(data, offerSignal);
   return (
     <section className="loop" aria-label="Growth-loop command map">
       <div className="loop-head">
@@ -111,7 +123,7 @@ function LoopMap({ data, focus, onClearFocus, onRoute }) {
         {LOOP.map((seg) => {
           const stKey = loop[seg.k];
           const st = ST[stKey] || ST.unavail;
-          const failed = seg.k === "pipeline" && stKey === "blocked";
+          const failed = (seg.k === "pipeline" || seg.k === "offer") && stKey === "blocked";
           return (
             <div className="loop-seg" key={seg.k}>
               <button className="loop-node" onClick={() => onRoute(seg.route)} aria-label={`${seg.name}: ${st.label}. Owned by ${seg.owner}. Open ${seg.owner}.`}>
@@ -168,14 +180,25 @@ function Readiness({ brief, onRoute }) {
   );
 }
 
-export default function CampaignOverview({ data, onRoute, onOpenStudio }) {
+export default function CampaignOverview({ data, onRoute }) {
   const briefsState = useSoloCampaignBriefs();
+  // A REAL tenant-scoped Catalog read — the honest backing for the workspace-scope "Offer" loop
+  // stage (§13). "has" only when offers truly exist; "error" when the read failed; else unknown.
+  const catalog = useCatalogOffers();
+  const offerSignal = catalog.phase === "error" ? "error" : catalog.phase === "ready" ? (catalog.offers.length > 0 ? "has" : "none") : "unknown";
   const [filters, setFilters] = React.useState({ phase: "all", src: "all", q: "" });
   const [openRow, setOpenRow] = React.useState(null);
   const [focusId, setFocusId] = React.useState(null);
   const [drawer, setDrawer] = React.useState(null); // {kind:'dossier'|'brief', briefId?}
   const [toast, setToast] = React.useState(null);
   const lastFocus = React.useRef(null);
+  // Portal host for the drawers (BLOCKER §39). `useDrawerA11y` marks `.solo-campaigns > .campaigns-scroll`
+  // `inert`; the desk renders INSIDE that node, so a drawer rendered inline would inert ITSELF the
+  // instant it opened. We portal both drawers to the `.solo-campaigns` element — a SIBLING of the
+  // inerted scroll region (never inerted) and still inside `.paige-solo` so the design tokens and the
+  // light/dark theme resolve. This mirrors the pre-existing `DetailDrawer`, which is already a direct
+  // child of `.solo-campaigns` for exactly this reason.
+  const deskRef = React.useRef(null);
 
   const canManage = briefsState.canManage;
   const briefs = briefsState.briefs;
@@ -218,7 +241,7 @@ export default function CampaignOverview({ data, onRoute, onOpenStudio }) {
   // command line — derived from ALL briefs, never the filtered subset
   const commandLine = () => {
     if (!briefs.length) return <>Nothing is in motion yet. <b className="move">Create a campaign brief</b> to give this workspace its first initiative.</>;
-    const moving = briefs.filter((b) => ["building", "active", "approved", "ready_for_review"].includes(b.lifecycleStatus)).length;
+    const moving = briefs.filter((b) => ["active", "approved", "ready_for_review", "draft"].includes(b.lifecycleStatus)).length;
     const blocked = briefs.filter((b) => b.lifecycleStatus === "blocked" || b.blocker).length;
     const awaiting = briefs.filter((b) => b.lifecycleStatus === "ready_for_review").length;
     const next = briefs.find((b) => b.lifecycleStatus === "ready_for_review")
@@ -260,9 +283,12 @@ export default function CampaignOverview({ data, onRoute, onOpenStudio }) {
   if (briefs.length === 0) return <><div className="desk"><FirstRun canManage={canManage} onNew={() => canManage && openDrawer("brief")} onRoute={onRoute} data={data}/></div>{toast && <Toast toast={toast}/>}</>;
 
   // ── the desk ─────────────────────────────────────────────────────────────────────────────────
+  // The drawers portal to `.solo-campaigns` (see `deskRef` note above). Resolved from the mounted
+  // `.desk` node so the portal targets THIS campaigns instance, never a stray `.solo-campaigns`.
+  const portalHost = deskRef.current ? deskRef.current.closest(".solo-campaigns") : null;
   return (
     <>
-      <div className="desk">
+      <div className="desk" ref={deskRef}>
         {/* command header — compact, one gold act */}
         <section className="cmd" aria-label="Campaign command">
           <div className="cmd-brief">
@@ -297,7 +323,7 @@ export default function CampaignOverview({ data, onRoute, onOpenStudio }) {
           </div>
         </section>
 
-        <LoopMap data={data} focus={focus} onClearFocus={() => setFocusId(null)} onRoute={onRoute}/>
+        <LoopMap data={data} focus={focus} onClearFocus={() => setFocusId(null)} onRoute={onRoute} offerSignal={offerSignal}/>
 
         <div className="desk-grid">
           <section className="pf" aria-label="Campaign portfolio">
@@ -317,19 +343,20 @@ export default function CampaignOverview({ data, onRoute, onOpenStudio }) {
         </div>
       </div>
 
-      {drawer?.kind === "dossier" && (() => { const b = briefs.find((x) => x.id === drawer.briefId); return b
-        ? <DossierDrawer brief={b} canManage={canManage} onClose={closeDrawer} onRoute={onRoute} onAsk={() => askPaige(b)}
+      {drawer?.kind === "dossier" && portalHost && (() => { const b = briefs.find((x) => x.id === drawer.briefId); return b
+        ? createPortal(<DossierDrawer brief={b} canManage={canManage} onClose={closeDrawer} onRoute={onRoute} onAsk={() => askPaige(b)}
             onEdit={() => setDrawer({ kind: "brief", briefId: b.id })}
-            onTransition={async (status, blocker) => { const r = await briefsState.transitionBrief(b.id, status, b.version, blocker); showToast(r.message, r.ok ? "ok" : "err"); if (r.ok) closeDrawer(); }}
-            onArchive={async () => { const r = await briefsState.archiveBrief(b.id, b.version); showToast(r.message, r.ok ? "ok" : "err"); if (r.ok) closeDrawer(); }}/>
+            onTransition={async (status, blocker, idem) => { const r = await briefsState.transitionBrief(b.id, status, b.version, blocker, idem); showToast(r.message, r.ok ? "ok" : "err"); if (r.ok) closeDrawer(); return r; }}
+            onArchive={async (idem) => { const r = await briefsState.archiveBrief(b.id, b.version, idem); showToast(r.message, r.ok ? "ok" : "err"); if (r.ok) closeDrawer(); return r; }}/>, portalHost)
         : null; })()}
 
-      {drawer?.kind === "brief" && (
+      {drawer?.kind === "brief" && portalHost && createPortal(
         <BriefBuilder existing={drawer.briefId ? briefs.find((x) => x.id === drawer.briefId) : null} data={data}
           onClose={closeDrawer} onRoute={onRoute}
-          onSave={(draft) => briefsState.saveBrief(draft)}
-          onRequestReview={async (briefId, version) => briefsState.transitionBrief(briefId, "ready_for_review", version)}
-          onDone={(msg) => { closeDrawer(); showToast(msg, "ok"); }}/>
+          onSave={(draft, idem) => briefsState.saveBrief(draft, idem)}
+          onRequestReview={async (briefId, version, idem) => briefsState.transitionBrief(briefId, "ready_for_review", version, undefined, idem)}
+          onDone={(msg, kind = "ok") => { closeDrawer(); showToast(msg, kind); }}/>,
+        portalHost,
       )}
 
       {toast && <Toast toast={toast}/>}
@@ -545,6 +572,14 @@ function BriefBuilder({ existing, data, onClose, onRoute, onSave, onRequestRevie
   const ref = useDrawerA11y(onClose);
   const [stage, setStage] = React.useState(0);
   const [save, setSave] = React.useState("idle"); // idle | saving | error
+  const [saveErr, setSaveErr] = React.useState(""); // the REAL server sentence, never a hardcoded line
+  // Double-submit guard (§39 MAJOR): a synchronous latch so a rapid double-click can't fire two
+  // creates before React disables the button. Paired with a STABLE per-submit idempotency key —
+  // regenerated for a fresh submit, REUSED on Retry — so the ledger dedupes a resend of the same
+  // action instead of writing a second brief.
+  const submitting = React.useRef(false);
+  const idemRef = React.useRef(null);
+  const wantReview = React.useRef(false); // preserves the "then request review" intent across a Retry
   const [d, setD] = React.useState(() => ({
     id: existing?.id ?? null,
     expectedVersion: existing?.version ?? null,
@@ -569,18 +604,45 @@ function BriefBuilder({ existing, data, onClose, onRoute, onSave, onRequestRevie
 
   const pipelines = ((data.pipelineWorkspace && data.pipelineWorkspace.pipelines) || []).filter((p) => p.lifecycleStatus !== "archived");
 
-  const persist = async (thenReview) => {
-    if (!d.name.trim()) { setStage(0); setSave("idle"); setD((p) => ({ ...p })); return; }
-    setSave("saving");
-    const res = await onSave(d);
-    if (!res.ok) { setSave("error"); return; }
-    if (thenReview) {
-      const id = res.data?.brief_id || d.id;
-      const version = res.data?.version || (d.expectedVersion ? d.expectedVersion + 1 : 2);
-      if (id) await onRequestReview(id, version);
-      onDone("Brief saved and sent for review.");
-    } else {
-      onDone(d.id ? "Campaign brief saved." : "Campaign brief saved as a draft on this workspace.");
+  // Offer picker (§39 MAJOR): a REAL Catalog read, not a paste-a-UUID box. The server still
+  // tenant-validates the chosen id; this only stops the owner from having to hand-type an offer id
+  // that isn't theirs. `referenceIds` keeps the currently-linked offer resolvable while searching.
+  const [offerSearch, setOfferSearch] = React.useState("");
+  const [offerPage, setOfferPage] = React.useState(0);
+  const offers = useCatalogOffers({ search: offerSearch, page: offerPage, pageSize: 5, referenceIds: d.offerId ? [d.offerId] : [] });
+  const offerRows = [...offers.offers, ...(offers.referencedOffers || [])].filter((o, i, rows) => rows.findIndex((x) => x.id === o.id) === i);
+
+  // `retry` reuses the SAME idempotency key so a resend of a submit that actually persisted is
+  // deduped by the ledger; a fresh submit mints a new one.
+  const persist = async (thenReview, isRetry = false) => {
+    if (submitting.current) return;
+    if (!d.name.trim()) { setStage(0); setSave("idle"); setSaveErr("A campaign brief needs a name before it can be saved."); return; }
+    submitting.current = true;
+    wantReview.current = thenReview;
+    if (!isRetry || !idemRef.current) idemRef.current = { save: crypto.randomUUID(), review: crypto.randomUUID() };
+    setSave("saving"); setSaveErr("");
+    try {
+      const res = await onSave(d, idemRef.current.save);
+      if (!res.ok) {
+        // A stale (version-conflict) refusal was refreshed by the hook; a blind Retry would just fail
+        // again on the frozen expected version. Surface the real message and close so the owner reopens
+        // on current data. Any other failure keeps the drawer open with a Retry (a resend is valid).
+        if (res.stale) { onDone(res.message, "err"); return; }
+        setSaveErr(res.message || "That change could not be saved. Nothing else was changed."); setSave("error");
+        return;
+      }
+      if (thenReview) {
+        const id = res.data?.brief_id || d.id;
+        const version = typeof res.data?.version === "number" ? res.data.version : (d.expectedVersion ? d.expectedVersion + 1 : 1);
+        if (!id) { onDone(d.id ? "Campaign brief saved." : "Campaign brief saved as a draft on this workspace.", "ok"); return; }
+        const rev = await onRequestReview(id, version, idemRef.current.review);
+        if (rev && rev.ok) onDone("Brief saved and sent for review.", "ok");
+        else onDone(`Saved as a draft — but it could not be sent for review. ${rev?.message || "Open it to try again."}`, "err");
+      } else {
+        onDone(d.id ? "Campaign brief saved." : "Campaign brief saved as a draft on this workspace.", "ok");
+      }
+    } finally {
+      submitting.current = false;
     }
   };
 
@@ -591,8 +653,19 @@ function BriefBuilder({ existing, data, onClose, onRoute, onSave, onRequestRevie
   </>;
   else if (stage === 1) body = <>
     <div className="bb-field"><label>Linked offer <span className="opt">Optional</span></label>
-      <input value={d.offerId || ""} onChange={(e) => set({ offerId: e.target.value.trim() || null })} placeholder="Paste a Catalog offer id, or leave blank"/>
+      <input type="search" value={offerSearch} onChange={(e) => { setOfferSearch(e.target.value); setOfferPage(0); }} placeholder="Search your Catalog offers by name…" aria-label="Search offers"/>
+      <div className="bb-pagerow">
+        <span role="status">{offers.phase === "ready" ? `Offer page ${offerPage + 1}` : offers.phase === "error" ? "Could not load offers" : "Loading offers…"}</span>
+        {offers.phase === "error" && <button type="button" className="btn btn-s" onClick={offers.retry}>Retry</button>}
+        <button type="button" className="btn btn-s" disabled={!offerPage || offers.phase !== "ready"} onClick={() => setOfferPage((p) => p - 1)}>Previous</button>
+        <button type="button" className="btn btn-s" disabled={!offers.hasMore || offers.phase !== "ready"} onClick={() => setOfferPage((p) => p + 1)}>Next</button>
+      </div>
+      <select value={d.offerId || ""} onChange={(e) => set({ offerId: e.target.value || null })} aria-label="Linked offer">
+        <option value="">No offer linked</option>
+        {offerRows.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
       <span className="help">Offers live in <b>Catalog</b>. The server validates the offer belongs to this workspace; an offer that isn’t yours is refused.</span></div>
+    {offers.phase === "ready" && !offerRows.length && !offerSearch && <div className="dw-note">This workspace has no offers yet. Create one in Catalog, then link it here.</div>}
     <div className="bb-link"><Ic.plus size={13}/> Manage offers in Catalog. <button className="rroute" onClick={() => onRoute("catalog")}>Open Catalog <Ic.arrow size={11}/></button></div>
   </>;
   else if (stage === 2) body = <>
@@ -632,7 +705,7 @@ function BriefBuilder({ existing, data, onClose, onRoute, onSave, onRequestRevie
   </>;
 
   const saveEcho = save === "saving" ? <span className="bb-save saving"><Ic.pulse size={13}/> Saving…</span>
-    : save === "error" ? <span className="bb-save err"><Ic.bell size={13}/> Couldn’t save. Nothing was changed. <button className="btn btn-s" onClick={() => persist(false)}>Retry</button></span>
+    : save === "error" ? <span className="bb-save err"><Ic.bell size={13}/> {saveErr || "That change could not be saved. Nothing else was changed."} <button className="btn btn-s" onClick={() => persist(wantReview.current, true)}>Retry</button></span>
     : null;
 
   return (

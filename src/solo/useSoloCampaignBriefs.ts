@@ -92,9 +92,13 @@ export type SoloCampaignBriefsState = {
   /** True only for a tenant admin/owner. The desk removes governed acts when false. */
   readonly canManage: boolean;
   readonly retry: () => void;
-  readonly saveBrief: (draft: BriefDraft) => Promise<BriefWriteResult>;
-  readonly transitionBrief: (briefId: string, status: BriefLifecycle, expectedVersion: number, blocker?: string) => Promise<BriefWriteResult>;
-  readonly archiveBrief: (briefId: string, expectedVersion: number) => Promise<BriefWriteResult>;
+  // Every mutation takes an OPTIONAL caller-supplied idempotency key. The desk generates ONE key per
+  // logical submit and reuses it across that submit's retries, so the `(tenant_id, idempotency_key)`
+  // ledger in `configure_campaign_brief` can actually dedupe a double-submit — a fresh random key per
+  // call (the earlier bug) made the ledger dead, and a rapid double-click could double-create.
+  readonly saveBrief: (draft: BriefDraft, idempotencyKey?: string) => Promise<BriefWriteResult>;
+  readonly transitionBrief: (briefId: string, status: BriefLifecycle, expectedVersion: number, blocker?: string, idempotencyKey?: string) => Promise<BriefWriteResult>;
+  readonly archiveBrief: (briefId: string, expectedVersion: number, idempotencyKey?: string) => Promise<BriefWriteResult>;
 };
 
 const EMPTY = { briefs: [] as readonly CampaignBrief[], archivedCount: 0, canManage: false };
@@ -170,11 +174,14 @@ export function useSoloCampaignBriefs(): SoloCampaignBriefsState {
   });
   const retry = useCallback(() => setRefreshKey((key) => key + 1), []);
 
-  const run = useCallback(async (command: Record<string, unknown>): Promise<BriefWriteResult> => {
+  const run = useCallback(async (command: Record<string, unknown>, idempotencyKey?: string): Promise<BriefWriteResult> => {
     if (!activeTenantId) return { ok: false, message: "This workspace could not be resolved, so nothing was saved." };
+    // A stable key when the caller supplies one (a retry of the SAME submit reuses it, so the ledger
+    // returns the recorded result instead of writing a second row); a fresh one otherwise.
+    const idempotencyKeyToUse = idempotencyKey && idempotencyKey.trim() ? idempotencyKey : crypto.randomUUID();
     const { data, error } = await supabase.rpc(
       "configure_campaign_brief" as never,
-      { _tenant_id: activeTenantId, _command: command, _idempotency_key: crypto.randomUUID(), _actor_kind: "human" } as never,
+      { _tenant_id: activeTenantId, _command: command, _idempotency_key: idempotencyKeyToUse, _actor_kind: "human" } as never,
     );
     if (error) {
       console.error("[campaign-briefs] configure failed", { command: command.type, error });
@@ -187,7 +194,7 @@ export function useSoloCampaignBriefs(): SoloCampaignBriefsState {
     return { ok: payload.ok !== false, message: typeof payload.message === "string" ? payload.message : "Saved.", data: payload };
   }, [activeTenantId]);
 
-  const saveBrief = useCallback((draft: BriefDraft) => run({
+  const saveBrief = useCallback((draft: BriefDraft, idempotencyKey?: string) => run({
     type: draft.id ? "update_brief" : "create_brief",
     ...(draft.id ? { briefId: draft.id, expectedVersion: draft.expectedVersion } : {}),
     name: draft.name,
@@ -205,13 +212,13 @@ export function useSoloCampaignBriefs(): SoloCampaignBriefsState {
     followupPath: draft.followupPath || null,
     offerId: draft.offerId,
     pipelineId: draft.pipelineId,
-  }), [run]);
+  }, idempotencyKey), [run]);
 
-  const transitionBrief = useCallback((briefId: string, status: BriefLifecycle, expectedVersion: number, blocker?: string) =>
-    run({ type: "transition_brief", briefId, status, expectedVersion, ...(blocker ? { blocker } : {}) }), [run]);
+  const transitionBrief = useCallback((briefId: string, status: BriefLifecycle, expectedVersion: number, blocker?: string, idempotencyKey?: string) =>
+    run({ type: "transition_brief", briefId, status, expectedVersion, ...(blocker ? { blocker } : {}) }, idempotencyKey), [run]);
 
-  const archiveBrief = useCallback((briefId: string, expectedVersion: number) =>
-    run({ type: "archive_brief", briefId, expectedVersion }), [run]);
+  const archiveBrief = useCallback((briefId: string, expectedVersion: number, idempotencyKey?: string) =>
+    run({ type: "archive_brief", briefId, expectedVersion }, idempotencyKey), [run]);
 
   useEffect(() => {
     let current = true;
