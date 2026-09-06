@@ -525,7 +525,7 @@
     ]
   },
   "known_owed_entries": {
-    "note": "Found at the registry-build closeout sweep (2026-09-06): pre-existing slices declared an 'Integration Capability Registry dependency' + a 'Registry Steward' role BEFORE this registry existed, and spec'd specific entries they OWE. These are transcribed honestly from those slices' own records (§13 — not invented, not yet authored as full entries). Authoring them + defining the Registry Steward role + reconciling the dependent slices' stale 'no registry exists' notes is a tracked follow-up (parked, per 'don't expand into individual integrations'). The registry existing does NOT unblock a slice's provider action on its own.",
+    "note": "Found at the registry-build closeout sweep (2026-09-06): pre-existing slices declared an 'Integration Capability Registry dependency' + a 'Registry Steward' role BEFORE this registry existed. The entries below are specific per-provider entries those slices spec'd and still OWE, transcribed honestly from their own records (§13 — not invented, not yet authored as full entries). NOTE on the Solo Tenant Brain Business Mission slice (docs/delivery/solo-tenant-brain-business-mission-mvp.md:64): its dependency was on delivery INFRASTRUCTURE (the Supabase deploy path), which is already covered by excluded_delivery_infrastructure + config-registry.md, and the slice explicitly said 'do not invent an entry' — so NO owed provider entry is recorded for it here (cross-link the shipped registry as its home; do not create a duplicate infrastructure entry). Authoring the owed entries + defining the Registry Steward role + cross-linking the dependent slices is a tracked follow-up (parked, per 'don't expand into individual integrations'). IMPORTANT: the registry artifact existing does NOT by itself satisfy a slice's still-valid provider-action blocker — e.g. the Public Presence note's requirement of a Public-Presence-specific entry AND a Steward record remains genuinely unmet until that entry is authored.",
     "registry_steward_role": "UNDEFINED here. The RE-2 M1-a, Solo Tenant Brain Business Mission, and Public Presence slices reference a 'Registry Steward' who must add/cross-link canonical entries before provider-facing work. This registry ships a per-entry `owner` field + the delivery rule instead of a named Steward — an owner decision on whether that satisfies the requirement is owed.",
     "entries": [
       {
@@ -544,13 +544,7 @@
         "capability": "a canonical social/public-presence provider entry with exact provider capability + scopes, tenant-tier eligibility SEPARATE from role authority, standing-authority lane, M1 dependency, provider-confirmed outcome path, Rail/Mind/Memory boundaries, proof state, and limitations",
         "partially_covered_by": "the `meta` entry (social/public presence) — the follow-up decides whether Meta suffices or a distinct entry is needed",
         "status": "UNAVAILABLE (provider action blocked pending the entry AND an authenticated tenant-authorized contract)",
-        "note": "The registry existing partially resolves this slice's dependency (the home now exists); it does NOT by itself advance the provider states beyond UNAVAILABLE."
-      },
-      {
-        "owed_by": "Solo Tenant Brain Business Mission slice (docs/delivery/solo-tenant-brain-business-mission-mvp.md:64)",
-        "capability": "the controlling Integration Capability Registry / infrastructure entry the slice depends on (it added no provider integration itself)",
-        "status": "UNAVAILABLE (dependency)",
-        "note": "Cross-link the shipped registry as its home; keep UNAVAILABLE for any provider action still absent."
+        "note": "The registry ARTIFACT existing does NOT resolve this slice's blocker: the Public-Presence-specific entry AND a Steward record remain genuinely absent, so provider states stay UNAVAILABLE. The `meta` entry is a candidate home, not a substitute for the required entry."
       }
     ]
   },
