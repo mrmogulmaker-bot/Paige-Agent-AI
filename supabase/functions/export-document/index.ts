@@ -77,14 +77,16 @@ serve(async (req: Request) => {
     const isOperator = roles.some((r: string) => r === "super_admin" || r === "platform_admin");
     const service = createClient(supabaseUrl, supabaseServiceKey);
 
-    // §9/§59 — READ. `marketing_content` RLS admits only `is_platform_owner()` (super_admin) cross-tenant,
-    // so a platform_admin's caller-JWT read returns null → a misleading 404 (Codex F1). Operators therefore
-    // read via the SERVICE-ROLE client (RLS-bypassing, justified: operator status was verified from the
-    // VERIFIED JWT above, never a body value). A NON-operator reads with their OWN JWT, so RLS still
-    // fails-closed to a 404 when they have no visibility at all; the tenant-scoped role check below — not
-    // this read — is the authorization decision.
-    const reader = isOperator ? service : authed;
-    const { data: doc, error: docErr } = await reader
+    // §9/§59 — PRIVILEGED READ, then AUTHORIZE IN-BODY. `marketing_content` RLS admits only users holding a
+    // GLOBAL admin/coach role in the active tenant (or is_platform_owner), so a caller-JWT read returns NULL
+    // for a freshly-provisioned Solo OWNER (global role only `user`) AND for a platform_admin — both would
+    // 404 before their tenant-scoped authority could be checked (Codex L1/F1; the §59 "WRONGLY REFUSES"
+    // half). So the row is read with the SERVICE-ROLE client (RLS-bypassing) — this read is NOT the access
+    // decision; the tenant-scoped check below IS. That is the §59 pattern: a privileged read fenced by an
+    // in-body caller-scope check (is_tenant_admin / has_tenant_role on the caller's own auth.uid(), or the
+    // operator role). A caller with no authority over the doc's tenant is denied there — as a 404, so the
+    // by-id endpoint never reveals whether an out-of-scope document exists.
+    const { data: doc, error: docErr } = await service
       .from("marketing_content")
       .select("id, tenant_id, title, body, kind")
       .eq("id", contentId)
@@ -114,7 +116,9 @@ serve(async (req: Request) => {
         const { data: isCoach } = await authed.rpc("has_tenant_role", { _user_id: user.id, _tenant_id: tenantId, _role: "coach" });
         allowed = isCoach === true;
       }
-      if (!allowed) return json(403, { error: "You don't have manage access to that document's workspace." });
+      // Fail CLOSED as a 404 (not 403): the service-role read above can see any tenant's row, so a 403 here
+      // would reveal that an out-of-scope document exists. 404 keeps it indistinguishable from "not found".
+      if (!allowed) return json(404, { error: "Document not found, or you don't have access to it." });
     }
 
     // The document body is the block JSON document_generate saved: `{ docType, title, blocks }`. Unwrap

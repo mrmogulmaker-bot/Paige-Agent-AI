@@ -146,11 +146,13 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(md).toContain("Pricing");
     expect(md).toContain("The key point");                // callout title is not lost to the body
     expect(md).toContain("Retention beats acquisition.");
-    expect(md).toMatch(/^### How it works$/m);            // prose H2 recovered as a real heading (→ H3 under the doc H1)
-    // Codex round-9 K3 — the `.md` exporter KEEPS raw markdown (it IS markdown); only binary renderers flatten.
+    // Codex round-9 K3 / round-10 L2 — the `.md` exporter passes prose's RAW markdown through verbatim
+    // (it IS markdown; parsing it would collapse code fences / tables). So the prose heading keeps its own
+    // `##` level, and bold + links stay real markdown.
+    expect(md).toMatch(/^## How it works$/m);             // prose heading kept at its source level, verbatim
     expect(md).toContain("We use **three** campaigns");   // bold markup preserved in the .md file
     expect(md).toContain("[signup form](https://ex.co/x)"); // link preserved as real markdown, not `label (url)`
-    expect(md).toContain("- First");                      // prose list recovered as a real list, not one flat line
+    expect(md).toContain("- First");                      // prose list preserved verbatim
     expect(md).toContain("https://ex.co/book");           // the CTA destination is followable, not discarded
   });
 
@@ -270,10 +272,12 @@ describe("doc-render binary-format guards (source contract — pdf/pptx use npm 
     expect(SRC).not.toContain("push(asText(b.kicker));"); // the old standalone-kicker paragraph is gone
     // K2 — the CP1252 euro (and other WinAnsi specials) are KEPT by sanitizeWinAnsi, not dropped to `?`.
     expect(SRC).toContain("\\u20AC");                     // euro is in the keep set
-    // K3 — inline flattening is threaded by format; md keeps raw markdown, binary flattens.
+    // K3/L2 — flattening is threaded by format; md passes prose RAW markdown through verbatim (Codex L2 —
+    // parsing it would collapse code fences/tables), binary parses + flattens (can't render markdown).
     expect(SRC).toContain("flattenInline");
     expect(SRC).toContain('String(input?.format).toLowerCase() !== "md"');
-    expect(SRC).toContain("const clean = flattenInline ? inlineMdToText");
+    expect(SRC).toContain("if (!flattenInline)");
+    expect(SRC).toContain('out.push({ type: "paragraph", text: md })'); // md raw passthrough
   });
 });
 
@@ -299,17 +303,20 @@ describe("export-document edge function — the callable seam (source contract)"
     // the tenant the file is filed under is the row's tenant, never the request body
     expect(SRC).toContain("const tenantId = doc.tenant_id");
     expect(SRC).not.toContain("body?.tenant_id");
-    // Codex F1 — a platform_admin can't read marketing_content via RLS (it admits only is_platform_owner()
-    // = super_admin cross-tenant), so operators read via the SERVICE-ROLE client; non-operators via JWT.
     expect(SRC).toContain('roles.some((r: string) => r === "super_admin" || r === "platform_admin")');
-    expect(SRC).toContain("const reader = isOperator ? service : authed");
-    // Codex F2 / §59 global-role trap — a plain member of the doc's tenant who holds a GLOBAL admin role
-    // from ANOTHER tenant must NOT export. The in-body gate requires a MANAGE role IN THE DOC'S TENANT
+    // Codex round-10 L1 (§59) — marketing_content RLS refuses a fresh Solo OWNER (global role only `user`)
+    // AND a platform_admin, so the row is read with the SERVICE-ROLE client (a privileged read) and the
+    // tenant-scoped check below is the ONLY access decision. Reading via `authed` would 404 the owner.
+    expect(SRC).toContain("await service");
+    expect(SRC).not.toContain("const reader = isOperator ? service : authed");
+    // Codex F2 / §59 global-role trap — the in-body gate requires a MANAGE role IN THE DOC'S TENANT
     // (owner/admin via is_tenant_admin, coach via has_tenant_role), tenant-scoped — never is_tenant_member.
     expect(SRC).toContain('authed.rpc("is_tenant_admin", { _tenant: tenantId })');
     expect(SRC).toContain('authed.rpc("has_tenant_role", { _user_id: user.id, _tenant_id: tenantId, _role: "coach" })');
     expect(SRC).not.toContain('.rpc("is_tenant_member"'); // the any-role membership CALL was the F2 leak (a comment may still name it)
-    expect(SRC).toContain("You don't have manage access to that document's workspace.");
+    // L1 — the privileged read means the auth failure must fail closed as a 404 (not 403), so a by-id caller
+    // can't learn that an out-of-scope document exists.
+    expect(SRC).not.toContain("You don't have manage access to that document's workspace.");
     // HONEST SCOPE (§32.c): this is a SOURCE contract that the in-body gate exists — a true multi-tenant
     // RLS/role drive proving the IDOR is closed needs a live DB and is owed to the authenticated post-deploy pass.
   });

@@ -201,15 +201,21 @@ function coerceBlockArray(arr: unknown[], docTitle?: string, flattenInline = tru
       // (Codex P2). Parse it into real structural blocks (headings/lists/paragraphs) and strip inline
       // markdown to clean text (links kept as `label (url)`) so every format renders structure, not syntax.
       const md = asText(b.markdown ?? b.text ?? b.content);
-      // Recover structure (headings/lists/paragraphs) for every format. Inline markup is flattened to clean
-      // text ONLY for binary renderers; the `.md` exporter keeps it RAW so `**bold**` / `[x](y)` still render
-      // as markdown (Codex P2 — the `.md` file must not lose its own formatting).
-      const clean = flattenInline ? inlineMdToText : (s: string) => s;
+      if (!flattenInline) {
+        // `.md` export: pass the prose's raw markdown through VERBATIM as one block. Parsing it (as the
+        // binary path does) would collapse fenced code blocks, tables and hard line breaks — parseMarkdown
+        // joins lines it doesn't recognize with spaces (Codex P2). The md serializer preserves a block's
+        // internal newlines, so the source round-trips (headings, emphasis, links, code fences, tables).
+        if (md.trim()) out.push({ type: "paragraph", text: md });
+        continue;
+      }
+      // Binary renderers can't parse markdown: recover structure (headings/lists/paragraphs) AND flatten
+      // inline markup to clean text (links kept as `label (url)`), so no raw `**` / `[](…)` leaks into the file.
       for (const blk of parseMarkdown(md)) {
-        if (blk.type === "heading") push(clean(blk.text), "heading", blk.level);
-        else if (blk.type === "paragraph") push(clean(blk.text));
+        if (blk.type === "heading") push(inlineMdToText(blk.text), "heading", blk.level);
+        else if (blk.type === "paragraph") push(inlineMdToText(blk.text));
         else if (blk.type === "list") {
-          const items = blk.items.map(clean).filter((s) => s.length > 0);
+          const items = blk.items.map(inlineMdToText).filter((s) => s.length > 0);
           if (items.length) out.push({ type: "list", items, ordered: blk.ordered });
         } else out.push(blk); // pagebreak
       }

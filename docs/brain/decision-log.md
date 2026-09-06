@@ -181,6 +181,23 @@
   `inlineMdToText` is now export + unit-tested directly (it is binary-only, off the headless md path). Lesson:
   a shared normalizer feeding multiple serializers must be parameterized by the target format, not one-size.
   doc-export 20/20, tsc ratchet 13/13, control-chars none, §50/§63 clean.
+  **THIRTEENTH catch — Codex round 10 (two P1 + one P2): L1/L2 FOLDED, L3 PARKED as a scoped follow-up
+  (#TBD).** (L1, P1 §70/§59) the J1 fix was INCOMPLETE — removing the coarse gate left the non-operator
+  read on `authed`/RLS, which `marketing_content_tenant_manage` refuses for a fresh Solo owner (global role
+  only `user`), so the owner STILL 404'd before `is_tenant_admin` could authorize them. Fixed: read the row
+  with the SERVICE-ROLE client for EVERYONE (a privileged read), with the tenant-scoped check
+  (is_tenant_admin/has_tenant_role/operator) as the ONLY access decision, failing closed to 404 (not 403) so
+  a by-id caller can't learn an out-of-scope doc exists — the §59 privileged-read-fenced-by-in-body-check
+  pattern. (L2, P2) `.md` prose still went through parseMarkdown, collapsing fenced code / tables / hard
+  breaks; md now passes prose's RAW markdown through verbatim (the md serializer preserves a block's internal
+  newlines), binary still parses+flattens. (L3, P1 — PARKED) there is no export-ONLY chat path: the only
+  `export_format` tool is `document_generate`, which regenerates+saves, so "download this existing doc" can
+  version-stack a regenerated copy rather than export the persisted one. Not a destructive overwrite (the
+  `reuseDocId` clamp version-stacks and can't touch a different artifact), so it is a fidelity/UX gap, not
+  data loss — and the fix is a NEW chat capability (an `export_content_id` param + export-only branch) whose
+  clean addition needs a ~110-line re-indent of the 12k-line paige-ai-chat; at round 10 that is higher-risk
+  than a same-PR fold warrants, so it is a scoped follow-up with an honest PR note + recovery path (§70:
+  unavailable is a per-item verdict with a reason). doc-export 20/20, tsc ratchet 13/13, §50/§63 clean.
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace
