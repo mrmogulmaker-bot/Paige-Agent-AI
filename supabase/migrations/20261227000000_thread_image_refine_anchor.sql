@@ -37,12 +37,16 @@ CREATE INDEX IF NOT EXISTS idx_paige_chat_threads_last_image_content_id
   WHERE last_image_content_id IS NOT NULL;
 
 -- §59 (Codex P2): the anchor is the reuse AUTHORITY, so it must be genuinely SERVER-OWNED — the
--- table-level `GRANT UPDATE ... TO authenticated` + the `threads_update_self` RLS policy otherwise
--- let a browser set an arbitrary same-tenant content_id / future timestamp and have paige-ai-chat
--- trust it. A column-level REVOKE cannot express this (a table-level UPDATE grant permits every
--- column regardless of a column REVOKE), so a BEFORE UPDATE trigger freezes CLIENT attempts to SET a
--- non-null anchor. It deliberately does NOT touch a transition TO NULL, so the FK ON DELETE SET NULL
--- cascade and any client-initiated clear still succeed — only forging a non-null authority is blocked.
+-- table-level `GRANT INSERT, UPDATE ... TO authenticated` + the `threads_insert_self`/`threads_update_self`
+-- RLS policies otherwise let a browser set an arbitrary same-tenant content_id / future timestamp and
+-- have paige-ai-chat trust it. A column-level REVOKE cannot express this (a table-level grant permits
+-- every column regardless of a column REVOKE), so a trigger over the FULL client write surface
+-- (BEFORE INSERT OR UPDATE) enforces server-ownership. It is deliberately comprehensive across every
+-- client write vector — an UPDATE that sets/redirects the id, an UPDATE that bumps ONLY the timestamp
+-- while the id stays non-null, AND an INSERT that smuggles a non-null anchor onto a brand-new thread —
+-- because covering only UPDATE (or only an id CHANGE) leaves a forge path open (each was a separate
+-- Codex round). A transition TO NULL is never frozen, so the FK ON DELETE SET NULL cascade and any
+-- client-initiated clear still succeed — only a client-supplied NON-NULL authority is rejected.
 -- INVOKER (never DEFINER): current_user must reflect the CONNECTED role (authenticated vs service_role),
 -- which a SECURITY DEFINER body would mask.
 CREATE OR REPLACE FUNCTION public.paige_chat_threads_freeze_image_anchor()
@@ -52,16 +56,21 @@ CREATE OR REPLACE FUNCTION public.paige_chat_threads_freeze_image_anchor()
 AS $$
 BEGIN
   -- Trusted server roles (paige-ai-chat's service-role client; migrations/data-fixes as owner) write
-  -- the anchor freely. Any other caller (a JWT client → `authenticated`) may CLEAR it but may not
-  -- forge or extend a non-null authority. The freeze fires WHENEVER the row would retain a non-null
-  -- last_image_content_id — reverting BOTH columns to their prior server-set values. Keying on
-  -- "retains a non-null id" (not merely "the id changed") is deliberate: it also blocks a
-  -- TIMESTAMP-ONLY bump that leaves the id unchanged but pushes last_image_anchor_at into the future
-  -- to keep an old image eligible past its recency window (Codex P2). The client's other thread-row
-  -- edits (e.g. summary) are untouched. A transition TO NULL is NOT frozen, so the FK ON DELETE SET
-  -- NULL cascade and a genuine clear-to-NULL still succeed.
-  IF current_user NOT IN ('service_role', 'supabase_admin', 'postgres')
-     AND NEW.last_image_content_id IS NOT NULL THEN
+  -- the anchor freely.
+  IF current_user IN ('service_role', 'supabase_admin', 'postgres') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    -- A client-created thread NEVER legitimately carries an anchor (the service-role writer only sets it
+    -- AFTER a generation, via UPDATE). Force both columns to NULL so a forged non-null anchor cannot be
+    -- smuggled in on INSERT — the write vector a BEFORE UPDATE trigger alone missed (Codex P2).
+    NEW.last_image_content_id := NULL;
+    NEW.last_image_anchor_at  := NULL;
+  ELSIF NEW.last_image_content_id IS NOT NULL THEN
+    -- UPDATE: freeze WHENEVER the row would retain a non-null id — this reverts BOTH an id forge/redirect
+    -- AND a TIMESTAMP-ONLY bump that would push last_image_anchor_at into the future to keep an old image
+    -- eligible past its recency window (Codex P2). The client's other thread-row edits (e.g. summary) are
+    -- untouched; a transition TO NULL stays allowed (FK cascade, expiry/failure clear).
     NEW.last_image_content_id := OLD.last_image_content_id;
     NEW.last_image_anchor_at  := OLD.last_image_anchor_at;
   END IF;
@@ -71,7 +80,7 @@ $$;
 
 DROP TRIGGER IF EXISTS trg_paige_chat_threads_freeze_image_anchor ON public.paige_chat_threads;
 CREATE TRIGGER trg_paige_chat_threads_freeze_image_anchor
-  BEFORE UPDATE ON public.paige_chat_threads
+  BEFORE INSERT OR UPDATE ON public.paige_chat_threads
   FOR EACH ROW
   EXECUTE FUNCTION public.paige_chat_threads_freeze_image_anchor();
 

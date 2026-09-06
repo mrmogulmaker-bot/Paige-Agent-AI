@@ -31,15 +31,19 @@ describe("Task #15 — migrations exist and carry the safety clauses", () => {
     expect(m).toMatch(/ADD COLUMN IF NOT EXISTS last_image_anchor_at timestamptz/);
   });
 
-  it("the anchor is SERVER-OWNED: a BEFORE UPDATE trigger freezes client writes while a non-null anchor remains (incl. timestamp-only bumps), but not a clear-to-NULL (Codex P2/§59)", () => {
+  it("the anchor is SERVER-OWNED across the FULL client write surface: a BEFORE INSERT OR UPDATE trigger nulls a forged INSERT anchor and freezes non-null UPDATE writes (incl. timestamp-only bumps), but allows clear-to-NULL (Codex P2/§59)", () => {
     const m = readFileSync(ANCHOR_MIG, "utf8");
-    expect(m).toMatch(/CREATE TRIGGER trg_paige_chat_threads_freeze_image_anchor\s+BEFORE UPDATE ON public\.paige_chat_threads/);
-    // only trusted server roles may write; anyone else is reverted
-    expect(m).toMatch(/current_user NOT IN \('service_role', 'supabase_admin', 'postgres'\)/);
-    // freeze fires WHENEVER the row retains a non-null id (covers a timestamp-only bump), NOT only on an
-    // id change → a transition TO NULL (FK cascade, expiry clear) still works. Keying on "id DISTINCT
-    // FROM old" was the Codex P2 the timestamp bump slipped through, so that predicate must be gone.
-    expect(m).toMatch(/AND NEW\.last_image_content_id IS NOT NULL THEN/);
+    // the trigger covers the WHOLE client write surface — INSERT (forge onto a new thread) AND UPDATE
+    // (set/redirect/timestamp-bump). Covering only UPDATE left the INSERT forge path open (Codex round 3).
+    expect(m).toMatch(/CREATE TRIGGER trg_paige_chat_threads_freeze_image_anchor\s+BEFORE INSERT OR UPDATE ON public\.paige_chat_threads/);
+    // trusted server roles write freely; everyone else is constrained
+    expect(m).toMatch(/current_user IN \('service_role', 'supabase_admin', 'postgres'\)/);
+    // INSERT: a client-created thread can never carry an anchor → both columns forced NULL
+    expect(m).toMatch(/TG_OP = 'INSERT' THEN\s*\n\s*[\s\S]{0,320}NEW\.last_image_content_id\s*:=\s*NULL;\s*\n\s*NEW\.last_image_anchor_at\s*:=\s*NULL;/);
+    // UPDATE: freeze WHENEVER the row retains a non-null id (covers a timestamp-only bump), NOT only on
+    // an id change → a transition TO NULL (FK cascade, expiry clear) still works. The old "id DISTINCT
+    // FROM old" predicate the timestamp bump slipped through must be gone.
+    expect(m).toMatch(/ELSIF NEW\.last_image_content_id IS NOT NULL THEN/);
     expect(m).not.toMatch(/IS DISTINCT FROM OLD\.last_image_content_id/);
     expect(m).toMatch(/NEW\.last_image_content_id\s*:=\s*OLD\.last_image_content_id/);
     expect(m).toMatch(/NEW\.last_image_anchor_at\s*:=\s*OLD\.last_image_anchor_at/);

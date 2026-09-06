@@ -137,7 +137,7 @@ do $$ begin
   if not exists (select from pg_roles where rolname='service_role') then create role service_role; end if;
 end $$;
 grant usage on schema public to authenticated, service_role;
-grant select, update on public.paige_chat_threads to authenticated, service_role;
+grant select, insert, update on public.paige_chat_threads to authenticated, service_role;
 `;
 
 async function cleanup() {
@@ -258,6 +258,10 @@ try {
     // (4) authenticated CLEAR to NULL → allowed (owner: clear on failed generation; also lets the FK cascade work)
     await psql(`set role authenticated; update public.paige_chat_threads set last_image_content_id=null, last_image_anchor_at=null where id='${th}'; reset role;`);
     assert((await scalar(`select coalesce(last_image_content_id::text,'NULL') from public.paige_chat_threads where id='${th}';`)) === "NULL", "clearing the anchor to NULL must be allowed");
+    // (5) authenticated INSERT of a NEW thread carrying a forged non-null anchor → forced NULL (the
+    // write vector a BEFORE UPDATE trigger alone missed — Codex P2). Service_role INSERT keeps it.
+    const thForge = await scalar(`set role authenticated; insert into public.paige_chat_threads(tenant_id, caller_user_id, last_image_content_id, last_image_anchor_at) values ('${TA}', '00000000-0000-0000-0000-0000000000aa', '${imgA}', now()) returning id;`);
+    assert((await scalar(`select coalesce(last_image_content_id::text,'NULL') from public.paige_chat_threads where id='${thForge}';`)) === "NULL", "authenticated INSERT with a forged anchor must be forced NULL");
   });
 
   await test("scalar/array p_meta does not silently DROP the versions snapshot (jsonb_set object-key contract)", async () => {

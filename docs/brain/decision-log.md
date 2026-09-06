@@ -61,6 +61,16 @@
   a `personaCtx?.tenant_id` guard (the image is filed under the active tenant, so the anchored thread must
   match it). Re-proven: db-proof 12/12 (adds the timestamp-bump-freeze case), vitest 8/8, ci:tsc clean,
   esbuild clean, lints green, §50 clean.
+  **CODEX-FOLD ROUND 3 (1 P2, PR #992):** the freeze trigger was `BEFORE UPDATE` only, so a client could
+  INSERT a NEW thread carrying a forged non-null anchor and bypass it entirely (rounds 1–3 were the SAME
+  class seen from three write vectors — UPDATE-set-id, UPDATE-timestamp-bump, INSERT). Root-cause fix: the
+  trigger now covers the FULL client write surface — `BEFORE INSERT OR UPDATE`. On a non-server INSERT it
+  forces both anchor columns to NULL (a client-created thread never legitimately carries an anchor; the
+  service-role writer sets it only later via UPDATE); on UPDATE it keeps the retain-non-null freeze; a
+  transition to NULL is never frozen (FK cascade / clear). db-proof 12/12 (adds an authenticated INSERT-forge
+  → forced-NULL case), vitest 8/8, ci:tsc + lints green. LESSON: a "make this column server-owned"
+  requirement must enumerate EVERY write vector (INSERT + all UPDATE shapes) up front — patching them one
+  Codex round at a time is the anti-pattern; the complete fix is a trigger over the whole write surface.
 
 - **PAIGE Mind — the owner-approved 3D knowledge orb ported LIVE onto the Solo surface (2026-09-06, MVP mode)** —
   the §28-frozen, Gate-1-approved Three.js "knowledge orb" prototype (`docs/prototypes/command-center-mind-gate1.html`)
