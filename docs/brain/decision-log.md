@@ -1,5 +1,38 @@
 # Decision Log — chronological one-liners
 
+- **PAIGE Mind — the owner-approved 3D knowledge orb ported LIVE onto the Solo surface (2026-09-06, MVP mode)** —
+  the §28-frozen, Gate-1-approved Three.js "knowledge orb" prototype (`docs/prototypes/command-center-mind-gate1.html`)
+  is wired into the real `SoloMindWorkspace` as the Mind subtab's primary instrument. Engine promoted verbatim
+  from the frozen prototype into `src/solo/mind-orb/engine.ts` (`createMindOrb` factory; byte-identical rendering,
+  §28) and code-split behind a dynamic `import("./engine")` so `three` ships as a lazy chunk, never in the main
+  bundle. Nodes bind to REAL read contracts, honest source-signal states, tenant-scoped by the existing hooks:
+  Knowledge resources ← `tenant_knowledge_docs` (LIVE), Connected sources ← n8n readiness (LIVE, status only),
+  Operating decisions ← pending approvals (LIVE); Business context + Client relationships render honest ABSENCE
+  (no frontend hook yet); Offers & services is honest UNAVAILABLE. §58 held (no Systems Check finding surfaced as
+  a Mind record). §32 loud degrade: WebGL probed before `three` loads; probe/mount/render throws all `console.error`
+  and route to the parent record-list fallback with every record still reachable. Read-only surface — no Mind
+  create/update/delete on any tier. Tier VISIBILITY unchanged (redesign of an existing surface, §66/§58): Solo +
+  Sub-account + Enterprise see it, Agency/God/Client/Anon do not. Proof: 28 unit tests + full solo suite 1595
+  passing, `tsc` clean, eslint clean, headless env smoke `scripts/mind-orb-smoke.mjs`.
+  **Proof status (explicit):** the three wired domains (Knowledge / Connected sources / Operating decisions) =
+  **LIVE** in code, proven by unit + build, but **PROOF OWED** on the authenticated runtime — §32.c live drive of the
+  deployed subtab at the four viewports in both themes is OWED (no session here holds a browser that can reach the
+  authenticated Solo surface; owed to the next capable session — Cowork/Chrome — not claimed). Business context +
+  Client relationships domains = **UNAVAILABLE in this view / DEFERRED** (governed store exists server-side; the
+  frontend read-hook is a fast-follow). Offers & services = **UNAVAILABLE** (catalog lives in Campaigns, not a
+  governed fact). No capability is implied LIVE because the orb renders — the render is the §28-frozen prototype;
+  the DATA states are as typed here.
+  **Conflict check vs recorded decisions (all clear):** renders NO `PaigeMark`/`PaigeSymbol` (the retired orbital
+  brand mark is not used — Command-Mark decision preserved); "Open PAIGE" uses the ONE existing workspace, no
+  floating chat; Mind is READ-ONLY (never writes Mind/Memory eligibility); tier visibility UNCHANGED — Solo +
+  Sub-account already received Mind pre-PR (ledger row PR #933), so this is a redesign, NOT new sub-account delivery.
+  **Next owning workstream:** the Business-context + Client-relationships frontend read-hooks (to light those two
+  domains from `business_context.readiness` + governed memory). **Dependency it must read FIRST:**
+  `docs/handoff/solo-setup-business-context-spine-handoff.md` (the safe-field projection contract — it is NARROWER
+  than a raw value; only status + provenance may surface), then this ledger row + `docs/brain/codebase-map.md`
+  "Solo Command Center governed-record surface".
+  Ledger: `docs/doctrine/tier-matrix.md` "PAIGE Mind — the approved 3D knowledge orb"; PR #969.
+
 - **ARCHITECTURE: floating Paige chat is RETIRED from the authenticated platform (owner decision 2026-09-06)** —
   there must be NO floating Paige chat anywhere inside the authenticated platform (no Solo route, Command
   Center, Clients, Campaigns, Settings, Marketplace, Analytics, tenant portal, mobile shell, or embedded
@@ -3414,3 +3447,56 @@ merge (§BRAIN.3) and never claims LIVE without authenticated runtime proof.
 
 **Where recorded.** `docs/binding-ledger/` (new), `docs/doctrine/surface-context-handoff-contract.md`
 (new), `docs/brain/README.md` (index rows), `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4, and this entry.
+## 2026-09-06 · Campaigns → Sales redesigned into the four-view Sales Command Desk (Solo)
+
+Same surface and tiers as Sales Operations Slice A — no gating change, no new feature key, no route,
+no migration (§66 ledger in `docs/doctrine/tier-matrix.md`, same commit). The single-scroll screen
+became an evidence-aware desk switched by a Sales-local `?view=` param (allow-listed, `command`
+fallback, never the shell subtab registry): **Sales Command** (Commercial Pulse · Commercial
+Readiness Ladder of 6 stages · Top Commercial Moves · Open Commercial Work · routed-capture foldout),
+**Commercial Terms**, **Revenue & Collections**, **Sales Scenarios** (a model that writes nothing).
+
+New pure modules `src/solo/sales/deriveSalesCommand.ts` + `salesScenario.ts` carry the honest
+derivation (unit-tested). Truth boundary: Actual received always unavailable (`tenant_orders` never
+summed); Contracted = active one-time terms, recurring shown monthly-equivalent, em-dash — never
+`$0`/"Free" — when there is no one-time value; a deal carries no monetary value (open is a count);
+Contract-pending unavailable (no Vault/contract backend, no deal↔term linkage); Scenario Lab refuses
+the Evidence-supported path without real pipeline evidence.
+
+Verification: full suite 3563/3563; tsc ratchet 13/13; `drive:sales-ops` 524/524 with **zero
+horizontal/nested overflow** across all four views × the real Solo content-column widths (down to
+439px PAIGE-expanded) × both themes. The render driver was tightened to the true column widths (the
+prior one used the full window, so 439px was never tested) and caught the pulse + scenario-banner
+overflow, now fixed. The §39 peer-gate caught a BLOCKING `money(0)`→"Free" defect the render proof
+missed (pure-recurring retainer read "Free"), fixed with an em-dash guard + tests; the §58 read-only
+terms guidance the redesign had dropped was restored. Authenticated live-drive OWED (§32.c). PR: https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/985
+
+## 2026-09-06 · Sales Command Desk → MVP release (responsive fold + container queries + merge)
+
+Owner switched this workstream to MVP delivery mode (design + intended function approved) and
+authorized the release path autonomously; the earlier "final release gate / do-not-merge" hold is
+lifted for this PR. No conflict with recorded decisions: Solo-scoped; no sub-account delivery added;
+no floating authenticated chat; Command Mark untouched; the terms/payment writes use the pre-shipped
+governed seams (declare_client_payment_handling, saveAgreement) — no new governed action, no Rail/
+Mind/Memory wiring, and the Scenario Lab writes nothing.
+
+Responsive decision (owner delegated it): the desk now reflows on the CONTENT COLUMN via a container
+query keyed to `.so-view` (was viewport `@media`, which never reflowed a PAIGE-docked narrow column).
+The Commercial Readiness Ladder — the secondary reference section — collapses to a disclosure by
+DEFAULT at a narrow column (<620px, i.e. PAIGE expanded) and shows in full at a wide column, keeping
+the Commercial Pulse, Top Moves, Open Work and primary actions above the fold. Proof: drive:sales-ops
+524/524, horizontal overflow 0 at all 48 states; command-view vertical scroll dropped materially at
+narrow columns (439: +1469→+862, 521: +1272→+683, 797: +902→+466).
+
+Proof status:
+- LIVE (after merge + prod deploy confirm): the four-view Sales Command Desk on Solo Campaigns → Sales.
+- PARTIAL: Contracted = active one-time terms + recurring shown monthly; deal↔term not linked.
+- UNAVAILABLE (by design, no backend): Actual received (no connected payment source), Contract-pending
+  (no Vault/contract store), scenario/mission persistence.
+- PROOF OWED (§32.c): authenticated production runtime — no auth browser from this headless session;
+  owner/Cowork live-drive checklist is in PR #985.
+
+Next owning workstream: a future "Solo Sales Release 2 (Client Agreements / Actual-received)" must read
+this entry + the tier-matrix "Sales Command Desk redesign" ledger + the truth boundary FIRST, and must
+not present Actual received or contract linkage as live until a real payment/contract backend exists.
+PR: https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/985

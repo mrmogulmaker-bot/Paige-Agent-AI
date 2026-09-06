@@ -242,6 +242,22 @@ PR #909 merged as 49b9f338. Frontend production deployment is READY on paigeagen
 
 ### Solo Sales Ops — a Solo owner can record what one client agreed to (2026-09-03)
 
+**Redesign shipping under MVP mode (2026-09-06).** The owner lifted the final release gate to MVP
+cadence (design + intended function approved) and authorized the release path; PR #985 is being merged
+to `main` and is LIVE on prod once the merge deploy completes. Authenticated live-drive stays
+owner-owed (§32.c). Full record: `docs/brain/decision-log.md` (2026-09-06 MVP-close entry) +
+`docs/doctrine/tier-matrix.md` "Sales Command Desk redesign". The original build (below) read: The
+Sales subtab is being rebuilt into an evidence-aware **Sales Command Desk**: four internal views via a
+Sales-local `?view=` param — Sales Command (Commercial Pulse · 6-stage Commercial Readiness Ladder ·
+Top Commercial Moves · Open Commercial Work), Commercial Terms, Revenue & Collections, and a Sales
+Scenario Lab (a model that writes nothing). Same surface, same tiers, no gating/route/migration change.
+Every commercial figure carries an evidence class; Actual received stays unavailable, Contracted is
+active one-time terms with recurring shown monthly (em-dash, never "$0"/"Free"), Contract-pending
+unavailable. Verified: full suite 3563/3563, tsc ratchet 13/13, `drive:sales-ops` 524/524 with zero
+horizontal/nested overflow across the real Solo content-column widths (to 439px). Authenticated
+live-drive OWED (§32.c). Full §66 ledger: `docs/doctrine/tier-matrix.md` → "the Sales Command Desk
+redesign". Awaiting the owner's live review + final release gate before merge.
+
 **Current usability status: PARTIAL.** Owner feedback explicitly rejects treating the current Sales UX as complete. PR #895 fixed recurring-date display only. **Release 1 usability repair is implemented in PR #903** on `codex/solo-sales-usability-r1`, refreshed onto main `bd32fd6`: functional drawer close/discard, reachable commercial-term editing, workspace cleanup, clearer controls, canonical Catalog/Clients return paths and removal of the oversized client-billing banner. The owner cleared the historical #706 shared-file collision; Pipeline implementation and six Campaigns tabs stay intact. See `docs/delivery/solo-sales-usability-r1.md` for the live product record and evidence. Local eight-frame drawer interaction proof passed; authenticated production persistence and owner acceptance remain **Proof Owed**. Merge and deployment evidence are recorded on PR #903.
 
 The visible record is **Commercial terms and retainers**, not a legal-document lifecycle. Release 2 is a complete Client Agreements prototype, with tenant-uploaded attorney-approved documents first, and requires rendered owner approval before document storage, signature integration or external sends. Neither this record nor an Integration card proves such a provider is connected.
@@ -1972,6 +1988,36 @@ ever completed or been refused. The most likely blocker is a `STRIPE_SECRET_KEY`
 having been configured — a credential this session cannot read or fabricate, named honestly as the
 owner's action rather than guessed around. Independent of that, a real UX defect was fixed: a
 durable (retry-cannot-fix) refusal no longer leaves the action button clickable.
+
+### PAIGE Mind — the approved 3D knowledge orb, LIVE on the Solo surface (production port) — 2026-09-06
+
+**What shipped (PR #969).** The owner-approved living **WebGL knowledge orb** replaces the hand-rolled
+2D-canvas topology on the Solo (and sub-account) **Command Center → Mind** subtab
+(`src/solo/SoloMindWorkspace.tsx`). This is a **presentation + reconciliation** change, not a new data
+capability: the orb is wired to the **same live reads the surface already used** — `useSoloKnowledge`
+(`tenant_knowledge_docs`), `useCommandCenter` (pending approvals), `useN8nSpineReadiness` — reconciled
+onto the six owner-approved domains (`src/solo/mind-orb/mindDomains.ts`). It does **NOT** add
+authenticated Rail/Spine Mind evidence — the integration matrix below (axis B: nothing flows via
+Rail/Spine) is **unchanged**.
+
+**Honesty (§13/§70).** Knowledge / Connected sources / Operating decisions populate from those live
+hooks; **Business context, Client relationships, and Offers render an honest absence** (no frontend
+read-hook yet / catalog lives in Campaigns) — never invented data. §58: Systems Check findings are not
+surfaced in Mind (they stay in the Systems Check subtab). Nodes carry a record's canonical source
+STATE; the orb renders presentation, never fabricated activity.
+
+**Build.** The frozen approved prototype engine was promoted verbatim into `src/solo/mind-orb/engine.ts`
+as a `createMindOrb()` factory (no rendering values changed, §28); `MindOrbCanvas.tsx` mounts it
+code-split (three ships as a separate ~48 KB lazy chunk), WebGL-gated, degrading to the record list on
+failure (§32, never blank); reduced-motion (toggle + OS), offscreen pause, dispose all wired. Subtab
+order unchanged (Systems Check → Mind).
+
+**Proof.** 28 unit tests (reconciliation honesty + component) + 47 sibling command-center tests green;
+`tsc`/`eslint`/`vite build` green with the engine code-split; a headless SwiftShader smoke proves the
+factory renders lit pixels + disposes cleanly. **§32.c authenticated live-drive of the deployed surface
+is OWED to the owner** (headless can't auth the app). Evidence:
+`docs/evidence/ui-delivery/command-center-mind-production-port.md`; per-tier rows:
+`docs/doctrine/tier-matrix.md`. Fast-follow: frontend hooks for the three not-yet-wired domains.
 
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 
