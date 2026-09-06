@@ -165,6 +165,10 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   const signalColors = useMemo(() => resolveSignalColors(dark), [dark]);
   const orbNodes = useMemo(() => buildOrbNodes(domains, (s) => signalColors[s]), [domains, signalColors]);
   const orbRings = useMemo(() => buildOrbRings((s) => signalColors[s]), [signalColors]);
+  // The engine sizes its instanced mesh at init and setData only recolours in place. Re-mount the
+  // canvas (fresh context) ONLY when the node STRUCTURE changes (records added/removed/reordered);
+  // recolour/theme/focus keep the same ids, so those reconcile in place with no rotation jump (§28).
+  const orbKey = useMemo(() => orbNodes.map((n) => n.id).join("|"), [orbNodes]);
 
   const loading = knowledge.loading || command.loading || n8n.loading;
   const partial = !!knowledge.error || command.isError || !!n8n.error;
@@ -288,6 +292,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
                   </div>
                 ) : (
                   <MindOrbCanvas
+                    key={orbKey}
                     className="mind-canvas"
                     nodes={orbNodes}
                     rings={orbRings}
