@@ -66,3 +66,14 @@ honest coordination UI, not as provider capability. Authenticated production own
 still Proof Owed. Google, Apple, Bing, Facebook, LinkedIn, Yelp, directory, search, review, claim,
 correction, response, publish, delegated-authority, PAIGE external execution, Rail, Mind, and Memory
 paths remain UNAVAILABLE until separately implemented and proven through the controlling registry.
+
+## Production closeout
+
+PR #1021 passed CI, Security Audit, and the UI-delivery-evidence workflow, then squash-merged as
+`d4392b9786e68ce44b72905f3ffe6771aea319ab`. The `paigeagent.ai` and `app.paigeagent.ai` version
+endpoints both returned `d4392b9786e68ce44b72905f3ffe6771aea319ab-mtqao86w`. A production
+browser reached `/solo/100/settings/setup/public-presence` and was correctly redirected to
+`/auth?next=%2Fsolo%2F100%2Fsettings%2Fsetup%2Fpublic-presence`. Signed-in owner behavior and real
+workspace switching remain UNVERIFIED/Proof Owed. All provider, PAIGE external execution, Rail,
+Mind, and Memory capability remains UNAVAILABLE; the deployed UI is not evidence of connection,
+authorization, claim, sync, correction, publishing, or outcome.
