@@ -32,6 +32,24 @@
   no-scrollbar layout and the live chip write/route at 1536×770/1366×768/1024×768/900×1000/narrow, both themes,
   PAIGE open/closed — owed to a browser-capable session. Evidence:
   `docs/evidence/ui-delivery/dedicated-paige-chat-scrollbar-and-permission-chip.md`.
+  **§39/§5 FOLD (2026-09-06, pre-merge, both findings verified against source):** the peer-gate and
+  compliance officer each caught a real defect the author's green proofs structurally could not.
+  **(a) §13 honesty — chip pegged to "Ask first."** The standing-grant signal keyed on the domain
+  aggregate `posture === "guardrails"`, which needs *every* actable tool in a domain to be
+  effective-`auto`; but each domain carries a `high`-risk tool capped at `confirm` (`maxModeForRisk`),
+  so that aggregate is UNREACHABLE — the chip would show "Ask first" forever and understate a real
+  `auto` grant (the exact lie the chip swears it never tells). **Fixed:** re-keyed `deriveChipView` to
+  the tool level (`Object.values(gov.byTool).some(t => t.effective === "auto")`); a reachability test
+  now drives it through the real `deriveGovernance` (ordinary@auto → "Within policy"; high@auto →
+  clamped → "Ask first"), so no test asserts an impossible shape. **(b) skill "hide-not-fix" — wide
+  GFM tables clipped.** The transcript's `overflow-x-hidden` would clip a wide markdown table (a common
+  Paige output) with no scroll wrapper, making rightmost columns unreachable. **Fixed:** `MarkdownMessage`
+  now wraps every `table` in an `overflow-x-auto` container (rendered proof `MarkdownMessage.test.tsx`;
+  the contract test now exercises a table). **(c) reduced-motion (peer-gate P2, pre-existing):** the
+  shared `DropdownMenuContent`/`SubContent` animated with no `motion-reduce` guard; added
+  `motion-reduce:animate-none` at the primitive layer so the popover honestly respects the preference.
+  The pre-existing gold-as-background violation in the untouched `BusinessCreditDashboard.tsx:271` is
+  out of this PR's scope (CI scopes gold to changed files) — noted, not fixed here.
 - **Capability Slice 2 — campaign-brief conversational create/list/revise reach (2026-09-06, Task #16, owner-authorized)** —
   Paige can now, in chat, draft / revise / list a Solo workspace's **campaign briefs** (a brief = owner-authored
   PLANNING intent, NEVER proof a campaign is live/spent/published — the tool descriptions, RPC messages, and chat

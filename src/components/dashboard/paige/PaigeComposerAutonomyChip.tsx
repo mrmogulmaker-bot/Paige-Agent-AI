@@ -48,14 +48,14 @@ interface Props {
 }
 
 /** The subset of governance state the chip's honest label derives from. */
-export type ChipGovView = Pick<SoloToolGovernance, "loading" | "configured" | "error" | "domains">;
+export type ChipGovView = Pick<SoloToolGovernance, "loading" | "configured" | "error" | "byTool">;
 
 export interface ChipView {
   label: string;
   summary: string | null;
-  /** A real standing grant exists (some domain at `auto`). */
+  /** A real standing grant exists (some governed tool will actually run at `auto`). */
   hasStandingGrant: boolean;
-  /** Configured AND nothing on standing auto — the workspace is in ask-first. */
+  /** Configured AND nothing runs on standing auto — the workspace is in ask-first. */
   isAskFirst: boolean;
 }
 
@@ -63,10 +63,18 @@ export interface ChipView {
  * Pure derivation of the chip's HONEST label from real governance state (§13). Exported so it is
  * unit-tested directly against real row-derived shapes, without a Radix render. The label never
  * asserts a posture the server does not hold: loading says "Checking…", an unconfigured/errored read
- * says so, and the posture is read from the domains' real effective postures.
+ * says so, and the standing-grant signal is read from the tools' real EFFECTIVE modes.
+ *
+ * A real standing grant = at least one governed tool whose EFFECTIVE mode is `auto` (it will act on
+ * its own). This is keyed at the TOOL level deliberately, NOT the domain aggregate: a domain reads
+ * `guardrails` only when EVERY actable tool is effective-`auto`, but each domain carries at least one
+ * `high`-risk tool whose risk cap is `confirm`, so that aggregate is unreachable in production. A
+ * domain-level check would therefore always be false and would falsely label a workspace that set an
+ * ordinary tool to `auto` (a real standing grant) as "Ask first" — the §13 lie this chip must avoid.
  */
 export function deriveChipView(gov: ChipGovView): ChipView {
-  const hasStandingGrant = gov.configured && gov.domains.some((d) => d.posture === "guardrails");
+  const hasStandingGrant =
+    gov.configured && Object.values(gov.byTool).some((t) => t.effective === "auto");
   const isAskFirst = gov.configured && !hasStandingGrant;
   if (gov.loading) return { label: "Checking…", summary: null, hasStandingGrant, isAskFirst };
   if (!gov.configured) {

@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 
 const CHAT = readFileSync("src/components/dashboard/PaigeAIChat.tsx", "utf8");
 const DIAGRAM = readFileSync("src/components/chat/EntityDiagramCard.tsx", "utf8");
+const MARKDOWN = readFileSync("src/components/chat/MarkdownMessage.tsx", "utf8");
 
 describe("dedicated Solo chat — horizontal overflow is fixed at the source, not clipped", () => {
   it("the transcript is the ONE vertical scroll owner and cannot render a horizontal bar", () => {
@@ -38,6 +39,17 @@ describe("dedicated Solo chat — horizontal overflow is fixed at the source, no
 
   it("a wide entity diagram self-scrolls in its own container so overflow-x-hidden never clips it", () => {
     expect(DIAGRAM).toMatch(/className="rounded-xl my-3 w-full max-w-full overflow-x-auto"/);
+  });
+
+  it("a wide GFM table (a common Paige output) self-scrolls in its own wrapper, never clipped", () => {
+    // §39 fold: the transcript's overflow-x-hidden would clip a wide markdown table with no scroll
+    // wrapper, making its rightmost columns unreachable. MarkdownMessage overrides `table` to wrap it
+    // in an overflow-x-auto container so it self-scrolls (the wide-content pattern), and the table's
+    // own width class no longer forces it wider than that wrapper. A rendered proof lives in
+    // MarkdownMessage.test.tsx.
+    expect(MARKDOWN).toMatch(/table: \(\{ node, \.\.\.props \}\) => \(/);
+    expect(MARKDOWN).toMatch(/<div className="my-2 max-w-full overflow-x-auto">/);
+    expect(MARKDOWN).not.toMatch(/\[&_table\]:my-2/);
   });
 
   it("the Solo composer action bar renders the caller's autonomy control and can wrap on narrow widths", () => {

@@ -7,55 +7,93 @@
 // item interactions (the real set_tool_autonomy write on "Ask first", the Trust Compass route) run in
 // a real browser — recorded as Proof Owed in the UI evidence record, since jsdom does not carry the
 // pointer/layout shims Radix menus need to open reliably.
+//
+// §39/§5 fold (PR #1008): the standing-grant signal is keyed at the TOOL level (`byTool` effective
+// `auto`), NOT the domain aggregate. A domain reads `guardrails` only when EVERY actable tool is
+// effective-`auto`, but every domain carries a `high`-risk tool capped at `confirm`, so that aggregate
+// is unreachable — a domain-level check would peg the chip to "Ask first" forever and lie about a real
+// standing `auto` grant. So these tests drive the derivation through the REAL `deriveGovernance`, not
+// an injected shape the runtime can never emit.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { deriveChipView, type ChipGovView } from "./PaigeComposerAutonomyChip";
+import { deriveGovernance } from "@/solo/data/useSoloToolGovernance";
 
-const domain = (posture: string) => ({ posture }) as unknown as ChipGovView["domains"][number];
+const tool = (effective: string) => ({ effective }) as unknown as ChipGovView["byTool"][string];
 
 describe("deriveChipView — the label reflects real state, never an unbacked claim", () => {
   it("loading → 'Checking…', no posture asserted", () => {
-    const v = deriveChipView({ loading: true, configured: false, error: null, domains: [] });
+    const v = deriveChipView({ loading: true, configured: false, error: null, byTool: {} });
     expect(v.label).toBe("Checking…");
     expect(v.isAskFirst).toBe(false);
     expect(v.hasStandingGrant).toBe(false);
   });
 
   it("unconfigured with an error → honest 'couldn't load', never a fake posture", () => {
-    const v = deriveChipView({ loading: false, configured: false, error: "boom", domains: [] });
+    const v = deriveChipView({ loading: false, configured: false, error: "boom", byTool: {} });
     expect(v.label).toBe("Permissions");
     expect(v.summary).toMatch(/couldn't load/i);
   });
 
   it("unconfigured with no error → honest 'not set up'", () => {
-    const v = deriveChipView({ loading: false, configured: false, error: null, domains: [] });
+    const v = deriveChipView({ loading: false, configured: false, error: null, byTool: {} });
     expect(v.label).toBe("Permissions");
     expect(v.summary).toMatch(/not set up/i);
   });
 
-  it("configured with nothing on standing auto → 'Ask first' (isAskFirst)", () => {
+  it("configured with nothing running on auto → 'Ask first' (isAskFirst)", () => {
     const v = deriveChipView({
       loading: false,
       configured: true,
       error: null,
-      domains: [domain("asks"), domain("held"), domain("your_call")],
+      byTool: { crm_create_contact: tool("confirm"), crm_delete_contact: tool("off") },
     });
     expect(v.label).toBe("Ask first");
     expect(v.isAskFirst).toBe(true);
     expect(v.hasStandingGrant).toBe(false);
   });
 
-  it("configured with a real standing grant (a domain at guardrails/auto) → 'Within policy'", () => {
+  it("configured with a real standing grant (a tool at effective auto) → 'Within policy'", () => {
     const v = deriveChipView({
       loading: false,
       configured: true,
       error: null,
-      domains: [domain("asks"), domain("guardrails")],
+      byTool: { crm_create_contact: tool("auto"), crm_delete_contact: tool("confirm") },
     });
     expect(v.label).toBe("Within policy");
     expect(v.hasStandingGrant).toBe(true);
     expect(v.isAskFirst).toBe(false);
+  });
+});
+
+// ── Reachability proof against the REAL derivation (guards against the §39 false-green that a
+//    domain-level `guardrails` check produced) ────────────────────────────────────────────────────
+const row = (tool_key: string, mode: string) => ({
+  tool_key,
+  label: tool_key,
+  category: "",
+  mode,
+  is_default: mode === "confirm",
+});
+
+describe("deriveChipView over deriveGovernance — reachable from real rows, honest for high tools", () => {
+  it("an ORDINARY tool stored 'auto' is a real standing grant → 'Within policy' (the state is reachable)", () => {
+    const { byTool } = deriveGovernance([row("crm_create_contact", "auto")], {}, true);
+    // Sanity: the real derivation produced an effective-auto tool (ordinary tools are not risk-capped).
+    expect(byTool.crm_create_contact.effective).toBe("auto");
+    const v = deriveChipView({ loading: false, configured: true, error: null, byTool });
+    expect(v.label).toBe("Within policy");
+    expect(v.hasStandingGrant).toBe(true);
+  });
+
+  it("a HIGH-risk tool stored 'auto' is clamped to 'confirm' → still 'Ask first' (no false autonomy claim)", () => {
+    const { byTool } = deriveGovernance([row("crm_delete_contact", "auto")], {}, true);
+    // The risk cap holds: a high tool can never actually run auto, so it is NOT a standing grant.
+    expect(byTool.crm_delete_contact.effective).toBe("confirm");
+    const v = deriveChipView({ loading: false, configured: true, error: null, byTool });
+    expect(v.label).toBe("Ask first");
+    expect(v.hasStandingGrant).toBe(false);
   });
 });
 
@@ -67,9 +105,12 @@ vi.mock("@/hooks/useTenantContext", () => ({
   useTenantContext: () => ({ activeTenant: { account_number: 3855 } }),
 }));
 const govMock = vi.fn();
-vi.mock("@/solo/data/useSoloToolGovernance", () => ({
-  useSoloToolGovernance: () => govMock(),
-}));
+vi.mock("@/solo/data/useSoloToolGovernance", async () => {
+  const actual = await vi.importActual<typeof import("@/solo/data/useSoloToolGovernance")>(
+    "@/solo/data/useSoloToolGovernance",
+  );
+  return { ...actual, useSoloToolGovernance: () => govMock() };
+});
 
 import { PaigeComposerAutonomyChip } from "./PaigeComposerAutonomyChip";
 
@@ -77,8 +118,8 @@ const baseGov = {
   loading: false,
   configured: true,
   error: null,
-  domains: [{ posture: "asks" }],
-  byTool: {},
+  domains: [],
+  byTool: { crm_create_contact: tool("confirm") },
   ceilingLimiting: false,
   ceilingUnconfirmed: false,
   canWrite: true,
@@ -121,8 +162,8 @@ describe("PaigeComposerAutonomyChip trigger", () => {
     unmount();
   });
 
-  it("reflects 'Within policy' when a real standing grant exists", async () => {
-    govMock.mockReturnValue({ ...baseGov, domains: [{ posture: "guardrails" }] });
+  it("reflects 'Within policy' when a real standing grant exists (a tool at effective auto)", async () => {
+    govMock.mockReturnValue({ ...baseGov, byTool: { crm_create_contact: tool("auto") } });
     const { host, unmount } = await mountChip();
     expect(trigger(host)!.getAttribute("aria-label")).toMatch(/currently within policy/i);
     unmount();
