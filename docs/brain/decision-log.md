@@ -1,5 +1,74 @@
 # Decision Log — chronological one-liners
 
+- **RE-2 M1-a — money-truth layer (provider-confirmed spend + reconciliation + complete receipt), DARK (2026-09-06, owner-authorized, PR #1014).**
+  The money-truth core of the real-money spend-control backbone (owner ruling 2026-09-06, `autonomy-architecture.md`
+  §10.8 item 3; distinct from the §8.4 LLM-token internal-cost lane). Extends the PR-1 substrate (§18, no fork),
+  migration `20270102000000_re2_m1a_money_truth.sql`. **DARK — ZERO producers**; proven with controlled fixtures
+  inside `BEGIN..ROLLBACK`; no real payment/purchase/ad-spend/bookkeeping/provider change. **What it adds:**
+  `paige_authority_act_runs` gains `confirmed_cost_usd` (provider-CONFIRMED actual = financial truth, distinct from
+  the reserved `cost_usd` estimate — reserved ≠ spent, §13), `confirmed_currency`, `rail_evidence`, an ORTHOGONAL
+  `reconciliation_status` (none/partially_refunded/refunded/reversed/voided — a refunded act keeps status='succeeded'
+  so `authority_reserve`'s exactly-once replay is not broken), `over_cap_breach`; a NEW append-only immutable audit
+  `paige_authority_reconciliations` (§17 — enforced by UPDATE/DELETE/TRUNCATE triggers + `ON DELETE RESTRICT` FKs);
+  and `authority_confirm` / `authority_reconcile` / `authority_receipt`. `authority_confirm` records the confirmed
+  actual and trues-up the atomic ledger by (confirmed−reserved) bounded to the act's own contribution (never a
+  sibling's); `authority_reconcile` handles partial/refund/reversal/external_change/adjust/void, bounding each
+  event's ledger effect to the act's own contribution (over-refund can't erase a sibling or open phantom cap
+  headroom), insert-before-apply, idempotent per (receipt_id, provider_event_id) on APPLIED rows, out-of-order/
+  non-USD events recorded (applied=false)+escalated never dropped; over_cap on confirm RECORDS truth never rejects.
+  DROPs the dark zero-producer `authority_consume` (§37 verified, §58 flagged). §59 writers service-role EXECUTE-only
+  (settlement truth only from authenticated provider evidence — never a human click with a self-asserted amount);
+  reader authenticated+member. §38 evidence-only of the tenant's own rail; never merchant-of-record.
+  **THREE review layers, all cleared (§13 — layered defense, no single pass sufficient):** §5 compliance + §39
+  adversarial verifier both FIX-FIRST (folded C1 sibling-safety, H1 orphan-idempotency, H2 RESTRICT/TRUNCATE
+  immutability, H3 event-id, M1 live breach recompute, M2 terminal guard, M3 label, B1/B2/B3, L1); §39 confirming
+  pass on the folded diff = SHIP (no new defect); **Codex** (third layer) then caught NULL-input coercion bugs the
+  first two layers missed — folded P1 (reject NULL confirmed amount), P1 (reject NULL delta), P1 (require
+  provider_event_id for provider-originated events), P2 (surface per-event evidence in the receipt).
+  **PROOF (§32):** `BEGIN..ROLLBACK` on prod (ref `xygzykjyynhzqytbqnzu`) PROOF_OK across both folds — structural
+  S1-S9 + behavioral incl. the C1 two-act sibling-safety test, H1 redelivery-applies, H2 delete-blocked, M1
+  breach-clears, M2 void/post-terminal, M3 label, EUR fail-closed, §59 refusals, P1a/P1b/P1c/P2. Guards
+  (lint:definer-fns/managed-schema/migration-versions) + §50/§63 clean.
+  **INTEGRATION CAPABILITY REGISTRY (owner directive 2026-09-06) — MISSING-ENTRY REQUIREMENT RECORDED, not
+  invented.** No Integration Capability Registry exists in `docs/brain/` yet and an agent is building it; per the
+  directive's rule 6 this slice did NOT create a competing registry. M1-a is the **provider-agnostic** money
+  backbone — it invents NO provider authority, names no provider, connects nothing, and asserts no provider is
+  live/connected/authorized/autonomous (the confirm/reconcile settlement-truth is fed by an authenticated provider
+  webhook/read that **PR-3** wires per action family). **OWED registry entry (for the Registry Steward / registry
+  agent to add once it exists):** capability = *record-provider-confirmed-spend + reconcile*; provider/scopes = **none
+  (provider-agnostic backbone; a concrete provider is bound only at PR-3)**; authority lane = the RE-2 grant → §67/§68
+  ceiling → `resolve_execution_autonomy` → `authority_reserve` → `authority_confirm`/`authority_reconcile` chain,
+  **execution DARK**; provider-confirmed outcome path = `authority_confirm`(actual)/`authority_reconcile`(refund/
+  reversal/…) service-role-only, fed only by authenticated provider evidence; Rail = `paige_authority_act_runs` +
+  `paige_authority_reconciliations` (immutable); Mind/Memory = none (no LLM/memory surface); proof = §32 PROOF_OK
+  above; limitations = USD-only (multi-currency FX deferred, non-USD fails closed), campaign/client-engagement caps
+  = M1-b (owed), no provider wired (PR-3). Tier-vs-role kept separate (§59 gates on service_role/member, never a
+  URL/tier; admin is a role).
+  **OWNER DECISIONS FLAGGED (safe fail-closed defaults shipped; owner to weigh in — not blocking):** (1) currency/FX
+  (USD-only, non-USD fails closed); (2) audit retention — RESTRICT blocks hard-deleting a tenant/grant/receipt with
+  financial records (offboarding must archive-then-detach); (3) void/state-machine financial semantics (minimal
+  terminal guard shipped; full semantics a PR-3 decision).
+  **LOW hardening follow-ups (from §39 confirming pass):** loud-RAISE on a missing reserved-window row; per-act
+  over_cap_breach flag semantics; a `grant_id`-immutability assert. **§32.a persisted-apply OWED post-merge** (via
+  `deploy-migrations`); **authenticated drive OWED to PR-3**. **OUTCOME: MERGING** (flip to MERGED + §32.a CONFIRMED
+  post-merge).
+
+- **PARKED FINDING (2026-09-06) — LLM-token internal-cost meter (§8.4 / MET1 / #737) is LIVE; NOT M1.**
+  Surfaced while grounding M1 (real-money backbone); recorded + parked per owner discipline (stay tight on M1).
+  **Affected area:** the §8.4 LLM-token *internal-cost* lane — `public.meter_llm_usage()` drain +
+  `cron.job 'meter-llm-usage-hourly'` (`35 * * * *`) → `platform_usage_events (event_type='llm_tokens')`;
+  the parked #737 "MET2 evidence owed". This is a SEPARATE lane from RE-2 money-spend metering (owner ruling
+  2026-09-06 distinguished the two) and must not dilute M1. **Current state (verified on prod
+  `xygzykjyynhzqytbqnzu`, 2026-09-06 read-only):** cron active=true, **102/102 runs succeeded** (last end
+  18:35 UTC); `platform_usage_events` holds **322 `llm_tokens` rows / 22,869,251 tokens** (last event
+  2026-09-05 14:20 UTC — idempotent, nothing new to drain since). So MET1 works and the #737 "does it run?"
+  question is effectively **YES**. **Risk:** LOW — not an M1 dependency; no tenant-safety/authority/actual-spend
+  impact. **Open (token-lane's OWN roadmap, not M1):** (a) close #737 MET2 with this evidence; (b) fix the stale
+  `autonomy-architecture.md §8.4` line that still names `platform_metered_events` — the drain writes
+  `platform_usage_events` (owner ruling 2026-09-03; the §8.4 doc contradiction); (c) Stripe metered-item attach
+  + rollup (money-spine "Missing"). **Recommended next owner/slice:** the token-billing/#737 owner — NOT this
+  M1 program. Returning to M1.
+
 - **Capability System Slice 3 (F05) increment 1 — CRM/scheduling write receipts record an honest Rail outcome (2026-09-06, Task #19, owner-authorized)** —
   three consequential chat acts that recorded ONLY to `paige_audit_log` and left NO capability-Rail row —
   `crm_log_activity`, `calendar_book_meeting`, `crm_create_task` (the write-receipts the §39 Slice-1 verifier
