@@ -211,7 +211,7 @@ export function deriveFinanceInScopeFromFeatures(
 // ---------------------------------------------------------------------------
 // LEAK 1b (§37) — request-supplied `clientContext` guard. The frontend
 // `useClientChatContext` hook builds a credit-laden clientContext for the
-// funding-app surfaces (PaigeChat / FloatingChatbot / PaigeAIChat). For a
+// funding-app surfaces (PaigeChat / PaigeAIChat). For a
 // NON-funding tenant, that credit content must never reach the neutral prompt.
 // This server-side guard keeps only the vertical-neutral prefix (the "Session:"
 // / "Current page:" awareness lines the frontend prepends) and drops the

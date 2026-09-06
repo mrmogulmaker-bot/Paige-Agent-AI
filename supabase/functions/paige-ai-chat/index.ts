@@ -707,7 +707,12 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext: rawClientContext, userTime, userTimezone, userTimeFormatted, canvasArtifact } = validatedData;
+    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext: rawClientContext, userTime, userTimezone, userTimeFormatted } = validatedData;
+    // canvasArtifact is a CLIENT request field, meaningful ONLY in a server-resolved Studio session.
+    // Declared `let` so it can be neutralized for a dedicated (non-Studio) chat once studio_session_id
+    // is resolved (Codex P2): a dedicated-chat client must not be able to drive the reuse clamp with a
+    // forged canvas id, nor suppress the server-owned refine-anchor maintenance, via this field.
+    let canvasArtifact = validatedData.canvasArtifact ?? null;
     // The approvals this request carries, as a set. Derived ONCE from the validated body — never
     // re-read from a raw field further down, which is how a validated value stops being the value
     // that gets used.
@@ -4332,9 +4337,16 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // the agent made THIS turn so the stream tells the client exactly what to open — never a
     // guessed manifest index (the manifest is newest-LAST and doesn't re-order on edits).
     let studioSessionId: string | null = null;
+    // Task #15 — the SERVER-OWNED in-place-image-refine anchor for the dedicated chat (resolved from
+    // the thread row below): { id } of the immediately-eligible Paige image, or null when absent/expired.
+    // The model never supplies the id authority; it only echoes this exact id back, re-checked at the tool.
+    let refineImageAnchor: { id: string } | null = null;
+    // An image is "immediately eligible" for in-place refine for 30 min after Paige made it in this
+    // thread; after that a refine mints a fresh image (the anchor's expiry clear).
+    const IMAGE_REFINE_ANCHOR_WINDOW_MS = 30 * 60 * 1000;
     const studioLinked: Array<{ kind: string; id: string; title: string; url: string | null }> = [];
     // #29 — REGULAR-CHAT deliverables. Outside a Studio session there is no canvas to link to, but a
-    // chat surface (PaigeChat/PaigeAIChat/FloatingChatbot/BrokerPaigeSession) still earns the
+    // chat surface (PaigeChat/PaigeAIChat/BrokerPaigeSession) still earns the
     // Cowork-style "Created a file" handoff card. This collects the artifacts the agent PERSISTED
     // this turn (document/image) so the stream can name each one for the client to render — the SAME
     // `paige_artifact` frame the Studio canvas already consumes (§18 one home), just emitted on the
@@ -4502,7 +4514,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
 
       try {
         const { data: th } = await supabaseClient
-          .from("paige_chat_threads").select("summary, studio_session_id").eq("id", payloadThreadId).maybeSingle();
+          .from("paige_chat_threads").select("summary, studio_session_id, last_image_content_id, last_image_anchor_at").eq("id", payloadThreadId).maybeSingle();
         // STUDIO SESSION → swap Paige's persona (aiMessages[0]) for her design-studio specialist's
         // identity (#292). Gated on studio_session_id, which is NULL for EVERY Your-Paige/contact
         // thread — so the main chat's identity is provably untouched by this branch.
@@ -4560,6 +4572,26 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
               content: `CANVAS STATE — the artifact currently on the canvas is a ${canvasLabel} (content id ${canvasArtifact.id}). If the user is refining, adjusting, or regenerating THAT ${canvasLabel}, pass target_content_id:"${canvasArtifact.id}" to ${canvasTool} so it updates in place and keeps its version history. If they instead want a brand-new/additional ${canvasLabel}, OMIT target_content_id so it's created as a separate asset — never overwrite the on-canvas one when they asked for a new one.`,
             });
           }
+        }
+        // Task #15 (Codex P2) — canvasArtifact is a CLIENT field; honor it ONLY in a server-resolved
+        // Studio session. A dedicated (non-Studio) chat has no canvas, so null it here now that
+        // studioSessionId is resolved: this makes the reuse clamp and the anchor maintenance below key
+        // on the SERVER's studio state, so a forged canvasArtifact can neither drive a client-supplied
+        // reuse id nor suppress the server-owned anchor.
+        if (!studioSessionId) canvasArtifact = null;
+        // Task #15 — DEDICATED chat (no Studio session): resolve the server-owned in-place-refine
+        // anchor from THIS thread row (RLS already double-scopes it to the caller's own, tenant-matched
+        // thread) and, when it is still within the recency window, tell the model it can refine that
+        // image in place. The model NEVER supplies the id authority — it echoes back the exact server
+        // anchor id, which the generate_image handler re-checks before reusing (server is authority).
+        if (!th?.studio_session_id && canvasArtifact == null
+            && th?.last_image_content_id && th?.last_image_anchor_at
+            && (Date.now() - new Date(th.last_image_anchor_at as string).getTime()) < IMAGE_REFINE_ANCHOR_WINDOW_MS) {
+          refineImageAnchor = { id: String(th.last_image_content_id) };
+          aiMessages.splice(2, 0, {
+            role: "system",
+            content: `LAST IMAGE — you generated an image earlier in this conversation (content id ${refineImageAnchor.id}). If the user is refining, adjusting, or regenerating THAT image (e.g. "make it brighter", "change the background"), pass target_content_id:"${refineImageAnchor.id}" to generate_image so it updates in place and keeps its version history. If they want a brand-new/additional image, OMIT target_content_id so it's created as a separate asset.`,
+          });
         }
         if (th?.summary) {
           // THE ROLLING SUMMARY IS PROTECTED, and it is the strongest case of the lot. This
@@ -10273,8 +10305,30 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // #292 — reuse the on-canvas image row (stack its versions) ONLY when the model targets
               // the exact image that's actually on the canvas. Any other id → treat as a new asset
               // (null), so a stray/echoed id can never clobber a different artifact (§13 clamp).
+              // #292 Studio canvas clamp (unchanged): reuse the on-canvas image row when the model
+              // targets it. Task #15 dedicated-chat clamp: OUTSIDE Studio, reuse ONLY when the model
+              // echoes the exact SERVER-OWNED anchor id (never an arbitrary client/model id) and that
+              // anchor is still within its recency window (resolved above from the thread row).
               const reuseImageId = (canvasArtifact?.kind === "content" && args.target_content_id === canvasArtifact.id)
-                ? canvasArtifact.id : null;
+                ? canvasArtifact.id
+                : (!canvasArtifact && refineImageAnchor && args.target_content_id === refineImageAnchor.id)
+                ? refineImageAnchor.id
+                : null;
+              // Task #15 (Codex P2) — CLEAR the dedicated-chat refine anchor BEFORE the generation runs.
+              // This turn's reuse target was already captured into `reuseImageId` above, so clearing the
+              // stored anchor now is safe for this turn — and it guarantees a HARD failure (the `throw`
+              // guards on the invoke below) can never leave a stale anchor that a later refine would
+              // overwrite an OLDER image through. A genuine success re-ADVANCES the anchor to the new
+              // filed id at the end of this branch. Dedicated chat only; SERVICE-ROLE (the freeze trigger
+              // admits it); fenced to (thread ∧ caller ∧ ACTIVE tenant); best-effort + LOGGED (§13/§32).
+              if (!studioSessionId && payloadThreadId && personaCtx?.tenant_id) {
+                const { error: clearErr } = await supabase.from("paige_chat_threads")
+                  .update({ last_image_content_id: null, last_image_anchor_at: null })
+                  .eq("id", payloadThreadId)
+                  .eq("caller_user_id", user.id)
+                  .eq("tenant_id", personaCtx.tenant_id);
+                if (clearErr) console.warn("[task#15] refine anchor pre-clear failed:", clearErr.message);
+              }
               const { data: img, error } = await supabaseClient.functions.invoke("generate-image", {
                 body: {
                   prompt: args.prompt,
@@ -10345,6 +10399,31 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // lets a rescue regeneration that DID file count as a real success.
               if (studioSessionId && (result as any)?.success === true && !artifactProduced("saved_id", (result as any)?.content_id)) {
                 result = { success: false, error: IMAGE_NOT_FILED_ERROR };
+              }
+              // Task #15 — ADVANCE the server-owned refine anchor when this generation genuinely FILED a
+              // content_id, so the next "make it brighter" refine stacks onto this image. DEDICATED chat
+              // only (Studio uses its canvas + studio_artifact_versions). The anchor was CLEARED up-front
+              // above, so the unfiled / needs_config / hard-fail (throw) paths need no work here — the
+              // anchor is already null (owner: clear on failed generation; Codex P1).
+              // The write is SERVICE-ROLE (`supabase`): the freeze trigger trg_paige_chat_threads_freeze_image_anchor
+              // admits only a server role to set a non-null anchor (§59 — a browser cannot forge one). It
+              // is fenced to (thread id ∧ caller ∧ ACTIVE tenant): `.eq("caller_user_id", user.id)`
+              // reproduces the thread-ownership half of RLS, and `.eq("tenant_id", personaCtx.tenant_id)`
+              // the tenant half the service-role write bypasses — so a MULTI-TENANT caller can never stamp
+              // an active-tenant image id into a thread of an INACTIVE workspace (Codex P2). The image was
+              // filed under personaCtx.tenant_id, so the anchored thread must match it. Best-effort: LOGGED.
+              if (!studioSessionId && payloadThreadId && personaCtx?.tenant_id
+                  && (result as any)?.success === true
+                  && artifactProduced("saved_id", (result as any)?.content_id)) {
+                const { error: anchorErr } = await supabase.from("paige_chat_threads")
+                  .update({
+                    last_image_content_id: String((result as any).content_id),
+                    last_image_anchor_at: new Date().toISOString(),
+                  })
+                  .eq("id", payloadThreadId)
+                  .eq("caller_user_id", user.id)
+                  .eq("tenant_id", personaCtx.tenant_id);
+                if (anchorErr) console.warn("[task#15] refine anchor advance failed:", anchorErr.message);
               }
             } else if (tc.function.name === "calendar_book_meeting") {
               // Confirm is enforced by the central autonomy gate above (a booking

@@ -498,6 +498,32 @@ only `paige_audit_log`; each migration wave adds its own copy. An unmapped capab
 generic line rather than nothing. **Reads are never recorded.** The §32.c authenticated live-drive —
 that a row actually RENDERS for the owner — is **owed**, not claimed.
 
+### Dedicated Paige chat in-place image refine — BACKEND (Task #15, 2026-09-06)
+
+Refining an image Paige just made in the dedicated chat now version-stacks the SAME `marketing_content`
+row instead of minting a new sibling: a server-owned per-(tenant,thread) anchor on `paige_chat_threads`
+(`last_image_content_id` / `last_image_anchor_at`) drives a version-preserving reuse —
+`save_marketing_content` snapshots the prior image into `meta.versions[]` before the tenant-scoped
+overwrite. The model's `target_content_id` is only a refine-intent echo; the id authority is the server
+anchor. Studio's canvas clamp + the §33 critique-loop are byte-unchanged.
+
+**No route, gate or tier permission changed.** Availability follows which surface's dedicated chat sends a
+`threadId`; the safety fence is unchanged (`save_marketing_content` reuse stays `WHERE id=p_id AND tenant_id=_tenant`).
+
+| Tier | In-place refine reuses the anchor | Why |
+|---|---|---|
+| **God / Super Admin** | via act-as inside a tenant | tenant-less itself; drives a tenant's dedicated chat by act-as |
+| **Agency** (agency-as-tenant) | ✓ | `PaigeAIChat.tsx` sends `threadId` |
+| **Standalone Solo** | ✓ | same |
+| **Sub-account** | ✓ its own tenant/thread only | anchor lives on the RLS-scoped thread row |
+| **Client** (portal) | — feature ABSENT (safe) | `PaigeChat.tsx` sends no `threadId` → no anchor read/write; image gen is role-gated out anyway |
+| **Anonymous** | — | never reaches an authenticated chat |
+
+**Recorded honestly (§13):** this is the BACKEND. The frontend version-history UI (`meta.versions` is not
+yet rendered) and the authenticated end-to-end live-drive are **§32.c OWED**. Proof:
+`scripts/marketing-content-refine-db-proof.mjs` 10/10 on real Postgres 16;
+`src/__tests__/dedicated-chat-image-refine-anchor.test.ts` 7/7.
+
 #### Wave 3 — Communications, and a sixth outcome (2026-09-05, migration `20261220000000`)
 
 Owner-sequenced first, under the ruling *"every real-money external action MUST record

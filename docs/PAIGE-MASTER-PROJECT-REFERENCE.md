@@ -1645,9 +1645,18 @@ the status label, and the artifact card all inherit the honest signal (§13/§70
 tests + 167 green across the source-asserting suite; §50 clean; transpiles clean. Increment 1.1 (PR #974)
 folded two Codex-caught edge-cases (Studio image needs a filed `content_id`; a drafts array of
 content-less items isn't usable copy). **Proof owed:** authenticated owner §32.c live-drive (headless).
+**Slice 1 — dedicated-chat in-place image refine: BACKEND SHIPPED (2026-09-06, task #15).** Refining an image
+Paige just made in the dedicated chat now version-stacks the SAME artifact: a SERVER-OWNED per-(tenant,thread)
+anchor on `paige_chat_threads` (never a client/model-supplied id — the model's `target_content_id` is only a
+refine-intent echo, re-checked against the server anchor) drives a version-preserving reuse —
+`save_marketing_content` snapshots the prior image into `meta.versions[]` before the tenant-scoped overwrite,
+so prior images are never silently lost (§18 one-home / §58-safe: no new table, no touch to shipped
+`studio_artifact_versions`; §9 unchanged; `meta.versions` is server-owned — un-wipeable/un-forgeable).
+Proven 10/10 on real Postgres 16 + 7/7 wiring guard; §39 verifier + §5 compliance folded (FK index, race lock).
+**Proof owed (§32.c):** the frontend version-history UI + authenticated end-to-end live-drive (headless).
 **Still in slice 1 — re-scoped to the DEDICATED Paige experience (owner decision 2026-09-06):**
 download/export action, image→campaign routing, the missing types (campaign_brief · HTML email_template ·
-video · social-schedule), regular-chat in-place refine. **RETIRED:** "render the artifact card on all chat
+video · social-schedule). **RETIRED:** "render the artifact card on all chat
 surfaces" — there is NO floating Paige chat inside the authenticated platform; the dedicated authenticated
 Paige chat/workspace is the only tenant-aware experience and already renders the card (see §10 corrections
 + decision-log 2026-09-06; retirement work = task #14). A public-site Product Guide is a separate,

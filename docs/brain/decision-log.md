@@ -1,5 +1,111 @@
 # Decision Log — chronological one-liners
 
+- **Capability Slice 1 — dedicated Paige chat in-place image refine, BACKEND (2026-09-06, Task #15, owner-authorized)** —
+  in the dedicated (owner "Your Paige" / Solo) chat, refining an image Paige just made now version-stacks the
+  SAME artifact instead of minting a new sibling. **Server-owned trust anchor** (owner constraint): two additive
+  nullable columns on `paige_chat_threads` (`last_image_content_id` FK→`marketing_content` ON DELETE SET NULL +
+  `last_image_anchor_at`), written by `paige-ai-chat` ONLY after a successful `generate_image` with a filed
+  `content_id`, read on a refine turn within a 30-min recency window. The model's `target_content_id` is only a
+  refine-INTENT echo; the id AUTHORITY is the server anchor (re-checked `=== refineImageAnchor.id`), never an
+  arbitrary client/model id. Lifecycle clears are structural: tenant/thread switch (anchor lives on the RLS-scoped
+  thread row: `threads_update_self` ∧ RESTRICTIVE `threads_tenant_isolation`), failed gen / cancel (only a success
+  writes it), expiry (window), deleted image (FK SET NULL). **EXACT SAFETY BOUNDARY — version preservation:** the
+  reuse UPDATE overwrites the image in place, and the only version store (`studio_artifact_versions`) is bound to a
+  `studio_sessions` row a dedicated chat never has; so `save_marketing_content`'s reuse branch now SNAPSHOTS the
+  prior image into the row's own `meta.versions[]` (server-owned history, based on the row's meta not caller
+  p_meta, capped 20) BEFORE overwriting — prior images are never silently lost. Additive: no new table, NO touch
+  to shipped `studio_artifact_versions`/its RLS (§18 one-home, §58-safe); §9 unchanged (reuse stays
+  `WHERE id=p_id AND tenant_id=_tenant`; cross-tenant id → CONTENT_NOT_FOUND → fresh insert under caller's tenant).
+  §37: Studio canvas clamp + §33 critique-loop byte-unchanged (additive). Also folded the two deferred stale
+  `FloatingChatbot` comments (paige-ai-chat, `_shared/client-context.ts`) since this PR redeploys paige-ai-chat.
+  **PROOF:** `scripts/marketing-content-refine-db-proof.mjs` 12/12 on real Postgres 16 (snapshot-on-change,
+  server-owned versions un-wipeable/un-forgeable, scalar/array-meta normalization, no
+  spurious versions on idempotent/text reuse, cap 20, §9 CONTENT_NOT_FOUND, FK auto-clear, server-owned
+  freeze-trigger); wiring+safety guard
+  `src/__tests__/dedicated-chat-image-refine-anchor.test.ts` 8/8; edge fn transpiles clean. **PROOF OWED (§32.c):**
+  the frontend version-history UI + the authenticated live-drive of an end-to-end dedicated-chat refine (headless
+  session cannot render/drive it). Earlier grounding (superseded here): the §9-question decision-log line for this
+  item is RESOLVED — the tenant-ownership check exists; and the reuse anchor is server-owned, not model-supplied.
+  **REVIEW-FOLD (§39 verifier + §5 compliance, PR #992):** added a partial index on the FK column (an unindexed
+  FK → seq-scan of the high-traffic threads table on every `marketing_content` delete); made `meta.versions`
+  UNCONDITIONALLY server-owned so a non-image reuse can neither wipe nor forge history (MAJOR — the invariant
+  was false on the non-replace path); `FOR UPDATE` on the reuse read (double-submit race); tightened the
+  anchor-advance to `!studioSessionId`; corrected the anchor-column comment (the reuse tenant-scope, not the
+  browser-writable column, is the enforced §9 fence — confirmed not cross-tenant-exploitable); added the §66
+  tier-matrix Surface-ledger row. §5 flagged the 30-min recency window as a user-observable knob (kept 30 min;
+  surfaced to owner, not blocking).
+  **CODEX-FOLD (3 findings, commit 84da896, PR #992):** (P2) the anchor is now GENUINELY server-owned — a
+  `BEFORE UPDATE` trigger (`trg_paige_chat_threads_freeze_image_anchor`, INVOKER, gated on `current_user`)
+  freezes any `authenticated` attempt to SET a non-null anchor, and the edge-fn write moved from the JWT
+  `supabaseClient` to the service-role `supabase` client + `.eq("caller_user_id", user.id)` ownership fence.
+  The trigger deliberately allows a transition TO NULL, so the FK `ON DELETE SET NULL` cascade and clear-on-fail
+  still work (this is why the earlier "the column is browser-writable, only the reuse fence enforces §9" caveat
+  is now obsolete — the column itself is enforced). (P1) the anchor now CLEARS on a failed/unfiled generation
+  (usable url but best-effort save failed, needs_config, hard fail) instead of leaving a stale older image
+  anchored — matches the owner's "clear on failed generation" so the next refine never overwrites the wrong
+  image. (P2) `save_marketing_content` normalizes scalar/array `p_meta` to an object before `jsonb_set`, so the
+  versions snapshot can never be silently dropped. All three re-proven: db-proof 12/12 (adds forge-freeze +
+  scalar/array-meta cases), vitest 8/8, `lint:definer-fns`/`lint:migration-versions`/`lint:managed-schema`
+  green.
+  **CODEX-FOLD ROUND 2 (3 more P2 findings on the fold, 6d34b702→next commit, PR #992):** the re-review of
+  the security-sensitive fold (worth requesting — it found real follow-ons). (P2-A) the freeze trigger keyed
+  on the content_id *changing*, so a client could bump `last_image_anchor_at` alone to a future value and
+  keep an old image eligible past the 30-min window → trigger now freezes whenever the row RETAINS a non-null
+  content_id (covers timestamp-only bumps), still allowing clear-to-NULL (FK cascade / expiry). (P2-B) the
+  `throw` guards on the generate-image invoke (`error`/`img.error`) executed BEFORE the end maintenance block,
+  so a hard-failed generation left a stale anchor → the anchor is now CLEARED UP-FRONT (before the invoke,
+  after the reuse target is captured), so any throw leaves it null; the end block only ADVANCES on a filed
+  success. (P2-C) the service-role anchor write was fenced only on `caller_user_id`, so a multi-tenant caller
+  submitting an inactive-workspace thread id could stamp an active-tenant image id into that other tenant's
+  thread → both the pre-clear and the advance are now fenced with `.eq("tenant_id", personaCtx.tenant_id)` +
+  a `personaCtx?.tenant_id` guard (the image is filed under the active tenant, so the anchored thread must
+  match it). Re-proven: db-proof 12/12 (adds the timestamp-bump-freeze case), vitest 8/8, ci:tsc clean,
+  esbuild clean, lints green, §50 clean.
+  **CODEX-FOLD ROUND 3 (1 P2, PR #992):** the freeze trigger was `BEFORE UPDATE` only, so a client could
+  INSERT a NEW thread carrying a forged non-null anchor and bypass it entirely (rounds 1–3 were the SAME
+  class seen from three write vectors — UPDATE-set-id, UPDATE-timestamp-bump, INSERT). Root-cause fix: the
+  trigger now covers the FULL client write surface — `BEFORE INSERT OR UPDATE`. On a non-server INSERT it
+  forces both anchor columns to NULL (a client-created thread never legitimately carries an anchor; the
+  service-role writer sets it only later via UPDATE); on UPDATE it keeps the retain-non-null freeze; a
+  transition to NULL is never frozen (FK cascade / clear). db-proof 12/12 (adds an authenticated INSERT-forge
+  → forced-NULL case), vitest 8/8, ci:tsc + lints green. LESSON: a "make this column server-owned"
+  requirement must enumerate EVERY write vector (INSERT + all UPDATE shapes) up front — patching them one
+  Codex round at a time is the anti-pattern; the complete fix is a trigger over the whole write surface.
+  **CODEX-FOLD ROUND 4 (2 P2, PR #992):** (1) the anchor-maintenance guards keyed on `!canvasArtifact`,
+  a CLIENT request field — a dedicated-chat client could send a forged `canvasArtifact` to suppress the
+  server-owned anchor maintenance AND drive the reuse clamp with a client-supplied canvas id. Fix: make
+  `canvasArtifact` a mutable `let` and NEUTRALIZE it (`if (!studioSessionId) canvasArtifact = null;`) once
+  the SERVER-resolved `studioSessionId` is known — a dedicated chat has no canvas — and key the two anchor
+  guards on `!studioSessionId` alone. (2) `save_marketing_content`'s INSERT branch stored `p_meta.versions`
+  verbatim, letting an admin/coach plant fabricated history at creation that later reuse would treat as
+  authentic server lineage; the insert now strips `versions` from an object meta (mirrors the reuse branch;
+  a non-versions caller key is preserved). Re-proven: db-proof 13/13 (adds INSERT-strip), vitest 9/9 (adds
+  the canvasArtifact server-gating test), ci:tsc + lints + §50 green.
+  **CODEX-FOLD ROUND 5 → DECISION: honest scope, NOT scope-expand (1 P2, PR #992).** Codex flagged (accurately)
+  that `meta.versions` is server-owned only THROUGH the RPC: `marketing_content` carries a
+  `marketing_content_tenant_manage` FOR ALL policy, so a tenant admin/coach can edit their OWN tenant's
+  `meta.versions` (or replace image_url without a snapshot) via direct Data-API DML, bypassing the RPC
+  stripping. VERDICT (stopping rule): this is WITHIN-tenant and AUTHORIZED (their shipped capability) — no
+  cross-tenant leak, no auth bypass; the lineage is a within-tenant convenience audit of Paige's refine
+  chain, not a security boundary. Its real invariant ("the RPC never silently loses a prior image") holds.
+  So NOT merge-blocking pre-launch, and NOT worth a trigger on the core `marketing_content` table (out of
+  task #15 scope, touches a shipped RLS-managed capability). §13 fix applied: the migration header now
+  scopes the "server-owned/un-forgeable" claim to the RPC path and names the raw-table boundary honestly.
+  Raw-table-boundary enforcement is logged here as a POSSIBLE FUTURE HARDENING, deferred. Merge decision:
+  proceed on green CI (5 review rounds, 10 findings folded/decided; core §9 tenant-isolation + server-owned
+  anchor invariants proven). ROUND 5 is comment/doc-only — no functional change, no new Codex round requested.
+  **MIGRATION-VERSION COLLISION (resolved 2026-09-06).** While this PR was in review, `main` advanced and
+  merged `20261227000000_retire_admin_notification_urls.sql` — the SAME version prefix as my
+  `20261227000000_thread_image_refine_anchor.sql`. GitHub's CI merge-ref (PR head ∪ current main) applied
+  both → `schema_migrations_pkey` duplicate-key (23505) in the PAIGE Spine `database-contract` job. Fix: my
+  two migrations renamed to `20261228000000_thread_image_refine_anchor.sql` +
+  `20261228000001_marketing_content_reuse_preserves_versions.sql` (past main's latest); refs updated in the
+  db-proof + vitest. HONEST NOTE (§13): the `lint:migration-versions` guard has NO gap — it keys on the
+  version prefix and DID flag this once retire_admin was in the base; my earlier local runs passed only
+  because the collision did not yet exist (main added retire_admin later). LESSON: concurrent migration
+  development can claim your version slot AFTER your local lint is green; the CI merge-ref is what catches
+  it — on any base-advance/merge, re-run the migration lint and renumber past the base's newest, never
+  renumber the already-applied one.
 - **PROCESS: the Second Brain is a DELIVERY CONTRACT for every Paige workstream (owner ruling 2026-09-06)** —
   binding, effective immediately, strengthening §BRAIN/§39/§58. **At the START of every assignment:** read the
   relevant Second Brain / master-reference entries, decision log, prior handoffs, and active-collision notes
