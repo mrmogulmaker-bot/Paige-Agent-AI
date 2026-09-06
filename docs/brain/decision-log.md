@@ -1,5 +1,21 @@
 # Decision Log — chronological one-liners
 
+- **PARKED FINDING (2026-09-06) — LLM-token internal-cost meter (§8.4 / MET1 / #737) is LIVE; NOT M1.**
+  Surfaced while grounding M1 (real-money backbone); recorded + parked per owner discipline (stay tight on M1).
+  **Affected area:** the §8.4 LLM-token *internal-cost* lane — `public.meter_llm_usage()` drain +
+  `cron.job 'meter-llm-usage-hourly'` (`35 * * * *`) → `platform_usage_events (event_type='llm_tokens')`;
+  the parked #737 "MET2 evidence owed". This is a SEPARATE lane from RE-2 money-spend metering (owner ruling
+  2026-09-06 distinguished the two) and must not dilute M1. **Current state (verified on prod
+  `xygzykjyynhzqytbqnzu`, 2026-09-06 read-only):** cron active=true, **102/102 runs succeeded** (last end
+  18:35 UTC); `platform_usage_events` holds **322 `llm_tokens` rows / 22,869,251 tokens** (last event
+  2026-09-05 14:20 UTC — idempotent, nothing new to drain since). So MET1 works and the #737 "does it run?"
+  question is effectively **YES**. **Risk:** LOW — not an M1 dependency; no tenant-safety/authority/actual-spend
+  impact. **Open (token-lane's OWN roadmap, not M1):** (a) close #737 MET2 with this evidence; (b) fix the stale
+  `autonomy-architecture.md §8.4` line that still names `platform_metered_events` — the drain writes
+  `platform_usage_events` (owner ruling 2026-09-03; the §8.4 doc contradiction); (c) Stripe metered-item attach
+  + rollup (money-spine "Missing"). **Recommended next owner/slice:** the token-billing/#737 owner — NOT this
+  M1 program. Returning to M1.
+
 - **Capability System Slice 2 — uploaded-file prompt-injection fence (2026-09-06, Task #18, owner-authorized)** —
   the file-handling contract's first-class security net-new. An attached document's extracted text was
   inlined RAW into the model turn immediately next to the TRUSTED analysis instructions
