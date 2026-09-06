@@ -131,11 +131,14 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
-### Business Vault Phase 2 owner/admin foundation — 2026-09-05
+### Business Vault Phase 2 owner/admin foundation — PR #986 green, production Proof Owed (2026-09-06)
 
-- ✅ Tenant-bound owner/admin Vault navigation, Overview, Library metadata, Contracts, Obligations, focused record inspector, archive/fact-revocation lifecycle, and truthful member denial ship with this merge. Server functions resolve the active workspace and current role; client-supplied tenant or authority values are never trusted.
+- 🟡 **PARTIAL / GREEN PRE-MERGE.** Tenant-bound owner/admin Vault navigation, Overview, Library metadata, Contracts, Obligations, focused record inspector, archive/fact-revocation lifecycle, and truthful member denial are implemented at PR #986 head `39a875ab`. Server functions resolve the active workspace and current role; client-supplied tenant or authority values are never trusted.
 - ✅ Owner-only records, dependent contract/obligation metadata, downloads, and fact review remain invisible and immutable to tenant administrators. Known-ID, cross-tenant, workspace-switch, demotion, stale-fact, replacement, and duplicate races have executable actor/database coverage.
 - 🟣 Binary PDF/image intake is intentionally **UNAVAILABLE**. The private quarantine, inspection evidence, bounded cleanup, and disabled-promotion contract exists, but the repository has no approved OCR/DLP adapter or proven byte-copy worker. No uninspected file can become a normal Vault record, download, Paige/Mind context, shared artifact, task, Rail outcome, or external action.
+- ✅ **Automated/static/CI proof:** 29 focused tests, 71 count-enforced actor/RLS assertions, two-session duplicate/cleanup proof, affected lint, Deno/type ratchets, production build, audit/contracts/database/UI evidence, complete CI rerun, and three independent reviews PASS.
+- 🟡 **PROOF OWED:** merge SHA, production migration/Edge/frontend deployment, production alias/runtime-log evidence, real quarantine bytes, and signed-in owner/admin/member/cross-tenant viewport and denial drives. Representative Gate 1 renders are design proof, not authenticated product proof.
+- **Next owner:** Vault inspection adapter + service worker. It must read `docs/brain/codebase-map.md` → “Business Vault Phase 2 security foundation,” `docs/brain/decision-log.md` → 2026-09-06 Vault ruling, the UI evidence handoff, migrations `13700..14000`, and the 71-assertion SQL plan before provider selection. Explicit provider approval/credentials and real OCR/DLP/storage proof are required before binary intake can be enabled.
 
 ### The inbound MCP door — 119 tools, one governed decision, 68 mutations refused (2026-09-05, PR #960)
 
@@ -1522,7 +1525,7 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
-- **Business Vault binary inspection remains UNAVAILABLE:** activate only after an owner-approved OCR/DLP provider and service-owned worker prove PDF/image OCR, secret and financial-sensitive detection, timeouts, encrypted/malformed handling, exact-byte promotion, cleanup compensation, and authenticated storage behavior. Provider-neutral quarantine schema is present; service-role promotion is deliberately revoked. Client publishing, provider ingestion, legal interpretation, automated execution, and broad document-to-memory promotion remain later phases.
+- **Business Vault binary inspection remains UNAVAILABLE:** activate only after an owner-approved OCR/DLP provider and service-owned worker prove PDF/image OCR, secret and financial-sensitive detection, timeouts, encrypted/malformed handling, exact-byte promotion, cleanup compensation, and authenticated storage behavior. Provider-neutral quarantine schema is present; service-role promotion is deliberately revoked. Client publishing, provider ingestion, legal interpretation, automated execution, and broad document-to-memory promotion remain later phases. Active collision handoff: #724 is adjacent; #917 overlaps the narrow Settings/header/config seam and must preserve both Integrations/Vault `openPaige`, Vault layout/header treatment, current Connections copy, `solo-contact-import`, and all three Vault JWT blocks.
 ### Connections after Add channel — remaining real-provider and runtime proof gaps (2026-09-05)
 
 Inbound mailbox reading and non-SMS business messaging remain **UNAVAILABLE** because no supported

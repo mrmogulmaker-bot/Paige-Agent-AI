@@ -3453,3 +3453,48 @@ Next owning workstream: a future "Solo Sales Release 2 (Client Agreements / Actu
 this entry + the tier-matrix "Sales Command Desk redesign" ledger + the truth boundary FIRST, and must
 not present Actual received or contract linkage as live until a real payment/contract backend exists.
 PR: https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/985
+---
+
+## 2026-09-06 — Business Vault Phase 2 fails closed at quarantine; binary intake stays unavailable (PR #986)
+
+**Owner ruling:** filenames, owner attestation, hashes, and magic bytes cannot prove a document is
+free of credentials or banking-sensitive content. Every future binary enters private quarantine;
+PDFs/images require OCR/text extraction plus secret-sensitive inspection; encrypted, malformed,
+unsupported, unscannable, timed-out, low-confidence, or failed files never enter the normal Vault.
+Passing inspection is only a file-safety gate, never Paige permission, Mind memory, a trusted fact,
+client publication, a task, an external act, or a Rail outcome.
+
+**Phase 2 contract at green head `39a875ab`: PARTIAL.** The owner/admin Solo Vault foundation,
+server-resolved workspace/role checks, owner-only record visibility, record/contract/obligation
+metadata, focused inspector, archive/replacement lifecycle, fact review/revocation, private
+quarantine schema, inspection state machine, and retryable cleanup are implemented. Ordinary
+members, cross-tenant actors, known IDs, workspace switches, and demotions fail closed without
+metadata. Failed replacement cannot downgrade the current version; archive/replacement/rejection
+retires stale proposed facts and access handles.
+
+**UNAVAILABLE by design:** the repository has no approved OCR/DLP adapter or service-owned
+promotion worker. Binary upload/release/download therefore stays disabled, and promotion authority
+is revoked. No paid provider account, credential, provider connection, or secret-storage path was
+created. Client publishing, provider ingestion, legal analysis, payment/filing execution, Systems
+Check verdict changes, Rail outcomes, and broad document-to-Mind automation are DEFERRED.
+
+**Proof split:** automated/database/CI is PASS — 29 focused tests, 71 count-enforced actor/RLS
+assertions, two-session duplicate/cleanup proof, production build, Deno/type/lint/audit/contracts,
+and three independent reviews. The first CI run exposed a Vault-owned SSR test importing the live
+Supabase client under Node; a narrow test-only client mock repaired it, and the complete rerun
+passed. Representative Gate 1 viewport renders remain approved design evidence only. Authenticated
+owner/admin/member/cross-tenant drives, real quarantine bytes, applied production migrations,
+deployed Edge functions, production aliases, and runtime error evidence remain PROOF OWED.
+
+**Collision/handoff:** current main was refreshed and the branch rebased without conflict. PR #724
+remains adjacent. PR #917 overlaps only the narrow Settings/header/config seam; its future rebase
+must preserve both Integrations/Vault `openPaige`, Vault layout/header treatment, current
+Connections copy, `solo-contact-import`, and the three Vault JWT blocks. The dedicated,
+tenant-aware Paige workspace remains the only authenticated Paige experience; this work adds no
+floating chat, new Command Mark, parallel approval channel, Rail write, Mind silo, or second CRM.
+
+**Next owning workstream:** Vault inspection adapter + service worker. Read the Vault section in
+`codebase-map.md`, the UI evidence handoff, migrations `13700..14000`, and the executable SQL plan
+before selecting a provider. Enabling binary intake requires explicit provider approval/credentials
+and real proof of OCR, secret/financial-sensitive detection, encrypted/malformed/timeout refusal,
+cleanup compensation, exact-byte promotion, and authenticated storage isolation.
