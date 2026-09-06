@@ -111,7 +111,7 @@ its own gap is the handoff seam Phase 1 addresses.
 | Settings → Team | `PROOF_OWED` | `team.authority` wired; PAIGE can act (capability PARTIAL); auth proof owed | Phase 5 |
 | Settings → Connections | `UNAVAILABLE` | safe subset unwired; credentials isolated; private finding #788 | Phase 5 |
 | Settings → Integrations | `PARTIAL` | n8n readiness + 12 mgmt capabilities wired; zero capability_run rows in prod | authenticated drive → first Rail row |
-| Settings → Vault | `INTENTIONALLY_ISOLATED` | raw docs/credentials/payment never cross | Phase 7 reviewed eligible facts after quarantine |
+| Settings → Vault | `INTENTIONALLY_ISOLATED` | Phase 2 owner/admin foundation + quarantined intake shipped (#986); raw docs/credentials never cross | Phase 7: OCR/DLP-inspected promotion of reviewed facts |
 | Settings → Billing | `PARTIAL` | safe status source contract shipped, not injected; secrets isolated | Phase 8 bind safe status only |
 | Settings → Security & data | `INTENTIONALLY_ISOLATED` | autonomy authority is non-Chat (§67/§68) | none as a write binding |
 | Analytics | `UNAVAILABLE` | needs SCR-2 + SCR-3; strongest existing authorization semantics | Phase 8; reference consumer for SCR-2 |

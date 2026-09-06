@@ -3545,3 +3545,19 @@ floating chat, new Command Mark, parallel approval channel, Rail write, Mind sil
 before selecting a provider. Enabling binary intake requires explicit provider approval/credentials
 and real proof of OCR, secret/financial-sensitive detection, encrypted/malformed/timeout refusal,
 cleanup compensation, exact-byte promotion, and authenticated storage isolation.
+
+### Release proof addendum — 2026-09-06
+
+PR #986 squash-merged as `809faec33cd2dccc2028a32e8b4e896f0470ecf3`. The post-merge CI,
+PAIGE Spine contract, Security Audit, and UI evidence workflows passed. Production migration and
+Edge workflows passed, and both `db-live` and `edge-live` point exactly to `809faec3`.
+Vercel reported Production success for the same merge through deployment
+`6MT79LnaSVWixnZXWQwStnVsNW2F`; `paigeagent.ai` and `app.paigeagent.ai` returned HTTP 200, and
+the live `SoloApp-GsPt1vrB.js` bundle contained “Business Vault,” the metadata-free denial, the
+mandatory-inspection unavailable state, and the private-quarantine boundary.
+
+**Status correction:** the foundation is deployed but remains **PARTIAL**, not authenticated-live
+proof. Binary intake/inspection stays **UNAVAILABLE**. Signed-in owner/admin/member/cross-tenant
+drives, real quarantine/inspection bytes, and the Vercel runtime-log scan remain **PROOF OWED**.
+The deployment URL itself is protected and was not used as UI proof; the primary public aliases
+and commit-bound Vercel status are the non-authenticated production evidence.
