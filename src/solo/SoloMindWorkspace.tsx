@@ -7,6 +7,9 @@ import { useSoloKnowledge } from "./data/useSoloKnowledge";
 import {
   readMindOrbitEnabled,
   writeMindOrbitEnabled,
+  readMindMotionChoice,
+  writeMindMotionChoice,
+  type MindMotionChoice,
   type MindOrbitPreferenceScope,
 } from "./mindOrbitPreference";
 import { MindOrbCanvas } from "./mind-orb/MindOrbCanvas";
@@ -96,7 +99,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   const [selected, setSelected] = useState<MindRecord | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [presentationOrbit, setPresentationOrbit] = useState(() => readMindOrbitEnabled(preferenceScope));
-  const [reducedToggle, setReducedToggle] = useState(false);
+  const [motionChoice, setMotionChoice] = useState<MindMotionChoice>(() => readMindMotionChoice(preferenceScope));
   const [osReduced, setOsReduced] = useState(false);
   const [orbUnavailable, setOrbUnavailable] = useState<string | null>(null);
   const [resetToken, setResetToken] = useState(0);
@@ -114,7 +117,13 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   // is exactly what the old canvas being removed produces) must NOT clear it, or the restore no-ops.
   const orbHadFocus = useRef(false);
 
-  const reduced = reducedToggle || osReduced;
+  // Effective reduced-motion: an explicit user choice OVERRIDES the OS default in both directions;
+  // absent a choice ("system"), follow the OS. This is what lets the ambient orbit run for a user
+  // who wants it even when their OS asks to reduce motion — and still respects the OS by default.
+  const reduced = motionChoice === "reduced" ? true : motionChoice === "full" ? false : osReduced;
+  // The orb is ACTUALLY orbiting only when the presentation orbit is enabled AND motion is not
+  // reduced — so the control label/state reflects that, never "Pause orbit" over a still orb.
+  const orbiting = presentationOrbit && !reduced;
 
   // Honour the OS reduced-motion setting, not just the toggle (a11y honesty).
   useEffect(() => {
@@ -295,13 +304,26 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
     }));
   };
   const togglePresentationOrbit = () => {
-    const next = !presentationOrbit;
-    writeMindOrbitEnabled(preferenceScope, next);
-    setPresentationOrbit(next);
-    setAnnouncement(next ? "Presentation orbit resumed. It does not represent tenant activity." : "Presentation orbit paused. Tenant activity is unchanged.");
+    if (orbiting) {
+      writeMindOrbitEnabled(preferenceScope, false);
+      setPresentationOrbit(false);
+      setAnnouncement("Presentation orbit paused. Tenant activity is unchanged.");
+      return;
+    }
+    // Resume: enable the orbit AND, if motion was reduced (by the OS or a prior choice), lift that
+    // block so one click reliably starts the orbit whatever had frozen it (explicit user opt-in).
+    writeMindOrbitEnabled(preferenceScope, true);
+    setPresentationOrbit(true);
+    if (reduced) { writeMindMotionChoice(preferenceScope, "full"); setMotionChoice("full"); }
+    setAnnouncement("Presentation orbit resumed. It does not represent tenant activity.");
   };
   const toggleReduced = () => {
-    setReducedToggle((v) => { const next = !v; setAnnouncement(next ? "Reduced motion on. The orb is still." : "Reduced motion off."); return next; });
+    // Explicit override, persisted per user+tenant: flip AWAY from the current effective state so one
+    // click always changes what the viewer sees, whatever the OS default was.
+    const next: MindMotionChoice = reduced ? "full" : "reduced";
+    writeMindMotionChoice(preferenceScope, next);
+    setMotionChoice(next);
+    setAnnouncement(next === "reduced" ? "Reduced motion on. The orb is still." : "Reduced motion off. The orb resumes its calm orbit.");
   };
   const resetView = () => { setDomainFilter("all"); setResetToken((t) => t + 1); setAnnouncement("View reset. Showing all domains, recentred."); };
 
@@ -394,13 +416,13 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
                   {!orbUnavailable && (
                     <span className="mind-orb-hint" aria-hidden="true"><Rotate3D size={13} /> Drag · scroll · keyboard</span>
                   )}
-                  <button type="button" aria-pressed={!presentationOrbit} onClick={togglePresentationOrbit}>
-                    {presentationOrbit ? <Pause size={13} /> : <Play size={13} />}{presentationOrbit ? "Pause orbit" : "Resume orbit"}
+                  <button type="button" aria-pressed={!orbiting} onClick={togglePresentationOrbit}>
+                    {orbiting ? <Pause size={13} /> : <Play size={13} />}{orbiting ? "Pause orbit" : "Resume orbit"}
                   </button>
                   {!orbUnavailable && (
                     <button type="button" onClick={resetView}><Rotate3D size={13} />Reset view</button>
                   )}
-                  <button type="button" aria-pressed={reducedToggle} onClick={toggleReduced}>Reduced motion</button>
+                  <button type="button" aria-pressed={reduced} onClick={toggleReduced}>Reduced motion</button>
                 </div>
 
                 {/* Source-signal legend (the approved palette) */}

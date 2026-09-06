@@ -8,7 +8,7 @@ vi.mock("./data/useSoloKnowledge", () => ({ useSoloKnowledge: () => harness.know
 vi.mock("./data/useCommandCenter", () => ({ useCommandCenter: () => harness.command() }));
 
 import { SoloMindWorkspace } from "./SoloMindWorkspace";
-import { mindOrbitPreferenceKey, type MindOrbitPreferenceScope } from "./mindOrbitPreference";
+import { mindOrbitPreferenceKey, mindMotionPreferenceKey, type MindOrbitPreferenceScope } from "./mindOrbitPreference";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -141,6 +141,26 @@ describe("Solo Mind workspace — orb port", () => {
     act(() => rm.click());
     expect(button("Reduced motion")!.getAttribute("aria-pressed")).toBe("true");
     expect(host.querySelector('[aria-live="polite"]')?.textContent?.toLowerCase()).toContain("reduced motion on");
+  });
+
+  it("the motion choice is an explicit override that persists per user + tenant", () => {
+    const scope = { userId: "user-m", tenantId: "tenant-m" };
+    render(scope);
+    // Turning reduced-motion ON writes an explicit "reduced" choice (overriding the OS default).
+    act(() => button("Reduced motion")!.click());
+    expect(window.localStorage.getItem(mindMotionPreferenceKey(scope))).toBe("reduced");
+    expect(button("Reduced motion")!.getAttribute("aria-pressed")).toBe("true");
+    // A fresh mount for the same scope reads the stored choice back — the orb stays still.
+    act(() => root.unmount());
+    root = createRoot(host);
+    render(scope);
+    expect(button("Reduced motion")!.getAttribute("aria-pressed")).toBe("true");
+    // "Resume orbit" is a one-click start: it lifts the reduced block AND enables the orbit.
+    expect(button("Resume orbit")).toBeTruthy();
+    act(() => button("Resume orbit")!.click());
+    expect(window.localStorage.getItem(mindMotionPreferenceKey(scope))).toBe("full");
+    expect(button("Pause orbit")).toBeTruthy();
+    expect(button("Reduced motion")!.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("refresh re-reads the live sources and never calls it a scan", () => {
