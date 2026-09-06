@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Command Center · Mind — Gate 1 prototype</title>
+<!--
+  THROWAWAY GATE 1 PROTOTYPE — Command Center → Mind (Solo). Orb-primary direction (owner-ruled).
+  A single, isolated, form-fitted screen (NO page scroll) — laptop / tablet / mobile — with the
+  running "governed knowledge" orb as the hero, matching the owner's reference at image quality.
+  Jurisdiction (§00): CC ports the owner's reference onto the installed pack design system
+  (`--pg-*`, both themes: Mineral=light, Obsidian=dark). Honesty (§13): every node maps to a real
+  governed record/state or an honest absence — the ambient dust is decorative and labelled so.
+  Self-contained (no CDN beyond fonts) so the running orb renders headless for §32 proof.
+  Delete or absorb after approval.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300&display=swap" rel="stylesheet" />
+<link href="https://api.fontshare.com/v2/css?f[]=gambetta@400,401,500&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   1. TOKENS — verbatim from the pack (design-system-port.md). Mineral=[data-pg=light],
+   Obsidian=[data-pg=dark]; separately authored (champagne inverts role).
+   ============================================================================ */
+[data-pg]{
+  --pg-font-display:"Schibsted Grotesk","Segoe UI Variable Display","SF Pro Display",system-ui,sans-serif;
+  --pg-font-ui:"Schibsted Grotesk","Segoe UI Variable Text","SF Pro Text",system-ui,sans-serif;
+  --pg-font-editorial:"Gambetta","Newsreader","Iowan Old Style",Baskerville,serif;
+  --pg-font-data:"JetBrains Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+  font-synthesis-weight:none;font-variant-numeric:tabular-nums;
+}
+[data-pg="dark"]{
+  color-scheme:dark;
+  --pg-env:#08070b;--pg-nav:#0d0b11;--pg-canvas:#100e14;--pg-spine:#121017;--pg-workspace:#16131a;--pg-surface:#19161e;--pg-raised:#211d27;--pg-artifact:#e9e4da;
+  --pg-line-soft:rgba(244,237,222,.115);--pg-line:rgba(244,237,222,.195);--pg-line-strong:rgba(244,237,222,.30);--pg-line-authority:rgba(234,213,170,.40);
+  --pg-ink:#f6f2ea;--pg-ink-2:#d6d0c9;--pg-muted:#aca69d;--pg-faint:#969089;
+  --pg-gold-core:#fff0cf;--pg-gold:#ead5aa;--pg-gold-deep:#c7a978;--pg-gold-fill:#d4a752;--pg-gold-bloom:rgba(240,200,106,.28);
+  --pg-graphite:#2a2730;--pg-lift:rgba(255,255,255,.018);--pg-violet:#9b8de0;--pg-positive:#8fd1ae;--pg-warning:#edc17f;--pg-negative:#eda093;
+  --pg-e2:0 1px 2px rgba(0,0,0,.45);--pg-e4:0 28px 70px rgba(0,0,0,.42);
+  --pg-rim:inset 0 1px 0 rgba(255,255,255,.07),inset 0 -1px 0 rgba(0,0,0,.5);
+  --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.055),0 1px 1px rgba(0,0,0,.3),0 4px 12px -4px rgba(0,0,0,.42);
+  --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.07),0 2px 4px rgba(0,0,0,.32),0 16px 34px -12px rgba(0,0,0,.52);
+  --pg-lift-3:inset 0 1px 0 rgba(255,255,255,.085),0 6px 12px rgba(0,0,0,.36),0 36px 72px -20px rgba(0,0,0,.62);
+  --pg-inset:inset 0 1px 2px rgba(0,0,0,.42),inset 0 -1px 0 rgba(255,255,255,.035);
+  --pg-r-plate:13px;--pg-r-chip:9px;--pg-r-seal:11px;--pg-r-pill:999px;
+  --k-skill:#c7a978;--k-automation:#8fa9c4;--k-integration:#8fb9a4;--k-template:#c2a3b8;--k-agent:#a99ad6;
+}
+[data-pg="light"]{
+  color-scheme:light;
+  --pg-env:#e8e5df;--pg-nav:#f4f1eb;--pg-canvas:#fbf9f5;--pg-spine:#f1eee8;--pg-workspace:#f7f4ee;--pg-surface:#f5f2ec;--pg-raised:#fffdf8;--pg-artifact:#fffdf8;
+  --pg-line-soft:rgba(45,40,50,.105);--pg-line:rgba(45,40,50,.185);--pg-line-strong:rgba(45,40,50,.28);--pg-line-authority:rgba(155,120,60,.44);
+  --pg-ink:#201e23;--pg-ink-2:#3d3941;--pg-muted:#67616b;--pg-faint:#6a646e;
+  --pg-gold-core:#6f5636;--pg-gold:#8b7049;--pg-gold-deep:#7a5c2e;--pg-gold-fill:#c9a96a;--pg-gold-bloom:rgba(201,169,106,.30);
+  --pg-graphite:#b9b2a6;--pg-lift:rgba(45,40,50,.03);--pg-violet:#655a96;--pg-positive:#327458;--pg-warning:#986322;--pg-negative:#a5483d;
+  --pg-e2:0 1px 2px rgba(45,40,50,.10);--pg-e4:0 24px 60px rgba(45,40,50,.16);
+  --pg-rim:inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 0 rgba(45,40,50,.07);
+  --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.9),0 1px 1px rgba(45,40,50,.055),0 4px 10px -4px rgba(45,40,50,.12);
+  --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.95),0 2px 4px rgba(45,40,50,.07),0 14px 30px -12px rgba(45,40,50,.17);
+  --pg-lift-3:inset 0 1px 0 #fff,0 6px 12px rgba(45,40,50,.09),0 32px 64px -20px rgba(45,40,50,.22);
+  --pg-inset:inset 0 1px 2px rgba(45,40,50,.1),inset 0 -1px 0 rgba(255,255,255,.85);
+  --pg-r-plate:13px;--pg-r-chip:9px;--pg-r-seal:11px;--pg-r-pill:999px;
+  --k-skill:#9a7638;--k-automation:#4d6f92;--k-integration:#3f7a5f;--k-template:#8d5f7c;--k-agent:#6f5eb0;
+}
+/* Source-signal palette (canonical states → reference legend colours). */
+[data-pg]{
+  --sig-confirmed:var(--pg-gold-fill);
+  --sig-connection:var(--pg-violet);
+  --sig-refreshed:var(--k-automation);
+  --sig-needs:var(--pg-positive);
+  --sig-legacy:var(--pg-warning);
+  --sig-unavailable:var(--pg-negative);
+}
+
+/* ============================================================================
+   2. RESET / BASE
+   ============================================================================ */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:#0a0910}
+#root[data-pg]{min-height:100vh;background:var(--pg-env);color:var(--pg-ink);
+  font:400 14px/1.5 var(--pg-font-ui);letter-spacing:-.002em;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4,p{margin:0}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:none}
+input,select{font:inherit}
+:focus-visible{outline:2px solid var(--pg-gold-core);outline-offset:3px;border-radius:5px}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+[data-pg] ::-webkit-scrollbar{width:10px;height:10px}
+[data-pg] ::-webkit-scrollbar-thumb{background:var(--pg-line-strong);border-radius:999px;border:3px solid transparent;background-clip:content-box}
+.mono{font-family:var(--pg-font-data)}
+@keyframes pg-reveal{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes pg-slide{from{transform:translateX(14px);opacity:.6}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* ============================================================================
+   3. PROTOTYPE HARNESS (not part of Mind)
+   ============================================================================ */
+.harness{position:sticky;top:0;z-index:60;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;
+  padding:8px 15px;background:var(--pg-nav);border-bottom:1px solid var(--pg-line)}
+.harness .brandmark{display:flex;align-items:center;gap:9px;font-weight:600;font-size:13px}
+.harness .brandmark small{color:var(--pg-faint);font-weight:400;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase}
+.h-group{display:flex;align-items:center;gap:7px}
+.h-group>span.lab{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--pg-faint)}
+.seg{display:inline-flex;background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-pill);padding:2px}
+.seg button{padding:5px 10px;border-radius:var(--pg-r-pill);font-size:12px;color:var(--pg-muted);min-height:28px}
+.seg button[aria-pressed="true"]{background:var(--pg-raised);color:var(--pg-ink);box-shadow:var(--pg-lift-1)}
+.h-select{background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);color:var(--pg-ink);padding:6px 9px;font-size:12px;min-height:30px}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--pg-muted)}
+.switch{width:36px;height:21px;border-radius:999px;background:var(--pg-graphite);border:1px solid var(--pg-line);position:relative;transition:background .18s}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:999px;background:var(--pg-ink-2);transition:transform .18s}
+.switch[aria-pressed="true"]{background:var(--pg-gold-fill)}
+.switch[aria-pressed="true"]::after{transform:translateX(15px);background:#fff}
+
+/* ============================================================================
+   4. VIEWPORT STAGE
+   ============================================================================ */
+.stage{padding:20px;display:flex;justify-content:center;overflow:auto}
+.viewport{background:var(--pg-canvas);border:1px solid var(--pg-line-strong);border-radius:16px;box-shadow:var(--pg-e4);
+  overflow:hidden;position:relative;transition:width .2s,height .2s;width:1536px;height:770px;max-width:100%;
+  container-type:inline-size;container-name:vp}
+.vp-tag{position:absolute;top:8px;right:12px;z-index:55;pointer-events:none;font:500 10.5px/1 var(--pg-font-data);
+  color:var(--pg-faint);background:color-mix(in srgb,var(--pg-surface) 70%,transparent);border:1px solid var(--pg-line);border-radius:var(--pg-r-pill);padding:4px 9px}
+
+/* ============================================================================
+   5. SOLO SHELL — nav rail + workspace + optional PAIGE rail (all fill height, NO page scroll)
+   ============================================================================ */
+.shell{display:grid;grid-template-columns:208px 1fr;height:100%;min-height:0}
+.shell[data-paige="1"]{grid-template-columns:208px 1fr 330px}
+.nav{background:var(--pg-nav);border-right:1px solid var(--pg-line);display:flex;flex-direction:column;padding:14px 12px;gap:3px;min-height:0;overflow:auto}
+.nav .cm{display:flex;align-items:center;gap:10px;padding:4px 6px 14px}
+.cm .plate{width:34px;height:34px;border-radius:var(--pg-r-plate);background:var(--pg-surface);box-shadow:var(--pg-rim);display:grid;place-items:center}
+.cm .who{font-weight:600;font-size:14px}
+.cm .who small{display:block;color:var(--pg-faint);font-weight:400;font-size:10px;letter-spacing:.03em;text-transform:uppercase}
+.nav .navitem{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--pg-r-chip);color:var(--pg-muted);font-size:13px;min-height:36px;width:100%;text-align:left}
+.nav .navitem:hover{background:var(--pg-surface);color:var(--pg-ink)}
+.nav .navitem[aria-current="page"]{background:var(--pg-surface);color:var(--pg-ink);box-shadow:var(--pg-rim)}
+.nav .subtabs{display:flex;flex-direction:column;gap:2px;margin:2px 0 2px 8px;padding-left:10px;border-left:1px solid var(--pg-line)}
+.nav .subtab{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 9px;border-radius:var(--pg-r-chip);color:var(--pg-muted);font-size:12px;min-height:30px;width:100%;text-align:left}
+.nav .subtab:hover{background:var(--pg-surface);color:var(--pg-ink)}
+.nav .subtab[aria-current="page"]{background:var(--pg-workspace);color:var(--pg-ink);box-shadow:var(--pg-rim)}
+.nav .subtab .q{font-size:9px;color:var(--pg-faint)}
+.nav .subtab.pending{opacity:.6}.nav .subtab.pending .q{color:var(--pg-violet)}
+.nav .foot{margin-top:auto;display:flex;flex-direction:column;gap:2px;padding-top:10px;border-top:1px solid var(--pg-line)}
+.work{min-height:0;position:relative;overflow:hidden}
+.paige-rail{background:var(--pg-spine);border-left:1px solid var(--pg-line);display:flex;flex-direction:column;min-height:0}
+.paige-rail header{padding:13px 15px;border-bottom:1px solid var(--pg-line);display:flex;align-items:center;justify-content:space-between}
+.paige-rail .body{padding:15px;color:var(--pg-muted);font-size:12.5px;display:flex;flex-direction:column;gap:11px;overflow:auto}
+.paige-rail .bubble{background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);padding:11px 13px;box-shadow:var(--pg-rim)}
+.paige-rail .composer{margin-top:auto;padding:11px;border-top:1px solid var(--pg-line);display:flex;gap:8px}
+.paige-rail .composer input{flex:1;background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-pill);padding:8px 12px;color:var(--pg-ink);font-size:12.5px}
+
+/* ============================================================================
+   6. MIND — one fit-to-viewport screen; orb is the hero; NOTHING scrolls
+   ============================================================================ */
+.mind{position:absolute;inset:0;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.btn{display:inline-flex;align-items:center;gap:7px;border-radius:var(--pg-r-chip);padding:8px 13px;font-size:12.5px;
+  border:1px solid var(--pg-line);background:color-mix(in srgb,var(--pg-surface) 82%,transparent);color:var(--pg-ink);min-height:36px;box-shadow:var(--pg-rim);transition:box-shadow .12s,transform .12s}
+.btn:hover{box-shadow:var(--pg-lift-1)}
+.btn:active{box-shadow:var(--pg-inset);transform:translateY(.5px)}
+.btn .ico{width:15px;height:15px;flex-shrink:0}
+.btn--gold{background:var(--pg-gold-fill);color:#1a1305;border-color:transparent;box-shadow:var(--pg-lift-1)}
+.btn--ghost{background:transparent;box-shadow:none}
+.btn--ghost:hover{background:color-mix(in srgb,var(--pg-surface) 60%,transparent)}
+.btn[disabled]{opacity:.5;cursor:not-allowed;box-shadow:none}
+.btn[aria-pressed="true"]{background:var(--pg-gold-bloom);border-color:var(--pg-line-authority);color:var(--pg-ink)}
+
+/* header */
+.mind-head{position:relative;z-index:20;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
+  padding:16px 22px 10px;flex-wrap:wrap}
+.mind-eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--pg-faint)}
+.mind-title{font:600 20px/1.15 var(--pg-font-display);letter-spacing:-.02em;margin-top:3px}
+.mind-title b{color:var(--pg-gold-deep);font-weight:600}
+.mind-sub{margin-top:4px;font-size:12.5px;color:var(--pg-ink-2);max-width:52ch}
+.mind-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.searchbox{display:flex;align-items:center;gap:8px;background:color-mix(in srgb,var(--pg-surface) 82%,transparent);
+  border:1px solid var(--pg-line);border-radius:var(--pg-r-pill);padding:7px 13px;box-shadow:var(--pg-inset);width:210px}
+.searchbox input{flex:1;background:none;border:none;color:var(--pg-ink);font-size:12.5px;outline:none;min-width:0}
+.searchbox .ico{width:15px;height:15px;color:var(--pg-faint)}
+
+/* orb stage */
+.orb-stage{flex:1;position:relative;min-height:0}
+.orb-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.orb-canvas:focus-visible{outline:2px solid var(--pg-gold-core);outline-offset:-3px}
+
+/* domain callouts */
+.callout{position:absolute;z-index:12;display:flex;align-items:center;gap:10px;padding:9px 12px;
+  background:color-mix(in srgb,var(--pg-surface) 88%,transparent);border:1px solid var(--pg-line);
+  border-radius:var(--pg-r-plate);box-shadow:var(--pg-lift-1);cursor:pointer;max-width:210px;text-align:left;
+  backdrop-filter:blur(3px);transition:box-shadow .14s,transform .14s,border-color .14s}
+.callout:hover{box-shadow:var(--pg-lift-2);transform:translateY(-1px)}
+.callout[aria-pressed="true"]{border-color:var(--pg-line-authority)}
+.callout .c-plate{width:30px;height:30px;border-radius:var(--pg-r-seal);background:var(--pg-workspace);box-shadow:var(--pg-rim);display:grid;place-items:center;color:var(--pg-ink-2);flex-shrink:0}
+.callout .c-plate svg{width:16px;height:16px}
+.callout .c-name{font:600 12.5px/1.2 var(--pg-font-display)}
+.callout .c-state{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--pg-muted);margin-top:3px}
+.callout .dot{width:7px;height:7px;border-radius:999px;flex-shrink:0}
+.co-tl{top:13%;left:3%}.co-ml{top:43%;left:1.5%}.co-bl{bottom:15%;left:5%}
+.co-tr{top:19%;right:3%}.co-br{top:52%;right:2.5%}
+
+/* orbital controls */
+.orb-controls{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);z-index:14;display:flex;align-items:center;gap:14px;
+  background:color-mix(in srgb,var(--pg-surface) 84%,transparent);border:1px solid var(--pg-line);border-radius:var(--pg-r-pill);
+  padding:8px 16px;box-shadow:var(--pg-lift-2);backdrop-filter:blur(4px)}
+.orb-controls .oc-hint{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:9.5px;color:var(--pg-faint);letter-spacing:.02em}
+.orb-controls .oc-hint svg{width:16px;height:16px;color:var(--pg-muted)}
+.orb-controls .oc-mid{display:flex;align-items:center;gap:10px}
+.orb-controls input[type=range]{width:150px;accent-color:var(--pg-gold-fill)}
+.oc-play,.oc-reset{width:34px;height:34px;border-radius:999px;border:1px solid var(--pg-line);background:var(--pg-raised);display:grid;place-items:center;box-shadow:var(--pg-rim);color:var(--pg-ink-2)}
+.oc-play svg,.oc-reset svg{width:15px;height:15px}
+.oc-reset:hover{border-color:var(--pg-line-authority);color:var(--pg-ink)}
+.oc-label{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--pg-faint);white-space:nowrap}
+
+/* WebGL-unavailable fallback (never blank) — same governed records as a list */
+.orb-fallback{position:absolute;inset:0;z-index:17;overflow:auto;padding:26px 22px;
+  background:radial-gradient(ellipse at 50% 34%,color-mix(in srgb,var(--pg-surface) 55%,transparent),var(--pg-env))}
+.orb-fallback .ofb-card{max-width:640px;margin:0 auto}
+.orb-fallback .glyph{width:46px;height:46px;border-radius:var(--pg-r-plate);background:var(--pg-surface);box-shadow:var(--pg-rim);display:grid;place-items:center;color:var(--pg-faint);margin:0 auto 12px}
+.orb-fallback h2{font:600 16px var(--pg-font-display);text-align:center}
+.orb-fallback p{color:var(--pg-muted);font-size:12.5px;text-align:center;margin:6px auto 16px;max-width:52ch}
+.ofb-domains{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.ofb-dom{display:flex;align-items:center;gap:11px;text-align:left;padding:12px 13px;background:var(--pg-surface);
+  border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);box-shadow:var(--pg-rim);cursor:pointer;transition:border-color .14s,box-shadow .14s}
+.ofb-dom:hover{border-color:var(--pg-line-authority);box-shadow:var(--pg-lift-1)}
+.ofb-dom .c-plate{width:32px;height:32px;border-radius:var(--pg-r-seal);background:var(--pg-workspace);box-shadow:var(--pg-rim);display:grid;place-items:center;color:var(--pg-ink-2);flex-shrink:0}
+.ofb-dom .c-plate svg{width:17px;height:17px}
+.ofb-dom .c-name{font:600 12.5px var(--pg-font-display)}
+.ofb-dom .c-state{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--pg-muted);margin-top:3px}
+.ofb-dom .dot{width:8px;height:8px;border-radius:999px;flex-shrink:0}
+.ofb-dom .verdict-chip{margin-left:auto;font:600 9px var(--pg-font-data);letter-spacing:.05em;padding:2px 7px;border-radius:var(--pg-r-pill);border:1px solid var(--pg-line)}
+
+/* legend + footer */
+.orb-legend{position:absolute;right:14px;bottom:14px;z-index:13;background:color-mix(in srgb,var(--pg-surface) 86%,transparent);
+  border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);padding:11px 13px;box-shadow:var(--pg-lift-1);backdrop-filter:blur(3px)}
+.orb-legend h4{font:600 11px var(--pg-font-display);margin-bottom:7px}
+.orb-legend .lg{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--pg-muted);padding:2px 0}
+.orb-legend .lg .dot{width:8px;height:8px;border-radius:999px}
+.orb-legend .lg.small{font-size:10px;color:var(--pg-faint)}
+.orb-footer{position:absolute;left:50%;bottom:15px;transform:translateX(-50%);z-index:11;display:flex;align-items:center;gap:7px;
+  font-size:11px;color:var(--pg-faint);white-space:nowrap;pointer-events:none;max-width:60%}
+.orb-footer svg{width:13px;height:13px;opacity:.7}
+
+/* focus a domain menu */
+.menu-wrap{position:relative}
+.menu{position:absolute;top:calc(100% + 6px);right:0;z-index:30;min-width:220px;background:var(--pg-raised);border:1px solid var(--pg-line-strong);
+  border-radius:var(--pg-r-plate);box-shadow:var(--pg-e4);padding:6px;display:none}
+.menu[data-open="1"]{display:block;animation:pg-reveal .14s ease both}
+.menu button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:8px 10px;border-radius:var(--pg-r-chip);font-size:12.5px;color:var(--pg-ink)}
+.menu button:hover{background:var(--pg-surface)}
+.menu button .dot{width:8px;height:8px;border-radius:999px;flex-shrink:0}
+
+/* orb overlays (states) */
+.orb-overlay{position:absolute;inset:0;z-index:16;display:grid;place-items:center;text-align:center;padding:24px;
+  background:radial-gradient(ellipse at center,color-mix(in srgb,var(--pg-env) 40%,transparent),color-mix(in srgb,var(--pg-env) 88%,transparent))}
+.orb-overlay .card{max-width:44ch}
+.orb-overlay .glyph{width:48px;height:48px;border-radius:var(--pg-r-plate);background:var(--pg-surface);box-shadow:var(--pg-rim);display:grid;place-items:center;color:var(--pg-faint);margin:0 auto 14px}
+.orb-overlay h2{font:600 16px var(--pg-font-display)}
+.orb-overlay p{color:var(--pg-muted);font-size:12.5px;margin-top:6px}
+.orb-overlay .acts{display:flex;gap:8px;justify-content:center;margin-top:15px;flex-wrap:wrap}
+.orb-banner{position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:15;display:flex;gap:9px;align-items:center;max-width:80%;
+  padding:8px 13px;border-radius:var(--pg-r-pill);background:color-mix(in srgb,var(--pg-surface) 90%,transparent);border:1px solid var(--pg-line);box-shadow:var(--pg-lift-1);font-size:11.5px}
+.orb-banner .dot{width:8px;height:8px;border-radius:999px;flex-shrink:0}
+.orb-banner.warn{border-color:color-mix(in srgb,var(--pg-warning) 45%,var(--pg-line))}
+.orb-banner.err{border-color:color-mix(in srgb,var(--pg-negative) 45%,var(--pg-line))}
+.orb-banner a{color:var(--pg-gold-deep)}
+
+.toast{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);z-index:45;display:flex;align-items:center;gap:9px;
+  background:var(--pg-raised);border:1px solid var(--pg-line-strong);border-radius:var(--pg-r-pill);padding:9px 16px;box-shadow:var(--pg-lift-2);font-size:12.5px}
+.toast.err{border-color:color-mix(in srgb,var(--pg-negative) 55%,var(--pg-line))}
+
+/* ============================================================================
+   7. EVIDENCE DRAWER + capture (overlay within the viewport)
+   ============================================================================ */
+.scrim{position:absolute;inset:0;z-index:48;background:color-mix(in srgb,var(--pg-env) 55%,transparent);backdrop-filter:blur(1.5px)}
+.drawer{position:absolute;top:0;right:0;bottom:0;z-index:49;width:min(420px,90%);background:var(--pg-workspace);
+  border-left:1px solid var(--pg-line-strong);box-shadow:var(--pg-e4);display:flex;flex-direction:column;animation:pg-slide .2s ease both}
+.drawer header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:15px 16px 12px;border-bottom:1px solid var(--pg-line)}
+.drawer header h2{font:600 16px/1.25 var(--pg-font-display)}
+.drawer header .close{width:32px;height:32px;border-radius:var(--pg-r-chip);display:grid;place-items:center;color:var(--pg-muted);border:1px solid var(--pg-line);background:var(--pg-surface)}
+.drawer .d-scroll{flex:1;min-height:0;overflow:auto;padding:16px}
+.drawer section+section{margin-top:17px}
+.drawer h3{font:600 11px var(--pg-font-display);text-transform:uppercase;letter-spacing:.06em;color:var(--pg-faint);margin-bottom:8px}
+.drawer .serif-quote{font-family:var(--pg-font-editorial);font-size:15px;line-height:1.5;color:var(--pg-ink)}
+.dl{display:grid;grid-template-columns:96px 1fr;gap:7px 12px;font-size:12.5px}
+.dl dt{color:var(--pg-faint)}.dl dd{color:var(--pg-ink-2);margin:0}
+.state-pill{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.02em;text-transform:uppercase;border-radius:var(--pg-r-pill);padding:4px 9px;border:1px solid var(--pg-line);color:var(--pg-ink-2);background:var(--pg-canvas)}
+.state-pill .dot{width:7px;height:7px;border-radius:999px}
+.note{font-size:11.5px;color:var(--pg-muted);background:var(--pg-canvas);border:1px solid var(--pg-line-soft);border-radius:var(--pg-r-chip);padding:9px 11px;line-height:1.5}
+.drawer .actions{border-top:1px solid var(--pg-line);padding:13px 16px;display:flex;gap:8px;flex-wrap:wrap}
+.route-note{display:flex;gap:10px;align-items:flex-start;background:var(--pg-canvas);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);padding:12px 13px;margin-bottom:14px}
+.route-note svg{width:17px;height:17px;color:var(--pg-gold-deep);flex-shrink:0;margin-top:1px}
+.route-note .rn-t{font-size:12.5px;color:var(--pg-ink)}.route-note .rn-b{font-size:11.5px;color:var(--pg-muted);margin-top:3px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;color:var(--pg-ink-2);margin-bottom:5px;font-weight:500}
+.field .req{color:var(--pg-gold-deep)}
+.field input,.field select,.field textarea{width:100%;background:var(--pg-surface);border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);padding:9px 11px;color:var(--pg-ink);font-size:13px}
+.field textarea{min-height:70px;resize:vertical}
+.field .help{font-size:11px;color:var(--pg-faint);margin-top:4px}
+.field .err-msg{font-size:11.5px;color:var(--pg-negative);margin-top:4px;display:none}
+.field[data-invalid="1"] input,.field[data-invalid="1"] textarea{border-color:var(--pg-negative)}
+.field[data-invalid="1"] .err-msg{display:block}
+.facts-list .fact{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:9px 6px;border-radius:var(--pg-r-chip)}
+.facts-list .fact+.fact{border-top:1px solid var(--pg-line-soft)}
+.facts-list .fact.click{cursor:pointer}.facts-list .fact.click:hover{background:var(--pg-workspace)}
+.facts-list .dot{width:8px;height:8px;border-radius:999px}
+.facts-list .f-name{font-size:13px}.facts-list .f-src{font-size:11px;color:var(--pg-faint);margin-top:1px}
+
+/* ============================================================================
+   8. ANNOTATION LAYER
+   ============================================================================ */
+body[data-annot="1"] [data-ann]{outline:1px dashed color-mix(in srgb,var(--pg-violet) 55%,transparent);outline-offset:2px}
+.ann-badge{display:none}
+body[data-annot="1"] .ann-badge{display:inline-grid;place-items:center;position:absolute;top:-9px;left:-9px;z-index:20;width:19px;height:19px;border-radius:999px;background:var(--pg-violet);color:#fff;font:600 10px var(--pg-font-data);box-shadow:var(--pg-lift-1)}
+.ann-panel{position:fixed;right:14px;bottom:14px;z-index:70;width:330px;max-height:64vh;overflow:auto;background:var(--pg-raised);border:1px solid var(--pg-line-strong);border-radius:var(--pg-r-plate);box-shadow:var(--pg-e4);display:none}
+body[data-annot="1"] .ann-panel{display:block}
+.ann-panel header{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-bottom:1px solid var(--pg-line);position:sticky;top:0;background:var(--pg-raised)}
+.ann-panel header h4{font:600 12px var(--pg-font-display)}
+.ann-item{padding:9px 12px;border-bottom:1px solid var(--pg-line-soft);font-size:12px}
+.ann-item:last-child{border-bottom:none}
+.ann-item .ai-top{display:flex;align-items:center;gap:8px}
+.ann-item .num{display:grid;place-items:center;width:18px;height:18px;border-radius:999px;background:var(--pg-violet);color:#fff;font:600 10px var(--pg-font-data);flex-shrink:0}
+.ann-item .ai-name{font-weight:600}
+.ann-item .verdict{margin-left:auto;font:600 9px var(--pg-font-data);letter-spacing:.04em;padding:2px 7px;border-radius:999px;border:1px solid var(--pg-line)}
+.v-live{color:var(--pg-positive);border-color:color-mix(in srgb,var(--pg-positive) 50%,var(--pg-line))}
+.v-partial{color:var(--pg-warning);border-color:color-mix(in srgb,var(--pg-warning) 50%,var(--pg-line))}
+.v-unavail{color:var(--pg-negative);border-color:color-mix(in srgb,var(--pg-negative) 50%,var(--pg-line))}
+.ann-item .ai-src{color:var(--pg-muted);margin-top:5px;line-height:1.5}
+.ann-item .ai-src code{font:500 11px var(--pg-font-data);color:var(--pg-ink-2);background:var(--pg-surface);border-radius:5px;padding:1px 5px}
+
+/* ============================================================================
+   9. RESPONSIVE — recompose (never scroll), container-scoped to .viewport
+   ============================================================================ */
+@container vp (max-width:1180px){
+  .co-tl{top:11%;left:2%}.co-ml{top:42%;left:1%}.co-bl{bottom:15%;left:2%}
+  .co-tr{top:22%;right:2%}.co-br{bottom:19%;right:2%}
+  .callout{max-width:180px;padding:8px 10px}
+}
+@container vp (max-width:900px){
+  .shell,.shell[data-paige="1"]{grid-template-columns:1fr}
+  .nav{flex-direction:row;overflow:auto;align-items:center;gap:6px}
+  .nav .cm,.nav .subtabs,.nav .foot{display:none}
+  .paige-rail{display:none}
+  .mind-head{padding:12px 14px 8px}
+  .mind-sub{display:none}
+  /* callouts fold into a compact scrollable chip strip under the header (still no page scroll) */
+  .callouts{position:absolute;left:0;right:0;top:0;z-index:12;display:flex;gap:8px;overflow-x:auto;padding:6px 12px;background:linear-gradient(var(--pg-canvas),transparent)}
+  .callout{position:static;flex:0 0 auto;max-width:none;box-shadow:var(--pg-rim);backdrop-filter:none}
+  .orb-legend{padding:8px 10px}.orb-legend .lg.small{display:none}
+  .orb-footer{display:none}
+}
+@container vp (max-width:620px){
+  .orb-controls{gap:8px;padding:7px 11px}
+  .orb-controls .oc-hint{display:none}
+  .orb-controls input[type=range]{width:90px}
+  .orb-legend{right:8px;bottom:8px}
+  .searchbox{width:150px}
+}
+</style>
+</head>
+<body data-annot="0">
+<div id="root" data-pg="dark">
+  <!-- ===================== HARNESS ===================== -->
+  <div class="harness" role="region" aria-label="Prototype controls — not part of Mind">
+    <div class="brandmark">Command Center · Mind <small>Gate&nbsp;1 · orb</small></div>
+    <div class="h-group"><span class="lab">Theme</span>
+      <div class="seg" role="group" aria-label="Theme">
+        <button id="t-light" aria-pressed="false">Mineral</button>
+        <button id="t-dark" aria-pressed="true">Obsidian</button>
+      </div></div>
+    <div class="h-group"><span class="lab">Viewport</span>
+      <select class="h-select" id="vp" aria-label="Viewport size">
+        <option value="1536x770">Laptop · 1536×770</option>
+        <option value="1366x768">Laptop · 1366×768</option>
+        <option value="1024x768">Tablet · 1024×768</option>
+        <option value="900x1000">Tablet · 900×1000</option>
+        <option value="820x1180">Tablet · 820×1180</option>
+        <option value="390x844">Mobile · 390×844</option>
+        <option value="fit">Fit width</option>
+      </select></div>
+    <div class="h-group"><span class="lab">PAIGE</span>
+      <div class="seg" role="group" aria-label="PAIGE panel">
+        <button id="p-closed" aria-pressed="true">Closed</button>
+        <button id="p-open" aria-pressed="false">Open</button>
+      </div></div>
+    <div class="h-group"><span class="lab">State</span>
+      <select class="h-select" id="scenario" aria-label="Scenario / state">
+        <option value="populated">Populated</option>
+        <option value="firstuse">First-use (empty)</option>
+        <option value="partial">Partial coverage</option>
+        <option value="unavailable">Source unavailable</option>
+        <option value="loading">Loading</option>
+        <option value="switching">Workspace switching</option>
+      </select></div>
+    <button class="toggle" id="annot" aria-pressed="false"><span class="switch" aria-hidden="true"></span> Annotations</button>
+  </div>
+
+  <!-- ===================== STAGE ===================== -->
+  <div class="stage">
+    <div class="viewport" id="viewport" style="width:1536px;height:770px">
+      <div class="vp-tag mono" id="vptag">1536×770 · Obsidian</div>
+      <div class="shell" id="shell" data-paige="0">
+        <!-- NAV -->
+        <nav class="nav" aria-label="Solo primary">
+          <div class="cm">
+            <span class="plate" aria-hidden="true"><svg viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="PAIGE"><polygon points="21,13.6 30.5,13.6 21,34.4 11.5,34.4" fill="var(--pg-gold)" stroke="var(--pg-gold)" stroke-width="3.2" stroke-linejoin="round"></polygon><circle cx="34.5" cy="30.5" r="5.5" fill="var(--pg-gold-core)"></circle></svg></span>
+            <span class="who">Acme Advisory<small>Solo workspace</small></span>
+          </div>
+          <button class="navitem" aria-current="page"><span aria-hidden="true">▦</span> Command Center</button>
+          <div class="subtabs" role="group" aria-label="Command Center sub-tabs">
+            <button class="subtab pending"><span>Business Game&nbsp;Plan</span><span class="q">new</span></button>
+            <button class="subtab"><span>Systems Check</span><span class="q">readiness</span></button>
+            <button class="subtab pending"><span>Trust Compass</span><span class="q">folding&nbsp;in</span></button>
+            <button class="subtab" aria-current="page"><span>Mind</span><span class="q">here</span></button>
+          </div>
+          <button class="navitem"><span aria-hidden="true">☷</span> Clients</button>
+          <button class="navitem"><span aria-hidden="true">◆</span> Campaigns</button>
+          <button class="navitem"><span aria-hidden="true">⌘</span> Marketplace</button>
+          <button class="navitem"><span aria-hidden="true">▤</span> Analytics</button>
+          <button class="navitem"><span aria-hidden="true">⚙</span> Settings</button>
+          <div class="foot">
+            <button class="navitem" id="nav-theme"><span aria-hidden="true">◐</span> Mineral / Obsidian</button>
+            <button class="navitem"><span aria-hidden="true">⇥</span> Sign out</button>
+          </div>
+        </nav>
+
+        <!-- WORKSPACE -->
+        <main class="work">
+          <section class="mind" aria-label="Mind — governed knowledge">
+            <header class="mind-head" data-ann="header">
+              <span class="ann-badge" aria-hidden="true">1</span>
+              <div>
+                <div class="mind-eyebrow">Acme Advisory · Solo · Governed knowledge</div>
+                <h1 class="mind-title">Paige Mind — <b>governed knowledge</b></h1>
+                <p class="mind-sub" id="sub">A navigable view of sourced business context. It does not show hidden reasoning.</p>
+              </div>
+              <div class="mind-tools" data-ann="tools">
+                <span class="ann-badge" aria-hidden="true">2</span>
+                <div class="searchbox">
+                  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                  <input id="search" type="search" placeholder="Search records…" aria-label="Search records" />
+                </div>
+                <div class="menu-wrap">
+                  <button class="btn" id="focus-btn" aria-haspopup="true" aria-expanded="false">
+                    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg>
+                    Focus a domain
+                  </button>
+                  <div class="menu" id="focus-menu" role="menu"></div>
+                </div>
+                <button class="btn" id="pause-btn" aria-pressed="false">
+                  <svg class="ico" id="pause-ico" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+                  <span id="pause-lbl">Pause orbit</span>
+                </button>
+                <button class="toggle" id="rm-btn" aria-pressed="false"><span class="switch" aria-hidden="true"></span> Reduced motion</button>
+              </div>
+            </header>
+
+            <div class="orb-stage" id="stage" data-ann="orb">
+              <span class="ann-badge" aria-hidden="true">3</span>
+              <canvas class="orb-canvas" id="orb" tabindex="0" role="img"
+                aria-label="Interactive knowledge orb: a rotating view of governed records positioned by domain and coloured by source. Drag to rotate, scroll to zoom, Enter to focus the front record. Presentation motion is not activity."></canvas>
+
+              <!-- domain callouts (connectors drawn on canvas to each hub) -->
+              <div class="callouts" id="callouts"></div>
+
+              <!-- orbital controls -->
+              <div class="orb-controls" data-ann="controls">
+                <span class="ann-badge" aria-hidden="true">5</span>
+                <span class="oc-label">Orbital controls</span>
+                <div class="oc-hint" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 11V6a2 2 0 1 1 4 0v5"/><path d="M13 7a2 2 0 1 1 4 0v4"/><path d="M17 9a2 2 0 1 1 4 0v5a7 7 0 0 1-7 7h-2a7 7 0 0 1-6-4l-2-4a2 2 0 0 1 3-2l2 2"/></svg>Drag to explore</div>
+                <div class="oc-mid">
+                  <button class="oc-play" id="oc-play" aria-label="Pause orbit"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
+                  <input type="range" id="oc-zoom" min="70" max="150" value="100" aria-label="Zoom" />
+                  <button class="oc-reset" id="oc-reset" aria-label="Reset view — recentre and show all domains"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg></button>
+                </div>
+                <div class="oc-hint" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Click a node to focus</div>
+              </div>
+
+              <!-- legend -->
+              <aside class="orb-legend" data-ann="legend" aria-label="Source signals">
+                <span class="ann-badge" aria-hidden="true">6</span>
+                <h4>Source signals</h4>
+                <div class="lg"><span class="dot" style="background:var(--sig-confirmed)"></span>Owner-confirmed</div>
+                <div class="lg"><span class="dot" style="background:var(--sig-connection)"></span>Connection-sourced</div>
+                <div class="lg"><span class="dot" style="background:var(--sig-refreshed)"></span>Source refreshed</div>
+                <div class="lg"><span class="dot" style="background:var(--sig-needs)"></span>Needs confirmation</div>
+                <div class="lg small"><span class="dot" style="background:var(--sig-legacy)"></span>Legacy record</div>
+                <div class="lg small"><span class="dot" style="background:var(--sig-unavailable)"></span>Unavailable</div>
+              </aside>
+
+              <!-- footer -->
+              <div class="orb-footer">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                This view reflects governed records and their connections. It is not exhaustive.
+              </div>
+
+              <!-- state overlays -->
+              <div class="orb-banner" id="banner" hidden></div>
+              <div class="orb-overlay" id="ov-loading" hidden aria-hidden="true">
+                <div class="card"><div class="glyph"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/></svg></div><h2>Resolving this workspace's knowledge…</h2><p>Previous-account records are not shown while grounded sources resolve.</p></div>
+              </div>
+              <div class="orb-overlay" id="ov-firstuse" hidden>
+                <div class="card"><div class="glyph"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3a4 4 0 0 1 4 4 4 4 0 0 1 0 8 4 4 0 0 1-8 0 4 4 0 0 1 0-8 4 4 0 0 1 4-4z"/></svg></div><h2>PAIGE hasn't learned anything durable here yet</h2><p>Nothing is invented to fill the field. The fastest way to give PAIGE a foundation is to confirm your business basics in Setup.</p><div class="acts"><button class="btn btn--gold">Confirm business basics in Setup</button><button class="btn btn--ghost">Add a knowledge document</button></div></div>
+              </div>
+              <div class="orb-overlay" id="ov-switching" hidden data-ann="switch">
+                <span class="ann-badge" aria-hidden="true">9</span>
+                <div class="card"><div class="glyph" style="animation:pg-reveal 1s infinite alternate"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/></svg></div><h2>Resolving this workspace's Mind…</h2><p>Records, filters, focus, open drawers, and pending edits from the previous workspace are cleared before this one paints.</p></div>
+              </div>
+
+              <!-- WebGL-unavailable fallback (rendered only if the 3D context fails; never blank) -->
+              <div class="orb-fallback" id="orb-fallback" hidden data-ann="fallback">
+                <div class="ofb-card">
+                  <div class="glyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3a4 4 0 0 1 4 4 4 4 0 0 1 0 8 4 4 0 0 1-8 0 4 4 0 0 1 0-8 4 4 0 0 1 4-4z"/></svg></div>
+                  <h2>Your knowledge, without the 3D view</h2>
+                  <p>This device couldn't start the interactive 3D orb, so PAIGE is showing the same governed records as a list. Nothing is hidden by the fallback — open any domain for its evidence.</p>
+                  <div class="ofb-domains" id="ofb-domains"></div>
+                </div>
+              </div>
+
+              <div class="toast" id="toast" hidden></div>
+              <div class="sr-only" id="live" aria-live="polite"></div>
+            </div><!-- /orb-stage -->
+          </section>
+        </main>
+
+        <!-- PAIGE RAIL -->
+        <aside class="paige-rail" id="paige" hidden aria-label="PAIGE">
+          <header><span style="font:600 13px var(--pg-font-display)">✦ PAIGE</span>
+            <button class="close" aria-label="Fold PAIGE conversation" style="width:28px;height:28px;border-radius:8px">‹</button></header>
+          <div class="body">
+            <div class="bubble">Ask me about anything I know about Acme Advisory — I'll name where each answer comes from, or tell you honestly when I don't have it.</div>
+            <div class="bubble" style="align-self:flex-end;background:var(--pg-workspace)">What do you know about our offers?</div>
+            <div class="bubble">I don't have your offers as confirmed knowledge yet — nothing is on file I can rely on. Your catalog lives in Campaigns; want me to point you there?</div>
+          </div>
+          <div class="composer"><input placeholder="Message PAIGE…" aria-label="Message PAIGE" /><button class="btn btn--gold" style="min-height:34px">Send</button></div>
+        </aside>
+      </div><!-- /shell -->
+      <div id="drawer-mount"></div>
+    </div><!-- /viewport -->
+  </div><!-- /stage -->
+
+  <div class="ann-panel" role="region" aria-label="Region data-source annotations">
+    <header><h4>Region → real source / honest absence</h4>
+      <button class="toggle" id="annot-close" aria-label="Hide annotations"><span style="font-size:16px">×</span></button></header>
+    <div id="ann-list"></div>
+  </div>
+</div>
+
+<!--ORB_BUNDLE-->
+<script>
+"use strict";
+/* ============================================================================
+   DATA — illustrative FIXTURES rendered from REAL contract shapes.
+   Fixture tenant "Acme Advisory" (never a real owner account, §63).
+   Canonical readiness fact: fact_key · state · source · as_of · reason · next_action.
+   ============================================================================ */
+const STATES = {
+  owner_confirmed:  {label:"Owner-confirmed",   sig:"--sig-confirmed",  src:"Your Setup confirmation"},
+  connection_sourced:{label:"Connection-sourced",sig:"--sig-connection", src:"A connected account"},
+  source_refreshed: {label:"Source refreshed",  sig:"--sig-refreshed",  src:"A connected source"},
+  legacy_sourced:   {label:"Legacy record",     sig:"--sig-legacy",     src:"An older brand record"},
+  needs_confirmation:{label:"Needs confirmation",sig:"--sig-needs",      src:"— no source on file"},
+  unavailable:      {label:"Unavailable",       sig:"--sig-unavailable",src:"— could not be read"},
+};
+const ICON={
+  identity:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M8 6V4"/></svg>',
+  people:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.3 3.1-5 7-5s7 1.7 7 5"/><circle cx="18" cy="9" r="2.4"/></svg>',
+  goals:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3v7l-2 2 2 2v7M18 3v7l2 2-2 2v7"/><path d="M6 12h12"/></svg>',
+  systems:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>',
+  knowledge:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-6-3-6 3z"/></svg>',
+  offers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 7H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+};
+/* Domains: hub direction on the sphere (theta az, phi elevation), verdict, callout slot. */
+const DOMAINS=[
+  {key:"identity", name:"Business context", icon:"identity", verdict:"PARTIAL", slot:"co-tl",
+   az:-0.55, el:0.62, source:"get_business_context_readiness · business_context.readiness (read-only)",
+   facts:[
+     {name:"Website", state:"legacy_sourced", as_of:null, reason:"Present only in an older brand record — never confirmed in Setup.", next:"Confirm in Setup"},
+     {name:"Business phone", state:"legacy_sourced", as_of:null, reason:"Present only in an older brand record — never confirmed.", next:"Confirm in Setup"},
+     {name:"Industry", state:"legacy_sourced", as_of:null, reason:"Inherited from an older record.", next:"Confirm in Setup"},
+     {name:"Primary business email", state:"connection_sourced", as_of:"Observed via a connected account", reason:"Derived from a connected provider, not owner-confirmed.", next:"Confirm in Setup"},
+   ], valueNote:"This domain reports each fact's state and provenance, never the raw value itself — that boundary is deliberate."},
+  {key:"people", name:"Client relationships", icon:"people", verdict:"PARTIAL", slot:"co-ml",
+   az:-2.4, el:0.05, source:"Governed memory seam (Release C) · canonical records in People/Clients",
+   facts:[], empty:{h:"Governed store exists · nothing on file yet", b:"Canonical people, roles and relationships live in People/Clients — the one source of truth. Mind holds governed context on top (a memory seam shipped in Release C), but nothing writes to it from Mind or chat yet, so there's nothing to show. Anything learned is stored as “proposed” until you confirm it.", link:"Open People / Clients"}},
+  {key:"goals", name:"Operating decisions", icon:"goals", verdict:"PARTIAL", slot:"co-bl",
+   az:-1.5, el:-0.75, source:"Governed memory seam (Release C: decision · commitment · correction)",
+   facts:[], empty:{h:"Governed store exists · nothing on file yet", b:"A governed memory seam can hold decisions, commitments and corrections (Release C), but nothing writes to it from Mind or chat yet. A recorded decision is stored as “proposed” until you confirm it. Pending approvals live in Systems Check.", link:"Open Systems Check"}},
+  {key:"systems", name:"Connected sources", icon:"systems", verdict:"PARTIAL", slot:"co-tr",
+   az:1.1, el:0.35, source:"Connection readiness getters + systems_check_snapshot (status only)",
+   facts:[
+     {name:"Workflow automation", state:"source_refreshed", as_of:"Last checked 2d ago", reason:"A workflow connection is on file; PAIGE reads its current status only, not its history.", next:"Open Connections"},
+     {name:"PAIGE's connected tools", state:"needs_confirmation", as_of:null, reason:"A tool connection is on file but isn't active yet. Whether PAIGE may act with it is governed in Trust Compass.", next:"Open Connections"},
+     {name:"Call transcripts", state:"unavailable", as_of:null, reason:"Not connected — this source isn't set up, so PAIGE won't draw on it.", next:null},
+   ]},
+  {key:"knowledge", name:"Knowledge resources", icon:"knowledge", verdict:"LIVE", slot:"co-br",
+   az:2.2, el:-0.25, source:"useSoloKnowledge → tenant_knowledge_docs (RLS-scoped)",
+   facts:[
+     {name:"Onboarding playbook.pdf", state:"owner_confirmed", as_of:"Indexed 4d ago", reason:"12 indexed chunks · Operations.", next:"Open document", chunks:12},
+     {name:"Service agreement template", state:"owner_confirmed", as_of:"Indexed 6d ago", reason:"8 indexed chunks · Legal.", next:"Open document", chunks:8},
+     {name:"Discovery call framework", state:"owner_confirmed", as_of:"Indexed 9d ago", reason:"5 indexed chunks · Sales.", next:"Open document", chunks:5},
+   ]},
+  {key:"offers", name:"Offers & services", icon:"offers", verdict:"UNAVAILABLE", slot:null,
+   az:0.2, el:-0.95, source:"No governed knowledge lens (catalog lives in Campaigns)",
+   facts:[], empty:{h:"Not on file as knowledge yet", b:"PAIGE has no confirmed record of your offers. Your catalog is real, but it lives in Campaigns and isn't yet a governed fact PAIGE can rely on.", link:"Open Campaigns · Catalog"}},
+];
+
+const ANNOTATIONS=[
+  {n:1,name:"Header · title + subtitle",v:"partial",src:'Account name is real (<code>accountContext</code>); the "governed knowledge" framing and the "does not show hidden reasoning" line are honesty statements, not data.'},
+  {n:2,name:"Search / Focus / Pause / Reduced-motion",v:"partial",src:'<b>Search</b> filters the loaded, source-backed records client-side (a real semantic seam <code>kb-search</code>/voyage-3 exists but has zero frontend callers — not wired). <b>Focus a domain</b>, <b>Pause orbit</b>, <b>Reduced motion</b> are live view controls; reduced-motion also follows the OS setting.'},
+  {n:3,name:"The orb (record nodes)",v:"partial",src:'Each <b>node maps to a real governed record</b>, positioned by domain and coloured by its canonical state (<code>owner_confirmed</code>/<code>connection_sourced</code>/<code>legacy_sourced</code>/<code>needs_confirmation</code>/<code>unavailable</code>). The faint drifting <b>dust is decorative</b> and non-interactive — the footer says the view is not exhaustive. Nothing here is authenticated-runtime LIVE yet (Mind evidence via Rail/Spine does not flow for a real owner today).'},
+  {n:4,name:"Domain callouts",v:"partial",src:'Five domains anchor the orb, each showing its honest coverage state. Business context = PARTIAL (<code>business_context.readiness</code>, provenance not raw value); Knowledge = LIVE-read (<code>tenant_knowledge_docs</code>); Client relationships & Operating decisions = governed store exists, empty; Connected sources = status only. Click a callout to focus that domain.'},
+  {n:5,name:"Orbital controls",v:"partial",src:'Drag/scroll/keyboard rotate & zoom the view; play/pause stops the presentation orbit. This is presentation motion, <b>not tenant activity</b> — no data changes.'},
+  {n:6,name:"Source-signals legend",v:"live",src:'The four signals from the reference plus the two other real states (legacy, unavailable). Colour is derived from the pack tokens for owner ruling; the state words are canonical (<code>canonical-readiness-contract.md</code>).'},
+  {n:7,name:"Click a node → evidence drawer",v:"partial",src:'Opens the fact contract (state/source/as_of/reason/next_action) for identity facts via <code>business_context.readiness</code>. Confirm/Correct → Setup (the governed write path). Retire maps to the Release C <code>forget_paige_memory</code> seam (not wired to this UI). Correction history reader is not built.'},
+  {n:8,name:"Add context / capture",v:"partial",src:'A governed write seam shipped Release C (<code>record_paige_memory</code>: stores as <code>proposed</code>; supersede for correction; <code>forget_paige_memory</code> for retire). No Mind UI is wired to it yet; business-identity facts confirm through Setup. A typed fact never auto-becomes canonical (propose→confirm).'},
+  {n:9,name:"Workspace switch",v:"live",src:'Real shell remounts on <code>key=user:tenant</code> + invalidates tenant-scoped caches + per-hook scope guards — all prior-workspace records/filters/focus/drawers/search cleared. LIVE.'},
+  {n:10,name:"§58 — Systems Check findings removed from Mind",v:"partial",src:'The prior orb surfaced Systems Check findings as Mind records; this direction drops them (Systems Check owns readiness/blockers, four-surfaces boundary §00). Flagged for owner sign-off. Mind links to Systems Check rather than duplicating it.'},
+  {n:11,name:"Image-quality orb — real three.js engine",v:"partial",src:'Rendered with <b>real WebGL three.js</b> (r0.169, bundled self-contained via esbuild — no network): a fresnel-glass globe with a lat/long lattice, tilted glowing orbital rings, a faceted luminous core, source-coloured instanced record nodes, same-domain constellation links, PBR lighting + environment, and genuine UnrealBloom post-processing. Built with the installed <code>alton47/threejs-skills</code> pack (@7b8e256, MIT). Calm continuous idle rotation that never resets on data change; drag/scroll/keyboard orbit; reset re-centres. The engine renders <b>presentation</b> — node colour/position carry a record\'s canonical source state; it never fabricates activity (the honesty labels, drawer and states are the page\'s).'},
+  {n:12,name:"Reduced-motion & WebGL fallback",v:"live",src:'<b>Reduced motion</b> (toggle or OS setting) holds the orb perfectly still — a stable, legible 3D instrument, no animation. If WebGL is unavailable or the context fails, the orb degrades to a <b>governed-records list</b> (never a blank canvas): the same domains, states and evidence drawers. Both are real behaviours in this prototype.'},
+];
+
+/* ============================================================================
+   RENDER HELPERS
+   ============================================================================ */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const root=$("#root");
+function tok(n){return getComputedStyle(root).getPropertyValue(n).trim();}
+function statePill(k){const s=STATES[k];return `<span class="state-pill"><span class="dot" style="background:var(${s.sig})"></span>${s.label}</span>`;}
+function announce(m){const l=$("#live");if(!l)return;l.textContent="";requestAnimationFrame(()=>l.textContent=m);}
+let toastTimer;
+function showToast(m,err){const t=$("#toast");t.textContent=m;t.className="toast"+(err?" err":"");t.hidden=false;announce(m);clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.hidden=true,3400);}
+
+/* ---- callouts ---- */
+function renderCallouts(){
+  const wrap=$("#callouts"); wrap.innerHTML="";
+  DOMAINS.filter(d=>d.slot).forEach(d=>{
+    const domState = d.verdict==="LIVE" ? "owner_confirmed" : d.verdict==="UNAVAILABLE" ? "unavailable"
+      : (d.facts[0]?d.facts[0].state:"needs_confirmation");
+    const s=STATES[domState];
+    const b=document.createElement("button");
+    b.className="callout "+d.slot; b.dataset.key=d.key; b.setAttribute("aria-label",`${d.name} — ${s.label}. Focus this domain.`);
+    b.innerHTML=`<span class="c-plate" aria-hidden="true">${ICON[d.icon]}</span>
+      <span><span class="c-name">${d.name}</span><span class="c-state"><span class="dot" style="background:var(${s.sig})"></span>${s.label}</span></span>`;
+    b.addEventListener("click",()=>Orb.focusDomain(d.key,b));
+    wrap.appendChild(b);
+  });
+}
+
+/* ---- focus menu ---- */
+function renderFocusMenu(){
+  const m=$("#focus-menu"); m.innerHTML="";
+  const all=document.createElement("button"); all.setAttribute("role","menuitem");
+  all.innerHTML=`<span class="dot" style="background:var(--pg-faint)"></span>All domains`;
+  all.addEventListener("click",()=>{Orb.focusDomain(null);closeMenu();}); m.appendChild(all);
+  DOMAINS.forEach(d=>{
+    const domState=d.verdict==="LIVE"?"owner_confirmed":d.verdict==="UNAVAILABLE"?"unavailable":(d.facts[0]?d.facts[0].state:"needs_confirmation");
+    const btn=document.createElement("button"); btn.setAttribute("role","menuitem");
+    btn.innerHTML=`<span class="dot" style="background:var(${STATES[domState].sig})"></span>${d.name} <span style="margin-left:auto;font:600 9px var(--pg-font-data);color:var(--pg-faint)">${d.verdict}</span>`;
+    btn.addEventListener("click",()=>{Orb.focusDomain(d.key);closeMenu();}); m.appendChild(btn);
+  });
+}
+function closeMenu(){$("#focus-menu").dataset.open="0";$("#focus-btn").setAttribute("aria-expanded","false");}
+
+/* ---- annotations ---- */
+function renderAnnotations(){
+  const l=$("#ann-list"); l.innerHTML="";
+  ANNOTATIONS.forEach(a=>{
+    const vc=a.v==="live"?"v-live":a.v==="partial"?"v-partial":"v-unavail", vt=a.v==="live"?"LIVE":a.v==="partial"?"PARTIAL":"UNAVAIL";
+    const el=document.createElement("div"); el.className="ann-item";
+    el.innerHTML=`<div class="ai-top"><span class="num">${a.n}</span><span class="ai-name">${a.name}</span><span class="verdict ${vc}">${vt}</span></div><div class="ai-src">${a.src}</div>`;
+    l.appendChild(el);
+  });
+}
+
+/* ============================================================================
+   THE ORB — glue to the real three.js engine (window.MindOrb, bundled above).
+   Exposes the same public API the page wiring already calls; internally drives WebGL.
+   ============================================================================ */
+const Orb=(()=>{
+  const stage=$("#stage");
+  let cv=$("#orb");
+  let io=null, ro=null, inited=false;
+  let engineOk=false, curScenario="populated", curFocus=null, curSearch="", running=true, reduced=false;
+
+  /* A WebGL context, once force-lost on dispose, cannot be re-created on the SAME canvas
+     (getContext → null → "precision" of null). So each (re)init gets a FRESH canvas node.
+     Observers follow the live canvas. First init reuses the markup canvas; later ones swap. */
+  function bindObservers(){
+    if(io) io.disconnect(); if(ro) ro.disconnect();
+    if(typeof IntersectionObserver!=="undefined"){ io=new IntersectionObserver(es=>{ if(engineOk) window.MindOrb.setVisible(es[0].isIntersecting); },{threshold:0.01}); io.observe(cv); }
+    if(typeof ResizeObserver!=="undefined"){ ro=new ResizeObserver(()=>resize()); ro.observe(cv); }
+  }
+  function swapCanvas(){ const n=cv.cloneNode(false); cv.replaceWith(n); cv=n; bindObservers(); }
+
+  /* Resolve a CSS colour expression (incl. var() chains) to a hex int in the CURRENT theme.
+     The probe lives INSIDE #root so it inherits the [data-pg]-scoped tokens. */
+  const _probe=document.createElement("span");
+  _probe.setAttribute("aria-hidden","true");
+  _probe.style.cssText="position:absolute;left:-9999px;top:-9999px;width:0;height:0;pointer-events:none";
+  root.appendChild(_probe);
+  function resolveHex(expr){
+    _probe.style.color=""; _probe.style.color=expr;
+    const m=getComputedStyle(_probe).color.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+    if(!m) return 0xcccccc;
+    return (parseInt(m[1],10)<<16)|(parseInt(m[2],10)<<8)|parseInt(m[3],10);
+  }
+  function sigHex(state){const s=STATES[state]; return resolveHex("var("+(s?s.sig:"--pg-faint")+")");}
+
+  /* Geometry — identical layout to the reviewed version: hub = sph(az,el); records/ghosts spread around it. */
+  function hash(s){let h=2166136261;for(let i=0;i<s.length;i++)h=Math.imul(h^s.charCodeAt(i),16777619);return h>>>0;}
+  function sph(az,el){const ce=Math.cos(el);return {x:ce*Math.sin(az),y:Math.sin(el),z:ce*Math.cos(az)};}
+  function spread(dir,rad,seed){
+    const a=((seed%360))/57.29, b=((seed>>>9)%100)/100*rad;
+    let t1={x:-dir.z,y:0,z:dir.x}; const len=Math.hypot(t1.x,t1.z)||1; t1.x/=len;t1.z/=len;
+    const t2={x:dir.y*t1.z-dir.z*t1.y,y:dir.z*t1.x-dir.x*t1.z,z:dir.x*t1.y-dir.y*t1.x};
+    const s=Math.sin(b), c=Math.cos(b);
+    const ox=Math.cos(a)*t1.x+Math.sin(a)*t2.x, oy=Math.cos(a)*t1.y+Math.sin(a)*t2.y, oz=Math.cos(a)*t1.z+Math.sin(a)*t2.z;
+    return {x:dir.x*c+ox*s, y:dir.y*c+oy*s, z:dir.z*c+oz*s};
+  }
+
+  /* Build the engine config from DOMAINS + scenario. Node colour/position carry a record's
+     canonical source STATE — never fabricated activity (§13). */
+  function buildCfg(scenario){
+    const nodes=[]; const adj={};
+    if(scenario==="unavailable") adj.systems="unavailable";
+    if(scenario==="partial") adj.knowledge="partial";
+    DOMAINS.forEach(d=>{
+      const hubDir=sph(d.az,d.el);
+      let facts=d.facts;
+      if(adj[d.key]==="unavailable") facts=[{name:"Connections couldn't be read",state:"unavailable",_syn:true}];
+      if(adj[d.key]==="partial") facts=d.facts.slice(0,1);
+      const domState=d.verdict==="LIVE"?"owner_confirmed":d.verdict==="UNAVAILABLE"?"unavailable":(facts[0]?facts[0].state:"needs_confirmation");
+      const hubState=adj[d.key]==="unavailable"?"unavailable":domState;
+      nodes.push({id:"hub:"+d.key,domain:d.key,hub:true,label:d.name,factIndex:-1,colorHex:sigHex(hubState),dir:hubDir});
+      facts.forEach((f,i)=>{
+        const seed=hash(d.key+f.name);
+        nodes.push({id:"rec:"+d.key+":"+i,domain:d.key,label:f.name,factIndex:f._syn?-1:i,colorHex:sigHex(f.state),dir:spread(hubDir,0.34+((seed%40)/100),(seed>>>6))});
+      });
+      if(!facts.length){
+        for(let i=0;i<2;i++){const seed=hash(d.key+"e"+i);nodes.push({id:"ghost:"+d.key+":"+i,domain:d.key,ghost:true,label:"",factIndex:-1,colorHex:sigHex("needs_confirmation"),dir:spread(hubDir,0.28,(seed>>>3))});}
+      }
+    });
+    const rings=[
+      {tilt:0.42,  spin:0.06,  color:resolveHex("var(--sig-confirmed)"),  a:0.5},
+      {tilt:-0.7,  spin:-0.045, color:resolveHex("var(--sig-connection)"), a:0.42},
+      {tilt:1.15,  spin:0.03,  color:resolveHex("var(--sig-refreshed)"),  a:0.4},
+      {tilt:0.05,  spin:-0.08, color:resolveHex("var(--sig-needs)"),      a:0.34},
+    ];
+    return {nodes, rings};
+  }
+
+  function onPick(n){
+    const d=DOMAINS.find(x=>x.key===n.domain); if(!d) return;
+    if(n.hub){ focusDomain(n.domain); openDomainDrawer(d); }
+    else if(typeof n.factIndex==="number" && n.factIndex>=0 && d.facts[n.factIndex]){ openFactDrawer(d,n.factIndex); }
+    else openDomainDrawer(d);
+  }
+
+  /* WebGL-unavailable fallback: the same governed records, as a list (never blank). */
+  function renderFallbackList(){
+    const wrap=$("#ofb-domains"); if(!wrap) return; wrap.innerHTML="";
+    DOMAINS.forEach(d=>{
+      const domState=d.verdict==="LIVE"?"owner_confirmed":d.verdict==="UNAVAILABLE"?"unavailable":(d.facts[0]?d.facts[0].state:"needs_confirmation");
+      const s=STATES[domState];
+      const b=document.createElement("button"); b.className="ofb-dom"; b.setAttribute("aria-label",d.name+" — "+s.label+". Open evidence.");
+      b.innerHTML='<span class="c-plate" aria-hidden="true">'+ICON[d.icon]+'</span>'
+        +'<span style="flex:1"><span class="c-name">'+d.name+'</span><span class="c-state"><span class="dot" style="background:var('+s.sig+')"></span>'+s.label+'</span></span>'
+        +'<span class="verdict-chip">'+d.verdict+'</span>';
+      b.addEventListener("click",()=>openDomainDrawer(d));
+      wrap.appendChild(b);
+    });
+  }
+  function showFallback(){ $("#orb-fallback").hidden=false; cv.style.visibility="hidden"; renderFallbackList();
+    announce("The 3D view couldn't start on this device. Your governed records are shown as a list."); }
+  function hideFallback(){ $("#orb-fallback").hidden=true; cv.style.visibility=""; }
+
+  function start(scenario){
+    curScenario=scenario; curFocus=null; curSearch="";
+    reduced=$("#rm-btn").getAttribute("aria-pressed")==="true";
+    running=$("#pause-btn").getAttribute("aria-pressed")!=="true";
+    const {nodes,rings}=buildCfg(scenario);
+    const dark=root.dataset.pg!=="light";
+    const dust=scenario==="firstuse"?0:260;
+    if(inited) swapCanvas(); // fresh WebGL context for every re-init
+    let res; try{ res=window.MindOrb.init(cv,{nodes,rings,dark,running,reduced,dust,onPick}); }
+    catch(e){ res={ok:false,error:String(e&&e.message||e)}; }
+    inited=true;
+    engineOk=!!(res&&res.ok);
+    if(!engineOk){ console.error("MindOrb init failed:", res&&res.error); showFallback(); }
+    else hideFallback();
+    $$(".callout").forEach(c=>c.setAttribute("aria-pressed","false"));
+    const z=$("#oc-zoom"); if(z) z.value=100;
+  }
+  function stop(){ /* the engine self-manages its rAF; nothing to tear down per scenario */ }
+  function resize(){ if(engineOk) window.MindOrb.resize(); }
+
+  function setRunning(v){
+    running=v; if(engineOk) window.MindOrb.setRunning(v);
+    const play=$("#oc-play"), pb=$("#pause-btn"); const paused=!v;
+    if(play){ play.setAttribute("aria-label",paused?"Resume orbit":"Pause orbit");
+      play.innerHTML=paused?'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>':'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'; }
+    if(pb){ pb.setAttribute("aria-pressed",String(paused)); const l=$("#pause-lbl"); if(l) l.textContent=paused?"Resume orbit":"Pause orbit";
+      const pi=$("#pause-ico"); if(pi) pi.innerHTML=paused?'<path d="M8 5v14l11-7z"/>':'<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'; }
+    announce(paused?"Orbit paused.":"Orbit resumed. Presentation motion is not activity.");
+  }
+  function setZoom(v){ if(engineOk) window.MindOrb.setZoom(+v); }
+  function setReduced(v){ reduced=v; if(engineOk) window.MindOrb.setReduced(v); }
+
+  function focusDomain(key){
+    curFocus=key||null; if(engineOk) window.MindOrb.focus(curFocus);
+    $$(".callout").forEach(c=>c.setAttribute("aria-pressed",String(c.dataset.key===key)));
+    const d=DOMAINS.find(x=>x.key===key); announce(key?("Focused "+(d?d.name:key)+"."):"Showing all domains.");
+  }
+  function setSearch(q){
+    curSearch=(q||"").trim().toLowerCase(); if(engineOk) window.MindOrb.search(curSearch);
+    if(curSearch){
+      const hits=DOMAINS.reduce((a,d)=>a+d.facts.filter(f=>(f.name||"").toLowerCase().includes(curSearch)).length,0)
+        + DOMAINS.filter(d=>d.name.toLowerCase().includes(curSearch)).length;
+      announce(hits+" record"+(hits===1?"":"s")+" match “"+curSearch+"”.");
+    }
+  }
+  function reset(){
+    if(engineOk) window.MindOrb.reset();
+    curFocus=null; curSearch="";
+    $$(".callout").forEach(c=>c.setAttribute("aria-pressed","false"));
+    const z=$("#oc-zoom"); if(z) z.value=100; const sb=$("#search"); if(sb) sb.value="";
+    announce("View reset. Showing all domains, recentred.");
+  }
+
+  /* Theme flip → recolour nodes + rings + retune bloom IN PLACE. Never re-inits, so the
+     calm idle rotation is preserved (owner: no jump on a view/data change). */
+  new MutationObserver(()=>{
+    if(!engineOk) return;
+    const dark=root.dataset.pg!=="light";
+    const {nodes,rings}=buildCfg(curScenario);
+    window.MindOrb.applyTheme(null,dark);
+    window.MindOrb.setData({nodes,rings});
+    window.MindOrb.focus(curFocus);
+    if(curSearch) window.MindOrb.search(curSearch);
+  }).observe(root,{attributes:true,attributeFilter:["data-pg"]});
+
+  /* Pause rendering offscreen + follow resize; observers re-bind to the live canvas on swap. */
+  bindObservers();
+  window.addEventListener("resize",resize);
+
+  return {start,stop,setRunning,setZoom,setReduced,focusDomain,setSearch,resize,reset};
+})();
+
+/* ============================================================================
+   EVIDENCE DRAWER + capture
+   ============================================================================ */
+let lastFocus=null;
+function factPlain(d,f){
+  if(d.key==="knowledge") return `This is a document you gave PAIGE to reason from — “${f.name}”. Its content is indexed; PAIGE can cite it when she answers.`;
+  if(f.state==="legacy_sourced") return `PAIGE has your ${f.name.toLowerCase()} on file, carried over from an older brand record. You haven't confirmed it, so PAIGE treats it as unverified until you do.`;
+  if(f.state==="connection_sourced") return `PAIGE observed your ${f.name.toLowerCase()} from a connected account. It hasn't been confirmed by you.`;
+  if(f.state==="source_refreshed") return `PAIGE last read your ${f.name.toLowerCase()} from a connected source. It reflects that source's current status.`;
+  if(f.state==="unavailable") return `PAIGE can't read ${f.name.toLowerCase()} — this source isn't set up, so nothing is inferred.`;
+  return f.reason||"";
+}
+function drawerShell(inner){ $("#drawer-mount").innerHTML = `<div class="scrim" id="scrim"></div>${inner}`; $("#scrim").addEventListener("click",closeDrawer); trapFocus($(".drawer")); }
+function openFactDrawer(d,fi){
+  const f=d.facts[fi]; if(!f){openDomainDrawer(d);return;}
+  lastFocus=document.activeElement; const s=STATES[f.state];
+  const canConfirm=["legacy_sourced","needs_confirmation","connection_sourced","source_refreshed"].includes(f.state);
+  const isDoc=d.key==="knowledge";
+  drawerShell(`<aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-title" data-ann="drawer"><span class="ann-badge" aria-hidden="true">7</span>
+    <header><div><div style="margin-bottom:7px">${statePill(f.state)}</div><h2 id="dr-title">${f.name}</h2><div style="font-size:11.5px;color:var(--pg-faint);margin-top:4px">${d.name}</div></div>
+      <button class="close" id="dr-close" aria-label="Close record details"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></header>
+    <div class="d-scroll">
+      <section><h3>What PAIGE knows</h3><p class="serif-quote">${factPlain(d,f)}</p></section>
+      <section><h3>Source &amp; provenance</h3><dl class="dl"><dt>State</dt><dd>${s.label}</dd><dt>Scope</dt><dd>This workspace</dd><dt>Source</dt><dd>${s.src}</dd><dt>As of</dt><dd>${f.as_of||'<span style="color:var(--pg-faint)">— no confirmation on record</span>'}</dd>${f.chunks?`<dt>Evidence</dt><dd>${f.chunks} indexed chunks</dd>`:""}<dt>Why</dt><dd>${f.reason}</dd></dl></section>
+      <section><h3>Correction history</h3><div class="note">No correction or supersession history is recorded for this fact. That store isn't wired to this view — nothing is shown rather than invented.</div></section>
+      <section><h3>Honesty boundary</h3><div class="note">Mind shows this attributable record and where it came from. It never infers private reasoning, causal links, or history it can't source.</div></section>
+    </div>
+    <div class="actions">${canConfirm?`<button class="btn btn--gold" id="dr-confirm">Confirm in Setup</button><button class="btn" id="dr-correct">Correct in Setup</button>`:""}${isDoc?`<button class="btn">Open document</button>`:""}<button class="btn btn--ghost" id="dr-ask">Ask PAIGE about this</button><button class="btn btn--ghost" title="Retire maps to the governed forget seam for memory items; readiness facts are managed in Setup. Not wired to this UI yet." disabled>Retire · not yet wired</button></div>
+  </aside>`);
+  requestAnimationFrame(()=>$("#dr-close").focus());
+  $("#dr-close").addEventListener("click",closeDrawer);
+  if($("#dr-confirm"))$("#dr-confirm").addEventListener("click",()=>{closeDrawer();openCapture(f.name,"confirm");});
+  if($("#dr-correct"))$("#dr-correct").addEventListener("click",()=>{closeDrawer();openCapture(f.name,"correct");});
+  if($("#dr-ask"))$("#dr-ask").addEventListener("click",()=>{closeDrawer();setPaige(true);});
+}
+function openDomainDrawer(d){
+  lastFocus=document.activeElement;
+  const body = d.facts.length
+    ? `<div class="facts-list">${d.facts.map((f,i)=>`<button class="fact click" data-fi="${i}"><span class="dot" style="background:var(${STATES[f.state].sig})"></span><span><span class="f-name">${f.name}</span><span class="f-src" style="display:block">${f.reason}</span></span>${statePill(f.state)}</button>`).join("")}</div>${d.valueNote?`<p class="note" style="margin-top:12px">${d.valueNote}</p>`:""}`
+    : `<div class="note"><b>${d.empty.h}</b><div style="margin-top:6px">${d.empty.b}</div></div><div style="margin-top:12px"><a class="btn btn--ghost" href="#" style="text-decoration:none">${d.empty.link} →</a></div>`;
+  drawerShell(`<aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dd-title" data-ann="drawer"><span class="ann-badge" aria-hidden="true">4</span>
+    <header><div><div style="margin-bottom:7px"><span class="state-pill">${d.verdict}</span></div><h2 id="dd-title">${d.name}</h2><div style="font-size:11.5px;color:var(--pg-faint);margin-top:4px">Knowledge domain</div></div>
+      <button class="close" id="dd-close" aria-label="Close domain"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></header>
+    <div class="d-scroll"><section>${body}</section></div>
+    <div class="actions"><button class="btn btn--ghost" id="dd-ask">Ask PAIGE about this</button></div></aside>`);
+  requestAnimationFrame(()=>$("#dd-close").focus());
+  $("#dd-close").addEventListener("click",closeDrawer);
+  $$(".fact.click").forEach(b=>b.addEventListener("click",()=>{const fi=+b.dataset.fi;closeDrawer();openFactDrawer(d,fi);}));
+  if($("#dd-ask"))$("#dd-ask").addEventListener("click",()=>{closeDrawer();setPaige(true);});
+}
+function openCapture(label,mode){
+  lastFocus=document.activeElement;
+  drawerShell(`<aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="cap-title" data-ann="capture"><span class="ann-badge" aria-hidden="true">8</span>
+    <header><div><h2 id="cap-title">${mode==='add'?'Add context':mode==='correct'?'Correct a fact':'Confirm a fact'}</h2><div style="font-size:11.5px;color:var(--pg-faint);margin-top:4px">${mode==='add'?'Teach PAIGE something durable':label}</div></div>
+      <button class="close" id="cap-close" aria-label="Cancel"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></header>
+    <div class="d-scroll">${mode!=='add'?`
+      <div class="route-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 22v-6M2 12h6M22 12h-6"/><circle cx="12" cy="12" r="3"/></svg>
+      <div><div class="rn-t">This confirms into Setup — the one governed write path.</div><div class="rn-b">Confirming writes the fact's provenance and confirmation time in Setup, where PAIGE reads “owner-confirmed” from. You'll finish in Setup; nothing is saved here.</div></div></div>
+      <div class="field"><label for="cf-fact">Fact</label><input id="cf-fact" value="${label}" readonly /></div>
+      <div class="field"><label for="cf-scope">Applies to</label><input id="cf-scope" value="This workspace" readonly /></div>
+      <div class="field"><label for="cf-value">Value to confirm ${mode==='correct'?'(edit)':''}</label><input id="cf-value" placeholder="Entered and confirmed in Setup" ${mode==='confirm'?'readonly':''} /><div class="help">The value itself is entered in Setup, not here.</div></div>
+      <button class="btn btn--gold" id="cap-goto" style="width:100%;justify-content:center">Continue in Setup →</button>`:`
+      <div class="route-note" style="border-color:color-mix(in srgb,var(--pg-warning) 45%,var(--pg-line))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6A2 2 0 0 0 22 18L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div><div class="rn-t">A governed memory seam exists — this Mind form isn't wired to it yet.</div><div class="rn-b">Release C shipped a governed write path: a fact you record is stored as <b>“proposed”</b> and never auto-becomes a canonical record. This form shows that shape; it isn't connected yet, so it saves nothing here.</div></div></div>
+      <div class="field"><label for="cap-what">What should PAIGE know? <span class="req" aria-hidden="true">*</span></label><textarea id="cap-what" aria-required="true" aria-describedby="cap-err" placeholder="e.g. We only take clients on 6-month retainers"></textarea><div class="err-msg" id="cap-err" role="alert">Enter what PAIGE should know.</div></div>
+      <div class="field"><label for="cap-scope">Scope</label><select id="cap-scope"><option>This workspace</option><option>A specific client</option></select></div>
+      <button class="btn btn--ghost" id="cap-try" style="width:100%;justify-content:center">Try to save anyway</button>`}
+    </div>
+    <div class="actions"><button class="btn btn--ghost" id="cap-cancel">Cancel</button></div></aside>`);
+  requestAnimationFrame(()=>$("#cap-close").focus());
+  $("#cap-close").addEventListener("click",closeDrawer); $("#cap-cancel").addEventListener("click",closeDrawer);
+  if($("#cap-goto"))$("#cap-goto").addEventListener("click",()=>{closeDrawer();showToast("Setup is where confirmation is saved (prototype).");});
+  if($("#cap-try"))$("#cap-try").addEventListener("click",()=>{const w=$("#cap-what"),fld=w.closest(".field");if(!w.value.trim()){fld.dataset.invalid="1";w.setAttribute("aria-invalid","true");announce("Enter what PAIGE should know.");w.focus();return;}fld.dataset.invalid="0";w.setAttribute("aria-invalid","false");showToast("Not saved — the governed write seam exists, but this Mind form isn't wired to it yet.",true);});
+}
+function closeDrawer(){$("#drawer-mount").innerHTML="";if(lastFocus){try{lastFocus.focus();}catch(e){}}}
+function trapFocus(c){if(!c)return;c.addEventListener("keydown",e=>{if(e.key==="Escape"){e.preventDefault();closeDrawer();return;}if(e.key!=="Tab")return;const f=[...c.querySelectorAll('button:not([disabled]),[href],input:not([readonly]),select,textarea,[tabindex]:not([tabindex="-1"])')].filter(x=>x.offsetParent!==null);if(!f.length)return;const first=f[0],last=f[f.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}});}
+
+/* ============================================================================
+   SHELL WIRING
+   ============================================================================ */
+const vp=$("#viewport"), vptag=$("#vptag");
+function setTheme(m){root.dataset.pg=m;$("#t-light").setAttribute("aria-pressed",String(m==="light"));$("#t-dark").setAttribute("aria-pressed",String(m==="dark"));updateTag();Orb.resize();}
+function vpLabel(){const v=$("#vp").value;return v==="fit"?"Fit":v.replace("x","×");}
+function updateTag(){vptag.textContent=`${vpLabel()} · ${root.dataset.pg==="light"?"Mineral":"Obsidian"}`;}
+function setViewport(v){if(v==="fit"){vp.style.width="100%";vp.style.height="min(860px,84vh)";}else{const[w,h]=v.split("x");vp.style.width=w+"px";vp.style.height=h+"px";}updateTag();requestAnimationFrame(()=>Orb.resize());}
+function setPaige(open){$("#paige").hidden=!open;$("#shell").dataset.paige=open?"1":"0";$("#p-open").setAttribute("aria-pressed",String(open));$("#p-closed").setAttribute("aria-pressed",String(!open));if(open){announce("PAIGE opened. No Mind context was attached or prepared.");requestAnimationFrame(()=>{const el=$("#paige .composer input");if(el)el.focus();});}else announce("PAIGE closed.");requestAnimationFrame(()=>Orb.resize());}
+
+const SCN_SAY={populated:"Showing governed knowledge.",partial:"Partial coverage — some records did not load.",unavailable:"A source is unavailable.",loading:"Loading this workspace's knowledge.",firstuse:"This workspace has no durable knowledge yet.",switching:"Switching workspace. Previous account cleared."};
+let CURRENT_SCN="populated";
+function setScenario(s){
+  CURRENT_SCN=s;
+  const overlays={loading:"#ov-loading",firstuse:"#ov-firstuse",switching:"#ov-switching"};
+  $$("#ov-loading,#ov-firstuse,#ov-switching").forEach(el=>el.hidden=true);
+  const banner=$("#banner"); banner.hidden=true;
+  const chromeHidden = !!overlays[s];
+  // hide callouts/legend/controls/footer when a full overlay is up
+  ["#callouts",".orb-legend",".orb-controls",".orb-footer"].forEach(sel=>{const el=$(sel);if(el)el.style.visibility=chromeHidden?"hidden":"";});
+  if(overlays[s]) $(overlays[s]).hidden=false;
+  if(s==="partial"){banner.hidden=false;banner.className="orb-banner warn";banner.innerHTML=`<span class="dot" style="background:var(--sig-legacy)"></span>Partial coverage — some records didn't load. No missing source is treated as empty; Refresh retries the read-only records.`;}
+  if(s==="unavailable"){banner.hidden=false;banner.className="orb-banner err";banner.innerHTML=`<span class="dot" style="background:var(--sig-unavailable)"></span>A source is unavailable — its facts show as Unavailable with a reason, never as “nothing to do”. <a href="#">Open Connections →</a>`;}
+  Orb.start(s); announce(SCN_SAY[s]||"");
+}
+
+/* listeners */
+$("#t-light").addEventListener("click",()=>setTheme("light"));
+$("#t-dark").addEventListener("click",()=>setTheme("dark"));
+$("#nav-theme").addEventListener("click",()=>setTheme(root.dataset.pg==="light"?"dark":"light"));
+$("#vp").addEventListener("change",e=>setViewport(e.target.value));
+$("#p-open").addEventListener("click",()=>setPaige(true));
+$("#p-closed").addEventListener("click",()=>setPaige(false));
+$("#scenario").addEventListener("change",e=>setScenario(e.target.value));
+$("#annot").addEventListener("click",()=>{const on=document.body.dataset.annot==="1";document.body.dataset.annot=on?"0":"1";$("#annot").setAttribute("aria-pressed",String(!on));$("#annot .switch").setAttribute("aria-pressed",String(!on));});
+$("#annot-close").addEventListener("click",()=>{document.body.dataset.annot="0";$("#annot").setAttribute("aria-pressed","false");$("#annot .switch").setAttribute("aria-pressed","false");});
+$("#search").addEventListener("input",e=>Orb.setSearch(e.target.value));
+$("#focus-btn").addEventListener("click",()=>{const m=$("#focus-menu");const open=m.dataset.open==="1";m.dataset.open=open?"0":"1";$("#focus-btn").setAttribute("aria-expanded",String(!open));});
+document.addEventListener("click",e=>{if(!e.target.closest(".menu-wrap"))closeMenu();});
+$("#pause-btn").addEventListener("click",()=>Orb.setRunning($("#pause-btn").getAttribute("aria-pressed")==="true"));
+$("#oc-play").addEventListener("click",()=>Orb.setRunning($("#pause-btn").getAttribute("aria-pressed")==="true"));
+$("#oc-zoom").addEventListener("input",e=>Orb.setZoom(+e.target.value));
+$("#oc-reset").addEventListener("click",()=>Orb.reset());
+$("#rm-btn").addEventListener("click",()=>{const on=$("#rm-btn").getAttribute("aria-pressed")==="true";$("#rm-btn").setAttribute("aria-pressed",String(!on));$("#rm-btn .switch").setAttribute("aria-pressed",String(!on));Orb.setReduced(!on);announce(!on?"Reduced motion on. The orb is still.":"Reduced motion off.");});
+const paigeFold=$("#paige header .close"); if(paigeFold)paigeFold.addEventListener("click",()=>{setPaige(false);requestAnimationFrame(()=>{const a=$("#focus-btn");if(a)a.focus();});});
+document.addEventListener("keydown",e=>{const t=document.activeElement,tag=t&&t.tagName;if(e.key==="/"&&tag!=="INPUT"&&tag!=="TEXTAREA"&&tag!=="SELECT"&&!(t&&t.isContentEditable)&&!$(".drawer")){e.preventDefault();$("#search").focus();}});
+
+/* init */
+renderCallouts(); renderFocusMenu(); renderAnnotations();
+setTheme("dark"); setViewport("1536x770"); setScenario("populated");
+</script>
+</body>
+</html>
