@@ -1731,7 +1731,7 @@ create/revise/list live-drive (headless session cannot render/drive it) — owed
 to the dedicated Solo Paige workspace chat (`paige.workspace`). **(1) Horizontal scrollbar fixed at the SOURCE:** the
 message bubble (the app-branch flex item every live mount uses) lacked `min-w-0` so it couldn't shrink and pushed the
 transcript wide; fixed with `min-w-0` + user-text `whitespace-pre-wrap break-words` + transcript `overflow-x-hidden`
-(safe because content now wraps — nothing clipped) + `EntityDiagramCard` self-scroll for genuinely-wide org-charts.
+(safe because content now wraps — nothing clipped) + `EntityDiagramCard` **and** wide GFM tables self-scroll in their own `overflow-x-auto` containers for genuinely-wide content (`MarkdownMessage` `table` override).
 The transcript stays the one vertical scroll owner; the composer action row is `flex-wrap`. **(2) Real permission
 chip** in the composer (`PaigeComposerAutonomyChip`, Solo-only via a new `composerAutonomyControl` prop): reflects the
 workspace's REAL effective posture via `useSoloToolGovernance` (the canonical `set_tool_autonomy` seam); "Ask first"
@@ -1746,6 +1746,14 @@ reconciliation slice — this hotfix reuses the one per-tool seam, does not fork
 rendered-pixel + authenticated-runtime verification (no-scrollbar layout + live chip write/route) at the five
 viewports × both themes × PAIGE open/closed — owed to a browser-capable session (headless, no browser). Evidence:
 `docs/evidence/ui-delivery/dedicated-paige-chat-scrollbar-and-permission-chip.md`.
+**§39/§5 FOLD (pre-merge):** the peer-gate + compliance officer caught (and this PR fixed) a real §13 chip
+defect — the standing-grant signal keyed on the domain-`guardrails` aggregate, unreachable because every
+domain has a `high`-risk tool capped at `confirm`, so the chip could never leave "Ask first" and would
+understate a real `auto` grant; re-keyed to the tool level (`byTool` effective `auto`) with a reachability
+test over the real `deriveGovernance`. Also folded: the wide-GFM-table clip fix above, a `motion-reduce`
+guard on the shared dropdown primitive, and a full-suite regression (chip's governance RPC unmocked in the
+Team-approval render test). **MERGED to `main` (squash `22a12b7b`, PR #1008); frontend ships via the Vercel
+production build — no migration/edge deploy for this commit.**
 
 ### Sandboxed Research & External Execution — a COMPONENT of the Paige Capability System (above); APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
 

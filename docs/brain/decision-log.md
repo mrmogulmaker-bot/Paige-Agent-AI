@@ -56,6 +56,14 @@
   the other 8 workspace-referencing tests were confirmed clean. Full suite 3742/3742, exit 0.
   The pre-existing gold-as-background violation in the untouched `BusinessCreditDashboard.tsx:271` is
   out of this PR's scope (CI scopes gold to changed files) — noted, not fixed here.
+  **OUTCOME — MERGED to `main` (squash `22a12b7b`, PR #1008, 2026-09-06).** On the PR head `c0aacb6b` all
+  checks green (ci ✅, Security Audit ✅, ui-delivery-evidence ✅; migration-lint / PAIGE Spine contract
+  correctly did not run — no new migration/spine change vs base). Frontend-only change → ships via the
+  automatic Vercel production build on `main`; NO `deploy-migrations` / `deploy-edge-functions` for this
+  commit (none touched). **§32.a:** main-push `ui-delivery-evidence` + `Security Audit` green, `ci` green
+  on the identical PR-head tree. **§32.c STILL OWED:** authenticated-browser render proof (no-scrollbar +
+  live chip label/write/route) at the five viewports × both themes, PAIGE open/closed — owed to a
+  browser-capable session (headless here).
 - **Capability Slice 2 — campaign-brief conversational create/list/revise reach (2026-09-06, Task #16, owner-authorized)** —
   Paige can now, in chat, draft / revise / list a Solo workspace's **campaign briefs** (a brief = owner-authored
   PLANNING intent, NEVER proof a campaign is live/spent/published — the tool descriptions, RPC messages, and chat
