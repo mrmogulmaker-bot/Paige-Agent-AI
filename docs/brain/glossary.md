@@ -180,10 +180,11 @@ PR #406). Build order was L1 → L4 → L2 → L5.
   Social ruling "stay to that one and that one only" was CORRECTED the same day: the one mark is the
   Command Mark, not the orbital PaigeMark. Guard: `lint:legacy-mark`
   (`scripts/ci/legacy-mark-lint.mjs` — scans `src/**` + `public/**` + EVERY root HTML entry point the
-  build ships (index/privacy/sms-terms/auth, derived not hardcoded), per-line AND across a
-  newline-collapsed view, for the component/import/tag, the distinctive orbital hexes, the orbital
-  animation classes, and a re-drawn tilted-ring `<ellipse>` even when its `transform` is line-split)
-  + eslint `no-restricted-imports` on the legacy import paths. See decision-log
+  build ships (index/privacy/sms-terms/auth, derived not hardcoded), per-line AND (for multi-attribute
+  tag rules) across lines against the full text, for the component/import/tag, the distinctive orbital
+  hexes, the orbital animation classes, and a re-drawn tilted-ring `<ellipse>` even when its `transform`
+  is line-split — with `legacy-mark-exempt:` honoured at the tag level (a marker on any line the tag
+  occupies holds)) + eslint `no-restricted-imports` on the legacy import paths. See decision-log
   2026-09-06 (BRAND) + `../evidence/ui-delivery/legacy-mark-retirement-command-mark.md`.
   **KEPT (not a mark):** `src/assets/paige-ai-avatar.png` (the Paige persona character). **Known
   archival exception:** descriptive code COMMENTS in the Studio cutscene primitives + a stale comment in
