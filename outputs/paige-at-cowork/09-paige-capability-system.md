@@ -148,14 +148,21 @@ contract (§2).
 > Paige experience is the re-scoped Slice-1 focus** (§13/§70). Slice-1 receipt honesty shipped: #972 +
 > #974 (see §5).
 
-### Slice 2 — Safe upload/download + file inspection · **LIVE (upload/inspect) + the injection fence is the net-new**
+### Slice 2 — Safe upload/download + file inspection · **the injection fence SHIPPED; download/sniffing remain**
 Build on: `useChatDocumentUpload`, read-check + approve-to-apply extraction, `kb-ingest-file`,
-folder-scoped storage RLS. **NET-NEW (first-class security):** a **prompt-injection fence** so uploaded
-file content is treated as **untrusted data, not instructions** (reuse the existing team-context/MCP fence
-pattern — §18). Accurate scope (Codex P1, verified `:7451`): the attachment turn does NOT execute
-model-emitted tool calls, so today the fence guards against *steered answer/extraction*; it becomes
-load-bearing the moment attachments are routed into the tool loop. Also: a generic chat→file **download**
-primitive; executable/content sniffing beyond the MIME allow-list. Untrusted-exec hardening ties to Sb.
+folder-scoped storage RLS. **NET-NEW (first-class security) — SHIPPED (Task #18, 2026-09-06):** the
+**prompt-injection fence** now treats uploaded file content as **untrusted data, not instructions** —
+`_shared/untrusted-fence.ts` (`fenceUploadedFileText` + `UPLOADED_FILE_UNTRUSTED_NOTICE`, the §18 one home,
+mirroring the team-context text fence) wraps the extracted DOCX text and leads the trusted instruction
+block (covering the PDF/image vision surface too). Applied at the `aiMessages` doc-inlining site so both the
+agentic and document-direct-stream paths inherit it; behavior-preserving (§37 — no contract change);
+`src/solo/untrusted-fence.test.ts` (10 tests) + source-contract guard. Accurate scope (Codex P1, verified):
+the attachment turn does NOT execute model-emitted tool calls, so today the fence guards against *steered
+answer/extraction*; it becomes load-bearing the moment attachments are routed into the tool loop.
+**STILL OPEN in this slice (named):** a generic chat→file **download** primitive; executable/content
+sniffing beyond the MIME allow-list; and a SECOND unfenced surface — the retrieved-KB block
+(`index.ts` `=== TENANT KNOWLEDGE ===`) where OCR'd upload content re-enters via `match_tenant_knowledge`.
+Untrusted-exec hardening ties to Sb. **§32.c authenticated malicious-doc drive OWED** (headless).
 
 ### Slice 3 — Governed native record writes · **LIVE core → continue F05 coverage**
 Build on: `deal_move_stage` (honest outcome, S1/S1.1), `content_save`/`document_generate`/`growth_*`,
