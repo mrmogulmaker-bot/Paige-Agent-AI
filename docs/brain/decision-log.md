@@ -3561,3 +3561,33 @@ proof. Binary intake/inspection stays **UNAVAILABLE**. Signed-in owner/admin/mem
 drives, real quarantine/inspection bytes, and the Vercel runtime-log scan remain **PROOF OWED**.
 The deployment URL itself is protected and was not used as UI proof; the primary public aliases
 and commit-bound Vercel status are the non-authenticated production evidence.
+
+## 2026-09-06 — Surface Binding Ledger gains an Intended Operating Capability + Authority Lane dimension (owner ruling)
+
+**Durable decision.** The ledger must preserve strict truthfulness about what is proven today AND stop
+understating Paige's intended operating capability. Paige is built to help RUN the company through real
+governed actions, not report passively. So every surface now carries TWO dimensions: `state` (current
+proof — the six-state vocabulary, unchanged) and `intended_capability` (the product operating target).
+
+**Changed contract / what shipped** (branch restarted from merged `main` after PR #989; new PR):
+- `docs/binding-ledger/surface-binding-ledger.json` — all 26 surfaces gain `intended_capability` with
+  five authority lanes (`read` · `draft` · `auto` · `confirm` · `prohibited`) + a `completion_criterion`
+  (the real action/outcome that proves the surface done, never "open/summarize"). Lanes map to §16
+  🟢auto/🟡confirm/🔴off and §67 per-process grants. A top-level `authority_lanes` legend +
+  `intended_capability_note` state the current-state-vs-target distinction.
+- `scripts/ci/binding-ledger-lint.mjs` — now REQUIRES the block on every surface (all lanes +
+  completion_criterion) and FAILS a passive completion_criterion (no action stem). Self-test 19 cases;
+  clean on all 26 rows. Top-level `authority_lanes`/`intended_capability_note` also required.
+- README documents the two dimensions and the authority-lane table.
+
+**Rule.** An absent current proof (`state`) never shrinks the intended target (`intended_capability`).
+The ledger describes the GAP between present proof and the full operating goal.
+
+**Next owning workstream (owner directive).** Business Game Plan + Missions — the next runtime slice
+must demonstrate an ACTUAL governed Paige action (create/revise/sequence/advance a real Business Mission
+via `business_mission.*`, #983, already wired) with a verified outcome and Rail evidence, moving
+`command-center.business-game-plan` from PARTIAL toward LIVE — not a richer context handoff. Read
+`docs/binding-ledger/README.md` + `docs/doctrine/surface-context-handoff-contract.md` first.
+
+**Where recorded.** `docs/binding-ledger/` (JSON + README), `scripts/ci/binding-ledger-lint.mjs`,
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4, `docs/brain/README.md` (index row), and this entry.

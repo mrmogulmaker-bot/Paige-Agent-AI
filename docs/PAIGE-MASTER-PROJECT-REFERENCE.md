@@ -171,6 +171,18 @@ workstream:** the Phase 1 adoption slice (reads `surface-context-handoff-contrac
 Spine SCR-1/2/3 sequence for the UNAVAILABLE surfaces. Second Brain updated: `docs/brain/README.md`
 (architecture + doctrine indexes). §00: the ledger holds zero design opinion; the "IN CONTEXT" banner
 and truthful-status components are Claude Design's.
+
+**UPDATE (owner ruling, 2026-09-06) — the ledger now carries a SECOND dimension so absent proof cannot
+shrink the target.** Alongside `state` (what is PROVEN today), every surface declares
+`intended_capability`: the product operating TARGET across five authority lanes — `read` · `draft` ·
+`auto` (🟢 execute within tenant policy) · `confirm` (🟡 owner-confirmed) · `prohibited` (🔴 isolated) —
+mapped to §16/§67, plus a `completion_criterion` naming the REAL action/outcome that proves the surface
+done (never "open" or "summarize"). The CI guard now requires the block on every surface and fails a
+passive completion_criterion. Paige is built to help RUN the company through governed actions; the ledger
+describes the gap to that target, it does not narrow the target to what is built today. **The next
+runtime slice — Business Game Plan + Missions — must demonstrate a real governed Paige action (create/
+revise/sequence/advance a Business Mission) with a verified outcome and Rail evidence, not a richer
+context handoff.**
 ### Business Vault Phase 2 owner/admin foundation — deployed PARTIAL at `809faec3` (2026-09-06)
 
 - 🟡 **PARTIAL / DEPLOYED.** Tenant-bound owner/admin Vault navigation, Overview, Library metadata, Contracts, Obligations, focused record inspector, archive/fact-revocation lifecycle, and truthful member denial shipped in PR #986 merge `809faec3`. Server functions resolve the active workspace and current role; client-supplied tenant or authority values are never trusted. Authenticated production behavior is not yet proven.

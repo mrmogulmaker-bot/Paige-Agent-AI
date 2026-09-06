@@ -48,6 +48,29 @@ hand-maintained companion that must be updated alongside the JSON (§BRAIN.3).
 | `UNAVAILABLE` | the required Paige-binding contract does not exist yet |
 | `PROOF_OWED` | the binding is implemented and reachable in code, but authenticated/runtime proof is absent |
 
+## Two dimensions per surface — proven-today vs the operating target (owner ruling, 2026-09-06)
+
+Every surface carries **two independent answers**, and the second must never be shrunk by the first:
+
+1. **`state` — what is PROVEN today.** The six-state vocabulary above. Strictly truthful about current
+   proof; the CI guard forbids overclaiming it.
+2. **`intended_capability` — the product operating TARGET.** Paige is built to help *run the company
+   through real governed actions*, not to report passively. So each surface also declares, across the
+   five **authority lanes** (mapped to §16 🟢 auto / 🟡 confirm / 🔴 off and §67 per-process grants):
+
+   | Lane | What it declares |
+   |---|---|
+   | `read` | what Paige may safely read and understand (enumerated safe facts; never raw payload/secrets) |
+   | `draft` | what she may draft, model, organize, prepare, or recommend — a proposal with **no side effect** |
+   | `auto` | what she may **execute autonomously** within a tenant-approved policy (🟢) |
+   | `confirm` | what requires **owner confirmation** before execution (🟡, via `paige_pending_confirmations`) |
+   | `prohibited` | what is **permanently isolated/prohibited** — raw secrets, credentials, unreviewed files, authority escalation (🔴) |
+   | `completion_criterion` | the **real action/outcome** that proves the surface is done — never merely "open" or "summarize" it |
+
+   **An absent current proof (`state`) never erases the intended target (`intended_capability`).** The
+   ledger describes the *gap* between present proof and the full operating goal — it does not narrow the
+   goal to what happens to be built today.
+
 ## The release/regression contract (CI-enforced)
 
 > A surface may not be reported `LIVE` / "Paige-connected" without a **complete** ledger entry whose
@@ -57,7 +80,9 @@ hand-maintained companion that must be updated alongside the JSON (§BRAIN.3).
 - a surface claims `LIVE` without `authenticated_runtime` evidence, or with a `none` canonical source / safe context;
 - a surface claims `PROOF_OWED` while also claiming `authenticated_runtime` (that would be `LIVE`);
 - `INTENTIONALLY_ISOLATED` carries no `isolation_note`;
-- any entry is structurally incomplete (missing chain link, empty `sources`, unknown state/evidence class, duplicate id).
+- any entry is structurally incomplete (missing chain link, empty `sources`, unknown state/evidence class, duplicate id);
+- a surface omits `intended_capability` or any of its five authority lanes + `completion_criterion` (the target must be declared, not dropped);
+- a `completion_criterion` names no real action/outcome — i.e. it reads as merely "open" or "summarize" the surface.
 
 This is the mechanical form of §13 (honest reporting) + §32 (a green build is not a working render),
 applied to the binding chain. A ledger a session can quietly edit to say "LIVE" without proof is worse
@@ -131,7 +156,15 @@ dependency it must read first.
 
 Phase 0 (this ledger) and Phase 1 (the handoff contract, `docs/doctrine/surface-context-handoff-contract.md`)
 are published. The implementation of individual bindings continues as bounded slices, each of which
-updates its ledger row on merge:
+updates its ledger row on merge.
+
+> **THE NEXT RUNTIME SLICE — Business Game Plan + Missions (owner ruling, 2026-09-06).** It must
+> demonstrate an **actual governed Paige action with a verified outcome and Rail evidence** — Paige
+> creating / revising / sequencing / advancing a real Business Mission on this surface — **not merely a
+> richer context handoff.** The governed write (`business_mission.create/.revise/.transition`, #983) is
+> already wired and chat-bound; the slice is to DRIVE it end to end (owner-confirmed), verify the state
+> change, and record the outcome on the Rail so the owner sees it. That moves
+> `command-center.business-game-plan` from `PARTIAL` toward `LIVE`.
 
 - **Phase 2** — verified action outcome + Rail backbone (`governedExecution.ts` seam adoption beyond the
   MCP door; `record_capability_run` fed by real acts; owner-visible outcome reading, #746).

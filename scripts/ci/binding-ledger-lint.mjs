@@ -13,15 +13,20 @@
  * impossible to skip: the invariants below fail CI, they are not a convention.
  *
  * WHAT IT CHECKS
- *   · the ledger parses and declares its schema_version, state vocabulary, binding chain, evidence classes
+ *   · the ledger parses and declares its schema_version, state vocabulary, binding chain, evidence classes,
+ *     and the authority-lanes legend + intended_capability note
  *   · every surface has all required fields, a state in the vocabulary, and a non-empty reason + sources
  *   · every surface's `chain` carries exactly the 9 declared binding-chain links
- *   · HONESTY INVARIANTS:
+ *   · CURRENT-STATE HONESTY INVARIANTS (what is proven TODAY):
  *       - state LIVE                → evidence_class MUST include "authenticated_runtime",
  *                                     and canonical_source + safe_context must be real (not "none")
  *       - state PROOF_OWED          → evidence_class MUST NOT include "authenticated_runtime"
  *                                     (if it had that proof it would be LIVE)
  *       - state INTENTIONALLY_ISOLATED → an isolation_note MUST be present
+ *   · INTENDED-TARGET INVARIANTS (owner ruling — absent proof never shrinks the target):
+ *       - every surface declares `intended_capability` with all five authority lanes
+ *         (read · draft · auto · confirm · prohibited) + a `completion_criterion`
+ *       - the completion_criterion must name a REAL action/outcome, not merely "open" or "summarize"
  *   · ids are unique
  *
  *   node scripts/ci/binding-ledger-lint.mjs
@@ -30,6 +35,16 @@
 import fs from "node:fs";
 
 const LEDGER = "docs/binding-ledger/surface-binding-ledger.json";
+
+// The completion_criterion must name a real action/outcome (owner: "not merely that Paige can open or
+// summarize it"). A criterion that contains none of these stems reads as passive and fails.
+const ACTION_STEMS = [
+  "execut", "governed", "verif", "outcome", "rail", "creat", "revis", "advanc", "move", "send", "sent",
+  "schedul", "publish", "book", "record", "install", "complet", "driv", "remediat", "updat", "configur",
+  "resolv", "maintain", "coordinat", "generat", "promot", "rout", "transition", "action", "entitlement",
+  "deliver", "appl", "connect", "scope", "seam",
+];
+const INTENDED_LANES = ["read", "draft", "auto", "confirm", "prohibited", "completion_criterion"];
 
 /** Validate a parsed ledger object. Returns an array of finding strings; empty means pass. */
 export function validateLedger(ledger) {
@@ -51,6 +66,11 @@ export function validateLedger(ledger) {
   const evidenceClasses = Array.isArray(ledger.evidence_classes) ? ledger.evidence_classes : [];
   if (!evidenceClasses.includes("authenticated_runtime"))
     findings.push("evidence_classes must include 'authenticated_runtime' (the proof bar for LIVE)");
+
+  if (!ledger.authority_lanes || typeof ledger.authority_lanes !== "object")
+    findings.push("authority_lanes legend missing — the intended-capability dimension must be declared");
+  if (typeof ledger.intended_capability_note !== "string" || !ledger.intended_capability_note.trim())
+    findings.push("intended_capability_note missing — the current-state-vs-intended-target distinction must be stated");
 
   const surfaces = ledger.surfaces;
   if (!Array.isArray(surfaces) || surfaces.length === 0)
@@ -107,6 +127,20 @@ export function validateLedger(ledger) {
       findings.push(`${id}: state PROOF_OWED but evidence_class includes 'authenticated_runtime' — if the proof exists it is LIVE, not PROOF_OWED`);
     if (s.state === "INTENTIONALLY_ISOLATED" && (!s.isolation_note || !String(s.isolation_note).trim()))
       findings.push(`${id}: state INTENTIONALLY_ISOLATED requires an isolation_note`);
+
+    // INTENDED OPERATING CAPABILITY — the product target across authority lanes. This is SEPARATE from
+    // `state` (current proof): an absent current proof never shrinks the intended target (owner ruling).
+    const ic = s.intended_capability;
+    if (!ic || typeof ic !== "object") {
+      findings.push(`${id}: intended_capability missing — every surface declares its operating target (read/draft/auto/confirm/prohibited + completion_criterion)`);
+    } else {
+      for (const lane of INTENDED_LANES)
+        if (typeof ic[lane] !== "string" || !ic[lane].trim())
+          findings.push(`${id}: intended_capability.${lane} missing or empty`);
+      const cc = typeof ic.completion_criterion === "string" ? ic.completion_criterion.toLowerCase() : "";
+      if (cc && !ACTION_STEMS.some((st) => cc.includes(st)))
+        findings.push(`${id}: completion_criterion must name a REAL action/outcome — not merely that Paige can open or summarize the surface`);
+    }
   }
   return findings;
 }
@@ -117,15 +151,22 @@ if (process.argv.includes("--self-test")) {
     state_vocabulary: { LIVE: "", PARTIAL: "", READ_ONLY_CONTEXT: "", INTENTIONALLY_ISOLATED: "", UNAVAILABLE: "", PROOF_OWED: "" },
     binding_chain: ["canonical_source", "tenant_scope", "safe_context", "authority", "governed_write", "verified_outcome", "rail_evidence", "mind_eligibility", "memory_retention"],
     evidence_classes: ["production_catalog", "production_data", "automated_test", "rendered_structural", "authenticated_runtime", "source_read"],
+    authority_lanes: { read: "", draft: "", auto: "", confirm: "", prohibited: "", completion_criterion: "" },
+    intended_capability_note: "current state vs intended target",
   };
   const fullChain = () => ({
     canonical_source: { status: "real" }, tenant_scope: { status: "server_resolved" }, safe_context: { status: "wired" },
     authority: { status: "governed" }, governed_write: { status: "wired" }, verified_outcome: { status: "wired" },
     rail_evidence: { producer: "wired", read: "resolver" }, mind_eligibility: { axis_a: "PARTIAL", axis_b: "NO" }, memory_retention: { status: "n/a" },
   });
+  const fullIntended = () => ({
+    read: "read safe facts", draft: "draft a proposal", auto: "auto within policy", confirm: "confirm before execute",
+    prohibited: "secrets never cross", completion_criterion: "Paige executes a governed action with a verified Rail outcome",
+  });
   const surface = (over = {}) => ({
     id: "x.y", surface: "X", group: "g", tier_scope: ["solo"], owner_component: "f.tsx:1",
-    chain: fullChain(), state: "PARTIAL", state_reason: "r", evidence_class: ["source_read"], next_slice: "n", sources: ["d.md"], ...over,
+    chain: fullChain(), intended_capability: fullIntended(), state: "PARTIAL", state_reason: "r",
+    evidence_class: ["source_read"], next_slice: "n", sources: ["d.md"], ...over,
   });
   const cases = [
     ["passes a valid PARTIAL surface", { ...base, surfaces: [surface()] }, 0],
@@ -142,6 +183,11 @@ if (process.argv.includes("--self-test")) {
     ["FAILS an empty sources array", { ...base, surfaces: [surface({ sources: [] })] }, 1],
     ["FAILS an unknown evidence_class", { ...base, surfaces: [surface({ evidence_class: ["vibes"] })] }, 1],
     ["FAILS empty surfaces", { ...base, surfaces: [] }, 1],
+    ["FAILS a surface missing intended_capability", { ...base, surfaces: [surface({ intended_capability: undefined })] }, 1],
+    ["FAILS intended_capability missing a lane", { ...base, surfaces: [surface({ intended_capability: (() => { const c = fullIntended(); delete c.auto; return c; })() })] }, 1],
+    ["FAILS a weak open/summarize completion_criterion", { ...base, surfaces: [surface({ intended_capability: { ...fullIntended(), completion_criterion: "Paige can open and summarize the plan" } })] }, 1],
+    ["passes a real-action completion_criterion", { ...base, surfaces: [surface({ intended_capability: { ...fullIntended(), completion_criterion: "Paige sends a governed follow-up with a verified outcome" } })] }, 0],
+    ["FAILS a ledger missing authority_lanes", { ...base, authority_lanes: undefined, surfaces: [surface()] }, 1],
   ];
   let bad = 0;
   for (const [label, ledger, wantFindings] of cases) {
