@@ -2,6 +2,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn(),
+    },
+  },
+}));
+
 afterEach(() => {
   vi.doUnmock("./useBusinessVault");
   vi.doUnmock("@/hooks/useTenantContext");
