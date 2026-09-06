@@ -112,12 +112,14 @@ provider's `tier_eligibility` + `expense_and_operations` is revisited in the sam
 
 ## 4. Public Presence roadmap (approved order)
 
-The approved-order plan for public-presence providers. **All are PROPOSED/UNAVAILABLE — an approved
-direction, not available capability (R1).** Most webmaster/business tools are documented no-fee within
-quota but require app approval / partner access; the advertising paths (Yelp Ads, Meta/Facebook ads,
-LinkedIn ads, directory subscriptions) carry **real ad/subscription spend → M1 real-money spend
-control**. This is the home the Public Presence slice's owed entry points to; authoring each as a full
-catalogued provider entry is a tracked follow-up.
+The approved-order plan for public-presence providers. **All are PROPOSED — an approved direction, not
+available capability (R1) — except item 6 (Facebook/Meta), which is the Public Presence lens of the
+already-catalogued `meta` provider and carries its `PARTIAL` status (declared handles captured; per-tenant
+publishing/ads still owed).** Most webmaster/business tools are documented no-fee within quota but require
+app approval / partner access; the advertising paths (Yelp Ads, Meta/Facebook ads, LinkedIn ads, directory
+subscriptions) carry **real ad/subscription spend → M1 real-money spend control**. This is the home the
+Public Presence slice's owed entry points to; authoring each as a full catalogued provider entry is a
+tracked follow-up.
 
 | # | Provider | API/product | Cost responsibility | Pricing model | Real-money track? | Status |
 |---|---|---|---|---|---|---|

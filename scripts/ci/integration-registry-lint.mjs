@@ -51,6 +51,14 @@ const EXPENSE_STR_FIELDS = [
 // in the string can no longer immunize a separate bare "M1" (the §39 verifier's tripwire hole).
 const QUALIFIED_M1_FORMS = /M1 real-money spend control|M1-[ab]\b/gi;
 
+// The OWNER-APPROVED Public Presence roadmap order (report section 4). The JSON is the source of truth
+// for this sequence, so CI enforces it (Codex P2). Reordering, inserting, or dropping an item fails
+// until this constant is updated — an owner re-prioritization is deliberate, not accidental drift.
+const EXPECTED_ROADMAP_ORDER = [
+  "google-search-console", "google-business-profile", "bing-webmaster", "apple-business-connect",
+  "yelp", "facebook-presence", "linkedin", "directory-network",
+];
+
 const TOP_LEVEL = [
   "doc", "schema_version", "cardinal_rule", "status_vocabulary", "authority_lanes",
   "tiers", "taxonomy", "rules", "delivery_rule", "field_schema", "providers",
@@ -74,12 +82,16 @@ function validateExpenseBlock(eo, tag, E) {
   if (nonEmptyStr(eo.pricing_model) && !PRICING_MODEL.includes(eo.pricing_model)) E(`${tag}: unknown pricing_model "${eo.pricing_model}"`);
   if (!nonEmptyArr(eo.expected_cost_driver)) E(`${tag}: expense_and_operations.expected_cost_driver must be a non-empty array`);
   else for (const d of eo.expected_cost_driver) if (!COST_DRIVER.includes(d)) E(`${tag}: unknown expected_cost_driver "${d}"`);
-  // pricing_checked_as_of: the KEY must exist (null when not verified). A date-stamp requires a source (R10/§13).
+  // pricing_checked_as_of: the KEY must exist (null when not verified). When a next owner date-stamps
+  // it, the date must be a real ISO date AND the source must be a real URL — string-presence is not
+  // enough or "not-an-iso-date" + "internal notes" would masquerade as dated source verification
+  // (§13 / R10; §39 verifier 1(a) + Codex P2).
   if (!("pricing_checked_as_of" in eo)) E(`${tag}: expense_and_operations missing "pricing_checked_as_of" (use null if not verified)`);
   else if (eo.pricing_checked_as_of !== null) {
-    if (!nonEmptyStr(eo.pricing_checked_as_of)) E(`${tag}: pricing_checked_as_of must be null or an ISO date string`);
-    else if (!nonEmptyStr(eo.pricing_source_url) || /^none\b/i.test(eo.pricing_source_url.trim())) {
-      E(`${tag}: pricing_checked_as_of is date-stamped but pricing_source_url is missing/"none" — a date-stamp requires an official source (R10/§13)`);
+    if (!nonEmptyStr(eo.pricing_checked_as_of) || !/^\d{4}-\d{2}-\d{2}$/.test(eo.pricing_checked_as_of.trim())) {
+      E(`${tag}: pricing_checked_as_of must be null or an ISO date (YYYY-MM-DD), not "${eo.pricing_checked_as_of}"`);
+    } else if (!nonEmptyStr(eo.pricing_source_url) || !/^https?:\/\/\S+/i.test(eo.pricing_source_url.trim())) {
+      E(`${tag}: pricing_checked_as_of is date-stamped but pricing_source_url is not an official URL (http(s)://…) — a date-stamp requires a real source (R10/§13)`);
     }
   }
   // money_movement + THE OWNER RULING (2026-09-06): a real-money-moving provider must use the
@@ -247,6 +259,18 @@ export function validateRegistry(reg) {
       } else E(`${rtag}: tier_eligibility missing`);
       validateExpenseBlock(it.expense_and_operations, rtag, E);
     }
+    // Enforce the OWNER-APPROVED sequence (Codex P2): items sorted by `order` must match the approved
+    // id sequence exactly, and orders must be contiguous 1..N — so a reorder/insert/drop fails CI.
+    const byOrder = [...rp.items].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+    const sortedIds = byOrder.map((it) => it.id);
+    if (JSON.stringify(sortedIds) !== JSON.stringify(EXPECTED_ROADMAP_ORDER)) {
+      E(`public_presence_roadmap by ascending order is [${sortedIds.join(", ")}] but the approved sequence is [${EXPECTED_ROADMAP_ORDER.join(", ")}] — fix the order, or update EXPECTED_ROADMAP_ORDER on a deliberate owner re-prioritization`);
+    }
+    const actualOrders = rp.items.map((it) => Number(it.order)).sort((a, b) => a - b);
+    const contiguous = EXPECTED_ROADMAP_ORDER.map((_, i) => i + 1);
+    if (JSON.stringify(actualOrders) !== JSON.stringify(contiguous)) {
+      E(`public_presence_roadmap order values must be contiguous 1..${EXPECTED_ROADMAP_ORDER.length} (got [${actualOrders.join(", ")}])`);
+    }
   }
 
   return errors;
@@ -328,6 +352,21 @@ function selfTest() {
   mustFail("roadmap real-money wrong track", (r) => {
     const it = r.public_presence_roadmap.items.find((x) => x.expense_and_operations.money_movement.can_move_real_money === true);
     it.expense_and_operations.money_movement.m1_dependency_track = "llm_cost_metering";
+  });
+  mustFail("date-stamp with non-ISO date", (r) => {
+    const p = r.providers[0].expense_and_operations;
+    p.pricing_checked_as_of = "not-an-iso-date"; p.pricing_source_url = "https://example.com/pricing";
+  });
+  mustFail("date-stamp with non-URL source", (r) => {
+    const p = r.providers[0].expense_and_operations;
+    p.pricing_checked_as_of = "2026-09-06"; p.pricing_source_url = "internal notes";
+  });
+  mustFail("roadmap approved sequence reversed", (r) => {
+    const items = r.public_presence_roadmap.items;
+    const a = items[0].order; items[0].order = items[1].order; items[1].order = a;
+  });
+  mustFail("roadmap order not contiguous", (r) => {
+    r.public_presence_roadmap.items[0].order = 99;
   });
 
   if (fails.length) {
