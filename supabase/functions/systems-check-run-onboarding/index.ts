@@ -22,7 +22,7 @@
 // §18: imports the ONE core (runSystemsCheck) + the runner registration barrel (side-effect). It writes
 // NO DB rows itself — the core is the SOLE writer of paige_systems_check_run / _finding (§37).
 
-import { runSystemsCheck } from "../_shared/systems-check-runner.ts";
+import { runSystemsCheck, SOLE_RUN_DRAFT_BUDGET_MS } from "../_shared/systems-check-runner.ts";
 import "../_shared/systems-check-runners/index.ts"; // side-effect: registers the 10 runner modules (§18)
 import { adminClient, corsHeaders, isAuthorizedInternalCaller, json, resolveTenantFromJwt } from "../_shared/systems-check-http.ts";
 
@@ -61,6 +61,18 @@ Deno.serve(async (req) => {
       scanFlavor: "onboarding",
       actionFiling: "all",
       triggeredBy: { source: triggerSource, owner_initiated: isOwner },
+      // This is the HIGHEST forge count per invocation on the platform: the full 10-check catalog
+      // with actionFiling 'all', so every fail drafts, on a brand-new tenant where most checks fail.
+      // 3 of the 4 onboarding runs ever executed on production died mid-loop, two after 7 drafts.
+      // A killed run leaves the new tenant with no baseline at all, which then makes the next
+      // scheduled sweep's delta gate misfire — so this is the entry point where being unbounded
+      // costs the most.
+      //
+      // Bounding the invocation is NOT the same as fixing why onboarding fails; that is its own
+      // tracked repair and is deliberately not folded in here. What this changes is the outcome
+      // when it does fail: the run now finishes and writes every finding, with the drafts past the
+      // budget marked deferred and retried by the next sweep, instead of being cut off mid-catalog.
+      draftBudgetMs: SOLE_RUN_DRAFT_BUDGET_MS,
     });
     return json(200, { ok: true, ...summary });
   } catch (e) {
