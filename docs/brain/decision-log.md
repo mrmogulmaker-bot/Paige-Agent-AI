@@ -76,9 +76,21 @@
   financial records (offboarding must archive-then-detach); (3) void/state-machine financial semantics (minimal
   terminal guard shipped; full semantics a PR-3 decision).
   **LOW hardening follow-ups (from §39 confirming pass):** loud-RAISE on a missing reserved-window row; per-act
-  over_cap_breach flag semantics; a `grant_id`-immutability assert. **§32.a persisted-apply OWED post-merge** (via
-  `deploy-migrations`); **authenticated drive OWED to PR-3**. **OUTCOME: MERGING** (flip to MERGED + §32.a CONFIRMED
-  post-merge).
+  over_cap_breach flag semantics; a `grant_id`-immutability assert. **authenticated drive OWED to PR-3**.
+  **OUTCOME — MERGED to `main` (squash `94e08d8`, PR #1014, 2026-09-06).** All required PR checks green on head
+  `f6ad69c` (ci · PAIGE Spine contract incl. the `database-contract` shadow-DB job · Security Audit · migration-lint ·
+  ui-delivery-evidence · Vercel). The prior `database-contract` red was a bare version collision (main landed
+  `20270101000000_paige_thread_business_mission_context` after this branch's lint ran); resolved by renaming this
+  slice's migration `20270101000000 → 20270102000000` (SQL byte-identical, §32 PROOF_OK stood) per the
+  never-renumber-the-merged-one rule. §5 + §39 + Codex all cleared before merge.
+  **§32.a persisted-apply CONFIRMED on prod (ref `xygzykjyynhzqytbqnzu`), `deploy-migrations` run 34058404179
+  (main-push) = success + CC's independent prod query:** `supabase_migrations.schema_migrations` carries
+  `20270102000000`; `paige_authority_reconciliations` table present with its append-only BEFORE-UPDATE/DELETE trigger,
+  its BEFORE-TRUNCATE guard, and all three `ON DELETE RESTRICT` FK constraint triggers (tenants · act_runs · grants);
+  the five new `paige_authority_act_runs` columns (`confirmed_cost_usd`, `confirmed_currency`, `over_cap_breach`,
+  `rail_evidence`, `reconciliation_status`) all resolve; `authority_confirm/6`, `authority_reconcile/7`,
+  `authority_receipt/1` all resolve; `authority_consume` is GONE (0 remaining). **Authenticated drive still OWED to
+  PR-3** (no execution lane consumes this yet).
 
 - **PARKED FINDING (2026-09-06) — LLM-token internal-cost meter (§8.4 / MET1 / #737) is LIVE; NOT M1.**
   Surfaced while grounding M1 (real-money backbone); recorded + parked per owner discipline (stay tight on M1).
