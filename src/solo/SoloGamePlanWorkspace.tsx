@@ -34,6 +34,12 @@ const PROOF: Record<string, [string, string]> = {
 };
 const FND_ICON: Record<string, typeof Check> = { grounded: Check, incomplete: Info, "needs-input": AlertTriangle };
 const FND_WORD: Record<string, string> = { grounded: "Grounded", incomplete: "Finish", "needs-input": "Add" };
+// Plain-language name for each semantic destination — for the chip's accessible label, so the
+// screen reader announces WHERE it opens without ever leaking a route string (§corr #3).
+const DEST_LABEL: Record<string, string> = {
+  setup: "Setup", catalog: "Catalog", connections: "Connections",
+  "systems-check": "Systems Check", knowledge: "Knowledge", clients: "Clients", paige: "PAIGE",
+};
 
 function Chip({ proof }: { proof: string }) {
   const [cls, label] = PROOF[proof] || PROOF.partial;
@@ -193,7 +199,17 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
             <div className="gp-attn">
               {plan.attention.map((a, i) => {
                 const [cls] = PROOF[a.tone] || PROOF.partial;
-                return <span key={i} className={`gp-chip ${cls}`}><span className="gp-cd" />{a.label}</span>;
+                const where = DEST_LABEL[a.destination] || "PAIGE";
+                // Each summary claim opens the real surface that backs it (§36) — never a dead label.
+                return (
+                  <button
+                    key={i} type="button" className={`gp-chip gp-chip-act ${cls}`}
+                    onClick={() => go(a.destination)}
+                    aria-label={`${a.label}. Open ${where}.`}
+                  >
+                    <span className="gp-cd" />{a.label}<ArrowRight className="gp-chip-go" aria-hidden="true" />
+                  </button>
+                );
               })}
             </div>
           )}
@@ -332,7 +348,7 @@ export function SoloGamePlanWorkspace({ accountContext, openPaige, workspaceId }
                     <div className="gp-mot-when">{m.when}</div>
                   </div>
                 ))}
-                <div className="gp-mot-caveat"><Info /><span>Shown by department. We don't surface the individual specialist on this view.</span></div>
+                <div className="gp-mot-caveat"><Info /><span>Real events recorded from your workspace activity, newest first with the time each happened. Shown by department; the individual specialist and the underlying record aren't available to open from this summary view.</span></div>
               </>
             )}
             {plan.motion.status === "ready" && plan.motion.items.length === 0 && (

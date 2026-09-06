@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type Loose = Record<string, unknown>;
 const m = vi.hoisted(() => ({
   cc: {} as Loose, setup: {} as Loose, catalog: {} as Loose, knowledge: {} as Loose,
-  pending: {} as Loose, checks: {} as Loose, activity: {} as Loose,
+  pending: {} as Loose, checks: {} as Loose, activity: {} as Loose, tenant: {} as Loose,
 }));
 
 vi.mock("./useCommandCenter", () => ({ useCommandCenter: () => m.cc }));
@@ -27,6 +27,7 @@ vi.mock("../useCatalogOffers", () => ({ useCatalogOffers: () => m.catalog }));
 vi.mock("./useSoloKnowledge", () => ({ useSoloKnowledge: () => m.knowledge }));
 vi.mock("./useSoloPendingActions", () => ({ useSoloPendingActions: () => m.pending }));
 vi.mock("@/hooks/useSystemsCheck", () => ({ useSystemsCheck: () => m.checks }));
+vi.mock("@/hooks/useTenantContext", () => ({ useTenantContext: () => m.tenant }));
 vi.mock("./useSoloActivityFeed", () => ({
   useSoloActivityFeed: () => m.activity,
   elapsedLabel: () => "1m ago",
@@ -56,6 +57,10 @@ function resetEmpty() {
   m.pending = { items: [], loading: false, error: null, refresh: vi.fn() };
   m.checks = { run: null, findings: [], loading: false, isError: false, scanPending: false, refresh: vi.fn() };
   m.activity = { items: [], loading: false, status: "loading", error: null, refresh: vi.fn() };
+  // Default: the signed-in user OWNS the active workspace — a NON-staff viewer with an active tenant
+  // is, by RLS scoping, in their own workspace (the normal Solo case). `activeTenant.name` is the
+  // business name, distinct from any personal greeting name.
+  m.tenant = { isPlatformStaff: false, activeTenantId: "42", activeTenant: { name: "Clearpath Advisory" } };
 }
 
 beforeEach(() => {
@@ -170,5 +175,62 @@ describe("useSoloGamePlan derivation", () => {
     expect(move).toBeTruthy();
     expect(move?.owner).toBe("paige");
     expect(move?.destination).toBe("paige");
+  });
+
+  // ── owner corrections 2026-09-05 (authenticated live-data verification) ───────────────────
+
+  it("greets the signed-in person by name ONLY when they own the active workspace (§57 identity)", () => {
+    // Owner case (default fixture): a NON-staff viewer with an active workspace is in their own HQ.
+    m.cc.greeting = { name: "Riley" };
+    render();
+    expect(view.greeting.name).toBe("Riley");
+  });
+
+  it("does NOT paste the viewer's name over a workspace they do not own — greets neutrally (§57)", () => {
+    // A super-admin / operator viewing a tenant via act-as: platform staff, so NOT their own HQ.
+    m.cc.greeting = { name: "Riley" };
+    m.tenant = { isPlatformStaff: true, activeTenantId: "t2", activeTenant: { name: "Northwind Advisory" } };
+    render();
+    expect(view.greeting.name).toBe("there");
+    expect(view.greeting.name).not.toBe("Riley");
+  });
+
+  it("greets neutrally when the only name available is the business-name fallback — even for the owner (§57/§13)", () => {
+    // useCommandCenter's greeting.name resolves to `authName || activeTenant.name || "there"`, so an
+    // OWNER with no auth display name (unset on prod for sub-accounts + some solo tenants) gets the
+    // WORKSPACE name here. It must never be voiced as a person ("Good evening, Northwind") — a name
+    // equal to the workspace name is treated as "no personal name" and the greeting stays neutral.
+    m.cc.greeting = { name: "Northwind Advisory" };
+    m.tenant = { isPlatformStaff: false, activeTenantId: "t2", activeTenant: { name: "Northwind Advisory" } };
+    render();
+    expect(view.greeting.name).toBe("there");
+    expect(view.greeting.name).not.toBe("Northwind");
+  });
+
+  it("a failing check's TITLE describes the real state, never an unachieved goal (payment, §13)", () => {
+    // The payment-processor check overstated as 'You can take payment' on a BLOCKED move; the honest
+    // title is the STATE clause of paige_interpretation.
+    m.checks.findings = [{
+      id: "pp", check_id: "payment_processor_connected", status: "fail", severity_at_finding: "blocking",
+      paige_interpretation: "No payment processor declared yet — tell Paige which processor the business uses (Stripe, PayPal, Square, a bank merchant account, QuickBooks Payments, or manual).",
+    }];
+    render();
+    const move = [view.bestMove, ...view.priorities].find((x) => x?.id === "check:pp");
+    expect(move?.title).toBe("No payment processor declared yet");
+    expect(move?.title).not.toContain("You can take payment");
+    // The full declare-oriented copy is preserved as the reason (§38: declare, not "can't take payment").
+    expect(move?.blockedReason).toContain("tell Paige which processor");
+    expect(move?.blockedReason).not.toContain("can't take payment");
+  });
+
+  it("every summary chip carries a real destination so it can be opened (§36 drill-down)", () => {
+    m.cc = { ...m.cc, counts: { approvals: 2 }, attention: { at_risk_clients: 3, follow_ups_due: 1 } };
+    render();
+    const byLabel = (needle: string) => view.attention.find((a) => a.label.includes(needle));
+    expect(byLabel("drafts waiting")?.destination).toBe("paige");
+    expect(byLabel("clients at risk")?.destination).toBe("clients");
+    expect(byLabel("follow-up")?.destination).toBe("clients");
+    // Every chip has SOME real destination — none is a dead label.
+    expect(view.attention.every((a) => typeof a.destination === "string" && a.destination.length > 0)).toBe(true);
   });
 });

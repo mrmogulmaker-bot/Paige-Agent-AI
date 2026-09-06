@@ -16,9 +16,9 @@ function grounded() {
     greeting: { name: "Jordan", dateLabel: "Thursday, September 3", salutation: "Good afternoon" },
     narrative: "Foundations are set and work is moving. Here's what needs you and the best move to make now.",
     attention: [
-      { label: "3 drafts waiting", tone: "live" },
-      { label: "2 clients at risk", tone: "partial" },
-      { label: "5 follow-ups due", tone: "live" },
+      { label: "3 drafts waiting", tone: "live", destination: "paige" },
+      { label: "2 clients at risk", tone: "partial", destination: "clients" },
+      { label: "5 follow-ups due", tone: "live", destination: "clients" },
     ],
     bestMove: {
       id: "attn:atrisk", title: "Re-engage 2 clients before they lapse",
@@ -67,7 +67,7 @@ export function viewFor(mode: string) {
     case "partial":
       return withPatch({
         narrative: "PAIGE has grounded 2 of 5 foundations. 3 are left — the next move builds from what you set.",
-        attention: [{ label: "2 drafts waiting", tone: "live" }],
+        attention: [{ label: "2 drafts waiting", tone: "live", destination: "paige" }],
         bestMove: { id: "gap:offers", title: "Add your first offer in Catalog", why: "Everything commercial waits on one real offer.", owner: "you", proof: "input", evidence: "You have no offer yet.", outcome: "PAIGE builds pricing and follow-ups around it.", destination: "catalog", ctaLabel: "Open Catalog" },
         foundation: [
           { key: "identity", label: "Business identity", status: "grounded", note: "Clearpath Advisory", destination: "setup" },
@@ -81,7 +81,7 @@ export function viewFor(mode: string) {
     case "blocked":
       return withPatch({
         narrative: "Your plan is ready, but the top move is blocked. Clear the blocker and PAIGE can act.",
-        attention: [{ label: "1 move blocked", tone: "blocked" }, { label: "3 drafts waiting", tone: "live" }],
+        attention: [{ label: "1 move blocked", tone: "blocked", destination: "connections" }, { label: "3 drafts waiting", tone: "live", destination: "paige" }],
         bestMove: {
           id: "check:sender", title: "Launch the re-engagement sequence",
           why: "8 quiet clients, drafts ready in your voice. This is the move — but email can't leave the building yet.",
@@ -94,7 +94,7 @@ export function viewFor(mode: string) {
     case "owner":
       return withPatch({
         narrative: "PAIGE has done what she can without you. One decision only you can make is holding three moves.",
-        attention: [{ label: "1 decision needs you", tone: "input" }, { label: "3 moves waiting", tone: "partial" }],
+        attention: [{ label: "1 decision needs you", tone: "input", destination: "catalog" }, { label: "3 moves waiting", tone: "partial", destination: "paige" }],
         bestMove: {
           id: "gap:offers", title: "Confirm your core offer price",
           why: "PAIGE found two prices for your flagship program. She can't pick for you, and pricing pages, proposals and the funnel all wait on the answer.",

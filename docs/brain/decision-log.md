@@ -16,6 +16,45 @@
   master-doc §4 SHIPPED line + `docs/doctrine/tier-matrix.md` surface-ledger LIVE flip (§66 records LIVE,
   not RC) + CI persisted-apply proof (§32.a) + authenticated live Solo drive (§32.c, `Proof Owed`). Evidence:
   `docs/evidence/ui-delivery/campaigns-overview.md`.
+- **Business Game Plan — live-data corrections against authenticated prod (2026-09-05, follow-up to #952)** —
+  the owner reviewed the shipped Solo default landing on real data (Mogul Maker Academy) and flagged five
+  items; verified via authenticated Supabase queries (project xygzykjyynhzqytbqnzu) and fixed in the Game
+  Plan's own files only (no shared seam touched). (1) **Greeting identity (§57):** `useCommandCenter`
+  resolved the greeting name from the GLOBAL signed-in user's auth metadata, never re-scoped to the active
+  workspace — so an operator/super-admin viewing a tenant would see their OWN name over that tenant's HQ.
+  MMA is owned by `mogulmakeracademy@gmail.com` (metadata "Antonio"), so the owner's own login was
+  coincidentally correct, but the SOURCE was wrong. Fixed IN `useSoloGamePlan` (not the shared
+  `useCommandCenter`, to leave Systems Check untouched): the personal name shows only when the viewer
+  genuinely owns the active workspace — a **NON-staff viewer is RLS-scoped to their own tenants**, so
+  `!isPlatformStaff && activeTenantId` is the reliable ownership signal; a platform operator reaches
+  other tenants only by act-as and is greeted neutrally. The **§39 peer-gate caught a MAJOR** here: an
+  earlier draft keyed on `tenants.owner_user_id` AND read the name from `cc.greeting.name`, which
+  `useCommandCenter` resolves to `authName || activeTenant.name || "there"` — so (a) `owner_user_id` is
+  NULL on prod for every sub-account + 3/8 solo tenants (verified), which would greet real owners
+  "there"; and (b) an owner with no auth display name would be voiced as their BUSINESS name ("Good
+  evening, Mogul"). Both fixed: the membership signal replaces `owner_user_id`, and the greeting also
+  requires a genuine personal name (≠ workspace name, ≠ "there"). KNOWN, HONEST limit (§13): an agency
+  PARENT switching into a sub-account's Solo shell is also non-staff, so they'd be greeted by their own
+  name over the child — robustly distinguishing that needs `get_user_primary_tenant` (not the reported
+  bug; documented).
+  (2) **Drill-able claims (§36):** the summary chips ("N clients at risk / drafts waiting / 1 move blocked /
+  follow-ups due") were dead labels; each now carries a real `destination` and renders as a button that
+  opens the backing surface (Clients / PAIGE / Systems Check). (3) **Payment-processor title (§13/§38):** a
+  blocked check titled itself "You can take payment" (the CHECK_DESTINATIONS goal-state) — false on a
+  BLOCKED move; now titled from the honest STATE clause of `paige_interpretation` ("No payment processor
+  declared yet"), with the declare-oriented copy kept as the reason. MMA genuinely has no processor declared
+  (`payment_processor_declared` null) and the runner copy was already §38-clean ("declare which processor",
+  never "can't take payment"). (4) **Work-in-motion:** rows can't open their underlying record —
+  `get_solo_rail_activity` deliberately strips the per-row ref and the Rail RPC is out of scope — so the
+  caveat now states the source (recorded workspace activity) + freshness honestly instead of implying a
+  drill. The "Zapier PAIGE tools test succeeded" row is a REAL event (zapier_mcp_connection, 2026-09-05
+  14:08). (5) **Trust Compass** stays OUT — 3 real tabs, slot reserved, no dead tab (§58). Full suite 3457
+  green, build green, tsc clean, 128/128 render drive, §39 peer-gate ran and its MAJOR + minors resolved
+  (greeting robustness, stub destinations, checkStateTitle dash). §32.c authenticated browser render still owed;
+  the DATA layer is verified against prod. **Lesson: a headless session CAN do authenticated verification —
+  by querying the real database, not only by driving the browser; the owner's live look surfaced an
+  identity SOURCE bug whose displayed value happened to be right.**
+
 - **Capability System slice 1 — artifact receipts DONE; the "render the card on all chat surfaces" item is NOT a clean port (grounded 2026-09-06)** —
   the truthful-artifact-receipt foundation shipped and is hardened (#972 + the #974 Codex folds; all through the
   §39 + §5 + Codex layers). Grounding the NEXT Slice-1 item (render `PaigeArtifactCard` on the other chat
@@ -47,6 +86,7 @@
   so a non-empty drafts array was not proof of usable copy; a new pure `usableDrafts()` filters to drafts
   carrying non-whitespace `content` and the guard fails honestly if none remain. **Proof:** 24 contract tests
   (7 new, falsifiable); 174 green across the source-asserting suite; §50 clean; transpiles clean.
+
 - **Capability System slice 1 · increment 1 — truthful artifact-creation receipts (2026-09-05, PR #972)** —
   five chat artifact-creation handlers (`generate_image`, `draft_marketing_content`, `content_save`,
   `document_generate`, `growth_page_save`) could emit a `success:true` receipt when the edge fn / RPC
