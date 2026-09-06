@@ -12,7 +12,7 @@
   Marketplace entries = **global capability metadata only** (R4); private Paige artifacts need no provider,
   native Google/M365 creation needs that tenant's connected-provider auth (R5); role/authority separate from
   tier, Admin is a role never a URL/tier (R6). **This is a product-governance + delivery record — installs
-  nothing, holds no credentials, calls no API, creates no OAuth client.** 19 providers catalogued spanning all
+  nothing, holds no credentials, calls no API, creates no OAuth client.** 20 providers catalogued spanning all
   6 taxonomy groups + all 6 statuses; every other WIRED provider named in `uncatalogued_wired_providers`
   (honest coverage); pure infra (Supabase/Vercel/LLM-router/Voyage/GitHub) excluded to config-registry (§18).
   **Delivery rule (MANDATORY, §0/§66/§BRAIN.3):** read the entry before proposing/implementing/opening a PR

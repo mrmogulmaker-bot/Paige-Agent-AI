@@ -170,7 +170,9 @@ function selfTest() {
   const realErrors = validateRegistry(real);
   if (realErrors.length) fails.push(`real registry should pass but failed:\n    ${realErrors.join("\n    ")}`);
 
+  let mutationCount = 0;
   const mustFail = (label, mutate) => {
+    mutationCount += 1;
     const r = clone();
     mutate(r);
     if (validateRegistry(r).length === 0) fails.push(`mutation "${label}" should have failed but passed`);
@@ -207,7 +209,7 @@ function selfTest() {
     for (const f of fails) console.error(`    • ${f}`);
     process.exit(1);
   }
-  console.log(`✓ integration-registry-lint self-test: real registry valid; ${14} honesty/structure mutations all caught.`);
+  console.log(`✓ integration-registry-lint self-test: real registry valid; ${mutationCount} honesty/structure mutations all caught.`);
   process.exit(0);
 }
 

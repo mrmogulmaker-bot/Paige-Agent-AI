@@ -279,6 +279,27 @@
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (HubSpot NOT wired)"]
     },
     {
+      "id": "vapi",
+      "name": "Vapi (voice AI telephony)",
+      "taxonomy": "crm_calendar_communications",
+      "business_reason": "AI-answered voice agents over telephony are a possible future channel; today Twilio + ElevenLabs cover the voice path.",
+      "paige_use_cases": ["(future) AI-answered inbound/outbound voice calls"],
+      "connection_prerequisite": "Vapi account/API — NOT wired.",
+      "required_scopes": ["(to be defined when wired)"],
+      "safe_readable_context": "none (not wired)",
+      "allowed_writes_external_effects": "none (not wired)",
+      "authority_lane": ["prohibited"],
+      "m1_dependency": "n/a until wired",
+      "canonical_provider_receipt": "none (not wired)",
+      "rail_mind_memory": "none until wired",
+      "status": "UNAVAILABLE",
+      "owner": "Comms workstream",
+      "dependency": "No current plan; Twilio + ElevenLabs cover the voice path today (§18).",
+      "next_slice": "None scheduled.",
+      "tier_eligibility": { "platform": "na", "solo": "na", "agency_future": "na", "enterprise_future": "na" },
+      "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Vapi NOT wired)"]
+    },
+    {
       "id": "meta",
       "name": "Meta (Facebook + Instagram)",
       "taxonomy": "marketing_ads_social_presence_analytics",

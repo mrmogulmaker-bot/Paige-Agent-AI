@@ -181,6 +181,7 @@ provider is connected/available/autonomous because it is listed (R1).
 | Google Calendar | CRM/calendar/communications | `PARTIAL` | confirm | FU-3 Rail contract; attribution truthfulness (#786) |
 | Resend | CRM/calendar/communications | `PARTIAL` | confirm | per-tenant sending identity; send receipt on Rail |
 | HubSpot | CRM/calendar/communications | `UNAVAILABLE` | prohibited | not wired; native CRM is default |
+| Vapi (voice AI telephony) | CRM/calendar/communications | `UNAVAILABLE` | prohibited | not wired; Twilio + ElevenLabs cover voice today |
 | Meta (FB + IG) | marketing/ads/social/analytics | `PARTIAL` | draft | per-tenant OAuth + `tenant_id` on posts table (owner decision owed) |
 | PostHog | marketing/ads/social/analytics | `PARTIAL` | read | operator-scoped analytics only |
 | DocuSign | files/contracts/Vault | `PROOF_OWED` | confirm | Sales R2 rendered-prototype approval; governed send |
