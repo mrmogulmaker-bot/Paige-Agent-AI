@@ -35,9 +35,24 @@ const UNBUILT_STATUSES = ["UNAVAILABLE", "DEFERRED", "PROPOSED"];
 // purchases/billing. The tripwire scans the entry's safe_readable_context for these tokens.
 const MARKETPLACE_FORBIDDEN = /\b(credential|token|purchase|billing|per-tenant usage|tenant usage|client material)\b/i;
 
+// --- API Expense & Operations Layer (v1.1) vocabularies + the M1 disambiguation (owner ruling 2026-09-06) ---
+const COST_RESPONSIBILITY = ["platform_paid", "tenant_direct", "shared", "pass_through", "undecided"];
+const PRICING_MODEL = ["free_quota", "metered_usage", "fixed_subscription", "per_seat", "per_location", "per_action", "enterprise_contract", "unknown"];
+const COST_DRIVER = ["api_calls", "locations", "seats", "documents", "messages", "minutes", "transactions", "ad_spend", "storage", "model_usage", "other"];
+const M1_TRACK = ["m1_real_money_spend_control", "llm_cost_metering", "none"];
+const EXPENSE_STR_FIELDS = [
+  "cost_responsibility", "billing_owner", "operational_owner", "pricing_model", "pricing_source_url",
+  "pricing_note", "access_prerequisite", "rate_limits_quotas", "usage_review_cadence",
+  "renewal_deprecation_review", "data_privacy_retention", "receipt_reconciliation", "rail_outcome",
+  "pause_revoke_path", "next_owner", "next_slice",
+];
+// A base m1_dependency string that uses the token "M1" must QUALIFY it — bare "M1" is prohibited.
+const QUALIFIED_M1 = /M1 real-money spend control|M1-a|M1-b/i;
+
 const TOP_LEVEL = [
   "doc", "schema_version", "cardinal_rule", "status_vocabulary", "authority_lanes",
   "tiers", "taxonomy", "rules", "delivery_rule", "field_schema", "providers",
+  "cost_tracks", "expense_and_operations_schema", "public_presence_roadmap",
 ];
 const PROVIDER_FIELDS = [
   "id", "name", "taxonomy", "business_reason", "paige_use_cases", "connection_prerequisite",
@@ -48,6 +63,41 @@ const PROVIDER_FIELDS = [
 
 function nonEmptyStr(v) { return typeof v === "string" && v.trim().length > 0; }
 function nonEmptyArr(v) { return Array.isArray(v) && v.length > 0; }
+
+/** Validate an expense_and_operations block (a provider's or a roadmap item's). Pushes errors via E. */
+function validateExpenseBlock(eo, tag, E) {
+  if (eo == null || typeof eo !== "object") { E(`${tag}: missing expense_and_operations block`); return; }
+  for (const f of EXPENSE_STR_FIELDS) if (!nonEmptyStr(eo[f])) E(`${tag}: expense_and_operations missing/empty "${f}"`);
+  if (nonEmptyStr(eo.cost_responsibility) && !COST_RESPONSIBILITY.includes(eo.cost_responsibility)) E(`${tag}: unknown cost_responsibility "${eo.cost_responsibility}"`);
+  if (nonEmptyStr(eo.pricing_model) && !PRICING_MODEL.includes(eo.pricing_model)) E(`${tag}: unknown pricing_model "${eo.pricing_model}"`);
+  if (!nonEmptyArr(eo.expected_cost_driver)) E(`${tag}: expense_and_operations.expected_cost_driver must be a non-empty array`);
+  else for (const d of eo.expected_cost_driver) if (!COST_DRIVER.includes(d)) E(`${tag}: unknown expected_cost_driver "${d}"`);
+  // pricing_checked_as_of: the KEY must exist (null when not verified). A date-stamp requires a source (R10/§13).
+  if (!("pricing_checked_as_of" in eo)) E(`${tag}: expense_and_operations missing "pricing_checked_as_of" (use null if not verified)`);
+  else if (eo.pricing_checked_as_of !== null) {
+    if (!nonEmptyStr(eo.pricing_checked_as_of)) E(`${tag}: pricing_checked_as_of must be null or an ISO date string`);
+    else if (!nonEmptyStr(eo.pricing_source_url) || /^none\b/i.test(eo.pricing_source_url.trim())) {
+      E(`${tag}: pricing_checked_as_of is date-stamped but pricing_source_url is missing/"none" — a date-stamp requires an official source (R10/§13)`);
+    }
+  }
+  // money_movement + THE OWNER RULING (2026-09-06): a real-money-moving provider must use the
+  // real-money spend-control track, NEVER LLM-token metering or "none".
+  const m = eo.money_movement;
+  if (m == null || typeof m !== "object") { E(`${tag}: expense_and_operations.money_movement missing`); return; }
+  if (typeof m.can_move_real_money !== "boolean") E(`${tag}: money_movement.can_move_real_money must be a boolean`);
+  if (!M1_TRACK.includes(m.m1_dependency_track)) E(`${tag}: money_movement.m1_dependency_track "${m.m1_dependency_track}" not one of ${M1_TRACK.join("|")}`);
+  if (!nonEmptyStr(m.detail)) E(`${tag}: money_movement.detail required`);
+  if (m.can_move_real_money === true && m.m1_dependency_track !== "m1_real_money_spend_control") {
+    E(`${tag}: money_movement.can_move_real_money=true but m1_dependency_track="${m.m1_dependency_track}" — a provider that moves real money MUST point to M1 real-money spend control, never LLM-token metering or "none" (owner ruling 2026-09-06)`);
+  }
+}
+
+/** A base m1_dependency string that uses "M1" must qualify it (real-money / M1-a / M1-b). */
+function checkBaseM1(m1, tag, E) {
+  if (nonEmptyStr(m1) && /\bM1\b/i.test(m1) && !QUALIFIED_M1.test(m1)) {
+    E(`${tag}: m1_dependency uses the unqualified token "M1" — name the track ("M1 real-money spend control" for spend, "internal LLM-cost metering" for model usage, or "none") (owner ruling 2026-09-06)`);
+  }
+}
 
 /** Pure validator: returns an array of human-readable error strings (empty = valid). */
 export function validateRegistry(reg) {
@@ -151,10 +201,49 @@ export function validateRegistry(reg) {
         E(`provider "${tag}": marketplace_metadata_only entry names forbidden per-tenant data in safe_readable_context (R4)`);
       }
     }
+
+    // API Expense & Operations Layer (v1.1): every provider carries an expense block + a QUALIFIED m1.
+    validateExpenseBlock(p.expense_and_operations, `provider "${tag}"`, E);
+    checkBaseM1(p.m1_dependency, `provider "${tag}"`, E);
   }
 
   // COVERAGE — every taxonomy group must have at least one catalogued provider.
   for (const id of taxIds) if (!groupsCovered.has(id)) E(`taxonomy group "${id}" has no catalogued provider`);
+
+  // COST TRACKS — the M1 disambiguation must declare both named tracks (owner ruling 2026-09-06).
+  const ct = reg.cost_tracks;
+  if (ct == null || typeof ct !== "object") E("cost_tracks missing");
+  else {
+    for (const k of ["llm_cost_metering", "m1_real_money_spend_control", "none"]) {
+      if (!nonEmptyStr(ct[k])) E(`cost_tracks missing/empty "${k}"`);
+    }
+  }
+
+  // PUBLIC PRESENCE ROADMAP — ordered, each item a valid roadmap entry with an expense block.
+  const rp = reg.public_presence_roadmap;
+  if (rp == null || typeof rp !== "object" || !nonEmptyArr(rp.items)) {
+    E("public_presence_roadmap.items must be a non-empty array");
+  } else {
+    const orders = new Set();
+    const rmIds = new Set();
+    for (const it of rp.items) {
+      const rtag = `roadmap "${nonEmptyStr(it.id) ? it.id : JSON.stringify(it).slice(0, 40)}"`;
+      for (const f of ["id", "provider", "product_or_api", "business_purpose", "status"]) {
+        if (!nonEmptyStr(it[f])) E(`${rtag}: missing/empty "${f}"`);
+      }
+      if (nonEmptyStr(it.id)) { if (rmIds.has(it.id)) E(`${rtag}: duplicate roadmap id`); rmIds.add(it.id); }
+      if (nonEmptyStr(it.status) && !STATUSES.includes(it.status)) E(`${rtag}: unknown status "${it.status}"`);
+      if (typeof it.order !== "number") E(`${rtag}: order must be a number`);
+      else { if (orders.has(it.order)) E(`${rtag}: duplicate order ${it.order}`); orders.add(it.order); }
+      if (it.tier_eligibility && typeof it.tier_eligibility === "object") {
+        for (const t of TIER_KEYS) {
+          if (!(t in it.tier_eligibility)) E(`${rtag}: tier_eligibility missing "${t}"`);
+          else if (!TIER_VALUES.includes(it.tier_eligibility[t])) E(`${rtag}: tier_eligibility.${t}="${it.tier_eligibility[t]}" invalid`);
+        }
+      } else E(`${rtag}: tier_eligibility missing`);
+      validateExpenseBlock(it.expense_and_operations, rtag, E);
+    }
+  }
 
   return errors;
 }
@@ -203,6 +292,36 @@ function selfTest() {
   });
   mustFail("missing delivery rule", (r) => { delete r.delivery_rule; });
   mustFail("missing cardinal rule", (r) => { delete r.cardinal_rule; });
+  // --- Expense & Operations Layer (v1.1) ---
+  mustFail("missing expense block", (r) => { delete r.providers[0].expense_and_operations; });
+  mustFail("bad cost_responsibility", (r) => { r.providers[0].expense_and_operations.cost_responsibility = "somebody"; });
+  mustFail("bad pricing_model", (r) => { r.providers[0].expense_and_operations.pricing_model = "cheap"; });
+  mustFail("bad cost_driver", (r) => { r.providers[0].expense_and_operations.expected_cost_driver = ["vibes"]; });
+  mustFail("date-stamp without source", (r) => {
+    const p = r.providers[0].expense_and_operations;
+    p.pricing_checked_as_of = "2026-09-06"; p.pricing_source_url = "none";
+  });
+  mustFail("real money on wrong M1 track", (r) => {
+    const p = r.providers.find((x) => x.expense_and_operations.money_movement.can_move_real_money === true);
+    p.expense_and_operations.money_movement.m1_dependency_track = "llm_cost_metering";
+  });
+  mustFail("real money on 'none' track", (r) => {
+    const p = r.providers.find((x) => x.expense_and_operations.money_movement.can_move_real_money === true);
+    p.expense_and_operations.money_movement.m1_dependency_track = "none";
+  });
+  mustFail("unqualified M1 in base m1_dependency", (r) => {
+    r.providers[0].m1_dependency = "must meter (M1) before autonomous use";
+  });
+  mustFail("missing cost_tracks", (r) => { delete r.cost_tracks; });
+  mustFail("cost_tracks missing real-money track", (r) => { delete r.cost_tracks.m1_real_money_spend_control; });
+  mustFail("missing public_presence_roadmap", (r) => { delete r.public_presence_roadmap; });
+  mustFail("roadmap item bad status", (r) => { r.public_presence_roadmap.items[0].status = "SOON"; });
+  mustFail("roadmap duplicate order", (r) => { r.public_presence_roadmap.items[1].order = r.public_presence_roadmap.items[0].order; });
+  mustFail("roadmap item missing expense block", (r) => { delete r.public_presence_roadmap.items[0].expense_and_operations; });
+  mustFail("roadmap real-money wrong track", (r) => {
+    const it = r.public_presence_roadmap.items.find((x) => x.expense_and_operations.money_movement.can_move_real_money === true);
+    it.expense_and_operations.money_movement.m1_dependency_track = "llm_cost_metering";
+  });
 
   if (fails.length) {
     console.error("✗ integration-registry-lint SELF-TEST FAILED:");
