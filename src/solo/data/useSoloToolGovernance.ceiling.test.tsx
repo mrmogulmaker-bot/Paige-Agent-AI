@@ -144,4 +144,39 @@ describe("useSoloToolGovernance — write authority + workspace binding (§70.1/
     const probe = harness.rpc.mock.calls.find((c) => c[0] === "resolve_tool_autonomy");
     expect(probe?.[1]).toMatchObject({ _tenant_id: "tenant-a" });
   });
+
+  it("serializes writes to the SAME tool across setDomainMode and setToolMode — no overlap, last wins (§70.1)", async () => {
+    wireRpc(() => ({ data: "auto", error: null }), { admin: true });
+    await mountAndSettle();
+    const g = latest();
+    // Gate the FIRST set_tool_autonomy for crm_create_contact; capture its modes in order.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const modes: string[] = [];
+    let gated = true;
+    harness.rpc.mockImplementation((fn: string, args?: Record<string, unknown>) => {
+      if (fn === "set_tool_autonomy" && args?._tool_key === "crm_create_contact") {
+        modes.push(String(args?._mode));
+        if (gated) { gated = false; return gate.then(() => ({ data: null, error: null })); }
+        return Promise.resolve({ data: null, error: null });
+      }
+      if (fn === "set_tool_autonomy") return Promise.resolve({ data: null, error: null });
+      if (fn === "list_tool_autonomy") return Promise.resolve({ data: listRows, error: null });
+      if (fn === "resolve_tool_autonomy") return Promise.resolve({ data: "auto", error: null });
+      if (fn === "is_current_user_tenant_admin") return Promise.resolve({ data: true, error: null });
+      if (fn === "is_platform_owner") return Promise.resolve({ data: false, error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+    // A bulk domain write (crm) AND a child write to crm_create_contact, the child while the bulk's
+    // write to that tool is still in flight. Without per-tool serialization they'd race on the tool.
+    let dom!: Promise<unknown>, child!: Promise<unknown>;
+    await act(async () => {
+      dom = g.setDomainMode("crm", "off");
+      child = g.setToolMode("crm_create_contact", "auto");
+      await Promise.resolve();
+    });
+    expect(modes).toEqual(["off"]); // only ONE write in flight for the shared tool — the child is queued
+    await act(async () => { release(); await dom; await child; await Promise.resolve(); });
+    expect(modes).toEqual(["off", "auto"]); // the queued last choice wins, written after the first settles
+  });
 });

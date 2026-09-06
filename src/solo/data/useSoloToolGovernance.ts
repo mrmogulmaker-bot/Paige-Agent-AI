@@ -25,7 +25,7 @@
  * write that the server refuses (not an admin, tenant mismatch) surfaces the refusal and the
  * displayed value stays the last real read — nothing is faked as saved.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   CAPABILITY_DOMAINS,
@@ -343,19 +343,51 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
     return () => { active = false; };
   }, [accountEpoch, reloadKey, expectedTenant]);
 
+  // PER-TOOL WRITE SERIALIZATION (§70.1). BOTH setters route each tool's write through ONE queue
+  // keyed by tool_key, so a bulk DOMAIN write and an expanded CHILD-knob write to the SAME tool can
+  // never overlap and land out of order — the last value requested for a tool always wins. Only one
+  // write per tool is in flight; a newer request updates the queued target and the drain writes it
+  // next. (The knob's own queue serializes rapid input WITHIN one knob; this coordinates ACROSS the
+  // two knob instances that can target the same tool.)
+  const toolWrites = useRef(new Map<string, { latest: ToolMode; running: boolean }>());
+  const writeOneTool = useCallback(
+    (toolKey: string, mode: ToolMode): Promise<{ ok: boolean; error?: string }> => {
+      const q = toolWrites.current;
+      const entry = q.get(toolKey) ?? { latest: mode, running: false };
+      entry.latest = mode;
+      q.set(toolKey, entry);
+      // A drain is already serializing this tool; it will pick up the latest value, so resolve
+      // optimistically — the queue guarantees the last write wins.
+      if (entry.running) return Promise.resolve({ ok: true });
+      entry.running = true;
+      return (async () => {
+        let last: { ok: boolean; error?: string } = { ok: true };
+        let writing = true;
+        while (writing) {
+          const target = entry.latest;
+          const res = await rpc("set_tool_autonomy", { _tool_key: toolKey, _mode: target, _tenant_id: expectedTenant });
+          last = res.error ? { ok: false, error: res.error.message } : { ok: true };
+          // Stop on failure (the refresh re-reads real state), or when no newer value arrived mid-write.
+          writing = last.ok && entry.latest !== target;
+        }
+        entry.running = false;
+        return last;
+      })();
+    },
+    [expectedTenant],
+  );
+
   const setToolMode = useCallback(
     async (toolKey: string, mode: ToolMode): Promise<{ ok: boolean; error?: string }> => {
       const meta = TOOL_MAP[toolKey];
       if (!meta) return { ok: false, error: "unknown tool" };
       if (meta.risk === "owner_only") return { ok: false, error: "owner_only" };
       // Write the CLAMPED mode so the stored value is never a misleading auto behind a high tool.
-      const write = clampModeToRisk(mode, meta.risk);
-      const res = await rpc("set_tool_autonomy", { _tool_key: toolKey, _mode: write, _tenant_id: expectedTenant });
-      if (res.error) return { ok: false, error: res.error.message };
+      const res = await writeOneTool(toolKey, clampModeToRisk(mode, meta.risk));
       refresh();
-      return { ok: true };
+      return res;
     },
-    [refresh, expectedTenant],
+    [refresh, writeOneTool],
   );
 
   const setDomainMode = useCallback(
@@ -365,20 +397,18 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
       );
       if (!tools.length) return { ok: false, error: "no settable tools" };
       const results = await Promise.all(
-        tools.map((t) =>
-          rpc("set_tool_autonomy", { _tool_key: t, _mode: clampModeToRisk(mode, TOOL_MAP[t].risk), _tenant_id: expectedTenant }),
-        ),
+        tools.map((t) => writeOneTool(t, clampModeToRisk(mode, TOOL_MAP[t].risk))),
       );
-      const failed = results.find((r) => r.error);
+      const failed = results.find((r) => !r.ok);
       // A domain write is many per-tool writes and is NOT atomic: on a transient per-call error some
       // may have persisted. Re-read the real state on EVERY outcome so the display can never show a
       // stale level while the DB holds a partial change (§13). The caller words its toast to not
       // claim atomicity the operation does not have.
       refresh();
-      if (failed?.error) return { ok: false, error: failed.error.message };
+      if (failed) return { ok: false, error: failed.error };
       return { ok: true };
     },
-    [refresh, expectedTenant],
+    [refresh, writeOneTool],
   );
 
   return useMemo<SoloToolGovernance>(() => {

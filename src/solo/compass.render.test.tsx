@@ -231,6 +231,28 @@ describe("TrustCompass — the governed surface runs, honest and accessible", ()
     expect(text).not.toMatch(/you have read-only access/i);
   });
 
+  it("does NOT advertise a chat path for these settings — no unsupported capability claim (§13/§70.1)", () => {
+    gov.value = govValue([row("crm_create_contact", "auto")]);
+    const h = draw(<TC accountEpoch="t1" />);
+    // The drag hint says HOW to set the knob; it must not claim Paige can set it in chat (no such path).
+    expect(h.textContent ?? "").not.toMatch(/also set it in chat/i);
+  });
+
+  it("a cancelled pointer gesture (pointercancel) DISCARDS the change — never writes (§70.1)", async () => {
+    const v = govValue([row("crm_create_contact", "auto")]);
+    gov.value = v;
+    const h = draw(<TC accountEpoch="t1" />);
+    const knob = [...h.querySelectorAll('[role="slider"]')]
+      .find((s) => /CRM & client records/i.test(s.getAttribute("aria-label") ?? ""))!;
+    await act(async () => {
+      knob.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+      knob.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 40 })); // provisional drag
+      knob.dispatchEvent(new MouseEvent("pointercancel", { bubbles: true, clientX: 40 }));
+      await Promise.resolve();
+    });
+    expect(v.setDomainMode).not.toHaveBeenCalled();
+  });
+
   it("a MIXED domain commits its displayed level on a click, normalising all tools rather than no-op (#3)", async () => {
     // crm mixed: create_contact=confirm, add_note=off → domain level=confirm, mixed=true.
     const v = govValue([row("crm_create_contact", "confirm"), row("crm_add_note", "off")]);

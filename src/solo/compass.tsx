@@ -230,6 +230,10 @@ const TcKnob=({value,max,onCommit,ariaLabel,onError,mixed})=>{
   e.preventDefault();};
  const move=e=>{if(disabled||S.current.x==null)return;const d=Math.round((e.clientX-S.current.x)/26);const r=Math.max(0,Math.min(maxRank,S.current.r+d));if(r!==shown)setPending(r);};
  const up=()=>{if(disabled||S.current.x==null)return;const r=pending!=null?pending:shown;S.current={};commit(r);};
+ // A cancelled gesture (pointercancel — an interrupted touch/pen) is NOT a release: discard the
+ // provisional drag and restore the last committed value rather than persisting a change the user
+ // never completed (a governance write must reflect a deliberate choice, §70.1).
+ const cancel=()=>{if(S.current.x==null)return;S.current={};setPending(null);};
  const frac=maxRank>0?shown/2:0; // arc position 0..1 across off→confirm→auto
  // brushed dial
  const W=64,cx=32,cy=32,Rk=20,a0=Math.PI*0.75,a1=Math.PI*2.25;
@@ -238,7 +242,7 @@ const TcKnob=({value,max,onCommit,ariaLabel,onError,mixed})=>{
  return <span role="slider" tabIndex={disabled?-1:0} aria-label={ariaLabel}
   aria-valuemin={0} aria-valuemax={maxRank} aria-valuenow={shown} aria-valuetext={MODE_LABEL[modeOfRank(shown)]}
   aria-disabled={disabled?'true':undefined}
-  onKeyDown={key} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+  onKeyDown={key} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}
   style={{display:'inline-flex',width:W,height:W,flex:'none',cursor:disabled?'not-allowed':'ew-resize',borderRadius:'50%',touchAction:'none',opacity:disabled?.75:1,outlineOffset:3}}>
   <svg width={W} height={W} viewBox={'0 0 '+W+' '+W} aria-hidden="true">
    {[0,1,2].map(i=>{const a=a0+(a1-a0)*(i/2);const o=pt(Rk+5,a),n=pt(Rk+2,a);
@@ -359,7 +363,7 @@ const KnobCard=({domain,open,onToggle,onSetDomain,onSetTool,onError,readOnly,sid
      : <span className="pill pill-n" style={{flex:'none'}}>Your call</span>}
   </div>
   {settable.length>0&&<div className="row" style={{gap:6,padding:'0 15px 10px',fontSize:10.3,color:'var(--ink-3)'}}>
-   <Ic.arrow size={11} style={{color:'var(--violet)',flex:'none'}}/>Drag or use ← → to set — Paige can also set it in chat.</div>}
+   <Ic.arrow size={11} style={{color:'var(--violet)',flex:'none'}}/>Drag or use ← → to set.</div>}
   <div className="row" style={{justifyContent:'space-between',gap:10,padding:'0 15px 12px',alignItems:'center'}}>
    <span className="sub" style={{fontSize:11}}>{domain.blurb}</span>
    <span className={'pill '+P.pill}>{P.label}</span>
