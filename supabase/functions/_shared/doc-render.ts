@@ -434,9 +434,16 @@ async function renderPdf(title: string | undefined, blocks: Block[], _style: Rec
   // win. Incidental loss (a stray emoji, one foreign name in an English doc) stays best-effort.
   const sample = [title ?? "", ...blocks.map(blockPlainText)].join("\n");
   const nonWs = sample.replace(/\s+/g, "").length;
-  if (nonWs >= 8 && winAnsiLoss(sample) / nonWs > 0.15) {
-    throw new NeedsConfigError("doc-render:pdf-charset",
-      "This document uses characters the PDF exporter can't render yet (Latin text only) — export it as DOCX or Markdown to keep them.");
+  if (nonWs > 0) {
+    // Every non-empty document is checked (a title-only `Привет` must fail closed too — Codex P2). A short
+    // doc needs a MAJORITY unencodable to reject, so one stray emoji in a short English line stays
+    // best-effort; a longer doc rejects once 15% is unrenderable. Either way a wholesale non-Latin doc fails.
+    const ratio = winAnsiLoss(sample) / nonWs;
+    const threshold = nonWs >= 8 ? 0.15 : 0.5;
+    if (ratio > threshold) {
+      throw new NeedsConfigError("doc-render:pdf-charset",
+        "This document uses characters the PDF exporter can't render yet (Latin text only) — export it as DOCX or Markdown to keep them.");
+    }
   }
 
   let lib: any;
@@ -586,15 +593,22 @@ async function renderPptx(title: string | undefined, blocks: Block[], _style: Re
     const PptxGen = lib.default ?? lib;
     const pptx = new PptxGen();
 
-    // Group into { heading, body[] } sections. Content BEFORE the first heading (e.g. a deduped cover's
-    // subhead) collects into `lead` and rides the TITLE slide as its subtitle — NOT a separate slide
-    // headed with the document title, which duplicated the title slide (Codex P2).
+    // Group into { heading, body[] } sections. Content BEFORE THE FIRST heading (a deduped cover's subhead)
+    // collects into `lead` and rides the TITLE slide as its subtitle — NOT a separate slide headed with the
+    // document title, which duplicated the title slide (Codex P2). But `lead` is scoped to that cover zone
+    // ONLY: once a heading has been seen, orphan content (e.g. a chapter-divider's kicker after its inserted
+    // page break) starts its OWN neutral-headed section instead of leaking onto the title slide (Codex P2).
     const slides: { heading: string; body: string[] }[] = [];
     let cur: { heading: string; body: string[] } | null = null;
+    let sawHeading = false;
     const lead: string[] = [];
-    const pushBody = (line: string) => { if (cur) cur.body.push(line); else lead.push(line); };
+    const pushBody = (line: string) => {
+      if (cur) { cur.body.push(line); return; }
+      if (!sawHeading) { lead.push(line); return; }           // pre-first-heading = cover zone → title slide
+      cur = { heading: " ", body: [line] };                    // orphan after a break = its own section, no title dup
+    };
     for (const b of blocks) {
-      if (b.type === "heading") { if (cur) slides.push(cur); cur = { heading: b.text || " ", body: [] }; }
+      if (b.type === "heading") { if (cur) slides.push(cur); cur = { heading: b.text || " ", body: [] }; sawHeading = true; }
       else if (b.type === "list") b.items.forEach((it, i) => pushBody(b.ordered ? `${i + 1}. ${it}` : it));
       else if (b.type === "paragraph") { if ((b).text?.trim()) pushBody((b).text.trim()); }
       // pagebreak: force a new slide boundary

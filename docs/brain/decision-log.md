@@ -145,6 +145,16 @@
   a markdown→flat-text normalizer needs tokenize-protect-restore, not layered regex substitutions, or each
   new metacharacter is a fresh corruption. doc-export 16/16, tsc ratchet 13/13, control-chars none. The
   pdf/pptx executable paths stay §32 PROOF-OWED (npm libs, not headless); their guards are source-contracted.
+  **TENTH catch — Codex round 7 refined the round-6 fixes (two P2), both FOLDED:** (I1) the pptx `lead`
+  over-captured — routing ALL pre-`cur` content to the title slide swept up a chapter-divider's post-break
+  kicker and any intro prose, not just the cover; now `lead` is scoped to the cover zone (a `sawHeading`
+  flag), and post-break orphan content starts its own neutral-headed section. (I2) the charset guard's
+  `nonWs >= 8` floor exempted a title-only Cyrillic doc (`Привет`, 100% loss) from the check; now EVERY
+  non-empty doc is checked, with a majority threshold for short docs (a title-only non-Latin doc fails
+  closed; one emoji in a short English line stays best-effort). The charset guard became a REAL behavioral
+  test: it throws before the pdf-lib import with a distinct `doc-render:pdf-charset` tag, so a title-only
+  Cyrillic doc's rejection tag proves the guard fired (a Latin doc trips the import with a different tag).
+  doc-export 17/17, tsc ratchet 13/13, control-chars none, §50/§63 clean.
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace

@@ -22,7 +22,7 @@ function loadDocRender() {
   }).outputText;
   const out: any = {};
   const require = (k: string) => {
-    if (k.includes("provider-types")) return { NeedsConfigError: class NeedsConfigError extends Error {} };
+    if (k.includes("provider-types")) return { NeedsConfigError: class NeedsConfigError extends Error { tag?: string; constructor(tag?: string, m?: string) { super(m); this.tag = tag; } } };
     throw new Error(`unexpected runtime import: ${k}`);
   };
   new Function("require", "exports", js)(require, out);
@@ -161,6 +161,17 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(md).toContain("- Beta");
   });
 
+  it("PDF fails closed on a title-only Cyrillic document — the charset guard covers SHORT docs too (Codex round-7 I2)", async () => {
+    // The guard runs BEFORE the pdf-lib import and throws a distinctly-tagged NeedsConfigError, so this
+    // executes headlessly: a 6-char all-Cyrillic title is 100% unencodable and must degrade, not ship `?`.
+    await expect(renderDoc({ format: "pdf", title: "Привет", content: [] }))
+      .rejects.toMatchObject({ tag: "doc-render:pdf-charset" });
+    // And a purely-Latin PDF does NOT trip the charset guard (it fails later on the lib import in this
+    // headless port — a DIFFERENT tag — proving the Cyrillic rejection above is the charset guard, not the import).
+    await expect(renderDoc({ format: "pdf", title: "Hello world", content: [{ type: "paragraph", text: "All ASCII here." }] }))
+      .rejects.toMatchObject({ tag: "doc-render:pdf" });
+  });
+
   it("keeps code spans and balanced-paren link URLs verbatim, and md preserves Unicode (Codex round-6)", async () => {
     const r = await renderDoc({
       format: "md",
@@ -202,13 +213,21 @@ describe("doc-render binary-format guards (source contract — pdf/pptx use npm 
     expect(SRC).toContain("function winAnsiLoss");
     expect(SRC).toContain("winAnsiLoss(sample) / nonWs");
     expect(SRC).toContain('"doc-render:pdf-charset"');
+    // Codex round-7 I2 — EVERY non-empty doc is checked (no `>= 8` floor exemption); short docs use a
+    // majority threshold so a title-only Cyrillic doc still fails closed, one emoji in short English doesn't.
+    expect(SRC).toContain("nonWs > 0");
+    expect(SRC).toContain("nonWs >= 8 ? 0.15 : 0.5");
   });
 
-  it("PPTX routes pre-heading lead content onto the title slide, never a duplicate title slide (H4)", () => {
+  it("PPTX routes ONLY cover-zone lead onto the title slide; post-break orphan content gets its own section (H4/I1)", () => {
     expect(SRC).toContain("const lead: string[] = []");
     expect(SRC).toContain("if (lead.length) s.addText(lead.join");
     // the old default that headed an orphan-content slide with the doc title (the duplicate) is gone
     expect(SRC).not.toContain('{ heading: title || "Overview", body: [] }');
+    // Codex round-7 I1 — `lead` is scoped to the cover zone (before the first heading); after a heading,
+    // orphan content (a chapter-divider's post-break kicker) starts its own section, not the title slide.
+    expect(SRC).toContain("let sawHeading = false");
+    expect(SRC).toContain("if (!sawHeading)");
   });
 
   it("inline markdown protects code spans + link URLs before the emphasis passes (H2/H3)", () => {
