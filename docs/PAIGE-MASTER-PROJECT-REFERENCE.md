@@ -136,6 +136,20 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 `100M-org-blueprint.md` (§16 canonical) · `1B-growth-map.md` (§17 canonical) · `paige-os-architecture.md` (§35 derived) · `money-spine-architecture.md` (§38 derived) · `paige-c-suite-roster.md` (proposed §42) · `paige-corporate-structure-2026-08-01.md` (Wyoming LLC → Delaware C-Corp + QSBS + Core Connect holdco + TX domicile) · `paige-memory-fabric-l8-2026-07-28.md` (L8 owner-flagged, promoted into MVP) · `paige-unified-comms-substrate-2026-07-29.md` (§49) · `paige-voice-layer-2026-07-28.md` · `paige-chat-universal-control-surface-2026-07-28.md` · `paige-practice-blueprints-2026-07-29.md` (deferred past W4 per owner ruling 2026-08-08) · `tenant-lifecycle-winddown-2026-07-28.md` (Task #129) · `paige-n8n-orchestrator-brain-doctrine.md` (Task #118 template library).
 
+### Integration Capability Registry (provider-governance delivery record — MANDATORY)
+
+**`docs/integration-registry/`** (README + `integration-capability-registry.json`, the source of
+truth) is the one authoritative, living catalogue + taxonomy of every third-party provider, API,
+connector, Marketplace service, and external-execution platform Paige may use, and how each is
+governed (taxonomy · tier eligibility · authority lane · M1 metering dependency · canonical provider
+receipt · Rail/Mind/Memory boundary · honest status). **Cardinal rule: listing a provider there never
+means it is connected, available, or autonomous.** **Delivery rule (MANDATORY, §0/§66/§BRAIN.3):**
+before proposing, implementing, opening a PR for, or changing ANY provider integration, read the
+relevant registry entry; before merge, update it with the actual capability/authority/proof/limits/next
+owner in the same commit. Enforced by `npm run lint:integration-registry` (CI). Distinct from
+`config-registry.md` (wiring names/IDs), `provider-result-contract.md` (runtime per-tenant state into
+Systems Check), and the Spine `registry.ts` / `tenant_mcp_connections` code registries (§18).
+
 ---
 
 ## 4. What's SHIPPED (stop asking about these)
@@ -1420,6 +1434,34 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
 - **Intelligence layer NOT live (§13 baked into the copy):** the placeholder literally reads *"{persona}'s live conversation connects here soon — your message isn't sent yet."* The chrome is shipped; the send/receive/reasoning wiring is Wave 4 MVP-hub work — the correct shipped-chrome / not-yet-intelligence pattern (§32).
 - **Spec:** `docs/product/agent-ui-placement-spec.md` (§5a persona surface + ⌘K launcher + right-rail placement).
 - **Evidence:** owner screenshot 2026-08-09 of `paigeagent.ai/admin/platform/tenants` (rail + ⌘K modal); CC file/size verification against `origin/main`.
+
+### Integration Capability Registry — the provider-governance delivery contract (2026-09-06)
+
+- ✅ **`docs/integration-registry/` shipped** — the one authoritative, living catalogue + taxonomy of
+  every third-party provider, API, connector, Marketplace service, and external-execution platform
+  Paige may use, with per-provider governance (business reason · Paige use cases · connection
+  prerequisite · required scopes · safe readable context · allowed writes/effects · authority lane ·
+  M1 dependency · canonical provider receipt · Rail/Mind/Memory boundary · status · owner · dependency
+  · next slice · tier eligibility). Machine-readable `integration-capability-registry.json` is the
+  source of truth; `README.md` is the human companion. Six-word status vocabulary: **LIVE · PARTIAL ·
+  PROPOSED · UNAVAILABLE · DEFERRED · PROOF OWED**.
+  - **This is a product-governance and delivery record, not a provider-integration build** — it
+    installs nothing, holds no credentials, calls no external API, creates no OAuth client.
+  - **Cardinal rule:** a registry listing NEVER means a provider is connected, available, or
+    autonomous (R1). Marketplace entries are **global capability metadata only** — never tenant
+    credentials/usage/private client material/purchases/billing (R4). Native Google Workspace / M365
+    creation requires that tenant's explicit connected-provider authorization (R5).
+  - **Delivery rule (MANDATORY):** read the entry before proposing/implementing/opening a PR
+    for/changing a provider integration; update it before merge with the actual capability/authority/
+    proof/limits/next owner, same commit (§0/§66/§BRAIN.3).
+  - **Enforced by** the structural guard `scripts/ci/integration-registry-lint.mjs`
+    (`npm run lint:integration-registry` + `:test`, wired into `ci.yml`) — a concise clone of
+    `lint:binding-ledger` that fails CI on missing fields, unknown status/lane/tier vocabulary,
+    duplicate ids, an unbuilt status declaring a real acting lane, a LIVE entry with no provable
+    receipt, a Marketplace entry leaking per-tenant data, or an uncovered taxonomy group.
+  - **§13 grounding note:** the brief named a *"Marketplace Brain decision"* that has **no artifact
+    under that phrase repo-wide** — the Marketplace rule is grounded on `MARKETPLACE-DATA-MODEL.md`
+    instead; recorded as unresolved, not invented.
 
 ### Third-party integrations WIRED + CONFIGURED
 
