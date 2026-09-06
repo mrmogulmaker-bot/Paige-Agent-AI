@@ -234,10 +234,10 @@ context handoff.**
 
 ### Solo Tenant Brain — Business Mission vertical slice deployed PARTIAL (2026-09-06)
 
-- PR #1016 is squash-merged and deployed at `68d7c10f4381dd66a5d930d82f9400d004d189b5`. `deploy-migrations` run 34057655392 and `deploy-edge-functions` run 34057655408 passed; `db-live` and `edge-live` both point to that SHA; the production version marker reports the same SHA.
+- PR #1016 is squash-merged and deployed at `68d7c10f4381dd66a5d930d82f9400d004d189b5`. `deploy-migrations` run 34057655392 and `deploy-edge-functions` run 34057655408 passed; both live markers moved to that SHA at the #1016 closeout. Current main includes later M1-a #1014, so `edge-live` remains `68d7c10f` while `db-live` is the descendant `94e08d8b` containing the Mission migration. Closeout PR #1018 deployed web/docs SHA `19fc0270`.
 - Paige now resolves the selected Mission from the persisted chat thread under the caller's server-resolved active Solo tenant, supplies bounded source/revision/lifecycle/freshness context before reasoning, uses the existing approval-gated Mission RPCs, and verifies every normalized canonical persisted field before calling the existing Rail writer. Mission request UUID is the stable Rail run identity.
 - This is `PARTIAL`, not Tenant Brain completion. Authenticated production Solo-owner, denied-role, cross-tenant, canonical Mission-row and matching Rail-row/read-projection proof remain `PROOF OWED`. Mission Mind and durable Memory remain `UNAVAILABLE`; no external business action or outcome is implied by a Mission record change.
-- The owner-mandated Integration Capability Registry has no current Supabase infrastructure entry in the repository/shared workspaces. This slice created no customer provider capability or authority and did not create a competing registry. Registry Steward must add/cross-link the controlling entry before later provider-facing expansion; no verified Steward destination was available, so receipt is not claimed.
+- Integration Capability Registry #1019 explicitly excludes pure Supabase/Vercel/GitHub delivery infrastructure from tenant-capability provider entries and governs it through `config-registry.md` (§18). This slice created no customer provider capability, connection scope or external authority, so it correctly does not add a duplicate provider entry. Any later provider-facing Tenant Brain lane must update its actual registry entry in the same delivery.
 ### Business Vault Phase 2 owner/admin foundation — deployed PARTIAL at `809faec3` (2026-09-06)
 
 - 🟡 **PARTIAL / DEPLOYED.** Tenant-bound owner/admin Vault navigation, Overview, Library metadata, Contracts, Obligations, focused record inspector, archive/fact-revocation lifecycle, and truthful member denial shipped in PR #986 merge `809faec3`. Server functions resolve the active workspace and current role; client-supplied tenant or authority values are never trusted. Authenticated production behavior is not yet proven.
@@ -1466,9 +1466,45 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
     `lint:binding-ledger` that fails CI on missing fields, unknown status/lane/tier vocabulary,
     duplicate ids, an unbuilt status declaring a real acting lane, a LIVE entry with no provable
     receipt, a Marketplace entry leaking per-tenant data, or an uncovered taxonomy group.
+  - **v1.1 — API Expense & Operations Layer (2026-09-06):** every provider (and every Public Presence
+    roadmap item) carries an `expense_and_operations` block — cost responsibility (platform_paid/
+    tenant_direct/shared/pass_through/undecided) · billing + operational owner · pricing model + OFFICIAL
+    source URL + checked-as-of date · cost driver · rate limits · usage-review cadence · renewal/
+    deprecation review · data/privacy/retention · money-movement + M1 dependency · receipt/reconciliation/
+    Rail/pause-revoke · next owner/slice. Derived 4-section view:
+    `docs/integration-registry/expense-and-operations-report.md` (current platform operating
+    dependencies · tenant-authorized integrations · future Agency/Enterprise · Public Presence roadmap
+    GSC→GBP→Bing→Apple→Yelp→FB/LinkedIn→directories). **"M1" is disambiguated (owner ruling 2026-09-06):**
+    `cost_tracks` names **internal LLM-cost metering** (operating-cost visibility, §8.4) vs **M1
+    real-money spend control** (external spend backbone, §10). Any provider that can create purchases/
+    payments/ad-spend/bookkeeping/obligations points to the real-money track — the guard fails CI
+    otherwise, and rejects an unqualified "M1". §13 honesty: prices are NOT verified this slice
+    (checked-as-of null + source URL recorded); no price invented, no free plan assumed, custom/
+    enterprise recorded honestly. Provider API fees are separate from customer money movement; Paige is
+    never merchant of record (§38). The correction is go-forward only — historical closeouts are NOT
+    rewritten (§58).
   - **§13 grounding note:** the brief named a *"Marketplace Brain decision"* that has **no artifact
     under that phrase repo-wide** — the Marketplace rule is grounded on `MARKETPLACE-DATA-MODEL.md`
     instead; recorded as unresolved, not invented.
+  - **Known pre-existing dependencies (found at the registry-build closeout sweep, 2026-09-06):** the RE-2
+    M1-a money backbone, the Solo Tenant Brain Business Mission slice, and the Public Presence slice each
+    declared an *"Integration Capability Registry dependency"* and referenced a **"Registry Steward"** role
+    BEFORE this registry existed. The registry ARTIFACT is now their home, but two things remain **owed** and
+    are honestly NOT yet delivered (§13 — the artifact existing does not by itself unblock a slice's provider
+    action): (1) the **specific per-provider entries** those slices spec'd — RE-2 M1-a's *"record-provider-
+    confirmed-spend + reconcile"* backbone and a **Public Presence** provider entry (the `meta` entry is a
+    candidate home, not a substitute; a dedicated entry may be needed) — seeded into the registry JSON's
+    `known_owed_entries`; and (2) the **"Registry Steward" role** those slices reference is undefined here
+    (the registry ships a per-entry `owner` field + the delivery rule instead — an owner decision on whether
+    that satisfies the Steward requirement is owed). **The dated dependency notes below stay accurate and are
+    NOT rewritten (§58):** the Public Presence note (~L4198) says no Public-Presence-specific *entry* or
+    Steward record exists — that remains TRUE (only a placeholder is seeded), so it is a still-valid provider
+    blocker, not a stale claim. The Solo Tenant Brain Business Mission dependency was on delivery
+    INFRASTRUCTURE (the Supabase deploy path), already covered by `excluded_delivery_infrastructure` +
+    `config-registry.md`; its slice said "do not invent an entry," so no owed provider entry is recorded for
+    it (cross-link only, never a duplicate infra entry). Authoring the owed entries + settling the Steward
+    role is a **tracked follow-up** (parked, per "park unrelated provider findings, don't expand into
+    individual integrations").
 
 ### Third-party integrations WIRED + CONFIGURED
 
@@ -4199,3 +4235,14 @@ authenticated Solo-owner, denied/cross-tenant, canonical Mission and matching Ra
 contract and proof ledger: `docs/brain/solo-tenant-brain.md`,
 `docs/delivery/solo-tenant-brain-business-mission-mvp.md`, and
 `docs/binding-ledger/surface-binding-ledger.json`.
+### Solo Settings → Setup → Public Presence — released (2026-09-06)
+
+Owner-approved placement is the second Setup child: `Business profile | Public Presence | People & email`. The shared `Settings · Setup / Business context` banner is removed from every Setup child; the ordinary Setup editor keeps a compact, task-specific edit strip, while Public Presence uses its own operating actions. No `/admin` route, Agency surface, or sub-account surface was added.
+
+Public Presence coordinates outward use of the existing canonical Setup brief; it does not create an identity store. `owner_confirmed` is shown only when the canonical field provenance is both owner-confirmed and confirmed. A saved website is labelled as a Business Profile URL, never as indexed or discoverable. Google Business Profile, Apple Business Connect, Bing Places, Facebook, LinkedIn, Yelp, directory networks, search/indexing, reviews, provider writes, bounded delegated authority, Rail evidence, and the dedicated PAIGE context handoff remain `UNAVAILABLE` because no authenticated source/worker contract exists. Unavailable work is presented as a visible explanatory state instead of a dead control; no connected, claimed, matched, synced, corrected, published, ranking, traffic, rating, review-count, or score claim is made.
+
+Release proof: PR #1021 passed its CI, Security Audit, and UI-delivery-evidence workflows and squash-merged to `main` as `d4392b9786e68ce44b72905f3ffe6771aea319ab`. Both `https://paigeagent.ai/version.json` and `https://app.paigeagent.ai/version.json` returned `d4392b9786e68ce44b72905f3ffe6771aea319ab-mtqao86w`, proving the exact product merge SHA is deployed. Local proof remains: 129 focused Setup/Public Presence/routing assertions pass; changed-file ESLint, the TypeScript ratchet, regression lint, binding-ledger lint, and production build pass. The full repository run passed 3,770/3,775 under parallel load; all five affected unrelated suites then passed 73/73 in isolation. A compiled local component harness proved no page-level horizontal overflow or nested vertical scroller at 1536×770, 1366×768, 1024×768, 900×1000, and 390×844; Mineral and Obsidian rendered; mobile primary targets reach 44px; drawer Escape, background containment, body lock, and focus restoration passed with no browser errors. The harness was removed after capture. A production browser reached the exact route and was correctly redirected to `/auth?next=%2Fsolo%2F100%2Fsettings%2Fsetup%2Fpublic-presence`; signed-in owner interaction, workspace switching, and real tenant data remain `PROOF OWED` and must not be inferred from deployment or local evidence.
+
+Integration Capability Registry dependency (owner ruling, effective 2026-09-06): refreshed `origin/main` has no Integration Capability Registry entry or identifiable Registry Steward record for Public Presence. This slice does not create a competing registry and does not depend on provider authority: every provider, PAIGE handoff, review, claim, correction, publish, and external-execution action remains `UNAVAILABLE`. Registry Steward notification is required before the next provider-facing slice. That owner must first add the canonical entry with exact provider capability and scopes, tenant-tier eligibility separate from role authority, standing-authority lane, M1 dependency, provider-confirmed outcome path, Rail/Mind/Memory boundaries, proof state, and limitations. Only then may a provider slice implement server-resolved tenant scope, freshness/read failures, exact venue/account scope, governed action, verified provider result, and attributable evidence.
+
+Legacy collision/source map: `src/components/dashboard/business-profile/PublicPresenceSection.tsx`, mounted by `BusinessInfrastructureAssessment.tsx`, reads and writes `business_public_presence`, calculates completion from owner-entered URLs/self-check booleans, and reports only the local database save. `supabase/functions/paige-write-back/index.ts` also exposes `public_presence.*` writes to that table and currently records success without validating the write result. Those records are **not** the canonical Business Profile, authenticated provider state, public-source evidence, or a provider-confirmed outcome. They must not feed this Public Presence surface, PAIGE context, Rail, Mind, or Memory. The Business Infrastructure Assessment and `paige-write-back` owners own retirement or explicit reconciliation to canonical Business Profile facts plus real provider evidence; this slice deliberately does not modify that active legacy path.

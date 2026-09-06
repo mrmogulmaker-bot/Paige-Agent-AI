@@ -4041,3 +4041,14 @@ sub-account delivery (no "explicit release" rule triggered). **Next owning works
 Business-context + Client-relationships frontend read-hooks (to light those two `UNAVAILABLE/DEFERRED`
 domains); **first-read dependency:** `docs/handoff/solo-setup-business-context-spine-handoff.md` (the
 narrower safe-field projection contract — status + provenance only, never a raw value).
+
+### Solo Settings → Setup → Public Presence — tier lock (2026-09-06)
+
+| Surface / capability | Solo owner | Solo authorized representative | Solo read-only member | Sub-account | Agency | Operator |
+|---|---|---|---|---|---|---|
+| View source-honest Public Presence readiness | ✓, canonical Setup facts plus real source states only | Existing Setup read policy only | Existing Setup read policy only | Not added | Not added | Not added |
+| Edit canonical public facts | Route to Business profile under existing Setup authority | Existing Setup authority only | Refused | Not added | Not added | Not added |
+| Provider connection / OAuth | Integrations-owned; no action added here | Same | Same | Not added | Not added | Not added |
+| PAIGE/provider update, claim, response, or publish | `UNAVAILABLE` until safe context, exact standing authority, authenticated provider result, and Rail evidence exist | `UNAVAILABLE` | Refused | Not added | Not added | Not added |
+
+No new entitlement, tier feature flag, `/admin` route, sub-account inheritance, or Agency/operator surface is implied by the Solo child route.

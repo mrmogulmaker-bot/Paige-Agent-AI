@@ -5,6 +5,7 @@ import type {
 
 export const SOLO_SETUP_TABS = [
   "business-profile",
+  "public-presence",
   "people-email",
   "knowledge-bucket",
   "direction",
@@ -15,6 +16,7 @@ export type SoloSetupTab = (typeof SOLO_SETUP_TABS)[number];
 
 export const SOLO_SETUP_TAB_LABELS: Record<SoloSetupTab, string> = {
   "business-profile": "Business profile",
+  "public-presence": "Public Presence",
   "people-email": "People & email",
   "knowledge-bucket": "Knowledge bucket",
   direction: "Direction",

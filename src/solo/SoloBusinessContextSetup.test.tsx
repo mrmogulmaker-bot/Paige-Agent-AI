@@ -155,6 +155,7 @@ describe("canonical Solo Setup business context", () => {
   });
   it.each([
     "business-profile",
+    "public-presence",
     "people-email",
     "knowledge-bucket",
     "direction",
@@ -167,7 +168,9 @@ describe("canonical Solo Setup business context", () => {
     expect(host.querySelector("[role=tabpanel]")?.id).toBe(
       `setup-panel-${tab}`,
     );
-    expect(host.querySelectorAll("[role=tabpanel]")).toHaveLength(1);
+    expect(host.querySelectorAll("[role=tabpanel]")).toHaveLength(
+      tab === "public-presence" ? 2 : 1,
+    );
     await act(async () => root.unmount());
   });
   it("canonicalizes index with replace and keeps the entry query", async () => {
@@ -333,7 +336,7 @@ describe("canonical Solo Setup business context", () => {
     },
   );
 
-  it("renders exactly the approved five accessible subtabs in order", async () => {
+  it("renders exactly the approved six accessible subtabs in order", async () => {
     const { host, root } = await mount();
     expect(
       Array.from(host.querySelectorAll('[role="tab"]')).map(
@@ -341,11 +344,15 @@ describe("canonical Solo Setup business context", () => {
       ),
     ).toEqual([
       "Business profile",
+      "Public Presence",
       "People & email",
       "Knowledge bucket",
       "Direction",
       "Paige brief",
     ]);
+    expect(host.querySelector(".setup-intro")).toBeNull();
+    expect(host.textContent).not.toContain("Settings · Setup");
+    expect(button(host, "Edit business context")).toBeTruthy();
     expect(host.textContent).toContain("Business address");
     expect(host.textContent).not.toContain("people can actually edit");
     await act(async () => root.unmount());

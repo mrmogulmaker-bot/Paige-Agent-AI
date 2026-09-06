@@ -293,7 +293,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(subtabBySlug("agency", "marketplace", "curated")).not.toBeNull();
     expect(subtabBySlug("solo", "marketplace", "curated")).toBeNull();
     expect(subtabBySlug("solo", "marketplace", "publish")).toBeNull();
-    // Public Presence remains Analytics-owned and banking is not a Solo Settings destination.
+    // Public Presence is a Setup child route, not a top-level Settings destination; banking is not a Solo destination.
     expect(subtabBySlug("solo", "settings", "presence")).toBeNull();
     expect(subtabBySlug("solo", "settings", "banking")).toBeNull();
     // Agency's legacy Integrations branch remains unchanged; Solo has one Settings owner.
