@@ -1647,13 +1647,18 @@ read-only scouts (file:line-citable).
   (campaign_brief · HTML email_template · video · social-schedule).
 - **Upload/download & inspect files** — **LIVE** (upload+inspect: `useChatDocumentUpload` 10MB pdf/img/docx,
   read-check + approve-to-apply extraction, `kb-ingest-file`; folder-scoped storage RLS + server-side scope
-  refusal). PARTIAL: no generic chat→file download. **REAL SECURITY GAP:** uploaded file **content is
-  inlined raw with NO prompt-injection fence** (only anti-hallucination guards), though the fence exists
-  elsewhere (team-context/MCP/Zapier) — a first-class slice-2 hardening item. **Accurate threat (Codex P1,
-  verified `paige-ai-chat/index.ts:7451`):** an attachment request takes the direct-stream branch; the
-  tool-executing agentic loop is gated to NON-document turns, so malicious file content can steer the
-  answer/extraction but cannot directly drive Paige's mutating tools on that turn (the fence stays
-  warranted, and is load-bearing once attachments are ever routed into the tool loop).
+  refusal). PARTIAL: no generic chat→file download. **INJECTION FENCE — SHIPPED (Slice 2, Task #18,
+  2026-09-06):** uploaded file content is now fenced as untrusted DATA, not instructions —
+  `_shared/untrusted-fence.ts` (`fenceUploadedFileText` + `UPLOADED_FILE_UNTRUSTED_NOTICE`, the §18 one home
+  mirroring the team-context text fence) wraps the extracted DOCX text and leads both `baseInstruction`
+  branches (covering the PDF/image vision surface). Behavior-preserving (§37); `src/solo/untrusted-fence.test.ts`
+  + source-contract guard. **Accurate threat (Codex P1, verified):** an attachment request takes the
+  direct-stream branch; the tool-executing agentic loop is gated to NON-document turns, so malicious file
+  content can steer the answer/extraction but cannot directly drive Paige's mutating tools on that turn (the
+  fence guards the steer today and is load-bearing once attachments are ever routed into the tool loop).
+  **STILL OPEN:** a generic chat→file download primitive + content-sniffing beyond the MIME allow-list, and a
+  SECOND unfenced surface — the retrieved-KB block (`=== TENANT KNOWLEDGE ===`) where OCR'd upload content
+  re-enters via `match_tenant_knowledge`. §32.c authenticated malicious-doc drive OWED (headless).
 - **Write & operate native records** — LIVE (wired: `deal_move_stage` honest outcome S1/S1.1, content/
   document/growth writes) / PARTIAL (~43 consequential actions still write only `paige_audit_log`, not the
   Rail — F05 continuation).
@@ -1731,7 +1736,7 @@ create/revise/list live-drive (headless session cannot render/drive it) — owed
 to the dedicated Solo Paige workspace chat (`paige.workspace`). **(1) Horizontal scrollbar fixed at the SOURCE:** the
 message bubble (the app-branch flex item every live mount uses) lacked `min-w-0` so it couldn't shrink and pushed the
 transcript wide; fixed with `min-w-0` + user-text `whitespace-pre-wrap break-words` + transcript `overflow-x-hidden`
-(safe because content now wraps — nothing clipped) + `EntityDiagramCard` self-scroll for genuinely-wide org-charts.
+(safe because content now wraps — nothing clipped) + `EntityDiagramCard` **and** wide GFM tables self-scroll in their own `overflow-x-auto` containers for genuinely-wide content (`MarkdownMessage` `table` override).
 The transcript stays the one vertical scroll owner; the composer action row is `flex-wrap`. **(2) Real permission
 chip** in the composer (`PaigeComposerAutonomyChip`, Solo-only via a new `composerAutonomyControl` prop): reflects the
 workspace's REAL effective posture via `useSoloToolGovernance` (the canonical `set_tool_autonomy` seam); "Ask first"
@@ -1746,6 +1751,14 @@ reconciliation slice — this hotfix reuses the one per-tool seam, does not fork
 rendered-pixel + authenticated-runtime verification (no-scrollbar layout + live chip write/route) at the five
 viewports × both themes × PAIGE open/closed — owed to a browser-capable session (headless, no browser). Evidence:
 `docs/evidence/ui-delivery/dedicated-paige-chat-scrollbar-and-permission-chip.md`.
+**§39/§5 FOLD (pre-merge):** the peer-gate + compliance officer caught (and this PR fixed) a real §13 chip
+defect — the standing-grant signal keyed on the domain-`guardrails` aggregate, unreachable because every
+domain has a `high`-risk tool capped at `confirm`, so the chip could never leave "Ask first" and would
+understate a real `auto` grant; re-keyed to the tool level (`byTool` effective `auto`) with a reachability
+test over the real `deriveGovernance`. Also folded: the wide-GFM-table clip fix above, a `motion-reduce`
+guard on the shared dropdown primitive, and a full-suite regression (chip's governance RPC unmocked in the
+Team-approval render test). **MERGED to `main` (squash `22a12b7b`, PR #1008); frontend ships via the Vercel
+production build — no migration/edge deploy for this commit.**
 
 ### Sandboxed Research & External Execution — a COMPONENT of the Paige Capability System (above); APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
 

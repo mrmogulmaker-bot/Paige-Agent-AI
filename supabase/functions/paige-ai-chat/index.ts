@@ -51,6 +51,7 @@ import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
 // below. NO-OP (returns null) for anyone but a seeded platform operator (the tenant-less God account).
 import { loadOwnerContextBlock } from "../_shared/owner-context.ts";
 import { buildTenantTeamContextBlock } from "../_shared/team-context.ts";
+import { fenceUploadedFileText, UPLOADED_FILE_UNTRUSTED_NOTICE } from "../_shared/untrusted-fence.ts";
 import { loadSpineEvidenceForChat } from "../_shared/paige-spine/chatEvidence.ts";
 import { buildBusinessContextReadinessBlock } from "../_shared/paige-spine/domains/businessContextChatEvidence.ts";
 import { buildTeamAuthorityBlock } from "../_shared/paige-spine/domains/teamAuthorityChatEvidence.ts";
@@ -4901,13 +4902,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           });
         }
 
-        const docxBlock = docKind === "docx" && attachedDocument.textContent
-          ? `\n\n=== DOCX TEXT CONTENT (${attachedDocument.fileName}) ===\n${attachedDocument.textContent.slice(0, 80_000)}\n=== END DOCX ===\n`
+        // Slice 2 injection fence (§13/§9): the extracted document text is UNTRUSTED user-supplied data,
+        // so it is wrapped in a REFERENCE-DATA-ONLY fence (one home: _shared/untrusted-fence.ts) instead
+        // of inlined raw next to the trusted analysis instructions. Empty text still yields "" — no
+        // behavior change for a doc with no extractable text.
+        const docxBlock = docKind === "docx"
+          ? fenceUploadedFileText(attachedDocument.fileName, attachedDocument.textContent, { label: "DOCX" })
           : "";
 
+        // The untrusted notice leads the trusted instruction block so it also covers the PDF/image
+        // vision surface (whose bytes cannot be text-wrapped) and clearly separates trusted instructions
+        // from the untrusted document. The analysis instructions are unchanged — a legitimate document is
+        // still read and analyzed; only obeying directives embedded IN the file is refused.
         const baseInstruction = isCreditReportPdf
-          ? `[Attached document: ${attachedDocument.fileName}]\n\n=== CREDIT REPORT ANALYSIS INSTRUCTIONS ===\nIf this document is a credit report (especially a tri-merge report), produce a STRUCTURED analysis. Tri-merge column order is TransUnion (left), Experian (middle), Equifax (right). Dashes (--) mean NOT reported at that bureau. Always identify document type and bureau in your response.`
-          : `[Attached document: ${attachedDocument.fileName} — ${docKind.toUpperCase()}]\n\nThe client has shared a document. Acknowledge it briefly and naturally — e.g. "Got it — I've read through your [document type]." If you can identify what kind of document this is (EIN letter, articles of incorporation, business license, bank statement, ID, W-9, voided check, or other), name it. The system will offer the client a save dialog separately for any extracted fields, so do NOT recite them as a checklist; just confirm what you saw and ask what they'd like to do next.`;
+          ? `[Attached document: ${attachedDocument.fileName}]\n\n${UPLOADED_FILE_UNTRUSTED_NOTICE}\n\n=== CREDIT REPORT ANALYSIS INSTRUCTIONS ===\nIf this document is a credit report (especially a tri-merge report), produce a STRUCTURED analysis. Tri-merge column order is TransUnion (left), Experian (middle), Equifax (right). Dashes (--) mean NOT reported at that bureau. Always identify document type and bureau in your response.`
+          : `[Attached document: ${attachedDocument.fileName} — ${docKind.toUpperCase()}]\n\n${UPLOADED_FILE_UNTRUSTED_NOTICE}\n\nThe client has shared a document. Acknowledge it briefly and naturally — e.g. "Got it — I've read through your [document type]." If you can identify what kind of document this is (EIN letter, articles of incorporation, business license, bank statement, ID, W-9, voided check, or other), name it. The system will offer the client a save dialog separately for any extracted fields, so do NOT recite them as a checklist; just confirm what you saw and ask what they'd like to do next.`;
 
         contentParts.push({
           type: "text",
