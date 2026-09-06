@@ -57,6 +57,7 @@ import {
 import "./settings-setup.css";
 import { resolveSetupSubtabRoute, setupSubtabPath } from "./setup-subtab-route";
 import { settingsScrollOwner } from "./settings-scroll-owner";
+import { SettingsPublicPresence } from "./settings-public-presence";
 import {
   ADDRESS_AUTOCOMPLETE,
   COUNTRY_OPTIONS,
@@ -1115,44 +1116,6 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
         aria-busy={data.saving}
         style={{ border: 0, padding: "0 0 32px", margin: 0, minWidth: 0 }}
       >
-        <header className="setup-intro">
-          <div>
-            <span className="setup-kicker">Settings · Setup</span>
-            <h2>Business context</h2>
-            <p>
-              Keep the facts, people, direction, and trusted source material
-              Paige should understand about this business.
-            </p>
-          </div>
-          <div className="setup-intro__actions">
-            {editing && (
-              <button
-                className="setup-button"
-                disabled={data.saving}
-                onClick={() => void cancel()}
-              >
-                Cancel
-              </button>
-            )}
-            <button
-              className="setup-button setup-button--primary"
-              disabled={!data.canEdit || data.saving}
-              onClick={
-                editing
-                  ? () => void save()
-                  : () => {
-                      beginEdit();
-                    }
-              }
-            >
-              {data.saving
-                ? "Saving durable record…"
-                : editing
-                  ? "Save business context"
-                  : "Edit business context"}
-            </button>
-          </div>
-        </header>
         {!data.canEdit && (
           <div className="setup-notice" data-tone="bad">
             This workspace is read-only for Setup. Owner access is required for
@@ -1344,6 +1307,37 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
             </Link>
           ))}
         </div>
+        {(tab !== "public-presence" || editing) && (
+          <div className="setup-context-actions" aria-label="Business context actions">
+            <span>
+              {editing
+                ? "Business context draft open"
+                : "Business Profile is the edit home for approved facts"}
+            </span>
+            <div>
+              {editing && (
+                <button
+                  className="setup-button"
+                  disabled={data.saving}
+                  onClick={() => void cancel()}
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                className="setup-button setup-button--primary"
+                disabled={!data.canEdit || data.saving}
+                onClick={editing ? () => void save() : () => void beginEdit()}
+              >
+                {data.saving
+                  ? "Saving durable record…"
+                  : editing
+                    ? "Save business context"
+                    : "Edit business context"}
+              </button>
+            </div>
+          </div>
+        )}
         {route.kind === "invalid" ? (
           <section className="setup-state" role="alert">
             <h3>Setup area not found</h3>
@@ -1383,6 +1377,13 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
                 }}
                 onNaics={(value) => void chooseNaics(value)}
                 searchNaics={data.searchNaics}
+              />
+            )}{" "}
+            {tab === "public-presence" && (
+              <SettingsPublicPresence
+                brief={data.brief}
+                primaryBusinessEmail={data.primaryBusinessEmail}
+                onReviewBusinessProfile={() => switchTab("business-profile")}
               />
             )}{" "}
             {tab === "people-email" && (

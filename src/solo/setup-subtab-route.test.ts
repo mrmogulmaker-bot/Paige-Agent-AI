@@ -3,6 +3,21 @@ import { SOLO_SETUP_TABS } from "./settings-business-context-contract";
 import { resolveSetupSubtabRoute, setupSubtabPath } from "./setup-subtab-route";
 
 describe("Solo Setup child addresses", () => {
+  it("round-trips the approved Public Presence child without creating a top-level Settings route", () => {
+    expect(setupSubtabPath("100", "public-presence")).toBe(
+      "/solo/100/settings/setup/public-presence",
+    );
+    expect(
+      resolveSetupSubtabRoute(
+        "/solo/100/settings/setup/public-presence",
+        "100",
+      ),
+    ).toEqual({ kind: "tab", tab: "public-presence" });
+    expect(
+      resolveSetupSubtabRoute("/solo/100/settings/presence", "100"),
+    ).toEqual({ kind: "outside" });
+  });
+
   it.each(SOLO_SETUP_TABS)(
     "resolves %s identically for every Solo account",
     (tab) => {

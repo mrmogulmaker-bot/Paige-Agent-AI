@@ -8,9 +8,10 @@ import {
 } from "./settings-business-context-contract";
 
 describe("Solo business context contract", () => {
-  it("keeps the approved five-tab Setup taxonomy in canonical order", () => {
+  it("keeps the approved six-tab Setup taxonomy in canonical order", () => {
     expect(SOLO_SETUP_TABS).toEqual([
       "business-profile",
+      "public-presence",
       "people-email",
       "knowledge-bucket",
       "direction",
