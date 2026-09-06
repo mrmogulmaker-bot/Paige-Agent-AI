@@ -4129,6 +4129,75 @@ reframed as the consequential-act floor lift in the runtime clamp that actually 
 honest-note; and this entry. Lesson (§BRAIN.2/§13): a doc's "not shipped" claim must be re-verified
 against live migrations/prod before it is repeated — a later slice can have shipped the thing the doc
 still says is missing.
+
+## 2026-09-06 — RE-2 PR-1: the execution substrate for standing delegated authority (owner-authorized)
+
+**Owner ruling (2026-09-06):** build RE-2 as small mergeable MVP slices at MVP cadence, no routine
+approval between slices; governing rule + build order + spending-authority spec captured in
+`autonomy-architecture.md` §10.7–§10.9. This is the first build slice.
+
+**What shipped (`supabase/migrations/20261230000000_re2_execution_substrate.sql`) — SUBSTRATE ONLY,
+ZERO behavioral change:** nothing reads these for execution yet (no execution loop exists; that is PR-3),
+and `resolve_automation_autonomy` is untouched (the floor-lift is PR-2). A `high` act still clamps to
+`confirm` exactly as before.
+- `paige_authority_grants` — the first-class, CITABLE standing policy / spending grant: scope + caps +
+  escalation (jsonb, §10 config-as-data), provider_account (§38 tenant's own rail), effective/expiry/
+  schedule, state + paused_at/revoked_at/emergency_stopped_at (immediate controls, §68), granted_by +
+  parent_grant_id (the delegation chain PR-2 uses to enforce "a representative never exceeds the owner
+  ceiling", §51/§53). CHECK: a spend cap requires a provider_account.
+- `paige_authority_act_runs` — idempotency/replay receipts; UNIQUE(grant_id, idempotency_key) is the
+  exactly-once guarantee (§10.7 "never silently retry a consequential action without idempotency").
+- `paige_authority_budget_windows` — the atomic velocity + spend ledger (per grant × window kind × start).
+- Primitives (SECURITY DEFINER, §59 in-body scope): `authority_grant_active`, `authority_reserve`
+  (atomic reserve serialized by the GRANT-ROW `FOR UPDATE` lock — active + single-action cap + every
+  declared day/week/month window; a declared cap it cannot yet evaluate — campaign/client_period — is
+  REFUSED `unenforceable_cap_kind`, not silently ignored, so "narrowest-limit-wins" is TRUE by
+  construction; idempotent replay of a reserved/succeeded key, fail-closed `prior_attempt_failed` on a
+  failed/released key; records `reserved_windows` so release reverses exactly what it touched),
+  `authority_consume` (records the provider-confirmed result; never fabricates success),
+  `authority_release` (reverses EXACTLY the recorded windows atomically), `authority_remaining_capacity`
+  (the §10.9 "show remaining capacity" read).
+- Integrity trigger `paige_authority_grants_guard` — forces `granted_by = auth.uid()` on JWT writes (no
+  spoofing, §10.9) + fences `parent_grant_id`/`automation_id` to the SAME tenant (§9/§51) + maintains
+  `updated_at`. Platform-side grant authoring is super_admin only (`is_platform_owner`, §53), NOT a
+  delegated platform_admin; reads stay member/operator-visible.
+
+**Crew (§1/§5/§39).** §5 compliance = **FIX-FIRST** (architecture sound: the separate grants table is
+correct not a §18 fork; §59 in-body scope clean; grant-row-lock concurrency best-in-class; honest §32
+posture) + 2 blockers. §39 adversarial-against-diff = **FIX-FIRST**, confirming the same two + catching
+the version collision (below). Both folded into this slice before merge (not a revert): (1)
+campaign/client_period caps were declared-but-silently-UNENFORCED (fail-OPEN + §13 overclaim) → reserve
+now REFUSES any unenforceable cap kind and the "every cap" comments are corrected; (2) `granted_by` was
+spoofable → the integrity trigger forces it to `auth.uid()` on JWT writes. Plus the cheap-now hardening:
+same-tenant fences on parent/automation, failed/released replay fail-closed (`prior_attempt_failed`),
+robust release via `reserved_windows` (no over-reversal if caps are edited mid-flight), receipt-INSERT
+before window-increment (no orphan +1), `cost_usd >= 0` CHECK, and the §53 super_admin write tightening.
+
+**Version collision (caught by §39, remediated).** The first cut shipped as `20261229000000`, colliding
+with #1004's `campaign_brief_tool_autonomy_catalogue` (which landed on main concurrently); `db push` keys
+on version alone and would have SILENTLY SKIPPED this migration on merge (CI green, objects never
+created — the exact false-green `lint:migration-versions` exists to catch, which passed at author time
+only because #1004 was not yet on main). Renumbered to `20261230000000` (unique vs origin/main);
+`lint:migration-versions` ✓.
+
+**Proof (§32).** Pre-merge `BEGIN..ROLLBACK` on prod (ref xygzykjyynhzqytbqnzu): (a) FULL migration
+applies clean; (b) behavioral drive of the primitives — reserve ok, idempotent replay returns the same
+receipt, over-action-count / over-single-action / over-spend / unenforceable-cap-kind all refuse,
+failed-key replay → `prior_attempt_failed`, consume→succeeded, release reverses exactly the recorded
+windows so the next reserve succeeds, paused + revoked → `grant_inactive`, granted_by-spoof +
+cross-tenant parent/automation rejected, re-consume a settled receipt → `not_reserved` (no fabricated
+success). Guards: `lint:definer-fns` ✓ (no anon-reachable DEFINER), `lint:migration-versions` ✓.
+**§32.a PERSISTED-APPLY is OWED POST-MERGE** — a `BEGIN..ROLLBACK` proof proves the SQL EXECUTES, never
+that it is persisted (§32, this entry's own rule). It must be re-confirmed after CI `deploy-migrations`
+against version `20261230000000` (the `schema_migrations` row advanced AND the 3 tables + 5 `authority_*`
+functions + the guard trigger exist on prod). Authenticated end-to-end drive is honestly OWED to PR-3
+when a real execution lane exists (§32.c) — this slice has no producer.
+
+**Next:** RE-2 PR-2 (policy-aware resolver floor-lift — lift a `high` act's floor ONLY when a valid
+grant authorizes the exact action, else fail closed), then M1 (real spend metering), then PR-3 (wire the
+execution loop + owner control surface, one action family at a time). §66: no tier gating changed
+(no-op). Ledger: no surface changed state (substrate only) — surfaces move when PR-3 wires a lane.
+
 ## 2026-09-06 — Canonical Solo workspace owns its full shell width after login
 
 **Durable decision.** The one `.paige-solo` frame must explicitly fill and stretch across the canonical authenticated shell on client-side login/account-selection entry, in-app navigation, and direct refresh. Dashboard content, tenant identity, role, URL, and local state may not determine the outer workspace width.
@@ -4140,3 +4209,10 @@ still says is missing.
 **Proof.** Failing-first regression: PASS. Focused tests: 89 PASS. Changed-file lint: PASS. Production build: PASS. TypeScript ratchet: PASS with 13 unchanged repository baseline errors. Chromium width/overflow proof at 1536x770, 1366x768, 1024x768, and 900x1000: PASS. The retired button-navigation `solo-shell-drive.mjs` is stale harness evidence and was not counted.
 
 **Collision/handoff.** No product-code collision at the pre-PR gate. PR #907 owns the master reference and Brain index, so this decision is recorded in the collision-safe decision log plus `docs/evidence/ui-delivery/solo-login-workspace-width-hotfix.md`. Next owner: shared Solo shell/auth navigation; read that evidence record before changing frame sizing or login handoff behavior.
+
+
+### Production closeout — Solo workspace width hotfix (2026-09-06)
+
+PR #1007 is **LIVE** as merge revision `9557c3ee2b1762b8e1d59cb5dd4f5856342a0d7c`. GitHub audit, UI-evidence validation, Supabase Preview, and both production Vercel deployments passed. `paigeagent.ai/version.json` reports that exact revision (build suffix `mtq311r5`), both production domains and the affected Solo deep route return HTTP 200, and the deployed `SoloEntry-BPfYCgaU.js` contains all four full-width frame invariants.
+
+Authenticated login/account-selection into Command Center and Clients without refresh remains **PROOF OWED** because the browser attachment service could not attach to the owner session. This limitation does not downgrade deployment persistence, but it prevents claiming the exact owner interaction as production-passed. Next owner: authenticated production verification; read `docs/evidence/ui-delivery/solo-login-workspace-width-hotfix.md` first and record the owner-session result without changing the shell contract.
