@@ -82,6 +82,82 @@
   shipped). NET-NEW contracts named (not built): a first-class strategic-plan store + pillars/plays +
   strategy-horizon typing + plan draft/revision store + the Mission System (`campaign_briefs.mission_id`
   is a reserved, unwritten column — no store exists).
+- **PAIGE Mind — the owner-approved 3D knowledge orb ported LIVE onto the Solo surface (2026-09-06, MVP mode)** —
+  the §28-frozen, Gate-1-approved Three.js "knowledge orb" prototype (`docs/prototypes/command-center-mind-gate1.html`)
+  is wired into the real `SoloMindWorkspace` as the Mind subtab's primary instrument. Engine promoted verbatim
+  from the frozen prototype into `src/solo/mind-orb/engine.ts` (`createMindOrb` factory; byte-identical rendering,
+  §28) and code-split behind a dynamic `import("./engine")` so `three` ships as a lazy chunk, never in the main
+  bundle. Nodes bind to REAL read contracts, honest source-signal states, tenant-scoped by the existing hooks:
+  Knowledge resources ← `tenant_knowledge_docs` (LIVE), Connected sources ← n8n readiness (LIVE, status only),
+  Operating decisions ← pending approvals (LIVE); Business context + Client relationships render honest ABSENCE
+  (no frontend hook yet); Offers & services is honest UNAVAILABLE. §58 held (no Systems Check finding surfaced as
+  a Mind record). §32 loud degrade: WebGL probed before `three` loads; probe/mount/render throws all `console.error`
+  and route to the parent record-list fallback with every record still reachable. Read-only surface — no Mind
+  create/update/delete on any tier. Tier VISIBILITY unchanged (redesign of an existing surface, §66/§58): Solo +
+  Sub-account + Enterprise see it, Agency/God/Client/Anon do not. Proof: 28 unit tests + full solo suite 1595
+  passing, `tsc` clean, eslint clean, headless env smoke `scripts/mind-orb-smoke.mjs`.
+  **Proof status (explicit):** the three wired domains (Knowledge / Connected sources / Operating decisions) =
+  **LIVE** in code, proven by unit + build, but **PROOF OWED** on the authenticated runtime — §32.c live drive of the
+  deployed subtab at the four viewports in both themes is OWED (no session here holds a browser that can reach the
+  authenticated Solo surface; owed to the next capable session — Cowork/Chrome — not claimed). Business context +
+  Client relationships domains = **UNAVAILABLE in this view / DEFERRED** (governed store exists server-side; the
+  frontend read-hook is a fast-follow). Offers & services = **UNAVAILABLE** (catalog lives in Campaigns, not a
+  governed fact). No capability is implied LIVE because the orb renders — the render is the §28-frozen prototype;
+  the DATA states are as typed here.
+  **Conflict check vs recorded decisions (all clear):** renders NO `PaigeMark`/`PaigeSymbol` (the retired orbital
+  brand mark is not used — Command-Mark decision preserved); "Open PAIGE" uses the ONE existing workspace, no
+  floating chat; Mind is READ-ONLY (never writes Mind/Memory eligibility); tier visibility UNCHANGED — Solo +
+  Sub-account already received Mind pre-PR (ledger row PR #933), so this is a redesign, NOT new sub-account delivery.
+  **Next owning workstream:** the Business-context + Client-relationships frontend read-hooks (to light those two
+  domains from `business_context.readiness` + governed memory). **Dependency it must read FIRST:**
+  `docs/handoff/solo-setup-business-context-spine-handoff.md` (the safe-field projection contract — it is NARROWER
+  than a raw value; only status + provenance may surface), then this ledger row + `docs/brain/codebase-map.md`
+  "Solo Command Center governed-record surface".
+  Ledger: `docs/doctrine/tier-matrix.md` "PAIGE Mind — the approved 3D knowledge orb"; PR #969.
+
+- **ARCHITECTURE: floating Paige chat is RETIRED from the authenticated platform (owner decision 2026-09-06)** —
+  there must be NO floating Paige chat anywhere inside the authenticated platform (no Solo route, Command
+  Center, Clients, Campaigns, Settings, Marketplace, Analytics, tenant portal, mobile shell, or embedded
+  tenant surface). The ONLY tenant-aware Paige experience is the dedicated, authenticated Paige
+  chat/workspace and its explicitly-approved in-surface actions. **This supersedes the prior Slice-1
+  reach item to port the artifact card into a floating platform chat** — that item is REMOVED from the
+  delivery sequence, not owed (the FloatingChatbot port grounding — decision-log 2026-09-06, scout
+  ada5727dbf9f4e3ea — is now moot for the authenticated floating widget). Do not build, port, repair, or
+  render artifact cards in a floating platform chat. **A PUBLIC-website floating assistant may exist LATER
+  as a DIFFERENT product** — a public Product Guide, not Paige's tenant-aware operating chat: it must never
+  receive/retrieve/infer/cache/expose any tenant/workspace/client/contact/conversation/Vault/Mind/Rail/
+  Systems-Check/Pipeline/Campaigns data; no tenant-scoped tools, artifact gen, uploads/downloads, business
+  actions, account context, browser sessions, internal prompts, provider creds, or authenticated user
+  state; it cannot create/modify/send/schedule/execute anything in a tenant workspace; only a platform
+  OPERATOR configures its content/capabilities/routing/model/KB (a tenant owner/admin/member cannot
+  reprogram it), with strict authorization, durable audit, revision history, rollback, and fail-closed
+  behavior. If no safely-separated public-assistant implementation exists, it is **UNAVAILABLE** — never a
+  shortcut of stripping UI from the tenant chat, and never merged without separate final owner approval.
+  Immediate priority: safely retire the authenticated floating-chat path. Work tracked as task #14
+  (grounding scout a197694b4f6de6a14); Capability plan (`outputs/paige-at-cowork/09-...md`) and master §5
+  updated in the same change.
+
+- **Floating-chat retirement — independent context-isolation review = SHIP; findings folded (2026-09-06, PR #981)** —
+  the owner-required independent security review of the pushed diff (383de0fa) returned **SHIP, no blockers**:
+  removal complete/correct, dedicated Paige intact, the retired FAB carried own-row consumer PII (name/email/
+  phone/monthly_revenue/FICO, RLS-gated → a context-boundary leak, not a cross-tenant IDOR) into the tenant
+  `paige-ai-chat` backend while rendering allow-by-default on public + non-shell authenticated routes, so its
+  deletion is a real isolation win; the public Product Guide contract is sound; §58 loss is named not silent.
+  **Folded (verified vs source):** the MAJOR guard-completeness/§13-overclaim finding — the regression guard is
+  hardened to flag any global overlay (`document.body` portal OR `z-[99xx]` fixed FAB) reaching a Paige chat
+  backend inline OR via an imported chat-driver hook, scanning all non-test source, proven non-vacuous by an
+  in-file predicate self-test and false-positive-free on the clean tree (the dedicated shell portals to
+  `paigePortalHost`, not `document.body`); its comment now states honestly it is a backstop, not a proof. Clean
+  current-truth map fixes folded too: `docs/brain/codebase-map.md` + `docs/delivery/PAIGE-CHAT-DELIVERY-MAP.md`.
+  **TRACKED FOLLOW-UP (deferred, §66-honest — not rushed):** doctrine/spec reconciliation of
+  `docs/doctrine/tier-matrix.md` L1295/L1629 (historical sync_status + "five of six callers" echo arithmetic
+  naming `FloatingChatbot`) and `docs/product/agent-ui-placement-spec.md` L14/L140/L161 (spec partially
+  superseded by this decision; tied to the still-open client-portal dedicated-Paige question); plus two
+  comment-only stale `FloatingChatbot` references in `paige-ai-chat/index.ts` + `_shared/client-context.ts`
+  (kept out of this deploy-free UI+docs PR because `supabase/functions/**` edits trigger broad no-op edge
+  redeploys — belongs in an isolated backend commit). Still OWED: §32.c authenticated per-persona browser
+  confirmation to a browser-capable session (the removal is a compile-time fact the hardened guard re-guarantees).
+
 - **Campaigns → Overview redesigned as the Campaign Command Desk + a tenant-safe Campaign Brief
   foundation (2026-09-05, PR #970 — RC, pending merge approval)** — owner-approved the prototype
   (`docs/prototypes/campaigns-overview.html`), then built production. Replaces the "Campaign state
@@ -98,6 +174,7 @@
   master-doc §4 SHIPPED line + `docs/doctrine/tier-matrix.md` surface-ledger LIVE flip (§66 records LIVE,
   not RC) + CI persisted-apply proof (§32.a) + authenticated live Solo drive (§32.c, `Proof Owed`). Evidence:
   `docs/evidence/ui-delivery/campaigns-overview.md`.
+
 - **Business Game Plan — live-data corrections against authenticated prod (2026-09-05, follow-up to #952)** —
   the owner reviewed the shipped Solo default landing on real data (Mogul Maker Academy) and flagged five
   items; verified via authenticated Supabase queries (project xygzykjyynhzqytbqnzu) and fixed in the Game
@@ -3404,3 +3481,118 @@ fleet-wide rows (#46 — the door checks the caller, not the query); the approva
 the refusals back into executions (#47); splitting arming out of the stage-automation rule tools,
 which can arm unattended sending in one call (#48); four inconsistencies the mapping surfaced in
 existing policy (#49).
+
+## 2026-09-06 · Campaigns → Sales redesigned into the four-view Sales Command Desk (Solo)
+
+Same surface and tiers as Sales Operations Slice A — no gating change, no new feature key, no route,
+no migration (§66 ledger in `docs/doctrine/tier-matrix.md`, same commit). The single-scroll screen
+became an evidence-aware desk switched by a Sales-local `?view=` param (allow-listed, `command`
+fallback, never the shell subtab registry): **Sales Command** (Commercial Pulse · Commercial
+Readiness Ladder of 6 stages · Top Commercial Moves · Open Commercial Work · routed-capture foldout),
+**Commercial Terms**, **Revenue & Collections**, **Sales Scenarios** (a model that writes nothing).
+
+New pure modules `src/solo/sales/deriveSalesCommand.ts` + `salesScenario.ts` carry the honest
+derivation (unit-tested). Truth boundary: Actual received always unavailable (`tenant_orders` never
+summed); Contracted = active one-time terms, recurring shown monthly-equivalent, em-dash — never
+`$0`/"Free" — when there is no one-time value; a deal carries no monetary value (open is a count);
+Contract-pending unavailable (no Vault/contract backend, no deal↔term linkage); Scenario Lab refuses
+the Evidence-supported path without real pipeline evidence.
+
+Verification: full suite 3563/3563; tsc ratchet 13/13; `drive:sales-ops` 524/524 with **zero
+horizontal/nested overflow** across all four views × the real Solo content-column widths (down to
+439px PAIGE-expanded) × both themes. The render driver was tightened to the true column widths (the
+prior one used the full window, so 439px was never tested) and caught the pulse + scenario-banner
+overflow, now fixed. The §39 peer-gate caught a BLOCKING `money(0)`→"Free" defect the render proof
+missed (pure-recurring retainer read "Free"), fixed with an em-dash guard + tests; the §58 read-only
+terms guidance the redesign had dropped was restored. Authenticated live-drive OWED (§32.c). PR: https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/985
+
+## 2026-09-06 · Sales Command Desk → MVP release (responsive fold + container queries + merge)
+
+Owner switched this workstream to MVP delivery mode (design + intended function approved) and
+authorized the release path autonomously; the earlier "final release gate / do-not-merge" hold is
+lifted for this PR. No conflict with recorded decisions: Solo-scoped; no sub-account delivery added;
+no floating authenticated chat; Command Mark untouched; the terms/payment writes use the pre-shipped
+governed seams (declare_client_payment_handling, saveAgreement) — no new governed action, no Rail/
+Mind/Memory wiring, and the Scenario Lab writes nothing.
+
+Responsive decision (owner delegated it): the desk now reflows on the CONTENT COLUMN via a container
+query keyed to `.so-view` (was viewport `@media`, which never reflowed a PAIGE-docked narrow column).
+The Commercial Readiness Ladder — the secondary reference section — collapses to a disclosure by
+DEFAULT at a narrow column (<620px, i.e. PAIGE expanded) and shows in full at a wide column, keeping
+the Commercial Pulse, Top Moves, Open Work and primary actions above the fold. Proof: drive:sales-ops
+524/524, horizontal overflow 0 at all 48 states; command-view vertical scroll dropped materially at
+narrow columns (439: +1469→+862, 521: +1272→+683, 797: +902→+466).
+
+Proof status:
+- LIVE (after merge + prod deploy confirm): the four-view Sales Command Desk on Solo Campaigns → Sales.
+- PARTIAL: Contracted = active one-time terms + recurring shown monthly; deal↔term not linked.
+- UNAVAILABLE (by design, no backend): Actual received (no connected payment source), Contract-pending
+  (no Vault/contract store), scenario/mission persistence.
+- PROOF OWED (§32.c): authenticated production runtime — no auth browser from this headless session;
+  owner/Cowork live-drive checklist is in PR #985.
+
+Next owning workstream: a future "Solo Sales Release 2 (Client Agreements / Actual-received)" must read
+this entry + the tier-matrix "Sales Command Desk redesign" ledger + the truth boundary FIRST, and must
+not present Actual received or contract linkage as live until a real payment/contract backend exists.
+PR: https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/985
+---
+
+## 2026-09-06 — Business Vault Phase 2 fails closed at quarantine; binary intake stays unavailable (PR #986)
+
+**Owner ruling:** filenames, owner attestation, hashes, and magic bytes cannot prove a document is
+free of credentials or banking-sensitive content. Every future binary enters private quarantine;
+PDFs/images require OCR/text extraction plus secret-sensitive inspection; encrypted, malformed,
+unsupported, unscannable, timed-out, low-confidence, or failed files never enter the normal Vault.
+Passing inspection is only a file-safety gate, never Paige permission, Mind memory, a trusted fact,
+client publication, a task, an external act, or a Rail outcome.
+
+**Phase 2 contract at green head `39a875ab`: PARTIAL.** The owner/admin Solo Vault foundation,
+server-resolved workspace/role checks, owner-only record visibility, record/contract/obligation
+metadata, focused inspector, archive/replacement lifecycle, fact review/revocation, private
+quarantine schema, inspection state machine, and retryable cleanup are implemented. Ordinary
+members, cross-tenant actors, known IDs, workspace switches, and demotions fail closed without
+metadata. Failed replacement cannot downgrade the current version; archive/replacement/rejection
+retires stale proposed facts and access handles.
+
+**UNAVAILABLE by design:** the repository has no approved OCR/DLP adapter or service-owned
+promotion worker. Binary upload/release/download therefore stays disabled, and promotion authority
+is revoked. No paid provider account, credential, provider connection, or secret-storage path was
+created. Client publishing, provider ingestion, legal analysis, payment/filing execution, Systems
+Check verdict changes, Rail outcomes, and broad document-to-Mind automation are DEFERRED.
+
+**Proof split:** automated/database/CI is PASS — 29 focused tests, 71 count-enforced actor/RLS
+assertions, two-session duplicate/cleanup proof, production build, Deno/type/lint/audit/contracts,
+and three independent reviews. The first CI run exposed a Vault-owned SSR test importing the live
+Supabase client under Node; a narrow test-only client mock repaired it, and the complete rerun
+passed. Representative Gate 1 viewport renders remain approved design evidence only. Authenticated
+owner/admin/member/cross-tenant drives, real quarantine bytes, applied production migrations,
+deployed Edge functions, production aliases, and runtime error evidence remain PROOF OWED.
+
+**Collision/handoff:** current main was refreshed and the branch rebased without conflict. PR #724
+remains adjacent. PR #917 overlaps only the narrow Settings/header/config seam; its future rebase
+must preserve both Integrations/Vault `openPaige`, Vault layout/header treatment, current
+Connections copy, `solo-contact-import`, and the three Vault JWT blocks. The dedicated,
+tenant-aware Paige workspace remains the only authenticated Paige experience; this work adds no
+floating chat, new Command Mark, parallel approval channel, Rail write, Mind silo, or second CRM.
+
+**Next owning workstream:** Vault inspection adapter + service worker. Read the Vault section in
+`codebase-map.md`, the UI evidence handoff, migrations `13700..14000`, and the executable SQL plan
+before selecting a provider. Enabling binary intake requires explicit provider approval/credentials
+and real proof of OCR, secret/financial-sensitive detection, encrypted/malformed/timeout refusal,
+cleanup compensation, exact-byte promotion, and authenticated storage isolation.
+
+### Release proof addendum — 2026-09-06
+
+PR #986 squash-merged as `809faec33cd2dccc2028a32e8b4e896f0470ecf3`. The post-merge CI,
+PAIGE Spine contract, Security Audit, and UI evidence workflows passed. Production migration and
+Edge workflows passed, and both `db-live` and `edge-live` point exactly to `809faec3`.
+Vercel reported Production success for the same merge through deployment
+`6MT79LnaSVWixnZXWQwStnVsNW2F`; `paigeagent.ai` and `app.paigeagent.ai` returned HTTP 200, and
+the live `SoloApp-GsPt1vrB.js` bundle contained “Business Vault,” the metadata-free denial, the
+mandatory-inspection unavailable state, and the private-quarantine boundary.
+
+**Status correction:** the foundation is deployed but remains **PARTIAL**, not authenticated-live
+proof. Binary intake/inspection stays **UNAVAILABLE**. Signed-in owner/admin/member/cross-tenant
+drives, real quarantine/inspection bytes, and the Vercel runtime-log scan remain **PROOF OWED**.
+The deployment URL itself is protected and was not used as UI proof; the primary public aliases
+and commit-bound Vercel status are the non-authenticated production evidence.

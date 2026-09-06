@@ -482,3 +482,20 @@ verify_jwt = true
 # Zapier cannot present a Supabase JWT. A high-entropy route token resolves one immutable
 # tenant route in-function; no tenant identity is accepted from the body.
 verify_jwt = false
+
+[functions.repair-voice-twiml-app]
+# Internal staged hotfix repair for one explicit target. pg_net supplies the Vault-backed
+# cron token; the function also accepts service-role and otherwise fails closed.
+verify_jwt = false
+
+[functions.business-vault-upload]
+# Owner/admin JWT is required at the gateway and rechecked in-function; tenant and role are resolved by RPC.
+verify_jwt = true
+
+[functions.business-vault-download]
+# Every attachment request re-resolves active-tenant admin access through RLS.
+verify_jwt = true
+
+[functions.business-vault-reconcile]
+# Internal orphan cleanup accepts only the service-role bearer and returns aggregate results.
+verify_jwt = true

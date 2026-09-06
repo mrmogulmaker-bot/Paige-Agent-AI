@@ -63,6 +63,9 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["automation_set_state", "owner_only", "makes a process live, which is the same decision"],
 
   // ── high: cannot be undone ────────────────────────────────────────────────────────────────
+  ["mission_create", "high", "commits an owner outcome and authority brief from a conversation"],
+  ["mission_revise", "high", "changes the governed mission brief the owner will operate from"],
+  ["mission_transition", "high", "changes a governed mission lifecycle or records its outcome"],
   ["crm_delete_contact", "high", "destroys a client record and its related rows"],
   ["comms_buy_number", "high", "commits the tenant to a recurring charge on a provider account"],
   ["comms_set_primary_number", "high", "changes the number every client sees when the tenant contacts them"],

@@ -30,7 +30,7 @@ data/useSoloChat.ts` is **dead code** — imported only by `src/solo/agent.tsx`,
 imports. `src/solo/paigehub.tsx` is a 5-line re-export.
 
 **One backend.** `supabase/functions/paige-ai-chat/index.ts` (~9.5k lines) serves Solo, portal,
-operator, floating widget and Studio. Every contract change is therefore a multi-consumer change and
+operator and Studio. Every contract change is therefore a multi-consumer change and
 gets a §37 producer inventory.
 
 **What is genuinely sound and must not regress (§58):**
@@ -72,7 +72,7 @@ Ordered by contract, not by file. **DV** = direct violation of a named purpose c
 | | **Uncertainty cannot be represented.** `ExtractionField` has no confidence, no provenance, no "uncertain" state — a value is a bare primitive | `ExtractionProposalCard.tsx:8-17` |
 | | Solo's SSE parser never handles `sync_status`, so in the Solo workspace those 8 tables are rewritten with **no visible confirmation at all** | `PaigeAIChat.tsx:749-785` |
 | | The prompt tells the model *"The system will offer the client a save dialog separately for any extracted fields"* — nothing fulfils it | `index.ts:4382` |
-| | `PaigeChat.tsx:376` and `FloatingChatbot.tsx:180` hardcode `mimeType: "application/pdf"` and drop `kind`/`textContent`, so a DOCX arrives with empty base64 and the model receives only a filename | verified |
+| | `PaigeChat.tsx:376` hardcodes `mimeType: "application/pdf"` and drops `kind`/`textContent`, so a DOCX arrives with empty base64 and the model receives only a filename (the retired `FloatingChatbot` shared this bug; deleted 2026-09-06) | verified |
 | | `isProcessingFile` is returned but read by no consumer — no affordance while a 10 MB PDF is base64-encoded on the main thread | `useChatDocumentUpload.ts:191` |
 
 ### Clause 5 — writes are bounded, understood, approved, attributable

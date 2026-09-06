@@ -5,22 +5,15 @@
 // the artifact, and a host-delegated Send.
 //
 // WIRED TODAY (§13 honest — do not assume more): only PaigeAIChat (the dashboard admin/coach chat) renders
-// this card. Extending it to the other non-Studio surfaces is NOT the clean SSE-only "~15 lines each"
-// fast-follow an earlier version of this comment claimed — corrected 2026-09-06 after grounding the actual
-// code (§13/§58, the claim overstated readiness):
-//   • FloatingChatbot posts to the SAME `paige-ai-chat` backend, so the frame CAN arrive, but the port is
-//     more than SSE-wiring: its `Message` type has no `artifacts` field and its stream update REPLACES the
-//     whole message object (it would clobber an artifact set by an earlier frame — the reference re-passes
-//     `artifacts` on every rebuild to avoid exactly this), AND it has NO tenantId/activeTenantId in scope
-//     for the card's REQUIRED `tenantId` prop. It is also a CLIENT-persona surface (hidden on /admin +
-//     /agency) where the document/image create tools are admin/coach-gated — so whether an artifact frame
-//     is ever actually PRODUCED here is UNCONFIRMED. Do not wire a dead render path (§10/§13).
-//   • BrokerPaigeSession posts to a DIFFERENT backend (`broker-paige-chat`) that re-emits only `{ delta }`
-//     and NEVER emits `paige_artifact` (grep-confirmed) — the frame does not arrive at all. Rendering the
-//     card here needs a BACKEND change first (emit the frame from `broker-paige-chat`), not a client insert.
-// The client portal (PaigeChat) needs no wiring: document/image tools are admin/coach-gated, so it never
-// emits a frame. StudioChat is unaffected — it consumes its own studioSessionId frame onto the canvas.
-// UI delivery evidence for this comment correction: docs/evidence/ui-delivery/paige-artifact-card-port-readiness-comment.md
+// this card. The prior plan to also render it in a FLOATING platform chat is RETIRED (owner decision
+// 2026-09-06): there is no floating Paige chat anywhere in the authenticated platform, and FloatingChatbot
+// was deleted. The card belongs to the DEDICATED Paige experience only. Extending it to ANOTHER dedicated
+// surface (e.g. the dedicated BrokerPaigeSession page) would require that surface's backend to emit the
+// `paige_artifact` frame first — `broker-paige-chat` re-emits only `{ delta }` and never emits the frame
+// today — so it is a separate, backend-first future item, not a client-side insert. The client portal
+// (PaigeChat) needs no wiring: document/image tools are admin/coach-gated, so it never emits a frame.
+// StudioChat is unaffected — it consumes its own studioSessionId frame onto the canvas.
+// UI delivery evidence: docs/evidence/ui-delivery/retire-floating-platform-chat.md
 //
 // ONE home (§18): this is the single artifact-handoff card for every regular chat surface. It REUSES
 // the Studio renderer — loadDocument() hydrates a document and DocumentPreview draws it (both the full

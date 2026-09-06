@@ -112,8 +112,8 @@
   min-width: 0;
   position: relative;
   display: grid;
-  gap: 16px;
-  padding: 17px 20px 18px;
+  gap: 11px;
+  padding: 13px 18px 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-l);
   background: var(--sd-panel);
@@ -132,13 +132,9 @@
   flex-wrap: wrap;
 }
 .social-cmd-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.social-cmd-mark {
-  display: grid; place-items: center; flex: none;
-  width: 30px; height: 30px; border-radius: 9px;
-  background: radial-gradient(circle at 34% 28%, var(--surface-2), var(--surface-sunk) 66%, var(--canvas));
-  border: 1px solid var(--sd-line-strong);
-  box-shadow: var(--sh-1);
-}
+/* The shared brand PaigeMark, bare and small — the way the Paige chat and the menu render it.
+   No plate: the mark carries its own gold, and boxing it would re-skin the one correct logo. */
+.social-cmd-mark { width: 25px; height: 25px; flex: none; }
 .social-cmd-wm { font: 700 12.5px/1 var(--font); letter-spacing: .2em; color: var(--ink); }
 .social-cmd-div { width: 1px; height: 15px; background: var(--sd-line-strong); flex: none; }
 .social-cmd-brief { min-width: 0; }
@@ -152,26 +148,22 @@
 }
 .social-hero-top > * { min-width: 0; }
 
+/* Compact by owner ruling (2026-09-06): the brief must not eat the fold restating why you are on
+   the tab. A modest bold line, not a display headline; the body carries the real status beneath it. */
 .social-headline {
-  font-size: 25px;
-  line-height: 1.18;
-  letter-spacing: -.035em;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -.01em;
   text-wrap: balance;
 }
 .social-hero-body {
-  margin-top: 9px;
-  max-width: 62ch;
-  font-size: 13px;
-  line-height: 1.6;
+  margin-top: 4px;
+  max-width: 78ch;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--ink-2);
 }
-.social-signature {
-  display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
-  margin-top: 13px; padding-top: 12px;
-  border-top: 1px solid var(--line-soft);
-}
-.social-signature strong { font: 650 10.5px/1 var(--font); letter-spacing: .18em; color: var(--gold); }
-.social-signature span { font-size: 11.5px; color: var(--ink-3); }
 
 .social-hero-act { display: grid; align-content: end; gap: 8px; justify-items: end; }
 .social-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
@@ -206,7 +198,7 @@
   filter: drop-shadow(0 0 7px var(--gold-tint));
   animation: social-orb-turn 22s linear infinite;
 }
-.social-orb-mark { position: relative; z-index: 1; }
+.social-orb-mark { position: relative; z-index: 1; width: 46px; height: 46px; }
 @keyframes social-orb-turn { to { transform: rotate(360deg); } }
 
 /* ── signal strip ─────────────────────────────────────────────────────────── */
@@ -548,16 +540,14 @@
   .social-hero-actions { justify-content: flex-start; }
   .social-hero-permission { text-align: left; }
   .social-grid { grid-template-columns: minmax(0, 1fr); }
-  .social-headline { font-size: 22px; }
   .social-next { align-items: flex-start; flex-wrap: wrap; }
   .social-governance { grid-template-columns: minmax(0, 1fr); }
 }
 @container social (max-width: 520px) {
-  .social-hero { padding: 16px 15px; }
+  .social-hero { padding: 12px 14px; }
   .social-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .social-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .social-channels { grid-template-columns: minmax(0, 1fr); }
-  .social-headline { font-size: 20px; }
   .social-feed-line { flex-wrap: wrap; }
 }
 
@@ -584,7 +574,7 @@
 @media (forced-colors: active) {
   .social-hero, .social-panel, .social-kpi, .social-stage, .social-governance,
   .social-state, .social-dialog, .social-truth, .social-next, .social-panel-glyph,
-  .social-channels li, .social-cmd-mark { border: 1px solid CanvasText; }
+  .social-channels li { border: 1px solid CanvasText; }
   .social-page { background: Canvas; }
   .social-page::before, .social-orb-halo, .social-orb-ring { display: none; }
   .social-scrim { background: Canvas; }

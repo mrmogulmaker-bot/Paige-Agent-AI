@@ -131,6 +131,16 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Business Vault Phase 2 owner/admin foundation — deployed PARTIAL at `809faec3` (2026-09-06)
+
+- 🟡 **PARTIAL / DEPLOYED.** Tenant-bound owner/admin Vault navigation, Overview, Library metadata, Contracts, Obligations, focused record inspector, archive/fact-revocation lifecycle, and truthful member denial shipped in PR #986 merge `809faec3`. Server functions resolve the active workspace and current role; client-supplied tenant or authority values are never trusted. Authenticated production behavior is not yet proven.
+- ✅ Owner-only records, dependent contract/obligation metadata, downloads, and fact review remain invisible and immutable to tenant administrators. Known-ID, cross-tenant, workspace-switch, demotion, stale-fact, replacement, and duplicate races have executable actor/database coverage.
+- 🟣 Binary PDF/image intake is intentionally **UNAVAILABLE**. The private quarantine, inspection evidence, bounded cleanup, and disabled-promotion contract exists, but the repository has no approved OCR/DLP adapter or proven byte-copy worker. No uninspected file can become a normal Vault record, download, Paige/Mind context, shared artifact, task, Rail outcome, or external action.
+- ✅ **Automated/static/CI proof:** 29 focused tests, 71 count-enforced actor/RLS assertions, two-session duplicate/cleanup proof, affected lint, Deno/type ratchets, production build, audit/contracts/database/UI evidence, complete CI rerun, and three independent reviews PASS.
+- ✅ **Production deployment proof:** post-merge CI passed; `db-live` and `edge-live` both point to `809faec3`; Vercel Production deployment `6MT79LnaSVWixnZXWQwStnVsNW2F` succeeded for that SHA; `paigeagent.ai` and `app.paigeagent.ai` returned HTTP 200 with live Solo chunk `SoloApp-GsPt1vrB.js` carrying the fail-closed Vault fingerprints.
+- 🟡 **PROOF OWED:** real quarantine/inspection bytes, signed-in owner/admin/member/cross-tenant viewport and denial drives, and the Vercel runtime-log scan. Representative Gate 1 renders are design proof, not authenticated product proof.
+- **Next owner:** Vault inspection adapter + service worker. It must read `docs/brain/codebase-map.md` → “Business Vault Phase 2 security foundation,” `docs/brain/decision-log.md` → 2026-09-06 Vault ruling, the UI evidence handoff, migrations `13700..14000`, and the 71-assertion SQL plan before provider selection. Explicit provider approval/credentials and real OCR/DLP/storage proof are required before binary intake can be enabled.
+
 ### The inbound MCP door — 119 tools, one governed decision, 68 mutations refused (2026-09-05, PR #960)
 
 **Owner ruling:** *"An MCP connection authorizes access to the MCP door; it does not authorize
@@ -200,6 +210,22 @@ Full ledger: `docs/doctrine/tier-matrix.md` → "Campaigns → Social".
 PR #909 merged as 49b9f338. Frontend production deployment is READY on paigeagent.ai and app.paigeagent.ai; dedicated tenant-n8n-oauth version 1 and migration 20261201000000 are deployed and verified. Every Solo workspace owner can connect, edit, reconnect and disconnect through OAuth requesting workflow:read and workflow:write. API health remains independent. 3,020 Linux tests and all ordinary checks passed; rendered evidence covers four viewports and both themes. Final owner consent and real provider discovery are still Proof Owed. Hosted gateway callback URL retention is an accepted MVP residual risk, not a release blocker. See docs/delivery/solo-n8n-oauth-mvp.md.
 
 ### Solo Sales Ops — a Solo owner can record what one client agreed to (2026-09-03)
+
+**Redesign shipping under MVP mode (2026-09-06).** The owner lifted the final release gate to MVP
+cadence (design + intended function approved) and authorized the release path; PR #985 is being merged
+to `main` and is LIVE on prod once the merge deploy completes. Authenticated live-drive stays
+owner-owed (§32.c). Full record: `docs/brain/decision-log.md` (2026-09-06 MVP-close entry) +
+`docs/doctrine/tier-matrix.md` "Sales Command Desk redesign". The original build (below) read: The
+Sales subtab is being rebuilt into an evidence-aware **Sales Command Desk**: four internal views via a
+Sales-local `?view=` param — Sales Command (Commercial Pulse · 6-stage Commercial Readiness Ladder ·
+Top Commercial Moves · Open Commercial Work), Commercial Terms, Revenue & Collections, and a Sales
+Scenario Lab (a model that writes nothing). Same surface, same tiers, no gating/route/migration change.
+Every commercial figure carries an evidence class; Actual received stays unavailable, Contracted is
+active one-time terms with recurring shown monthly (em-dash, never "$0"/"Free"), Contract-pending
+unavailable. Verified: full suite 3563/3563, tsc ratchet 13/13, `drive:sales-ops` 524/524 with zero
+horizontal/nested overflow across the real Solo content-column widths (to 439px). Authenticated
+live-drive OWED (§32.c). Full §66 ledger: `docs/doctrine/tier-matrix.md` → "the Sales Command Desk
+redesign". Awaiting the owner's live review + final release gate before merge.
 
 **Current usability status: PARTIAL.** Owner feedback explicitly rejects treating the current Sales UX as complete. PR #895 fixed recurring-date display only. **Release 1 usability repair is implemented in PR #903** on `codex/solo-sales-usability-r1`, refreshed onto main `bd32fd6`: functional drawer close/discard, reachable commercial-term editing, workspace cleanup, clearer controls, canonical Catalog/Clients return paths and removal of the oversized client-billing banner. The owner cleared the historical #706 shared-file collision; Pipeline implementation and six Campaigns tabs stay intact. See `docs/delivery/solo-sales-usability-r1.md` for the live product record and evidence. Local eight-frame drawer interaction proof passed; authenticated production persistence and owner acceptance remain **Proof Owed**. Merge and deployment evidence are recorded on PR #903.
 
@@ -1499,6 +1525,8 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+
+- **Business Vault binary inspection remains UNAVAILABLE:** activate only after an owner-approved OCR/DLP provider and service-owned worker prove PDF/image OCR, secret and financial-sensitive detection, timeouts, encrypted/malformed handling, exact-byte promotion, cleanup compensation, and authenticated storage behavior. Provider-neutral quarantine schema is present; service-role promotion is deliberately revoked. Client publishing, provider ingestion, legal interpretation, automated execution, and broad document-to-memory promotion remain later phases. Active collision handoff: #724 is adjacent; #917 overlaps the narrow Settings/header/config seam and must preserve both Integrations/Vault `openPaige`, Vault layout/header treatment, current Connections copy, `solo-contact-import`, and all three Vault JWT blocks.
 ### Connections after Add channel — remaining real-provider and runtime proof gaps (2026-09-05)
 
 Inbound mailbox reading and non-SMS business messaging remain **UNAVAILABLE** because no supported
@@ -1565,12 +1593,17 @@ creation handlers (`generate_image`, `draft_marketing_content`, `content_save`, 
 drafts / null saved id); a new pure home `_shared/artifact-receipt.ts` (`artifactProduced` +
 `ARTIFACT_ABSENT_ERROR`) degrades an absent artifact to an honest `success:false`, so the model narration,
 the status label, and the artifact card all inherit the honest signal (§13/§70). **Proof:** 17 contract
-tests + 167 green across the source-asserting suite; §50 clean; transpiles clean. **Proof owed:**
-authenticated owner §32.c live-drive (headless). **Still in slice 1:** download/export action, render the
-artifact card on all chat surfaces, image→campaign routing, the missing types (campaign_brief · HTML
-email_template · video · social-schedule), regular-chat in-place refine — the visible items run the §00
-Claude-Design pack (CC ports, does not design). **Deferred to their slices, named:** the two going-live
-PUBLISH receipts (slice 6/7) and Rail wiring of these tools (slice 3 / F05).
+tests + 167 green across the source-asserting suite; §50 clean; transpiles clean. Increment 1.1 (PR #974)
+folded two Codex-caught edge-cases (Studio image needs a filed `content_id`; a drafts array of
+content-less items isn't usable copy). **Proof owed:** authenticated owner §32.c live-drive (headless).
+**Still in slice 1 — re-scoped to the DEDICATED Paige experience (owner decision 2026-09-06):**
+download/export action, image→campaign routing, the missing types (campaign_brief · HTML email_template ·
+video · social-schedule), regular-chat in-place refine. **RETIRED:** "render the artifact card on all chat
+surfaces" — there is NO floating Paige chat inside the authenticated platform; the dedicated authenticated
+Paige chat/workspace is the only tenant-aware experience and already renders the card (see §10 corrections
++ decision-log 2026-09-06; retirement work = task #14). A public-site Product Guide is a separate,
+tenant-isolated product, not built here. **Deferred to their slices, named:** the two going-live PUBLISH
+receipts (slice 6/7) and Rail wiring of these tools (slice 3 / F05).
 
 ### Sandboxed Research & External Execution — a COMPONENT of the Paige Capability System (above); APPROVED MVP DIRECTION (owner-directed 2026-09-05; a DECISION, NOT a live capability)
 
@@ -1927,6 +1960,36 @@ having been configured — a credential this session cannot read or fabricate, n
 owner's action rather than guessed around. Independent of that, a real UX defect was fixed: a
 durable (retry-cannot-fix) refusal no longer leaves the action button clickable.
 
+### PAIGE Mind — the approved 3D knowledge orb, LIVE on the Solo surface (production port) — 2026-09-06
+
+**What shipped (PR #969).** The owner-approved living **WebGL knowledge orb** replaces the hand-rolled
+2D-canvas topology on the Solo (and sub-account) **Command Center → Mind** subtab
+(`src/solo/SoloMindWorkspace.tsx`). This is a **presentation + reconciliation** change, not a new data
+capability: the orb is wired to the **same live reads the surface already used** — `useSoloKnowledge`
+(`tenant_knowledge_docs`), `useCommandCenter` (pending approvals), `useN8nSpineReadiness` — reconciled
+onto the six owner-approved domains (`src/solo/mind-orb/mindDomains.ts`). It does **NOT** add
+authenticated Rail/Spine Mind evidence — the integration matrix below (axis B: nothing flows via
+Rail/Spine) is **unchanged**.
+
+**Honesty (§13/§70).** Knowledge / Connected sources / Operating decisions populate from those live
+hooks; **Business context, Client relationships, and Offers render an honest absence** (no frontend
+read-hook yet / catalog lives in Campaigns) — never invented data. §58: Systems Check findings are not
+surfaced in Mind (they stay in the Systems Check subtab). Nodes carry a record's canonical source
+STATE; the orb renders presentation, never fabricated activity.
+
+**Build.** The frozen approved prototype engine was promoted verbatim into `src/solo/mind-orb/engine.ts`
+as a `createMindOrb()` factory (no rendering values changed, §28); `MindOrbCanvas.tsx` mounts it
+code-split (three ships as a separate ~48 KB lazy chunk), WebGL-gated, degrading to the record list on
+failure (§32, never blank); reduced-motion (toggle + OS), offscreen pause, dispose all wired. Subtab
+order unchanged (Systems Check → Mind).
+
+**Proof.** 28 unit tests (reconciliation honesty + component) + 47 sibling command-center tests green;
+`tsc`/`eslint`/`vite build` green with the engine code-split; a headless SwiftShader smoke proves the
+factory renders lit pixels + disposes cleanly. **§32.c authenticated live-drive of the deployed surface
+is OWED to the owner** (headless can't auth the app). Evidence:
+`docs/evidence/ui-delivery/command-center-mind-production-port.md`; per-tier rows:
+`docs/doctrine/tier-matrix.md`. Fast-follow: frontend hooks for the three not-yet-wired domains.
+
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 
 **What it settles.** `docs/architecture/paige-mind-integration-matrix.md` records, per Solo surface,
@@ -2043,6 +2106,18 @@ subset only: `docs/handoff/platform-billing-spine-source-contract.md` (PROPOSED/
   was taken after merge and is recorded in §4. Detail: `docs/delivery/paige-spine-mind-handoff.md`.
 
 ### NEXT REQUIRED LANE — Pipeline Chat Write Bridge (owner direction 2026-09-02; NOT STARTED, NOT IN THE MIND BRANCH)
+
+**Owner decision update, 2026-09-04:** the owner explicitly approved canonical PAIGE approval for approval-required Pipeline moves, with the same stage rules enforced in Chat and on the board instead of a separate Pipeline queue. The historical NOT STARTED heading above describes the earlier state; bounded implementation grounding is now active on `codex/solo-pipeline-spine-connectivity`. See `docs/architecture/paige-spine-foundation.md`, SCR-2026-09-04. Shared Chat adapter review, implementation and authenticated proof are still pending; no capability or production release is claimed.
+
+**Local implementation checkpoint, 2026-09-04 — NOT LIVE:** exact caller-scoped Pipeline reads and move preparation are implemented locally; the additive `execute_pipeline_deal_move_as_paige` executor is in `20260904052832_solo_pipeline_governed_move_executor.sql`. It uses the existing canonical gate's server-only channel, not a new approval mechanism, and rechecks explicit active workspace, tenant/admin authorization, exact pipeline/deal/target identity and versions, target policy, and current `deal_move_stage` autonomy. It preserves status/close-date semantics, records attributed activity/audit/idempotent outcomes, and rolls back a linked-client Rail failure. No old held requests or production records were changed.
+
+Proof checkpoint: 30 focused Node checks pass; 29 isolated PostgreSQL cases pass against the actual migration with **synthetic authorization/autonomy/Rail dependencies** (`scripts/pipeline-move-db-proof.mjs`; evidence `outputs/pipeline-move-db-proof/run-NqU035/`). Migration SHA-256 `8638df7813468171bb9d774675e8479502e873af223dbf7636150994f331d51e`; the disposable database was stopped. This is not full-schema replay, authenticated Chat/browser proof, or a green release. Shared Chat/board wiring remains paused for the owning Chat compatibility response, per coordinator direction. Remaining work includes closing legacy/alternate move callers, supported deal creation/edit paths, workspace Rail and Mind integration, actual role/Rail compatibility, interruption/retry and cross-surface proof. The existing Mind text saying no Pipeline write tools exist must not be mistaken for the intended capability boundary; evidence remains read-only, while separately authorized actions use owning contracts.
+
+**Checkpoint refresh, 2026-09-04 — NOT LIVE:** the command now carries `pipelineId` as required by its executor; malformed selection input refuses without throwing. The linked-client Rail call uses the existing service path only after Pipeline authorization, clears/restores both subject claim representations, and records the requesting actor in its payload. Focused Node checks: 40 PASS. Isolated PostgreSQL checks: 33 PASS, including unchanged prepared-command execution, foreign-client refusal, claim restoration and rollback. Evidence: `outputs/pipeline-move-db-proof/run-5l0P5L/`; migration SHA-256 `adbfc1336bf43228d9b18795584186309deea14a1c48e0ed6c3468cb42818144`. Dependencies remain synthetic; actual shared-helper and authenticated runtime proof remain UNVERIFIED.
+
+Chat-owner review clears the narrow adapter direction but requires preservation of PR #914, stored-command/version/idempotency binding, exact stored-target revalidation, and editable board context without automatic sending. Its inherited canonical proposal-store integrity finding remains a release blocker for trustworthy approval. Resolve with the canonical Chat authority owner, not a Pipeline-specific approval store. The owner authorized completion and deployment conditionally on readiness; no merge, deployment or production data mutation has occurred. Cross-task forwarding of the security finding was blocked by automatic review pending specific sharing permission.
+
+This is one domain slice of the AI COO architecture, not authority to redesign Trust Compass, Systems Check or other departments. The owning command must supply tenant-safe evidence, governed execution and attributable durable outcomes usable by Rail and Mind. Existing pending requests and unrelated domain data must be preserved.
 
 PAIGE Chat is intended to become Pipeline **write-capable**. The read-only Mind evidence slice above is the first
 foundation, not the endpoint. The initial write slice focuses on real deal work: create or link a deal to an
@@ -2298,6 +2373,10 @@ implementation begins from it.
 - Truth status, CORRECTED 2026-09-02: the structural-harness and static results below still stand, and **migration persistence is now CONFIRMED on prod** (`20261039000000`, `20261040000000` in `schema_migrations`; five `team_*` rows returned by `list_tool_autonomy()`). ~~*Do not merge or deploy without the separate final go-live approval.*~~ — it merged via #728. **Still UNVERIFIED:** authenticated save/reload, real invitation delivery, permission refusal/retry, account-switch and preview runtime. No leg has been driven on the live authenticated platform. ~~25/25 structural-harness checks~~ remain as recorded: 25/25 at 1536×770, 1366×768, 1024×768 and 900×1000; focused tests, type ratchet, security linters and production build green.
 
 ### Solo Campaigns -> Pipeline board (Gate 1 approved 2026-08-31; draft PR, NOT LIVE)
+
+**Later bounded deletion hotfix, 2026-09-03:** current implementation and release evidence lives in `docs/delivery/solo-pipeline-empty-delete.md`, not this historical Gate 1 heading. Solo Owners can explicitly confirm the exact UUID-backed PPL reference for an empty pipeline; server transaction refuses deals, routes, automation, approvals and retained history. No Catalog, billing, client/payment, campaign, survivor, shell, or Chat-write redesign. Owner authorized this bounded slice through green release without another routine gate. No production data deletion is allowed for proof. Future agents must read the linked ledger and `docs/doctrine/surface-cards/pipeline.md` before touching deletion.
+
+
 
 - **Canonical Solo ownership contract (owner-locked 2026-09-01).** There is exactly one Solo shell
   for every current and future Solo tenant. `src/solo/SoloEntry.tsx` dispatches the authenticated
@@ -2714,6 +2793,8 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+- **2026-09-05 · Vault filename/attestation scanning is not document inspection:** filename patterns, owner attestation, and magic-byte/hash checks cannot prove that a PDF or image is free of credentials or banking-sensitive content. The Phase 2 repair therefore fails closed: private quarantine and safe audit state may exist, but binary intake/release stays unavailable because no approved OCR/DLP adapter is configured and every promotion entry point is revoked. Do not describe the upload UI, synthetic scanner outcomes, or quarantine rows as live document inspection.
 
  - **2026-09-05 — five chat artifact-creation tools reported success on a 200-with-empty-payload
    (SHIPPED §13/§70 dishonesty, fixed in PR #972).** `generate_image`, `draft_marketing_content`,
@@ -3775,6 +3856,32 @@ Owner superseded competing Sales PR #905; its separate Clients fix remains with 
 
 The owner superseded the earlier callback zero-log release block for the standard OAuth connection. Hosted gateway retention of temporary code/state URL metadata is an accepted post-release hardening risk; it is not claimed encrypted or eliminated. Existing token encryption, S256 PKCE, exact redirect, owner/session/workspace binding, replay/expiry checks and read-only initial authority remain mandatory. Scope is the entire Solo shell, with independent per-workspace connections and API health. Implementation and proof: `docs/delivery/solo-n8n-oauth-mvp.md`. This entry records the approved release contract, not successful deployment or owner consent.
 Owner follow-up: OAuth must request workflow:read and workflow:write. Initial connection verification remains read-only; no workflow:execute or automatic mutation is granted. Workflow writes remain subject to the governed action path and explicit approval.
+
+### Solo Conversations outbound Voice hotfix — 2026-09-05 (candidate)
+
+The shared Solo Voice path had two coupled defects: the public TwiML handler accepted unproved
+tenant fields and could create false owner-attributed Conversations history, while the production
+API-key credential posture omitted call-status callbacks, leaving provider acceptance/rejection
+unreconciled. The candidate repair stamps each tenant TwiML Application VoiceUrl with its existing
+tenant webhook proof, repairs stored applications on token mint, binds provider proof to the active
+tenant before any service-role work, requires a provider-bound voice-capable primary caller ID on the
+same active subaccount, and scopes token authority to the caller's active tenant membership. Browser
+calls are single-flight, common US local input is normalized to E.164, raw provider messages are not
+shown, and Conversations labels Voice rows Initiated / Completed / Failed from persisted provider
+evidence. Call history remains in `messages`; no new Rail writer was introduced.
+
+Strict webhook enforcement has a staged release prerequisite: deploy the internal single-target
+repair helper first, obtain sanitized provider success for every configured tenant app and the
+operator app, then deploy the strict handler. The helper is service-role/verified-cron gated, never
+enumerates tenants, forces a provider update even when a database marker exists, and returns no ids,
+numbers, URLs, secrets, or payloads. Same-commit deployment without this repair is not sufficient.
+
+Production data inspection found the reported workspace fully configured in the database and six
+recent Voice rows stuck queued. Other standalone Solo workspaces had no comparable fully configured,
+active Voice path, so this is a platform-path defect currently observable in that workspace—not a
+workspace-only setup gap. Retrospective child-leg provider outcomes, authenticated browser behavior,
+deployment persistence, and one owner-approved controlled live call remain **Proof Owed** until
+performed.
 
 - 2026-09-03 n8n owner-pass correction: PR #909 deployed but the first real consent failed before state consumption. The hosted gateway rewrites the runtime callback path/origin; public-URL-only fixtures missed this. Bounded handler repair preserves fixed redirect URI and all state/owner/session guards, fixes the 404 fallback, and is documented in docs/delivery/solo-n8n-oauth-mvp.md. Do not label the tenant connected until fresh owner consent succeeds.
 

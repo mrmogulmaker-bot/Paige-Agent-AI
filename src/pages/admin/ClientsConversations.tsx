@@ -36,6 +36,7 @@ import {
   INBOX_VIEWS, endOfTodayMs, readSendResult, resolveMergeVars, UNDO_WINDOW_MS,
   useCommsAttachments,
 } from "./conversations/inbox-shared";
+import { voiceHistoryStatus } from "@/lib/voice/voiceCallSafety";
 import { ComposeThreadDialog } from "./conversations/ComposeThreadDialog";
 import { FirstRunOnboarding } from "./conversations/FirstRunOnboarding";
 import { ThreadRow } from "./conversations/ThreadRow";
@@ -130,6 +131,11 @@ function messageStatusPill(m: MessageRow) {
   return null;
 }
 
+function voiceStatusPill(m: MessageRow) {
+  const status = voiceHistoryStatus(m.status);
+  return status ? <StatePill state={status.state}>{status.label}</StatePill> : null;
+}
+
 // ── Channel glyph chip (local — MessageBubble + detail header) ──────────────────────
 function ChannelGlyph({ channel, className }: { channel: ChannelType; className?: string }) {
   const Icon = CHANNEL_ICON[channel];
@@ -212,7 +218,7 @@ function MessageBubble({
       body={body}
       timestamp={m.sent_at ?? m.created_at}
       senderLabel={m.direction === "outbound" ? "You" : partyLabel(m.sender) || "Client"}
-      status={isCall ? null : messageStatusPill(m)}
+      status={isCall ? voiceStatusPill(m) : messageStatusPill(m)}
       error={m.status === "failed" ? m.error : null}
       subject={isCall ? undefined : (m.subject ?? undefined)}
       foldable={!isCall && shouldFoldEmail(m.channel_type, body)}

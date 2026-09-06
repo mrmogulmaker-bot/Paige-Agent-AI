@@ -1,3 +1,4 @@
+import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_mission.ts';
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -8,6 +9,7 @@ import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-e
 import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
+import { readPipelineWorkspace } from "../_shared/pipelineWorkspaceRead.ts";
 import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
 // Wave 3 · Communications — the owner can find out what Paige did with the business
 // phone line. `capability-record` owns HOW a run is written; `comms-capability-outcome`
@@ -158,6 +160,9 @@ function describeStep(
     case "action_list": return { label: "Checking the team's queue", group: "owner" };
     case "action_get": return { label: "Pulling up that action", group: "owner" };
     case "propose_action": return { label: "Lining up something for your approval", group: "owner", detail: "waiting on you" };
+    case "mission_create": return out?.replayed === true ? { label: "That proposed Mission was already saved", group: "owner", detail: "replay · no duplicate change" } : { label: failed ? "Could not create that Mission" : "Created the proposed Mission", group: "owner", detail: failed ? "nothing changed" : "record only · no work ran" };
+    case "mission_revise": return out?.replayed === true ? { label: "That Mission revision was already saved", group: "owner", detail: "replay · no duplicate change" } : { label: failed ? "Could not revise that Mission" : "Saved a new Mission brief version", group: "owner", detail: failed ? "nothing changed" : "record only · no work ran" };
+    case "mission_transition": return out?.replayed === true ? { label: "That Mission state was already saved", group: "owner", detail: "replay · no duplicate change" } : { label: failed ? "Could not change that Mission" : "Changed the Mission state", group: "owner", detail: failed ? "nothing changed" : "record only · no work ran" };
     // CRM (client)
     case "crm_search_contacts": return { label: "Looking through your contacts", group: "client", detail: typeof out?.count === "number" ? `${out.count} found` : undefined };
     case "crm_get_contact_summary": return { label: "Pulling up the contact", group: "client" };
@@ -2089,6 +2094,7 @@ JSON:`;
       "member_grant_role", "member_revoke_role", "calendar_book_meeting", "program_enroll",
       // Action bus, plans, marketplace, authoring — ids and acknowledgements.
       "action_file", "action_advance",
+      "mission_create", "mission_revise", "mission_transition",
       "plan_set_reminder", "plan_create", "plan_add_milestone",
       "plan_assign_task", "plan_update_item", "plan_remove_item",
       "marketplace_install", "marketplace_uninstall",
@@ -5907,7 +5913,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               parameters: {
                 type: "object",
                 properties: {
-                  search: { type: "string", description: "Optional similar-name search or exact PPL reference. Omit to list every pipeline." }
+                  search: { type: "string", description: "Optional similar-name search or exact PPL reference. Omit to list every pipeline." },
+                  pipeline_id: { type: "string", description: "Optional exact pipeline ID from the catalogue. Reads its stages and caller-visible deals, including current versions, before configuring or moving. Never invent an ID." },
+                  pipeline_ref: { type: "string", description: "Optional exact PPL reference for a detailed pipeline read, including empty stages. If also supplying pipeline_id, both must identify the same record. Detailed selection is exact; search is ignored in this mode." }
                 }
               }
             }
@@ -6016,6 +6024,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               parameters: { type: "object", properties: {} }
             }
           },
+          ...BUSINESS_MISSION_TOOLS,
           {
             type: "function",
             function: {
@@ -6853,6 +6862,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // Friendly, operator-facing labels for each mutating tool — never surface the
     // raw internal tool_key (§11: no backend function names in visible copy).
     const TOOL_LABELS: Record<string, string> = {
+      mission_create: "creating a proposed Business Mission",
+      mission_revise: "revising a Business Mission brief",
+      mission_transition: "changing a Business Mission state",
       update_client_data: "saving details to a client's file",
       delegate_to_subagent: "handing work to one of her specialists",
       comms_buy_number: "buying a phone number",
@@ -7657,6 +7669,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           }
           let gateArgs: any = {};
           try { gateArgs = JSON.parse(tc.function.arguments || "{}"); } catch { gateArgs = {}; }
+          if ((tc.function.name === "mission_create" || tc.function.name === "mission_revise" || tc.function.name === "mission_transition") && !gateArgs.request_key) {
+            gateArgs.request_key = crypto.randomUUID();
+            tc.function.arguments = JSON.stringify(gateArgs);
+          }
           // ── ONE CANONICAL PERMISSION VALUE, SETTLED BEFORE ANYTHING READS IT ────────────────
           //
           // Caught by adversarial review, 2026-09-02, and it was the worst defect in the slice.
@@ -9068,8 +9084,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // Pre/post-write boundary for the pipeline capability recorder (Codex P2, 2026-09-05):
           // set TRUE immediately before a pipeline write act dispatches its external UPDATE, so a
           // throw caught below is classified honestly — a pre-write throw (parse/client/lookup)
-          // is `capability_failed` (nothing changed), only a post-write throw is `outcome_unknown`.
-          let pipelineWriteAttempted = false;
+          // is `capability_failed` (nothing changed). This branch is now fail-closed, so no write can have an unknown outcome.
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
             const admin = createClient(supabaseUrl, supabaseServiceKey);
@@ -9876,52 +9891,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 }
               }
             } else if (tc.function.name === "deal_move_stage") {
-              // Move a deal across stages — the chat twin of dragging a card. Both the target stage
-              // and the deal are pinned to the caller's tenant, so neither can reach another
-              // workspace. Won/lost stamps status + close date; anything else reopens (matches
-              // PipelineAdmin.onDrop). Logs a timeline activity so the move shows in the CRM.
-              const tenantId = personaCtx?.tenant_id;
-              if (!tenantId) {
-                result = { success: false, error: "No workspace in context — pick a workspace first." };
-              } else {
-                const { data: stage, error: stageErr } = await admin.from("pipeline_stages")
-                  .select("id, stage_type, label, pipeline_id").eq("id", args.stage_id).eq("tenant_id", tenantId).is("archived_at", null).maybeSingle();
-                // Distinguish an OPERATIONAL lookup failure (PostgREST outage, malformed-UUID
-                // 22P02) from a genuine "not in your workspace" (Codex P2, 2026-09-05). A thrown
-                // query error is a PRE-WRITE failure → recorded as capability_failed, never a false
-                // `refused` ("Not allowed"). Only a clean null-with-no-error is the real guard
-                // rejection handled below.
-                if (stageErr) throw stageErr;
-                if (!stage) {
-                  result = { success: false, error: "That stage isn't in your workspace." };
-                } else {
-                  const today = new Date().toISOString().slice(0, 10);
-                  const status = stage.stage_type === "won" ? "won" : stage.stage_type === "lost" ? "lost" : "open";
-                  // Keep pipeline_id in lockstep with the stage: if the target stage lives in a
-                  // different pipeline of the same tenant, the deal moves to THAT pipeline — never a
-                  // row whose stage_id and pipeline_id disagree (which would vanish off the board).
-                  // Mark the external write as dispatched: a throw AT OR AFTER this point may have
-                  // applied → capability_outcome_unknown; any earlier throw stays capability_failed.
-                  pipelineWriteAttempted = true;
-                  const { data: moved, error: merr } = await admin.from("deals")
-                    .update({ stage_id: stage.id, pipeline_id: stage.pipeline_id, status, actual_close_date: status === "open" ? null : today })
-                    .eq("id", args.deal_id).eq("tenant_id", tenantId)
-                    .select("id").maybeSingle();
-                  if (merr) throw merr;
-                  if (!moved) {
-                    result = { success: false, error: "That deal isn't in your workspace." };
-                  } else {
-                    await recordWrite("deal_activities:stage_changed", admin.from("deal_activities").insert({
-                      deal_id: args.deal_id, type: "stage_changed",
-                      summary: `Moved to ${stage.label}${args.reason ? ` — ${String(args.reason).slice(0, 200)}` : ""}`,
-                      actor_user_id: user.id, payload: { stage_id: stage.id, source: "paige" },
-                    }));
-                    result = { success: true, deal_id: args.deal_id, stage: stage.label, status };
-                  }
-                }
-              }
+              // The historical direct service-role update bypassed custom stage policy, durable outcomes, versions, idempotency, and automation-impact review.
+              // Fail closed until the canonical stored-proposal gate calls the owning executor. PAIGE may still read and prepare an editable request.
+              result = {
+                success: false,
+                error: "Pipeline moves in Chat are temporarily unavailable while the governed approval connection is completed. Open Pipeline to move this deal with the current stage and automation impact visible.",
+              };
             } else if (tc.function.name === "pipeline_catalogue") {
               const tenantId = personaCtx?.tenant_id;
+              if (tenantId && (args.pipeline_id !== undefined || args.pipeline_ref !== undefined)) {
+                const detail = await readPipelineWorkspace(
+                  (name, parameters) => supabaseClient.rpc(name, parameters), tenantId,
+                  { pipelineId: args.pipeline_id, pipelineRef: args.pipeline_ref },
+                );
+                result = { success: detail.ok, ...detail };
+              } else {
               if (!tenantId) {
                 result = { success: false, error: "No workspace in context — pick a workspace first." };
               } else {
@@ -9931,6 +9915,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 });
                 if (catalogueError) throw catalogueError;
                 result = { success: true, ...(catalogue as any) };
+              }
               }
             } else if (tc.function.name === "pipeline_archive_preview") {
               const tenantId = personaCtx?.tenant_id;
@@ -11071,7 +11056,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // instead, so `NUMBER_NOT_ACTIVE` reaches the Rail as a refusal even though
             // the model is told only that something went wrong.
             await recordCommsRun({ thrown: err, threw: true });
-            await recordPipelineRun({ thrown: err, threw: true, writeAttempted: pipelineWriteAttempted });
+            await recordPipelineRun({ thrown: err, threw: true, writeAttempted: false });
 
             toolResults.push({
               tool_call_id: tc.id,
@@ -11243,6 +11228,51 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, queued: true, approval_id: inserted.id, summary, note: "Filed in the operator's approvals queue — it will send once approved. Tell the user it's waiting on them." }) });
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "propose_action_error" }) });
+          }
+        } else if (tc.function.name === "mission_create" || tc.function.name === "mission_revise" || tc.function.name === "mission_transition") {
+          // Owner-private Mission writes use the caller JWT. Tenant, actor, Solo topology,
+          // ownership, expected revision and lifecycle are revalidated inside the RPC.
+          // No Action Bus, worker, provider, Mind or Rail write is reachable from this branch.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            let rpcName = "";
+            let rpcArgs: Record<string, unknown> = {};
+            if (tc.function.name === "mission_create") {
+              rpcName = "create_business_mission";
+              rpcArgs = { p_request_key: args.request_key, p_title: args.title, p_desired_outcome: args.desired_outcome,
+                p_deadline_on: args.deadline_on ?? null, p_baseline: args.baseline, p_strategy: args.strategy,
+                p_constraints: args.constraints ?? [], p_success_definition: args.success_definition,
+                p_owner_authority: args.owner_authority, p_assumptions: args.assumptions ?? [],
+                p_missing_information: args.missing_information ?? [], p_next_action: args.next_action ?? null,
+                p_request_source: "paige_chat", p_request_thread_id: payloadThreadId ?? null };
+            } else if (tc.function.name === "mission_revise") {
+              rpcName = "revise_business_mission_brief";
+              rpcArgs = { p_mission_id: args.mission_id, p_expected_revision: args.expected_revision, p_request_key: args.request_key,
+                p_desired_outcome: args.desired_outcome, p_deadline_on: args.deadline_on ?? null, p_baseline: args.baseline,
+                p_strategy: args.strategy, p_constraints: args.constraints ?? [], p_success_definition: args.success_definition,
+                p_owner_authority: args.owner_authority, p_assumptions: args.assumptions ?? [], p_missing_information: args.missing_information ?? [],
+                p_revision_reason: args.revision_reason, p_title: args.title ?? null, p_next_action: args.next_action ?? null };
+            } else {
+              rpcName = "transition_business_mission";
+              rpcArgs = { p_mission_id: args.mission_id, p_expected_revision: args.expected_revision, p_request_key: args.request_key,
+                p_to_state: args.to_state, p_reason: args.reason ?? null, p_closure_outcome: args.closure_outcome ?? null,
+                p_outcome_summary: args.outcome_summary ?? null, p_outcome_unknowns: args.outcome_unknowns ?? null };
+            }
+            const { data: result, error } = await supabaseClient.rpc(rpcName, rpcArgs);
+            if (error) {
+              const message = String(error.message || "");
+              const friendly = message.includes("MISSION_REVISION_CONFLICT") ? "This mission changed since it was read. Reopen it before trying again."
+                : message.includes("MISSION_OWNER_REQUIRED") ? "Only the verified owner of this Solo workspace can change missions."
+                : message.includes("MISSION_INVALID_TRANSITION") ? "That mission cannot move to that state from where it is now."
+                : message.includes("MISSION_OUTCOME_REQUIRED") ? "Closing a mission needs an honest outcome summary."
+                : message.includes("MISSION_NOT_FOUND") ? "That mission is not available in this workspace."
+                : "The mission was not changed. Reopen it and try again.";
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false,error:friendly,note:"Nothing was changed. Do not claim success." }) });
+            } else {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:true,...(result && typeof result === "object" ? result : { result }),note:"The private Mission record committed. Report only the saved state; no work was executed and no outcome beyond this record is proven." }) });
+            }
+          } catch (e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false,error:"The mission was not changed.",note:"No work ran and no Mission success may be claimed." }) });
           }
         } else if (
           tc.function.name === "plan_set_reminder" ||
@@ -11428,6 +11458,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         zapier_run_action: "external_provider",
         forge_subagent: "paige_subagents", delegate_to_subagent: "paige_subagents",
         save_to_knowledge_base: "knowledge_base",
+        mission_create: "business_missions", mission_revise: "business_missions", mission_transition: "business_missions",
         plan_create: "plans", plan_add_milestone: "plans", plan_set_reminder: "plans",
         plan_update_item: "plans", plan_remove_item: "plans",
         author_event_kind: "paige_event_kinds",
@@ -11517,7 +11548,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
        */
       const TARGET_ID_KEYS = [
         "contact_id", "client_id", "deleted", "deal_id", "task_id", "pipeline_id", "stage_id",
-        "page_id", "funnel_id", "content_id", "booking_id", "log_id", "automation_id", "plan_id",
+        "page_id", "funnel_id", "content_id", "booking_id", "log_id", "automation_id", "mission_id", "plan_id",
         "item_id", "workflow_id", "subagent_id", "action_id", "tenant_id", "id",
       ] as const;
       const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -11582,7 +11613,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           if (out?.needs_confirm === true || out?.disabled === true) return;
           const n8nOutcome = N8N_MANAGEMENT_TOOL_NAMES.has(name);
           const failed = n8nOutcome ? out?.ok !== true : out?.success === false;
-          const outcome = n8nOutcome && out?.error === "outcome_unknown" ? "outcome_unknown"
+          const missionReplay = (name === "mission_create" || name === "mission_revise" || name === "mission_transition") && out?.replayed === true;
+          const outcome = missionReplay ? "replayed_no_change" : n8nOutcome && out?.error === "outcome_unknown" ? "outcome_unknown"
             : failed ? "failed" : n8nOutcome && out?.started === true ? "started" : "succeeded";
           const n8nSafeErrors = new Set(["outcome_unknown", "authorization_needed", "owner_approval_required", "provider_tool_unavailable", "unsupported_operation", "forbidden", "invalid_arguments", "provider_refused", "provider_response_invalid", "provider_scope_refused", "token_expired", "oauth_needed", "busy", "tenant_changed", "stale_operation", "operation_refused"]);
           // `Promise.resolve` around the builder, not `void builder.then?.()`: a postgrest builder
