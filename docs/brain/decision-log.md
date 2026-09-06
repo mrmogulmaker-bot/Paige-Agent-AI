@@ -1,5 +1,32 @@
 # Decision Log — chronological one-liners
 
+- **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
+  new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
+  the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace
+  service/external-execution platform Paige may use, with per-provider governance (business reason · Paige use
+  cases · connection prerequisite · required scopes · safe readable context · allowed writes/effects · authority
+  lane · M1 dependency · canonical provider receipt · Rail/Mind/Memory boundary · status · owner · dependency ·
+  next slice · tier eligibility Platform/Solo/future-Agency/future-Enterprise). **Six-word status vocab: LIVE ·
+  PARTIAL · PROPOSED · UNAVAILABLE · DEFERRED · PROOF OWED** (kept distinct from provider-result-contract's
+  eight runtime words). **Cardinal rule R1: listing a provider NEVER means connected/available/autonomous.**
+  Marketplace entries = **global capability metadata only** (R4); private Paige artifacts need no provider,
+  native Google/M365 creation needs that tenant's connected-provider auth (R5); role/authority separate from
+  tier, Admin is a role never a URL/tier (R6). **This is a product-governance + delivery record — installs
+  nothing, holds no credentials, calls no API, creates no OAuth client.** 20 providers catalogued spanning all
+  6 taxonomy groups + all 6 statuses; every other WIRED provider named in `uncatalogued_wired_providers`
+  (honest coverage); pure infra (Supabase/Vercel/LLM-router/Voyage/GitHub) excluded to config-registry (§18).
+  **Delivery rule (MANDATORY, §0/§66/§BRAIN.3):** read the entry before proposing/implementing/opening a PR
+  for/changing a provider integration; update it before merge with actual capability/authority/proof/limits/next
+  owner, same commit. **CI-enforced:** `scripts/ci/integration-registry-lint.mjs`
+  (`npm run lint:integration-registry` + `:test`, wired in `ci.yml`) — a concise clone of `lint:binding-ledger`;
+  guard + 14-mutation self-test green. Made mandatory in-place: master reference §3/§4, brain README index,
+  `config-registry.md` cross-link, second-brain SKILL read + closeout tables. **§18 disambiguation:** distinct
+  from config-registry (wiring names/IDs), provider-result-contract (runtime per-tenant state), the Surface
+  Binding Ledger (surfaces), the Spine `registry.ts` (domain declarations), and the code-level
+  `tenant_mcp_connections` "Integration Registry, slice 1" (migration `20261005000000`). **§13 flags:** the
+  brief's *"Marketplace Brain decision"* has NO artifact under that phrase repo-wide — Marketplace rule grounded
+  on `MARKETPLACE-DATA-MODEL.md`, recorded unresolved not invented; M1 is real (`autonomy-architecture.md §8`).
+  Crew: §39 adversarial verifier + §5 compliance officer run against the real files. Draft PR = the record + CI.
 - **RE-2 M1-a — money-truth layer (provider-confirmed spend + reconciliation + complete receipt), DARK (2026-09-06, owner-authorized, PR #1014).**
   The money-truth core of the real-money spend-control backbone (owner ruling 2026-09-06, `autonomy-architecture.md`
   §10.8 item 3; distinct from the §8.4 LLM-token internal-cost lane). Extends the PR-1 substrate (§18, no fork),

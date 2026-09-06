@@ -15,6 +15,14 @@ Durable record of the platform's integration configuration so no future session 
 
 **Verification legend:** ✅ verified this session (method noted) · ⚠ unverified/in-flight (confirm).
 
+**This file is WIRING only (names/IDs).** The capability, authority lane, M1 metering dependency,
+canonical provider receipt, Rail/Mind/Memory boundary, and honest delivery status of each provider
+live in the **Integration Capability Registry** (`docs/integration-registry/` — the JSON is the source
+of truth). Read that registry's entry **before** proposing/implementing/opening a PR for/changing any
+provider integration, and update it **before merge** (the delivery rule; enforced by
+`npm run lint:integration-registry`). This file never restates that governance, and that registry
+never restates these names/IDs (§18).
+
 Last full verification pass: **2026-08-09**.
 
 ---

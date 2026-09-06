@@ -305,6 +305,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:binding-ledger:test
 
+      # The Integration Capability Registry is the provider-governance delivery contract. A provider
+      # may not be catalogued dishonestly (an unbuilt integration claiming a real acting lane, a LIVE
+      # entry with no provable receipt, a Marketplace entry leaking per-tenant data) or incompletely.
+      # Docs alone drift; this makes the honesty invariants + the "listed ≠ connected" rule fail CI.
+      - name: Integration Capability Registry is complete and honestly stated
+        if: ${{ !cancelled() }}
+        run: npm run lint:integration-registry
+
+      - name: Integration-registry guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:integration-registry:test
+
       - name: Action-risk guard catches what it claims to
         if: ${{ !cancelled() }}
         run: npm run lint:action-risk:test

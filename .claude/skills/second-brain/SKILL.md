@@ -26,6 +26,7 @@ Paige-specific half. It is our own content and adds to flow-by-flow rather than 
 |---|---|
 | `docs/brain/README.md` | **Always.** The index and the verified platform snapshot |
 | `docs/brain/config-registry.md` | Anything touching infra or a third-party seam — Supabase, Stripe, Twilio, ElevenLabs, CI, MCP |
+| `docs/integration-registry/` (README + JSON) | **MANDATORY** before proposing/implementing/opening a PR for/changing ANY provider integration (third-party API, connector, OAuth scope, Marketplace service, MCP tool over a provider, external-execution worker) — the delivery rule |
 | `docs/doctrine/paige-attention-register.md` | Any task likely to surface a finding outside its own scope — where such a finding goes, and what is already recorded |
 | The domain doc the README points at | Whatever area the task is in |
 | `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4 | Any "do we have this?" question — §4 is SHIPPED, §5 is gaps |
@@ -72,6 +73,7 @@ The last step of the work, **in the same change**. Not a follow-up.
 | A capability shipped | What it does **and what it does not** — the edges, not just the feature | `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4; the area's capability map |
 | A defect was found | The lesson, not only the fix: **what class of proof missed it** | `docs/brain/lessons-learned.md` |
 | Config or an integration changed | Names, IDs, and which seam reads them — **never a secret value** | `docs/brain/config-registry.md` |
+| A provider integration was proposed/changed/shipped | Its actual capability, authority lane, proof (or `PROOF_OWED`), limitations, next owner — same commit | `docs/integration-registry/integration-capability-registry.json` (+ the README summary table); re-run `npm run lint:integration-registry` |
 | A decision or ruling landed | The decision, dated, and what it supersedes | `docs/brain/decision-log.md` |
 | A reusable pattern or skill emerged | The mechanic, so the next task inherits it | `docs/brain/` + its index row in `README.md` |
 | Tier, surface, or gating changed | The per-tier reality **as shipped** | `docs/doctrine/tier-matrix.md` |
