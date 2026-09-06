@@ -3329,4 +3329,4 @@ horizontal/nested overflow** across all four views × the real Solo content-colu
 prior one used the full window, so 439px was never tested) and caught the pulse + scenario-banner
 overflow, now fixed. The §39 peer-gate caught a BLOCKING `money(0)`→"Free" defect the render proof
 missed (pure-recurring retainer read "Free"), fixed with an em-dash guard + tests; the §58 read-only
-terms guidance the redesign had dropped was restored. Authenticated live-drive OWED (§32.c). PR: <URL>.
+terms guidance the redesign had dropped was restored. Authenticated live-drive OWED (§32.c). PR: https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/985
