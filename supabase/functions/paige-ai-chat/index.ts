@@ -21,7 +21,7 @@ import { classifyPipelineRun } from "../_shared/pipeline-capability-outcome.ts";
 // no real artifact (null url, empty drafts, null saved id) must degrade to an honest failure,
 // not a success-shaped receipt. ONE pure home for that decision (§18); handlers wrap their
 // own success shape in it so the model, the status label and the artifact card all inherit it.
-import { artifactProduced, ARTIFACT_ABSENT_ERROR } from "../_shared/artifact-receipt.ts";
+import { artifactProduced, ARTIFACT_ABSENT_ERROR, usableDrafts, IMAGE_NOT_FILED_ERROR } from "../_shared/artifact-receipt.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -10276,10 +10276,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               if ((cd as any)?.error) throw new Error((cd as any).error);
-              // §13/§70 — a 200 can carry an empty drafts array; that is no artifact, not a success.
-              const _drafts = (cd as any)?.drafts ?? [];
-              result = artifactProduced("draft_list", _drafts)
-                ? { success: true, channel: (cd as any)?.channel, drafts: _drafts }
+              // §13/§70 — a 200 can carry an empty drafts array, OR a non-empty array of
+              // content-less items (content-draft normalizes a missing `content` to ""), so filter
+              // to drafts that actually carry copy before reporting success (Codex P2). Return only
+              // the usable drafts so the model never narrates an empty one.
+              const _usableDrafts = usableDrafts((cd as any)?.drafts);
+              result = artifactProduced("draft_list", _usableDrafts)
+                ? { success: true, channel: (cd as any)?.channel, drafts: _usableDrafts }
                 : { success: false, error: ARTIFACT_ABSENT_ERROR.draft_list };
             } else if (tc.function.name === "generate_image") {
               // #292 — reuse the on-canvas image row (stack its versions) ONLY when the model targets
@@ -10346,6 +10349,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // `generate-image` edge fn, which now remembers the artifact at that ONE shared seam so
                 // BOTH this path and the Vibe Studio frontend capture (§18 one home). Capturing here too
                 // would double-write.
+              }
+              // §13/§70 (Codex P2) — FINAL Studio check, after any §33 critique regeneration. In a
+              // STUDIO session the image must be FILED (content_id) to reach the canvas — the linkage
+              // below (link_session_artifact / save_artifact_version) requires r.content_id — so a
+              // created-but-unfiled image (url present, best-effort save failed → content_id null, from
+              // the first gen OR a regen) would report success while the canvas gets nothing. Fail
+              // honestly. REGULAR chat keeps a null-content_id url as a usable success (the URL is a
+              // real downloadable file), so this is Studio-only; running it AFTER the critique loop
+              // lets a rescue regeneration that DID file count as a real success.
+              if (studioSessionId && (result as any)?.success === true && !artifactProduced("saved_id", (result as any)?.content_id)) {
+                result = { success: false, error: IMAGE_NOT_FILED_ERROR };
               }
             } else if (tc.function.name === "calendar_book_meeting") {
               // Confirm is enforced by the central autonomy gate above (a booking
@@ -11432,6 +11446,65 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         comms_draft_registration: "tenant_a2p_registrations",
         pipeline_configure: "pipelines",
         propose_business_brief_update: "tenants",
+        // ── The inbound MCP door's acts, added 2026-09-05 with task #45.
+        //
+        // WHY THEY ARE HERE AT ALL, since Chat cannot perform any of them. This map is keyed off
+        // `mutatingTools()` — the classifier — not off Chat's own tool list, and CI check 19.8
+        // requires every EXECUTABLE classified mutation to name the entity it touches. Classifying
+        // the 52 MCP acts enrolled them here the same way it enrolled them in the autonomy
+        // catalogue: a classified act with no target files an attribution row that says only
+        // "something happened", and the rail's per-client membership is derived from this map
+        // (`WRITE_TARGET[name] === "clients"`), so a wrong answer here is a wrong feed later.
+        //
+        // Each value is the record the operator ACTED ON, read off the verified handler evidence
+        // rather than the tool's name — and where a handler touches several tables, the subject is
+        // the one a person tracing "what changed" would want, not the trigger cascade behind it.
+        // `approval_decide` writes `paige_actions` and a notification through triggers; the record
+        // is still the approval. `crm_advance_journey_stage` writes a transition row; the record is
+        // still the client.
+        //
+        // The staging/committing pair is the one judgement worth naming: `ingest_credit_scores`,
+        // `ingest_banking_snapshot`, `ingest_client_memory` and `crm_propose_contact_update` all
+        // STAGE onto `paige_ingestion_proposals`, so that is their record, while
+        // `ingest_confirm_proposal` is the act that lands the change on the client — following the
+        // same split the file already draws between `growth_page_save` and `growth_page_publish`.
+        crm_append_contact_notes: "clients", crm_update_lifecycle_stage: "clients",
+        crm_advance_journey_stage: "clients", client_log_progress: "clients",
+        privacy_handle_request: "clients", ingest_confirm_proposal: "clients",
+        crm_update_task: "tasks", crm_delete_task: "tasks",
+        crm_propose_contact_update: "paige_ingestion_proposals",
+        ingest_credit_scores: "paige_ingestion_proposals",
+        ingest_banking_snapshot: "paige_ingestion_proposals",
+        ingest_client_memory: "paige_ingestion_proposals",
+        ingest_reject_proposal: "paige_ingestion_proposals",
+        approval_create: "paige_pending_approvals", approval_decide: "paige_pending_approvals",
+        approval_claim: "paige_pending_approvals", approval_comment: "paige_approval_comments",
+        readiness_approve_proposal: "paige_readiness_proposals",
+        readiness_reject_proposal: "paige_readiness_proposals",
+        workflow_run: "paige_workflow_runs", workflow_cancel_run: "paige_workflow_runs",
+        workflow_register: "paige_workflow_registry",
+        automation_rule_create: "stage_automation_rules",
+        automation_rule_update: "stage_automation_rules",
+        automation_rule_delete: "stage_automation_rules",
+        skill_run: "paige_skill_runs",
+        subagent_create: "paige_subagent_proposals", subagent_approve_proposal: "paige_subagents",
+        comms_draft_email: "paige_subagent_invocations",
+        comms_send_email: "email_send_log", comms_send_bulk_email: "email_send_log",
+        comms_send_email_choosing_the_sender: "email_send_log",
+        comms_upsert_email_template: "email_templates",
+        comms_add_email_domain: "tenant_email_domains",
+        comms_set_primary_email_domain: "tenant_email_domains",
+        billing_create_invoice: "paige_invoices", billing_send_invoice: "paige_invoices",
+        business_create: "businesses", business_update: "businesses",
+        business_verify: "business_verification_runs",
+        coach_update_profile: "profiles",
+        coach_grant_role_globally: "user_roles", coach_revoke_role_globally: "user_roles",
+        team_invite_mint: "invitations",
+        agency_create_subaccount: "tenants", tenant_create: "tenants",
+        tenant_set_status: "tenants", tenant_set_features: "tenants",
+        update_social_accounts: "tenants",
+        agency_enter_subaccount: "tenant_members", agency_exit_subaccount: "profiles",
+        platform_post_notification: "paige_admin_notifications",
       };
 
       /**

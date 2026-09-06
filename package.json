@@ -53,6 +53,8 @@
     "lint:governed-execution:test": "node scripts/ci/governed-execution-lint.mjs --self-test",
     "lint:mcp-destructive-confirm": "node scripts/ci/mcp-destructive-confirm-lint.mjs",
     "lint:mcp-destructive-confirm:test": "node scripts/ci/mcp-destructive-confirm-lint.mjs --self-test",
+    "lint:mcp-governed-door": "node scripts/ci/mcp-governed-door-lint.mjs",
+    "lint:mcp-governed-door:test": "node scripts/ci/mcp-governed-door-lint.mjs --self-test",
     "lint:operator-reach": "node scripts/ci/operator-reachability.mjs",
     "lint:readiness-copy": "node scripts/ci/readiness-copy-parity.mjs",
     "lint:readiness-copy:test": "node scripts/ci/readiness-copy-parity.mjs --self-test",

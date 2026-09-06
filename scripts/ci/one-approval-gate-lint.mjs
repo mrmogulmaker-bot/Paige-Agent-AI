@@ -38,7 +38,18 @@
 import fs from "node:fs";
 
 const HANDLER = "supabase/functions/paige-ai-chat/index.ts";
-const SURFACES = ["src/components/dashboard/PaigeAIChat.tsx", "src/solo/data/useSoloChat.ts"];
+// ADDED 2026-09-05 with the governed MCP door. This guard exists because three slices
+// independently built a second approval channel, and the slice that makes an MCP mutation
+// executable again will be written in these two files — which the guard did not open. It costs
+// nothing today: the door invents no channel, constructs no claim, and maps no OAuth scope to
+// consent. Adding them now means a false positive surfaces here rather than in the slice where it
+// would be inconvenient to hear.
+const SURFACES = [
+  "src/components/dashboard/PaigeAIChat.tsx",
+  "src/solo/data/useSoloChat.ts",
+  "supabase/functions/paige-mcp/index.ts",
+  "supabase/functions/_shared/paige-mcp/governed-adapter.ts",
+];
 const ESCAPE = "approval-channel-exempt:";
 
 /**
