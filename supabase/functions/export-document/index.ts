@@ -93,22 +93,28 @@ serve(async (req: Request) => {
       .maybeSingle();
     if (docErr) return json(500, { error: "Could not read that document." });
     if (!doc) return json(404, { error: "Document not found, or you don't have access to it." });
-    if (doc.kind !== "document") {
-      return json(400, { error: "That content isn't a document — only documents can be exported to a file." });
-    }
     const tenantId = doc.tenant_id as string | null;
-    if (!tenantId) return json(422, { error: "That document has no workspace and cannot be exported." });
 
-    // §9/§59 — AUTHORIZE (the real access decision). The endpoint is admin/coach-only, but `user_roles`
-    // is GLOBAL and tenant-agnostic, so the coarse role gate above (and `marketing_content`'s own RLS,
-    // which carries a global-`admin` OR-branch) would let a caller who is admin in workspace A but only a
-    // PLAIN member of the doc's tenant B export B's documents (Codex F2 — §59's global-role trap; the
-    // documented pattern in 20261180000000). A bare `is_tenant_member` check does NOT close it — a plain
-    // member passes. RE-ENFORCE a MANAGE role IN THE DOC'S TENANT, tenant-scoped on the caller's own
-    // auth.uid(): owner/admin via `is_tenant_admin`, or coach via `has_tenant_role` (both SECURITY DEFINER,
-    // keyed on the caller's own identity — never a passed actor). Operators span tenants and skip this.
-    // (The RLS OR-branch is a platform-wide §9/§59 gap reachable via raw PostgREST — its own follow-up
-    // (#1023); this gate closes the export vector regardless.)
+    // §9/§59 — AUTHORIZE FIRST, before ANY response that depends on the row's kind or tenant shape.
+    // The service-role read above can see EVERY tenant's row, so a `kind !== "document"` 400 or a
+    // null-tenant 422 emitted before this check would turn the by-id endpoint into a cross-tenant
+    // existence/type ORACLE: an authenticated caller could probe another tenant's `marketing_content`
+    // UUID and learn from the 400-vs-404-vs-422 which rows exist and what kind they are (Codex M1 — §9).
+    // So the authorization is the FIRST branch after the null-row guard, and every downstream response
+    // (kind, null-tenant, render) is reachable only by a caller already proven authorized over the row.
+    //
+    // The real access decision: `user_roles` is GLOBAL and tenant-agnostic, so a coarse role gate (and
+    // `marketing_content`'s own RLS, which carries a global-`admin` OR-branch) would let a caller who is
+    // admin in workspace A but only a PLAIN member of the doc's tenant B export B's documents (Codex F2 —
+    // §59's global-role trap; the documented pattern in 20261180000000). A bare `is_tenant_member` check
+    // does NOT close it — a plain member passes. RE-ENFORCE a MANAGE role IN THE DOC'S TENANT, tenant-scoped
+    // on the caller's own auth.uid(): owner/admin via `is_tenant_admin`, or coach via `has_tenant_role`
+    // (both SECURITY DEFINER, keyed on the caller's own identity — never a passed actor). A null `tenantId`
+    // makes both RPCs return false (no row matches `tenant_id = null`), so a non-operator hitting a
+    // null-tenant row of any kind is denied as a 404 — never reaching the 422 that would confirm the row.
+    // Operators (super_admin/platform_admin, §53) span tenants and skip this. (The RLS OR-branch is a
+    // platform-wide §9/§59 gap reachable via raw PostgREST — its own follow-up (#1023); this gate closes
+    // the export vector regardless.)
     if (!isOperator) {
       const { data: isAdmin } = await authed.rpc("is_tenant_admin", { _tenant: tenantId });
       let allowed = isAdmin === true;
@@ -120,6 +126,13 @@ serve(async (req: Request) => {
       // would reveal that an out-of-scope document exists. 404 keeps it indistinguishable from "not found".
       if (!allowed) return json(404, { error: "Document not found, or you don't have access to it." });
     }
+
+    // Only an authorized caller (operator, or admin/coach of THIS doc's tenant) reaches these branches, so
+    // the kind/tenant-shape responses below cannot reveal another tenant's row (Codex M1).
+    if (doc.kind !== "document") {
+      return json(400, { error: "That content isn't a document — only documents can be exported to a file." });
+    }
+    if (!tenantId) return json(422, { error: "That document has no workspace and cannot be exported." });
 
     // The document body is the block JSON document_generate saved: `{ docType, title, blocks }`. Unwrap
     // to the blocks array; renderDoc coerces defensively, so a legacy/plain body still produces a file.

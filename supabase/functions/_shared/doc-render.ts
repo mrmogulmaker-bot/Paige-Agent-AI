@@ -387,10 +387,19 @@ export function inlineMdToText(s: string): string {
     .replace(new RegExp("!\\[([^\\]]*)\\]\\(" + DEST + "\\)", "g"), "$1")      // image → alt text (dest dropped)
     .replace(new RegExp("\\[([^\\]]+)\\]\\(" + DEST + "\\)", "g"),
       (_m, label, url) => `${label}@@URL${urls.push(String(url)) - 1}@@`);     // link → label + placeheld url
+  // Emphasis stripping, CommonMark-aligned so bare identifiers/URLs written DIRECTLY in prose (not as a
+  // markdown link, so NOT placeheld) survive intact: `?utm_source=x&utm_medium=y`, `tenant_id_value`
+  // (Codex M2). Asterisk emphasis MAY be intraword (`a*b*c`), so the asterisk rules strip unguarded.
+  // Underscore emphasis may NOT be intraword per CommonMark — an `_` flanked by an alphanumeric on its
+  // OUTER side opens/closes nothing — so the underscore rules are boundary-guarded (lookbehind/lookahead,
+  // supported on the V8 runtime this bundles to): a snake_case or query-string underscore is never eaten.
+  // Bold runs before italic so `**x**` / `__x__` is not consumed as two italics.
   str = str
-    .replace(/(\*\*|__)(.+?)\1/g, "$2")                  // bold
-    .replace(/(\*|_)([^*_]+?)\1/g, "$2")                 // italic (code + URLs are placeheld, so safe)
-    .replace(/~~(.+?)~~/g, "$1");                        // strikethrough
+    .replace(/\*\*(.+?)\*\*/g, "$1")                                 // bold (asterisks may be intraword)
+    .replace(/(?<![A-Za-z0-9])__(.+?)__(?![A-Za-z0-9])/g, "$1")      // bold (underscores need a word boundary)
+    .replace(/\*([^*]+?)\*/g, "$1")                                  // italic (asterisks may be intraword)
+    .replace(/(?<![A-Za-z0-9])_([^_]+?)_(?![A-Za-z0-9])/g, "$1")     // italic (underscores need a word boundary)
+    .replace(/~~(.+?)~~/g, "$1");                                    // strikethrough
   str = str
     .replace(/@@CODE(\d+)@@/g, (_m, i) => codes[Number(i)] ?? "")             // restore code verbatim
     .replace(/@@URL(\d+)@@/g, (_m, i) => ` (${urls[Number(i)] ?? ""})`);      // restore raw URL as `(url)`
@@ -430,8 +439,13 @@ function renderMarkdownDoc(title: string | undefined, blocks: Block[]): { bytes:
         break;
     }
   }
-  // Collapse a trailing run of blank lines to a single terminating newline.
-  const md = lines.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\n+$/, "\n");
+  // Normalize ONLY the trailing run of blank lines to a single terminating newline. Internal blank runs
+  // are deliberately NOT collapsed: a `prose` block is raw-markdown passthrough (K3/L2), so a fenced code
+  // block or an intentional blank line inside it must round-trip verbatim — a global `\n{3,}→\n\n` would
+  // silently corrupt code that carries ≥2 consecutive blank lines (Codex M3). Nothing else produces a
+  // triple newline: every block case pushes its content then exactly one lone "", so block separators are
+  // already a single blank line and there is no run to collapse there.
+  const md = lines.join("\n").replace(/\n+$/, "\n");
   return { bytes: new TextEncoder().encode(md.length ? md : (t ? `# ${t}\n` : "")) };
 }
 

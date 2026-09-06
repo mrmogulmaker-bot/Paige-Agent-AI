@@ -198,6 +198,29 @@
   clean addition needs a ~110-line re-indent of the 12k-line paige-ai-chat; at round 10 that is higher-risk
   than a same-PR fold warrants, so it is a scoped follow-up with an honest PR note + recovery path (§70:
   unavailable is a per-item verdict with a reason). doc-export 20/20, tsc ratchet 13/13, §50/§63 clean.
+  **FOURTEENTH catch — Codex round 11 (three P2), all FOLDED:** (M1, P2 §9) the export endpoint's
+  `kind !== "document"` 400 and null-tenant 422 fired BEFORE the tenant-scoped authorization, so the
+  SERVICE-ROLE read (which sees EVERY tenant's row, per the L1 fix) turned the by-id endpoint into a
+  cross-tenant existence/type ORACLE: an authenticated caller could probe another tenant's
+  `marketing_content` UUID and learn from the 400-vs-404-vs-422 which rows exist and what kind they are.
+  Fixed by REORDERING — authorization is now the FIRST branch after the null-row guard; the kind/null-tenant
+  responses are reachable only by a caller already proven authorized over the row. A null `tenantId` makes
+  both scope RPCs return false (nothing matches `tenant_id = null`), so a non-operator hitting a null-tenant
+  row of any kind is denied as a 404 — never the 422 that would confirm the row. §37: the one producer
+  (`document_generate`, caller-JWT) is unaffected (a valid document behaves identically; only the error
+  ORDERING for cross-tenant probes changed, which no legitimate caller depends on) and the success response
+  contract is byte-identical. (M2, P2) `inlineMdToText`'s single italic regex `(\*|_)([^*_]+?)\1` ate
+  underscores in bare identifiers/URLs written DIRECTLY in prose (not markdown links, so never placeheld) —
+  `utm_source`/`tenant_id_value` became `utmsource`/`tenantidvalue` in the BINARY (pdf/docx/pptx) exports.
+  Split into CommonMark-aligned passes: asterisk emphasis strips unguarded (it MAY be intraword), underscore
+  emphasis is boundary-guarded with lookbehind/lookahead (`(?<![A-Za-z0-9])_…_(?![A-Za-z0-9])`) so an
+  intraword underscore is a literal char. (M3, P2) `renderMarkdownDoc`'s global `\n{3,}→\n\n` collapse ate a
+  blank line inside a raw prose code fence carrying ≥2 consecutive blanks; removed it — every block case
+  already emits exactly one lone `""` separator, so block separators are single-blank and nothing legitimate
+  needed collapsing; the trailing-run normalization (`\n+$→\n`) stays. Lesson: a privileged (RLS-bypassing)
+  read makes response ORDERING part of the access-control surface — every status-code branch that varies by
+  row shape must sit AFTER the in-body scope check, or it leaks the existence the 404 was meant to hide.
+  doc-export 22/22, tsc ratchet 13/13, control-chars none, §50/§63 clean.
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace

@@ -43,6 +43,14 @@ describe("inlineMdToText — flatten markdown to clean text for BINARY renderers
     expect(inlineMdToText("see [x](https://ex.co/a_(b)?utm_source=s&utm_medium=m)"))
       .toBe("see x (https://ex.co/a_(b)?utm_source=s&utm_medium=m)");                          // balanced-paren URL whole (H3/G1)
     expect(inlineMdToText("![logo](https://ex.co/l.png) shown")).toBe("logo shown");          // image → alt, dest dropped
+    // Codex round-11 M2 — a bare identifier/URL written DIRECTLY in prose (NOT a markdown link, so it is
+    // never placeheld) keeps its underscores: CommonMark underscore emphasis needs a word boundary, so an
+    // `_` flanked by an alphanumeric on its outer side is a literal character, not an emphasis marker.
+    expect(inlineMdToText("Visit ?utm_source=x&utm_medium=y now")).toBe("Visit ?utm_source=x&utm_medium=y now"); // query underscores kept
+    expect(inlineMdToText("The tenant_id_value field")).toBe("The tenant_id_value field");    // snake_case kept
+    // …but genuine underscore emphasis AT a word boundary still strips (bold and italic both).
+    expect(inlineMdToText("a _real_ emphasis")).toBe("a real emphasis");                       // word-boundary italic
+    expect(inlineMdToText("this is __very__ bold")).toBe("this is very bold");                 // word-boundary bold
   });
 });
 
@@ -222,6 +230,17 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(md).toMatch(/^## 3\. Delivery$/m);    // chapter number kept
   });
 
+  it("does NOT collapse blank runs inside a raw prose block — a fenced code block round-trips verbatim (Codex round-11 M3)", async () => {
+    // A `prose` block is raw-markdown passthrough on the md path, so a fenced code block that carries two
+    // consecutive blank lines must round-trip. A global `\n{3,}→\n\n` normalizer would silently eat one of
+    // them, altering the code. Block separators are already exactly one blank line, so nothing legitimate
+    // ever needed that collapse.
+    const fence = "```\ncode line 1\n\n\ncode line 2\n```";
+    const r = await renderDoc({ format: "md", title: "Code", content: [{ type: "prose", markdown: fence }] });
+    const md = dec(r.bytes);
+    expect(md).toContain("code line 1\n\n\ncode line 2");   // the two internal blank lines survive verbatim
+  });
+
   it("never throws and still produces a file for empty content (title-only)", async () => {
     const r = await renderDoc({ format: "md", title: "Only A Title", content: [] });
     expect(r.ext).toBe("md");
@@ -319,6 +338,24 @@ describe("export-document edge function — the callable seam (source contract)"
     expect(SRC).not.toContain("You don't have manage access to that document's workspace.");
     // HONEST SCOPE (§32.c): this is a SOURCE contract that the in-body gate exists — a true multi-tenant
     // RLS/role drive proving the IDOR is closed needs a live DB and is owed to the authenticated post-deploy pass.
+  });
+
+  it("authorizes BEFORE any kind/tenant-shape response — the by-id endpoint is not a cross-tenant existence oracle (Codex round-11 M1/§9)", () => {
+    // The service-role read can see EVERY tenant's row, so a `kind !== "document"` 400 or a null-tenant 422
+    // emitted before the tenant-scoped authorization would let an authenticated caller probe another tenant's
+    // marketing_content UUID and learn from the status code which rows exist and what kind they are. The
+    // authorization branch must come FIRST — every kind/tenant response is reachable only by an authorized
+    // caller. Assert the ordering positionally in the source.
+    const authAt = SRC.indexOf('authed.rpc("is_tenant_admin"');
+    const kindAt = SRC.indexOf('doc.kind !== "document"');
+    const nullTenantAt = SRC.indexOf("has no workspace and cannot be exported");
+    expect(authAt).toBeGreaterThan(-1);
+    expect(kindAt).toBeGreaterThan(-1);
+    expect(nullTenantAt).toBeGreaterThan(-1);
+    expect(authAt).toBeLessThan(kindAt);          // authorize precedes the kind 400
+    expect(authAt).toBeLessThan(nullTenantAt);    // authorize precedes the null-tenant 422
+    // tenantId is resolved before the authorize block (the RPCs are keyed on it; a null tenant → both false → 404)
+    expect(SRC.indexOf("const tenantId = doc.tenant_id")).toBeLessThan(authAt);
   });
 
   it("offers only the renderer's real formats and degrades honestly, never a fake link (§13)", () => {
