@@ -23,9 +23,16 @@
  * (2026-09-01), against 37 done. A read that filtered on the status name a designer would guess
  * would have returned nothing and rendered an honest-looking empty state over a real backlog.
  *
- * §9 TENANT ISOLATION: no tenant_id is passed. The live policy on `paige_actions` gates SELECT on
- * `tenant_id = current_user_tenant_id()` plus a staff role, with an operator escape, so scope is
- * the session's. Do not add a tenant parameter.
+ * §9 TENANT ISOLATION: the read MUST be scoped to the VIEWED workspace with an explicit
+ * `tenant_id = <viewed tenant>` filter — RLS alone is NOT enough here. The live policy
+ * `pa_tenant_staff_read` gates SELECT on `tenant_id = current_user_tenant_id() AND a staff role`
+ * OR `has_role(auth.uid(),'admin')` — and that second clause is a GLOBAL (tenant-agnostic, §53/§59)
+ * operator escape: any holder of the global `admin` role can read EVERY tenant's `paige_actions`.
+ * So an unfiltered read on a platform-operator act-as (or any global admin) would surface OTHER
+ * tenants' action titles/counts on the viewed tenant's Trust Compass. The caller therefore passes
+ * the viewed tenant (the Compass `accountEpoch`) and this hook constrains the query to it; a null
+ * workspace runs NO query (never an unscoped read). For a normal tenant admin the filter equals the
+ * RLS scope, so it is a no-op there.
  *
  * §13 — WHAT THIS CANNOT PROVIDE, and therefore does not. `paige_actions` has no recipient, no
  * sender, no confidence score, and no list of options. The modals rendered all four. They are not
@@ -86,12 +93,13 @@ export function toPendingAction(raw: unknown): SoloPendingAction | null {
   };
 }
 
-export function useSoloPendingActions(): SoloPendingActionsData {
+export function useSoloPendingActions(tenantId: string | null): SoloPendingActionsData {
   const [items, setItems] = useState<SoloPendingAction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const mounted = useRef(false);
+  const scope = typeof tenantId === "string" && tenantId ? tenantId : null;
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
@@ -99,11 +107,22 @@ export function useSoloPendingActions(): SoloPendingActionsData {
     mounted.current = true;
     let cancelled = false;
 
+    // No resolved workspace → no read at all (§9). Never run an unscoped query that the global-admin
+    // operator escape on pa_tenant_staff_read would widen to every tenant.
+    if (!scope) {
+      setItems([]);
+      setError(null);
+      setLoading(false);
+      return () => { cancelled = true; mounted.current = false; };
+    }
+
+    setLoading(true);
     void (async () => {
       try {
         const { data, error: readError } = await supabase
           .from("paige_actions")
           .select("id,title,summary,draft_content,decision_rationale,from_department,created_at")
+          .eq("tenant_id", scope) // §9 — bind to the VIEWED workspace, not the operator's whole book
           .eq("status", "filed")
           .eq("autonomy_lane", "confirm")
           .order("created_at", { ascending: false })
@@ -125,7 +144,7 @@ export function useSoloPendingActions(): SoloPendingActionsData {
     })();
 
     return () => { cancelled = true; mounted.current = false; };
-  }, [tick]);
+  }, [tick, scope]);
 
   return useMemo(() => ({ items, loading, error, refresh }), [items, loading, error, refresh]);
 }

@@ -191,17 +191,19 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     }
   });
 
-  it("Solo branches with NO sub-tabs are exactly Trust Compass", () => {
-    // Verified live: solo/compass.tsx has a full-page department drilldown (no sub-tab strip).
-    // Vault is now an owner-locked Settings destination, not a parallel branch.
+  it("every Solo branch now carries sub-tabs — Trust Compass became Command Center's third", () => {
+    // Trust Compass moved INTO Command Center as its third sub-tab (owner-ruled 2026-09-05), so it is
+    // no longer a bare top-level branch and no Solo branch lacks a sub-tab. The legacy address
+    // redirects into the Command Center path. Vault is an owner-locked Settings destination.
     const noSub = SOLO_BRANCHES.filter((b) => !b.subtabs).map((b) => b.slug).sort();
-    expect(noSub).toEqual(["trust-compass"]);
+    expect(noSub).toEqual([]);
     expect(SOLO_BRANCHES.filter((b) => b.subtabs).length).toBe(9);
+    expect(branchBySlug("solo", "trust-compass")).toBeFalsy(); // no longer a top-level branch
   });
 
   it("verified Solo counts + first-is-default per the live-screen audit", () => {
     const count = (slug: string) => branchBySlug("solo", slug)?.subtabs?.length ?? 0;
-    expect(count("command-center")).toBe(3);
+    expect(count("command-center")).toBe(4);
     expect(count("paige")).toBe(4);
     expect(count("automations")).toBe(3);
     expect(count("clients")).toBe(6);
@@ -211,12 +213,11 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(count("marketplace")).toBe(4);
     expect(count("settings")).toBe(7);
     const total = SOLO_BRANCHES.reduce((n, b) => n + (b.subtabs?.length ?? 0), 0);
-    expect(total).toBe(45);
+    expect(total).toBe(46);
     // first sub-tab is the screen's default (bare branch renders it) — now Business Game Plan.
     expect(defaultSubtabSlug("solo", "command-center")).toBe("business-game-plan");
     expect(defaultSubtabSlug("solo", "paige")).toBe("chat");
     expect(defaultSubtabSlug("solo", "settings")).toBe("setup");
-    expect(defaultSubtabSlug("solo", "trust-compass")).toBeNull();
   });
 
   it("subtabBySlug / subtabByKey round-trip across several Solo branches", () => {
@@ -226,6 +227,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     };
     roundTrip("command-center", "business-game-plan", "plan");
     roundTrip("command-center", "systems-check", "sys");
+    roundTrip("command-center", "trust-compass", "compass");
     roundTrip("command-center", "mind", "mind");
     // `overview` is now a compatibility alias of the new default landing, Business Game Plan.
     expect(subtabBySlug("solo", "command-center", "overview")?.key).toBe("plan");

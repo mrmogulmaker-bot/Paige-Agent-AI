@@ -277,7 +277,7 @@ export function useSoloGamePlan(account: string, workspaceId?: string | null): S
   const setup = useSoloSetupBrief();
   const catalog = useCatalogOffers();
   const knowledge = useSoloKnowledge();
-  const pending = useSoloPendingActions();
+  const pending = useSoloPendingActions(workspaceId ?? null); // §9 — scope to the viewed workspace, like the activity feed
   const checks = useSystemsCheck("tenant");
   const activity = useSoloActivityFeed(workspaceId);
   const campaigns = useSoloCampaignBriefs();

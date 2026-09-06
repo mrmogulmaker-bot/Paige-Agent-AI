@@ -14,7 +14,6 @@ import { Ic, Logo, Avatar, Wrap, PageHead } from "./_shared";
 import { CommandHub } from "./CommandCenter";
 import { SoloPaigeWorkspace } from "./SoloPaigeWorkspace";
 import { clearPaigeClientScope, readPaigeOpenScope, setPaigeClientScope } from "./paigeClientScope";
-import { TrustCompass } from "./compass";
 import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relationships/TenantRelationshipsClientsWorkspace";
 import { isLegacyRelationshipOwner } from "@/components/tenant-relationships/workspaceModel";
 import { ClientsHub } from "./conversations";
@@ -34,7 +33,11 @@ import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
 import { IncomingCallOverlay } from "@/components/admin/voice/IncomingCallOverlay";
 import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPanel";
 
-const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
+// Trust Compass is reached through Command Center (its third sub-tab), not a top-level rail entry
+// (owner-ruled 2026-09-05). The legacy `/solo/{account}/trust-compass` address redirects into it.
+// (Merge: keep the compass OUT of the top nav — this PR moved it into Command Center — while taking
+// main's NAV2, which relocated Business Vault out of the second rail; do not resurrect it, §58.)
+const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
 const NAV2=[['market','Marketplace',()=><Ic.store/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
 const LEGACY_SETTINGS={setup:'setup',team:'team',integrations:'integrations','business-vault':'vault'};
 const SETTINGS_ICONS={setup:Building2,team:Users,connections:Link2,integrations:Blocks,'security-data':ShieldCheck,vault:FileLock2,billing:CircleDollarSign};
@@ -185,6 +188,13 @@ React.useEffect(() => {
     navigate(`/solo/${urlAccount}/settings/integrations/automations`, { replace: true });
     return;
   }
+  // Trust Compass moved into Command Center as its third sub-tab (owner-ruled 2026-09-05). The old
+  // top-level address deep-links into the canonical Command Center path so existing links keep
+  // working (§58) — no history entry, and no duplicate top-level surface remains.
+  if (urlSplat.split("/")[0] === "trust-compass") {
+    navigate(`/solo/${urlAccount}/command-center/trust-compass${location.search}`, { replace: true });
+    return;
+  }
   if (legacySettingsDestination) {
     navigate(`/solo/${urlAccount}/settings/${legacySettingsDestination}${location.search}`, { replace: true });
   }
@@ -252,7 +262,7 @@ React.useEffect(()=>{clearPaigeClientScope()},[activeTenantId]);
 const full=route==='paige'||route==='auto'||route==='cal'||route==='home'||route==='analytics'||route==='market';
 const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
 const accountEpochKey=activeTenantId??'resolving';
-const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,compass:<TrustCompass accountEpoch={activeTenantId}/>,auto:null,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2 accountContext={accountContext} accountEpoch={activeTenantId} openPaige={openPaige}/>,market:<Marketplace/>,settings:<SoloSettings openPaige={openPaige}/>};
+const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,auto:null,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2 accountContext={accountContext} accountEpoch={activeTenantId} openPaige={openPaige}/>,market:<Marketplace/>,settings:<SoloSettings openPaige={openPaige}/>};
 const settingsActive=urlBranchSlug==='settings'?(urlSplat.split('/')[1]||'setup'):(legacySettingsDestination||'setup');
 const contextualNavigation=route==='settings'&&urlDriven?{
   label:'Settings',

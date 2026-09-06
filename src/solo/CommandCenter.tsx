@@ -1,19 +1,23 @@
 // @ts-nocheck
 import React, { useEffect, useRef } from "react";
-import { Activity, BrainCircuit, Target } from "lucide-react";
+import { Activity, BrainCircuit, ShieldCheck, Target } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useTierFeatures } from "@/hooks/useTierFeatures";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { SoloMindWorkspace } from "./SoloMindWorkspace";
 import { SoloSystemsCheckWorkspace } from "./SoloSystemsCheckWorkspace";
 import { SoloGamePlanWorkspace } from "./SoloGamePlanWorkspace";
+import { TrustCompass } from "./compass";
 
-// Business Game Plan is the default Command Center landing (owner-approved 2026-09-05).
-// Three REAL tabs only. Trust Compass's slot (position 3, between Systems Check and Mind) is
-// reserved for its owner to add a real Command Center sub-tab — never a dead/placeholder tab.
+// Business Game Plan → Systems Check → Trust Compass → Mind (owner-ruled 2026-09-05). All four are
+// real surfaces now: Business Game Plan is the default landing, and Trust Compass is the third tab.
+// Each key MUST match its registry subtab key ("plan"/"sys"/"compass"/"mind") — a source-parsing
+// contract test asserts the TABS set and order against the registry.
 const TABS = [
   ["plan", "Business Game Plan", Target],
   ["sys", "Systems Check", Activity],
+  ["compass", "Trust Compass", ShieldCheck],
   ["mind", "Mind", BrainCircuit],
 ];
 
@@ -26,6 +30,19 @@ const CommandCenter = ({ accountContext, openPaige, workspaceId }) => <SoloSyste
 const CommandHub = ({ accountContext, openPaige }) => {
   const [tab, setTab] = useSubtabRoute("solo", "command-center", "plan");
   const { activeTenantId, activeUserId } = useTenantContext();
+  // §60 Solo-only gate for the Trust Compass sub-tab (owner ruling 2026-09-06 —
+  // "no subaccount delivery without explicit release"). The Command Center shell is
+  // universal, but this ONE sub-tab is released to Solo only; sub-account is DEFERRED.
+  // Derived through the ONE tier helper, never an inline account_type compare (§60).
+  // While the tenant is still resolving, `has` defaults to the permissive solo tier,
+  // so a Solo owner never flickers without the tab; a sub-account briefly shows it,
+  // then the redirect effect below bounces the gated URL to the default landing.
+  const { has: hasTierFeature, loading: tierLoading } = useTierFeatures();
+  const showCompass = hasTierFeature("trust_compass");
+  const VISIBLE_TABS = showCompass ? TABS : TABS.filter(([key]) => key !== "compass");
+  // The effective tab never resolves to a gated surface: a sub-account that lands on
+  // the compass URL renders the default Business Game Plan panel while the redirect fires.
+  const effectiveTab = tab === "compass" && !showCompass ? "plan" : tab;
   const location = useLocation();
   const navigate = useNavigate();
   const tabRefs = useRef([]);
@@ -54,20 +71,36 @@ const CommandHub = ({ accountContext, openPaige }) => {
     navigate(`${pathname}${location.search}${location.hash}`, { replace: true });
   }, [location.hash, location.pathname, location.search, navigate]);
 
+  // A workspace that does not carry the Trust Compass sub-tab (a sub-account, until it is
+  // explicitly released) cannot sit on its URL — the legacy /solo/{n}/trust-compass redirect
+  // or a shared link would otherwise leave it on a gated surface. Bounce it to the default
+  // Business Game Plan landing once the tenant has resolved (never mid-load, when `has`
+  // defaults to solo). §60/§58 — the address stays valid, it just resolves to the default.
+  useEffect(() => {
+    if (tierLoading || showCompass) return;
+    if (!/\/command-center\/trust-compass\/?$/.test(location.pathname)) return;
+    const pathname = location.pathname.replace(
+      /\/command-center\/trust-compass\/?$/,
+      "/command-center/business-game-plan",
+    );
+    setRouteAnnouncement("Trust Compass is not available for this workspace yet.");
+    navigate(`${pathname}${location.search}${location.hash}`, { replace: true });
+  }, [tierLoading, showCompass, location.hash, location.pathname, location.search, navigate]);
+
   const selectTab = (key, focus = false) => {
     setTab(key);
-    if (focus) requestAnimationFrame(() => tabRefs.current[TABS.findIndex(([tabKey]) => tabKey === key)]?.focus());
+    if (focus) requestAnimationFrame(() => tabRefs.current[VISIBLE_TABS.findIndex(([tabKey]) => tabKey === key)]?.focus());
   };
 
   const onTabKeyDown = (event, index) => {
     let next = null;
-    if (event.key === "ArrowRight") next = (index + 1) % TABS.length;
-    if (event.key === "ArrowLeft") next = (index - 1 + TABS.length) % TABS.length;
+    if (event.key === "ArrowRight") next = (index + 1) % VISIBLE_TABS.length;
+    if (event.key === "ArrowLeft") next = (index - 1 + VISIBLE_TABS.length) % VISIBLE_TABS.length;
     if (event.key === "Home") next = 0;
-    if (event.key === "End") next = TABS.length - 1;
+    if (event.key === "End") next = VISIBLE_TABS.length - 1;
     if (next === null) return;
     event.preventDefault();
-    selectTab(TABS[next][0], true);
+    selectTab(VISIBLE_TABS[next][0], true);
   };
 
   return (
@@ -82,8 +115,8 @@ const CommandHub = ({ accountContext, openPaige }) => {
           borderBottom: "1px solid var(--pg-line)",
         }}
       >
-        {TABS.map(([key, text, Icon], index) => {
-          const active = tab === key;
+        {VISIBLE_TABS.map(([key, text, Icon], index) => {
+          const active = effectiveTab === key;
           return (
             <button
               key={key} type="button" role="tab" id={`command-tab-${key}`}
@@ -107,13 +140,19 @@ const CommandHub = ({ accountContext, openPaige }) => {
       </nav>
       <span aria-live="polite" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clipPath: "inset(50%)" }}>{routeAnnouncement}</span>
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
-        {tab === "plan" ? (
+        {effectiveTab === "plan" ? (
           <div role="tabpanel" id="command-panel-plan" aria-labelledby="command-tab-plan" style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
             <SoloGamePlanWorkspace key={activeTenantId ?? "unresolved"} accountContext={accountContext} openPaige={openPaige} workspaceId={activeTenantId} />
           </div>
-        ) : tab === "sys" ? (
+        ) : effectiveTab === "sys" ? (
           <div role="tabpanel" id="command-panel-sys" aria-labelledby="command-tab-sys" style={{ height: "100%" }}>
             <CommandCenter key={activeTenantId ?? "unresolved"} accountContext={accountContext} openPaige={openPaige} workspaceId={activeTenantId} />
+          </div>
+        ) : effectiveTab === "compass" ? (
+          <div role="tabpanel" id="command-panel-compass" aria-labelledby="command-tab-compass" style={{ height: "100%", overflow: "auto" }}>
+            {/* `key` re-keys every read on a workspace switch so no prior workspace's autonomy, pending
+                actions, or recorded activity can linger even for a frame. */}
+            <TrustCompass key={activeTenantId ?? "unresolved"} accountEpoch={activeTenantId} openPaige={openPaige} />
           </div>
         ) : activeTenantId ? (
           <div role="tabpanel" id="command-panel-mind" aria-labelledby="command-tab-mind" style={{ height: "100%" }}>

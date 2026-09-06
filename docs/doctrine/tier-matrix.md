@@ -335,15 +335,65 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
+### Trust Compass — the governed control surface (Command Center 3rd sub-tab, 2026-09-05)
+
+Trust Compass moved from a top-level Solo branch to the **third Command Center sub-tab** (Business
+Game Plan → Systems Check → **Trust Compass** → Mind; Game Plan not built yet). The mouse-only canvas
+dial and its two false-affordance modals are gone. The surface is now an accessible governance
+instrument whose per-capability knobs write **real** per-tool autonomy through `set_tool_autonomy`
+(the one tenant-writable governance seam), read back through `list_tool_autonomy` /
+`resolve_tool_autonomy`. Effective posture = `min(stored, ceiling, risk cap)`; owner-only tools are
+read-only ("Your call"), `high` tools cap at "Asks first" (the runtime would neutralise `auto`, §70.1),
+and the platform ceiling shows only as an **effect** ("further limited by platform policy"), never the
+ceiling value/posture/attestation (§4.2). Pending decisions route to the ONE Paige chat, not a second
+inbox (§18). Legacy `/solo/{account}/trust-compass` redirects into the Command Center path (§58); no
+duplicate top-level surface remains.
+
+**TIER GATE (owner ruling 2026-09-06, under the Second Brain delivery contract): SOLO ONLY.** The Trust Compass
+sub-tab is released to **Solo only**; **sub-account is DEFERRED** pending an explicit owner release ("no
+subaccount delivery without explicit release"). **Routing reality (§13, reconciled against the verified Business
+Game Plan master-doc entry):** a sub-account renders **AgencyApp at `/business`** today — it does **NOT** mount
+`SoloApp` / the Solo Command Center at all (the §60 Solo≡Sub parity is a future §65 slice, "when `/business`
+mounts `SoloApp`"). So the Trust Compass was never actually reaching sub-accounts in the running app; this gate
+does not remove a live sub-account capability. It is a **forward-safe §60 feature-layer gate**: a new
+`trust_compass` Feature in `src/lib/tier/tierFeatures.ts` (SOLO baseline only), consumed by
+`useTierFeatures().has("trust_compass")` in `CommandCenter.tsx`, so that WHEN the §65 slice mounts `SoloApp` at
+`/business`, the Trust Compass sub-tab stays gated OFF sub-accounts (tab filtered out + gated URL redirected)
+until an explicit release. No inline `account_type` gate (lint:tier-features clean).
+
+| Tier | Sees the tab | Can set a knob (`set_tool_autonomy`) |
+|---|---|---|
+| **God / Super Admin** | — (operator governs via `/operator/settings/capabilities`, not this Solo shell) | — |
+| **Agency** (agency-as-tenant) | — (agency shell has its own surfaces) | — |
+| **Standalone Solo** | ✓ (`trust_compass` in SOLO baseline) | ✓ tenant **admin** on its own tenant · read-only + honest refusal for a non-admin |
+| **Sub-account** | **— DEFERRED** (renders AgencyApp at `/business` today → no Solo Command Center at all; the `trust_compass` gate keeps the sub-tab OFF even after the future §65 SoloApp-at-`/business` slice) | — |
+| **Client** | — (no Command Center) | — |
+| **Anonymous** | **403** | **403** (`set_tool_autonomy` REVOKEs `anon`) |
+
+**Recorded honestly (§13/§32.c):** **Solo = RC (LIVE-pending)**; **sub-account = DEFERRED (not delivered)**.
+Code-complete and covered by unit + jsdom-render tests (the risk-class copy is drift-guarded against
+`_shared/action-risk.ts`; the effective/ceiling/held-back derivation, tenant-bound reads — incl. the
+pending-actions read now scoped to the VIEWED tenant so the global-admin operator escape can't surface
+other tenants' actions (§9) — the write-serializer failure paths, accessible
+`role=slider` knobs incl. keyboard-normalise, honest read/empty/error/forbidden states, the undispatched
+containment tombstones kept OFF the surface (§70.1), the Solo-only tab gate + sub-account redirect, and the
+routing round-trip are all asserted); the
+production build is green. The **authenticated live-drive is OWED** — a real Solo-admin session turning a knob
+and confirming the `tenant_tool_autonomy` write persists — because this build session is headless (no browser,
+§32.c). **Known limitation (CD/product follow-up, §00):** the pending-decisions preview routes to Paige
+generically (no per-`paige_action` deep-link seam; 4 of N shown) — a Claude-Design/product decision, not a CC
+code fix. So Solo is an **RC pending merge + owner live review**, not yet marked LIVE beyond code; sub-account
+is deferred.
+
 ### Business Game Plan is the DEFAULT Command Center landing on Solo (2026-09-05)
 
 The Solo Command Center gained a first sub-tab, **Business Game Plan** (`SoloGamePlanWorkspace`), and
 it is now the **default landing** for the Solo shell. Bare `/command-center` and the legacy
 `/command-center/overview` both redirect (`replace`) to `/command-center/business-game-plan`; the
 `business-game-plan` slug carries `overview` as an alias in `SOLO_BRANCHES` so old deep links resolve.
-Command Center sub-tabs are now **Business Game Plan → Systems Check → Mind** — three REAL tabs;
-Trust Compass's slot (position 3) is reserved for its owner to add a real sub-tab, never a
-dead/placeholder tab (§58).
+Command Center sub-tabs are now **Business Game Plan → Systems Check → Trust Compass → Mind** — all
+four are REAL tabs (Trust Compass shipped its real governed sub-tab in the same merge; see its ledger
+entry above), never a dead/placeholder tab (§58).
 
 **No new table, RPC, edge function, migration, or tier flag.** The surface is a §18 composition hook
 (`useSoloGamePlan`) over already-released, tenant-safe reads (`useCommandCenter`, `useSoloSetupBrief`,
@@ -3793,7 +3843,7 @@ and every tile carries its own.
 | Accounts on record (KPI + Channels + the record form) | **LIVE** | `public.get_social_presence_evidence` / `public.record_social_handles` over `tenants.features->'social_handles'` |
 | Waiting on you (KPI) · PAIGE sees | **PARTIAL** | `paige_actions` at `status='filed'`, `autonomy_lane='confirm'`, filtered to the growth desks, via `useSoloPendingActions` |
 | Captured responses (KPI) · Published outputs · Held for you · Needs repair (pipeline) | **PARTIAL** | `useSoloCampaigns` — `growth_pages`/`_funnels`/`_forms`/`_form_submissions`, all tenant-scoped |
-| Trust Compass lanes | **PARTIAL** | `useSoloTrust` — platform-default lanes, labelled as platform defaults, read-only |
+| Trust Compass lanes (this Growth context) | **PARTIAL** | `useSoloTrust` — platform-default DEPARTMENT lanes, labelled as platform defaults, read-only (unchanged). The **per-tool** autonomy is now a real governed control on the Command Center Trust Compass tab (`set_tool_autonomy`) — see the "Trust Compass — the governed control surface" ledger entry above; this Growth row still refers only to the read-only department-lane read. |
 | Publishing queue · Recorded placements · Scheduled · Ideas · Drafting · every per-channel metric | **UNAVAILABLE** | No tenant-scoped record exists. Each renders an em-dash and the sentence naming what would have to exist |
 | Active missions | **UNAVAILABLE** | Nothing stores a mission, cadence or progress. `tenant_workflows` mirrors n8n and carries neither a cadence nor a target |
 

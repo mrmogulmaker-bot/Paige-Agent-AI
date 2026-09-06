@@ -106,6 +106,21 @@
   development can claim your version slot AFTER your local lint is green; the CI merge-ref is what catches
   it — on any base-advance/merge, re-run the migration lint and renumber past the base's newest, never
   renumber the already-applied one.
+- **PROCESS: the Second Brain is a DELIVERY CONTRACT for every Paige workstream (owner ruling 2026-09-06)** —
+  binding, effective immediately, strengthening §BRAIN/§39/§58. **At the START of every assignment:** read the
+  relevant Second Brain / master-reference entries, decision log, prior handoffs, and active-collision notes
+  BEFORE designing, coding, or recommending; treat them as controlling product context unless a NEWER owner
+  instruction overrides; **call out any conflict between the assignment and the recorded decisions immediately.**
+  **BEFORE any PR is opened, merged, or marked complete:** update the Second Brain with the durable decision,
+  changed contract, known limitation, collision/handoff, and EXACT proof status; record what is
+  **LIVE / PARTIAL / UNAVAILABLE / DEFERRED / PROOF OWED** — never imply a capability is live because a UI or
+  prototype exists; include the NEXT owning workstream and any dependency it must read first; confirm in the
+  closeout EXACTLY where the record was updated. Preserved controlling decisions the owner named: Solo-first
+  scope + no sub-account delivery without explicit release · Admin is a role, never a URL · one tenant-aware
+  Paige workspace, no floating authenticated chat · the current Command Mark replaces the retired orbital
+  PaigeMark · governed action → verified outcome → Rail → Mind/Memory eligibility · MVP cadence after design
+  approval. First application: PR #975 (Trust Compass) — the "Solo + sub-account" claim was reconciled to
+  SOLO-ONLY under this contract (see the Trust Compass entry below).
 
 - **Business Game Plan → Strategy-Desk SLICE A SHIPPED — the in-place production build of the
   owner-approved reimagination (2026-09-06, branch `claude/business-game-plan-ui-rxuju3`, PR #988).**
@@ -189,6 +204,7 @@
   shipped). NET-NEW contracts named (not built): a first-class strategic-plan store + pillars/plays +
   strategy-horizon typing + plan draft/revision store + the Mission System (`campaign_briefs.mission_id`
   is a reserved, unwritten column — no store exists).
+
 - **BRAND: the orbital PaigeMark is RETIRED platform-wide; the Command Mark is the identity (owner ruling 2026-09-06, PR on branch claude/paige-social-subtab-redesign-kd6hy5)** —
   the legacy orbital PaigeMark (gold orb + orbital ring + companion spark) AND the older blue "PAi" monogram
   rasters are retired from every active product/public surface; the Command Mark (slash + orb) is the current
@@ -213,6 +229,7 @@
   Mark PNG uploaded to the storage bucket. **KEPT (not a mark):** `paige-ai-avatar.png` (Paige persona character).
   Next owning workstream: whoever ships email/brand assets does the storage upload; any new brand surface reads
   this entry + `docs/brain/glossary.md` (Command Mark) first.
+
 - **PAIGE Mind — the owner-approved 3D knowledge orb ported LIVE onto the Solo surface (2026-09-06, MVP mode)** —
   the §28-frozen, Gate-1-approved Three.js "knowledge orb" prototype (`docs/prototypes/command-center-mind-gate1.html`)
   is wired into the real `SoloMindWorkspace` as the Mind subtab's primary instrument. Engine promoted verbatim
@@ -300,6 +317,73 @@
   (kept out of this deploy-free UI+docs PR because `supabase/functions/**` edits trigger broad no-op edge
   redeploys — belongs in an isolated backend commit). Still OWED: §32.c authenticated per-persona browser
   confirmation to a browser-capable session (the removal is a compile-time fact the hardened guard re-guarantees).
+
+- **Solo Trust Compass became a REAL governed control surface, 3rd Command Center tab (2026-09-05, RC)** —
+  moved from a top-level Solo branch to the third Command Center sub-tab (Business Game Plan → Systems Check →
+  Trust Compass → Mind); legacy `/solo/{account}/trust-compass` redirects in (§58, no duplicate surface). The mouse-only
+  canvas dial + two false-affordance modals are gone. Per-capability knobs write **real** per-tool autonomy
+  via `set_tool_autonomy` (the ONE tenant-writable governance seam, JWT-scoped to a tenant admin, §59), read
+  back via `list_tool_autonomy` / `resolve_tool_autonomy`. Effective = `min(stored, ceiling, risk cap)`:
+  owner-only → read-only "Your call"; `high` → caps at "Asks first" (runtime neutralises `auto`, §70.1); the
+  platform ceiling shows only as an **effect**, never itself (§4.2). Risk classes copied into the browser
+  are drift-guarded against `_shared/action-risk.ts` by a test (§18). New files: `src/solo/data/
+  capabilityTools.ts` + `useSoloToolGovernance.ts`. Pending decisions route to the ONE dedicated Paige chat
+  via `openPaige` (the surviving authenticated command field, not the floating chatbot retired in #981) (§18).
+  GREEN headless (unit + jsdom-render, tsc ratchet, relevant lints, prod build). **§32.c authenticated
+  live-drive OWED** (headless session) → recorded as RC, not LIVE.
+  **TIER (owner ruling 2026-09-06, under the Second Brain delivery contract): SOLO ONLY. Sub-account DEFERRED**
+  — the Trust Compass sub-tab is gated OFF sub-accounts via a new `trust_compass` feature in the §60 ONE HOME
+  (`src/lib/tier/tierFeatures.ts`, SOLO baseline only; `useTierFeatures().has("trust_compass")` filters the Command
+  Center tab + a redirect bounces a sub-account off the gated URL). Reason: the owner's "no subaccount delivery
+  without explicit release" rule overrides the recorded §60 Solo≡Sub architecture for this surface.
+  **§13 routing-reality reconciliation (per the delivery contract's conflict-callout):** a sub-account renders
+  **AgencyApp at `/business`** today (`TIER_TREES.sub_account.branches = SUB_ACCOUNT_BRANCHES`, an AgencyApp tree)
+  — it does NOT mount `SoloApp`/the Solo Command Center at all yet, so the Trust Compass was never actually
+  reaching sub-accounts in the running app (the old Trust Compass ledger's "shares the Solo shell ✓" was
+  aspirational, contradicted by the verified BGP master-doc entry). This gate removes NO live sub-account
+  capability; it is forward-safe for the future §65 slice ("when `/business` mounts `SoloApp`"). Proof status:
+  **Solo = RC (LIVE-pending, §32.c live-drive PROOF OWED); sub-account = DEFERRED (never delivered — AgencyApp today, gate holds post-§65)**.
+  **KNOWN LIMITATION (CD/product follow-up, §00):** the pending-decisions PREVIEW routes to Paige generically
+  (per-`paige_action` deep-link into the chat has no backend seam; only 4 of N shown) — Codex flagged both as
+  P2; both are Claude-Design / product-flow decisions (in-surface copy, layout, a new routing seam), NOT
+  CC-implementable, so they are routed as design follow-ups, not silently redesigned. The core governed control
+  (the knobs writing `set_tool_autonomy`) is unaffected. Reviewed through Codex rounds 2–6 (tenant-bound reads
+  incl. the catalogue read, full write-authority predicate, per-tool write serialization + failure paths,
+  cancelled-drag discard, keyboard-normalise a mixed domain, removed unsupported chat claim).
+  **Round-6 §9/§70.1 fixes (real, CC-actionable — NOT design):** (1) **P1 §9 pending-actions cross-tenant leak** —
+  `useSoloPendingActions` read `paige_actions` UNSCOPED, and `pa_tenant_staff_read`'s `OR has_role(auth.uid(),'admin')`
+  is a GLOBAL (tenant-agnostic, §53/§59) operator escape, so a platform-operator act-as / any global-admin saw OTHER
+  tenants' action titles on the viewed Compass. Fixed: the hook takes the viewed tenant + filters `.eq('tenant_id', …)`;
+  a null workspace runs NO query. §37 producer inventory — ALL 3 callers now scope: compass (`accountEpoch`),
+  `useSoloGamePlan` (`workspaceId`), `social-command` (`social.tenantId`). (2) **P2 §70.1 tombstone knobs** —
+  `marketplace_install`/`marketplace_uninstall`/`n8n_delete_workflow` are lint-exempted undispatched containment
+  tombstones; mapping them rendered working-looking knobs that govern nothing → removed to `UNMAPPED_CATALOGUE_TOOLS`.
+  (3) **P2 §9 ceiling probe** — `resolve_tool_autonomy` silently discards `_tenant_id` for non-owners (no mismatch
+  guard, unlike set/list), so the round-2 ceiling binding cannot reject a stale read. A round-6 migration adding that
+  guard was **REVERTED in round 7**: Codex F-B caught that `resolve_tool_autonomy` is the SHARED resolver
+  `resolve_automation_autonomy` calls to resolve an automation in ANY tenant the caller is a MEMBER of (not just the
+  active one), so a mismatch guard aborts that legitimate cross-membership call (§37 miss — a half-hardened resolver
+  that 4xxs a legit caller is worse than the narrow race). So the ceiling probe stays advisory for non-owners; the
+  stale-read protection is the tenant-bound CATALOGUE read (which DOES reject) plus the `accountEpoch` re-key that
+  cancels the effect the instant the workspace changes — documented in `useSoloToolGovernance.ts`, NOT
+  server-enforceable on the shared resolver.
+  **Round-7 follow-ons (Codex round-6 review):** F-B above (migration reverted); F-A — removing the marketplace
+  tombstones left the `account` domain label claiming "marketplace/installs" it no longer governs, corrected to
+  "Team access / Teammate roles, permissions, and invitations" (§70.1/§13, a factual fix to CC-authored config my own
+  change falsified).
+  **Round-8 (Codex round-7 review):** F-C (P1, FIXED) — the knob `commit` no-op fired on `r===rank` even while a
+  DIFFERENT write was in flight, so `off→confirm→off` before the first save let the in-flight `confirm` persist
+  (more permissive than the user's back-out); now the no-op only fires when nothing is draining/queued, else the
+  return value is enqueued to override the in-flight write (§70.1) + test. F-D (P2, §00 follow-up) — `mission_create/
+  revise/transition` are LIVE, HIGH-risk, Solo-facing chat mutations (humanSurface `/command-center/business-game-plan`)
+  not on the compass, so "Pipeline & work → Held" doesn't hold them; their governance HOME on the compass (a new
+  "Business plan" domain vs folding into an existing one) is a §00 organization decision, tracked with the
+  "compass curates a subset" position — NOT silently mis-filed under Pipeline. The two pending-preview P2s + F-D
+  remain §00 design follow-ups (owner/CD to decide the mission-governance home).
+  **Next owning workstream:** (1) the §32.c authenticated Solo live-drive (browser-capable session); (2) a CD/product
+  decision on the pending-decisions preview (deep-link seam + overflow); (3) any future explicit sub-account release
+  (flip `trust_compass` into SUB_ACCOUNT_FEATURES + a §51 sub-account tier verification). Dependency to read first:
+  `docs/doctrine/tier-matrix.md` Trust Compass ledger + this entry.
 
 - **Campaigns → Overview redesigned as the Campaign Command Desk + a tenant-safe Campaign Brief
   foundation (2026-09-05, PR #970 — RC, pending merge approval)** — owner-approved the prototype
