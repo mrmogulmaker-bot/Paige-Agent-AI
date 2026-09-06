@@ -182,24 +182,45 @@ const useReduced=()=>{const[r,setR]=React.useState(false);React.useEffect(()=>{
  m.addEventListener?.('change',f);return()=>m.removeEventListener?.('change',f);},[]);return r;};
 
 // ── the accessible knob: a real 3-detent slider (off/confirm/auto), capped at `max` ──────────
-const TcKnob=({value,max,onCommit,ariaLabel,onError})=>{
+// `mixed` (domain knobs only): the underlying tools are at different levels, so selecting the
+// displayed level must still commit (normalise all of them) rather than no-op on equality.
+const TcKnob=({value,max,onCommit,ariaLabel,onError,mixed})=>{
  const maxRank=rankOfMode(max);
  const disabled=maxRank<=0; // owner_only (max off) is not a settable knob
  const rank=rankOfMode(value);
  const[pending,setPending]=React.useState(null);
  const[saving,setSaving]=React.useState(false);
  const shown=pending!=null?pending:rank;
+ const mounted=React.useRef(true);
+ React.useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  // When a saved change is re-read, the real `value` prop arrives and the optimistic hold is dropped
  // in the SAME frame it lands — clearing `pending` inside the success callback instead would snap the
  // knob back to the stale prop for a frame first (the post-save flicker). On success we therefore keep
  // the optimistic value until the refreshed prop replaces it; on failure we clear it at once.
  React.useEffect(()=>{setPending(null);},[value]);
- const commit=React.useCallback((r)=>{r=Math.max(0,Math.min(maxRank,r));if(r===rank){setPending(null);return;}
-  setPending(r);setSaving(true);
-  Promise.resolve(onCommit(modeOfRank(r)))
-   .then(res=>{setSaving(false);if(res&&res.ok===false){setPending(null);onError&&onError(res.error);}})
-   .catch(err=>{setSaving(false);setPending(null);onError&&onError(err);});
- },[maxRank,rank,onCommit,onError]);
+ // SERIALIZE writes so the LAST choice wins. Rapid input (auto→confirm→off before the first save
+ // returns) must never fire overlapping RPCs that can land out of order and leave the DB at a MORE
+ // permissive value than the user's final choice — a real governance hazard. Only one write is in
+ // flight; `desired` holds the newest requested rank and the drain writes it once the prior settles.
+ const desired=React.useRef(null);
+ const draining=React.useRef(false);
+ const drain=React.useCallback(async()=>{
+  if(draining.current)return;draining.current=true;
+  try{
+   while(desired.current!=null){
+    const target=desired.current;desired.current=null;
+    if(mounted.current)setSaving(true);
+    let res;
+    try{res=await Promise.resolve(onCommit(modeOfRank(target)));}
+    catch(err){if(mounted.current)setPending(null);onError&&onError(err);return;}
+    if(res&&res.ok===false){if(mounted.current)setPending(null);onError&&onError(res.error);return;}
+   }
+  }finally{draining.current=false;if(mounted.current)setSaving(false);}
+ },[onCommit,onError]);
+ const commit=React.useCallback((r)=>{r=Math.max(0,Math.min(maxRank,r));
+  if(r===rank&&!mixed){setPending(null);return;} // no change — unless a mixed domain needs normalising to the shown level
+  setPending(r);desired.current=r;void drain();
+ },[maxRank,rank,mixed,drain]);
  const key=e=>{if(disabled)return;let r=shown;
   if(e.key==='ArrowRight'||e.key==='ArrowUp')r=shown+1;else if(e.key==='ArrowLeft'||e.key==='ArrowDown')r=shown-1;
   else if(e.key==='Home')r=0;else if(e.key==='End')r=maxRank;else return;e.preventDefault();commit(r);};
@@ -315,7 +336,9 @@ return <div style={{border:'1px solid var(--line)',borderRadius:'var(--r-m)',pad
 <div className="sub" style={{fontSize:10.5,marginTop:6}}>Platform default policy — not a setting this workspace chose.</div></div>};
 
 // ── one capability knob card (real per-tool governance via set_tool_autonomy) ─────────────────
-const KnobCard=({domain,open,onToggle,onSetDomain,onSetTool,onError,side})=>{
+// `readOnly` (non-admin viewer): the server refuses set_tool_autonomy for non-admins, so we render
+// the real posture as a STATIC pill, never an active slider that only fails on write (§70.1).
+const KnobCard=({domain,open,onToggle,onSetDomain,onSetTool,onError,readOnly,side})=>{
  const P=POSTURE_META[domain.posture];
  const settable=domain.tools.filter(t=>t.settable);
  const ariaLabel='How much '+domain.title+' may run on its own';
@@ -329,9 +352,11 @@ const KnobCard=({domain,open,onToggle,onSetDomain,onSetTool,onError,side})=>{
      <span style={{fontSize:13,fontWeight:500,color:P.col,display:'block',marginTop:1}}>{P.label}</span></span>
    </button>
    {settable.length
-    ? <TcKnob value={domain.level} max={domain.domainMax} ariaLabel={ariaLabel} onError={onError}
+    ? <TcKnob value={domain.level} max={domain.domainMax} mixed={domain.mixed} ariaLabel={ariaLabel} onError={onError}
        onCommit={(m)=>onSetDomain(domain.key,m)}/>
-    : <span className="pill pill-n" style={{flex:'none'}}>Your call</span>}
+    : readOnly
+     ? <span className={'pill '+P.pill} style={{flex:'none'}} title="Read-only — a workspace admin can change this">{P.label}</span>
+     : <span className="pill pill-n" style={{flex:'none'}}>Your call</span>}
   </div>
   {settable.length>0&&<div className="row" style={{gap:6,padding:'0 15px 10px',fontSize:10.3,color:'var(--ink-3)'}}>
    <Ic.arrow size={11} style={{color:'var(--violet)',flex:'none'}}/>Drag or use ← → to set — Paige can also set it in chat.</div>}
@@ -352,7 +377,9 @@ const KnobCard=({domain,open,onToggle,onSetDomain,onSetTool,onError,side})=>{
      {t.settable
       ? <TcKnob value={clampModeToRisk(t.stored,t.risk)} max={maxModeForRisk(t.risk)} ariaLabel={'How much “'+t.label+'” may run on its own'} onError={onError}
          onCommit={(m)=>onSetTool(t.toolKey,m)}/>
-      : <span className="pill pill-n" title="Owner-only — always your call" style={{flex:'none'}}>Your call</span>}
+      : t.risk==='owner_only'
+       ? <span className="pill pill-n" title="Owner-only — always your call" style={{flex:'none'}}>Your call</span>
+       : null /* read-only (non-admin): the effective-posture label at right already shows the real state */}
      <span style={{fontSize:11,fontWeight:600,color:tp.col,minWidth:96,textAlign:'right'}}>{tp.label}</span>
     </div>;})}
   </div>}
@@ -454,10 +481,12 @@ return <div className="fade-in pg" style={{width:'100%',maxWidth:1440,margin:'0 
    <Ic.shield size={15} style={{color:'var(--violet)',flex:'none'}}/><span className="sub" style={{fontSize:12}}>Platform policy is currently limiting some unattended actions further, on top of your settings.</span></div>}
   {gov.ceilingUnconfirmed&&<div className="card" role="status" style={{padding:'11px 15px',display:'flex',gap:9,alignItems:'center',borderLeft:'3px solid var(--warn)'}}>
    <Ic.shield size={15} style={{color:'var(--warn)',flex:'none'}}/><span className="sub" style={{fontSize:12}}>Platform limits couldn’t be confirmed just now, so what’s shown may be more permissive than policy actually allows. Your own settings are unaffected.</span></div>}
+  {!gov.canWrite&&<div className="card" role="note" style={{padding:'11px 15px',display:'flex',gap:9,alignItems:'center',borderLeft:'3px solid var(--ink-3)'}}>
+   <Ic.shield size={15} style={{color:'var(--ink-3)',flex:'none'}}/><span className="sub" style={{fontSize:12}}>You have read-only access here. A workspace admin can change what Paige may do on her own.</span></div>}
   <div className="tc2-instrument" style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1.15fr) minmax(0,1fr)',gap:16,alignItems:'start'}}>
-   <div style={{display:'grid',gap:14}}>{left.map(d=><KnobCard key={d.key} domain={d} open={open===d.key} onToggle={()=>setOpen(open===d.key?null:d.key)} onSetDomain={setDomain} onSetTool={setTool} onError={onError} side="lft"/>)}</div>
+   <div style={{display:'grid',gap:14}}>{left.map(d=><KnobCard key={d.key} domain={d} open={open===d.key} onToggle={()=>setOpen(open===d.key?null:d.key)} onSetDomain={setDomain} onSetTool={setTool} onError={onError} readOnly={!gov.canWrite} side="lft"/>)}</div>
    <TcCompass domains={domains} reduced={reduced}/>
-   <div style={{display:'grid',gap:14}}>{right.map(d=><KnobCard key={d.key} domain={d} open={open===d.key} onToggle={()=>setOpen(open===d.key?null:d.key)} onSetDomain={setDomain} onSetTool={setTool} onError={onError} side="rgt"/>)}</div>
+   <div style={{display:'grid',gap:14}}>{right.map(d=><KnobCard key={d.key} domain={d} open={open===d.key} onToggle={()=>setOpen(open===d.key?null:d.key)} onSetDomain={setDomain} onSetTool={setTool} onError={onError} readOnly={!gov.canWrite} side="rgt"/>)}</div>
   </div>
  </>}
 

@@ -63,7 +63,11 @@ export interface GovernedTool {
   effective: ToolMode;
   /** The highest mode this tool can genuinely be set to (risk cap). */
   maxSettable: ToolMode;
-  /** Whether the owner can change it here at all (owner_only tools cannot). */
+  /**
+   * Whether this workspace can change the tool here at all. False for an owner_only tool (never
+   * assistant-driven) AND for a non-admin viewer — `set_tool_autonomy` requires a tenant admin, so a
+   * non-admin gets a read-only control, never an active slider that only fails on write (§70.1).
+   */
   settable: boolean;
   /** Present when effective < stored: why the tool is held below the stored setting. */
   heldBack: { by: "risk" | "policy"; reason: string } | null;
@@ -104,6 +108,12 @@ export interface SoloToolGovernance {
    * than implying it confirmed no narrowing (§13) — a failed probe must never read as "unrestricted".
    */
   ceilingUnconfirmed: boolean;
+  /**
+   * Whether the current viewer may change settings here — mirrors the server authority
+   * `set_tool_autonomy` enforces (`is_current_user_tenant_admin`). Fail-closed: false on a failed or
+   * pending admin read, so a non-admin never sees an editable control that would only fail on write.
+   */
+  canWrite: boolean;
   setDomainMode: (key: CapabilityKey, mode: ToolMode) => Promise<{ ok: boolean; error?: string }>;
   setToolMode: (toolKey: string, mode: ToolMode) => Promise<{ ok: boolean; error?: string }>;
   refresh: () => void;
@@ -129,6 +139,7 @@ const EMPTY: SoloToolGovernance = {
   byTool: {},
   ceilingLimiting: false,
   ceilingUnconfirmed: false,
+  canWrite: false,
   setDomainMode: async () => ({ ok: false, error: "not ready" }),
   setToolMode: async () => ({ ok: false, error: "not ready" }),
   refresh: () => {},
@@ -154,6 +165,7 @@ function domainLevelOf(tools: GovernedTool[]): { level: ToolMode; mixed: boolean
 export function deriveGovernance(
   rows: CatalogueRow[],
   ceilingByStored: Partial<Record<ToolMode, ToolMode>>,
+  canWrite = true,
 ): { domains: GovernedDomain[]; byTool: Record<string, GovernedTool>; ceilingLimiting: boolean } {
   const byTool: Record<string, GovernedTool> = {};
   let ceilingLimiting = false;
@@ -200,7 +212,9 @@ export function deriveGovernance(
       isDefault: row.is_default !== false,
       effective,
       maxSettable: riskCap,
-      settable: meta.risk !== "owner_only",
+      // Settable only when this is not an owner_only tool AND the viewer can actually write —
+      // otherwise the knob would be an active control that only fails on the server (§70.1).
+      settable: canWrite && meta.risk !== "owner_only",
       heldBack,
     };
   }
@@ -246,23 +260,31 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
     rows: CatalogueRow[] | null;
     ceilingByStored: Partial<Record<ToolMode, ToolMode>>;
     ceilingUnconfirmed: boolean;
+    isAdmin: boolean;
     error: string | null;
-  }>({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, error: null });
+  }>({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, isAdmin: false, error: null });
   const [reloadKey, setReloadKey] = useState(0);
 
   const refresh = useCallback(() => setReloadKey((k) => k + 1), []);
 
   useEffect(() => {
     let active = true;
-    setState({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, error: null });
+    setState({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, isAdmin: false, error: null });
     // The epoch contract (mirrors useSoloTrust): a null epoch means the account is not resolved yet.
     if (accountEpoch === null) return () => { active = false; };
 
     void (async () => {
-      const res = await rpc("list_tool_autonomy");
+      // Whether this viewer may write is the SAME authority set_tool_autonomy enforces
+      // (is_current_user_tenant_admin). Read it fail-closed so a non-admin renders read-only rather
+      // than an active control that only fails on the server (§70.1); a failed/absent read → false.
+      const [res, adminRes] = await Promise.all([
+        rpc("list_tool_autonomy"),
+        rpc("is_current_user_tenant_admin"),
+      ]);
       if (!active) return;
+      const isAdmin = !adminRes.error && adminRes.data === true;
       if (res.error) {
-        setState({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, error: res.error.message });
+        setState({ rows: null, ceilingByStored: {}, ceilingUnconfirmed: false, isAdmin, error: res.error.message });
         return;
       }
       const rows = ((res.data as CatalogueRow[] | null) ?? []).filter((r) => r.tool_key in TOOL_MAP);
@@ -289,11 +311,17 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
         }),
       );
       if (!active) return;
-      setState({ rows, ceilingByStored, ceilingUnconfirmed: !ceilingProbeOk, error: null });
+      setState({ rows, ceilingByStored, ceilingUnconfirmed: !ceilingProbeOk, isAdmin, error: null });
     })();
 
     return () => { active = false; };
   }, [accountEpoch, reloadKey]);
+
+  // The tenant this surface is bound to. Passed to every write as `_tenant_id` so set_tool_autonomy's
+  // existing tenant-mismatch guard REJECTS a write that lands after the admin switched workspaces —
+  // a delayed request can never mutate the destination workspace instead of the one it began in (§9/§51).
+  const expectedTenant: string | null =
+    typeof accountEpoch === "string" && accountEpoch ? accountEpoch : null;
 
   const setToolMode = useCallback(
     async (toolKey: string, mode: ToolMode): Promise<{ ok: boolean; error?: string }> => {
@@ -302,12 +330,12 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
       if (meta.risk === "owner_only") return { ok: false, error: "owner_only" };
       // Write the CLAMPED mode so the stored value is never a misleading auto behind a high tool.
       const write = clampModeToRisk(mode, meta.risk);
-      const res = await rpc("set_tool_autonomy", { _tool_key: toolKey, _mode: write });
+      const res = await rpc("set_tool_autonomy", { _tool_key: toolKey, _mode: write, _tenant_id: expectedTenant });
       if (res.error) return { ok: false, error: res.error.message };
       refresh();
       return { ok: true };
     },
-    [refresh],
+    [refresh, expectedTenant],
   );
 
   const setDomainMode = useCallback(
@@ -317,7 +345,9 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
       );
       if (!tools.length) return { ok: false, error: "no settable tools" };
       const results = await Promise.all(
-        tools.map((t) => rpc("set_tool_autonomy", { _tool_key: t, _mode: clampModeToRisk(mode, TOOL_MAP[t].risk) })),
+        tools.map((t) =>
+          rpc("set_tool_autonomy", { _tool_key: t, _mode: clampModeToRisk(mode, TOOL_MAP[t].risk), _tenant_id: expectedTenant }),
+        ),
       );
       const failed = results.find((r) => r.error);
       // A domain write is many per-tool writes and is NOT atomic: on a transient per-call error some
@@ -328,7 +358,7 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
       if (failed?.error) return { ok: false, error: failed.error.message };
       return { ok: true };
     },
-    [refresh],
+    [refresh, expectedTenant],
   );
 
   return useMemo<SoloToolGovernance>(() => {
@@ -342,13 +372,14 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
         byTool: {},
         ceilingLimiting: false,
         ceilingUnconfirmed: false,
+        canWrite: false,
         setDomainMode,
         setToolMode,
         refresh,
       };
     }
 
-    const { domains, byTool, ceilingLimiting } = deriveGovernance(state.rows ?? [], state.ceilingByStored);
+    const { domains, byTool, ceilingLimiting } = deriveGovernance(state.rows ?? [], state.ceilingByStored, state.isAdmin);
     return {
       loading: false,
       configured: true,
@@ -357,6 +388,7 @@ export function useSoloToolGovernance(accountEpoch?: string | null): SoloToolGov
       byTool,
       ceilingLimiting,
       ceilingUnconfirmed: state.ceilingUnconfirmed,
+      canWrite: state.isAdmin,
       setDomainMode,
       setToolMode,
       refresh,

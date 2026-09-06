@@ -64,11 +64,14 @@ const ok = (d = dept()) => ({
 
 // A real governed value the hook would produce, built from real tool keys via the real derivation.
 const row = (tool_key: string, mode: string, is_default = false) => ({ tool_key, label: tool_key, category: "x", mode, is_default });
-const govValue = (rows: ReturnType<typeof row>[], ceiling = {}, over: Record<string, unknown> = {}) => {
-  const d = deriveGovernance(rows as never, ceiling as never);
+const govValue = (rows: ReturnType<typeof row>[], ceiling = {}, over: Record<string, unknown> = {}, canWrite = true) => {
+  // canWrite feeds BOTH the derivation (which gates `settable`) and the exposed flag, so the mock is
+  // internally consistent — a non-admin has non-settable tools AND canWrite=false, like the real hook.
+  const d = deriveGovernance(rows as never, ceiling as never, canWrite);
   return {
     loading: false, configured: true, error: null,
     domains: d.domains, byTool: d.byTool, ceilingLimiting: d.ceilingLimiting,
+    ceilingUnconfirmed: false, canWrite,
     setDomainMode: vi.fn(async () => ({ ok: true })),
     setToolMode: vi.fn(async () => ({ ok: true })),
     refresh: vi.fn(), ...over,
@@ -157,13 +160,13 @@ describe("MiniCompass — what the owner is told, in each state the read can be 
  */
 describe("TrustCompass — the governed surface runs, honest and accessible", () => {
   it("while the governance read is loading, says so — not an empty grid", () => {
-    gov.value = { loading: true, configured: false, error: null, domains: [], byTool: {}, ceilingLimiting: false, setDomainMode: vi.fn(), setToolMode: vi.fn(), refresh: vi.fn() };
+    gov.value = { loading: true, configured: false, error: null, domains: [], byTool: {}, ceilingLimiting: false, ceilingUnconfirmed: false, canWrite: false, setDomainMode: vi.fn(), setToolMode: vi.fn(), refresh: vi.fn() };
     const text = draw(<TC accountEpoch="t1" />).textContent ?? "";
     expect(text).toMatch(/Reading what this workspace lets Paige do/i);
   });
 
   it("on a FAILED governance read, says it couldn't be read — never an open/empty workspace", () => {
-    gov.value = { loading: false, configured: false, error: "boom", domains: [], byTool: {}, ceilingLimiting: false, setDomainMode: vi.fn(), setToolMode: vi.fn(), refresh: vi.fn() };
+    gov.value = { loading: false, configured: false, error: "boom", domains: [], byTool: {}, ceilingLimiting: false, ceilingUnconfirmed: false, canWrite: false, setDomainMode: vi.fn(), setToolMode: vi.fn(), refresh: vi.fn() };
     const h = draw(<TC accountEpoch="t1" />);
     const t = h.textContent ?? "";
     expect(t).toMatch(/couldn.t be read/i);
@@ -205,6 +208,50 @@ describe("TrustCompass — the governed surface runs, honest and accessible", ()
     if (toggle) act(() => { toggle.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
     // The owner-only row shows "Your call" and the surface never renders an input.
     expect(h.querySelectorAll("input")).toHaveLength(0);
+  });
+
+  it("a non-admin viewer is READ-ONLY — a read-only note and NO active slider (§70.1)", () => {
+    // canWrite=false feeds the derivation (settable=false) AND the flag, like the real hook.
+    gov.value = govValue([row("crm_create_contact", "auto"), row("crm_add_note", "confirm")], {}, {}, false);
+    const h = draw(<TC accountEpoch="t1" />);
+    expect(h.textContent ?? "").toMatch(/read-only access/i);
+    // No editable control is rendered — the effective state is shown, never a slider that only fails on write.
+    expect(h.querySelectorAll('[role="slider"]')).toHaveLength(0);
+  });
+
+  it("a MIXED domain commits its displayed level on a click, normalising all tools rather than no-op (#3)", async () => {
+    // crm mixed: create_contact=confirm, add_note=off → domain level=confirm, mixed=true.
+    const v = govValue([row("crm_create_contact", "confirm"), row("crm_add_note", "off")]);
+    gov.value = v;
+    const h = draw(<TC accountEpoch="t1" />);
+    const knob = [...h.querySelectorAll('[role="slider"]')]
+      .find((s) => /CRM & client records/i.test(s.getAttribute("aria-label") ?? ""))!;
+    expect(knob, "the mixed CRM domain has a knob").toBeTruthy();
+    // A click (down+up, no drag) at the displayed level must still commit — a mixed domain normalises.
+    await act(async () => {
+      knob.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+      knob.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
+      await Promise.resolve();
+    });
+    expect(v.setDomainMode).toHaveBeenCalledWith("crm", "confirm");
+  });
+
+  it("serializes knob writes — a second change waits for the first, and the LAST value wins (§70.1 #1)", async () => {
+    // A gated setDomainMode: the first write hangs until released, proving the second does not overlap.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const modes: string[] = [];
+    const setDomainMode = vi.fn(async (_k: string, m: string) => { modes.push(m); if (modes.length === 1) await gate; return { ok: true }; });
+    gov.value = govValue([row("crm_create_contact", "auto")], {}, { setDomainMode });
+    const h = draw(<TC accountEpoch="t1" />);
+    const knob = [...h.querySelectorAll('[role="slider"]')]
+      .find((s) => /CRM & client records/i.test(s.getAttribute("aria-label") ?? ""))!;
+    // First ArrowLeft → confirm (in flight, gated). Second ArrowLeft → off (must QUEUE behind it).
+    await act(async () => { knob.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })); });
+    await act(async () => { knob.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })); });
+    expect(modes).toEqual(["confirm"]); // only ONE write in flight — no overlapping RPCs that could reorder
+    await act(async () => { release(); await Promise.resolve(); await Promise.resolve(); });
+    expect(modes).toEqual(["confirm", "off"]); // the queued last choice runs once the first settles
   });
 
   it("routes pending decisions to the ONE Paige chat, never a second approve button", () => {

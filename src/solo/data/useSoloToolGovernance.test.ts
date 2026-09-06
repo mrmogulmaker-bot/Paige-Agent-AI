@@ -152,3 +152,28 @@ describe("deriveGovernance — domain aggregation", () => {
     expect(crm.level).toBe("confirm");
   });
 });
+
+describe("deriveGovernance — write authority gates settable (§70.1)", () => {
+  it("a non-admin (canWrite=false) makes EVERY tool non-settable, ordinary ones included", () => {
+    // The server refuses set_tool_autonomy for a non-admin, so a knob would be a false affordance.
+    const { byTool } = deriveGovernance(
+      [row("crm_create_contact", "auto"), row("crm_add_note", "confirm")],
+      {},
+      false,
+    );
+    expect(byTool["crm_create_contact"].settable).toBe(false);
+    expect(byTool["crm_add_note"].settable).toBe(false);
+    // The real effective posture is still exposed — the surface shows the state, just read-only.
+    expect(byTool["crm_create_contact"].effective).toBe("auto");
+  });
+
+  it("an admin (canWrite=true, the default) keeps ordinary tools settable; owner_only is never settable", () => {
+    const { byTool } = deriveGovernance(
+      [row("crm_create_contact", "auto"), row("automation_set_grant", "off")],
+      {},
+      true,
+    );
+    expect(byTool["crm_create_contact"].settable).toBe(true);
+    expect(byTool["automation_set_grant"].settable).toBe(false);
+  });
+});
