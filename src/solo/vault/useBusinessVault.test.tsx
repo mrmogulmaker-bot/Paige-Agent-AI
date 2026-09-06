@@ -7,6 +7,7 @@ const harness = vi.hoisted(() => ({
   tenantId: "tenant-a",
   rpc: vi.fn(),
   invoke: vi.fn(),
+  authChanged: null as null | (() => void),
   latest: null as null | { state: string; error: string | null },
 }));
 
@@ -18,6 +19,12 @@ vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: harness.rpc,
     functions: { invoke: harness.invoke },
+    auth: {
+      onAuthStateChange: (callback: () => void) => {
+        harness.authChanged = callback;
+        return { data: { subscription: { unsubscribe: vi.fn() } } };
+      },
+    },
   },
 }));
 
@@ -29,6 +36,7 @@ beforeEach(() => {
   harness.invoke.mockReset();
   harness.tenantId = "tenant-a";
   harness.latest = null;
+  harness.authChanged = null;
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -43,6 +51,7 @@ describe("Business Vault authorization load", () => {
   it("passes a real abort signal and bounded timeout to manual upload", async () => {
     harness.rpc
       .mockResolvedValueOnce({ data: { allowed: true, can_archive: true }, error: null })
+      .mockResolvedValueOnce({ data: { available: false }, error: null })
       .mockResolvedValueOnce({
         data: { records: [], obligations: [], contracts: [], facts: [] },
         error: null,
@@ -94,6 +103,24 @@ describe("Business Vault authorization load", () => {
     expect(canShowVaultNavigation("allowed")).toBe(true);
   });
 
+  it("removes Vault navigation after same-tenant authorization is revoked", async () => {
+    harness.rpc
+      .mockResolvedValueOnce({ data: { allowed: true }, error: null })
+      .mockResolvedValueOnce({ data: { allowed: false }, error: null });
+    const { useVaultAccess } = await import("./useBusinessVault");
+    let latest = "loading";
+    function Probe() {
+      latest = useVaultAccess();
+      return null;
+    }
+    await act(async () => root.render(<Probe />));
+    await act(async () => Promise.resolve());
+    expect(latest).toBe("allowed");
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await act(async () => Promise.resolve());
+    expect(latest).toBe("denied");
+  });
+
   it("does not request a snapshot after an explicit role denial", async () => {
     harness.rpc.mockResolvedValueOnce({ data: { allowed: false }, error: null });
     const { useBusinessVault } = await import("./useBusinessVault");
@@ -125,5 +152,26 @@ describe("Business Vault authorization load", () => {
     expect(harness.rpc).toHaveBeenCalledTimes(1);
     expect(harness.latest?.state).toBe("error");
     expect(harness.latest?.error).toContain("authorization could not be confirmed");
+  });
+
+  it("clears cached metadata when a focused session loses Vault authorization", async () => {
+    harness.rpc
+      .mockResolvedValueOnce({ data: { allowed: true, can_archive: true }, error: null })
+      .mockResolvedValueOnce({ data: { available: false }, error: null })
+      .mockResolvedValueOnce({ data: { records: [{ id: "record-a" }], obligations: [], contracts: [], facts: [] }, error: null })
+      .mockResolvedValueOnce({ data: { allowed: false }, error: null });
+    const { useBusinessVault } = await import("./useBusinessVault");
+    let latest: { state: string; hasSnapshot: boolean } | null = null;
+    function Probe() {
+      const vault = useBusinessVault();
+      latest = { state: vault.state, hasSnapshot: vault.snapshot !== null };
+      return null;
+    }
+    await act(async () => root.render(<Probe />));
+    await act(async () => Promise.resolve());
+    expect(latest).toEqual({ state: "allowed", hasSnapshot: true });
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await act(async () => Promise.resolve());
+    expect(latest).toEqual({ state: "denied", hasSnapshot: false });
   });
 });

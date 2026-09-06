@@ -4,6 +4,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 type Claim = { version_id: string; storage_path: string };
+type QuarantineClaim = { quarantine_id: string; storage_path: string };
 
 Deno.serve(async (request) => {
   const headers = {
@@ -40,5 +41,23 @@ Deno.serve(async (request) => {
     if (cancelled.error) deferred += 1;
     else cleaned += 1;
   }
-  return json({ ok: true, cleaned, deferred }, 200);
+  const quarantine = await admin.rpc("business_vault_claim_quarantine_cleanup", { p_limit: 50 });
+  if (quarantine.error) return json({ error: "reconciliation_unavailable" }, 503);
+  let quarantineCleaned = 0;
+  for (const claim of (quarantine.data ?? []) as QuarantineClaim[]) {
+    const removed = await admin.storage.from("business-vault-quarantine").remove([claim.storage_path]);
+    if (removed.error) {
+      deferred += 1;
+      await admin.rpc("business_vault_defer_quarantine_cleanup", {
+        p_quarantine_id: claim.quarantine_id,
+      });
+      continue;
+    }
+    const completed = await admin.rpc("business_vault_complete_quarantine_cleanup", {
+      p_quarantine_id: claim.quarantine_id,
+    });
+    if (completed.error) deferred += 1;
+    else quarantineCleaned += 1;
+  }
+  return json({ ok: true, cleaned, quarantine_cleaned: quarantineCleaned, deferred }, 200);
 });

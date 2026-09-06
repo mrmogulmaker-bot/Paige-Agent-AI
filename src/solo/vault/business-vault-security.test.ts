@@ -15,6 +15,10 @@ const repairs = readFileSync(
   "supabase/migrations/20261225013900_business_vault_phase2_security_repairs.sql",
   "utf8",
 );
+const quarantine = readFileSync(
+  "supabase/migrations/20261225014000_business_vault_quarantine_inspection.sql",
+  "utf8",
+);
 const upload = readFileSync(
   "supabase/functions/business-vault-upload/index.ts",
   "utf8",
@@ -49,19 +53,53 @@ describe("Business Vault server contract", () => {
     expect(download).not.toMatch(/publicUrl|getPublicUrl/);
   });
 
-  it("treats uploads as untrusted and never claims scanning or interpretation", () => {
-    expect(upload).toContain("actualMime(bytes)");
-    expect(upload).toContain("LIKELY_SECRET");
-    expect(upload).toContain("credential_content_refused");
-    expect(foundation).toContain("existing.sha256 = p_sha256");
-    expect(foundation).toContain("'duplicate', true");
-    expect(upload).toContain('p_validation_state: "validation_unavailable"');
-    expect(upload).toContain(
-      "Malware and semantic DLP scanning are unavailable.",
-    );
+  it("fails closed when no approved inspection adapter is configured", () => {
+    expect(upload).toContain("BUSINESS_VAULT_INSPECTION_ADAPTER");
+    expect(upload).toContain("inspection_unavailable");
+    expect(upload).toContain("business_vault_inspection_capability");
+    expect(upload).not.toContain('.from("business-vault-files")');
+    expect(upload).not.toContain("business_vault_finalize_upload");
     expect(upload).not.toMatch(
       /openai|anthropic|generateText|createTask|client.portal/i,
     );
+  });
+
+  it("keeps all binary bytes in a private short-lived quarantine until inspection passes", () => {
+    expect(quarantine).toMatch(
+      /'business-vault-quarantine',\s*'business-vault-quarantine',\s*false/,
+    );
+    expect(quarantine).toContain("CREATE TABLE public.business_vault_quarantine_uploads");
+    expect(quarantine).toContain("FORCE ROW LEVEL SECURITY");
+    expect(quarantine).toContain("business_vault_reserve_quarantine_upload");
+    expect(quarantine).toContain("business_vault_claim_quarantine_inspections");
+    expect(quarantine).toContain("business_vault_record_inspection_result");
+    expect(quarantine).toContain("business_vault_promote_quarantine_upload");
+    expect(quarantine).toMatch(/expires_at[\s\S]*interval '24 hours'/);
+    expect(quarantine).not.toMatch(/raw_text|extracted_text|document_text|secret_value/i);
+  });
+
+  it("requires complete OCR and secret-sensitive evidence while keeping promotion disabled", () => {
+    expect(quarantine).toContain("ocr_completed");
+    expect(quarantine).toContain("secret_pattern_detected");
+    expect(quarantine).toContain("financial_sensitive_detected");
+    expect(quarantine).toContain("low_confidence");
+    expect(quarantine).toContain("encrypted");
+    expect(quarantine).toContain("timed_out");
+    expect(quarantine).toContain("inspection_passed");
+    expect(quarantine).toMatch(/inspection_state\s*=\s*'passed'/);
+    expect(quarantine).toMatch(
+      /REVOKE ALL ON FUNCTION public\.business_vault_promote_quarantine_upload\([^;]+service_role/,
+    );
+    expect(quarantine).toMatch(/p_confidence IS NULL/);
+    expect(quarantine).toMatch(/c\.pdf_ocr AND c\.image_ocr[\s\S]*c\.secret_inspection AND c\.financial_sensitive_inspection/);
+  });
+
+  it("never exposes quarantined objects or unpassed normal versions to download and context", () => {
+    expect(quarantine).toMatch(/REVOKE ALL ON public\.business_vault_quarantine_uploads FROM [^;]*authenticated/);
+    expect(quarantine).toMatch(/REVOKE ALL ON public\.business_vault_inspection_events FROM [^;]*authenticated/);
+    expect(download).toContain("validation_state");
+    expect(download).not.toContain("validation_unavailable");
+    expect(quarantine).toContain("v.validation_state='ready'");
   });
 
   it("allows only bounded reviewed context and retires it with the source", () => {
@@ -129,5 +167,8 @@ describe("Business Vault server contract", () => {
     expect(repairs).toContain("business_vault_claim_stale_uploads");
     expect(repairs).toContain("business_vault_cancel_stale_upload");
     expect(repairs).toContain("service_role");
+    expect(quarantine).toContain("cleanup_lease_until");
+    expect(quarantine).toContain("business_vault_defer_quarantine_cleanup");
+    expect(quarantine).toMatch(/inspection_state='deleting' AND q\.cleanup_lease_until<now\(\)/);
   });
 });

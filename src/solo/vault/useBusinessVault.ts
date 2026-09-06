@@ -11,6 +11,13 @@ type VaultRpcClient = {
   ): Promise<{ data: T; error: VaultRpcError }>;
 };
 const vaultClient = supabase as unknown as VaultRpcClient;
+const VAULT_ACCESS_DENIED_EVENT = "paige:vault-access-denied";
+
+function broadcastVaultDenied(tenantId: string) {
+  window.dispatchEvent(
+    new CustomEvent(VAULT_ACCESS_DENIED_EVENT, { detail: { tenantId } }),
+  );
+}
 
 export type VaultLoadState = "loading" | "allowed" | "denied" | "error";
 
@@ -27,19 +34,47 @@ export function useVaultAccess() {
   const requestRef = useRef(0);
 
   useEffect(() => {
-    const request = ++requestRef.current;
+    let cancelled = false;
     setResult({ tenantId: activeTenantId, state: "loading" });
     if (!activeTenantId) return;
-    void (async () => {
+    const checkAccess = async () => {
+      const request = ++requestRef.current;
       const { data, error } = await vaultClient.rpc<{
         allowed?: boolean;
       }>("business_vault_access_status");
-      if (request !== requestRef.current) return;
+      if (cancelled || request !== requestRef.current) return;
+      const allowed = !error && data?.allowed === true;
       setResult({
         tenantId: activeTenantId,
-        state: !error && data?.allowed === true ? "allowed" : "denied",
+        state: allowed ? "allowed" : "denied",
       });
-    })();
+      if (!allowed) broadcastVaultDenied(activeTenantId);
+    };
+    const onDenied = (event: Event) => {
+      if ((event as CustomEvent<{ tenantId?: string }>).detail?.tenantId === activeTenantId) {
+        requestRef.current += 1;
+        setResult({ tenantId: activeTenantId, state: "denied" });
+      }
+    };
+    const onFocus = () => void checkAccess();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void checkAccess();
+    };
+    void checkAccess();
+    const timer = window.setInterval(() => void checkAccess(), 15_000);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener(VAULT_ACCESS_DENIED_EVENT, onDenied);
+    document.addEventListener("visibilitychange", onVisibility);
+    const { data: authListener } = supabase.auth.onAuthStateChange(() => void checkAccess());
+    return () => {
+      cancelled = true;
+      requestRef.current += 1;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener(VAULT_ACCESS_DENIED_EVENT, onDenied);
+      document.removeEventListener("visibilitychange", onVisibility);
+      authListener.subscription.unsubscribe();
+    };
   }, [activeTenantId]);
 
   return result.tenantId === activeTenantId ? result.state : "loading";
@@ -52,6 +87,7 @@ export function useBusinessVault() {
   const [snapshot, setSnapshot] = useState<VaultSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [canArchive, setCanArchive] = useState(false);
+  const [uploadAvailable, setUploadAvailable] = useState(false);
   const requestRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -59,6 +95,7 @@ export function useBusinessVault() {
     setSnapshot(null);
     setError(null);
     setCanArchive(false);
+    setUploadAvailable(false);
     setState("loading");
     if (!activeTenantId) return;
 
@@ -79,6 +116,12 @@ export function useBusinessVault() {
       return;
     }
     setCanArchive(access.data?.can_archive === true);
+
+    const capability = await vaultClient.rpc<{ available?: boolean }>(
+      "business_vault_inspection_capability",
+    );
+    if (request !== requestRef.current) return;
+    setUploadAvailable(!capability.error && capability.data?.available === true);
 
     const result = await vaultClient.rpc<VaultSnapshot>(
       "business_vault_snapshot",
@@ -102,6 +145,58 @@ export function useBusinessVault() {
       requestRef.current += 1;
     };
   }, [activeTenantId, load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const revalidateAccess = async () => {
+      if (!activeTenantId) return;
+      const access = await vaultClient.rpc<{ allowed?: boolean }>(
+        "business_vault_access_status",
+      );
+      if (cancelled || tenantRef.current !== activeTenantId) return;
+      if (access.error || access.data?.allowed !== true) {
+        requestRef.current += 1;
+        setSnapshot(null);
+        setCanArchive(false);
+        setUploadAvailable(false);
+        setError(
+          access.error
+            ? "Vault authorization could not be confirmed. No record details were returned."
+            : null,
+        );
+        setState(access.error ? "error" : "denied");
+        broadcastVaultDenied(activeTenantId);
+      }
+    };
+    const onDenied = (event: Event) => {
+      if ((event as CustomEvent<{ tenantId?: string }>).detail?.tenantId !== activeTenantId) return;
+      requestRef.current += 1;
+      setSnapshot(null);
+      setCanArchive(false);
+      setUploadAvailable(false);
+      setError(null);
+      setState("denied");
+    };
+    const onFocus = () => void revalidateAccess();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void revalidateAccess();
+    };
+    const timer = window.setInterval(() => void revalidateAccess(), 15_000);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener(VAULT_ACCESS_DENIED_EVENT, onDenied);
+    document.addEventListener("visibilitychange", onVisibility);
+    const { data: authListener } = supabase.auth.onAuthStateChange(() => {
+      void revalidateAccess();
+    });
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener(VAULT_ACCESS_DENIED_EVENT, onDenied);
+      document.removeEventListener("visibilitychange", onVisibility);
+      authListener.subscription.unsubscribe();
+    };
+  }, [activeTenantId]);
 
   const upload = useCallback(
     async (body: FormData, signal?: AbortSignal) => {
@@ -152,6 +247,7 @@ export function useBusinessVault() {
     snapshot,
     error,
     canArchive,
+    uploadAvailable,
     reload: load,
     upload,
     saveContract: (input: Record<string, unknown>) =>

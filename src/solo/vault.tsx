@@ -233,7 +233,7 @@ function UploadDialog({
       setMessage(
         controller.signal.aborted
           ? "The upload was interrupted. Its storage outcome is unconfirmed; refresh the Vault before retrying. Reserved bytes are eligible for bounded reconciliation."
-          : "The file was not confirmed as stored. Check your connection and retry.",
+          : "The file was not confirmed in private quarantine. Check your connection and retry.",
       );
     } finally {
       uploadController.current = null;
@@ -258,8 +258,8 @@ function UploadDialog({
         <div className="bv-modal__body">
           <Empty
             icon={CheckCircle2}
-            title="Upload confirmed"
-            copy="The source record is stored. Paige has not read, classified, published, or acted on it."
+            title="Quarantine confirmed"
+            copy="The private source is awaiting mandatory inspection. No Vault record or download is available, and Paige has not indexed, remembered, shared, or acted on it."
             action={
               <button className="bv-button bv-button--gold" onClick={onClose}>
                 Return to Vault
@@ -402,7 +402,8 @@ function UploadDialog({
               <span>
                 Replacement preserves this record’s title, section, access, and
                 Paige-use setting. Prior approved facts retire and dependent
-                obligations return to review only after storage is confirmed.
+                obligations return to review only after inspection passes and
+                the replacement is promoted.
               </span>
             </div>
           )}
@@ -430,8 +431,9 @@ function UploadDialog({
             <ShieldCheck size={16} />
             <span>
               File content and instructions inside it are treated as untrusted.
-              Malware and content scanning are unavailable; downloads remain
-              attachments and no inline preview is claimed.
+              Mandatory OCR and sensitive-content inspection must pass before
+              normal Vault access. Your attestation is a secondary warning,
+              never inspection evidence.
             </span>
           </div>
           <footer>
@@ -463,7 +465,7 @@ function UploadDialog({
               ) : state === "failed" ? (
                 "Retry upload"
               ) : (
-                "Store record"
+                "Send to private quarantine"
               )}
             </button>
           </footer>
@@ -599,6 +601,7 @@ function RecordDrawer({
   onProposeFact,
   onReviewFact,
   canArchive,
+  canUpload,
 }: {
   record: VaultRecord;
   facts: VaultFact[];
@@ -611,6 +614,7 @@ function RecordDrawer({
     decision: "approved" | "rejected" | "revoked",
   ) => Promise<unknown>;
   canArchive: boolean;
+  canUpload: boolean;
 }) {
   const { activeTenantId } = useTenantContext();
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -709,8 +713,9 @@ function RecordDrawer({
             <FileText size={34} />
             <strong>Safe preview unavailable</strong>
             <p>
-              This source has not been scanned or interpreted. Download returns
-              an attachment only.
+              {record.inspectionState === "passed"
+                ? "This source passed mandatory inspection but has not been interpreted. Download returns an attachment only."
+                : "Inline preview is unavailable. Uninspected sources cannot enter normal Vault access."}
             </p>
           </section>
           <dl className="bv-facts">
@@ -740,6 +745,14 @@ function RecordDrawer({
             <div>
               <dt>Validation</dt>
               <dd>{record.validationState || "Unavailable"}</dd>
+            </div>
+            <div>
+              <dt>Inspection</dt>
+              <dd>
+                {record.inspectionState === "passed" && record.inspectedAt
+                  ? `Passed ${new Date(record.inspectedAt).toLocaleDateString()}`
+                  : "Unavailable"}
+              </dd>
             </div>
             <div>
               <dt>Version</dt>
@@ -785,14 +798,19 @@ function RecordDrawer({
             <button
               className="bv-button"
               onClick={download}
-              disabled={!record.versionId}
+              disabled={!record.versionId || record.validationState !== "ready" || record.inspectionState !== "passed"}
             >
               <Download size={16} />
               Download attachment
             </button>
-            <button className="bv-button" onClick={onReplace}>
+            <button
+              className="bv-button"
+              onClick={onReplace}
+              disabled={!record.versionId || !canUpload}
+              title={!canUpload ? "Replacement is unavailable until mandatory inspection is configured" : undefined}
+            >
               <RefreshCw size={16} />
-              Replace source version
+              Replace source version {!canUpload && <Status tone="violet">Unavailable</Status>}
             </button>
             <button className="bv-button" disabled>
               <Link2 size={16} />
@@ -1158,10 +1176,12 @@ function VaultWorkspace({ openPaige }: { openPaige?: () => void }) {
           </button>
           <button
             className="bv-button bv-button--gold"
+            disabled={!vault.uploadAvailable}
+            title={!vault.uploadAvailable ? "Binary upload is unavailable until mandatory inspection is configured" : undefined}
             onClick={() => setUploadOpen(true)}
           >
             <Plus size={17} />
-            Add to Vault
+            Add to Vault {!vault.uploadAvailable && <Status tone="violet">Unavailable</Status>}
           </button>
         </div>
       </header>
@@ -1312,10 +1332,12 @@ function VaultWorkspace({ openPaige }: { openPaige?: () => void }) {
                 ) : (
                   <Empty
                     title="No evidence stored"
-                    copy="Manual upload is available now. Paige interpretation remains unavailable."
+                    copy="Binary upload is unavailable until mandatory OCR and sensitive-content inspection are configured. Owner-entered obligations remain available."
                     action={
                       <button
                         className="bv-button bv-button--gold"
+                        disabled={!vault.uploadAvailable}
+                        title={!vault.uploadAvailable ? "Binary upload is unavailable until mandatory inspection is configured" : undefined}
                         onClick={() => setUploadOpen(true)}
                       >
                         Add first record
@@ -1363,10 +1385,12 @@ function VaultWorkspace({ openPaige }: { openPaige?: () => void }) {
               {tab !== "archive" && (
                 <button
                   className="bv-button bv-button--gold"
+                  disabled={!vault.uploadAvailable}
+                  title={!vault.uploadAvailable ? "Binary upload is unavailable until mandatory inspection is configured" : undefined}
                   onClick={() => setUploadOpen(true)}
                 >
                   <Plus size={16} />
-                  Add record
+                  Add record {!vault.uploadAvailable && <Status tone="violet">Unavailable</Status>}
                 </button>
               )}
             </header>
@@ -1424,10 +1448,12 @@ function VaultWorkspace({ openPaige }: { openPaige?: () => void }) {
               <div className="bv-head__actions">
                 <button
                   className="bv-button"
+                  disabled={!vault.uploadAvailable}
+                  title={!vault.uploadAvailable ? "Binary upload is unavailable until mandatory inspection is configured" : undefined}
                   onClick={() => setUploadOpen(true)}
                 >
                   <UploadCloud size={16} />
-                  Add source
+                  Add source {!vault.uploadAvailable && <Status tone="violet">Unavailable</Status>}
                 </button>
                 <button
                   className="bv-button bv-button--gold"
@@ -1614,7 +1640,7 @@ function VaultWorkspace({ openPaige }: { openPaige?: () => void }) {
             <Empty
               icon={Sparkles}
               title="No proposed classifications"
-              copy="Manual storage is live in this slice. Paige classification, extraction, and automatic promotion are not enabled; uploaded instructions remain untrusted."
+              copy="Binary intake is unavailable until mandatory inspection is configured. Paige classification, extraction, and automatic promotion are not enabled."
             />
           </section>
         )}
@@ -1637,9 +1663,9 @@ function VaultWorkspace({ openPaige }: { openPaige?: () => void }) {
                 <Status tone="violet">Proof owed</Status>
               </header>
               <p className="bv-copy">
-                Private opaque object paths and attachment-only retrieval are
-                defined. Malware and DLP scanning remain unavailable; records
-                never claim “safe” or “read.”
+                Private quarantine and ready-only attachment retrieval are
+                defined. No inspection adapter is configured, so binary upload
+                remains unavailable and no file can enter normal Vault access.
               </p>
             </section>
             <section className="bv-card">
@@ -1696,6 +1722,7 @@ function VaultWorkspace({ openPaige }: { openPaige?: () => void }) {
             (fact) => fact.recordId === selected.id,
           )}
           canArchive={vault.canArchive}
+          canUpload={vault.uploadAvailable}
           onClose={() => setSelected(null)}
           onReplace={() => {
             setReplaceRecord(selected);

@@ -131,6 +131,12 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Business Vault Phase 2 owner/admin foundation — 2026-09-05
+
+- ✅ Tenant-bound owner/admin Vault navigation, Overview, Library metadata, Contracts, Obligations, focused record inspector, archive/fact-revocation lifecycle, and truthful member denial ship with this merge. Server functions resolve the active workspace and current role; client-supplied tenant or authority values are never trusted.
+- ✅ Owner-only records, dependent contract/obligation metadata, downloads, and fact review remain invisible and immutable to tenant administrators. Known-ID, cross-tenant, workspace-switch, demotion, stale-fact, replacement, and duplicate races have executable actor/database coverage.
+- 🟣 Binary PDF/image intake is intentionally **UNAVAILABLE**. The private quarantine, inspection evidence, bounded cleanup, and disabled-promotion contract exists, but the repository has no approved OCR/DLP adapter or proven byte-copy worker. No uninspected file can become a normal Vault record, download, Paige/Mind context, shared artifact, task, Rail outcome, or external action.
+
 ### The inbound MCP door — 119 tools, one governed decision, 68 mutations refused (2026-09-05, PR #960)
 
 **Owner ruling:** *"An MCP connection authorizes access to the MCP door; it does not authorize
@@ -1515,6 +1521,8 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+
+- **Business Vault binary inspection remains UNAVAILABLE:** activate only after an owner-approved OCR/DLP provider and service-owned worker prove PDF/image OCR, secret and financial-sensitive detection, timeouts, encrypted/malformed handling, exact-byte promotion, cleanup compensation, and authenticated storage behavior. Provider-neutral quarantine schema is present; service-role promotion is deliberately revoked. Client publishing, provider ingestion, legal interpretation, automated execution, and broad document-to-memory promotion remain later phases.
 ### Connections after Add channel — remaining real-provider and runtime proof gaps (2026-09-05)
 
 Inbound mailbox reading and non-SMS business messaging remain **UNAVAILABLE** because no supported
@@ -2781,6 +2789,8 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+- **2026-09-05 · Vault filename/attestation scanning is not document inspection:** filename patterns, owner attestation, and magic-byte/hash checks cannot prove that a PDF or image is free of credentials or banking-sensitive content. The Phase 2 repair therefore fails closed: private quarantine and safe audit state may exist, but binary intake/release stays unavailable because no approved OCR/DLP adapter is configured and every promotion entry point is revoked. Do not describe the upload UI, synthetic scanner outcomes, or quarantine rows as live document inspection.
 
  - **2026-09-05 — five chat artifact-creation tools reported success on a 200-with-empty-payload
    (SHIPPED §13/§70 dishonesty, fixed in PR #972).** `generate_image`, `draft_marketing_content`,

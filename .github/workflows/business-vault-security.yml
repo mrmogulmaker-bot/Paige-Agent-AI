@@ -51,10 +51,11 @@ jobs:
             supabase/migrations/20261225013700_business_vault_phase2_foundation.sql \
             supabase/migrations/20261225013800_business_vault_phase2_writes.sql \
             supabase/migrations/20261225013900_business_vault_phase2_security_repairs.sql \
+            supabase/migrations/20261225014000_business_vault_quarantine_inspection.sql \
             scripts/proof/business-vault-local-pgtap-shim.sql \
             supabase/tests/business_vault_phase2_security.sql
           do
             psql -X -v ON_ERROR_STOP=1 -f "$file"
           done
-      - name: Prove duplicate finalization serialization
+      - name: Prove duplicate quarantine serialization
         run: node scripts/proof/business-vault-concurrency-proof.mjs "$(command -v psql)" 5432 postgres business_vault_test

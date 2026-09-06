@@ -43,6 +43,9 @@ export type VaultRecord = {
   versionId?: string | null;
   validationState?: string | null;
   validationDetail?: string | null;
+  inspectionState?: "passed" | "unavailable";
+  inspectedAt?: string | null;
+  inspectionAdapter?: string | null;
   visibility?: "owner_only" | "owner_admin";
   interpretationState?: string;
   createdAt: string;
@@ -58,6 +61,7 @@ export type VaultSnapshot = {
   contractsNeedingAttention: number;
   awaitingReview: number;
   recentlyReviewed: number;
+  uploadCapability?: { available: boolean; state: "live" | "unavailable" };
 };
 
 export type VaultFact = {

@@ -1,4 +1,4 @@
-// Disposable-loopback proof: two real PostgreSQL sessions finalize the same digest concurrently.
+// Disposable-loopback proof: two real PostgreSQL sessions confirm the same quarantined digest concurrently.
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
@@ -24,13 +24,11 @@ const invoke = (sql) => new Promise((resolve, reject) => {
 
 const tenant = randomUUID();
 const actor = randomUUID();
-const recordA = randomUUID();
-const recordB = randomUUID();
-const versionA = randomUUID();
-const versionB = randomUUID();
+const quarantineA = randomUUID();
+const quarantineB = randomUUID();
 const digest = "d".repeat(64);
-const pathA = `${tenant}/${recordA}/${versionA}/${randomUUID()}`;
-const pathB = `${tenant}/${recordB}/${versionB}/${randomUUID()}`;
+const pathA = `${tenant}/${quarantineA}/${randomUUID()}`;
+const pathB = `${tenant}/${quarantineB}/${randomUUID()}`;
 try {
   await query(`
     INSERT INTO auth.users(id,aud,role,email) VALUES('${actor}','authenticated','authenticated','vault-race-${actor}@tests.invalid');
@@ -40,37 +38,34 @@ try {
       VALUES('${tenant}','${actor}','owner','active',true,now());
     INSERT INTO public.profiles(user_id,active_tenant_id) VALUES('${actor}','${tenant}')
       ON CONFLICT(user_id) DO UPDATE SET active_tenant_id=excluded.active_tenant_id;
-    INSERT INTO public.business_vault_records(id,tenant_id,title,section,record_type,handling_mode,visibility,
-      lifecycle_state,truth_state,source_kind,source_state,interpretation_state,created_by) VALUES
-      ('${recordA}','${tenant}','Race A','library','Evidence','store_only','owner_admin','draft','owner_entered','manual_upload','current','not_requested','${actor}'),
-      ('${recordB}','${tenant}','Race B','library','Evidence','store_only','owner_admin','draft','owner_entered','manual_upload','current','not_requested','${actor}');
-    INSERT INTO public.business_vault_versions(id,tenant_id,record_id,storage_path,original_filename,declared_mime,
-      declared_size,validation_state,created_by) VALUES
-      ('${versionA}','${tenant}','${recordA}','${pathA}','a.pdf','application/pdf',100,'reserved','${actor}'),
-      ('${versionB}','${tenant}','${recordB}','${pathB}','b.pdf','application/pdf',100,'reserved','${actor}');
+    INSERT INTO public.business_vault_inspection_configuration(id,adapter_key,enabled,pdf_ocr,image_ocr,
+      secret_inspection,financial_sensitive_inspection) VALUES('vault','race-inspector',true,true,true,true,true);
+    INSERT INTO public.business_vault_quarantine_uploads(id,tenant_id,requested_by,title,section,record_type,
+      handling_mode,visibility,storage_path,original_filename,declared_mime,declared_size,adapter_key) VALUES
+      ('${quarantineA}','${tenant}','${actor}','Race A','library','Evidence','store_only','owner_admin','${pathA}','a.pdf','application/pdf',100,'race-inspector'),
+      ('${quarantineB}','${tenant}','${actor}','Race B','library','Evidence','store_only','owner_admin','${pathB}','b.pdf','application/pdf',100,'race-inspector');
     INSERT INTO storage.objects(bucket_id,name,owner_id,metadata) VALUES
-      ('business-vault-files','${pathA}','${actor}','{"size":100}'),
-      ('business-vault-files','${pathB}','${actor}','{"size":100}');
+      ('business-vault-quarantine','${pathA}','${actor}','{"size":100}'),
+      ('business-vault-quarantine','${pathB}','${actor}','{"size":100}');
   `);
-  const call = (version) => `
+  const call = (quarantine) => `
     BEGIN; SET LOCAL ROLE service_role;
     SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
-    SELECT public.business_vault_finalize_upload('${actor}','${tenant}','${version}',
-      'application/pdf',100,'${digest}','validation_unavailable','concurrency proof');
+    SELECT public.business_vault_mark_quarantine_stored('${actor}','${tenant}','${quarantine}',
+      'application/pdf',100,'${digest}');
     COMMIT;`;
-  const outputs = await Promise.all([invoke(call(versionA)), invoke(call(versionB))]);
+  const outputs = await Promise.all([invoke(call(quarantineA)), invoke(call(quarantineB))]);
   assert.equal(outputs.filter((value) => /"duplicate"\s*:\s*false/.test(value)).length, 1);
   assert.equal(outputs.filter((value) => /"duplicate"\s*:\s*true/.test(value)).length, 1);
-  assert.equal(await query(`SELECT count(*) FROM public.business_vault_versions WHERE tenant_id='${tenant}' AND sha256='${digest}' AND validation_state='validation_unavailable';`), "1");
-  assert.equal(await query(`SELECT count(*) FROM public.business_vault_versions WHERE tenant_id='${tenant}' AND validation_state='cleanup_pending';`), "1");
-  console.log("PASS: two concurrent finalizers produced one current digest and one retryable cleanup duplicate.");
+  assert.equal(await query(`SELECT count(*) FROM public.business_vault_quarantine_uploads WHERE tenant_id='${tenant}' AND sha256='${digest}' AND inspection_state='stored';`), "1");
+  assert.equal(await query(`SELECT count(*) FROM public.business_vault_quarantine_uploads WHERE tenant_id='${tenant}' AND inspection_state='cleanup_pending';`), "1");
+  console.log("PASS: two concurrent quarantine confirmations produced one inspection candidate and one cleanup duplicate.");
 } finally {
   await query(`
-    DELETE FROM public.business_vault_activity WHERE tenant_id='${tenant}';
-    UPDATE public.business_vault_records SET current_version_id=NULL WHERE tenant_id='${tenant}';
-    DELETE FROM public.business_vault_versions WHERE tenant_id='${tenant}';
-    DELETE FROM public.business_vault_records WHERE tenant_id='${tenant}';
-    DELETE FROM storage.objects WHERE bucket_id='business-vault-files' AND name IN('${pathA}','${pathB}');
+    DELETE FROM public.business_vault_inspection_events WHERE tenant_id='${tenant}';
+    DELETE FROM public.business_vault_quarantine_uploads WHERE tenant_id='${tenant}';
+    DELETE FROM storage.objects WHERE bucket_id='business-vault-quarantine' AND name IN('${pathA}','${pathB}');
+    DELETE FROM public.business_vault_inspection_configuration WHERE id='vault';
     DELETE FROM public.tenant_members WHERE tenant_id='${tenant}';
     DELETE FROM public.profiles WHERE user_id='${actor}';
     DELETE FROM auth.users WHERE id='${actor}';
