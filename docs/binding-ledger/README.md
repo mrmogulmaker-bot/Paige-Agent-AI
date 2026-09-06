@@ -114,34 +114,39 @@ its own gap is the handoff seam Phase 1 addresses.
 
 ## Per-surface summary
 
-| Surface | State | Why / gap | Next slice |
-|---|---|---|---|
-| Paige workspace | `PARTIAL` | sole chat surface, server-safe scope; no surface identity, prompt dropped (#771), raw `clientContext` prose | Phase 1: adopt the Surface Context Handoff Contract |
-| Command Center → Business Game Plan | `PARTIAL` | Business Mission governed write (create/revise/transition) wired + chat-bound (#983); no Rail outcome / auth-runtime; composite-plan Mind lens needs #647 | Phase 4.1: authenticated drive of a mission write; Mind lens via #647 |
-| Command Center → Systems Check | `UNAVAILABLE` | safe lens exists, unwired; needs SCR-2 + SCR-3 | Phase 4.4 read-only context |
-| Command Center → Mind tab | `UNAVAILABLE` | a knowledge visualization, not the PAIGE Mind contract | none until #647 |
-| Trust Compass | `PARTIAL` | authority governed server-side; visible dial is a non-authoritative fixture | Phase 4.3: reconcile dial to real governed action or mark read-only |
-| Campaigns → Overview | `UNAVAILABLE` | no tenant-authorized campaign source | none |
-| Campaigns → Catalog | `UNAVAILABLE` | real source, no Paige lens; SCR-1/2 | reference `get_pipeline_routing_evidence` shape |
-| Campaigns → Sales | `UNAVAILABLE` | Rail producer dead (#787) | none until #787 decided |
-| Campaigns → Pipeline | `PROOF_OWED` | the one Mind lens; authenticated drive never run + signal never produced | produce one real Rail row, then drive |
-| Campaigns → Social | `PROOF_OWED` | `social.presence` read+write wired/tested; no auth drive (supersedes the pre-2026-09-05 matrix) | authenticated drive |
-| Campaigns → Performance | `UNAVAILABLE` | no metrics source; the model for how Mind should decline | none; point Mind away |
-| Campaigns → Vibe Studio | `UNAVAILABLE` | creative overlay, not a data binding | out of scope (§26 creative memory) |
-| Clients → People | `UNAVAILABLE` | no Mind-safe lens; owner's own UI write emits no Rail (#757 "do not start") | resolve producer gap first |
-| Clients → Conversations | `UNAVAILABLE` | message bodies forbidden to Mind | future transcript-evidence ingestion |
-| Clients → Calendar | `UNAVAILABLE` | FU-3 Rail contract absent; attribution untruthful (#786); six-PR collision | resolve #786 + FU-3 |
-| Clients → Portal | `UNAVAILABLE` | separately owned product surface | out of scope |
-| Settings → Setup | `PROOF_OWED` | `business_context.readiness` deployed + injected; owner UI-flow proof owed | Phase 4.4 authenticated proof |
-| Settings → Team | `PROOF_OWED` | `team.authority` wired; PAIGE can act (capability PARTIAL); auth proof owed | Phase 5 |
-| Settings → Connections | `UNAVAILABLE` | safe subset unwired; credentials isolated; private finding #788 | Phase 5 |
-| Settings → Integrations | `PARTIAL` | n8n readiness + 12 mgmt capabilities wired; zero capability_run rows in prod | authenticated drive → first Rail row |
-| Settings → Vault | `INTENTIONALLY_ISOLATED` | Phase 2 owner/admin foundation + quarantined intake shipped (#986); raw docs/credentials never cross | Phase 7: OCR/DLP-inspected promotion of reviewed facts |
-| Settings → Billing | `PARTIAL` | safe status source contract shipped, not injected; secrets isolated | Phase 8 bind safe status only |
-| Settings → Security & data | `INTENTIONALLY_ISOLATED` | autonomy authority is non-Chat (§67/§68) | none as a write binding |
-| Analytics | `UNAVAILABLE` | needs SCR-2 + SCR-3; strongest existing authorization semantics | Phase 8; reference consumer for SCR-2 |
-| Marketplace | `UNAVAILABLE` | the most blocked; SCR-1/2/3 | bind safe install-state only |
-| Operator / Platform | `UNAVAILABLE` (out of Solo scope) | intentionally separate tree, tenant-less | out of scope; no subaccount/operator work without release |
+The **Completion target** column is the surface's intended `completion_criterion` — the real governed
+action + verified outcome + Rail evidence that marks it done (the JSON is the source of truth). It is a
+separate dimension from **State** (what is *proven today*): an `UNAVAILABLE`/`PROOF_OWED` state never
+shrinks the target — it names the gap between present proof and the full operating aim (owner ruling).
+
+| Surface | State | Completion target (real action) | Why / gap | Next slice |
+|---|---|---|---|---|
+| Paige workspace | `PARTIAL` | Paige acts on a surface's real record via a governed tool, outcome recorded | sole chat surface, server-safe scope; no surface identity, prompt dropped (#771), raw `clientContext` prose | Phase 1: adopt the Surface Context Handoff Contract |
+| Command Center → Business Game Plan | `PARTIAL` | Paige creates/advances a real Business Mission, verified + Rail-recorded (**next runtime slice**) | Business Mission governed write (create/revise/transition) wired + chat-bound (#983); no Rail outcome / auth-runtime; composite-plan Mind lens needs #647 | Phase 4.1: authenticated drive of a mission write; Mind lens via #647 |
+| Command Center → Systems Check | `UNAVAILABLE` | A failing check drives a real Paige remediation the next scan verifies | safe lens exists, unwired; needs SCR-2 + SCR-3 | Phase 4.4 read-only context |
+| Command Center → Mind tab | `UNAVAILABLE` | Reviewed facts enter the governed Memory seam and Paige can recall them | a knowledge visualization, not the PAIGE Mind contract | none until #647 |
+| Trust Compass | `PARTIAL` | The visible control performs the real governed autonomy change (or is plainly read-only) | authority governed server-side; visible dial is a non-authoritative fixture | Phase 4.3: reconcile dial to real governed action or mark read-only |
+| Campaigns → Overview | `UNAVAILABLE` | Paige launches/adjusts a real campaign with a verified outcome | no tenant-authorized campaign source | none |
+| Campaigns → Catalog | `UNAVAILABLE` | Paige publishes a working page/funnel/form and wires its capture, verified live | real source, no Paige lens; SCR-1/2 | reference `get_pipeline_routing_evidence` shape |
+| Campaigns → Sales | `UNAVAILABLE` | A capture becomes a governed follow-up / recorded outcome, verified + Rail-logged | Rail producer dead (#787) | none until #787 decided |
+| Campaigns → Pipeline | `PROOF_OWED` | Paige moves a governed deal, recorded, and cites her own move (#755) | the one Mind lens; authenticated drive never run + signal never produced | produce one real Rail row, then drive |
+| Campaigns → Social | `PROOF_OWED` | Paige publishes real posts via a connected system with a verified outcome | `social.presence` read+write wired/tested; no auth drive (supersedes the pre-2026-09-05 matrix) | authenticated drive |
+| Campaigns → Performance | `UNAVAILABLE` | Real metrics drive an owner-approved Paige action with a verified result | no metrics source; the model for how Mind should decline | none; point Mind away |
+| Campaigns → Vibe Studio | `UNAVAILABLE` | A brief becomes a real critiqued creative asset the tenant can ship | creative overlay, not a data binding | out of scope (§26 creative memory) |
+| Clients → People | `UNAVAILABLE` | Paige coordinates a governed follow-up whose outcome is recorded (owner UI edits also Rail-visible) | no Mind-safe lens; owner's own UI write emits no Rail (#757 "do not start") | resolve producer gap first |
+| Clients → Conversations | `UNAVAILABLE` | Paige sends a governed reply, delivery verified + Rail-logged | message bodies forbidden to Mind | future transcript-evidence ingestion |
+| Clients → Calendar | `UNAVAILABLE` | Paige books/reschedules a real meeting, truthful attribution, verified Rail outcome | FU-3 Rail contract absent; attribution untruthful (#786); six-PR collision | resolve #786 + FU-3 |
+| Clients → Portal | `UNAVAILABLE` | _Out of scope_ — separately owned Client-Experience product; safe seam only | separately owned product surface | out of scope |
+| Settings → Setup | `PROOF_OWED` | Paige helps complete real business context, verified on save | `business_context.readiness` deployed + injected; owner UI-flow proof owed | Phase 4.4 authenticated proof |
+| Settings → Team | `PROOF_OWED` | Paige executes a real team change (invite/role) on confirmation, verified | `team.authority` wired; PAIGE can act (capability PARTIAL); auth proof owed | Phase 5 |
+| Settings → Connections | `UNAVAILABLE` | Paige completes a real provider/comms connection the next check verifies (never a secret) | safe subset unwired; credentials isolated; private finding #788 | Phase 5 |
+| Settings → Integrations | `PARTIAL` | Paige activates a real n8n workflow; its capability_run Rail row renders | n8n readiness + 12 mgmt capabilities wired; zero capability_run rows in prod | authenticated drive → first Rail row |
+| Settings → Vault | `INTENTIONALLY_ISOLATED` | Only OCR/DLP-inspected reviewed facts become eligible knowledge; raw docs never cross | Phase 2 owner/admin foundation + quarantined intake shipped (#986); raw docs/credentials never cross | Phase 7: OCR/DLP-inspected promotion of reviewed facts |
+| Settings → Billing | `PARTIAL` | Paige drives a real billing action within the §38 boundary, on confirmation | safe status source contract shipped, not injected; secrets isolated | Phase 8 bind safe status only |
+| Settings → Security & data | `INTENTIONALLY_ISOLATED` | Posture controls perform the real governed change (or are plainly read-only) | autonomy authority is non-Chat (§67/§68) | none as a write binding |
+| Analytics | `UNAVAILABLE` | A real analytics finding drives an owner-approved action, verified | needs SCR-2 + SCR-3; strongest existing authorization semantics | Phase 8; reference consumer for SCR-2 |
+| Marketplace | `UNAVAILABLE` | Paige installs a marketplace item whose entitlement is verified | the most blocked; SCR-1/2/3 | bind safe install-state only |
+| Operator / Platform | `UNAVAILABLE` (out of Solo scope) | _Out of Solo scope_ — intentionally separate, tenant-less tree | intentionally separate tree, tenant-less | out of scope; no subaccount/operator work without release |
 
 ## How to keep it true (§BRAIN.3 / §66)
 

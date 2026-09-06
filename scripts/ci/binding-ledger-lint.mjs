@@ -33,18 +33,67 @@
  *   node scripts/ci/binding-ledger-lint.mjs --self-test
  */
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const LEDGER = "docs/binding-ledger/surface-binding-ledger.json";
 
-// The completion_criterion must name a real action/outcome (owner: "not merely that Paige can open or
-// summarize it"). A criterion that contains none of these stems reads as passive and fails.
-const ACTION_STEMS = [
-  "execut", "governed", "verif", "outcome", "rail", "creat", "revis", "advanc", "move", "send", "sent",
-  "schedul", "publish", "book", "record", "install", "complet", "driv", "remediat", "updat", "configur",
-  "resolv", "maintain", "coordinat", "generat", "promot", "rout", "transition", "action", "entitlement",
-  "deliver", "appl", "connect", "scope", "seam",
-];
+// Importing this module (for `completionNamesRealAction` / `validateLedger`) must be side-effect-free:
+// the CLI runs ONLY when this file is the process entry point, never on import (§13 clean code / m3).
+function invokedDirectly() {
+  try {
+    return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+// The completion_criterion must name a REAL action/outcome (owner: "not merely that Paige can open or
+// summarize it"). A raw substring allowlist cannot tell a verb from a noun — "open and summarize the
+// connected records" laundered through the stems "connect"/"record" (§39 verifier M1). Two changes fix
+// that, and both are verified against the live ledger's 24 in-scope criteria + the exact bypass string:
+//
+//   1. STRONG_VERB is curated to VERB forms only. The laundering-prone stems are removed: bare
+//      `records?` (the plural NOUN "records") — while `recorded|recording` (the real verb) is kept —
+//      and `connect*` entirely (adjective "connected", noun "connection"). With those gone, the bypass
+//      "open and summarize the connected records" contains NO strong verb and fails on (1) alone.
+//   2. A passive framing verb (open/summarize/view/display/show/list/browse/monitor) is allowed only
+//      when EXCUSED, and "excused" is judged robustly, not by a fixed character window:
+//        (a) CLAUSE-SCOPED NEGATION — a negator anywhere in the passive verb's own clause (delimited by
+//            . ; : or —) excuses it: "— not a static submissions list", "not just browsing a catalogue".
+//        (b) PRECONDITION — a passive verb FOLLOWED by a real action verb is a setup, not the claim:
+//            "An owner opens Paige … and Paige acts through a governed tool, outcome recorded".
+//      An un-excused passive verb (the bypass's "open"/"summarize", were a stray strong verb present)
+//      still fails.
+//
+// A surface whose completion is legitimately out of this program's scope sets `out_of_scope: true` and
+// is exempt from the action bar — an honest scope-out is distinguished structurally, never laundered.
+// The guard is a TRIPWIRE for the open/summarize cop-out, not a semantic parser of English; whether a
+// lane's mapping is correct stays a human §5/§39 responsibility (the comment below).
+const STRONG_VERB = /\b(execut\w*|govern\w*|verif\w*|creat\w*|revis\w*|advanc\w*|moves?|moved|moving|sends?|sent|sending|schedul\w*|publish\w*|books?|booked|booking|recorded|recording|install\w*|complet\w*|driv\w*|remediat\w*|updat\w*|configur\w*|resolv\w*|maintain\w*|coordinat\w*|generat\w*|promot\w*|routes?|routed|routing|transition\w*|deliver\w*|perform\w*|chang\w*|recall\w*|activat\w*|launch\w*|adjust\w*|wires?|wired|wiring|ships?|shipped|shipping|redline\w*|models?|modeled|modeling|reaches?|reached)\b/i;
+const PASSIVE_VERB = /\b(open|opens|opening|summari[sz]e[sd]?|summari[sz]ing|view|views|viewing|display|displays|displayed|displaying|show|shows|showing|lists?|listing|browse|browses|browsing|monitor|monitors|monitoring)\b/gi;
+const NEGATOR = /\b(not|never|rather|instead|no longer|nor)\b/i;
+const CLAUSE_DELIMS = ['.', ';', ':', '—']; // — = em dash "—"
 const INTENDED_LANES = ["read", "draft", "auto", "confirm", "prohibited", "completion_criterion"];
+
+// The guard enforces PRESENCE of all six lanes + a real-action completion_criterion. It does NOT
+// verify the SEMANTIC correctness of each lane (e.g. the §16/§67 lane mapping, or that a §38/§53
+// prohibition is right) — that stays a human §5 compliance responsibility (§39 verifier / compliance MINOR-3).
+
+/** True when a real-action completion_criterion; false when it reads as merely open/summarize. */
+export function completionNamesRealAction(text) {
+  const cc = String(text || "");
+  if (!STRONG_VERB.test(cc)) return false; // no genuine action verb at all → not a real action
+  for (const m of cc.matchAll(PASSIVE_VERB)) {
+    const idx = m.index;
+    // (a) clause-scoped negation: negator anywhere in this passive verb's own clause excuses it.
+    const clauseStart = Math.max(-1, ...CLAUSE_DELIMS.map((d) => cc.lastIndexOf(d, idx - 1)));
+    if (NEGATOR.test(cc.slice(clauseStart + 1, idx))) continue;
+    // (b) precondition: a passive verb followed by a real action verb is a setup, not the claim.
+    if (STRONG_VERB.test(cc.slice(idx + m[0].length))) continue;
+    return false; // an un-excused passive verb dominates → not a real action
+  }
+  return true;
+}
 
 /** Validate a parsed ledger object. Returns an array of finding strings; empty means pass. */
 export function validateLedger(ledger) {
@@ -137,15 +186,19 @@ export function validateLedger(ledger) {
       for (const lane of INTENDED_LANES)
         if (typeof ic[lane] !== "string" || !ic[lane].trim())
           findings.push(`${id}: intended_capability.${lane} missing or empty`);
-      const cc = typeof ic.completion_criterion === "string" ? ic.completion_criterion.toLowerCase() : "";
-      if (cc && !ACTION_STEMS.some((st) => cc.includes(st)))
-        findings.push(`${id}: completion_criterion must name a REAL action/outcome — not merely that Paige can open or summarize the surface`);
+      if ("out_of_scope" in s && typeof s.out_of_scope !== "boolean")
+        findings.push(`${id}: out_of_scope must be a boolean when present`);
+      const cc = typeof ic.completion_criterion === "string" ? ic.completion_criterion : "";
+      // An honestly out-of-scope surface (portal, operator) is exempt from the real-action bar — its
+      // completion is legitimately "out of scope", not an evasive passivity.
+      if (cc && s.out_of_scope !== true && !completionNamesRealAction(cc))
+        findings.push(`${id}: completion_criterion must name a REAL action/outcome — not merely that Paige can open or summarize the surface (set out_of_scope:true for a genuine scope-out)`);
     }
   }
   return findings;
 }
 
-if (process.argv.includes("--self-test")) {
+if (invokedDirectly() && process.argv.includes("--self-test")) {
   const base = {
     schema_version: "1.0.0",
     state_vocabulary: { LIVE: "", PARTIAL: "", READ_ONLY_CONTEXT: "", INTENTIONALLY_ISOLATED: "", UNAVAILABLE: "", PROOF_OWED: "" },
@@ -186,7 +239,14 @@ if (process.argv.includes("--self-test")) {
     ["FAILS a surface missing intended_capability", { ...base, surfaces: [surface({ intended_capability: undefined })] }, 1],
     ["FAILS intended_capability missing a lane", { ...base, surfaces: [surface({ intended_capability: (() => { const c = fullIntended(); delete c.auto; return c; })() })] }, 1],
     ["FAILS a weak open/summarize completion_criterion", { ...base, surfaces: [surface({ intended_capability: { ...fullIntended(), completion_criterion: "Paige can open and summarize the plan" } })] }, 1],
+    ["FAILS a passive criterion that launders a noun stem (verifier M1)", { ...base, surfaces: [surface({ intended_capability: { ...fullIntended(), completion_criterion: "Paige can open and summarize the connected records" } })] }, 1],
+    ["FAILS a passive criterion that mentions an outcome noun", { ...base, surfaces: [surface({ intended_capability: { ...fullIntended(), completion_criterion: "Paige can view the action items and the tenant scope" } })] }, 1],
     ["passes a real-action completion_criterion", { ...base, surfaces: [surface({ intended_capability: { ...fullIntended(), completion_criterion: "Paige sends a governed follow-up with a verified outcome" } })] }, 0],
+    ["passes a NEGATED passive mention alongside a real action", { ...base, surfaces: [surface({ intended_capability: { ...fullIntended(), completion_criterion: "Paige advances a mission and records the outcome — not a displayed plan" } })] }, 0],
+    ["passes a precondition passive verb followed by a real action", { ...base, surfaces: [surface({ intended_capability: { ...fullIntended(), completion_criterion: "An owner opens Paige and she executes a governed action, outcome recorded" } })] }, 0],
+    ["FAILS a strong verb with an un-excused trailing passive verb", { ...base, surfaces: [surface({ intended_capability: { ...fullIntended(), completion_criterion: "Paige governs the account and then displays the dashboard" } })] }, 1],
+    ["passes an out_of_scope surface exempt from the action bar", { ...base, surfaces: [surface({ out_of_scope: true, intended_capability: { ...fullIntended(), completion_criterion: "Out of this program's scope; the seam is recorded only" } })] }, 0],
+    ["FAILS out_of_scope that is not a boolean", { ...base, surfaces: [surface({ out_of_scope: "yes" })] }, 1],
     ["FAILS a ledger missing authority_lanes", { ...base, authority_lanes: undefined, surfaces: [surface()] }, 1],
   ];
   let bad = 0;
@@ -200,23 +260,27 @@ if (process.argv.includes("--self-test")) {
   process.exit(bad ? 1 : 0);
 }
 
-if (!fs.existsSync(LEDGER)) {
-  console.log(`✗ binding-ledger-lint: ${LEDGER} is missing — that is a resolver failure, not a pass.`);
-  process.exit(1);
+function runLedgerLint() {
+  if (!fs.existsSync(LEDGER)) {
+    console.log(`✗ binding-ledger-lint: ${LEDGER} is missing — that is a resolver failure, not a pass.`);
+    process.exit(1);
+  }
+  let ledger;
+  try {
+    ledger = JSON.parse(fs.readFileSync(LEDGER, "utf8"));
+  } catch (e) {
+    console.log(`✗ binding-ledger-lint: ${LEDGER} is not valid JSON — ${e?.message ?? e}`);
+    process.exit(1);
+  }
+  const findings = validateLedger(ledger);
+  if (findings.length) {
+    console.log(`✗ binding-ledger-lint: ${findings.length} finding(s) in ${LEDGER}\n`);
+    for (const f of findings) console.log(`  • ${f}`);
+    console.log("\n  The Surface Binding Ledger is the release contract. Fix the entry, or fix the claim.");
+    console.log("  A surface is not LIVE without authenticated runtime proof (§13/§32).");
+    process.exit(1);
+  }
+  console.log(`✓ binding-ledger-lint: ${ledger.surfaces.length} surface(s), all entries complete and honestly stated.`);
 }
-let ledger;
-try {
-  ledger = JSON.parse(fs.readFileSync(LEDGER, "utf8"));
-} catch (e) {
-  console.log(`✗ binding-ledger-lint: ${LEDGER} is not valid JSON — ${e?.message ?? e}`);
-  process.exit(1);
-}
-const findings = validateLedger(ledger);
-if (findings.length) {
-  console.log(`✗ binding-ledger-lint: ${findings.length} finding(s) in ${LEDGER}\n`);
-  for (const f of findings) console.log(`  • ${f}`);
-  console.log("\n  The Surface Binding Ledger is the release contract. Fix the entry, or fix the claim.");
-  console.log("  A surface is not LIVE without authenticated runtime proof (§13/§32).");
-  process.exit(1);
-}
-console.log(`✓ binding-ledger-lint: ${ledger.surfaces.length} surface(s), all entries complete and honestly stated.`);
+
+if (invokedDirectly() && !process.argv.includes("--self-test")) runLedgerLint();

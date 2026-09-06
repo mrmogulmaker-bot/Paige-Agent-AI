@@ -84,7 +84,7 @@
     {
       "id": "command-center.business-game-plan",
       "intended_capability": {
-        "read": "The composite plan (metrics, attention, systems, missions) and the current Business Mission record.",
+        "read": "The composite plan (metrics, attention, systems, missions) and the current Business Mission record; monitors mission progress and plan drift over time.",
         "draft": "Propose a plan, sequence missions, draft mission briefs and next moves, and model strategic options.",
         "auto": "Within policy, advance a mission through the non-destructive stages the tenant has pre-approved.",
         "confirm": "Create / revise / transition a Business Mission (high, chat-canonical) executes only after owner confirmation.",
@@ -460,8 +460,8 @@
       "intended_capability": {
         "read": "Safe relationship context — lifecycle, status, consent, portal-linked — enumerated, no PII to Mind.",
         "draft": "Prepare contact updates and communications; maintain relationship context.",
-        "auto": "Within policy, record a contact update the tenant pre-approved.",
-        "confirm": "Creating/editing a contact via chat, or any client-facing send, is confirmation-gated; the owner's own UI writes must also emit Rail so history is complete.",
+        "auto": "Within policy, apply a low-risk, non-client-facing field update (e.g. a tag or lifecycle stage) the tenant explicitly pre-approved — never a creation, an identity-field edit, or a send.",
+        "confirm": "Creating a contact, editing identity fields (name/email/phone), or any client-facing send is confirmation-gated; the owner's own UI writes must also emit Rail so history is complete.",
         "prohibited": "Never expose names, emails, phones, or notes to Mind; act only within authority.",
         "completion_criterion": "Paige maintains a contact and coordinates a governed follow-up whose outcome is recorded — with the owner's own edits also Rail-visible — not a read-only book."
       },
@@ -559,6 +559,7 @@
     },
     {
       "id": "clients.portal",
+      "out_of_scope": true,
       "intended_capability": {
         "read": "Portal configuration and link state (safe).",
         "draft": "Recommend portal setup and prepare portal content.",
@@ -903,6 +904,7 @@
     },
     {
       "id": "operator.platform",
+      "out_of_scope": true,
       "intended_capability": {
         "read": "Operator tier only: fleet/platform posture — tenant-less, operator-gated.",
         "draft": "Operator-tier recommendations.",
