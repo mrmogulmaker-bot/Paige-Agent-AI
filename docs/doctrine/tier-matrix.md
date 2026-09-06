@@ -3567,6 +3567,76 @@ rollback, which proves the SQL runs and proves nothing about it being live (§32
 *Authenticated runtime:* **OWED.** No route to the deployed origin and no test-tenant credential
 from this session.
 
+### Campaigns → Sales — the Sales Command Desk redesign, `/solo/{account}/growth/sales` (2026-09-06)
+
+**§66, same commit as the change.** Tier gating is UNCHANGED from the Sales Operations Slice A row
+above — this is a content/experience redesign of the same surface, same `growth` feature key, same
+tiers (God with a tenant selected · Solo · Sub-account · Enterprise; Agency/Client/Anonymous
+excluded). No new feature key, no new route, no migration.
+
+**What the change is.** The single-scroll Sales-operations screen became a four-view **Sales Command
+Desk** switched by a Sales-local `?view=` param (deep-linkable, allow-listed with a `command`
+fallback, never the shell subtab registry): **Sales Command** (default operating desk — Commercial
+Pulse of 5 evidence-aware tiles, Commercial Readiness Ladder of 6 stages, Top Commercial Moves, Open
+Commercial Work, and the phase-aware routed-capture foldout) · **Commercial Terms** (recorded terms +
+offers table + terms editor) · **Revenue & Collections** (Actual received unavailable, Contracted
+value on record, renewals, declared payment-handling band) · **Sales Scenarios** (an evidence-aware
+Scenario Lab that writes nothing). The six-tab Campaigns nav and shared Campaigns chrome are untouched.
+
+**Truth boundaries, encoded and tested.** Actual received is always unavailable (`tenant_orders`
+never summed); Contracted is Σ active one-time terms, recurring shown monthly-equivalent, never
+annualized, never cross-currency, and **an em-dash — never `$0`/"Free" — when there is no one-time
+value**; a pipeline deal carries no monetary value (open is a count); Contract-pending is unavailable
+(no Vault/contract backend, no deal↔term linkage); the Scenario Lab refuses the Evidence-supported
+path without real pipeline evidence and changes no price/offer/deal/campaign/payment/Mission.
+
+**§58 — nothing removed.** Payment-handling editor, the §38 money-boundary copy, the routed-capture
+band, the Catalog offers table + quick-create, and the client-terms editor all survive and are
+reachable across the new views. The redesign initially dropped the terms band's read-only guidance
+("An owner or admin records this."); the render proof caught it and it was restored + pinned by a
+contract test (§58/§36 — a reader who cannot write is told who may, never a silently missing button).
+
+**Evidence, separated (§13).**
+- *Automated:* full suite **3563/3563** green (237 files); `sales-ops.contract.test.tsx` +
+  `src/solo/sales/*.test.ts` cover the truth boundary, incl. the pure-recurring "never Free" case at
+  both the derivation and the Revenue render. The two new pure modules `deriveSalesCommand.ts` /
+  `salesScenario.ts` are type-checked (the surface component keeps the house `// @ts-nocheck`).
+- *Rendered:* `npm run drive:sales-ops` — **524/524 checks, horizontal overflow 0** across all four
+  views × the **real Solo content-column widths** (797/521/685/439 docked & PAIGE-expanded + 1024/900
+  overlay) × both themes + the required states. The driver was tightened to the true column widths
+  (the prior driver used the full window, so 439px was never tested) and caught two real form-fit
+  defects, now fixed: the pulse forced five columns at every width, and the scenario banner's action
+  group did not wrap at 439px.
+- *Form-fit measurement, handed to CD (§00), not a CC judgement.* No horizontal/nested scroll at any
+  width (the hard requirement). Vertical scroll within the shell's own `.campaigns-scroll` remains in
+  44/48 column states: heaviest on the content-dense **command** (scrollH ~1.4k–2.2k px) and
+  **scenarios** views, lightest on terms/revenue (which fit at 900×1000); the tall states are the
+  narrow PAIGE-expanded columns where every section stacks single-column. A concrete alternative if a
+  shorter default is wanted: collapse Top Commercial Moves / Open Commercial Work into fold-out rows
+  like the routed-capture foldout. Decision is CD/owner's.
+- *Static/build:* `ci:tsc` clean against the ratchet (13/13, no new errors); `lint:gold` clean on the
+  changed files; `eslint` 0 errors on changed files; `ci:regression`, `lint:skeleton` pass.
+- *§13 CORRECTION, recorded not quietly amended:* the §39 peer-gate found a BLOCKING defect a green
+  render proof missed — `money(0)` renders "Free", so a pure-recurring retainer (or an
+  active-but-unsummable term) read **"Free"** for contracted value on the Revenue card and pulse tile.
+  Fixed with an em-dash guard at both sites + a unit test + a render test. Non-blocking peer/compliance
+  findings fixed the same pass: open-work Pill tone `"v"` rendered neutral (now `"opportunity"`), the
+  delivery-window had no lower bound, and the Scenario Lab counted missing-stage deals as open.
+- *UNVERIFIED — authenticated runtime (§32.c):* OWED to a browser-capable session against live prod;
+  the local render proof stubs the network reads. See the PR's live-drive checklist.
+
+**Round 2 (MVP, 2026-09-06) — responsive refinement + container queries, owner-delegated.** The owner
+moved this workstream to MVP mode and delegated the responsive call. The desk now reflows on the
+CONTENT COLUMN via a container query keyed to `.so-view` (it was viewport `@media`, which never
+reflowed a PAIGE-docked narrow column — a latent cramping the viewport-width render harness could not
+surface). The Commercial Readiness Ladder (the secondary reference section) collapses to a disclosure
+by DEFAULT at a narrow column (<620px = PAIGE expanded) and shows in full at a wide column, keeping the
+Commercial Pulse, Top Moves, Open Work and primary actions above the fold. Re-proof: `drive:sales-ops`
+524/524, horizontal overflow 0 at all 48 states; command-view vertical scroll fell materially at narrow
+columns (439 +1469→+862, 521 +1272→+683, 797 +902→+466). Scenarios remains a focused single-purpose
+form (its length is inherent; reported, not collapsed). Merged to `main` under MVP cadence; the
+authenticated live-drive (§32.c) stays OWNER-OWED.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |
@@ -3846,3 +3916,65 @@ zero tests and now breaks three.
 `paige_social_posts`, a table with **no `tenant_id`**. Pointing a tenant surface at them would publish
 every workspace's post to one shared page. Per-tenant publishing needs per-tenant OAuth (provider app
 review, per-tenant tokens) and a tenant column on that table.
+
+### PAIGE Mind — the approved 3D knowledge orb, `/solo/{account}/…` Command Center → Mind
+
+**§66, same commit as the ship. This is a REDESIGN of an existing surface — tier VISIBILITY is
+unchanged; nothing is added or gated.** The owner-approved (§28 frozen) Three.js "knowledge orb"
+(prototype `docs/prototypes/command-center-mind-gate1.html`, Gate-1 signed off) is ported into the
+real `SoloMindWorkspace` as the Mind subtab's primary instrument. The orb engine is promoted verbatim
+from the frozen prototype into `src/solo/mind-orb/engine.ts` (byte-identical rendering, §28) and
+code-split behind a dynamic `import("./engine")` so `three` ships as a lazy chunk, never in the main
+bundle. Each node is a REAL governed record; a domain with no live hook renders an HONEST ABSENCE, and
+an `UNAVAILABLE` domain shows its hub with **no** satellites (a "pending"-coloured ghost around an
+"unavailable" hub would read as work awaiting the owner when nothing is on file — §13/§70).
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| See the Mind subtab (the orb + record list) | — (no Solo book) | — | ✓ | ✓ | ✓ | — | 403 |
+| Knowledge resources nodes ← `tenant_knowledge_docs` (LIVE, owner-indexed) | — | — | ✓ | ✓ | ✓ | — | 403 |
+| Connected sources nodes ← n8n readiness (LIVE, status only) | — | — | ✓ | ✓ | ✓ | — | 403 |
+| Operating decisions nodes ← pending approvals (LIVE) | — | — | ✓ | ✓ | ✓ | — | 403 |
+| Business context / Client relationships domains | honest ABSENCE — no frontend hook yet | | | | | | |
+| Offers & services domain | honest UNAVAILABLE — catalog lives in Campaigns, not a governed fact | | | | | | |
+| Open a record's evidence drawer (provenance + honesty boundary) | — | — | ✓ | ✓ | ✓ | — | 403 |
+| Any create/update/delete from Mind | ✗ read-only surface | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+
+**Honest source truth per domain (the orb never invents to fill a hub):** three of the six domains
+are `LIVE` from real read contracts (Knowledge / Connected sources / Operating decisions); two render
+an honest absence because no frontend hook reads their governed store yet (Business context ←
+`business_context.readiness`; Client relationships ← governed memory); one is honest `UNAVAILABLE`
+(Offers & services). **§58 boundary held:** Systems Check findings are DELIBERATELY not surfaced as
+Mind records — proven by `src/solo/SoloMindWorkspace.test.tsx`.
+
+**Degrades LOUDLY, never white-screens (§32):** WebGL is probed before `three` loads; a failed probe,
+a failed async engine mount, or a render-phase throw all `console.error` and route to the parent's
+record-list fallback ("Showing your records as a list") with every governed record still reachable —
+proven by the jsdom degradation test. The orb-NAVIGATION affordances (drag/scroll hint, Reset view)
+hide in the fallback rather than show as dead controls; the persisted PREFERENCE toggles (orbit
+pause, reduced motion) stay available because they hold real per-user+tenant state and reduced-motion
+is an accessibility control (§70). Three.js resources (renderer, InstancedMesh, env texture, PMREM,
+`RoomEnvironment`, halo materials, geometries) are disposed on unmount.
+
+**Proof at this ledger entry:** 28 deterministic unit tests over the pure reconciliation/geometry
+(`src/solo/mind-orb/mindDomains.test.ts`) + workspace behaviour tests
+(`src/solo/SoloMindWorkspace.test.tsx`); full solo suite 1595 passing; `tsc --noEmit` clean; eslint
+clean on the changed files; and a §32 headless env-construction smoke (`scripts/mind-orb-smoke.mjs`,
+guards the `RoomEnvironment` construct + dispose that a green build would not catch).
+
+**UNVERIFIED / owed (§32.c):** the authenticated live drive of the deployed Mind subtab at the four
+viewports in both themes. No session in this work holds a browser that can reach the authenticated
+Solo surface, so the browser-driven live check is owed to the next capable session (Cowork/Chrome) —
+it is not claimed here. The rendering itself is the §28-frozen, Gate-1-approved prototype; what is
+owed is the authenticated in-app render of the ported surface, not a fresh design review.
+
+**Conflict check vs recorded decisions (all clear, §BRAIN contract):** the Mind surface renders NO
+`PaigeMark`/`PaigeSymbol` component (the retired orbital brand mark is not used — the Command-Mark
+decision is preserved; the orb is the Gate-1-approved data-viz, a different object from the logo);
+"Open PAIGE" uses the ONE existing workspace (no floating authenticated chat); Mind is READ-ONLY (it
+displays governed records, never writes Mind/Memory eligibility); tier visibility UNCHANGED — Solo +
+Sub-account already received Mind pre-PR (row above, PR #933), so this is a REDESIGN, not new
+sub-account delivery (no "explicit release" rule triggered). **Next owning workstream:** the
+Business-context + Client-relationships frontend read-hooks (to light those two `UNAVAILABLE/DEFERRED`
+domains); **first-read dependency:** `docs/handoff/solo-setup-business-context-spine-handoff.md` (the
+narrower safe-field projection contract — status + provenance only, never a raw value).

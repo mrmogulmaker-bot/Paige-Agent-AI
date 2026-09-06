@@ -293,9 +293,20 @@ an integration entry point updates this file in the same commit (§BRAIN.3). Ver
   replaced with `/solo/{account}/command-center/mind`. Do not copy this Solo ruling into Agency,
   Sub-account, Enterprise, or operator registries.
 - `src/solo/SoloMindWorkspace.tsx` + `solo-mind-workspace.css` own Mind's read-only, interactive 3D
-  record topology and contextual inspector. They compose existing sources only: `useSoloKnowledge`,
-  `useSystemsCheck("tenant")`, and current read-only decision references from `useCommandCenter`.
-  They do not own actions, chat, historical inference, relationships, or helper provenance.
+  record topology and contextual inspector. They compose existing read sources only: `useSoloKnowledge`
+  (Knowledge resources), `useN8nSpineReadiness` (Connected sources, status only), and read-only decision
+  references from `useCommandCenter` (Operating decisions). Business context + Client relationships render
+  an honest ABSENCE (no frontend hook yet); Offers & services is honest UNAVAILABLE. **Systems Check
+  findings are DELIBERATELY not surfaced here (§58** — they live in the Systems Check subtab), so this
+  no longer reads `useSystemsCheck`. They do not own actions, chat, historical inference, relationships,
+  or helper provenance.
+- `src/solo/mind-orb/` owns the 3D engine, promoted VERBATIM from the owner-approved (§28 frozen) Gate-1
+  prototype: `engine.ts` (`createMindOrb` Three.js factory), `MindOrbCanvas.tsx` (React mount — WebGL
+  probe, code-split dynamic `import("./engine")` so `three` is a lazy chunk, `SceneBoundary` + loud
+  degrade to the parent list, effect-based reconciliation), and `mindDomains.ts` (PURE reconciliation
+  from the read contracts → orb nodes + honest source-signal states). Unit-tested: `mindDomains.test.ts`
+  (28) + `SoloMindWorkspace.test.tsx`; §32 headless env smoke `scripts/mind-orb-smoke.mjs`. Ported live
+  2026-09-06, PR #969.
 - `src/solo/SoloPaigeWorkspace.tsx` links to canonical Mind but remains the single PAIGE Chat/Knowledge
   owner. Mind may open that workspace only through the existing shell callback, with no context attach,
   prefill, send, preparation, or work-start claim.
@@ -306,3 +317,49 @@ an integration entry point updates this file in the same commit (§BRAIN.3). Ver
 ### Client identity contract (2026-09-01)
 
 `public.clients` owns one immutable internal UUID, one immutable tenant binding, and one immutable public-safe `client_ref` stored in `account_number`. `create_contact()` is the authenticated creation seam; trusted edge producers must supply their already server-resolved tenant. Paige Chat and MCP expose `client_ref` plus bounded CRM metadata and resolve the internal UUID only after tenant validation.
+
+## Business Vault Phase 2 security foundation (2026-09-06)
+
+**Release state: PARTIAL / deployed at merge `809faec3`; authenticated runtime PROOF OWED.**
+
+- **Solo surface and route:** `src/solo/SoloApp.tsx`, `src/solo/settings.tsx`, `src/solo/vault.tsx`,
+  and `src/solo/vault.css` own Settings → Business Vault. Navigation is shown only after
+  `business_vault_access_status` confirms the current actor for the server-resolved active
+  workspace. Denial or authorization transport failure clears content and navigation together;
+  a later successful server check performs a fresh load.
+- **Durable domain home:** migrations `20261225013700` through `20261225014000` own tenant-bound
+  records, versions, contracts, obligations, fact review/revocation, owner-only visibility,
+  replacement/archive lifecycle, quarantine inspection evidence, and bounded cleanup. Browser
+  roles have no direct table access; callable RPCs re-resolve actor, tenant, role, and lifecycle.
+- **Edge boundary:** `business-vault-upload` can reserve and place bytes only in the private
+  `business-vault-quarantine` bucket when the server capability says a real inspection adapter is
+  available. `business-vault-download` returns only a current, ready, passed-inspection version.
+  `business-vault-reconcile` retries safe quarantine cleanup without logging document text.
+- **UNAVAILABLE:** no approved OCR/DLP provider or service-owned promotion worker exists. PDF/image
+  upload, inspection, byte promotion, and normal download therefore remain disabled. Promotion
+  functions are revoked from browser and service roles. Quarantine rows and synthetic SQL outcomes
+  are not live document inspection.
+- **DEFERRED:** client publishing, external provider ingestion, legal interpretation, payment or
+  filing execution, Rail outcomes, Systems Check verdict changes, and broad document-to-Mind
+  automation. A passed inspection would still require separate owner review and minimal-fact
+  approval before any Paige context.
+- **Proof:** 5 focused files / 29 tests; 71 count-enforced actor/database assertions; two-session
+  duplicate/cleanup serialization; affected lint, Deno ratchet, TypeScript ratchet, build, audit,
+  contract, database-contract, UI-evidence, and full CI verification PASS. Three independent
+  security/routing/test reviews PASS. PR #986 squash-merged as `809faec3`; post-merge CI passed;
+  `db-live` and `edge-live` both point to that exact SHA; Vercel Production status succeeded
+  (deployment `6MT79LnaSVWixnZXWQwStnVsNW2F`), and `paigeagent.ai` plus
+  `app.paigeagent.ai` returned HTTP 200 with the live Solo chunk
+  `SoloApp-GsPt1vrB.js` containing the four fail-closed Vault fingerprints. Authenticated
+  owner/admin/member/cross-tenant drives, real inspection/quarantine bytes, and a Vercel runtime-log
+  scan remain PROOF OWED.
+- **Collision handoff:** PR #724 is adjacent to the tenant/Settings seam. PR #917 overlaps the
+  Settings dispatch/header and `supabase/config.toml` tail. Preserve both Integrations and Vault
+  `openPaige` wiring, `solo-settings--vault`, Vault outer-header suppression, current Connections
+  copy, `solo-contact-import`, and all three Vault `verify_jwt = true` blocks. Do not overwrite
+  Paige chat/Mind, Rail, Systems Check, Relationships, Pipeline, or governed-execution owners.
+- **Next owner:** the Vault inspection-adapter/worker workstream. It must read this section,
+  `docs/evidence/ui-delivery/business-vault-phase2-foundation.md`, migrations `13700..14000`,
+  and the 71-assertion SQL plan first. It must obtain explicit provider approval/credentials before
+  enabling bytes, then prove OCR, secret/financial-sensitive detection, encrypted/malformed and
+  timeout refusal, cleanup compensation, exact-byte promotion, and authenticated storage behavior.

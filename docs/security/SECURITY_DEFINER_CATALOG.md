@@ -242,6 +242,20 @@ Re-review triggers: any of these gains a data-returning overload · function beg
 Anon + authenticated EXECUTE was previously revoked from the following internal trigger/cron functions and must remain revoked:
 `auto_stub_business_from_contact`, `ensure_client_role_self_heal`, `notify_approval_event`, `email_queue_dispatch`, `enforce_doctrine_120`, `enforce_doctrine_120_full`, `enforce_subagent_doctrine_116`, `enforce_subagent_doctrine_124`, and the paired weekly-sweep functions.
 
+### Business Vault Phase 2 security-definer registry
+
+Authenticated, tenant-resolving API (Category A): `business_vault_access_status`, `business_vault_inspection_capability`, `business_vault_snapshot`, `business_vault_get_context`, `business_vault_reserve_quarantine_upload`, `business_vault_save_contract`, `business_vault_save_obligation`, `business_vault_archive_record`, `business_vault_propose_fact`, `business_vault_review_fact`, and `business_vault_download_version`.
+
+Justification: every entry resolves the caller's active tenant and active owner/admin membership server-side. Record-scoped functions re-check tenant, role, visibility, lifecycle, and current-version state; owner-only dependent rows use the same visibility boundary. Regression proof: `supabase/tests/business_vault_phase2_security.sql` (71 executable actor/database assertions).
+
+Service-only quarantine maintenance (Category B): `business_vault_mark_quarantine_stored`, `business_vault_claim_quarantine_inspections`, `business_vault_record_inspection_result`, `business_vault_claim_quarantine_cleanup`, `business_vault_complete_quarantine_cleanup`, `business_vault_defer_quarantine_cleanup`, `business_vault_claim_stale_uploads`, and `business_vault_cancel_stale_upload`.
+
+Justification: browser roles have no execute authority. These functions accept only opaque identifiers and bounded scalar evidence; safe events never store extracted document text or secret values. Cleanup is leased, retryable, and cannot record deletion while the quarantine object still exists.
+
+Disabled/internal-only (Category C): `business_vault_claim_quarantine_promotions`, `business_vault_promote_quarantine_upload`, `business_vault_fail_quarantine_promotion`, legacy `business_vault_reserve_upload`, and legacy `business_vault_finalize_upload`. No browser or service-role EXECUTE grant exists. Promotion remains disabled until an approved inspector and exact-byte worker are separately reviewed and proven.
+
+Re-review triggers: any new Vault role grant; inspection configuration activation; storage bucket/policy changes; promotion worker/provider addition; relaxing lifecycle/current-version checks; recording raw extraction or scanner payloads; client sharing; Paige/Mind/Rail/Systems Check writes.
+
 ---
 
 ## Re-review cadence
