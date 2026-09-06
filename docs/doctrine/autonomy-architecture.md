@@ -725,6 +725,15 @@ contract, credential, or a material legal/financial decision is the only thing t
    switch**; missing/expired/revoked/ambiguous/stale/over-cap/cross-scope fails closed; `confirm`
    becomes the escalation lane (above threshold, outside scope, uncertain intent, changed
    recipient/vendor/campaign, or a provider risk condition).
+   *Implementation-status note (§13, shipped `20261231000000`):* delivered as a NEW read-only oracle
+   `resolve_execution_autonomy(automation_id, act_key, act_is_kind, cost_usd)` — per act, `min(process
+   grant, act floor, ceiling)` with a single active in-scope standing grant lifting THIS act's floor to
+   `auto` (ceiling still binds; explicit process `off` never overridden; grant supersedes the default
+   `confirm` posture, which is re-clamped on every step change). It is **DARK** — zero producers, and the
+   existing `resolve_automation_autonomy` + the 3 chat reporting tools are UNCHANGED, so nothing
+   over-claims `auto` while no execution loop exists. PR-3 wires the consumer (and only then do the
+   reporting tools become grant-aware). Client/campaign sub-scope grants fail closed here (verified at
+   execution in PR-3).
 3. **M1 — real money/spend metering (immediately after PR-2; a delivery dependency, not a halt):**
    currency-aware **atomic reservations** + actual provider-confirmed spend/payment results against the
    correct tenant, client, provider account, policy, and period. Dollar-affecting acts must NOT rely on
