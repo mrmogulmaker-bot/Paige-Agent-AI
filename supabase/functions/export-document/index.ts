@@ -166,7 +166,7 @@ serve(async (req: Request) => {
         success: false,
         needs_config: true,
         format,
-        note: `The ${format.toUpperCase()} exporter isn't available on the server yet. PDF and Markdown are the most reliable.`,
+        note: `The ${format.toUpperCase()} file couldn't be generated for this document. Markdown and DOCX are the most reliable formats.`,
       });
     }
     const url = rendered?.artifact_url ?? null;

@@ -348,17 +348,27 @@ function inlineMdToText(s: string): string {
   // label is left inline and IS emphasis-cleaned (label markdown is real markdown); the raw URL is spliced
   // back only at the end. The `@@URL0@@` sentinel is plain ASCII with no markdown-special or control
   // char, so no emphasis pass touches it and (unlike a NUL/BEL delimiter) it can never leak a bad byte.
+  const codes: string[] = [];
   const urls: string[] = [];
-  let str = String(s)
-    .replace(/^\s*>\s?/gm, "")                          // blockquote markers
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")           // image → alt text (destination dropped)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, url) => `${label}@@URL${urls.push(String(url)) - 1}@@`);
+  // Balanced-paren destination: non-paren runs OR one level of nested `(...)`, so a URL like
+  // `https://ex.co/a_(b)?utm_source=x` is captured WHOLE (a bare `[^)]+` would stop at the first `)` and
+  // leak the query into the emphasis pass — Codex P2). One nesting level covers real-world links.
+  const DEST = "((?:[^()]|\\([^()]*\\))*)";
+  let str = String(s).replace(/^\s*>\s?/gm, "");         // blockquote markers
   str = str
-    .replace(/(\*\*|__)(.+?)\1/g, "$2")                 // bold
-    .replace(/(\*|_)([^*_]+?)\1/g, "$2")                // italic (URLs are placeheld, so safe)
-    .replace(/~~(.+?)~~/g, "$1")                        // strikethrough
-    .replace(/`([^`]+)`/g, "$1");                       // inline code
-  str = str.replace(/@@URL(\d+)@@/g, (_m, i) => ` (${urls[Number(i)] ?? ""})`); // restore raw URL last
+    // Protect inline code VERBATIM first — its contents (`tenant_id_value`, `a*b*c`) must never be seen by
+    // the emphasis passes, which would otherwise strip the `_id_`/`*b*` inside it (Codex P2).
+    .replace(/`([^`]+)`/g, (_m, c) => `@@CODE${codes.push(String(c)) - 1}@@`)
+    .replace(new RegExp("!\\[([^\\]]*)\\]\\(" + DEST + "\\)", "g"), "$1")      // image → alt text (dest dropped)
+    .replace(new RegExp("\\[([^\\]]+)\\]\\(" + DEST + "\\)", "g"),
+      (_m, label, url) => `${label}@@URL${urls.push(String(url)) - 1}@@`);     // link → label + placeheld url
+  str = str
+    .replace(/(\*\*|__)(.+?)\1/g, "$2")                  // bold
+    .replace(/(\*|_)([^*_]+?)\1/g, "$2")                 // italic (code + URLs are placeheld, so safe)
+    .replace(/~~(.+?)~~/g, "$1");                        // strikethrough
+  str = str
+    .replace(/@@CODE(\d+)@@/g, (_m, i) => codes[Number(i)] ?? "")             // restore code verbatim
+    .replace(/@@URL(\d+)@@/g, (_m, i) => ` (${urls[Number(i)] ?? ""})`);      // restore raw URL as `(url)`
   return str.trim();
 }
 
@@ -404,7 +414,31 @@ function renderMarkdownDoc(title: string | undefined, blocks: Block[]): { bytes:
 // PDF — pdf-lib (pure-JS, Deno-proven). The reliable in-band PDF path: title + text blocks with
 // sane margins, word wrapping, and pagination. (HTML→PDF fidelity is a separate deferred service.)
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════
+// Count characters `sanitizeWinAnsi` would turn into `?` — i.e. codepoints pdf-lib's WinAnsi fonts can't
+// encode. Reuses the ONE sanitizer (§18) instead of re-listing the range, so the two can never drift.
+function winAnsiLoss(text: string): number {
+  const q = (s: string) => (s.match(/\?/g) || []).length;
+  return Math.max(0, q(sanitizeWinAnsi(text)) - q(String(text)));
+}
+function blockPlainText(b: Block): string {
+  if (b.type === "heading" || b.type === "paragraph") return (b as { text?: string }).text ?? "";
+  if (b.type === "list") return ((b as { items?: string[] }).items ?? []).join(" ");
+  return "";
+}
+
 async function renderPdf(title: string | undefined, blocks: Block[], _style: Record<string, unknown>): Promise<{ bytes: Uint8Array }> {
+  // §13/§70 — pdf-lib's StandardFonts are WinAnsi (Latin) only, so a document written in Cyrillic / CJK /
+  // Arabic (or heavy emoji) would render as a page of `?` while STILL returning a valid file + a success
+  // outcome. Detect that a MATERIAL share of the text can't be encoded and fail closed to needs_config, so
+  // the caller degrades honestly (DOCX/MD preserve Unicode) instead of shipping a corrupted PDF called a
+  // win. Incidental loss (a stray emoji, one foreign name in an English doc) stays best-effort.
+  const sample = [title ?? "", ...blocks.map(blockPlainText)].join("\n");
+  const nonWs = sample.replace(/\s+/g, "").length;
+  if (nonWs >= 8 && winAnsiLoss(sample) / nonWs > 0.15) {
+    throw new NeedsConfigError("doc-render:pdf-charset",
+      "This document uses characters the PDF exporter can't render yet (Latin text only) — export it as DOCX or Markdown to keep them.");
+  }
+
   let lib: any;
   try {
     lib = await import(PDFLIB_SPEC);
@@ -552,27 +586,35 @@ async function renderPptx(title: string | undefined, blocks: Block[], _style: Re
     const PptxGen = lib.default ?? lib;
     const pptx = new PptxGen();
 
-    // Group into { heading, body[] } sections.
+    // Group into { heading, body[] } sections. Content BEFORE the first heading (e.g. a deduped cover's
+    // subhead) collects into `lead` and rides the TITLE slide as its subtitle — NOT a separate slide
+    // headed with the document title, which duplicated the title slide (Codex P2).
     const slides: { heading: string; body: string[] }[] = [];
     let cur: { heading: string; body: string[] } | null = null;
-    const push = (line: string) => { if (!cur) cur = { heading: title || "Overview", body: [] }; cur.body.push(line); };
+    const lead: string[] = [];
+    const pushBody = (line: string) => { if (cur) cur.body.push(line); else lead.push(line); };
     for (const b of blocks) {
       if (b.type === "heading") { if (cur) slides.push(cur); cur = { heading: b.text || " ", body: [] }; }
-      else if (b.type === "list") b.items.forEach((it, i) => push(b.ordered ? `${i + 1}. ${it}` : it));
-      else if (b.type === "paragraph") { if ((b).text?.trim()) push((b).text.trim()); }
+      else if (b.type === "list") b.items.forEach((it, i) => pushBody(b.ordered ? `${i + 1}. ${it}` : it));
+      else if (b.type === "paragraph") { if ((b).text?.trim()) pushBody((b).text.trim()); }
       // pagebreak: force a new slide boundary
       else if (b.type === "pagebreak" && cur) { slides.push(cur); cur = null; }
     }
     if (cur) slides.push(cur);
 
-    // Title slide.
+    // Title slide (carries any pre-heading lead as its centered subtitle).
     if (title) {
       const s = pptx.addSlide();
       s.addText(title, { x: 0.5, y: 2.4, w: 9, h: 1.2, fontSize: 36, bold: true, align: "center" });
-    }
-    if (slides.length === 0) {
+      if (lead.length) s.addText(lead.join("\n"), { x: 0.5, y: 3.7, w: 9, h: 1.8, fontSize: 18, align: "center", valign: "top" });
+    } else if (lead.length) {
+      // No title, but there IS pre-heading content — give it its own slide so it is never lost.
       const s = pptx.addSlide();
-      s.addText(title || "Untitled", { x: 0.5, y: 0.4, w: 9, h: 1, fontSize: 28, bold: true });
+      s.addText(lead.map((t) => ({ text: t, options: { bullet: true } })), { x: 0.7, y: 0.6, w: 8.6, h: 5, fontSize: 16, valign: "top" });
+    }
+    if (slides.length === 0 && !title && lead.length === 0) {
+      const s = pptx.addSlide();
+      s.addText("Untitled", { x: 0.5, y: 0.4, w: 9, h: 1, fontSize: 28, bold: true });
     }
     for (const sec of slides) {
       const s = pptx.addSlide();

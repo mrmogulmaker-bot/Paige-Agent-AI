@@ -161,6 +161,26 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(md).toContain("- Beta");
   });
 
+  it("keeps code spans and balanced-paren link URLs verbatim, and md preserves Unicode (Codex round-6)", async () => {
+    const r = await renderDoc({
+      format: "md",
+      title: "R6",
+      content: [
+        { type: "prose", markdown: "Set `tenant_id_value` and `a*b*c`; see [x](https://ex.co/a_(b)?utm_source=s&utm_medium=m)." },
+        { type: "paragraph", text: "Привет мир 你好" },
+      ],
+    });
+    const md = dec(r.bytes);
+    // H2 — inline code is preserved VERBATIM; the `_id_` / `*b*` inside it must not be emphasis-stripped.
+    expect(md).toContain("tenant_id_value");
+    expect(md).toContain("a*b*c");
+    // H3 — a link URL with a balanced `(b)` and query underscores survives whole (not truncated at the `)`).
+    expect(md).toContain("https://ex.co/a_(b)?utm_source=s&utm_medium=m");
+    expect(md).not.toContain("utmsource");
+    // md keeps Unicode — only the PDF path has the WinAnsi (Latin-only) limit.
+    expect(md).toContain("Привет мир 你好");
+  });
+
   it("never throws and still produces a file for empty content (title-only)", async () => {
     const r = await renderDoc({ format: "md", title: "Only A Title", content: [] });
     expect(r.ext).toBe("md");
@@ -170,6 +190,31 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
   it("markdown output carries no forged trust markers by construction (it is the words, not a doc dressed up)", async () => {
     const r = await renderDoc({ format: "md", title: "T", content: [{ type: "paragraph", text: "plain" }] });
     expect(dec(r.bytes)).not.toContain("=== TENANT KNOWLEDGE ===");
+  });
+});
+
+describe("doc-render binary-format guards (source contract — pdf/pptx use npm libs, PROOF-OWED)", () => {
+  const SRC = readFileSync("supabase/functions/_shared/doc-render.ts", "utf8");
+
+  it("PDF fails closed on non-WinAnsi content instead of shipping a `?`-corrupted file reported as success (§13/H1)", () => {
+    // pdf-lib StandardFonts are Latin-only; a Cyrillic/CJK/Arabic doc would render `?`. The guard measures
+    // the loss via the ONE sanitizer and degrades to needs_config so the caller reports honestly.
+    expect(SRC).toContain("function winAnsiLoss");
+    expect(SRC).toContain("winAnsiLoss(sample) / nonWs");
+    expect(SRC).toContain('"doc-render:pdf-charset"');
+  });
+
+  it("PPTX routes pre-heading lead content onto the title slide, never a duplicate title slide (H4)", () => {
+    expect(SRC).toContain("const lead: string[] = []");
+    expect(SRC).toContain("if (lead.length) s.addText(lead.join");
+    // the old default that headed an orphan-content slide with the doc title (the duplicate) is gone
+    expect(SRC).not.toContain('{ heading: title || "Overview", body: [] }');
+  });
+
+  it("inline markdown protects code spans + link URLs before the emphasis passes (H2/H3)", () => {
+    expect(SRC).toContain("@@CODE");
+    expect(SRC).toContain("@@URL");
+    expect(SRC).toContain("restore code verbatim");
   });
 });
 

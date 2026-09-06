@@ -131,6 +131,20 @@
   them) computed an empty array and dropped the whole TOC; now it auto-builds from the surrounding
   section-header/chapter-divider titles, mirroring `DocumentPreview`. Regression test 12/12 (drives the
   underscore-URL and the entries-less toc). tsc ratchet 13/13, §50/§63 clean, control-chars none.
+  **NINTH catch — Codex round 6 (one P1 + three P2), all FOLDED at the root:** (H1, P1 §13) `renderPdf`
+  (pdf-lib WinAnsi/Latin-only) turned Cyrillic/CJK/Arabic/emoji into `?` while STILL reporting
+  `capability_succeeded` — a silently corrupted PDF called a win. Now `renderPdf` measures the WinAnsi
+  loss (via the ONE sanitizer, §18) and fails closed to needs_config when a material share (>15%) can't be
+  encoded, so the caller degrades honestly (DOCX/MD keep Unicode); incidental loss stays best-effort. (H2)
+  inline code was emphasis-stripped (`` `tenant_id_value` `` → `tenantidvalue`); (H3) a balanced-paren link
+  URL (`.../a_(b)?utm_source=…`) was truncated at the first `)` and its query underscore-eaten. Both fixed
+  by rewriting `inlineMdToText` to a tokenize-protect-restore parser — code spans protected VERBATIM and
+  link destinations (balanced-paren aware) placeheld BEFORE the emphasis passes, restored after. (H4) a
+  deduped cover's subhead became an orphan leading paragraph that `renderPptx` headed with the doc title —
+  a duplicate title slide; now pre-heading `lead` content rides the title slide as its subtitle. Lesson:
+  a markdown→flat-text normalizer needs tokenize-protect-restore, not layered regex substitutions, or each
+  new metacharacter is a fresh corruption. doc-export 16/16, tsc ratchet 13/13, control-chars none. The
+  pdf/pptx executable paths stay §32 PROOF-OWED (npm libs, not headless); their guards are source-contracted.
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace
