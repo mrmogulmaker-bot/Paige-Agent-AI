@@ -20,6 +20,9 @@ import { classifyCommsRun } from "../_shared/comms-capability-outcome.ts";
 // Phase 2 · S1 — Pipeline write acts (starting deal_move_stage) record an honest outcome
 // through the SAME ratified pattern (#947): capability-record owns HOW, this owns WHICH.
 import { classifyPipelineRun } from "../_shared/pipeline-capability-outcome.ts";
+// Capability System · slice 3 (F05) — CRM/scheduling write acts that recorded only to
+// paige_audit_log now also file an honest capability-Rail outcome, through the SAME pattern.
+import { classifyCrmRun } from "../_shared/crm-capability-outcome.ts";
 // Capability System · slice 1 — truthful artifact-creation receipts (§13/§70). A 200 carrying
 // no real artifact (null url, empty drafts, null saved id) must degrade to an honest failure,
 // not a success-shaped receipt. ONE pure home for that decision (§18); handlers wrap their
@@ -51,7 +54,12 @@ import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
 // below. NO-OP (returns null) for anyone but a seeded platform operator (the tenant-less God account).
 import { loadOwnerContextBlock } from "../_shared/owner-context.ts";
 import { buildTenantTeamContextBlock } from "../_shared/team-context.ts";
-import { fenceUploadedFileText, UPLOADED_FILE_UNTRUSTED_NOTICE } from "../_shared/untrusted-fence.ts";
+import {
+  fenceUploadedFileText,
+  RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE,
+  sanitizeUntrustedText,
+  UPLOADED_FILE_UNTRUSTED_NOTICE,
+} from "../_shared/untrusted-fence.ts";
 import { loadSpineEvidenceForChat } from "../_shared/paige-spine/chatEvidence.ts";
 import { buildBusinessContextReadinessBlock } from "../_shared/paige-spine/domains/businessContextChatEvidence.ts";
 import { buildTeamAuthorityBlock } from "../_shared/paige-spine/domains/teamAuthorityChatEvidence.ts";
@@ -1339,7 +1347,14 @@ JSON:`;
           if (urlResponse.ok) {
             const urlData = await urlResponse.json();
             if (urlData.success) {
-              fetchedUrlContent = `\n\n=== FETCHED URL CONTENT ===\nURL: ${urlData.url}\nContent:\n${urlData.content}\n===========================\n`;
+              // §9/§13 injection fence (Slice 2 inc 2, folded on §39/§5 review) — this is the WORST
+              // co-located surface: arbitrary attacker-controlled WEB PAGE text, on the privileged
+              // (non-client) coach/admin seat, reaching a tool-executing turn. A fetched page could
+              // forge the trusted `=== TENANT KNOWLEDGE ===`/`=== END KNOWLEDGE BASE ===` markers that
+              // downstream instructions key on and steer a mutating tool call. Sanitize the url + body
+              // (drop bidi/zero-width/controls; break any `===` run) and lead with the untrusted notice.
+              // Fenced at the BUILD site so BOTH interpolation paths (funding + neutral core) inherit it.
+              fetchedUrlContent = `\n\n=== FETCHED URL CONTENT ===\n${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}\nURL: ${sanitizeUntrustedText(urlData.url).replace(/[\r\n]+/g, " ").trim().slice(0, 500)}\nContent:\n${sanitizeUntrustedText(urlData.content)}\n===========================\n`;
             }
           }
         } catch (error) {
@@ -1420,7 +1435,10 @@ JSON:`;
         let tokenEstimate = 0;
         const included: string[] = [];
         for (const mem of sorted) {
-          const entry = `• [${mem.memory_type.replace(/_/g, ' ').toUpperCase()}] (${new Date(mem.created_at).toLocaleDateString()}): ${mem.content}`;
+          // §9/§13 injection fence (Slice 2 inc 2, folded) — memory is DURABLE and CROSS-PRINCIPAL: a
+          // client's OCR'd upload lands a report_upload row in client_memory that later re-enters the
+          // COACH's session. Sanitize the remembered content so it cannot forge a trusted marker.
+          const entry = `• [${mem.memory_type.replace(/_/g, ' ').toUpperCase()}] (${new Date(mem.created_at).toLocaleDateString()}): ${sanitizeUntrustedText(mem.content)}`;
           const entryTokens = Math.ceil(entry.length / 4);
           if (tokenEstimate + entryTokens > 1000) break;
           tokenEstimate += entryTokens;
@@ -1435,7 +1453,7 @@ JSON:`;
             ? `PAST CHAT (${hit.memory_type})`
             : hit.memory_type.replace(/_/g, ' ').toUpperCase();
           const sim = typeof hit.similarity === "number" ? ` ~${(hit.similarity * 100).toFixed(0)}% match` : "";
-          const entry = `• [${label}${sim}]: ${hit.content?.slice(0, 400) || ""}`;
+          const entry = `• [${label}${sim}]: ${sanitizeUntrustedText(hit.content).slice(0, 400)}`;
           if (!includedContents.has(entry.toLowerCase())) {
             const t = Math.ceil(entry.length / 4);
             if (tokenEstimate + t > 1500) break;
@@ -1448,7 +1466,10 @@ JSON:`;
           const semanticBlock = semanticEntries.length > 0
             ? `\n\n--- Semantically-relevant past context for this question ---\n${semanticEntries.join("\n")}`
             : "";
-          memoryBlock = `\n\n=== PAIGE MEMORY — What I know about this client from previous sessions ===\n${included.join("\n")}${semanticBlock}\n=== END MEMORY ===\n\nIMPORTANT: Honor any user_preference items (tone, length, formats) in every response. Use the rest of the memory to personalize. If this is the start of a new conversation (only 1 user message), open with a personalized greeting that references what you know.\n`;
+          // The remembered spans above are sanitized; lead the block with the untrusted-data notice so
+          // an embedded directive/tool-call/permission-change is never obeyed. The trusted instruction
+          // below still scopes what to honor to tone/length/format PREFERENCES — data, not authority.
+          memoryBlock = `\n\n=== PAIGE MEMORY — What I know about this client from previous sessions ===\n${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}\n${included.join("\n")}${semanticBlock}\n=== END MEMORY ===\n\nIMPORTANT: Honor any user_preference items (tone, length, formats) in every response. Use the rest of the memory to personalize. If this is the start of a new conversation (only 1 user message), open with a personalized greeting that references what you know.\n`;
         }
       }
     } catch (err) {
@@ -1680,7 +1701,17 @@ JSON:`;
       const sanitizedContent = lastUserMessage.content.replace(/[\\%_]/g, '\\$&').substring(0, 200);
       const { data: knowledge } = await supabase.from("knowledge_base").select("title, content, summary, framework, category").textSearch('content', sanitizedContent).limit(5);
       if (knowledge && knowledge.length > 0) {
-        relevantKnowledge = "\n\nRelevant Knowledge Base:\n" + knowledge.map(k => `### ${k.title} (${k.framework} - ${k.category})\n${k.content}`).join("\n\n");
+        // §13 honest scoping (Slice 2 inc 2) — knowledge_base is OPERATOR-authored / OPERATOR-APPROVED
+        // platform canon: it is written by the operator surface (src/operator/data/useKnowledge.ts) AND
+        // by kb-promote-to-network, which inserts operator-APPROVED tenant-contributed docs (framework
+        // 'tenant_contributed', gated on is_platform_owner()). Either way an operator gate stands
+        // between the content and this block, a different trust class from the OCR-fed tenant KB and
+        // client-derived rag stores — so it does NOT carry the untrusted-DATA notice. It DOES route
+        // through the same §18 sanitizer for marker/control HYGIENE (break any `===` run; drop bidi/
+        // zero-width) — cheap belt-and-suspenders so even a promoted span cannot forge a marker, with
+        // no behavior change for ordinary text. (The operator approval is a QUALITY review, not an
+        // injection audit, so the hygiene is what actually neutralizes a forged marker here.)
+        relevantKnowledge = "\n\nRelevant Knowledge Base:\n" + knowledge.map(k => `### ${sanitizeUntrustedText(k.title)} (${sanitizeUntrustedText(k.framework)} - ${sanitizeUntrustedText(k.category)})\n${sanitizeUntrustedText(k.content)}`).join("\n\n");
       }
     }
 
@@ -1769,9 +1800,16 @@ JSON:`;
             ragRetrievedIds = ragRows.map((r: any) => r.id);
             const blocks = ragRows.map((r: any) => {
               const pct = Math.round((Number(r.similarity) || 0) * 100);
-              return `${r.title} (relevance: ${pct}%)\n${r.summary || (r.content || "").slice(0, 240)}\n---`;
+              // §9/§13 injection fence (Slice 2 inc 2) — rag_documents is fed by client-financial /
+              // artifact ingest (embed-client-financials, rebuild-client-financial-brief, kb-promote),
+              // so a retrieved title/body is UNTRUSTED document-derived content. Sanitize each span so a
+              // chunk cannot forge the trusted `=== END KNOWLEDGE BASE ===` marker or smuggle bidi/
+              // zero-width chars. Body selection + 240 cap unchanged; the outer markers stay ours.
+              const safeTitle = sanitizeUntrustedText(r.title).replace(/[\r\n]+/g, " ").trim().slice(0, 200);
+              const safeBody = sanitizeUntrustedText(r.summary || (r.content || "").slice(0, 240));
+              return `${safeTitle} (relevance: ${pct}%)\n${safeBody}\n---`;
             }).join("\n");
-            ragContext = `\n\n=== RELEVANT KNOWLEDGE BASE ===\nUse these real outcomes and insights to inform your response. Reference naturally as "clients in similar situations" or "outcomes we have tracked" — never quote verbatim:\n\n${blocks}\n=== END KNOWLEDGE BASE ===\n`;
+            ragContext = `\n\n=== RELEVANT KNOWLEDGE BASE ===\n${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}\nUse these real outcomes and insights to inform your response. Reference naturally as "clients in similar situations" or "outcomes we have tracked" — never quote verbatim:\n\n${blocks}\n=== END KNOWLEDGE BASE ===\n`;
 
             const sims = ragRows.map((r: any) => Number(r.similarity) || 0);
             const avgSim = sims.reduce((s, n) => s + n, 0) / sims.length;
@@ -1924,9 +1962,17 @@ JSON:`;
             if (kept.length > 0) {
               const blocks = kept.map((r: any) => {
                 const tier = r.source_tier === "global" ? "GLOBAL" : "TENANT";
-                return `[${tier}] ${r.title}\n${(r.content || "").slice(0, 600)}\n---`;
+                // §9/§13 injection fence (Capability System Slice 2 inc 2) — a retrieved chunk's
+                // title/content are UNTRUSTED: tenant KB is fed by OCR'd uploads (kb-ingest-core), so a
+                // malicious document can land text here that later re-enters the prompt. Sanitize each
+                // span (drop bidi/zero-width/controls; break any `===` run) so a chunk cannot forge the
+                // trusted `=== END TENANT KNOWLEDGE ===` marker to make injected text read as system
+                // prose. Content cap unchanged (600). The outer markers stay platform-authored.
+                const safeTitle = sanitizeUntrustedText(r.title).replace(/[\r\n]+/g, " ").trim().slice(0, 200);
+                const safeContent = sanitizeUntrustedText(r.content).slice(0, 600);
+                return `[${tier}] ${safeTitle}\n${safeContent}\n---`;
               }).join("\n");
-              tenantKbContext = `\n\n=== TENANT KNOWLEDGE ===\nPrivate tenant docs and global canon, ranked by semantic relevance. Use to ground your answer; never quote verbatim.\n\n${blocks}\n=== END TENANT KNOWLEDGE ===\n`;
+              tenantKbContext = `\n\n=== TENANT KNOWLEDGE ===\n${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}\nPrivate tenant docs and global canon, ranked by semantic relevance. Use to ground your answer; never quote verbatim.\n\n${blocks}\n=== END TENANT KNOWLEDGE ===\n`;
               tenantKbScopeTenantId = tkTenantId;
 
               // Prepare metadata-only telemetry, but DO NOT write it yet. Active-account
@@ -9144,6 +9190,33 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               console.error("[paige] pipeline capability run not recorded:", (e as Error)?.message);
             }
           };
+          // ── Capability System · slice 3 (F05) — CRM/scheduling write receipts ────────────
+          // crm_log_activity / calendar_book_meeting / crm_create_task recorded only to
+          // paige_audit_log; now they also file an honest capability-Rail outcome through the SAME
+          // pattern. Attributed to `personaCtx.tenant_id` (the acted-on workspace, like the pipeline
+          // recorder — the CRM mega-block already scopes its writes to that tenant). Records at most
+          // once per iteration (result XOR catch), never fails the turn. `crmWriteAttempted` splits a
+          // throw honestly (post-write → outcome_unknown; pre-write → failed).
+          let crmWriteAttempted = false;
+          const recordCrmRun = async (
+            input: { result?: unknown; thrown?: unknown; threw?: boolean; writeAttempted?: boolean },
+          ): Promise<void> => {
+            try {
+              const outcome: CapabilityOutcome | null = classifyCrmRun({
+                capability: tc.function.name,
+                ...input,
+              });
+              if (!outcome) return;
+              await recordCapabilityRun(supabase, {
+                tenantId: personaCtx?.tenant_id ?? null,
+                actorId: user.id,
+                capabilityKey: tc.function.name,
+                outcome,
+              });
+            } catch (e) {
+              console.error("[paige] crm capability run not recorded:", (e as Error)?.message);
+            }
+          };
           // Pre/post-write boundary for the pipeline capability recorder (Codex P2, 2026-09-05):
           // set TRUE immediately before a pipeline write act dispatches its external UPDATE, so a
           // throw caught below is classified honestly — a pre-write throw (parse/client/lookup)
@@ -9599,6 +9672,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               result = { success: true, assigned: ids.length, coach_user_id: coach.id };
             } else if (tc.function.name === "crm_create_task") {
               const assignee = args.assignee_user_id || user.id;
+              crmWriteAttempted = true; // slice 3 (F05): dispatching the external write
               const { data: row, error } = await admin
                 .from("tasks")
                 .insert({
@@ -10459,6 +10533,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             } else if (tc.function.name === "calendar_book_meeting") {
               // Confirm is enforced by the central autonomy gate above (a booking
               // is a real event → defaults to 'confirm'); here we're cleared to book.
+              crmWriteAttempted = true; // slice 3 (F05): dispatching the external write
               const { data: bid, error } = await supabaseClient.rpc("create_internal_booking", {
                 _title: args.title,
                 _start_at: args.start_at,
@@ -10893,6 +10968,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (error) throw error;
               result = { success: true, ...(data as any) };
             } else if (tc.function.name === "crm_log_activity") {
+              crmWriteAttempted = true; // slice 3 (F05): dispatching the external write
               const { data: row, error } = await admin
                 .from("communication_log")
                 .insert({
@@ -11157,6 +11233,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // result-path call cannot fall into the catch below and double-record (S1 review m1).
             await recordCommsRun({ result });
             await recordPipelineRun({ result });
+            await recordCrmRun({ result });
 
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
           } catch (err) {
@@ -11167,6 +11244,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // the model is told only that something went wrong.
             await recordCommsRun({ thrown: err, threw: true });
             await recordPipelineRun({ thrown: err, threw: true, writeAttempted: false });
+            await recordCrmRun({ thrown: err, threw: true, writeAttempted: crmWriteAttempted });
 
             toolResults.push({
               tool_call_id: tc.id,

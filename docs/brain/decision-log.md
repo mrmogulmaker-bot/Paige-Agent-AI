@@ -16,6 +16,70 @@
   + rollup (money-spine "Missing"). **Recommended next owner/slice:** the token-billing/#737 owner — NOT this
   M1 program. Returning to M1.
 
+- **Capability System Slice 3 (F05) increment 1 — CRM/scheduling write receipts record an honest Rail outcome (2026-09-06, Task #19, owner-authorized)** —
+  three consequential chat acts that recorded ONLY to `paige_audit_log` and left NO capability-Rail row —
+  `crm_log_activity`, `calendar_book_meeting`, `crm_create_task` (the write-receipts the §39 Slice-1 verifier
+  named) — now also file a `record_capability_run` outcome, closing part of the F05 gap (~43 audit-only acts).
+  **Pattern reused (§18), not forked:** new `_shared/crm-capability-outcome.ts` (`CRM_WRITE_CAPABILITIES` +
+  `classifyCrmRun`) beside the pipeline/comms classifiers; a `recordCrmRun` helper beside `recordPipelineRun`
+  (service-role `supabase` client, attributed to `personaCtx.tenant_id`, actor `user.id`); a per-iteration
+  `crmWriteAttempted` flag set TRUE immediately before each of the three external writes; and one added call
+  on each of the result + catch paths (the pipeline recorder's catch literal kept verbatim so its sibling test
+  still passes). **Honest mapping (§947):** success→succeeded; post-write throw (writeAttempted)→outcome_unknown
+  (a transport throw can land after commit); pre-write throw→failed; and — the deliberate difference from the
+  pipeline map — an UNEXPECTED `success:false` (none of the three ever emits one) → outcome_unknown, NOT refused
+  (no refusal branch made a "nothing changed" decision). **Behavior-preserving (§37):** no request/response
+  contract change, no new tool/gate (chat-tool-registry baseline 94 unchanged, action-risk 0 unclassified); the
+  generic `paige_audit_log` trail is unchanged — this ADDS the Rail row alongside it. **PROOF:**
+  `src/__tests__/crm-capability-run-contract.test.ts` (mapping half over the real module — succeeded/unknown/failed/
+  no-false-refused/non-CRM-null — + wiring source-asserts: import, service-role recorder, both paths, flag set 3×,
+  pipeline literal intact); pipeline + comms contract tests still green (their hard-coded assertions undisturbed);
+  tsc 13/13; action-risk / chat-tool-registry / governed-execution / write-targets / §50/§63 all clean. Edge deploy
+  via CI on merge; Deno type-check in the CI real-deno leg. **NAMED, out of scope:** the rest of the ~43 acts
+  (CRM updates with mixed pre/post-write throws, content/team/plan/automation writes), and `crm_create_contact`
+  (its dedup-clarify `success:false` is an ask-the-human, not a refusal — needs a per-capability branch). **§32.c
+  authenticated drive OWED** (headless).
+  **OUTCOME — MERGED to `main` (squash `72735275`, PR #1013, 2026-09-06).** §39 peer-gate + §5 compliance both
+  SHIP (no blocking finding); PR checks green (ci incl. deno leg · Security Audit · ui-delivery-evidence). **§32.a
+  CONFIRMED:** `deploy-edge-functions` run 34054706246 (main push, head `72735275`) = success — `paige-ai-chat`
+  redeployed (`_shared/crm-capability-outcome.ts` is in its bundle). Codex third-layer review was RUNNING on
+  `80eab00` at merge (pre-merge CI + peer-gate + compliance were green; any real Codex finding folds into a
+  follow-up). **§32.c** authenticated CRM-write→Rail-row drive still OWED (headless).
+- **Capability System Slice 2 increment 2 — fence the RETRIEVED-content injection surfaces (2026-09-06, Task #20, owner-authorized)** —
+  fences the co-located UNTRUSTED, marker-capable content blocks that reach the SAME system prompt on turns
+  that DO execute model tool calls — so an injection inside one could forge the trusted `=== TENANT KNOWLEDGE ===`
+  marker and steer a mutating tool call (MORE load-bearing than the direct-attachment turn, not less). **Grounded
+  trust classes (§13 honest scoping):** `tenant_knowledge` (`match_tenant_knowledge`) is fed by OCR'd uploads
+  (`kb-ingest-doc`/`kb-ingest-file`/`kb-ingest-url`) → UNTRUSTED; `rag_documents` (`match_rag_documents`) is fed by
+  client-financial/artifact ingest (`embed-client-financials`, `rebuild-client-financial-brief`, `kb-promote`) →
+  UNTRUSTED; `knowledge_base` (`relevantKnowledge`) is OPERATOR-authored (`src/operator/data/useKnowledge.ts`) OR
+  operator-APPROVED tenant-contributed (`kb-promote-to-network`, `is_platform_owner()`-gated) → TRUSTED. **Fix
+  (§18 one home):** two new exports on `_shared/untrusted-fence.ts` — `RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE`
+  (permits GROUNDING, forbids obeying directives inside an entry) and `sanitizeUntrustedText` (composes the
+  existing private `stripControl`+`neutralizeMarkers`; drops bidi/zero-width/C0, breaks any `===` run — no fourth
+  spelling). **FIVE surfaces fenced** (3 initial + 2 folded on review): the two UNTRUSTED retrieval blocks
+  (`tenantKbContext`, `ragContext`) get the notice + per-chunk sanitization; the TRUSTED `knowledge_base` block
+  gets marker/control HYGIENE only (no distrust notice); and — folded after the §39 peer-gate + §5 compliance
+  BOTH caught the §37 half-fix — the two WORST co-located surfaces: **`fetchedUrlContent`** (`index.ts:1350`,
+  arbitrary attacker-controlled WEB content on the privileged non-client seat, tool-executing) and
+  **`memoryBlock`** (`index.ts:1459`, DURABLE + CROSS-PRINCIPAL — a client's OCR'd upload resurfaces in the
+  coach's session) now carry the notice + sanitized spans, fenced at their build sites so all interpolation
+  paths inherit it. **NAMED, scheduled next increment (§37 honest accounting, not silently dropped):**
+  `sessionDocContext` (request-body doc summaries), `clientContext` (whose `sanitizeClientContextForTier` is a
+  §2 credit filter, NOT an injection fence), and funding `userContext` — all lower-severity/mostly-self-injection
+  but same class. **Behavior-preserving (§37):** every load-bearing outer marker downstream instructions key on
+  is preserved verbatim (`=== TENANT KNOWLEDGE ===`, `=== RELEVANT KNOWLEDGE BASE ===`, `=== END KNOWLEDGE BASE ===`,
+  `=== FETCHED URL CONTENT ===`, `=== PAIGE MEMORY … ===`); content caps unchanged; no request/response contract
+  change, no tool added (chat-tool-registry baseline 94); the memory block's trusted "honor tone/length/format
+  PREFERENCES" instruction still stands (preferences are data, not authority). **PROOF:**
+  `src/solo/untrusted-fence.test.ts` = 27 (sanitizer units incl. zero-width split + forged-marker; notice-permits-
+  grounding; source-contract asserts on all 5 fenced sites incl. the operator no-notice adjacency + the two
+  folded surfaces' raw-form removal); tsc 0; crm+pipeline contract 22/22 (paige-ai-chat asserts undisturbed);
+  edge ratchet 145; conversation-tenant + chat-tool-registry clean; §50/§63 clean. Deno type-check on the CI
+  real-deno leg. **§32.c authenticated malicious-content→prompt drive OWED** (headless). **REVIEW:** §5 compliance
+  = SHIP; §39 peer-gate = ITERATE (the two blocking surfaces above), RESOLVED by folding both before merge;
+  their non-blocking record imprecisions (the `kb-ingest-core` name, the knowledge_base promotion path) corrected
+  here + in code. Codex third-layer pending on the PR.
 - **Capability System Slice 2 — uploaded-file prompt-injection fence (2026-09-06, Task #18, owner-authorized)** —
   the file-handling contract's first-class security net-new. An attached document's extracted text was
   inlined RAW into the model turn immediately next to the TRUSTED analysis instructions
@@ -56,6 +120,11 @@
   `===` run (a forged TRUSTED sibling header echoed by a file, not only this fence's own markers); the
   file NAME is neutralized too (it's interpolated into the header line); and a stale "zero-width break"
   comment was corrected (§13 doc-accuracy in the new file). +3 tests (13 total).
+  **OUTCOME — MERGED to `main` (squash `0aa8943e`, PR #1011, 2026-09-06).** All PR checks green on head
+  `d76ce741` (ci incl. deno leg · Security Audit · ui-delivery-evidence); Codex third-layer review COMPLETED
+  clean (no findings). **§32.a CONFIRMED:** `deploy-edge-functions` run 34052683170 (main push) = success —
+  `paige-ai-chat` redeployed (the shared `untrusted-fence.ts` is in its bundle). **§32.c STILL OWED:** an
+  authenticated malicious-document drive against the deployed edge fn (headless session, no browser).
 - **P1 UI hotfix — dedicated Paige chat horizontal scrollbar + real permission chip (2026-09-06, Task #17, owner-authorized)** —
   TWO fixes to the dedicated Solo Paige workspace chat (`paige.workspace`: `PaigeAIChat` in `SoloPaigeWorkspace`).
   **(1) Horizontal scrollbar — fixed at the SOURCE, not clipped.** Root cause (grounded, not guessed): the message
