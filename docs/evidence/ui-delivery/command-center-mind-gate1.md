@@ -11,6 +11,16 @@ layer are all preserved around it. Fit-to-viewport, **no page scroll** (laptop /
 (Mineral = light, Obsidian = dark) and the installed three.js skill pack. Zero CC design taste. The
 measurements below are WORKS facts (does it render / run / degrade / stay in scope), never taste verdicts.
 
+## APPROVED-FROZEN (§28) — owner sign-off 2026-09-06
+
+The owner gave early Gate-1 visual sign-off on this orb version ("I will sign off on this version… I love
+what you have above."). Under §28 this design is **frozen**: no session moves, resizes, restyles, re-tones,
+or "improves" the orb or its Mind layout — not a pixel — without an explicit owner instruction naming the
+exact thing to change. Pure **correctness** fixes that do not alter the approved look (a leak, an a11y break,
+an honesty defect surfaced by review) remain CC's job (§00/§32); anything that would change the look goes to
+the owner first. **Merge is still gated** by the owner's original Mind-3D instruction ("do not merge/deploy
+without the final release gate") — held at the green draft PR (#969) until the owner gives the release word.
+
 ## The 3D engine (real three.js, bundled self-contained)
 
 - **Source:** `docs/prototypes/_build/orb-entry.mjs` → esbuild IIFE bundle
