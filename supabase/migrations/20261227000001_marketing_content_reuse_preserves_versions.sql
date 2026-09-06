@@ -1,0 +1,123 @@
+-- Task #15 (§13/§70) — VERSION PRESERVATION on the marketing_content reuse UPDATE.
+--
+-- `save_marketing_content(p_id => …)` refines an image IN PLACE by overwriting the row's image_url /
+-- image_path / size. Until now that silently DISCARDED the prior image (marketing_content carries one
+-- image at a time and has no history column; the only version store, `studio_artifact_versions`, is
+-- structurally bound to a `studio_sessions` row a dedicated chat never has). The owner requires that a
+-- prior image is NEVER silently overwritten, so before the UPDATE swaps the picture this snapshots the
+-- CURRENT image into `meta.versions[]`.
+--
+-- Design (additive, lowest-blast-radius): the history lives in the existing `meta jsonb` on the same
+-- row — no new table, no schema change, and NO touch to the shipped, session-coupled
+-- `studio_artifact_versions` or its RLS (§18 one home, §58-safe, §9 unchanged: the UPDATE stays
+-- `WHERE id = p_id AND tenant_id = _tenant`). The history is SERVER-OWNED: it is based on the row's
+-- existing `meta.versions`, NOT on caller-supplied p_meta (a caller cannot forge or wipe history), and
+-- capped to the most-recent 20 so it cannot grow without bound.
+--
+-- Snapshot fires ONLY when the image is genuinely being REPLACED with a DIFFERENT one — a text/document
+-- reuse (no p_image_url) or an idempotent re-save of the same url records no version. Every other line
+-- of the function (roles/tenant guards, the INSERT branch, the audit row, the return contract) is
+-- byte-for-byte the live definition from 20260821010000; only the p_id UPDATE branch changed.
+-- §37: the only reuse producers are the Studio canvas clamp and the §33 critique-loop, both of which
+-- keep an honest per-change history for free; neither's request body or response contract changes.
+
+CREATE OR REPLACE FUNCTION public.save_marketing_content(p_kind text, p_title text, p_body text DEFAULT NULL::text, p_channel text DEFAULT NULL::text, p_image_url text DEFAULT NULL::text, p_image_path text DEFAULT NULL::text, p_size text DEFAULT NULL::text, p_brief text DEFAULT NULL::text, p_meta jsonb DEFAULT '{}'::jsonb, p_id uuid DEFAULT NULL::uuid, p_tenant_id uuid DEFAULT NULL::uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  _caller uuid := auth.uid();
+  _tenant uuid := COALESCE(p_tenant_id, public.current_user_tenant_id());
+  _kind text := CASE WHEN p_kind IN ('text','image','video','document') THEN p_kind ELSE 'text' END;
+  _id uuid;
+  _cur record;
+  _new_image text := NULLIF(btrim(p_image_url), '');
+  _versions jsonb;
+  _merged_meta jsonb;
+BEGIN
+  IF _caller IS NOT NULL AND NOT public.has_any_role(_caller, ARRAY['admin','super_admin','coach']) THEN
+    RAISE EXCEPTION 'CONTENT_FORBIDDEN: admin or coach required' USING ERRCODE = '42501';
+  END IF;
+  IF _tenant IS NULL THEN
+    RAISE EXCEPTION 'CONTENT_NO_TENANT: a tenant context is required' USING ERRCODE = '22023';
+  END IF;
+  -- §9/#117: membership is required for a JWT caller; a global 'admin' role no longer
+  -- exempts a cross-tenant write (platform owner still may).
+  IF _caller IS NOT NULL
+     AND NOT public.is_tenant_member(_tenant)
+     AND NOT public.is_platform_owner(_caller) THEN
+    RAISE EXCEPTION 'CONTENT_FORBIDDEN: tenant not in your membership' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_id IS NOT NULL THEN
+    -- Read the CURRENT row (tenant-scoped) so we can preserve the prior image before overwriting it.
+    SELECT image_url, image_path, size, meta INTO _cur
+    FROM public.marketing_content
+    WHERE id = p_id AND tenant_id = _tenant;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'CONTENT_NOT_FOUND' USING ERRCODE = 'P0002';
+    END IF;
+
+    -- p_meta (when supplied) still replaces the caller-facing meta; `versions` is server-managed on top.
+    _merged_meta := COALESCE(p_meta, _cur.meta, '{}'::jsonb);
+
+    -- Version preservation: only when the image is actually being replaced with a different one.
+    IF _new_image IS NOT NULL AND _cur.image_url IS NOT NULL AND _new_image <> _cur.image_url THEN
+      _versions := _cur.meta -> 'versions';
+      IF _versions IS NULL OR jsonb_typeof(_versions) <> 'array' THEN
+        _versions := '[]'::jsonb;
+      END IF;
+      -- append the outgoing (prior) image as the newest history entry
+      _versions := _versions || jsonb_build_array(jsonb_build_object(
+        'image_url', _cur.image_url,
+        'image_path', _cur.image_path,
+        'size', _cur.size,
+        'at', now()
+      ));
+      -- cap to the most-recent 20 entries (drop the oldest), keeping ascending order
+      IF jsonb_array_length(_versions) > 20 THEN
+        SELECT COALESCE(jsonb_agg(v ORDER BY ord), '[]'::jsonb)
+          INTO _versions
+        FROM jsonb_array_elements(_versions) WITH ORDINALITY AS t(v, ord)
+        WHERE ord > jsonb_array_length(_versions) - 20;
+      END IF;
+      _merged_meta := jsonb_set(_merged_meta, '{versions}', _versions, true);
+    END IF;
+
+    UPDATE public.marketing_content SET
+      title = COALESCE(NULLIF(btrim(p_title), ''), title),
+      body = COALESCE(p_body, body),
+      channel = COALESCE(p_channel, channel),
+      brief = COALESCE(p_brief, brief),
+      meta = _merged_meta,
+      image_url = COALESCE(_new_image, image_url),
+      image_path = COALESCE(NULLIF(btrim(p_image_path), ''), image_path),
+      size = COALESCE(NULLIF(btrim(p_size), ''), size)
+    WHERE id = p_id AND tenant_id = _tenant
+    RETURNING id INTO _id;
+    IF _id IS NULL THEN
+      RAISE EXCEPTION 'CONTENT_NOT_FOUND' USING ERRCODE = 'P0002';
+    END IF;
+    RETURN _id;
+  END IF;
+
+  INSERT INTO public.marketing_content (
+    tenant_id, created_by, kind, channel, title, body,
+    image_url, image_path, size, brief, meta
+  ) VALUES (
+    _tenant, _caller, _kind, NULLIF(btrim(p_channel), ''),
+    COALESCE(NULLIF(btrim(p_title), ''), 'Untitled'), p_body,
+    NULLIF(btrim(p_image_url), ''), NULLIF(btrim(p_image_path), ''),
+    NULLIF(btrim(p_size), ''), p_brief, COALESCE(p_meta, '{}'::jsonb)
+  )
+  RETURNING id INTO _id;
+
+  INSERT INTO public.audit_logs (user_id, entity, action, entity_id, data)
+  VALUES (_caller, 'marketing_content', 'save_marketing_content', _id,
+          jsonb_build_object('tenant_id', _tenant, 'kind', _kind, 'channel', p_channel));
+
+  RETURN _id;
+END;
+$function$;

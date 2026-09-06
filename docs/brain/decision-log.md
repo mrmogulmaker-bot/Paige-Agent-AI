@@ -1,5 +1,30 @@
 # Decision Log — chronological one-liners
 
+- **Capability Slice 1 — dedicated Paige chat in-place image refine, BACKEND (2026-09-06, Task #15, owner-authorized)** —
+  in the dedicated (owner "Your Paige" / Solo) chat, refining an image Paige just made now version-stacks the
+  SAME artifact instead of minting a new sibling. **Server-owned trust anchor** (owner constraint): two additive
+  nullable columns on `paige_chat_threads` (`last_image_content_id` FK→`marketing_content` ON DELETE SET NULL +
+  `last_image_anchor_at`), written by `paige-ai-chat` ONLY after a successful `generate_image` with a filed
+  `content_id`, read on a refine turn within a 30-min recency window. The model's `target_content_id` is only a
+  refine-INTENT echo; the id AUTHORITY is the server anchor (re-checked `=== refineImageAnchor.id`), never an
+  arbitrary client/model id. Lifecycle clears are structural: tenant/thread switch (anchor lives on the RLS-scoped
+  thread row: `threads_update_self` ∧ RESTRICTIVE `threads_tenant_isolation`), failed gen / cancel (only a success
+  writes it), expiry (window), deleted image (FK SET NULL). **EXACT SAFETY BOUNDARY — version preservation:** the
+  reuse UPDATE overwrites the image in place, and the only version store (`studio_artifact_versions`) is bound to a
+  `studio_sessions` row a dedicated chat never has; so `save_marketing_content`'s reuse branch now SNAPSHOTS the
+  prior image into the row's own `meta.versions[]` (server-owned history, based on the row's meta not caller
+  p_meta, capped 20) BEFORE overwriting — prior images are never silently lost. Additive: no new table, NO touch
+  to shipped `studio_artifact_versions`/its RLS (§18 one-home, §58-safe); §9 unchanged (reuse stays
+  `WHERE id=p_id AND tenant_id=_tenant`; cross-tenant id → CONTENT_NOT_FOUND → fresh insert under caller's tenant).
+  §37: Studio canvas clamp + §33 critique-loop byte-unchanged (additive). Also folded the two deferred stale
+  `FloatingChatbot` comments (paige-ai-chat, `_shared/client-context.ts`) since this PR redeploys paige-ai-chat.
+  **PROOF:** `scripts/marketing-content-refine-db-proof.mjs` 9/9 on real Postgres 16 (snapshot-on-change, no
+  spurious versions on idempotent/text reuse, cap 20, §9 CONTENT_NOT_FOUND, FK auto-clear); wiring+safety guard
+  `src/__tests__/dedicated-chat-image-refine-anchor.test.ts` 7/7; edge fn transpiles clean. **PROOF OWED (§32.c):**
+  the frontend version-history UI + the authenticated live-drive of an end-to-end dedicated-chat refine (headless
+  session cannot render/drive it). Earlier grounding (superseded here): the §9-question decision-log line for this
+  item is RESOLVED — the tenant-ownership check exists; and the reuse anchor is server-owned, not model-supplied.
+
 - **ARCHITECTURE: floating Paige chat is RETIRED from the authenticated platform (owner decision 2026-09-06)** —
   there must be NO floating Paige chat anywhere inside the authenticated platform (no Solo route, Command
   Center, Clients, Campaigns, Settings, Marketplace, Analytics, tenant portal, mobile shell, or embedded

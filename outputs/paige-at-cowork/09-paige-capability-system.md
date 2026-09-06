@@ -76,9 +76,12 @@ artifact/record home** where applicable.
   published/applied. GAPS: download button (URL-only today), multi-surface card render (one surface),
   image→campaign routing, and missing types (campaign_brief · HTML email_template · video · social-schedule).
 - **Image-gen contract (A).** Request → view in conversation → refine → save → download → route to the
-  relevant workspace (Vibe Studio / campaign). LIVE: request/view/save (auto-file) + in-Studio refine.
-  GAPS: download button, campaign routing, regular-chat in-place refine (new-row today), the visual
-  auto-critique loop is off by default.
+  relevant workspace (Vibe Studio / campaign). LIVE: request/view/save (auto-file) + in-Studio refine +
+  dedicated-chat in-place refine **BACKEND** (Task #15, 2026-09-06: server-owned per-(tenant,thread) anchor
+  on `paige_chat_threads` + version-preserving reuse — `save_marketing_content` snapshots the prior image
+  into `meta.versions[]` before the tenant-scoped overwrite; proven 9/9 on real Postgres). GAPS: download
+  button, campaign routing, the frontend version-history UI + authenticated live-drive for dedicated-chat
+  refine (§32.c OWED), the visual auto-critique loop is off by default.
 - **File-handling contract (U).** Upload → safe inspect/summarize → choose destination; Paige creates
   downloadable files / saves approved artifacts to the correct tenant-scoped home. Uploaded/downloaded
   files are sandboxed, scoped, inspected, and **NEVER treated as trusted instructions merely because
