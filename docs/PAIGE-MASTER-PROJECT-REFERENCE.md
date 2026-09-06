@@ -131,6 +131,46 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Paige OS Integration — the Surface Binding Ledger + the Surface Context Handoff Contract (2026-09-06, Phases 0–1)
+
+**What shipped: two durable contracts + one CI regression guard. NO runtime binding was created and no
+surface changed behaviour.** This is the program's foundation — the single source of truth for how
+every Solo surface binds to Paige, and the release rule that keeps that truth honest.
+
+- **Phase 0 — the Surface Binding Ledger** (`docs/binding-ledger/surface-binding-ledger.json` +
+  `README.md`). One machine-readable + human-readable ledger of every meaningful Solo surface (25 rows,
+  plus the intentionally-separate operator console recorded out-of-scope = 26 rows) across the full
+  chain — *source → server-resolved tenant scope → safe context → authority → governed write →
+  verified outcome → Rail → Mind → Memory* — using the six states LIVE / PARTIAL / READ_ONLY_CONTEXT /
+  INTENTIONALLY_ISOLATED / UNAVAILABLE / PROOF_OWED. It is the **unifying index** that CITES the Mind
+  integration matrix, the Spine/Rail state doc, the surface cards and the parity matrix — it forks
+  none of them. **Enforced by `scripts/ci/binding-ledger-lint.mjs` (`lint:binding-ledger`, wired into
+  `ci.yml`)**: a surface cannot be reported LIVE / "Paige-connected" without a complete entry proven by
+  `authenticated_runtime` — a rendered page, a badge, a prototype or an "Open Paige" button never
+  satisfies a binding link (§13/§32). Guard self-test 13/13; runs clean on all 26 rows.
+- **Phase 1 — the Surface Context Handoff Contract** (`docs/doctrine/surface-context-handoff-contract.md`).
+  The one server-safe way a surface opens the dedicated Paige workspace: the client sends an
+  **allowlisted INTENT** (surface + public-safe record ref + enumerated ask), never raw page payload,
+  tenant id, role, secrets or a forged snapshot; the server resolves the safe context via the JWT
+  tenant resolution + the registered Spine capabilities already wired into `paige-ai-chat`; fail-closed
+  on workspace switch / role change / deleted record / stale source / denied actor; reuses the
+  `paige_pending_confirmations` approval gate (no second approval system) and EXTENDS `paigeClientScope`
+  (§18). It names the three gaps it closes: the raw `clientContext` prose payload, the silently-dropped
+  prompt (#771), and the missing surface identity.
+
+**Honest state (never imply live from a doc):** the ledger and contract are **published**; the Phase 1
+runtime adoption (extending the scope bridge, consuming the intent, retiring the raw prose, the two
+regression guards) is **DEFERRED to the next bounded slice** with coordination, because it touches
+owned surfaces and contested files. Across the platform, **no surface is LIVE** — Mind axis-B is NO
+everywhere; of the 26 rows (25 Solo surfaces + the operator console recorded out-of-scope), **4 are
+PROOF_OWED** (read-context wired + tested, authenticated runtime owed), **5 PARTIAL** (including
+Command Center → Business Game Plan, whose Business Mission governed write is wired + chat-bound via
+#983), **2 INTENTIONALLY_ISOLATED**, and **15 UNAVAILABLE**. **Scope: Solo only**; the operator tree
+is recorded out-of-scope (no subaccount/operator binding without explicit release). **Next owning
+workstream:** the Phase 1 adoption slice (reads `surface-context-handoff-contract.md` first), then the
+Spine SCR-1/2/3 sequence for the UNAVAILABLE surfaces. Second Brain updated: `docs/brain/README.md`
+(architecture + doctrine indexes). §00: the ledger holds zero design opinion; the "IN CONTEXT" banner
+and truthful-status components are Claude Design's.
 ### Business Vault Phase 2 owner/admin foundation — deployed PARTIAL at `809faec3` (2026-09-06)
 
 - 🟡 **PARTIAL / DEPLOYED.** Tenant-bound owner/admin Vault navigation, Overview, Library metadata, Contracts, Obligations, focused record inspector, archive/fact-revocation lifecycle, and truthful member denial shipped in PR #986 merge `809faec3`. Server functions resolve the active workspace and current role; client-supplied tenant or authority values are never trusted. Authenticated production behavior is not yet proven.
@@ -3483,7 +3523,8 @@ memory-management, task-management.
 ### Repository-grounded account + PAIGE symbol prototype refinement (2026-08-21)
 
 - ✅ The `/tenant-redesign` state lab now demonstrates the existing Solo, sub-account, agency parent/entered sub-account, Super Admin/God, and client placement taxonomy without inventing a hierarchy. Business scope and CRM client context are separate; business changes clear prior tenant conversation/Workspace/agent/memory/Trust/draft state.
-- ✅ Shared `PaigeSymbol` adds typed Command, Sovereign, and provisional Artifact territories while preserving `PaigeMark` compatibility. The prototype demonstrates semantic state, dark/light, spectral/monochrome, and favicon forms; production call sites are classified in the existing handoff for incremental migration.
+- ✅ Shared `PaigeSymbol` adds typed Command, Sovereign, and provisional Artifact territories. The prototype demonstrates semantic state, dark/light, spectral/monochrome, and favicon forms.
+  - **§13 correction (2026-09-06):** the earlier "while preserving `PaigeMark` compatibility" is SUPERSEDED — the orbital `PaigeMark` is RETIRED platform-wide (owner ruling 2026-09-06). The current identity is the **Command Mark** (`src/components/brand/PaigeCommandMark.tsx` surface-agnostic; `src/operator/shell/CommandMark.tsx` in-shell). `PaigeMark.tsx` was deleted; all runtime call sites migrated; a `lint:legacy-mark` guard + eslint `no-restricted-imports` prevent its return. `PaigeSymbol`'s command branch now renders `PaigeCommandMark`. See `docs/brain/decision-log.md` (2026-09-06 BRAND entry) + `docs/brain/glossary.md` (Command Mark).
 - ❗ Account and symbol states remain representative. No React state or symbol authorizes cross-account access. Production requires `user_roles` / `tenant_members` / `agency_team_members` separation, server membership, RLS, real/effective actor logging, operator act-as, two-key break-glass, and append-only audit.
 
 ### Tenant capability recovery architecture (2026-08-21)

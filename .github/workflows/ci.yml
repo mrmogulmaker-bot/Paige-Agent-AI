@@ -151,6 +151,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:tier-features
 
+      - name: Legacy-mark guard (2026-09-06 — retired orbital PaigeMark must not return; use PaigeCommandMark)
+        if: ${{ !cancelled() }}
+        run: npm run lint:legacy-mark
+
+      - name: Legacy-mark guard self-test
+        if: ${{ !cancelled() }}
+        run: npm run lint:legacy-mark:test
+
       - name: Managed-schema ownership guard (#643 — migrations replay as `postgres`; ALTER/DROP TABLE on a Supabase-owned schema fails 42501 on every fresh Preview)
         if: ${{ !cancelled() }}
         run: npm run lint:managed-schema
@@ -284,6 +292,18 @@ jobs:
       - name: Approval-channel guard catches what it claims to
         if: ${{ !cancelled() }}
         run: npm run lint:approval-gate:test
+
+      # The Surface Binding Ledger is the Paige OS Integration release/regression contract. A surface
+      # may not be reported LIVE / "Paige-connected" without a complete ledger entry proven by
+      # authenticated runtime — a rendered page, a badge, a prototype, or an "Open Paige" button never
+      # satisfies a binding link (§13/§32). Docs alone drift; this makes the honest-state rule fail CI.
+      - name: Surface Binding Ledger is complete and honestly stated
+        if: ${{ !cancelled() }}
+        run: npm run lint:binding-ledger
+
+      - name: Binding-ledger guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:binding-ledger:test
 
       - name: Action-risk guard catches what it claims to
         if: ${{ !cancelled() }}

@@ -191,7 +191,7 @@ test("recognizes deleted UI and requires a newly added evidence record", () => {
 
 test("recognizes UI assets, embedded scripts, media, and canonical Solo owners", () => {
   const result = classifyUiChanges([
-    "src/assets/paige-logo.jpg",
+    "src/assets/hero-banner.jpg",
     "public/embed.js",
     "public/paige-motion.glb",
     "src/components/tenant-relationships/TenantRelationshipsClientsWorkspace.tsx",

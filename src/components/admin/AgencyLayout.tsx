@@ -44,7 +44,7 @@ import {
 import { AccountSwitcher } from "@/components/admin/AccountSwitcher";
 import { supabase } from "@/integrations/supabase/client";
 import { performSignOut } from "@/lib/auth/signOut";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import AgencyBoard from "@/pages/admin/AgencyBoard";
 import { AgencyTeamPanel } from "@/components/admin/agency/AgencyTeamPanel";
@@ -227,7 +227,7 @@ export default function AgencyLayout() {
         {/* Row 1: brand + utilities */}
         <div className="flex items-center justify-between gap-3 px-3 md:px-6 h-14">
           <Link to="/agency" className="flex items-center gap-2 min-w-0">
-            <PaigeMark className="h-8 w-8 flex-shrink-0" />
+            <PaigeCommandMark className="h-8 w-8 flex-shrink-0" />
             <span className="font-bold text-sm tracking-tight truncate">{PLATFORM.adminName}</span>
             <Badge
               variant="outline"

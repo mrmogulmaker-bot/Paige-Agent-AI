@@ -61,7 +61,7 @@ import { StudioRailHeading, StudioSplit } from "./StudioChrome";
 import { StudioChat, type StudioChatArtifact } from "./StudioChat";
 import { DocumentPreview } from "./DocumentPreview";
 import { StudioBuildingScreen, useElapsedMs, type StudioBuildStep } from "./StudioBuildingScreen";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { GP_SHIMMER } from "@/components/growth/growth-motion";
 import { AnimatePresence, motion } from "framer-motion";
 import { useStudioImmersion } from "./StudioImmersion";
@@ -199,7 +199,7 @@ function formSectionsForPreview(schema: GrowthFormSchema | null | undefined): Fo
 /**
  * The premium "Paige is creating" layer for a FOLLOW-UP turn — the prior artifact STAYS on the
  * stage underneath (§21) while this lays an ALIVE, ambient building treatment over it, never an
- * opaque cover. Replaces the bare pulsing scan-line (#292): a living PaigeMark ribbon + the real
+ * opaque cover. Replaces the bare pulsing scan-line (#292): a living Command Mark ribbon + the real
  * streamed note + an honest elapsed clock, an indeterminate indigo build beam, and the shipped
  * token/white shooting-star field (§12/§18 reuse — NOT the gold nebula/comet). Every animation is
  * reduce-gated here → a calm static ribbon (no stars, no pulse, static beam) under reduce (§11).
@@ -247,7 +247,7 @@ function SessionBuildingOverlay({
           <div className={cn("h-full w-full rounded-full", GP_SHIMMER)} />
         )}
       </div>
-      {/* The living ribbon — a compact glass pill with a small animated PaigeMark + the real note. */}
+      {/* The living ribbon — a compact glass pill with a small animated Command Mark + the real note. */}
       <div className="absolute inset-x-0 bottom-5 flex justify-center px-4">
         <div className="flex max-w-[calc(100%-2rem)] items-center gap-3 rounded-full border border-[hsl(var(--studio-chrome-border)/0.6)] bg-[hsl(var(--studio-canvas)/0.86)] px-4 py-2 shadow-lg backdrop-blur">
           <span className="relative grid h-7 w-7 shrink-0 place-items-center">
@@ -256,7 +256,7 @@ function SessionBuildingOverlay({
               className={cn("absolute inset-[-45%] rounded-full", !reduce && "paige-halo-pulse")}
               style={{ background: haloBg, transformOrigin: "center" }}
             />
-            <PaigeMark animated={!reduce} className="relative h-7 w-7" />
+            <PaigeCommandMark plated={false} animated={!reduce} className="relative h-7 w-7" />
           </span>
           <span className="min-w-0 truncate font-display text-sm font-medium text-foreground">
             {note?.trim() || "Paige is creating…"}
