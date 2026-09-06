@@ -2,6 +2,34 @@
 
 Date: 2026-09-05
 
+UI_DELIVERY_EVIDENCE_VERSION: 1
+FLOW_BY_FLOW: PASS: Existing Project Diagnose and Hotfix packet covers browser request, server authority, provider acceptance, callback reconciliation, truthful history, tenant census, and collision review.
+PAIGE_UI_DESIGN: PASS: Repository Paige UI design skill and complete required reference bundle were read before editing the existing dialer status copy.
+MATERIAL_FLOW_CHANGE: NO: The hotfix preserves the existing dialer goal, controls, navigation, and exits; it corrects authorization, reconciliation, failure copy, and evidence-backed status semantics.
+FLOW_PROTOTYPE: NOT_REQUIRED: No new user goal, control, step, transition, exit, or navigation was introduced.
+PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: Active Solo owner, admin, or coach initiates one authorized outbound call and sees provider-backed state in Conversations.
+VISUAL_DIRECTION: PASS: Existing approved Solo dialer and status-pill system retained; only compact actionable and truthful state copy changed.
+AUTOMATED_EVIDENCE: PASS: Voice handler 48 assertions, callback and repair smokes, tenant and auth smokes, focused UI tests, duplicate protection, and provider rejection coverage passed.
+STATIC_EVIDENCE: PASS: Changed Edge Functions passed Deno check; TypeScript ratchet, targeted lint with zero errors, build, governance, and readiness checks passed.
+RENDERED_EVIDENCE: UNVERIFIED: Browser-control runtime crashed before a new screenshot matrix could be captured; the screenshot supplied by the owner proves only that the existing dialer opened.
+BEHAVIORAL_EVIDENCE: UNVERIFIED: No safe authenticated browser drive or real provider call was completed; automated state and handler behavior passed.
+AUTHENTICATED_RUNTIME: UNVERIFIED: Browser request and response capture and an owner-approved controlled live call remain Proof Owed because the browser-control runtime crashed and no approved destination was supplied.
+KEYBOARD_FOCUS: UNVERIFIED: No authenticated keyboard traversal was captured; no focus structure or control ordering changed.
+ZOOM_REFLOW: UNVERIFIED: No authenticated zoom and reflow capture was available; no layout geometry or scroll ownership changed.
+REDUCED_MOTION: UNVERIFIED: No authenticated reduced-motion capture was available; no animation or transition behavior changed.
+STATE_COVERAGE: PASS: Tests cover authorized initiation, tenant isolation, caller denial, missing configuration, invalid destination, provider rejection, callback failure and retry, duplicate initiation, and terminal history protection.
+TRUTHFUL_STATE_LABELS: PASS: Initiated, Failed, Completed, and Received map to durable provider-backed status; client initiation never claims connected or completed.
+SOLO_UI: YES: Canonical Solo Clients Conversations dialer and voice-history state labels.
+UNVERIFIED: Authenticated browser request and response, all eight rendered Solo viewport and PAIGE-panel combinations, and one owner-approved controlled live call remain Proof Owed.
+SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: Browser-control runtime crashed before capture; no geometry changed.
+SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: Browser-control runtime crashed before capture; no geometry changed.
+SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: Browser-control runtime crashed before capture; no geometry changed.
+SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: Browser-control runtime crashed before capture; no geometry changed.
+SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: Browser-control runtime crashed before capture; no geometry changed.
+SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: Browser-control runtime crashed before capture; no geometry changed.
+SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: Browser-control runtime crashed before capture; no geometry changed.
+SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: Browser-control runtime crashed before capture; no geometry changed.
+
 ## Job and boundary
 
 - Audience: active Solo owner/admin/coach in Conversations.
