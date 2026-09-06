@@ -30,7 +30,7 @@ const PPTX_SPEC = "npm:pptxgenjs@3.12.0";
 const FFLATE_SPEC = "npm:fflate@0.8.2";
 
 // ── Public contract ──────────────────────────────────────────────────────────────────────────────────
-export type DocFormat = "pdf" | "docx" | "pptx" | "epub";
+export type DocFormat = "pdf" | "docx" | "pptx" | "epub" | "md";
 
 export interface DocRenderInput {
   format: DocFormat;
@@ -58,6 +58,7 @@ const MIME: Record<DocFormat, string> = {
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   epub: "application/epub+zip",
+  md: "text/markdown; charset=utf-8",
 };
 
 function msg(e: unknown): string {
@@ -82,6 +83,7 @@ export async function renderDoc(input: DocRenderInput): Promise<DocRenderResult>
       case "docx": return { ...(await renderDocx(title, blocks, style)), mime: MIME.docx, ext: "docx" };
       case "pptx": return { ...(await renderPptx(title, blocks, style)), mime: MIME.pptx, ext: "pptx" };
       case "epub": return { ...(await renderEpub(title, blocks, style)), mime: MIME.epub, ext: "epub" };
+      case "md":   return { ...renderMarkdownDoc(title, blocks),         mime: MIME.md,   ext: "md" };
       default:
         // Unknown/unsupported format is an honest fail-closed, same shape the router already handles.
         throw new NeedsConfigError("doc-render", `unsupported doc format: ${String(input?.format)}`);
@@ -99,14 +101,16 @@ function normalizeBlocks(content: unknown, title?: string): Block[] {
   // {blocks:[...]} / {content:[...]} wrappers → unwrap to the inner array/string.
   if (content && typeof content === "object" && !Array.isArray(content)) {
     const c = content as Record<string, unknown>;
-    if (Array.isArray(c.blocks)) return coerceBlockArray(c.blocks);
-    if (Array.isArray(c.content)) return coerceBlockArray(c.content);
+    // Prefer the wrapper's own title when the caller passed none, so a cover block can dedupe against it.
+    const innerTitle = title ?? (typeof c.title === "string" ? c.title : undefined);
+    if (Array.isArray(c.blocks)) return coerceBlockArray(c.blocks, innerTitle);
+    if (Array.isArray(c.content)) return coerceBlockArray(c.content, innerTitle);
     if (typeof c.markdown === "string") return parseMarkdown(c.markdown);
     if (typeof c.text === "string") return parseMarkdown(c.text);
     // Some unknown object — stringify so we still produce a real (if plain) document.
     try { return parseMarkdown(JSON.stringify(content, null, 2)); } catch { return []; }
   }
-  if (Array.isArray(content)) return coerceBlockArray(content);
+  if (Array.isArray(content)) return coerceBlockArray(content, title);
   if (typeof content === "string") return parseMarkdown(content);
   if (content == null) return title ? [] : [{ type: "paragraph", text: "" }];
   return parseMarkdown(String(content));
@@ -119,7 +123,7 @@ function asText(v: unknown): string {
   try { return JSON.stringify(v); } catch { return String(v); }
 }
 
-function coerceBlockArray(arr: unknown[]): Block[] {
+function coerceBlockArray(arr: unknown[], docTitle?: string): Block[] {
   const out: Block[] = [];
   for (const raw of arr) {
     if (typeof raw === "string") { out.push({ type: "paragraph", text: raw }); continue; }
@@ -137,8 +141,153 @@ function coerceBlockArray(arr: unknown[]): Block[] {
     }
     if (t === "list" || t === "bullets" || t === "ul" || t === "ol") {
       const itemsRaw = Array.isArray(b.items) ? b.items : Array.isArray(b.content) ? b.content : [];
-      const items = itemsRaw.map(asText).filter((s) => s.length > 0);
-      out.push({ type: "list", items, ordered: t === "ol" || b.ordered === true });
+      // A `checklist`-styled list is a real checkbox list on canvas; a flat export must keep that job
+      // (Codex P2 — dropping the style rendered checkboxes as ordinary bullets). Prefix each item with an
+      // ASCII empty checkbox `[ ]`: it survives the PDF WinAnsi sanitizer (a Unicode `☐` is transcoded to
+      // `?` by sanitizeWinAnsi — Codex P2), renders in md/docx/pptx/pdf, and is the GFM task-list form so a
+      // markdown viewer shows a real checkbox. A checklist is never ordered.
+      const isChecklist = b.style === "checklist";
+      const items = itemsRaw.map(asText).filter((s) => s.length > 0).map((s) => (isChecklist ? `[ ] ${s}` : s));
+      out.push({ type: "list", items, ordered: !isChecklist && (t === "ol" || b.ordered === true || b.style === "numbered") });
+      continue;
+    }
+    // ── document_generate's RICH block schema (the on-canvas document contract: cover · section-header ·
+    //    chapter-divider · toc · prose · callout · pull-quote · stat · worksheet-field · pricing-table ·
+    //    cta). Map each to the renderer's flat model so an exported proposal/guide/one-pager carries its
+    //    REAL content, not just its title (Codex P1 — the normalizer previously read only text/content/
+    //    value, so a `prose` block's `markdown`, a `cover`'s `title`, a `pricing-table`'s `rows`, etc.
+    //    were all silently dropped and the file exported near-empty). Each maps to a heading/paragraph/
+    //    list/pagebreak; nothing is dropped without a reason.
+    const push = (text: string, kind: "heading" | "paragraph" = "paragraph", level = 1) => {
+      const s = text.trim();
+      if (s) out.push(kind === "heading" ? { type: "heading", text: s, level: clampLevel(level) } : { type: "paragraph", text: s });
+    };
+    if (t === "cover") {
+      push(asText(b.eyebrow));
+      // The renderer ALWAYS prints the document's outer title as the H1; the cover's title is normally
+      // that same string (export-document passes the row title as both), so emitting it again renders the
+      // title twice (Codex P2). Emit the cover title only when it DIFFERS from the outer title — or when
+      // there is no outer title, so a bare content array with a cover still gets its H1.
+      const coverTitle = asText(b.title ?? b.text).trim();
+      if (coverTitle && coverTitle.toLowerCase() !== (docTitle ?? "").trim().toLowerCase()) {
+        push(coverTitle, "heading", 1);
+      }
+      push(asText(b.subhead));
+      continue;
+    }
+    // A section-header is a TOP-LEVEL section, so it coerces to level 1 — the serializer's title-offset
+    // (+1 when a doc title is present) then renders it as `## ` (H2), one level under the doc's H1 title,
+    // the same depth a generic heading-level-1 lands at. (Coercing to level 2 would push it to H3, one
+    // level too deep — a section rendering DEEPER than a plain heading — and would make the `## Scope`
+    // test pass only on an offset-substring coincidence rather than the real heading prefix.)
+    if (t === "section-header") {
+      push(asText(b.kicker));          // the small eyebrow label above the section title
+      push(asText(b.title ?? b.text), "heading", 1);
+      continue;
+    }
+    if (t === "chapter-divider") {
+      out.push({ type: "pagebreak" });
+      push(asText(b.kicker));
+      push(asText(b.title ?? b.text), "heading", 1);
+      push(asText(b.subhead));
+      continue;
+    }
+    if (t === "prose") {
+      // prose carries raw MARKDOWN (the canvas renders it via ReactMarkdown). Pushing it as one flat
+      // paragraph leaks literal `**bold**` / `[label](url)` / heading / list syntax into docx/pptx/pdf
+      // (Codex P2). Parse it into real structural blocks (headings/lists/paragraphs) and strip inline
+      // markdown to clean text (links kept as `label (url)`) so every format renders structure, not syntax.
+      const md = asText(b.markdown ?? b.text ?? b.content);
+      for (const blk of parseMarkdown(md)) {
+        if (blk.type === "heading") push(inlineMdToText(blk.text), "heading", blk.level);
+        else if (blk.type === "paragraph") push(inlineMdToText(blk.text));
+        else if (blk.type === "list") {
+          const items = blk.items.map(inlineMdToText).filter((s) => s.length > 0);
+          if (items.length) out.push({ type: "list", items, ordered: blk.ordered });
+        } else out.push(blk); // pagebreak
+      }
+      continue;
+    }
+    if (t === "callout") {
+      push(asText(b.title));            // a titled callout ("Key insight: …") keeps its title, not just its body
+      push(asText(b.body ?? b.text));
+      continue;
+    }
+    if (t === "pull-quote") {
+      const q = asText(b.quote).trim();
+      const attr = asText(b.attribution).trim();
+      if (q) push(attr ? `"${q}" — ${attr}` : `"${q}"`);
+      continue;
+    }
+    if (t === "stat") { push([asText(b.value), asText(b.label)].map((s) => s.trim()).filter(Boolean).join(" — ")); continue; }
+    if (t === "worksheet-field") {
+      // A worksheet-field is a REAL printable blank (§319) — the label alone gives a prompt with nowhere
+      // to write/rate/check/sign (Codex P1). Emit the prompt + helper, then the fill affordance for the
+      // field kind: ruled write-lines, an open box (a few lines), a numbered rating scale, or a checkbox.
+      const RULE = "________________________________________"; // a write-on line, visible in every format
+      push(asText(b.label));
+      push(asText(b.helper));
+      const kind = typeof b.field === "string" ? b.field.toLowerCase() : "lines";
+      if (kind === "scale") {
+        const min = Number.isFinite(b.scaleMin as number) ? Math.round(b.scaleMin as number) : 1;
+        const max = Number.isFinite(b.scaleMax as number) ? Math.round(b.scaleMax as number) : 5;
+        const nums: string[] = [];
+        for (let i = min; i <= max && nums.length < 20; i++) nums.push(String(i));
+        const minL = asText(b.minLabel).trim();
+        const maxL = asText(b.maxLabel).trim();
+        push([minL, nums.join(" — "), maxL].filter((s) => s.length > 0).join("   "));
+      } else if (kind === "checkbox") {
+        push(`[ ] ${RULE}`); // ASCII checkbox (PDF-safe; a Unicode ☐ becomes `?` under sanitizeWinAnsi)
+      } else if (kind === "box") {
+        for (let i = 0; i < 4; i++) push(RULE); // an open box → a small area of write-lines in a flat export
+      } else {
+        // "line" | "lines" (default): 1 line, or `lines` clamped 1–12 (default 3)
+        const n = kind === "line" ? 1 : clampLines(b.lines);
+        for (let i = 0; i < n; i++) push(RULE);
+      }
+      continue;
+    }
+    if (t === "cta") {
+      push([asText(b.headline), asText(b.action)].map((s) => s.trim()).filter(Boolean).join(" — "));
+      const href = asText(b.href).trim();
+      if (href) push(href); // the destination the canvas links — a flat export shows the URL so it's followable (Codex P2)
+      continue;
+    }
+    if (t === "pricing-table") {
+      const caption = asText(b.caption).trim();
+      if (caption) out.push({ type: "heading", text: caption, level: 3 });
+      const rows = Array.isArray(b.rows) ? b.rows : [];
+      const items = rows.map((r) => {
+        const rr = (r && typeof r === "object") ? r as Record<string, unknown> : {};
+        const label = asText(rr.item).trim() + (asText(rr.detail).trim() ? ` (${asText(rr.detail).trim()})` : "");
+        const amount = asText(rr.amount).trim();
+        return [label, amount].filter(Boolean).join(": ");
+      }).filter((s) => s.length > 0);
+      const total = asText(b.total).trim();
+      if (total) items.push(`Total: ${total}`);
+      if (items.length) out.push({ type: "list", items, ordered: false });
+      continue;
+    }
+    if (t === "toc") {
+      // Explicit entries win; otherwise — a VALID schema shape, entries MAY be omitted — auto-build from
+      // the document's own section-header/chapter-divider titles, mirroring the canvas (DocumentPreview),
+      // so an exported guide/ebook keeps its table of contents instead of silently dropping it (Codex P2).
+      const entries = Array.isArray(b.entries) ? b.entries.map(asText).map((s) => s.trim()).filter((s) => s.length > 0) : [];
+      if (!entries.length) {
+        for (const x of arr) {
+          if (!x || typeof x !== "object") continue;
+          const xb = x as Record<string, unknown>;
+          const xt = typeof xb.type === "string" ? xb.type.toLowerCase() : "";
+          if (xt === "section-header" || xt === "chapter-divider") {
+            const heading = asText(xb.title ?? xb.text).trim();
+            if (heading) entries.push(heading);
+          }
+        }
+      }
+      if (entries.length) {
+        push((asText(b.title).trim() || "Contents"), "heading", 1);
+        out.push({ type: "list", items: entries, ordered: false });
+      }
       continue;
     }
     // paragraph / text / anything else
@@ -150,6 +299,13 @@ function coerceBlockArray(arr: unknown[]): Block[] {
 function clampLevel(n: number): number {
   if (!Number.isFinite(n) || n < 1) return 1;
   return n > 3 ? 3 : Math.floor(n);
+}
+
+// A worksheet-field's ruled-line count: clamp to 1–12, default 3 (mirrors the StudioDocBlock contract).
+function clampLines(n: unknown): number {
+  const v = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(v) || v < 1) return 3;
+  return v > 12 ? 12 : Math.floor(v);
 }
 
 // Minimal, dependency-free markdown/plain parser. Handles: ATX headings (#/##/###), unordered
@@ -182,11 +338,114 @@ function parseMarkdown(src: string): Block[] {
   return out;
 }
 
+// Strip inline markdown to clean, readable text for the flat block model (which has no inline runs).
+// A link keeps its destination as `label (url)` so the URL survives into every format; bold/italic/
+// code/strike markers are removed rather than shown literally. Used ONLY on `prose` (which is raw
+// markdown by contract) — never on plain-text fields, where a stray `_`/`*` is a literal character.
+function inlineMdToText(s: string): string {
+  // Extract link/image destinations into placeholders BEFORE the emphasis passes, so an underscore in a
+  // URL (e.g. `?utm_source=…&utm_medium=…`) is never eaten by the italic-underscore rule (Codex P2). The
+  // label is left inline and IS emphasis-cleaned (label markdown is real markdown); the raw URL is spliced
+  // back only at the end. The `@@URL0@@` sentinel is plain ASCII with no markdown-special or control
+  // char, so no emphasis pass touches it and (unlike a NUL/BEL delimiter) it can never leak a bad byte.
+  const codes: string[] = [];
+  const urls: string[] = [];
+  // Balanced-paren destination: non-paren runs OR one level of nested `(...)`, so a URL like
+  // `https://ex.co/a_(b)?utm_source=x` is captured WHOLE (a bare `[^)]+` would stop at the first `)` and
+  // leak the query into the emphasis pass — Codex P2). One nesting level covers real-world links.
+  const DEST = "((?:[^()]|\\([^()]*\\))*)";
+  let str = String(s).replace(/^\s*>\s?/gm, "");         // blockquote markers
+  str = str
+    // Protect inline code VERBATIM first — its contents (`tenant_id_value`, `a*b*c`) must never be seen by
+    // the emphasis passes, which would otherwise strip the `_id_`/`*b*` inside it (Codex P2).
+    .replace(/`([^`]+)`/g, (_m, c) => `@@CODE${codes.push(String(c)) - 1}@@`)
+    .replace(new RegExp("!\\[([^\\]]*)\\]\\(" + DEST + "\\)", "g"), "$1")      // image → alt text (dest dropped)
+    .replace(new RegExp("\\[([^\\]]+)\\]\\(" + DEST + "\\)", "g"),
+      (_m, label, url) => `${label}@@URL${urls.push(String(url)) - 1}@@`);     // link → label + placeheld url
+  str = str
+    .replace(/(\*\*|__)(.+?)\1/g, "$2")                  // bold
+    .replace(/(\*|_)([^*_]+?)\1/g, "$2")                 // italic (code + URLs are placeheld, so safe)
+    .replace(/~~(.+?)~~/g, "$1");                        // strikethrough
+  str = str
+    .replace(/@@CODE(\d+)@@/g, (_m, i) => codes[Number(i)] ?? "")             // restore code verbatim
+    .replace(/@@URL(\d+)@@/g, (_m, i) => ` (${urls[Number(i)] ?? ""})`);      // restore raw URL as `(url)`
+  return str.trim();
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════
+// Markdown — pure serializer, ZERO dependency (so it cannot fail on a Deno/npm import; it is the one
+// format that never degrades to needs_config). Serializes the normalized block model back to clean
+// markdown: a title as an H1, headings by level, paragraphs, unordered/ordered lists, page breaks as
+// thematic breaks. This is the "give me the words in a portable text file" path (§13 — a real .md file,
+// not a document dressed up).
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════
+function renderMarkdownDoc(title: string | undefined, blocks: Block[]): { bytes: Uint8Array } {
+  const lines: string[] = [];
+  const t = (title ?? "").trim();
+  if (t) { lines.push(`# ${t}`); lines.push(""); }
+  for (const b of blocks) {
+    switch (b.type) {
+      case "heading": {
+        // The title is already the H1; a block heading sits one level below so the outline stays sane.
+        const level = Math.min(6, (b.level ?? 1) + (t ? 1 : 0));
+        lines.push(`${"#".repeat(Math.max(1, level))} ${b.text}`.trimEnd());
+        lines.push("");
+        break;
+      }
+      case "paragraph":
+        if (b.text.trim()) { lines.push(b.text.trim()); lines.push(""); }
+        break;
+      case "list":
+        b.items.forEach((item, i) => lines.push(b.ordered ? `${i + 1}. ${item}` : `- ${item}`));
+        lines.push("");
+        break;
+      case "pagebreak":
+        lines.push("---");
+        lines.push("");
+        break;
+    }
+  }
+  // Collapse a trailing run of blank lines to a single terminating newline.
+  const md = lines.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\n+$/, "\n");
+  return { bytes: new TextEncoder().encode(md.length ? md : (t ? `# ${t}\n` : "")) };
+}
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════
 // PDF — pdf-lib (pure-JS, Deno-proven). The reliable in-band PDF path: title + text blocks with
 // sane margins, word wrapping, and pagination. (HTML→PDF fidelity is a separate deferred service.)
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════
+// Count characters `sanitizeWinAnsi` would turn into `?` — i.e. codepoints pdf-lib's WinAnsi fonts can't
+// encode. Reuses the ONE sanitizer (§18) instead of re-listing the range, so the two can never drift.
+function winAnsiLoss(text: string): number {
+  const q = (s: string) => (s.match(/\?/g) || []).length;
+  return Math.max(0, q(sanitizeWinAnsi(text)) - q(String(text)));
+}
+function blockPlainText(b: Block): string {
+  if (b.type === "heading" || b.type === "paragraph") return (b as { text?: string }).text ?? "";
+  if (b.type === "list") return ((b as { items?: string[] }).items ?? []).join(" ");
+  return "";
+}
+
 async function renderPdf(title: string | undefined, blocks: Block[], _style: Record<string, unknown>): Promise<{ bytes: Uint8Array }> {
+  // §13/§70 — pdf-lib's StandardFonts are WinAnsi (Latin) only, so a document written in Cyrillic / CJK /
+  // Arabic (or heavy emoji) would render as a page of `?` while STILL returning a valid file + a success
+  // outcome. Detect that a MATERIAL share of the text can't be encoded and fail closed to needs_config, so
+  // the caller degrades honestly (DOCX/MD preserve Unicode) instead of shipping a corrupted PDF called a
+  // win. Incidental loss (a stray emoji, one foreign name in an English doc) stays best-effort.
+  const sample = [title ?? "", ...blocks.map(blockPlainText)].join("\n");
+  const nonWs = sample.replace(/\s+/g, "").length;
+  if (nonWs > 0) {
+    // Every non-empty document is checked (a title-only `Привет` must fail closed too — Codex P2). A short
+    // doc needs a MAJORITY unencodable to reject, so one stray emoji in a short English line stays
+    // best-effort; a longer doc rejects once 15% is unrenderable. Either way a wholesale non-Latin doc fails.
+    const ratio = winAnsiLoss(sample) / nonWs;
+    const threshold = nonWs >= 8 ? 0.15 : 0.5;
+    if (ratio > threshold) {
+      throw new NeedsConfigError("doc-render:pdf-charset",
+        "This document uses characters the PDF exporter can't render yet (Latin text only) — export it as DOCX or Markdown to keep them.");
+    }
+  }
+
   let lib: any;
   try {
     lib = await import(PDFLIB_SPEC);
@@ -334,27 +593,42 @@ async function renderPptx(title: string | undefined, blocks: Block[], _style: Re
     const PptxGen = lib.default ?? lib;
     const pptx = new PptxGen();
 
-    // Group into { heading, body[] } sections.
+    // Group into { heading, body[] } sections. Content BEFORE THE FIRST heading (a deduped cover's subhead)
+    // collects into `lead` and rides the TITLE slide as its subtitle — NOT a separate slide headed with the
+    // document title, which duplicated the title slide (Codex P2). But `lead` is scoped to that cover zone
+    // ONLY: once a heading has been seen, orphan content (e.g. a chapter-divider's kicker after its inserted
+    // page break) starts its OWN neutral-headed section instead of leaking onto the title slide (Codex P2).
     const slides: { heading: string; body: string[] }[] = [];
     let cur: { heading: string; body: string[] } | null = null;
-    const push = (line: string) => { if (!cur) cur = { heading: title || "Overview", body: [] }; cur.body.push(line); };
+    let sawHeading = false;
+    const lead: string[] = [];
+    const pushBody = (line: string) => {
+      if (cur) { cur.body.push(line); return; }
+      if (!sawHeading) { lead.push(line); return; }           // pre-first-heading = cover zone → title slide
+      cur = { heading: " ", body: [line] };                    // orphan after a break = its own section, no title dup
+    };
     for (const b of blocks) {
-      if (b.type === "heading") { if (cur) slides.push(cur); cur = { heading: b.text || " ", body: [] }; }
-      else if (b.type === "list") b.items.forEach((it, i) => push(b.ordered ? `${i + 1}. ${it}` : it));
-      else if (b.type === "paragraph") { if ((b).text?.trim()) push((b).text.trim()); }
+      if (b.type === "heading") { if (cur) slides.push(cur); cur = { heading: b.text || " ", body: [] }; sawHeading = true; }
+      else if (b.type === "list") b.items.forEach((it, i) => pushBody(b.ordered ? `${i + 1}. ${it}` : it));
+      else if (b.type === "paragraph") { if ((b).text?.trim()) pushBody((b).text.trim()); }
       // pagebreak: force a new slide boundary
       else if (b.type === "pagebreak" && cur) { slides.push(cur); cur = null; }
     }
     if (cur) slides.push(cur);
 
-    // Title slide.
+    // Title slide (carries any pre-heading lead as its centered subtitle).
     if (title) {
       const s = pptx.addSlide();
       s.addText(title, { x: 0.5, y: 2.4, w: 9, h: 1.2, fontSize: 36, bold: true, align: "center" });
-    }
-    if (slides.length === 0) {
+      if (lead.length) s.addText(lead.join("\n"), { x: 0.5, y: 3.7, w: 9, h: 1.8, fontSize: 18, align: "center", valign: "top" });
+    } else if (lead.length) {
+      // No title, but there IS pre-heading content — give it its own slide so it is never lost.
       const s = pptx.addSlide();
-      s.addText(title || "Untitled", { x: 0.5, y: 0.4, w: 9, h: 1, fontSize: 28, bold: true });
+      s.addText(lead.map((t) => ({ text: t, options: { bullet: true } })), { x: 0.7, y: 0.6, w: 8.6, h: 5, fontSize: 16, valign: "top" });
+    }
+    if (slides.length === 0 && !title && lead.length === 0) {
+      const s = pptx.addSlide();
+      s.addText("Untitled", { x: 0.5, y: 0.4, w: 9, h: 1, fontSize: 28, bold: true });
     }
     for (const sec of slides) {
       const s = pptx.addSlide();

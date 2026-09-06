@@ -6,6 +6,43 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 00. A new by-id EXPORT/read edge function that trusts RLS is a cross-tenant IDOR — marketing_content's RLS has a global-admin OR-branch (2026-09-06)
+
+- **Symptom (caught by the §39 peer-gate, missed by §5 compliance).** A new `export-document` edge fn
+  read the source doc with the caller JWT by id only (`.eq("id", contentId)`, no tenant filter) and
+  trusted `marketing_content` RLS to scope it. A tenant-A admin could export a tenant-B document by id and
+  get a working signed download URL.
+- **Root cause.** `marketing_content_tenant_manage` (migration `20260711014952`) is
+  `(tenant_id = current_user_tenant_id() AND has_any_role(...)) OR has_role(auth.uid(),'admin')`. The
+  second branch is the §59 global-role trap: `user_roles` has no `tenant_id`, and EVERY tenant owner/admin
+  holds the GLOBAL `admin` app_role (the `tenant_members→user_roles` sync trigger), so the OR-branch is
+  TRUE for any row. Coaches are unaffected (global `coach`, not `admin`). RLS therefore does NOT scope an
+  admin's by-id read to their own tenant.
+- **Rule (§59).** A NEW by-id data reader/exporter MUST re-enforce caller scope IN-BODY — never trust the
+  RLS grant. Require `is_tenant_member(row.tenant_id)`; allow cross-tenant ONLY for a platform operator
+  (super_admin/platform_admin via the operator role), NEVER the tenant-level app_role. And: a source-grep
+  test titled "tenant scope by RLS" that only greps for the read shape proves nothing about isolation —
+  name it a source contract and owe the real two-tenant drive (§32.c). The underlying RLS OR-branch is a
+  separate platform-wide gap (any tenant admin can read any tenant's marketing_content via raw PostgREST) —
+  fix it in its own slice; the in-body gate closes each new reader regardless.
+
+## 0. A NEW edge-native Paige capability cannot be a new inline chat tool NOR a Spine `action` today — extend a baseline tool (2026-09-06)
+
+- **Symptom.** Building the document-export capability, the obvious move (a new `export_document` chat
+  tool in `paige-ai-chat`) FAILS `chat-tool-registry-lint` — the inline baseline is frozen at 94 and may
+  only DESCEND (new capabilities register in the Spine). But registering it as a Spine `action` ALSO
+  fails: `paige-spine-registry-lint` requires `action.executor` to be either a `public.*` DB RPC or the
+  n8n-management edge-proof shape (`integrations.*` key + `rpc('acquire')`/`project(...)` lease structure).
+- **Root cause.** An edge-native capability whose executor is the model router / a first-party edge path
+  (render → Supabase Storage → signed URL) fits NEITHER: a Postgres RPC can't render or mint signed URLs,
+  and it isn't n8n-shaped. The Spine `action` executor model currently has exactly two accepted shapes,
+  and "generic edge logic" is not one of them.
+- **Rule.** For a new FIRST-PARTY edge capability, the §18-clean path is to **extend an existing baseline
+  tool** (export shipped as an `export_format` param on `document_generate` + a standalone `export-document`
+  edge function it invokes) — NOT a new inline tool, NOT a forced Spine registration. Generalizing the
+  `registry.ts` edge-native executor allow-list (beyond N8N_MANAGEMENT) is a real follow-up if edge-native
+  capabilities should become first-class Spine citizens; until then, don't fight the two lints — extend.
+
 ## 0a. A service_role-only RPC called from the anon+JWT seam writes NOTHING, and every gate stays green (2026-09-05)
 
 - **Symptom (caught in design, before it shipped).** The obvious way to make PAIGE's acts visible was
@@ -2128,3 +2165,25 @@ to terminal conclusions but had no floor and no explicit failure line, so a red 
 never started produced identical silence. Silence read as "still fine". Before arming any watch, ask
 what it would print if the thing being watched had already crashed — if the answer is "nothing", the
 filter is wrong.
+
+## A `toContain("## X")` heading assertion passes on `### X` — anchor it to the line (2026-09-06, #1017)
+
+The doc-export regression test asserted `expect(md).toContain("## Scope")` to prove a `section-header`
+block rendered as an H2 beneath the document's H1 title. It was green. The real output was `### Scope`
+(H3) — the block had been coerced one level too deep, and the markdown serializer added a title-offset
+on top. **`"### Scope"` contains `"## Scope"` as an offset substring** (drop the first `#`), so
+`toContain` matched and the test verified H2 while the code emitted H3. A section rendering deeper than
+a plain top-level heading shipped invisibly behind a passing assertion.
+
+**A substring assertion on a prefix-delimited format cannot distinguish `##` from `###` from `####`** —
+every longer run of the delimiter contains the shorter one. The same trap sits under any `toContain`
+on markdown headings, list bullets (`-` vs `- ` inside `-- `), blockquote depth (`>` vs `>>`), or an
+indentation level. The assertion reads like it pins the level; it pins only "some line has at least
+this many hashes somewhere in it".
+
+**The fix is a line-anchored regex, not a longer substring.** `expect(md).toMatch(/^## Scope$/m)` matches
+only a line that is *exactly* `## Scope`, and fails on `### Scope`. Whenever a test's whole point is the
+LEVEL of a prefix-delimited token — heading depth, nesting, indent — anchor to the line (`^…$` with `/m`)
+so a one-level regression cannot pass on the shorter token hiding inside the longer one. Caught here by a
+§39 adversarial re-read of the FINAL diff, not by the green suite — the substring green was indistinguishable
+from a correct green until someone computed the actual output by hand.

@@ -1,5 +1,160 @@
 # Decision Log — chronological one-liners
 
+- **Capability System — document EXPORT MVP: a real downloadable file (pdf/docx/pptx/md) (2026-09-06, Task #21, owner-authorized)** —
+  the owner's doc-creation task. AUDIT (grounded, not from labels): today Paige's only "document" is
+  block-JSON in `marketing_content` rendered on canvas (download = the browser's own Print→PDF); NO valid
+  binary file was produced/stored/downloadable. THE PIVOTAL FINDING: the real binary renderer
+  (`_shared/doc-render.ts` → pdf/docx/pptx/epub via pdf-lib/docx/pptxgenjs) AND the model router's persist
+  lane (`callModel("doc-render")` → private tenant-scoped `studio-deliverables` bucket + 30-day signed URL +
+  `studio_deliverable` provenance row) ALREADY EXISTED but were UNREACHED — no caller ever invoked the
+  doc-render modality. **SHIPPED:** (1) a `md` output format added to doc-render (a pure, zero-dependency
+  serializer — the one format that can never degrade); (2) a NEW `export-document` edge function — the
+  callable seam (§10), admin/coach-gated, reads the source doc with the CALLER JWT (RLS scopes to the
+  caller's tenant, §9), files under the ROW's tenant_id (never the body), renders via the doc-render lane,
+  records an honest Rail outcome (`document_export`: succeeded/failed/outcome_unknown), returns the signed
+  `download_url` or an honest `needs_config`/`failed` — never a fake link (§13/§32); (3) `document_generate`
+  gained an optional `export_format` param that invokes the seam after save and attaches `download_url`, so
+  Paige produces a downloadable file conversationally. **§18, not a new tool:** export is an EDGE FUNCTION +
+  a param on the existing baseline tool — chat-tool-registry stays 94. **Behavior-preserving (§37):** no
+  export_format → the result is byte-identical. **PROOF:** `src/__tests__/doc-export-contract.test.ts` (9) —
+  md serializer smoke-tested headlessly + source contracts on the edge fn + document_generate wiring; tsc 0;
+  edge ratchet 145; chat-tool-registry 94; spine lint PASS; full suite 3789/3789; §50/§63 clean. **HONEST
+  STATE (§13/§70):** md = LIVE (pure, proven); pdf = LIVE-pending (pdf-lib Deno-proven); docx/pptx =
+  PROOF-OWED on Deno (each fail-closed to needs_config); **§32.c authenticated owner drive OWED** (headless —
+  the owner clicking export and opening the file is the real proof). **NAMED, out of scope:** xlsx (tabular,
+  needs a new lib — deliberately NOT offered rather than failed); a re-download control on the artifact card
+  (frontend = Claude Design's, §00). **INTEGRATION CAPABILITY REGISTRY (owner directive 2026-09-06):** this
+  export is FIRST-PARTY (in-bundle render libs + Supabase Storage) — no external API/connector/OAuth provider
+  — so it does not depend on inventing provider authority and proceeds under the directive. **Native Google
+  Docs/Sheets/Slides (Effort 2) is provider-gated and NOT built:** the scout confirmed no Drive/Docs/Sheets/
+  Slides scope, no API client, only gmail.send + calendar.events exist; per the directive I invented no
+  provider authority. **The Integration Capability Registry itself does NOT yet exist in the repo** — per the
+  directive I did NOT create a competing one; the missing-entry requirement (a Google Workspace-docs entry:
+  capability, Drive/Docs/Sheets/Slides scopes, authority lane, provider-confirmed outcome path,
+  Rail/Mind/Memory boundaries) is recorded here and surfaced to the owner as Registry Steward. **[§13
+  correction on merge: the Registry NOW EXISTS on main (`docs/integration-registry/`, shipped by a parallel
+  session in the same window); the actionable item is therefore the Google Workspace-docs ENTRY + a Google
+  provider contract, not the registry itself. This first-party doc-export needs no registry entry.]** **ARCHITECTURE
+  FINDING (see lessons-learned):** a NEW edge-native (non-n8n) capability cannot currently be registered as a
+  Spine `action` — `paige-spine-registry-lint` requires an executor that is a `public.*` DB RPC (which cannot
+  render or mint signed URLs) OR the n8n-management edge-proof shape (`integrations.*` key + lease/project);
+  so export ships by EXTENDING the `document_generate` baseline tool (§18), not as a Spine capability.
+  Generalizing the edge-native executor allow-list is a follow-up.
+  **REVIEW: §5 compliance = SHIP; §39 peer-gate = ITERATE → one BLOCKING §9/§59 finding, FOLDED.** The
+  peer-gate caught a cross-tenant document-export IDOR that §5 missed: `export-document` read the doc by id
+  with the caller JWT and TRUSTED `marketing_content` RLS — but that RLS has the §59 global-`admin`
+  OR-branch (`OR has_role(auth.uid(),'admin')`), and every tenant owner/admin holds the GLOBAL `admin`
+  app_role via the `tenant_members→user_roles` sync, so a tenant-A admin could export a tenant-B document
+  by id. **Fix folded:** an in-body member/operator gate (`is_tenant_member(doc.tenant_id)`, bypassed only
+  for a platform operator super_admin/platform_admin — §59: cross-tenant authority is the operator role,
+  never the tenant app_role) refuses the cross-tenant read before any file is produced; the Rail record is
+  now skipped for operator exports (they aren't members, so the RPC would raise a false-alarm
+  CAPABILITY_RUN_FORBIDDEN — §5 finding). Test renamed to a source contract + asserts the gate; a true
+  two-tenant RLS drive is §32.c-owed (needs a live DB). Re-verified: doc-export 9/9, tsc 0, edge ratchet
+  145. **NEW FINDING surfaced to the owner (pre-existing, platform-wide, OUTSIDE this task — recorded, not
+  fixed here):** the `marketing_content_tenant_manage` RLS OR-branch (`20260711014952`) grants the global
+  `admin` app_role a CROSS-TENANT read of ANY tenant's `marketing_content` via raw PostgREST — a §9/§59 IDOR
+  independent of this function. Fixing the shared RLS is its own slice (§59); my in-body gate closes the
+  export vector regardless. Wording nits corrected (there IS a platform-ops Lovable-gateway Drive path in
+  `ship-26-legacy-cleanup`, so the accurate claim is "no Docs/Sheets/Slides API client + no tenant Drive
+  OAuth scope"; and the Spine registry substrate exists — what's absent is a Google Workspace-docs ENTRY).
+  **CODEX (third layer) then caught TWO more real ones on the fold — both FOLDED.** **P1 (correctness, §70):**
+  the export unwrapped `document_generate`'s RICH block schema (cover/section-header/prose/callout/pricing-table/
+  cta/…) but `doc-render`'s `coerceBlockArray` understood only heading/list/paragraph and read text/content/value
+  — so a real generated proposal exported as basically just its TITLE while still returning success + a signed
+  URL (a §70 usability lie my md smoke test missed because it drove the renderer's INTERNAL block shape, not the
+  real contract — the peer-gate's false-green warning made concrete). Fixed: `coerceBlockArray` now maps every
+  `document_generate` block type to the flat model (cover→H1+subhead, section-header→H2, prose→markdown,
+  pricing-table→list of rows+total, cta→headline+action, …), and a NEW test drives the REAL schema (fails
+  pre-fix). **P2 (authz):** the initial role gate omitted `platform_admin`, so a delegated operator (only role
+  = platform_admin, the accept_platform_invite shape) was rejected before reaching the operator branch — added.
+  Re-verified: doc-export 10/10 (incl. the rich-block regression), tsc 0, edge ratchet 145, full suite
+  3790/3790, §50/§63 clean. The §39 IDOR + Codex P1 correctness bug are exactly why this MVP got three
+  independent review layers before merge. **FOURTH catch — my own §39 re-read of the FINAL diff (before
+  merge):** the P1 fold coerced `section-header` to level 2, which the serializer's title-offset (+1 under
+  the doc H1) rendered as `### ` (H3) — one level DEEPER than a plain top-level heading — while the
+  regression test's `toContain("## Scope")` passed anyway on the offset-substring of `### Scope`. A real
+  false-green: the test asserted H2, the output was H3. Fixed: `section-header` → level 1 (renders a real
+  `## ` H2, matching a generic heading-level-1 and the cover/chapter top level), and the test tightened to
+  a line-anchored `/^## Scope$/m` so it can never again pass on `### Scope`. doc-export 10/10, tsc 0.
+  **FIFTH catch — Codex re-review of the head, THREE more §70 fidelity losses in the freshly-added
+  `coerceBlockArray` mappings, all FOLDED:** (P1) a `worksheet-field` exported only its label, dropping
+  `field`/`helper`/`lines`/`scaleMin`/`scaleMax`/`minLabel`/`maxLabel` — a printable blank with nowhere
+  to write/rate/check/sign; now emits the prompt + helper + the real fill affordance per `field` kind
+  (ruled lines clamped 1–12, an open-box area, a numbered rating scale with anchors, or a checkbox).
+  (P2) a `style:"checklist"` list flattened to ordinary bullets — now each item carries an empty ballot
+  box `☐` so every serializer shows an unchecked box (no GFM-task-list dependency). (P2) the `cover`
+  block's title duplicated the outer doc title (the renderer always prints the doc title as H1, and
+  export-document passes the row title as both) — the cover title is now emitted only when it DIFFERS
+  from the outer title (threaded `docTitle` through `coerceBlockArray`). The lesson under all three: a
+  normalizer that flattens a rich block vocabulary must preserve each type's JOB (a checklist's checkbox,
+  a worksheet's blank), not just its text — dropping the affordance is a §70 loss that still returns
+  success. Regression test extended to drive checklist + all worksheet-field kinds + assert no title
+  dup. Re-verified: doc-export 10/10, tsc ratchet 13/13 (no new errors), §50/§63 clean.
+  **SIXTH catch — Codex re-review of that head found TWO real §9/§59 authority bugs + a PDF-render bug,
+  all FOLDED (grounded on the real helpers, not invented):** (F1, P2) a `platform_admin` operator's
+  caller-JWT read of `marketing_content` returned null — RLS admits only `is_platform_owner()`
+  (super_admin) cross-tenant — so the delegated-operator export path 404'd. Fixed: operators
+  (super_admin/platform_admin, §53) now read via the SERVICE-ROLE client (RLS-bypass justified by the
+  verified-JWT operator check). (F2, P1 — §59 GLOBAL-ROLE TRAP) the in-body gate accepted `is_tenant_member`
+  at ANY role, so a caller who is admin in tenant A (global `admin` in `user_roles`) but a plain member of
+  the doc's tenant B could export B's admin-gated docs. Fixed: RE-ENFORCE a MANAGE role IN THE DOC'S TENANT
+  — owner/admin via `is_tenant_admin` (auth.uid()-keyed) or coach via `has_tenant_role` — the exact
+  pattern in `20261180000000` (the same trap's fourth sighting). (F3, P2) the checklist/checkbox `☐`
+  (U+2610) was transcoded to `?` by `renderPdf`'s `sanitizeWinAnsi`; switched to the ASCII `[ ]`
+  (WinAnsi-safe, GFM task-list form). §37 producer inventory: the ONE producer (`document_generate` →
+  export-document) forwards the caller's `Authorization`, so the Studio admin/coach still passes for their
+  own tenant. Re-verified: doc-export 10/10, tsc ratchet 13/13, chat-tool-registry 94, spine PASS,
+  §50/§63 clean. That is SIX independent review-layer catches on one MVP — two of them (§39 IDOR, F2
+  global-role trap) real cross-tenant leaks the green suite could not see. §32.c multi-tenant RLS/role
+  drive of the closed IDOR is owed to the authenticated post-deploy pass (needs a live DB).
+  **SEVENTH catch — Codex round 4 flagged TWO more lossy `coerceBlockArray` projections (prose markdown
+  printed as literal syntax; a CTA's `href` dropped). Rather than fix one block type per round, did a
+  COMPREHENSIVE fidelity audit of the whole mapping vs `StudioDocBlock` and fixed every content-bearing
+  drop in one pass:** `prose` now parses its raw markdown into real heading/list/paragraph blocks and
+  strips inline syntax to clean text (links kept as `label (url)`) via a new `inlineMdToText` (reusing the
+  existing `parseMarkdown`, §18) — so docx/pptx/pdf no longer show `**bold**`/`[x](y)`; `cta` emits its
+  `href`; `callout` emits its `title` (not just body); `toc` emits its `entries` as a list (not dropped);
+  `section-header`/`chapter-divider` emit their `kicker`. The only remaining omissions are `number` (a
+  numbering hint the flat outline supplies) and callout `variant` (a VISUAL treatment, not content —
+  §00/§13), both deliberate. This is the fidelity floor: every content-bearing field of every rich block
+  now survives to the file. Regression test extended (11/11). tsc ratchet 13/13, §50/§63 clean. SEVEN
+  independent review-layer catches on one MVP.
+  **EIGHTH catch — Codex round 5 found two follow-on bugs in the round-4 fidelity code, both FOLDED:**
+  (G1) `inlineMdToText` inlined a link URL and THEN ran the italic-underscore pass over it, so a URL like
+  `?utm_source=…&utm_medium=…` had its `_source=…&utm_` underscore pair stripped to `utmsource` — a
+  corrupted destination. Fixed by extracting URLs into a plain-ASCII `@@URL{i}@@` placeholder BEFORE the
+  emphasis passes and splicing the raw URL back last (the label is still emphasis-cleaned; the URL never
+  is). The first attempt used a control-char (BEL) delimiter — caught in my own re-read as a byte that
+  could leak to `?` under sanitizeWinAnsi — and was rewritten to the ASCII sentinel; a control-char scan
+  now guards the file. (G2) a `toc` block with OMITTED entries (a valid schema shape — the canvas derives
+  them) computed an empty array and dropped the whole TOC; now it auto-builds from the surrounding
+  section-header/chapter-divider titles, mirroring `DocumentPreview`. Regression test 12/12 (drives the
+  underscore-URL and the entries-less toc). tsc ratchet 13/13, §50/§63 clean, control-chars none.
+  **NINTH catch — Codex round 6 (one P1 + three P2), all FOLDED at the root:** (H1, P1 §13) `renderPdf`
+  (pdf-lib WinAnsi/Latin-only) turned Cyrillic/CJK/Arabic/emoji into `?` while STILL reporting
+  `capability_succeeded` — a silently corrupted PDF called a win. Now `renderPdf` measures the WinAnsi
+  loss (via the ONE sanitizer, §18) and fails closed to needs_config when a material share (>15%) can't be
+  encoded, so the caller degrades honestly (DOCX/MD keep Unicode); incidental loss stays best-effort. (H2)
+  inline code was emphasis-stripped (`` `tenant_id_value` `` → `tenantidvalue`); (H3) a balanced-paren link
+  URL (`.../a_(b)?utm_source=…`) was truncated at the first `)` and its query underscore-eaten. Both fixed
+  by rewriting `inlineMdToText` to a tokenize-protect-restore parser — code spans protected VERBATIM and
+  link destinations (balanced-paren aware) placeheld BEFORE the emphasis passes, restored after. (H4) a
+  deduped cover's subhead became an orphan leading paragraph that `renderPptx` headed with the doc title —
+  a duplicate title slide; now pre-heading `lead` content rides the title slide as its subtitle. Lesson:
+  a markdown→flat-text normalizer needs tokenize-protect-restore, not layered regex substitutions, or each
+  new metacharacter is a fresh corruption. doc-export 16/16, tsc ratchet 13/13, control-chars none. The
+  pdf/pptx executable paths stay §32 PROOF-OWED (npm libs, not headless); their guards are source-contracted.
+  **TENTH catch — Codex round 7 refined the round-6 fixes (two P2), both FOLDED:** (I1) the pptx `lead`
+  over-captured — routing ALL pre-`cur` content to the title slide swept up a chapter-divider's post-break
+  kicker and any intro prose, not just the cover; now `lead` is scoped to the cover zone (a `sawHeading`
+  flag), and post-break orphan content starts its own neutral-headed section. (I2) the charset guard's
+  `nonWs >= 8` floor exempted a title-only Cyrillic doc (`Привет`, 100% loss) from the check; now EVERY
+  non-empty doc is checked, with a majority threshold for short docs (a title-only non-Latin doc fails
+  closed; one emoji in a short English line stays best-effort). The charset guard became a REAL behavioral
+  test: it throws before the pdf-lib import with a distinct `doc-render:pdf-charset` tag, so a title-only
+  Cyrillic doc's rejection tag proves the guard fired (a Latin doc trips the import with a different tag).
+  doc-export 17/17, tsc ratchet 13/13, control-chars none, §50/§63 clean.
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace
