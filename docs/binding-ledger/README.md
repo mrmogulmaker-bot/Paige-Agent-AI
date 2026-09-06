@@ -71,6 +71,25 @@ Every surface carries **two independent answers**, and the second must never be 
    ledger describes the *gap* between present proof and the full operating goal — it does not narrow the
    goal to what happens to be built today.
 
+### Standing delegated authority — `auto` is not `None` for consequential work (owner ruling, 2026-09-06)
+
+Paige is a real operating agent. With owner or authorized-representative authority she may execute
+**consequential** actions — payments, purchases, ad-spend, bookkeeping, defined team-role changes,
+client operations, and connected-tool work — **autonomously within a bounded standing policy** (scope,
+caps, time window, provider authority, stop conditions, audit), not by confirming every act. `confirm`
+is the **escalation lane** for actions above the granted threshold, never a blanket ban. A surface whose
+`auto` lane covers such work carries `"consequential": true`, and its `auto` must declare that
+scoped-autonomy target — a bare `auto: "None"` is a regression the guard rejects.
+
+`prohibited` is fenced to only the genuinely non-delegable: §38 merchant-of-record / holding tenant
+funds / routing tenant→client money through the platform (connected-provider payments run on the
+**tenant's own** rails); §53 platform-tier escalation; and actions blocked by law, provider, or an
+explicit owner prohibition. The full contract is `docs/doctrine/autonomy-architecture.md` §10 (§67.2).
+**Honest note (§13/§32):** high-impact acts still clamp `auto`→`confirm` at the runtime seam today; the
+governed-execution slice that lifts a `high` act under a valid standing policy is sequenced there
+(RE-1/RE-2/RE-3), not yet shipped — so consequential surfaces keep their current `state` while
+`intended_capability` declares the target.
+
 ## The release/regression contract (CI-enforced)
 
 > A surface may not be reported `LIVE` / "Paige-connected" without a **complete** ledger entry whose
@@ -82,7 +101,8 @@ Every surface carries **two independent answers**, and the second must never be 
 - `INTENTIONALLY_ISOLATED` carries no `isolation_note`;
 - any entry is structurally incomplete (missing chain link, empty `sources`, unknown state/evidence class, duplicate id);
 - a surface omits `intended_capability` or any of its five authority lanes + `completion_criterion` (the target must be declared, not dropped);
-- a `completion_criterion` names no real action/outcome — i.e. it reads as merely "open" or "summarize" the surface.
+- a `completion_criterion` names no real action/outcome — i.e. it reads as merely "open" or "summarize" the surface;
+- a `"consequential": true` surface regresses its `auto` lane to a bare "None" instead of declaring scoped autonomy ("within policy" + caps/scope) or a genuine hard fence (§38/§53/law/provider) — standing delegated authority, owner 2026-09-06.
 
 This is the mechanical form of §13 (honest reporting) + §32 (a green build is not a working render),
 applied to the binding chain. A ledger a session can quietly edit to say "LIVE" without proof is worse

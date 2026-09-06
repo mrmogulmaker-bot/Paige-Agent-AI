@@ -3933,3 +3933,59 @@ intended operating target, not over-reach — a future verifier round must not d
 
 **README** gains a "Completion target (real action)" column so the intended-target dimension is visible
 in the human-readable release contract, not only the JSON.
+
+## 2026-09-06 — Standing Delegated Authority: reverses the `auto: None` framing, narrows `owner_only`, sequences the runtime slice (owner ruling, §58)
+
+**Durable decision.** Paige is a real operating agent, not a read-only/confirm-everything assistant.
+With owner or authorized-representative authority she may read, write, strategize, decide within policy,
+and execute consequential actions — including through connected native/external tools — under **standing
+delegated authority** (a bounded per-process grant), not per-action confirmation. This **reverses part
+of #1000** (`5796323`): that PR wrote `auto: "None…"` on the consequential surfaces (money, team,
+purchases, external execution), framing agency as inherently forbidden. The owner ruled that wrong.
+
+**`owner_only` is NOT a catch-all (owner correction, same day).** Team-role changes, client ops,
+bookkeeping, payments, purchases, ad-spend, and external execution are **delegable** under a bounded
+policy. `owner_only` is reserved for the genuinely non-delegable: transferring business/account
+ownership; granting/revoking platform-level or break-glass authority; changing the authority policy
+beyond the grantor's authority; moving/holding money outside a valid connected-provider + tenant/client
+scope + policy (§38); and actions blocked by law, provider, security, or an explicit owner prohibition.
+Over-fencing a delegable business action as `owner_only`/`auto: None` is as wrong as over-claiming.
+
+**What shipped in this change (PR-1, docs + ledger + guard only — no runtime seam change):**
+- `docs/binding-ledger/surface-binding-ledger.json` — the consequential surfaces' `auto`/`confirm`/
+  `prohibited` lanes rewritten to declare autonomous execution within a valid delegated policy + caps/
+  controls/stop-conditions; `prohibited` fenced to only the genuinely-forbidden (§38 MoR/fund-holding/
+  client-money routing; §53 platform-tier escalation; law/provider). 15 surfaces marked
+  `"consequential": true`. QuickBooks/bookkeeping/payments map to `settings.integrations` (connected-tool
+  execution home; a §16-Finance `finance.bookkeeping` surface is the future home when accounting-firm
+  tenants land — not built now). Every `state` unchanged (§13/§32) — the correction changes the
+  **target**, never the proven **state**.
+- `docs/doctrine/autonomy-architecture.md` §10 (§67.2) — the Standing Delegated Authority Contract:
+  the seven dimensions (who-grants · what · boundaries · lane · truth+evidence · controls · failure),
+  the delegable-vs-`owner_only` list, the §38/§53 reconciliations, the **present runtime truth**, and
+  the sequenced runtime slice (§18 one home — extends §67/§68, forks nothing). Cross-reffed from
+  `one-approval-gate.md` and `governed-execution-seam.md`.
+- `scripts/ci/binding-ledger-lint.mjs` — a new tripwire: a `consequential: true` surface's `auto` lane
+  must declare scoped autonomy ("within policy" + caps/scope) OR a genuine hard fence (§38/§53/law/
+  provider); a bare "None" fails. Self-test 33 cases; adversarial battery over all 15 real surfaces +
+  regressions; real ledger clean. Mechanizes the ruling so a future session can't regress to `auto:
+  None` (the failure #1000 shipped).
+
+**Present runtime truth (§13/§32), recorded so the target is not mistaken for shipped:** high-impact
+acts still clamp `auto`→`confirm` at the chat seam today (`action-risk.ts` classes them `high`;
+`governedExecution.ts` clamps one-directionally). The standing-policy substrate (§5-A/B:
+`paige_automations` + `resolve_automation_autonomy`) does not exist yet, so "autonomous within policy"
+is the declared `intended_capability`, not the runtime.
+
+**Sequenced runtime slice (PR-2, NOT future-only — owner: "move into the runtime enforcement slice"):**
+RE-1 standing-policy substrate (§5-A/B) · RE-2 `governedExecution.ts` honors a valid `standingPolicy`
+adapter-assertion so a `high` act on `auto` executes — only when policy supplies scope+caps+window+
+provider-authority+stop-conditions for that exact capability, the §68 rung permits, and the §8-M3
+budget is not exhausted; else the `auto`→`confirm` clamp stands (fail-closed, door-blind preserved) ·
+RE-3 pause/revoke/tighten/emergency-stop + Rail audit first-class. RE-2 turns "Paige can ask to make a
+payment" into "an authorized business can let Paige make defined payments within its policy." Ships as
+its own crewed PR with a §37 producer inventory and §32 runtime proof.
+
+**§66 note:** no tier gating/visibility changed (intended-capability language only) — tier-matrix is a
+no-op for this change. **Where recorded:** the ledger JSON + README, `autonomy-architecture.md` §10,
+`scripts/ci/binding-ledger-lint.mjs`, and this entry (§BRAIN.3 same-commit).

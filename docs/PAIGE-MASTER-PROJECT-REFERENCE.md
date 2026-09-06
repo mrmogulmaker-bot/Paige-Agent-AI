@@ -181,6 +181,28 @@ Spine SCR-1/2/3 sequence for the UNAVAILABLE surfaces. Second Brain updated: `do
 (architecture + doctrine indexes). §00: the ledger holds zero design opinion; the "IN CONTEXT" banner
 and truthful-status components are Claude Design's.
 
+**UPDATE (2026-09-06) — two subsequent owner rulings on the ledger (supersede the "13/13" guard count above):**
+1. **Intended Operating Capability dimension (#1000, merged `5796323`).** Every surface gained a second
+   dimension `intended_capability` — the product operating TARGET across five authority lanes (read ·
+   draft · auto · confirm · prohibited) + a real-action `completion_criterion` — mapped to §16/§67,
+   separate from `state` (current proof). An absent proof never shrinks the target.
+2. **Standing Delegated Authority (owner ruling 2026-09-06, §58 correction).** Paige is a real operating
+   agent: with owner/authorized-rep authority she executes consequential actions (payments, bookkeeping,
+   purchases, ad-spend, defined team-role changes, client ops, connected-tool work) autonomously **within
+   a bounded standing policy** (scope + caps + window + provider authority + stop conditions + audit) —
+   `confirm` is an escalation lane, not a ban. This REVERSED #1000's `auto: "None"` framing on the
+   consequential surfaces and NARROWED `owner_only` to only the genuinely non-delegable (ownership
+   transfer; platform-level/break-glass authority; changing the authority policy beyond the grantor's
+   authority; moving/holding money outside a valid connected-provider+scope+policy per §38; law/provider/
+   security/explicit-owner prohibition). 15 surfaces marked `consequential: true`; a new
+   `binding-ledger-lint` tripwire blocks a bare-`None` regression. The contract lives in
+   `docs/doctrine/autonomy-architecture.md` §10 (§67.2). **Honest runtime truth (§13/§32):** high-impact
+   acts still clamp `auto`→`confirm` at the seam today; the governed-execution slice that lifts a `high`
+   act under a valid standing policy is **sequenced** (RE-1 standing-policy substrate → RE-2 seam honors
+   a `standingPolicy` assertion → RE-3 pause/revoke/audit) as the next PR, not shipped in this docs
+   change. **Current guard:** self-test 33 cases; runs clean on all 26 rows. Every surface `state`
+   unchanged by the correction (target changed, not proof). §66: no tier gating changed.
+
 **UPDATE (owner ruling, 2026-09-06) — the ledger now carries a SECOND dimension so absent proof cannot
 shrink the target.** Alongside `state` (what is PROVEN today), every surface declares
 `intended_capability`: the product operating TARGET across five authority lanes — `read` · `draft` ·

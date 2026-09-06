@@ -27,6 +27,10 @@
  *       - every surface declares `intended_capability` with all five authority lanes
  *         (read · draft · auto · confirm · prohibited) + a `completion_criterion`
  *       - the completion_criterion must name a REAL action/outcome, not merely "open" or "summarize"
+ *       - STANDING DELEGATED AUTHORITY (owner 2026-09-06): a surface marked `consequential: true`
+ *         must, in its `auto` lane, declare a scoped-autonomy target ("within policy" + caps/limits/
+ *         scope) OR name a genuine hard prohibition (§38 MoR / §53 escalation / law / provider) — a
+ *         bare "None" is a regression. "confirm" is an escalation lane, never a blanket ban on agency.
  *   · ids are unique
  *
  *   node scripts/ci/binding-ledger-lint.mjs
@@ -93,6 +97,26 @@ export function completionNamesRealAction(text) {
     return false; // an un-excused passive verb dominates → not a real action
   }
   return true;
+}
+
+// Owner ruling 2026-09-06 (standing delegated authority): money, team authority, purchases, and
+// external execution are NOT inherently `auto: None`. A surface marked `consequential: true` must, in
+// its `auto` lane, EITHER declare a scoped-autonomy target ("within policy" + caps/limits/scope/…) OR
+// name a GENUINE hard prohibition (§38 merchant-of-record / §53 platform-tier escalation / law /
+// provider / an explicit owner-security fence). A bare or generic "None" — the framing #1000 shipped —
+// is a regression and fails. `confirm` is an escalation lane, never a blanket ban on agency.
+//
+// TRIPWIRE, not a semantic parser (§13). The HARD_PROHIBITION branch lets a surface cite a §-fence and
+// still say "None"; a regex cannot tell "§38 correctly fences a sub-action" from "§38 wrongly bans all
+// agency". That residual judgement is a human §5/§39 responsibility, exactly as lane-mapping is above.
+// Its job is to stop the BARE-"None" regression, which is the failure #1000 shipped.
+const SCOPED_AUTONOMY = /(\bwithin\b[^.;:—]*\b(polic(?:y|ies)|caps?|budgets?|limits?|window|scopes?|thresholds?|objectives?|availability|rules?)\b|delegated (?:authority|policy)|policy permits|standing delegated authority|pre-approved|granted (?:process|lane|grant)|autonomous(?:ly)? within)/i;
+const HARD_PROHIBITION = /(§38|§53|§67|§68|merchant[- ]of[- ]record|raises? (?:her|its) own authority|never raises|non-?chat act|required by law|law (?:forbids|requires)|provider (?:forbids|does not permit|requires))/i;
+
+/** True when a consequential surface's `auto` lane declares scoped autonomy OR a genuine hard fence. */
+export function consequentialAutoIsDelegable(text) {
+  const a = String(text || "");
+  return SCOPED_AUTONOMY.test(a) || HARD_PROHIBITION.test(a);
 }
 
 /** Validate a parsed ledger object. Returns an array of finding strings; empty means pass. */
@@ -193,6 +217,13 @@ export function validateLedger(ledger) {
       // completion is legitimately "out of scope", not an evasive passivity.
       if (cc && s.out_of_scope !== true && !completionNamesRealAction(cc))
         findings.push(`${id}: completion_criterion must name a REAL action/outcome — not merely that Paige can open or summarize the surface (set out_of_scope:true for a genuine scope-out)`);
+      // STANDING DELEGATED AUTHORITY (owner 2026-09-06): a consequential surface's auto lane must not
+      // regress to a bare "None" — it declares scoped autonomy OR names a genuine hard fence.
+      if ("consequential" in s && typeof s.consequential !== "boolean")
+        findings.push(`${id}: consequential must be a boolean when present`);
+      if (s.consequential === true && s.out_of_scope !== true &&
+          !consequentialAutoIsDelegable(typeof ic.auto === "string" ? ic.auto : ""))
+        findings.push(`${id}: consequential surface — intended_capability.auto must declare a scoped-autonomy target ("within policy" + caps/limits/scope) OR name a genuine hard prohibition (§38 MoR / §53 escalation / law / provider). A bare or generic "None" is a regression (owner 2026-09-06, standing delegated authority).`);
     }
   }
   return findings;
@@ -247,6 +278,14 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["FAILS a strong verb with an un-excused trailing passive verb", { ...base, surfaces: [surface({ intended_capability: { ...fullIntended(), completion_criterion: "Paige governs the account and then displays the dashboard" } })] }, 1],
     ["passes an out_of_scope surface exempt from the action bar", { ...base, surfaces: [surface({ out_of_scope: true, intended_capability: { ...fullIntended(), completion_criterion: "Out of this program's scope; the seam is recorded only" } })] }, 0],
     ["FAILS out_of_scope that is not a boolean", { ...base, surfaces: [surface({ out_of_scope: "yes" })] }, 1],
+    // Standing delegated authority (owner 2026-09-06) — a consequential surface's auto lane.
+    ["passes a consequential auto with a scoped-autonomy target", { ...base, surfaces: [surface({ consequential: true, intended_capability: { ...fullIntended(), auto: "Within the tenant's delegated policy and its monthly caps, reconcile books through the connected accounting provider." } })] }, 0],
+    ["passes a consequential auto with budget-cap scope", { ...base, surfaces: [surface({ consequential: true, intended_capability: { ...fullIntended(), auto: "Within approved objectives and budget caps, pause harmful spend and adjust live campaigns on the connected ad platform." } })] }, 0],
+    ["passes a consequential auto naming a genuine §38 hard prohibition", { ...base, surfaces: [surface({ consequential: true, intended_capability: { ...fullIntended(), auto: "None — Paige is never merchant-of-record for tenant->client money (§38)." } })] }, 0],
+    ["FAILS a consequential auto that is a bare None", { ...base, surfaces: [surface({ consequential: true, intended_capability: { ...fullIntended(), auto: "None." } })] }, 1],
+    ["FAILS a consequential auto banning agency with no genuine reason", { ...base, surfaces: [surface({ consequential: true, intended_capability: { ...fullIntended(), auto: "None — role/access changes are never autonomous." } })] }, 1],
+    ["FAILS a consequential auto that is None for installs", { ...base, surfaces: [surface({ consequential: true, intended_capability: { ...fullIntended(), auto: "None for installs or purchases." } })] }, 1],
+    ["FAILS consequential that is not a boolean", { ...base, surfaces: [surface({ consequential: "yes" })] }, 1],
     ["FAILS a ledger missing authority_lanes", { ...base, authority_lanes: undefined, surfaces: [surface()] }, 1],
   ];
   let bad = 0;

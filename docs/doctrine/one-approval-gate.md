@@ -162,5 +162,6 @@ Rewrite it onto this gate. The pattern, applied twice already:
 
 `_shared/action-risk.ts` (the classification), `paige-ai-chat/index.ts` (the gate),
 `scripts/ci/one-approval-gate-lint.mjs` (the guard), `docs/doctrine/autonomy-architecture.md`
-(§67/§68 — what autonomy a process may hold), `docs/doctrine/solo-shell-contract.md` (the Solo
+(§67/§68 — what autonomy a process may hold; §10/§67.2 the standing delegated authority contract —
+`confirm` is the escalation lane, not a ban), `docs/doctrine/solo-shell-contract.md` (the Solo
 shell equivalent of this rule).
