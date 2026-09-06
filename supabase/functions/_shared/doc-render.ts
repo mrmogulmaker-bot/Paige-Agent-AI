@@ -160,7 +160,12 @@ function coerceBlockArray(arr: unknown[]): Block[] {
       push(asText(b.subhead));
       continue;
     }
-    if (t === "section-header") { push(asText(b.title ?? b.text), "heading", 2); continue; }
+    // A section-header is a TOP-LEVEL section, so it coerces to level 1 — the serializer's title-offset
+    // (+1 when a doc title is present) then renders it as `## ` (H2), one level under the doc's H1 title,
+    // the same depth a generic heading-level-1 lands at. (Coercing to level 2 would push it to H3, one
+    // level too deep — a section rendering DEEPER than a plain heading — and would make the `## Scope`
+    // test pass only on an offset-substring coincidence rather than the real heading prefix.)
+    if (t === "section-header") { push(asText(b.title ?? b.text), "heading", 1); continue; }
     if (t === "chapter-divider") {
       out.push({ type: "pagebreak" });
       push(asText(b.title ?? b.text), "heading", 1);

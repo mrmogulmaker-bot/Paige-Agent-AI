@@ -70,7 +70,13 @@
   = platform_admin, the accept_platform_invite shape) was rejected before reaching the operator branch — added.
   Re-verified: doc-export 10/10 (incl. the rich-block regression), tsc 0, edge ratchet 145, full suite
   3790/3790, §50/§63 clean. The §39 IDOR + Codex P1 correctness bug are exactly why this MVP got three
-  independent review layers before merge.
+  independent review layers before merge. **FOURTH catch — my own §39 re-read of the FINAL diff (before
+  merge):** the P1 fold coerced `section-header` to level 2, which the serializer's title-offset (+1 under
+  the doc H1) rendered as `### ` (H3) — one level DEEPER than a plain top-level heading — while the
+  regression test's `toContain("## Scope")` passed anyway on the offset-substring of `### Scope`. A real
+  false-green: the test asserted H2, the output was H3. Fixed: `section-header` → level 1 (renders a real
+  `## ` H2, matching a generic heading-level-1 and the cover/chapter top level), and the test tightened to
+  a line-anchored `/^## Scope$/m` so it can never again pass on `### Scope`. doc-export 10/10, tsc 0.
 - **Integration Capability Registry — provider-governance delivery contract shipped (2026-09-06, branch `claude/integration-capability-registry-r5p7u3`)** —
   new `docs/integration-registry/` (`integration-capability-registry.json` source of truth + `README.md`):
   the one authoritative, living catalogue + taxonomy of every third-party provider/API/connector/Marketplace

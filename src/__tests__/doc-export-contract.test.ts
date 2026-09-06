@@ -81,7 +81,10 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     });
     const md = dec(r.bytes);
     expect(md).toContain("A plan to scale");            // cover subhead
-    expect(md).toContain("## Scope");                    // section-header → H2 (below the H1 title)
+    // section-header → a REAL H2 line (below the H1 doc title). Line-anchored (^…$ /m) on purpose: a
+    // plain toContain("## Scope") would also pass on "### Scope" (an offset substring), which is exactly
+    // the false-green that hid a section rendering one level too deep. This asserts H2, never H3.
+    expect(md).toMatch(/^## Scope$/m);
     expect(md).toContain("We will run three campaigns."); // prose markdown
     expect(md).toContain("Focus on retention first.");   // callout body
     expect(md).toContain("- Audit");                     // list

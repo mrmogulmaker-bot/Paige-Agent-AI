@@ -2165,3 +2165,25 @@ to terminal conclusions but had no floor and no explicit failure line, so a red 
 never started produced identical silence. Silence read as "still fine". Before arming any watch, ask
 what it would print if the thing being watched had already crashed — if the answer is "nothing", the
 filter is wrong.
+
+## A `toContain("## X")` heading assertion passes on `### X` — anchor it to the line (2026-09-06, #1017)
+
+The doc-export regression test asserted `expect(md).toContain("## Scope")` to prove a `section-header`
+block rendered as an H2 beneath the document's H1 title. It was green. The real output was `### Scope`
+(H3) — the block had been coerced one level too deep, and the markdown serializer added a title-offset
+on top. **`"### Scope"` contains `"## Scope"` as an offset substring** (drop the first `#`), so
+`toContain` matched and the test verified H2 while the code emitted H3. A section rendering deeper than
+a plain top-level heading shipped invisibly behind a passing assertion.
+
+**A substring assertion on a prefix-delimited format cannot distinguish `##` from `###` from `####`** —
+every longer run of the delimiter contains the shorter one. The same trap sits under any `toContain`
+on markdown headings, list bullets (`-` vs `- ` inside `-- `), blockquote depth (`>` vs `>>`), or an
+indentation level. The assertion reads like it pins the level; it pins only "some line has at least
+this many hashes somewhere in it".
+
+**The fix is a line-anchored regex, not a longer substring.** `expect(md).toMatch(/^## Scope$/m)` matches
+only a line that is *exactly* `## Scope`, and fails on `### Scope`. Whenever a test's whole point is the
+LEVEL of a prefix-delimited token — heading depth, nesting, indent — anchor to the line (`^…$` with `/m`)
+so a one-level regression cannot pass on the shorter token hiding inside the longer one. Caught here by a
+§39 adversarial re-read of the FINAL diff, not by the green suite — the substring green was indistinguishable
+from a correct green until someone computed the actual output by hand.
