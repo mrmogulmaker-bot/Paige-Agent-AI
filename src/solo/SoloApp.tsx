@@ -287,7 +287,7 @@ paigeFullHref={urlDriven?`${branchPath('solo',urlAccount,'paige')}/${paigeDocked
 paigeReturnHref={urlDriven?branchPath('solo',urlAccount,'command-center'):undefined}
 brandHomeHref={activeTenant?.account_number!=null?branchPath('solo',String(activeTenant.account_number),'command-center'):undefined}
 onSignOut={()=>void performSignOut({redirectTo:'/'})}>
-<div className="paige-solo" data-theme={theme} style={{height:'100%',minHeight:0}}>
+<div className="paige-solo" data-theme={theme} style={{width:'100%',maxWidth:'none',height:'100%',minWidth:0,minHeight:0,alignSelf:'stretch'}}>
 <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
 <main key={route} data-solo-screen-host style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{route==='paige'?null:screens[route]}</main>
 {studio&&<VibeStudio onBack={closeStudio}/>}</div></div>

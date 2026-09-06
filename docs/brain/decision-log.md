@@ -4073,3 +4073,14 @@ reframed as the consequential-act floor lift in the runtime clamp that actually 
 honest-note; and this entry. Lesson (§BRAIN.2/§13): a doc's "not shipped" claim must be re-verified
 against live migrations/prod before it is repeated — a later slice can have shipped the thing the doc
 still says is missing.
+## 2026-09-06 — Canonical Solo workspace owns its full shell width after login
+
+**Durable decision.** The one `.paige-solo` frame must explicitly fill and stretch across the canonical authenticated shell on client-side login/account-selection entry, in-app navigation, and direct refresh. Dashboard content, tenant identity, role, URL, and local state may not determine the outer workspace width.
+
+**Defect/root cause.** Production captures showed a full-width nav/header with only the inner workspace collapsed to different content widths on Business Game Plan and Clients; refresh repaired it. Login and global-style tracing ruled out a body/root mutation and tenant-specific logic. The common frame had height constraints but no inline-size invariant, leaving the SPA handoff vulnerable to intrinsic shrink-to-content sizing.
+
+**Fix/status.** `SoloApp.tsx` now owns `width:100%`, `maxWidth:none`, `minWidth:0`, and `alignSelf:stretch`; `soloShell.contract.test.tsx` fails if the full-width/stretch floor is removed. This is **READY FOR PR** and production is **PROOF OWED** until the exact merged revision is deployed and an authenticated login-to-Command Center/Clients transition is verified without refresh.
+
+**Proof.** Failing-first regression: PASS. Focused tests: 89 PASS. Changed-file lint: PASS. Production build: PASS. TypeScript ratchet: PASS with 13 unchanged repository baseline errors. Chromium width/overflow proof at 1536x770, 1366x768, 1024x768, and 900x1000: PASS. The retired button-navigation `solo-shell-drive.mjs` is stale harness evidence and was not counted.
+
+**Collision/handoff.** No product-code collision at the pre-PR gate. PR #907 owns the master reference and Brain index, so this decision is recorded in the collision-safe decision log plus `docs/evidence/ui-delivery/solo-login-workspace-width-hotfix.md`. Next owner: shared Solo shell/auth navigation; read that evidence record before changing frame sizing or login handoff behavior.
