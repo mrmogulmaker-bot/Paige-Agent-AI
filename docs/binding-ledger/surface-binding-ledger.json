@@ -83,6 +83,7 @@
     },
     {
       "id": "command-center.business-game-plan",
+      "consequential": true,
       "intended_capability": {
         "read": "The composite plan (metrics, attention, systems, missions) and the current Business Mission record; monitors mission progress and plan drift over time.",
         "draft": "Propose a plan, sequence missions, draft mission briefs and next moves, and model strategic options.",
@@ -219,12 +220,13 @@
     },
     {
       "id": "campaigns.overview",
+      "consequential": true,
       "intended_capability": {
         "read": "Once a tenant-authorized campaign source exists: the live campaign roster and status.",
         "draft": "Propose campaign structure and priorities.",
-        "auto": "None until a tenant-authorized source exists.",
-        "confirm": "Launching or pausing a campaign is confirmation-gated.",
-        "prohibited": "Never invent campaigns or a source that is not tenant-authorized.",
+        "auto": "Within the owner's standing delegated policy and its approved objectives and budget caps, monitor performance and act on the connected ad platform as the tenant's delegated operator — pause harmful spend, launch or pause a campaign within scope, and increase or decrease spend within the approved daily/monthly budget — recording why, bounded by campaign scope and stop conditions, Rail-logged. Blocked today only by the absent tenant-authorized source, not by policy.",
+        "confirm": "A spend increase above the granted budget cap, a new campaign outside the approved objective, or a first-time provider action escalates to owner confirmation (high).",
+        "prohibited": "Never invent campaigns or a source that is not tenant-authorized. Ad spend executes on the tenant's OWN connected ad account (§38); Paige never holds or routes the tenant's ad funds.",
         "completion_criterion": "Paige reads real campaigns and, on approval, launches/adjusts one through a connected system with a verified outcome — blocked today on the absent source."
       },
       "surface": "Campaigns -> Overview",
@@ -253,11 +255,12 @@
     },
     {
       "id": "campaigns.catalog",
+      "consequential": true,
       "intended_capability": {
         "read": "Published counts and per-form routing state (enumerated).",
         "draft": "Generate and refine pages, funnels, and forms (the §19 Studio flow) and organize the catalog.",
-        "auto": "None for publish.",
-        "confirm": "Publishing a page/funnel/form and wiring its capture routing is confirmation-gated.",
+        "auto": "Within the owner's standing delegated policy, publish a pre-approved page/funnel/form and wire its capture routing within the tenant's own scope, Rail-logged.",
+        "confirm": "Publishing outside the pre-approved scope, or wiring capture to a new destination, escalates to owner confirmation (high — a client sees it).",
         "prohibited": "Never expose page/funnel/form ids or slugs, or the public href (it leaks the tenant slug).",
         "completion_criterion": "Paige generates and, on approval, PUBLISHES a working page/funnel/form and wires its capture routing, verified live — not a listing of what already exists."
       },
@@ -287,6 +290,7 @@
     },
     {
       "id": "campaigns.sales",
+      "consequential": true,
       "intended_capability": {
         "read": "Which captures routed to a person or deal, and commercial terms on record (safe classification only).",
         "draft": "Prepare follow-ups for new captures; draft/redline agreement terms; model deal outcomes.",
@@ -321,6 +325,7 @@
     },
     {
       "id": "campaigns.pipeline",
+      "consequential": true,
       "intended_capability": {
         "read": "Recorded stage outcomes for a client (cited) and current board state.",
         "draft": "Prepare follow-ups, maintain deal context, model stage/scenario changes, and recommend the next move.",
@@ -355,10 +360,11 @@
     },
     {
       "id": "campaigns.social",
+      "consequential": true,
       "intended_capability": {
         "read": "Which networks the workspace posts from and the declared handles (public identifiers).",
         "draft": "Create and refine posts and a schedule; organize a content calendar.",
-        "auto": "Within policy, publish/schedule approved posts through a connected native/external system.",
+        "auto": "Within the owner's standing delegated policy and its scope and posting limits, publish or schedule approved posts through the connected native/external system as the tenant's delegated operator — bounded by allowed networks, time window, and content scope, Rail-logged.",
         "confirm": "Connecting a provider, or publishing outside pre-approved policy, is confirmation-gated.",
         "prohibited": "Never expose provider credentials or tokens; never invent metrics.",
         "completion_criterion": "Paige creates, schedules, and (on approval or policy) PUBLISHES real posts through a connected system with a verified post outcome — not just recording handles."
@@ -389,12 +395,13 @@
     },
     {
       "id": "campaigns.performance",
+      "consequential": true,
       "intended_capability": {
         "read": "Once a metrics source exists: real performance metrics with provenance.",
         "draft": "Interpret performance and recommend actions.",
-        "auto": "None.",
-        "confirm": "Any performance-driven change routes to its owning surface's confirm gate.",
-        "prohibited": "Never infer or fabricate a metric — the surface exists to state what cannot be reported.",
+        "auto": "Within the owner's standing delegated policy and its budget caps and stop conditions, take the pre-approved performance-driven action on the connected ad platform — e.g. pause a campaign breaching a CPA ceiling, or shift spend within the approved budget — recording the basis and the action, Rail-logged. Blocked today only by the absent metrics source.",
+        "confirm": "A performance-driven change above the granted caps, or one not on the pre-approved action list, escalates to owner confirmation (high).",
+        "prohibited": "Never infer or fabricate a metric (§13). Spend actions execute on the tenant's own connected ad account (§38).",
         "completion_criterion": "Real performance data drives a Paige-prepared, owner-approved action with a verified result — blocked today on the absent metrics source."
       },
       "surface": "Campaigns -> Performance",
@@ -423,10 +430,11 @@
     },
     {
       "id": "campaigns.vibe-studio",
+      "consequential": true,
       "intended_capability": {
         "read": "The tenant's present-only brand tokens and prior creative memory.",
         "draft": "Generate creative assets — images, pages, funnels, forms — end to end in one session (§19).",
-        "auto": "None for external publish.",
+        "auto": "Within the owner's standing delegated policy and its scope, ship a critiqued creative asset to a live surface as the tenant's delegated operator — the §33 visual-critique gate always runs first — Rail-logged. Drafting has no side effect and is unrestricted.",
         "confirm": "Shipping a generated asset to a live surface is confirmation-gated.",
         "prohibited": "Never present a hoped-for artifact as delivered (§13); never bypass the visual-critique gate (§33).",
         "completion_criterion": "A brief becomes a real, critiqued creative asset the tenant can ship — the §19/§26/§33 creative loop, not a placeholder."
@@ -457,6 +465,7 @@
     },
     {
       "id": "clients.people",
+      "consequential": true,
       "intended_capability": {
         "read": "Safe relationship context — lifecycle, status, consent, portal-linked — enumerated, no PII to Mind.",
         "draft": "Prepare contact updates and communications; maintain relationship context.",
@@ -491,11 +500,12 @@
     },
     {
       "id": "clients.conversations",
+      "consequential": true,
       "intended_capability": {
         "read": "Conversation status and metadata (never message bodies to Mind).",
         "draft": "Prepare replies and follow-ups for the coach's approval.",
-        "auto": "None for outbound sends by default.",
-        "confirm": "Sending a message runs through the send-message governed gate.",
+        "auto": "Within the owner's standing delegated policy and its allowed-recipient and rate scope, send a pre-approved reply or follow-up through the governed send-message seam as the tenant's delegated operator, Rail-logged.",
+        "confirm": "A send outside the pre-approved recipient or content scope, or a first contact, escalates to owner confirmation (high — a client sees it).",
         "prohibited": "Never surface raw transcript or message bodies to Mind; never auto-send without authority.",
         "completion_criterion": "Paige drafts and, on approval, SENDS a governed reply whose delivery is verified and Rail-logged — not a passive inbox."
       },
@@ -525,6 +535,7 @@
     },
     {
       "id": "clients.calendar",
+      "consequential": true,
       "intended_capability": {
         "read": "Booking history and outcomes for a client (enumerated, with correct attribution).",
         "draft": "Propose meeting times; prepare a booking/reschedule; coordinate scheduling.",
@@ -628,12 +639,13 @@
     },
     {
       "id": "settings.team",
+      "consequential": true,
       "intended_capability": {
         "read": "The caller's own permission and legal-owner status, plus member/invitation posture from Team hydration.",
         "draft": "Recommend role/access changes and prepare invitations.",
-        "auto": "None — role/access changes are never autonomous.",
-        "confirm": "Inviting a member or changing a role is confirmation-gated, and never escalates to a platform tier (§53).",
-        "prohibited": "Never expose member PII or tokens; never mint operator roles; member identity never crosses to Mind without an owner decision.",
+        "auto": "Within the owner's standing delegated policy and inside the tenant's own role/access scope, execute the delegated team changes the owner pre-approved — e.g. send an invitation, or apply a low-risk role/access change to a tenant-scoped role — bounded by allowed roles and allowed recipients, Rail-logged. Never a change to a platform tier.",
+        "confirm": "A role/access change above the granted scope, a member removal, or a first-time grant escalates to owner confirmation (high per action-risk.ts).",
+        "prohibited": "Never expose member PII or tokens. Never mint or escalate to a platform operator tier (super_admin/platform_admin) — a structural §53 invariant a tenant-side actor can never cross, at any approval strength. Member identity never crosses to Mind without an owner decision.",
         "completion_criterion": "Paige prepares and, on owner confirmation, executes a real team change (invite/role) with a verified outcome — within authority, never escalating."
       },
       "surface": "Settings -> Team / Roles & Access",
@@ -662,12 +674,13 @@
     },
     {
       "id": "settings.connections",
+      "consequential": true,
       "intended_capability": {
         "read": "Safe connection posture — has_connected_provider, send-capability with unknown!=false — never credentials.",
         "draft": "Recommend which providers to connect and prepare the A2P/comms configuration.",
-        "auto": "None for credential or provider changes.",
-        "confirm": "Connecting a provider or changing comms routing is confirmation-gated.",
-        "prohibited": "Credentials, provider sync state, endpoints, and per-person provider state are permanently isolated (#788).",
+        "auto": "Within the owner's standing delegated policy and its scope, execute the connection or comms-routing changes the owner pre-approved — e.g. apply a pre-authorized comms-routing rule within scope — never touching a secret, Rail-logged.",
+        "confirm": "Connecting a new provider, rotating routing outside pre-approved policy, or any change that needs a credential the owner must supply escalates to owner confirmation (high).",
+        "prohibited": "Credentials, provider sync state, endpoints, per-person provider state, and OAuth secrets are permanently isolated (#788). Paige never reads, stores, or transmits a credential.",
         "completion_criterion": "Paige guides and, on confirmation, completes a real provider/comms connection whose readiness the next check verifies — never touching a secret."
       },
       "surface": "Settings -> Connections (calendar providers, A2P, comms)",
@@ -697,12 +710,13 @@
     },
     {
       "id": "settings.integrations",
+      "consequential": true,
       "intended_capability": {
-        "read": "n8n/MCP connection readiness and workflow inventory (safe status, never the endpoint).",
-        "draft": "Design and model n8n workflows and automation rules; recommend integrations.",
-        "auto": "Within policy, run a read-only n8n management call the tenant pre-approved.",
-        "confirm": "Create/update/activate/deactivate/archive/run a workflow (external_effect, high) is confirmation-gated.",
-        "prohibited": "The connection endpoint and credentials are permanently isolated; never arm unattended sending in one step (#48).",
+        "read": "n8n/MCP + connected-tool connection readiness and workflow/inventory posture (safe status, never the endpoint or a credential).",
+        "draft": "Design and model n8n workflows, automation rules, and connected-tool procedures (e.g. a bookkeeping reconciliation or a media-optimization routine); recommend integrations and prepare the run plan.",
+        "auto": "Within the tenant's standing delegated policy and its caps, execute connected-tool work as the tenant's delegated operator through the tenant's OWN connected provider — run/activate an n8n workflow, and (as connectors land) reconcile books, classify transactions, and maintain records in the connected accounting system, or adjust connected ops/media routines within budget — bounded by scope, dollar/daily/monthly caps, and time window, every act Rail-logged.",
+        "confirm": "Above the granted threshold — a payment or fund movement over the cap, a first-time provider action, or a destructive or hard-to-reverse workflow change (create/update/activate/deactivate/archive/run, external_effect, high per action-risk.ts) — Paige escalates and executes only after owner confirmation.",
+        "prohibited": "The connection endpoint and provider credentials are permanently isolated. Paige is never merchant-of-record and never routes tenant->client money through the platform (§38): connected-provider payments execute on the tenant's OWN rails only. Never arm unattended sending/paying in one step (#48); never a platform-tier action (§53).",
         "completion_criterion": "Paige builds/activates a real n8n workflow through the governed write and its capability_run Rail row renders on the owner's Command Center — not just reporting connection status."
       },
       "surface": "Settings -> Integrations (n8n, MCP, automations)",
@@ -723,7 +737,7 @@
       },
       "prohibited_context": ["the connection endpoint above all", "every credential-derived value", "host fragments", "error text", "labels", "approved capabilities", "capability-pin digests"],
       "state": "PARTIAL",
-      "state_reason": "n8n readiness read wired + injected; 12 n8n management capabilities registered with 6 governed writes wired to the Rail capability-run write. Not proven: ZERO capability_run rows exist in production; no authenticated runtime drive. Connection-state Mind lens is UNAVAILABLE (needs SCR-1/2).",
+      "state_reason": "n8n readiness read wired + injected; 12 n8n management capabilities registered with 6 governed writes wired to the Rail capability-run write. Not proven: ZERO capability_run rows exist in production; no authenticated runtime drive. Connection-state Mind lens is UNAVAILABLE (needs SCR-1/2). Accounting/finance/paid-media provider connectors (e.g. QuickBooks reconcile/classify/pay) have NO connected seam yet — those sub-capabilities stay UNAVAILABLE and their seam+proof is owed; the intended_capability declares the delegated-execution target regardless (owner ruling 2026-09-06, §13). settings.integrations owns only the connected-tool execution SEAM; the tenant-facing Finance/bookkeeping SURFACE (§16 Finance) is deferred to its own slice when accounting-firm tenants land (§18/§56), not cemented under Integrations (§65).",
       "evidence_class": ["production_catalog", "automated_test", "source_read"],
       "linked": [],
       "next_slice": "Authenticated drive of an n8n management write through chat to produce the first capability_run row and verify it renders on the owner's Command Center (#746 owner-visibility).",
@@ -766,12 +780,13 @@
     },
     {
       "id": "settings.billing",
+      "consequential": true,
       "intended_capability": {
         "read": "Safe billing STATUS — plan/renewal/trial/promotional state, notice posture — never secrets.",
         "draft": "Explain billing state and recommend plan actions.",
-        "auto": "None — Paige is never merchant-of-record and never moves money autonomously (§38).",
-        "confirm": "A billing action (e.g. plan change) is owner-confirmed and executed within the §38 money boundary.",
-        "prohibited": "Payment-method and provider secrets are permanently isolated; never merchant-of-record for tenant->client money.",
+        "auto": "Within the owner's standing delegated policy and its caps, manage the tenant's OWN Paige-platform subscription (a Paige-held L1 rail, §38) — e.g. apply a pre-approved plan change or renewal within limits — Rail-logged. This is tenant->Paige money on Paige's own rail; it is not tenant->client money.",
+        "confirm": "A plan change above the granted threshold, or any first-time or irreversible billing action, escalates to owner confirmation before execution (high per action-risk.ts).",
+        "prohibited": "Payment-method and provider secrets are permanently isolated. Paige is never merchant-of-record for tenant->client money, never holds tenant client funds, and never routes client money through the platform bank (§38). Only safe billing status crosses to Mind.",
         "completion_criterion": "Paige surfaces true billing status and, on confirmation, drives a real billing action within the §38 boundary — only status crosses to Mind."
       },
       "surface": "Settings -> Billing",
@@ -839,7 +854,7 @@
       "intended_capability": {
         "read": "Coverage, freshness, and counts with provenance (epoch-bound, enumerated).",
         "draft": "Interpret analytics, recommend actions, and model scenarios.",
-        "auto": "None — aggregates drive recommendations, not autonomous acts.",
+        "auto": "Within the owner's standing delegated policy, trigger a pre-approved analytics-driven action on its owning surface (e.g. pause spend on a flagged campaign) within that surface's caps and stop conditions — the action executes and is Rail-logged there. Analytics itself performs no write (chain governed_write=none), so it routes to the owning surface rather than executing here — deliberately not marked consequential.",
         "confirm": "An analytics-driven change routes to its owning surface's confirm gate.",
         "prohibited": "Never expose metric definitions/formulas/exclusion reasons or the source refs.",
         "completion_criterion": "A real analytics finding drives a Paige-prepared, owner-approved action on the owning surface with a verified result — not a static dashboard (needs SCR-2 + SCR-3)."
@@ -870,12 +885,13 @@
     },
     {
       "id": "marketplace",
+      "consequential": true,
       "intended_capability": {
         "read": "Safe install-state — installed, item type, pricing model — never publisher/scope claims.",
         "draft": "Recommend skills/add-ons/blueprints to install and explain what an install would do.",
-        "auto": "None for installs or purchases.",
-        "confirm": "Installing or purchasing an add-on is confirmation-gated (a chosen customization, §2/§60/§61).",
-        "prohibited": "Never assert publisher, release identity, approved scope, or declared capabilities the source does not carry.",
+        "auto": "Within the owner's standing delegated policy and its dollar/frequency caps, install or purchase a marketplace add-on the owner pre-approved (a chosen customization on the tenant's own Paige rail, §2/§60/§61) — bounded by an approved-item scope and spend cap, entitlement verified, Rail-logged.",
+        "confirm": "An install or purchase above the granted spend cap, or of an item outside the pre-approved scope, escalates to owner confirmation (high — spends money).",
+        "prohibited": "Never assert publisher, release identity, approved scope, or declared capabilities the source does not carry. Marketplace purchases are a Paige-held rail (§38); never merchant-of-record for tenant->client money.",
         "completion_criterion": "Paige recommends and, on confirmation, INSTALLS a marketplace item whose entitlement is verified — not just browsing a catalogue."
       },
       "surface": "Marketplace",

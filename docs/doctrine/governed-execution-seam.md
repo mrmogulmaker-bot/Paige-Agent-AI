@@ -208,6 +208,8 @@ either entry in place would introduce a conflict rather than inherit one.
 ## Cross-references
 
 `one-approval-gate.md` (how a yes is proved) · `tier-matrix.md` (the autonomy lane governs Chat, not
-MCP) · `autonomy-architecture.md` (§67/§68) · `../architecture/paige-spine-foundation.md` (the
+MCP) · `autonomy-architecture.md` (§67/§68; §10/§67.2 the standing delegated authority contract — its
+RE-2 slice adds a `standingPolicy` adapter-assertion to THIS seam so a valid policy lifts a `high` act
+to autonomous execution instead of clamping to `confirm`) · `../architecture/paige-spine-foundation.md` (the
 canonical Spine contract) · `../architecture/paige-spine-tool-migration-map.md` (the 105-tool plan
 and the ten-condition `LIVE` standard) · `_shared/action-risk.ts` (the one classifier) · issue #784.
