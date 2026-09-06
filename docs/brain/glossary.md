@@ -148,7 +148,11 @@ PR #406). Build order was L1 → L4 → L2 → L5.
   "Blueprints" = the one-click vertical install layer (`docs/doctrine/paige-practice-blueprints…`).
 - **Vibe Studio** — the tenant creative surface (Campaigns tab): pages, funnels, forms, images, in one
   session (§19/§21/§22). `ProjectNavigator` = the project rail.
-- **PaigeMark** — the shared brand logo primitive. `PaigeScene` = the landing 3D hero (three.js).
+- **Command Mark** — the current PAIGE brand mark, owner-approved 2026-08-22. Source of truth for
+  the mark, wordmark, palette and motion sequence: `../brand/paige-brand-identity.md`; it builds into
+  `src/components/brand/PaigeSymbol.tsx`. **It replaces the retired orbital PaigeMark** — do not cite
+  PaigeMark as the current primitive. ("Illuminated Precision" is a superseded label; do not
+  reintroduce it.) `PaigeScene` = the landing 3D hero (three.js), a separate thing.
 - **MMA / PME** — Mogul Maker Academy / Project Mogul Enterprise: the owner's **tenant** vertical
   (funding-coaching) — a *tenant's* config, **never** a platform default (§2/§9).
 - **`db-live` / `edge-live` tags** — git tags the CI pipelines move to the last commit whose
