@@ -3,7 +3,7 @@
 - **RE-2 M1-a — money-truth layer (provider-confirmed spend + reconciliation + complete receipt), DARK (2026-09-06, owner-authorized, PR #1014).**
   The money-truth core of the real-money spend-control backbone (owner ruling 2026-09-06, `autonomy-architecture.md`
   §10.8 item 3; distinct from the §8.4 LLM-token internal-cost lane). Extends the PR-1 substrate (§18, no fork),
-  migration `20270101000000_re2_m1a_money_truth.sql`. **DARK — ZERO producers**; proven with controlled fixtures
+  migration `20270102000000_re2_m1a_money_truth.sql`. **DARK — ZERO producers**; proven with controlled fixtures
   inside `BEGIN..ROLLBACK`; no real payment/purchase/ad-spend/bookkeeping/provider change. **What it adds:**
   `paige_authority_act_runs` gains `confirmed_cost_usd` (provider-CONFIRMED actual = financial truth, distinct from
   the reserved `cost_usd` estimate — reserved ≠ spent, §13), `confirmed_currency`, `rail_evidence`, an ORTHOGONAL
