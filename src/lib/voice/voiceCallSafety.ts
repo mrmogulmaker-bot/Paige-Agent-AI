@@ -33,13 +33,31 @@ export function discardExpiredVoiceDevice<T extends { destroy: () => void }>(
   error: unknown,
   device: T,
   holder: { current: T | null },
+  deferDestroy = false,
 ): boolean {
   if (!isExpiredVoiceSessionError(error)) return false;
   if (holder.current === device) holder.current = null;
+  if (!deferDestroy) {
+    try {
+      device.destroy();
+    } catch {
+      // The stale reference is already gone; a failed SDK teardown cannot be reused.
+    }
+  }
+  return true;
+}
+
+/** Destroy and clear a Device whose teardown was deferred for an accepted call. */
+export function destroyDeferredVoiceDevice<T extends { destroy: () => void }>(
+  holder: { current: T | null },
+): boolean {
+  const device = holder.current;
+  if (!device) return false;
+  holder.current = null;
   try {
     device.destroy();
   } catch {
-    // The stale reference is already gone; a failed SDK teardown cannot be reused.
+    // Clearing first guarantees the expired object cannot be retained or reused.
   }
   return true;
 }

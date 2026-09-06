@@ -36,6 +36,7 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import {
   acquireCallStart,
   discardExpiredVoiceDevice,
+  destroyDeferredVoiceDevice,
   isDialableNumber,
   normalizeDialNumber,
   providerCallErrorMessage,
@@ -288,6 +289,10 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
+  // A Call object exists before provider acceptance; only this flag proves the
+  // call is established enough that destroying the Device could interrupt it.
+  const callAcceptedRef = useRef(false);
+  const expiredDeviceRef = useRef<Device | null>(null);
   // Armed before microphone/device awaits so rapid clicks cannot create two
   // provider calls before callRef receives the first Call object.
   const callStartingRef = useRef(false);
@@ -357,6 +362,30 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       });
 
       device.on("error", (err: TwilioError.TwilioError) => {
+        const preserveConnectedCall = !!callRef.current && callAcceptedRef.current;
+        const expired = discardExpiredVoiceDevice(
+          err,
+          device,
+          deviceRef,
+          preserveConnectedCall,
+        );
+        if (expired) {
+          if (preserveConnectedCall) {
+            // Quarantine immediately so no later call can reuse this Device, but
+            // let the established call end before tearing down its audio graph.
+            expiredDeviceRef.current = device;
+            return;
+          }
+          // A Call object may exist before acceptance. It is not evidence of a
+          // connected call and must not keep an expired Device or stale UI alive.
+          callRef.current = null;
+          callAcceptedRef.current = false;
+          safeSet(setActiveCall, null);
+          safeSet(setMuted, false);
+          safeSet(setStatus, "error");
+          safeSet(setReason, providerCallErrorMessage(err));
+          return;
+        }
         // §13/§32: a Device 'error' must NOT tear down a LIVE call's surface. Twilio
         // emits 'error' mid-call for non-fatal signaling/reconnect/edge conditions; if
         // we flipped status to "error" while a call is connected, DialPad's active-call
@@ -468,9 +497,11 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
   const wireCall = useCallback(
     (call: Call, number: string) => {
       callRef.current = call;
+      callAcceptedRef.current = false;
       setMuted(false);
 
       call.on("accept", () => {
+        callAcceptedRef.current = true;
         safeSet(setStatus, "in_call");
         // #140 B2 — capture the CallSid once the call is live so the co-pilot can build
         // the transcript topic. Twilio populates call.parameters.CallSid by accept.
@@ -482,7 +513,11 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       });
 
       const end = () => {
+        // Ignore late events from a Call already invalidated by an expired Device.
+        if (callRef.current !== call) return;
         callRef.current = null;
+        callAcceptedRef.current = false;
+        destroyDeferredVoiceDevice(expiredDeviceRef);
         safeSet(setActiveCall, null);
         safeSet(setMuted, false);
         // Back to ready if the Device is still registered, else idle.
@@ -492,9 +527,16 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       call.on("cancel", end);
       call.on("reject", end);
       call.on("error", (err: TwilioError.TwilioError) => {
+        if (callRef.current !== call) return;
+        const currentDevice = deviceRef.current;
+        callRef.current = null;
+        callAcceptedRef.current = false;
+        if (currentDevice) {
+          discardExpiredVoiceDevice(err, currentDevice, deviceRef);
+        }
+        destroyDeferredVoiceDevice(expiredDeviceRef);
         safeSet(setStatus, "error");
         safeSet(setReason, providerCallErrorMessage(err));
-        callRef.current = null;
         safeSet(setActiveCall, null);
       });
     },
@@ -654,6 +696,7 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       } catch {
         /* ignore */
       }
+      destroyDeferredVoiceDevice(expiredDeviceRef);
       deviceRef.current = null;
       callRef.current = null;
       incomingRef.current = null;

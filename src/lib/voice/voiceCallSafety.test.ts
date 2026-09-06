@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   acquireCallStart,
   discardExpiredVoiceDevice,
+  destroyDeferredVoiceDevice,
   isDialableNumber,
   normalizeDialNumber,
   providerCallErrorMessage,
@@ -45,6 +46,18 @@ describe("voice call safety", () => {
     expect(discardExpiredVoiceDevice({ code: 31005 }, healthy, healthyHolder)).toBe(false);
     expect(healthyHolder.current).toBe(healthy);
     expect(destroyed).toBe(1);
+
+    const established = { destroy: () => { destroyed += 1; } };
+    const establishedHolder = { current: established };
+    expect(
+      discardExpiredVoiceDevice({ code: 31205 }, established, establishedHolder, true),
+    ).toBe(true);
+    expect(establishedHolder.current).toBeNull();
+    expect(destroyed).toBe(1);
+    const deferred = { current: established };
+    expect(destroyDeferredVoiceDevice(deferred)).toBe(true);
+    expect(deferred.current).toBeNull();
+    expect(destroyed).toBe(2);
   });
 
   it("allows only one outbound start before the provider returns a Call object", () => {
