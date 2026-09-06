@@ -44,8 +44,8 @@ function walk(dir: string): string[] {
   return out;
 }
 
-const isTest = (p: string) => /(?:^|\/)(?:__tests__)(?:\/|$)|\.(?:test|spec)\.[^.]+$/.test(p.replaceAll("\\", "/"));
-const allSource = walk(SRC).map((p) => p.replaceAll("\\", "/"));
+const isTest = (p: string) => /(?:^|\/)(?:__tests__)(?:\/|$)|\.(?:test|spec)\.[^.]+$/.test(p.replace(/\\/g, "/"));
+const allSource = walk(SRC).map((p) => p.replace(/\\/g, "/"));
 const nonTestSource = allSource.filter((p) => !isTest(p));
 
 // ── Detection predicate (pure; unit-tested below so the guard is provably non-vacuous) ──────────────
