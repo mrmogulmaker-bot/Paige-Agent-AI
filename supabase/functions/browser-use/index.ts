@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { recordCapabilityRun } from "../_shared/capability-record.ts";
 import {
   normalizeSecureBrowserTarget,
+  normalizeSecureBrowserPurpose,
   validateSecureBrowserScope,
   type SecureBrowserScope,
 } from "../_shared/secure-browser-contract.ts";
@@ -48,15 +49,17 @@ Deno.serve(async (req) => {
   if (!tenantId) return json({ error: "active_workspace_required" }, 403);
 
   const [
+    { data: membership, error: membershipError },
     { data: isAdmin, error: adminError },
     { data: isAgencyManager, error: agencyError },
     { data: isPlatformOwner, error: platformOwnerError },
   ] = await Promise.all([
+    admin.from("tenant_members").select("role,is_owner,status").eq("tenant_id", tenantId).eq("user_id", user.id).maybeSingle(),
     admin.rpc("is_tenant_admin_as", { _actor: user.id, _tenant: tenantId }),
     admin.rpc("agency_can_manage_child", { _child: tenantId, _actor: user.id }),
     admin.rpc("is_platform_owner", { _user_id: user.id }),
   ]);
-  if ((adminError && agencyError && platformOwnerError) ||
+  if ((membershipError && adminError && agencyError && platformOwnerError) ||
       (isAdmin !== true && isAgencyManager !== true && isPlatformOwner !== true)) {
     return json({ error: "not_authorized" }, 403);
   }
@@ -77,15 +80,16 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "invalid_json" }, 400); }
   const purposeValue = body.purpose ?? body.goal;
   const targetValue = body.target ?? body.start_url;
-  const purpose = typeof purposeValue === "string" ? purposeValue.trim().slice(0, 1000) : "";
+  let purpose = "";
   const threadId = typeof body.thread_id === "string" ? body.thread_id : "";
   const idempotencyKey = typeof body.idempotency_key === "string" ? body.idempotency_key : "";
-  if (purpose.length < 3 || !threadId || !idempotencyKey) {
+  if (!threadId || !idempotencyKey) {
     return json({ error: "purpose_thread_and_idempotency_required" }, 400);
   }
   let target: { origin: string; displayHost: string };
   let scope: SecureBrowserScope;
   try {
+    purpose = normalizeSecureBrowserPurpose(typeof purposeValue === "string" ? purposeValue : "");
     target = normalizeSecureBrowserTarget(typeof targetValue === "string" ? targetValue : "");
     scope = validateSecureBrowserScope(body.scope);
     if (!scope.allowedOrigins.includes(target.origin)) {
@@ -106,11 +110,17 @@ Deno.serve(async (req) => {
     if (!data) return json({ error: "related_business_outside_workspace" }, 403);
   }
 
+  const directRole = membership?.status === "active" ? membership.role : null;
   const actorKind = isPlatformOwner === true
     ? "platform_owner"
-    : isAdmin === true
+    : directRole === "owner" || membership?.is_owner === true
+      ? "owner"
+      : directRole === "admin" && isAdmin === true
       ? "admin"
-      : "authorized_representative";
+      : isAgencyManager === true
+        ? "authorized_representative"
+        : null;
+  if (!actorKind) return json({ error: "not_authorized" }, 403);
   const { data: result, error: requestError } = await admin.rpc("secure_browser_request_unavailable", {
     p_tenant: tenantId,
     p_actor: user.id,

@@ -130,9 +130,31 @@ export interface SecureBrowserWorker {
 }
 
 const SENSITIVE_KEYS = /(?:password|passwd|secret|token|cookie|authorization|html|page_source|screenshot|replay|live.?view|mfa|otp|context.?id|provider)/i;
+const LABELED_SECRET_VALUE = /(?:password|passwd|passcode|api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|authorization|cookie|mfa(?:[-_ ]?code)?|otp)\s*(?:is|=|:)\s*["'`]?\S{4,}/i;
+const BEARER_VALUE = /\bbearer\s+[a-z0-9._~+/-]{8,}={0,2}\b/i;
+const JWT_VALUE = /\beyJ[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}\b/i;
+
+function containsSensitiveBrowserValue(value: string): boolean {
+  return LABELED_SECRET_VALUE.test(value) || BEARER_VALUE.test(value) || JWT_VALUE.test(value);
+}
+
+export function normalizeSecureBrowserPurpose(raw: string): string {
+  const purpose = raw.trim();
+  if (purpose.length < 3 || purpose.length > 1000) {
+    throw new Error("secure_browser_purpose_invalid");
+  }
+  if (containsSensitiveBrowserValue(purpose)) {
+    throw new Error("secure_browser_sensitive_value");
+  }
+  return purpose;
+}
 
 export function assertNoSensitiveBrowserMaterial(value: unknown, path = "payload"): void {
   if (value === null || value === undefined) return;
+  if (typeof value === "string") {
+    if (containsSensitiveBrowserValue(value)) throw new Error(`secure_browser_sensitive_value:${path}`);
+    return;
+  }
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertNoSensitiveBrowserMaterial(item, `${path}[${index}]`));
     return;

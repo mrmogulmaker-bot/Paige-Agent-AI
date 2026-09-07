@@ -2,6 +2,16 @@
 -- No worker, secret, credential, cookie, external account, external session, login,
 -- crawl, download, live-view grant, or website action is created by this migration.
 
+CREATE FUNCTION public._secure_browser_safe_text(p_value text)
+RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$
+ SELECT p_value IS NOT NULL
+  AND p_value !~* '(password|passwd|passcode|api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|authorization|cookie|mfa([-_ ]?code)?|otp)[[:space:]]*(is|=|:)[[:space:]]*["''`]?[^[:space:],;]{4,}'
+  AND p_value !~* '\mbearer[[:space:]]+[A-Za-z0-9._~+/-]{8,}={0,2}\M'
+  AND p_value !~ '\meyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\M'
+$$;
+REVOKE ALL ON FUNCTION public._secure_browser_safe_text(text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public._secure_browser_safe_text(text) TO service_role;
+
 CREATE TABLE public.secure_browser_tenant_limits (
   tenant_id uuid PRIMARY KEY REFERENCES public.tenants(id) ON DELETE RESTRICT,
   enabled boolean NOT NULL DEFAULT false,
@@ -23,7 +33,7 @@ CREATE TABLE public.secure_browser_sessions (
   actor_kind text NOT NULL CHECK (actor_kind IN ('owner','admin','authorized_representative','platform_owner')),
   request_thread_id uuid REFERENCES public.paige_chat_threads(id) ON DELETE SET NULL,
   execution_context_key text NOT NULL CHECK (execution_context_key ~ '^thread:[0-9a-f-]{36}$'),
-  purpose text NOT NULL CHECK (length(btrim(purpose)) BETWEEN 3 AND 1000),
+  purpose text NOT NULL CHECK (length(btrim(purpose)) BETWEEN 3 AND 1000 AND public._secure_browser_safe_text(purpose)),
   target_origin text NOT NULL CHECK (length(target_origin) BETWEEN 9 AND 500 AND target_origin ~ '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$' AND target_origin !~ '[@?#]'),
   target_display_host text NOT NULL CHECK (length(target_display_host) BETWEEN 1 AND 253 AND target_display_host ~ '^[A-Za-z0-9.-]+$'),
   allowed_scope jsonb NOT NULL CHECK (jsonb_typeof(allowed_scope)='object' AND allowed_scope ?& ARRAY['mode','allowedOrigins','allowedReadKinds','downloads','consequentialActions'] AND allowed_scope->>'mode' IN ('read_only','propose_only') AND allowed_scope->>'downloads' IN ('disabled','quarantine_only') AND allowed_scope->>'consequentialActions'='disabled' AND jsonb_typeof(allowed_scope->'allowedOrigins')='array' AND jsonb_array_length(allowed_scope->'allowedOrigins') BETWEEN 1 AND 10 AND jsonb_typeof(allowed_scope->'allowedReadKinds')='array' AND jsonb_array_length(allowed_scope->'allowedReadKinds') BETWEEN 1 AND 10),
@@ -32,8 +42,9 @@ CREATE TABLE public.secure_browser_sessions (
   state_version bigint NOT NULL DEFAULT 1 CHECK (state_version > 0), safe_reason text CHECK (safe_reason IS NULL OR length(safe_reason) BETWEEN 1 AND 80),
   idempotency_key uuid NOT NULL, reserved_seconds integer NOT NULL DEFAULT 0 CHECK (reserved_seconds >= 0), reserved_cost_microusd bigint NOT NULL DEFAULT 0 CHECK (reserved_cost_microusd >= 0),
   expires_at timestamptz, paused_at timestamptz, closed_at timestamptz, revoked_at timestamptz,
+  reservation_settled_at timestamptz, consumed_seconds integer NOT NULL DEFAULT 0 CHECK(consumed_seconds>=0), consumed_cost_microusd bigint NOT NULL DEFAULT 0 CHECK(consumed_cost_microusd>=0),
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id,requested_by,idempotency_key),
+  UNIQUE (tenant_id,requested_by,idempotency_key), UNIQUE(tenant_id,id,requested_by),
   CHECK ((state='closed' AND closed_at IS NOT NULL) OR (state='revoked' AND revoked_at IS NOT NULL) OR state NOT IN ('closed','revoked'))
 );
 CREATE UNIQUE INDEX secure_browser_one_active_context_idx ON public.secure_browser_sessions(tenant_id,execution_context_key) WHERE state IN ('opening','awaiting_owner','owner_control','ready','observing','paused','closing');
@@ -50,18 +61,21 @@ CREATE TABLE public.secure_browser_usage_windows (
 CREATE TABLE public.secure_browser_connected_accounts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE RESTRICT, created_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
   label text NOT NULL CHECK(length(btrim(label)) BETWEEN 1 AND 120), target_origin text NOT NULL CHECK(target_origin ~ '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$'), target_display_host text NOT NULL CHECK(target_display_host ~ '^[A-Za-z0-9.-]+$'),
-  state text NOT NULL CHECK(state IN ('not_connected','active','paused','revoked','deleted')), permitted_scope jsonb NOT NULL DEFAULT '{}'::jsonb,
+  state text NOT NULL CHECK(state IN ('not_connected','active','paused','expired','revoked','deleted')), permitted_scope jsonb NOT NULL DEFAULT '{}'::jsonb,
   expires_at timestamptz,last_used_at timestamptz,paused_at timestamptz,revoked_at timestamptz,deleted_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
   CHECK((state='revoked' AND revoked_at IS NOT NULL) OR (state='deleted' AND deleted_at IS NOT NULL) OR state NOT IN ('revoked','deleted'))
 );
 CREATE INDEX secure_browser_connections_tenant_idx ON public.secure_browser_connected_accounts(tenant_id,created_at DESC);
 
 -- Future downloads cannot become accessible without an existing Vault quarantine row.
+CREATE UNIQUE INDEX business_vault_quarantine_tenant_id_uidx ON public.business_vault_quarantine_uploads(tenant_id,id);
 CREATE TABLE public.secure_browser_download_intakes (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE RESTRICT,session_id uuid NOT NULL REFERENCES public.secure_browser_sessions(id) ON DELETE RESTRICT,requested_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE RESTRICT,session_id uuid NOT NULL,requested_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
   safe_filename text CHECK(safe_filename IS NULL OR length(safe_filename) BETWEEN 1 AND 180),declared_mime text CHECK(declared_mime IS NULL OR length(declared_mime) BETWEEN 1 AND 120),declared_size bigint CHECK(declared_size IS NULL OR declared_size BETWEEN 1 AND 15728640),
-  state text NOT NULL CHECK(state IN ('unavailable','quarantine_reserved','quarantined','inspection_pending','passed','rejected','deleted')),quarantine_id uuid REFERENCES public.business_vault_quarantine_uploads(id) ON DELETE RESTRICT,safe_reason text NOT NULL CHECK(length(safe_reason) BETWEEN 1 AND 80),
-  created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),CHECK((state='unavailable' AND quarantine_id IS NULL) OR (state<>'unavailable' AND quarantine_id IS NOT NULL))
+  state text NOT NULL CHECK(state IN ('unavailable','quarantine_reserved','quarantined','inspection_pending','passed','rejected','deleted')),quarantine_id uuid,safe_reason text NOT NULL CHECK(length(safe_reason) BETWEEN 1 AND 80),
+  created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),CHECK((state='unavailable' AND quarantine_id IS NULL) OR (state<>'unavailable' AND quarantine_id IS NOT NULL)),
+  FOREIGN KEY(tenant_id,session_id,requested_by) REFERENCES public.secure_browser_sessions(tenant_id,id,requested_by) ON DELETE RESTRICT,
+  FOREIGN KEY(tenant_id,quarantine_id) REFERENCES public.business_vault_quarantine_uploads(tenant_id,id) ON DELETE RESTRICT
 );
 
 CREATE TABLE public.secure_browser_receipts (
@@ -95,6 +109,21 @@ $$;
 REVOKE ALL ON FUNCTION public._secure_browser_actor_can_manage(uuid,uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public._secure_browser_actor_can_manage(uuid,uuid) TO service_role;
 
+CREATE FUNCTION public._secure_browser_actor_kind(p_actor uuid,p_tenant uuid)
+RETURNS text LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE v_role text;v_is_owner boolean;
+BEGIN
+ IF public.is_platform_owner(p_actor) THEN RETURN 'platform_owner';END IF;
+ SELECT tm.role::text,COALESCE(tm.is_owner,false) INTO v_role,v_is_owner
+ FROM public.tenant_members tm WHERE tm.tenant_id=p_tenant AND tm.user_id=p_actor AND tm.status='active';
+ IF v_role='owner' OR v_is_owner THEN RETURN 'owner';END IF;
+ IF v_role='admin' AND public.is_tenant_admin_as(p_actor,p_tenant) THEN RETURN 'admin';END IF;
+ IF public.agency_can_manage_child(p_tenant,p_actor) THEN RETURN 'authorized_representative';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public._secure_browser_actor_kind(uuid,uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public._secure_browser_actor_kind(uuid,uuid) TO service_role;
+
 CREATE FUNCTION public._secure_browser_current_actor_tenant()
 RETURNS uuid LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE v_actor uuid:=auth.uid();v_tenant uuid;
@@ -112,9 +141,35 @@ CREATE FUNCTION public._secure_browser_safe_json(p_value jsonb)
 RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$
  SELECT p_value IS NOT NULL AND jsonb_typeof(p_value)='object' AND NOT jsonb_path_exists(p_value,
  '$.**.keyvalue() ? (@.key like_regex "password|passwd|secret|token|cookie|authorization|html|page_source|screenshot|replay|live.?view|mfa|otp|context.?id|provider" flag "i")')
+ AND public._secure_browser_safe_text(p_value::text)
 $$;
 REVOKE ALL ON FUNCTION public._secure_browser_safe_json(jsonb) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public._secure_browser_safe_json(jsonb) TO service_role;
+
+CREATE FUNCTION public.secure_browser_download_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE v_inspection_state text;
+BEGIN
+ IF TG_OP='UPDATE' AND (NEW.tenant_id<>OLD.tenant_id OR NEW.session_id<>OLD.session_id OR NEW.requested_by<>OLD.requested_by OR NEW.quarantine_id IS DISTINCT FROM OLD.quarantine_id) THEN
+  RAISE EXCEPTION 'SECURE_BROWSER_DOWNLOAD_IDENTITY_IMMUTABLE' USING ERRCODE='42501';
+ END IF;
+ IF NEW.state<>'unavailable' THEN
+  SELECT q.inspection_state INTO v_inspection_state FROM public.business_vault_quarantine_uploads q
+   WHERE q.tenant_id=NEW.tenant_id AND q.id=NEW.quarantine_id FOR SHARE;
+  IF v_inspection_state IS NULL OR
+     (NEW.state='quarantine_reserved' AND v_inspection_state<>'reserved') OR
+     (NEW.state='quarantined' AND v_inspection_state<>'stored') OR
+     (NEW.state='inspection_pending' AND v_inspection_state NOT IN('inspecting','stored')) OR
+     (NEW.state='passed' AND v_inspection_state<>'passed') OR
+     (NEW.state='rejected' AND v_inspection_state NOT IN('cleanup_pending','deleting')) OR
+     (NEW.state='deleted' AND v_inspection_state<>'deleted') THEN
+   RAISE EXCEPTION 'SECURE_BROWSER_QUARANTINE_STATE_INVALID' USING ERRCODE='23514';
+  END IF;
+ END IF;
+ NEW.updated_at:=now();RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.secure_browser_download_guard() FROM PUBLIC;
+CREATE TRIGGER secure_browser_download_guard_trg BEFORE INSERT OR UPDATE ON public.secure_browser_download_intakes FOR EACH ROW EXECUTE FUNCTION public.secure_browser_download_guard();
 
 CREATE FUNCTION public.secure_browser_limits_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
@@ -135,6 +190,52 @@ END $$;
 REVOKE ALL ON FUNCTION public.secure_browser_session_guard() FROM PUBLIC;
 CREATE TRIGGER secure_browser_session_guard_trg BEFORE INSERT OR UPDATE ON public.secure_browser_sessions FOR EACH ROW EXECUTE FUNCTION public.secure_browser_session_guard();
 
+CREATE FUNCTION public._secure_browser_settle_usage(p_tenant uuid,p_session uuid,p_consumed_seconds integer,p_consumed_cost_microusd bigint)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE v_session public.secure_browser_sessions;
+BEGIN
+ SELECT * INTO v_session FROM public.secure_browser_sessions s WHERE s.id=p_session AND s.tenant_id=p_tenant FOR UPDATE;
+ IF v_session.id IS NULL THEN RAISE EXCEPTION 'SECURE_BROWSER_SESSION_UNAVAILABLE' USING ERRCODE='42501';END IF;
+ IF v_session.reservation_settled_at IS NOT NULL THEN RETURN false;END IF;
+ IF p_consumed_seconds NOT BETWEEN 0 AND v_session.reserved_seconds OR p_consumed_cost_microusd NOT BETWEEN 0 AND v_session.reserved_cost_microusd THEN
+  RAISE EXCEPTION 'SECURE_BROWSER_SETTLEMENT_INVALID' USING ERRCODE='22023';
+ END IF;
+ UPDATE public.secure_browser_usage_windows SET
+  reserved_seconds=GREATEST(0,reserved_seconds-v_session.reserved_seconds),
+  reserved_cost_microusd=GREATEST(0,reserved_cost_microusd-v_session.reserved_cost_microusd),
+  consumed_seconds=consumed_seconds+p_consumed_seconds,
+  consumed_cost_microusd=consumed_cost_microusd+p_consumed_cost_microusd,
+  updated_at=now()
+ WHERE tenant_id=p_tenant AND (
+  (window_kind='day' AND window_start=v_session.created_at::date) OR
+  (window_kind='month' AND window_start=date_trunc('month',v_session.created_at)::date)
+ );
+ UPDATE public.secure_browser_sessions SET reservation_settled_at=now(),consumed_seconds=p_consumed_seconds,consumed_cost_microusd=p_consumed_cost_microusd
+ WHERE id=v_session.id;
+ RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION public._secure_browser_settle_usage(uuid,uuid,integer,bigint) FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION public.secure_browser_settle_session_usage(p_tenant uuid,p_session uuid,p_consumed_seconds integer,p_consumed_cost_microusd bigint)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE v_settled boolean;v_session public.secure_browser_sessions;v_receipt uuid:=gen_random_uuid();v_rail boolean:=false;
+BEGIN
+ IF COALESCE(auth.role(),'')<>'service_role' THEN RAISE EXCEPTION 'SECURE_BROWSER_SERVICE_REQUIRED' USING ERRCODE='42501';END IF;
+ v_settled:=public._secure_browser_settle_usage(p_tenant,p_session,p_consumed_seconds,p_consumed_cost_microusd);
+ SELECT * INTO v_session FROM public.secure_browser_sessions s WHERE s.id=p_session AND s.tenant_id=p_tenant;
+ IF v_settled THEN
+  INSERT INTO public.secure_browser_receipts(id,tenant_id,session_id,actor_id,receipt_kind,action_kind,action_fingerprint,target_origin,request_evidence,result_evidence,verified_readback,outcome,idempotency_key,rail_run_id)
+  VALUES(v_receipt,p_tenant,p_session,v_session.requested_by,'control','usage.settle',md5(p_session::text||':settle'),v_session.target_origin,
+   jsonb_build_object('reservedSeconds',v_session.reserved_seconds,'reservedCostMicrousd',v_session.reserved_cost_microusd),
+   jsonb_build_object('consumedSeconds',v_session.consumed_seconds,'consumedCostMicrousd',v_session.consumed_cost_microusd),
+   jsonb_build_object('settledAt',v_session.reservation_settled_at),'succeeded',p_session,v_receipt);
+  BEGIN PERFORM public.record_capability_run(p_tenant,v_session.requested_by,'paige_secure_browser','capability_succeeded',v_receipt,NULL);v_rail:=true;EXCEPTION WHEN OTHERS THEN v_rail:=false;END;
+ END IF;
+ RETURN jsonb_build_object('sessionId',v_session.id,'settled',v_settled,'settledAt',v_session.reservation_settled_at,'consumedSeconds',v_session.consumed_seconds,'consumedCostMicrousd',v_session.consumed_cost_microusd,'receiptId',CASE WHEN v_settled THEN v_receipt ELSE NULL END,'railEvidence',CASE WHEN v_rail THEN 'recorded' ELSE 'not_recorded' END);
+END $$;
+REVOKE ALL ON FUNCTION public.secure_browser_settle_session_usage(uuid,uuid,integer,bigint) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.secure_browser_settle_session_usage(uuid,uuid,integer,bigint) TO service_role;
+
 CREATE FUNCTION public.secure_browser_receipt_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 BEGIN
@@ -144,6 +245,26 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.secure_browser_receipt_guard() FROM PUBLIC;
 CREATE TRIGGER secure_browser_receipt_guard_trg BEFORE INSERT OR UPDATE OR DELETE ON public.secure_browser_receipts FOR EACH ROW EXECUTE FUNCTION public.secure_browser_receipt_guard();
+
+CREATE FUNCTION public._secure_browser_expire_if_due(p_tenant uuid,p_session uuid)
+RETURNS public.secure_browser_sessions LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE v_session public.secure_browser_sessions;v_receipt uuid:=gen_random_uuid();v_recorded uuid;
+BEGIN
+ SELECT * INTO v_session FROM public.secure_browser_sessions s WHERE s.id=p_session AND s.tenant_id=p_tenant FOR UPDATE;
+ IF v_session.id IS NULL THEN RETURN NULL;END IF;
+ IF v_session.expires_at IS NOT NULL AND v_session.expires_at<=now() AND v_session.state IN('opening','awaiting_owner','owner_control','ready','observing','paused','closing') THEN
+  PERFORM public._secure_browser_settle_usage(p_tenant,p_session,0,0);
+  UPDATE public.secure_browser_sessions SET state='expired',safe_reason='session_expired' WHERE id=p_session RETURNING * INTO v_session;
+  INSERT INTO public.secure_browser_receipts(id,tenant_id,session_id,actor_id,receipt_kind,action_kind,action_fingerprint,target_origin,request_evidence,result_evidence,outcome,idempotency_key,rail_run_id)
+  VALUES(v_receipt,p_tenant,p_session,v_session.requested_by,'control','session.expire',md5(p_session::text||':expire'),v_session.target_origin,'{}'::jsonb,jsonb_build_object('state','expired'),'succeeded',p_session,v_receipt)
+  ON CONFLICT(tenant_id,idempotency_key,action_kind) DO NOTHING RETURNING id INTO v_recorded;
+  IF v_recorded IS NOT NULL THEN
+   BEGIN PERFORM public.record_capability_run(p_tenant,v_session.requested_by,'paige_secure_browser','capability_succeeded',v_receipt,NULL);EXCEPTION WHEN OTHERS THEN NULL;END;
+  END IF;
+ END IF;
+ RETURN v_session;
+END $$;
+REVOKE ALL ON FUNCTION public._secure_browser_expire_if_due(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
 
 CREATE FUNCTION public.configure_secure_browser_limits(p_expected_tenant uuid,p_enabled boolean,p_max_active integer,p_max_session_seconds integer,p_max_daily_seconds integer,p_max_monthly_cost_microusd bigint,p_pause_reason text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
@@ -174,9 +295,9 @@ DECLARE v_session public.secure_browser_sessions;v_limits public.secure_browser_
 BEGIN
  IF COALESCE(auth.role(),'') <> 'service_role' THEN RAISE EXCEPTION 'SECURE_BROWSER_SERVICE_REQUIRED' USING ERRCODE='42501';END IF;
  IF NOT public._secure_browser_actor_can_manage(p_actor,p_tenant) THEN RAISE EXCEPTION 'SECURE_BROWSER_NOT_AUTHORIZED' USING ERRCODE='42501';END IF;
- IF p_actor_kind NOT IN ('owner','admin','authorized_representative','platform_owner') THEN RAISE EXCEPTION 'SECURE_BROWSER_ACTOR_KIND_INVALID' USING ERRCODE='22023';END IF;
+ IF p_actor_kind IS DISTINCT FROM public._secure_browser_actor_kind(p_actor,p_tenant) THEN RAISE EXCEPTION 'SECURE_BROWSER_ACTOR_KIND_INVALID' USING ERRCODE='22023';END IF;
  IF NOT EXISTS(SELECT 1 FROM public.paige_chat_threads t WHERE t.id=p_thread AND t.tenant_id=p_tenant AND t.caller_user_id=p_actor AND t.lens='coach' AND t.contact_id IS NULL) THEN RAISE EXCEPTION 'SECURE_BROWSER_THREAD_INVALID' USING ERRCODE='42501';END IF;
- IF length(btrim(COALESCE(p_purpose,''))) NOT BETWEEN 3 AND 1000 OR p_target_origin !~ '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$' OR p_target_display_host !~ '^[A-Za-z0-9.-]+$' OR NOT public._secure_browser_safe_json(p_scope) THEN RAISE EXCEPTION 'SECURE_BROWSER_REQUEST_INVALID' USING ERRCODE='22023';END IF;
+ IF length(btrim(COALESCE(p_purpose,''))) NOT BETWEEN 3 AND 1000 OR NOT public._secure_browser_safe_text(p_purpose) OR p_target_origin !~ '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$' OR p_target_display_host !~ '^[A-Za-z0-9.-]+$' OR NOT public._secure_browser_safe_json(p_scope) THEN RAISE EXCEPTION 'SECURE_BROWSER_REQUEST_INVALID' USING ERRCODE='22023';END IF;
  SELECT COALESCE(t.features,'{}'::jsonb) INTO v_features FROM public.tenants t WHERE t.id=p_tenant FOR SHARE;
  IF COALESCE((v_features->>'secure_browser')::boolean,false) IS NOT TRUE THEN v_reason:='feature_not_enabled';END IF;
  SELECT * INTO v_limits FROM public.secure_browser_tenant_limits l WHERE l.tenant_id=p_tenant FOR UPDATE;
@@ -210,11 +331,11 @@ DECLARE v_limits public.secure_browser_tenant_limits;v_session public.secure_bro
 BEGIN
  IF COALESCE(auth.role(),'') <> 'service_role' THEN RAISE EXCEPTION 'SECURE_BROWSER_SERVICE_REQUIRED' USING ERRCODE='42501';END IF;
  IF NOT public._secure_browser_actor_can_manage(p_actor,p_tenant) THEN RAISE EXCEPTION 'SECURE_BROWSER_NOT_AUTHORIZED' USING ERRCODE='42501';END IF;
- IF p_actor_kind NOT IN ('owner','admin','authorized_representative','platform_owner') OR
+ IF p_actor_kind IS DISTINCT FROM public._secure_browser_actor_kind(p_actor,p_tenant) OR
     NOT EXISTS(SELECT 1 FROM public.paige_chat_threads t WHERE t.id=p_thread AND t.tenant_id=p_tenant AND t.caller_user_id=p_actor AND t.lens='coach' AND t.contact_id IS NULL) THEN
   RAISE EXCEPTION 'SECURE_BROWSER_REQUEST_INVALID' USING ERRCODE='42501';
  END IF;
- IF length(btrim(COALESCE(p_purpose,''))) NOT BETWEEN 3 AND 1000 OR
+ IF length(btrim(COALESCE(p_purpose,''))) NOT BETWEEN 3 AND 1000 OR NOT public._secure_browser_safe_text(p_purpose) OR
     p_target_origin !~ '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$' OR
     p_target_display_host !~ '^[A-Za-z0-9.-]+$' OR NOT public._secure_browser_safe_json(p_scope) THEN
   RAISE EXCEPTION 'SECURE_BROWSER_REQUEST_INVALID' USING ERRCODE='22023';
@@ -259,9 +380,10 @@ REVOKE ALL ON FUNCTION public.secure_browser_reserve_session(uuid,uuid,text,uuid
 GRANT EXECUTE ON FUNCTION public.secure_browser_reserve_session(uuid,uuid,text,uuid,text,text,text,jsonb,uuid,integer,bigint) TO service_role;
 
 CREATE FUNCTION public.get_secure_browser_session(p_session uuid)
-RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE v_tenant uuid:=public._secure_browser_current_actor_tenant();v_actor uuid:=auth.uid();v_session public.secure_browser_sessions;
 BEGIN
+ PERFORM public._secure_browser_expire_if_due(v_tenant,p_session);
  SELECT * INTO v_session FROM public.secure_browser_sessions s WHERE s.id=p_session AND s.tenant_id=v_tenant AND (s.requested_by=v_actor OR public.is_tenant_admin_as(v_actor,v_tenant) OR public.is_platform_owner(v_actor));
  IF v_session.id IS NULL THEN RAISE EXCEPTION 'SECURE_BROWSER_SESSION_UNAVAILABLE' USING ERRCODE='42501';END IF;
  RETURN jsonb_build_object('id',v_session.id,'threadId',v_session.request_thread_id,'purpose',v_session.purpose,'targetOrigin',v_session.target_origin,'targetDisplayHost',v_session.target_display_host,'scope',v_session.allowed_scope,'authority',v_session.authority_state,'state',v_session.state,'stateVersion',v_session.state_version,'safeReason',v_session.safe_reason,'expiresAt',v_session.expires_at,'createdAt',v_session.created_at,'updatedAt',v_session.updated_at);
@@ -274,6 +396,7 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,publi
 DECLARE v_tenant uuid:=public._secure_browser_current_actor_tenant();v_actor uuid:=auth.uid();v_session public.secure_browser_sessions;v_receipt uuid:=gen_random_uuid();v_next text;v_recorded_receipt uuid;v_rail boolean:=false;
 BEGIN
  IF p_command NOT IN ('pause','resume','close','revoke') THEN RAISE EXCEPTION 'SECURE_BROWSER_COMMAND_INVALID' USING ERRCODE='22023';END IF;
+ PERFORM public._secure_browser_expire_if_due(v_tenant,p_session);
  SELECT * INTO v_session FROM public.secure_browser_sessions s WHERE s.id=p_session AND s.tenant_id=v_tenant FOR UPDATE;
  IF v_session.id IS NULL OR (v_session.requested_by<>v_actor AND NOT public.is_tenant_admin_as(v_actor,v_tenant) AND NOT public.is_platform_owner(v_actor)) THEN RAISE EXCEPTION 'SECURE_BROWSER_SESSION_UNAVAILABLE' USING ERRCODE='42501';END IF;
  IF v_session.state_version<>p_expected_version THEN RAISE EXCEPTION 'SECURE_BROWSER_STALE' USING ERRCODE='40001';END IF;
@@ -283,9 +406,10 @@ BEGIN
  ELSIF p_command='pause' AND v_session.state NOT IN ('ready','observing') THEN RAISE EXCEPTION 'SECURE_BROWSER_TRANSITION_INVALID' USING ERRCODE='22023';
  ELSIF p_command='resume' AND v_session.state<>'paused' THEN RAISE EXCEPTION 'SECURE_BROWSER_TRANSITION_INVALID' USING ERRCODE='22023';END IF;
  IF v_next IS DISTINCT FROM v_session.state THEN
+  IF v_next IN('closed','revoked') THEN PERFORM public._secure_browser_settle_usage(v_tenant,v_session.id,0,0);END IF;
   UPDATE public.secure_browser_sessions SET state=v_next,safe_reason=p_command,paused_at=CASE WHEN v_next='paused' THEN now() WHEN p_command='resume' THEN NULL ELSE paused_at END,closed_at=CASE WHEN v_next='closed' THEN now() ELSE closed_at END,revoked_at=CASE WHEN v_next='revoked' THEN now() ELSE revoked_at END WHERE id=v_session.id RETURNING * INTO v_session;
   INSERT INTO public.secure_browser_receipts(id,tenant_id,session_id,actor_id,receipt_kind,action_kind,action_fingerprint,target_origin,request_evidence,result_evidence,outcome,idempotency_key,rail_run_id)
-  VALUES(v_receipt,v_tenant,v_session.id,v_actor,'control','session.'||p_command,md5(v_session.id::text||':'||p_command||':'||v_session.state_version::text),v_session.target_origin,jsonb_build_object('expectedVersion',p_expected_version),jsonb_build_object('state',v_session.state),'succeeded',v_receipt,v_receipt);
+  VALUES(v_receipt,v_tenant,v_session.id,v_actor,'control','session.'||p_command,md5(v_session.id::text||':'||p_command||':'||v_session.state_version::text),v_session.target_origin,jsonb_build_object('expectedVersion',p_expected_version),jsonb_build_object('state',v_session.state,'usageSettled',v_session.reservation_settled_at IS NOT NULL,'consumedSeconds',v_session.consumed_seconds,'consumedCostMicrousd',v_session.consumed_cost_microusd),'succeeded',v_receipt,v_receipt);
   v_recorded_receipt:=v_receipt;
   BEGIN
    PERFORM public.record_capability_run(v_tenant,v_actor,'paige_secure_browser','capability_succeeded',v_receipt,NULL);
@@ -299,9 +423,11 @@ REVOKE ALL ON FUNCTION public.control_secure_browser_session(uuid,text,bigint) F
 GRANT EXECUTE ON FUNCTION public.control_secure_browser_session(uuid,text,bigint) TO authenticated;
 
 CREATE FUNCTION public.list_secure_browser_connected_accounts()
-RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE v_tenant uuid:=public._secure_browser_current_actor_tenant();
 BEGIN
+ UPDATE public.secure_browser_connected_accounts SET state='expired',updated_at=now()
+ WHERE tenant_id=v_tenant AND state IN('active','paused') AND expires_at IS NOT NULL AND expires_at<=now();
  RETURN COALESCE((
   SELECT jsonb_agg(jsonb_build_object(
    'id',a.id,'label',a.label,'targetOrigin',a.target_origin,'targetDisplayHost',a.target_display_host,
@@ -322,7 +448,11 @@ BEGIN
  IF p_command NOT IN ('pause','revoke','delete') THEN RAISE EXCEPTION 'SECURE_BROWSER_ACCOUNT_COMMAND_INVALID' USING ERRCODE='22023';END IF;
  SELECT * INTO v_account FROM public.secure_browser_connected_accounts a WHERE a.id=p_account AND a.tenant_id=v_tenant FOR UPDATE;
  IF v_account.id IS NULL THEN RAISE EXCEPTION 'SECURE_BROWSER_ACCOUNT_UNAVAILABLE' USING ERRCODE='42501';END IF;
+ IF v_account.state IN('active','paused') AND v_account.expires_at IS NOT NULL AND v_account.expires_at<=now() THEN
+  UPDATE public.secure_browser_connected_accounts SET state='expired',updated_at=now() WHERE id=v_account.id RETURNING * INTO v_account;
+ END IF;
  IF v_account.state='deleted' THEN RAISE EXCEPTION 'SECURE_BROWSER_ACCOUNT_UNAVAILABLE' USING ERRCODE='42501';END IF;
+ IF p_command='pause' AND v_account.state='expired' THEN RAISE EXCEPTION 'SECURE_BROWSER_ACCOUNT_EXPIRED' USING ERRCODE='22023';END IF;
  UPDATE public.secure_browser_connected_accounts SET
   state=CASE p_command WHEN 'pause' THEN 'paused' WHEN 'revoke' THEN 'revoked' ELSE 'deleted' END,
   paused_at=CASE WHEN p_command='pause' THEN now() ELSE paused_at END,

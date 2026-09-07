@@ -3,6 +3,7 @@ import {
   UnavailableSecureBrowserWorker,
   assertNoSensitiveBrowserMaterial,
   normalizeSecureBrowserTarget,
+  normalizeSecureBrowserPurpose,
   validateSecureBrowserScope,
 } from "../../supabase/functions/_shared/secure-browser-contract";
 
@@ -39,6 +40,17 @@ describe("Paige Secure Browser provider-neutral contract", () => {
   it("rejects recursively nested sensitive material", () => {
     expect(() => assertNoSensitiveBrowserMaterial({ result: { cookie: "redacted" } })).toThrow("sensitive_field");
     expect(() => assertNoSensitiveBrowserMaterial({ status: "not connected" })).not.toThrow();
+    expect(() => assertNoSensitiveBrowserMaterial({ note: "access token: abcdefghijk" })).toThrow("sensitive_value");
+  });
+
+  it("refuses credential-like purpose values before persistence", () => {
+    expect(normalizeSecureBrowserPurpose("Review quarterly filing status")).toBe("Review quarterly filing status");
+    expect(() => normalizeSecureBrowserPurpose("Sign in, password: hunter123"))
+      .toThrow("sensitive_value");
+    expect(() => normalizeSecureBrowserPurpose("Use bearer abcdefghijklmnop"))
+      .toThrow("sensitive_value");
+    expect(() => normalizeSecureBrowserPurpose("Use eyJabcdefghij.abcdefghij.abcdefghij"))
+      .toThrow("sensitive_value");
   });
 
   it("returns truthful unavailability without creating a worker session", async () => {

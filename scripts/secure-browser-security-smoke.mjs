@@ -36,7 +36,8 @@ check(!/invoker_user_id\s*,\s*invoker_kind\s*}\s*=\s*body/.test(browserUse), "br
 check(!/BROWSERBASE_API_KEY|api\.browserbase\.com|browserbase_session_id|replay_url/i.test(browserUse), "vendor execution remains hard-disabled while gates are open");
 check(/from\("tenants"\)[\s\S]{0,250}select\("features"\)/.test(browserUse) && /features\.secure_browser !== true/.test(browserUse), "feature flag is read from the exact resolved tenant");
 check(/agency_can_manage_child/.test(browserUse), "authorized agency representative path is preserved");
-check(/actorKind = isPlatformOwner === true[\s\S]{0,180}"authorized_representative"/.test(browserUse), "browser-use records owner/admin/authorized-representative provenance truthfully");
+check(/from\("tenant_members"\)\.select\("role,is_owner,status"\)/.test(browserUse) && /directRole === "owner"[\s\S]{0,100}\? "owner"[\s\S]{0,180}"authorized_representative"/.test(browserUse), "browser-use records exact owner/admin/authorized-representative provenance truthfully");
+check(/normalizeSecureBrowserPurpose/.test(browserUse), "browser-use refuses credential-like purpose values before persistence");
 check(!/from\("browser_use_sessions"\)\.insert/.test(browserUse), "Paige Secure Browser no longer writes into the public-research evidence table");
 check(/secure_browser_request_unavailable/.test(browserUse), "Paige Secure Browser uses its provider-neutral control-plane request boundary");
 check(/recordCapabilityRun\(admin,[\s\S]{0,260}runId:\s*receiptId/.test(browserUse), "the detailed receipt id anchors the separate Rail summary");
