@@ -151,7 +151,8 @@ describe("Solo Settings rendered customer copy", () => {
       await act(async () => root.render(<RouterProvider router={router}/>));
       expect(router.state.location.pathname).toBe("/solo/41/settings/setup/business-profile");
       expect(router.state.location.state?.notificationMoveNotice).not.toBe(true);
-      expect(host.querySelector("h1")?.textContent).toBe("Setup");
+      expect(host.textContent).toContain("Setup");
+      expect(host.querySelector("h1")).toBeNull();
       expect(host.textContent).toContain("Notifications now appear in the area where the work happens.");
       expect(host.textContent).not.toContain("Customer notifications");
       expect(host.textContent).not.toContain("Delivery failures");

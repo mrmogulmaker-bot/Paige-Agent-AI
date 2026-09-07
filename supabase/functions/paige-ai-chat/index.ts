@@ -63,6 +63,7 @@ import {
 } from "../_shared/untrusted-fence.ts";
 import { loadSpineEvidenceForChat } from "../_shared/paige-spine/chatEvidence.ts";
 import { buildBusinessContextReadinessBlock } from "../_shared/paige-spine/domains/businessContextChatEvidence.ts";
+import { buildPublicPresenceContextBlock } from "../_shared/paige-spine/domains/publicPresenceChatContext.ts";
 import { buildTeamAuthorityBlock } from "../_shared/paige-spine/domains/teamAuthorityChatEvidence.ts";
 import { buildSocialPresenceBlock } from "../_shared/paige-spine/domains/socialPresenceChatEvidence.ts";
 import { loadN8nReadinessForChat, renderN8nReadinessForChat } from "../_shared/paige-spine/domains/n8nChatEvidence.ts";
@@ -363,6 +364,11 @@ const messageSchema = z.object({
     })
   ).optional(),
   clientId: z.string().uuid().nullable().optional(),
+  surfaceContext: z.object({
+    kind: z.literal("public_presence"),
+    step: z.enum(["confirm_facts", "verify_website", "connect_venues", "compare_facts", "set_authority", "maintain_presence"]),
+    intendedAction: z.enum(["review", "plan", "prepare_connection", "resolve_mismatch"]),
+  }).optional(),
   // Owner "Your Paige" multi-chat: the persisted conversation this turn belongs to.
   // When set, paige-ai-chat persists both turns + rehydrates recall server-side (#94).
   threadId: z.string().uuid().nullable().optional(),
@@ -722,7 +728,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext: rawClientContext, userTime, userTimezone, userTimeFormatted } = validatedData;
+    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext: rawClientContext, surfaceContext, userTime, userTimezone, userTimeFormatted } = validatedData;
     // canvasArtifact is a CLIENT request field, meaningful ONLY in a server-resolved Studio session.
     // Declared `let` so it can be neutralized for a dedicated (non-Studio) chat once studio_session_id
     // is resolved (Codex P2): a dedicated-chat client must not be able to drive the reuse clamp with a
@@ -4268,12 +4274,18 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // caller's own JWT-scoped client (§9/§588/§59) — the RPC derives the tenant from it and
     // ignores any tenant argument, exactly like get_paige_persona_context above.
     let businessContextReadinessBlock = "";
+    let publicPresenceContextBlock = "";
     if (personaCtx.tenant_id) {
       try {
         businessContextReadinessBlock = await buildBusinessContextReadinessBlock(supabaseClient, personaCtx.tenant_id);
       } catch (e) {
         console.warn("[paige-ai-chat] business context readiness unavailable:", (e as Error)?.message);
       }
+    }
+
+    if (personaCtx.tenant_id && callerTier !== "client" && surfaceContext?.kind === "public_presence") {
+      publicPresenceContextBlock = await buildPublicPresenceContextBlock(supabaseClient, personaCtx.tenant_id, surfaceContext);
+      if (publicPresenceContextBlock) markProtectedLate("public_presence_context");
     }
 
     // Team Authority (Spine capability `team.authority`) — the caller's OWN seat role and legal
@@ -4357,6 +4369,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       ...(tenantDomainContext ? [{ role: "system", content: tenantDomainContext }] : []),
       ...(tenantTeamContext ? [{ role: "system", content: tenantTeamContext }] : []),
       ...(businessContextReadinessBlock ? [{ role: "system", content: businessContextReadinessBlock }] : []),
+      ...(publicPresenceContextBlock ? [{ role: "system", content: publicPresenceContextBlock }] : []),
       ...(teamAuthorityBlock ? [{ role: "system", content: teamAuthorityBlock }] : []),
       ...(socialPresenceBlock ? [{ role: "system", content: socialPresenceBlock }] : []),
       ...(businessMissionContextBlock ? [{ role: "system", content: businessMissionContextBlock }] : []),

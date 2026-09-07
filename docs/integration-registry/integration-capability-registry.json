@@ -1,7 +1,7 @@
 {
   "doc": "Integration Capability Registry",
   "schema_version": "1.1.0",
-  "grounded_against": "origin/main 49dde4c (2026-09-06)",
+  "grounded_against": "origin/main fead7dfd03cd0ec1ee5c0c9f7854f067de484239 + Public Presence provider-MVP production closeout (2026-09-06)",
   "purpose": "One authoritative, living catalogue and taxonomy of every third-party provider, API, connector, Marketplace service, and external-execution platform Paige may use. This is a product-governance and delivery record. It does NOT install providers, hold credentials, call external APIs, create OAuth clients, create billing commitments, or ship provider functionality. v1.1 adds the API Expense & Operations Layer (per-provider operating cost + ownership visibility) — see expense_and_operations_schema and cost_tracks.",
   "cardinal_rule": "Listing a provider here NEVER means it is connected, available, or autonomous. A registry entry is a governance declaration, not a live capability. Connection is a per-tenant authorization fact; availability is a getTierFeatureSet()/RLS fact; autonomy is a resolve_tool_autonomy()/Trust-Compass fact. This document decides none of them (see rules R1 and R8).",
   "how_it_relates_to_siblings": {
@@ -965,6 +965,140 @@
         "next_slice": "Harden + reach (capability-system slice 4): G5 fence, SSRF reconcile, §32.c drive."
       },
       "sources": ["outputs/paige-at-cowork/08-sandboxed-research-external-execution.md", "docs/PAIGE-MASTER-PROJECT-REFERENCE.md §5 (Sandboxed Research)"]
+    },
+    {
+      "taxonomy": "marketing_ads_social_presence_analytics",
+      "tier_eligibility": {
+        "platform": "eligible",
+        "solo": "eligible",
+        "agency_future": "resell",
+        "enterprise_future": "eligible"
+      },
+      "marketplace_metadata_only": false,
+      "id": "google-search-console",
+      "name": "Google Search Console",
+      "business_reason": "Give a Solo owner source-backed, read-only website discovery and indexability evidence in Public Presence.",
+      "paige_use_cases": [
+        "select a tenant-authorized verified property",
+        "read site, sitemap, and URL Inspection evidence",
+        "draft a plain-language remediation plan without changing Google or the website"
+      ],
+      "connection_prerequisite": "Platform Google OAuth client and Search Console API enablement, then per-tenant OAuth consent and verified-property selection in Integrations. None exists or is requested by this slice.",
+      "required_scopes": [
+        "https://www.googleapis.com/auth/webmasters.readonly"
+      ],
+      "safe_readable_context": "Selected verified property identifier, permission level, source timestamps, sitemap status, and requested URL Inspection results; never OAuth tokens, raw payloads, query-level private performance data, or another tenant's sites.",
+      "allowed_writes_external_effects": "None in the first release. Search Console and website changes remain prohibited; Paige may draft a remediation plan only.",
+      "authority_lane": [
+        "prohibited"
+      ],
+      "m1_dependency": "No provider spend in the planned read-only release; internal LLM-cost metering applies to Paige planning. Any future real external spend must bind M1 real-money spend control before autonomy.",
+      "canonical_provider_receipt": "For reads: Google response plus property id and observed_at/readback metadata. No external-effect receipt until a separately approved write capability exists.",
+      "rail_mind_memory": "Rail: no read event; future consequential outcomes require provider receipt. Mind: reviewed source-backed readiness facts only. Memory: no tokens, raw payloads, query rows, or unreviewed findings; retain only the selected property reference and bounded freshness metadata under policy.",
+      "status": "UNAVAILABLE",
+      "owner": "Public Presence + Integrations workstreams",
+      "dependency": "Authorized Google platform project/OAuth client, tenant consent, verified property, server token custody, quota/error contract, and authenticated runtime proof.",
+      "next_slice": "Platform team enables the provider contract; Integrations owns consent/property selection; then prove a read-only site/sitemap/URL Inspection journey and raise status only from provider-backed evidence.",
+      "expense_and_operations": {
+        "cost_responsibility": "tenant_direct",
+        "billing_owner": "tenant (its own Google account/property) — the tool + API are no-fee",
+        "operational_owner": "Public Presence workstream",
+        "pricing_model": "free_quota",
+        "pricing_source_url": "https://developers.google.com/webmaster-tools/v1/limits",
+        "pricing_checked_as_of": null,
+        "pricing_note": "Documented as a no-fee public webmaster tool; API within per-project quota. Not verified this slice — verify at source.",
+        "access_prerequisite": "Per-tenant Google OAuth + verified Search Console property + Google Cloud project/API enablement.",
+        "expected_cost_driver": [
+          "api_calls"
+        ],
+        "rate_limits_quotas": "Per-site + per-project QPS/daily quota; backoff required. Verify at source.",
+        "usage_review_cadence": "Quarterly.",
+        "renewal_deprecation_review": "Track Search Console API version deprecations.",
+        "data_privacy_retention": "Tenant's own property data only; no cross-tenant reach.",
+        "money_movement": {
+          "can_move_real_money": false,
+          "m1_dependency_track": "none",
+          "detail": "Read + sitemap/URL submission; no money movement."
+        },
+        "receipt_reconciliation": "API response / submission id.",
+        "rail_outcome": "presence capability_run outcome (future).",
+        "pause_revoke_path": "Tenant revokes the Google OAuth grant.",
+        "next_owner": "Public Presence workstream",
+        "next_slice": "Owner-authorized first Public Presence provider entry (GSC) with an authenticated read."
+      },
+      "sources": [
+        "Google Search Console API authorization documentation",
+        "docs/product/provider-result-contract.md",
+        "docs/evidence/ui-delivery/solo-public-presence.md"
+      ]
+    },
+    {
+      "taxonomy": "marketing_ads_social_presence_analytics",
+      "tier_eligibility": {
+        "platform": "eligible",
+        "solo": "eligible",
+        "agency_future": "resell",
+        "enterprise_future": "eligible"
+      },
+      "marketplace_metadata_only": false,
+      "id": "google-business-profile",
+      "name": "Google Business Profile",
+      "business_reason": "Let a Solo owner compare canonical Business Profile facts with a tenant-authorized Google location and govern proposed corrections, review replies, and posts.",
+      "paige_use_cases": [
+        "prepare consent and account/location selection",
+        "compare a verified location with canonical public facts",
+        "draft descriptions, categories, corrections, review replies, and posts",
+        "execute only a provider-specific approved action with receipt/readback"
+      ],
+      "connection_prerequisite": "Google approval for the platform Cloud project and Business Profile APIs, OAuth client/consent screen, then per-tenant business.manage consent and account/location selection in Integrations. None exists or is requested by this slice.",
+      "required_scopes": [
+        "https://www.googleapis.com/auth/business.manage"
+      ],
+      "safe_readable_context": "Selected account/location references, role and verification state, public listing fields, review identifiers and bounded response-work metadata when contracted; never OAuth tokens, raw provider payloads, private messages, or unrelated locations.",
+      "allowed_writes_external_effects": "Future location updates, review replies, and posts require provider-specific owner consent, standing-policy allowance or confirmation, idempotency, provider receipt, readback, and Rail evidence. Generic automation permission is insufficient.",
+      "authority_lane": [
+        "prohibited"
+      ],
+      "m1_dependency": "No provider spend in preparation. Internal LLM-cost metering applies to drafts. Any future real external spend must bind M1 real-money spend control before autonomous execution.",
+      "canonical_provider_receipt": "Google account/location resource name plus mutation response, operation/update identifier where supplied, and post-action location/review/post readback with observed_at.",
+      "rail_mind_memory": "Rail: only verified provider outcomes, attributable to actor/policy/consent. Mind: reviewed public facts and durable exceptions only. Memory: no tokens, raw reviews, private messages, or raw payload retention; proposals expire under policy.",
+      "status": "UNAVAILABLE",
+      "owner": "Public Presence + Integrations workstreams",
+      "dependency": "Google project approval, API enablement, OAuth credentials, tenant-specific consent, server token custody, location match contract, provider-specific authority, quota/billing classification, receipts/readback, and authenticated proof.",
+      "next_slice": "Keep the current UI connection-ready and unavailable; platform team completes provider approval; Integrations wires consent/account/location selection; Public Presence then proves source-backed diffs before any write lane is enabled.",
+      "expense_and_operations": {
+        "cost_responsibility": "tenant_direct",
+        "billing_owner": "tenant (its own Google Business Profile) — API is no-fee",
+        "operational_owner": "Public Presence workstream",
+        "pricing_model": "free_quota",
+        "pricing_source_url": "https://developers.google.com/my-business/content/basic-setup",
+        "pricing_checked_as_of": null,
+        "pricing_note": "Documented as no-fee; API access requires an approved Google Business Profile API application. Not verified this slice — verify at source.",
+        "access_prerequisite": "Per-tenant Google OAuth + verified business locations + Google Business Profile API access approval (application review).",
+        "expected_cost_driver": [
+          "api_calls",
+          "locations"
+        ],
+        "rate_limits_quotas": "Per-project QPS + per-location limits; backoff required. Verify at source.",
+        "usage_review_cadence": "Quarterly.",
+        "renewal_deprecation_review": "Track Business Profile API deprecations + access re-approval.",
+        "data_privacy_retention": "Tenant's own listing/location data only.",
+        "money_movement": {
+          "can_move_real_money": false,
+          "m1_dependency_track": "none",
+          "detail": "Listing management; no money movement (local ads would be a separate ad-spend path)."
+        },
+        "receipt_reconciliation": "API response / update id.",
+        "rail_outcome": "presence capability_run outcome (future).",
+        "pause_revoke_path": "Tenant revokes the Google OAuth grant.",
+        "next_owner": "Public Presence workstream",
+        "next_slice": "Sequenced after GSC; requires the Business Profile API access approval."
+      },
+      "sources": [
+        "Google Business Profile API basic setup, OAuth, account/location, review, post, and quota documentation",
+        "docs/product/provider-result-contract.md",
+        "docs/evidence/ui-delivery/solo-public-presence.md"
+      ]
     }
   ],
   "public_presence_roadmap": {
@@ -1226,7 +1360,7 @@
     ]
   },
   "known_owed_entries": {
-    "note": "Found at the registry-build closeout sweep (2026-09-06): pre-existing slices declared an 'Integration Capability Registry dependency' + a 'Registry Steward' role BEFORE this registry existed. The entries below are specific per-provider entries those slices spec'd and still OWE, transcribed honestly from their own records (§13 — not invented, not yet authored as full entries). NOTE on the Solo Tenant Brain Business Mission slice (docs/delivery/solo-tenant-brain-business-mission-mvp.md:64): its dependency was on delivery INFRASTRUCTURE (the Supabase deploy path), which is already covered by excluded_delivery_infrastructure + config-registry.md, and the slice explicitly said 'do not invent an entry' — so NO owed provider entry is recorded for it here (cross-link the shipped registry as its home; do not create a duplicate infrastructure entry). Authoring the owed entries + defining the Registry Steward role + cross-linking the dependent slices is a tracked follow-up (parked, per 'don't expand into individual integrations'). IMPORTANT: the registry artifact existing does NOT by itself satisfy a slice's still-valid provider-action blocker — e.g. the Public Presence note's requirement of a Public-Presence-specific entry AND a Steward record remains genuinely unmet until that entry is authored. The public_presence_roadmap above is the home that owed Public Presence entry points to.",
+    "note": "Found at the registry-build closeout sweep (2026-09-06): pre-existing slices declared an 'Integration Capability Registry dependency' + a 'Registry Steward' role BEFORE this registry existed. The entries below preserve the specific provider obligations those slices recorded. NOTE on the Solo Tenant Brain Business Mission slice (docs/delivery/solo-tenant-brain-business-mission-mvp.md:64): its dependency was on delivery INFRASTRUCTURE (the Supabase deploy path), which is already covered by excluded_delivery_infrastructure + config-registry.md, and the slice explicitly said 'do not invent an entry' — so NO owed provider entry is recorded for it here (cross-link the shipped registry as its home; do not create a duplicate infrastructure entry). Google Search Console and Google Business Profile now have full controlling entries; the later Public Presence providers have an authoritative sequenced Steward handoff but remain deliberately unavailable. The Registry Steward role is still unnamed, and provider-action blockers remain in force until tenant authorization and authenticated provider proof exist.",
     "registry_steward_role": "UNDEFINED here. The RE-2 M1-a, Solo Tenant Brain Business Mission, and Public Presence slices reference a 'Registry Steward' who must add/cross-link canonical entries before provider-facing work. This registry ships a per-entry `owner` field + the delivery rule instead of a named Steward — an owner decision on whether that satisfies the requirement is owed.",
     "entries": [
       {
@@ -1242,10 +1376,86 @@
       },
       {
         "owed_by": "Public Presence slice (docs/PAIGE-MASTER-PROJECT-REFERENCE.md ~L4198; docs/evidence/ui-delivery/solo-public-presence.md)",
-        "capability": "a canonical social/public-presence provider entry with exact provider capability + scopes, tenant-tier eligibility SEPARATE from role authority, standing-authority lane, M1 dependency, provider-confirmed outcome path, Rail/Mind/Memory boundaries, proof state, and limitations",
-        "partially_covered_by": "the `meta` entry (social/public presence) + the public_presence_roadmap above (GSC/GBP/Bing/Apple/Yelp/FB/LinkedIn/directories in approved order) — the follow-up authors each roadmap item as a full catalogued provider entry",
-        "status": "UNAVAILABLE (provider action blocked pending the entry AND an authenticated tenant-authorized contract)",
-        "note": "The registry ARTIFACT existing does NOT resolve this slice's blocker: the Public-Presence-specific entries AND a Steward record remain genuinely absent (the roadmap is a plan, not a full entry), so provider states stay UNAVAILABLE."
+        "capability": "Public Presence provider programme handoff. Google Search Console and Google Business Profile now have full controlling entries above; later providers remain deliberately sequenced and unavailable.",
+        "partially_covered_by": "the `meta` entry (social/public presence) — the follow-up decides whether Meta suffices or a distinct entry is needed",
+        "status": "UNAVAILABLE: no provider below has a real tenant-authorized source in this release.",
+        "note": "Sequence is controlling: Google Search Console, Google Business Profile, Bing Webmaster, Apple Business Connect, Yelp, Facebook/LinkedIn, then directory-network strategy. Do not start later provider implementation early.",
+        "registry_steward_handoff": [
+          {
+            "provider": "Bing Webmaster",
+            "purpose": "read search/indexing/sitemap evidence after Google releases",
+            "scopes": "webmaster.read for read-only; webmaster.manage only in a separately approved write slice",
+            "prerequisite": "Microsoft app registration plus tenant OAuth consent",
+            "tiers": "Solo eligible; future Agency resell; role authority separate",
+            "authority": "planned read/draft; current prohibited",
+            "m1": "no read spend; meter Paige planning and future billed actions",
+            "receipt": "site/resource response with observed_at; submission receipt plus readback for future writes",
+            "retention": "selected site and bounded freshness only; no tokens/raw payloads",
+            "api_quota_billing": "REST migration required because legacy SOAP/POX retired 2026-08-31; quota category needs platform confirmation"
+          },
+          {
+            "provider": "Apple Business Connect",
+            "purpose": "coordinate Apple place-card facts after Bing",
+            "scopes": "contract-specific; not inferred",
+            "prerequisite": "approved Apple Business Connect partner/API contract plus tenant/location authorization",
+            "tiers": "Solo eligible; future Agency resell; role authority separate",
+            "authority": "planned read/draft/confirm; current prohibited",
+            "m1": "meter any provider-billed execution before autonomy",
+            "receipt": "Apple place-card/location mutation response plus readback",
+            "retention": "public place facts and freshness only; no credentials/raw payloads",
+            "api_quota_billing": "partner API, quota, and commercial category unknown until contract"
+          },
+          {
+            "provider": "Yelp",
+            "purpose": "listing consistency and source-gated review response work after Apple",
+            "scopes": "partner-enabled r2r, r2r_get_businesses, and contract-specific listing scopes only",
+            "prerequisite": "contracted Yelp partner access plus business-user OAuth where required",
+            "tiers": "Solo eligible; future Agency resell; role authority separate",
+            "authority": "planned read/draft/confirm; current prohibited",
+            "m1": "partner/API fees and Paige generation meter before autonomy",
+            "receipt": "listing job id or review-response provider result plus readback",
+            "retention": "bounded public review/response metadata; no raw review corpus, tokens, or private messages",
+            "api_quota_billing": "partner-gated; Enhanced/Premium/contract and rate limits must be confirmed"
+          },
+          {
+            "provider": "Facebook",
+            "purpose": "public page fact consistency after Yelp; Social remains publishing owner",
+            "scopes": "Meta page scopes to be defined by approved app review and exact feature",
+            "prerequisite": "per-tenant Meta OAuth and Page selection in Integrations",
+            "tiers": "Solo eligible; future Agency resell; role authority separate",
+            "authority": "planned read/draft/confirm; current Meta entry remains PARTIAL and no Public Presence connection is claimed",
+            "m1": "meter generation and any provider-billed action",
+            "receipt": "Meta page/post mutation id plus readback",
+            "retention": "public page facts and bounded provenance only; no tokens/raw payloads",
+            "api_quota_billing": "Graph API/app-review/quota category to confirm"
+          },
+          {
+            "provider": "LinkedIn",
+            "purpose": "public organization-profile consistency after Facebook",
+            "scopes": "contract/app-review-specific organization scopes; not inferred",
+            "prerequisite": "approved LinkedIn developer product plus tenant organization authorization",
+            "tiers": "Solo eligible; future Agency resell; role authority separate",
+            "authority": "planned read/draft/confirm; current prohibited",
+            "m1": "meter generation and any provider-billed action",
+            "receipt": "organization/update resource id plus readback",
+            "retention": "public organization facts and freshness only; no tokens/raw payloads",
+            "api_quota_billing": "partner product, app review, quota, and billing category unknown until approved"
+          },
+          {
+            "provider": "Directory networks",
+            "purpose": "later strategy for 411-style and industry directories without claiming universal coverage",
+            "scopes": "provider-by-provider only",
+            "prerequisite": "approved network contract and per-tenant venue authority",
+            "tiers": "Solo eligibility decided per network; role authority separate",
+            "authority": "strategy/draft only until each provider is registered; current prohibited",
+            "m1": "contract/billing category and execution spend must bind M1",
+            "receipt": "network/provider job id plus venue readback",
+            "retention": "public venue facts, exceptions, and freshness only",
+            "api_quota_billing": "unknown per network; no aggregator capability is assumed"
+          }
+        ],
+        "limitations": "The Registry Steward role remains unnamed, so this committed handoff is the authoritative record but no out-of-band steward receipt is claimed. Provider names in UI or registry never imply connection, authorization, or capability."
+
       }
     ]
   },

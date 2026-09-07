@@ -10,6 +10,9 @@ import {
   X,
 } from "lucide-react";
 import type { SetupFactProvenance, SoloSetupBrief } from "./settings-setup-contract";
+import { clearPaigeClientScope } from "./paigeClientScope";
+import { setPaigePublicPresenceScope, type PublicPresenceStep } from "./paigePublicPresenceScope";
+import { PUBLIC_PRESENCE_GOOGLE_RELEASES } from "./publicPresenceProviderContract";
 import "./settings-public-presence.css";
 
 type PresenceView =
@@ -21,9 +24,11 @@ type PresenceView =
 
 type SettingsPublicPresenceProps = {
   brief: SoloSetupBrief;
+  activeTenantId: string | null;
   primaryBusinessEmail: string;
   primaryBusinessEmailProvenance: SetupFactProvenance;
   onReviewBusinessProfile: () => void;
+  onOpenPaige?: () => void;
 };
 
 const views: Array<{ id: PresenceView; label: string }> = [
@@ -43,6 +48,9 @@ const venues = [
   ["Yelp", "Public directory and reputation venue"],
   ["Directory networks", "411-style and industry directories"],
 ] as const;
+
+const googlePlansByLabel: ReadonlyMap<string, (typeof PUBLIC_PRESENCE_GOOGLE_RELEASES)[number]> =
+  new Map(PUBLIC_PRESENCE_GOOGLE_RELEASES.map((plan) => [plan.label, plan]));
 
 const unavailableReason =
   "Unavailable until an authenticated source and evidence contract are implemented.";
@@ -307,9 +315,11 @@ function PublicFactsDrawer({
 
 export function SettingsPublicPresence({
   brief,
+  activeTenantId,
   primaryBusinessEmail,
   primaryBusinessEmailProvenance,
   onReviewBusinessProfile,
+  onOpenPaige,
 }: SettingsPublicPresenceProps) {
   const [view, setView] = useState<PresenceView>("center");
   const [factsOpen, setFactsOpen] = useState(false);
@@ -364,19 +374,23 @@ export function SettingsPublicPresence({
     queueMicrotask(() => factsOpener.current?.focus());
   };
   const chooseView = (next: PresenceView) => setView(next);
+  const stepIds: PublicPresenceStep[] = ["confirm_facts", "verify_website", "connect_venues", "compare_facts", "set_authority", "maintain_presence"];
+  const continueWithPaige = (step: PublicPresenceStep, intendedAction: "review" | "plan" | "prepare_connection" | "resolve_mismatch" = "plan") => {
+    if (!activeTenantId || !onOpenPaige) return;
+    clearPaigeClientScope();
+    setPaigePublicPresenceScope({ tenantId: activeTenantId, kind: "public_presence", step, intendedAction });
+    onOpenPaige();
+  };
 
   return (
     <section className="presence-workspace" aria-labelledby="presence-title">
       <header className="presence-heading">
         <div>
-          <span>SETUP · PUBLIC PRESENCE</span>
           <h2 id="presence-title">Be found. Be recognized. Be trusted.</h2>
           <p>See which approved business facts are ready for public use, what outside sources can actually verify, and the next honest move.</p>
         </div>
         <div className="presence-heading__actions">
-          <UnavailableState reason="PAIGE handoff not connected">
-            Ask PAIGE
-          </UnavailableState>
+          <button type="button" className="presence-button" disabled={!activeTenantId || !onOpenPaige} onClick={() => continueWithPaige("confirm_facts", "review")}>Ask PAIGE</button>
           <button
             type="button"
             className="presence-button presence-button--primary"
@@ -481,41 +495,44 @@ export function SettingsPublicPresence({
                 ].map(([label, detail], index) => (
                   <li key={label}>
                     <span>{index + 1}</span><div><strong>{label}</strong><small>{detail}</small></div>
-                    <UnavailableState reason="PAIGE handoff not connected">
-                      Continue with PAIGE
-                    </UnavailableState>
+                    <button type="button" className="presence-button presence-button--compact" disabled={!activeTenantId || !onOpenPaige} onClick={() => continueWithPaige(stepIds[index])}>Continue with PAIGE</button>
                   </li>
                 ))}
               </ol>
-              <p className="presence-truth-note"><ShieldCheck aria-hidden /> Paige context handoff is not connected on this surface yet. No private documents, credentials, tokens, or unreviewed uploads are exposed.</p>
+              <p className="presence-truth-note"><ShieldCheck aria-hidden /> Paige receives a server-resolved, owner-approved public-fact projection. No private documents, credentials, tokens, raw reviews, or unreviewed uploads are exposed.</p>
             </article>
           </div>
         )}
 
         {view === "profiles" && (
           <section className="presence-venue-list">
-            <header><div><span>PROFILES & LISTINGS</span><h3>Public venues with evidence, not assumptions</h3></div><p>Connection setup stays in Integrations. Public Presence will coordinate fact consistency after a supported source exists.</p></header>
-            {venues.map(([name, description]) => (
-              <details key={name}>
-                <summary><div><MapPin aria-hidden /><span><strong>{name}</strong><small>{description}</small></span></div><Status tone="off">Unavailable</Status></summary>
-                <div className="presence-venue-detail">
-                  <p>No authenticated source is available for this venue, so public facts and state are not asserted here.</p>
-                  <div><span>Source</span><strong>No supported provider source</strong><span>Last checked</span><strong>No verified check time</strong></div>
-                  <UnavailableState reason="Authenticated provider required">
-                    Provider unavailable
-                  </UnavailableState>
-                </div>
-              </details>
-            ))}
+            <header><div><h3>Public venues with evidence, not assumptions</h3></div><p>Connection setup stays in Integrations. Public Presence will coordinate fact consistency after a supported source exists.</p></header>
+            {venues.map(([name, description]) => {
+              const plan = googlePlansByLabel.get(name);
+              return (
+                <details key={name}>
+                  <summary><div><MapPin aria-hidden /><span><strong>{name}</strong><small>{description}</small></span></div><Status tone="off">Unavailable</Status></summary>
+                  <div className="presence-venue-detail">
+                    <p>{plan ? plan.consent : "No authenticated source is available for this venue, so public facts and state are not asserted here."}</p>
+                    <div>
+                      <span>Selection</span><strong>{plan?.selection ?? "No provider selection available"}</strong>
+                      <span>Evidence</span><strong>{plan?.evidence ?? "No supported provider source"}</strong>
+                      <span>Last checked</span><strong>No verified check time</strong>
+                    </div>
+                    <UnavailableState reason={plan?.unavailableReason ?? "Authenticated provider required"}>Provider unavailable</UnavailableState>
+                  </div>
+                </details>
+              );
+            })}
           </section>
         )}
 
         {view === "website" && (
           <section className="presence-readiness">
-            <header><span>WEBSITE & SEARCH</span><h3>Business-readable readiness</h3><p>A website on file is not proof of indexing, search performance, or metadata quality.</p></header>
+            <header><h3>Business-readable readiness</h3><p>A website on file is not proof of indexing, search performance, or metadata quality.</p></header>
             {[
               ["Website / domain", brief.website || "No website on file", brief.website ? "Needs review" : "Not connected"],
-              ["Search and indexing source", "No supported search source", "Unavailable"],
+              ["Google Search Console verified site", PUBLIC_PRESENCE_GOOGLE_RELEASES[0].selection, "Unavailable"],
               ["Sitemap and indexability", "Not checked", "Unavailable"],
               ["Business schema and public metadata", "Not checked", "Unavailable"],
               ["Contact, services, about, locations and booking pages", "Not checked", "Unavailable"],
@@ -538,7 +555,7 @@ export function SettingsPublicPresence({
 
         {view === "facts" && (
           <section className="presence-facts-preview">
-            <div><span>PUBLIC FACTS</span><h3>One canonical record, coordinated outward</h3><p>Inspect canonical facts, confirmation status, and Paige eligibility without creating a second identity store.</p></div>
+            <div><h3>One canonical record, coordinated outward</h3><p>Inspect canonical facts, confirmation status, and Paige eligibility without creating a second identity store.</p></div>
             <button ref={factsOpener} type="button" className="presence-button presence-button--primary" onClick={() => setFactsOpen(true)}>Inspect public facts <ExternalLink aria-hidden /></button>
           </section>
         )}
