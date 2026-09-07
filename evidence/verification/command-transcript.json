@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-09-07T19:56:38.222Z",
-  "revision": "3905d6d869d61931db70dc0edb4296a16b6f88dc",
+  "generatedAt": "2026-09-07T20:20:17.248Z",
+  "revision": "b7ca5cba677d8cb9d18ab1c4021677945d7d582c",
   "workingTreeBefore": "",
   "workingTreeAfterCommands": "",
   "hashes": {
     "src/components/chat/anchoredTranscriptScroll.ts": "f29ec0d49abd956865a89069a46570a686bcf7a05722d4c4121227576d20bcc5",
     "src/components/dashboard/PaigeAIChat.tsx": "b22f61a27abc08e94d8fa97ed23ea8aedadb3cfe810580c77b8d69c4f84babfc",
     "src/components/app/PaigeChat.tsx": "04f7307eebfcee9b49485ccf6e0c03ee98647c61ef804c1c4c60150d75bc5ce5",
-    "src/pages/AppShell.tsx": "86430d926aa320022823276c6a889c86856f4a59a71f0ac2c9e09feac62315a4",
+    "src/pages/AppShell.tsx": "2211c517c4e2673df1ce06e041f82cd28e003a5666d0b7f35c2777a88fabf7f6",
     "scripts/live-drive/paige-scroll-stability-react-drive.mjs": "78200b0dfcbd59d2eab9a910c0f0b5a2d90d5a17ec39ba0e6ba8b47b0bb8ae3d"
   },
   "commands": [
@@ -31,8 +31,8 @@
         "src/components/dashboard/PaigeAIChat.clientScope.test.tsx"
       ],
       "definition_file": "package.json",
-      "startedAt": "2026-09-07T19:54:04.963Z",
-      "finishedAt": "2026-09-07T19:54:12.409Z",
+      "startedAt": "2026-09-07T20:16:26.219Z",
+      "finishedAt": "2026-09-07T20:16:35.166Z",
       "exitCode": 0,
       "log": "tests.log"
     },
@@ -43,8 +43,8 @@
         "scripts/ci/tsc-ratchet.mjs"
       ],
       "definition_file": "scripts/ci/tsc-ratchet.mjs",
-      "startedAt": "2026-09-07T19:54:12.410Z",
-      "finishedAt": "2026-09-07T19:55:16.066Z",
+      "startedAt": "2026-09-07T20:16:35.177Z",
+      "finishedAt": "2026-09-07T20:18:10.001Z",
       "exitCode": 0,
       "log": "types.log"
     },
@@ -55,8 +55,8 @@
         "scripts/ci/paige-scroll-eslint-ratchet.mjs"
       ],
       "definition_file": "scripts/ci/paige-scroll-eslint-ratchet.mjs",
-      "startedAt": "2026-09-07T19:55:16.067Z",
-      "finishedAt": "2026-09-07T19:55:19.219Z",
+      "startedAt": "2026-09-07T20:18:10.002Z",
+      "finishedAt": "2026-09-07T20:18:11.988Z",
       "exitCode": 0,
       "log": "lint.log"
     },
@@ -67,8 +67,8 @@
         "scripts/ci/definer-fn-lint.mjs"
       ],
       "definition_file": "scripts/ci/definer-fn-lint.mjs",
-      "startedAt": "2026-09-07T19:55:19.222Z",
-      "finishedAt": "2026-09-07T19:55:20.246Z",
+      "startedAt": "2026-09-07T20:18:11.990Z",
+      "finishedAt": "2026-09-07T20:18:13.095Z",
       "exitCode": 0,
       "log": "security.log"
     },
@@ -80,8 +80,8 @@
         "build"
       ],
       "definition_file": "package.json",
-      "startedAt": "2026-09-07T19:55:20.246Z",
-      "finishedAt": "2026-09-07T19:55:57.893Z",
+      "startedAt": "2026-09-07T20:18:13.095Z",
+      "finishedAt": "2026-09-07T20:19:13.189Z",
       "exitCode": 0,
       "log": "build.log"
     },
@@ -94,8 +94,8 @@
         "outputs/paige-scroll-baseline"
       ],
       "definition_file": "scripts/ci/paige-scroll-baseline-reproduction.mjs",
-      "startedAt": "2026-09-07T19:55:57.893Z",
-      "finishedAt": "2026-09-07T19:55:59.262Z",
+      "startedAt": "2026-09-07T20:19:13.189Z",
+      "finishedAt": "2026-09-07T20:19:14.993Z",
       "exitCode": 0,
       "log": "baseline-reproduction.log"
     },
@@ -106,8 +106,8 @@
         "scripts/live-drive/paige-scroll-stability-react-drive.mjs"
       ],
       "definition_file": "scripts/live-drive/paige-scroll-stability-react-drive.mjs",
-      "startedAt": "2026-09-07T19:55:59.280Z",
-      "finishedAt": "2026-09-07T19:56:38.132Z",
+      "startedAt": "2026-09-07T20:19:14.994Z",
+      "finishedAt": "2026-09-07T20:20:17.158Z",
       "exitCode": 0,
       "log": "runtime-proof.log"
     }
