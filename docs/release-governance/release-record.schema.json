@@ -111,7 +111,13 @@
       "properties": {
         "state": { "enum": ["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAILED"] },
         "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "NOT_APPLICABLE" } }, "required": ["state"] },
+          "else": { "properties": { "evidence": { "minItems": 1 } } }
+        }
+      ]
     },
     "buildIdentity": {
       "type": "object",

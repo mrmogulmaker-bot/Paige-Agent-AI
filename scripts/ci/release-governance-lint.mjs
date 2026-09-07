@@ -65,7 +65,7 @@ function requireNonEmptyStrings(value, label, findings, allowEmpty = false) {
 function requireDeliveryState(value, label, findings) {
   requireExactObject(value, ["state", "evidence"], label, findings);
   if (!DELIVERY_STATES.has(value?.state)) findings.push(`${label}.state invalid`);
-  requireNonEmptyStrings(value?.evidence, `${label}.evidence`, findings, true);
+  requireNonEmptyStrings(value?.evidence, `${label}.evidence`, findings, value?.state === "NOT_APPLICABLE");
 }
 
 function validDate(value) {
@@ -105,8 +105,12 @@ export function validateReleaseRecord(record) {
       if (["production", "staged"].includes(build?.release_channel) && build.environment !== "production") findings.push(`${label} production/staged channel requires production environment`);
       if (!validDateTime(build?.deployed_at)) findings.push(`${label}.deployed_at must be an ISO date-time`);
       if (build?.release_channel === "staged") {
-        if (requireExactObject(build?.staged_rollout, STAGED_KEYS, `${label}.staged_rollout`, findings))
+        if (requireExactObject(build?.staged_rollout, STAGED_KEYS, `${label}.staged_rollout`, findings)) {
           for (const field of STAGED_KEYS) if (!nonEmpty(build.staged_rollout[field])) findings.push(`${label}.staged_rollout.${field} missing`);
+          if (/pending/i.test(String(build.staged_rollout.owner_approval_reference || ""))) findings.push(`${label}.staged_rollout.owner_approval_reference must be completed`);
+          if (record.customer_release_identity && build.staged_rollout.owner_approval_reference === record.customer_release_identity.owner_approval_reference)
+            findings.push(`${label}.staged_rollout.owner_approval_reference must be distinct from customer publication approval`);
+        }
       } else if (build?.staged_rollout !== null) findings.push(`${label}.staged_rollout must be null outside the staged channel`);
       for (const field of ["migration_status", "edge_status"]) requireDeliveryState(build?.[field], `${label}.${field}`, findings);
       requireExactObject(build?.checks, ["ci", "security", "production_checks"], `${label}.checks`, findings);
@@ -229,6 +233,9 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects staged build without rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: null }] }, true],
     ["accepts staged build with rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval_reference: "owner-message-456", eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, false],
     ["rejects staged build without rollout approval", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
+    ["rejects pending staged rollout approval", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval_reference: "pending", eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
+    ["rejects staged approval reused for publication", { ...valid, customer_release_identity: { ...valid.customer_release_identity, owner_approval_reference: "owner-message-456" }, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval_reference: "owner-message-456", eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
+    ["rejects applied migration without identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: [] } }] }, true],
     ["rejects schema-forbidden extra property", { ...valid, invented: true }, true],
     ["rejects invalid date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "not-a-date" }] }, true],
     ["rejects normalized invalid calendar date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "2026-02-30T20:00:00Z" }] }, true],
