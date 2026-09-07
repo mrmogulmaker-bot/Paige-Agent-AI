@@ -29,7 +29,7 @@ function loadDocRender() {
   return out;
 }
 
-const { renderDoc, inlineMdToText } = loadDocRender();
+const { renderDoc, inlineMdToText, parseMarkdown, paginateSlideBody } = loadDocRender();
 const dec = (u: Uint8Array) => new TextDecoder().decode(u);
 
 describe("inlineMdToText — flatten markdown to clean text for BINARY renderers (Codex round-6/9)", () => {
@@ -57,6 +57,37 @@ describe("inlineMdToText — flatten markdown to clean text for BINARY renderers
     // the bare `utm_source` / `tenant_id_value` above.
     expect(inlineMdToText("see _tenant_id_ here")).toBe("see tenant_id here");                  // italic around snake_case
     expect(inlineMdToText("the __field_name__ column")).toBe("the field_name column");         // bold around snake_case
+  });
+});
+
+describe("doc-render binary-path helpers (Codex round-12c)", () => {
+  it("parseMarkdown captures a fenced code block as ONE raw paragraph — backticks are not mangled into inline spans", () => {
+    const blocks = parseMarkdown("Intro line.\n\n```ts\nconst a = 1;\nif (a > 0) { a_b(); }\n```\n\nAfter.");
+    const code = blocks.find((b: any) => b.raw === true);
+    expect(code).toBeTruthy();
+    expect(code.type).toBe("paragraph");
+    // the fence content is preserved verbatim (newlines + the intraword `_` in a_b intact), WITHOUT the ``` markers
+    expect(code.text).toBe("const a = 1;\nif (a > 0) { a_b(); }");
+    // surrounding prose stays ordinary (non-raw) paragraphs
+    expect(blocks.some((b: any) => b.type === "paragraph" && !b.raw && b.text === "Intro line.")).toBe(true);
+    expect(blocks.some((b: any) => b.type === "paragraph" && !b.raw && b.text === "After.")).toBe(true);
+  });
+
+  it("parseMarkdown preserves indentation inside a fence and closes on the matching marker", () => {
+    const blocks = parseMarkdown("```\n    indented();\nplain();\n```");
+    const code = blocks.find((b: any) => b.raw === true);
+    expect(code.text).toBe("    indented();\nplain();");   // leading 4 spaces kept
+  });
+
+  it("paginateSlideBody splits a long section, keeps a short one whole, and never drops content", () => {
+    const many = Array.from({ length: 40 }, (_, i) => `Bullet ${i + 1}`);
+    const pages = paginateSlideBody(many);
+    expect(pages.length).toBeGreaterThan(1);                 // 40 short bullets overflow one slide's box
+    expect(pages.flat()).toEqual(many);                      // every line survives, in order
+    expect(paginateSlideBody(["one line"]).length).toBe(1);  // a short section stays one page
+    expect(paginateSlideBody([])).toEqual([[]]);             // empty body → a single (empty) page
+    const long = "x".repeat(500);
+    expect(paginateSlideBody([long]).flat()).toEqual([long]); // one over-budget line still gets its own page
   });
 });
 

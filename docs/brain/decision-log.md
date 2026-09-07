@@ -261,6 +261,22 @@
   must evolve in the SAME commit — a stale security rule teaches the next session the leak, and a stale
   capability label lets a release trust an unproven path. doc-export 25/25, tsc ratchet 13/13, control-chars
   none, §50/§63 clean.
+  **SEVENTEENTH catch — Codex round 12c (review of head `3a71d192`): two P2, both FOLDED (binary-renderer
+  fidelity, §13 garbled-output-as-success).** (E) `renderPptx` appended an entire section to one unbounded
+  `body` rendered into a single fixed 5-inch text box, so a long guide/ebook section overflowed/clipped/shrank
+  while the export reported success; now a pure exported `paginateSlideBody` (estimate-based rendered-line
+  budget) splits an oversized section into continuation slides ("Heading (cont.)") — a single over-budget line
+  still gets its own page, content is never dropped. (F) the binary (pdf/docx/pptx) path ran a fenced code
+  block through `parseMarkdown` → `inlineMdToText`, which joined the fence and mis-parsed two of the three
+  backticks as an inline span (visible double-backtick corruption in the file). Because `parseMarkdown` is now
+  binary-ONLY (md is raw passthrough since L2/F3), a minimal `raw` flag suffices — no cross-renderer code-block
+  feature: `parseMarkdown` recognizes ```` ``` ````/`~~~` fences, captures the code VERBATIM (newlines +
+  indentation), emits `{type:"paragraph", raw:true}`, and the binary prose path renders it WITHOUT
+  `inlineMdToText`. Both `parseMarkdown` and `paginateSlideBody` are now exported and behaviorally unit-tested
+  (the binary RENDER stays PROOF-OWED — the npm libs don't load in the headless transpile port — but the
+  fence-parse + pagination LOGIC is real-tested, not source-grepped). Note: binary-renderer markdown-fidelity
+  is a best-effort convenience on an UNVERIFIED path; md is the fidelity-preserving format. doc-export 28/28,
+  tsc ratchet 13/13, control-chars none, §50/§63 clean.
 
 - **Integration Capability Registry v1.1 — API Expense & Operations Layer + the "M1" disambiguation (2026-09-06, PR #1029, squash `1fee5418`; owner-authorized, incl. a mid-slice M1 terminology ruling).**
   Extended the existing registry JSON (§18, no second registry): an `expense_and_operations` block on **all 20

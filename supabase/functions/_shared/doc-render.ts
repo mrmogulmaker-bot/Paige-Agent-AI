@@ -49,7 +49,9 @@ export interface DocRenderResult {
 // ── Internal normalized block model ────────────────────────────────────────────────────────────────
 type Block =
   | { type: "heading"; text: string; level: number }
-  | { type: "paragraph"; text: string }
+  // `raw` marks a paragraph whose text must NOT be inline-cleaned (a fenced code block from parseMarkdown):
+  // its backticks/`*`/`_` are content, not markup, so the binary path renders it verbatim (Codex round-12c).
+  | { type: "paragraph"; text: string; raw?: boolean }
   | { type: "list"; items: string[]; ordered: boolean }
   | { type: "pagebreak" };
 
@@ -222,7 +224,9 @@ function coerceBlockArray(arr: unknown[], docTitle?: string, flattenInline = tru
       // inline markup to clean text (links kept as `label (url)`), so no raw `**` / `[](…)` leaks into the file.
       for (const blk of parseMarkdown(md)) {
         if (blk.type === "heading") push(inlineMdToText(blk.text), "heading", blk.level);
-        else if (blk.type === "paragraph") push(inlineMdToText(blk.text));
+        // A `raw` (fenced-code) paragraph is pushed VERBATIM — no inlineMdToText, no trim (its indentation is
+        // code), so a ```ts … ``` block is not corrupted into visible double-backticks (Codex round-12c).
+        else if (blk.type === "paragraph") { if (blk.raw) { if (blk.text) out.push({ type: "paragraph", text: blk.text }); } else push(inlineMdToText(blk.text)); }
         else if (blk.type === "list") {
           const items = blk.items.map(inlineMdToText).filter((s) => s.length > 0);
           if (items.length) out.push({ type: "list", items, ordered: blk.ordered });
@@ -345,11 +349,16 @@ function clampLines(n: unknown): number {
 // Minimal, dependency-free markdown/plain parser. Handles: ATX headings (#/##/###), unordered
 // (-/*/+) and ordered (1.) lists, thematic-break as a page break (---/***), blank-line-separated
 // paragraphs. Anything it doesn't recognize becomes paragraph text — never a crash.
-function parseMarkdown(src: string): Block[] {
+export function parseMarkdown(src: string): Block[] {
   const lines = String(src).replace(/\r\n?/g, "\n").split("\n");
   const out: Block[] = [];
   let para: string[] = [];
   let list: { items: string[]; ordered: boolean } | null = null;
+  // Fenced code state. A ```/~~~ fence is captured VERBATIM (its newlines + indentation preserved) and
+  // emitted as a `raw` paragraph, so the binary path renders it without `inlineMdToText` mangling the
+  // triple-backticks into an inline span or eating an intraword `_`/`*` inside the code (Codex round-12c).
+  // The `.md` path never reaches here (prose is raw passthrough); this is the binary (pdf/docx/pptx) fix.
+  let fence: { mark: string; body: string[] } | null = null;
 
   const flushPara = () => { if (para.length) { out.push({ type: "paragraph", text: para.join(" ").trim() }); para = []; } };
   const flushList = () => { if (list && list.items.length) out.push({ type: "list", items: list.items, ordered: list.ordered }); list = null; };
@@ -357,6 +366,16 @@ function parseMarkdown(src: string): Block[] {
 
   for (const line of lines) {
     const s = line.trim();
+    if (fence) {
+      // A line that is ONLY the fence marker (same char, at least as many) closes the block; else it's code.
+      if (new RegExp("^" + fence.mark[0] + "{" + fence.mark.length + ",}$").test(s)) {
+        out.push({ type: "paragraph", text: fence.body.join("\n"), raw: true });
+        fence = null;
+      } else { fence.body.push(line); }   // keep the RAW line — indentation inside code is significant
+      continue;
+    }
+    const open = /^(`{3,}|~{3,})/.exec(s);
+    if (open) { flushAll(); fence = { mark: open[1], body: [] }; continue; }
     if (s === "") { flushAll(); continue; }
     if (/^([-*_])\1{2,}$/.test(s)) { flushAll(); out.push({ type: "pagebreak" }); continue; }
     const h = /^(#{1,6})\s+(.*)$/.exec(s);
@@ -368,6 +387,8 @@ function parseMarkdown(src: string): Block[] {
     flushList();
     para.push(s);
   }
+  // An unclosed fence (no terminating marker) still emits its captured code, never silently dropped.
+  if (fence && fence.body.length) out.push({ type: "paragraph", text: fence.body.join("\n"), raw: true });
   flushAll();
   return out;
 }
@@ -643,6 +664,31 @@ async function renderDocx(title: string | undefined, blocks: Block[], _style: Re
   }
 }
 
+// Split one section's body into slide-sized pages so a long section never overflows a single fixed-height
+// text box (clipped or shrunk to unreadable while the export still reports success — Codex round-12c). The
+// budget is an ESTIMATE (pptxgenjs can't measure text headless): each line costs ceil(len/charsPerLine)
+// wrapped lines, and a page fills up to linesPerSlide. A single over-budget line still gets its own page
+// rather than being dropped. Returns [[]] for an empty body so a heading-only section still renders once.
+export function paginateSlideBody(
+  body: string[],
+  opts?: { charsPerLine?: number; linesPerSlide?: number },
+): string[][] {
+  const cpl = opts?.charsPerLine ?? 90;   // ~8.6in text box at 16pt
+  const lps = opts?.linesPerSlide ?? 15;  // ~5in text box at 16pt
+  const estLines = (t: string) => Math.max(1, Math.ceil((t.length || 1) / cpl));
+  const pages: string[][] = [];
+  let cur: string[] = [];
+  let used = 0;
+  for (const line of body) {
+    const need = estLines(line);
+    if (cur.length && used + need > lps) { pages.push(cur); cur = []; used = 0; }
+    cur.push(line);
+    used += need;
+  }
+  if (cur.length) pages.push(cur);
+  return pages.length ? pages : [[]];
+}
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════
 // PPTX — npm:pptxgenjs. Group blocks into slides (a heading starts a slide; following paragraphs/list
 // items become its body). Written to base64 → Uint8Array.
@@ -685,11 +731,16 @@ async function renderPptx(title: string | undefined, blocks: Block[], _style: Re
       s.addText("Untitled", { x: 0.5, y: 0.4, w: 9, h: 1, fontSize: 28, bold: true });
     }
     for (const sec of slides) {
-      const s = pptx.addSlide();
-      s.addText(sec.heading, { x: 0.5, y: 0.4, w: 9, h: 1, fontSize: 26, bold: true });
-      if (sec.body.length) {
-        s.addText(sec.body.map((t) => ({ text: t, options: { bullet: true } })), { x: 0.7, y: 1.6, w: 8.6, h: 5, fontSize: 16, valign: "top" });
-      }
+      // A long section paginates into continuation slides instead of overflowing one fixed text box; each
+      // continuation repeats the heading with a "(cont.)" marker so the reader keeps the thread (Codex round-12c).
+      const pages = paginateSlideBody(sec.body);
+      pages.forEach((body, i) => {
+        const s = pptx.addSlide();
+        s.addText(i === 0 ? sec.heading : `${sec.heading} (cont.)`, { x: 0.5, y: 0.4, w: 9, h: 1, fontSize: 26, bold: true });
+        if (body.length) {
+          s.addText(body.map((t) => ({ text: t, options: { bullet: true } })), { x: 0.7, y: 1.6, w: 8.6, h: 5, fontSize: 16, valign: "top" });
+        }
+      });
     }
 
     const b64 = await pptx.write({ outputType: "base64" });
