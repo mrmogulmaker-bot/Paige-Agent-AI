@@ -41,7 +41,7 @@ const isUnresolvedEvidence = (value) => {
   const raw = String(value ?? "").trim();
   const prose = raw
     .replace(/https?:\/\/\S+/gi, " ")
-    .replace(/(?:^|[\s;])\S*[\\/]\S+\.[A-Za-z0-9]{1,10}(?:[?#]\S*)?/g, " ")
+    .replace(/(?:^|[\s;])(?:[A-Za-z]:)?[^\s;:]*[\\/]\S+\.[A-Za-z0-9]{1,10}(?:[?#]\S*)?/g, " ")
     .trim();
   if (!prose) return false;
   if (isUnresolvedValue(prose)) return true;
@@ -519,6 +519,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["canonical schema accepts state words inside artifact paths", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["evidence/ui/pending-state.png"], checks: { ...build.checks, ci: { state: "PASS", evidence: ["evidence/ui/pending-state.png"] } } }] }, false],
     ["canonical schema accepts a described artifact containing state words", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["evidence/ui/pending-state.png"], checks: { ...build.checks, ci: { state: "PASS", evidence: ["screenshot: evidence/ui/pending-state.png"] } } }] }, false],
     ["canonical schema rejects unresolved prose beside an artifact path", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["build run"], checks: { ...build.checks, ci: { state: "PASS", evidence: ["proof pending; evidence/ui/pending-state.png"] } } }] }, true],
+    ["canonical schema rejects bare unresolved prose beside a neutral artifact path", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["build run"], checks: { ...build.checks, ci: { state: "PASS", evidence: ["pending; artifacts/ui/foo.png"] } } }] }, true],
+    ["canonical schema rejects unresolved prose fused to an artifact path", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["build run"], checks: { ...build.checks, ci: { state: "PASS", evidence: ["pending:evidence/ui/foo.png"] } } }] }, true],
     ["canonical schema rejects publication placeholders missed by handwritten code", { ...published, scope: ["add link"] }, true],
     ["canonical schema rejects approved records with failed referenced checks", { ...valid, record_state: "APPROVED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, checks: { ...build.checks, security: { state: "FAIL", evidence: ["security run failed"] } } }] }, true],
   ];

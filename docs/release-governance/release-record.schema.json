@@ -395,11 +395,12 @@
         { "$ref": "#/$defs/proofBoundaryString" },
         {
           "anyOf": [
-            { "pattern": "^[ \\t\\r\\n]*(?:(?!\\b([Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])\\b)[\\s\\S])*?(https?://\\S+|\\S*[\\\\/]\\S+\\.[A-Za-z0-9]{1,10}([?#]\\S*)?)[ \\t\\r\\n]*$" },
+            { "pattern": "^[ \\t\\r\\n]*(?:(?!\\b([Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])\\b)[\\s\\S])*?(https?://\\S+|(?:[A-Za-z]:)?[^\\s;:]*[\\\\/]\\S+\\.[A-Za-z0-9]{1,10}([?#]\\S*)?)[ \\t\\r\\n]*$" },
             {
-              "not": {
-                "pattern": "([Pp][Rr][Oo][Oo][Ff]|[Rr][Ee][Ss][Uu][Ll][Tt]|[Ee][Vv][Ii][Dd][Ee][Nn][Cc][Ee]|[Vv][Ee][Rr][Ii][Ff][Ii][Cc][Aa][Tt][Ii][Oo][Nn]|[Cc][Hh][Ee][Cc][Kk]|[Rr][Uu][Nn][Tt][Ii][Mm][Ee]|[Dd][Ee][Cc][Ii][Ss][Ii][Oo][Nn]|[Aa][Pp][Pp][Rr][Oo][Vv][Aa][Ll]).*([Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])|([Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd]).*([Pp][Rr][Oo][Oo][Ff]|[Rr][Ee][Ss][Uu][Ll][Tt]|[Ee][Vv][Ii][Dd][Ee][Nn][Cc][Ee]|[Vv][Ee][Rr][Ii][Ff][Ii][Cc][Aa][Tt][Ii][Oo][Nn]|[Cc][Hh][Ee][Cc][Kk]|[Rr][Uu][Nn][Tt][Ii][Mm][Ee]|[Dd][Ee][Cc][Ii][Ss][Ii][Oo][Nn]|[Aa][Pp][Pp][Rr][Oo][Vv][Aa][Ll])"
-              }
+              "allOf": [
+                { "not": { "pattern": "https?://\\S+|(?:[A-Za-z]:)?[^\\s;:]*[\\\\/]\\S+\\.[A-Za-z0-9]{1,10}([?#]\\S*)?" } },
+                { "not": { "pattern": "([Pp][Rr][Oo][Oo][Ff]|[Rr][Ee][Ss][Uu][Ll][Tt]|[Ee][Vv][Ii][Dd][Ee][Nn][Cc][Ee]|[Vv][Ee][Rr][Ii][Ff][Ii][Cc][Aa][Tt][Ii][Oo][Nn]|[Cc][Hh][Ee][Cc][Kk]|[Rr][Uu][Nn][Tt][Ii][Mm][Ee]|[Dd][Ee][Cc][Ii][Ss][Ii][Oo][Nn]|[Aa][Pp][Pp][Rr][Oo][Vv][Aa][Ll]).*([Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])|([Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd]).*([Pp][Rr][Oo][Oo][Ff]|[Rr][Ee][Ss][Uu][Ll][Tt]|[Ee][Vv][Ii][Dd][Ee][Nn][Cc][Ee]|[Vv][Ee][Rr][Ii][Ff][Ii][Cc][Aa][Tt][Ii][Oo][Nn]|[Cc][Hh][Ee][Cc][Kk]|[Rr][Uu][Nn][Tt][Ii][Mm][Ee]|[Dd][Ee][Cc][Ii][Ss][Ii][Oo][Nn]|[Aa][Pp][Pp][Rr][Oo][Vv][Aa][Ll])" } }
+              ]
             }
           ]
         }

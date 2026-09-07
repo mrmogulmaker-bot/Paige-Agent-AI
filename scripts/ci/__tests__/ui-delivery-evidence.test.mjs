@@ -275,7 +275,7 @@ test("refuses placeholders even when the status word looks valid", () => {
 });
 
 test("rejects unresolved values after PASS", () => {
-  for (const evidence of ["FLOW_BY_FLOW: PASS: pending", "AUTOMATED_EVIDENCE: PASS: none", "AUTOMATED_EVIDENCE: PASS: proof pending", "AUTHENTICATED_RUNTIME: PASS: unknown result", "AUTOMATED_EVIDENCE: PASS: proof pending; evidence/ui/pending-state.png"]) {
+  for (const evidence of ["FLOW_BY_FLOW: PASS: pending", "AUTOMATED_EVIDENCE: PASS: none", "AUTOMATED_EVIDENCE: PASS: proof pending", "AUTHENTICATED_RUNTIME: PASS: unknown result", "AUTOMATED_EVIDENCE: PASS: proof pending; evidence/ui/pending-state.png", "AUTOMATED_EVIDENCE: PASS: pending:evidence/ui/foo.png"]) {
     const [field] = evidence.split(":");
     const result = validateEvidenceText(coreEvidence.replace(new RegExp(`^${field}:.*$`, "m"), evidence), { required: true, solo: false });
     assert.equal(result.ok, false, evidence);
@@ -289,6 +289,13 @@ test("rejects unresolved values after PASS", () => {
 
   const bareUnverified = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", "AUTHENTICATED_RUNTIME: UNVERIFIED: pending"), { required: true, solo: false });
   assert.equal(bareUnverified.ok, false);
+  for (const unresolvedReason of ["proof pending", "unknown result"]) {
+    const unresolvedNonPass = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", `AUTHENTICATED_RUNTIME: UNVERIFIED: ${unresolvedReason}`), { required: true, solo: false });
+    assert.equal(unresolvedNonPass.ok, false, unresolvedReason);
+  }
+
+  const unknownNotApplicable = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", "AUTHENTICATED_RUNTIME: NOT_APPLICABLE: unknown result"), { required: true, solo: false });
+  assert.equal(unknownNotApplicable.ok, false);
 });
 
 test("rejects unresolved tokens in UI applied identifiers", () => {

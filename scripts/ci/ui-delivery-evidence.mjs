@@ -144,7 +144,7 @@ function isEvidenceValue(value) {
   if (!match) return false;
   return match[1].toUpperCase() === "PASS"
     ? !isUnresolvedEvidence(match[2])
-    : !isUnresolvedValue(match[2]);
+    : !isUnresolvedRestatement(match[2]);
 }
 
 function normalizeSentinel(value) {
@@ -169,7 +169,7 @@ function isUnresolvedEvidence(value) {
   const raw = String(value ?? "").trim();
   const prose = raw
     .replace(/https?:\/\/\S+/gi, " ")
-    .replace(/(?:^|[\s;])\S*[\\/]\S+\.[A-Za-z0-9]{1,10}(?:[?#]\S*)?/g, " ")
+    .replace(/(?:^|[\s;])(?:[A-Za-z]:)?[^\s;:]*[\\/]\S+\.[A-Za-z0-9]{1,10}(?:[?#]\S*)?/g, " ")
     .trim();
   if (!prose) return false;
   if (isUnresolvedValue(prose)) return true;
@@ -177,6 +177,21 @@ function isUnresolvedEvidence(value) {
   const subject = "(?:proof|result|evidence|verification|check|runtime|decision|approval)";
   const unresolved = "(?:pending|unknown|proof owed)";
   return new RegExp(`(?:\\b${subject}\\b.*\\b${unresolved}\\b|\\b${unresolved}\\b.*\\b${subject}\\b)`).test(normalized);
+}
+
+function isUnresolvedRestatement(value) {
+  if (isUnresolvedValue(value)) return true;
+  const normalized = normalizeSentinel(value);
+  const subject = "(?:proof|result|evidence|verification|check|runtime|decision|approval)";
+  const unresolved = "(?:pending|unknown|proof owed)";
+  const pair = new RegExp(`(?:\\b${subject}\\b.*\\b${unresolved}\\b|\\b${unresolved}\\b.*\\b${subject}\\b)`);
+  if (!pair.test(normalized)) return false;
+  const remainder = normalized
+    .replace(/\b(?:proof|result|evidence|verification|check|runtime|decision|approval|pending|unknown|owed)\b/g, " ")
+    .replace(/\b(?:for|the|a|an|of|to|in|on|and|or|is|are|was|were)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return remainder.split(" ").filter(Boolean).length < 2;
 }
 
 function lacksDeploymentIdentity(value) {
