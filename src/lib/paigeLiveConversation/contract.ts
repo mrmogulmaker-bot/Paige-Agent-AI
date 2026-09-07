@@ -50,12 +50,70 @@ export type LiveConversationCard =
         receiptRef?: string;
         railEvidenceRef?: string;
         scopeSummary?: string;
+        /** Exact server-issued confirmation identities for this displayed action. */
+        confirmationFingerprints?: ReadonlyArray<string>;
       }>;
     })
   | (BaseCard & {
       kind: "recap";
       points: ReadonlyArray<Readonly<{ id: string; text: string; ownerConfirmed: boolean }>>;
     });
+
+const CARD_LIMITS = { id: 128, title: 240, body: 4000, label: 500, ref: 512 } as const;
+const stringWithin = (value: unknown, max: number, required = true): value is string =>
+  typeof value === "string" && value.length <= max && (!required || value.trim().length > 0);
+const optionalString = (value: unknown, max: number) => value === undefined || stringWithin(value, max, false);
+const availabilityValues = new Set<TruthfulAvailability>(["LIVE", "PARTIAL", "UNAVAILABLE", "PROOF OWED"]);
+
+/** Runtime fail-closed boundary for presentation frames emitted by Paige. */
+export function parseLiveConversationCard(value: unknown): LiveConversationCard | null {
+  if (!value || typeof value !== "object") return null;
+  const card = value as Record<string, unknown>;
+  const source = card.source as Record<string, unknown> | undefined;
+  if (!stringWithin(card.id, CARD_LIMITS.id) || !stringWithin(card.title, CARD_LIMITS.title)
+    || !optionalString(card.body, CARD_LIMITS.body) || !source
+    || !availabilityValues.has(source.availability as TruthfulAvailability)
+    || !optionalString(source.canonicalRef, CARD_LIMITS.ref)
+    || !optionalString(source.provenanceLabel, CARD_LIMITS.label)) return null;
+  const base = card as unknown as LiveConversationCard;
+  switch (card.kind) {
+    case "question":
+      return (card.answerMode === undefined || card.answerMode === "spoken-or-text" || card.answerMode === "selection")
+        && optionalString(card.placeholder, CARD_LIMITS.label) ? base : null;
+    case "choice": {
+      const choices = card.choices;
+      if (!Array.isArray(choices) || choices.length < 2 || choices.length > 4) return null;
+      return choices.every((choice) => choice && typeof choice === "object"
+        && stringWithin((choice as Record<string, unknown>).id, CARD_LIMITS.id)
+        && stringWithin((choice as Record<string, unknown>).label, CARD_LIMITS.label)) ? base : null;
+    }
+    case "plan":
+      return new Set(["strategic-play", "mission", "campaign-brief", "canonical-plan"]).has(String(card.recordType))
+        && optionalString(card.statusLabel, CARD_LIMITS.label) ? base : null;
+    case "evidence-result":
+      return optionalString(card.receiptRef, CARD_LIMITS.ref) && optionalString(card.resultLabel, CARD_LIMITS.label) ? base : null;
+    case "governed-action": {
+      const action = card.action as Record<string, unknown> | undefined;
+      const statuses = new Set(["unavailable", "denied", "confirmation-required", "authorized", "executing", "verified", "failed"]);
+      if (!action || !stringWithin(action.toolName, CARD_LIMITS.label) || !statuses.has(String(action.authorityStatus))
+        || !optionalString(action.receiptRef, CARD_LIMITS.ref) || !optionalString(action.railEvidenceRef, CARD_LIMITS.ref)
+        || !optionalString(action.scopeSummary, CARD_LIMITS.body)) return null;
+      const fingerprints = action.confirmationFingerprints;
+      return (fingerprints === undefined || (Array.isArray(fingerprints) && fingerprints.length > 0 && fingerprints.length <= 20
+        && fingerprints.every((fingerprint) => stringWithin(fingerprint, CARD_LIMITS.ref)))) ? base : null;
+    }
+    case "recap": {
+      const points = card.points;
+      if (!Array.isArray(points) || points.length < 1 || points.length > 20) return null;
+      return points.every((point) => point && typeof point === "object"
+        && stringWithin((point as Record<string, unknown>).id, CARD_LIMITS.id)
+        && stringWithin((point as Record<string, unknown>).text, CARD_LIMITS.body)
+        && typeof (point as Record<string, unknown>).ownerConfirmed === "boolean") ? base : null;
+    }
+    default:
+      return null;
+  }
+}
 
 export type LiveConversationPhase =
   | "requesting-permission"

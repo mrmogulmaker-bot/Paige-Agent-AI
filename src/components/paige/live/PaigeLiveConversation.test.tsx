@@ -91,7 +91,7 @@ describe("Paige Live Conversation owner surface", () => {
     await act(async () => clickText("Minimize"));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(trigger);
-    expect(control.transition).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", "minimize");
+    expect(control.transition).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", "minimize", { threadId: "11111111-1111-4111-8111-111111111111", contextEpoch: "tenant-a||" });
   });
 
   it("focuses the portaled stage and lets Escape return to the exact chat control", async () => {
@@ -112,7 +112,7 @@ describe("Paige Live Conversation owner surface", () => {
     await render(null, "tenant-b||");
     await flush();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    expect(control.transition).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", "end");
+    expect(control.transition).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", "end", { threadId: "11111111-1111-4111-8111-111111111111", contextEpoch: "tenant-a||" });
   });
 
   it("renders every supported card type while keeping exactly one current card", async () => {
@@ -142,7 +142,7 @@ describe("Paige Live Conversation owner surface", () => {
     await act(async () => clickText("Second path"));
     expect(onAnswer).toHaveBeenCalledWith("Second path");
 
-    const governed: LiveConversationCard = { id: "g", kind: "governed-action", title: "Move the deal", action: { toolName: "move_deal", authorityStatus: "confirmation-required", scopeSummary: "Deal A to Qualified" }, source: { availability: "LIVE" } };
+    const governed: LiveConversationCard = { id: "g", kind: "governed-action", title: "Move the deal", action: { toolName: "move_deal", authorityStatus: "confirmation-required", scopeSummary: "Deal A to Qualified", confirmationFingerprints: ["fingerprint-1"] }, source: { availability: "LIVE" } };
     await render(governed);
     await act(async () => clickText("Confirm this action"));
     expect(onApprove).toHaveBeenCalledWith(["fingerprint-1"]);
@@ -156,5 +156,45 @@ describe("Paige Live Conversation owner surface", () => {
     expect(document.querySelector(".plc-state")?.textContent).toContain("Microphone permission denied");
     expect(clickText("Retry setup check")).toBeTruthy();
     expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("keeps initial Shift+Tab and complete forward/backward focus movement inside the dialog", async () => {
+    await render();
+    await act(async () => clickText("Talk live with Paige"));
+    await flush();
+    const stage = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(stage).toBe(document.activeElement);
+    await act(async () => stage.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true })));
+    expect(stage.contains(document.activeElement)).toBe(true);
+    const focusable = [...stage.querySelectorAll<HTMLElement>('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')];
+    focusable.at(-1)!.focus();
+    await act(async () => focusable.at(-1)!.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })));
+    expect(document.activeElement).toBe(focusable[0]);
+    focusable[0].focus();
+    await act(async () => focusable[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true })));
+    expect(document.activeElement).toBe(focusable.at(-1));
+    expect(host.hasAttribute("inert")).toBe(true);
+  });
+
+  it("native companion close minimizes instead of reopening the stage over the platform", async () => {
+    let beforeUnload: (() => void) | null = null;
+    const popupDocument = document.implementation.createHTMLDocument("Paige");
+    const popup = {
+      document: popupDocument,
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn((name: string, listener: () => void) => { if (name === "beforeunload") beforeUnload = listener; }),
+    } as unknown as Window;
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    await render();
+    const trigger = clickText("Talk live with Paige");
+    await flush();
+    await act(async () => clickText("Open in window"));
+    expect(popupDocument.querySelector('[role="dialog"]')).not.toBeNull();
+    await act(async () => beforeUnload?.());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(popupDocument.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(control.transition).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", "minimize", { threadId: "11111111-1111-4111-8111-111111111111", contextEpoch: "tenant-a||" });
   });
 });

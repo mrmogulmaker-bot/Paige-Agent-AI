@@ -9,10 +9,12 @@ const sql = readFileSync(
 
 describe("Paige voice profile SQL contract", () => {
   it("keeps the resolver and writer service-only", () => {
-    expect(sql).toMatch(/auth\.role\(\) <> 'service_role'/);
+    expect(sql).toMatch(/auth\.role\(\)\s*<>\s*'service_role'/);
     expect(sql).toContain("'cgSgspJ2msm6clMCkdW9'");
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.set_paige_voice_profile_internal[\s\S]*authenticated/);
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.resolve_paige_voice_profile_internal[\s\S]*authenticated/);
+    expect(sql).toMatch(/REVOKE ALL ON TABLE public\.paige_voice_provider_verifications, public\.paige_voice_profiles, public\.paige_voice_readiness FROM PUBLIC, anon, authenticated/);
+    expect(sql).not.toContain("admin_app_settings");
   });
 
   it("stores only session snapshots and keeps browser roles away from the internal table", () => {
@@ -27,6 +29,21 @@ describe("Paige voice profile SQL contract", () => {
     expect(sql).toContain("PAIGE_VOICE_PROFILE_UNVERIFIED");
     expect(sql).toContain("provider_verification_receipt_ref");
     expect(sql).toContain("interval '5 minutes'");
+    expect(sql).toContain("PAIGE_VOICE_PROFILE_CANONICAL_PROOF_REQUIRED");
+    expect(sql).toContain("PAIGE_VOICE_READINESS_CANONICAL_PROOF_REQUIRED");
+    expect(sql).toContain("PAIGE_VOICE_PROVIDER_PROOF_OWED");
+  });
+
+  it("rejects approved profiles without a current effective time", () => {
+    expect(sql).toContain("PAIGE_VOICE_PROFILE_INVALID_EFFECTIVE_TIME");
+    expect(sql).toMatch(/_approved AND \(_effective_at IS NULL OR _effective_at>now\(\)\+interval '1 minute'\)/);
+    expect(sql).toMatch(/_profile\.effective_at IS NULL OR _profile\.effective_at>_session_started_at/);
+  });
+
+  it("rechecks tenant, thread and epoch for transitions and isolates stale cleanup to end", () => {
+    expect(sql).toContain("_session.tenant_id<>_tenant_id OR _session.thread_id<>_thread_id OR _session.context_epoch<>_context_epoch");
+    expect(sql).toContain("paige_live_session_end_stale_internal");
+    expect(sql).toContain("stale_context_closed");
   });
 
   it("returns no provider identity from the write seam and snapshots a revision for new sessions", () => {

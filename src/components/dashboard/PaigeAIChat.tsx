@@ -36,7 +36,7 @@ import { PaigeArtifactCard, type PaigeArtifact } from "@/components/paige/chat/P
 import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
 import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
 import { PaigeLiveConversation } from "@/components/paige/live/PaigeLiveConversation";
-import type { LiveConversationCard } from "@/lib/paigeLiveConversation/contract";
+import { parseLiveConversationCard, type LiveConversationCard } from "@/lib/paigeLiveConversation/contract";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
@@ -86,17 +86,6 @@ const safeUuid = (): string => {
 };
 const mkMsg = (m: Omit<Message, "id" | "ts"> & Partial<Pick<Message, "id" | "ts">>): Message =>
   ({ ...m, id: m.id ?? safeUuid(), ts: m.ts ?? Date.now() });
-
-const LIVE_CARD_KINDS = new Set(["question", "choice", "plan", "evidence-result", "governed-action", "recap"]);
-const LIVE_AVAILABILITY = new Set(["LIVE", "PARTIAL", "UNAVAILABLE", "PROOF OWED"]);
-function isLiveConversationCard(value: unknown): value is LiveConversationCard {
-  if (!value || typeof value !== "object") return false;
-  const card = value as Record<string, unknown>;
-  const source = card.source as Record<string, unknown> | undefined;
-  return typeof card.id === "string" && typeof card.title === "string" && typeof card.kind === "string"
-    && LIVE_CARD_KINDS.has(card.kind) && !!source && typeof source.availability === "string"
-    && LIVE_AVAILABILITY.has(source.availability);
-}
 
 export type PaigeRequestTicket = {
   generation: number;
@@ -538,6 +527,7 @@ const PaigeAIChatInner = ({
     setIsLoading(false);
     setStreamingThreadId(null);
     setSteps([]);
+    setStreamedLiveCard(null);
     setWritingPhase(false);
     setCompacting(null);
     setCancelled(false);
@@ -801,8 +791,8 @@ const PaigeAIChatInner = ({
     setCancelled(false);
     setSteps([]); // fresh "watch her work" trace per turn
     setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
-      setCompacting(null); // #12 — clear any prior turn's compacting card
-      setStreamedLiveCard(null);
+    setCompacting(null); // #12 — clear any prior turn's compacting card
+    setStreamedLiveCard(null);
     const timeoutId = soloTenantSafety ? window.setTimeout(() => {
       if (!ticketAccepted(requestTicket)) return;
       requestFenceRef.current.invalidate();
@@ -976,8 +966,9 @@ const PaigeAIChatInner = ({
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
               continue;
             }
-            if (isLiveConversationCard(parsed.paige_live_card)) {
-              setStreamedLiveCard(parsed.paige_live_card);
+            const liveCard = parseLiveConversationCard(parsed.paige_live_card);
+            if (liveCard) {
+              setStreamedLiveCard(liveCard);
               continue;
             }
             // #11 — the server confirmed the transition into the reply. A lightweight signal; the
@@ -1354,15 +1345,22 @@ const PaigeAIChatInner = ({
       toolName: liveConfirmation.map((item) => item.tool).join(", "),
       authorityStatus: "confirmation-required",
       scopeSummary: liveConfirmation.map((item) => item.summary).join("; "),
+      confirmationFingerprints: liveConfirmationFingerprints,
     },
   } : latestArtifact ? {
     id: `result-${latestArtifact.id}`,
     kind: "evidence-result",
     title: latestArtifact.title || "Paige result",
     body: `A ${latestArtifact.artifactType} Paige created in this conversation is ready to review in chat.`,
-    source: { availability: "LIVE", canonicalRef: latestArtifact.id, provenanceLabel: "Paige canonical artifact" },
-    resultLabel: "Verified persisted result",
+    source: { availability: "PARTIAL", canonicalRef: latestArtifact.id, provenanceLabel: "Paige conversation artifact" },
+    resultLabel: "Ready to review in this conversation",
   } : null);
+  const displayedConfirmationFingerprints = activeLiveCard?.kind === "governed-action"
+    && activeLiveCard.action.authorityStatus === "confirmation-required"
+    && activeLiveCard.action.confirmationFingerprints?.length === liveConfirmationFingerprints.length
+    && activeLiveCard.action.confirmationFingerprints.every((fingerprint, index) => fingerprint === liveConfirmationFingerprints[index])
+    ? [...liveConfirmationFingerprints]
+    : [];
 
   const ensureLiveThread = useCallback(async () => {
     if (activeThreadId) return activeThreadId;
@@ -1382,7 +1380,7 @@ const PaigeAIChatInner = ({
       activeCard={activeLiveCard}
       working={isLoading}
       workingLabel={steps.at(-1)?.label ?? (writingPhase ? "Preparing your response" : null)}
-      confirmationFingerprints={liveConfirmationFingerprints}
+      confirmationFingerprints={displayedConfirmationFingerprints}
       onAnswer={(answer) => void handleSend(answer)}
       onApprove={(fingerprints) => void handleSend("Approved — run it.", fingerprints)}
       onDecline={(fingerprints) => void handleSend("Hold off — skip that one.", undefined, fingerprints)}

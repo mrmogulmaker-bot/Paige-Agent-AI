@@ -23,6 +23,8 @@ const requestSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("transition"),
     session_id: z.string().uuid(),
+    thread_id: z.string().uuid(),
+    context_epoch: z.string().min(1).max(512),
     transition: z.enum(["hold", "resume", "minimize", "restore", "retry", "end"]),
   }),
 ]);
@@ -44,26 +46,23 @@ serve(async (req: Request) => {
   if (!parsed.success) return json({ code: "invalid_request" }, 400);
   const admin = createClient(supabaseUrl, serviceKey);
 
-  if (parsed.data.action === "transition") {
-    const { data, error } = await admin.rpc("paige_live_session_transition_internal", {
+  const endStaleSession = async () => {
+    if (parsed.data.action !== "transition" || parsed.data.transition !== "end") return null;
+    const { data, error } = await admin.rpc("paige_live_session_end_stale_internal", {
       _actor_user_id: user.id,
       _session_id: parsed.data.session_id,
-      _transition: parsed.data.transition,
     });
-    if (error) {
-      console.error("[paige-live-session] transition refused", { code: error.code });
-      return json({ code: "session_transition_refused" }, error.code === "42501" ? 403 : 409);
-    }
+    if (error) return json({ code: "session_transition_refused" }, error.code === "42501" ? 403 : 409);
     return json(data);
-  }
+  };
 
-  // Resolve both the active tenant and thread on the caller's own JWT. A tenant in the request is
-  // never accepted. The epoch can only make the request fail; it cannot select a different scope.
+  // Resolve active tenant and thread for every start and transition. Request scope can only make
+  // the call fail; it never selects a tenant. Only explicit end may clean up a stale session.
   const { data: tenantValue, error: tenantError } = await asCaller.rpc("current_user_tenant_id");
-  if (tenantError || !tenantValue) return json({ code: "workspace_unresolved" }, 409);
+  if (tenantError || !tenantValue) return (await endStaleSession()) ?? json({ code: "workspace_unresolved" }, 409);
   const tenantId = String(tenantValue);
   const epochTenant = parsed.data.context_epoch.split("|", 1)[0];
-  if (epochTenant !== tenantId) return json({ code: "stale_context" }, 409);
+  if (epochTenant !== tenantId) return (await endStaleSession()) ?? json({ code: "stale_context" }, 409);
 
   const { data: thread, error: threadError } = await asCaller
     .from("paige_chat_threads")
@@ -76,7 +75,23 @@ serve(async (req: Request) => {
     console.error("[paige-live-session] thread scope read failed", { code: threadError.code });
     return json({ code: "workspace_unresolved" }, 500);
   }
-  if (!thread) return json({ code: "thread_scope_mismatch" }, 403);
+  if (!thread) return (await endStaleSession()) ?? json({ code: "thread_scope_mismatch" }, 403);
+
+  if (parsed.data.action === "transition") {
+    const { data, error } = await admin.rpc("paige_live_session_transition_internal", {
+      _actor_user_id: user.id,
+      _tenant_id: tenantId,
+      _thread_id: parsed.data.thread_id,
+      _context_epoch: parsed.data.context_epoch,
+      _session_id: parsed.data.session_id,
+      _transition: parsed.data.transition,
+    });
+    if (error) {
+      console.error("[paige-live-session] transition refused", { code: error.code });
+      return json({ code: "session_transition_refused" }, error.code === "42501" ? 403 : 409);
+    }
+    return json(data);
+  }
 
   const { data, error } = await admin.rpc("paige_live_session_start_internal", {
     _actor_user_id: user.id,

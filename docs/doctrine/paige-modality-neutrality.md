@@ -60,8 +60,8 @@ authorization validation, without a code deployment. The change applies to the n
 An active session keeps the immutable profile revision it started with. A display name is never
 identity. A missing, deleted, unauthorized, or unavailable provider reference fails closed unless a
 separately approved fallback profile also passes current validation. Every speech policy declares
-whether request-level Paige settings or provider-dashboard settings are authoritative, because an
-explicit request override can supersede dashboard tuning.
+whether Paige's server-side profile tuning or provider-dashboard tuning is authoritative. Customer
+requests never carry voice tuning and can never override either source.
 
 ## Acceptance criteria for every future Paige surface
 

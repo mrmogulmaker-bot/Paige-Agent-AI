@@ -25,6 +25,8 @@ const harness = vi.hoisted(() => ({
   // with no saved thread there is nothing to auto-resume, so the defect cannot fire.
   threads: [] as Array<{ id: string; title: string; updated_at: string }>,
   loadTurns: vi.fn(async (_id: string): Promise<Array<{ role: string; content: string }>> => []),
+  liveCard: null as null | { id: string; title: string },
+  liveFingerprints: [] as string[],
 }));
 
 vi.mock("@tanstack/react-query", () => ({ useQuery: () => ({ data: null }) }));
@@ -51,6 +53,13 @@ vi.mock("@/hooks/usePaigeThreads", () => ({
     loadTurns: harness.loadTurns, ensureThread: vi.fn(async () => "thread-a"),
     onTurnPersisted: vi.fn(), renameThread: vi.fn(), archiveThread: vi.fn(), deleteThread: vi.fn(),
   }),
+}));
+vi.mock("@/components/paige/live/PaigeLiveConversation", () => ({
+  PaigeLiveConversation: (props: { activeCard: null | { id: string; title: string }; confirmationFingerprints: string[] }) => {
+    harness.liveCard = props.activeCard;
+    harness.liveFingerprints = props.confirmationFingerprints;
+    return <button type="button">Talk live with Paige</button>;
+  },
 }));
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -108,6 +117,32 @@ const mount = async (props: Record<string, unknown>) => {
 };
 
 describe("PAIGE chat — a client switch ends the conversation", () => {
+  it("clears the prior context card and never binds a mismatched action confirmation", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => sseResponse([
+      `data: ${JSON.stringify({ paige_confirm: { tool: "move_deal", summary: "Move Deal A", fingerprint: "canonical-fingerprint" } })}\n\n`,
+      `data: ${JSON.stringify({ paige_live_card: { id: "stale-action", kind: "governed-action", title: "Move Deal B", source: { availability: "LIVE" }, action: { toolName: "move_deal", authorityStatus: "confirmation-required", confirmationFingerprints: ["different-fingerprint"] } } })}\n\n`,
+      "data: [DONE]\n\n",
+    ])));
+    const { host, root } = await mount({ soloTenantSafety: true, clientId: "client-a" });
+    const textarea = host.querySelector("textarea")!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!;
+      setter.call(textarea, "move this deal");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const send = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => /send/i.test(button.getAttribute("aria-label") ?? ""))!;
+    await act(async () => { send.click(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(harness.liveCard?.title).toBe("Move Deal B");
+    expect(harness.liveFingerprints).toEqual([]);
+
+    await act(async () => { root.render(<PaigeAIChat hideHeader fill enableHistory soloTenantSafety clientId="client-b" />); await Promise.resolve(); });
+    expect(harness.liveCard).toBeNull();
+    expect(harness.liveFingerprints).toEqual([]);
+    await act(async () => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  });
+
   it("clears the transcript when the focused client changes", async () => {
     const fetchMock = vi.fn(async () =>
       sseResponse([`data: ${JSON.stringify({ choices: [{ delta: { content: "Client A private answer" } }] })}\n\n`, "data: [DONE]\n\n"]),

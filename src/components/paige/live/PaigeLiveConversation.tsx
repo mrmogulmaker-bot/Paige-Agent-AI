@@ -101,6 +101,8 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   const triggerRef = useRef<HTMLButtonElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const stageWindowRef = useRef<Window | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const sessionScopeRef = useRef<{ threadId: string; contextEpoch: string } | null>(null);
   const previousEpochRef = useRef(contextEpoch);
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<LiveSurfaceState>("checking");
@@ -111,8 +113,13 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   const [portalDocument, setPortalDocument] = useState<Document | null>(null);
   const [announcement, setAnnouncement] = useState("");
 
+  const transitionCurrent = useCallback((transition: "hold" | "resume" | "minimize" | "restore" | "retry" | "end") => {
+    const scope = sessionScopeRef.current;
+    if (sessionIdRef.current && scope) void transitionPaigeLiveConversation(sessionIdRef.current, transition, scope).catch(() => undefined);
+  }, []);
+
   const closeStage = useCallback((kind: "minimize" | "end") => {
-    if (sessionId) void transitionPaigeLiveConversation(sessionId, kind).catch(() => undefined);
+    transitionCurrent(kind);
     const child = stageWindowRef.current;
     stageWindowRef.current = null;
     if (child && !child.closed) child.close();
@@ -120,7 +127,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     setPortalDocument(null);
     setAnnouncement(kind === "end" ? "Live Conversation ended. The Paige chat is unchanged." : "Live Conversation minimized. Returned to the same Paige conversation.");
     requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
-  }, [sessionId]);
+  }, [transitionCurrent]);
 
   useEffect(() => {
     if (!open) return;
@@ -131,6 +138,20 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   useEffect(() => {
     if (!open || !portalDocument) return;
     requestAnimationFrame(() => stageRef.current?.focus({ preventScroll: true }));
+  }, [open, portalDocument]);
+
+  useEffect(() => {
+    if (!open || !portalDocument || !stageRef.current) return;
+    const stageElement = stageRef.current;
+    const siblings = Array.from(portalDocument.body.children).filter((node): node is HTMLElement => node instanceof HTMLElement && node !== stageElement);
+    const previous = siblings.map((node) => ({ node, inert: node.hasAttribute("inert"), ariaHidden: node.getAttribute("aria-hidden") }));
+    for (const { node } of previous) { node.setAttribute("inert", ""); node.setAttribute("aria-hidden", "true"); }
+    return () => {
+      for (const item of previous) {
+        if (!item.inert) item.node.removeAttribute("inert");
+        if (item.ariaHidden === null) item.node.removeAttribute("aria-hidden"); else item.node.setAttribute("aria-hidden", item.ariaHidden);
+      }
+    };
   }, [open, portalDocument]);
 
   useEffect(() => {
@@ -151,9 +172,11 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     setExplanation("Paige is checking whether live audio is authorized for this workspace.");
     try {
       const resolvedThread = threadId ?? await ensureThread();
+      sessionScopeRef.current = { threadId: resolvedThread, contextEpoch };
       const ownerWindow = triggerRef.current?.ownerDocument.defaultView;
       const entryMode: PaigeLiveEntryMode = ownerWindow && ownerWindow !== window ? "existing-popout" : "embedded";
       const result = await startPaigeLiveConversation({ threadId: resolvedThread, contextEpoch, entryMode });
+      sessionIdRef.current = result.sessionId;
       setSessionId(result.sessionId);
       setAvailability(result.availability);
       setExplanation(result.explanation);
@@ -169,7 +192,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   };
 
   const retry = async () => {
-    if (sessionId) await transitionPaigeLiveConversation(sessionId, "retry").catch(() => undefined);
+    transitionCurrent("retry");
     await begin();
   };
 
@@ -177,7 +200,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     const next = state === "held" ? "unavailable" : "held";
     setState(next);
     setAnnouncement(next === "held" ? "Live Conversation is on hold." : "Live Conversation resumed. Audio remains unavailable until setup is verified.");
-    if (sessionId) void transitionPaigeLiveConversation(sessionId, next === "held" ? "hold" : "resume").catch(() => undefined);
+    transitionCurrent(next === "held" ? "hold" : "resume");
   };
 
   const openInWindow = () => {
@@ -200,8 +223,11 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     child.addEventListener("beforeunload", () => {
       if (stageWindowRef.current !== child) return;
       stageWindowRef.current = null;
-      setPortalDocument(document);
-      requestAnimationFrame(() => stageRef.current?.focus());
+      transitionCurrent("minimize");
+      setOpen(false);
+      setPortalDocument(null);
+      setAnnouncement("Live Conversation closed. Returned to the same Paige conversation.");
+      requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
     }, { once: true });
     setPortalDocument(child.document);
     setAnnouncement("Live Conversation moved to its companion window. Your platform page remains behind it.");
@@ -215,8 +241,9 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
     const active = portalDocument?.activeElement;
-    if (event.shiftKey && active === first) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
+    const inside = !!active && stageRef.current?.contains(active);
+    if (event.shiftKey && (!inside || active === stageRef.current || active === first)) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && (!inside || active === stageRef.current || active === last)) { event.preventDefault(); first.focus(); }
   };
 
   const lastTurns = useMemo(() => transcript.filter((turn) => turn.content.trim()).slice(-8), [transcript]);

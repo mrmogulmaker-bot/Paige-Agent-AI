@@ -41,6 +41,11 @@ Brain, Mind, or Memory facts.
   approved service-side Paige Voice Profile. Literal provider voice defaults and tenant playbook
   voice settings are retired. A separately approved fallback is a profile revision, never an
   implicit router attempt.
+- Profile, readiness, and independent provider-verification records use dedicated service-only
+  relations; browser roles have no table privileges or RLS policy. The platform-owner activation
+  endpoint consumes one matching fresh canonical verification record and returns no provider identity.
+- Studio narration's former request-selected provider route now fails closed as `UNAVAILABLE` until
+  it is attached to this same profile/readiness resolver.
 
 ## Provider boundary and exact enablement gate
 

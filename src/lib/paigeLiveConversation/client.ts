@@ -51,6 +51,6 @@ export async function startPaigeLiveConversation(input: Readonly<{
   };
 }
 
-export async function transitionPaigeLiveConversation(sessionId: string, transition: PaigeLiveTransition): Promise<void> {
-  await callControlPlane({ action: "transition", session_id: sessionId, transition });
+export async function transitionPaigeLiveConversation(sessionId: string, transition: PaigeLiveTransition, scope: Readonly<{ threadId: string; contextEpoch: string }>): Promise<void> {
+  await callControlPlane({ action: "transition", session_id: sessionId, transition, thread_id: scope.threadId, context_epoch: scope.contextEpoch });
 }

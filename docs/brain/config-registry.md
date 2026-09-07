@@ -313,7 +313,7 @@ the new shared TTS path. Secret values were not inspected or tested in this deli
 |---|---|---|
 | Paige message playback | `paige-tts` → service-only profile resolver → provider-neutral router | Implemented; authenticated runtime proof owed |
 | Paige Live Conversation | immutable profile revision in `paige_live_sessions`; provider transport disabled | UI/control plane implemented; realtime audio `PROOF OWED` |
-| Studio voiceover | requires an explicit server-supplied provider reference; no literal fallback | Separate Studio lane; no customer Paige-profile override |
+| Studio voiceover | request-selected provider voice removed; model-router fails closed | `UNAVAILABLE` until this lane uses the same Paige Voice Profile/readiness resolver |
 | Hosted ElevenLabs agent | none | `UNAVAILABLE` and intentionally outside Paige ownership |
 
 **Voice feature-flag / cost secret NAMES** (✅ grep): `VOICE_COPILOT_ENABLED`,

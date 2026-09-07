@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createInitialLiveConversationState,
   reduceLiveConversation,
+  parseLiveConversationCard,
   resolveSpokenCardIntent,
   type LiveConversationCard,
 } from "./contract";
@@ -142,5 +143,13 @@ describe("Paige Live Conversation control contract", () => {
     expect(state.phase).toBe("connecting");
     state = reduceLiveConversation(state, { type: "end" });
     expect(state.phase).toBe("ended");
+  });
+
+  it("rejects malformed or oversized live-card frames without producing a renderable card", () => {
+    expect(parseLiveConversationCard({ id: "bad", kind: "choice", title: "Missing choices", source: { availability: "LIVE" } })).toBeNull();
+    expect(parseLiveConversationCard({ id: "bad", kind: "recap", title: "Missing points", source: { availability: "LIVE" } })).toBeNull();
+    expect(parseLiveConversationCard({ id: "bad", kind: "governed-action", title: "Missing action", source: { availability: "LIVE" } })).toBeNull();
+    expect(parseLiveConversationCard({ id: "bad", kind: "question", title: "x".repeat(241), source: { availability: "LIVE" } })).toBeNull();
+    expect(parseLiveConversationCard(choiceCard)).toEqual(choiceCard);
   });
 });
