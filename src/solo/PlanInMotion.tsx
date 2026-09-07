@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Archive, Check, CirclePause, Flag, Info, Pencil, Play, RefreshCw, Sparkles, SquareCheck, X } from "lucide-react";
 import type { BusinessMissionDetail, MissionBriefInput, MissionOutcome, MissionState } from "@/types/businessMission";
-import { setPaigeBusinessPlanScope } from "./paigeClientScope";
+import { setPaigeBusinessPlanScope, setPaigeDiscussionScope } from "./paigeClientScope";
+import { DiscussionNeededCard } from "./DiscussionNeededCard";
 import { clearPaigePublicPresenceScope } from "./paigePublicPresenceScope";
 import { useBusinessGamePlanMissions, type StrategicPlay } from "./data/useBusinessGamePlanMissions";
 
@@ -108,6 +109,13 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
       businessMissionId: play?.id ?? null,
       label: play?.title ?? "Business Game Plan",
     });
+    openPaige?.();
+  };
+
+  const discussWithPaige = (play: BusinessMissionDetail["mission"]) => {
+    if (!workspaceId) return;
+    clearPaigePublicPresenceScope();
+    setPaigeDiscussionScope({ tenantId: workspaceId, surface: "business_game_plan", businessMissionId: play.id, label: play.title });
     openPaige?.();
   };
 
@@ -250,7 +258,7 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
             ) : !selected ? (
               <div className="ov-body">{error ? <div className="sd-errbox"><AlertTriangle /><p>{error}</p></div> : <div className="pim-state" aria-busy="true">Loading the canonical play.</div>}</div>
             ) : (
-              <PlayDetail detail={selected} pending={pending} setPending={setPending} reason={reason} setReason={setReason} outcome={outcome} setOutcome={setOutcome} error={error} busy={busy} onEdit={beginEdit} onPaige={() => planWithPaige(selected.mission)} onTransition={transition} />
+              <PlayDetail detail={selected} pending={pending} setPending={setPending} reason={reason} setReason={setReason} outcome={outcome} setOutcome={setOutcome} error={error} busy={busy} onEdit={beginEdit} onPaige={() => planWithPaige(selected.mission)} onDiscussionPaige={() => discussWithPaige(selected.mission)} onTransition={transition} />
             )}
           </section>
         </div>
@@ -259,9 +267,9 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
   );
 }
 
-function PlayDetail({ detail, pending, setPending, reason, setReason, outcome, setOutcome, error, busy, onEdit, onPaige, onTransition }: {
+function PlayDetail({ detail, pending, setPending, reason, setReason, outcome, setOutcome, error, busy, onEdit, onPaige, onDiscussionPaige, onTransition }: {
   detail: BusinessMissionDetail; pending: PendingAction; setPending: (value: PendingAction) => void; reason: string; setReason: (value: string) => void;
-  outcome: MissionOutcome; setOutcome: (value: MissionOutcome) => void; error: string | null; busy: boolean; onEdit: () => void; onPaige: () => void; onTransition: (state: MissionState) => void;
+  outcome: MissionOutcome; setOutcome: (value: MissionOutcome) => void; error: string | null; busy: boolean; onEdit: () => void; onPaige: () => void; onDiscussionPaige: () => void; onTransition: (state: MissionState) => void;
 }) {
   const state = detail.mission.state;
   const proposed = state === "proposed";
@@ -269,6 +277,7 @@ function PlayDetail({ detail, pending, setPending, reason, setReason, outcome, s
     <div className="pim-detail-stage">{proposed && detail.mission.request_source === "paige_chat" ? "Awaiting owner approval" : state === "stopped" ? "Archived" : state === "completed" ? "Complete" : state[0].toUpperCase() + state.slice(1)} - revision {detail.mission.revision}</div>
     <Fact label="Desired outcome" value={detail.brief.desired_outcome} /><Fact label="Horizon" value={detail.brief.deadline_on || "Open horizon"} /><Fact label="Starting point" value={detail.brief.baseline} /><Fact label="Approach" value={detail.brief.strategy} /><Fact label="Success criteria" value={detail.brief.success_definition} /><Fact label="Next meaningful step" value={detail.mission.next_action || "Not set"} /><Fact label="Next owner" value="Owner" />
     {state === "blocked" && detail.mission.state_reason && <div className="pim-blocker"><AlertTriangle />{detail.mission.state_reason}</div>}
+    <DiscussionNeededCard missionId={detail.mission.id} onTalkNow={onDiscussionPaige} />
     {(state === "completed" || state === "stopped") && detail.mission.outcome_summary && <Fact label="Recorded outcome" value={detail.mission.outcome_summary} />}
     <div className="ov-note"><Info /><span>Source: canonical Business Game Plan record, revision {detail.mission.revision}. Mind and durable Memory are unavailable for this play.</span></div>
     {pending && <div className="pim-confirm">

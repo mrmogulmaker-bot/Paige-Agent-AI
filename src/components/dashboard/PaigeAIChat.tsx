@@ -130,6 +130,8 @@ export interface PaigeAIChatProps {
   clientId?: string | null;
   /** Selected canonical Business Mission id; server-authorized UI context, never authority. */
   businessMissionId?: string | null;
+  /** Enumerated reason for the selected Mission context; never free prose. */
+  businessMissionAsk?: "plan_with_paige" | "resolve_missing_information" | null;
   /** Prose describing the focused customer — added to the chat POST body. */
   clientContext?: string;
   surfaceContext?: { kind: "public_presence"; step: "confirm_facts" | "verify_website" | "connect_venues" | "compare_facts" | "set_authority" | "maintain_presence"; intendedAction: "review" | "plan" | "prepare_connection" | "resolve_mismatch" };
@@ -182,6 +184,8 @@ export interface PaigeAIChatProps {
    *  that draws its own "new thread" affordance (CD's pack does) calls the real
    *  `onNewChat` instead of needing a second wiring path for one button (§18). */
   conversationHeader?: React.ReactNode | ((api: ChatRailApi) => React.ReactNode);
+  /** Text-only working cards that belong in the scrollable transcript. */
+  transcriptLead?: React.ReactNode | ((api: ChatRailApi) => React.ReactNode);
   /**
    * Which chrome the conversation wears. `app` (default) is byte-for-byte today's
    * surface for every existing mount. `operator` is Claude Design's platform desk:
@@ -236,6 +240,7 @@ export type ChatRailApi = {
   streamingThreadId: string | null;
   onSelect: (id: string) => void;
   onNewChat: () => void;
+  ensureActiveThread: (title?: string) => Promise<string>;
   onRename: (id: string, title: string) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
@@ -248,6 +253,7 @@ const PaigeAIChatInner = ({
   fill = false,
   clientId = null,
   businessMissionId = null,
+  businessMissionAsk = null,
   clientContext,
   surfaceContext,
   onFocusRelease,
@@ -260,6 +266,7 @@ const PaigeAIChatInner = ({
   platform = false,
   renderRail,
   conversationHeader,
+  transcriptLead,
   presentation = "app",
   composerFootNote,
   activeThreadId: controlledThreadId,
@@ -378,7 +385,7 @@ const PaigeAIChatInner = ({
   //
   // Surfaces that never focus a client (the operator desk) pass no `clientId`, so their
   // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
-  const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}|${businessMissionId ?? ""}`;
+  const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}|${businessMissionId ?? ""}|${businessMissionAsk ?? ""}`;
   const transcriptContext = [
     platform ? "platform" : soloTenantSafety ? "solo" : presentation,
     scopedUserId ?? "anonymous",
@@ -399,6 +406,7 @@ const PaigeAIChatInner = ({
       },
     });
   }
+
   // The thread a person asked for, parked across the reset their own click causes (#765).
   // Same idiom, and same reason, as the refusal notice below: releasing focus changes the
   // epoch, and the epoch change invalidates the very load the release was made for.
@@ -836,6 +844,7 @@ const PaigeAIChatInner = ({
             ...(clientContext ? { clientContext } : {}),
             ...(surfaceContext ? { surfaceContext } : {}),
             ...(businessMissionId ? { businessMissionId } : {}),
+            ...(businessMissionAsk ? { businessMissionAsk } : {}),
             // The exact calls the person ticked on a confirm card. The gate will only run a call
             // whose fingerprint is here; `confirm:true` on its own no longer opens it.
             ...(approvedFingerprints?.length ? { approvedConfirmations: approvedFingerprints } : {}),
@@ -1335,6 +1344,15 @@ const PaigeAIChatInner = ({
     streamingThreadId,
     onSelect: (id) => void selectThread(id),
     onNewChat: startNewChat,
+    ensureActiveThread: async (title) => {
+      if (activeThreadId) return activeThreadId;
+      const id = await threadsApi.ensureThread(title);
+      setActiveThreadId(id);
+      hydratedFromRef.current = id;
+
+      setMessages([]);
+      return id;
+    },
     onRename: threadsApi.renameThread,
     onArchive: threadsApi.archiveThread,
     onDelete: (id) => {
@@ -1439,6 +1457,7 @@ const PaigeAIChatInner = ({
                 cd ? "px-4 py-3.5 space-y-4" : "p-6 space-y-4",
               )}
             >
+            {typeof transcriptLead === "function" ? transcriptLead(railApi) : transcriptLead}
             {messages.map((message, index) => (
               <div
                 key={message.id}

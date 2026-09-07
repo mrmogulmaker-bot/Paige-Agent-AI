@@ -375,6 +375,7 @@ const messageSchema = z.object({
     intendedAction: z.enum(["review", "plan", "prepare_connection", "resolve_mismatch"]),
   }).optional(),
   businessMissionId: z.string().uuid().nullable().optional(),
+  businessMissionAsk: z.enum(["plan_with_paige", "resolve_missing_information"]).nullable().optional(),
   // Owner "Your Paige" multi-chat: the persisted conversation this turn belongs to.
   // When set, paige-ai-chat persists both turns + rehydrates recall server-side (#94).
   threadId: z.string().uuid().nullable().optional(),
@@ -734,7 +735,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, businessMissionId: payloadBusinessMissionId, threadId: payloadThreadId, clientContext: rawClientContext, surfaceContext, userTime, userTimezone, userTimeFormatted } = validatedData;
+    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, businessMissionId: payloadBusinessMissionId, businessMissionAsk: payloadBusinessMissionAsk, threadId: payloadThreadId, clientContext: rawClientContext, surfaceContext, userTime, userTimezone, userTimeFormatted } = validatedData;
     // canvasArtifact is a CLIENT request field, meaningful ONLY in a server-resolved Studio session.
     // Declared `let` so it can be neutralized for a dedicated (non-Studio) chat once studio_session_id
     // is resolved (Codex P2): a dedicated-chat client must not be able to drive the reuse clamp with a
@@ -1041,7 +1042,7 @@ JSON:`;
       // context with a subject they were never authorized to read. The no-client path (no
       // `clientId` sent at all) is unaffected — that is the caller legitimately summarising
       // their own session, and `clientScopeDenied` is false there.
-      const skipScopedMemoryWrites = clientScopeDenied;
+      const skipScopedMemoryWrites = clientScopeDenied || Boolean(payloadBusinessMissionAsk);
       if (skipScopedMemoryWrites) {
         console.error(
           "[paige] client scope REFUSED — summary generated but NO memory written",
@@ -1589,7 +1590,7 @@ JSON:`;
         // the caller's own id would be safe for confidentiality, but a turn whose scope we just
         // declined should not mutate state on the strength of that turn — and the fallback made
         // the refusal invisible in the write path.
-        if (matched && !clientScopeDenied) {
+        if (matched && !clientScopeDenied && !payloadBusinessMissionAsk) {
           // A refused client writes NOTHING: an unauthorized id here would plant
           // attacker-authored text as a `user_preference`, the type surfaced at the top of
           // the prompt for whoever legitimately reads that client next.
@@ -4331,7 +4332,10 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // it lets a one-field revision preserve every untouched canonical value. No client-supplied
     // tenant, raw transcript truth, Mind projection or Memory record participates.
     let businessMissionContextBlock = "";
-    if (personaCtx.tenant_id && (payloadBusinessMissionId || payloadThreadId) && callerTier !== "client") {
+    if (personaCtx.tenant_id && payloadBusinessMissionAsk === "plan_with_paige" && !payloadBusinessMissionId && callerTier !== "client") {
+      businessMissionContextBlock = "BUSINESS GAME PLAN INTENT: The owner opened Paige without selecting an existing Strategic Play. Help shape one proposed play from current server-resolved business context. Do not infer a current Mission, and use the existing governed business_mission_create tool for any proposed canonical record.";
+      markProtectedLate("business_game_plan_intent");
+    } else if (personaCtx.tenant_id && (payloadBusinessMissionId || (!payloadBusinessMissionAsk && payloadThreadId)) && callerTier !== "client") {
       try {
         const selectedMission = payloadBusinessMissionId
           ? await resolveSelectedBusinessMissionContext({
@@ -4345,7 +4349,12 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
               threadId: payloadThreadId!,
             });
         if (selectedMission.ok && selectedMission.promptBlock) {
-          businessMissionContextBlock = selectedMission.promptBlock;
+          businessMissionContextBlock = selectedMission.promptBlock
+            + (payloadBusinessMissionAsk === "resolve_missing_information"
+              ? "\\nOWNER INTENT: Resolve the first current missing-information decision. Name why it blocks useful planning, ask for the owner decision, and do not infer the answer."
+              : payloadBusinessMissionAsk === "plan_with_paige"
+                ? "\\nOWNER INTENT: Work on this selected Strategic Play. Ground every suggestion in the current canonical revision; use the existing governed Mission tools for any proposed change."
+                : "");
           markProtectedLate("business_mission_context");
         } else if (payloadBusinessMissionId) {
           businessMissionContextBlock = "SELECTED STRATEGIC PLAY UNAVAILABLE: Refuse to describe or change the selected play. Explain that it could not be verified in the active workspace and ask the owner to reopen it from Business Game Plan. Do not infer content from chat history.";

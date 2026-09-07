@@ -61,7 +61,7 @@ function Harness() {
             <Routes>
               <Route
                 path="/solo/:account/*"
-                element={<SoloGamePlanWorkspace openPaige={() => {}} accountContext={{ accountName: "Clearpath Advisory", accountType: "standalone", parentTenantId: null }} workspaceId="11111111-1111-4111-8111-111111111111" />}
+                element={<SoloGamePlanWorkspace openPaige={() => { document.body.dataset.paigeOpened = "true"; }} accountContext={{ accountName: "Clearpath Advisory", accountType: "standalone", parentTenantId: null }} workspaceId="11111111-1111-4111-8111-111111111111" />}
               />
             </Routes>
           </MemoryRouter>

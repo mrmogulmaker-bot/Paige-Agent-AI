@@ -134,12 +134,12 @@ export const SOLO_BRANCHES: Branch[] = [
   {
     slug: "paige", key: "paige", label: "Paige", group: "main",
     // Source: src/solo/SoloPaigeWorkspace.tsx. Solo intentionally exposes the
-    // customer-facing Chat, Knowledge, Helpers, and Capabilities contract only.
+    // customer-facing Chat, Knowledge, and Helpers contract only; skills remain internal architecture.
     subtabs: [
       { slug: "chat", key: "chat", label: "Chat" },
       { slug: "knowledge", key: "knowledge", label: "Knowledge" },
       { slug: "helpers", key: "helpers", label: "Helpers" },
-      { slug: "capabilities", key: "capabilities", label: "Capabilities" },
+
     ],
   },
   // Trust Compass moved INTO Command Center as its third sub-tab (owner-ruled 2026-09-05); it is no
