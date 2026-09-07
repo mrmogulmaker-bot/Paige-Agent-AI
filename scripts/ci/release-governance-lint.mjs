@@ -28,7 +28,7 @@ const DELIVERY_STATES = new Set(["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAI
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
-const STAGED_KEYS = ["eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
+const STAGED_KEYS = ["owner_approval_reference", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
 const NOTE_KEYS = ["customer_outcome", "what_changed", "who_can_use_it", "owner_action", "status", "known_limitations", "safe_next_step", "technical_release_reference", "paige_readable_summary"];
 
 function invokedDirectly() {
@@ -75,7 +75,10 @@ function validDate(value) {
 }
 
 function validDateTime(value) {
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(String(value || "")) && !Number.isNaN(Date.parse(value));
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/.exec(String(value || ""));
+  if (!match || !validDate(match[1])) return false;
+  const [, , hour, minute, second, , offsetHour, offsetMinute] = match;
+  return Number(hour) <= 23 && Number(minute) <= 59 && Number(second) <= 59 && (!offsetHour || (Number(offsetHour) <= 23 && Number(offsetMinute) <= 59));
 }
 
 export function validateReleaseRecord(record) {
@@ -95,8 +98,11 @@ export function validateReleaseRecord(record) {
       requireExactObject(build, BUILD_KEYS, label, findings);
       if (!/^[0-9a-f]{40}$/i.test(String(build?.commit_sha || ""))) findings.push(`${label}.commit_sha must be an exact 40-character SHA`);
       if (!nonEmpty(build?.deployment_id)) findings.push(`${label}.deployment_id missing`);
-      if (!nonEmpty(build?.environment)) findings.push(`${label}.environment missing`);
+      if (!["local", "development", "preview", "production"].includes(build?.environment)) findings.push(`${label}.environment invalid`);
       if (!CHANNELS.has(build?.release_channel)) findings.push(`${label}.release_channel invalid`);
+      if (build?.release_channel === "development" && !["local", "development"].includes(build.environment)) findings.push(`${label} development channel requires local/development environment`);
+      if (build?.release_channel === "preview" && build.environment !== "preview") findings.push(`${label} preview channel requires preview environment`);
+      if (["production", "staged"].includes(build?.release_channel) && build.environment !== "production") findings.push(`${label} production/staged channel requires production environment`);
       if (!validDateTime(build?.deployed_at)) findings.push(`${label}.deployed_at must be an ISO date-time`);
       if (build?.release_channel === "staged") {
         if (requireExactObject(build?.staged_rollout, STAGED_KEYS, `${label}.staged_rollout`, findings))
@@ -144,9 +150,12 @@ export function validateReleaseRecord(record) {
     findings.push(`${record.classification} requires a customer release identity`);
   if (["APPROVED", "PUBLISHED"].includes(record.record_state) && customer !== null) {
     if (/pending/i.test(String(customer?.owner_approval_reference || ""))) findings.push(`${record.record_state} customer release requires a completed owner approval reference`);
-    for (const [index, build] of (record.internal_builds || []).entries())
+    const referenced = new Set(record.whats_new?.technical_release_reference?.build_ids || []);
+    for (const [index, build] of (record.internal_builds || []).entries()) {
+      if (!referenced.has(build?.deployment_id)) continue;
       for (const field of ["ci", "security", "production_checks"])
         if (build?.checks?.[field]?.state !== "PASS") findings.push(`${record.record_state} release requires internal_builds[${index}].checks.${field}.state PASS`);
+    }
   }
   if (record.record_state === "PUBLISHED") {
     if (customer === null) findings.push("PUBLISHED requires a customer release identity");
@@ -218,9 +227,13 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects technical reference to another build", { ...valid, whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "internal_only", build_ids: ["dpl_fake"] } } }, true],
     ["rejects published reference to development when another production build exists", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval_reference: "owner-message-123" }, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "dev_123", environment: "development", release_channel: "development" }], whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "internal_only", build_ids: ["dev_123"] } } }, true],
     ["rejects staged build without rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: null }] }, true],
-    ["accepts staged build with rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, false],
+    ["accepts staged build with rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval_reference: "owner-message-456", eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, false],
+    ["rejects staged build without rollout approval", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
     ["rejects schema-forbidden extra property", { ...valid, invented: true }, true],
     ["rejects invalid date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "not-a-date" }] }, true],
+    ["rejects normalized invalid calendar date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "2026-02-30T20:00:00Z" }] }, true],
+    ["rejects production channel in development environment", { ...valid, internal_builds: [{ ...build, environment: "development" }] }, true],
+    ["accepts unreferenced preview with unverified production check", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval_reference: "owner-message-123" }, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "preview_123", environment: "preview", release_channel: "preview", checks: { ...build.checks, production_checks: { state: "UNVERIFIED", evidence: ["preview only"] } } }] }, false],
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],
   ];
   let bad = 0;
