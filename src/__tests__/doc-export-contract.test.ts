@@ -348,6 +348,17 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(dec(big.bytes)).toContain("0 — 1 — 2");
   });
 
+  it("truncates fractional scale endpoints like the canvas, not rounds them (Codex round-12g)", async () => {
+    // The tool schema accepts any JSON number, so {1.9, 5.9} is reachable. The canvas (DocumentPreview.tsx)
+    // coerces with Math.trunc → a 1–5 scale; the exporter must render the SAME 1–5 scale, never a rounded
+    // 2–6 (which would silently change the worksheet's rating question). Assert the trunc result is present
+    // and the rounded one is absent, in one shot.
+    const frac = await renderDoc({ format: "md", title: "W", content: [{ type: "worksheet-field", field: "scale", label: "Rate it", scaleMin: 1.9, scaleMax: 5.9 }] });
+    const out = dec(frac.bytes);
+    expect(out).toContain("1 — 2 — 3 — 4 — 5");   // trunc(1.9)=1 … trunc(5.9)=5 — matches the canvas
+    expect(out).not.toContain("2 — 3 — 4 — 5 — 6"); // the old Math.round behavior — must be gone
+  });
+
   it("never throws and still produces a file for empty content (title-only)", async () => {
     const r = await renderDoc({ format: "md", title: "Only A Title", content: [] });
     expect(r.ext).toBe("md");

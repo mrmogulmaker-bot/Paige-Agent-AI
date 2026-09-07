@@ -268,9 +268,13 @@ function coerceBlockArray(arr: unknown[], docTitle?: string, flattenInline = tru
         // Clamp the endpoints EXACTLY like the canvas (DocumentPreview.tsx) so a reversed/out-of-range pair
         // (e.g. scaleMin 5, scaleMax 1) still yields an ordered scale with ≥2 ticks instead of an EMPTY one
         // that drops the rating affordance from the exported worksheet (Codex round-12f). `hi` is forced to
-        // at least `lo + 1`, so the loop always emits ≥2 ticks.
+        // at least `lo + 1`, so the loop always emits ≥2 ticks. Coercion mirrors the canvas byte-for-byte —
+        // `Math.trunc(Number(v))` (truncate toward zero), NOT `Math.round`: the tool schema accepts any JSON
+        // number, so a fractional pair like {1.9, 5.9} must render the SAME 1–5 scale on the canvas AND in
+        // every export (round would silently shift it to 2–6 and change the rating question, Codex round-12g).
         const clampInt = (v: unknown, lo: number, hi: number, dflt: number) => {
-          const n = Number.isFinite(v as number) ? Math.round(v as number) : dflt;
+          const n = Math.trunc(Number(v));
+          if (!Number.isFinite(n)) return dflt;
           return Math.min(hi, Math.max(lo, n));
         };
         const lo = clampInt(b.scaleMin, 0, 9, 1);
