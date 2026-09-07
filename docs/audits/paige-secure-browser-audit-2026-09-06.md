@@ -30,14 +30,21 @@ append-only audit rails, SSRF guards, the §10/§68 autonomy substrate). It has 
 credentialed-browser pieces: no owner-assisted sign-in, no MFA handoff, no browser session/cookie
 vault, no in-chat live browser window, no connected-account-via-browser flow, and **no Twin,
 Browserbase, or any managed browser provider actually wired** (Browserbase is an inert, undeployed
-stub; Twin exists only in strategy research).
+stub; neither Twin product is wired — strategy research only, §6.1).
 
-**On the named candidate:** the brief said Twin ships "a per-tenant credential vault … and REST/MCP
-access." Twin's own public docs do **not** confirm that — the raw-credential vault is **"coming
-soon,"** there is **no MCP surface**, and default data residency is **EU (Hetzner)**. Twin **does**
-ship the one distinguishing thing — a turnkey **human-login handoff** (agent stops at the login page,
-the owner types the password + 2FA, hands control back). On today's public evidence **Twin is not
-install-ready**; it is a packaged-experience contender pending vendor confirmations.
+**On the named candidate — "Twin" is TWO different products, and they must not be conflated
+(owner-required correction, dated sources):** **twin.so** is operated by **TWIN LABS SAS** (Paris;
+French reg. 978364222; twin.so/terms upd. 2025-05-09) and its **own** materials advertise a **REST API
+but no MCP** (docs.twin.so/welcome) and **no shipped credential vault** (only a *"coming soon" Password
+Manager* on its web-agent doc → **UNCONFIRMED**); data is **EU**-hosted and SOC 2 is **UNCONFIRMED**.
+The **"credential vault + MCP"** material the owner referenced belongs to a **separate product,
+twin-browser.com ("Twin Browser, the browser layer for AI agents")**, which advertises an
+**encrypted-at-runtime credential vault** and a **31-tool MCP server** as *live* (twin-browser.com/security
++ /mcp, accessed 2026-09-07) — **but its legal operator is not disclosed anywhere** (no entity, /about
+404s) and its **domain was registered only 2026-06-24 with a redacted WHOIS registrant** (who.is), a
+serious due-diligence red flag for a product that would hold tenant credentials, and it is **not**
+attributable to Twin Labs SAS (distinct entities, distinct contact domains, no cross-links either way).
+**Neither product is wired into Paige.** Full disambiguation with citations: §6.1.
 
 **The one decision owed to the owner (a round-table, §00/§4/§69):** *which credential/browser-execution
 model* to adopt for the credentialed modes. The three shipped-provider models in the market are not
@@ -45,18 +52,48 @@ interchangeable, and the choice sets the whole security architecture:
 
 | Model | Who holds the credential | Best-evidence provider |
 |---|---|---|
-| **Owner-direct-login + session persistence** (owner types the password in the provider browser; the platform stores an **opaque session/context reference**, never the password) | **Provider** (session cookie only); the raw password **never transits Paige** | **Browserbase** (Live View + Contexts) — SOC 2 Type II, US-resident, MCP-native; **Twin** (turnkey handoff) pending confirmations |
+| **Owner-direct-login + session persistence** (owner types the password in the provider browser; the platform stores an **opaque session/context reference**, never the password) | **Provider** (session cookie only); the raw password **never transits Paige** | **Browserbase** (Live View + Contexts) — SOC 2 Type II, US-resident, MCP-native; **"Twin"** = two distinct products, both with open questions (§6.1) |
 | **Provider-held raw-credential vault + opaque reference** | **Provider vault** (raw secret, injected at run) | **Anchor OmniConnect** / **Steel** (self-host removes the third party) |
 | **Paige-owned canonical vault** (the July-2026 landscape doc's §9 posture) | **Paige's own Supabase Vault** | self-hosted (`paige-browser` extended) |
 
 **CC's recommendation, framed as evidence (not a decision):** pilot **two tracks, not one blind
 install** — **Browserbase** as the controllable, compliant, US-resident, MCP-native foundation for
 Modes 1–2 (build the handoff + persistence on it, keeping credential custody under Paige, best §9/§34
-fit), with **Anchor OmniConnect or Steel** evaluated specifically for the Mode-3 literal vault. Keep
-**Twin** as the packaged-experience contender **contingent on** it confirming a shipped vault + opaque
-reference, an MCP/robust-REST embed path, US residency, and a real SOC 2 Type II report. Rationale and
+fit), with **Anchor OmniConnect or Steel** evaluated specifically for the Mode-3 literal vault. Treat
+**"Twin"** with care — it is **two distinct products** (§6.1): twin.so lacks MCP and a shipped vault,
+and twin-browser.com claims both but **conceals its legal operator**, so neither is a credential-holding
+candidate until it discloses and passes review. Rationale and
 evidence in §6. **This is a decision the owner makes at the round-table (owner · CC · Claude Design ·
 Cowork · Codex), not a CC pick.**
+
+## 1A. Owner ruling — Phase-0 exit decision (2026-09-07)
+
+The owner reviewed this packet and ruled the round-table direction. The §1 "decision owed" is now
+answered at the **design** level; **provider selection remains gated** on the review below.
+
+- **Custody model — CHOSEN: owner-direct login + provider-held PERSISTENT browser session** (model (i),
+  extended to persistence). The owner enters credentials and completes MFA **directly in the provider's
+  live browser**; **Paige never receives or stores the raw password**. With **explicit owner consent**,
+  the selected provider may **persist the browser session context** so Paige can later reopen the
+  authorized account **under the owner's policy**. Paige stores **only**: an **opaque provider/context
+  reference**, **allowed host + action scope**, **authority status**, **freshness**, **revocation
+  state**, and **receipts** — never credentials, cookies, session tokens, or page content.
+- **Leading Phase-1 candidate — Browserbase, as `PROPOSED` (not selected, not live).** Its official
+  documentation supports live owner login (Live View), persistent authenticated contexts (Contexts —
+  the context id is the opaque reference), and an official MCP server. It stays **`PROPOSED`** until the
+  provider-contract, privacy, data-residency, security, price, and integration review (§6.4) completes
+  and the owner authorizes it.
+- **Twin disambiguation (the required correction, §6.1).** The "vault + MCP" material is
+  **twin-browser.com ("Twin Browser")**, a product **distinct** from **twin.so (TWIN LABS SAS, Paris)**.
+  twin-browser.com's **legal operator is undisclosed** and its **domain is ~10 weeks old** (2026-06-24,
+  redacted WHOIS) — a due-diligence red flag for a credential-holding provider; **not** attributed to
+  Twin Labs SAS.
+- **Still binding:** **no browser provider is wired into Paige today**, and **nothing installs** — no
+  account, credential, crawl, or third-party login — until the Browserbase review completes and the
+  owner authorizes it.
+
+The registry entry (`browserbase` → `PROPOSED`) and the owner-complete secure-browser MVP plan follow
+this record, per the owner's sequence.
 
 ---
 
@@ -71,10 +108,10 @@ absent / not wired) · **PROOF OWED** (in code, authenticated-runtime/prod-liven
 |---|---|---|
 | **Public web research / crawling** | **LIVE / PARTIAL** | `deep_research` chat tool → `paige-deep-research` (real PLAN→SEARCH→READ→GAP→synthesize + anti-fabrication citation gate) and `web_search` → `paige-web-search` (Firecrawl v2) are wired + reachable in chat (`paige-ai-chat/index.ts:5166-5195`, dispatch `:8462-8504`). `fetch-url-content` is SSRF-guarded plain fetch (not a browser). **PARTIAL because:** crawl provider is config-gated on `FIRECRAWL_API_KEY` (prod presence PROOF OWED); the Playwright `browse_public_url` path is flag-gated + has a page-write gap (below). |
 | **In-chat embedded / live browser window** | **UNAVAILABLE** | No VNC/noVNC/live-view/session-viewer embedded in the chat/workspace (whole-repo `iframe\|vnc\|LiveView\|webview\|ws://` sweep). iframe hits are the GrowthBlocks page-builder preview (`src/components/admin/studio/LivePreview.tsx:398`) + Cal.com embeds. The only session-viewer artifact is a Browserbase `replay_url` **string** returned by an unwired stub. |
-| **Twin / twin.so wired** | **UNAVAILABLE** | Zero code/config/registry presence. Every `twin` string in `src/`, `supabase/`, `services/`, `scripts/` is the English word. Twin appears only in `docs/strategy/twin-capabilities-landscape-2026-07-26.md`. |
+| **Twin wired** (twin.so **or** Twin Browser / twin-browser.com) | **UNAVAILABLE (both)** | Zero code/config/registry presence for either. Every `twin` string in `src/`, `supabase/`, `services/`, `scripts/` is the English word. "Twin" appears only in `docs/strategy/twin-capabilities-landscape-2026-07-26.md`; the two are distinct vendors (§6.1). |
 | **Browserbase wired** | **UNAVAILABLE** | `supabase/functions/browser-use/index.ts` is an inert stub ("inert until `BROWSERBASE_API_KEY`+`BROWSERBASE_PROJECT_ID` set"; "edge functions can't import Playwright"). **Not in the 220 deployed functions** (repo dir with no deployed counterpart). Registry: `browserbase` = `UNAVAILABLE`/prohibited. |
 | **Playwright / Chrome** | **PARTIAL (as product substrate) / DEV-only (root)** | Product: `services/paige-browser` (self-hosted warm Chromium Playwright, Fly) — `/self-verify` LIVE-green; `/browse-public-url` PARTIAL. `services/visual-renderer` (Playwright screenshot, §33). Root `package.json:190` `playwright` is a **devDependency** driving `scripts/live-drive/*` (§32 CI harness) — **not product**. |
-| **MCP browser provider** | **UNAVAILABLE** | No MCP browser server wired. (Twin has no MCP surface; Browserbase/Steel/Browserless offer official MCP if adopted.) |
+| **MCP browser provider** | **UNAVAILABLE** | No MCP browser server wired. (twin.so has no MCP; twin-browser.com claims MCP but conceals its operator, §6.1; Browserbase/Steel/Browserless offer official MCP if adopted.) |
 | **Tenant-safe credential / session vault** | **LIVE (API/OAuth tokens) / UNAVAILABLE (browser session/cookie)** | `tenant_mcp_connections` + siblings: tenant-scoped, `FORCE RLS`, `bytea` ciphertext, decryption `service_role`-only via `get_tenant_mcp_secret` (`20261005000000:466`). It is a **connection-token vault, not a browser session/cookie vault** — no place to persist a logged-in third-party browser session. |
 | **Connected-account flow** | **LIVE (MCP/OAuth only)** | `tenant-mcp-connect/index.ts` — OAuth 2.1 + DCR + PKCE, connect/verify/discover/approve/disconnect, tenant from JWT, admin-gated, provider-side revoke on disconnect. Scoped to **Zapier/n8n**, not arbitrary web logins. |
 | **Encrypted storage** | **LIVE (with key-custody caveat)** | pgcrypto `platform_encrypt/decrypt` (`20260702022450:18-51`), key in `public._internal_secrets` **inside the same DB**. `supabase_vault`, `pgcrypto`, `pgsodium`, `pgjwt` all installed. **Caveat:** symmetric-key-in-DB, not KMS/HSM envelope — "encrypted against app-layer read," not HSM-grade key isolation. |
@@ -180,7 +217,7 @@ the owner/Codex may already track some).
 
 | Fact | State | Basis |
 |---|---|---|
-| Twin/twin.so anywhere in code/config/registry | **Absent** | grep + registry read |
+| Twin (twin.so) or Twin Browser (twin-browser.com) in code/config/registry | **Absent (both)** | grep + registry read |
 | Browserbase `browser-use` fn deployed | **No** (undeployed + inert) | `list_edge_functions` diff (220 live) + source |
 | `paige-deep-research`/`web-search`/`paige-web-search`/`fetch-url-content`/`skill-runner` deployed | **Yes** | `list_edge_functions` |
 | `paige_browser_usage` / `browser_use_sessions` tables | **Exist** (0 / 2 rows), RLS on | `list_tables` |
@@ -195,19 +232,50 @@ the owner/Codex may already track some).
 **Do not read this as a CC pick.** Choosing/accepting a provider is a §4/§69 material boundary
 (licence, DPA, new dependency, spend) and a §00 round-table.
 
-### 6.1 The §13 correction on the named candidate (Twin / twin.so)
+### 6.1 The required correction — "Twin" is TWO different products (dated sources; do not conflate)
 
-The brief said Twin ships a per-tenant credential vault + REST/MCP. Twin's **own public docs**:
-- **Raw-credential vault: NOT shipped** — listed as *"Coming soon: Password Manager."* What ships is
-  **session/cookie persistence** + a **live human-login handoff**. ([docs.twin.so/web-agent])
-- **MCP: not found** — Twin exposes a **REST API** (`x-api-key`), no MCP evidence. ([docs.twin.so/rest-api])
-- **Data residency: EU-default** (Hetzner EU hosting/backup/KMS); **US residency UNCONFIRMED**.
-- **SOC 2: claimed; Type II vendor-asserted** (compliance-vendor case study), not an independently
-  posted report — get the actual report + audit period under NDA.
-- **Subprocessors include Anthropic + OpenAI** (LLM inference) — page content routes to LLM providers.
-- Ships today: **direct-login handoff** (agent stops, owner types password + 2FA, hands back),
-  session persistence, **live view**, crawling (incl. login-protected), REST runs/webhooks/schedules.
-- Maturity: founded 2024, €12M raised — **funded but early**; docs thin on credential/security arch.
+The brief named "Twin." There are **two distinct products** under that brand, and the audit must keep
+them apart (owner-required, 2026-09-07). **Neither is wired into Paige** (§2/§5 holds for both).
+
+**A) twin.so — "Twin," operated by TWIN LABS SAS** (Paris; French reg. 978364222; twin.so/terms upd.
+2025-05-09; founders Hugo Mercier / Joao Justi; €12M raised). From its **own** current materials:
+- **MCP: ABSENT.** The advertised programmatic seam is a **REST API**; no MCP (docs.twin.so/welcome,
+  accessed 2026-09-07). (The prior eval's "REST only, no MCP" for twin.so stands.)
+- **Raw-credential vault: UNCONFIRMED.** It appears only as a **"coming soon" Password Manager** on the
+  web-agent doc and is **not surfaced on its current pages**; the only "twin.so has Vaults" statement is
+  a **third-party** Tallyfy page (2026-03-22), not a twin.so-owned source. Product detail sits behind
+  the authenticated app, which was **not** accessed.
+- **Login handoff / session persistence** (agent stops at login, owner enters password + 2FA, hands
+  back) is described on docs.twin.so/web-agent. **Data residency: EU** (Hetzner/AWS/GCP EU;
+  twin.so/subprocessors upd. 2026-06-15; subprocessors include Anthropic + OpenAI for LLM inference).
+  **SOC 2: UNCONFIRMED** (not stated on its site; a compliance-vendor case study asserts it — verify
+  the actual report + period under NDA).
+
+**B) twin-browser.com — "Twin Browser, the browser layer for AI agents" — a SEPARATE product.** This is
+where the **"credential vault + MCP"** material comes from:
+- **Credential vault: advertised LIVE** — *"Store a credential once; reference it by name … it never
+  reaches the model, the logs, the audit record … encrypted at rest, filled only at run time, redacted
+  from every log"* (twin-browser.com/security + homepage, accessed 2026-09-07).
+- **MCP: advertised LIVE** — a **31-tool MCP server over stdio** (`run_goal`, `run_skill` blind-replay,
+  `connect_account`, `observe_page`, `crawl`, …; /mcp states nothing is "coming soon", accessed
+  2026-09-07).
+- **Owner login: a per-run approval + MFA-pause gate** (run stops at the gate for an approval/2FA), **not
+  a hand-over of the owner's logged-in session**; **persistent cross-run sessions are NOT a marketed
+  claim** (UNCONFIRMED).
+- **⚠ DUE-DILIGENCE RED FLAG.** Its **legal operator is not disclosed anywhere** (no entity /
+  registration / jurisdiction; /about returns 404; contacts only @twin-browser.com), and the **domain
+  was registered only 2026-06-24 with a redacted WHOIS registrant** (who.is, accessed 2026-09-07) — a
+  ~10-week-old, operator-concealed vendor that would hold tenant credentials. Isolation model, SOC 2,
+  and residency are all **UNCONFIRMED**.
+
+**Verdict — DISTINCT products; common ownership UNCONFIRMED (leaning independent).** Different disclosed
+entities (one named, one concealed), different contact domains, **no cross-links in either direction**,
+different category, different domain age; twin-browser.com's /compare names Browserbase/Steel/Anchor and
+**never mentions twin.so**. Do **not** attribute twin-browser.com's vault/MCP to Twin Labs SAS, and flag
+that whoever legally operates twin-browser.com is **currently unverifiable**. A vendor that conceals its
+operator is not a candidate to hold tenant credentials until it discloses and passes the §6.4 review.
+Sources: twin.so/terms · twin.so/subprocessors · docs.twin.so/welcome · twin-browser.com/security · /mcp
+· /compare · /terms · /privacy · who.is (twin-browser.com WHOIS) — all accessed 2026-09-07.
 
 ### 6.2 Comparative (public official materials, confidence-marked)
 
@@ -227,12 +295,12 @@ The brief said Twin ships a per-tenant credential vault + REST/MCP. Twin's **own
 
 ### 6.3 Decision matrix (✅ known-yes · ❌ known-no · ❓ unconfirmed)
 
-| Requirement | Twin | Browserbase | Anchor | Steel | Browserless |
+| Requirement | twin.so | Browserbase | Anchor | Steel | Browserless |
 |---|---|---|---|---|---|
 | Owner direct login + MFA, platform never sees password | ✅ turnkey | ✅ Live View (build it) | ✅ (vault; takeover ❓) | ✅ (vault; takeover ❓) | ❌ |
-| Provider vault + opaque reference | ❌ "coming soon" | ⚠️ Contexts (session, not raw-pw) | ✅ OmniConnect | ✅ Credentials API | ❌ |
+| Provider vault + opaque reference | ❓ coming-soon (UNCONFIRMED) | ⚠️ Contexts (session, not raw-pw) | ✅ OmniConnect | ✅ Credentials API | ❌ |
 | Tenant isolation | ⚠️ workspace-level | ✅ 1/VM destroyed | ❓ | ✅ (self-host) | ✅ (ent) |
-| SOC 2 | ⚠️ vendor-asserted | ✅ Type II | ✅ (verify) | ❓ | ✅ Type II |
+| SOC 2 | ❓ unverified | ✅ Type II | ✅ (verify) | ❓ | ✅ Type II |
 | Data residency incl. US | ⚠️ EU-default | ✅ US+EU+Asia | ❓ (BYOC ent) | ✅ (self-host) | ❓ |
 | REST + MCP | REST ✅ / MCP ❌ | ✅ + MCP | REST ✅ / MCP ❌ | ✅ + MCP | ✅ + MCP |
 | Crawling | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -240,7 +308,17 @@ The brief said Twin ships a per-tenant credential vault + REST/MCP. Twin's **own
 | Multi-tenant-embed commercial fit | ❓ per-task/agent | ✅ session-hours | ❓ credits | ❓ | 30-sec units |
 | Maturity | early | production | newer | OSS | most mature |
 
+> **The `twin.so` column is Twin Labs SAS's product.** The **separate** `twin-browser.com` ("Twin
+> Browser") advertises **vault ✅ + 31-tool MCP ✅ + per-run MFA-pause ✅ + crawling ✅** as live — but
+> with **operator undisclosed, domain registered 2026-06-24, and SOC 2 / residency / isolation all
+> UNCONFIRMED** (§6.1). Evaluate it only after it discloses its legal operator; do not merge it into the
+> `twin.so` column.
+
 ### 6.4 Recommendation (evidence, not decision) + the credential-custody choice
+
+**Owner ruling (2026-09-07, see §1A):** custody model (i) — owner-direct login + provider-held
+**persistent** session, opaque reference only — is **chosen**, and **Browserbase** is adopted as the
+**`PROPOSED`** Phase-1 candidate pending the verification list at the end of this section.
 
 No single provider cleanly matches all three modes as literally specified, because Modes 2 and 3 are
 **two different credential architectures** that today live in different products.
@@ -249,9 +327,10 @@ No single provider cleanly matches all three modes as literally specified, becau
   US-resident, MCP-native option; build the handoff (Live View) + persistence (Contexts, the context
   ID is the opaque reference) yourself, keeping credential custody under Paige (best §9/§34 fit).
 - **Mode-3 literal vault:** **Anchor OmniConnect** or **Steel** (self-host removes the third party).
-- **Twin:** the packaged-experience contender **contingent on** confirming (a) a shipped vault +
-  opaque reference, (b) an MCP or robust REST embed path, (c) **US residency**, (d) a real SOC 2 Type
-  II report. **Not install-ready today.**
+- **Twin — two distinct products (§6.1):** **twin.so** (Twin Labs SAS) has REST but **no MCP** and no
+  shipped vault, so it does not meet the vault/MCP requirement; **twin-browser.com** advertises vault +
+  MCP but **conceals its legal operator** and is a **~10-week-old** domain — **not a candidate to hold
+  credentials** until it discloses its operator and passes review. **Neither is install-ready.**
 
 **The owner's actual choice, stated plainly** (a round-table, not a CC decision):
 
@@ -267,8 +346,9 @@ No single provider cleanly matches all three modes as literally specified, becau
    July doc's hybrid (self-host for scheduled/recurring, managed for ad-hoc) remains a live option.
 
 **Facts the owner must verify directly with any chosen vendor before install:** the actual SOC 2 Type
-II report (scope + period); a signed DPA + subprocessor list + change-notification (note Twin routes
-page content to Anthropic + OpenAI); written **US data-residency**; the credential-custody
+II report (scope + period); a signed DPA + subprocessor list + change-notification (note **twin.so**
+routes page content to Anthropic + OpenAI per its subprocessors; **twin-browser.com's** operator and
+subprocessors are undisclosed); written **US data-residency**; the credential-custody
 architecture (key custody, log exclusion, opaque-reference format); and pricing at Paige's projected
 multi-tenant volume.
 

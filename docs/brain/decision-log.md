@@ -1,5 +1,20 @@
 # Decision Log — chronological one-liners
 
+- **Secure Browser / Twin — Phase-0 audit corrected + owner ruling (2026-09-07).** Audit
+  `docs/audits/paige-secure-browser-audit-2026-09-06.md` (PR #1030). **Vendor correction (owner-required):**
+  "Twin" is TWO distinct vendors, do not conflate — `twin.so` (TWIN LABS SAS, Paris; reg. 978364222; REST,
+  **no MCP**, no shipped vault (only a "coming soon" Password Manager → UNCONFIRMED), EU-hosted, SOC 2
+  UNCONFIRMED) vs `twin-browser.com` ("Twin Browser"; advertises a **live credential vault + 31-tool MCP**,
+  BUT **legal operator undisclosed** + **domain registered 2026-06-24** + redacted WHOIS — a due-diligence
+  red flag, **not** attributable to Twin Labs). **Neither is wired into Paige** (dated sources 2026-09-07;
+  §6.1 of the audit). **Owner ruling:** custody model = **owner-direct login + provider-held PERSISTENT
+  browser session** — Paige stores only an opaque provider/context reference + allowed host/action scope +
+  authority/freshness/revocation state + receipts; the raw password never transits Paige. **Browserbase**
+  adopted as the **PROPOSED** Phase-1 candidate (official Live View + persistent Contexts + MCP), pending
+  provider-contract/privacy/residency/security/price/integration review — **not selected, not live; nothing
+  installs until review completes**. Credentialed modes ride §10 (Standing Delegated Authority Contract) +
+  §68. Post-merge follow-ups: `browserbase` registry entry `UNAVAILABLE`→`PROPOSED` (§18, update in place,
+  no duplicate) + the owner-complete secure-browser MVP plan.
 - **RE-2 M1-b — campaign + client/engagement scope caps (2026-09-06, owner-ruled required for M1 completeness).**
   Migration `20270103000000_re2_m1b_scope_caps.sql`. **DARK — ZERO producers**; proven with controlled fixtures
   inside `BEGIN..ROLLBACK`; no real payment/purchase/ad-spend/provider change. Extends the merged PR-1 substrate

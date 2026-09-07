@@ -1877,19 +1877,25 @@ outcomes); Spine/Mind retain only scoped sourced facts (F02 Memory contract — 
 refresh discipline (owner-directed):** at each completed slice this record updates with what shipped, exact
 evidence, what remains UNAVAILABLE/proof-owed, the next owning workstream, and any dependency-order change.
 
-**Secure Browser / Twin Phase-0 audit (2026-09-06) — a DECISION OWED, not a capability.** A read-only
+**Secure Browser / Twin Phase-0 audit (2026-09-06; owner-ruled 2026-09-07) — a DIRECTION, not a live capability.** A read-only
 current-main + deployed-state audit of the "Paige Secure Browser / Twin" direction confirms the state
 above against live code: public research is **LIVE/PARTIAL** (`deep_research`/`web_search` reachable in
 chat; `browse_public_url` skill PARTIAL, flag-gated + G5); the **credentialed** modes (owner-assisted
 sign-in with MFA handoff, connected-accounts) are **UNAVAILABLE**; there is **no in-chat live browser
-window**; and **no browser provider is wired** (Browserbase = inert/undeployed stub; **Twin exists only
-in strategy research** and, per its own public docs, its raw-credential vault is "coming soon" with no
-MCP — **not install-ready**). The full packet — collision map vs the five slices above, current-state
+window**; and **no browser provider is wired** (Browserbase = inert/undeployed stub; **neither "Twin"
+product is wired** — and "Twin" is TWO distinct vendors: **twin.so** (Twin Labs SAS, Paris) has REST /
+no-MCP / no shipped vault, while the "vault + MCP" material belongs to **twin-browser.com**, a *separate*
+product whose **legal operator is undisclosed** and whose **domain is ~10 weeks old** (2026-06-24,
+redacted WHOIS) — a due-diligence red flag, not attributable to Twin Labs). The full packet — collision map vs the five slices above, current-state
 matrix, provider evaluation (Browserbase/Anchor/Steel/Twin), three-mode security architecture, Phase 0–4
 roadmap, and Phase-1 security/flow plan — is `docs/audits/paige-secure-browser-audit-2026-09-06.md`.
-**Phase-0 exit = an owner round-table decision on credential-custody model + build-vs-buy provider
-(§00/§4/§69); nothing installs until then.** The credentialed modes must ride the §10 Standing Delegated
-Authority Contract + §68, not a new autonomy system.
+**Owner ruling (2026-09-07):** custody model = **owner-direct login + provider-held persistent session**
+(Paige stores only an opaque provider/context reference + allowed host/action scope + authority /
+freshness / revocation state + receipts; the raw password never transits Paige); **Browserbase** adopted
+as the **`PROPOSED`** Phase-1 candidate pending the provider-contract / privacy / data-residency /
+security / price / integration review. **No provider is wired and nothing installs until that review
+completes.** The credentialed modes must ride the §10 Standing Delegated Authority Contract + §68, not a
+new autonomy system.
 
 ### Solo n8n connection clarity — historical UI slice, 2026-09-03
 
