@@ -133,9 +133,11 @@ function dismissPaigeSplash() {
   const el = document.getElementById("paige-splash");
   if (!el) return;
   el.classList.add("paige-splash--done");
-  window.setTimeout(() => el.remove(), 700);
+  window.setTimeout(() => {
+    window.dispatchEvent(new Event("paige:boot-splash-unmount"));
+    el.remove();
+  }, 700);
 }
 requestAnimationFrame(() =>
   requestAnimationFrame(() => window.setTimeout(dismissPaigeSplash, 550)),
 );
-
