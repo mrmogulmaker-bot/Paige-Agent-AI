@@ -183,7 +183,7 @@ correct stays a human §5/§39 responsibility.
   is live — and it *refuses* every mutation). LIVE there is a delivery fact, not a Paige-autonomy fact.
 - The communications/scheduling/social/automation providers (Twilio, Google Calendar, Resend, Meta,
   n8n, Zapier) are `PARTIAL` with named gaps; accounting/e-sign (QuickBooks, DocuSign) are
-  `PROOF_OWED`; Microsoft 365 is `DEFERRED`; HubSpot / Vapi / Browserbase are `UNAVAILABLE`; the Vault
+  `PROOF_OWED`; Microsoft 365 is `DEFERRED`; HubSpot / Vapi are `UNAVAILABLE`; Browserbase is `PROPOSED` (owner-ruled 2026-09-07 as the replaceable bootstrap browser-worker runtime for the Paige-owned Secure Browser, behind a provider-neutral internal contract — not selected, not live); the Vault
   OCR/DLP seam is `PROPOSED`.
 - **Coverage is honest, not complete.** The catalogued providers span all six taxonomy groups and all
   six status words. Every other WIRED provider (per master §4) is named in
@@ -230,5 +230,5 @@ provider is connected/available/autonomous because it is listed (R1).
 | Paige MCP door | marketplace/MCP/automation | `LIVE` | read | #47 approval channel; 13 unscoped reads (#46) |
 | n8n | marketplace/MCP/automation | `PARTIAL` | confirm | decideGovernedExecution wiring; first Rail row |
 | Zapier (MCP) | marketplace/MCP/automation | `PARTIAL` | confirm | unify risk gate across regimes |
-| Browserbase | marketplace/MCP/automation | `UNAVAILABLE` | prohibited | sandbox substrate + slice 6 |
+| Browserbase | marketplace/MCP/automation | `PROPOSED` | prohibited | Secure Browser bootstrap browser-**worker** runtime (replaceable, behind a provider-neutral internal contract); provider review |
 | Paige browser + Firecrawl | marketplace/MCP/automation | `PARTIAL` | draft | G5 page-write fence; SSRF reconcile; §32.c drive |

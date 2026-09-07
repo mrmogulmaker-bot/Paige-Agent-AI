@@ -14,7 +14,21 @@
   provider-contract/privacy/residency/security/price/integration review — **not selected, not live; nothing
   installs until review completes**. Credentialed modes ride §10 (Standing Delegated Authority Contract) +
   §68. Post-merge follow-ups: `browserbase` registry entry `UNAVAILABLE`→`PROPOSED` (§18, update in place,
-  no duplicate) + the owner-complete secure-browser MVP plan.
+  no duplicate) + the owner-complete secure-browser MVP plan. **Registry entry LANDED in the audit PR (not
+  deferred):** `browserbase` `UNAVAILABLE`→`PROPOSED` as the REPLACEABLE bootstrap browser-WORKER runtime
+  (§66 same-commit rule, after the Codex peer-gate flagged deferral as contradictory governance state).
+  **Product correction (owner, 2026-09-07):** Paige Secure Browser is PAIGE-OWNED (UI / policy / control
+  plane / tenant isolation / Vault **Connected Accounts** / audit / receipts / reusable skills); Browserbase
+  is a replaceable worker runtime behind a provider-neutral internal Secure Browser contract — no provider
+  branding / API / MCP / data-model in customer UI or core contracts; downloads → Vault quarantine; customer
+  feature is "Paige Secure Browser". **Codex peer-gate (4 P2 findings, all verified against source + fixed
+  in-PR):** (1) `browser_use_sessions` has a LIVE writer (the `browse_public_url` skill path,
+  `skill-interpreter.ts:198-229`) with no `tenant_id` → CURRENT §9 attribution gap, not revival-only; (2)
+  `browser-use` edge fn trusts caller-supplied identity + service-role, needs a JWT-derived tenant/admin
+  gate; (3) `paige-mcp` IS wired to the governed adapter (`decideMcpToolCall`/`governMcpToolCall`,
+  `paige-mcp/index.ts:5388/5421/5782`) so the "2026-09-05 unwired/tier+scope-only" claim was stale; (4) the
+  registry same-commit rule. **Post-merge:** owner-complete MVP plan → dedicated-builder build handoff
+  (in-chat UI flow first, then backend).
 - **Integration Capability Registry v1.1 — API Expense & Operations Layer + the "M1" disambiguation (2026-09-06, PR #1029, squash `1fee5418`; owner-authorized, incl. a mid-slice M1 terminology ruling).**
   Extended the existing registry JSON (§18, no second registry): an `expense_and_operations` block on **all 20
   providers** + **8 Public Presence roadmap items**, plus top-level `cost_tracks`, `expense_and_operations_schema`,

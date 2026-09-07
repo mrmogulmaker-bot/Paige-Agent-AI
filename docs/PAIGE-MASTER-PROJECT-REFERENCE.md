@@ -1914,6 +1914,17 @@ security / price / integration review. **No provider is wired and nothing instal
 completes.** The credentialed modes must ride the §10 Standing Delegated Authority Contract + §68, not a
 new autonomy system.
 
+**Product correction (owner, 2026-09-07):** Paige Secure Browser is a **Paige-OWNED** capability — Paige
+owns the in-chat UI, policy layer, browser control plane, tenant isolation, Vault **Connected Accounts**
+(owner-managed, tenant-isolated, revocable, auditable, never casually readable by Paige), audit history,
+action receipts, and reusable browser skills. **Browserbase is only a REPLACEABLE bootstrap runtime for the
+isolated browser WORKER**, behind a **provider-neutral internal Secure Browser contract** so Paige can
+progressively run her own Chromium/Playwright fleet — no provider API/MCP/branding/styling/data-model may
+leak into customer UI or core domain contracts (customer feature = "Paige Secure Browser"/"Secure Browser").
+Downloads/captured files → **Vault quarantine**. The `browserbase` registry entry is now `PROPOSED` (the
+worker runtime, replaceable) — updated in the audit PR. A dedicated **build handoff** (owner-complete in-chat
+UI flow FIRST, then backend) follows the MVP plan.
+
 ### Solo n8n connection clarity — historical UI slice, 2026-09-03
 
 The owner approved separate API connection and Paige tools (MCP) tabs and independent tile/overview states. This earlier UI slice preserved stored credentials while OAuth was blocked. Superseded by released PR #909: standard OAuth is live with the owner-accepted gateway logging risk; only final owner consent/provider verification remains Proof Owed. Current API saved status/count/timestamp does not prove fresh health; the UI must not claim it does. No callback, backend credential, tool-authority, workflow execution, Chat or Spine changes are included. Delivery and proof: `docs/delivery/solo-n8n-connection-clarity.md`. Authenticated owner acceptance is recorded separately from automated/build/deployment evidence.

@@ -92,8 +92,26 @@ answered at the **design** level; **provider selection remains gated** on the re
   account, credential, crawl, or third-party login — until the Browserbase review completes and the
   owner authorizes it.
 
-The registry entry (`browserbase` → `PROPOSED`) and the owner-complete secure-browser MVP plan follow
-this record, per the owner's sequence.
+**Product framing (owner correction, 2026-09-07) — Paige Secure Browser is a PAIGE-OWNED capability, not a
+provider integration.** Paige owns the in-chat UI, the policy layer, the browser control plane, tenant
+isolation, the **Vault "Connected Accounts"** area (owner-managed, tenant-isolated, revocable, auditable,
+never casually readable by Paige), the audit history, the action receipts, and the eventual reusable
+browser skills. The architecture is layered: **Secure Browser UI + policy → Paige-owned control plane →
+isolated browser worker → approved website.** **Browserbase is only the leading PROPOSED, REPLACEABLE
+bootstrap runtime for the browser WORKER**, behind a **provider-neutral internal Secure Browser contract**
+so Paige can progressively run her own Chromium/Playwright worker fleet — its API, MCP, branding, styling,
+icons, and data model must **never** leak into customer-facing UI or core domain contracts, and the customer
+feature is named **"Paige Secure Browser" / "Secure Browser"** (never "Twin", "Browserbase", or provider
+wording). Browser downloads / captured files enter **Vault quarantine/inspection**, never the ordinary
+document library. Paige returns only safe results to chat + a truthful receipt + Rail evidence for a real
+completed action; raw passwords, MFA codes, cookies, and session tokens never reach chat or ordinary model
+context.
+
+The `browserbase` registry entry is updated to `PROPOSED` **in this same PR** (§66 / registry delivery
+rule — an owner ruling about a provider updates the JSON+README in the same commit; folded in after the
+Codex peer-gate flagged the deferral as contradictory governance state). The **owner-complete secure-browser
+MVP plan**, then the **dedicated-builder build handoff** (which leads with the owner-complete in-chat UI
+flow and then the backend), follow this record as the owner sequenced.
 
 ---
 
@@ -116,7 +134,7 @@ absent / not wired) · **PROOF OWED** (in code, authenticated-runtime/prod-liven
 | **Connected-account flow** | **LIVE (MCP/OAuth only)** | `tenant-mcp-connect/index.ts` — OAuth 2.1 + DCR + PKCE, connect/verify/discover/approve/disconnect, tenant from JWT, admin-gated, provider-side revoke on disconnect. Scoped to **Zapier/n8n**, not arbitrary web logins. |
 | **Encrypted storage** | **LIVE (with key-custody caveat)** | pgcrypto `platform_encrypt/decrypt` (`20260702022450:18-51`), key in `public._internal_secrets` **inside the same DB**. `supabase_vault`, `pgcrypto`, `pgsodium`, `pgjwt` all installed. **Caveat:** symmetric-key-in-DB, not KMS/HSM envelope — "encrypted against app-layer read," not HSM-grade key isolation. |
 | **MFA handoff** | **UNAVAILABLE** | Only Paige's **own-account** TOTP (`AccountSecurityPanel.tsx`, "does NOT enforce AAL2"). No substrate to pause an agent so a human clears a downstream site's 2FA. |
-| **Live-view / session recording** | **UNAVAILABLE (inert plumbing)** | `browser_use_sessions` has `screenshots[]` + `session_replay_url` columns but the writer is inert **and the table has no `tenant_id`** (legacy, §9 gap if revived). `scripts/live-drive` is dev tooling. |
+| **Live-view / session recording** | **UNAVAILABLE (as a product)** | `browser_use_sessions` has `screenshots[]` + `session_replay_url` columns; the Browserbase `browser-use` **writer is inert**, but the **table is NOT inert** — the live `browse_public_url` skill path writes it (`_shared/skill-interpreter.ts:198-229`, service-role, scoped only by `related_contact_id`) with **no `tenant_id`**, a **current** §9 attribution gap (§4.3). `scripts/live-drive` is dev tooling. |
 | **Audit trail** | **LIVE (append-only-by-grant, not WORM)** | `paige_browser_usage` (`20260913140000`) — tenant-scoped, `FORCE RLS`, `service_role` INSERT only, append-only by grant-revoke, **with a live writer** (`skill-interpreter.ts:360`). Plus `paige_client_events`, `paige_audit_log`. **Not** cryptographic immutability (no hash-chain/WORM). |
 | **Revocation** | **PARTIAL** | Per-connection disconnect + provider-side revoke (`clear_tenant_mcp_connection`; `tenant-mcp-connect:129`); wildcard browse global off-switch. **No** global emergency-stop spanning connections + in-flight actions. |
 | **Deployment evidence** | **PROOF OWED** | CI machinery real (`deploy-fly-services.yml`, `edge-live`/`db-live` tags, `deploy-migrations.yml` persistence verify). But git tags not fetched in this checkout; `paige-browser` Fly liveness + `PAIGE_BROWSER_WILDCARD_ENABLED`/`FIRECRAWL_API_KEY`/`PAIGE_BROWSER_SECRET` prod-secret presence are **PROOF OWED** (no Fly/edge-secret reach headless). |
@@ -155,13 +173,16 @@ shipped, proven code. The seams to build on:
   dimensions). **Any Paige-DRIVEN browser action (Modes 2/3 acting, Phase 3) rides this — not a new
   autonomy system.**
 
-**The two prerequisite gaps already recorded in doctrine** (so a credentialed-browser action can be
-*governed*): `decideGovernedExecution` is a pure module **unwired**; `paige-mcp` enforces tier+scope but
-**no risk/approval gate**; `delegate_to_subagent` runs the orchestrator as service-role and the
-specialist acts **outside** the gate; **RE-2** (lift the consequential-act `confirm` floor under a valid
-standing policy) is **NOT built**; **M1** (carry `paige_llm_trace` → `platform_metered_events`) is **NOT
-built**. These are the same gaps the owner-locked plan `08-sandboxed-research-external-execution.md`
-already names.
+**The prerequisite gaps for a *governed* credentialed-browser action** (§13 correction, verified against
+current `main` 2026-09-07, surfaced by the Codex peer-gate): `paige-mcp` now DOES route `tools/call` through
+a governed adapter — `governMcpToolCall`/`decideMcpToolCall` (`paige-mcp/index.ts:5388,5421,5782`) resolves
+the tenant **server-side** (fails closed to `tenant_unresolved`), audits every call, and can refuse (403) —
+so the earlier "`decideGovernedExecution` unwired / `paige-mcp` tier+scope-only" claim (from the 2026-09-05
+plan) is **stale**. The genuine residual gaps: the precise ENFORCEMENT depth of that adapter for *mutations*
+(audit-only vs. approval-gated) must be re-grounded before the Phase-3 slice, not assumed; `delegate_to_subagent`
+still runs the orchestrator as service-role with the specialist acting **outside** the gate; **RE-2** (lift
+the consequential-act `confirm` floor under a valid standing policy) is **NOT built**; **M1** (carry
+`paige_llm_trace` → `platform_metered_events`) is **NOT built**.
 
 ---
 
@@ -175,7 +196,7 @@ already names.
 | C2 | **`docs/strategy/twin-capabilities-landscape-2026-07-26.md`** (Direction A) | Recommended **Browserbase infra + Paige-owned Supabase Vault as canonical**, and to "hard-block any pattern that lets a third-party auth service store tenant credentials our own vault could hold." | **Tensions** with the assignment's Phase-2 provider-vault. Resolved as an **owner choice** (§6.4): with owner-direct-login the credential **never transits Paige**, so "provider holds the session, we hold an opaque reference" is a *different and arguably stronger §59 posture*, not a flat violation. Owner rules at the round-table. |
 | C3 | **Integration Capability Registry** (`docs/integration-registry/*`) | Existing entries: `paige-browser-research` (**PARTIAL**), `browserbase` (**UNAVAILABLE**). **Twin absent.** | The registry **delivery rule** binds the *decision* PR (not this audit). §9 stages the exact deltas; nothing is added to the JSON until a provider is selected (R1/R2 — a `PROPOSED` entry needs an approved direction). |
 | C4 | **Autonomy architecture §10 (Standing Delegated Authority Contract) + §68 decay law** | Phase 3 governed delegation **must** declare all seven §10 dimensions and ride §68. **RE-2** (floor lift) + **M1** (metering) are prerequisites and **not built**. | Phase 3 in §7 is written as a §10 consumer; the credentialed-browser action is a `high`/`external_effect` capability, `confirm`-floored until RE-2. |
-| C5 | **`decideGovernedExecution` unwired · `paige-mcp` no risk gate · `delegate_to_subagent` downstream ungoverned** | Prerequisites for *any* Paige-DRIVEN browser mutation. | Named as Phase-3 dependencies; not re-solved here (they are S-R2's work). |
+| C5 | **`paige-mcp` governed adapter IS wired** (`decideMcpToolCall`/`governMcpToolCall`, server-resolved tenant, audits, can refuse — §3 correction); **residual: its mutation-enforcement depth to re-ground, and `delegate_to_subagent` downstream still ungoverned** | Prerequisites for *any* Paige-DRIVEN browser mutation. | Re-ground the exact residual before Phase 3; not re-solved here (S-R2's work). |
 | C6 | **`provider-result-contract.md`** (8-word Systems Check vocab) | A browser provider reports connection/health via this shape; **"not started" = `NOT CONNECTED`, never `PENDING PROVIDER`**; a saved credential/fired call is `PROOF OWED`, never `LIVE`. | The connection-management surface (§8) publishes this contract, not a bespoke status. |
 | C7 | **Surface Binding Ledger** (`settings.connections` = UNAVAILABLE; `settings.integrations` = PARTIAL) | A new Secure-Browser / connected-account surface needs a ledger row with `state` + `intended_capability` lanes; no browser surface exists today. | Roadmap notes the ledger row lands with the surface slice (`lint:binding-ledger` gate). |
 
@@ -199,9 +220,16 @@ the owner/Codex may already track some).
    `page.route("**/*")` interceptor gates host/SSRF only, not HTTP method, with page JS on, so a
    visited page's own script could POST to a public host. **Already tracked** (Codex P1, 2026-09-05).
    Blocks any "read-only by construction" claim on the research path until fixed.
-2. **`browser_use_sessions` has no `tenant_id`** (`20260630013855`): legacy, role-based RLS. **Inert
-   today**; a §9 tenant-isolation gap **if the Browserbase path is ever revived**. Keep inert or add
-   `tenant_id` on revival. *(New — recommend an issue.)*
+2. **`browser_use_sessions` has no `tenant_id` — a CURRENT §9 attribution gap, not revival-only**
+   (`20260630013855`, legacy role-based RLS). The table is **actively written by the live
+   `browse_public_url` skill path** (`_shared/skill-interpreter.ts:198-229`, service-role, scoped only by
+   `related_contact_id`); only the Browserbase `browser-use` EDGE FUNCTION is inert. **The `browser-use`
+   revival blocker is bigger than adding `tenant_id`:** `browser-use/index.ts:17-31` trusts caller-supplied
+   `related_contact_id`/`related_business_id`/`invoker_*` and uses a **service-role client without deriving
+   or authorizing the tenant from the JWT**, so any gateway-admitted caller could act under arbitrary
+   attribution and (once creds are set) consume billable capacity. Required: (a) a **server-resolved
+   tenant/admin gate** (JWT-derived, never body) on every `browser_use_sessions` writer, and (b) `tenant_id`
+   on the table. *(New — recommend an issue; surfaced by the Codex peer-gate.)*
 3. **`growth-process-submission/index.ts:592`** — in-code note of a `platform_decrypt` against a
    "not tenant-scoped" table; confirm the decrypted value is not returned cross-tenant. *(New —
    recommend an owed-verification issue; flagged by the security scout, not confirmed a leak.)*
@@ -439,13 +467,15 @@ handoff), so it can be built read-only. The build itself waits on the §6.4 prov
 
 ## 9. Integration Capability Registry — proposed deltas (land with the DECISION PR, not here)
 
-Per the registry delivery rule (R1/R2: `PROPOSED` needs an approved direction; listed ≠ connected),
-**nothing is added to the JSON in this audit PR.** When the owner selects a provider, the **same PR**
-that wires it adds/updates:
+Per the registry delivery rule (§66: an owner ruling about a provider updates the JSON+README in the
+**same commit**), and after the Codex peer-gate flagged a deferral as contradictory governance state, the
+`browserbase` entry **is updated to `PROPOSED` in THIS PR** (not deferred). The entry records Browserbase as
+the **replaceable bootstrap browser-WORKER runtime** behind the provider-neutral internal Secure Browser
+contract — never "the capability," which is Paige-owned (§1A). The updates:
 
 1. **Update `paige-browser-research`** — cross-reference this audit; keep `PARTIAL`; add the Modes-1/4
    hardening (G5, SSRF reconcile, §32.c) to `next_slice`.
-2. **Update `browserbase`** — if selected, promote from `UNAVAILABLE` toward `PROPOSED`/`PARTIAL` with
+2. **Update `browserbase`** — **DONE in THIS PR:** `UNAVAILABLE`→`PROPOSED` (replaceable bootstrap worker runtime) with
    the real capability, authority lane (`read`→`draft`, `confirm`-floored write), M1 dependency,
    canonical receipt (`paige_browser_usage` + provider run id), residency, and taxonomy
    `marketplace_mcp_automation`.
@@ -465,7 +495,7 @@ selected provider all attach to that single entry — **no duplicate registry** 
 | Hard requirement | How the architecture meets it |
 |---|---|
 | Credentials/cookies/tokens/screenshots/HTML/docs/MFA codes never in LLM context by default | Owner-direct-login (credential never transits Paige); provider holds the session; Paige holds an opaque reference + reads only scoped, safe fields; page content is untrusted data (§8). |
-| No cross-tenant session/credential/history/skill/crawl-data leak | Tenant+task isolation on the provider session; the reference store is `FORCE RLS` service-role-write; the `browser_use_sessions` no-`tenant_id` gap stays inert or is fixed on revival (§4.3). |
+| No cross-tenant session/credential/history/skill/crawl-data leak | Tenant+task isolation on the provider session; the reference store is `FORCE RLS` service-role-write; the `browser_use_sessions` no-`tenant_id` gap is a CURRENT attribution gap whose fix is a server-resolved tenant/admin gate + `tenant_id` (§4.3). |
 | Fail closed on missing connection/authority/domain/action/freshness/receipt | Every Phase-1/2/3 gate is fail-closed; §10 dimension 7 + the governed-execution typed fail-closed codes. |
 | Separate read / draft / auto-under-standing-policy / confirm-escalation / prohibited | The §16 `autonomy_lane` enum + §10 grant; Phase-1 = read/observe; Phase-3 acts are `high`/`confirm`-floored until RE-2; §38/cross-tenant/money-outside-provider = prohibited. |
 | API preferred; browser is the governed fallback | Explicit in Phase 3 — use a secure supported API when one exists; browser only for owner-authorized portals without an API. |
