@@ -209,13 +209,25 @@ later). The control plane owns tenant scope, the Vault Connected Accounts record
 
 - **Owner:** the Browserbase (bootstrap worker) provider review (§4 Phase 0); and the vendor
   confirmations from the audit §6.4 before any install.
-- **Prerequisite security fixes** (audit §4.3): `browser_use_sessions` `tenant_id` + server-resolved
-  tenant; the `browser-use` JWT-derived tenant/admin gate. These land before any worker write path.
+- **Prerequisite security fixes — RELEASED in PR #1042:** `browser_use_sessions` now has required,
+  server-resolved tenant attribution; direct callers authenticate before contact lookup; canonical
+  authority/grant checks fail closed; and both browser routes enforce read-only HTTP, popup,
+  WebSocket, and service-worker egress. This is safety foundation only, not worker authority.
 - **Backend design owed** (specified in the build handoff): the Vault Connected Accounts schema + RLS;
   the internal contract's concrete types; the control-plane service; the receipt/Rail wiring; the §10
   action declaration for Phase 3.
 - **CD owed:** the in-chat Secure Browser surface + connection-management visuals (`paige-ui-design` +
   `flow-prototype`).
+
+## 6.1 Production proof for the released prerequisite
+
+PR #1042 exact head `2c83cfa37dd6554c597d440fe1984d3619eb9602` merged as
+`ba3edd5386ba39a19f31a2c980f2245e6e4994a7`. Production applied migration
+`20260907023754`, deployed Edge functions `browser-use` and `skill-runner`, deployed
+`paige-browser` image `deployment-01M1X34VF9E8DFKSRVH6PM7R6X`, and exposed Vercel build
+`ba3edd5386ba39a19f31a2c980f2245e6e4994a7-mtqrftk3`. Browserbase remains `PROPOSED`
+and unwired. No provider secret, browser session, Context, external login, Connected Account, or
+credentialed execution was used or authorized.
 
 ## 7. Cross-references
 
