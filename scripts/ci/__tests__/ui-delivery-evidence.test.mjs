@@ -126,7 +126,7 @@ test("binds customer release identity to its classification", () => {
   assert.equal(internalWithFakeVersion.ok, false);
   assert.match(internalWithFakeVersion.errors.join("\n"), /CUSTOMER_RELEASE_IDENTITY/);
 
-  const validMinor = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 0.2.0 — Governed Capability; owner-decision=PENDING"), { required: true, solo: false });
+  const validMinor = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 0.2.0 — Governed Capability; owner-decision=PENDING").replace("RELEASE_NOTE_REQUIRED: NO: internal-only change", "RELEASE_NOTE_REQUIRED: YES: minor candidate requires a note"), { required: true, solo: false });
   assert.equal(validMinor.ok, true, validMinor.errors.join("\n"));
 
   const wrongMinor = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 0.2.3 — Wrong Shape; owner-decision=PENDING"), { required: true, solo: false });
@@ -141,6 +141,22 @@ test("cross-checks release channel against build environment and deployment", ()
 
   const production = validateEvidenceText(coreEvidence.replace("INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=NOT_APPLICABLE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=PR-checks", "INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=dpl_123; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=production-checks").replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: production: deployment dpl_123"), { required: true, solo: false });
   assert.equal(production.ok, true, production.errors.join("\n"));
+});
+
+test("requires notes for minor and major candidates", () => {
+  const minorWithoutNote = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 0.2.0 — Governed Capability; owner-decision=PENDING"), { required: true, solo: false });
+  assert.equal(minorWithoutNote.ok, false);
+  assert.match(minorWithoutNote.errors.join("\n"), /require RELEASE_NOTE_REQUIRED: YES/);
+});
+
+test("requires complete staged-rollout evidence", () => {
+  const stagedBase = coreEvidence.replace("INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=NOT_APPLICABLE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=PR-checks", "INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=dpl_123; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=production-checks");
+  const incomplete = validateEvidenceText(stagedBase.replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: staged: deployment dpl_123"), { required: true, solo: false });
+  assert.equal(incomplete.ok, false);
+  assert.match(incomplete.errors.join("\n"), /Staged RELEASE_CHANNEL requires/);
+
+  const complete = validateEvidenceText(stagedBase.replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: staged: owner-approval=owner-message; eligibility=named cohort; amount=10 percent; start=owner approval; stop=error budget; monitoring-owner=release owner; recovery=disable cohort"), { required: true, solo: false });
+  assert.equal(complete.ok, true, complete.errors.join("\n"));
 });
 
 test("requires Flow Prototype evidence for a material flow change", () => {

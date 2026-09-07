@@ -156,6 +156,7 @@ export function validateReleaseRecord(record) {
       requireExactObject(build, BUILD_KEYS, label, findings);
       if (!/^[0-9a-f]{40}$/i.test(String(build?.commit_sha || ""))) findings.push(`${label}.commit_sha must be an exact 40-character SHA`);
       if (!nonEmpty(build?.deployment_id)) findings.push(`${label}.deployment_id missing`);
+      else if (/\b(?:todo|tbd|placeholder|replace_me|unknown)\b/i.test(build.deployment_id)) findings.push(`${label}.deployment_id must not contain a placeholder token`);
       if (!["local", "development", "preview", "production"].includes(build?.environment)) findings.push(`${label}.environment invalid`);
       if (!CHANNELS.has(build?.release_channel)) findings.push(`${label}.release_channel invalid`);
       if (!["referenced", "supporting"].includes(build?.customer_release_scope)) findings.push(`${label}.customer_release_scope invalid`);
@@ -336,6 +337,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects published release with pending approval", { ...valid, record_state: "PUBLISHED" }, true],
     ["rejects published release without green production checks", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, checks: { ...build.checks, production_checks: { state: "UNVERIFIED", evidence: ["not driven"] } } }] }, true],
     ["rejects published development-only release", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, environment: "development", release_channel: "development", deployment_id: "NOT_APPLICABLE" }] }, true],
+    ["rejects published placeholder deployment identifier", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, deployment_id: "TODO-deployment" }] }, true],
     ["rejects free-form technical build list", { ...valid, whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "internal_only", build_ids: ["dpl_fake"] } } }, true],
     ["rejects published reference to development when another production build exists", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, customer_release_scope: "supporting" }, { ...build, commit_sha: "b".repeat(40), deployment_id: "dev_123", environment: "development", release_channel: "development" }] }, true],
     ["rejects staged build without rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: null }] }, true],

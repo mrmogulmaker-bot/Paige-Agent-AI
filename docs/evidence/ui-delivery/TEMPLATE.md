@@ -24,7 +24,7 @@ UNVERIFIED: REPLACE_ME with remaining behavior and reason, or state none with th
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
 INTERNAL_BUILD_IDENTITY: REPLACE_ME_SHA; deployment=REPLACE_ME; environment=REPLACE_ME; migrations=REPLACE_ME; edge=REPLACE_ME; evidence=REPLACE_ME
-RELEASE_CHANNEL: REPLACE_ME: channel evidence or reason
+RELEASE_CHANNEL: REPLACE_ME: channel evidence or reason; staged requires owner-approval=...; eligibility=...; amount=...; start=...; stop=...; monitoring-owner=...; recovery=...
 RELEASE_CLASSIFICATION: REPLACE_ME: classification reason
 CUSTOMER_RELEASE_IDENTITY: REPLACE_ME as `none: reason` or `<version> — <release name>; owner-decision=<reference-or-PENDING>`
 RELEASE_NOTE_REQUIRED: REPLACE_ME: yes/no reason

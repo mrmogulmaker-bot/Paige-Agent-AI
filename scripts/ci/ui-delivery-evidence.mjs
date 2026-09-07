@@ -191,7 +191,16 @@ export function validateEvidenceText(text, classification) {
   if (releaseClassification === "minor-candidate" && !/^0\.[1-9]\d*\.0$/.test(namedCustomerIdentity?.[1] ?? "")) errors.push("Minor-candidate CUSTOMER_RELEASE_IDENTITY must be 0.x.0 with a name and owner-decision reference.");
   if (releaseClassification === "major-candidate" && !/^[1-9]\d*\.0\.0$/.test(namedCustomerIdentity?.[1] ?? "")) errors.push("Major-candidate CUSTOMER_RELEASE_IDENTITY must be x.0.0 with a name and owner-decision reference.");
   if (!releaseClassification && !noCustomerIdentity && !namedCustomerIdentity) errors.push("CUSTOMER_RELEASE_IDENTITY must be none: reason or a structured version, name, and owner-decision reference.");
-  if (!/^(?:YES|NO):\s*\S.+$/i.test(fields.get("RELEASE_NOTE_REQUIRED") ?? "")) errors.push("RELEASE_NOTE_REQUIRED must be YES: reason or NO: reason.");
+  const releaseNoteRequired = /^(YES|NO):\s*\S.+$/i.exec(fields.get("RELEASE_NOTE_REQUIRED") ?? "")?.[1]?.toUpperCase();
+  if (!releaseNoteRequired) errors.push("RELEASE_NOTE_REQUIRED must be YES: reason or NO: reason.");
+  if (["minor-candidate", "major-candidate"].includes(releaseClassification) && releaseNoteRequired !== "YES") errors.push("Minor/major customer candidates require RELEASE_NOTE_REQUIRED: YES with a reason.");
+  if (releaseClassification === "internal-only" && releaseNoteRequired !== "NO") errors.push("Internal-only work requires RELEASE_NOTE_REQUIRED: NO with a reason.");
+  if (releaseChannel === "staged") {
+    const channelEvidence = fields.get("RELEASE_CHANNEL") ?? "";
+    for (const key of ["owner-approval", "eligibility", "amount", "start", "stop", "monitoring-owner", "recovery"]) {
+      if (!new RegExp(`\\b${key}=([^;]+)`, "i").test(channelEvidence)) errors.push(`Staged RELEASE_CHANNEL requires ${key}=... metadata.`);
+    }
+  }
   if (!/\b(?:LIVE|PARTIAL|UNAVAILABLE|PROOF OWED)\b/i.test(fields.get("RELEASE_TRUTH_BOUNDARY") ?? "")) errors.push("RELEASE_TRUTH_BOUNDARY must name at least one governed status and its claim boundary.");
   if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW"))) errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference.");
   if (!isPassWithEvidence(fields.get("PAIGE_UI_DESIGN"))) errors.push("PAIGE_UI_DESIGN must be PASS: with a non-placeholder evidence reference.");
