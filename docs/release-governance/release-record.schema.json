@@ -385,7 +385,7 @@
       "required": ["state", "evidence"],
       "properties": {
         "state": { "enum": ["PASS", "FAIL", "UNVERIFIED"] },
-        "evidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+        "evidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "pattern": "\\S" } }
       },
       "allOf": [
         {
@@ -400,7 +400,7 @@
       "required": ["state", "evidence", "identifiers", "proof_owed"],
       "properties": {
         "state": { "enum": ["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAILED"] },
-        "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "evidence": { "type": "array", "items": { "type": "string", "minLength": 1, "pattern": "\\S" } },
         "identifiers": { "type": "array", "items": { "$ref": "#/$defs/resolvedString" } },
         "proof_owed": {
           "oneOf": [

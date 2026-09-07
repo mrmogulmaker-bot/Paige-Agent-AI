@@ -141,6 +141,10 @@ test("binds customer release identity to its classification", () => {
   const validMinor = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 0.2.0 — Governed Capability; owner-decision=PENDING").replace("RELEASE_NOTE_REQUIRED: NO: internal-only change", "RELEASE_NOTE_REQUIRED: YES: minor candidate requires a note"), { required: true, solo: false });
   assert.equal(validMinor.ok, true, validMinor.errors.join("\n"));
 
+  const missingName = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 0.2.0 —    ; owner-decision=PENDING").replace("RELEASE_NOTE_REQUIRED: NO: internal-only change", "RELEASE_NOTE_REQUIRED: YES: minor candidate requires a note"), { required: true, solo: false });
+  assert.equal(missingName.ok, false);
+  assert.match(missingName.errors.join("\n"), /release name/);
+
   const wrongMinor = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 0.2.3 — Wrong Shape; owner-decision=PENDING"), { required: true, solo: false });
   assert.equal(wrongMinor.ok, false);
   assert.match(wrongMinor.errors.join("\n"), /Minor-candidate CUSTOMER_RELEASE_IDENTITY/);
