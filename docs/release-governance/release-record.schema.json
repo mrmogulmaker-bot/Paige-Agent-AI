@@ -270,6 +270,10 @@
       "else": { "properties": { "history": { "type": "null" } } }
     },
     {
+      "if": { "properties": { "record_state": { "const": "CORRECTED" } }, "required": ["record_state"] },
+      "then": { "properties": { "history": { "properties": { "corrected_values": { "minItems": 1 } } } } }
+    },
+    {
       "if": {
         "properties": {
           "internal_builds": {
@@ -368,10 +372,13 @@
       "additionalProperties": false,
       "required": ["field_path", "previous_value", "replacement_value"],
       "properties": {
-        "field_path": { "type": "string", "pattern": "^/(?:[^~/]|~[01])+(?:/(?:[^~/]|~[01])+)*$" },
-        "previous_value": { "type": "string", "minLength": 1, "pattern": "\\S" },
-        "replacement_value": { "$ref": "#/$defs/resolvedString" }
+        "field_path": { "type": "string", "pattern": "^/(classification|internal_builds|scope|affected_audience|benefits|limitations|rollback_recovery|customer_release_identity|whats_new)(?:/(?:[^~/]|~[01])+)*$" },
+        "previous_value": { "$ref": "#/$defs/scalarValue" },
+        "replacement_value": { "$ref": "#/$defs/scalarValue" }
       }
+    },
+    "scalarValue": {
+      "type": ["string", "number", "boolean", "null"]
     },
     "customerReleaseIdentity": {
       "type": "object",
