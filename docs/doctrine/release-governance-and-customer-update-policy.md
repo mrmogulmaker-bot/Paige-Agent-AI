@@ -35,6 +35,10 @@ Every PR and deployment closeout records:
 - evidence links or reproducible references;
 - rollback or forward-fix position.
 
+Within a release record, each internal build is marked `referenced` when its deployment ID appears in
+the customer note's internal technical reference, or `supporting` when it is retained only as build history.
+The two sets must agree exactly; supporting preview/development evidence cannot satisfy a publication gate.
+
 This identity is operational truth. It is internal by default and need not appear in customer copy. `main`, a branch name, a PR number, “latest,” or a URL alone is not an exact build identity.
 
 ### Release channel — always explicit

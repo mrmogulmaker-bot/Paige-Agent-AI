@@ -336,7 +336,7 @@ jobs:
         env:
           # Historical release records compare with the CURRENT PR base, not the branch fork point:
           # a stale branch must not erase a record that landed on main after it diverged.
-          RELEASE_GOVERNANCE_BASE: ${{ github.event.pull_request.base.sha }}
+          RELEASE_GOVERNANCE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: npm run lint:release-governance
 
       - name: Release-governance guard catches what it claims to

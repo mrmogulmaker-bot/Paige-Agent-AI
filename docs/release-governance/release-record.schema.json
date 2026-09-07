@@ -65,7 +65,10 @@
       "then": {
         "properties": {
           "customer_release_identity": { "type": "null" },
-          "whats_new": { "type": "null" }
+          "whats_new": { "type": "null" },
+          "internal_builds": {
+            "items": { "properties": { "customer_release_scope": { "const": "supporting" } } }
+          }
         }
       }
     },
@@ -141,7 +144,37 @@
     },
     {
       "if": { "properties": { "record_state": { "const": "PUBLISHED" } }, "required": ["record_state"] },
-      "then": { "properties": { "customer_release_identity": { "$ref": "#/$defs/customerReleaseIdentity" } } }
+      "then": {
+        "properties": {
+          "customer_release_identity": { "$ref": "#/$defs/customerReleaseIdentity" },
+          "internal_builds": {
+            "contains": { "properties": { "customer_release_scope": { "const": "referenced" } }, "required": ["customer_release_scope"] },
+            "items": {
+              "allOf": [
+                {
+                  "if": { "properties": { "customer_release_scope": { "const": "referenced" } }, "required": ["customer_release_scope"] },
+                  "then": {
+                    "properties": {
+                      "deployment_id": { "not": { "const": "NOT_APPLICABLE" } },
+                      "environment": { "const": "production" },
+                      "release_channel": { "enum": ["production", "staged"] },
+                      "migration_status": { "properties": { "state": { "not": { "const": "FAILED" } } } },
+                      "edge_status": { "properties": { "state": { "not": { "const": "FAILED" } } } },
+                      "checks": {
+                        "properties": {
+                          "ci": { "properties": { "state": { "const": "PASS" } } },
+                          "security": { "properties": { "state": { "const": "PASS" } } },
+                          "production_checks": { "properties": { "state": { "const": "PASS" } } }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -193,6 +226,7 @@
         "deployment_id",
         "environment",
         "release_channel",
+        "customer_release_scope",
         "deployed_at",
         "staged_rollout",
         "migration_status",
@@ -205,6 +239,7 @@
         "deployment_id": { "type": "string", "minLength": 1 },
         "environment": { "enum": ["local", "development", "preview", "production"] },
         "release_channel": { "enum": ["development", "preview", "production", "staged"] },
+        "customer_release_scope": { "enum": ["referenced", "supporting"] },
         "deployed_at": { "type": "string", "format": "date-time" },
         "staged_rollout": {
           "oneOf": [

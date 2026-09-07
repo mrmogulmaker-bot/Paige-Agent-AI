@@ -28,7 +28,7 @@ const RECORD_STATES = new Set(["DRAFT", "OWNER_DECISION_PENDING", "APPROVED", "P
 const DELIVERY_STATES = new Set(["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAILED"]);
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
-const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
+const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "customer_release_scope", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
 const STAGED_KEYS = ["owner_approval", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
 const STAGED_TEXT_KEYS = ["eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
 const NOTE_KEYS = ["customer_outcome", "what_changed", "who_can_use_it", "owner_action", "status", "known_limitations", "safe_next_step", "technical_release_reference", "paige_readable_summary"];
@@ -113,6 +113,21 @@ function validateRecordHistory(base, recordsDir) {
   }
 }
 
+function listJsonFiles(root) {
+  if (!fs.existsSync(root)) return [];
+  const files = [];
+  const stack = [root];
+  while (stack.length) {
+    const dir = stack.pop();
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) stack.push(file);
+      else if (entry.isFile() && entry.name.endsWith(".json")) files.push(file);
+    }
+  }
+  return files.sort();
+}
+
 export function validateReleaseRecord(record) {
   const findings = [];
   if (!record || typeof record !== "object" || Array.isArray(record)) return ["record is not an object"];
@@ -132,6 +147,7 @@ export function validateReleaseRecord(record) {
       if (!nonEmpty(build?.deployment_id)) findings.push(`${label}.deployment_id missing`);
       if (!["local", "development", "preview", "production"].includes(build?.environment)) findings.push(`${label}.environment invalid`);
       if (!CHANNELS.has(build?.release_channel)) findings.push(`${label}.release_channel invalid`);
+      if (!["referenced", "supporting"].includes(build?.customer_release_scope)) findings.push(`${label}.customer_release_scope invalid`);
       if (build?.release_channel === "development" && !["local", "development"].includes(build.environment)) findings.push(`${label} development channel requires local/development environment`);
       if (build?.release_channel === "preview" && build.environment !== "preview") findings.push(`${label} preview channel requires preview environment`);
       if (["production", "staged"].includes(build?.release_channel) && build.environment !== "production") findings.push(`${label} production/staged channel requires production environment`);
@@ -180,6 +196,7 @@ export function validateReleaseRecord(record) {
         findings.push("technical_release_reference must be internal_only with build_ids[]");
       else {
         requireNonEmptyStrings(note.technical_release_reference.build_ids, "whats_new.technical_release_reference.build_ids", findings);
+        if (new Set(note.technical_release_reference.build_ids).size !== note.technical_release_reference.build_ids.length) findings.push("whats_new.technical_release_reference.build_ids must be unique");
         const recordedBuildIds = new Set((record.internal_builds || []).map((build) => build?.deployment_id));
         for (const id of note.technical_release_reference.build_ids)
           if (!recordedBuildIds.has(id)) findings.push(`technical release reference ${id} is not a recorded deployment_id`);
@@ -190,6 +207,11 @@ export function validateReleaseRecord(record) {
   }
   if (record.classification === "internal_only" && (customer !== null || record.whats_new !== null))
     findings.push("internal_only records must not carry a customer release identity or What's New note");
+  const noteBuildIds = new Set(record.whats_new?.technical_release_reference?.build_ids || []);
+  const scopedBuildIds = new Set((record.internal_builds || []).filter((build) => build?.customer_release_scope === "referenced").map((build) => build.deployment_id));
+  if (customer === null && scopedBuildIds.size > 0) findings.push("records without a customer identity must mark every internal build as supporting");
+  if (customer !== null && (noteBuildIds.size !== scopedBuildIds.size || [...noteBuildIds].some((id) => !scopedBuildIds.has(id))))
+    findings.push("technical build_ids must exactly match internal builds marked customer_release_scope referenced");
   if (["minor_candidate", "major_candidate"].includes(record.classification) && customer === null)
     findings.push(`${record.classification} requires a customer release identity`);
   if (["APPROVED", "PUBLISHED"].includes(record.record_state) && customer !== null) {
@@ -204,7 +226,7 @@ export function validateReleaseRecord(record) {
   if (record.record_state === "PUBLISHED") {
     if (customer === null) findings.push("PUBLISHED requires a customer release identity");
     const referenced = new Set(record.whats_new?.technical_release_reference?.build_ids || []);
-    const referencedBuilds = (record.internal_builds || []).filter((build) => referenced.has(build?.deployment_id));
+    const referencedBuilds = (record.internal_builds || []).filter((build) => build?.customer_release_scope === "referenced" && referenced.has(build?.deployment_id));
     if (referencedBuilds.length === 0 || referencedBuilds.some((build) => !["production", "staged"].includes(build?.release_channel) || build.deployment_id === "NOT_APPLICABLE"))
       findings.push("PUBLISHED technical references must resolve only to deployed production or staged builds");
     if (referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("FAILED")))
@@ -236,8 +258,7 @@ export function validateRepository() {
   const recordsDir = "docs/release-governance/records";
   findings.push(...validateRecordHistory(process.env.RELEASE_GOVERNANCE_BASE, recordsDir));
   if (fs.existsSync(recordsDir)) {
-    for (const name of fs.readdirSync(recordsDir).filter((name) => name.endsWith(".json"))) {
-      const file = path.join(recordsDir, name);
+    for (const file of listJsonFiles(recordsDir)) {
       try {
         for (const finding of validateReleaseRecord(JSON.parse(fs.readFileSync(file, "utf8")))) findings.push(`${file}: ${finding}`);
       } catch (error) {
@@ -253,7 +274,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
   const customerApproval = { approval_id: "customer-publication-owner-message-123", scope: "customer_publication", status: "APPROVED", reference: "owner-message-123" };
   const stagedApproval = { approval_id: "staged-rollout-owner-message-456", scope: "staged_rollout", status: "APPROVED", reference: "owner-message-456" };
   const build = {
-    commit_sha: "a".repeat(40), deployment_id: "dpl_123", environment: "production", release_channel: "production", deployed_at: "2026-09-06T20:00:00Z", staged_rollout: null,
+    commit_sha: "a".repeat(40), deployment_id: "dpl_123", environment: "production", release_channel: "production", customer_release_scope: "referenced", deployed_at: "2026-09-06T20:00:00Z", staged_rollout: null,
     migration_status: { state: "NOT_APPLICABLE", evidence: [] }, edge_status: { state: "NOT_APPLICABLE", evidence: [] },
     checks: { ci: { state: "PASS", evidence: ["run"] }, security: { state: "PASS", evidence: ["run"] }, production_checks: { state: "PASS", evidence: ["run"] } }, evidence: ["proof"],
   };
@@ -263,7 +284,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     customer_release_identity: { version: "0.1.0", release_name: "Paige Solo Preview", date: "2026-09-06", owner_approval: customerApprovalPending },
     whats_new: { customer_outcome: "Outcome", what_changed: "Change", who_can_use_it: "Solo", owner_action: "None", status: ["PARTIAL", "PROOF OWED"], known_limitations: "Limit", safe_next_step: "Next", technical_release_reference: { visibility: "internal_only", build_ids: ["dpl_123"] }, paige_readable_summary: "Summary" },
   };
-  const internal = { ...valid, classification: "internal_only", customer_release_identity: null, whats_new: null };
+  const internal = { ...valid, classification: "internal_only", internal_builds: [{ ...build, customer_release_scope: "supporting" }], customer_release_identity: null, whats_new: null };
   const cases = [
     ["valid customer candidate", valid, false],
     ["valid internal-only record", internal, false],
@@ -287,7 +308,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects invalid date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "not-a-date" }] }, true],
     ["rejects normalized invalid calendar date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "2026-02-30T20:00:00Z" }] }, true],
     ["rejects production channel in development environment", { ...valid, internal_builds: [{ ...build, environment: "development" }] }, true],
-    ["accepts unreferenced preview with unverified production check", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "preview_123", environment: "preview", release_channel: "preview", checks: { ...build.checks, production_checks: { state: "UNVERIFIED", evidence: ["preview only"] } } }] }, false],
+    ["accepts unreferenced preview with unverified production check", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "preview_123", environment: "preview", release_channel: "preview", customer_release_scope: "supporting", checks: { ...build.checks, production_checks: { state: "UNVERIFIED", evidence: ["preview only"] } } }] }, false],
+    ["rejects technical reference marked only supporting", { ...valid, internal_builds: [{ ...build, customer_release_scope: "supporting" }] }, true],
     ["rejects minor version with patch component", { ...valid, customer_release_identity: { ...valid.customer_release_identity, version: "0.1.7" } }, true],
     ["rejects major version with minor component", { ...valid, classification: "major_candidate", customer_release_identity: { ...valid.customer_release_identity, version: "2.3.0" } }, true],
     ["rejects duplicate deployment identifiers", { ...valid, internal_builds: [build, { ...build, commit_sha: "b".repeat(40) }] }, true],
