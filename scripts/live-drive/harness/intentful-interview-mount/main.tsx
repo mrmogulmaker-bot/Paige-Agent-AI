@@ -41,7 +41,7 @@ function Harness() {
   }), [activeThreadId]);
 
   return (
-    <main className="paige-solo intentful-harness">
+    <main className="paige-solo intentful-harness" data-theme={theme}>
       <div className="harness-label">HARNESS RENDER · NOT LIVE</div>
       {surface === "interview" ? (
         <section className="harness-workspace" aria-label="Dedicated Paige workspace">

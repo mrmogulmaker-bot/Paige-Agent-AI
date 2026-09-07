@@ -57,12 +57,12 @@ The Paige transcript is the scroll owner while Paige is open. The owning page re
 - Setup real-component matrix: `node scripts/live-drive/setup-business-context-render.mjs` -> 114 samples, zero horizontal failures, zero runtime errors.
 - Text-flow real-component matrix: 24 frames under `scripts/live-drive/artifacts/intentful-interview-render/`; every frame reported content, no overlay, no document overflow, visible non-live label, and a reachable internal scroll owner.
 - Browser behavior: agent-browser sessions exercised interview lifecycle, selective recap/receipt, all Discussion Needed choices, and selected Strategic Play Plan with Paige.
-- Accessibility: axe WCAG 2 A/AA -> 0 violations, 0 incomplete, 20 passes after harness-only semantic corrections.
+- Accessibility: exact-head axe WCAG 2 A/AA -> 0 violations and 0 incomplete across light offer, dark recap, and light Discussion Needed after semantic and contrast corrections.
 - Static: affected ESLint green; CI type ratchet green; regression, migration version, ledger, chat-tool registry, and governed-execution checks green; Vite production build green.
 - Database: local Supabase lint could not connect because no local Postgres stack was running. No remote database or provider was touched.
 
 ## Review and limitations
 
-The existing Setup renderer caught and drove repair of a null interview-read shell crash. The card now validates the read contract and fails closed without taking down Setup or Paige. A separate ledger review caught and removed an over-broad mechanical status edit before commit; the final ledger diff is restricted to the three owned rows plus current-main grounding.
+The exact-head accessibility rerun found insufficient contrast on the dark recap primary treatment and the light Discussion Needed label; the product tokens were corrected and the WCAG A/AA rerun returned zero violations. The existing Setup renderer caught and drove repair of a null interview-read shell crash. The card now validates the read contract and fails closed without taking down Setup or Paige. A separate ledger review caught and removed an over-broad mechanical status edit before commit; the final ledger diff is restricted to the three owned rows plus current-main grounding.
 
 Harness records use explicit fictional values and are burned with `HARNESS RENDER · NOT LIVE`. They prove rendering, interactions, focus, reflow, and local state transitions only. They do not prove authenticated tenant isolation, durable writes, database migration success, canonical readback, or Rail persistence.
