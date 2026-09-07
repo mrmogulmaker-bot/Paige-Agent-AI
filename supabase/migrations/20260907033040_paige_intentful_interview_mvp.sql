@@ -201,6 +201,11 @@ begin
   end loop;
   v_full:=v_full||jsonb_build_object('sourceDecisions',v_decisions);
   v_saved:=public.save_solo_business_brief(v_full,v_expected_updated_at,null);
+  v_context:=public.get_solo_setup_context();
+  if v_context is null or v_context->>'accessScope'<>'owner_full' or jsonb_typeof(v_context->'brief')<>'object' then
+    raise exception 'INTERVIEW_READBACK_UNAVAILABLE' using errcode='40001';
+  end if;
+  v_saved:=v_context->'brief';
   for v_key in select f->>'fieldKey' from jsonb_array_elements(v_selected) f loop
     if v_saved->>v_key is distinct from (select f->>'value' from jsonb_array_elements(v_selected) f where f->>'fieldKey'=v_key limit 1)
       then v_verified:=false; end if;

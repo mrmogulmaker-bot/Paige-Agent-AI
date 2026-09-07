@@ -116,7 +116,11 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
     if (!workspaceId) return;
     clearPaigePublicPresenceScope();
     setPaigeDiscussionScope({ tenantId: workspaceId, surface: "business_game_plan", businessMissionId: play.id, label: play.title });
-    openPaige?.();
+    setDrawer(null);
+    setSelected(null);
+    setPending(null);
+    setError(null);
+    requestAnimationFrame(() => openPaige?.());
   };
 
   const finish = async (result: Awaited<ReturnType<typeof brain.mutate>>, success: string) => {

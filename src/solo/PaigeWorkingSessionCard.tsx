@@ -86,6 +86,9 @@ export function PaigeWorkingSessionCard({
   const [receipt, setReceipt] = useState<Record<string, unknown> | null>(null);
   const loadGeneration = useRef(0);
   const pathRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const answerRef = useRef<HTMLTextAreaElement | null>(null);
+  const recapHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const advanceFocusRef = useRef(false);
   const acceptedEpoch = useRef(accountEpoch);
   acceptedEpoch.current = accountEpoch;
 
@@ -124,6 +127,12 @@ export function PaigeWorkingSessionCard({
   const step = Number.isFinite(parsedStep) ? parsedStep : 0;
   const question = pathConfig.questions[Math.min(Math.max(step, 0), pathConfig.questions.length - 1)];
   const shouldOffer = !session && (explicitOffer || (state.eligibleForFirstUse && api.threads.length === 0));
+  useEffect(() => {
+    if (!advanceFocusRef.current || !session) return;
+    advanceFocusRef.current = false;
+    if (session.status === "recap") recapHeadingRef.current?.focus();
+    else answerRef.current?.focus();
+  }, [session?.revision, session?.status, session?.stepKey]);
 
   const begin = async (entrySource: "first_use" | "paige_brief") => {
     if (busy) return;
@@ -186,6 +195,7 @@ export function PaigeWorkingSessionCard({
         { fieldKey: question.fieldKey, value: answer.trim() },
       );
       if (acceptedEpoch.current !== epoch) return;
+      advanceFocusRef.current = true;
       setState((current) => ({ ...current, session: next }));
       setAnswer("");
       if (last) setSelected(new Set());
@@ -240,7 +250,7 @@ export function PaigeWorkingSessionCard({
     const facts = session.proposedFacts.filter((fact) => fact.state === "proposed");
     return (
       <section className="pws-card" aria-labelledby="pws-recap-title">
-        <div className="pws-heading"><ClipboardCheck aria-hidden size={18} /><div><small>SELECTIVE RECAP</small><h3 id="pws-recap-title">Choose which points may enter Paige Brief.</h3></div></div>
+        <div className="pws-heading"><ClipboardCheck aria-hidden size={18} /><div><small>SELECTIVE RECAP</small><h3 id="pws-recap-title" ref={recapHeadingRef} tabIndex={-1}>Choose which points may enter Paige Brief.</h3></div></div>
         <p>Each item is independent. Unchecked points stay only in this working session and do not become canonical context, Mind, or Memory.</p>
         <div className="pws-facts">
           {facts.map((fact: InterviewFact) => {
@@ -264,7 +274,7 @@ export function PaigeWorkingSessionCard({
     <section className="pws-card" aria-labelledby="pws-question-title">
       <div className="pws-heading"><Sparkles aria-hidden size={18} /><div><small>{pathConfig.label.toUpperCase()} · {Math.min(step + 1, pathConfig.questions.length)} OF {pathConfig.questions.length}</small><h3 id="pws-question-title">{question.prompt}</h3></div></div>
       <p>Why I’m asking: this answer can become <strong>{question.use}</strong> if you select it in the recap.</p>
-      <label className="pws-answer"><span>Your answer</span><textarea value={answer} maxLength={800} onChange={(event) => setAnswer(event.target.value)} placeholder="Answer in your own words. Don’t include passwords, credentials, or private documents." /></label>
+      <label className="pws-answer"><span>Your answer</span><textarea ref={answerRef} value={answer} maxLength={800} onChange={(event) => setAnswer(event.target.value)} placeholder="Answer in your own words. Don’t include passwords, credentials, or private documents." /></label>
       {error && <p className="pws-error" role="alert">{error}</p>}
       <div className="pws-actions"><button type="button" className="pws-secondary" disabled={busy} onClick={() => void update("end")}><X aria-hidden size={14} />End</button><button type="button" className="pws-secondary" disabled={busy} onClick={() => void update("pause")}><Pause aria-hidden size={14} />Pause</button><button type="button" className="pws-primary" disabled={busy || !answer.trim()} onClick={() => void submitAnswer()}>{busy ? "Saving place…" : step >= pathConfig.questions.length - 1 ? "Review recap" : "Continue"}</button></div>
     </section>

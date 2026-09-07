@@ -411,6 +411,7 @@ const PaigeAIChatInner = ({
   // Same idiom, and same reason, as the refusal notice below: releasing focus changes the
   // epoch, and the epoch change invalidates the very load the release was made for.
   const pendingThreadSelectionRef = useRef<{ epoch: string; id: string } | null>(null);
+  const missionScopeActiveRef = useRef(Boolean(businessMissionId || businessMissionAsk));
   // A refusal releases focus, which CHANGES this epoch, which resets the transcript — so a naive
   // "clear focus on refusal" deletes the very sentence the person needs to read. The notice is
   // parked here on the way out and adopted as the opening message on the way back in, so the
@@ -507,6 +508,8 @@ const PaigeAIChatInner = ({
   useEffect(() => {
     if (acceptedEpochRef.current === scopeEpoch) return;
     const leavingEpoch = acceptedEpochRef.current;
+    const leavingMissionScope = missionScopeActiveRef.current;
+    missionScopeActiveRef.current = Boolean(businessMissionId || businessMissionAsk);
     acceptedEpochRef.current = scopeEpoch;
     dictationGenerationRef.current += 1;
     setDictationGeneration(dictationGenerationRef.current);
@@ -544,7 +547,8 @@ const PaigeAIChatInner = ({
     // causes; resuming a saved thread over it defeated that on every account with any
     // history, which is every real one. When a notice was adopted, history is already
     // settled: show the explanation and resume nothing.
-    setHistoryHydrated(scopeNotice !== null);
+    const keepFreshAfterMissionExit = leavingMissionScope && parkedSelection?.epoch !== leavingEpoch;
+    setHistoryHydrated(scopeNotice !== null || keepFreshAfterMissionExit);
     setHistoryTransitioning(false);
     setMobileRailOpen(false);
   }, [scopeEpoch, openingGreeting, setActiveThreadId, setAttachedDoc]);

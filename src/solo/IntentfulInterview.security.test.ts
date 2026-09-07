@@ -16,6 +16,8 @@ describe("Intentful Interview security contract", () => {
     expect(migration.match(/public\.is_tenant_owner\(v_actor,v_tenant\)/g)).toHaveLength(5);
     expect(migration).not.toContain("can_manage_tenant_brand");
     expect(migration).toContain("v_context:=public.get_solo_setup_context()");
+    expect(migration.match(/v_context:=public\.get_solo_setup_context\(\)/g)).toHaveLength(2);
+    expect(migration.indexOf("v_context:=public.get_solo_setup_context();", migration.indexOf("save_solo_business_brief"))).toBeGreaterThan(migration.indexOf("v_saved:=public.save_solo_business_brief"));
     expect(migration).toContain("representativeUserIds");
     expect(migration).toContain("save_solo_business_brief(v_full,v_expected_updated_at,null)");
     expect(migration).toContain("jsonb_build_object('sourceDecisions',v_decisions)");

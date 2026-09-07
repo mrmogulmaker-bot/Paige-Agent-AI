@@ -190,9 +190,35 @@ describe("PaigeWorkingSessionCard", () => {
     expect(mocked.update).toHaveBeenCalledWith(active, "answer", "recap", expect.objectContaining({ fieldKey: "idealCustomer", value: "Founder-led agencies" }));
     expect(mocked.update.mock.calls[0][3]).not.toHaveProperty("label");
     expect(mocked.update.mock.calls[0][3]).not.toHaveProperty("id");
+    expect(document.activeElement?.id).toBe("pws-recap-title");
     await act(async () => root.unmount()); host.remove();
   });
 
+  it("moves focus to the answer for the next accepted interview step", async () => {
+    const active = session();
+    mocked.get.mockResolvedValue({ eligibleForFirstUse: false, session: active });
+    mocked.update.mockResolvedValue({ ...active, stepKey: "question_1", revision: 2 });
+    const { host, root } = await renderCard(api({ activeThreadId: "thread-1" }), true);
+    const textarea = host.querySelector("textarea") as HTMLTextAreaElement;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textarea, "North Star"); textarea.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => { (Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Continue") as HTMLButtonElement).click(); await Promise.resolve(); });
+    expect(document.activeElement).toBe(host.querySelector("textarea"));
+    await act(async () => root.unmount()); host.remove();
+  });
+
+  it("shows a visible row focus treatment for recap checkboxes", async () => {
+    const recap = session({ status: "recap", stepKey: "recap", proposedFacts: [
+      { id: "fact-name", canonicalOwner: "settings.setup.business_brief", fieldKey: "publicName", label: "Business name", value: "North Star", provenance: "owner_statement", state: "proposed" },
+    ] });
+    mocked.get.mockResolvedValue({ eligibleForFirstUse: false, session: recap });
+    const { host, root } = await renderCard(api({ activeThreadId: "thread-1" }), true);
+    const checkbox = host.querySelector<HTMLInputElement>('.pws-facts input[type="checkbox"]')!;
+    act(() => checkbox.focus());
+    expect(document.activeElement).toBe(checkbox);
+    const css = await import("node:fs").then(({ readFileSync }) => readFileSync("src/solo/solo-paige-workspace.css", "utf8"));
+    expect(css).toContain(".pws-facts label:focus-within{outline:2px solid hsl(var(--ring));outline-offset:2px}");
+    await act(async () => root.unmount()); host.remove();
+  });
   it("recovers a persisted recap_pending session without parsing it as a question", async () => {
     const pending = session({ stepKey: "recap_pending", revision: 5 });
     mocked.get.mockResolvedValue({ eligibleForFirstUse: false, session: pending });
