@@ -33,6 +33,7 @@ Every PR and deployment closeout records:
 - edge-function status and exact deployed functions/versions, or `NOT_APPLICABLE`;
 - CI, security, and required production-check results;
 - evidence links or reproducible references;
+- any authenticated or production-runtime proof boundary, with the exact claim excluded from `LIVE` and evidence explaining why proof remains owed;
 - rollback or forward-fix position.
 
 Within a release record, each internal build is marked `referenced` when it supplies the customer note's
@@ -96,7 +97,7 @@ Every minor or major customer release note uses this order:
 4. **Who can use it** — exact audience, role, tier, cohort, or staged eligibility
 5. **Action required** — what the owner must do, or “No action required”
 6. **Status** — `LIVE`, `PARTIAL`, `UNAVAILABLE`, and/or `PROOF OWED`, applied to specific claims
-7. **Known limitations and safe next step** — for each `PROOF OWED` build area, name the exact deployment, migration/edge area, unproven boundary, and claim excluded from `LIVE`
+7. **Known limitations and safe next step** — for each `PROOF OWED` build area, name the exact deployment, migration/edge or authenticated-runtime area, unproven boundary, and claim excluded from `LIVE`
 8. **Exact technical release reference — INTERNAL ONLY** — commit SHA, deployment ID, environment, migrations/edge status, checks, and evidence
 9. **Paige-readable summary** — tenant-safe plain language Paige can use to answer, “What changed in my workspace?”
 

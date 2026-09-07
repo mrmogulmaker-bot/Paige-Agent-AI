@@ -306,6 +306,23 @@
     {
       "if": {
         "properties": {
+          "internal_builds": {
+            "contains": {
+              "properties": {
+                "customer_release_scope": { "const": "referenced" },
+                "proof_boundaries": { "type": "array", "minItems": 1 }
+              },
+              "required": ["customer_release_scope", "proof_boundaries"]
+            }
+          }
+        },
+        "required": ["internal_builds"]
+      },
+      "then": { "properties": { "whats_new": { "properties": { "status": { "contains": { "const": "PROOF OWED" } } } } } }
+    },
+    {
+      "if": {
+        "properties": {
           "customer_release_identity": { "type": "object" },
           "whats_new": { "type": "object", "properties": { "status": { "contains": { "const": "PROOF OWED" } } } }
         },
@@ -319,7 +336,8 @@
               "required": ["customer_release_scope"],
               "anyOf": [
                 { "properties": { "migration_status": { "properties": { "state": { "const": "PROOF_OWED" } } } }, "required": ["migration_status"] },
-                { "properties": { "edge_status": { "properties": { "state": { "const": "PROOF_OWED" } } } }, "required": ["edge_status"] }
+                { "properties": { "edge_status": { "properties": { "state": { "const": "PROOF_OWED" } } } }, "required": ["edge_status"] },
+                { "properties": { "proof_boundaries": { "type": "array", "minItems": 1 } }, "required": ["proof_boundaries"] }
               ]
             }
           }
@@ -341,7 +359,7 @@
       "required": ["supersedes_record_id", "reason"],
       "properties": {
         "supersedes_record_id": { "type": "string", "minLength": 1, "pattern": "\\S" },
-        "reason": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        "reason": { "$ref": "#/$defs/resolvedString" }
       }
     },
     "customerReleaseIdentity": {
@@ -362,7 +380,10 @@
           "type": "string",
           "minLength": 1,
           "pattern": "\\S",
-          "not": { "pattern": "(^|[^A-Za-z0-9])([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][^A-Za-z0-9]*[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])([^A-Za-z0-9]|$)|^[ \\t\\r\\n]*([Nn][^A-Za-z0-9]*[Aa]|[Nn][Oo][Nn][Ee]|[Nn][Oo][Tt][^A-Za-z0-9]*[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee])[ \\t\\r\\n]*$" }
+          "allOf": [
+            { "not": { "pattern": "(^|[^A-Za-z0-9])([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][^A-Za-z0-9]*[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])([^A-Za-z0-9]|$)|^[ \\t\\r\\n]*([Nn][^A-Za-z0-9]*[Aa]|[Nn][Oo][Nn][Ee]|[Nn][Oo][Tt][^A-Za-z0-9]*[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee])[ \\t\\r\\n]*$" } },
+            { "not": { "pattern": "^[ \\t\\r\\n]*(https?://|refs/heads/|[Mm][Aa][Ii][Nn]|[Ll][Aa][Tt][Ee][Ss][Tt]|[Pp][Rr][Oo][Dd]([Uu][Cc][Tt][Ii][Oo][Nn])?|[Cc][Uu][Rr][Rr][Ee][Nn][Tt]|[Hh][Ee][Aa][Dd])[ \\t\\r\\n]*$" } }
+          ]
         }
       ]
     },
@@ -389,6 +410,16 @@
       "minLength": 1,
       "pattern": "\\S",
       "not": { "pattern": "^[ \\t\\r\\n]*([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][^A-Za-z0-9]*[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Nn][^A-Za-z0-9]*[Aa]|[Nn][Oo][Nn][Ee]|[Nn][Oo][Tt][^A-Za-z0-9]*[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])[ \\t\\r\\n]*$" }
+    },
+    "proofBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["boundary", "excluded_from_live_claim", "evidence"],
+      "properties": {
+        "boundary": { "$ref": "#/$defs/proofBoundaryString" },
+        "excluded_from_live_claim": { "$ref": "#/$defs/proofBoundaryString" },
+        "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/proofBoundaryString" } }
+      }
     },
     "evidenceReferenceString": {
       "allOf": [
@@ -483,6 +514,7 @@
         "staged_rollout",
         "migration_status",
         "edge_status",
+        "proof_boundaries",
         "checks",
         "evidence"
       ],
@@ -516,6 +548,10 @@
               "then": { "properties": { "identifiers": { "items": { "allOf": [{ "pattern": "^[A-Za-z0-9._-]+@v?[A-Za-z0-9._-]+$" }, { "$ref": "#/$defs/resolvedString" }] } } } }
             }
           ]
+        },
+        "proof_boundaries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/proofBoundary" }
         },
         "checks": {
           "type": "object",
@@ -627,7 +663,7 @@
           "required": ["visibility", "source"],
           "properties": {
             "visibility": { "const": "customer_and_internal" },
-            "source": { "const": "referenced_builds.migration_status_or_edge_status.proof_owed" }
+            "source": { "const": "referenced_builds.proof_boundaries_or_delivery_status.proof_owed" }
           }
         },
         "safe_next_step": { "type": "string", "minLength": 1, "pattern": "\\S" },
