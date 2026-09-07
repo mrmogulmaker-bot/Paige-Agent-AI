@@ -27,7 +27,7 @@ export interface SecureBrowserAuthorityDeps {
 export function secureBrowserNeedsAdminConfirmation(
   requireAdminConfirmFirstN: number,
   runCount: number,
-  invocationKind: SecureBrowserInvocationKind | undefined,
+  invocationKind: string | undefined,
   confirmToken: string | undefined,
 ): boolean {
   return requireAdminConfirmFirstN > 0

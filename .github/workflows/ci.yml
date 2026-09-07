@@ -151,6 +151,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:secure-browser-security
 
+      - name: Install Chromium for the Secure Browser hostile-page proof
+        if: ${{ !cancelled() }}
+        run: npx playwright install --with-deps chromium
+
       - name: Secure Browser hostile-page egress proof (reads pass; writes, beacon, WebSockets, service workers stop)
         if: ${{ !cancelled() }}
         run: npm run smoke:secure-browser-egress
