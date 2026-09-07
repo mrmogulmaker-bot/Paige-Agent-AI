@@ -1,13 +1,13 @@
 # UI delivery evidence: Text-chat Skills and Intentful Interview MVP
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
-FLOW_BY_FLOW: PASS: grounded on current main 3f75ad58; affected paths cover Setup -> Paige Brief, Business Game Plan -> selected Strategic Play -> Paige, the dedicated Paige transcript, canonical Setup save/readback, Action Bus Discussion Needed, Rail, and account-change fences
+FLOW_BY_FLOW: PASS: grounded on current main 6e93b110; affected paths cover Setup -> Paige Brief, Business Game Plan -> selected Strategic Play -> Paige, the dedicated Paige transcript, canonical Setup save/readback, Action Bus Discussion Needed, Rail, and account-change fences
 PAIGE_UI_DESIGN: PASS: repository Paige UI design and reference instructions were applied; the working session uses the existing Paige tokens, transcript scroll owner, action hierarchy, and truthful status language
 MATERIAL_FLOW_CHANGE: YES: adds three contextual entries into the one dedicated Paige workspace plus optional interview lifecycle and selective canonical confirmation
 FLOW_PROTOTYPE: PASS: owner-approved placement in this workstream requires no standalone Skills, Interview, Voice, or navigation destination; the real-component render harness preserves that contract
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a verified Solo owner may voluntarily clarify business context, plan against a selected Strategic Play, or resolve one named missing decision
 VISUAL_DIRECTION: PASS: existing Solo/Paige token layers and owning-surface card patterns; no new visual system or customer recipe catalogue
-AUTOMATED_EVIDENCE: PASS: full Vitest suite 269 files / 3,879 tests; affected interview, scope, workspace, Discussion Needed, Setup, and routing suites green
+AUTOMATED_EVIDENCE: PASS: pre-repair full Vitest suite 269 files / 3,880 tests; post-rebase affected interview, scope, workspace, Discussion Needed, Paige chat, Setup, update-banner, and navigation suite 134/134 green; GitHub full-suite conclusion is recorded on the final draft head
 STATIC_EVIDENCE: PASS: type ratchet has no new errors; changed client modules pass ESLint; migration-version, binding-ledger, chat-tool-registry, governed-execution, and regression checks pass; production build passes
 RENDERED_EVIDENCE: PASS: 24 visibly labelled real-component harness frames at 1536x770, 1366x768, 1024x768, and 900x1000 in light/dark for offer, selective recap, and Discussion Needed; existing Setup renderer passes 114 samples with no horizontal failures or runtime errors
 BEHAVIORAL_EVIDENCE: PASS: browser drove start, answer, continue, pause, resume, end, independent fact selection, verified receipt, Talk now, Later, Don't ask again, and selected-play Plan with Paige callback
@@ -20,7 +20,7 @@ TRUTHFUL_STATE_LABELS: PASS: the UI and evidence distinguish the locally verifie
 SOLO_UI: YES: Settings -> Setup / Paige Brief, Command Center -> Business Game Plan, and Paige -> Chat
 UNVERIFIED: new migration replay and authenticated preview behavior, including real owner permission, denied role, account switch, cross-tenant access, canonical Setup readback, Action Bus rows, and matching Rail evidence
 
-INTERNAL_BUILD_IDENTITY: 143a61dcee1abc68b1c87e9c8bef6e7fdffaa02e; deployment=NOT_APPLICABLE; environment=development; migrations=PROOF_OWED(local replay unavailable and no remote migration authorized); edge=PROOF_OWED(paige-ai-chat change is not deployed and no edge deployment authorized); evidence=docs/evidence/ui-delivery/text-chat-skills-intentful-interview-mvp.md and PR 1044 checks
+INTERNAL_BUILD_IDENTITY: 34810522764c2b60eacb1a7e89c50a10b1b00576; deployment=NOT_APPLICABLE; environment=development; migrations=PROOF_OWED(local replay unavailable and no remote migration authorized); edge=PROOF_OWED(paige-ai-chat change is not deployed and no edge deployment authorized); evidence=docs/evidence/ui-delivery/text-chat-skills-intentful-interview-mvp.md and PR 1044 checks
 RELEASE_CHANNEL: development: draft PR 1044 and local rendered evidence only; no preview or production release claim
 RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible text-chat working-session capability pending final owner release decision
 CUSTOMER_RELEASE_IDENTITY: 0.1.0 — Governed Workspace Foundations; owner-decision=PENDING
@@ -28,8 +28,8 @@ RELEASE_NOTE_REQUIRED: YES: a minor owner-visible capability requires a customer
 RELEASE_TRUTH_BOUNDARY: PROOF OWED: implementation and local UI behavior are proven, but migration, edge deployment, authenticated tenant canonical write/readback, and production Rail evidence are not complete
 RELEASE_RECOVERY: position=revert the exact MVP commits before any authorized deployment or forward-fix in the same bounded paths; reference=PR 1044 commit history and this evidence record
 
-SOLO_1536X770_PAIGE_CLOSED: PASS: scripts/live-drive/artifacts/intentful-interview-render/1536-770-light-discussion-discussion.png and dark counterpart; no document overflow
-SOLO_1536X770_PAIGE_OPEN: PASS: offer and recap light/dark frames in scripts/live-drive/artifacts/intentful-interview-render/; all controls reachable in the Paige transcript
+SOLO_1536X770_PAIGE_CLOSED: PASS: docs/evidence/ui-delivery/text-chat-intentful-interview-mvp-artifacts/1536-770-light-discussion-discussion.png and dark counterpart; no document overflow
+SOLO_1536X770_PAIGE_OPEN: PASS: offer and recap light/dark frames in docs/evidence/ui-delivery/text-chat-intentful-interview-mvp-artifacts/; all controls reachable in the Paige transcript
 SOLO_1366X768_PAIGE_CLOSED: PASS: Discussion Needed plus selected-play handoff frame; owning surface remains readable
 SOLO_1366X768_PAIGE_OPEN: PASS: offer and recap light/dark frames; no clipping or document overflow
 SOLO_1024X768_PAIGE_CLOSED: PASS: Discussion Needed light/dark frames; card stays inline and action row remains reachable
@@ -55,7 +55,7 @@ The Paige transcript is the scroll owner while Paige is open. The owning page re
 
 - Automated: `npx vitest run --maxWorkers=2` -> 269 files / 3,879 tests.
 - Setup real-component matrix: `node scripts/live-drive/setup-business-context-render.mjs` -> 114 samples, zero horizontal failures, zero runtime errors.
-- Text-flow real-component matrix: 24 frames under `scripts/live-drive/artifacts/intentful-interview-render/`; every frame reported content, no overlay, no document overflow, visible non-live label, and a reachable internal scroll owner.
+- Text-flow real-component matrix: 24 frames under `docs/evidence/ui-delivery/text-chat-intentful-interview-mvp-artifacts/`; every frame reported content, no overlay, no document overflow, visible non-live label, and a reachable internal scroll owner.
 - Browser behavior: agent-browser sessions exercised interview lifecycle, selective recap/receipt, all Discussion Needed choices, and selected Strategic Play Plan with Paige.
 - Accessibility: exact-head axe WCAG 2 A/AA -> 0 violations and 0 incomplete across light offer, dark recap, and light Discussion Needed after semantic and contrast corrections.
 - Static: affected ESLint green; CI type ratchet green; regression, migration version, ledger, chat-tool registry, and governed-execution checks green; Vite production build green.
@@ -65,6 +65,6 @@ The Paige transcript is the scroll owner while Paige is open. The owning page re
 
 The exact-head accessibility rerun found insufficient contrast on the dark recap primary treatment and the light Discussion Needed label; the product tokens were corrected and the WCAG A/AA rerun returned zero violations.
 
-Independent Codex review found owner authority broader than the product contract, resumable raw-answer retention risks, missing canonical revision and representative preservation, focused-plan history carry-over, and a null-thread resume gap. The repair uses `solo_setup_access_scope() = owner_full`, rejects likely sensitive or document-sized answers, scrubs proposed values on terminal states, reads the complete canonical Setup context and passes its revision, preserves representatives, treats every mission ask as focused context, and requires explicit resume whenever the interview thread is not selected. The existing Setup renderer caught and drove repair of a null interview-read shell crash. The card now validates the read contract and fails closed without taking down Setup or Paige. A separate ledger review caught and removed an over-broad mechanical status edit before commit; the final ledger diff is restricted to the three owned rows plus current-main grounding.
+Independent Codex review found owner authority broader than the product contract, resumable raw-answer retention risks, missing canonical revision and representative preservation, focused-plan history carry-over, and a null-thread resume gap. Exact-head review then found a non-atomic final-answer transition, inaccessible local-only render evidence, stale build identity, over-broad interview focus release, stale Discussion Needed responses, duplicate canonical-field selections, caller-controlled durable labels, and incomplete radio-group keyboard behavior. The repaired build makes the answer-to-recap transition atomic while retaining an explicit recovery path, commits all render frames, isolates interview-scope release, binds responses to the Mission revision, rejects duplicate canonical fields, derives durable labels server-side, and implements roving focus with Arrow/Home/End behavior. The repair uses `solo_setup_access_scope() = owner_full`, rejects likely sensitive or document-sized answers, scrubs proposed values on terminal states, reads the complete canonical Setup context and passes its revision, preserves representatives, treats every mission ask as focused context, and requires explicit resume whenever the interview thread is not selected. The existing Setup renderer caught and drove repair of a null interview-read shell crash. The card now validates the read contract and fails closed without taking down Setup or Paige. A separate ledger review caught and removed an over-broad mechanical status edit before commit; the final ledger diff is restricted to the three owned rows plus current-main grounding.
 
 Harness records use explicit fictional values and are burned with `HARNESS RENDER · NOT LIVE`. They prove rendering, interactions, focus, reflow, and local state transitions only. They do not prove authenticated tenant isolation, durable writes, database migration success, canonical readback, or Rail persistence.
