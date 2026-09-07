@@ -137,11 +137,32 @@ END $$;
 REVOKE ALL ON FUNCTION public._secure_browser_current_actor_tenant() FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public._secure_browser_current_actor_tenant() TO authenticated;
 
+CREATE FUNCTION public._secure_browser_json_node_safe(p_value jsonb)
+RETURNS boolean LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE v_key text;v_child jsonb;
+BEGIN
+ IF p_value IS NULL THEN RETURN true;END IF;
+ CASE jsonb_typeof(p_value)
+  WHEN 'object' THEN
+   FOR v_key,v_child IN SELECT e.key,e.value FROM pg_catalog.jsonb_each(p_value) AS e LOOP
+    IF v_key ~* '(password|passwd|secret|token|cookie|authorization|html|page_source|screenshot|replay|live.?view|mfa|otp|context.?id|provider)' OR
+       NOT public._secure_browser_json_node_safe(v_child) THEN RETURN false;END IF;
+   END LOOP;
+  WHEN 'array' THEN
+   FOR v_child IN SELECT a.value FROM pg_catalog.jsonb_array_elements(p_value) AS a LOOP
+    IF NOT public._secure_browser_json_node_safe(v_child) THEN RETURN false;END IF;
+   END LOOP;
+  WHEN 'string' THEN
+   RETURN public._secure_browser_safe_text(p_value #>> '{}');
+  ELSE NULL;
+ END CASE;
+ RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION public._secure_browser_json_node_safe(jsonb) FROM PUBLIC,anon,authenticated,service_role;
+
 CREATE FUNCTION public._secure_browser_safe_json(p_value jsonb)
-RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$
- SELECT p_value IS NOT NULL AND jsonb_typeof(p_value)='object' AND NOT jsonb_path_exists(p_value,
- '$.**.keyvalue() ? (@.key like_regex "password|passwd|secret|token|cookie|authorization|html|page_source|screenshot|replay|live.?view|mfa|otp|context.?id|provider" flag "i")')
- AND public._secure_browser_safe_text(p_value::text)
+RETURNS boolean LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+ SELECT p_value IS NOT NULL AND jsonb_typeof(p_value)='object' AND public._secure_browser_json_node_safe(p_value)
 $$;
 REVOKE ALL ON FUNCTION public._secure_browser_safe_json(jsonb) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public._secure_browser_safe_json(jsonb) TO service_role;
