@@ -86,6 +86,7 @@
       },
       "then": {
         "properties": {
+          "whats_new": { "type": "null" },
           "internal_builds": {
             "items": {
               "properties": { "customer_release_scope": { "const": "supporting" } },
@@ -293,7 +294,13 @@
       "properties": {
         "state": { "enum": ["PASS", "FAIL", "UNVERIFIED"] },
         "evidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "PASS" } }, "required": ["state"] },
+          "then": { "properties": { "evidence": { "items": { "$ref": "#/$defs/resolvedString" } } } }
+        }
+      ]
     },
     "deliveryState": {
       "type": "object",
@@ -506,7 +513,19 @@
           }
         },
         "paige_readable_summary": { "type": "string", "minLength": 1 }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "contains": { "const": "PARTIAL" } } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "known_limitations": {
+                "not": { "pattern": "^([Nn][Oo][Nn][Ee]|[Nn]/?[Aa]|[Nn][Oo][Tt] [Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee]|[Nn][Oo] [Kk][Nn][Oo][Ww][Nn] [Ll][Ii][Mm][Ii][Tt][Aa][Tt][Ii][Oo][Nn][Ss]?)$" }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

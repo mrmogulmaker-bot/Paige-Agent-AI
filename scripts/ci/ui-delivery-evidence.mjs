@@ -145,7 +145,8 @@ function isEvidenceValue(value) {
 }
 
 function hasPlaceholder(value) {
-  return /\b(?:TODO|TBD|PLACEHOLDER|REPLACE_ME|ADD_LINK|LINK_HERE)\b/i.test(value ?? "");
+  const normalized = String(value ?? "").replace(/[^A-Za-z0-9]+/g, " ");
+  return /\b(?:TODO|TBD|PLACEHOLDER|REPLACE ME|ADD LINK|LINK HERE)\b/i.test(normalized);
 }
 
 function isPassWithEvidence(value) {

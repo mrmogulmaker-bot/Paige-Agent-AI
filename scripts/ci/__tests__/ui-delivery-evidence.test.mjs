@@ -154,6 +154,10 @@ test("requires identifiers for applied migration and edge states", () => {
 
   const exactApplied = validateEvidenceText(coreEvidence.replace("migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE", "migrations=APPLIED(20260907000001_example); edge=APPLIED(paige-example@v3)"), { required: true, solo: false });
   assert.equal(exactApplied.ok, true, exactApplied.errors.join("\n"));
+
+  const placeholders = validateEvidenceText(coreEvidence.replace("migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE", "migrations=APPLIED(20260907000001_TODO); edge=APPLIED(paige_TODO@v1)"), { required: true, solo: false });
+  assert.equal(placeholders.ok, false);
+  assert.match(placeholders.errors.join("\n"), /migrations must be|edge must be/);
 });
 
 test("rejects anticipated production deployment IDs", () => {

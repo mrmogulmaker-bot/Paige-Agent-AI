@@ -27,6 +27,8 @@ const CLASSIFICATIONS = new Set(["internal_only", "patch", "minor_candidate", "m
 const RECORD_STATES = new Set(["DRAFT", "OWNER_DECISION_PENDING", "APPROVED", "PUBLISHED", "CORRECTED", "RETRACTED"]);
 const DELIVERY_STATES = new Set(["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAILED"]);
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
+const hasPlaceholder = (value) => /\b(?:todo|tbd|placeholder|replace me|pending|unknown)\b/i.test(String(value ?? "").replace(/[^A-Za-z0-9]+/g, " "));
+const isNoLimitation = (value) => /^(?:none|n\/?a|not applicable|no known limitations?)$/i.test(String(value ?? "").trim());
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "history", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "customer_release_scope", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
 const STAGED_KEYS = ["owner_approval", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
@@ -46,6 +48,7 @@ function requireEvidenceState(value, label, findings) {
   if (!CHECKS.has(value?.state) || !Array.isArray(value?.evidence) || value.evidence.length === 0)
     findings.push(`${label} must include PASS/FAIL/UNVERIFIED and non-empty evidence[]`);
   else if (value.evidence.some((item) => !nonEmpty(item))) findings.push(`${label}.evidence must contain only non-empty strings`);
+  else if (value.state === "PASS" && value.evidence.some(hasPlaceholder)) findings.push(`${label}.evidence must contain resolved proof when state is PASS`);
 }
 
 function requireExactObject(value, keys, label, findings) {
@@ -213,6 +216,7 @@ export function validateReleaseRecord(record) {
         if (!nonEmpty(note[field])) findings.push(`whats_new.${field} missing`);
       if (!Array.isArray(note.status) || note.status.length === 0 || note.status.some((state) => !CUSTOMER_STATES.has(state))) findings.push("whats_new.status invalid");
       else if (new Set(note.status).size !== note.status.length) findings.push("whats_new.status must be unique");
+      else if (note.status.includes("PARTIAL") && (isNoLimitation(note.known_limitations) || !Array.isArray(record.limitations) || !record.limitations.some((item) => nonEmpty(item) && !isNoLimitation(item)))) findings.push("PARTIAL status requires a substantive known limitation");
       requireExactObject(note.proof_owed, ["visibility", "source"], "whats_new.proof_owed", findings);
       if (note.proof_owed?.visibility !== "customer_and_internal" || note.proof_owed?.source !== "referenced_builds.migration_status_or_edge_status.proof_owed") findings.push("whats_new.proof_owed must resolve to build-bound proof facts");
       requireExactObject(note.technical_release_reference, ["visibility", "source"], "whats_new.technical_release_reference", findings);
@@ -381,6 +385,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects correction without history", { ...valid, record_state: "CORRECTED" }, true],
     ["accepts structurally complete correction", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope" } }, false],
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],
+    ["rejects PARTIAL without a substantive limitation", { ...valid, limitations: ["None"], whats_new: { ...valid.whats_new, known_limitations: "None" } }, true],
+    ["rejects placeholder evidence on passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["TODO"] } } }] }, true],
   ];
   let bad = 0;
   for (const [label, record, shouldFail] of cases) {
