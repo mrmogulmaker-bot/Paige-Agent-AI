@@ -85,7 +85,15 @@
         "required": ["customer_release_identity"]
       },
       "then": {
-        "properties": { "whats_new": { "$ref": "#/$defs/whatsNew" } }
+        "properties": {
+          "whats_new": { "$ref": "#/$defs/whatsNew" },
+          "internal_builds": {
+            "contains": {
+              "properties": { "customer_release_scope": { "const": "referenced" } },
+              "required": ["customer_release_scope"]
+            }
+          }
+        }
       }
     },
     {
@@ -94,7 +102,15 @@
         "required": ["classification"]
       },
       "then": {
-        "properties": { "whats_new": { "$ref": "#/$defs/whatsNew" } }
+        "properties": {
+          "whats_new": { "$ref": "#/$defs/whatsNew" },
+          "internal_builds": {
+            "contains": {
+              "properties": { "customer_release_scope": { "const": "referenced" } },
+              "required": ["customer_release_scope"]
+            }
+          }
+        }
       }
     },
     {

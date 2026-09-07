@@ -106,9 +106,10 @@ Customer copy never includes secrets, internal sensitive payloads, tenant data f
 
 The machine-readable contract is `docs/release-governance/release-record.schema.json`. A customer release candidate gets one record under `docs/release-governance/records/` before publication. Internal-only PRs still complete the release-governance fields in the PR body; they do not need a customer release record unless they join a named release train.
 
-Release records are additive historical evidence. Correct or retract an error with a new record naming the
-superseded record and reason; never delete or rewrite the dated original to imply proof that did not exist at
-publication time. The Master Project Reference remains the source for current platform truth.
+Release records are additive historical evidence. Correct or retract an error with a new record naming a
+different, existing predecessor record and the reason; self-references, missing targets, cycles, deletion, and
+rewriting are invalid. Never alter the dated original to imply proof that did not exist at publication time.
+The Master Project Reference remains the source for current platform truth.
 
 Every PR answers:
 

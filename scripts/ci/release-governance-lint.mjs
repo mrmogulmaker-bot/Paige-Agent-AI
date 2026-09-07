@@ -230,6 +230,37 @@ export function validateReleaseRecord(record) {
   return findings;
 }
 
+export function validateReleaseRecordSet(records) {
+  const findings = [];
+  const byId = new Map();
+  for (const record of records) {
+    if (!nonEmpty(record?.record_id)) continue;
+    if (byId.has(record.record_id)) findings.push(`record_id ${record.record_id} is duplicated`);
+    else byId.set(record.record_id, record);
+  }
+  for (const record of records) {
+    if (!["CORRECTED", "RETRACTED"].includes(record?.record_state)) continue;
+    const target = record.history?.supersedes_record_id;
+    if (!nonEmpty(target)) continue;
+    if (target === record.record_id) findings.push(`${record.record_id} history must not supersede itself`);
+    else if (!byId.has(target)) findings.push(`${record.record_id} history target ${target} does not resolve to an existing release record`);
+  }
+  for (const record of records) {
+    const seen = new Set();
+    let current = record;
+    while (["CORRECTED", "RETRACTED"].includes(current?.record_state) && nonEmpty(current.history?.supersedes_record_id)) {
+      if (seen.has(current.record_id)) {
+        findings.push(`${record.record_id} history contains a correction cycle`);
+        break;
+      }
+      seen.add(current.record_id);
+      current = byId.get(current.history.supersedes_record_id);
+      if (!current) break;
+    }
+  }
+  return [...new Set(findings)];
+}
+
 export function validateRepository() {
   const findings = [];
   for (const file of [POLICY, SCHEMA, ...POINTERS]) if (!fs.existsSync(file)) findings.push(`${file} missing`);
@@ -253,13 +284,17 @@ export function validateRepository() {
   const recordsDir = "docs/release-governance/records";
   findings.push(...validateRecordHistory(process.env.RELEASE_GOVERNANCE_BASE, recordsDir));
   if (fs.existsSync(recordsDir)) {
+    const records = [];
     for (const file of listJsonFiles(recordsDir)) {
       try {
-        for (const finding of validateReleaseRecord(JSON.parse(fs.readFileSync(file, "utf8")))) findings.push(`${file}: ${finding}`);
+        const record = JSON.parse(fs.readFileSync(file, "utf8"));
+        records.push(record);
+        for (const finding of validateReleaseRecord(record)) findings.push(`${file}: ${finding}`);
       } catch (error) {
         findings.push(`${file} invalid JSON: ${error?.message ?? error}`);
       }
     }
+    for (const finding of validateReleaseRecordSet(records)) findings.push(`${recordsDir}: ${finding}`);
   }
   return findings;
 }
@@ -311,7 +346,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects published failed migration state", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, migration_status: { state: "FAILED", evidence: ["migration 202609060001 failed"] } }] }, true],
     ["rejects undisclosed referenced proof owed", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"] } }], whats_new: { ...valid.whats_new, status: ["LIVE"] } }, true],
     ["rejects correction without history", { ...valid, record_state: "CORRECTED" }, true],
-    ["accepts correction with predecessor and reason", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope" } }, false],
+    ["accepts structurally complete correction", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope" } }, false],
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],
   ];
   let bad = 0;
@@ -332,7 +367,22 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     console.log(`  ${ok ? "ok  " : "FAIL"} ${label}`);
     if (!ok) bad++;
   }
-  const total = cases.length + historyCases.length;
+  const predecessor = { ...internal, record_id: "release-0.0.9" };
+  const correction = { ...valid, record_id: "release-0.1.0-correction", record_state: "CORRECTED", history: { supersedes_record_id: predecessor.record_id, reason: "Corrected audience scope" } };
+  const recordSetCases = [
+    ["accepts correction linked to an existing predecessor", [predecessor, correction], false],
+    ["rejects correction linked to a missing predecessor", [correction], true],
+    ["rejects correction self-reference", [{ ...correction, history: { ...correction.history, supersedes_record_id: correction.record_id } }], true],
+    ["rejects duplicate record identifiers", [predecessor, { ...valid, record_id: predecessor.record_id }], true],
+    ["rejects correction cycle", [{ ...correction, history: { ...correction.history, supersedes_record_id: "release-cycle-b" } }, { ...correction, record_id: "release-cycle-b", history: { ...correction.history, supersedes_record_id: correction.record_id } }], true],
+  ];
+  for (const [label, records, shouldFail] of recordSetCases) {
+    const failed = validateReleaseRecordSet(records).length > 0;
+    const ok = failed === shouldFail;
+    console.log(`  ${ok ? "ok  " : "FAIL"} ${label}`);
+    if (!ok) bad++;
+  }
+  const total = cases.length + historyCases.length + recordSetCases.length;
   console.log(bad ? `\n✗ release-governance self-test: ${bad} failure(s).` : `\n✓ release-governance self-test passed — ${total} case(s).`);
   process.exit(bad ? 1 : 0);
 }
