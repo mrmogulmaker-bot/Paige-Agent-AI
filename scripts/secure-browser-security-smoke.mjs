@@ -45,6 +45,7 @@ check(/invocationKind = "mcp"/.test(authority) && /invocationKind = platformOwne
 check(/secureBrowserNeedsAdminConfirmation/.test(runner), "first-N confirmation uses truthful browser invocation provenance");
 check(/isTenantAdmin:[\s\S]*is_tenant_admin_as/.test(runner) && /canAgencyManage:[\s\S]*agency_can_manage_child/.test(runner), "internal browser caller actor is re-authorized");
 check(runner.indexOf("resolveBrowserAuthority(req, body, admin)") < runner.indexOf('.from("paige_skill_runs")'), "browser authority resolves before any run row is written");
+check(/const hasBrowserStep = browserToolAllowed\(skill as SkillRow\)/.test(runner), "browser authority gate uses the interpreter canonical tool normalizer");
 
 const generatedTypes = read("src/integrations/supabase/types.ts");
 const browserTypeBlock = generatedTypes.slice(generatedTypes.indexOf("browser_use_sessions:"), generatedTypes.indexOf("build_milestones:"));

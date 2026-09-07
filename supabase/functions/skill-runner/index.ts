@@ -9,7 +9,7 @@ import { gatewayCompat } from "../_shared/claude.ts";
 import { platformOperatorTenantId } from "../_shared/platform-operator-tenant.ts";
 import { forge } from "../_shared/prompt-forge.ts";
 import { interpretSkill } from "../_shared/skill-interpreter.ts";
-import { shouldUseInterpreter, type SkillRow, type CallerTier, type BrowseResult, type PublicBrowseResult } from "../_shared/skill-interpreter-core.ts";
+import { shouldUseInterpreter, browserToolAllowed, type SkillRow, type CallerTier, type BrowseResult, type PublicBrowseResult } from "../_shared/skill-interpreter-core.ts";
 import {
   resolveSecureBrowserAuthority,
   secureBrowserNeedsAdminConfirmation,
@@ -197,8 +197,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: `Skill is ${skill.status}` }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const hasBrowserStep = Array.isArray(skill.allowed_tools)
-      && skill.allowed_tools.some((tool: unknown) => String(tool).toLowerCase() === "browser");
+    const hasBrowserStep = browserToolAllowed(skill as SkillRow);
     // Resolve and authorize before any run/activity row is written. A refused browser request leaves
     // no fabricated or caller-attributed execution trace.
     const browserAuthority = hasBrowserStep
