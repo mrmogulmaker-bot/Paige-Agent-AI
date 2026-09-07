@@ -196,12 +196,12 @@ function isUnresolvedRestatement(value) {
     .split(" ")
     .filter(Boolean);
   const causeCondition = /\b(?:unavailable|missing|absent|blocked|denied|failed|failure|outage|disabled|disconnected|unconfigured|requires|required|awaiting|without|lacks|no)\b|\bnot\s+(?:available|connected|configured|deployed|authorized|authenticated|accessible)\b/i;
-  const affectedScope = /\b(?:tenant|account|credential|environment|provider|permission|access|deployment|migration|edge|integration|connection|workspace|owner|ci|security|production|preview|local|test|claim|scope)\b/i;
+  const affectedScope = /\b(?:tenants?|accounts?|credentials?|environments?|providers?|permissions?|access|deployments?|migrations?|edge|integrations?|connections?|workspaces?|owners?|ci|security|production|preview|local|tests?|claims?|scope)\b/i;
   const connectorClause = /\b(?:because|due to|blocked by|awaiting|for|until|while)\b\s+(.+)$/i.exec(normalized)?.[1] ?? "";
   const hasConnectorReason = substantiveTerms(connectorClause).length >= 2 && (causeCondition.test(connectorClause) || affectedScope.test(connectorClause));
   const hasIndependentCause = raw.split(/[:;,.!?—–]+/).some((clause) => {
     const normalizedClause = normalizeSentinel(clause);
-    return normalizedClause && !pair.test(normalizedClause) && causeCondition.test(normalizedClause) && substantiveTerms(normalizedClause).length >= 2;
+    return normalizedClause && !pair.test(normalizedClause) && (causeCondition.test(normalizedClause) || affectedScope.test(normalizedClause)) && substantiveTerms(normalizedClause).length >= 2;
   });
   return !(hasReference || hasConnectorReason || hasIndependentCause);
 }
