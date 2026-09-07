@@ -21,8 +21,15 @@
   **DECISION (§13):** the shipped state — `crm_create_contact` NOT in the Rail set (only `paige_audit_log`) —
   is HONEST; the increment made it LESS honest by risking a false "succeeded." Withdrawn (branch reset to
   `origin/main`; PR #1040 closed). **A proper slice REQUIRES:** (a) an inserted-vs-existing signal from
-  `create_contact` (a return-contract change → §37 sweep across all callers incl. paige-mcp's `create_contact`
-  tool) so success→`capability_succeeded` only when truly created (existing→a no-op outcome); (b) the
+  `create_contact` (a return-contract change → §37 sweep of its REAL scalar-return RPC consumers, verified
+  by grep 2026-09-07: `paige-ai-chat/index.ts:9797` (this path), `growth-process-submission/index.ts:381`,
+  and the frontend dialogs `NewContactDialog.tsx:82` / `AddInternalClientDialog.tsx:52` /
+  `ClientManagementDashboard.tsx:370` / `GrowthHub.tsx:849`, plus the `client-identity-contract.test.ts:59`
+  call-shape assertion — **NOT** `paige-mcp`'s `create_contact` tool, which INSERTS DIRECTLY into `clients`
+  (`paige-mcp/index.ts:1757`) and never calls the RPC, so it is a SEPARATE contact producer, not an
+  RPC-return consumer; a future "honest contact creation across all doors" pass would treat that direct-insert
+  path on its own terms — it has no dedup/return-existing, so its success genuinely means created) so
+  success→`capability_succeeded` only when truly created (existing→a no-op outcome); (b) the
   dedup-clarification records NOTHING (classifier → null), never `capability_refused`; (c) Rail attribution
   matched to the RPC's resolved tenant. The three no-refusal CRM writes (Task #19) are UNAFFECTED — only
   `create_contact` has the idempotent return-existing behavior. Layered review worked exactly as §39 intends
