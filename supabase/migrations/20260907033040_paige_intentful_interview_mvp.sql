@@ -40,7 +40,7 @@ as $$
 declare v_tenant uuid := public.current_user_tenant_id(); v_actor uuid := auth.uid();
 begin
   if v_actor is null or v_tenant is null then raise exception 'INTERVIEW_ACTIVE_ACCOUNT_REQUIRED' using errcode='42501'; end if;
-  if not (public.solo_setup_access_scope()='owner_full') then raise exception 'INTERVIEW_OWNER_REQUIRED' using errcode='42501'; end if;
+  if not (public.solo_setup_access_scope()='owner_full') or not public.is_tenant_owner(v_actor,v_tenant) then raise exception 'INTERVIEW_OWNER_REQUIRED' using errcode='42501'; end if;
   return query select t.tenant_id,t.caller_user_id from public.paige_chat_threads t
     where t.id=p_thread_id and t.tenant_id=v_tenant and t.caller_user_id=v_actor and t.lens='coach'
       and t.contact_id is null and t.studio_session_id is null and not t.is_archived;
@@ -57,7 +57,7 @@ declare
   v_session public.paige_intentful_interview_sessions%rowtype; v_was_offered boolean;
 begin
   if v_actor is null or v_tenant is null then raise exception 'INTERVIEW_ACTIVE_ACCOUNT_REQUIRED' using errcode='42501'; end if;
-  if not (public.solo_setup_access_scope()='owner_full') then raise exception 'INTERVIEW_OWNER_REQUIRED' using errcode='42501'; end if;
+  if not (public.solo_setup_access_scope()='owner_full') or not public.is_tenant_owner(v_actor,v_tenant) then raise exception 'INTERVIEW_OWNER_REQUIRED' using errcode='42501'; end if;
   select exists(select 1 from public.paige_intentful_interview_sessions s
     where s.tenant_id=v_tenant and s.owner_user_id=v_actor and s.entry_source='first_use') into v_was_offered;
   if p_thread_id is not null then
@@ -69,7 +69,7 @@ begin
       where s.tenant_id=v_tenant and s.owner_user_id=v_actor and s.status in ('active','paused','recap')
       order by s.updated_at desc limit 1;
   end if;
-  return jsonb_build_object('eligibleForFirstUse',(public.solo_setup_access_scope()='owner_full') and not v_was_offered,
+  return jsonb_build_object('eligibleForFirstUse',(public.solo_setup_access_scope()='owner_full') and public.is_tenant_owner(v_actor,v_tenant) and not v_was_offered,
     'session',case when v_session.id is null then null else jsonb_build_object(
       'id',v_session.id,'threadId',v_session.thread_id,'entrySource',v_session.entry_source,
       'focusPath',v_session.focus_path,'status',v_session.status,'stepKey',v_session.step_key,
@@ -235,7 +235,7 @@ declare
   v_tenant uuid:=public.current_user_tenant_id(); v_actor uuid:=auth.uid(); v_mission record;
   v_missing jsonb; v_topic text; v_action public.paige_actions%rowtype;
 begin
-  if v_actor is null or v_tenant is null or not (public.solo_setup_access_scope()='owner_full') then return null; end if;
+  if v_actor is null or v_tenant is null or not (public.solo_setup_access_scope()='owner_full') or not public.is_tenant_owner(v_actor,v_tenant) then return null; end if;
 select m.id,m.title,m.revision,b.missing_information into v_mission
     from public.business_missions m
     join lateral (
@@ -275,7 +275,7 @@ returns jsonb language plpgsql security definer set search_path = public
 as $$
 declare v_tenant uuid:=public.current_user_tenant_id(); v_actor uuid:=auth.uid(); v_action public.paige_actions%rowtype; v_current_revision integer;
 begin
-  if v_actor is null or v_tenant is null or not (public.solo_setup_access_scope()='owner_full')
+  if v_actor is null or v_tenant is null or not (public.solo_setup_access_scope()='owner_full') or not public.is_tenant_owner(v_actor,v_tenant)
     then raise exception 'DISCUSSION_OWNER_REQUIRED' using errcode='42501'; end if;
   if p_response not in ('talk_now','later','dont_ask_again') then raise exception 'DISCUSSION_RESPONSE_INVALID' using errcode='22023'; end if;
   select * into v_action from public.paige_actions where id=p_action_id and tenant_id=v_tenant
