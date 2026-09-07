@@ -11,7 +11,7 @@ MATERIAL_FLOW_CHANGE: NO: corrects the already-approved scroll-ownership contrac
 FLOW_PROTOTYPE: NOT_REQUIRED: the owner explicitly locked the standard ChatGPT/Claude transcript behavior and authorized this narrow repair
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a Paige owner can place the transcript anywhere and keep that exact visible text and pixel offset
 VISUAL_DIRECTION: PASS: no visual redesign; the transcript remains the sole chat scroll owner
-AUTOMATED_EVIDENCE: PASS: 18 focused controller/React tests and 90 affected chat/mount tests cover one-pixel wheel, touch, pointer/scrollbar, keyboard, stream, resize, history, thread, hidden geometry, and client-to-server message-ID reconciliation
+AUTOMATED_EVIDENCE: PASS: 20 focused controller/React tests and 92 affected chat/mount tests cover one-pixel wheel, touch inertia, pointer/scrollbar, multi-event keyboard scrolling, stream, resize, history, thread, hidden geometry, and client-to-server message-ID reconciliation
 STATIC_EVIDENCE: PASS: ratcheted types, scoped lint, security, production build, affected suite, and full 278-file / 3928-test regression suite pass locally
 RENDERED_EVIDENCE: PASS: 87/87 real-React controlled browser checks at 1536x770, 1366x768, 1024x768, 900x1000, and 520x820
 BEHAVIORAL_EVIDENCE: PASS: middle and one-pixel anchors survive streaming, tool/status, receipt, resize, thread A-B-A, reload with persisted turns, minimize, pop-out, and native-close return; exact-bottom streaming follows
@@ -24,7 +24,7 @@ TRUTHFUL_STATE_LABELS: PASS: local browser artifacts remain visibly synthetic an
 SOLO_UI: YES: canonical Solo PAIGE transcript behavior is affected; mounting ownership is unchanged
 UNVERIFIED: authenticated production interaction, final hosted CI, and exact deployment identity
 
-INTERNAL_BUILD_IDENTITY: 2e0501f74e5e7b6780d475e8137e2599cd71638b; deployment=local-build; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=scripts/live-drive/artifacts/paige-scroll-stability-react/report.json
+INTERNAL_BUILD_IDENTITY: 508273a3e9b408d69b3eb54910cce36177fdc5b7; deployment=local-build; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=scripts/live-drive/artifacts/paige-scroll-stability-react/report.json
 RELEASE_CHANNEL: development: production promotion explicitly authorized after exact-head CI and review pass
 RELEASE_CLASSIFICATION: patch: focused reliability correction to an existing owner-visible behavior
 CUSTOMER_RELEASE_IDENTITY: none: no named customer release or publication was requested
@@ -55,11 +55,11 @@ The owner reads Paige history at a personally selected location. Any deliberate 
 
 ## Evidence index
 
-- Failing-first: six failures covering four input families, hidden/minimized geometry, and React one-pixel streaming/resize.
-- Focused automated result: 90/90 affected controller, React, Solo workspace, normal chat, and AppShell mount checks, including replacement of every client message ID during React rehydration; full repository result is re-run at the final implementation revision.
+- Failing-first: six original failures covered four input families, hidden/minimized geometry, and React one-pixel streaming/resize; independent review then identified touch-inertia and multi-event keyboard races, each locked with a focused regression.
+- Focused automated result: 92/92 affected controller, React, Solo workspace, normal chat, and AppShell mount checks, including replacement of every client message ID during React rehydration; full repository result is 278/278 files and 3928/3928 tests.
 - Rendered result: 87/87 checks in `scripts/live-drive/artifacts/paige-scroll-stability-react/report.json`.
 - Screenshots: `scripts/live-drive/artifacts/paige-scroll-stability-react/*-open.png`, `*-closed.png`, and desktop pop-out.
 
 ## Review and limitations
 
-Independent PR review and authenticated production proof remain required. The local harness uses visibly synthetic records and a controlled stream, so it proves browser behavior and geometry, not tenant authentication or production data.
+Independent PR review found and drove correction of touch-inertia and multi-event keyboard races; a fresh exact-head pass remains required. Authenticated production proof remains required. The local harness uses visibly synthetic records and a controlled stream, so it proves browser behavior and geometry, not tenant authentication or production data.
