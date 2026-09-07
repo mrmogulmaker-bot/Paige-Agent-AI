@@ -26,7 +26,7 @@ UNVERIFIED: REPLACE_ME with remaining behavior and reason, or state none with th
 INTERNAL_BUILD_IDENTITY: REPLACE_ME_SHA; deployment=REPLACE_ME; environment=REPLACE_ME; migrations=REPLACE_ME; edge=REPLACE_ME; evidence=REPLACE_ME
 RELEASE_CHANNEL: REPLACE_ME: channel evidence or reason
 RELEASE_CLASSIFICATION: REPLACE_ME: classification reason
-CUSTOMER_RELEASE_IDENTITY: REPLACE_ME none, or proposed version + name + owner-decision reference
+CUSTOMER_RELEASE_IDENTITY: REPLACE_ME as `none: reason` or `<version> — <release name>; owner-decision=<reference-or-PENDING>`
 RELEASE_NOTE_REQUIRED: REPLACE_ME: yes/no reason
 RELEASE_TRUTH_BOUNDARY: REPLACE_ME exact LIVE / PARTIAL / UNAVAILABLE / PROOF OWED claims
 RELEASE_RECOVERY: REPLACE_ME rollback/forward-fix position and reference

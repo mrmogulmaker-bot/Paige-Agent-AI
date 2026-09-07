@@ -175,7 +175,16 @@ export function validateEvidenceText(text, classification) {
     errors.push("INTERNAL_BUILD_IDENTITY must include an exact SHA plus deployment, environment, migrations, edge, and evidence values.");
   }
   if (!/^(?:development|preview|production|staged):\s*\S.+$/i.test(fields.get("RELEASE_CHANNEL") ?? "")) errors.push("RELEASE_CHANNEL must name a governed channel and evidence/reason.");
-  if (!/^(?:internal-only|patch|minor-candidate|major-candidate):\s*\S.+$/i.test(fields.get("RELEASE_CLASSIFICATION") ?? "")) errors.push("RELEASE_CLASSIFICATION must name a governed classification and reason.");
+  const releaseClassification = /^(internal-only|patch|minor-candidate|major-candidate):\s*\S.+$/i.exec(fields.get("RELEASE_CLASSIFICATION") ?? "")?.[1]?.toLowerCase();
+  if (!releaseClassification) errors.push("RELEASE_CLASSIFICATION must name a governed classification and reason.");
+  const customerIdentity = fields.get("CUSTOMER_RELEASE_IDENTITY") ?? "";
+  const noCustomerIdentity = /^none:\s*\S.+$/i.test(customerIdentity);
+  const namedCustomerIdentity = /^(\d+\.\d+\.\d+)\s+—\s+\S.+;\s*owner-decision=\S+$/i.exec(customerIdentity);
+  if (releaseClassification === "internal-only" && !noCustomerIdentity) errors.push("CUSTOMER_RELEASE_IDENTITY must be none: reason for internal-only work.");
+  if (releaseClassification === "patch" && !noCustomerIdentity && !/^0\.\d+\.[1-9]\d*$/.test(namedCustomerIdentity?.[1] ?? "")) errors.push("Patch CUSTOMER_RELEASE_IDENTITY must be none: reason or 0.x.y with y greater than zero, a name, and owner-decision reference.");
+  if (releaseClassification === "minor-candidate" && !/^0\.[1-9]\d*\.0$/.test(namedCustomerIdentity?.[1] ?? "")) errors.push("Minor-candidate CUSTOMER_RELEASE_IDENTITY must be 0.x.0 with a name and owner-decision reference.");
+  if (releaseClassification === "major-candidate" && !/^[1-9]\d*\.0\.0$/.test(namedCustomerIdentity?.[1] ?? "")) errors.push("Major-candidate CUSTOMER_RELEASE_IDENTITY must be x.0.0 with a name and owner-decision reference.");
+  if (!releaseClassification && !noCustomerIdentity && !namedCustomerIdentity) errors.push("CUSTOMER_RELEASE_IDENTITY must be none: reason or a structured version, name, and owner-decision reference.");
   if (!/^(?:YES|NO):\s*\S.+$/i.test(fields.get("RELEASE_NOTE_REQUIRED") ?? "")) errors.push("RELEASE_NOTE_REQUIRED must be YES: reason or NO: reason.");
   if (!/\b(?:LIVE|PARTIAL|UNAVAILABLE|PROOF OWED)\b/i.test(fields.get("RELEASE_TRUTH_BOUNDARY") ?? "")) errors.push("RELEASE_TRUTH_BOUNDARY must name at least one governed status and its claim boundary.");
   if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW"))) errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference.");

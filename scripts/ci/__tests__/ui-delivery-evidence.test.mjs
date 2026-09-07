@@ -121,6 +121,19 @@ test("refuses missing or placeholder release-governance evidence", () => {
   assert.match(placeholder.errors.join("\n"), /INTERNAL_BUILD_IDENTITY/);
 });
 
+test("binds customer release identity to its classification", () => {
+  const internalWithFakeVersion = validateEvidenceText(coreEvidence.replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 9.9.9 — Fake; owner-decision=fake"), { required: true, solo: false });
+  assert.equal(internalWithFakeVersion.ok, false);
+  assert.match(internalWithFakeVersion.errors.join("\n"), /CUSTOMER_RELEASE_IDENTITY/);
+
+  const validMinor = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 0.2.0 — Governed Capability; owner-decision=PENDING"), { required: true, solo: false });
+  assert.equal(validMinor.ok, true, validMinor.errors.join("\n"));
+
+  const wrongMinor = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 0.2.3 — Wrong Shape; owner-decision=PENDING"), { required: true, solo: false });
+  assert.equal(wrongMinor.ok, false);
+  assert.match(wrongMinor.errors.join("\n"), /Minor-candidate CUSTOMER_RELEASE_IDENTITY/);
+});
+
 test("requires Flow Prototype evidence for a material flow change", () => {
   const result = validateEvidenceText(
     coreEvidence

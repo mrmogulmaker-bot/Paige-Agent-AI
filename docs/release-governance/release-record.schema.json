@@ -277,15 +277,34 @@
     "deliveryState": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["state", "evidence"],
+      "required": ["state", "evidence", "proof_owed"],
       "properties": {
         "state": { "enum": ["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAILED"] },
-        "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "proof_owed": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["boundary", "excluded_from_live_claim"],
+              "properties": {
+                "boundary": { "type": "string", "minLength": 1, "not": { "pattern": "^([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Nn][Oo][Nn][Ee]|[Nn]/?[Aa]|[Nn][Oo][Tt] [Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee])$" } },
+                "excluded_from_live_claim": { "type": "string", "minLength": 1, "not": { "pattern": "^([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Nn][Oo][Nn][Ee]|[Nn]/?[Aa]|[Nn][Oo][Tt] [Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee])$" } }
+              }
+            }
+          ]
+        }
       },
       "allOf": [
         {
           "if": { "properties": { "state": { "const": "NOT_APPLICABLE" } }, "required": ["state"] },
           "else": { "properties": { "evidence": { "minItems": 1 } } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "PROOF_OWED" } }, "required": ["state"] },
+          "then": { "properties": { "proof_owed": { "type": "object" } } },
+          "else": { "properties": { "proof_owed": { "type": "null" } } }
         }
       ]
     },
@@ -419,17 +438,12 @@
         },
         "known_limitations": { "type": "string", "minLength": 1 },
         "proof_owed": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["deployment_id", "area", "boundary", "excluded_from_live_claim"],
-            "properties": {
-              "deployment_id": { "type": "string", "minLength": 1 },
-              "area": { "enum": ["migration", "edge"] },
-              "boundary": { "type": "string", "minLength": 1 },
-              "excluded_from_live_claim": { "type": "string", "minLength": 1 }
-            }
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["visibility", "source"],
+          "properties": {
+            "visibility": { "const": "customer_and_internal" },
+            "source": { "const": "referenced_builds.migration_status_or_edge_status.proof_owed" }
           }
         },
         "safe_next_step": { "type": "string", "minLength": 1 },
