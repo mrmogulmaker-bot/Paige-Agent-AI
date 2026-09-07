@@ -121,13 +121,13 @@ begin
   if p_event='answer' then
     if v_session.status<>'active' or p_fact is null or jsonb_typeof(p_fact)<>'object' then raise exception 'INTERVIEW_ANSWER_INVALID' using errcode='22023'; end if;
     v_fact_id:=nullif(btrim(p_fact->>'id'),''); v_field:=nullif(btrim(p_fact->>'fieldKey'),''); v_value:=nullif(btrim(p_fact->>'value'),'');
-    if v_fact_id is null or v_field is null or not v_field=any(v_allowed_fields) or v_value is null or char_length(v_value)>800
+    if v_fact_id is null or char_length(v_fact_id)>160 or v_field is null or not v_field=any(v_allowed_fields) or v_value is null or char_length(v_value)>800
       or array_length(regexp_split_to_array(v_value,E'\r?\n'),1)>8
       then raise exception 'INTERVIEW_FACT_INVALID' using errcode='22023'; end if;
     if exists(select 1 from jsonb_object_keys(p_fact) as item(key) where not key=any(array['id','fieldKey','label','value']::text[]))
       or p_fact ?| array['tenantId','credential','secret','token','document','reasoning','transcript']
       or v_value ~* '(password|passcode|api[ _-]?key|access[ _-]?token|refresh[ _-]?token|authorization|bearer|private[ _-]?key|client[ _-]?secret|session[ _-]?(cookie|token))[[:space:]]*[:=]'
-      or v_value ~ '-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}'
+      or v_value ~ '-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|[A-Za-z0-9_-]{16,}[.][A-Za-z0-9_-]{16,}[.][A-Za-z0-9_-]{16,}'
       then raise exception 'INTERVIEW_SENSITIVE_FACT_REJECTED' using errcode='22023'; end if;
     select coalesce(jsonb_agg(item order by ord),'[]'::jsonb) into v_facts from (
       select item,ord from jsonb_array_elements(v_facts) with ordinality x(item,ord) where item->>'id'<>v_fact_id
@@ -158,7 +158,7 @@ as $$
 declare
   v_tenant uuid := public.current_user_tenant_id(); v_actor uuid := auth.uid();
   v_session public.paige_intentful_interview_sessions%rowtype; v_context jsonb; v_current jsonb; v_full jsonb:='{}'::jsonb; v_saved jsonb; v_expected_updated_at text;
-  v_key text; v_verified boolean:=true; v_selected jsonb;
+  v_key text; v_value text; v_decisions jsonb:='{}'::jsonb; v_verified boolean:=true; v_selected jsonb;
   v_allowed_keys constant text[]:=array['legalName','publicName','dbaName','website','address','phone','industry','naicsCode','sicCode',
     'offers','deliveryModel','idealCustomer','customerSegments','serviceArea','currentPriority','goals90Day','annualDirection',
     'successDefinition','constraints','brandVoice','operatingPreferences','doNotAssume'];
@@ -171,6 +171,8 @@ begin
   if v_session.status<>'recap' then raise exception 'INTERVIEW_RECAP_REQUIRED' using errcode='22023'; end if;
   if v_session.revision<>p_expected_revision then raise exception 'INTERVIEW_REVISION_CONFLICT' using errcode='40001'; end if;
   if coalesce(array_length(p_selected_ids,1),0)=0 then raise exception 'INTERVIEW_SELECT_FACTS' using errcode='22023'; end if;
+  if coalesce(array_length(p_selected_ids,1),0)<>(select count(distinct id) from unnest(p_selected_ids) id)
+    then raise exception 'INTERVIEW_SELECTION_INVALID' using errcode='22023'; end if;
   if exists(select 1 from unnest(p_selected_ids) id where not exists(
     select 1 from jsonb_array_elements(v_session.proposed_facts) f where f->>'id'=id and f->>'state'='proposed'))
     then raise exception 'INTERVIEW_SELECTION_INVALID' using errcode='22023'; end if;
@@ -184,8 +186,15 @@ begin
   v_full:=v_full||jsonb_build_object('representativeUserIds',coalesce(v_current->'representativeUserIds','[]'::jsonb));
   select coalesce(jsonb_agg(f),'[]'::jsonb) into v_selected from jsonb_array_elements(v_session.proposed_facts) f where f->>'id'=any(p_selected_ids);
   for v_key in select f->>'fieldKey' from jsonb_array_elements(v_selected) f loop
-    v_full:=v_full||jsonb_build_object(v_key,(select f->>'value' from jsonb_array_elements(v_selected) f where f->>'fieldKey'=v_key limit 1));
+    v_value:=(select f->>'value' from jsonb_array_elements(v_selected) f where f->>'fieldKey'=v_key limit 1);
+    v_full:=v_full||jsonb_build_object(v_key,v_value);
+    if v_current->'provenance'->v_key is not null and v_value is not distinct from nullif(v_current->>v_key,'') then
+      v_decisions:=v_decisions||jsonb_build_object(v_key,'adopt');
+    elsif v_current->'provenance'->v_key->>'source'='connection_sourced' then
+      v_decisions:=v_decisions||jsonb_build_object(v_key,'override');
+    end if;
   end loop;
+  v_full:=v_full||jsonb_build_object('sourceDecisions',v_decisions);
   v_saved:=public.save_solo_business_brief(v_full,v_expected_updated_at,null);
   for v_key in select f->>'fieldKey' from jsonb_array_elements(v_selected) f loop
     if v_saved->>v_key is distinct from (select f->>'value' from jsonb_array_elements(v_selected) f where f->>'fieldKey'=v_key limit 1)

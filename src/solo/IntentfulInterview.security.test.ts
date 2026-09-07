@@ -17,6 +17,8 @@ describe("Intentful Interview security contract", () => {
     expect(migration).toContain("v_context:=public.get_solo_setup_context()");
     expect(migration).toContain("representativeUserIds");
     expect(migration).toContain("save_solo_business_brief(v_full,v_expected_updated_at,null)");
+    expect(migration).toContain("jsonb_build_object('sourceDecisions',v_decisions)");
+    expect(migration).toContain("count(distinct id) from unnest(p_selected_ids)");
     expect(migration).toContain("(f-'value')");
     expect(migration).toContain("v_facts:='[]'::jsonb");
     expect(migration).toContain("INTERVIEW_SENSITIVE_FACT_REJECTED");
