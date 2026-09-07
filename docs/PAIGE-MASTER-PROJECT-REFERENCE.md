@@ -1913,6 +1913,37 @@ outcomes); Spine/Mind retain only scoped sourced facts (F02 Memory contract — 
 refresh discipline (owner-directed):** at each completed slice this record updates with what shipped, exact
 evidence, what remains UNAVAILABLE/proof-owed, the next owning workstream, and any dependency-order change.
 
+**Secure Browser / Twin Phase-0 audit (2026-09-06; owner-ruled 2026-09-07) — a DIRECTION, not a live capability.** A read-only
+current-main + deployed-state audit of the "Paige Secure Browser / Twin" direction confirms the state
+above against live code: public research is **LIVE/PARTIAL** (`deep_research`/`web_search` reachable in
+chat; `browse_public_url` skill PARTIAL, flag-gated + G5); the **credentialed** modes (owner-assisted
+sign-in with MFA handoff, connected-accounts) are **UNAVAILABLE**; there is **no in-chat live browser
+window**; and **no browser provider is wired** (Browserbase = inert/undeployed stub; **neither "Twin"
+product is wired** — and "Twin" is TWO distinct vendors: **twin.so** (Twin Labs SAS, Paris) has REST /
+no-MCP / no shipped vault, while the "vault + MCP" material belongs to **twin-browser.com**, a *separate*
+product whose **legal operator is undisclosed** and whose **domain is ~10 weeks old** (2026-06-24,
+redacted WHOIS) — a due-diligence red flag, not attributable to Twin Labs). The full packet — collision map vs the five slices above, current-state
+matrix, provider evaluation (Browserbase/Anchor/Steel/Twin), three-mode security architecture, Phase 0–4
+roadmap, and Phase-1 security/flow plan — is `docs/audits/paige-secure-browser-audit-2026-09-06.md`.
+**Owner ruling (2026-09-07):** custody model = **owner-direct login + provider-held persistent session**
+(Paige stores only an opaque provider/context reference + allowed host/action scope + authority /
+freshness / revocation state + receipts; the raw password never transits Paige); **Browserbase** adopted
+as the **`PROPOSED`** Phase-1 candidate pending the provider-contract / privacy / data-residency /
+security / price / integration review. **No provider is wired and nothing installs until that review
+completes.** The credentialed modes must ride the §10 Standing Delegated Authority Contract + §68, not a
+new autonomy system.
+
+**Product correction (owner, 2026-09-07):** Paige Secure Browser is a **Paige-OWNED** capability — Paige
+owns the in-chat UI, policy layer, browser control plane, tenant isolation, Vault **Connected Accounts**
+(owner-managed, tenant-isolated, revocable, auditable, never casually readable by Paige), audit history,
+action receipts, and reusable browser skills. **Browserbase is only a REPLACEABLE bootstrap runtime for the
+isolated browser WORKER**, behind a **provider-neutral internal Secure Browser contract** so Paige can
+progressively run her own Chromium/Playwright fleet — no provider API/MCP/branding/styling/data-model may
+leak into customer UI or core domain contracts (customer feature = "Paige Secure Browser"/"Secure Browser").
+Downloads/captured files → **Vault quarantine**. The `browserbase` registry entry is now `PROPOSED` (the
+worker runtime, replaceable) — updated in the audit PR. A dedicated **build handoff** (owner-complete in-chat
+UI flow FIRST, then backend) follows the MVP plan.
+
 ### Solo n8n connection clarity — historical UI slice, 2026-09-03
 
 The owner approved separate API connection and Paige tools (MCP) tabs and independent tile/overview states. This earlier UI slice preserved stored credentials while OAuth was blocked. Superseded by released PR #909: standard OAuth is live with the owner-accepted gateway logging risk; only final owner consent/provider verification remains Proof Owed. Current API saved status/count/timestamp does not prove fresh health; the UI must not claim it does. No callback, backend credential, tool-authority, workflow execution, Chat or Spine changes are included. Delivery and proof: `docs/delivery/solo-n8n-connection-clarity.md`. Authenticated owner acceptance is recorded separately from automated/build/deployment evidence.
