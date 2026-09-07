@@ -1,8 +1,8 @@
 .presence-workspace { display: grid; gap: 12px; min-width: 0; }
-.presence-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 4px 2px 2px; }
+.presence-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 0 2px 2px; scroll-margin-top: 58px; }
 .presence-heading > div:first-child { max-width: 790px; }
 .presence-heading span, .presence-panel header > div > span, .presence-readiness header > span, .presence-facts-preview span, .presence-next > span, .presence-setup-flow > span, .presence-drawer header span { color: var(--pg-gold-core); font-size: 8px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
-.presence-heading h2 { margin: 4px 0 5px; font: 650 clamp(22px,2.6cqw,30px)/1.08 var(--pg-font-display); letter-spacing: -.035em; }
+.presence-heading h2 { margin: 0 0 5px; font: 650 clamp(22px,2.6cqw,30px)/1.08 var(--pg-font-display); letter-spacing: -.035em; }
 .presence-heading p, .presence-panel header p, .presence-readiness header p, .presence-facts-preview p, .presence-next p, .presence-setup-flow p, .presence-drawer header p { margin: 0; color: var(--pg-muted); font-size: 10px; line-height: 1.5; }
 .presence-heading__actions, .presence-actions { display: flex; flex: none; gap: 7px; }
 .presence-button { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--pg-line); border-radius: 9px; padding: 0 12px; color: var(--pg-ink); background: var(--pg-raised); box-shadow: 0 1px 0 color-mix(in srgb,var(--pg-ink) 5%,transparent); font: 760 10px/1 var(--pg-font-sans); cursor: pointer; transition: border-color 120ms ease, transform 120ms ease, background 120ms ease; }

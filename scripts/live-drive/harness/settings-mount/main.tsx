@@ -41,11 +41,12 @@ import { Bell, Blocks, Building2, CircleDollarSign, FileLock2, Link2, ShieldChec
 import { SoloSettings } from "@/solo/settings";
 import { SOLO_SETTINGS_DESTINATIONS } from "@/solo/settings-contract";
 import { TenantCommandCenterShell } from "@/components/tenant-shell/TenantCommandCenterShell";
-import { AgentPresenceProvider } from "@/components/ui/paige";
+import { AgentPresenceProvider, useAgentPresence } from "@/components/ui/paige";
 import { CommandHub } from "@/solo/CommandCenter";
 import { ClientsHub } from "@/solo/conversations";
 import { GrowthHub } from "@/solo/growth2";
 import { Analytics2 } from "@/solo/analytics2";
+import { SoloPaigeWorkspace } from "@/solo/SoloPaigeWorkspace";
 import "@/index.css";
 import "@/components/tenant-shell/tenant-command-center-shell.css";
 // PRODUCTION ORDER, and the reason this line exists (2026-08-31 reconciliation).
@@ -106,6 +107,7 @@ const SETTINGS_ICONS = {
 
 function Shell() {
   const route = useParams();
+  const { expandRail } = useAgentPresence();
   const account = route.account ?? "1971670";
   const splat = route["*"] ?? "settings/setup";
   const activeId = splat.split("/")[1] || "setup";
@@ -127,7 +129,7 @@ function Shell() {
     accountType="standalone"
     userRole="admin"
     contextualNavigation={contextualNavigation}
-    soloPaigeWorkspace={<div data-harness-paige>PAIGE workspace</div>}
+    soloPaigeWorkspace={<SoloPaigeWorkspace full={false} dockedTab="chat" onDockedTabChange={() => undefined} />}
     brandHomeHref={`/solo/${account}/command-center`}
     onSignOut={() => {}}
   >
@@ -138,7 +140,7 @@ function Shell() {
           style={{ flex: 1, overflow: clipped ? "hidden" : "auto", minHeight: 0, minWidth: 0 }}
         >
           {screen === "settings"
-            ? <SoloSettings />
+            ? <SoloSettings openPaige={expandRail} />
             : <MountReport label={screen}>{NEGATIVE_CONTROLS[screen] ?? null}</MountReport>}
         </main>
       </div>

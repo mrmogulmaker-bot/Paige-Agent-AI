@@ -14,6 +14,7 @@ import { Ic, Logo, Avatar, Wrap, PageHead } from "./_shared";
 import { CommandHub } from "./CommandCenter";
 import { SoloPaigeWorkspace } from "./SoloPaigeWorkspace";
 import { clearPaigeClientScope, readPaigeOpenScope, setPaigeClientScope } from "./paigeClientScope";
+import { clearPaigePublicPresenceScope } from "./paigePublicPresenceScope";
 import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relationships/TenantRelationshipsClientsWorkspace";
 import { isLegacyRelationshipOwner } from "@/components/tenant-relationships/workspaceModel";
 import { ClientsHub } from "./conversations";
@@ -240,13 +241,13 @@ const openPaige=()=>expandRail();
 React.useEffect(()=>{const h=(event:Event)=>{
   const detail=(event as CustomEvent)?.detail;
   const scope=readPaigeOpenScope(detail,activeTenantId);
-  if(scope)setPaigeClientScope(scope);
+  if(scope){clearPaigePublicPresenceScope();setPaigeClientScope(scope);}
   expandRail();
 };window.addEventListener('paige:open',h);return()=>window.removeEventListener('paige:open',h)},[activeTenantId,expandRail]);
 // An account switch invalidates a client scope outright: the client belonged to the
 // account being left. `getPaigeClientScope` already refuses to hand out a scope stamped
 // with another account, so this is the durable half of the same rule, not the guard.
-React.useEffect(()=>{clearPaigeClientScope()},[activeTenantId]);
+React.useEffect(()=>{clearPaigeClientScope();clearPaigePublicPresenceScope()},[activeTenantId]);
 // Surfaces that manage their own internal scroll regions and must fill the
 // frame exactly. Their host is `overflow:hidden` at `height:100%`, so anything
 // they render past the fold is CLIPPED and the shell's own scroll owner never

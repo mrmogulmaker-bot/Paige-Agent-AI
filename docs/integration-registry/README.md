@@ -213,6 +213,8 @@ provider is connected/available/autonomous because it is listed (R1).
 | Provider | Group | Status | Highest lane | Gap / next slice |
 |---|---|---|---|---|
 | Google Workspace | productivity/documents | `PARTIAL` | confirm | native Drive doc create needs per-tenant OAuth + receipt/Rail proof |
+| Google Search Console | marketing/public presence | `UNAVAILABLE` | prohibited | platform OAuth + tenant verified-site source and authenticated read proof required |
+| Google Business Profile | marketing/public presence | `UNAVAILABLE` | prohibited | Google project approval + tenant consent/location selection + receipts/readback required |
 | Microsoft 365 / Outlook | productivity/documents | `DEFERRED` | prohibited | not wired; sequenced after Google parity |
 | Stripe | finance/accounting/payments | `PARTIAL` | confirm | §38 Connect direct-charge posture; bind safe billing status |
 | QuickBooks | finance/accounting/payments | `PROOF_OWED` | confirm | catalogue real capability; governed read proof |

@@ -8,6 +8,7 @@ import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { useSoloKnowledge } from "./data/useSoloKnowledge";
 import { useSoloSkills } from "./data/useSoloSkills";
 import { clearPaigeClientScope, getPaigeClientScope, subscribePaigeClientScope } from "./paigeClientScope";
+import { clearPaigePublicPresenceScope, getPaigePublicPresenceScope, subscribePaigePublicPresenceScope } from "./paigePublicPresenceScope";
 import "./solo-paige-workspace.css";
 
 // Approved design lineage: 51D7A6F680DB83AEF6BFE1147E9FC1651E39206EFAED17963F2FC16EC294F117
@@ -281,6 +282,8 @@ export function SoloPaigeWorkspace({
   // the previous account's client even for one frame.
   const readScope = useCallback(() => getPaigeClientScope(activeTenantId), [activeTenantId]);
   const clientScope = useSyncExternalStore(subscribePaigeClientScope, readScope, () => null);
+  const readPresenceScope = useCallback(() => getPaigePublicPresenceScope(activeTenantId), [activeTenantId]);
+  const presenceScope = useSyncExternalStore(subscribePaigePublicPresenceScope, readPresenceScope, () => null);
   // The chat asks the surface that OWNS focus to let it go — on a PERMISSION verdict, or
   // when a saved thread is resumed whose content is not about this client. Either way,
   // continuing to assert the focus would make the next turn mean something untrue.
@@ -342,12 +345,19 @@ export function SoloPaigeWorkspace({
           renderRail={(api) => <SoloHistoryRail api={api} />}
           greeting="What are we moving? Tell me the outcome, and I’ll show what I can read, draft, or ask you to approve."
           clientId={clientScope?.clientId ?? null}
+          surfaceContext={!clientScope && presenceScope ? { kind: presenceScope.kind, step: presenceScope.step, intendedAction: presenceScope.intendedAction } : undefined}
           onFocusRelease={releaseScope}
           focusBanner={clientScope ? (
             <div className="spw-chat-head" data-solo-paige-focus>
               <TruthPill tone="partial">IN CONTEXT</TruthPill>
               <div><strong>{clientScope.label}</strong><span>Recorded outcomes for this client only. PAIGE reads them; she cannot change them.</span></div>
               <button type="button" className="spw-link-button spw-authority" onClick={releaseScope}>Clear</button>
+            </div>
+          ) : presenceScope ? (
+            <div className="spw-chat-head" data-solo-paige-focus>
+              <TruthPill tone="partial">PUBLIC PRESENCE</TruthPill>
+              <div><strong>Safe public-business context</strong><span>PAIGE re-resolves approved facts and provider availability on the server for each turn.</span></div>
+              <button type="button" className="spw-link-button spw-authority" onClick={clearPaigePublicPresenceScope}>Clear</button>
             </div>
           ) : undefined}
           conversationHeader={<div className="spw-chat-head"><div><strong>PAIGE</strong><span>Active Solo account · tenant-scoped</span></div></div>}

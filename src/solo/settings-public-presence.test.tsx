@@ -13,9 +13,12 @@ async function mount() {
   document.body.append(host);
   const root = createRoot(host);
   const onReviewBusinessProfile = vi.fn();
+  const onOpenPaige = vi.fn();
   await act(async () =>
     root.render(
       <SettingsPublicPresence
+        activeTenantId="11111111-1111-4111-8111-111111111111"
+        onOpenPaige={onOpenPaige}
         brief={cleanSoloSetupBrief({
           publicName: "Northstar Studio",
           website: "https://northstar.example",
@@ -41,7 +44,7 @@ async function mount() {
       />,
     ),
   );
-  return { host, root, onReviewBusinessProfile };
+  return { host, root, onReviewBusinessProfile, onOpenPaige };
 }
 
 const control = (root: ParentNode, label: string) =>
@@ -57,6 +60,7 @@ async function mountBrief(brief: ReturnType<typeof cleanSoloSetupBrief>) {
     root.render(
       <SettingsPublicPresence
         brief={brief}
+        activeTenantId={null}
         primaryBusinessEmail=""
         primaryBusinessEmailProvenance={{
           source: "needs_confirmation",
@@ -232,6 +236,15 @@ describe("Settings Public Presence", () => {
     expect(host.getAttribute("aria-hidden")).toBeNull();
     expect(host.inert).not.toBe(true);
     expect(document.activeElement).toBe(opener);
+    await act(async () => root.unmount());
+  });
+
+
+  it("opens the one Paige workspace with a tenant-stamped setup pointer", async () => {
+    const { host, root, onOpenPaige } = await mount();
+    expect(host.textContent).not.toContain("SETUP · PUBLIC PRESENCE");
+    await act(async () => control(host, "Ask PAIGE").click());
+    expect(onOpenPaige).toHaveBeenCalledTimes(1);
     await act(async () => root.unmount());
   });
 
