@@ -134,6 +134,15 @@ test("binds customer release identity to its classification", () => {
   assert.match(wrongMinor.errors.join("\n"), /Minor-candidate CUSTOMER_RELEASE_IDENTITY/);
 });
 
+test("cross-checks release channel against build environment and deployment", () => {
+  const mismatch = validateEvidenceText(coreEvidence.replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: production: claimed live"), { required: true, solo: false });
+  assert.equal(mismatch.ok, false);
+  assert.match(mismatch.errors.join("\n"), /Production\/staged RELEASE_CHANNEL/);
+
+  const production = validateEvidenceText(coreEvidence.replace("INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=NOT_APPLICABLE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=PR-checks", "INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=dpl_123; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=production-checks").replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: production: deployment dpl_123"), { required: true, solo: false });
+  assert.equal(production.ok, true, production.errors.join("\n"));
+});
+
 test("requires Flow Prototype evidence for a material flow change", () => {
   const result = validateEvidenceText(
     coreEvidence

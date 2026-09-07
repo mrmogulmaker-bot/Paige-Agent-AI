@@ -174,7 +174,13 @@ export function validateEvidenceText(text, classification) {
   if (!/\b[0-9a-f]{40}\b/i.test(buildIdentity) || !/\bdeployment\s*=\s*\S+/i.test(buildIdentity) || !/\benvironment\s*=\s*(?:local|development|preview|production)\b/i.test(buildIdentity) || !/\bmigrations\s*=\s*\S+/i.test(buildIdentity) || !/\bedge\s*=\s*\S+/i.test(buildIdentity) || !/\bevidence\s*=\s*\S+/i.test(buildIdentity)) {
     errors.push("INTERNAL_BUILD_IDENTITY must include an exact SHA plus deployment, environment, migrations, edge, and evidence values.");
   }
-  if (!/^(?:development|preview|production|staged):\s*\S.+$/i.test(fields.get("RELEASE_CHANNEL") ?? "")) errors.push("RELEASE_CHANNEL must name a governed channel and evidence/reason.");
+  const releaseChannel = /^(development|preview|production|staged):\s*\S.+$/i.exec(fields.get("RELEASE_CHANNEL") ?? "")?.[1]?.toLowerCase();
+  if (!releaseChannel) errors.push("RELEASE_CHANNEL must name a governed channel and evidence/reason.");
+  const buildEnvironment = /\benvironment\s*=\s*(local|development|preview|production)\b/i.exec(buildIdentity)?.[1]?.toLowerCase();
+  const deploymentId = /\bdeployment\s*=\s*([^;\s]+)/i.exec(buildIdentity)?.[1];
+  if (releaseChannel === "development" && !["local", "development"].includes(buildEnvironment)) errors.push("Development RELEASE_CHANNEL requires local/development build environment.");
+  if (releaseChannel === "preview" && buildEnvironment !== "preview") errors.push("Preview RELEASE_CHANNEL requires preview build environment.");
+  if (["production", "staged"].includes(releaseChannel) && (buildEnvironment !== "production" || /^(?:NOT_APPLICABLE|PROOF_OWED)$/i.test(deploymentId ?? ""))) errors.push("Production/staged RELEASE_CHANNEL requires a production build environment and exact deployment ID.");
   const releaseClassification = /^(internal-only|patch|minor-candidate|major-candidate):\s*\S.+$/i.exec(fields.get("RELEASE_CLASSIFICATION") ?? "")?.[1]?.toLowerCase();
   if (!releaseClassification) errors.push("RELEASE_CLASSIFICATION must name a governed classification and reason.");
   const customerIdentity = fields.get("CUSTOMER_RELEASE_IDENTITY") ?? "";
