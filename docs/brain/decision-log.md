@@ -407,9 +407,16 @@
   `PROOF OWED` wording where applicable, audience/tier + benefits + limits + recovery + exact deployment,
   and owner publication approval. The machine contract is
   `docs/release-governance/release-record.schema.json`; agent startup, Second Brain closeout, master,
-  PR/UI templates, release guide, and CI point to the one policy. UX direction is recorded, not built:
-  subtle unread indicator in the existing workspace/account area, one durable Updates destination,
-  no routine-patch popup, no duplicated chrome. **RECOMMENDATION FOR OWNER DECISION — NOT A RELEASE OR
+  PR/UI templates, release guide, and CI point to the one policy. **2026-09-07 owner correction:**
+  canonical records remain durable internal evidence, while the existing signed-in `PlatformUpdateBanner`
+  is the sole customer-facing update surface for this MVP. Generic builds say only **“An update is ready.”**
+  Approved name/version and concise **What’s new** appear only when one valid canonical record resolves
+  to the exact production build; invalid, missing, stale, ambiguous, future, staged, unsafe, superseded,
+  unapproved, or technical records fail closed. The former unread workspace/account indicator and durable
+  Updates destination are superseded. No badge, new navigation, page, modal, feed, dashboard, or fallback
+  destination is authorized; any future Updates destination requires a separate owner product decision.
+  Reload remains explicit and protects registered forms, Paige drafts, attachments/file processing,
+  streaming responses, and Studio work. **RECOMMENDATION FOR OWNER DECISION — NOT A RELEASE OR
   ANNOUNCEMENT:** train `Paige Solo Preview 0.1.x`; first candidate label
   `0.1.0 — Governed Workspace Foundations`, only after the owner chooses the proven included outcomes
   and every included claim passes the announcement gate. `1.0` and external marketing are not authorized.

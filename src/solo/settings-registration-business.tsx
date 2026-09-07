@@ -7,6 +7,7 @@ import {
   type RegistrationEditableField,
 } from "./settings-registration-fields";
 import { useSoloBusinessContext } from "./data/useSoloBusinessContext";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 
 /**
  * Completing the carrier record from Registration — the SECOND EDITOR of ONE record.
@@ -113,6 +114,8 @@ function RegistrationBusinessEditor({ account, missing, open: _open, onOpenChang
       v !== undefined && v !== (key === "businessRegistrationNumber" ? "" : (brief[key as keyof typeof brief] as string ?? ""))),
     [edits, brief],
   );
+
+  useBeforeUnloadGuard(dirty || saving);
 
   const close = () => { onOpenChange(false); setEdits({}); setOutcome(null); };
 

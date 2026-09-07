@@ -53,6 +53,7 @@ import {
   slugify, willSaveAppointmentType, willSaveDateOverride, willSaveQuestion,
 } from "@/lib/calendar/config";
 import { isStale as accountIsStale } from "@/lib/calendar/account-identity";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { useCalendarConnections, type CalendarHost, type Capability, type HostCandidate, type SendReadiness } from "./data/useCalendarConnections";
 import "./connections-calendars.css";
 
@@ -323,6 +324,7 @@ function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promis
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
+  useBeforeUnloadGuard(open && (title.trim().length > 0 || saving));
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
@@ -526,6 +528,7 @@ export function CalendarsView() {
   );
   const slugChanged = Boolean(selected && slugify(slugInput) && slugify(slugInput) !== selected.slug);
   const dirty = Boolean(patch && savedPatch && (JSON.stringify(patch) !== JSON.stringify(savedPatch) || slugChanged));
+  useBeforeUnloadGuard(dirty || saving);
   // Read by `selectPreset`, which is declared above this line and must see the
   // CURRENT value rather than the one captured when it was created.
   const dirtyRef = useRef(false);

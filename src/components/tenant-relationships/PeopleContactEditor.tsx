@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { toast } from "sonner";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,6 +109,7 @@ export function PeopleContactEditor({
   const [step, setStep] = useState<EditorStep>(0);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  useBeforeUnloadGuard(open && (dirty || saving));
   const [confirmClose, setConfirmClose] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);

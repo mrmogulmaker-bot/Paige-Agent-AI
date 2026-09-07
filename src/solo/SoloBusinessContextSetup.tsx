@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { useConfirm } from "@/hooks/useConfirm";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { registerAccountSwitchGuard } from "@/lib/auth/accountSwitchGuard";
 import { useSoloBusinessContext } from "./data/useSoloBusinessContext";
 import {
@@ -704,6 +705,7 @@ export function SoloBusinessContextSetup({ account, openPaige }: { account: stri
         examples,
       }) !== persisted) ||
     (editing && (Object.keys(decisions).length > 0 || Boolean(emailDecision)));
+  useBeforeUnloadGuard(dirty || drawerDirty || data.saving);
   const reset = useCallback(() => {
     setDraft(data.brief);
     setOwners(cleanSoloBusinessOwners(data.businessOwners));
