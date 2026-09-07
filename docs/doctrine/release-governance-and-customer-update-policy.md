@@ -33,7 +33,7 @@ Every PR and deployment closeout records:
 - edge-function status and exact deployed functions/versions, or `NOT_APPLICABLE`;
 - CI, security, and required production-check results;
 - evidence links or reproducible references;
-- any authenticated or production-runtime proof boundary, with the exact claim excluded from `LIVE` and evidence explaining why proof remains owed;
+- any authenticated or production-runtime proof boundary, with a typed affected scope, a typed substantive blocker, the exact claim excluded from `LIVE`, and evidence explaining why proof remains owed;
 - rollback or forward-fix position.
 
 Within a release record, each internal build is marked `referenced` when it supplies the customer note's
@@ -107,7 +107,7 @@ Customer copy never includes secrets, internal sensitive payloads, tenant data f
 
 The machine-readable contract is `docs/release-governance/release-record.schema.json`. A customer release candidate gets one record under `docs/release-governance/records/` before publication. Internal-only PRs still complete the release-governance fields in the PR body; they do not need a customer release record unless they join a named release train.
 
-Release records are additive historical evidence. Correct or retract an error with a new record naming a
+Release records are additive historical evidence. Correction history keeps its reason as resolved prose and records each former field value plus its resolved replacement in structured `corrected_values`; unresolved replacement text cannot pass. Correct or retract an error with a new record naming a
 different, existing predecessor record and the reason; self-references, missing targets, cycles, deletion, and
 rewriting are invalid. Never alter the dated original to imply proof that did not exist at publication time.
 The Master Project Reference remains the source for current platform truth.

@@ -356,22 +356,22 @@
     "correctionHistory": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["supersedes_record_id", "reason"],
+      "required": ["supersedes_record_id", "reason", "corrected_values"],
       "properties": {
         "supersedes_record_id": { "type": "string", "minLength": 1, "pattern": "\\S" },
-        "reason": { "$ref": "#/$defs/correctionReason" }
+        "reason": { "$ref": "#/$defs/resolvedString" },
+        "corrected_values": { "type": "array", "items": { "$ref": "#/$defs/correctedValue" } }
       }
     },
-    "correctionReason": {
-      "allOf": [
-        { "$ref": "#/$defs/proofBoundaryString" },
-        {
-          "anyOf": [
-            { "not": { "pattern": "(^|[^A-Za-z0-9])([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][^A-Za-z0-9]*[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])([^A-Za-z0-9]|$)" } },
-            { "pattern": "([Rr][Ee][Pp][Ll][Aa][Cc][Ee][Dd]|[Ss][Uu][Pp][Ee][Rr][Ss][Ee][Dd][Ee][Dd])[^;.!?]*(^|[^A-Za-z0-9])([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][^A-Za-z0-9]*[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])([^A-Za-z0-9]|$)[^;.!?]*([Ww][Ii][Tt][Hh]|[Bb][Yy])[ \t\r\n]+\\S+|([Cc][Oo][Rr][Rr][Ee][Cc][Tt][Ee][Dd]|[Cc][Hh][Aa][Nn][Gg][Ee][Dd]|[Uu][Pp][Dd][Aa][Tt][Ee][Dd]|[Ff][Ii][Xx][Ee][Dd])[^;.!?]*[Ff][Rr][Oo][Mm][^;.!?]*(^|[^A-Za-z0-9])([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][^A-Za-z0-9]*[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])([^A-Za-z0-9]|$)[^;.!?]*[Tt][Oo][ \t\r\n]+\\S+|([Rr][Ee][Mm][Oo][Vv][Ee][Dd]|[Ii][Nn][Vv][Aa][Ll][Ii][Dd][Aa][Tt][Ee][Dd]|[Rr][Ee][Tt][Rr][Aa][Cc][Tt][Ee][Dd])[^;.!?]*(^|[^A-Za-z0-9])([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][^A-Za-z0-9]*[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])([^A-Za-z0-9]|$)|[Rr][Ee][Ss][Oo][Ll][Vv][Ee][Dd][^;.!?]*(^|[^A-Za-z0-9])([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][^A-Za-z0-9]*[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])([^A-Za-z0-9]|$)[^;.!?]*([Ww][Ii][Tt][Hh]|[Bb][Yy]|[Aa][Ss])[ \t\r\n]+\\S+" }
-          ]
-        }
-      ]
+    "correctedValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field_path", "previous_value", "replacement_value"],
+      "properties": {
+        "field_path": { "type": "string", "pattern": "^/(?:[^~/]|~[01])+(?:/(?:[^~/]|~[01])+)*$" },
+        "previous_value": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "replacement_value": { "$ref": "#/$defs/resolvedString" }
+      }
     },
     "customerReleaseIdentity": {
       "type": "object",
@@ -422,21 +422,34 @@
       "pattern": "\\S",
       "not": { "pattern": "^[ \\t\\r\\n]*([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][^A-Za-z0-9]*[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Nn][^A-Za-z0-9]*[Aa]|[Nn][Oo][Nn][Ee]|[Nn][Oo][Tt][^A-Za-z0-9]*[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])[ \\t\\r\\n]*$" }
     },
-    "proofBoundaryDetailString": {
-      "allOf": [
-        { "$ref": "#/$defs/proofBoundaryString" },
-        { "not": { "pattern": "^[ \\t\\r\\n]*([Rr][Uu][Nn][Tt][Ii][Mm][Ee][ \\t\\r\\n]+)?([Pp][Rr][Oo][Oo][Ff]|[Rr][Ee][Ss][Uu][Ll][Tt]|[Ee][Vv][Ii][Dd][Ee][Nn][Cc][Ee]|[Vv][Ee][Rr][Ii][Ff][Ii][Cc][Aa][Tt][Ii][Oo][Nn]|[Cc][Hh][Ee][Cc][Kk])([ \\t\\r\\n]+([Ii][Ss]|[Rr][Ee][Mm][Aa][Ii][Nn][Ss]|[Ww][Aa][Ss]))?[ \\t\\r\\n]+([Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])([ \\t\\r\\n]+([Ll][Aa][Tt][Ee][Rr]|[Ee][Vv][Ee][Nn][Tt][Uu][Aa][Ll][Ll][Yy]|[Aa][Gg][Aa][Ii][Nn]|[Ss][Oo][Oo][Nn]|[Ss][Oo][Mm][Ee][Tt][Ii][Mm][Ee]|[Ss][Oo][Mm][Ee][Dd][Aa][Yy]|[Ff][Uu][Tt][Uu][Rr][Ee]|[Ss][Tt][Ii][Ll][Ll]|[Cc][Uu][Rr][Rr][Ee][Nn][Tt][Ll][Yy]|[Yy][Ee][Tt]|[Tt][Hh][Ee][Nn]|[Aa][Ff][Tt][Ee][Rr][Ww][Aa][Rr][Dd][Ss]|[Ss][Uu][Bb][Ss][Ee][Qq][Uu][Ee][Nn][Tt][Ll][Yy]|[Tt][Ee][Mm][Pp][Oo][Rr][Aa][Rr][Ii][Ll][Yy]|[Ii][Nn][Dd][Ee][Ff][Ii][Nn][Ii][Tt][Ee][Ll][Yy]|[Mm][Aa][Yy][Bb][Ee]|[Pp][Ee][Rr][Hh][Aa][Pp][Ss]))*[ \\t\\r\\n]*$" } },
-        { "not": { "pattern": "^[ \\t\\r\\n]*(([Aa][Uu][Tt][Hh][Ee][Nn][Tt][Ii][Cc][Aa][Tt][Ee][Dd]|[Oo][Ww][Nn][Ee][Rr]|[Uu][Ss][Ee][Rr]|[Pp][Rr][Oo][Dd][Uu][Cc][Tt][Ii][Oo][Nn]|[Rr][Uu][Nn][Tt][Ii][Mm][Ee])[ \\t\\r\\n]+)*([Cc][Ll][Aa][Ii][Mm]|[Ff][Ee][Aa][Tt][Uu][Rr][Ee]|[Ww][Oo][Rr][Kk][Ff][Ll][Oo][Ww]|[Ii][Nn][Tt][Ee][Rr][Aa][Cc][Tt][Ii][Oo][Nn]|[Ss][Tt][Aa][Tt][Uu][Ss])([ \\t\\r\\n]+([Ii][Ss]|[Rr][Ee][Mm][Aa][Ii][Nn][Ss]|[Ww][Aa][Ss]))?[ \\t\\r\\n]+([Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])([ \\t\\r\\n]+([Ll][Aa][Tt][Ee][Rr]|[Ee][Vv][Ee][Nn][Tt][Uu][Aa][Ll][Ll][Yy]|[Aa][Gg][Aa][Ii][Nn]|[Ss][Oo][Oo][Nn]|[Ss][Oo][Mm][Ee][Tt][Ii][Mm][Ee]|[Ss][Oo][Mm][Ee][Dd][Aa][Yy]|[Ff][Uu][Tt][Uu][Rr][Ee]|[Ss][Tt][Ii][Ll][Ll]|[Cc][Uu][Rr][Rr][Ee][Nn][Tt][Ll][Yy]|[Yy][Ee][Tt]|[Tt][Hh][Ee][Nn]|[Aa][Ff][Tt][Ee][Rr][Ww][Aa][Rr][Dd][Ss]|[Ss][Uu][Bb][Ss][Ee][Qq][Uu][Ee][Nn][Tt][Ll][Yy]|[Tt][Ee][Mm][Pp][Oo][Rr][Aa][Rr][Ii][Ll][Yy]|[Ii][Nn][Dd][Ee][Ff][Ii][Nn][Ii][Tt][Ee][Ll][Yy]|[Mm][Aa][Yy][Bb][Ee]|[Pp][Ee][Rr][Hh][Aa][Pp][Ss]))*[ \\t\\r\\n]*$" } }
-      ]
+    "proofScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reference"],
+      "properties": {
+        "kind": { "enum": ["authenticated_workflow", "production_runtime", "provider_capability", "permission", "audience_tier"] },
+        "reference": { "$ref": "#/$defs/resolvedString" }
+      }
+    },
+    "proofBlocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "detail"],
+      "properties": {
+        "kind": { "enum": ["access_unavailable", "credentials_unavailable", "provider_unavailable", "permission_denied", "evidence_not_captured", "production_check_unavailable"] },
+        "detail": { "$ref": "#/$defs/resolvedString" }
+      }
     },
     "proofBoundary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["boundary", "excluded_from_live_claim", "evidence"],
+      "required": ["scope", "blocker", "boundary", "excluded_from_live_claim", "evidence"],
       "properties": {
-        "boundary": { "$ref": "#/$defs/proofBoundaryDetailString" },
-        "excluded_from_live_claim": { "$ref": "#/$defs/proofBoundaryDetailString" },
-        "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/proofBoundaryDetailString" } }
+        "scope": { "$ref": "#/$defs/proofScope" },
+        "blocker": { "$ref": "#/$defs/proofBlocker" },
+        "boundary": { "$ref": "#/$defs/proofBoundaryString" },
+        "excluded_from_live_claim": { "$ref": "#/$defs/proofBoundaryString" },
+        "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/proofBoundaryString" } }
       }
     },
     "evidenceReferenceString": {
