@@ -141,10 +141,19 @@ export default defineConfig(({ mode }) => ({
       },
       output: {
         manualChunks: {
-          "react-vendor": ["react", "react-dom", "react-router-dom"],
+          "react-vendor": [
+            "react",
+            "react/jsx-runtime",
+            "react-dom",
+            "react-dom/client",
+            "react-router-dom",
+          ],
           "query-vendor": ["@tanstack/react-query"],
           "ui-vendor": ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-tabs"],
           "chart-vendor": ["recharts"],
+          // Keep the canonical command mark available to the pre-app boot entry without
+          // pulling the full application graph into that entry on cold production loads.
+          "paige-command-mark": [path.resolve(__dirname, "src/components/brand/PaigeCommandMark.tsx")],
         },
       },
     },

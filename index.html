@@ -104,45 +104,16 @@
         position: relative;
         width: 210px;
         height: 210px;
+        display: grid;
+        place-items: center;
         transform-style: preserve-3d;
         animation: psxIn 1s cubic-bezier(0.22, 1, 0.36, 1) both;
       }
-      /* Paige Command Mark — the CURRENT mark (a slash and an orb on a plate), painted in pure CSS
-         before React/index.css load, so hardcoded hex is required (tokens do not exist yet). This
-         replaced the retired orbital mark (gold orb + violet/gold rings) on 2026-09-06 per owner
-         ruling: the Command Mark is the platform identity; the orbital PaigeMark is retired. */
-      .psx-plate {
-        position: absolute;
-        inset: 0;
-        margin: auto;
+      /* The mark itself is mounted from src/components/brand/PaigeCommandMark.tsx by boot-splash.tsx.
+         index.html owns only splash layout, never a second hand-drawn brand asset. */
+      .psx-command-mark {
         width: 132px;
         height: 132px;
-        border-radius: 36px;
-        background: linear-gradient(160deg, #2a2730, #17141f);
-        border: 1px solid rgba(255, 255, 255, 0.09);
-        box-shadow: 0 22px 54px -14px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-        animation: psxOrb 2.8s ease-in-out infinite;
-      }
-      .psx-slash {
-        position: absolute;
-        top: 30px;
-        left: 40px;
-        width: 27px;
-        height: 66px;
-        border-radius: 8px;
-        background: linear-gradient(#f5c266, #e3a437);
-        transform: skewX(16deg);
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.42);
-      }
-      .psx-dot {
-        position: absolute;
-        right: 33px;
-        bottom: 33px;
-        width: 27px;
-        height: 27px;
-        border-radius: 50%;
-        background: radial-gradient(circle at 36% 30%, #ffe4ab, #e9a83a 72%);
-        box-shadow: 0 5px 12px rgba(0, 0, 0, 0.42);
       }
       .psx-word {
         display: flex;
@@ -166,11 +137,10 @@
         animation: psxLine 0.9s ease 0.55s both;
       }
       @keyframes psxIn { from { opacity: 0; transform: scale(0.82); } to { opacity: 1; transform: scale(1); } }
-      @keyframes psxOrb { 0%, 100% { transform: scale(0.97); } 50% { transform: scale(1.05); } }
       @keyframes psxFadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
       @keyframes psxLine { from { width: 0; opacity: 0; } to { width: 56px; opacity: 1; } }
       @media (prefers-reduced-motion: reduce) {
-        .psx-stage, .psx-plate, .psx-word, .psx-word i { animation: none !important; }
+        .psx-stage, .psx-word, .psx-word i { animation: none !important; }
       }
     </style>
   </head>
@@ -178,7 +148,7 @@
   <body>
     <div id="paige-splash" role="status" aria-label="Loading">
       <div class="psx-stage">
-        <div class="psx-plate"><span class="psx-slash"></span><span class="psx-dot"></span></div>
+        <div id="paige-splash-mark" data-theme="dark"></div>
       </div>
       <div class="psx-word">Paige<i></i></div>
     </div>
@@ -202,6 +172,7 @@
         }
       })();
     </script>
+    <script type="module" src="/src/boot-splash.tsx"></script>
     <div id="root">
       <!--
         Static SEO / no-JS fallback for crawlers that do not execute JavaScript.
@@ -221,6 +192,5 @@
         <a href="/auth?mode=signup" style="display:inline-block;background:#CFAE70;color:#0a0e1a;font-weight:700;font-size:16px;padding:12px 24px;border-radius:8px;text-decoration:none;">Get started</a>
       </main>
     </div>
-    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
