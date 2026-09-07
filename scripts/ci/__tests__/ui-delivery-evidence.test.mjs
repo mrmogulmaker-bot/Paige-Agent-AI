@@ -178,6 +178,14 @@ test("rejects anticipated production deployment IDs", () => {
   }
 });
 
+test("requires substantive build-identity evidence", () => {
+  for (const evidence of ["none", "PROOF_OWED"]) {
+    const result = validateEvidenceText(coreEvidence.replace("evidence=PR-checks", `evidence=${evidence}`), { required: true, solo: false });
+    assert.equal(result.ok, false, evidence);
+    assert.match(result.errors.join("\n"), /substantive link or reproducible reference/);
+  }
+});
+
 test("requires notes for minor and major candidates", () => {
   const minorWithoutNote = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 0.2.0 — Governed Capability; owner-decision=PENDING"), { required: true, solo: false });
   assert.equal(minorWithoutNote.ok, false);

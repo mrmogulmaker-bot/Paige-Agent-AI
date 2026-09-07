@@ -173,7 +173,7 @@
       }
     },
     {
-      "if": { "properties": { "record_state": { "enum": ["APPROVED", "PUBLISHED"] } }, "required": ["record_state"] },
+      "if": { "properties": { "record_state": { "enum": ["APPROVED", "PUBLISHED", "CORRECTED"] } }, "required": ["record_state"] },
       "then": {
         "properties": {
           "customer_release_identity": {
@@ -183,7 +183,12 @@
       }
     },
     {
-      "if": { "properties": { "record_state": { "const": "PUBLISHED" } }, "required": ["record_state"] },
+      "if": {
+        "anyOf": [
+          { "properties": { "record_state": { "const": "PUBLISHED" } }, "required": ["record_state"] },
+          { "properties": { "record_state": { "const": "CORRECTED" }, "customer_release_identity": { "type": "object" } }, "required": ["record_state", "customer_release_identity"] }
+        ]
+      },
       "then": {
         "properties": {
           "scope": { "items": { "$ref": "#/$defs/requiredPublicationFact" } },
@@ -285,7 +290,7 @@
     {
       "if": {
         "properties": {
-          "record_state": { "const": "PUBLISHED" },
+          "record_state": { "enum": ["PUBLISHED", "CORRECTED"] },
           "whats_new": { "properties": { "status": { "contains": { "const": "PROOF OWED" } } } }
         },
         "required": ["record_state", "whats_new"]
@@ -428,7 +433,7 @@
         },
         {
           "if": { "properties": { "state": { "const": "PROOF_OWED" } }, "required": ["state"] },
-          "then": { "properties": { "proof_owed": { "type": "object" } } },
+          "then": { "properties": { "proof_owed": { "type": "object" }, "evidence": { "items": { "$ref": "#/$defs/proofBoundaryString" } } } },
           "else": { "properties": { "proof_owed": { "type": "null" } } }
         }
       ]

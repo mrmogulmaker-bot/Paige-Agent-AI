@@ -199,6 +199,8 @@ export function validateEvidenceText(text, classification) {
   const buildEnvironment = /\benvironment\s*=\s*(local|development|preview|production)\b/i.exec(buildIdentity)?.[1]?.toLowerCase();
   const deploymentId = /\bdeployment\s*=\s*([^;]+)/i.exec(buildIdentity)?.[1]?.trim();
   const deliveryValue = (field) => new RegExp(`\\b${field}\\s*=\\s*([^;]+)`, "i").exec(buildIdentity)?.[1]?.trim();
+  const buildEvidence = deliveryValue("evidence") ?? "";
+  if (hasUnresolvedToken(buildEvidence)) errors.push("INTERNAL_BUILD_IDENTITY evidence must be a substantive link or reproducible reference.");
   for (const field of ["migrations", "edge"]) {
     const value = deliveryValue(field) ?? "";
     const applied = /^APPLIED\(([^)]+)\)$/i.exec(value);

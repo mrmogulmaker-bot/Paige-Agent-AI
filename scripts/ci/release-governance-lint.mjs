@@ -78,6 +78,7 @@ function requireDeliveryState(value, label, findings) {
   if (!DELIVERY_STATES.has(value?.state)) findings.push(`${label}.state invalid`);
   requireNonEmptyStrings(value?.evidence, `${label}.evidence`, findings, value?.state === "NOT_APPLICABLE");
   if (value?.state === "APPLIED" && Array.isArray(value?.evidence) && value.evidence.some(hasUnresolvedToken)) findings.push(`${label}.evidence must contain resolved proof when state is APPLIED`);
+  if (value?.state === "PROOF_OWED" && Array.isArray(value?.evidence) && value.evidence.some(isUnresolvedValue)) findings.push(`${label}.evidence must substantively describe why proof remains owed`);
   requireNonEmptyStrings(value?.identifiers, `${label}.identifiers`, findings, value?.state !== "APPLIED");
   if (value?.state !== "APPLIED" && Array.isArray(value?.identifiers) && value.identifiers.length > 0) findings.push(`${label}.identifiers must be empty unless state is APPLIED`);
   if (value?.state === "APPLIED" && Array.isArray(value?.identifiers)) {
@@ -207,6 +208,7 @@ export function validateReleaseRecord(record) {
   if (!nonEmpty(record.rollback_recovery?.position) || !nonEmpty(record.rollback_recovery?.reference)) findings.push("rollback_recovery missing position/reference");
 
   const customer = record.customer_release_identity;
+  const customerPublicationRecord = record.record_state === "PUBLISHED" || (record.record_state === "CORRECTED" && customer !== null);
   if (customer !== null) {
     requireExactObject(customer, ["version", "release_name", "date", "owner_approval"], "customer_release_identity", findings);
     if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(String(customer?.version || ""))) findings.push("customer version must be semantic x.y.z");
@@ -240,7 +242,7 @@ export function validateReleaseRecord(record) {
   if (customer !== null && scopedBuildIds.size === 0) findings.push("customer release identity requires at least one internal build marked customer_release_scope referenced");
   if (["minor_candidate", "major_candidate"].includes(record.classification) && customer === null)
     findings.push(`${record.classification} requires a customer release identity`);
-  if (["APPROVED", "PUBLISHED"].includes(record.record_state) && customer !== null) {
+  if ((record.record_state === "APPROVED" || customerPublicationRecord) && customer !== null) {
     if (customer?.owner_approval?.status !== "APPROVED") findings.push(`${record.record_state} customer release requires an APPROVED customer-publication decision`);
     for (const [index, build] of (record.internal_builds || []).entries()) {
       if (build?.customer_release_scope !== "referenced") continue;
@@ -248,7 +250,7 @@ export function validateReleaseRecord(record) {
         if (build?.checks?.[field]?.state !== "PASS") findings.push(`${record.record_state} release requires internal_builds[${index}].checks.${field}.state PASS`);
     }
   }
-  if (record.record_state === "PUBLISHED") {
+  if (customerPublicationRecord) {
     if (customer === null) findings.push("PUBLISHED requires a customer release identity");
     if (hasPlaceholder(customer?.release_name) || isNoValue(customer?.release_name)) findings.push("PUBLISHED customer release name must be resolved");
     for (const field of ["scope", "affected_audience", "benefits"])
@@ -401,7 +403,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["accepts exact proof-owed boundary excluded from LIVE", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], identifiers: [], proof_owed: { boundary: "Authenticated edge interaction proof is pending", excluded_from_live_claim: "Edge-backed authenticated interaction" } } }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"], proof_owed: { visibility: "customer_and_internal", source: "referenced_builds.migration_status_or_edge_status.proof_owed" } } }, false],
     ["rejects placeholder proof-owed boundary", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], identifiers: [], proof_owed: { boundary: "TODO: write exact boundary", excluded_from_live_claim: "TBD - fill later" } } }], whats_new: { ...valid.whats_new, status: ["LIVE", "PROOF OWED"], known_limitations: "None" } }, true],
     ["rejects correction without history", { ...valid, record_state: "CORRECTED" }, true],
-    ["accepts structurally complete correction", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope" } }, false],
+    ["accepts structurally complete correction", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope" }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, false],
+    ["rejects customer correction without publication gates", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected customer outcome" }, whats_new: { ...valid.whats_new, customer_outcome: "TODO" } }, true],
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],
     ["rejects PARTIAL without a substantive limitation", { ...valid, limitations: ["None"], whats_new: { ...valid.whats_new, known_limitations: "None" } }, true],
     ["rejects placeholder evidence on passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["TODO"] } } }] }, true],
@@ -424,6 +427,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects normalized no-value publication facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["NOT_APPLICABLE"], affected_audience: ["N_A"], rollback_recovery: { position: "forward fix", reference: "NOT-APPLICABLE" } }, true],
     ["rejects normalized no-evidence sentinel for passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["NOT_APPLICABLE"] } } }] }, true],
     ["rejects exact unresolved proof boundary values", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof remains outstanding"], identifiers: [], proof_owed: { boundary: "pending", excluded_from_live_claim: "proof owed" } } }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"] } }, true],
+    ["rejects absent evidence for proof-owed delivery", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["none"], identifiers: [], proof_owed: { boundary: "Authenticated edge interaction proof remains outstanding", excluded_from_live_claim: "Edge-backed authenticated interaction" } } }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"] } }, true],
     ["rejects normalized staged rollout placeholders", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "PENDING_DECISION", rollout_amount: "NOT_APPLICABLE", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "REPLACE-ME", recovery_path: "PROOF_OWED" } }] }, true],
     ["accepts legitimate words containing placeholder substrings", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, release_name: "Mastodon Connections", owner_approval: customerApproval }, whats_new: { ...valid.whats_new, customer_outcome: "Routing changes depending on owner settings" } }, false],
   ];
@@ -446,7 +450,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     if (!ok) bad++;
   }
   const predecessor = { ...internal, record_id: "release-0.0.9" };
-  const correction = { ...valid, record_id: "release-0.1.0-correction", record_state: "CORRECTED", history: { supersedes_record_id: predecessor.record_id, reason: "Corrected audience scope" } };
+  const correction = { ...valid, record_id: "release-0.1.0-correction", record_state: "CORRECTED", history: { supersedes_record_id: predecessor.record_id, reason: "Corrected audience scope" }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } };
   const recordSetCases = [
     ["accepts correction linked to an existing predecessor", [predecessor, correction], false],
     ["rejects correction linked to a missing predecessor", [correction], true],
