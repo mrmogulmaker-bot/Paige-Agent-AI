@@ -57,6 +57,8 @@ const PATHS: Array<{ id: InterviewFocusPath; label: string; description: string;
 const emptyState: InterviewState = { eligibleForFirstUse: false, session: null };
 
 function friendlyError(message: string): string {
+  if (message.includes("SENSITIVE_FACT_REJECTED")) return "Remove credentials, private-document text, or copied authentication material before continuing.";
+  if (message.includes("FACT_INVALID")) return "Keep this proposed fact to 800 characters and no more than eight lines.";
   if (message.includes("OWNER_REQUIRED")) return "Only the verified owner can save business context.";
   if (message.includes("REVISION_CONFLICT")) return "This working session changed elsewhere. Reloading the latest version is required.";
   if (message.includes("ACTIVE_ACCOUNT")) return "The active workspace changed. Nothing was saved.";
@@ -224,7 +226,7 @@ export function PaigeWorkingSessionCard({
 
   if (!session) return error && explicitOffer ? <div className="pws-card pws-error" role="alert">{error}</div> : null;
 
-  if (session.status === "paused" || (api.activeThreadId !== null && api.activeThreadId !== session.threadId)) {
+  if (session.status === "paused" || api.activeThreadId !== session.threadId) {
     return <section className="pws-card"><div className="pws-heading"><CirclePause aria-hidden size={18} /><div><small>READY TO RESUME</small><h3>Your {pathConfig.label.toLowerCase()} interview is ready to continue.</h3></div></div><p>Your place is saved as workflow state in this account. It is not business truth or Memory.</p>{error && <p className="pws-error" role="alert">{error}</p>}<div className="pws-actions"><button type="button" className="pws-secondary" disabled={busy} onClick={() => void update("end")}>End session</button><button type="button" className="pws-primary" disabled={busy} onClick={() => { if (api.activeThreadId !== session.threadId) api.onSelect(session.threadId); void update("resume"); }}><Play aria-hidden size={14} />Resume</button></div></section>;
   }
 
@@ -256,7 +258,7 @@ export function PaigeWorkingSessionCard({
     <section className="pws-card" aria-labelledby="pws-question-title">
       <div className="pws-heading"><Sparkles aria-hidden size={18} /><div><small>{pathConfig.label.toUpperCase()} · {Math.min(step + 1, pathConfig.questions.length)} OF {pathConfig.questions.length}</small><h3 id="pws-question-title">{question.prompt}</h3></div></div>
       <p>Why I’m asking: this answer can become <strong>{question.use}</strong> if you select it in the recap.</p>
-      <label className="pws-answer"><span>Your answer</span><textarea value={answer} maxLength={4000} onChange={(event) => setAnswer(event.target.value)} placeholder="Answer in your own words. Don’t include passwords, credentials, or private documents." /></label>
+      <label className="pws-answer"><span>Your answer</span><textarea value={answer} maxLength={800} onChange={(event) => setAnswer(event.target.value)} placeholder="Answer in your own words. Don’t include passwords, credentials, or private documents." /></label>
       {error && <p className="pws-error" role="alert">{error}</p>}
       <div className="pws-actions"><button type="button" className="pws-secondary" disabled={busy} onClick={() => void update("end")}><X aria-hidden size={14} />End</button><button type="button" className="pws-secondary" disabled={busy} onClick={() => void update("pause")}><Pause aria-hidden size={14} />Pause</button><button type="button" className="pws-primary" disabled={busy || !answer.trim()} onClick={() => void submitAnswer()}>{busy ? "Saving place…" : step >= pathConfig.questions.length - 1 ? "Review recap" : "Continue"}</button></div>
     </section>

@@ -12,6 +12,14 @@ describe("Intentful Interview security contract", () => {
     expect(migration).toContain("public.paige_interview_assert_thread");
     expect(migration).toContain("p_selected_ids text[]");
     expect(migration).toContain("perform public.record_capability_run");
+    expect(migration).toContain("public.solo_setup_access_scope()='owner_full'");
+    expect(migration).not.toContain("can_manage_tenant_brand");
+    expect(migration).toContain("v_context:=public.get_solo_setup_context()");
+    expect(migration).toContain("representativeUserIds");
+    expect(migration).toContain("save_solo_business_brief(v_full,v_expected_updated_at,null)");
+    expect(migration).toContain("(f-'value')");
+    expect(migration).toContain("v_facts:='[]'::jsonb");
+    expect(migration).toContain("INTERVIEW_SENSITIVE_FACT_REJECTED");
     expect(migration).not.toContain("record_paige_memory");
     expect(migration).not.toContain("client_memory");
     expect(migration).not.toContain("paige_owner_memory");
@@ -31,5 +39,7 @@ describe("Intentful Interview security contract", () => {
     expect(chat).toContain("const skipScopedMemoryWrites = clientScopeDenied || Boolean(payloadBusinessMissionAsk);");
     expect(chat).toContain("matched && !clientScopeDenied && !payloadBusinessMissionAsk");
     expect(chat).toContain('z.enum(["plan_with_paige", "resolve_missing_information"])');
+    const workspaceChat = source("src/components/dashboard/PaigeAIChat.tsx");
+    expect(workspaceChat.match(/clientId \|\| businessMissionId \|\| businessMissionAsk/g)).toHaveLength(2);
   });
 });

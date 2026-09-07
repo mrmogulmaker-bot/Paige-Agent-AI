@@ -123,6 +123,24 @@ describe("PaigeWorkingSessionCard", () => {
   });
 
 
+  it("requires explicit resume when New chat has no selected interview thread", async () => {
+    const active = session();
+    const cardApi = api({ activeThreadId: null });
+    mocked.get.mockResolvedValue({ eligibleForFirstUse: false, session: active });
+    mocked.update.mockResolvedValue({ ...active, revision: 2 });
+    const { host, root } = await renderCard(cardApi, true);
+    expect(host.textContent).toContain("ready to continue");
+    expect(host.textContent).not.toContain("What name should Paige use");
+    await act(async () => {
+      (Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Resume")) as HTMLButtonElement).click();
+      await Promise.resolve();
+    });
+    expect(cardApi.onSelect).toHaveBeenCalledWith("thread-1");
+    expect(mocked.update).toHaveBeenCalledWith(active, "resume", "question_0");
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
   it("fails closed when the interview read returns no contract instead of crashing the Paige shell", async () => {
     mocked.get.mockResolvedValue(null as never);
     const { host, root } = await renderCard(api(), true);

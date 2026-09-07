@@ -635,7 +635,7 @@ const PaigeAIChatInner = ({
     //
     // Released rather than refused: the person asked to open this conversation, and it is a
     // conversation they own. What is not true is that it is about the client currently in focus.
-    if (clientId || businessMissionId) {
+    if (clientId || businessMissionId || businessMissionAsk) {
       // Park BEFORE releasing. The release drops the focus, which moves the epoch, which
       // invalidates this load through the request fence — so without this the person's click
       // is discarded and hydration resumes `threads[0]`, opening a conversation they did not
@@ -712,7 +712,7 @@ const PaigeAIChatInner = ({
     // the focus would carry another client's transcript into this client's context.
     //
     // Clearing the focus changes the epoch again, so the owner-level history resumes normally.
-    if (clientId || businessMissionId) {
+    if (clientId || businessMissionId || businessMissionAsk) {
       pendingThreadSelectionRef.current = null;
       setHistoryHydrated(true);
       return;
@@ -731,7 +731,7 @@ const PaigeAIChatInner = ({
     if (target) void selectThread(target);
     setHistoryHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads, isThreadControlled, controlledThreadId, clientId]);
+  }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads, isThreadControlled, controlledThreadId, clientId, businessMissionId, businessMissionAsk]);
 
   // CONTROLLED SYNC — the other half of "one thread, two doors". When the parent moves
   // the selection (the other door opened a thread, or created one on its first send),

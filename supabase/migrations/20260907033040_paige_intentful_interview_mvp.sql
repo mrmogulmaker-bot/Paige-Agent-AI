@@ -40,7 +40,7 @@ as $$
 declare v_tenant uuid := public.current_user_tenant_id(); v_actor uuid := auth.uid();
 begin
   if v_actor is null or v_tenant is null then raise exception 'INTERVIEW_ACTIVE_ACCOUNT_REQUIRED' using errcode='42501'; end if;
-  if not public.can_manage_tenant_brand(v_tenant) then raise exception 'INTERVIEW_OWNER_REQUIRED' using errcode='42501'; end if;
+  if not (public.solo_setup_access_scope()='owner_full') then raise exception 'INTERVIEW_OWNER_REQUIRED' using errcode='42501'; end if;
   return query select t.tenant_id,t.caller_user_id from public.paige_chat_threads t
     where t.id=p_thread_id and t.tenant_id=v_tenant and t.caller_user_id=v_actor and t.lens='coach'
       and t.contact_id is null and t.studio_session_id is null and not t.is_archived;
@@ -57,7 +57,7 @@ declare
   v_session public.paige_intentful_interview_sessions%rowtype; v_was_offered boolean;
 begin
   if v_actor is null or v_tenant is null then raise exception 'INTERVIEW_ACTIVE_ACCOUNT_REQUIRED' using errcode='42501'; end if;
-  if not public.can_manage_tenant_brand(v_tenant) then raise exception 'INTERVIEW_OWNER_REQUIRED' using errcode='42501'; end if;
+  if not (public.solo_setup_access_scope()='owner_full') then raise exception 'INTERVIEW_OWNER_REQUIRED' using errcode='42501'; end if;
   select exists(select 1 from public.paige_intentful_interview_sessions s
     where s.tenant_id=v_tenant and s.owner_user_id=v_actor and s.entry_source='first_use') into v_was_offered;
   if p_thread_id is not null then
@@ -69,7 +69,7 @@ begin
       where s.tenant_id=v_tenant and s.owner_user_id=v_actor and s.status in ('active','paused','recap')
       order by s.updated_at desc limit 1;
   end if;
-  return jsonb_build_object('eligibleForFirstUse',public.can_manage_tenant_brand(v_tenant) and not v_was_offered,
+  return jsonb_build_object('eligibleForFirstUse',(public.solo_setup_access_scope()='owner_full') and not v_was_offered,
     'session',case when v_session.id is null then null else jsonb_build_object(
       'id',v_session.id,'threadId',v_session.thread_id,'entrySource',v_session.entry_source,
       'focusPath',v_session.focus_path,'status',v_session.status,'stepKey',v_session.step_key,
@@ -121,9 +121,13 @@ begin
   if p_event='answer' then
     if v_session.status<>'active' or p_fact is null or jsonb_typeof(p_fact)<>'object' then raise exception 'INTERVIEW_ANSWER_INVALID' using errcode='22023'; end if;
     v_fact_id:=nullif(btrim(p_fact->>'id'),''); v_field:=nullif(btrim(p_fact->>'fieldKey'),''); v_value:=nullif(btrim(p_fact->>'value'),'');
-    if v_fact_id is null or v_field is null or not v_field=any(v_allowed_fields) or v_value is null or char_length(v_value)>4000
+    if v_fact_id is null or v_field is null or not v_field=any(v_allowed_fields) or v_value is null or char_length(v_value)>800
+      or array_length(regexp_split_to_array(v_value,E'\r?\n'),1)>8
       then raise exception 'INTERVIEW_FACT_INVALID' using errcode='22023'; end if;
-    if p_fact ?| array['tenantId','credential','secret','token','document','reasoning','transcript']
+    if exists(select 1 from jsonb_object_keys(p_fact) as item(key) where not key=any(array['id','fieldKey','label','value']::text[]))
+      or p_fact ?| array['tenantId','credential','secret','token','document','reasoning','transcript']
+      or v_value ~* '(password|passcode|api[ _-]?key|access[ _-]?token|refresh[ _-]?token|authorization|bearer|private[ _-]?key|client[ _-]?secret|session[ _-]?(cookie|token))[[:space:]]*[:=]'
+      or v_value ~ '-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}'
       then raise exception 'INTERVIEW_SENSITIVE_FACT_REJECTED' using errcode='22023'; end if;
     select coalesce(jsonb_agg(item order by ord),'[]'::jsonb) into v_facts from (
       select item,ord from jsonb_array_elements(v_facts) with ordinality x(item,ord) where item->>'id'<>v_fact_id
@@ -136,6 +140,7 @@ begin
   elsif p_event='skip' then v_next_status:='skipped';
   elsif p_event='end' then v_next_status:='ended';
   else raise exception 'INTERVIEW_EVENT_INVALID' using errcode='22023'; end if;
+  if v_next_status in ('skipped','ended') then v_facts:='[]'::jsonb; end if;
   update public.paige_intentful_interview_sessions set proposed_facts=v_facts,status=v_next_status,step_key=left(p_step_key,80),
     revision=revision+1,updated_at=clock_timestamp(),completed_at=case when v_next_status in ('skipped','ended') then clock_timestamp() else null end
     where id=v_session.id returning * into v_session;
@@ -152,7 +157,7 @@ create or replace function public.confirm_paige_intentful_interview_facts(
 as $$
 declare
   v_tenant uuid := public.current_user_tenant_id(); v_actor uuid := auth.uid();
-  v_session public.paige_intentful_interview_sessions%rowtype; v_current jsonb; v_full jsonb:='{}'::jsonb; v_saved jsonb;
+  v_session public.paige_intentful_interview_sessions%rowtype; v_context jsonb; v_current jsonb; v_full jsonb:='{}'::jsonb; v_saved jsonb; v_expected_updated_at text;
   v_key text; v_verified boolean:=true; v_selected jsonb;
   v_allowed_keys constant text[]:=array['legalName','publicName','dbaName','website','address','phone','industry','naicsCode','sicCode',
     'offers','deliveryModel','idealCustomer','customerSegments','serviceArea','currentPriority','goals90Day','annualDirection',
@@ -169,16 +174,19 @@ begin
   if exists(select 1 from unnest(p_selected_ids) id where not exists(
     select 1 from jsonb_array_elements(v_session.proposed_facts) f where f->>'id'=id and f->>'state'='proposed'))
     then raise exception 'INTERVIEW_SELECTION_INVALID' using errcode='22023'; end if;
-  select coalesce(brand->'business_brief','{}'::jsonb) || jsonb_build_object(
-    'publicName',coalesce(nullif(brand->'business_brief'->>'publicName',''),name)
-  ) into v_current from public.tenants where id=v_tenant;
+  v_context:=public.get_solo_setup_context();
+  if v_context is null or v_context->>'accessScope'<>'owner_full' then
+    raise exception 'INTERVIEW_OWNER_REQUIRED' using errcode='42501';
+  end if;
+  v_current:=coalesce(v_context->'brief','{}'::jsonb);
+  v_expected_updated_at:=nullif(v_current->>'updatedAt','');
   foreach v_key in array v_allowed_keys loop v_full:=v_full||jsonb_build_object(v_key,coalesce(v_current->>v_key,'')); end loop;
   v_full:=v_full||jsonb_build_object('representativeUserIds',coalesce(v_current->'representativeUserIds','[]'::jsonb));
   select coalesce(jsonb_agg(f),'[]'::jsonb) into v_selected from jsonb_array_elements(v_session.proposed_facts) f where f->>'id'=any(p_selected_ids);
   for v_key in select f->>'fieldKey' from jsonb_array_elements(v_selected) f loop
     v_full:=v_full||jsonb_build_object(v_key,(select f->>'value' from jsonb_array_elements(v_selected) f where f->>'fieldKey'=v_key limit 1));
   end loop;
-  v_saved:=public.save_solo_business_brief(v_full,null,null);
+  v_saved:=public.save_solo_business_brief(v_full,v_expected_updated_at,null);
   for v_key in select f->>'fieldKey' from jsonb_array_elements(v_selected) f loop
     if v_saved->>v_key is distinct from (select f->>'value' from jsonb_array_elements(v_selected) f where f->>'fieldKey'=v_key limit 1)
       then v_verified:=false; end if;
@@ -186,7 +194,7 @@ begin
   if not v_verified then raise exception 'INTERVIEW_READBACK_MISMATCH' using errcode='40001'; end if;
   perform public.record_capability_run(v_tenant,v_actor,'business_brief_confirmed_fact','capability_succeeded',v_session.id,'paige');
   update public.paige_intentful_interview_sessions set status='completed',revision=revision+1,completed_at=clock_timestamp(),updated_at=clock_timestamp(),
-    proposed_facts=(select jsonb_agg(f||jsonb_build_object('state',case when f->>'id'=any(p_selected_ids) then 'confirmed' else 'declined' end))
+    proposed_facts=(select jsonb_agg((f-'value')||jsonb_build_object('state',case when f->>'id'=any(p_selected_ids) then 'confirmed' else 'declined' end))
       from jsonb_array_elements(proposed_facts) f) where id=v_session.id returning * into v_session;
   return jsonb_build_object('ok',true,'verified',true,'status','completed','revision',v_session.revision,
     'canonicalOwner','settings.setup.business_brief','selectedIds',to_jsonb(p_selected_ids),'railRecorded',true,
@@ -213,7 +221,7 @@ declare
   v_tenant uuid:=public.current_user_tenant_id(); v_actor uuid:=auth.uid(); v_mission record;
   v_missing jsonb; v_topic text; v_action public.paige_actions%rowtype;
 begin
-  if v_actor is null or v_tenant is null or not public.can_manage_tenant_brand(v_tenant) then return null; end if;
+  if v_actor is null or v_tenant is null or not (public.solo_setup_access_scope()='owner_full') then return null; end if;
   select m.id,m.title,m.revision,b.missing_information into v_mission
     from public.business_missions m join public.business_mission_briefs b on b.id=m.current_brief_id
     where m.id=p_mission_id and m.tenant_id=v_tenant and m.state not in ('completed','stopped');
@@ -249,7 +257,7 @@ returns jsonb language plpgsql security definer set search_path = public
 as $$
 declare v_tenant uuid:=public.current_user_tenant_id(); v_actor uuid:=auth.uid(); v_action public.paige_actions%rowtype;
 begin
-  if v_actor is null or v_tenant is null or not public.can_manage_tenant_brand(v_tenant)
+  if v_actor is null or v_tenant is null or not (public.solo_setup_access_scope()='owner_full')
     then raise exception 'DISCUSSION_OWNER_REQUIRED' using errcode='42501'; end if;
   if p_response not in ('talk_now','later','dont_ask_again') then raise exception 'DISCUSSION_RESPONSE_INVALID' using errcode='22023'; end if;
   select * into v_action from public.paige_actions where id=p_action_id and tenant_id=v_tenant
