@@ -12,6 +12,7 @@ import type { User, Session } from "@supabase/supabase-js";
 import { DictationMicButton } from "@/components/voice/DictationMicButton";
 import { appendDictation } from "@/lib/voice/useDictation";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { usePaigeMemory } from "@/hooks/usePaigeMemory";
 import { useClientChatContext } from "@/hooks/useClientChatContext";
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
@@ -211,6 +212,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
   const {
     attachedDoc,
+    isProcessingFile,
     isDragOver,
     fileInputRef,
     handleFileSelect,
@@ -221,6 +223,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     openFilePicker,
     setAttachedDoc,
   } = useChatDocumentUpload();
+  useBeforeUnloadGuard(input.trim().length > 0 || attachedDoc !== null || isProcessingFile || isLoading);
 
   useEffect(() => {
     const handleFactoryReset = () => {

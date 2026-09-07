@@ -8,6 +8,7 @@ import { ReasoningDeck, type PaigeStep } from "@/components/dashboard/PaigeStepT
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { usePlaybookEditor } from "./usePlaybookEditor";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
   // load/dirty/save logic against the same set_tenant_playbook RPC.
   const { pb, loading, saving, justSaved, dirty, patch, applyPreset, save, discard } =
     usePlaybookEditor(activeTenantId);
+  useBeforeUnloadGuard(dirty || saving);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [section, setSection] = useState<ConsoleSection>("persona");
   // Paige's live step trace, lifted out of the chat so the persistent ReasoningDeck renders it.

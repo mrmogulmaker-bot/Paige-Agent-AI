@@ -13,6 +13,16 @@
 > including the prior note that three Solo tenants depended on unset shell flags. Durable hotfix status
 > and proof live in `docs/evidence/ui-delivery/retire-admin-route.md`.
 
+> **Current owner override — 2026-09-07:** `PlatformUpdateBanner` is the sole customer-facing update
+> surface for this MVP. Canonical release records remain durable internal evidence; they do not create
+> a second customer destination. Generic builds say only “An update is ready.” Approved customer
+> names, versions, and concise What’s new content appear only when one valid canonical record resolves
+> to the exact production build; every missing, invalid, stale, ambiguous, future, staged, unsafe,
+> superseded, unapproved, or technical record fails closed. No unread badge, workspace/account indicator,
+> Updates page, navigation item, modal, feed, or dashboard is authorized. Any future Updates destination
+> requires a separate owner decision. Explicit reload must preserve registered forms, Paige drafts,
+> attachments/file processing, streaming responses, and Studio work.
+>
 > **Note on identifiers (§11/§34):** operator-infrastructure account SIDs (Twilio Org/Account/subaccount SIDs, etc.) are **redacted** from this in-repo doc — GitHub secret-scanning blocks them and doctrine keeps them out of artifacts. The literal values live in the owner's Twilio console + the owner handoff, never in the repository.
 
 ---

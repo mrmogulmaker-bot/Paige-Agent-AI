@@ -29,6 +29,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Send, Sparkles, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useGeneratePage } from "@/hooks/useGeneratePage";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import type { GrowthAsset, GrowthBlock, GrowthFormSchema } from "@/lib/growth";
@@ -462,6 +463,7 @@ export function StudioShell({
     initialAttachments?.length ? { ...EMPTY_SHELL, attachments: initialAttachments } : EMPTY_SHELL,
   );
   const { generation, isGenerating, generate, cancel, reset } = useGeneratePage(tenantId);
+  useBeforeUnloadGuard(state.dirty || isGenerating);
 
   // Studio-local dark/light — completely separate from the platform's own next-themes state, and
   // NEVER the global `<html>` class (see StudioTheme.ts / StudioTopBar's doc comment). The signal

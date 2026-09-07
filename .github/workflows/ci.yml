@@ -347,6 +347,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:release-governance:test
 
+      - name: Customer update manifest fails closed
+        if: ${{ !cancelled() }}
+        run: npm run test:customer-update-manifest
+
       - name: Action-risk guard catches what it claims to
         if: ${{ !cancelled() }}
         run: npm run lint:action-risk:test

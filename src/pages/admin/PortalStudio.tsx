@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useBrandKit } from "@/hooks/useBrandKit";
 import { usePortalConfig } from "@/hooks/usePortalConfig";
@@ -181,6 +182,7 @@ export default function PortalStudio() {
 
   const dirty = brandDirty || portalDirty;
   const busy = bk.saving || pc.saving;
+  useBeforeUnloadGuard(dirty || busy);
 
   const move = (index: number, delta: number) => {
     setRows((prev) => {

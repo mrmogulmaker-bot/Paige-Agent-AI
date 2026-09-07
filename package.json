@@ -101,7 +101,8 @@
     "smoke:secure-browser-authority": "deno run -A scripts/secure-browser-authority-smoke.ts",
     "smoke:secure-browser-egress": "node services/paige-browser/smoke-readonly-egress.mjs",
     "lint:release-governance": "node scripts/ci/release-governance-lint.mjs",
-    "lint:release-governance:test": "node scripts/ci/release-governance-lint.mjs --self-test"
+    "lint:release-governance:test": "node scripts/ci/release-governance-lint.mjs --self-test",
+    "test:customer-update-manifest": "node --test scripts/release-governance/customer-update-manifest.test.mjs"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",

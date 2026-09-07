@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useBrandKit } from "@/hooks/useBrandKit";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import {
   readableTextOn, isValidHex, PRIMARY_FLOOR, ACCENT_FLOOR,
   type BrandField, type BrandSource,
@@ -48,8 +49,9 @@ export function BrandKitPanel() {
   const dirty = useMemo(() => {
     const norm = (v?: string | null) => (v ?? "").trim();
     return (["primary_color", "accent_color", "font", "product_name", "tagline", "from_name", "support_email"] as const)
-      .some((k) => norm(form[k]) !== norm((own as any)[k]));
+      .some((k) => norm(form[k]) !== norm(own[k]));
   }, [form, own]);
+  useBeforeUnloadGuard(dirty || bk.saving);
 
   // Seed the form from the saved brand — but never clobber unsaved edits. A logo
   // upload/remove refetches `own` (new identity), which would otherwise revert the
@@ -72,7 +74,7 @@ export function BrandKitPanel() {
   }, [bk.state?.own]);
 
   const src = (f: BrandField): BrandSource | undefined => eff?.source?.[f];
-  const hasOwn = (k: keyof typeof form) => !!(own as any)[k]?.toString().trim();
+  const hasOwn = (k: keyof typeof form) => !!own[k]?.toString().trim();
 
   // Effective values drive the preview (own value if set, else inherited/floor).
   const previewPrimary = isValidHex(form.primary_color) ? form.primary_color : (eff?.primary_color ?? PRIMARY_FLOOR);
@@ -95,7 +97,7 @@ export function BrandKitPanel() {
     const patch: Record<string, string> = {};
     (["primary_color", "accent_color", "font", "product_name", "tagline", "from_name", "support_email"] as const).forEach((k) => {
       const next = form[k].trim();
-      const prev = ((own as any)[k] ?? "").toString().trim();
+      const prev = (own[k] ?? "").toString().trim();
       if (next !== prev) patch[k] = next;
     });
     try {

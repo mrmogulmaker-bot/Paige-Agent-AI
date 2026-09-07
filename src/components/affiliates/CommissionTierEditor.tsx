@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { CommissionTier } from "@/lib/affiliates/types";
 import { updateCommissionTier } from "@/lib/affiliates/queries";
 import { formatPercent } from "@/lib/affiliates/format";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 
 interface Props {
   tiers: CommissionTier[] | null;
@@ -67,6 +68,7 @@ function TierRow({
     Number(ratePct) !== tier.commission_rate * 100 ||
     isRecurring !== tier.is_recurring ||
     durationMonths !== (tier.duration_months?.toString() ?? "");
+  useBeforeUnloadGuard(dirty || saving);
 
   async function save() {
     setErr(null);
