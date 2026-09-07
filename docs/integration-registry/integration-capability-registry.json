@@ -933,14 +933,14 @@
       "connection_prerequisite": "Platform-run paige-browser Fly service; FIRECRAWL_API_KEY config-gated.",
       "required_scopes": ["Firecrawl API (crawl)"],
       "safe_readable_context": "Public web content returned as sources + findings + limits; fenced as untrusted data (never instructions).",
-      "allowed_writes_external_effects": "Paige-DRIVEN writes (login/submit/click/download) are rejected by the allowlist. The candidate Secure Browser prerequisite repair also blocks page-initiated non-read HTTP methods, WebSockets, and service workers in both browser routes; merged deployment proof remains owed, so this entry stays PARTIAL.",
+      "allowed_writes_external_effects": "Paige-DRIVEN writes (login/submit/click/download) are rejected by the allowlist. The deployed Secure Browser prerequisite repair (#1042, merge ba3edd5386ba39a19f31a2c980f2245e6e4994a7) blocks page-initiated non-read HTTP methods, popup writes, WebSockets, and service workers in both browser routes; authenticated research-path proof and remaining SSRF work are still owed, so this entry stays PARTIAL.",
       "authority_lane": ["read", "draft"],
       "m1_dependency": "none as money movement (read-only research). Firecrawl crawl + Fly compute are platform operating costs (visibility via this expense layer), not a real-money spend-control act.",
       "canonical_provider_receipt": "paige_browser_usage row / research citation set.",
       "rail_mind_memory": "Rail: browser usage audit. Mind: only sourced, scoped findings. Memory: governed contract only.",
       "status": "PARTIAL",
       "owner": "Research workstream",
-      "dependency": "G5 merged deployment proof; DNS-rebinding (#138); two unequal SSRF guards; §32.c authenticated drive.",
+      "dependency": "DNS-rebinding (#138); two unequal SSRF guards; §32.c authenticated drive. G5/read-only egress deployment proof landed in #1042.",
       "next_slice": "Harden + reach (capability-system slice 4).",
       "tier_eligibility": { "platform": "eligible", "solo": "eligible", "agency_future": "resell", "enterprise_future": "eligible" },
       "expense_and_operations": {
@@ -956,15 +956,15 @@
         "rate_limits_quotas": "Firecrawl per-plan rate/credit limits + Fly compute limits; backoff on 429. Verify at source.",
         "usage_review_cadence": "Monthly (crawl volume + compute).",
         "renewal_deprecation_review": "No fixed contract; track Firecrawl API + Fly platform changes.",
-        "data_privacy_retention": "Public web content only, fenced as untrusted data; sourced/scoped findings to Mind under the governed contract. The G5 source repair is automated and runtime-tested on the candidate branch; merged deployment proof remains owed.",
-        "money_movement": { "can_move_real_money": false, "m1_dependency_track": "none", "detail": "Read-only research; crawl + compute are operating costs (LLM synthesis cost is metered at the model router, the LLM track). Paige-driven writes are allowlist-rejected; the candidate G5 method fence prevents page-initiated write methods, with merged deployment proof still owed." },
+        "data_privacy_retention": "Public web content only, fenced as untrusted data; sourced/scoped findings to Mind under the governed contract. The G5/read-only egress repair is automated, hostile-page runtime-tested, and deployed from merge ba3edd5386ba39a19f31a2c980f2245e6e4994a7; authenticated tenant research proof remains owed.",
+        "money_movement": { "can_move_real_money": false, "m1_dependency_track": "none", "detail": "Read-only research; crawl + compute are operating costs (LLM synthesis cost is metered at the model router, the LLM track). Paige-driven writes are allowlist-rejected; the deployed #1042 G5 method fence prevents page-initiated write methods, popup writes, WebSockets, and service workers." },
         "receipt_reconciliation": "paige_browser_usage row + Firecrawl usage; reconcile crawl volume against the Firecrawl dashboard.",
         "rail_outcome": "browser usage audit.",
         "pause_revoke_path": "Unset FIRECRAWL_API_KEY / disable the Fly service; usage caps throttle crawl volume.",
         "next_owner": "Research workstream",
-        "next_slice": "Harden + reach (capability-system slice 4): prove the G5 fence after merge/deploy, reconcile SSRF guards, and complete the §32.c authenticated drive."
+        "next_slice": "Harden + reach (capability-system slice 4): reconcile SSRF guards and complete the §32.c authenticated drive."
       },
-      "sources": ["outputs/paige-at-cowork/08-sandboxed-research-external-execution.md", "docs/PAIGE-MASTER-PROJECT-REFERENCE.md §5 (Sandboxed Research)", "supabase/migrations/20260907023754_secure_browser_session_tenant_scope.sql (candidate tenant-attribution repair)", "services/paige-browser/smoke-readonly-egress.mjs (hostile-page runtime proof)"]
+      "sources": ["outputs/paige-at-cowork/08-sandboxed-research-external-execution.md", "docs/PAIGE-MASTER-PROJECT-REFERENCE.md §5 (Sandboxed Research)", "supabase/migrations/20260907023754_secure_browser_session_tenant_scope.sql (production-persisted tenant-attribution repair; #1042 / run 34084460116)", "services/paige-browser/smoke-readonly-egress.mjs (hostile-page runtime proof)"]
     },
     {
       "taxonomy": "marketing_ads_social_presence_analytics",
