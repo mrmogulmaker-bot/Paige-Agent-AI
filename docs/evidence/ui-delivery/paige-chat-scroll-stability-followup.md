@@ -11,8 +11,8 @@ MATERIAL_FLOW_CHANGE: NO: corrects the already-approved scroll-ownership contrac
 FLOW_PROTOTYPE: NOT_REQUIRED: the owner explicitly locked the standard ChatGPT/Claude transcript behavior and authorized this narrow repair
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a Paige owner can place the transcript anywhere and keep that exact visible text and pixel offset
 VISUAL_DIRECTION: PASS: no visual redesign; the transcript remains the sole chat scroll owner
-AUTOMATED_EVIDENCE: PASS: 23 focused controller/React tests and 95 affected chat/mount tests cover one-pixel wheel, touch inertia, pointer/scrollbar, multi-event and Tab-focus keyboard scrolling, stream, resize, history, asynchronous thread transition, hidden geometry, client-to-server message-ID reconciliation, and duplicate-content reload after an ephemeral greeting disappears
-STATIC_EVIDENCE: PASS: ratcheted types, scoped lint, security, production build, affected suite, and full 278-file / 3928-test regression suite pass locally
+AUTOMATED_EVIDENCE: PASS: 24 focused controller/React tests and 96 affected chat/mount tests cover one-pixel wheel, touch inertia, pointer/scrollbar, multi-event and Tab-focus keyboard scrolling, stream, resize, history, asynchronous thread transition, hidden geometry, client-to-server message-ID reconciliation, and duplicate-content reload after an ephemeral greeting disappears
+STATIC_EVIDENCE: PASS: ratcheted types, scoped lint, security, production build, affected suite, and full 278-file / 3934-test regression suite pass locally
 RENDERED_EVIDENCE: PASS: 87/87 real-React controlled browser checks at 1536x770, 1366x768, 1024x768, 900x1000, and 520x820
 BEHAVIORAL_EVIDENCE: PASS: middle and one-pixel anchors survive streaming, tool/status, receipt, resize, thread A-B-A, reload with persisted turns, minimize, pop-out, and native-close return; exact-bottom streaming follows
 AUTHENTICATED_RUNTIME: UNVERIFIED: authenticated preview and production owner-account proof require the deployed exact merge revision
@@ -56,10 +56,10 @@ The owner reads Paige history at a personally selected location. Any deliberate 
 ## Evidence index
 
 - Failing-first: six original failures covered four input families, hidden/minimized geometry, and React one-pixel streaming/resize; independent review then identified touch-inertia and multi-event keyboard races, each locked with a focused regression.
-- Focused automated result: 95/95 affected controller, React, Solo workspace, normal chat, and AppShell mount checks, including delayed thread hydration, duplicate-content reload, and replacement of every client message ID during React rehydration; full repository result is 278/278 files and 3928/3928 tests.
+- Focused automated result: 96/96 affected controller, React, Solo workspace, normal chat, and AppShell mount checks, including delayed thread hydration, duplicate-content reload, live duplicate-index refresh, and replacement of every client message ID during React rehydration; full repository result is 278/278 files and 3934/3934 tests.
 - Rendered result: 87/87 checks in `scripts/live-drive/artifacts/paige-scroll-stability-react/report.json`.
 - Screenshots: `scripts/live-drive/artifacts/paige-scroll-stability-react/*-open.png`, `*-closed.png`, and desktop pop-out.
 
 ## Review and limitations
 
-Independent PR review found and drove correction of touch-inertia, multi-event keyboard, Tab focus-navigation, and outgoing-DOM thread-transition races; a fresh exact-head pass remains required. Authenticated production proof remains required. The local harness uses visibly synthetic records and a controlled stream, so it proves browser behavior and geometry, not tenant authentication or production data.
+Independent PR review found and drove correction of touch-inertia, multi-event keyboard, Tab focus-navigation, outgoing-DOM thread-transition, duplicate semantic-match, and live duplicate-index metadata races; a fresh exact-head pass remains required. Authenticated production proof remains required. The local harness uses visibly synthetic records and a controlled stream, so it proves browser behavior and geometry, not tenant authentication or production data.

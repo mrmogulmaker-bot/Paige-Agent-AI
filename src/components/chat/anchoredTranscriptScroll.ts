@@ -127,13 +127,21 @@ export function createAnchoredTranscriptScroll({
     }
     if (!anchor) return;
     const reconciledIndex = items.indexOf(anchor);
-    if (anchor.dataset.paigeMessageId && anchor.dataset.paigeMessageId !== anchorPosition.messageId) {
+    const reconciledMessageId = anchor.dataset.paigeMessageId;
+    const reconciledSemanticKey = anchor.dataset.paigeMessageAnchorKey;
+    const reconciledIndexFromEnd = items.length - 1 - reconciledIndex;
+    if (reconciledMessageId && (
+      reconciledMessageId !== anchorPosition.messageId
+      || reconciledSemanticKey !== anchorPosition.semanticKey
+      || reconciledIndex !== anchorPosition.indexFromStart
+      || reconciledIndexFromEnd !== anchorPosition.indexFromEnd
+    )) {
       position = {
         ...anchorPosition,
-        messageId: anchor.dataset.paigeMessageId,
-        semanticKey: anchor.dataset.paigeMessageAnchorKey,
+        messageId: reconciledMessageId,
+        semanticKey: reconciledSemanticKey,
         indexFromStart: reconciledIndex,
-        indexFromEnd: items.length - 1 - reconciledIndex,
+        indexFromEnd: reconciledIndexFromEnd,
       };
       persist();
     }

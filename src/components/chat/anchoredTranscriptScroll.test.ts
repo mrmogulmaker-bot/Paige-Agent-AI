@@ -241,6 +241,48 @@ describe("createAnchoredTranscriptScroll", () => {
     expect(sessionStorage.getItem("test-duplicate-reload:thread-a")).toContain('"messageId":"db-user-2"');
   });
 
+  it("refreshes duplicate-relative indices while the exact anchored message remains mounted", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 200, scrollHeight: 900,
+      items: {
+        greeting: { top: 0, height: 300 },
+        "client-user-1": { top: 300, height: 300 },
+        assistant: { top: 600, height: 300 },
+        "client-user-2": { top: 900, height: 300 },
+        "db-user-1": { top: 0, height: 300 },
+        "db-assistant": { top: 300, height: 300 },
+        "db-user-2": { top: 600, height: 300 },
+      },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["greeting", "client-user-1", "assistant"], {
+      "client-user-1": "user:continue",
+    });
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-live-duplicate-index" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+    element.dispatchEvent(new WheelEvent("wheel"));
+    element.scrollTop = 340;
+    controller.handleScroll();
+
+    geometry.scrollHeight = 1_200;
+    render(["greeting", "client-user-1", "assistant", "client-user-2"], {
+      "client-user-1": "user:continue", "client-user-2": "user:continue",
+    });
+    controller.notifyLayoutChange();
+    expect(sessionStorage.getItem("test-live-duplicate-index:thread-a")).toContain('"indexFromEnd":2');
+
+    geometry.scrollHeight = 900;
+    render(["db-user-1", "db-assistant", "db-user-2"], {
+      "db-user-1": "user:continue", "db-user-2": "user:continue",
+    });
+    element.scrollTop = 0;
+    controller.notifyLayoutChange();
+
+    expect(element.scrollTop).toBe(40);
+    expect(sessionStorage.getItem("test-live-duplicate-index:thread-a")).toContain('"messageId":"db-user-1"');
+  });
+
   it("keeps automatic following for ordinary near-bottom layout drift without user input", () => {
     const geometry: Geometry = {
       viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
