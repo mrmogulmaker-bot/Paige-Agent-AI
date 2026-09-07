@@ -175,6 +175,26 @@ describe("createAnchoredTranscriptScroll", () => {
     expect(element.scrollTop).toBe(620);
   });
 
+  it("treats Tab focus navigation that scrolls an older message into view as user ownership", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-tab-focus-scroll" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+    element.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    element.scrollTop = 410;
+    controller.handleScroll();
+    element.dispatchEvent(new KeyboardEvent("keyup", { key: "Tab", bubbles: true }));
+    geometry.items.d.height += 100;
+    geometry.scrollHeight += 100;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(410);
+  });
+
   it("keeps automatic following for ordinary near-bottom layout drift without user input", () => {
     const geometry: Geometry = {
       viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,

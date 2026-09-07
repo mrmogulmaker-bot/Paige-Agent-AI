@@ -16,7 +16,7 @@ type AnchoredTranscriptScrollOptions = {
 
 const MESSAGE_SELECTOR = "[data-paige-message-id]";
 const EXACT_BOTTOM_EPSILON_PX = 0.5;
-const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " ", "Tab"]);
 
 // The database owns persisted turn IDs, while an in-flight turn starts with a
 // client ID. Keep a content-derived, non-reversible reconciliation key so an
