@@ -12,7 +12,7 @@ FLOW_PROTOTYPE: NOT_REQUIRED: the owner explicitly locked the standard ChatGPT/C
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a Paige owner can place the transcript anywhere and keep that exact visible text and pixel offset
 VISUAL_DIRECTION: PASS: no visual redesign; the transcript remains the sole chat scroll owner
 AUTOMATED_EVIDENCE: PASS: 18 focused controller/React tests and 90 affected chat/mount tests cover one-pixel wheel, touch, pointer/scrollbar, keyboard, stream, resize, history, thread, hidden geometry, and client-to-server message-ID reconciliation
-STATIC_EVIDENCE: PASS: ratcheted types, scoped lint, security, production build, affected suite, and full 278-file / 3926-test regression suite pass locally
+STATIC_EVIDENCE: PASS: ratcheted types, scoped lint, security, production build, affected suite, and full 278-file / 3928-test regression suite pass locally
 RENDERED_EVIDENCE: PASS: 87/87 real-React controlled browser checks at 1536x770, 1366x768, 1024x768, 900x1000, and 520x820
 BEHAVIORAL_EVIDENCE: PASS: middle and one-pixel anchors survive streaming, tool/status, receipt, resize, thread A-B-A, reload with persisted turns, minimize, pop-out, and native-close return; exact-bottom streaming follows
 AUTHENTICATED_RUNTIME: UNVERIFIED: authenticated preview and production owner-account proof require the deployed exact merge revision
