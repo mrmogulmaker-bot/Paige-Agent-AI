@@ -37,7 +37,7 @@ import { chromium } from "playwright";
 import crypto from "node:crypto";
 // SSRF egress guard + two-layer content denylist — extracted to a shared module (§18 one home) so the
 // smoke test exercises the SAME real code the server runs (§32), not a mirror that can drift.
-import { urlBlockReason, assertPublicUrl, installReadOnlyPageEgress, loadDenylist } from "./ssrf-guard.mjs";
+import { urlBlockReason, assertPublicUrl, installReadOnlyBrowserEgress, loadDenylist } from "./ssrf-guard.mjs";
 
 const PORT = process.env.PORT || 8080;
 const SECRET = process.env.PAIGE_BROWSER_SHARED_SECRET || "";
@@ -220,11 +220,11 @@ async function observe({ url, viewport, waitForSelector, waitMs, steps }, navTim
   let ctx = null, page = null, screenshot_b64 = null;
   try {
     ctx = await browser.newContext({ viewport: clampVp(viewport), deviceScaleFactor: 2, serviceWorkers: "block" });
+    await installReadOnlyBrowserEgress(ctx);
     page = await ctx.newPage();
     page.setDefaultTimeout(STEP_TIMEOUT_MS); // bound selector/handle ops; evaluate is bounded via withTimeout
-    // §13 SSRF: block EVERY request (navigation + sub-resource) to a private/internal host. Covers a
+    // §13 SSRF: the context fence blocks EVERY request (navigation, popup + sub-resource) to a private/internal host. Covers a
     // redirect from a public url into an internal one AND any internal fetch the page tries.
-    await installReadOnlyPageEgress(page);
 
     let response;
     try {
@@ -315,9 +315,9 @@ async function browsePublic({ url, viewport, waitForSelector, waitMs, maxContent
   let ctx = null, page = null;
   try {
     ctx = await browser.newContext({ viewport: clampVp(viewport), userAgent: PAIGE_UA, serviceWorkers: "block" });
+    await installReadOnlyBrowserEgress(ctx);
     page = await ctx.newPage();
     page.setDefaultTimeout(STEP_TIMEOUT_MS);
-    await installReadOnlyPageEgress(page);
 
     let response;
     try {

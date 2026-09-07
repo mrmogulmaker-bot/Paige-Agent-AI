@@ -53,8 +53,9 @@ check((browserTypeBlock.match(/tenant_id:/g) || []).length >= 2, "generated brow
 const guard = read("services/paige-browser/ssrf-guard.mjs");
 const server = read("services/paige-browser/server.js");
 check(/export function requestMethodBlockReason/.test(guard), "shared read-only request-method policy exists");
-check(/export async function installReadOnlyPageEgress/.test(guard), "shared browser egress installer exists");
-check((server.match(/installReadOnlyPageEgress\(page\)/g) || []).length >= 2, "both browser routes install the real egress fence");
+check(/export async function installReadOnlyBrowserEgress/.test(guard), "shared browser-context egress installer exists");
+check((server.match(/installReadOnlyBrowserEgress\(ctx\)/g) || []).length >= 2, "both browser routes install the context egress fence");
+check((server.match(/installReadOnlyBrowserEgress\(ctx\);[\s\S]{0,80}ctx\.newPage\(\)/g) || []).length >= 2, "both browser contexts are fenced before their first page exists");
 check((server.match(/serviceWorkers:\s*"block"/g) || []).length >= 2, "both browser contexts block service workers");
 check(/routeWebSocket\("\*\*\/\*"/.test(guard), "shared browser egress fence blocks WebSockets");
 

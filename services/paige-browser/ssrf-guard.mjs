@@ -159,11 +159,12 @@ export function requestMethodBlockReason(method) {
   return normalized === "GET" || normalized === "HEAD" ? null : "method:not-read-only";
 }
 
-// Install the actual browser egress fence used by both observation modes. `fallback()` keeps this
-// composable with test instrumentation while the last handler still reaches the network normally.
-export async function installReadOnlyPageEgress(page) {
-  await page.routeWebSocket("**/*", (ws) => ws.close());
-  await page.route("**/*", async (route) => {
+// Install the actual browser egress fence on the BrowserContext before any page exists. Context-level
+// routing covers the initial request of popups as well as navigation and subresources in existing pages.
+// `fallback()` keeps this composable with test instrumentation while the last handler reaches the network.
+export async function installReadOnlyBrowserEgress(context) {
+  await context.routeWebSocket("**/*", (ws) => ws.close());
+  await context.route("**/*", async (route) => {
     try {
       if (requestMethodBlockReason(route.request().method())) return route.abort("blockedbyclient");
       const host = new URL(route.request().url()).hostname;
