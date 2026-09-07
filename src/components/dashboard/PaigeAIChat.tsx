@@ -130,6 +130,8 @@ export interface PaigeAIChatProps {
   clientId?: string | null;
   /** Selected canonical Business Mission id; server-authorized UI context, never authority. */
   businessMissionId?: string | null;
+  /** Enumerated reason for the selected Mission context; never free prose. */
+  businessMissionAsk?: "plan_with_paige" | "resolve_missing_information" | null;
   /** Prose describing the focused customer — added to the chat POST body. */
   clientContext?: string;
   surfaceContext?: { kind: "public_presence"; step: "confirm_facts" | "verify_website" | "connect_venues" | "compare_facts" | "set_authority" | "maintain_presence"; intendedAction: "review" | "plan" | "prepare_connection" | "resolve_mismatch" };
@@ -182,6 +184,8 @@ export interface PaigeAIChatProps {
    *  that draws its own "new thread" affordance (CD's pack does) calls the real
    *  `onNewChat` instead of needing a second wiring path for one button (§18). */
   conversationHeader?: React.ReactNode | ((api: ChatRailApi) => React.ReactNode);
+  /** Text-only working cards that belong in the scrollable transcript. */
+  transcriptLead?: React.ReactNode | ((api: ChatRailApi) => React.ReactNode);
   /**
    * Which chrome the conversation wears. `app` (default) is byte-for-byte today's
    * surface for every existing mount. `operator` is Claude Design's platform desk:
@@ -232,10 +236,12 @@ export interface PaigeAIChatProps {
 export type ChatRailApi = {
   threads: PaigeThread[];
   isLoading: boolean;
+  isFetched: boolean;
   activeThreadId: string | null;
   streamingThreadId: string | null;
   onSelect: (id: string) => void;
   onNewChat: () => void;
+  ensureActiveThread: (title?: string) => Promise<string>;
   onRename: (id: string, title: string) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
@@ -248,6 +254,7 @@ const PaigeAIChatInner = ({
   fill = false,
   clientId = null,
   businessMissionId = null,
+  businessMissionAsk = null,
   clientContext,
   surfaceContext,
   onFocusRelease,
@@ -260,6 +267,7 @@ const PaigeAIChatInner = ({
   platform = false,
   renderRail,
   conversationHeader,
+  transcriptLead,
   presentation = "app",
   composerFootNote,
   activeThreadId: controlledThreadId,
@@ -378,7 +386,7 @@ const PaigeAIChatInner = ({
   //
   // Surfaces that never focus a client (the operator desk) pass no `clientId`, so their
   // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
-  const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}|${businessMissionId ?? ""}`;
+  const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}|${businessMissionId ?? ""}|${businessMissionAsk ?? ""}`;
   const transcriptContext = [
     platform ? "platform" : soloTenantSafety ? "solo" : presentation,
     scopedUserId ?? "anonymous",
@@ -399,10 +407,12 @@ const PaigeAIChatInner = ({
       },
     });
   }
+
   // The thread a person asked for, parked across the reset their own click causes (#765).
   // Same idiom, and same reason, as the refusal notice below: releasing focus changes the
   // epoch, and the epoch change invalidates the very load the release was made for.
   const pendingThreadSelectionRef = useRef<{ epoch: string; id: string } | null>(null);
+  const missionScopeActiveRef = useRef(Boolean(businessMissionId || businessMissionAsk));
   // A refusal releases focus, which CHANGES this epoch, which resets the transcript — so a naive
   // "clear focus on refusal" deletes the very sentence the person needs to read. The notice is
   // parked here on the way out and adopted as the opening message on the way back in, so the
@@ -499,6 +509,8 @@ const PaigeAIChatInner = ({
   useEffect(() => {
     if (acceptedEpochRef.current === scopeEpoch) return;
     const leavingEpoch = acceptedEpochRef.current;
+    const leavingMissionScope = missionScopeActiveRef.current;
+    missionScopeActiveRef.current = Boolean(businessMissionId || businessMissionAsk);
     acceptedEpochRef.current = scopeEpoch;
     dictationGenerationRef.current += 1;
     setDictationGeneration(dictationGenerationRef.current);
@@ -536,7 +548,8 @@ const PaigeAIChatInner = ({
     // causes; resuming a saved thread over it defeated that on every account with any
     // history, which is every real one. When a notice was adopted, history is already
     // settled: show the explanation and resume nothing.
-    setHistoryHydrated(scopeNotice !== null);
+    const keepFreshAfterMissionExit = leavingMissionScope && parkedSelection?.epoch !== leavingEpoch;
+    setHistoryHydrated(scopeNotice !== null || keepFreshAfterMissionExit);
     setHistoryTransitioning(false);
     setMobileRailOpen(false);
   }, [scopeEpoch, openingGreeting, setActiveThreadId, setAttachedDoc]);
@@ -627,7 +640,7 @@ const PaigeAIChatInner = ({
     //
     // Released rather than refused: the person asked to open this conversation, and it is a
     // conversation they own. What is not true is that it is about the client currently in focus.
-    if (clientId || businessMissionId) {
+    if (clientId || businessMissionId || businessMissionAsk) {
       // Park BEFORE releasing. The release drops the focus, which moves the epoch, which
       // invalidates this load through the request fence — so without this the person's click
       // is discarded and hydration resumes `threads[0]`, opening a conversation they did not
@@ -704,7 +717,7 @@ const PaigeAIChatInner = ({
     // the focus would carry another client's transcript into this client's context.
     //
     // Clearing the focus changes the epoch again, so the owner-level history resumes normally.
-    if (clientId || businessMissionId) {
+    if (clientId || businessMissionId || businessMissionAsk) {
       pendingThreadSelectionRef.current = null;
       setHistoryHydrated(true);
       return;
@@ -723,7 +736,7 @@ const PaigeAIChatInner = ({
     if (target) void selectThread(target);
     setHistoryHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads, isThreadControlled, controlledThreadId, clientId]);
+  }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads, isThreadControlled, controlledThreadId, clientId, businessMissionId, businessMissionAsk]);
 
   // CONTROLLED SYNC — the other half of "one thread, two doors". When the parent moves
   // the selection (the other door opened a thread, or created one on its first send),
@@ -836,6 +849,7 @@ const PaigeAIChatInner = ({
             ...(clientContext ? { clientContext } : {}),
             ...(surfaceContext ? { surfaceContext } : {}),
             ...(businessMissionId ? { businessMissionId } : {}),
+            ...(businessMissionAsk ? { businessMissionAsk } : {}),
             // The exact calls the person ticked on a confirm card. The gate will only run a call
             // whose fingerprint is here; `confirm:true` on its own no longer opens it.
             ...(approvedFingerprints?.length ? { approvedConfirmations: approvedFingerprints } : {}),
@@ -1224,6 +1238,7 @@ const PaigeAIChatInner = ({
   const composerTextarea = (
     <Textarea
       ref={inputRef}
+      data-paige-composer
       value={input}
       rows={1}
       onChange={(e) => {
@@ -1331,10 +1346,20 @@ const PaigeAIChatInner = ({
   const railApi: ChatRailApi = {
     threads: threadsApi.threads,
     isLoading: threadsApi.isLoading,
+    isFetched: threadsApi.isFetched,
     activeThreadId,
     streamingThreadId,
     onSelect: (id) => void selectThread(id),
     onNewChat: startNewChat,
+    ensureActiveThread: async (title) => {
+      if (activeThreadId) return activeThreadId;
+      const id = await threadsApi.ensureThread(title);
+      setActiveThreadId(id);
+      hydratedFromRef.current = id;
+
+      setMessages([]);
+      return id;
+    },
     onRename: threadsApi.renameThread,
     onArchive: threadsApi.archiveThread,
     onDelete: (id) => {
@@ -1439,6 +1464,7 @@ const PaigeAIChatInner = ({
                 cd ? "px-4 py-3.5 space-y-4" : "p-6 space-y-4",
               )}
             >
+            {typeof transcriptLead === "function" ? transcriptLead(railApi) : transcriptLead}
             {messages.map((message, index) => (
               <div
                 key={message.id}

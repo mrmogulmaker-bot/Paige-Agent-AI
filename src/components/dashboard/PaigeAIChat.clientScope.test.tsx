@@ -593,6 +593,25 @@ describe("PAIGE chat — focusing a client survives an account that has saved co
     await act(async () => root.unmount());
     host.remove();
   });
+  it("keeps a cleared Mission scope on a fresh transcript instead of rehydrating scoped history", async () => {
+    harness.threads = [SAVED];
+    harness.loadTurns.mockImplementation(async () => [{ role: "assistant", content: PRIOR }]);
+
+    const { host, root } = await mount({ businessMissionId: "mission-1", businessMissionAsk: "plan_with_paige", onFocusRelease: vi.fn(), renderRail: () => null });
+    expect(harness.loadTurns).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory businessMissionId={null} businessMissionAsk={null} onFocusRelease={vi.fn()} renderRail={() => null} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(harness.loadTurns).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain(PRIOR);
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
 });
 
 /**

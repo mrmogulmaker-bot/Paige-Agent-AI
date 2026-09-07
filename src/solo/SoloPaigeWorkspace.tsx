@@ -1,24 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
-import { BookOpen, Bot, Brain, MessageSquarePlus, MessagesSquare, RotateCw, Search, Sparkles, Wrench, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { BookOpen, Bot, Brain, MessageSquarePlus, MessagesSquare, RotateCw, Search, Sparkles, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { PaigeAIChat, type ChatRailApi } from "@/components/dashboard/PaigeAIChat";
 import { PaigeComposerAutonomyChip } from "@/components/dashboard/paige/PaigeComposerAutonomyChip";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { useSoloKnowledge } from "./data/useSoloKnowledge";
-import { useSoloSkills } from "./data/useSoloSkills";
-import { clearPaigeSurfaceScope, getPaigeBusinessPlanScope, getPaigeClientScope, subscribePaigeClientScope } from "./paigeClientScope";
+import { clearPaigeSurfaceScope, getPaigeBusinessPlanScope, getPaigeClientScope, getPaigeInterviewScope, subscribePaigeClientScope } from "./paigeClientScope";
 import { clearPaigePublicPresenceScope, getPaigePublicPresenceScope, subscribePaigePublicPresenceScope } from "./paigePublicPresenceScope";
+import { PaigeWorkingSessionCard } from "./PaigeWorkingSessionCard";
 import "./solo-paige-workspace.css";
 
 // Approved design lineage: 51D7A6F680DB83AEF6BFE1147E9FC1651E39206EFAED17963F2FC16EC294F117
-type SoloPaigeTab = "chat" | "knowledge" | "helpers" | "capabilities";
+type SoloPaigeTab = "chat" | "knowledge" | "helpers";
 
 const TABS: Array<{ id: SoloPaigeTab; label: string; icon: typeof Sparkles }> = [
   { id: "chat", label: "Chat", icon: Sparkles },
   { id: "knowledge", label: "Knowledge", icon: BookOpen },
   { id: "helpers", label: "Helpers", icon: Bot },
-  { id: "capabilities", label: "Capabilities", icon: Wrench },
 ];
 
 const TruthPill = ({ tone = "neutral", children }: { tone?: "live" | "partial" | "unavailable" | "proposed" | "neutral"; children: ReactNode }) => (
@@ -226,45 +225,6 @@ function SoloHistoryRail({ api }: { api: ChatRailApi }) {
   );
 }
 
-function CapabilitiesView() {
-  const capability = useSoloSkills();
-  const rows = useMemo(() => capability.skills, [capability.skills]);
-  return (
-    <div className="spw-management-view">
-      <PanelHeader
-        eyebrow="Capability Registry"
-        title="What PAIGE can actually use"
-        description="Capabilities are skills, tools, connectors, and executable abilities. Marketplace acquisition remains separate and is not implemented here."
-        state={<TruthPill tone="live">Registry read</TruthPill>}
-      />
-      <div className="spw-scroll">
-        <section className="spw-capabilities" aria-label="Capabilities">
-          <div className="spw-cap-head"><span>Capability</span><span>Availability</span><span>Authority</span></div>
-          {capability.loading && <div className="spw-state" role="status">Loading available capabilities…</div>}
-          {capability.error && <div className="spw-state spw-state-error" role="alert"><strong>Capabilities could not be loaded.</strong><span>{capability.error}</span><button type="button" onClick={capability.refresh}><RotateCw aria-hidden size={14} /> Retry</button></div>}
-          {capability.empty && <div className="spw-state"><Wrench aria-hidden size={24} /><strong>No callable capabilities are available</strong><span>This is an honest empty registry state, not a permissions promise.</span></div>}
-          {rows.map((skill) => (
-            <div className="spw-cap-row" key={skill.slug}>
-              <div><strong>{skill.n}</strong><small>{skill.d || skill.cat || "Registry description unavailable"}</small></div>
-              <TruthPill tone={skill.on ? "live" : "unavailable"}>{skill.on ? "Available" : "Unavailable"}</TruthPill>
-              <span>{skill.ro ? "Read only" : "Ask first"}</span>
-            </div>
-          ))}
-          {/* §13 — THIS ROW CONTRADICTED THE SURFACE IT DESCRIBES. It read "Partial / Not
-              activated" while the hold-to-dictate mic sits live in the composer one tab away, in
-              this same workspace, wired to `paige-dictate`. A capability panel that tells a person
-              something is off while they can see it working is worse than no panel: it makes every
-              other row on it unreliable too.
-              The pill and copy are CD's (§00). What is asserted about whether the thing WORKS is
-              a fact, and the fact was wrong. */}
-          <div className="spw-cap-row"><div><strong>Voice input</strong><small>Hold the mic in the composer to dictate. Speech-to-text only — Paige does not speak back here.</small></div><TruthPill tone="live">Available</TruthPill><span>Active</span></div>
-          <div className="spw-cap-row"><div><strong>Code or sandbox execution</strong><small>Contextual previews may be shown, but no execution substrate is available.</small></div><TruthPill tone="unavailable">Unavailable</TruthPill><span>Off</span></div>
-        </section>
-      </div>
-    </div>
-  );
-}
-
 export function SoloPaigeWorkspace({
   full = false,
   dockedTab,
@@ -286,10 +246,15 @@ export function SoloPaigeWorkspace({
   const presenceScope = useSyncExternalStore(subscribePaigePublicPresenceScope, readPresenceScope, () => null);
   const readPlanScope = useCallback(() => getPaigeBusinessPlanScope(activeTenantId), [activeTenantId]);
   const planScope = useSyncExternalStore(subscribePaigeClientScope, readPlanScope, () => null);
+  const readInterviewScope = useCallback(() => getPaigeInterviewScope(activeTenantId), [activeTenantId]);
+  const interviewScope = useSyncExternalStore(subscribePaigeClientScope, readInterviewScope, () => null);
   // The chat asks the surface that OWNS focus to let it go — on a PERMISSION verdict, or
   // when a saved thread is resumed whose content is not about this client. Either way,
   // continuing to assert the focus would make the next turn mean something untrue.
   const releaseScope = useCallback(() => { clearPaigeSurfaceScope(); clearPaigePublicPresenceScope(); }, []);
+  const finishInterviewScope = useCallback(() => {
+    if (getPaigeInterviewScope(activeTenantId)) clearPaigeSurfaceScope();
+  }, [activeTenantId]);
   const [routedTab, setRoutedTab] = useSubtabRoute("solo", "paige", "chat");
   const [localTab, setLocalTab] = useState<SoloPaigeTab>(dockedTab ?? "chat");
   const acceptedRoutedTab = (TABS.some((item) => item.id === routedTab) ? routedTab : "chat") as SoloPaigeTab;
@@ -349,6 +314,7 @@ export function SoloPaigeWorkspace({
           clientId={clientScope?.clientId ?? null}
           surfaceContext={!clientScope && !planScope && presenceScope ? { kind: presenceScope.kind, step: presenceScope.step, intendedAction: presenceScope.intendedAction } : undefined}
           businessMissionId={!clientScope ? planScope?.businessMissionId ?? null : null}
+          businessMissionAsk={!clientScope && planScope ? planScope.ask : null}
           onFocusRelease={releaseScope}
           focusBanner={clientScope ? (
             <div className="spw-chat-head" data-solo-paige-focus>
@@ -370,11 +336,11 @@ export function SoloPaigeWorkspace({
             </div>
           ) : undefined}
           conversationHeader={<div className="spw-chat-head"><div><strong>PAIGE</strong><span>Active Solo account · tenant-scoped</span></div></div>}
+          transcriptLead={(api) => <PaigeWorkingSessionCard api={api} explicitOffer={!!interviewScope} accountEpoch={activeTenantId} onFinished={finishInterviewScope} />}
         />
       </section>
       <section id="spw-panel-knowledge" role="tabpanel" aria-labelledby="spw-tab-knowledge" hidden={tab !== "knowledge"} className="spw-panel">{tab === "knowledge" && <KnowledgeView />}</section>
       <section id="spw-panel-helpers" role="tabpanel" aria-labelledby="spw-tab-helpers" hidden={tab !== "helpers"} className="spw-panel">{tab === "helpers" && <HelpersView />}</section>
-      <section id="spw-panel-capabilities" role="tabpanel" aria-labelledby="spw-tab-capabilities" hidden={tab !== "capabilities"} className="spw-panel">{tab === "capabilities" && <CapabilitiesView />}</section>
       <span className="spw-sr" aria-live="polite">{TABS.find((item) => item.id === tab)?.label} view open</span>
     </div>
   );

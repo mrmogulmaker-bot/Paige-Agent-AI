@@ -80,7 +80,8 @@ describe("Solo PAIGE workspace contract", () => {
     expect(workspace).toContain('label: "Chat"');
     expect(workspace).toContain('label: "Knowledge"');
     expect(workspace).toContain('label: "Helpers"');
-    expect(workspace).toContain('label: "Capabilities"');
+    expect(workspace).not.toContain('label: "Capabilities"');
+    expect(workspace).toContain("PaigeWorkingSessionCard");
     expect(workspace).not.toMatch(/label:\s*["']Memory["']/);
     expect(workspace).not.toMatch(/label:\s*["']Code|Sandbox["']/);
     expect(workspace).toContain('useSubtabRoute("solo", "paige", "chat")');
@@ -318,7 +319,7 @@ describe("Solo PAIGE workspace contract", () => {
     // The epoch is composite across the active workspace and either focused record. A client or
     // Strategic Play switch must end acceptance of the prior transcript/stream before any later
     // response can render under the new scope. The ordering remains accept, invalidate, then clear.
-    expect(chat).toContain("const scopeEpoch = `${activeTenantId ?? \"\"}|${clientId ?? \"\"}|${businessMissionId ?? \"\"}`;");
+    expect(chat).toContain("const scopeEpoch = `${activeTenantId ?? \"\"}|${clientId ?? \"\"}|${businessMissionId ?? \"\"}|${businessMissionAsk ?? \"\"}`;");
     // Bounded so it cannot reach the LATER `invalidate()` calls (startNewChat, unmount). The
     // unbounded `[\s\S]*` version could not fail: inverting the accept/invalidate order left the
     // whole 507-test suite green.
@@ -339,7 +340,8 @@ describe("Solo PAIGE workspace contract", () => {
     // `parked.epoch === leavingEpoch`, and a refusal parks under a CLIENT epoch, so an account
     // transition never carries one and `scopeNotice` is null. The behaviour this line was written
     // to pin is unchanged; only the refusal path is now protected.
-    expect(chat).toContain("setHistoryHydrated(scopeNotice !== null)");
+    expect(chat).toContain("const keepFreshAfterMissionExit = leavingMissionScope && parkedSelection?.epoch !== leavingEpoch");
+    expect(chat).toContain("setHistoryHydrated(scopeNotice !== null || keepFreshAfterMissionExit)");
     expect(chat).toContain("setHistoryTransitioning(false)");
     expect(chat).toContain("retryTurnRef.current = null");
     expect(app).toMatch(/paigeTabEpochRef\.current=activeTenantId;setPaigeDockedTab\('chat'\)/);

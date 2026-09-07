@@ -28,6 +28,8 @@ import {
 import { useConfirm } from "@/hooks/useConfirm";
 import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { registerAccountSwitchGuard } from "@/lib/auth/accountSwitchGuard";
+import { setPaigeInterviewScope } from "./paigeClientScope";
+import { clearPaigePublicPresenceScope } from "./paigePublicPresenceScope";
 import { useSoloBusinessContext } from "./data/useSoloBusinessContext";
 import {
   cleanSoloBusinessOwners,
@@ -1470,6 +1472,12 @@ export function SoloBusinessContextSetup({ account, openPaige }: { account: stri
                   onSave={() => void save()}
                   onCancel={() => void cancel()}
                   onKnowledge={() => switchTab("knowledge-bucket")}
+                  onInterview={() => {
+                    if (!owner || !data.activeTenantId || !openPaige) return;
+                    clearPaigePublicPresenceScope();
+                    setPaigeInterviewScope(data.activeTenantId);
+                    openPaige();
+                  }}
                   onGuide={() => {
                     if (owner && beginEdit()) setPaigeGuide(true);
                   }}
@@ -2669,6 +2677,7 @@ function PaigeContext({
   onSave,
   onCancel,
   onKnowledge,
+  onInterview,
   onGuide,
   onExample,
   onEditExample,
@@ -2682,6 +2691,7 @@ function PaigeContext({
   onSave: () => void;
   onCancel: () => void;
   onKnowledge: () => void;
+  onInterview: () => void;
   onGuide: () => void;
   onExample: () => void;
   onEditExample: (index: number) => void;
@@ -2728,6 +2738,14 @@ function PaigeContext({
           onClick={onKnowledge}
         >
           Links &amp; documents
+        </button>
+        <button
+          className="setup-button setup-button--primary"
+          disabled={!owner || saving}
+          onClick={onInterview}
+        >
+          <MessageSquareText aria-hidden />
+          Build brief with Paige
         </button>
         {editing && owner && (
           <>

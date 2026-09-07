@@ -2,8 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearPaigeClientScope,
   getPaigeClientScope,
+  getPaigeBusinessPlanScope,
+  getPaigeInterviewScope,
   readPaigeOpenScope,
   setPaigeClientScope,
+  setPaigeBusinessPlanScope,
+  setPaigeDiscussionScope,
+  setPaigeInterviewScope,
   subscribePaigeClientScope,
 } from "./paigeClientScope";
 
@@ -75,6 +80,18 @@ describe("Solo PAIGE client scope", () => {
     expect(readPaigeOpenScope({ clientId: CLIENT_A }, A)?.label).toBe("this client");
   });
 
+  it("keeps interview, plan, and discussion intents tenant-gated and allowlisted", () => {
+    setPaigeInterviewScope(A);
+    expect(getPaigeInterviewScope(A)).toMatchObject({ surface: "paige_brief", ask: "business_working_interview" });
+    expect(getPaigeInterviewScope(B)).toBeNull();
+
+    setPaigeBusinessPlanScope({ tenantId: A, surface: "business_game_plan", businessMissionId: CLIENT_A, label: "Growth play" });
+    expect(getPaigeBusinessPlanScope(A)).toMatchObject({ businessMissionId: CLIENT_A, ask: "plan_with_paige" });
+
+    setPaigeDiscussionScope({ tenantId: A, surface: "business_game_plan", businessMissionId: CLIENT_A, label: "Growth play" });
+    expect(getPaigeBusinessPlanScope(A)).toMatchObject({ businessMissionId: CLIENT_A, ask: "resolve_missing_information" });
+    expect(getPaigeBusinessPlanScope(B)).toBeNull();
+  });
   it("takes the account from the reader, never from the event", () => {
     // An event cannot nominate the account it applies to. If it could, a surface could
     // stamp another tenant's id onto a scope and have it read back as current.

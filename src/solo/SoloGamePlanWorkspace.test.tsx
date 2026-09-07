@@ -10,11 +10,15 @@ const harness = vi.hoisted(() => ({
   openPaige: vi.fn(),
   save: vi.fn(async () => ({ ok: true })),
   refresh: vi.fn(),
+  discussionGet: vi.fn(async () => null),
+  discussionRespond: vi.fn(async () => ({ ok: true })),
   mission: {
     items: [] as StrategicPlay[],
     status: "ready" as "loading" | "ready" | "forbidden" | "error",
     errorCode: null,
     refresh: vi.fn(),
+  discussionGet: vi.fn(async () => null),
+  discussionRespond: vi.fn(async () => ({ ok: true })),
     getDetail: vi.fn(),
     mutate: vi.fn(),
   },
@@ -49,7 +53,10 @@ vi.mock("./data/useBusinessGamePlanMissions", async () => {
   const actual = await vi.importActual<typeof import("./data/useBusinessGamePlanMissions")>("./data/useBusinessGamePlanMissions");
   return { ...actual, useBusinessGamePlanMissions: () => harness.mission };
 });
-
+vi.mock("./data/paigeIntentfulInterview", async () => {
+  const actual = await vi.importActual<typeof import("./data/paigeIntentfulInterview")>("./data/paigeIntentfulInterview");
+  return { ...actual, paigeDiscussionNeeded: { get: harness.discussionGet, respond: harness.discussionRespond } };
+});
 import { SoloGamePlanWorkspace } from "./SoloGamePlanWorkspace";
 import { getPaigeBusinessPlanScope, clearPaigeSurfaceScope } from "./paigeClientScope";
 
@@ -57,6 +64,7 @@ let host: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
   harness.openPaige.mockClear(); harness.save.mockClear(); harness.refresh.mockClear();
+  harness.discussionGet.mockReset(); harness.discussionGet.mockResolvedValue(null); harness.discussionRespond.mockReset(); harness.discussionRespond.mockResolvedValue({ ok: true });
   harness.mission.refresh.mockReset(); harness.mission.getDetail.mockReset(); harness.mission.mutate.mockReset();
   harness.mission.items = []; harness.mission.status = "ready";
   clearPaigeSurfaceScope();
@@ -173,6 +181,30 @@ describe("Business Game Plan owner-complete vertical", () => {
     act(() => { setter?.call(field, value); field!.dispatchEvent(new Event("input", { bubbles: true })); field!.dispatchEvent(new Event("change", { bubbles: true })); });
   };
 
+  it("closes the Mission drawer before Discussion Needed opens the Paige workspace", async () => {
+    harness.discussionGet.mockResolvedValue({
+      id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", title: "Capacity decision", reason: "Planning is blocked.",
+      decision: "Choose the delivery capacity.", sourceRevision: 4, surface: "business_game_plan",
+    });
+    await openDetail("blocked");
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+    const composer = document.createElement("textarea");
+    composer.setAttribute("data-paige-composer", "");
+    document.body.appendChild(composer);
+    await act(async () => {
+      click("Talk now");
+      await Promise.resolve();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(harness.openPaige).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(composer);
+    composer.remove();
+    expect(getPaigeBusinessPlanScope("11111111-1111-4111-8111-111111111111")).toMatchObject({
+      businessMissionId: missionId, ask: "resolve_missing_information",
+    });
+  });
   it("reviews and revises a canonical Strategic Play", async () => {
     await openDetail("active");
     expect(host.textContent).toContain("canonical Business Game Plan record");

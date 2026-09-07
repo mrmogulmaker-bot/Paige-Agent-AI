@@ -1,0 +1,73 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
+
+describe("Intentful Interview security contract", () => {
+  it("keeps workflow state outside Memory and denies browser table writes", () => {
+    const migration = source("supabase/migrations/20260907033040_paige_intentful_interview_mvp.sql");
+    expect(migration).toContain("revoke all on public.paige_intentful_interview_sessions from public, anon, authenticated");
+    expect(migration).toContain("public.current_user_tenant_id()");
+    expect(migration).toContain("public.paige_interview_assert_thread");
+    expect(migration).toContain("p_selected_ids text[]");
+    expect(migration).toContain("perform public.record_capability_run");
+    expect(migration).toContain("public.solo_setup_access_scope()='owner_full'");
+    expect(migration.match(/public\.is_tenant_owner\(v_actor,v_tenant\)/g)).toHaveLength(5);
+    expect(migration).not.toContain("can_manage_tenant_brand");
+    expect(migration).toContain("v_context:=public.get_solo_setup_context()");
+    expect(migration.match(/v_context:=public\.get_solo_setup_context\(\)/g)).toHaveLength(2);
+    expect(migration.indexOf("v_context:=public.get_solo_setup_context();", migration.indexOf("save_solo_business_brief"))).toBeGreaterThan(migration.indexOf("v_saved:=public.save_solo_business_brief"));
+    expect(migration).toContain("representativeUserIds");
+    expect(migration).toContain("save_solo_business_brief(v_full,v_expected_updated_at,null)");
+    expect(migration).toContain("jsonb_build_object('sourceDecisions',v_decisions)");
+    expect(migration).toContain("count(distinct id) from unnest(p_selected_ids)");
+    expect(migration).toContain("count(distinct f->>'fieldKey')");
+    expect(migration).toContain("v_label:=case v_field");
+    expect(migration.match(/is distinct from p_expected_revision/g)).toHaveLength(2);
+    expect(migration).toContain("v_fact_id:=v_session.focus_path||':'||v_field");
+    expect(migration).not.toContain("p_fact->>'id'");
+    expect(migration).toContain("array['fieldKey','value']::text[]");
+    expect(migration).toContain("p_event='answer' and p_step_key='recap'");
+    expect(migration).toContain("(f-'value')");
+    expect(migration).toContain("v_facts:='[]'::jsonb");
+    expect(migration).toContain("INTERVIEW_SENSITIVE_FACT_REJECTED");
+    expect(migration).not.toContain("record_paige_memory");
+    expect(migration).not.toContain("client_memory");
+    expect(migration).not.toContain("paige_owner_memory");
+  });
+
+  it("uses the Action Bus for topic-specific defer and suppression", () => {
+    const migration = source("supabase/migrations/20260907033040_paige_intentful_interview_mvp.sql");
+    expect(migration).toContain("'owner.discussion_needed'");
+    expect(migration).toContain("'blocked'");
+    expect(migration).toContain("clock_timestamp()+interval '7 days'");
+    expect(migration).toContain("result=jsonb_build_object('suppressed',true,'topic_key'");
+    expect(migration).toContain("payload->>'source_id'=p_mission_id::text");
+    expect(migration).toContain("public.business_mission_brief_versions");
+    expect(migration).toContain("p_expected_source_revision integer");
+    expect(migration).toContain("DISCUSSION_REVISION_CONFLICT");
+    expect(migration).toContain("v_current_revision is distinct from p_expected_source_revision");
+    expect(migration).toContain("tenant_id=v_tenant for update;");
+    expect(migration).toContain("m.lifecycle_state not in ('completed','stopped')");
+    expect(migration).not.toContain("business_mission_briefs");
+    expect(migration).not.toContain("m.current_brief_id");
+  });
+
+  it("clears incompatible public-presence context before opening an interview", () => {
+    const setup = source("src/solo/SoloBusinessContextSetup.tsx");
+    const interviewAt = setup.indexOf("setPaigeInterviewScope(data.activeTenantId)");
+    const clearAt = setup.lastIndexOf("clearPaigePublicPresenceScope();", interviewAt);
+    expect(clearAt).toBeGreaterThan(0);
+    expect(clearAt).toBeLessThan(interviewAt);
+  });
+
+  it("blocks legacy automatic memory writes for selected-play working turns", () => {
+    const chat = source("supabase/functions/paige-ai-chat/index.ts");
+    expect(chat).toContain("const skipScopedMemoryWrites = clientScopeDenied || Boolean(payloadBusinessMissionAsk);");
+    expect(chat).toContain("matched && !clientScopeDenied && !payloadBusinessMissionAsk");
+    expect(chat).toContain('z.enum(["plan_with_paige", "resolve_missing_information"])');
+    const workspaceChat = source("src/components/dashboard/PaigeAIChat.tsx");
+    expect(workspaceChat.match(/clientId \|\| businessMissionId \|\| businessMissionAsk/g)).toHaveLength(2);
+  });
+});
