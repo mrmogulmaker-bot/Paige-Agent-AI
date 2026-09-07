@@ -345,10 +345,11 @@ export function createAnchoredTranscriptScroll({
       context = nextContext;
       position = readPosition();
       if (element && position.kind === "anchor") {
+        const incomingPosition = position;
         const items = Array.from(element.querySelectorAll<HTMLElement>(MESSAGE_SELECTOR));
         const incomingAnchorIsMounted = items.some((item) =>
-          item.dataset.paigeMessageId === position.messageId
-          || (!!position.semanticKey && item.dataset.paigeMessageAnchorKey === position.semanticKey));
+          item.dataset.paigeMessageId === incomingPosition.messageId
+          || (!!incomingPosition.semanticKey && item.dataset.paigeMessageAnchorKey === incomingPosition.semanticKey));
         pendingContextDomSignature = incomingAnchorIsMounted ? null : messageDomSignature();
       } else {
         pendingContextDomSignature = null;
