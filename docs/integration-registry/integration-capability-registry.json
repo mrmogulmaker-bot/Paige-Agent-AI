@@ -899,7 +899,7 @@
       "status": "PROPOSED",
       "owner": "Secure Browser workstream",
       "dependency": "CONDITIONAL GO — SEVEN owner-side gates before credentialed wiring (2026-09-07 review §Go/No-Go): (1) read under NDA the SOC 2 Type II report + HIPAA BAA (on our tier) + DPA (no-training + erasure) + subprocessor list (US); (2) confirm spend bounding — vendor states 'No caps. No cut-offs', so a committed ceiling OR Paige-side per-tenant session-minute budget + concurrency cap + usage polling; (3) confirm Live-View debug-URL security (signed/short-TTL/single-use/session-bound/dead-on-end); (4) confirm Context authorization / no cross-key replay; (5) confirm US region pin (region is per-session not project-locked — pass US region + fail-closed every create); (6) confirm Zero-Data-Retention mechanics (per-session flag — suppresses recordings+screenshots+logs); (7) confirm deletion SLA + Delete-Context/Downloads endpoints. No-Go trigger: SOC 2 scope, DPA/BAA, or Context/Live-View security materially weaker than public claims. Then §10 Standing Delegated Authority Contract + §68 for Phase 3; M1 metering for any spend-capable act.",
-      "next_slice": "Provider review → Phase-1 owner-assisted ephemeral in-chat session prototype (flow-prototype; no provider account needed to prototype).",
+      "next_slice": "Clear all seven owner/vendor gates, then obtain a separately scoped authorization before any provider wiring; a provider-free flow prototype does not authorize an account, secret, session, Context, login, or external execution.",
       "tier_eligibility": { "platform": "eligible", "solo": "deferred", "agency_future": "deferred", "enterprise_future": "deferred" },
       "expense_and_operations": {
         "cost_responsibility": "platform_paid",
@@ -920,7 +920,7 @@
         "rail_outcome": "(PROPOSED) browser session usage receipt — opaque reference + scope + outcome; no credentials or page content.",
         "pause_revoke_path": "Per-connection revoke/disconnect + owner-visible connection management + emergency-stop (§10 controls) — defined at build; fail closed on a missing/stale/expired connection.",
         "next_owner": "Secure Browser workstream",
-        "next_slice": "Provider review → Phase-1 owner-assisted ephemeral session prototype."
+        "next_slice": "Clear all seven owner/vendor gates, then obtain separate authorization for any provider-wired slice."
       },
       "sources": ["docs/audits/paige-secure-browser-provider-review-browserbase-2026-09-07.md (worker-provider review + CONDITIONAL GO + 7 gates + contract-fit table)", "docs/audits/paige-secure-browser-audit-2026-09-06.md (Phase-0 audit + owner ruling 2026-09-07)", "docs/handoff/paige-secure-browser-builder-starting-packet.md (dedicated-builder kickoff)", "docs/brain/decision-log.md (2026-09-07 Secure Browser ruling)", "Browserbase official docs (accessed 2026-09-07): Live View, Contexts (AES-256-CBC), enterprise security (SOC 2 Type II — report request-gated), US residency (per-session region), MCP (too thin — drive REST) — Trust-Center DPA/subprocessors/report NOT publicly readable, obtain under NDA", "outputs/paige-at-cowork/08-sandboxed-research-external-execution.md (S-R4 advanced browser automation)"]
     },
