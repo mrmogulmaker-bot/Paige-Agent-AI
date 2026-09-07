@@ -28,7 +28,8 @@ const RECORD_STATES = new Set(["DRAFT", "OWNER_DECISION_PENDING", "APPROVED", "P
 const DELIVERY_STATES = new Set(["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAILED"]);
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 const hasPlaceholder = (value) => /\b(?:todo|tbd|placeholder|replace me|pending|unknown)\b/i.test(String(value ?? "").replace(/[^A-Za-z0-9]+/g, " "));
-const isNoLimitation = (value) => /^(?:none|n\/?a|not applicable|no known limitations?)$/i.test(String(value ?? "").trim());
+const isNoValue = (value) => /^(?:none|n\/?a|not applicable)$/i.test(String(value ?? "").trim());
+const isNoLimitation = (value) => isNoValue(value) || /^no known limitations?$/i.test(String(value ?? "").trim());
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "history", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "customer_release_scope", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
 const STAGED_KEYS = ["owner_approval", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
@@ -48,7 +49,7 @@ function requireEvidenceState(value, label, findings) {
   if (!CHECKS.has(value?.state) || !Array.isArray(value?.evidence) || value.evidence.length === 0)
     findings.push(`${label} must include PASS/FAIL/UNVERIFIED and non-empty evidence[]`);
   else if (value.evidence.some((item) => !nonEmpty(item))) findings.push(`${label}.evidence must contain only non-empty strings`);
-  else if (value.state === "PASS" && value.evidence.some(hasPlaceholder)) findings.push(`${label}.evidence must contain resolved proof when state is PASS`);
+  else if (value.state === "PASS" && value.evidence.some((item) => hasPlaceholder(item) || isNoValue(item))) findings.push(`${label}.evidence must contain resolved proof when state is PASS`);
 }
 
 function requireExactObject(value, keys, label, findings) {
@@ -71,7 +72,7 @@ function requireDeliveryState(value, label, findings) {
   requireExactObject(value, ["state", "evidence", "identifiers", "proof_owed"], label, findings);
   if (!DELIVERY_STATES.has(value?.state)) findings.push(`${label}.state invalid`);
   requireNonEmptyStrings(value?.evidence, `${label}.evidence`, findings, value?.state === "NOT_APPLICABLE");
-  if (value?.state === "APPLIED" && Array.isArray(value?.evidence) && value.evidence.some(hasPlaceholder)) findings.push(`${label}.evidence must contain resolved proof when state is APPLIED`);
+  if (value?.state === "APPLIED" && Array.isArray(value?.evidence) && value.evidence.some((item) => hasPlaceholder(item) || isNoValue(item))) findings.push(`${label}.evidence must contain resolved proof when state is APPLIED`);
   requireNonEmptyStrings(value?.identifiers, `${label}.identifiers`, findings, value?.state !== "APPLIED");
   if (value?.state !== "APPLIED" && Array.isArray(value?.identifiers) && value.identifiers.length > 0) findings.push(`${label}.identifiers must be empty unless state is APPLIED`);
   if (value?.state === "APPLIED" && Array.isArray(value?.identifiers)) {
@@ -173,7 +174,7 @@ export function validateReleaseRecord(record) {
       if (!["referenced", "supporting"].includes(build?.customer_release_scope)) findings.push(`${label}.customer_release_scope invalid`);
       if (build?.release_channel === "development" && !["local", "development"].includes(build.environment)) findings.push(`${label} development channel requires local/development environment`);
       if (build?.release_channel === "preview" && build.environment !== "preview") findings.push(`${label} preview channel requires preview environment`);
-      if (["production", "staged"].includes(build?.release_channel) && build.environment !== "production") findings.push(`${label} production/staged channel requires production environment`);
+      if (["production", "staged"].includes(build?.release_channel) && (build.environment !== "production" || build.deployment_id === "NOT_APPLICABLE")) findings.push(`${label} production/staged channel requires production environment and exact deployment ID`);
       if (!validDateTime(build?.deployed_at)) findings.push(`${label}.deployed_at must be an ISO date-time`);
       if (build?.release_channel === "staged") {
         if (requireExactObject(build?.staged_rollout, STAGED_KEYS, `${label}.staged_rollout`, findings)) {
@@ -244,13 +245,14 @@ export function validateReleaseRecord(record) {
   }
   if (record.record_state === "PUBLISHED") {
     if (customer === null) findings.push("PUBLISHED requires a customer release identity");
-    if (hasPlaceholder(customer?.release_name)) findings.push("PUBLISHED customer release name must be resolved");
-    for (const field of ["scope", "affected_audience", "benefits", "limitations"])
-      if (record[field]?.some(hasPlaceholder)) findings.push(`PUBLISHED ${field} must contain resolved customer facts`);
+    if (hasPlaceholder(customer?.release_name) || isNoValue(customer?.release_name)) findings.push("PUBLISHED customer release name must be resolved");
+    for (const field of ["scope", "affected_audience", "benefits"])
+      if (record[field]?.some((item) => hasPlaceholder(item) || isNoValue(item))) findings.push(`PUBLISHED ${field} must contain substantive customer facts`);
+    if (record.limitations?.some(hasPlaceholder)) findings.push("PUBLISHED limitations must contain resolved customer facts");
     for (const field of ["position", "reference"])
-      if (hasPlaceholder(record.rollback_recovery?.[field])) findings.push(`PUBLISHED rollback_recovery.${field} must be resolved`);
+      if (hasPlaceholder(record.rollback_recovery?.[field]) || isNoValue(record.rollback_recovery?.[field])) findings.push(`PUBLISHED rollback_recovery.${field} must be resolved`);
     const referencedBuilds = (record.internal_builds || []).filter((build) => build?.customer_release_scope === "referenced");
-    if (referencedBuilds.some((build) => build?.evidence?.some(hasPlaceholder))) findings.push("PUBLISHED referenced builds must contain resolved build evidence");
+    if (referencedBuilds.some((build) => build?.evidence?.some((item) => hasPlaceholder(item) || isNoValue(item)))) findings.push("PUBLISHED referenced builds must contain resolved build evidence");
     if (referencedBuilds.length === 0 || referencedBuilds.some((build) => !["production", "staged"].includes(build?.release_channel) || build.deployment_id === "NOT_APPLICABLE"))
       findings.push("PUBLISHED technical references must resolve only to deployed production or staged builds");
     if (referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("FAILED")))
@@ -260,6 +262,8 @@ export function validateReleaseRecord(record) {
     if (record.whats_new?.status?.includes("PROOF OWED") && !hasOwedProof) findings.push("PUBLISHED PROOF OWED status requires an exact referenced build boundary");
     for (const field of ["customer_outcome", "what_changed", "who_can_use_it", "owner_action", "known_limitations", "safe_next_step", "paige_readable_summary"])
       if (hasPlaceholder(record.whats_new?.[field])) findings.push(`PUBLISHED whats_new.${field} must contain resolved customer copy`);
+    for (const field of ["customer_outcome", "what_changed", "who_can_use_it", "safe_next_step", "paige_readable_summary"])
+      if (isNoValue(record.whats_new?.[field])) findings.push(`PUBLISHED whats_new.${field} must contain substantive customer copy`);
   }
   return findings;
 }
@@ -402,6 +406,9 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects placeholder published release name", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, release_name: "TODO", owner_approval: customerApproval } }, true],
     ["rejects placeholder published build evidence", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, evidence: ["TODO"] }] }, true],
     ["rejects placeholder published release facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["TODO"], rollback_recovery: { position: "TBD", reference: "REPLACE_ME" } }, true],
+    ["rejects no-value sentinels in published facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["None"], affected_audience: ["N/A"], benefits: ["none"], rollback_recovery: { position: "forward fix", reference: "none" } }, true],
+    ["rejects no-evidence sentinel for passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["none"] } } }] }, true],
+    ["rejects production build without deployment ID", { ...valid, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "NOT_APPLICABLE", customer_release_scope: "supporting" }] }, true],
   ];
   let bad = 0;
   for (const [label, record, shouldFail] of cases) {

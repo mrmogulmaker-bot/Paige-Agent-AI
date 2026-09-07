@@ -186,31 +186,31 @@
       "if": { "properties": { "record_state": { "const": "PUBLISHED" } }, "required": ["record_state"] },
       "then": {
         "properties": {
-          "scope": { "items": { "$ref": "#/$defs/publicationCopy" } },
-          "affected_audience": { "items": { "$ref": "#/$defs/publicationCopy" } },
-          "benefits": { "items": { "$ref": "#/$defs/publicationCopy" } },
+          "scope": { "items": { "$ref": "#/$defs/requiredPublicationFact" } },
+          "affected_audience": { "items": { "$ref": "#/$defs/requiredPublicationFact" } },
+          "benefits": { "items": { "$ref": "#/$defs/requiredPublicationFact" } },
           "limitations": { "items": { "$ref": "#/$defs/publicationCopy" } },
           "rollback_recovery": {
             "properties": {
-              "position": { "$ref": "#/$defs/publicationCopy" },
+              "position": { "$ref": "#/$defs/requiredPublicationFact" },
               "reference": { "$ref": "#/$defs/resolvedString" }
             }
           },
           "customer_release_identity": {
             "allOf": [
               { "$ref": "#/$defs/customerReleaseIdentity" },
-              { "properties": { "release_name": { "$ref": "#/$defs/publicationCopy" } } }
+              { "properties": { "release_name": { "$ref": "#/$defs/requiredPublicationFact" } } }
             ]
           },
           "whats_new": {
             "properties": {
-              "customer_outcome": { "$ref": "#/$defs/publicationCopy" },
-              "what_changed": { "$ref": "#/$defs/publicationCopy" },
-              "who_can_use_it": { "$ref": "#/$defs/publicationCopy" },
+              "customer_outcome": { "$ref": "#/$defs/requiredPublicationFact" },
+              "what_changed": { "$ref": "#/$defs/requiredPublicationFact" },
+              "who_can_use_it": { "$ref": "#/$defs/requiredPublicationFact" },
               "owner_action": { "$ref": "#/$defs/publicationCopy" },
               "known_limitations": { "$ref": "#/$defs/publicationCopy" },
-              "safe_next_step": { "$ref": "#/$defs/publicationCopy" },
-              "paige_readable_summary": { "$ref": "#/$defs/publicationCopy" }
+              "safe_next_step": { "$ref": "#/$defs/requiredPublicationFact" },
+              "paige_readable_summary": { "$ref": "#/$defs/requiredPublicationFact" }
             }
           },
           "internal_builds": {
@@ -304,6 +304,13 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": { "whats_new": { "properties": { "status": { "contains": { "const": "PARTIAL" } } } } },
+        "required": ["whats_new"]
+      },
+      "then": { "properties": { "limitations": { "contains": { "$ref": "#/$defs/requiredPublicationFact" } } } }
     }
   ],
   "$defs": {
@@ -335,7 +342,13 @@
     "publicationCopy": {
       "type": "string",
       "minLength": 1,
-      "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Aa][Dd][Dd]_[Ll][Ii][Nn][Kk]|[Ll][Ii][Nn][Kk]_[Hh][Ee][Rr][Ee])" }
+      "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Aa][Dd][Dd]_[Ll][Ii][Nn][Kk]|[Ll][Ii][Nn][Kk]_[Hh][Ee][Rr][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn])" }
+    },
+    "requiredPublicationFact": {
+      "allOf": [
+        { "$ref": "#/$defs/publicationCopy" },
+        { "not": { "pattern": "^([Nn][Oo][Nn][Ee]|[Nn]/?[Aa]|[Nn][Oo][Tt] [Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee])$" } }
+      ]
     },
     "nonEmptyStrings": {
       "type": "array",
@@ -479,7 +492,7 @@
         },
         {
           "if": { "properties": { "release_channel": { "enum": ["production", "staged"] } }, "required": ["release_channel"] },
-          "then": { "properties": { "environment": { "const": "production" } } }
+          "then": { "properties": { "environment": { "const": "production" }, "deployment_id": { "not": { "const": "NOT_APPLICABLE" } } } }
         }
       ]
     },
