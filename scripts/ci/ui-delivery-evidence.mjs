@@ -188,8 +188,14 @@ function isUnresolvedRestatement(value) {
   const pair = new RegExp(`(?:\\b${subject}\\b.*\\b${unresolved}\\b|\\b${unresolved}\\b.*\\b${subject}\\b)`);
   if (!pair.test(normalized)) return false;
   const hasReference = /https?:\/\/\S+/i.test(raw) || /(?:^|[\s;(])(?:[A-Za-z]:)?[^\s;:()]*[\\/]\S+\.[A-Za-z0-9]{1,10}(?:[?#]\S*)?/i.test(raw);
-  const hasExplicitReason = /\b(?:because|due to|blocked by|awaiting|for|until|while)\b\s+\S+(?:\s+\S+)+/i.test(normalized);
-  return !(hasReference || hasExplicitReason);
+  const substantiveTerms = normalized
+    .replace(/\b(?:proof|result|evidence|verification|check|runtime|decision|approval|pending|unknown|owed)\b/g, " ")
+    .replace(/\b(?:for|the|a|an|of|to|in|on|and|or|is|are|was|were|be|been|being|still|current|currently|remain|remains|remaining|entire|entirely|just|simply|merely|yet|very|much|really|now|ongoing|unresolved)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+  return !(hasReference || substantiveTerms.length >= 2);
 }
 
 function lacksDeploymentIdentity(value) {

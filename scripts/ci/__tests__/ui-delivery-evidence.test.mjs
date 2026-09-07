@@ -287,9 +287,12 @@ test("rejects unresolved values after PASS", () => {
   const honestUnverified = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", "AUTHENTICATED_RUNTIME: UNVERIFIED: approval pending for production tenant access"), { required: true, solo: false });
   assert.equal(honestUnverified.ok, true, honestUnverified.errors.join("\n"));
 
+  const explicitCause = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", "AUTHENTICATED_RUNTIME: UNVERIFIED: production tenant credentials unavailable; runtime proof pending"), { required: true, solo: false });
+  assert.equal(explicitCause.ok, true, explicitCause.errors.join("\n"));
+
   const bareUnverified = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", "AUTHENTICATED_RUNTIME: UNVERIFIED: pending"), { required: true, solo: false });
   assert.equal(bareUnverified.ok, false);
-  for (const unresolvedReason of ["proof pending", "unknown result", "proof is still currently pending", "result remains entirely unknown"]) {
+  for (const unresolvedReason of ["proof pending", "unknown result", "proof is still currently pending", "result remains entirely unknown", "proof pending for pending verification"]) {
     const unresolvedNonPass = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", `AUTHENTICATED_RUNTIME: UNVERIFIED: ${unresolvedReason}`), { required: true, solo: false });
     assert.equal(unresolvedNonPass.ok, false, unresolvedReason);
   }
