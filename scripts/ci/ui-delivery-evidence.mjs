@@ -228,8 +228,12 @@ function isUnresolvedRestatement(value) {
 }
 
 function lacksDeploymentIdentity(value) {
-  const normalized = normalizeSentinel(value);
-  return !normalized || hasUnresolvedToken(value);
+  const raw = String(value ?? "").trim();
+  const normalized = normalizeSentinel(raw);
+  return !normalized
+    || hasUnresolvedToken(raw)
+    || /^(?:https?:\/\/|refs\/heads\/)/i.test(raw)
+    || new Set(["latest", "main", "production", "prod", "current", "head"]).has(normalized);
 }
 
 function isPassWithEvidence(value) {

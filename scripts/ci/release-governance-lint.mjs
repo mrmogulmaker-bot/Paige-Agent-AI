@@ -50,6 +50,17 @@ const isUnresolvedEvidence = (value) => {
   const unresolved = "(?:pending|unknown|proof owed)";
   return new RegExp(`(?:\\b${subject}\\b.*\\b${unresolved}\\b|\\b${unresolved}\\b.*\\b${subject}\\b)`).test(normalized);
 };
+const isUnresolvedCorrectionReason = (value) => new Set(["todo", "tbd", "placeholder", "replace me", "pending", "unknown", "none", "n a", "na", "not applicable", "proof owed"]).has(normalizeSentinel(value));
+const isNonSubstantiveProofBoundary = (value) => {
+  const normalized = normalizeSentinel(value);
+  const words = normalized.split(" ").filter(Boolean);
+  const genericProofDebt = /\b(?:proof|result|evidence|verification|check|runtime)\b/.test(normalized)
+    && /\b(?:pending|unknown|proof owed)\b/.test(normalized)
+    && words.length <= 5;
+  return isUnresolvedValue(value)
+    || genericProofDebt
+    || /^(?:(?:authenticated|owner|user|production|runtime) )*(?:claim|feature|workflow|interaction|status)(?: is| remains| was)? (?:pending|unknown|proof owed)$/.test(normalized);
+};
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "history", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "customer_release_scope", "deployed_at", "staged_rollout", "migration_status", "edge_status", "proof_boundaries", "checks", "evidence"];
 const STAGED_KEYS = ["owner_approval", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
@@ -189,7 +200,7 @@ export function validateReleaseRecord(record) {
   if (["CORRECTED", "RETRACTED"].includes(record.record_state)) {
     requireExactObject(record.history, ["supersedes_record_id", "reason"], "history", findings);
     if (!nonEmpty(record.history?.supersedes_record_id) || !nonEmpty(record.history?.reason)) findings.push("corrected/retracted record history requires supersedes_record_id and reason");
-    else if (hasUnresolvedToken(record.history.reason)) findings.push("corrected/retracted record history.reason must be resolved");
+    else if (isUnresolvedCorrectionReason(record.history.reason)) findings.push("corrected/retracted record history.reason must be resolved");
   } else if (record.history !== null) findings.push("history must be null unless record_state is CORRECTED or RETRACTED");
   if (!CLASSIFICATIONS.has(record.classification)) findings.push("classification invalid");
 
@@ -227,10 +238,10 @@ export function validateReleaseRecord(record) {
         requireExactObject(boundary, ["boundary", "excluded_from_live_claim", "evidence"], boundaryLabel, findings);
         for (const field of ["boundary", "excluded_from_live_claim"]) {
           const detail = String(boundary?.[field] || "").trim();
-          if (!nonEmpty(detail) || isUnresolvedValue(detail)) findings.push(`${boundaryLabel}.${field} must precisely name the owed boundary`);
+          if (!nonEmpty(detail) || isNonSubstantiveProofBoundary(detail)) findings.push(`${boundaryLabel}.${field} must precisely name the owed boundary`);
         }
         requireNonEmptyStrings(boundary?.evidence, `${boundaryLabel}.evidence`, findings);
-        if (Array.isArray(boundary?.evidence) && boundary.evidence.some(isUnresolvedValue)) findings.push(`${boundaryLabel}.evidence must substantively describe why proof remains owed`);
+        if (Array.isArray(boundary?.evidence) && boundary.evidence.some(isNonSubstantiveProofBoundary)) findings.push(`${boundaryLabel}.evidence must substantively describe why proof remains owed`);
       });
       requireExactObject(build?.checks, ["ci", "security", "production_checks"], `${label}.checks`, findings);
       for (const field of ["ci", "security", "production_checks"])
@@ -459,9 +470,12 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["accepts authenticated proof owed outside migration and edge delivery", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "Authenticated owner workflow proof was not completed for this deployment", excluded_from_live_claim: "Authenticated owner workflow", evidence: ["Production account access was unavailable during verification"] }] }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"], known_limitations: "Authenticated owner workflow remains outside the live claim" } }, false],
     ["rejects undisclosed authenticated proof boundary", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "Authenticated owner workflow proof was not completed for this deployment", excluded_from_live_claim: "Authenticated owner workflow", evidence: ["Production account access was unavailable during verification"] }] }], whats_new: { ...valid.whats_new, status: ["LIVE"] } }, true],
     ["rejects placeholder general proof boundary", { ...valid, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "TODO", excluded_from_live_claim: "pending", evidence: ["unknown"] }] }] }, true],
+    ["rejects generic general proof boundary prose", { ...valid, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "runtime proof pending", excluded_from_live_claim: "claim pending", evidence: ["proof pending"] }] }] }, true],
+    ["accepts precise proof boundary that truthfully says pending", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "Authenticated client edit and save proof is pending because production account access was unavailable", excluded_from_live_claim: "Authenticated client edit and save workflow", evidence: ["Production account access was unavailable during the scheduled authenticated verification"] }] }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"], known_limitations: "Authenticated client editing remains outside the live claim" } }, false],
     ["rejects placeholder proof-owed boundary", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], identifiers: [], proof_owed: { boundary: "TODO: write exact boundary", excluded_from_live_claim: "TBD - fill later" } } }], whats_new: { ...valid.whats_new, status: ["LIVE", "PROOF OWED"], known_limitations: "None" } }, true],
     ["rejects correction without history", { ...valid, record_state: "CORRECTED" }, true],
     ["rejects placeholder correction reason", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "PROOF_OWED" }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, true],
+    ["accepts correction reason that explains a former placeholder", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Replaced pending deployment ID and TODO value with dpl_123" }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, false],
     ["accepts structurally complete correction", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope" }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, false],
     ["rejects customer correction without publication gates", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected customer outcome" }, whats_new: { ...valid.whats_new, customer_outcome: "TODO" } }, true],
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],
@@ -543,7 +557,11 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["canonical schema rejects unresolved prose fused to an artifact path", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["build run"], checks: { ...build.checks, ci: { state: "PASS", evidence: ["pending:evidence/ui/foo.png"] } } }] }, true],
     ["canonical schema rejects publication placeholders missed by handwritten code", { ...published, scope: ["add link"] }, true],
     ["canonical schema rejects symbolic deployment aliases", { ...published, internal_builds: [{ ...build, deployment_id: "latest" }] }, true],
+    ["canonical schema rejects a URL-only deployment identifier", { ...published, internal_builds: [{ ...build, deployment_id: "https://example.vercel.app" }] }, true],
     ["canonical schema rejects placeholder correction reasons", { ...correction, history: { ...correction.history, reason: "pending" } }, true],
+    ["canonical schema accepts a correction reason that names the repaired placeholder", { ...correction, history: { ...correction.history, reason: "Corrected TODO status from PROOF OWED to LIVE after authenticated run 42 passed" } }, false],
+    ["canonical schema rejects generic general proof boundary prose", { ...published, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "runtime proof pending", excluded_from_live_claim: "claim pending", evidence: ["proof pending"] }] }], whats_new: { ...published.whats_new, status: ["PARTIAL", "PROOF OWED"] } }, true],
+    ["canonical schema accepts a precise proof boundary that truthfully says pending", { ...published, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "Authenticated client edit and save proof is pending because production account access was unavailable", excluded_from_live_claim: "Authenticated client edit and save workflow", evidence: ["Production account access was unavailable during the scheduled authenticated verification"] }] }], whats_new: { ...published.whats_new, status: ["PARTIAL", "PROOF OWED"], known_limitations: "Authenticated client editing remains outside the live claim" } }, false],
     ["canonical schema rejects approved records with failed referenced checks", { ...valid, record_state: "APPROVED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, checks: { ...build.checks, security: { state: "FAIL", evidence: ["security run failed"] } } }] }, true],
   ];
   for (const [label, record, shouldFail] of schemaCases) {
