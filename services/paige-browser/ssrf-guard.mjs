@@ -151,3 +151,26 @@ export async function assertPublicUrl(raw) {
   const reason = await urlBlockReason(raw);
   if (reason) throw new Error(`blocked: ${reason}`);
 }
+
+// A read-only page is an egress policy, not merely a navigation policy. Page JavaScript may issue
+// writes to an otherwise-public host, so only safe retrieval methods are allowed through Chromium.
+export function requestMethodBlockReason(method) {
+  const normalized = String(method || "").toUpperCase();
+  return normalized === "GET" || normalized === "HEAD" ? null : "method:not-read-only";
+}
+
+// Install the actual browser egress fence used by both observation modes. `fallback()` keeps this
+// composable with test instrumentation while the last handler still reaches the network normally.
+export async function installReadOnlyPageEgress(page) {
+  await page.routeWebSocket("**/*", (ws) => ws.close());
+  await page.route("**/*", async (route) => {
+    try {
+      if (requestMethodBlockReason(route.request().method())) return route.abort("blockedbyclient");
+      const host = new URL(route.request().url()).hostname;
+      if (await hostIsPrivate(host)) return route.abort("blockedbyclient");
+      return route.fallback();
+    } catch {
+      return route.abort("blockedbyclient");
+    }
+  });
+}

@@ -1967,6 +1967,21 @@ authorize:** account use, credential, live session, real Context, or tenant conn
 gates. Drive the REST API, not the thin MCP server. `browserbase` registry entry stays `PROPOSED` with the
 CONDITIONAL-GO dependency + 7 gates recorded.
 
+**Dedicated-builder security prerequisite candidate (2026-09-07; not yet merged/deployed).** Current
+`main` was re-grounded at `49d25f4c`; #1039 is merged and its provider review/starting packet is
+preserved. Candidate source makes `browser_use_sessions.tenant_id` non-null, enforces same-tenant
+related objects even for service-role writers, locks two unattributable historical failed rows in
+quarantine, authenticates before tenant/contact reads, and preserves truthful admin/agency/MCP
+provenance. The provider execution branch is removed and the endpoint can only record a safe failed
+`secure_worker_under_setup` request. G5 is closed in both Playwright routes with hostile-page
+Chromium proof; production migration replay passed inside `BEGIN … ROLLBACK`. This is automated and
+rollback evidence only: merge, deployment, authenticated, and rendered proof remain owed; credentialed
+Secure Browser remains **UNAVAILABLE**; Browserbase remains `PROPOSED`, unwired, and gated by all
+seven vendor conditions. No approved Solo Claude Design/Flow Prototype pack exists on current
+`main`, so the UI-first build is **BLOCKED** at the visual-contract boundary and no production pixels
+were invented. Detailed action receipts, budgets/concurrency, session lifecycle controls, Vault
+download ingress, and Connected Accounts remain unbuilt.
+
 ### Solo n8n connection clarity — historical UI slice, 2026-09-03
 
 The owner approved separate API connection and Paige tools (MCP) tabs and independent tile/overview states. This earlier UI slice preserved stored credentials while OAuth was blocked. Superseded by released PR #909: standard OAuth is live with the owner-accepted gateway logging risk; only final owner consent/provider verification remains Proof Owed. Current API saved status/count/timestamp does not prove fresh health; the UI must not claim it does. No callback, backend credential, tool-authority, workflow execution, Chat or Spine changes are included. Delivery and proof: `docs/delivery/solo-n8n-connection-clarity.md`. Authenticated owner acceptance is recorded separately from automated/build/deployment evidence.

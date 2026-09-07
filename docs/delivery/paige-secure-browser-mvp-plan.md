@@ -91,9 +91,9 @@ credential-handling requirement as a first-class backend item.
 |---|---|---|
 | `services/paige-browser` (Fly Playwright, DB-free, SSRF-guarded) | read-only public browse + self-verify | The FIRST self-hosted Chromium worker adapter (research/read path) |
 | `browse_public_url` skill + `deep_research`/`web_search` + `paige_browser_usage` | LIVE/PARTIAL research + audit rail | Mode-1 research; the receipt rail pattern (extend, tenant-scoped) |
-| `tenant_mcp_connections` (encrypted, `FORCE RLS`, service-role decrypt, per-(tenant,provider)) | connection-token vault + OAuth connect/disconnect flow | The PATTERN for the Vault Connected Accounts record — but storing an **opaque reference**, not a raw secret |
+| `tenant_mcp_connections` (encrypted, RLS-scoped but **not currently FORCE RLS**, service-role decrypt, per-(tenant,provider)) | connection-token vault + OAuth connect/disconnect flow | The PATTERN for the Vault Connected Accounts record — but storing an **opaque reference**, not a raw secret; the new record must improve this boundary and use `FORCE RLS` |
 | Vault tables (`business_vault_*`, incl. `business_vault_quarantine_uploads`, inspection seam) | tenant Vault store + quarantine | Home for **Connected Accounts** + **download quarantine/inspection** |
-| `_shared/capability-record.ts` + `record_capability_run` (6 outcomes) | the one home for a safe attributable Rail outcome | Every Secure Browser action's receipt |
+| `_shared/capability-record.ts` + `record_capability_run` (6 outcomes) | the one home for a safe attributable Rail **summary** | Every Secure Browser action links the same stable receipt id to this summary; an immutable detailed receipt store is still required |
 | §10 Standing Delegated Authority Contract + §68 decay + §16 lanes + `_shared/action-risk.ts` | the autonomy substrate | Phase-3 governed browser actions ride this — NOT a new autonomy system |
 | `paige-mcp` governed adapter (`decideMcpToolCall`/`governMcpToolCall`, server-resolved tenant, audits, can refuse) | the governed-execution door | The governance pattern a Secure Browser action-dispatch reuses |
 
@@ -104,6 +104,16 @@ credential-handling requirement as a first-class backend item.
 2. The `browser-use` edge fn trusts caller-supplied identity + service-role with **no JWT-derived
    tenant/admin gate** (`browser-use/index.ts:17-31`) — must be replaced by a server-resolved
    tenant/admin gate before any credentialed path.
+
+**Dedicated-builder status (candidate, 2026-09-07 — not yet merged/deployed):** both prerequisites are
+repaired in source. The migration adds non-null tenant attribution, same-tenant contact/business
+guards, `FORCE RLS`, and a locked quarantine for the two historical failed rows that have no
+attributable tenant. Both writers now fail closed on missing evidence; direct requests authenticate
+before tenant reads and preserve owner/admin, authorized-representative, and MCP provenance without
+mislabeling. G5 is closed in source for both browser routes with a hostile-page Chromium test.
+Production migration replay passed inside `BEGIN … ROLLBACK`; merge, deployment, authenticated, and
+rendered proof remain owed. No provider credential, session, Context, account, or external login was
+used.
 
 ---
 
@@ -163,7 +173,8 @@ adapter**, the **security gates**, and the **proof** (§32/§68). Fail-closed is
 ### Phase 4 — Bounded public crawling + reusable browser skills
 - **Owner outcome:** Paige runs bounded public research/crawls on approved domains and offers reusable
   browser skills.
-- **Built:** hardening the existing research path (close **G5** page-write fence; reconcile the two
+- **Built:** hardening the existing research path (the **G5** page-write fence is a tested candidate,
+  with merge/deployment proof owed; reconcile the two
   SSRF guards + DNS-rebinding #138; confirm Firecrawl on prod; put `browse_public_url` in the main
   chat loop, §36) + reusable skills authored per the §14/§62 skill model.
 - **Security gates:** respect authorization, provider terms, robots directives where applicable, rate

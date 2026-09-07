@@ -9,7 +9,8 @@
     "start": "node server.js",
     "smoke": "node smoke.mjs",
     "smoke:ssrf": "node smoke-ssrf.mjs",
-    "smoke:all": "node smoke-ssrf.mjs && node smoke.mjs"
+    "smoke:readonly-egress": "node smoke-readonly-egress.mjs",
+    "smoke:all": "node smoke-ssrf.mjs && node smoke-readonly-egress.mjs && node smoke.mjs"
   },
   "dependencies": {
     "express": "^4.19.2",

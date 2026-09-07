@@ -147,6 +147,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:ssrf-fork
 
+      - name: Secure Browser prerequisite security contract (tenant attribution, JWT authority, gated worker, read-only egress)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:secure-browser-security
+
+      - name: Secure Browser hostile-page egress proof (reads pass; writes, beacon, WebSockets, service workers stop)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:secure-browser-egress
+
       - name: Tier-feature guard (§60 — render gates must not hardcode a tier; use useTierFeatures)
         if: ${{ !cancelled() }}
         run: npm run lint:tier-features
@@ -444,6 +452,14 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+
+      - name: Secure Browser interpreter evidence smoke (tenant attribution and failed-write honesty)
+        if: ${{ !cancelled() }}
+        run: deno run -A scripts/skill-interpreter-browse-smoke.ts
+
+      - name: Secure Browser authority matrix (authenticate-first and truthful provenance)
+        if: ${{ !cancelled() }}
+        run: deno run -A scripts/secure-browser-authority-smoke.ts
 
       # RATCHET, not a wall — and never a relaxation. The all-or-nothing form of this check
       # turned red on the first PR to touch a function carrying inherited debt, for errors the

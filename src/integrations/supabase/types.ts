@@ -1072,6 +1072,7 @@ export type Database = {
           start_url: string | null
           status: string
           steps: Json
+          tenant_id: string
         }
         Insert: {
           completed_at?: string | null
@@ -1091,6 +1092,7 @@ export type Database = {
           start_url?: string | null
           status?: string
           steps?: Json
+          tenant_id: string
         }
         Update: {
           completed_at?: string | null
@@ -1110,8 +1112,16 @@ export type Database = {
           start_url?: string | null
           status?: string
           steps?: Json
+          tenant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "browser_use_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "browser_use_sessions_related_business_id_fkey"
             columns: ["related_business_id"]

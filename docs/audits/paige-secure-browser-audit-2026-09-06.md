@@ -19,6 +19,17 @@ decision owed** (a §4/§69 material boundary: accepting a provider, a licence, 
 Grounded by a five-specialist read-only crew (codebase sweep · credential-vault/security · deployed
 state + registries · external provider evaluation · this integrator), each claim file:line-citable.
 
+> **Post-audit implementation note (2026-09-07; candidate, not deployed):** The dedicated-builder
+> security slice repairs §4.3 items 1–2 in source: all `browser_use_sessions` writers now use
+> server-resolved non-null tenant attribution; direct callers authenticate before any tenant/contact
+> read; owner/admin and scoped agency authority are rechecked and recorded truthfully; the inert
+> provider-facing branch is removed; and both Playwright routes install a tested method/WebSocket/
+> service-worker write fence. Two historical failed rows with no attributable tenant are preserved in
+> a locked quarantine rather than guessed. Production migration replay passed only inside
+> `BEGIN … ROLLBACK`. Until merge/deploy and authenticated proof, the audit's product labels remain
+> unchanged: credentialed Secure Browser is **UNAVAILABLE**, public research is **PARTIAL**, and
+> Browserbase is `PROPOSED`/unwired with all seven gates open.
+
 ---
 
 ## 1. Executive summary — the honest headline

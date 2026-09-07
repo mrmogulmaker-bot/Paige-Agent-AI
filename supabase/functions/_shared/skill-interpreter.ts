@@ -194,16 +194,25 @@ export async function interpretSkill(deps: InterpretDeps, ctx: InterpretCtx): Pr
         outputs: { reason: "browser_unavailable", note: "This skill needs the browser seam to observe a page; it is not configured." },
         steps_log: stepsLog,
       };
+    } else if (!tenantId) {
+      // A service-role browser write without a resolved tenant would be an unattributable act.
+      // Refuse before navigation; evidence is mandatory for this path.
+      stepsLog.push({ step: "browse", dispatched: false, reason: "tenant_unresolved" });
+      return {
+        status: "denied",
+        outputs: { reason: "tenant_unresolved", note: "The browser request could not be bound to the active workspace." },
+        steps_log: stepsLog,
+      };
     } else {
-      // Dispatch the read-only browse + write the browser_use_sessions ledger. §9 — scope is via
-      // related_contact_id (there is NO tenant_id column); the service-role client bypasses RLS, so
-      // write-time discipline (the contact's own tenant already resolved by the host) is the boundary.
+      // Dispatch only after the tenant-attributed evidence row exists. The service-role client bypasses
+      // RLS, so the DB trigger re-checks related objects against this server-resolved tenant_id.
       const browseSteps = Array.isArray(browserStep.steps) ? browserStep.steps : undefined;
       let ledgerId: string | null = null;
       try {
-        const { data: led } = await deps.admin
+        const { data: led, error: ledgerError } = await deps.admin
           .from("browser_use_sessions")
           .insert({
+            tenant_id: tenantId,
             goal: `skill:${skill.slug} — ${skill.name}`,
             start_url: url,
             steps: browseSteps ?? [],
@@ -213,18 +222,38 @@ export async function interpretSkill(deps: InterpretDeps, ctx: InterpretCtx): Pr
           })
           .select("id")
           .single();
+        if (ledgerError) throw ledgerError;
         ledgerId = (led?.id as string) ?? null;
       } catch (e) {
-        // A ledger miss must not fabricate a run nor block the observation — log loudly and proceed (§13/§32).
+        // No attributable evidence row means no navigation. A read without its tenant evidence would
+        // later be indistinguishable from fabricated or misattributed browser activity.
         console.error(`skill-interpreter[${skill.slug}] browse ledger insert failed:`, (e as Error)?.message);
       }
+      if (!ledgerId) {
+        stepsLog.push({ step: "browse", dispatched: false, reason: "browser_evidence_unavailable" });
+        return {
+          status: "failed",
+          outputs: { reason: "browser_evidence_unavailable", note: "The browser request was not started because its evidence record could not be created." },
+          steps_log: stepsLog,
+          error: "browser evidence record unavailable",
+        };
+      }
 
-      const markLedger = async (fields: Record<string, unknown>) => {
-        if (!ledgerId) return;
+      const markLedger = async (fields: Record<string, unknown>): Promise<boolean> => {
+        if (!ledgerId) return false;
         try {
-          await deps.admin.from("browser_use_sessions").update(fields).eq("id", ledgerId);
+          const { data, error } = await deps.admin
+            .from("browser_use_sessions")
+            .update(fields)
+            .eq("id", ledgerId)
+            .eq("tenant_id", tenantId)
+            .select("id")
+            .maybeSingle();
+          if (error || !data?.id) throw error ?? new Error("browser evidence row not found");
+          return true;
         } catch (e) {
           console.error(`skill-interpreter[${skill.slug}] browse ledger update failed:`, (e as Error)?.message);
+          return false;
         }
       };
 
@@ -237,24 +266,30 @@ export async function interpretSkill(deps: InterpretDeps, ctx: InterpretCtx): Pr
           waitMs: typeof browserStep.waitMs === "number" ? browserStep.waitMs : undefined,
         });
         if ((result as { needs_config?: boolean })?.needs_config) {
-          await markLedger({ status: "failed", error: "browser seam needs_config", completed_at: new Date().toISOString() });
+          const evidenceRecorded = await markLedger({ status: "failed", error: "browser seam needs_config", completed_at: new Date().toISOString() });
           stepsLog.push({ step: "browse", dispatched: false, needs_config: true, ledger_id: ledgerId });
           return {
-            status: "needs_config",
-            outputs: { reason: "browser_unavailable", note: "The browser seam is not configured on the host." },
+            status: evidenceRecorded ? "needs_config" : "failed",
+            outputs: evidenceRecorded
+              ? { reason: "browser_unavailable", note: "The browser seam is not configured on the host." }
+              : { reason: "browser_evidence_unavailable", note: "The browser request stopped and its final evidence could not be recorded." },
             steps_log: stepsLog,
+            error: evidenceRecorded ? undefined : "browser evidence update unavailable",
           };
         }
         observed = result as BrowseObservation;
       } catch (e) {
         // A browse throw is a real fault — degrade honestly, mark the ledger failed, NEVER fabricate (§13/§32).
         console.error(`skill-interpreter[${skill.slug}] browse threw:`, (e as Error)?.message);
-        await markLedger({ status: "failed", error: (e as Error)?.message ?? "browse threw", completed_at: new Date().toISOString() });
+        const evidenceRecorded = await markLedger({ status: "failed", error: (e as Error)?.message ?? "browse threw", completed_at: new Date().toISOString() });
         stepsLog.push({ step: "browse", dispatched: true, ok: false, error: (e as Error)?.message, ledger_id: ledgerId });
         return {
-          status: "needs_config",
-          outputs: { reason: "browser_unavailable", note: "The browser observation failed." },
+          status: evidenceRecorded ? "needs_config" : "failed",
+          outputs: evidenceRecorded
+            ? { reason: "browser_unavailable", note: "The browser observation failed." }
+            : { reason: "browser_evidence_unavailable", note: "The browser failed and its final evidence could not be recorded." },
           steps_log: stepsLog,
+          error: evidenceRecorded ? undefined : "browser evidence update unavailable",
         };
       }
 
@@ -263,7 +298,7 @@ export async function interpretSkill(deps: InterpretDeps, ctx: InterpretCtx): Pr
       // §13/efficiency (peer-gate): the screenshot b64 lives in exactly ONE place — the screenshots[]
       // column — so a real screenshot is never persisted twice in the same row. Strip it from result.
       const { screenshot_b64: _b64, ...resultNoShot } = observed as unknown as Record<string, unknown>;
-      await markLedger({
+      const evidenceRecorded = await markLedger({
         status: observed.ok ? "succeeded" : "failed",
         result: resultNoShot,
         screenshots: shot,
@@ -271,6 +306,19 @@ export async function interpretSkill(deps: InterpretDeps, ctx: InterpretCtx): Pr
         error: observed.ok ? null : (observed.error ?? "browse failed"),
         completed_at: new Date().toISOString(),
       });
+      if (!evidenceRecorded) {
+        stepsLog.push({ step: "browse", dispatched: true, ok: observed.ok, evidence_recorded: false, ledger_id: ledgerId });
+        return {
+          status: "failed",
+          outputs: {
+            reason: "browser_evidence_unavailable",
+            note: "The page was observed, but Paige could not durably record the final browser evidence.",
+            observation_status: observed.ok ? "observed" : "observation_failed",
+          },
+          steps_log: stepsLog,
+          error: "browser evidence update unavailable",
+        };
+      }
       const folded = foldBrowserObservation(observed);
       if (folded) contextText = contextText ? `${contextText}\n\n${folded}` : folded;
       stepsLog.push({ step: "browse", dispatched: true, ok: observed.ok, http_status: observed.http_status ?? null, ledger_id: ledgerId });
