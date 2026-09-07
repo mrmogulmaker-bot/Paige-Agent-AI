@@ -6,9 +6,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 import { gatewayCompat } from "../_shared/claude.ts";
+import { platformOperatorTenantId } from "../_shared/platform-operator-tenant.ts";
 import { forge } from "../_shared/prompt-forge.ts";
 import { interpretSkill } from "../_shared/skill-interpreter.ts";
-import { shouldUseInterpreter, type SkillRow, type CallerTier, type BrowseResult, type PublicBrowseResult } from "../_shared/skill-interpreter-core.ts";
+import { shouldUseInterpreter, browserToolAllowed, type SkillRow, type CallerTier, type BrowseResult, type PublicBrowseResult } from "../_shared/skill-interpreter-core.ts";
+import {
+  resolveSecureBrowserAuthority,
+  secureBrowserNeedsAdminConfirmation,
+  type SecureBrowserAuthority,
+} from "../_shared/secure-browser-authority.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -129,6 +135,49 @@ interface RunRequest {
   force_interpreter?: boolean;
 }
 
+async function resolveBrowserAuthority(req: Request, body: RunRequest, admin: any): Promise<SecureBrowserAuthority> {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const presented = authHeader.replace(/^Bearer\s+/i, "").trim();
+  return await resolveSecureBrowserAuthority(
+    {
+      bearerToken: presented,
+      serviceKey: SERVICE_KEY,
+      contactId: body.contact_id,
+      tenantHint: body.tenant_id,
+      invokerUserId: body.invoker_user_id,
+    },
+    {
+      authenticate: async (token) => {
+        const { data, error } = await admin.auth.getUser(token);
+        return error || !data.user ? null : data.user.id;
+      },
+      resolveActiveTenant: async (actorUserId) => {
+        const { data, error } = await admin.from("profiles").select("active_tenant_id").eq("user_id", actorUserId).maybeSingle();
+        return error || !data?.active_tenant_id ? null : String(data.active_tenant_id);
+      },
+      resolveContactTenant: async (contactId, tenantId) => {
+        let query = admin.from("clients").select("tenant_id").eq("id", contactId);
+        if (tenantId) query = query.eq("tenant_id", tenantId);
+        const { data, error } = await query.maybeSingle();
+        return error || !data?.tenant_id ? null : String(data.tenant_id);
+      },
+      isPlatformOwner: async (actorUserId) => {
+        const { data, error } = await admin.rpc("is_platform_owner", { _user_id: actorUserId });
+        return !error && data === true;
+      },
+      resolvePlatformOperatorTenant: async () => await platformOperatorTenantId(admin),
+      isTenantAdmin: async (actorUserId, tenantId) => {
+        const { data, error } = await admin.rpc("is_tenant_admin_as", { _actor: actorUserId, _tenant: tenantId });
+        return !error && data === true;
+      },
+      canAgencyManage: async (actorUserId, tenantId) => {
+        const { data, error } = await admin.rpc("agency_can_manage_child", { _child: tenantId, _actor: actorUserId });
+        return !error && data === true;
+      },
+    },
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -148,12 +197,25 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: `Skill is ${skill.status}` }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    const hasBrowserStep = browserToolAllowed(skill as SkillRow);
+    // Resolve and authorize before any run/activity row is written. A refused browser request leaves
+    // no fabricated or caller-attributed execution trace.
+    const browserAuthority = hasBrowserStep
+      ? await resolveBrowserAuthority(req, body, admin)
+      : null;
+
     // First-N admin confirmation gate
     let needsConfirm = false;
     if (skill.require_admin_confirm_first_n > 0 && skill.run_count < skill.require_admin_confirm_first_n) {
-      if (body.invoker_kind !== "admin" && !body.confirm_token) {
-        needsConfirm = true;
-      }
+      const effectiveInvokerKind = browserAuthority?.invocationKind ?? body.invoker_kind;
+      needsConfirm = browserAuthority
+        ? secureBrowserNeedsAdminConfirmation(
+          skill.require_admin_confirm_first_n,
+          skill.run_count,
+          effectiveInvokerKind,
+          body.confirm_token,
+        )
+        : effectiveInvokerKind !== "admin" && !body.confirm_token;
     }
 
     const { data: run, error: runErr } = await admin
@@ -162,8 +224,8 @@ Deno.serve(async (req) => {
         skill_id: skill.id,
         skill_slug: skill.slug,
         contact_id: body.contact_id ?? null,
-        invoker_kind: body.invoker_kind ?? "admin",
-        invoker_user_id: body.invoker_user_id ?? null,
+        invoker_kind: browserAuthority?.invocationKind ?? (body.invoker_kind ?? "admin"),
+        invoker_user_id: browserAuthority?.actorUserId ?? body.invoker_user_id ?? null,
         inputs: body.inputs ?? {},
         status: needsConfirm ? "awaiting_confirm" : "running",
       })
@@ -189,29 +251,32 @@ Deno.serve(async (req) => {
       // the 4 shipped slugs stay on their bespoke handlers below — byte-identical (§58 by construction),
       // since force_interpreter defaults false and only NON-bespoke slugs otherwise take this path.
       if (shouldUseInterpreter(skill.slug, body.force_interpreter)) {
-        // Resolve the tenant server-side (§9/§59). The contact's tenant is SERVER-DERIVED and therefore
-        // authoritative; a body-supplied tenant_id is only trusted for a genuinely no-contact skill. If
-        // both are present and DISAGREE, that's an IDOR attempt (a stranger tenant passed alongside a
-        // contact) — reject, never forge under the caller-supplied tenant.
+        // Resolve the tenant server-side (§9/§59). A browser recipe additionally requires an authenticated
+        // owner/admin actor before its service-role session writer is reachable.
         let contactTenantId: string | null = null;
         if (body.contact_id) {
           const { data: c } = await admin.from("clients").select("tenant_id").eq("id", body.contact_id).maybeSingle();
           contactTenantId = (c?.tenant_id as string) ?? null;
         }
-        if (contactTenantId && body.tenant_id && body.tenant_id !== contactTenantId) {
+
+        let resolvedTenantId = browserAuthority?.tenantId ?? contactTenantId ?? body.tenant_id ?? null;
+        let resolvedActorId = browserAuthority?.actorUserId ?? body.invoker_user_id ?? null;
+        let resolvedActorRole = browserAuthority?.actorRole ?? (body.invoker_kind === "admin" ? "admin" : (body.invoker_kind ?? null));
+
+        if (!browserAuthority && contactTenantId && body.tenant_id && body.tenant_id !== contactTenantId) {
           throw new Error("tenant_mismatch: body tenant_id does not match the contact's tenant");
         }
-        const interpTenantId = contactTenantId ?? body.tenant_id ?? null;
+
         const interp = await interpretSkill(
           { forge, admin, browse: browseViaHost, browsePublic: browsePublicViaHost },
           {
             skill: skill as unknown as SkillRow,
             inputs: body.inputs ?? {},
             contactId: body.contact_id ?? null,
-            tenantId: interpTenantId,
+            tenantId: resolvedTenantId,
             callerTier: body.caller_tier ?? null,
-            actorUserId: body.invoker_user_id ?? null,
-            actorRole: body.invoker_kind === "admin" ? "admin" : (body.invoker_kind ?? null),
+            actorUserId: resolvedActorId,
+            actorRole: resolvedActorRole,
             runId: run.id,
           },
         );

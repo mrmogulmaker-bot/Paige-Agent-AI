@@ -14,7 +14,7 @@
 //
 // Run:  node smoke-ssrf.mjs   (or: npm run smoke:ssrf)
 // Exit: 0 = every DNS-free guard case returns the exact expected reason; non-zero = a gap.
-import { ipBlockReason, urlBlockReason, isDenylisted, loadDenylist } from "./ssrf-guard.mjs";
+import { ipBlockReason, urlBlockReason, requestMethodBlockReason, isDenylisted, loadDenylist } from "./ssrf-guard.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -42,6 +42,12 @@ const ipCases = [
   ["8.8.8.8", null], ["1.1.1.1", null], ["93.184.216.34", null], ["2606:2800:220:1::", null],
 ];
 for (const [ip, want] of ipCases) eq(`ip ${ip}`, ipBlockReason(ip), want);
+
+// A read-only browser must gate the page's request method, not only its destination host.
+for (const method of ["GET", "HEAD"]) eq(`method ${method}`, requestMethodBlockReason(method), null);
+for (const method of ["POST", "PUT", "PATCH", "DELETE", "CONNECT", "TRACE"]) {
+  eq(`method ${method}`, requestMethodBlockReason(method), "method:not-read-only");
+}
 
 // ── 2) urlBlockReason: schemes rejected ───────────────────────────────────────────────────────────
 for (const u of ["file:///etc/passwd", "javascript:alert(1)", "data:text/html,x", "about:blank", "ftp://h/x", "gopher://h", "chrome://net-internals", "view-source:http://x"]) {

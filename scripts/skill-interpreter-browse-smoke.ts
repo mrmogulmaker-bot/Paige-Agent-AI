@@ -20,13 +20,13 @@ function assert(cond: unknown, msg: string) {
 
 // A chainable, thenable Supabase-client stub that records every insert/update. `then` makes `await
 // chain` (and `.update().eq()`) resolve, while `.eq()/.select()/.order()` keep chaining.
-function makeAdmin(rec: Array<{ op: string; table: string; payload?: unknown }>) {
+function makeAdmin(rec: Array<{ op: string; table: string; payload?: unknown }>, failBrowserUpdate = false) {
   const chain: any = {
     select: () => chain,
     eq: () => chain,
     order: () => chain,
     limit: () => chain,
-    maybeSingle: async () => ({ data: null, error: null }),
+    maybeSingle: async () => ({ data: { id: "ledger-1" }, error: null }),
     single: async () => ({ data: { id: "ledger-1" }, error: null }),
     then: (resolve: (v: unknown) => void) => resolve({ data: null, error: null }),
   };
@@ -34,7 +34,19 @@ function makeAdmin(rec: Array<{ op: string; table: string; payload?: unknown }>)
     from(table: string) {
       return {
         insert(payload: unknown) { rec.push({ op: "insert", table, payload }); return chain; },
-        update(payload: unknown) { rec.push({ op: "update", table, payload }); return chain; },
+        update(payload: unknown) {
+          rec.push({ op: "update", table, payload });
+          if (failBrowserUpdate && table === "browser_use_sessions") {
+            const failed: any = {
+              ...chain,
+              eq: () => failed,
+              select: () => failed,
+              maybeSingle: async () => ({ data: null, error: { message: "forced update failure" } }),
+            };
+            return failed;
+          }
+          return chain;
+        },
         select: () => chain,
       };
     },
@@ -103,6 +115,7 @@ async function testHappyPath() {
   assert(!!ins, "(c) ledger insert on browser_use_sessions happened");
   assert((ins?.payload as any)?.invoker_kind === "skill", "(c) ledger insert invoker_kind === 'skill' (§37, not 'mcp')");
   assert((ins?.payload as any)?.status === "running", "(c) ledger insert status === 'running'");
+  assert((ins?.payload as any)?.tenant_id === "tenant-1", "(c) ledger insert carries the server-resolved tenant_id");
   assert((ins?.payload as any)?.start_url === "https://example.com/probe", "(c) ledger insert start_url is the browse url");
   const upd = rec.find((r) => r.op === "update" && r.table === "browser_use_sessions");
   assert((upd?.payload as any)?.status === "succeeded", "(c) ledger update status === 'succeeded' (mapped from ok:true)");
@@ -169,12 +182,29 @@ async function testAllowedToolsGate() {
   assert(res.status === "succeeded", "(gate) run still forges + succeeds without the browse");
 }
 
+// A completed observation whose durable final evidence cannot be written is not reported as success.
+async function testEvidenceUpdateFailure() {
+  console.log("\n[5] final browser evidence update failure is an honest failed run");
+  const rec: Array<{ op: string; table: string; payload?: unknown }> = [];
+  let forgeCalled = false;
+  const deps: InterpretDeps = {
+    admin: makeAdmin(rec, true),
+    browse: async (args) => ({ ok: true, url: args.url, final_url: args.url, http_status: 200, title: "Observed" }),
+    forge: (async () => { forgeCalled = true; return { result: { content: "forged", needs_config: false } }; }) as unknown as InterpretDeps["forge"],
+  };
+  const res = await interpretSkill(deps, baseCtx({ skill: browserSkill({}) }));
+  assert(res.status === "failed", "evidence update failure returns failed, never succeeded");
+  assert((res.outputs as any)?.reason === "browser_evidence_unavailable", "failure names the missing durable evidence");
+  assert(forgeCalled === false, "forge is not given an observation whose evidence did not persist");
+}
+
 async function main() {
   await testHappyPath();
   await testNeedsConfigDegrade();
   await testAbsentBrowse();
   await testWriteClassGated();
   await testAllowedToolsGate();
+  await testEvidenceUpdateFailure();
   console.log(`\n${failures === 0 ? "ALL SMOKE CHECKS PASSED" : `${failures} SMOKE CHECK(S) FAILED`}`);
   if (failures > 0) Deno.exit(1);
 }

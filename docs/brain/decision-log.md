@@ -1,5 +1,21 @@
 # Decision Log — chronological one-liners
 
+- **Secure Browser — prerequisite security repair candidate (2026-09-07, dedicated builder).**
+  Grounded current `main` at `49d25f4c`; #1039 is merged and its Browserbase review/starting packet
+  remains authoritative. Candidate source now gives every `browser_use_sessions` writer a
+  server-resolved tenant, authenticates before tenant/contact reads, re-authorizes owner/admin or
+  scoped agency actors, records admin/agency/MCP provenance truthfully, quarantines two historical
+  unattributable failed rows rather than guessing tenants, and closes G5 with a real hostile-page
+  method/WebSocket/service-worker test. The provider-facing branch was removed: the endpoint records a
+  safe failed request and reports `secure_worker_under_setup`; it cannot read a provider secret or
+  create a provider session. Production migration replay passed inside `BEGIN … ROLLBACK`; automated
+  security, authority-matrix, interpreter-evidence, type, and migration checks pass. **Not yet merge or
+  deployment proof; authenticated and rendered proof remain UNVERIFIED.** Browserbase stays
+  `PROPOSED` and unwired; all seven vendor gates remain open. The owner-visible Solo surface is
+  **BLOCKED** on the required approved Claude Design pack + Flow Prototype (no suitable approved pack
+  exists on current `main`), so no pixels were invented and the UI-first sequence was not silently
+  reversed. Detailed receipts, budgets/concurrency, lifecycle control plane, Vault download ingress,
+  and Connected Accounts remain unbuilt.
 - **Secure Browser — #1037 merged + Browserbase worker-provider review = CONDITIONAL GO (2026-09-07, owner-authorized).**
   Owner approved #1037 (MVP plan + builder handoff) → merged to `main` (squash `0a4ef0b`) after CI green.
   Owner also reported Browserbase account provisioned + `BROWSERBASE_API_KEY` stored as an Edge secret —

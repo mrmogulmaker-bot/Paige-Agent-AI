@@ -95,7 +95,10 @@
     "lint:binding-ledger": "node scripts/ci/binding-ledger-lint.mjs",
     "lint:binding-ledger:test": "node scripts/ci/binding-ledger-lint.mjs --self-test",
     "lint:integration-registry": "node scripts/ci/integration-registry-lint.mjs",
-    "lint:integration-registry:test": "node scripts/ci/integration-registry-lint.mjs --self-test"
+    "lint:integration-registry:test": "node scripts/ci/integration-registry-lint.mjs --self-test",
+    "smoke:secure-browser-security": "node scripts/secure-browser-security-smoke.mjs",
+    "smoke:secure-browser-authority": "deno run -A scripts/secure-browser-authority-smoke.ts",
+    "smoke:secure-browser-egress": "node services/paige-browser/smoke-readonly-egress.mjs"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",
