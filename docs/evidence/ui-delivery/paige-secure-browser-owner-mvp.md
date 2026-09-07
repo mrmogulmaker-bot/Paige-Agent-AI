@@ -20,8 +20,8 @@ TRUTHFUL_STATE_LABELS: PASS: customer copy names only Paige Secure Browser and s
 SOLO_UI: YES: the Vault Connected Accounts tab is mounted behind the exact-tenant `secure_browser` flag; the chat request card is isolated pending the active PR #1044 workspace collision.
 UNVERIFIED: real-shell rendering and geometry, keyboard/focus travel, zoom/reflow, authenticated runtime, deployed database/Edge identities, chat mounting, provider-backed work, and credentialed account behavior remain unverified or explicitly unavailable.
 
-INTERNAL_BUILD_IDENTITY: 2d1213607ca702249accb2b6606e75076ef3eef9; deployment=GugFRu3ASfKtryxnxZkkbEHor9JA; environment=preview; migrations=PROOF_OWED(production-application-excluded-from-this-preview); edge=PROOF_OWED(browser-use-revision-awaits-merge); evidence=Vercel-and-GitHub-CI-status-for-2d1213607ca702249accb2b6606e75076ef3eef9
-RELEASE_CHANNEL: preview: Vercel preview `GugFRu3ASfKtryxnxZkkbEHor9JA` succeeded for `2d1213607ca702249accb2b6606e75076ef3eef9`; no production deployment, customer enablement, Supabase preview branch, or deployed Edge revision exists
+INTERNAL_BUILD_IDENTITY: a9982463283260cbdceed7c7b7257f9265d7f7b5; deployment=7qG8r3SyVmzuagTknQ82HbLekCf7; environment=preview; migrations=PROOF_OWED(production-application-excluded-from-this-preview); edge=PROOF_OWED(browser-use-revision-awaits-merge); evidence=Vercel-and-GitHub-CI-status-for-a9982463283260cbdceed7c7b7257f9265d7f7b5
+RELEASE_CHANNEL: preview: Vercel preview `7qG8r3SyVmzuagTknQ82HbLekCf7` succeeded for `a9982463283260cbdceed7c7b7257f9265d7f7b5`; no production deployment, customer enablement, Supabase preview branch, or deployed Edge revision exists
 RELEASE_CLASSIFICATION: internal-only: draft foundation is feature-flagged, provider-unavailable, and not yet mounted in the shared chat workspace
 CUSTOMER_RELEASE_IDENTITY: none: no customer release or live capability is claimed from this draft
 RELEASE_NOTE_REQUIRED: NO: internal-only draft with no customer enablement
@@ -56,10 +56,10 @@ The owner states a business purpose and public HTTPS target, reviews the fixed r
 - 2026-09-07, jsdom: three focused test files, 12 tests — PASS.
 - 2026-09-07: focused ESLint, SQL migration lint, definer-function lint, migration-version lint, token lint 44/44, production build, and diff check — PASS.
 - 2026-09-07: `npm run ci:tsc` — PASS, no new errors; repository baseline 13 and current 13.
-- 2026-09-07, GitHub PR #1046 at `2d1213607ca702249accb2b6606e75076ef3eef9`: `database-contract` — PASS after a clean migration replay, including all 28 Secure Browser pgTAP assertions. Earlier failures were owned: first migration ordering, then unsafe JSONPath recursion, then an incorrect expected SQLSTATE; all were repaired and rerun.
-- 2026-09-07, GitHub PR #1046 at `2d1213607ca702249accb2b6606e75076ef3eef9`: aggregate `verify` — PASS, including 274 test files / 3,889 tests and every post-test security smoke. The previously reported unrelated full-suite path did not fail on this required CI rerun.
+- 2026-09-07, GitHub PR #1046 at `a9982463283260cbdceed7c7b7257f9265d7f7b5`, including current `main` `ae0a16a0d5147a4652a06925356c427c4d543d56`: `database-contract` — PASS after a clean migration replay, including all 28 Secure Browser pgTAP assertions. Earlier failures were owned: first migration ordering, then unsafe JSONPath recursion, then an incorrect expected SQLSTATE; all were repaired and rerun. The later #1047 migration-version collision was repaired by moving the still-unreleased Secure Browser migration to `20270106000000` and rerunning clean.
+- 2026-09-07, GitHub PR #1046 at `a9982463283260cbdceed7c7b7257f9265d7f7b5`: aggregate `verify` — PASS, including 274 test files / 3,889 tests and every post-test security smoke. The previously reported unrelated full-suite path did not fail on this required CI rerun.
 - 2026-09-07, independent repair review of `fc8174ba..2d121360` — PASS: generic secret/token rejection, exact actor provenance, tenant-coupled quarantine, budget settlement/expiry, truthful Connected Account expiry, and the provider boundary were confirmed with no remaining blocker.
-- 2026-09-07, Vercel preview: deployment `GugFRu3ASfKtryxnxZkkbEHor9JA` — READY; this is preview evidence only and the Secure Browser chat card remains unmounted.
+- 2026-09-07, Vercel preview: deployment `7qG8r3SyVmzuagTknQ82HbLekCf7` — READY; this is preview evidence only and the Secure Browser chat card remains unmounted.
 - Automated evidence is distinct from rendered evidence. No authenticated, provider-backed, credentialed, deployed, or customer-account evidence was collected.
 
 ## Review and limitations
