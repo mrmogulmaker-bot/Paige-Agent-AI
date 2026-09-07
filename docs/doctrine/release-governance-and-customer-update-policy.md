@@ -96,7 +96,7 @@ Every minor or major customer release note uses this order:
 4. **Who can use it** — exact audience, role, tier, cohort, or staged eligibility
 5. **Action required** — what the owner must do, or “No action required”
 6. **Status** — `LIVE`, `PARTIAL`, `UNAVAILABLE`, and/or `PROOF OWED`, applied to specific claims
-7. **Known limitations and safe next step**
+7. **Known limitations and safe next step** — for each `PROOF OWED` build area, name the exact deployment, migration/edge area, unproven boundary, and claim excluded from `LIVE`
 8. **Exact technical release reference — INTERNAL ONLY** — commit SHA, deployment ID, environment, migrations/edge status, checks, and evidence
 9. **Paige-readable summary** — tenant-safe plain language Paige can use to answer, “What changed in my workspace?”
 

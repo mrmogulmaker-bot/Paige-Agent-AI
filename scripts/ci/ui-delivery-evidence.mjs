@@ -44,6 +44,16 @@ const CORE_FIELDS = [
   "UNVERIFIED",
 ];
 
+const RELEASE_FIELDS = [
+  "INTERNAL_BUILD_IDENTITY",
+  "RELEASE_CHANNEL",
+  "RELEASE_CLASSIFICATION",
+  "CUSTOMER_RELEASE_IDENTITY",
+  "RELEASE_NOTE_REQUIRED",
+  "RELEASE_TRUTH_BOUNDARY",
+  "RELEASE_RECOVERY",
+];
+
 const SOLO_FIELDS = [
   "SOLO_1536X770_PAIGE_CLOSED",
   "SOLO_1536X770_PAIGE_OPEN",
@@ -153,9 +163,21 @@ export function validateEvidenceText(text, classification) {
   if (fields.get("UI_DELIVERY_EVIDENCE_VERSION") !== "1") {
     errors.push("UI_DELIVERY_EVIDENCE_VERSION must be 1.");
   }
-  for (const key of CORE_FIELDS) {
+  for (const key of [...CORE_FIELDS, ...RELEASE_FIELDS]) {
     if (!fields.has(key)) errors.push(`${key} is required.`);
   }
+  for (const key of RELEASE_FIELDS) {
+    const value = fields.get(key);
+    if (!value?.trim() || hasPlaceholder(value)) errors.push(`${key} must include a non-placeholder release-governance value.`);
+  }
+  const buildIdentity = fields.get("INTERNAL_BUILD_IDENTITY") ?? "";
+  if (!/\b[0-9a-f]{40}\b/i.test(buildIdentity) || !/\bdeployment\s*=\s*\S+/i.test(buildIdentity) || !/\benvironment\s*=\s*(?:local|development|preview|production)\b/i.test(buildIdentity) || !/\bmigrations\s*=\s*\S+/i.test(buildIdentity) || !/\bedge\s*=\s*\S+/i.test(buildIdentity) || !/\bevidence\s*=\s*\S+/i.test(buildIdentity)) {
+    errors.push("INTERNAL_BUILD_IDENTITY must include an exact SHA plus deployment, environment, migrations, edge, and evidence values.");
+  }
+  if (!/^(?:development|preview|production|staged):\s*\S.+$/i.test(fields.get("RELEASE_CHANNEL") ?? "")) errors.push("RELEASE_CHANNEL must name a governed channel and evidence/reason.");
+  if (!/^(?:internal-only|patch|minor-candidate|major-candidate):\s*\S.+$/i.test(fields.get("RELEASE_CLASSIFICATION") ?? "")) errors.push("RELEASE_CLASSIFICATION must name a governed classification and reason.");
+  if (!/^(?:YES|NO):\s*\S.+$/i.test(fields.get("RELEASE_NOTE_REQUIRED") ?? "")) errors.push("RELEASE_NOTE_REQUIRED must be YES: reason or NO: reason.");
+  if (!/\b(?:LIVE|PARTIAL|UNAVAILABLE|PROOF OWED)\b/i.test(fields.get("RELEASE_TRUTH_BOUNDARY") ?? "")) errors.push("RELEASE_TRUTH_BOUNDARY must name at least one governed status and its claim boundary.");
   if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW"))) errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference.");
   if (!isPassWithEvidence(fields.get("PAIGE_UI_DESIGN"))) errors.push("PAIGE_UI_DESIGN must be PASS: with a non-placeholder evidence reference.");
 

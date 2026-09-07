@@ -30,6 +30,13 @@ AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this envi
 TRUTHFUL_STATE_LABELS: NOT_APPLICABLE: this surface shows no capability status
 SOLO_UI: NO: shared public surface only
 UNVERIFIED: authenticated runtime only
+INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=NOT_APPLICABLE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=PR-checks
+RELEASE_CHANNEL: development: branch checks only
+RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome
+CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed
+RELEASE_NOTE_REQUIRED: NO: internal-only change
+RELEASE_TRUTH_BOUNDARY: UNAVAILABLE: no customer-facing release claim
+RELEASE_RECOVERY: revert exact commit and rerun checks
 `;
 
 test("verifies the pinned upstream bundle against recorded hashes", () => {
@@ -102,6 +109,16 @@ test("refuses unchecked placeholders and unsupported status words", () => {
 
   assert.equal(result.ok, false);
   assert.match(result.errors.join("\n"), /RENDERED_EVIDENCE/);
+});
+
+test("refuses missing or placeholder release-governance evidence", () => {
+  const missing = validateEvidenceText(coreEvidence.replace(/^RELEASE_RECOVERY:.*\n/m, ""), { required: true, solo: false });
+  assert.equal(missing.ok, false);
+  assert.match(missing.errors.join("\n"), /RELEASE_RECOVERY/);
+
+  const placeholder = validateEvidenceText(coreEvidence.replace(/^INTERNAL_BUILD_IDENTITY:.*$/m, "INTERNAL_BUILD_IDENTITY: REPLACE_ME"), { required: true, solo: false });
+  assert.equal(placeholder.ok, false);
+  assert.match(placeholder.errors.join("\n"), /INTERNAL_BUILD_IDENTITY/);
 });
 
 test("requires Flow Prototype evidence for a material flow change", () => {

@@ -23,11 +23,11 @@ SOLO_UI: NO: REPLACE_ME with why this is not a Solo interface
 UNVERIFIED: REPLACE_ME with remaining behavior and reason, or state none with the completed proof boundary
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: REPLACE_ME exact head SHA; deployment ID/environment when known; migrations; edge status; evidence
-RELEASE_CHANNEL: REPLACE_ME development / preview / production / approved staged rollout
-RELEASE_CLASSIFICATION: REPLACE_ME internal-only / patch / minor-candidate / major-candidate
+INTERNAL_BUILD_IDENTITY: REPLACE_ME_SHA; deployment=REPLACE_ME; environment=REPLACE_ME; migrations=REPLACE_ME; edge=REPLACE_ME; evidence=REPLACE_ME
+RELEASE_CHANNEL: REPLACE_ME: channel evidence or reason
+RELEASE_CLASSIFICATION: REPLACE_ME: classification reason
 CUSTOMER_RELEASE_IDENTITY: REPLACE_ME none, or proposed version + name + owner-decision reference
-RELEASE_NOTE_REQUIRED: REPLACE_ME yes/no and why
+RELEASE_NOTE_REQUIRED: REPLACE_ME: yes/no reason
 RELEASE_TRUTH_BOUNDARY: REPLACE_ME exact LIVE / PARTIAL / UNAVAILABLE / PROOF OWED claims
 RELEASE_RECOVERY: REPLACE_ME rollback/forward-fix position and reference
 

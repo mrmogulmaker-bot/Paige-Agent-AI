@@ -401,6 +401,7 @@
         "owner_action",
         "status",
         "known_limitations",
+        "proof_owed",
         "safe_next_step",
         "technical_release_reference",
         "paige_readable_summary"
@@ -417,6 +418,20 @@
           "items": { "enum": ["LIVE", "PARTIAL", "UNAVAILABLE", "PROOF OWED"] }
         },
         "known_limitations": { "type": "string", "minLength": 1 },
+        "proof_owed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["deployment_id", "area", "boundary", "excluded_from_live_claim"],
+            "properties": {
+              "deployment_id": { "type": "string", "minLength": 1 },
+              "area": { "enum": ["migration", "edge"] },
+              "boundary": { "type": "string", "minLength": 1 },
+              "excluded_from_live_claim": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
         "safe_next_step": { "type": "string", "minLength": 1 },
         "technical_release_reference": {
           "type": "object",
