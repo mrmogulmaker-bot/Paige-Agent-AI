@@ -1,6 +1,7 @@
 // export-document — turn a document a workspace ALREADY created (a marketing_content row, kind
 // 'document', the output of document_generate) into a real, DOWNLOADABLE file (pdf / docx / pptx / md)
-// and return a private, 30-day signed URL. Admin|coach only.
+// and return a private, 30-day signed URL. Authorized IN-BODY by an owner/admin/coach manage role in the
+// row's tenant, or a platform operator (super_admin/platform_admin) — NOT by RLS.
 //
 // WHY THIS EXISTS (§18/§13). The binary renderer (_shared/doc-render.ts) and the model router's
 // persist+sign lane already existed and were UNREACHED — no caller ever invoked the doc-render
@@ -12,9 +13,13 @@
 // `document_generate` invokes it when a caller asks for a downloadable format, and a future download
 // control can call it too.
 //
-// TENANT ISOLATION (§9). The source document is read with the CALLER's JWT client, so RLS scopes the
-// read to the caller's own tenant — a caller can only export a document they can already see. The
-// tenant the file is filed under is the ROW's tenant_id (RLS-confirmed), never a value from the body.
+// TENANT ISOLATION (§9/§59). The source row is read with the SERVICE-ROLE client (a privileged, RLS-bypassing
+// read — `marketing_content` RLS refuses a legitimate fresh Solo owner AND a platform_admin, so a caller-JWT
+// read would 404 them). The read is therefore NOT the access decision: the caller is authorized IN-BODY,
+// BEFORE any kind/tenant-shape response, by a MANAGE role in the ROW's tenant (owner/admin via is_tenant_admin,
+// coach via has_tenant_role) OR the platform-operator role; a non-authorized caller fails CLOSED as a 404 so
+// the by-id endpoint never reveals an out-of-scope row. The in-body check — NOT RLS — is the load-bearing
+// boundary. The file is filed under the ROW's tenant_id, never a value from the body.
 //
 // HONEST DEGRADE (§13/§32). Each doc-render format is independently fail-closed: if a format's lib
 // cannot load on the Deno runtime it returns needs_config, and this function reports that honestly
@@ -176,10 +181,13 @@ serve(async (req: Request) => {
       return json(200, { success: false, status: "failed", format, note: "The file could not be produced." });
     }
 
-    // Honest degrade: the format's renderer lib isn't available on the runtime yet (or HTML fidelity is
-    // deferred) — say so, never a broken file. The act did not complete; nothing was delivered.
+    // Honest degrade: the format's renderer lib isn't available on the runtime yet (or the PDF charset guard
+    // rejected) — `callModel` returns needs_config BEFORE any persistence, so this is a DETERMINISTIC
+    // pre-persistence non-effect: nothing was rendered, nothing landed. Record `capability_failed` (same as
+    // the pre-produce throw above), NOT `capability_outcome_unknown` — the latter's Rail copy says the action
+    // may have taken effect and prompts a needless "check before retry" for a case we KNOW did nothing (Codex).
     if (rendered?.needs_config) {
-      await record("capability_outcome_unknown");
+      await record("capability_failed");
       return json(200, {
         success: false,
         needs_config: true,

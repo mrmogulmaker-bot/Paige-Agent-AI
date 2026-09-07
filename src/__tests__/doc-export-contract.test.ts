@@ -463,6 +463,21 @@ describe("export-document edge function — the callable seam (source contract)"
     expect(SRC).toContain('record("capability_outcome_unknown")');
     expect(SRC).toContain('capabilityKey: "document_export"');
   });
+
+  it("records needs_config as a deterministic FAILED non-effect + header describes the privileged-read model (Codex round-12e)", () => {
+    // O — needs_config is a pre-persistence deterministic non-effect (renderer lib missing / charset reject),
+    // so it records capability_failed, NEVER capability_outcome_unknown (whose Rail copy says 'may have taken
+    // effect' and prompts a needless check). Slice exactly the needs_config block (up to the next `const url`).
+    const ncStart = SRC.indexOf("rendered?.needs_config");
+    const ncBlock = SRC.slice(ncStart, SRC.indexOf("const url", ncStart));
+    expect(ncBlock).toContain('record("capability_failed")');
+    expect(ncBlock).not.toContain('record("capability_outcome_unknown")');
+    // outcome_unknown survives ONLY for the genuinely-ambiguous "rendered but no URL" case.
+    expect(SRC).toContain('record("capability_outcome_unknown")');
+    // N — the file header describes the SERVICE-ROLE + in-body model, not the stale caller-JWT/RLS one.
+    expect(SRC).toContain("read with the SERVICE-ROLE client");
+    expect(SRC).not.toContain("read with the CALLER's JWT client, so RLS scopes");
+  });
 });
 
 describe("document_generate wires the export seam (source contract)", () => {
@@ -470,6 +485,11 @@ describe("document_generate wires the export seam (source contract)", () => {
 
   it("adds the optional export_format param without adding a new inline tool name", () => {
     expect(SRC).toContain('export_format: { type: "string", enum: ["pdf", "docx", "pptx", "md"]');
+  });
+
+  it("does not advertise the UNVERIFIED PDF path as reliable — recommends only Markdown (Codex round-12e)", () => {
+    expect(SRC).not.toContain("PDF and Markdown are the most reliable");
+    expect(SRC).toContain("Markdown is the most reliable");
   });
 
   it("invokes the export-document seam and attaches a download_url on success, honest status otherwise", () => {

@@ -296,6 +296,22 @@
   identical B/C defects in the copy. A fix not swept for its copies leaves the brain asserting BOTH the
   corrected and the stale version, which is worse than never having corrected it. doc-export 30/30, tsc
   ratchet 13/13, control-chars none, §50/§63 clean.
+  **NINETEENTH catch — Codex round 12e (review of head `65398eb9`): three P2, all FOLDED (§13 accuracy in
+  the LIVE export seam + chat).** (N) the `export-document` FILE HEADER comment still described the stale
+  caller-JWT/RLS model ("Admin|coach only" + the TENANT ISOLATION block) — ANOTHER copy of the auth
+  description the round-12d sweep missed because it grepped only `.md`, not `.ts` headers. Corrected to the
+  privileged service-role read + in-body manage check. **Lesson EXTENDED: sweep `.ts` comments too, and VARY
+  the phrasing** ("caller's JWT client" / "caller-JWT read" / "RLS scopes"). Re-ran the sweep across ALL
+  source with varied phrasing — the only remaining hits are OTHER features where RLS genuinely scopes
+  (AssignmentsPanel / useHandoffQueue / knowledge-scope), a different edge fn (generate-image), or dated
+  history (§58). (O, §13) the `needs_config` branch recorded `capability_outcome_unknown`, but needs_config is
+  a DETERMINISTIC pre-persistence non-effect (renderer lib missing / charset reject → `callModel` returns
+  before persisting) — its Rail copy would say "may have taken effect, check before retry" for a case we KNOW
+  did nothing; changed to `capability_failed` (matching the pre-produce throw). `outcome_unknown` survives only
+  for the genuinely-ambiguous "rendered but no URL" case. (P, §13) the `document_generate` `export_format` param
+  description ranked "PDF and Markdown are the most reliable" though PDF is UNVERIFIED — steering the model/user
+  toward a degrading path; changed to "Markdown is the most reliable — it never fails; the others render when
+  their libraries are available." doc-export 32/32, tsc ratchet 13/13, control-chars none, §50/§63 clean.
 
 - **Integration Capability Registry v1.1 — API Expense & Operations Layer + the "M1" disambiguation (2026-09-06, PR #1029, squash `1fee5418`; owner-authorized, incl. a mid-slice M1 terminology ruling).**
   Extended the existing registry JSON (§18, no second registry): an `expense_and_operations` block on **all 20
