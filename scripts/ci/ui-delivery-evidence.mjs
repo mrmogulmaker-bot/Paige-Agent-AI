@@ -188,14 +188,20 @@ function isUnresolvedRestatement(value) {
   const pair = new RegExp(`(?:\\b${subject}\\b.*\\b${unresolved}\\b|\\b${unresolved}\\b.*\\b${subject}\\b)`);
   if (!pair.test(normalized)) return false;
   const hasReference = /https?:\/\/\S+/i.test(raw) || /(?:^|[\s;(])(?:[A-Za-z]:)?[^\s;:()]*[\\/]\S+\.[A-Za-z0-9]{1,10}(?:[?#]\S*)?/i.test(raw);
-  const substantiveTerms = normalized
-    .replace(/\b(?:proof|result|evidence|verification|check|runtime|decision|approval|pending|unknown|owed)\b/g, " ")
-    .replace(/\b(?:for|the|a|an|of|to|in|on|and|or|is|are|was|were|be|been|being|still|current|currently|remain|remains|remaining|entire|entirely|just|simply|merely|yet|very|much|really|now|ongoing|unresolved)\b/g, " ")
+  const substantiveTerms = (clause) => normalizeSentinel(clause)
+    .replace(/\b(?:proof|result|evidence|verification|validation|check|runtime|decision|approval|pending|unknown|owed)\b/g, " ")
+    .replace(/\b(?:for|the|a|an|of|to|in|on|and|or|is|are|was|were|be|been|being|still|current|currently|remain|remains|remaining|entire|entirely|just|simply|merely|yet|very|much|really|now|ongoing|unresolved|later)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
     .filter(Boolean);
-  return !(hasReference || substantiveTerms.length >= 2);
+  const connectorClause = /\b(?:because|due to|blocked by|awaiting|for|until|while)\b\s+(.+)$/i.exec(normalized)?.[1] ?? "";
+  const hasConnectorReason = substantiveTerms(connectorClause).length >= 2;
+  const hasIndependentCause = raw.split(/[;—]/).some((clause) => {
+    const normalizedClause = normalizeSentinel(clause);
+    return normalizedClause && !pair.test(normalizedClause) && substantiveTerms(normalizedClause).length >= 2;
+  });
+  return !(hasReference || hasConnectorReason || hasIndependentCause);
 }
 
 function lacksDeploymentIdentity(value) {
