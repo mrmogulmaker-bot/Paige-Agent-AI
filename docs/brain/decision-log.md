@@ -6,7 +6,8 @@
   contracts the crew did not — found three defects, ALL verified against the migrations, that make honest Rail
   recording impossible in a bounded change:
   1. **§947 false "created" (P2, blocking).** `create_contact` (`20261020010000_client_identity_contract.sql`
-     L66-71 + the `unique_violation` branch) RETURNS AN EXISTING row's id WITHOUT inserting on an exact-email
+     L72-76 — the exact-email short-circuit `RETURN _existing` — and the `unique_violation` backstop at L80-85)
+     RETURNS AN EXISTING row's id WITHOUT inserting on an exact-email
      match — yet the executor still returns `{ success:true }`, so mapping `success:true → capability_succeeded`
      records "Paige added a contact" when NOTHING was created (on `confirm_new:true`+existing-email, or a
      fail-open/missed dedup). The executor's `result` cannot tell created from existing.

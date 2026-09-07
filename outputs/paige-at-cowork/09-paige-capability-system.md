@@ -204,8 +204,14 @@ verifier named — `crm_log_activity`, `calendar_book_meeting`, `crm_create_task
 helper (same pattern as pipeline/comms; §18), with a `crmWriteAttempted` pre/post-write split for honest
 throw mapping. Behavior-preserving (§37); the audit-log trail is unchanged (Rail row added alongside).
 Proof: `src/__tests__/crm-capability-run-contract.test.ts`. **STILL OPEN:** the remaining ~40 acts (CRM
-updates with mixed throws, content/team/plan/automation writes) and `crm_create_contact` (dedup-clarify
-`success:false` needs a per-capability branch, not the no-refusal map).
+updates with mixed throws, content/team/plan/automation writes). **`crm_create_contact` — ATTEMPTED +
+WITHDRAWN 2026-09-07 (PR #1040):** a classifier-only per-capability dedup branch is NOT enough — it would
+record a false `capability_succeeded` because the `create_contact` RPC returns an EXISTING row's id on an
+exact-email match (`success:true ≠ created`). An honest slice needs THREE prerequisites: (1) an
+inserted-vs-existing signal from `create_contact` (a return-contract change → §37 sweep of its real RPC
+consumers — NOT `paige-mcp`, which inserts directly); (2) the dedup-clarification records NOTHING (classifier
+→ null, never `capability_refused`, whose Rail copy reads as an auth denial); (3) Rail attribution matched to
+the RPC's `current_user_tenant_id()`. See `docs/brain/decision-log.md` + `lessons-learned.md` (2026-09-07).
 
 ### Slice 4 — Bounded browser research · **LIVE/PARTIAL (from `08` S-R1)**
 Harden + reach: reconcile the two SSRF guards, close DNS-rebinding (#138) + G5 page-write fence, verify

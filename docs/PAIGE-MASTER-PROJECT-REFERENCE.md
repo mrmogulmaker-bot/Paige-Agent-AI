@@ -1776,7 +1776,12 @@ read-only scouts (file:line-citable).
   CRM/scheduling write-receipts `crm_log_activity`/`calendar_book_meeting`/`crm_create_task` now file a
   capability-Rail outcome too — Slice 3 increment 1, Task #19, `_shared/crm-capability-outcome.ts`; content/
   document/growth writes) / PARTIAL (~40 remaining consequential actions still write only `paige_audit_log`,
-  not the Rail — F05 continuation; `crm_create_contact` needs a per-capability branch for its dedup-clarify).
+  not the Rail — F05 continuation). **`crm_create_contact` was ATTEMPTED + WITHDRAWN 2026-09-07 (PR #1040):**
+  a classifier-only per-capability dedup branch is NOT enough — it would record a false `capability_succeeded`
+  because `create_contact` returns an EXISTING row's id on an exact-email match (`success:true ≠ created`). An
+  honest slice needs THREE prerequisites: an inserted-vs-existing RPC signal (return-contract change → §37 sweep)
+  + the dedup-clarification records NOTHING (never `capability_refused`, whose Rail copy reads as an auth denial)
+  + Rail attribution matched to the RPC's `current_user_tenant_id()`. See decision-log + lessons-learned 2026-09-07.
 - **Research (bounded web)** — LIVE/PARTIAL (`deep_research` + `web_search` + `browse_public_url`; gaps per §5
   Sandboxed-Research entry below).
 - **External execution / integrations** — PARTIAL (chat path governed; `paige-mcp` tier+scope only, no risk
