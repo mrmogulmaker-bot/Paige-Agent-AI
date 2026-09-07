@@ -116,13 +116,14 @@ export function createAnchoredTranscriptScroll({
       const semanticMatches = items.filter((item) => item.dataset.paigeMessageAnchorKey === anchorPosition.semanticKey);
       anchor = semanticMatches.length === 1
         ? semanticMatches[0]
-        : semanticMatches.find((item) => items.indexOf(item) === anchorPosition.indexFromStart);
-    }
-    if (!anchor && anchorPosition.indexFromStart !== undefined) {
-      anchor = items[anchorPosition.indexFromStart];
+        : semanticMatches.find((item) => items.length - 1 - items.indexOf(item) === anchorPosition.indexFromEnd)
+          ?? semanticMatches.find((item) => items.indexOf(item) === anchorPosition.indexFromStart);
     }
     if (!anchor && anchorPosition.indexFromEnd !== undefined) {
       anchor = items[items.length - 1 - anchorPosition.indexFromEnd];
+    }
+    if (!anchor && anchorPosition.indexFromStart !== undefined) {
+      anchor = items[anchorPosition.indexFromStart];
     }
     if (!anchor) return;
     const reconciledIndex = items.indexOf(anchor);

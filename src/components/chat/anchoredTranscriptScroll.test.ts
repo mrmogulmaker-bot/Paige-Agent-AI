@@ -221,6 +221,26 @@ describe("createAnchoredTranscriptScroll", () => {
     expect(sessionStorage.getItem("test-deferred-thread:thread-b")).toContain('"messageId":"y"');
   });
 
+  it("uses the end-relative duplicate after an ephemeral greeting disappears on reload", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 200, scrollHeight: 900,
+      items: { "db-user-1": { top: 0, height: 300 }, "db-assistant": { top: 300, height: 300 }, "db-user-2": { top: 600, height: 300 } },
+    };
+    sessionStorage.setItem("test-duplicate-reload:thread-a", JSON.stringify({
+      kind: "anchor", messageId: "client-user-2", semanticKey: "user:continue", indexFromStart: 3, indexFromEnd: 0, offsetPx: -40,
+    }));
+    const { element, render } = transcriptFixture(geometry);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-duplicate-reload" });
+    controller.setContext("thread-a");
+    render(["db-user-1", "db-assistant", "db-user-2"], {
+      "db-user-1": "user:continue", "db-user-2": "user:continue",
+    });
+    controller.attach(element);
+
+    expect(element.scrollTop).toBe(640);
+    expect(sessionStorage.getItem("test-duplicate-reload:thread-a")).toContain('"messageId":"db-user-2"');
+  });
+
   it("keeps automatic following for ordinary near-bottom layout drift without user input", () => {
     const geometry: Geometry = {
       viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
