@@ -49,17 +49,7 @@
     "customer_release_identity": {
       "oneOf": [
         { "type": "null" },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["version", "release_name", "date", "owner_approval_reference"],
-          "properties": {
-            "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
-            "release_name": { "type": "string", "minLength": 1 },
-            "date": { "type": "string", "format": "date" },
-            "owner_approval_reference": { "type": "string", "minLength": 1 }
-          }
-        }
+        { "$ref": "#/$defs/customerReleaseIdentity" }
       ]
     },
     "whats_new": {
@@ -87,9 +77,76 @@
       "then": {
         "properties": { "whats_new": { "$ref": "#/$defs/whatsNew" } }
       }
+    },
+    {
+      "if": {
+        "properties": { "classification": { "const": "patch" }, "customer_release_identity": { "type": "object" } },
+        "required": ["classification", "customer_release_identity"]
+      },
+      "then": {
+        "properties": {
+          "customer_release_identity": {
+            "allOf": [
+              { "$ref": "#/$defs/customerReleaseIdentity" },
+              { "properties": { "version": { "pattern": "^0\\.(0|[1-9][0-9]*)\\.[1-9][0-9]*$" } } }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "classification": { "const": "minor_candidate" } }, "required": ["classification"] },
+      "then": {
+        "properties": {
+          "customer_release_identity": {
+            "allOf": [
+              { "$ref": "#/$defs/customerReleaseIdentity" },
+              { "properties": { "version": { "pattern": "^0\\.[1-9][0-9]*\\.0$" } } }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "classification": { "const": "major_candidate" } }, "required": ["classification"] },
+      "then": {
+        "properties": {
+          "customer_release_identity": {
+            "allOf": [
+              { "$ref": "#/$defs/customerReleaseIdentity" },
+              { "properties": { "version": { "pattern": "^[1-9][0-9]*\\.0\\.0$" } } }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "record_state": { "enum": ["APPROVED", "PUBLISHED"] } }, "required": ["record_state"] },
+      "then": {
+        "properties": {
+          "customer_release_identity": {
+            "properties": { "owner_approval": { "properties": { "status": { "const": "APPROVED" } } } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "record_state": { "const": "PUBLISHED" } }, "required": ["record_state"] },
+      "then": { "properties": { "customer_release_identity": { "$ref": "#/$defs/customerReleaseIdentity" } } }
     }
   ],
   "$defs": {
+    "customerReleaseIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "release_name", "date", "owner_approval"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+        "release_name": { "type": "string", "minLength": 1 },
+        "date": { "type": "string", "format": "date" },
+        "owner_approval": { "$ref": "#/$defs/customerApproval" }
+      }
+    },
     "nonEmptyStrings": {
       "type": "array",
       "minItems": 1,
@@ -186,15 +243,37 @@
     "stagedRollout": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["owner_approval_reference", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"],
+      "required": ["owner_approval", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"],
       "properties": {
-        "owner_approval_reference": { "type": "string", "minLength": 1 },
+        "owner_approval": { "$ref": "#/$defs/stagedApproval" },
         "eligibility_rule": { "type": "string", "minLength": 1 },
         "rollout_amount": { "type": "string", "minLength": 1 },
         "start_condition": { "type": "string", "minLength": 1 },
         "stop_condition": { "type": "string", "minLength": 1 },
         "monitoring_owner": { "type": "string", "minLength": 1 },
         "recovery_path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "customerApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approval_id", "scope", "status", "reference"],
+      "properties": {
+        "approval_id": { "type": "string", "pattern": "^customer-publication-[A-Za-z0-9._:-]+$" },
+        "scope": { "const": "customer_publication" },
+        "status": { "enum": ["PENDING", "APPROVED"] },
+        "reference": { "type": "string", "minLength": 1 }
+      }
+    },
+    "stagedApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approval_id", "scope", "status", "reference"],
+      "properties": {
+        "approval_id": { "type": "string", "pattern": "^staged-rollout-[A-Za-z0-9._:-]+$" },
+        "scope": { "const": "staged_rollout" },
+        "status": { "const": "APPROVED" },
+        "reference": { "type": "string", "minLength": 1 }
       }
     },
     "whatsNew": {

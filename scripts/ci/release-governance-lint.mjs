@@ -28,7 +28,8 @@ const DELIVERY_STATES = new Set(["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAI
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
-const STAGED_KEYS = ["owner_approval_reference", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
+const STAGED_KEYS = ["owner_approval", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
+const STAGED_TEXT_KEYS = ["eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
 const NOTE_KEYS = ["customer_outcome", "what_changed", "who_can_use_it", "owner_action", "status", "known_limitations", "safe_next_step", "technical_release_reference", "paige_readable_summary"];
 
 function invokedDirectly() {
@@ -66,6 +67,15 @@ function requireDeliveryState(value, label, findings) {
   requireExactObject(value, ["state", "evidence"], label, findings);
   if (!DELIVERY_STATES.has(value?.state)) findings.push(`${label}.state invalid`);
   requireNonEmptyStrings(value?.evidence, `${label}.evidence`, findings, value?.state === "NOT_APPLICABLE");
+}
+
+function requireApproval(value, label, expectedScope, allowedStatuses, findings) {
+  if (!requireExactObject(value, ["approval_id", "scope", "status", "reference"], label, findings)) return;
+  const idPrefix = expectedScope === "staged_rollout" ? "staged-rollout-" : "customer-publication-";
+  if (!new RegExp(`^${idPrefix}[A-Za-z0-9._:-]+$`).test(String(value.approval_id || ""))) findings.push(`${label}.approval_id must identify the ${expectedScope} decision`);
+  if (value.scope !== expectedScope) findings.push(`${label}.scope must be ${expectedScope}`);
+  if (!allowedStatuses.includes(value.status)) findings.push(`${label}.status invalid`);
+  if (!nonEmpty(value.reference)) findings.push(`${label}.reference missing`);
 }
 
 function validDate(value) {
@@ -106,10 +116,10 @@ export function validateReleaseRecord(record) {
       if (!validDateTime(build?.deployed_at)) findings.push(`${label}.deployed_at must be an ISO date-time`);
       if (build?.release_channel === "staged") {
         if (requireExactObject(build?.staged_rollout, STAGED_KEYS, `${label}.staged_rollout`, findings)) {
-          for (const field of STAGED_KEYS) if (!nonEmpty(build.staged_rollout[field])) findings.push(`${label}.staged_rollout.${field} missing`);
-          if (/pending/i.test(String(build.staged_rollout.owner_approval_reference || ""))) findings.push(`${label}.staged_rollout.owner_approval_reference must be completed`);
-          if (record.customer_release_identity && build.staged_rollout.owner_approval_reference === record.customer_release_identity.owner_approval_reference)
-            findings.push(`${label}.staged_rollout.owner_approval_reference must be distinct from customer publication approval`);
+          for (const field of STAGED_TEXT_KEYS) if (!nonEmpty(build.staged_rollout[field])) findings.push(`${label}.staged_rollout.${field} missing`);
+          requireApproval(build.staged_rollout.owner_approval, `${label}.staged_rollout.owner_approval`, "staged_rollout", ["APPROVED"], findings);
+          if (record.customer_release_identity && build.staged_rollout.owner_approval?.reference === record.customer_release_identity.owner_approval?.reference)
+            findings.push(`${label}.staged_rollout.owner_approval.reference must be distinct from customer publication approval`);
         }
       } else if (build?.staged_rollout !== null) findings.push(`${label}.staged_rollout must be null outside the staged channel`);
       for (const field of ["migration_status", "edge_status"]) requireDeliveryState(build?.[field], `${label}.${field}`, findings);
@@ -118,6 +128,8 @@ export function validateReleaseRecord(record) {
         requireEvidenceState(build?.checks?.[field], `${label}.checks.${field}`, findings);
       requireNonEmptyStrings(build?.evidence, `${label}.evidence`, findings);
     });
+    const deploymentIds = record.internal_builds.map((build) => build?.deployment_id);
+    if (new Set(deploymentIds).size !== deploymentIds.length) findings.push("internal_builds deployment_id values must be unique");
   }
 
   for (const field of ["scope", "affected_audience", "benefits", "limitations"]) requireNonEmptyStrings(record[field], field, findings);
@@ -126,9 +138,13 @@ export function validateReleaseRecord(record) {
 
   const customer = record.customer_release_identity;
   if (customer !== null) {
-    requireExactObject(customer, ["version", "release_name", "date", "owner_approval_reference"], "customer_release_identity", findings);
+    requireExactObject(customer, ["version", "release_name", "date", "owner_approval"], "customer_release_identity", findings);
     if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(String(customer?.version || ""))) findings.push("customer version must be semantic x.y.z");
-    if (!nonEmpty(customer?.release_name) || !validDate(customer?.date) || !nonEmpty(customer?.owner_approval_reference)) findings.push("customer identity missing valid name/date/owner approval");
+    if (!nonEmpty(customer?.release_name) || !validDate(customer?.date)) findings.push("customer identity missing valid name/date");
+    requireApproval(customer?.owner_approval, "customer_release_identity.owner_approval", "customer_publication", ["PENDING", "APPROVED"], findings);
+    if (record.classification === "patch" && !/^0\.(0|[1-9]\d*)\.[1-9]\d*$/.test(String(customer.version))) findings.push("patch customer version must be 0.x.y with y greater than zero during Solo Preview");
+    if (record.classification === "minor_candidate" && !/^0\.[1-9]\d*\.0$/.test(String(customer.version))) findings.push("minor_candidate version must be 0.x.0 during Solo Preview");
+    if (record.classification === "major_candidate" && !/^[1-9]\d*\.0\.0$/.test(String(customer.version))) findings.push("major_candidate version must be x.0.0");
     const note = record.whats_new;
     if (!note || typeof note !== "object") findings.push("whats_new required with customer identity");
     else {
@@ -153,7 +169,7 @@ export function validateReleaseRecord(record) {
   if (["minor_candidate", "major_candidate"].includes(record.classification) && customer === null)
     findings.push(`${record.classification} requires a customer release identity`);
   if (["APPROVED", "PUBLISHED"].includes(record.record_state) && customer !== null) {
-    if (/pending/i.test(String(customer?.owner_approval_reference || ""))) findings.push(`${record.record_state} customer release requires a completed owner approval reference`);
+    if (customer?.owner_approval?.status !== "APPROVED") findings.push(`${record.record_state} customer release requires an APPROVED customer-publication decision`);
     const referenced = new Set(record.whats_new?.technical_release_reference?.build_ids || []);
     for (const [index, build] of (record.internal_builds || []).entries()) {
       if (!referenced.has(build?.deployment_id)) continue;
@@ -206,6 +222,9 @@ export function validateRepository() {
 }
 
 if (invokedDirectly() && process.argv.includes("--self-test")) {
+  const customerApprovalPending = { approval_id: "customer-publication-decision-pending", scope: "customer_publication", status: "PENDING", reference: "owner-decision-pending" };
+  const customerApproval = { approval_id: "customer-publication-owner-message-123", scope: "customer_publication", status: "APPROVED", reference: "owner-message-123" };
+  const stagedApproval = { approval_id: "staged-rollout-owner-message-456", scope: "staged_rollout", status: "APPROVED", reference: "owner-message-456" };
   const build = {
     commit_sha: "a".repeat(40), deployment_id: "dpl_123", environment: "production", release_channel: "production", deployed_at: "2026-09-06T20:00:00Z", staged_rollout: null,
     migration_status: { state: "NOT_APPLICABLE", evidence: [] }, edge_status: { state: "NOT_APPLICABLE", evidence: [] },
@@ -214,7 +233,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
   const valid = {
     schema_version: "1.0.0", record_id: "release-0.1.0", record_state: "OWNER_DECISION_PENDING", classification: "minor_candidate", internal_builds: [build],
     scope: ["outcome"], affected_audience: ["solo"], benefits: ["benefit"], limitations: ["limit"], rollback_recovery: { position: "forward fix", reference: "runbook" },
-    customer_release_identity: { version: "0.1.0", release_name: "Paige Solo Preview", date: "2026-09-06", owner_approval_reference: "pending" },
+    customer_release_identity: { version: "0.1.0", release_name: "Paige Solo Preview", date: "2026-09-06", owner_approval: customerApprovalPending },
     whats_new: { customer_outcome: "Outcome", what_changed: "Change", who_can_use_it: "Solo", owner_action: "None", status: ["PARTIAL", "PROOF OWED"], known_limitations: "Limit", safe_next_step: "Next", technical_release_reference: { visibility: "internal_only", build_ids: ["dpl_123"] }, paige_readable_summary: "Summary" },
   };
   const internal = { ...valid, classification: "internal_only", customer_release_identity: null, whats_new: null };
@@ -226,21 +245,24 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects invented status", { ...valid, whats_new: { ...valid.whats_new, status: ["SHIPPED"] } }, true],
     ["rejects exposed technical reference", { ...valid, whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "customer", build_ids: ["dpl_123"] } } }, true],
     ["rejects published release with pending approval", { ...valid, record_state: "PUBLISHED" }, true],
-    ["rejects published release without green production checks", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval_reference: "owner-message-123" }, internal_builds: [{ ...build, checks: { ...build.checks, production_checks: { state: "UNVERIFIED", evidence: ["not driven"] } } }] }, true],
-    ["rejects published development-only release", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval_reference: "owner-message-123" }, internal_builds: [{ ...build, environment: "development", release_channel: "development", deployment_id: "NOT_APPLICABLE" }] }, true],
+    ["rejects published release without green production checks", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, checks: { ...build.checks, production_checks: { state: "UNVERIFIED", evidence: ["not driven"] } } }] }, true],
+    ["rejects published development-only release", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, environment: "development", release_channel: "development", deployment_id: "NOT_APPLICABLE" }] }, true],
     ["rejects technical reference to another build", { ...valid, whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "internal_only", build_ids: ["dpl_fake"] } } }, true],
-    ["rejects published reference to development when another production build exists", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval_reference: "owner-message-123" }, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "dev_123", environment: "development", release_channel: "development" }], whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "internal_only", build_ids: ["dev_123"] } } }, true],
+    ["rejects published reference to development when another production build exists", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "dev_123", environment: "development", release_channel: "development" }], whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "internal_only", build_ids: ["dev_123"] } } }, true],
     ["rejects staged build without rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: null }] }, true],
-    ["accepts staged build with rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval_reference: "owner-message-456", eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, false],
+    ["accepts staged build with rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, false],
     ["rejects staged build without rollout approval", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
-    ["rejects pending staged rollout approval", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval_reference: "pending", eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
-    ["rejects staged approval reused for publication", { ...valid, customer_release_identity: { ...valid.customer_release_identity, owner_approval_reference: "owner-message-456" }, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval_reference: "owner-message-456", eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
+    ["rejects pending staged rollout approval", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: { ...stagedApproval, status: "PENDING" }, eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
+    ["rejects staged approval reused for publication", { ...valid, customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: stagedApproval.reference } }, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
     ["rejects applied migration without identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: [] } }] }, true],
     ["rejects schema-forbidden extra property", { ...valid, invented: true }, true],
     ["rejects invalid date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "not-a-date" }] }, true],
     ["rejects normalized invalid calendar date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "2026-02-30T20:00:00Z" }] }, true],
     ["rejects production channel in development environment", { ...valid, internal_builds: [{ ...build, environment: "development" }] }, true],
-    ["accepts unreferenced preview with unverified production check", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval_reference: "owner-message-123" }, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "preview_123", environment: "preview", release_channel: "preview", checks: { ...build.checks, production_checks: { state: "UNVERIFIED", evidence: ["preview only"] } } }] }, false],
+    ["accepts unreferenced preview with unverified production check", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "preview_123", environment: "preview", release_channel: "preview", checks: { ...build.checks, production_checks: { state: "UNVERIFIED", evidence: ["preview only"] } } }] }, false],
+    ["rejects minor version with patch component", { ...valid, customer_release_identity: { ...valid.customer_release_identity, version: "0.1.7" } }, true],
+    ["rejects major version with minor component", { ...valid, classification: "major_candidate", customer_release_identity: { ...valid.customer_release_identity, version: "2.3.0" } }, true],
+    ["rejects duplicate deployment identifiers", { ...valid, internal_builds: [build, { ...build, commit_sha: "b".repeat(40) }] }, true],
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],
   ];
   let bad = 0;
