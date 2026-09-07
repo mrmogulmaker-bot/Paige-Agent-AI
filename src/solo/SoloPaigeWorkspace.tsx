@@ -252,6 +252,9 @@ export function SoloPaigeWorkspace({
   // when a saved thread is resumed whose content is not about this client. Either way,
   // continuing to assert the focus would make the next turn mean something untrue.
   const releaseScope = useCallback(() => { clearPaigeSurfaceScope(); clearPaigePublicPresenceScope(); }, []);
+  const finishInterviewScope = useCallback(() => {
+    if (getPaigeInterviewScope(activeTenantId)) clearPaigeSurfaceScope();
+  }, [activeTenantId]);
   const [routedTab, setRoutedTab] = useSubtabRoute("solo", "paige", "chat");
   const [localTab, setLocalTab] = useState<SoloPaigeTab>(dockedTab ?? "chat");
   const acceptedRoutedTab = (TABS.some((item) => item.id === routedTab) ? routedTab : "chat") as SoloPaigeTab;
@@ -333,7 +336,7 @@ export function SoloPaigeWorkspace({
             </div>
           ) : undefined}
           conversationHeader={<div className="spw-chat-head"><div><strong>PAIGE</strong><span>Active Solo account · tenant-scoped</span></div></div>}
-          transcriptLead={(api) => <PaigeWorkingSessionCard api={api} explicitOffer={!!interviewScope} accountEpoch={activeTenantId} onFinished={releaseScope} />}
+          transcriptLead={(api) => <PaigeWorkingSessionCard api={api} explicitOffer={!!interviewScope} accountEpoch={activeTenantId} onFinished={finishInterviewScope} />}
         />
       </section>
       <section id="spw-panel-knowledge" role="tabpanel" aria-labelledby="spw-tab-knowledge" hidden={tab !== "knowledge"} className="spw-panel">{tab === "knowledge" && <KnowledgeView />}</section>

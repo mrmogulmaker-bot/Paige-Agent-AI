@@ -25,7 +25,7 @@ describe("DiscussionNeededCard", () => {
     const view = await mount();
     expect(view.host.textContent).toContain("Choose the offer to prioritize");
     await act(async () => { (Array.from(view.host.querySelectorAll("button")).find((b) => b.textContent === "Talk now") as HTMLButtonElement).click(); await Promise.resolve(); });
-    expect(mocked.respond).toHaveBeenCalledWith("action-1", "talk_now");
+    expect(mocked.respond).toHaveBeenCalledWith("action-1", 3, "talk_now");
     expect(view.onTalkNow).toHaveBeenCalledWith(decision);
     await act(async () => view.root.unmount()); view.host.remove();
   });
@@ -33,7 +33,7 @@ describe("DiscussionNeededCard", () => {
   it.each([["Later", "later"], ["Don’t ask again", "dont_ask_again"]] as const)("persists %s and removes only this card", async (label, response) => {
     const view = await mount();
     await act(async () => { (Array.from(view.host.querySelectorAll("button")).find((b) => b.textContent === label) as HTMLButtonElement).click(); await Promise.resolve(); });
-    expect(mocked.respond).toHaveBeenCalledWith("action-1", response);
+    expect(mocked.respond).toHaveBeenCalledWith("action-1", 3, response);
     expect(view.host.textContent).not.toContain("Choose the offer to prioritize");
     await act(async () => view.root.unmount()); view.host.remove();
   });

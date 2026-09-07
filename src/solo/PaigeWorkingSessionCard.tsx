@@ -85,6 +85,7 @@ export function PaigeWorkingSessionCard({
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<Record<string, unknown> | null>(null);
   const loadGeneration = useRef(0);
+  const pathRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const acceptedEpoch = useRef(accountEpoch);
   acceptedEpoch.current = accountEpoch;
 
@@ -118,7 +119,9 @@ export function PaigeWorkingSessionCard({
 
   const session = state.session;
   const pathConfig = PATHS.find((item) => item.id === (session?.focusPath ?? path)) ?? PATHS[0];
-  const step = Number((session?.stepKey ?? "question_0").replace("question_", ""));
+  const recapPending = session?.stepKey === "recap_pending";
+  const parsedStep = Number((session?.stepKey ?? "question_0").replace("question_", ""));
+  const step = Number.isFinite(parsedStep) ? parsedStep : 0;
   const question = pathConfig.questions[Math.min(Math.max(step, 0), pathConfig.questions.length - 1)];
   const shouldOffer = !session && (explicitOffer || (state.eligibleForFirstUse && api.threads.length === 0));
 
@@ -179,12 +182,11 @@ export function PaigeWorkingSessionCard({
       const next = await paigeIntentfulInterview.update(
         session,
         "answer",
-        last ? "recap_pending" : `question_${step + 1}`,
-        { id: `${session.focusPath}:${question.fieldKey}`, fieldKey: question.fieldKey, label: question.label, value: answer.trim() },
+        last ? "recap" : `question_${step + 1}`,
+        { id: `${session.focusPath}:${question.fieldKey}`, fieldKey: question.fieldKey, value: answer.trim() },
       );
-      const settled = last ? await paigeIntentfulInterview.update(next, "recap", "recap") : next;
       if (acceptedEpoch.current !== epoch) return;
-      setState((current) => ({ ...current, session: settled }));
+      setState((current) => ({ ...current, session: next }));
       setAnswer("");
       if (last) setSelected(new Set());
     } catch (caught) {
@@ -216,7 +218,7 @@ export function PaigeWorkingSessionCard({
         <div className="pws-heading"><span className="pws-icon"><Sparkles aria-hidden size={17} /></span><div><small>OPTIONAL WORKING SESSION</small><h3 id="pws-offer-title">Would you like me to help build your business brief through a short working interview?</h3></div></div>
         <p>I’ll ask a few focused questions so your future plans can use owner-confirmed business context. Nothing becomes a saved fact until you select it in the recap.</p>
         <div className="pws-paths" role="radiogroup" aria-label="Interview focus">
-          {PATHS.map((item) => <button key={item.id} type="button" role="radio" aria-checked={path === item.id} className={path === item.id ? "is-selected" : ""} onClick={() => setPath(item.id)}><strong>{item.label}</strong><span>{item.description}</span></button>)}
+          {PATHS.map((item, index) => <button key={item.id} ref={(node) => { pathRefs.current[index] = node; }} type="button" role="radio" aria-checked={path === item.id} tabIndex={path === item.id ? 0 : -1} className={path === item.id ? "is-selected" : ""} onClick={() => setPath(item.id)} onKeyDown={(event) => { if (!(event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "ArrowRight" || event.key === "ArrowLeft" || event.key === "Home" || event.key === "End")) return; event.preventDefault(); const next = event.key === "Home" ? 0 : event.key === "End" ? PATHS.length - 1 : (index + (event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : -1) + PATHS.length) % PATHS.length; setPath(PATHS[next].id); pathRefs.current[next]?.focus(); }}><strong>{item.label}</strong><span>{item.description}</span></button>)}
         </div>
         {error && <p className="pws-error" role="alert">{error}</p>}
         <div className="pws-actions"><button type="button" className="pws-secondary" disabled={busy} onClick={() => void skipOffer()}>Skip</button><button type="button" className="pws-primary" disabled={busy} onClick={() => void begin(explicitOffer ? "paige_brief" : "first_use")}><Play aria-hidden size={14} />{busy ? "Starting…" : "Start interview"}</button></div>
@@ -228,6 +230,10 @@ export function PaigeWorkingSessionCard({
 
   if (session.status === "paused" || api.activeThreadId !== session.threadId) {
     return <section className="pws-card"><div className="pws-heading"><CirclePause aria-hidden size={18} /><div><small>READY TO RESUME</small><h3>Your {pathConfig.label.toLowerCase()} interview is ready to continue.</h3></div></div><p>Your place is saved as workflow state in this account. It is not business truth or Memory.</p>{error && <p className="pws-error" role="alert">{error}</p>}<div className="pws-actions"><button type="button" className="pws-secondary" disabled={busy} onClick={() => void update("end")}>End session</button><button type="button" className="pws-primary" disabled={busy} onClick={() => { if (api.activeThreadId !== session.threadId) api.onSelect(session.threadId); void update("resume"); }}><Play aria-hidden size={14} />Resume</button></div></section>;
+  }
+
+  if (recapPending) {
+    return <section className="pws-card"><div className="pws-heading"><ClipboardCheck aria-hidden size={18} /><div><small>RECAP READY</small><h3>Your answers are ready to review.</h3></div></div><p>Your last answer was preserved. Continue to the selective recap; nothing is canonical yet.</p>{error && <p className="pws-error" role="alert">{error}</p>}<div className="pws-actions"><button type="button" className="pws-secondary" disabled={busy} onClick={() => void update("end")}>Save none and end</button><button type="button" className="pws-primary" disabled={busy} onClick={() => void update("recap", "recap")}>Review recap</button></div></section>;
   }
 
   if (session.status === "recap") {

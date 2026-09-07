@@ -61,7 +61,6 @@ export const paigeIntentfulInterview = {
   update: (session: InterviewSession, event: "answer" | "pause" | "resume" | "recap" | "skip" | "end", stepKey: string | null, fact?: {
     id: string;
     fieldKey: string;
-    label: string;
     value: string;
   }) =>
     rpc<InterviewSession>("update_paige_intentful_interview", {
@@ -80,9 +79,10 @@ export const paigeIntentfulInterview = {
 
 export const paigeDiscussionNeeded = {
   get: (missionId: string) => rpc<DiscussionNeeded | null>("get_business_mission_discussion", { p_mission_id: missionId }),
-  respond: (actionId: string, response: "talk_now" | "later" | "dont_ask_again") =>
+  respond: (actionId: string, sourceRevision: number, response: "talk_now" | "later" | "dont_ask_again") =>
     rpc<{ ok: true; actionId: string; response: string; sourceId: string }>("respond_to_business_mission_discussion", {
       p_action_id: actionId,
+      p_expected_source_revision: sourceRevision,
       p_response: response,
     }),
 };

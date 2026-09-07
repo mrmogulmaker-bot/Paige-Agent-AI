@@ -19,6 +19,9 @@ describe("Intentful Interview security contract", () => {
     expect(migration).toContain("save_solo_business_brief(v_full,v_expected_updated_at,null)");
     expect(migration).toContain("jsonb_build_object('sourceDecisions',v_decisions)");
     expect(migration).toContain("count(distinct id) from unnest(p_selected_ids)");
+    expect(migration).toContain("count(distinct f->>'fieldKey')");
+    expect(migration).toContain("v_label:=case v_field");
+    expect(migration).toContain("p_event='answer' and p_step_key='recap'");
     expect(migration).toContain("(f-'value')");
     expect(migration).toContain("v_facts:='[]'::jsonb");
     expect(migration).toContain("INTERVIEW_SENSITIVE_FACT_REJECTED");
@@ -34,6 +37,8 @@ describe("Intentful Interview security contract", () => {
     expect(migration).toContain("clock_timestamp()+interval '7 days'");
     expect(migration).toContain("result=jsonb_build_object('suppressed',true,'topic_key'");
     expect(migration).toContain("payload->>'source_id'=p_mission_id::text");
+    expect(migration).toContain("p_expected_source_revision integer");
+    expect(migration).toContain("DISCUSSION_REVISION_CONFLICT");
   });
 
   it("blocks legacy automatic memory writes for selected-play working turns", () => {

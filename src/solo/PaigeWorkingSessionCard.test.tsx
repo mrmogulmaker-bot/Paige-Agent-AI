@@ -149,4 +149,39 @@ describe("PaigeWorkingSessionCard", () => {
     await act(async () => root.unmount());
     host.remove();
   });
+  it("moves the final answer into recap with one atomic workflow write", async () => {
+    const active = session({ stepKey: "question_2", revision: 4 });
+    const recap = { ...active, status: "recap" as const, stepKey: "recap", revision: 5, proposedFacts: [] };
+    mocked.get.mockResolvedValue({ eligibleForFirstUse: false, session: active });
+    mocked.update.mockResolvedValue(recap);
+    const { host, root } = await renderCard(api({ activeThreadId: "thread-1" }), true);
+    const textarea = host.querySelector("textarea") as HTMLTextAreaElement;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textarea, "Founder-led agencies"); textarea.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => { (Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Review recap")) as HTMLButtonElement).click(); await Promise.resolve(); });
+    expect(mocked.update).toHaveBeenCalledTimes(1);
+    expect(mocked.update).toHaveBeenCalledWith(active, "answer", "recap", expect.objectContaining({ fieldKey: "idealCustomer", value: "Founder-led agencies" }));
+    expect(mocked.update.mock.calls[0][3]).not.toHaveProperty("label");
+    await act(async () => root.unmount()); host.remove();
+  });
+
+  it("recovers a persisted recap_pending session without parsing it as a question", async () => {
+    const pending = session({ stepKey: "recap_pending", revision: 5 });
+    mocked.get.mockResolvedValue({ eligibleForFirstUse: false, session: pending });
+    mocked.update.mockResolvedValue({ ...pending, status: "recap", stepKey: "recap", revision: 6 });
+    const { host, root } = await renderCard(api({ activeThreadId: "thread-1" }), true);
+    expect(host.textContent).toContain("Your answers are ready to review");
+    await act(async () => { (Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Review recap") as HTMLButtonElement).click(); await Promise.resolve(); });
+    expect(mocked.update).toHaveBeenCalledWith(pending, "recap", "recap");
+    await act(async () => root.unmount()); host.remove();
+  });
+
+  it("uses roving focus and arrow keys for interview paths", async () => {
+    const { host, root } = await renderCard(api());
+    const radios = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
+    expect(radios.map((radio) => radio.tabIndex)).toEqual([0, -1, -1, -1]);
+    await act(async () => { radios[0].focus(); radios[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
+    expect(radios[1].getAttribute("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(radios[1]);
+    await act(async () => root.unmount()); host.remove();
+  });
 });

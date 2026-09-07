@@ -27,7 +27,7 @@ export function DiscussionNeededCard({
     if (!discussion || busy) return;
     setBusy(true); setError(null);
     try {
-      await paigeDiscussionNeeded.respond(discussion.id, response);
+      await paigeDiscussionNeeded.respond(discussion.id, discussion.sourceRevision, response);
       if (response === "talk_now") onTalkNow(discussion);
       else setDiscussion(null);
     } catch {
