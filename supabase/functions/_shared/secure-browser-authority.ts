@@ -94,7 +94,7 @@ export async function resolveSecureBrowserAuthority(
     ]);
     if (!platformOwner && !directAdmin && !agencyManager) throw new Error("browser_actor_not_authorized");
   } else if (input.contactId) {
-    const contactTenantId = await deps.resolveContactTenant(input.contactId, activeTenantId);
+    const contactTenantId = await deps.resolveContactTenant(input.contactId, activeTenantId ?? undefined);
     if (!contactTenantId) throw new Error("browser_contact_not_available");
   }
 
