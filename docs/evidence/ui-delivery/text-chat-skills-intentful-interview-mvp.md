@@ -1,7 +1,7 @@
 # UI delivery evidence: Text-chat Skills and Intentful Interview MVP
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
-FLOW_BY_FLOW: PASS: grounded on current main 1443557a; affected paths cover Setup -> Paige Brief, Business Game Plan -> selected Strategic Play -> Paige, the dedicated Paige transcript, canonical Setup save/readback, Action Bus Discussion Needed, Rail, and account-change fences
+FLOW_BY_FLOW: PASS: grounded on current main 3f75ad58; affected paths cover Setup -> Paige Brief, Business Game Plan -> selected Strategic Play -> Paige, the dedicated Paige transcript, canonical Setup save/readback, Action Bus Discussion Needed, Rail, and account-change fences
 PAIGE_UI_DESIGN: PASS: repository Paige UI design and reference instructions were applied; the working session uses the existing Paige tokens, transcript scroll owner, action hierarchy, and truthful status language
 MATERIAL_FLOW_CHANGE: YES: adds three contextual entries into the one dedicated Paige workspace plus optional interview lifecycle and selective canonical confirmation
 FLOW_PROTOTYPE: PASS: owner-approved placement in this workstream requires no standalone Skills, Interview, Voice, or navigation destination; the real-component render harness preserves that contract
@@ -16,9 +16,17 @@ KEYBOARD_FOCUS: PASS: Tab order reaches all four focused paths, Skip, Start inte
 ZOOM_REFLOW: PASS: at 200% and 900x1000 there is no document horizontal overflow; the Paige transcript remains the internal scroll owner
 REDUCED_MOTION: PASS: reduced-motion media is honored and component transition duration resolves to 0.01ms
 STATE_COVERAGE: PASS: offer, skipped, active question, paused/resume, ended, recap with none/one/multiple selections, completed receipt, read failure, Discussion Needed available/unavailable, Talk now, Later, and topic dismissal
-TRUTHFUL_STATE_LABELS: PASS: MVP remains PARTIAL; unavailable decision read is explicit; authenticated persistence/Rail claims remain PROOF OWED; Mind and automatic Memory remain unavailable/deferred
+TRUTHFUL_STATE_LABELS: PASS: the UI and evidence distinguish the locally verified PARTIAL subset, explicit unavailable decision reads, disabled automatic Mind/Memory projection, and excluded production claims
 SOLO_UI: YES: Settings -> Setup / Paige Brief, Command Center -> Business Game Plan, and Paige -> Chat
 UNVERIFIED: new migration replay and authenticated preview behavior, including real owner permission, denied role, account switch, cross-tenant access, canonical Setup readback, Action Bus rows, and matching Rail evidence
+
+INTERNAL_BUILD_IDENTITY: 143a61dcee1abc68b1c87e9c8bef6e7fdffaa02e; deployment=NOT_APPLICABLE; environment=development; migrations=PROOF_OWED(local replay unavailable and no remote migration authorized); edge=PROOF_OWED(paige-ai-chat change is not deployed and no edge deployment authorized); evidence=docs/evidence/ui-delivery/text-chat-skills-intentful-interview-mvp.md and PR 1044 checks
+RELEASE_CHANNEL: development: draft PR 1044 and local rendered evidence only; no preview or production release claim
+RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible text-chat working-session capability pending final owner release decision
+CUSTOMER_RELEASE_IDENTITY: 0.1.0 — Governed Workspace Foundations; owner-decision=PENDING
+RELEASE_NOTE_REQUIRED: YES: a minor owner-visible capability requires a customer note if the owner later approves and the release gate is earned
+RELEASE_TRUTH_BOUNDARY: PROOF OWED: implementation and local UI behavior are proven, but migration, edge deployment, authenticated tenant canonical write/readback, and production Rail evidence are not complete
+RELEASE_RECOVERY: position=revert the exact MVP commits before any authorized deployment or forward-fix in the same bounded paths; reference=PR 1044 commit history and this evidence record
 
 SOLO_1536X770_PAIGE_CLOSED: PASS: scripts/live-drive/artifacts/intentful-interview-render/1536-770-light-discussion-discussion.png and dark counterpart; no document overflow
 SOLO_1536X770_PAIGE_OPEN: PASS: offer and recap light/dark frames in scripts/live-drive/artifacts/intentful-interview-render/; all controls reachable in the Paige transcript
