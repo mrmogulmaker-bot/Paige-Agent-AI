@@ -21,7 +21,7 @@ SOLO_UI: YES: Settings -> Setup / Paige Brief, Command Center -> Business Game P
 UNVERIFIED: new migration replay and authenticated preview behavior, including real owner permission, denied role, account switch, cross-tenant access, canonical Setup readback, Action Bus rows, and matching Rail evidence
 
 INTERNAL_BUILD_IDENTITY: e02c907f21ee2fc18406703a618c1910527e7c31; deployment=NOT_APPLICABLE; environment=development; migrations=PROOF_OWED(local replay unavailable and no remote migration authorized); edge=PROOF_OWED(paige-ai-chat change is not deployed and no edge deployment authorized); evidence=docs/evidence/ui-delivery/text-chat-skills-intentful-interview-mvp.md and PR 1044 checks
-SUPPORTING_EVIDENCE_HEAD: 7ae60f0dcfa9b3a3c65b29922080a1885da55e70; role=render artifacts, check record, and review-resolution evidence; subsequent commits may update metadata pointers only
+SUPPORTING_EVIDENCE_HEAD: 0abc442a2e6abd7d57ff5ec160c3aaf344f677c4; role=render artifacts, check record, and review-resolution evidence; subsequent commits may update metadata pointers only
 RELEASE_CHANNEL: development: draft PR 1044 and local rendered evidence only; no preview or production release claim
 RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible text-chat working-session capability pending final owner release decision
 CUSTOMER_RELEASE_IDENTITY: 0.1.0 — Governed Workspace Foundations; owner-decision=PENDING
