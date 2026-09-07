@@ -39,4 +39,11 @@ List every `LIVE`, `PARTIAL`, `UNAVAILABLE`, and `UNVERIFIED` claim and the cont
 
 ## Release
 
-Exact head, review result, required gate, deployment state, and production-verification boundary:
+<!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
+
+- Internal build identity: exact head SHA; deployment ID/environment when known; migrations; edge status; evidence:
+- Release channel and classification:
+- Customer release identity: none, or proposed version + name + owner-decision reference
+- Release-note requirement, audience/tier, benefits, limitations, owner action, rollback/recovery:
+- Exact `LIVE` / `PARTIAL` / `UNAVAILABLE` / `PROOF OWED` claims:
+- Second Brain + Master Reference updated, or exact collision-safe handoff:

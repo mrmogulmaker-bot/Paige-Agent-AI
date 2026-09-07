@@ -13,6 +13,13 @@ this doc covers the CI **quality gate**.
 | `Security Audit` | `.github/workflows/security-audit.yml` | `npm audit` prod deps, high+ |
 | `deploy-edge-functions` | `.github/workflows/deploy-edge-functions.yml` | auto-deploys changed edge functions on merge to `main` |
 
+<!-- RELEASE_GOVERNANCE_POLICY -->
+The `ci / verify` job also runs `lint:release-governance` and its self-test. The guard confirms that
+the canonical policy and schema exist, every required agent/PR/closeout entry point routes to them,
+and checked-in release records preserve the structural honesty rules. It does not prove a deployment
+or customer outcome; those still require the exact evidence defined in
+`docs/doctrine/release-governance-and-customer-update-policy.md`.
+
 ## The `ci / verify` gate (Lane F Slice 1 — PLATFORM_ASSESSMENT Move 4)
 
 Runs on every PR (and `push: main` for the whole-repo gates). Steps:

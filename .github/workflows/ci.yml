@@ -329,6 +329,20 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:integration-registry:test
 
+      # RELEASE_GOVERNANCE_POLICY: every agent/PR/closeout entry point must route to the one policy,
+      # and any checked-in customer release record must preserve exact build identity and honest state.
+      - name: Release governance policy and records are complete
+        if: ${{ !cancelled() }}
+        env:
+          # Historical release records compare with the CURRENT PR base, not the branch fork point:
+          # a stale branch must not erase a record that landed on main after it diverged.
+          RELEASE_GOVERNANCE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: npm run lint:release-governance
+
+      - name: Release-governance guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:release-governance:test
+
       - name: Action-risk guard catches what it claims to
         if: ${{ !cancelled() }}
         run: npm run lint:action-risk:test

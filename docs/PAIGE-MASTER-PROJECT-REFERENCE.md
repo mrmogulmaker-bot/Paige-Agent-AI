@@ -26,6 +26,8 @@ Before responding to ANY substantive request:
 2. **Read Section 5** — Current focus + gaps. This is what the platform genuinely needs next.
 3. **Read Section 7** — Sequential roadmap. Know what's queued so proposals fit the plan.
 4. **Read Section 10** — §13 corrections log. Cowork/CC/Codex have made memory mistakes; the corrections here prevent repeats.
+5. **Before any PR/merge/deploy/version/customer update, read the canonical release policy** —
+   `docs/doctrine/release-governance-and-customer-update-policy.md`. <!-- RELEASE_GOVERNANCE_POLICY -->
 
 If the request touches a specific slice, load the canonical deep doc for it from Section 9.
 
@@ -35,7 +37,9 @@ If the request touches a specific slice, load the canonical deep doc for it from
 2. **Update Section 5 status** — a gap closed, or a new one surfaced
 3. **Log §13 corrections in Section 10** if the work revealed the codebase disagreed with what someone claimed
 4. **Cross-post to the brain** (`docs/brain/` once PR #410 merges)
-5. **Commit** with message: `docs(master): update after <PR#/slice>`
+5. **Complete release governance** — exact build identity + channel always; customer version/name and
+   What's New only when the coherent outcome earns them.
+6. **Commit** with message: `docs(master): update after <PR#/slice>`
 
 ### Cowork paste-to-CC/Codex standard
 
@@ -149,6 +153,16 @@ relevant registry entry; before merge, update it with the actual capability/auth
 owner in the same commit. Enforced by `npm run lint:integration-registry` (CI). Distinct from
 `config-registry.md` (wiring names/IDs), `provider-result-contract.md` (runtime per-tenant state into
 Systems Check), and the Spine `registry.ts` / `tenant_mcp_connections` code registries (§18).
+
+### Release Governance & Customer Update Policy (MANDATORY)
+
+**`docs/doctrine/release-governance-and-customer-update-policy.md`** is the canonical release contract.
+It separates exact internal build identity, release channel, and an earned customer release identity;
+sets `0.x.y` for the Paige Solo Preview/founding period; defines patch/minor/major semantics, the
+customer announcement gate, required What's New format, truthful status language, machine-readable
+record schema, and the bounded future Updates UI direction. It does not replace this Master Project
+Reference or any domain ledger; it governs how their facts become release and customer claims.
+<!-- RELEASE_GOVERNANCE_POLICY -->
 
 ---
 

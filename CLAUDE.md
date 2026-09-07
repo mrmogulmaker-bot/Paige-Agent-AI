@@ -150,6 +150,13 @@ port what CD drew and say nothing about it. Works — it is mine, and nobody els
 2. **Before/at every MAJOR BUILD** — a new branch/feature routes back to the master doc; the plan is checked against Section 5 (gaps) + Section 7 (roadmap) so the build fits, and the merge updates Section 4/5/10 in the SAME PR.
 3. **Whenever you ask "do we HAVE this tool / feature / integration?"** — the answer is grounded against **Section 4 (SHIPPED)** FIRST, never from memory. Any capability claim ("we have X" / "we don't have X") that isn't checked against Section 4 is a §13 violation. If a grep disagrees with Section 4, CC's live-code check wins and the discrepancy is logged as a §13 correction in Section 10.
 
+<!-- RELEASE_GOVERNANCE_POLICY -->
+**Release-governance trigger (owner: Antonio, 2026-09-06).** Before opening or closing a PR, merging,
+deploying, assigning a version/name, or publishing a customer update, read
+`docs/doctrine/release-governance-and-customer-update-policy.md`. Keep exact internal build identity,
+release channel, and earned customer release identity separate. A deployment is not a customer release;
+customer publication still requires the policy's evidence gate and owner decision.
+
 **Single, single, single. That means ONE.** Do NOT create sibling reference docs. Do NOT fragment the source of truth across scattered files. If information is missing or wrong, UPDATE `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` IN PLACE and commit. That doc is the durability primitive.
 
 **When Cowork produces a paste for CC or Codex**, the paste ends with: *"Reference `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` first. Update Section 4 on merge. Log any §13 corrections in Section 10."* CC and Codex confirm read at start of every session. This kills the "did they know X was already built?" failure mode that's cost us hours.

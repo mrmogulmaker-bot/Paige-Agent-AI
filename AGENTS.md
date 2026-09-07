@@ -25,6 +25,12 @@ All states must be honest:
 
 A UI feature is not working merely because it renders, has fixtures, passes a structural test, or has an attestation. Claims require appropriate static, automated, rendered, behavioral, and authenticated-runtime evidence, with untested behavior labeled `UNVERIFIED`.
 
+## Release identity and customer updates
+
+<!-- RELEASE_GOVERNANCE_POLICY -->
+
+Before opening or closing a PR, merging, deploying, assigning a version, or describing a change to a customer, read `docs/doctrine/release-governance-and-customer-update-policy.md`. Record the exact internal build identity and release channel for every delivery. Create a customer release name/version only for a coherent owner-visible outcome that passes the policy's announcement gate. Never turn a commit, preview, prototype, shell, listed provider, or `PROOF OWED` capability into a `LIVE` customer claim.
+
 ## Evidence and review
 
 Every UI pull request must add a record under `docs/evidence/ui-delivery/` based on `docs/evidence/ui-delivery/TEMPLATE.md` and use `.github/PULL_REQUEST_TEMPLATE/ui-delivery.md`. The `ui-delivery-evidence` workflow checks recognized UI paths for that record. The guardrail validates structure only; reviewers must inspect the evidence and the user-visible flow.

@@ -98,7 +98,9 @@
     "lint:integration-registry:test": "node scripts/ci/integration-registry-lint.mjs --self-test",
     "smoke:secure-browser-security": "node scripts/secure-browser-security-smoke.mjs",
     "smoke:secure-browser-authority": "deno run -A scripts/secure-browser-authority-smoke.ts",
-    "smoke:secure-browser-egress": "node services/paige-browser/smoke-readonly-egress.mjs"
+    "smoke:secure-browser-egress": "node services/paige-browser/smoke-readonly-egress.mjs",
+    "lint:release-governance": "node scripts/ci/release-governance-lint.mjs",
+    "lint:release-governance:test": "node scripts/ci/release-governance-lint.mjs --self-test"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",
@@ -185,6 +187,8 @@
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react-swc": "^3.11.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
