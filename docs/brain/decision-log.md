@@ -243,6 +243,39 @@
   use export today; the gap is future fresh Solo tenants. doc-export 24/24, tsc ratchet 13/13, control-chars
   none, §50/§63 clean.
 
+- **Integration Capability Registry v1.1 — API Expense & Operations Layer + the "M1" disambiguation (2026-09-06, PR #1029, squash `1fee5418`; owner-authorized, incl. a mid-slice M1 terminology ruling).**
+  Extended the existing registry JSON (§18, no second registry): an `expense_and_operations` block on **all 20
+  providers** + **8 Public Presence roadmap items**, plus top-level `cost_tracks`, `expense_and_operations_schema`,
+  and `public_presence_roadmap`. Each block records cost responsibility (platform_paid/tenant_direct/shared/
+  pass_through/undecided) · billing + operational owner · pricing model + OFFICIAL source URL + checked-as-of ·
+  cost driver · rate limits/backoff · usage-review cadence · renewal/deprecation review · data/privacy/retention ·
+  money-movement + M1 dependency · receipt/reconciliation/Rail/pause-revoke · next owner/slice. Derived 4-section
+  view: `docs/integration-registry/expense-and-operations-report.md` (current platform operating deps ·
+  tenant-authorized integrations · future Agency/Enterprise · Public Presence roadmap GSC→GBP→Bing→Apple→Yelp→FB→
+  LinkedIn→directories). **THE "M1" DISAMBIGUATION (owner ruling 2026-09-06):** `cost_tracks` names two distinct
+  tracks — **internal LLM-cost metering** (operating-cost visibility, autonomy-architecture §8.4) vs **M1
+  real-money spend control** (external-provider spend backbone, §10). Any provider that can create purchases/
+  payments/ad-spend/bookkeeping/financial-obligations points to the real-money track — NEVER LLM-token metering;
+  the 8 spend-capable providers (Stripe, QuickBooks, Twilio, Meta, DocuSign, Platform Marketplace, n8n, Zapier +
+  roadmap ad/subscription paths) are guard-enforced, and unqualified "M1" is rejected. **Go-forward only —
+  historical closeouts NOT rewritten (§58).** **§13 pricing honesty:** this planning slice verified NO live
+  vendor prices — every `pricing_checked_as_of` is null, with the official source URL recorded where a provider
+  exists and an explicit `none — <reason>` where none is selected/internal (vault-ocr-dlp, paige-mcp-door, the
+  directory-network roadmap item); no price invented, no free plan assumed, custom/enterprise recorded honestly. **§38/R10:** provider API fees are recorded SEPARATELY
+  from customer money movement; Paige never merchant of record. **NOT a provider build** — installs nothing, holds
+  no credentials, calls no API, creates no billing commitment. **CI-enforced:** `scripts/ci/integration-registry-lint.mjs`
+  extended (require an expense block per provider + roadmap item; cost-responsibility/pricing-model/cost-driver/M1-track
+  vocab; real-money-mover MUST use the real-money track; bare-"M1" rejected; date-stamp requires an ISO date + a real
+  URL; approved roadmap sequence enforced) — 34-mutation self-test green. Made mandatory in-commit: master ref §4,
+  brain README index, `config-registry.md` cross-link, second-brain SKILL closeout row.
+  **CREW:** §39 adversarial verifier + §5 compliance officer both **SHIP** (no blocking finding); the one §39
+  finding (bare-M1 guard immunization hole) and three Codex P2 findings (validate pricing date/URL, enforce the
+  approved roadmap sequence, fix the report's PROPOSED/UNAVAILABLE-vs-Meta-PARTIAL contradiction) were all folded
+  (commits `e355bd2`→`9cf92c4`→`ad0565c`) and the Codex threads resolved. **OUTCOME — MERGED to `main`
+  (squash `1fee5418`, PR #1029); all checks green on head `ad0565c` (verify/audit/ui-delivery/Vercel).** Backlog
+  self-documented in the registry (`uncatalogued_wired_providers`, `known_owed_entries`, Registry Steward role
+  owner-owed); no NEW unrelated provider finding surfaced this slice.
+
 - **RE-2 M1-b — campaign + client/engagement scope caps (2026-09-06, owner-ruled required for M1 completeness).**
   Migration `20270103000000_re2_m1b_scope_caps.sql`. **DARK — ZERO producers**; proven with controlled fixtures
   inside `BEGIN..ROLLBACK`; no real payment/purchase/ad-spend/provider change. Extends the merged PR-1 substrate
