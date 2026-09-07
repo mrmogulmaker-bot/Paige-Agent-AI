@@ -22,7 +22,7 @@ describe("dedicated Solo chat — horizontal overflow is fixed at the source, no
     // below, content wraps so nothing is clipped — this only forecloses a stray future overflow.
     expect(CHAT).toMatch(/flex-1 min-h-0 overflow-y-auto overflow-x-hidden/);
     // still exactly one intentional vertical scroll owner, keyed for the Solo transcript
-    expect(CHAT).toMatch(/data-paige-transcript-scroll=\{soloTenantSafety \? "true" : undefined\}/);
+    expect(CHAT).toContain('data-paige-transcript-scroll="true"');
   });
 
   it("the message bubble (the app branch every live mount uses) carries min-w-0 so it can shrink", () => {

@@ -520,6 +520,7 @@ describe("Solo PAIGE workspace contract", () => {
       configurable: true,
       value: vi.fn(() => ({ matches: true })),
     });
+    transcript.dispatchEvent(new WheelEvent("wheel"));
     transcript.scrollTop = 120;
     await act(async () => transcript.dispatchEvent(new Event("scroll", { bubbles: true })));
     scrollTo.mockClear();

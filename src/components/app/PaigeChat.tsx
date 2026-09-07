@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, Loader2, Paperclip } from "lucide-react";
@@ -35,8 +35,10 @@ import { useClientPortalBrandState } from "@/hooks/useClientPortalBrand";
 import { readableTextOn } from "@/lib/brand/contrast";
 import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
+import { createAnchoredTranscriptScroll } from "@/components/chat/anchoredTranscriptScroll";
 
 type Message = {
+  id: string;
   role: "user" | "assistant";
   content: string;
   documentFileName?: string;
@@ -44,6 +46,18 @@ type Message = {
   /** Inline extraction proposal rendered as a confirmation card after this message. */
   extractionProposal?: ExtractionProposal;
 };
+
+const safeMessageId = (): string => {
+  try {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch { /* fall through */ }
+  return `m-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const mkMessage = (message: Omit<Message, "id"> & Partial<Pick<Message, "id">>): Message => ({
+  ...message,
+  id: message.id ?? safeMessageId(),
+});
 
 interface PaigeChatProps {
   user: User;
@@ -94,10 +108,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   );
 
   const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: playbook.persona.greeting,
-    },
+    mkMessage({ role: "assistant", content: playbook.persona.greeting }),
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -105,9 +116,25 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const [steps, setSteps] = useState<PaigeStep[]>([]);
   // #11 — true once the first answer token arrives this turn (label flips Thinking→Writing).
   const [writingPhase, setWritingPhase] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+  // This surface does not hydrate durable message IDs after a remount. Scope its
+  // scroll record to this mounted conversation so a stale ID can never strand a
+  // fresh transcript in an incorrectly unpinned state.
+  const transcriptSessionKeyRef = useRef(`paige-normal-transcript-position-v1:${safeMessageId()}`);
+  const transcriptScrollRef = useRef<ReturnType<typeof createAnchoredTranscriptScroll> | null>(null);
+  if (!transcriptScrollRef.current) {
+    transcriptScrollRef.current = createAnchoredTranscriptScroll({
+      storagePrefix: transcriptSessionKeyRef.current,
+    });
+  }
+  const transcriptContext = `${user.id}:${clientId ?? "self"}`;
+  const setTranscriptElement = useCallback((node: HTMLDivElement | null) => {
+    transcriptScrollRef.current?.attach(node);
+  }, []);
+  const syncTranscriptPosition = useCallback(() => {
+    transcriptScrollRef.current?.handleScroll();
+  }, []);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const sessionIdRef = useRef<string>(crypto.randomUUID());
@@ -119,12 +146,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
     if (!hasCreditData) {
       contextInjectedRef.current = true;
-      setMessages([
-        {
-          role: "assistant",
-          content: playbook.persona.greeting,
-        },
-      ]);
+      setMessages([mkMessage({ role: "assistant", content: playbook.persona.greeting })]);
       return;
     }
 
@@ -192,7 +214,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         }
 
         if (greeting.trim()) {
-          setMessages([{ role: "assistant", content: greeting.trim() }]);
+          setMessages([mkMessage({ role: "assistant", content: greeting.trim() })]);
         }
         setIsLoading(false);
       } catch {
@@ -230,23 +252,21 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       contextInjectedRef.current = false;
       resetSession();
       setInput("");
-      setMessages([
-        {
-          role: "assistant",
-          content: playbook.persona.greeting,
-        },
-      ]);
+      transcriptScrollRef.current?.jumpToBottom("auto");
+      setMessages([mkMessage({ role: "assistant", content: playbook.persona.greeting })]);
     };
 
     window.addEventListener("paige-factory-reset", handleFactoryReset);
     return () => window.removeEventListener("paige-factory-reset", handleFactoryReset);
   }, [resetSession, playbook.persona.greeting]);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+  useLayoutEffect(() => {
+    transcriptScrollRef.current?.setContext(transcriptContext);
+  }, [transcriptContext]);
+
+  useLayoutEffect(() => {
+    transcriptScrollRef.current?.notifyLayoutChange();
+  }, [messages, steps, isLoading, writingPhase]);
 
   const resetInactivityTimer = useCallback(() => {
     trackActivity();
@@ -320,11 +340,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
     resetInactivityTimer();
 
-    const userMessage: Message = {
-      role: "user",
-      content: messageText.trim() || (attachedDoc ? `Analyze this document: ${attachedDoc.name}` : ""),
-      documentFileName: attachedDoc?.name,
-    };
+    const userMessage = mkMessage({ role: "user", content: messageText.trim() || (attachedDoc ? `Analyze this document: ${attachedDoc.name}` : ""), documentFileName: attachedDoc?.name });
     const isFirstUserMessage = messages.every((m) => m.role !== "user");
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
@@ -414,8 +430,9 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       let textBuffer = "";
       let streamDone = false;
       let syncStatus: SyncStatus | null = null;
+      const assistantId = safeMessageId();
 
-      setMessages([...newMessages, { role: "assistant", content: "" }]);
+      setMessages([...newMessages, mkMessage({ id: assistantId, role: "assistant", content: "" })]);
       setSteps([]); // clear last turn's reasoning as this one starts
       setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
 
@@ -454,7 +471,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             if (content) {
               if (!assistantMessage) setWritingPhase(true); // #11 — first token → "Writing…"
               assistantMessage += content;
-              setMessages([...newMessages, { role: "assistant", content: assistantMessage }]);
+              setMessages([...newMessages, mkMessage({ id: assistantId, role: "assistant", content: assistantMessage })]);
             }
           } catch {
             textBuffer = line + "\n" + textBuffer;
@@ -469,7 +486,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         if (syncStatus) {
           setMessages(prev => [
             ...prev,
-            { role: "assistant", content: "", syncStatus },
+            mkMessage({ role: "assistant", content: "", syncStatus }),
           ]);
           queryClient.invalidateQueries({ queryKey: ["credit-factors"] });
           queryClient.invalidateQueries({ queryKey: ["credit-factors-history"] });
@@ -502,7 +519,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
                     return next;
                   }
                 }
-                next.push({ role: "assistant", content: "", extractionProposal: finalProposal });
+                next.push(mkMessage({ role: "assistant", content: "", extractionProposal: finalProposal }));
                 return next;
               });
             }
@@ -585,9 +602,9 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
-        {messages.map((message, index) => (
-          <div key={index} className={`flex gap-2 sm:gap-3 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+      <div ref={setTranscriptElement} data-paige-transcript-scroll="true" aria-label="PAIGE conversation" tabIndex={0} onScroll={syncTranscriptPosition} className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
+        {messages.map((message) => (
+          <div key={message.id} data-paige-message-id={message.id} className={`flex gap-2 sm:gap-3 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
             {message.role === "assistant" && (
               <img src={paigeAvatar} alt="Paige" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-accent flex-shrink-0" />
             )}
