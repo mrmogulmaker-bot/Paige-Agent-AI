@@ -23,7 +23,7 @@ SOLO_UI: NO: REPLACE_ME with why this is not a Solo interface
 UNVERIFIED: REPLACE_ME with remaining behavior and reason, or state none with the completed proof boundary
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: REPLACE_ME_SHA; deployment=REPLACE_ME; environment=REPLACE_ME; migrations=REPLACE_ME; edge=REPLACE_ME; evidence=REPLACE_ME
+INTERNAL_BUILD_IDENTITY: REPLACE_ME_SHA; deployment=REPLACE_ME; environment=REPLACE_ME; migrations=REPLACE_ME (`NOT_APPLICABLE` or `APPLIED(<exact IDs>)`); edge=REPLACE_ME (`NOT_APPLICABLE` or `APPLIED(<function@version>)`); evidence=REPLACE_ME
 RELEASE_CHANNEL: REPLACE_ME: channel evidence or reason; staged requires owner-approval=...; eligibility=...; amount=...; start=...; stop=...; monitoring-owner=...; recovery=...
 RELEASE_CLASSIFICATION: REPLACE_ME: classification reason
 CUSTOMER_RELEASE_IDENTITY: REPLACE_ME as `none: reason` or `<version> — <release name>; owner-decision=<reference-or-PENDING>`

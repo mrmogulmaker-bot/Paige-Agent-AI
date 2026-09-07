@@ -84,6 +84,7 @@ function requireApproval(value, label, expectedScope, allowedStatuses, findings)
   if (value.scope !== expectedScope) findings.push(`${label}.scope must be ${expectedScope}`);
   if (!allowedStatuses.includes(value.status)) findings.push(`${label}.status invalid`);
   if (!nonEmpty(value.reference)) findings.push(`${label}.reference missing`);
+  else if (value.status === "APPROVED" && /\b(?:todo|tbd|placeholder|replace_me|pending|unknown|none|n\/?a|not applicable|proof owed)\b/i.test(value.reference)) findings.push(`${label}.reference must identify a completed approval decision`);
 }
 
 function validDate(value) {
@@ -166,7 +167,10 @@ export function validateReleaseRecord(record) {
       if (!validDateTime(build?.deployed_at)) findings.push(`${label}.deployed_at must be an ISO date-time`);
       if (build?.release_channel === "staged") {
         if (requireExactObject(build?.staged_rollout, STAGED_KEYS, `${label}.staged_rollout`, findings)) {
-          for (const field of STAGED_TEXT_KEYS) if (!nonEmpty(build.staged_rollout[field])) findings.push(`${label}.staged_rollout.${field} missing`);
+          for (const field of STAGED_TEXT_KEYS) {
+            const value = String(build.staged_rollout[field] || "").trim();
+            if (!nonEmpty(value) || /\b(?:todo|tbd|placeholder|replace_me|pending|unknown|none|n\/?a|not applicable|proof owed)\b/i.test(value)) findings.push(`${label}.staged_rollout.${field} must be a completed non-placeholder value`);
+          }
           requireApproval(build.staged_rollout.owner_approval, `${label}.staged_rollout.owner_approval`, "staged_rollout", ["APPROVED"], findings);
           if (record.customer_release_identity && build.staged_rollout.owner_approval?.reference === record.customer_release_identity.owner_approval?.reference)
             findings.push(`${label}.staged_rollout.owner_approval.reference must be distinct from customer publication approval`);
@@ -345,6 +349,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["accepts staged build with rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, false],
     ["rejects staged build without rollout approval", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
     ["rejects pending staged rollout approval", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: { ...stagedApproval, status: "PENDING" }, eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
+    ["rejects placeholder approved publication reference", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: "pending" } } }, true],
+    ["rejects placeholder staged rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "TBD", rollout_amount: "pending", start_condition: "TODO", stop_condition: "unknown", monitoring_owner: "none", recovery_path: "N/A" } }] }, true],
     ["rejects staged approval reused for publication", { ...valid, customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: stagedApproval.reference } }, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
     ["rejects applied migration without identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: [], proof_owed: null } }] }, true],
     ["rejects schema-forbidden extra property", { ...valid, invented: true }, true],

@@ -178,9 +178,14 @@ export function validateEvidenceText(text, classification) {
   if (!releaseChannel) errors.push("RELEASE_CHANNEL must name a governed channel and evidence/reason.");
   const buildEnvironment = /\benvironment\s*=\s*(local|development|preview|production)\b/i.exec(buildIdentity)?.[1]?.toLowerCase();
   const deploymentId = /\bdeployment\s*=\s*([^;\s]+)/i.exec(buildIdentity)?.[1];
+  const deliveryValue = (field) => new RegExp(`\\b${field}\\s*=\\s*([^;]+)`, "i").exec(buildIdentity)?.[1]?.trim();
+  for (const field of ["migrations", "edge"]) {
+    const value = deliveryValue(field) ?? "";
+    if (/^APPLIED$/i.test(value) || (/^APPLIED\b/i.test(value) && (!/^APPLIED\([^)]+\)$/i.test(value) || hasPlaceholder(value)))) errors.push(`${field} APPLIED state must include exact identifiers as APPLIED(...).`);
+  }
   if (releaseChannel === "development" && !["local", "development"].includes(buildEnvironment)) errors.push("Development RELEASE_CHANNEL requires local/development build environment.");
   if (releaseChannel === "preview" && buildEnvironment !== "preview") errors.push("Preview RELEASE_CHANNEL requires preview build environment.");
-  if (["production", "staged"].includes(releaseChannel) && (buildEnvironment !== "production" || /^(?:NOT_APPLICABLE|PROOF_OWED)$/i.test(deploymentId ?? ""))) errors.push("Production/staged RELEASE_CHANNEL requires a production build environment and exact deployment ID.");
+  if (["production", "staged"].includes(releaseChannel) && (buildEnvironment !== "production" || /\b(?:NOT_APPLICABLE|PROOF_OWED|TODO|TBD|PLACEHOLDER|REPLACE_ME|PENDING|UNKNOWN|NONE|N\/?A)\b/i.test(deploymentId ?? ""))) errors.push("Production/staged RELEASE_CHANNEL requires a production build environment and exact deployment ID.");
   const releaseClassification = /^(internal-only|patch|minor-candidate|major-candidate):\s*\S.+$/i.exec(fields.get("RELEASE_CLASSIFICATION") ?? "")?.[1]?.toLowerCase();
   if (!releaseClassification) errors.push("RELEASE_CLASSIFICATION must name a governed classification and reason.");
   const customerIdentity = fields.get("CUSTOMER_RELEASE_IDENTITY") ?? "";

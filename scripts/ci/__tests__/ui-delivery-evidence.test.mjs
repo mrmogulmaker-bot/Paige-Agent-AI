@@ -143,6 +143,21 @@ test("cross-checks release channel against build environment and deployment", ()
   assert.equal(production.ok, true, production.errors.join("\n"));
 });
 
+test("requires identifiers for applied migration and edge states", () => {
+  const bareApplied = validateEvidenceText(coreEvidence.replace("migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE", "migrations=APPLIED; edge=APPLIED"), { required: true, solo: false });
+  assert.equal(bareApplied.ok, false);
+  assert.match(bareApplied.errors.join("\n"), /APPLIED state must include exact identifiers/);
+
+  const exactApplied = validateEvidenceText(coreEvidence.replace("migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE", "migrations=APPLIED(202609070001_example); edge=APPLIED(paige-example@v3)"), { required: true, solo: false });
+  assert.equal(exactApplied.ok, true, exactApplied.errors.join("\n"));
+});
+
+test("rejects anticipated production deployment IDs", () => {
+  const anticipated = validateEvidenceText(coreEvidence.replace("INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=NOT_APPLICABLE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=PR-checks", "INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=pending; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=production-checks").replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: production: awaiting deployment"), { required: true, solo: false });
+  assert.equal(anticipated.ok, false);
+  assert.match(anticipated.errors.join("\n"), /exact deployment ID/);
+});
+
 test("requires notes for minor and major candidates", () => {
   const minorWithoutNote = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", "CUSTOMER_RELEASE_IDENTITY: 0.2.0 — Governed Capability; owner-decision=PENDING"), { required: true, solo: false });
   assert.equal(minorWithoutNote.ok, false);
