@@ -347,9 +347,11 @@ export function createAnchoredTranscriptScroll({
       if (element && position.kind === "anchor") {
         const incomingPosition = position;
         const items = Array.from(element.querySelectorAll<HTMLElement>(MESSAGE_SELECTOR));
+        // Content can legitimately repeat across threads. Only the persisted,
+        // thread-owned ID proves this is the incoming DOM; semantic matching is
+        // safe only after the mounted message-ID set changes.
         const incomingAnchorIsMounted = items.some((item) =>
-          item.dataset.paigeMessageId === incomingPosition.messageId
-          || (!!incomingPosition.semanticKey && item.dataset.paigeMessageAnchorKey === incomingPosition.semanticKey));
+          item.dataset.paigeMessageId === incomingPosition.messageId);
         pendingContextDomSignature = incomingAnchorIsMounted ? null : messageDomSignature();
       } else {
         pendingContextDomSignature = null;

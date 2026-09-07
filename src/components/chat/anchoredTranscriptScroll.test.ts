@@ -204,7 +204,7 @@ describe("createAnchoredTranscriptScroll", () => {
       kind: "anchor", messageId: "old-y", semanticKey: "message:y", indexFromStart: 1, indexFromEnd: 0, offsetPx: -55,
     }));
     const { element, render } = transcriptFixture(geometry);
-    render(["a", "b", "c", "d"]);
+    render(["a", "b", "c", "d"], { b: "message:y" });
     const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-deferred-thread" });
     controller.setContext("thread-a");
     controller.attach(element);
