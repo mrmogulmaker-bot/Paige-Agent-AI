@@ -227,20 +227,16 @@ Per the attention-register one-copy rule, these are recorded here with exact evi
 should become GitHub issues before any Phase-1 build (I have **not** auto-filed to avoid duplicates —
 the owner/Codex may already track some).
 
-1. **RESOLVED AND DEPLOYED IN #1042 — G5 page-initiated writes not method-gated** (`services/paige-browser/server.js:328-334`): the
-   `page.route("**/*")` interceptor gates host/SSRF only, not HTTP method, with page JS on, so a
-   visited page's own script could POST to a public host. **Already tracked** (Codex P1, 2026-09-05).
-   Blocks any "read-only by construction" claim on the research path until fixed.
-2. **RESOLVED AND DEPLOYED IN #1042 — `browser_use_sessions` lacked `tenant_id` and server authority**
-   (`20260630013855`, legacy role-based RLS). The table is **actively written by the live
-   `browse_public_url` skill path** (`_shared/skill-interpreter.ts:198-229`, service-role, scoped only by
-   `related_contact_id`); only the Browserbase `browser-use` EDGE FUNCTION is inert. **The `browser-use`
-   revival blocker is bigger than adding `tenant_id`:** `browser-use/index.ts:17-31` trusts caller-supplied
-   `related_contact_id`/`related_business_id`/`invoker_*` and uses a **service-role client without deriving
-   or authorizing the tenant from the JWT**, so any gateway-admitted caller could act under arbitrary
-   attribution and (once creds are set) consume billable capacity. Required: (a) a **server-resolved
-   tenant/admin gate** (JWT-derived, never body) on every `browser_use_sessions` writer, and (b) `tenant_id`
-   on the table. *(New — recommend an issue; surfaced by the Codex peer-gate.)*
+1. **RESOLVED AND DEPLOYED IN #1042 — G5 page-initiated writes were not method-gated.**
+   The released route guard now blocks non-read HTTP methods, popup writes, WebSockets, service
+   workers, and private-host popup attempts in both browser routes. Hostile-page runtime proof and
+   Fly deployment evidence are recorded in §12.
+2. **RESOLVED AND DEPLOYED IN #1042 — `browser_use_sessions` lacked `tenant_id` and server authority.**
+   Migration `20260907023754` added required server-resolved tenant attribution, forced RLS and a
+   preserving legacy quarantine. Direct actors now authenticate before contact lookup; related
+   records are tenant-constrained; canonical browser grants are reused; platform-owner provenance is
+   explicit; and absent/foreign contacts fail with one normalized refusal. Production persistence
+   and affected Edge deployment are recorded in §12.
 3. **`growth-process-submission/index.ts:592`** — in-code note of a `platform_decrypt` against a
    "not tenant-scoped" table; confirm the decrypted value is not returned cross-tenant. *(New —
    recommend an owed-verification issue; flagged by the security scout, not confirmed a leak.)*
