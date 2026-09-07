@@ -197,7 +197,7 @@ function isUnresolvedRestatement(value) {
     .filter(Boolean);
   const connectorClause = /\b(?:because|due to|blocked by|awaiting|for|until|while)\b\s+(.+)$/i.exec(normalized)?.[1] ?? "";
   const hasConnectorReason = substantiveTerms(connectorClause).length >= 2;
-  const hasIndependentCause = raw.split(/[;—]/).some((clause) => {
+  const hasIndependentCause = raw.split(/[:;,.!?—–]+/).some((clause) => {
     const normalizedClause = normalizeSentinel(clause);
     return normalizedClause && !pair.test(normalizedClause) && substantiveTerms(normalizedClause).length >= 2;
   });
