@@ -12,6 +12,7 @@ describe("Paige voice profile SQL contract", () => {
     expect(sql).toMatch(/auth\.role\(\)\s*<>\s*'service_role'/);
     expect(sql).toContain("'cgSgspJ2msm6clMCkdW9'");
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.set_paige_voice_profile_internal[\s\S]*authenticated/);
+    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.activate_paige_voice_profile_internal[\s\S]*authenticated/);
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.resolve_paige_voice_profile_internal[\s\S]*authenticated/);
     expect(sql).toMatch(/REVOKE ALL ON TABLE public\.paige_voice_provider_verifications, public\.paige_voice_profiles, public\.paige_voice_readiness, public\.paige_voice_cost_reservations FROM PUBLIC, anon, authenticated/);
     expect(sql).not.toContain("admin_app_settings");
@@ -38,12 +39,15 @@ describe("Paige voice profile SQL contract", () => {
   });
 
   it("enforces an atomic hard-cost reservation before provider work", () => {
-    expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.paige_voice_cost_reservations");
+    const costTable = sql.slice(sql.indexOf("CREATE TABLE IF NOT EXISTS public.paige_voice_cost_reservations"), sql.indexOf("ALTER TABLE public.paige_voice_provider_verifications"));
+    expect(costTable).toContain("CREATE TABLE IF NOT EXISTS public.paige_voice_cost_reservations");
+    expect(costTable).not.toMatch(/actor_user_id uuid NOT NULL REFERENCES auth\.users\(id\) ON DELETE CASCADE/);
     expect(sql).toContain("FOR UPDATE");
     expect(sql).toContain("_used+_reserve>_ready.hard_cost_limit_usd");
     expect(sql).toContain("PAIGE_VOICE_HARD_COST_LIMIT");
     expect(sql).toContain("state IN ('reserved','committed')");
     expect(sql).toContain("_outcome NOT IN ('committed','released')");
+    expect(sql).toMatch(/activate_paige_voice_profile_internal[\s\S]*set_paige_voice_readiness_internal[\s\S]*set_paige_voice_profile_internal/);
     expect(sql).toMatch(/REVOKE ALL ON TABLE[\s\S]*public\.paige_voice_cost_reservations[\s\S]*authenticated/);
   });
 

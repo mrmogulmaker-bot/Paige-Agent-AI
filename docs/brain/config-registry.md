@@ -304,7 +304,10 @@ minimum key scopes, exact voice authorization, realtime STT eligibility/concurre
 calendar-month UTC hard cost ceiling, approved maximum price per 1,000 characters, and retention
 posture. The service-only reservation seam locks readiness before every uncached provider TTS call,
 counts reserved plus committed usage, allows the exact cap, rejects over-cap work before provider
-contact, and conservatively retains a reservation if final settlement cannot be proven. Canonical
+contact, and releases only a typed pre-dispatch missing-key refusal. Ambiguous provider outcomes and
+settlement faults remain counted; actor deletion cannot erase spend history. Profile activation is
+one transactional proof/readiness/profile RPC, so a failed replacement cannot leave transport
+enabled. Canonical
 provider proof is re-read at profile resolution and reservation time, so later revocation fails
 closed. Zero Retention Mode is never assumed: a provider warning
 that it was requested but not applied is a failed privacy gate. No hosted provider agent is owned or

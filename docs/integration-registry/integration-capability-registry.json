@@ -537,7 +537,7 @@
         "renewal_deprecation_review": "Quarterly provider API/model/privacy review and before changing an approved voice-profile revision.",
         "data_privacy_retention": "Zero Retention Mode is not assumed. If requested-but-not-applied or otherwise unconfirmed for the account/session, realtime audio remains disabled. Raw audio/transcript is not durable Paige knowledge.",
         "money_movement": { "can_move_real_money": false, "m1_dependency_track": "none", "detail": "Voice usage is a metered platform operating cost, not permission to purchase or move customer funds; the separate Paige hard ceiling is required before enablement." },
-        "receipt_reconciliation": "Provider request/session usage identifiers reconcile to the Paige voice session and platform cost meter; no provider receipt is recorded while disabled.",
+        "receipt_reconciliation": "Provider request/session usage identifiers reconcile to the Paige voice session and platform cost meter; ambiguous post-dispatch failures remain reserved and actor deletion cannot erase current-month spend. No provider receipt is recorded while disabled.",
         "rail_outcome": "No provider-side business outcome. Paige's canonical governed action owns verification, detailed receipt, and Rail evidence.",
         "pause_revoke_path": "Disable transport readiness, revoke any canonical verification flag, revoke the backend credential, or deactivate the profile revision; profile resolution and cost reservation re-read proof and fail closed.",
         "next_owner": "Authorized platform operator",

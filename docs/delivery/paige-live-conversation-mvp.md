@@ -2,7 +2,7 @@
 
 **Workstream:** dedicated Paige Live Conversation, separate from Skills and Intentful Interview
 
-**Grounded base:** `origin/main` at `6e93b1106d4ecd5593deaafd2a7c2ca269ea3fc5`
+**Grounded base:** `origin/main` at `ae0a16a0d5147a4652a06925356c427c4d543d56`
 
 **Product status:** Paige-owned UI and control plane implemented; provider-backed realtime audio
 remains `PROOF OWED`; authenticated owner production proof remains `UNVERIFIED` until deployment.
@@ -49,8 +49,11 @@ Brain, Mind, or Memory facts.
   even if a previously written readiness snapshot still says enabled.
 - Provider TTS is preceded by an atomic, service-only calendar-month UTC cost reservation under the
   approved hard account ceiling and conservative per-1,000-character price ceiling. Cache hits do not
-  reserve spend; provider failures release it; success commits it. A settlement fault leaves the
-  reservation counted and withholds audio, deliberately over-counting rather than exceeding the cap.
+  reserve spend; only a typed, provably pre-dispatch missing-key failure releases it; success commits
+  it. Ambiguous network/HTTP/body failures and settlement faults remain counted and withhold audio,
+  deliberately over-counting rather than exceeding the cap. Cost rows survive actor deletion.
+- Operator activation is one transactional service-only RPC: proof locking, readiness, and active
+  profile replacement either all commit or all roll back.
 - Studio narration's former request-selected provider route now fails closed as `UNAVAILABLE` until
   it is attached to this same profile/readiness resolver.
 

@@ -7,8 +7,9 @@
   plane is fail closed; provider-backed realtime audio remains `PROOF OWED` until account scope,
   voice, retention/ZRM, quota, concurrency, and hard-cost evidence exists. Canonical proof is re-read
   after activation, and every uncached TTS call must atomically reserve against the approved monthly
-  hard ceiling before provider contact. The historical literal and request-level Paige voice
-  selection paths are superseded.
+  hard ceiling before provider contact. Ambiguous provider outcomes remain counted, cost survives
+  actor deletion, and operator readiness/profile activation is one transaction. The historical
+  literal and request-level Paige voice selection paths are superseded.
 
 - **OWNER-LOCKED — Paige is modality-neutral (2026-09-06).** Text chat, Live Conversation, future
   phone/SIP, Secure Browser interactions, contextual handoffs, and platform cards are interfaces to

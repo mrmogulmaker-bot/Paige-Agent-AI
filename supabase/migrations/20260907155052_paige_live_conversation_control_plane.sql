@@ -65,7 +65,9 @@ CREATE TABLE IF NOT EXISTS public.paige_voice_cost_reservations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   request_ref uuid NOT NULL UNIQUE,
   tenant_id uuid REFERENCES public.tenants(id) ON DELETE SET NULL,
-  actor_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  -- Immutable audit snapshot: intentionally no auth.users FK, so actor deletion cannot erase
+  -- reserved/committed provider spend and reopen the account hard ceiling.
+  actor_user_id uuid NOT NULL,
   profile_revision text NOT NULL,
   character_count integer NOT NULL CHECK (character_count>0),
   reserved_usd numeric NOT NULL CHECK (reserved_usd>0),
@@ -167,6 +169,21 @@ BEGIN
   RETURN jsonb_build_object('transport_enabled',_transport_enabled,'availability',_availability,'updated_at',now());
 END; $$;
 
+CREATE OR REPLACE FUNCTION public.activate_paige_voice_profile_internal(
+  _profile_id text,_paige_facing_name text,_revision text,_provider text,
+  _provider_voice_ref text,_speech_policy jsonb,_effective_at timestamptz,
+  _actor_user_id uuid,_provider_verification_id uuid
+) RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path TO 'public' AS $$
+DECLARE _verification public.paige_voice_provider_verifications%ROWTYPE; _result jsonb;
+BEGIN
+  IF auth.role()<>'service_role' THEN RAISE EXCEPTION 'PAIGE_VOICE_ACTIVATION_FORBIDDEN' USING ERRCODE='42501'; END IF;
+  SELECT * INTO _verification FROM public.paige_voice_provider_verifications WHERE id=_provider_verification_id AND provider=_provider AND provider_voice_ref=_provider_voice_ref FOR UPDATE;
+  IF _verification.id IS NULL THEN RAISE EXCEPTION 'PAIGE_VOICE_PROFILE_CANONICAL_PROOF_REQUIRED' USING ERRCODE='22023'; END IF;
+  PERFORM public.set_paige_voice_readiness_internal(true,'PARTIAL','PARTIAL','PARTIAL',true,true,true,true,true,_verification.hard_cost_limit_usd,_verification.max_usd_per_1000_chars,_verification.id,_verification.evidence_ref,_verification.verified_at,_actor_user_id);
+  _result:=public.set_paige_voice_profile_internal('active',_profile_id,_paige_facing_name,_revision,_provider,_provider_voice_ref,true,_speech_policy,_effective_at,_actor_user_id,_verification.id,_verification.verified_at,_verification.evidence_ref);
+  RETURN _result;
+END; $$;
+
 CREATE OR REPLACE FUNCTION public.resolve_paige_voice_profile_internal(_session_started_at timestamptz)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
 DECLARE _profile public.paige_voice_profiles%ROWTYPE; _ready public.paige_voice_readiness%ROWTYPE; _verification public.paige_voice_provider_verifications%ROWTYPE;
@@ -261,6 +278,7 @@ BEGIN
 END; $$;
 
 REVOKE ALL ON FUNCTION public.set_paige_voice_profile_internal(text,text,text,text,text,text,boolean,jsonb,timestamptz,uuid,uuid,timestamptz,text) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.activate_paige_voice_profile_internal(text,text,text,text,text,jsonb,timestamptz,uuid,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.set_paige_voice_readiness_internal(boolean,text,text,text,boolean,boolean,boolean,boolean,boolean,numeric,numeric,uuid,text,timestamptz,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.resolve_paige_voice_profile_internal(timestamptz) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.paige_live_session_start_internal(uuid,uuid,text,text) FROM PUBLIC,anon,authenticated;
@@ -269,6 +287,7 @@ REVOKE ALL ON FUNCTION public.paige_live_session_end_stale_internal(uuid,uuid) F
 REVOKE ALL ON FUNCTION public.reserve_paige_voice_cost_internal(uuid,uuid,text,uuid,integer) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.settle_paige_voice_cost_internal(uuid,uuid,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.set_paige_voice_profile_internal(text,text,text,text,text,text,boolean,jsonb,timestamptz,uuid,uuid,timestamptz,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.activate_paige_voice_profile_internal(text,text,text,text,text,jsonb,timestamptz,uuid,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_paige_voice_readiness_internal(boolean,text,text,text,boolean,boolean,boolean,boolean,boolean,numeric,numeric,uuid,text,timestamptz,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.resolve_paige_voice_profile_internal(timestamptz) TO service_role;
 GRANT EXECUTE ON FUNCTION public.paige_live_session_start_internal(uuid,uuid,text,text) TO service_role;

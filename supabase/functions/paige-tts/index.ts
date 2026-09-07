@@ -30,6 +30,7 @@ import {
   synthesizeSpeechStream,
 } from "../_shared/tts-router.ts";
 import { elevenlabsTts } from "../_shared/elevenlabs.ts";
+import { NeedsConfigError } from "../_shared/provider-types.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -215,14 +216,20 @@ serve(async (req: Request) => {
         try {
           res = await elevenlabsTts({ text: capped, voiceId: attempt.voiceId, modelId: attempt.model });
         } catch (e) {
-          await admin.rpc("settle_paige_voice_cost_internal", { _reservation_id: reservationId, _actor_user_id: user.id, _outcome: "released" });
+          // Only a typed missing-key failure is provably pre-dispatch: elevenlabsTts resolves the
+          // key before fetch. Every network, HTTP, body-read, or empty-audio failure is ambiguous
+          // after dispatch and must remain reserved so retries cannot exceed real provider spend.
+          if (e instanceof NeedsConfigError) {
+            await admin.rpc("settle_paige_voice_cost_internal", { _reservation_id: reservationId, _actor_user_id: user.id, _outcome: "released" });
+          }
           lastErr = (e as Error)?.message ?? "elevenlabs_error";
           console.error("[paige-tts] selected provider attempt failed:", lastErr);
           continue;
         }
         const bytes = res.artifact_bytes;
         if (!bytes || bytes.length === 0) {
-          await admin.rpc("settle_paige_voice_cost_internal", { _reservation_id: reservationId, _actor_user_id: user.id, _outcome: "released" });
+          // Defensive only: the adapter already rejects empty bodies. Keep the reservation counted
+          // because the request crossed the provider boundary.
           lastErr = "elevenlabs_empty_bytes";
           continue;
         }

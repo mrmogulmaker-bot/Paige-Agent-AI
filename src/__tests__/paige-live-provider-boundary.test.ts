@@ -19,7 +19,7 @@ describe("Paige voice provider boundary", () => {
     expect(tts).toContain("voice_override_not_allowed");
   });
 
-  it("reserves the hard-cost budget before provider entry, releases failures, and skips reservation on cache hits", () => {
+  it("reserves before provider entry, releases only typed pre-dispatch failures, and keeps ambiguous failures counted", () => {
     const reserve = tts.indexOf('rpc("reserve_paige_voice_cost_internal"');
     const provider = tts.indexOf("elevenlabsTts({");
     const cache = tts.indexOf("download(cachePath)");
@@ -27,8 +27,11 @@ describe("Paige voice provider boundary", () => {
     expect(cache).toBeLessThan(reserve);
     expect(reserve).toBeGreaterThan(-1);
     expect(reserve).toBeLessThan(provider);
+    expect(tts).toContain("e instanceof NeedsConfigError");
     expect(tts).toContain('_outcome: "released"');
     expect(tts).toContain('_outcome: "committed"');
+    expect(tts).toContain("must remain reserved");
+    expect(tts).not.toMatch(/if \(!bytes \|\| bytes\.length === 0\) \{[\s\S]{0,300}_outcome: "released"/);
     expect(tts).toContain("tts_cost_settlement_unavailable");
   });
 
@@ -41,7 +44,10 @@ describe("Paige voice provider boundary", () => {
 
   it("uses platform-owner authority and canonical proof without provider calls", () => {
     expect(operator).toContain('rpc("is_platform_owner")');
-    expect(operator).toContain('from("paige_voice_provider_verifications")');
+    expect(operator).toContain('admin.rpc("activate_paige_voice_profile_internal",');
+    expect((operator.match(/admin\.rpc\(/g) ?? [])).toHaveLength(1);
+    expect(operator).not.toContain('rpc("set_paige_voice_readiness_internal")');
+    expect(operator).not.toContain('rpc("set_paige_voice_profile_internal")');
     expect(operator).not.toMatch(/elevenlabsTts|api\.elevenlabs|fetch\(/);
     expect(operator).not.toMatch(/console\.(log|error).*provider_voice_ref/);
   });
