@@ -135,27 +135,27 @@ absent / not wired) · **PROOF OWED** (in code, authenticated-runtime/prod-liven
 
 | Capability asked | Verdict | Evidence (file:line / how verified) |
 |---|---|---|
-| **Public web research / crawling** | **LIVE / PARTIAL** | `deep_research` chat tool → `paige-deep-research` (real PLAN→SEARCH→READ→GAP→synthesize + anti-fabrication citation gate) and `web_search` → `paige-web-search` (Firecrawl v2) are wired + reachable in chat (`paige-ai-chat/index.ts:5166-5195`, dispatch `:8462-8504`). `fetch-url-content` is SSRF-guarded plain fetch (not a browser). **PARTIAL because:** crawl provider is config-gated on `FIRECRAWL_API_KEY` (prod presence PROOF OWED); the Playwright `browse_public_url` path is flag-gated + has a page-write gap (below). |
+| **Public web research / crawling** | **LIVE / PARTIAL** | `deep_research` chat tool → `paige-deep-research` (real PLAN→SEARCH→READ→GAP→synthesize + anti-fabrication citation gate) and `web_search` → `paige-web-search` (Firecrawl v2) are wired + reachable in chat (`paige-ai-chat/index.ts:5166-5195`, dispatch `:8462-8504`). `fetch-url-content` is SSRF-guarded plain fetch (not a browser). **PARTIAL because:** crawl provider configuration is not authenticated capability proof; the Playwright `browse_public_url` path remains flag-gated, has unresolved SSRF reconciliation, and still owes an authenticated tenant drive. The page-write gap was fixed and deployed in #1042 (§12). |
 | **In-chat embedded / live browser window** | **UNAVAILABLE** | No VNC/noVNC/live-view/session-viewer embedded in the chat/workspace (whole-repo `iframe\|vnc\|LiveView\|webview\|ws://` sweep). iframe hits are the GrowthBlocks page-builder preview (`src/components/admin/studio/LivePreview.tsx:398`) + Cal.com embeds. The only session-viewer artifact is a Browserbase `replay_url` **string** returned by an unwired stub. |
 | **Twin wired** (twin.so **or** Twin Browser / twin-browser.com) | **UNAVAILABLE (both)** | Zero code/config/registry presence for either. Every `twin` string in `src/`, `supabase/`, `services/`, `scripts/` is the English word. "Twin" appears only in `docs/strategy/twin-capabilities-landscape-2026-07-26.md`; the two are distinct vendors (§6.1). |
-| **Browserbase wired** | **UNAVAILABLE** | `supabase/functions/browser-use/index.ts` is an inert stub ("inert until `BROWSERBASE_API_KEY`+`BROWSERBASE_PROJECT_ID` set"; "edge functions can't import Playwright"). **Not in the 220 deployed functions** (repo dir with no deployed counterpart). Registry: `browserbase` = `UNAVAILABLE`/prohibited. |
+| **Browserbase wired** | **UNAVAILABLE** | `supabase/functions/browser-use/index.ts` is deployed but remains inert and provider-unwired. Deployment is not provider authority: no Browserbase session, Context, login, Connected Account, or credentialed execution was created. Registry: `browserbase` = `PROPOSED`/prohibited with seven gates open (§12). |
 | **Playwright / Chrome** | **PARTIAL (as product substrate) / DEV-only (root)** | Product: `services/paige-browser` (self-hosted warm Chromium Playwright, Fly) — `/self-verify` LIVE-green; `/browse-public-url` PARTIAL. `services/visual-renderer` (Playwright screenshot, §33). Root `package.json:190` `playwright` is a **devDependency** driving `scripts/live-drive/*` (§32 CI harness) — **not product**. |
 | **MCP browser provider** | **UNAVAILABLE** | No MCP browser server wired. (twin.so has no MCP; twin-browser.com claims MCP but conceals its operator, §6.1; Browserbase/Steel/Browserless offer official MCP if adopted.) |
 | **Tenant-safe credential / session vault** | **LIVE (API/OAuth tokens) / UNAVAILABLE (browser session/cookie)** | `tenant_mcp_connections` + siblings: tenant-scoped, `FORCE RLS`, `bytea` ciphertext, decryption `service_role`-only via `get_tenant_mcp_secret` (`20261005000000:466`). It is a **connection-token vault, not a browser session/cookie vault** — no place to persist a logged-in third-party browser session. |
 | **Connected-account flow** | **LIVE (MCP/OAuth only)** | `tenant-mcp-connect/index.ts` — OAuth 2.1 + DCR + PKCE, connect/verify/discover/approve/disconnect, tenant from JWT, admin-gated, provider-side revoke on disconnect. Scoped to **Zapier/n8n**, not arbitrary web logins. |
 | **Encrypted storage** | **LIVE (with key-custody caveat)** | pgcrypto `platform_encrypt/decrypt` (`20260702022450:18-51`), key in `public._internal_secrets` **inside the same DB**. `supabase_vault`, `pgcrypto`, `pgsodium`, `pgjwt` all installed. **Caveat:** symmetric-key-in-DB, not KMS/HSM envelope — "encrypted against app-layer read," not HSM-grade key isolation. |
 | **MFA handoff** | **UNAVAILABLE** | Only Paige's **own-account** TOTP (`AccountSecurityPanel.tsx`, "does NOT enforce AAL2"). No substrate to pause an agent so a human clears a downstream site's 2FA. |
-| **Live-view / session recording** | **UNAVAILABLE (as a product)** | `browser_use_sessions` has `screenshots[]` + `session_replay_url` columns; the Browserbase `browser-use` **writer is inert**, but the **table is NOT inert** — the live `browse_public_url` skill path writes it (`_shared/skill-interpreter.ts:198-229`, service-role, scoped only by `related_contact_id`) with **no `tenant_id`**, a **current** §9 attribution gap (§4.3). `scripts/live-drive` is dev tooling. |
+| **Live-view / session recording** | **UNAVAILABLE (as a product)** | `browser_use_sessions` has `screenshots[]` + `session_replay_url` columns; the Browserbase `browser-use` **writer is inert**, but the **table is NOT inert** — the live `browse_public_url` skill path writes it. PR #1042 added required server-resolved `tenant_id`, authenticate-before-contact resolution, canonical authority checks, forced RLS, and legacy quarantine; the former attribution gap is closed (§12). `scripts/live-drive` is dev tooling. |
 | **Audit trail** | **LIVE (append-only-by-grant, not WORM)** | `paige_browser_usage` (`20260913140000`) — tenant-scoped, `FORCE RLS`, `service_role` INSERT only, append-only by grant-revoke, **with a live writer** (`skill-interpreter.ts:360`). Plus `paige_client_events`, `paige_audit_log`. **Not** cryptographic immutability (no hash-chain/WORM). |
 | **Revocation** | **PARTIAL** | Per-connection disconnect + provider-side revoke (`clear_tenant_mcp_connection`; `tenant-mcp-connect:129`); wildcard browse global off-switch. **No** global emergency-stop spanning connections + in-flight actions. |
-| **Deployment evidence** | **PROOF OWED** | CI machinery real (`deploy-fly-services.yml`, `edge-live`/`db-live` tags, `deploy-migrations.yml` persistence verify). But git tags not fetched in this checkout; `paige-browser` Fly liveness + `PAIGE_BROWSER_WILDCARD_ENABLED`/`FIRECRAWL_API_KEY`/`PAIGE_BROWSER_SECRET` prod-secret presence are **PROOF OWED** (no Fly/edge-secret reach headless). |
-| **Browser API keys / env / registry / chat tools / flags / UI / docs** | **Mixed — see below** | Env NAMES present (`PAIGE_BROWSER_URL/SECRET`, `PAIGE_BROWSER_WILDCARD_ENABLED`, `BROWSERBASE_*`, `FIRECRAWL_API_KEY`); registry has `paige-browser-research` (PARTIAL) + `browserbase` (UNAVAILABLE), **no Twin**; chat tools `web_search`/`deep_research` LIVE, `web_fetch` **stub**; browse via `browse_public_url`/`verify_deployed_surface` **skills** (not inline chat tools); action-kind `tech.browse_public`; UI = admin Skills Hub only (**no "Secure Browser"/"Twin" entry point**); docs = strategy + the owner-locked plan. |
+| **Deployment evidence** | **LIVE for the #1042 prerequisite / PROOF OWED for authenticated use** | Migration, Edge, Fly, Vercel and merge-time checks are recorded in §12. Provider-secret presence was deliberately not inspected and is not treated as capability proof; the authenticated tenant research drive remains **PROOF OWED**. |
+| **Browser API keys / env / registry / chat tools / flags / UI / docs** | **Mixed — see below** | Env NAMES present (`PAIGE_BROWSER_URL/SECRET`, `PAIGE_BROWSER_WILDCARD_ENABLED`, `BROWSERBASE_*`, `FIRECRAWL_API_KEY`); registry has `paige-browser-research` (PARTIAL) + `browserbase` (PROPOSED/prohibited), **no Twin**; chat tools `web_search`/`deep_research` LIVE, `web_fetch` **stub**; browse via `browse_public_url`/`verify_deployed_surface` **skills** (not inline chat tools); action-kind `tech.browse_public`; UI = admin Skills Hub only (**no "Secure Browser"/"Twin" entry point**); docs = strategy + the owner-locked plan. |
 
 ### 2.2 The three intended modes — where each stands today
 
 | Intended mode | Today | Gap to close |
 |---|---|---|
-| **Mode 1 — public research + bounded crawling (approved public domains)** | **LIVE / PARTIAL** | Reachability (`browse_public_url` runs via `run_skill`/Skills Hub, **not** the main chat loop — §36 gap); the **G5 page-initiated-write** gap; SSRF reconcile (#138 DNS-rebinding); `FIRECRAWL_API_KEY` prod confirm; §32.c live-drive. |
+| **Mode 1 — public research + bounded crawling (approved public domains)** | **LIVE / PARTIAL** | Reachability (`browse_public_url` runs via `run_skill`/Skills Hub, **not** the main chat loop — §36 gap); the deployed G5/read-only egress fence is proven in §12; SSRF reconcile (#138 DNS-rebinding) and the §32.c authenticated live drive remain. |
 | **Mode 2 — owner-assisted sign-in, MFA handoff, Paige never sees the password** | **UNAVAILABLE** | Needs a provider (or extended self-host) that offers a login handoff + live view; the `paige-browser` host explicitly has **"NO tenant authentication. That is Slice 4"** and rejects login/submit/click/download. |
 | **Mode 3 — owner-authorized connected accounts, provider vault, opaque reference** | **UNAVAILABLE / greenfield** | Needs a provider-held session/credential vault + an opaque-reference store on our side (allowed domains/actions, freshness, authority). Tensions with the July §9 "Paige-owned canonical vault" posture — the owner chooses (§6.4). |
 
@@ -221,17 +221,17 @@ the consequential-act `confirm` floor under a valid standing policy) is **NOT bu
 - **Systems Check** — where connection health reports via the provider-result contract.
 - **Trust Compass / Automations** — where a standing grant for a Paige-DRIVEN browser task is set (§10).
 
-### 4.3 Parked findings surfaced during this audit (evidence attached; not fixed here)
+### 4.3 Findings surfaced during the audit (historical snapshot; status reconciled below)
 
 Per the attention-register one-copy rule, these are recorded here with exact evidence; **new** ones
 should become GitHub issues before any Phase-1 build (I have **not** auto-filed to avoid duplicates —
 the owner/Codex may already track some).
 
-1. **G5 — page-initiated writes not method-gated** (`services/paige-browser/server.js:328-334`): the
+1. **RESOLVED AND DEPLOYED IN #1042 — G5 page-initiated writes not method-gated** (`services/paige-browser/server.js:328-334`): the
    `page.route("**/*")` interceptor gates host/SSRF only, not HTTP method, with page JS on, so a
    visited page's own script could POST to a public host. **Already tracked** (Codex P1, 2026-09-05).
    Blocks any "read-only by construction" claim on the research path until fixed.
-2. **`browser_use_sessions` has no `tenant_id` — a CURRENT §9 attribution gap, not revival-only**
+2. **RESOLVED AND DEPLOYED IN #1042 — `browser_use_sessions` lacked `tenant_id` and server authority**
    (`20260630013855`, legacy role-based RLS). The table is **actively written by the live
    `browse_public_url` skill path** (`_shared/skill-interpreter.ts:198-229`, service-role, scoped only by
    `related_contact_id`); only the Browserbase `browser-use` EDGE FUNCTION is inert. **The `browser-use`
@@ -257,11 +257,11 @@ the owner/Codex may already track some).
 | Fact | State | Basis |
 |---|---|---|
 | Twin (twin.so) or Twin Browser (twin-browser.com) in code/config/registry | **Absent (both)** | grep + registry read |
-| Browserbase `browser-use` fn deployed | **No** (undeployed + inert) | `list_edge_functions` diff (220 live) + source |
+| Browserbase `browser-use` fn deployed | **Yes, but inert/provider-unwired** | #1042 Edge run 34084460086; deployment is not provider authority |
 | `paige-deep-research`/`web-search`/`paige-web-search`/`fetch-url-content`/`skill-runner` deployed | **Yes** | `list_edge_functions` |
-| `paige_browser_usage` / `browser_use_sessions` tables | **Exist** (0 / 2 rows), RLS on | `list_tables` |
+| `paige_browser_usage` / `browser_use_sessions` tables | **Exist; tenant repair persisted** | post-apply structure/count proof: 0 active legacy rows, 2 preserved in forced-RLS quarantine (§12) |
 | Crypto substrate (`supabase_vault`/`pgcrypto`/`pgsodium`/`pgjwt`) | **Installed** | `list_extensions` |
-| `paige-browser` Fly host live + `PAIGE_BROWSER_WILDCARD_ENABLED`/`FIRECRAWL_API_KEY`/secrets on prod | **PROOF OWED** | no Fly/edge-secret reach headless; code comment + config-registry only |
+| `paige-browser` Fly host live | **Yes for #1042 image** | Fly run 34084460111 and immutable image/digest in §12; secret presence deliberately not inspected or treated as capability proof |
 | Any authenticated tenant browse flow driven end-to-end (§32.c) | **PROOF OWED** | no auth-drive capability this session |
 
 ---
