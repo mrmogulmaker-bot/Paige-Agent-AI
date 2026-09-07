@@ -201,7 +201,7 @@ function isUnresolvedRestatement(value) {
   const hasConnectorReason = substantiveTerms(connectorClause).length >= 2 && (causeCondition.test(connectorClause) || affectedScope.test(connectorClause));
   const hasIndependentCause = raw.split(/[:;,.!?—–]+/).some((clause) => {
     const normalizedClause = normalizeSentinel(clause);
-    return normalizedClause && !pair.test(normalizedClause) && (causeCondition.test(normalizedClause) || affectedScope.test(normalizedClause)) && substantiveTerms(normalizedClause).length >= 2;
+    return normalizedClause && !pair.test(normalizedClause) && causeCondition.test(normalizedClause) && substantiveTerms(normalizedClause).length >= 2;
   });
   return !(hasReference || hasConnectorReason || hasIndependentCause);
 }
