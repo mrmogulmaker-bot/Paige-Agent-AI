@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
@@ -70,7 +71,7 @@ const readJsonPointer = (value, pointer) => {
   }
   return { found: true, value: current };
 };
-const sameJsonValue = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const sameJsonValue = (left, right) => isDeepStrictEqual(left, right);
 const collectJsonDifferences = (before, after, path, output) => {
   if (sameJsonValue(before, after)) return;
   const beforeObject = before !== null && typeof before === "object";
@@ -247,6 +248,7 @@ export function validateReleaseRecord(record) {
     if (!Array.isArray(record.history?.corrected_values)) findings.push("corrected/retracted record history.corrected_values must be an array");
     else {
       if (record.record_state === "CORRECTED" && record.history.corrected_values.length === 0) findings.push("CORRECTED record history.corrected_values must contain at least one changed field");
+      if (record.record_state === "RETRACTED" && record.history.corrected_values.length !== 0) findings.push("RETRACTED record history.corrected_values must be empty; use CORRECTED for field repairs");
       record.history.corrected_values.forEach((item, index) => {
       const label = `history.corrected_values[${index}]`;
       requireExactObject(item, ["field_path", "previous_exists", "previous_value", "replacement_exists", "replacement_value"], label, findings);
@@ -403,6 +405,7 @@ export function validateReleaseRecordSet(records) {
     if (!["CORRECTED", "RETRACTED"].includes(record?.record_state)) continue;
     const target = record.history?.supersedes_record_id;
     if (!nonEmpty(target)) continue;
+    if (record.record_state === "RETRACTED" && (record.history?.corrected_values || []).length !== 0) findings.push(`${record.record_id} RETRACTED history.corrected_values must be empty; use CORRECTED for field repairs`);
     if (target === record.record_id) findings.push(`${record.record_id} history must not supersede itself`);
     else if (!byId.has(target)) findings.push(`${record.record_id} history target ${target} does not resolve to an existing release record`);
     else {
@@ -572,6 +575,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects correction context tied to another field", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected copy but status remains TODO", corrected_values: [] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, true],
     ["accepts correction reason that explains a former placeholder", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected deployment identity and status", corrected_values: [{ field_path: "/internal_builds/0/deployment_id", previous_exists: true, previous_value: "pending", replacement_exists: true, replacement_value: "dpl_123" }, { field_path: "/whats_new/status/0", previous_exists: true, previous_value: "TODO", replacement_exists: true, replacement_value: "LIVE" }] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, false],
     ["accepts structurally complete correction", { ...valid, record_state: "CORRECTED", affected_audience: ["Solo owners"], history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope", corrected_values: [{ field_path: "/affected_audience/0", previous_exists: true, previous_value: "solo", replacement_exists: true, replacement_value: "Solo owners" }] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, false],
+    ["rejects retraction records with correction entries", { ...valid, record_state: "RETRACTED", history: { supersedes_record_id: "release-0.0.9", reason: "Retracted the customer release", corrected_values: [{ field_path: "/scope/0", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "invented" }] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, true],
     ["rejects customer correction without publication gates", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected customer outcome", corrected_values: [] }, whats_new: { ...valid.whats_new, customer_outcome: "TODO" } }, true],
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],
     ["rejects PARTIAL without a substantive limitation", { ...valid, limitations: ["None"], whats_new: { ...valid.whats_new, known_limitations: "None" } }, true],
@@ -626,6 +630,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
   const predecessor = { ...valid, record_id: "release-0.0.9", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } };
   const internalPredecessor = { ...internal, record_id: "release-internal-0.0.9" };
   const correction = { ...valid, record_id: "release-0.1.0-correction", record_state: "CORRECTED", scope: ["corrected outcome"], history: { supersedes_record_id: predecessor.record_id, reason: "Corrected outcome scope", corrected_values: [{ field_path: "/scope/0", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "corrected outcome" }] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } };
+  const additionalBuild = { ...build, commit_sha: "b".repeat(40), deployment_id: "build_2" };
+  const reorderedAdditionalBuild = Object.fromEntries(Object.entries(additionalBuild).reverse());
   const recordSetCases = [
     ["accepts correction linked to an existing predecessor", [predecessor, correction], false],
     ["accepts an internal correction linked to an internal predecessor", [internalPredecessor, { ...internal, record_id: "release-internal-0.0.9-correction", record_state: "CORRECTED", scope: ["corrected internal outcome"], history: { supersedes_record_id: internalPredecessor.record_id, reason: "Corrected internal outcome", corrected_values: [{ field_path: "/scope/0", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "corrected internal outcome" }] } }], false],
@@ -637,6 +643,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects JavaScript-only array length pointers", [predecessor, { ...correction, scope: ["outcome", "second outcome"], history: { ...correction.history, corrected_values: [{ field_path: "/scope/length", previous_exists: true, previous_value: 1, replacement_exists: true, replacement_value: 2 }] } }], true],
     ["rejects correction history that omits another changed field", [predecessor, { ...correction, benefits: ["corrected benefit"] }], true],
     ["rejects unresolved replacement outside an allowed status field", [predecessor, { ...correction, scope: ["TODO"], history: { ...correction.history, corrected_values: [{ field_path: "/scope/0", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "TODO" }] } }], true],
+    ["accepts structured correction values regardless of object key order", [predecessor, { ...predecessor, record_id: "release-build-correction", record_state: "CORRECTED", internal_builds: [build, additionalBuild], history: { supersedes_record_id: predecessor.record_id, reason: "Recorded the additional supporting build", corrected_values: [{ field_path: "/internal_builds/1", previous_exists: false, previous_value: null, replacement_exists: true, replacement_value: reorderedAdditionalBuild }] } }], false],
+    ["rejects retraction histories with invented correction values", [predecessor, { ...predecessor, record_id: "release-retracted", record_state: "RETRACTED", history: { supersedes_record_id: predecessor.record_id, reason: "Retracted the release", corrected_values: [{ field_path: "/scope/0", previous_exists: true, previous_value: "invented", replacement_exists: true, replacement_value: "outcome" }] } }], true],
     ["accepts PROOF OWED as a contextual correction replacement", [{ ...valid, record_id: "release-status-before", whats_new: { ...valid.whats_new, status: ["LIVE"] } }, { ...valid, record_id: "release-status-correction", record_state: "CORRECTED", whats_new: { ...valid.whats_new, status: ["PROOF OWED"] }, history: { supersedes_record_id: "release-status-before", reason: "Corrected the customer truth status", corrected_values: [{ field_path: "/whats_new/status/0", previous_exists: true, previous_value: "LIVE", replacement_exists: true, replacement_value: "PROOF OWED" }] } }], false],
     ["rejects correction self-reference", [{ ...correction, history: { ...correction.history, supersedes_record_id: correction.record_id } }], true],
     ["rejects duplicate record identifiers", [predecessor, { ...valid, record_id: predecessor.record_id }], true],
@@ -664,6 +672,12 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["canonical schema rejects an empty corrected-values list", { ...correction, history: { ...correction.history, corrected_values: [] } }, true],
     ["canonical schema accepts PROOF OWED as a contextual replacement value", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/whats_new/status/0", previous_exists: true, previous_value: "LIVE", replacement_exists: true, replacement_value: "PROOF OWED" }] } }, false],
     ["canonical schema rejects JavaScript-only array length pointers", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/scope/length", previous_exists: true, previous_value: 1, replacement_exists: true, replacement_value: 2 }] } }, true],
+    ["canonical schema rejects leading-zero array pointers", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/scope/01", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "corrected outcome" }] } }, true],
+    ["canonical schema rejects named array pointers", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/scope/foo", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "corrected outcome" }] } }, true],
+    ["canonical schema rejects negative build indices", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/internal_builds/-1/deployment_id", previous_exists: true, previous_value: "build_1", replacement_exists: true, replacement_value: "build_2" }] } }, true],
+    ["canonical schema rejects TODO at an approved status path", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/whats_new/status/0", previous_exists: true, previous_value: "LIVE", replacement_exists: true, replacement_value: "TODO" }] } }, true],
+    ["canonical schema rejects structured values at an approved status path", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/whats_new/status/0", previous_exists: true, previous_value: "LIVE", replacement_exists: true, replacement_value: { state: "PROOF OWED" } }] } }, true],
+    ["canonical schema rejects correction entries on retracted records", { ...correction, record_state: "RETRACTED" }, true],
     ["canonical schema rejects unresolved replacements outside allowed status fields", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/scope/0", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "TODO" }] } }, true],
     ["canonical schema rejects placeholder correction reasons", { ...correction, history: { ...correction.history, reason: "pending" } }, true],
     ["canonical schema rejects unresolved correction phrases without repair context", { ...correction, history: { ...correction.history, reason: "pending deployment ID" } }, true],

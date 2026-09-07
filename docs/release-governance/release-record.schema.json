@@ -274,6 +274,10 @@
       "then": { "properties": { "history": { "properties": { "corrected_values": { "minItems": 1 } } } } }
     },
     {
+      "if": { "properties": { "record_state": { "const": "RETRACTED" } }, "required": ["record_state"] },
+      "then": { "properties": { "history": { "properties": { "corrected_values": { "maxItems": 0 } } } } }
+    },
+    {
       "if": {
         "properties": {
           "internal_builds": {
@@ -372,7 +376,17 @@
       "additionalProperties": false,
       "required": ["field_path", "previous_exists", "previous_value", "replacement_exists", "replacement_value"],
       "properties": {
-        "field_path": { "type": "string", "pattern": "^/(classification|internal_builds|scope|affected_audience|benefits|limitations|rollback_recovery|customer_release_identity|whats_new)(?:/(?!length(?:/|$))(?:[^~/]|~[01])+)*$" },
+        "field_path": {
+          "type": "string",
+          "oneOf": [
+            { "pattern": "^/classification$" },
+            { "pattern": "^/(scope|affected_audience|benefits|limitations)/(0|[1-9][0-9]*)$" },
+            { "pattern": "^/rollback_recovery(?:/(position|reference))?$" },
+            { "pattern": "^/customer_release_identity(?:/(version|release_name|date|owner_approval(?:/(approval_id|scope|status|reference))?))?$" },
+            { "pattern": "^/whats_new(?:/(customer_outcome|what_changed|who_can_use_it|owner_action|known_limitations|safe_next_step|paige_readable_summary|status/(0|[1-9][0-9]*)|proof_owed(?:/(visibility|source))?|technical_release_reference(?:/(visibility|source))?))?$" },
+            { "pattern": "^/internal_builds/(0|[1-9][0-9]*)(?:/(commit_sha|deployment_id|environment|release_channel|customer_release_scope|deployed_at|staged_rollout(?:/(eligibility_rule|rollout_amount|start_condition|stop_condition|monitoring_owner|recovery_path|owner_approval(?:/(approval_id|scope|status|reference))?))?|(?:migration_status|edge_status)(?:/(state|evidence/(0|[1-9][0-9]*)|identifiers/(0|[1-9][0-9]*)|proof_owed(?:/(boundary|excluded_from_live_claim))?))?|proof_boundaries/(0|[1-9][0-9]*)(?:/(scope/(kind|reference)|blocker/(kind|detail)|boundary|excluded_from_live_claim|evidence/(0|[1-9][0-9]*)))?|checks/(ci|security|production_checks)(?:/(state|evidence/(0|[1-9][0-9]*)))?|evidence/(0|[1-9][0-9]*)))?$" }
+          ]
+        },
         "previous_exists": { "type": "boolean" },
         "previous_value": {},
         "replacement_exists": { "type": "boolean" },
@@ -393,6 +407,12 @@
         },
         {
           "if": { "properties": { "field_path": { "pattern": "^/whats_new/status/(0|[1-9][0-9]*)$|^/internal_builds/(0|[1-9][0-9]*)/(migration_status|edge_status)/state$" } }, "required": ["field_path"] },
+          "then": {
+            "anyOf": [
+              { "properties": { "replacement_exists": { "const": false }, "replacement_value": { "type": "null" } }, "required": ["replacement_exists", "replacement_value"] },
+              { "properties": { "replacement_exists": { "const": true }, "replacement_value": { "anyOf": [{ "const": "PROOF OWED" }, { "$ref": "#/$defs/resolvedString" }] } }, "required": ["replacement_exists", "replacement_value"] }
+            ]
+          },
           "else": {
             "properties": {
               "replacement_value": {
