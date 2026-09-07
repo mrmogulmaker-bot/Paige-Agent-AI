@@ -6,6 +6,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 import { gatewayCompat } from "../_shared/claude.ts";
+import { platformOperatorTenantId } from "../_shared/platform-operator-tenant.ts";
 import { forge } from "../_shared/prompt-forge.ts";
 import { interpretSkill } from "../_shared/skill-interpreter.ts";
 import { shouldUseInterpreter, type SkillRow, type CallerTier, type BrowseResult, type PublicBrowseResult } from "../_shared/skill-interpreter-core.ts";
@@ -154,10 +155,17 @@ async function resolveBrowserAuthority(req: Request, body: RunRequest, admin: an
         const { data, error } = await admin.from("profiles").select("active_tenant_id").eq("user_id", actorUserId).maybeSingle();
         return error || !data?.active_tenant_id ? null : String(data.active_tenant_id);
       },
-      resolveContactTenant: async (contactId) => {
-        const { data, error } = await admin.from("clients").select("tenant_id").eq("id", contactId).maybeSingle();
+      resolveContactTenant: async (contactId, tenantId) => {
+        let query = admin.from("clients").select("tenant_id").eq("id", contactId);
+        if (tenantId) query = query.eq("tenant_id", tenantId);
+        const { data, error } = await query.maybeSingle();
         return error || !data?.tenant_id ? null : String(data.tenant_id);
       },
+      isPlatformOwner: async (actorUserId) => {
+        const { data, error } = await admin.rpc("is_platform_owner", { _user_id: actorUserId });
+        return !error && data === true;
+      },
+      resolvePlatformOperatorTenant: async () => await platformOperatorTenantId(admin),
       isTenantAdmin: async (actorUserId, tenantId) => {
         const { data, error } = await admin.rpc("is_tenant_admin_as", { _actor: actorUserId, _tenant: tenantId });
         return !error && data === true;

@@ -16,16 +16,21 @@ interface Fixture {
   contactTenants?: Record<string, string | null>;
   admin?: boolean;
   agency?: boolean;
+  platformOwner?: boolean;
+  operatorTenant?: string | null;
 }
 
 function deps(fixture: Fixture, calls: string[]): SecureBrowserAuthorityDeps {
   return {
     authenticate: async () => { calls.push("authenticate"); return fixture.authenticatedActor ?? null; },
     resolveActiveTenant: async () => { calls.push("activeTenant"); return fixture.activeTenant ?? null; },
-    resolveContactTenant: async (contactId) => {
-      calls.push(`contact:${contactId}`);
-      return fixture.contactTenants?.[contactId] ?? null;
+    resolveContactTenant: async (contactId, tenantId) => {
+      calls.push(`contact:${contactId}:${tenantId ?? "any"}`);
+      const resolved = fixture.contactTenants?.[contactId] ?? null;
+      return tenantId && resolved !== tenantId ? null : resolved;
     },
+    isPlatformOwner: async () => { calls.push("platformOwner"); return fixture.platformOwner === true; },
+    resolvePlatformOperatorTenant: async () => { calls.push("operatorTenant"); return fixture.operatorTenant ?? null; },
     isTenantAdmin: async () => { calls.push("admin"); return fixture.admin === true; },
     canAgencyManage: async () => { calls.push("agency"); return fixture.agency === true; },
   };
@@ -90,40 +95,50 @@ async function main() {
     assert(calls.includes("admin") && calls.includes("agency"), "authority is rechecked for the resolved tenant");
   }
 
-  console.log("\n[5] cross-tenant contact and tenant-switch mismatch fail closed");
+  console.log("\n[5] direct contact lookup follows authorization and does not reveal placement");
+  for (const contactId of ["known", "unknown"]) {
+    const calls: string[] = [];
+    await refusal("browser_actor_not_authorized", {
+      bearerToken: "member-jwt", serviceKey: SERVICE, contactId,
+    }, { authenticatedActor: "member", activeTenant: "tenant-a", contactTenants: { known: "tenant-a", unknown: null } }, calls);
+    assert(!calls.some((call) => call.startsWith("contact:")), "unauthorized direct actor cannot probe " + contactId + " contact");
+  }
   {
     const calls: string[] = [];
-    await refusal("browser_contact_outside_active_workspace", {
+    await refusal("browser_contact_not_available", {
       bearerToken: "owner-jwt", serviceKey: SERVICE, contactId: "b", tenantHint: "tenant-b",
     }, { authenticatedActor: "owner", activeTenant: "tenant-a", contactTenants: { b: "tenant-b" }, admin: true }, calls);
-    assert(!calls.includes("admin") && !calls.includes("agency"), "cross-tenant contact refuses before authority RPCs or writes");
+    assert(calls.includes("contact:b:tenant-a"), "authorized direct contact lookup is constrained to the active tenant");
   }
 
-  console.log("\n[6] internal service preserves MCP channel and re-authorizes its actor");
+  console.log("\n[6] tenant-less human platform owner uses the designated operator workspace");
+  {
+    const result = await resolveSecureBrowserAuthority(
+      { bearerToken: "platform-owner-jwt", serviceKey: SERVICE },
+      deps({ authenticatedActor: "platform-owner", platformOwner: true, operatorTenant: "operator-tenant" }, []),
+    );
+    assert(result.tenantId === "operator-tenant", "platform owner resolves the canonical operator tenant");
+    assert(result.actorRole === "platform_owner" && result.invocationKind === "platform_owner", "platform-owner provenance remains explicit");
+    assert(!secureBrowserNeedsAdminConfirmation(2, 0, result.invocationKind, undefined), "platform owner satisfies the owner confirmation lane");
+  }
+
+  console.log("\n[7] internal service preserves MCP channel and re-authorizes its actor");
   {
     const calls: string[] = [];
-    await refusal("browser_human_actor_required", {
-      bearerToken: SERVICE, serviceKey: SERVICE, tenantHint: "tenant-a",
-    }, {}, calls);
+    await refusal("browser_human_actor_required", { bearerToken: SERVICE, serviceKey: SERVICE, tenantHint: "tenant-a" }, {}, calls);
     assert(calls.length === 0, "internal service without actor performs zero tenant reads or writes");
 
     const actorlessContactCalls: string[] = [];
-    await refusal("browser_human_actor_required", {
-      bearerToken: SERVICE, serviceKey: SERVICE, contactId: "a",
-    }, { contactTenants: { a: "tenant-a" } }, actorlessContactCalls);
+    await refusal("browser_human_actor_required", { bearerToken: SERVICE, serviceKey: SERVICE, contactId: "a" }, { contactTenants: { a: "tenant-a" } }, actorlessContactCalls);
     assert(actorlessContactCalls.length === 0, "actorless internal service cannot use a contact to probe tenant data");
 
     const missingTenantCalls: string[] = [];
-    await refusal("browser_authority_unresolved", {
-      bearerToken: SERVICE, serviceKey: SERVICE, invokerUserId: "owner",
-    }, {}, missingTenantCalls);
+    await refusal("browser_authority_unresolved", { bearerToken: SERVICE, serviceKey: SERVICE, invokerUserId: "owner" }, {}, missingTenantCalls);
     assert(missingTenantCalls.length === 0, "internal human actor without contact or tenant source performs zero reads or writes");
 
     const mismatchCalls: string[] = [];
-    await refusal("browser_tenant_mismatch", {
-      bearerToken: SERVICE, serviceKey: SERVICE, contactId: "b", tenantHint: "tenant-a", invokerUserId: "owner",
-    }, { contactTenants: { b: "tenant-b" }, admin: true }, mismatchCalls);
-    assert(mismatchCalls.join(",") === "contact:b", "internal contact/hint mismatch stops before authority checks or writes");
+    await refusal("browser_contact_not_available", { bearerToken: SERVICE, serviceKey: SERVICE, contactId: "b", tenantHint: "tenant-a", invokerUserId: "owner" }, { contactTenants: { b: "tenant-b" }, admin: true }, mismatchCalls);
+    assert(mismatchCalls.join(",") === "contact:b:tenant-a", "internal contact/hint mismatch is normalized before authority checks or writes");
 
     const contactDerived = await resolveSecureBrowserAuthority(
       { bearerToken: SERVICE, serviceKey: SERVICE, contactId: "a", invokerUserId: "owner" },

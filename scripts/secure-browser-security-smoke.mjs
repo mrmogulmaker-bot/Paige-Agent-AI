@@ -41,7 +41,7 @@ check(/invoker_kind:\s*isAdmin === true \? "admin" : "agency"/.test(browserUse),
 const runner = read("supabase/functions/skill-runner/index.ts");
 const authority = read("supabase/functions/_shared/secure-browser-authority.ts");
 check(/actorUserId = await deps\.authenticate\(presented\)[\s\S]*resolveContactTenant/.test(authority), "direct skill browser caller authenticates before tenant/contact lookup");
-check(/invocationKind = "mcp"/.test(authority) && /if \(!internalServiceCall\) invocationKind = actorRole/.test(authority), "invocation channel is separate from verified admin or agency authority");
+check(/invocationKind = "mcp"/.test(authority) && /invocationKind = platformOwner \? "platform_owner" : directAdmin \? "admin" : "agency"/.test(authority), "invocation channel is separate from verified owner, admin, or agency authority");
 check(/secureBrowserNeedsAdminConfirmation/.test(runner), "first-N confirmation uses truthful browser invocation provenance");
 check(/isTenantAdmin:[\s\S]*is_tenant_admin_as/.test(runner) && /canAgencyManage:[\s\S]*agency_can_manage_child/.test(runner), "internal browser caller actor is re-authorized");
 check(runner.indexOf("resolveBrowserAuthority(req, body, admin)") < runner.indexOf('.from("paige_skill_runs")'), "browser authority resolves before any run row is written");

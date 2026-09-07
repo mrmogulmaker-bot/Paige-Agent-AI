@@ -7,12 +7,12 @@
 ALTER TABLE public.browser_use_sessions
   DROP CONSTRAINT IF EXISTS browser_use_sessions_invoker_kind_check,
   ADD CONSTRAINT browser_use_sessions_invoker_kind_check
-    CHECK (invoker_kind IN ('admin','agency','coach','paige','skill','system'));
+    CHECK (invoker_kind IN ('admin','agency','platform_owner','coach','paige','skill','system'));
 
 ALTER TABLE public.paige_skill_runs
   DROP CONSTRAINT IF EXISTS paige_skill_runs_invoker_kind_check,
   ADD CONSTRAINT paige_skill_runs_invoker_kind_check
-    CHECK (invoker_kind IN ('admin','agency','coach','paige','system','mcp'));
+    CHECK (invoker_kind IN ('admin','agency','platform_owner','coach','paige','system','mcp'));
 
 -- Production preflight found two historical failed skill rows with no actor, contact, business, or
 -- tenant reference. Preserve them exactly, but remove them from the tenant-readable active ledger.
