@@ -83,6 +83,6 @@ This candidate adds no Mission store, chat, approval system, Mind projection or 
 
 ## Owner-complete candidate evidence — 2026-09-06
 
-The current-main-composed candidate passes 73 focused contract tests, the complete 265-file / 3,832-test repository run, the TypeScript ratchet, production build, security/registry ledgers, and 176 real-component responsive/theme/state checks. Those renders use fictional provider stubs and prove structure and geometry only. Authenticated owner lifecycle, refusal, workspace-switch, canonical Mission and matching Rail evidence remain PROOF OWED; the owner-complete Business Game Plan and Solo Tenant Brain remain PARTIAL; Mission Mind and durable Memory remain UNAVAILABLE.
+The current-main-composed candidate passes 73 focused contract tests, the complete 265-file / 3,832-test repository run, the TypeScript ratchet, production build, security/registry ledgers, and 198 real-component responsive/theme/state checks. Those renders use fictional provider stubs and prove structure and geometry only. Authenticated owner lifecycle, refusal, workspace-switch, canonical Mission and matching Rail evidence remain PROOF OWED; the owner-complete Business Game Plan and Solo Tenant Brain remain PARTIAL; Mission Mind and durable Memory remain UNAVAILABLE.
 
 Candidate PR #1038 is open as a draft. It is not merged or deployed. The Business Game Plan and Solo Tenant Brain therefore remain PARTIAL; Mission Mind and durable Memory remain UNAVAILABLE; authenticated proof remains PROOF OWED.

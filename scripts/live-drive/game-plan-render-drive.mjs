@@ -29,6 +29,8 @@ const FRAMES = [
   { name: "open-956x768", width: 956, height: 768 },
   { name: "open-614x768", width: 614, height: 768 },
   { name: "open-490x1000", width: 490, height: 1000 },
+  // 900x1000 at 200% zoom exposes a 450x500 CSS-pixel layout viewport.
+  { name: "zoom-200-450x500", width: 450, height: 500 },
 ];
 const MODES = ["empty", "draft", "proposal", "active", "paused", "complete", "archived", "blocked", "loading", "error", "forbidden"];
 const THEMES = ["light", "dark"];
