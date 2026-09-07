@@ -43,6 +43,8 @@ export function createAnchoredTranscriptScroll({
   let animationFrame: number | null = null;
   let releaseFrame: number | null = null;
   let userIntentFrame: number | null = null;
+  let userIntentStableFrames = 0;
+  let userIntentLastScrollTop = 0;
   let restoring = false;
   let intentionalBottom = false;
   let pendingUserMovement = false;
@@ -190,25 +192,60 @@ export function createAnchoredTranscriptScroll({
     restoring = false;
   };
 
-  const beginOneShotUserMovement = (event?: Event) => {
-    if (event instanceof KeyboardEvent && !SCROLL_KEYS.has(event.key)) return;
-    cancelProgrammaticMovement();
-    pendingUserMovement = true;
-    if (!element) return;
+  const endUserMovement = () => {
+    continuousUserMovement = false;
+    pendingUserMovement = false;
+    userIntentStableFrames = 0;
+    if (userIntentFrame !== null && element) {
+      const cancel = element.ownerDocument.defaultView?.cancelAnimationFrame?.bind(element.ownerDocument.defaultView)
+        ?? cancelAnimationFrame;
+      cancel(userIntentFrame);
+      userIntentFrame = null;
+    }
+  };
+
+  const releaseUserMovementAfterLayoutSettles = () => {
+    if (!element || continuousUserMovement) return;
     const view = element.ownerDocument.defaultView;
     const request = view?.requestAnimationFrame?.bind(view) ?? requestAnimationFrame;
     const cancel = view?.cancelAnimationFrame?.bind(view) ?? cancelAnimationFrame;
     if (userIntentFrame !== null) cancel(userIntentFrame);
-    userIntentFrame = request(() => {
+    userIntentLastScrollTop = element.scrollTop;
+    userIntentStableFrames = 0;
+    const check = () => {
       userIntentFrame = null;
-      pendingUserMovement = false;
-    });
+      if (!element || continuousUserMovement) return;
+      if (Math.abs(element.scrollTop - userIntentLastScrollTop) <= EXACT_BOTTOM_EPSILON_PX) {
+        userIntentStableFrames += 1;
+      } else {
+        userIntentLastScrollTop = element.scrollTop;
+        userIntentStableFrames = 0;
+      }
+      if (userIntentStableFrames >= 2) {
+        endUserMovement();
+        return;
+      }
+      userIntentFrame = request(check);
+    };
+    userIntentFrame = request(check);
+  };
+
+  const beginOneShotUserMovement = (event?: Event) => {
+    if (event instanceof KeyboardEvent && !SCROLL_KEYS.has(event.key)) return;
+    cancelProgrammaticMovement();
+    pendingUserMovement = true;
+    releaseUserMovementAfterLayoutSettles();
   };
 
   const beginContinuousUserMovement = () => {
     cancelProgrammaticMovement();
     pendingUserMovement = true;
     continuousUserMovement = true;
+  };
+
+  const beginKeyboardUserMovement = (event: KeyboardEvent) => {
+    if (!SCROLL_KEYS.has(event.key)) return;
+    beginContinuousUserMovement();
   };
 
   const beginPointerUserMovement = (event: Event) => {
@@ -218,9 +255,9 @@ export function createAnchoredTranscriptScroll({
     beginContinuousUserMovement();
   };
 
-  const endContinuousUserMovement = () => {
+  const finishContinuousUserInput = () => {
     continuousUserMovement = false;
-    pendingUserMovement = false;
+    releaseUserMovementAfterLayoutSettles();
   };
 
   const handleScroll = () => {
@@ -240,13 +277,6 @@ export function createAnchoredTranscriptScroll({
       return true;
     }
     const userMoved = pendingUserMovement || continuousUserMovement;
-    pendingUserMovement = false;
-    if (userIntentFrame !== null) {
-      const cancel = element.ownerDocument.defaultView?.cancelAnimationFrame?.bind(element.ownerDocument.defaultView)
-        ?? cancelAnimationFrame;
-      cancel(userIntentFrame);
-      userIntentFrame = null;
-    }
     if (!userMoved) {
       // Resize, hydration and browser anchoring may emit scroll events. They do
       // not own the reading position and must not replace the saved intent.
@@ -280,12 +310,14 @@ export function createAnchoredTranscriptScroll({
     disconnectObservers();
     element?.removeEventListener("wheel", beginOneShotUserMovement);
     element?.removeEventListener("touchstart", beginContinuousUserMovement);
-    element?.removeEventListener("touchend", endContinuousUserMovement);
-    element?.removeEventListener("touchcancel", endContinuousUserMovement);
+    element?.removeEventListener("touchend", finishContinuousUserInput);
+    element?.removeEventListener("touchcancel", finishContinuousUserInput);
     element?.removeEventListener("pointerdown", beginPointerUserMovement);
-    element?.ownerDocument.defaultView?.removeEventListener("pointerup", endContinuousUserMovement);
-    element?.ownerDocument.defaultView?.removeEventListener("pointercancel", endContinuousUserMovement);
-    element?.removeEventListener("keydown", beginOneShotUserMovement);
+    element?.ownerDocument.defaultView?.removeEventListener("pointerup", finishContinuousUserInput);
+    element?.ownerDocument.defaultView?.removeEventListener("pointercancel", finishContinuousUserInput);
+    element?.removeEventListener("keydown", beginKeyboardUserMovement);
+    element?.removeEventListener("keyup", finishContinuousUserInput);
+    element?.removeEventListener("scrollend", endUserMovement);
     intentionalBottom = false;
     pendingUserMovement = false;
     continuousUserMovement = false;
@@ -310,12 +342,14 @@ export function createAnchoredTranscriptScroll({
       element.style.overflowAnchor = "none";
       element.addEventListener("wheel", beginOneShotUserMovement, { passive: true });
       element.addEventListener("touchstart", beginContinuousUserMovement, { passive: true });
-      element.addEventListener("touchend", endContinuousUserMovement, { passive: true });
-      element.addEventListener("touchcancel", endContinuousUserMovement, { passive: true });
+      element.addEventListener("touchend", finishContinuousUserInput, { passive: true });
+      element.addEventListener("touchcancel", finishContinuousUserInput, { passive: true });
       element.addEventListener("pointerdown", beginPointerUserMovement, { passive: true });
-      element.ownerDocument.defaultView?.addEventListener("pointerup", endContinuousUserMovement, { passive: true });
-      element.ownerDocument.defaultView?.addEventListener("pointercancel", endContinuousUserMovement, { passive: true });
-      element.addEventListener("keydown", beginOneShotUserMovement);
+      element.ownerDocument.defaultView?.addEventListener("pointerup", finishContinuousUserInput, { passive: true });
+      element.ownerDocument.defaultView?.addEventListener("pointercancel", finishContinuousUserInput, { passive: true });
+      element.addEventListener("keydown", beginKeyboardUserMovement);
+      element.addEventListener("keyup", finishContinuousUserInput);
+      element.addEventListener("scrollend", endUserMovement);
       const view = element.ownerDocument.defaultView;
       const Mutation = view?.MutationObserver ?? globalThis.MutationObserver;
       const Resize = view?.ResizeObserver ?? globalThis.ResizeObserver;

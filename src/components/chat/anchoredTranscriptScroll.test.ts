@@ -131,6 +131,50 @@ describe("createAnchoredTranscriptScroll", () => {
     expect(sessionStorage.getItem("test-rehydrated-id:thread-a")).toContain('"messageId":"db-b"');
   });
 
+  it("keeps touch ownership through inertial scroll events after touchend", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-touch-inertia" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+    element.dispatchEvent(new Event("touchstart"));
+    element.scrollTop = 700;
+    controller.handleScroll();
+    element.dispatchEvent(new Event("touchend"));
+    element.scrollTop = 610;
+    controller.handleScroll();
+    geometry.items.d.height += 100;
+    geometry.scrollHeight += 100;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(610);
+  });
+
+  it("updates the anchor through every event in one keyboard scroll sequence", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-keyboard-sequence" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+    element.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp" }));
+    element.scrollTop = 780;
+    controller.handleScroll();
+    element.scrollTop = 620;
+    controller.handleScroll();
+    element.dispatchEvent(new KeyboardEvent("keyup", { key: "PageUp" }));
+    geometry.items.d.height += 100;
+    geometry.scrollHeight += 100;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(620);
+  });
+
   it("keeps automatic following for ordinary near-bottom layout drift without user input", () => {
     const geometry: Geometry = {
       viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
