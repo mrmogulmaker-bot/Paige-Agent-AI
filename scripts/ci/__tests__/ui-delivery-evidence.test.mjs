@@ -290,7 +290,7 @@ test("rejects unresolved values after PASS", () => {
   const explicitCause = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", "AUTHENTICATED_RUNTIME: UNVERIFIED: production tenant credentials unavailable; runtime proof pending"), { required: true, solo: false });
   assert.equal(explicitCause.ok, true, explicitCause.errors.join("\n"));
 
-  for (const targetedInability of ["runtime proof pending; unable to access Okta", "runtime proof pending; cannot test Stripe"]){
+  for (const targetedInability of ["runtime proof pending; unable to access Okta", "runtime proof pending; cannot test Stripe", "runtime proof pending; unable to access Grammarly"]){
     const explicitTargetedInability = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", `AUTHENTICATED_RUNTIME: UNVERIFIED: ${targetedInability}`), { required: true, solo: false });
     assert.equal(explicitTargetedInability.ok, true, explicitTargetedInability.errors.join("\n"));
   }
