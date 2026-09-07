@@ -5,7 +5,7 @@
 CREATE FUNCTION public._secure_browser_safe_text(p_value text)
 RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$
  SELECT p_value IS NOT NULL
-  AND p_value !~* '(password|passwd|passcode|api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|authorization|cookie|mfa([-_ ]?code)?|otp)[[:space:]]*(is|=|:)[[:space:]]*["''`]?[^[:space:],;]{4,}'
+  AND p_value !~* '(password|passwd|passcode|api[-_ ]?key|client[-_ ]?secret|secret|access[-_ ]?token|refresh[-_ ]?token|session[-_ ]?token|token|authorization|cookie|mfa([-_ ]?code)?|otp)[[:space:]]*(is|=|:)[[:space:]]*["''`]?[^[:space:],;]{4,}'
   AND p_value !~* '\mbearer[[:space:]]+[A-Za-z0-9._~+/-]{8,}={0,2}\M'
   AND p_value !~ '\meyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\M'
 $$;
@@ -177,8 +177,9 @@ BEGIN
  IF NEW.state<>'unavailable' THEN
   SELECT q.inspection_state INTO v_inspection_state FROM public.business_vault_quarantine_uploads q
    WHERE q.tenant_id=NEW.tenant_id AND q.id=NEW.quarantine_id FOR SHARE;
-  IF v_inspection_state IS NULL OR
-     (NEW.state='quarantine_reserved' AND v_inspection_state<>'reserved') OR
+  IF v_inspection_state IS NULL THEN
+   RAISE EXCEPTION 'SECURE_BROWSER_QUARANTINE_TENANT_INVALID' USING ERRCODE='23503';
+  ELSIF (NEW.state='quarantine_reserved' AND v_inspection_state<>'reserved') OR
      (NEW.state='quarantined' AND v_inspection_state<>'stored') OR
      (NEW.state='inspection_pending' AND v_inspection_state NOT IN('inspecting','stored')) OR
      (NEW.state='passed' AND v_inspection_state<>'passed') OR
@@ -443,12 +444,38 @@ END $$;
 REVOKE ALL ON FUNCTION public.control_secure_browser_session(uuid,text,bigint) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.control_secure_browser_session(uuid,text,bigint) TO authenticated;
 
+CREATE FUNCTION public._secure_browser_expire_connected_accounts(p_tenant uuid,p_actor uuid)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE v_account public.secure_browser_connected_accounts;v_receipt uuid;v_recorded uuid;v_count integer:=0;
+BEGIN
+ FOR v_account IN
+  UPDATE public.secure_browser_connected_accounts SET state='expired',updated_at=now()
+  WHERE tenant_id=p_tenant AND state IN('active','paused') AND expires_at IS NOT NULL AND expires_at<=now()
+  RETURNING *
+ LOOP
+  v_receipt:=gen_random_uuid();v_recorded:=NULL;
+  INSERT INTO public.secure_browser_receipts(id,tenant_id,actor_id,receipt_kind,action_kind,action_fingerprint,target_origin,policy_snapshot,request_evidence,result_evidence,verified_readback,outcome,idempotency_key,rail_run_id)
+  VALUES(v_receipt,p_tenant,p_actor,'control','account.expire',md5(v_account.id::text||':expire:'||v_account.expires_at::text),v_account.target_origin,
+   jsonb_build_object('cause','time_bound_expiry'),jsonb_build_object('accountId',v_account.id,'expiresAt',v_account.expires_at),
+   jsonb_build_object('state','expired'),jsonb_build_object('accountId',v_account.id,'state','expired'),'succeeded',v_account.id,v_receipt)
+  ON CONFLICT(tenant_id,idempotency_key,action_kind) DO NOTHING RETURNING id INTO v_recorded;
+  IF v_recorded IS NOT NULL THEN
+   v_count:=v_count+1;
+   BEGIN
+    PERFORM public.record_capability_run(p_tenant,p_actor,'paige_secure_browser','capability_succeeded',v_recorded,NULL);
+   EXCEPTION WHEN OTHERS THEN NULL;
+   END;
+  END IF;
+ END LOOP;
+ RETURN v_count;
+END $$;
+REVOKE ALL ON FUNCTION public._secure_browser_expire_connected_accounts(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+
 CREATE FUNCTION public.list_secure_browser_connected_accounts()
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
-DECLARE v_tenant uuid:=public._secure_browser_current_actor_tenant();
+DECLARE v_tenant uuid:=public._secure_browser_current_actor_tenant();v_actor uuid:=auth.uid();
 BEGIN
- UPDATE public.secure_browser_connected_accounts SET state='expired',updated_at=now()
- WHERE tenant_id=v_tenant AND state IN('active','paused') AND expires_at IS NOT NULL AND expires_at<=now();
+ PERFORM public._secure_browser_expire_connected_accounts(v_tenant,v_actor);
  RETURN COALESCE((
   SELECT jsonb_agg(jsonb_build_object(
    'id',a.id,'label',a.label,'targetOrigin',a.target_origin,'targetDisplayHost',a.target_display_host,
@@ -467,11 +494,9 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,publi
 DECLARE v_tenant uuid:=public._secure_browser_current_actor_tenant();v_actor uuid:=auth.uid();v_account public.secure_browser_connected_accounts;v_receipt uuid:=gen_random_uuid();v_rail boolean:=false;
 BEGIN
  IF p_command NOT IN ('pause','revoke','delete') THEN RAISE EXCEPTION 'SECURE_BROWSER_ACCOUNT_COMMAND_INVALID' USING ERRCODE='22023';END IF;
+ PERFORM public._secure_browser_expire_connected_accounts(v_tenant,v_actor);
  SELECT * INTO v_account FROM public.secure_browser_connected_accounts a WHERE a.id=p_account AND a.tenant_id=v_tenant FOR UPDATE;
  IF v_account.id IS NULL THEN RAISE EXCEPTION 'SECURE_BROWSER_ACCOUNT_UNAVAILABLE' USING ERRCODE='42501';END IF;
- IF v_account.state IN('active','paused') AND v_account.expires_at IS NOT NULL AND v_account.expires_at<=now() THEN
-  UPDATE public.secure_browser_connected_accounts SET state='expired',updated_at=now() WHERE id=v_account.id RETURNING * INTO v_account;
- END IF;
  IF v_account.state='deleted' THEN RAISE EXCEPTION 'SECURE_BROWSER_ACCOUNT_UNAVAILABLE' USING ERRCODE='42501';END IF;
  IF p_command='pause' AND v_account.state='expired' THEN RAISE EXCEPTION 'SECURE_BROWSER_ACCOUNT_EXPIRED' USING ERRCODE='22023';END IF;
  UPDATE public.secure_browser_connected_accounts SET

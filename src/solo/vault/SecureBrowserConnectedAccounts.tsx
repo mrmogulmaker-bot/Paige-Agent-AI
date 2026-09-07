@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CircleAlert, Link2, LoaderCircle, RefreshCw, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
-type AccountState = "not_connected" | "active" | "paused" | "revoked";
+type AccountState = "not_connected" | "active" | "paused" | "revoked" | "expired";
 type ConnectedAccount = {
   id: string;
   label: string;
@@ -17,7 +17,7 @@ function isAccount(value: unknown): value is ConnectedAccount {
   const item = value as Record<string, unknown>;
   return typeof item.id === "string" && typeof item.label === "string" &&
     typeof item.targetDisplayHost === "string" &&
-    ["not_connected", "active", "paused", "revoked"].includes(String(item.state));
+    ["not_connected", "active", "paused", "revoked", "expired"].includes(String(item.state));
 }
 
 export function SecureBrowserConnectedAccounts() {
@@ -106,7 +106,11 @@ export function SecureBrowserConnectedAccounts() {
           </div>
         ) : accounts.map((account) => (
           <article className="bv-connected-account" key={account.id}>
-            <div><strong>{account.label}</strong><small>{account.targetDisplayHost}</small></div>
+            <div>
+              <strong>{account.label}</strong>
+              <small>{account.targetDisplayHost}</small>
+              {account.state === "expired" && <small>This connection expired. Reconnect will be required when setup becomes available.</small>}
+            </div>
             <span className="bv-status bv-status--neutral">{account.state.replace("_", " ")}</span>
             <div className="bv-record__actions">
               {account.state === "active" && <button className="bv-button" disabled={busyId === account.id} onClick={() => void control(account, "pause")}>Pause</button>}

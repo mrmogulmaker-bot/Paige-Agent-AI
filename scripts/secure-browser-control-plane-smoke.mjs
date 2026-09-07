@@ -43,11 +43,11 @@ check(!/BROWSERBASE_API_KEY|api\.browserbase\.com|\bprovider_id\b|\bcontext_id\b
 check(/class UnavailableSecureBrowserWorker/.test(contract), "worker adapter is explicitly inert");
 check(/consequentialActions:\s*"disabled"/.test(contract), "consequential action execution remains disabled");
 check(/normalizeSecureBrowserTarget/.test(handler) && /validateSecureBrowserScope/.test(handler), "the Edge request validates target and scope using the shared contract");
-check(/_secure_browser_safe_text/.test(migration) && /NOT public\._secure_browser_safe_text\(p_purpose\)/.test(migration), "credential-like purpose values fail closed in the database");
+check(/_secure_browser_safe_text/.test(migration) && /NOT public\._secure_browser_safe_text\(p_purpose\)/.test(migration) && /client\[-_ \]\?secret\|secret/.test(migration), "generic secret and token purpose values fail closed in the database");
 check(/_secure_browser_json_node_safe/.test(migration) && /jsonb_array_elements/.test(migration) && !/\.keyvalue\(\)/.test(migration), "nested object and array scope values are validated without unsafe JSONPath methods");
 check(/p_actor_kind IS DISTINCT FROM public\._secure_browser_actor_kind/.test(migration), "database re-derives and verifies exact actor provenance");
 check(/secure_browser_settle_session_usage/.test(migration) && /reservation_settled_at/.test(migration) && /GREATEST\(0,reserved_seconds-v_session\.reserved_seconds\)/.test(migration), "reservations settle idempotently and release budget capacity");
-check(/_secure_browser_expire_if_due/.test(migration) && /state='expired'/.test(migration), "expired sessions and connected accounts fail closed on reads and controls");
+check(/_secure_browser_expire_if_due/.test(migration) && /_secure_browser_expire_connected_accounts/.test(migration) && /'account\.expire'/.test(migration), "expired sessions and connected accounts fail closed and write durable expiry evidence");
 
 if (failures) {
   console.error(`\n${failures} Secure Browser control-plane check(s) failed.`);

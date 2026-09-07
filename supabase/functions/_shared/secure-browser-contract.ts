@@ -130,7 +130,7 @@ export interface SecureBrowserWorker {
 }
 
 const SENSITIVE_KEYS = /(?:password|passwd|secret|token|cookie|authorization|html|page_source|screenshot|replay|live.?view|mfa|otp|context.?id|provider)/i;
-const LABELED_SECRET_VALUE = /(?:password|passwd|passcode|api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|authorization|cookie|mfa(?:[-_ ]?code)?|otp)\s*(?:is|=|:)\s*["'`]?\S{4,}/i;
+const LABELED_SECRET_VALUE = /(?:password|passwd|passcode|api[-_ ]?key|client[-_ ]?secret|secret|access[-_ ]?token|refresh[-_ ]?token|session[-_ ]?token|token|authorization|cookie|mfa(?:[-_ ]?code)?|otp)\s*(?:is|=|:)\s*["'`]?\S{4,}/i;
 const BEARER_VALUE = /\bbearer\s+[a-z0-9._~+/-]{8,}={0,2}\b/i;
 const JWT_VALUE = /\beyJ[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}\b/i;
 

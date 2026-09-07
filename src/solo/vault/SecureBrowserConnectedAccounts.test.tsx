@@ -46,4 +46,24 @@ describe("Vault Connected Accounts", () => {
     expect(host.textContent).toContain("Retry");
     await act(async () => root.unmount());
   });
+
+  it("shows expired account truth without offering pause", async () => {
+    api.rpc.mockResolvedValue({
+      data: [{ id: "account-1", label: "Example", targetDisplayHost: "example.com", state: "expired", expiresAt: "2026-09-07T00:00:00Z", lastUsedAt: null }],
+      error: null,
+    });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<SecureBrowserConnectedAccounts />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(host.textContent).toContain("Example");
+    expect(host.textContent).toContain("expired");
+    expect(host.textContent).toContain("Reconnect will be required");
+    expect(Array.from(host.querySelectorAll("button")).some((button) => button.textContent === "Pause")).toBe(false);
+    await act(async () => root.unmount());
+  });
 });

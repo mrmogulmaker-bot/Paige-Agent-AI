@@ -41,6 +41,7 @@ describe("Paige Secure Browser provider-neutral contract", () => {
     expect(() => assertNoSensitiveBrowserMaterial({ result: { cookie: "redacted" } })).toThrow("sensitive_field");
     expect(() => assertNoSensitiveBrowserMaterial({ status: "not connected" })).not.toThrow();
     expect(() => assertNoSensitiveBrowserMaterial({ note: "access token: abcdefghijk" })).toThrow("sensitive_value");
+    expect(() => assertNoSensitiveBrowserMaterial({ notes: ["token: abcdefghijk"] })).toThrow("sensitive_value");
   });
 
   it("refuses credential-like purpose values before persistence", () => {
@@ -50,6 +51,8 @@ describe("Paige Secure Browser provider-neutral contract", () => {
     expect(() => normalizeSecureBrowserPurpose("Use bearer abcdefghijklmnop"))
       .toThrow("sensitive_value");
     expect(() => normalizeSecureBrowserPurpose("Use eyJabcdefghij.abcdefghij.abcdefghij"))
+      .toThrow("sensitive_value");
+    expect(() => normalizeSecureBrowserPurpose("Use client secret: abcdefghijk"))
       .toThrow("sensitive_value");
   });
 

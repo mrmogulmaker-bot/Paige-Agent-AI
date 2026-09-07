@@ -1,7 +1,7 @@
 -- Paige Secure Browser control-plane security and lifecycle proof.
 -- Synthetic fixtures only; the transaction is always rolled back.
 BEGIN;
-SELECT plan(25);
+SELECT plan(28);
 
 SELECT ok((SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='public.secure_browser_sessions'::regclass),'sessions force RLS');
 SELECT ok(NOT has_table_privilege('authenticated','public.secure_browser_sessions','SELECT,INSERT,UPDATE,DELETE'),'authenticated has no direct session access');
@@ -10,6 +10,7 @@ SELECT ok(has_function_privilege('service_role','public.secure_browser_request_u
 SELECT ok(NOT has_function_privilege('authenticated','public.secure_browser_request_unavailable(uuid,uuid,text,uuid,text,text,text,jsonb,uuid)','EXECUTE'),'browser cannot call service request boundary');
 SELECT ok(NOT public._secure_browser_safe_text('password: hunter123'),'database rejects a labeled password value');
 SELECT ok(NOT public._secure_browser_safe_text('use bearer abcdefghijklmnop'),'database rejects a bearer value');
+SELECT ok(NOT public._secure_browser_safe_json('{"notes":["token: abcdefghijk"]}'),'database recursively rejects a generic token value');
 SELECT ok(public._secure_browser_safe_text('Review quarterly filing status'),'ordinary business purpose remains valid');
 
 INSERT INTO auth.users(id,aud,role,email) VALUES
@@ -40,6 +41,7 @@ SELECT is(public._secure_browser_actor_kind('5a000000-0000-4000-8000-00000000000
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SELECT throws_ok($q$SELECT public.secure_browser_request_unavailable('5a000000-0000-4000-8000-00000000aaaa','5a000000-0000-4000-8000-000000000001','owner','5a000000-0000-4000-8000-000000009901','password: hunter123','https://example.com','example.com','{"mode":"read_only","allowedOrigins":["https://example.com"],"allowedReadKinds":["status"],"downloads":"disabled","consequentialActions":"disabled"}','5a000000-0000-4000-8000-000000008001')$q$,'22023','SECURE_BROWSER_REQUEST_INVALID','secret-looking purpose never persists');
+SELECT throws_ok($q$SELECT public.secure_browser_request_unavailable('5a000000-0000-4000-8000-00000000aaaa','5a000000-0000-4000-8000-000000000001','owner','5a000000-0000-4000-8000-000000009901','client secret: abcdefghijk','https://example.com','example.com','{"mode":"read_only","allowedOrigins":["https://example.com"],"allowedReadKinds":["status"],"downloads":"disabled","consequentialActions":"disabled"}','5a000000-0000-4000-8000-000000008005')$q$,'22023','SECURE_BROWSER_REQUEST_INVALID','generic client secret purpose never persists');
 SELECT throws_ok($q$SELECT public.secure_browser_request_unavailable('5a000000-0000-4000-8000-00000000aaaa','5a000000-0000-4000-8000-000000000001','admin','5a000000-0000-4000-8000-000000009901','Review filing status','https://example.com','example.com','{"mode":"read_only","allowedOrigins":["https://example.com"],"allowedReadKinds":["status"],"downloads":"disabled","consequentialActions":"disabled"}','5a000000-0000-4000-8000-000000008002')$q$,'22023','SECURE_BROWSER_ACTOR_KIND_INVALID','caller cannot relabel an owner as admin');
 CREATE TEMP TABLE sb_owner_request AS SELECT public.secure_browser_request_unavailable(
  '5a000000-0000-4000-8000-00000000aaaa','5a000000-0000-4000-8000-000000000001','owner','5a000000-0000-4000-8000-000000009901','Review filing status','https://example.com','example.com',
@@ -73,6 +75,7 @@ SELECT is((public.list_secure_browser_connected_accounts()->0->>'state'),'expire
 SELECT throws_ok($q$SELECT public.control_secure_browser_connected_account((SELECT id FROM public.secure_browser_connected_accounts WHERE label='Expired metadata'),'pause')$q$,'42501',NULL,'direct hidden-table lookup remains unavailable to authenticated caller');
 RESET ROLE;
 SELECT is((SELECT state FROM public.secure_browser_connected_accounts WHERE label='Expired metadata'),'expired','expiry is persisted canonically');
+SELECT is((SELECT count(*)::integer FROM public.secure_browser_receipts WHERE action_kind='account.expire'),1,'account expiry writes one detailed receipt with Rail identity');
 SELECT is((SELECT count(*)::integer FROM public.secure_browser_receipts WHERE action_kind='usage.settle'),1,'settlement writes one detailed receipt');
 
 SELECT * FROM finish();
