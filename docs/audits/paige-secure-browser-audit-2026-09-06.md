@@ -525,9 +525,9 @@ selected provider all attach to that single entry — **no duplicate registry** 
   inventory + §32 proof.
 - **Claude Design:** the in-chat browser surface + connection-management visuals (`paige-ui-design` +
   `flow-prototype`).
-- **PROOF OWED (a browser-capable session):** `paige-browser` Fly liveness, prod-secret presence
-  (`FIRECRAWL_API_KEY`, `PAIGE_BROWSER_*`), and the §32.c authenticated drive of the existing research
-  path — none reachable from this headless session.
+- **PROOF OWED:** the §32.c authenticated tenant drive of the existing bounded research path.
+  `paige-browser` Fly deployment is now proven in §12. Provider-secret presence is deliberately not
+  inspected or treated as capability proof; Browserbase credentialed wiring remains unauthorized.
 - **New issues recommended:** §4.3 items 2 and 3 (the others are already tracked).
 
 *This packet is a decision + inventory record (attention-register §1: a dated write-up whose findings
