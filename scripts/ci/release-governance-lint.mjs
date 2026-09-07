@@ -72,7 +72,7 @@ function requireDeliveryState(value, label, findings) {
   if (value?.state !== "APPLIED" && Array.isArray(value?.identifiers) && value.identifiers.length > 0) findings.push(`${label}.identifiers must be empty unless state is APPLIED`);
   if (value?.state === "APPLIED" && Array.isArray(value?.identifiers)) {
     const pattern = label.endsWith("migration_status") ? /^\d{14}_[A-Za-z0-9_-]+$/ : /^[A-Za-z0-9._-]+@v?[A-Za-z0-9._-]+$/;
-    if (value.identifiers.some((identifier) => !pattern.test(identifier))) findings.push(`${label}.identifiers must contain exact ${label.endsWith("migration_status") ? "migration IDs" : "function@version IDs"}`);
+    if (value.identifiers.some((identifier) => !pattern.test(identifier) || /\b(?:todo|tbd|placeholder|replace_me|pending|unknown|none|n\/?a)\b/i.test(identifier))) findings.push(`${label}.identifiers must contain exact non-placeholder ${label.endsWith("migration_status") ? "migration IDs" : "function@version IDs"}`);
   }
   if (value?.state === "PROOF_OWED") {
     requireExactObject(value.proof_owed, ["boundary", "excluded_from_live_claim"], `${label}.proof_owed`, findings);
@@ -163,7 +163,7 @@ export function validateReleaseRecord(record) {
       requireExactObject(build, BUILD_KEYS, label, findings);
       if (!/^[0-9a-f]{40}$/i.test(String(build?.commit_sha || ""))) findings.push(`${label}.commit_sha must be an exact 40-character SHA`);
       if (!nonEmpty(build?.deployment_id)) findings.push(`${label}.deployment_id missing`);
-      else if (/\b(?:todo|tbd|placeholder|replace_me|unknown|pending|proof_owed|n\/?a|none)\b/i.test(build.deployment_id)) findings.push(`${label}.deployment_id must not contain a placeholder token`);
+      else if (build.deployment_id !== "NOT_APPLICABLE" && /(?:^|[_\-])(TODO|TBD|PLACEHOLDER|REPLACE_ME|PENDING|UNKNOWN|NONE|N_?A|PROOF_OWED)(?:$|[_\-])/i.test(build.deployment_id.replace(/\s+/g, "_"))) findings.push(`${label}.deployment_id must not contain an anticipated or placeholder token`);
       if (!["local", "development", "preview", "production"].includes(build?.environment)) findings.push(`${label}.environment invalid`);
       if (!CHANNELS.has(build?.release_channel)) findings.push(`${label}.release_channel invalid`);
       if (!["referenced", "supporting"].includes(build?.customer_release_scope)) findings.push(`${label}.customer_release_scope invalid`);
@@ -348,7 +348,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects published release without green production checks", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, checks: { ...build.checks, production_checks: { state: "UNVERIFIED", evidence: ["not driven"] } } }] }, true],
     ["rejects published development-only release", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, environment: "development", release_channel: "development", deployment_id: "NOT_APPLICABLE" }] }, true],
     ["rejects published placeholder deployment identifier", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, deployment_id: "TODO-deployment" }] }, true],
-    ["rejects pending deployment identifier", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, deployment_id: "pending" }] }, true],
+    ["rejects pending deployment identifier", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, deployment_id: "PENDING_DEPLOYMENT" }] }, true],
     ["rejects free-form technical build list", { ...valid, whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "internal_only", build_ids: ["dpl_fake"] } } }, true],
     ["rejects published reference to development when another production build exists", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, customer_release_scope: "supporting" }, { ...build, commit_sha: "b".repeat(40), deployment_id: "dev_123", environment: "development", release_channel: "development" }] }, true],
     ["rejects staged build without rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: null }] }, true],
@@ -360,6 +360,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects staged approval reused for publication", { ...valid, customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: stagedApproval.reference } }, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
     ["rejects applied migration without identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["migration applied"], identifiers: [], proof_owed: null } }] }, true],
     ["rejects generic APPLIED identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["done"], identifiers: ["done"], proof_owed: null } }] }, true],
+    ["rejects placeholder-shaped APPLIED identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["migration log"], identifiers: ["20260907000001_TODO"], proof_owed: null }, edge_status: { state: "APPLIED", evidence: ["function deployment"], identifiers: ["TODO@v1"], proof_owed: null } }] }, true],
     ["accepts exact APPLIED identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["migration log"], identifiers: ["20260907000001_example"], proof_owed: null }, edge_status: { state: "APPLIED", evidence: ["function deployment"], identifiers: ["paige-example@v3"], proof_owed: null } }] }, false],
     ["rejects schema-forbidden extra property", { ...valid, invented: true }, true],
     ["rejects invalid date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "not-a-date" }] }, true],
