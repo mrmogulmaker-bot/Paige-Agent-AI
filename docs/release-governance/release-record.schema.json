@@ -406,7 +406,7 @@
           "then": { "properties": { "replacement_value": { "type": "null" } } }
         },
         {
-          "if": { "properties": { "field_path": { "pattern": "^/whats_new/status/(0|[1-9][0-9]*)$|^/internal_builds/(0|[1-9][0-9]*)/(migration_status|edge_status)/state$" } }, "required": ["field_path"] },
+          "if": { "properties": { "field_path": { "pattern": "^/whats_new/status/(0|[1-9][0-9]*)$" } }, "required": ["field_path"] },
           "then": {
             "anyOf": [
               { "properties": { "replacement_exists": { "const": false }, "replacement_value": { "type": "null" } }, "required": ["replacement_exists", "replacement_value"] },
@@ -414,12 +414,21 @@
             ]
           },
           "else": {
-            "properties": {
-              "replacement_value": {
-                "anyOf": [
-                  { "not": { "type": "string" } },
-                  { "$ref": "#/$defs/resolvedString" }
-                ]
+            "if": { "properties": { "field_path": { "pattern": "^/internal_builds/(0|[1-9][0-9]*)/(migration_status|edge_status)/state$" } }, "required": ["field_path"] },
+            "then": {
+              "anyOf": [
+                { "properties": { "replacement_exists": { "const": false }, "replacement_value": { "type": "null" } }, "required": ["replacement_exists", "replacement_value"] },
+                { "properties": { "replacement_exists": { "const": true }, "replacement_value": { "anyOf": [{ "const": "PROOF_OWED" }, { "$ref": "#/$defs/resolvedString" }] } }, "required": ["replacement_exists", "replacement_value"] }
+              ]
+            },
+            "else": {
+              "properties": {
+                "replacement_value": {
+                  "anyOf": [
+                    { "not": { "type": "string" } },
+                    { "$ref": "#/$defs/resolvedString" }
+                  ]
+                }
               }
             }
           }
