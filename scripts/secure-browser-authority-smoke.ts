@@ -107,6 +107,24 @@ async function main() {
     }, {}, calls);
     assert(calls.length === 0, "internal service without actor performs zero tenant reads or writes");
 
+    const actorlessContactCalls: string[] = [];
+    await refusal("browser_human_actor_required", {
+      bearerToken: SERVICE, serviceKey: SERVICE, contactId: "a",
+    }, { contactTenants: { a: "tenant-a" } }, actorlessContactCalls);
+    assert(actorlessContactCalls.length === 0, "actorless internal service cannot use a contact to probe tenant data");
+
+    const missingTenantCalls: string[] = [];
+    await refusal("browser_authority_unresolved", {
+      bearerToken: SERVICE, serviceKey: SERVICE, invokerUserId: "owner",
+    }, {}, missingTenantCalls);
+    assert(missingTenantCalls.length === 0, "internal human actor without contact or tenant source performs zero reads or writes");
+
+    const mismatchCalls: string[] = [];
+    await refusal("browser_tenant_mismatch", {
+      bearerToken: SERVICE, serviceKey: SERVICE, contactId: "b", tenantHint: "tenant-a", invokerUserId: "owner",
+    }, { contactTenants: { b: "tenant-b" }, admin: true }, mismatchCalls);
+    assert(mismatchCalls.join(",") === "contact:b", "internal contact/hint mismatch stops before authority checks or writes");
+
     const contactDerived = await resolveSecureBrowserAuthority(
       { bearerToken: SERVICE, serviceKey: SERVICE, contactId: "a", invokerUserId: "owner" },
       deps({ contactTenants: { a: "tenant-a" }, admin: true }, []),
