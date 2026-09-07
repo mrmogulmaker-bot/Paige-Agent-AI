@@ -35,9 +35,34 @@ const UNBUILT_STATUSES = ["UNAVAILABLE", "DEFERRED", "PROPOSED"];
 // purchases/billing. The tripwire scans the entry's safe_readable_context for these tokens.
 const MARKETPLACE_FORBIDDEN = /\b(credential|token|purchase|billing|per-tenant usage|tenant usage|client material)\b/i;
 
+// --- API Expense & Operations Layer (v1.1) vocabularies + the M1 disambiguation (owner ruling 2026-09-06) ---
+const COST_RESPONSIBILITY = ["platform_paid", "tenant_direct", "shared", "pass_through", "undecided"];
+const PRICING_MODEL = ["free_quota", "metered_usage", "fixed_subscription", "per_seat", "per_location", "per_action", "enterprise_contract", "unknown"];
+const COST_DRIVER = ["api_calls", "locations", "seats", "documents", "messages", "minutes", "transactions", "ad_spend", "storage", "model_usage", "other"];
+const M1_TRACK = ["m1_real_money_spend_control", "llm_cost_metering", "none"];
+const EXPENSE_STR_FIELDS = [
+  "cost_responsibility", "billing_owner", "operational_owner", "pricing_model", "pricing_source_url",
+  "pricing_note", "access_prerequisite", "rate_limits_quotas", "usage_review_cadence",
+  "renewal_deprecation_review", "data_privacy_retention", "receipt_reconciliation", "rail_outcome",
+  "pause_revoke_path", "next_owner", "next_slice",
+];
+// The QUALIFIED forms of "M1" a base m1_dependency may use. Everything else is a bare, prohibited "M1".
+// checkBaseM1 STRIPS these first, then flags any remaining bare "M1" — so a qualified token elsewhere
+// in the string can no longer immunize a separate bare "M1" (the §39 verifier's tripwire hole).
+const QUALIFIED_M1_FORMS = /M1 real-money spend control|M1-[ab]\b/gi;
+
+// The OWNER-APPROVED Public Presence roadmap order (report section 4). The JSON is the source of truth
+// for this sequence, so CI enforces it (Codex P2). Reordering, inserting, or dropping an item fails
+// until this constant is updated — an owner re-prioritization is deliberate, not accidental drift.
+const EXPECTED_ROADMAP_ORDER = [
+  "google-search-console", "google-business-profile", "bing-webmaster", "apple-business-connect",
+  "yelp", "facebook-presence", "linkedin", "directory-network",
+];
+
 const TOP_LEVEL = [
   "doc", "schema_version", "cardinal_rule", "status_vocabulary", "authority_lanes",
   "tiers", "taxonomy", "rules", "delivery_rule", "field_schema", "providers",
+  "cost_tracks", "expense_and_operations_schema", "public_presence_roadmap",
 ];
 const PROVIDER_FIELDS = [
   "id", "name", "taxonomy", "business_reason", "paige_use_cases", "connection_prerequisite",
@@ -48,6 +73,47 @@ const PROVIDER_FIELDS = [
 
 function nonEmptyStr(v) { return typeof v === "string" && v.trim().length > 0; }
 function nonEmptyArr(v) { return Array.isArray(v) && v.length > 0; }
+
+/** Validate an expense_and_operations block (a provider's or a roadmap item's). Pushes errors via E. */
+function validateExpenseBlock(eo, tag, E) {
+  if (eo == null || typeof eo !== "object") { E(`${tag}: missing expense_and_operations block`); return; }
+  for (const f of EXPENSE_STR_FIELDS) if (!nonEmptyStr(eo[f])) E(`${tag}: expense_and_operations missing/empty "${f}"`);
+  if (nonEmptyStr(eo.cost_responsibility) && !COST_RESPONSIBILITY.includes(eo.cost_responsibility)) E(`${tag}: unknown cost_responsibility "${eo.cost_responsibility}"`);
+  if (nonEmptyStr(eo.pricing_model) && !PRICING_MODEL.includes(eo.pricing_model)) E(`${tag}: unknown pricing_model "${eo.pricing_model}"`);
+  if (!nonEmptyArr(eo.expected_cost_driver)) E(`${tag}: expense_and_operations.expected_cost_driver must be a non-empty array`);
+  else for (const d of eo.expected_cost_driver) if (!COST_DRIVER.includes(d)) E(`${tag}: unknown expected_cost_driver "${d}"`);
+  // pricing_checked_as_of: the KEY must exist (null when not verified). When a next owner date-stamps
+  // it, the date must be a real ISO date AND the source must be a real URL — string-presence is not
+  // enough or "not-an-iso-date" + "internal notes" would masquerade as dated source verification
+  // (§13 / R10; §39 verifier 1(a) + Codex P2).
+  if (!("pricing_checked_as_of" in eo)) E(`${tag}: expense_and_operations missing "pricing_checked_as_of" (use null if not verified)`);
+  else if (eo.pricing_checked_as_of !== null) {
+    if (!nonEmptyStr(eo.pricing_checked_as_of) || !/^\d{4}-\d{2}-\d{2}$/.test(eo.pricing_checked_as_of.trim())) {
+      E(`${tag}: pricing_checked_as_of must be null or an ISO date (YYYY-MM-DD), not "${eo.pricing_checked_as_of}"`);
+    } else if (!nonEmptyStr(eo.pricing_source_url) || !/^https?:\/\/\S+/i.test(eo.pricing_source_url.trim())) {
+      E(`${tag}: pricing_checked_as_of is date-stamped but pricing_source_url is not an official URL (http(s)://…) — a date-stamp requires a real source (R10/§13)`);
+    }
+  }
+  // money_movement + THE OWNER RULING (2026-09-06): a real-money-moving provider must use the
+  // real-money spend-control track, NEVER LLM-token metering or "none".
+  const m = eo.money_movement;
+  if (m == null || typeof m !== "object") { E(`${tag}: expense_and_operations.money_movement missing`); return; }
+  if (typeof m.can_move_real_money !== "boolean") E(`${tag}: money_movement.can_move_real_money must be a boolean`);
+  if (!M1_TRACK.includes(m.m1_dependency_track)) E(`${tag}: money_movement.m1_dependency_track "${m.m1_dependency_track}" not one of ${M1_TRACK.join("|")}`);
+  if (!nonEmptyStr(m.detail)) E(`${tag}: money_movement.detail required`);
+  if (m.can_move_real_money === true && m.m1_dependency_track !== "m1_real_money_spend_control") {
+    E(`${tag}: money_movement.can_move_real_money=true but m1_dependency_track="${m.m1_dependency_track}" — a provider that moves real money MUST point to M1 real-money spend control, never LLM-token metering or "none" (owner ruling 2026-09-06)`);
+  }
+}
+
+/** A base m1_dependency string that uses "M1" must qualify EVERY occurrence (real-money / M1-a / M1-b). */
+function checkBaseM1(m1, tag, E) {
+  if (!nonEmptyStr(m1)) return;
+  const stripped = m1.replace(QUALIFIED_M1_FORMS, ""); // remove the allowed forms; a bare "M1" left over is unqualified
+  if (/\bM1\b/i.test(stripped)) {
+    E(`${tag}: m1_dependency uses the unqualified token "M1" — name the track ("M1 real-money spend control" for spend, "internal LLM-cost metering" for model usage, or "none") (owner ruling 2026-09-06)`);
+  }
+}
 
 /** Pure validator: returns an array of human-readable error strings (empty = valid). */
 export function validateRegistry(reg) {
@@ -151,10 +217,61 @@ export function validateRegistry(reg) {
         E(`provider "${tag}": marketplace_metadata_only entry names forbidden per-tenant data in safe_readable_context (R4)`);
       }
     }
+
+    // API Expense & Operations Layer (v1.1): every provider carries an expense block + a QUALIFIED m1.
+    validateExpenseBlock(p.expense_and_operations, `provider "${tag}"`, E);
+    checkBaseM1(p.m1_dependency, `provider "${tag}"`, E);
   }
 
   // COVERAGE — every taxonomy group must have at least one catalogued provider.
   for (const id of taxIds) if (!groupsCovered.has(id)) E(`taxonomy group "${id}" has no catalogued provider`);
+
+  // COST TRACKS — the M1 disambiguation must declare both named tracks (owner ruling 2026-09-06).
+  const ct = reg.cost_tracks;
+  if (ct == null || typeof ct !== "object") E("cost_tracks missing");
+  else {
+    for (const k of ["llm_cost_metering", "m1_real_money_spend_control", "none"]) {
+      if (!nonEmptyStr(ct[k])) E(`cost_tracks missing/empty "${k}"`);
+    }
+  }
+
+  // PUBLIC PRESENCE ROADMAP — ordered, each item a valid roadmap entry with an expense block.
+  const rp = reg.public_presence_roadmap;
+  if (rp == null || typeof rp !== "object" || !nonEmptyArr(rp.items)) {
+    E("public_presence_roadmap.items must be a non-empty array");
+  } else {
+    const orders = new Set();
+    const rmIds = new Set();
+    for (const it of rp.items) {
+      const rtag = `roadmap "${nonEmptyStr(it.id) ? it.id : JSON.stringify(it).slice(0, 40)}"`;
+      for (const f of ["id", "provider", "product_or_api", "business_purpose", "status"]) {
+        if (!nonEmptyStr(it[f])) E(`${rtag}: missing/empty "${f}"`);
+      }
+      if (nonEmptyStr(it.id)) { if (rmIds.has(it.id)) E(`${rtag}: duplicate roadmap id`); rmIds.add(it.id); }
+      if (nonEmptyStr(it.status) && !STATUSES.includes(it.status)) E(`${rtag}: unknown status "${it.status}"`);
+      if (typeof it.order !== "number") E(`${rtag}: order must be a number`);
+      else { if (orders.has(it.order)) E(`${rtag}: duplicate order ${it.order}`); orders.add(it.order); }
+      if (it.tier_eligibility && typeof it.tier_eligibility === "object") {
+        for (const t of TIER_KEYS) {
+          if (!(t in it.tier_eligibility)) E(`${rtag}: tier_eligibility missing "${t}"`);
+          else if (!TIER_VALUES.includes(it.tier_eligibility[t])) E(`${rtag}: tier_eligibility.${t}="${it.tier_eligibility[t]}" invalid`);
+        }
+      } else E(`${rtag}: tier_eligibility missing`);
+      validateExpenseBlock(it.expense_and_operations, rtag, E);
+    }
+    // Enforce the OWNER-APPROVED sequence (Codex P2): items sorted by `order` must match the approved
+    // id sequence exactly, and orders must be contiguous 1..N — so a reorder/insert/drop fails CI.
+    const byOrder = [...rp.items].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+    const sortedIds = byOrder.map((it) => it.id);
+    if (JSON.stringify(sortedIds) !== JSON.stringify(EXPECTED_ROADMAP_ORDER)) {
+      E(`public_presence_roadmap by ascending order is [${sortedIds.join(", ")}] but the approved sequence is [${EXPECTED_ROADMAP_ORDER.join(", ")}] — fix the order, or update EXPECTED_ROADMAP_ORDER on a deliberate owner re-prioritization`);
+    }
+    const actualOrders = rp.items.map((it) => Number(it.order)).sort((a, b) => a - b);
+    const contiguous = EXPECTED_ROADMAP_ORDER.map((_, i) => i + 1);
+    if (JSON.stringify(actualOrders) !== JSON.stringify(contiguous)) {
+      E(`public_presence_roadmap order values must be contiguous 1..${EXPECTED_ROADMAP_ORDER.length} (got [${actualOrders.join(", ")}])`);
+    }
+  }
 
   return errors;
 }
@@ -203,6 +320,54 @@ function selfTest() {
   });
   mustFail("missing delivery rule", (r) => { delete r.delivery_rule; });
   mustFail("missing cardinal rule", (r) => { delete r.cardinal_rule; });
+  // --- Expense & Operations Layer (v1.1) ---
+  mustFail("missing expense block", (r) => { delete r.providers[0].expense_and_operations; });
+  mustFail("bad cost_responsibility", (r) => { r.providers[0].expense_and_operations.cost_responsibility = "somebody"; });
+  mustFail("bad pricing_model", (r) => { r.providers[0].expense_and_operations.pricing_model = "cheap"; });
+  mustFail("bad cost_driver", (r) => { r.providers[0].expense_and_operations.expected_cost_driver = ["vibes"]; });
+  mustFail("date-stamp without source", (r) => {
+    const p = r.providers[0].expense_and_operations;
+    p.pricing_checked_as_of = "2026-09-06"; p.pricing_source_url = "none";
+  });
+  mustFail("real money on wrong M1 track", (r) => {
+    const p = r.providers.find((x) => x.expense_and_operations.money_movement.can_move_real_money === true);
+    p.expense_and_operations.money_movement.m1_dependency_track = "llm_cost_metering";
+  });
+  mustFail("real money on 'none' track", (r) => {
+    const p = r.providers.find((x) => x.expense_and_operations.money_movement.can_move_real_money === true);
+    p.expense_and_operations.money_movement.m1_dependency_track = "none";
+  });
+  mustFail("unqualified M1 in base m1_dependency", (r) => {
+    r.providers[0].m1_dependency = "must meter (M1) before autonomous use";
+  });
+  mustFail("unqualified M1 immunized by a qualified token", (r) => {
+    r.providers[0].m1_dependency = "meter M1 first, then M1-b caps apply";
+  });
+  mustFail("missing cost_tracks", (r) => { delete r.cost_tracks; });
+  mustFail("cost_tracks missing real-money track", (r) => { delete r.cost_tracks.m1_real_money_spend_control; });
+  mustFail("missing public_presence_roadmap", (r) => { delete r.public_presence_roadmap; });
+  mustFail("roadmap item bad status", (r) => { r.public_presence_roadmap.items[0].status = "SOON"; });
+  mustFail("roadmap duplicate order", (r) => { r.public_presence_roadmap.items[1].order = r.public_presence_roadmap.items[0].order; });
+  mustFail("roadmap item missing expense block", (r) => { delete r.public_presence_roadmap.items[0].expense_and_operations; });
+  mustFail("roadmap real-money wrong track", (r) => {
+    const it = r.public_presence_roadmap.items.find((x) => x.expense_and_operations.money_movement.can_move_real_money === true);
+    it.expense_and_operations.money_movement.m1_dependency_track = "llm_cost_metering";
+  });
+  mustFail("date-stamp with non-ISO date", (r) => {
+    const p = r.providers[0].expense_and_operations;
+    p.pricing_checked_as_of = "not-an-iso-date"; p.pricing_source_url = "https://example.com/pricing";
+  });
+  mustFail("date-stamp with non-URL source", (r) => {
+    const p = r.providers[0].expense_and_operations;
+    p.pricing_checked_as_of = "2026-09-06"; p.pricing_source_url = "internal notes";
+  });
+  mustFail("roadmap approved sequence reversed", (r) => {
+    const items = r.public_presence_roadmap.items;
+    const a = items[0].order; items[0].order = items[1].order; items[1].order = a;
+  });
+  mustFail("roadmap order not contiguous", (r) => {
+    r.public_presence_roadmap.items[0].order = 99;
+  });
 
   if (fails.length) {
     console.error("✗ integration-registry-lint SELF-TEST FAILED:");

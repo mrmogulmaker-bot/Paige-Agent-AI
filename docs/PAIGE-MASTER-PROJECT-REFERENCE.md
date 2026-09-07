@@ -1466,6 +1466,23 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
     `lint:binding-ledger` that fails CI on missing fields, unknown status/lane/tier vocabulary,
     duplicate ids, an unbuilt status declaring a real acting lane, a LIVE entry with no provable
     receipt, a Marketplace entry leaking per-tenant data, or an uncovered taxonomy group.
+  - **v1.1 — API Expense & Operations Layer (2026-09-06):** every provider (and every Public Presence
+    roadmap item) carries an `expense_and_operations` block — cost responsibility (platform_paid/
+    tenant_direct/shared/pass_through/undecided) · billing + operational owner · pricing model + OFFICIAL
+    source URL + checked-as-of date · cost driver · rate limits · usage-review cadence · renewal/
+    deprecation review · data/privacy/retention · money-movement + M1 dependency · receipt/reconciliation/
+    Rail/pause-revoke · next owner/slice. Derived 4-section view:
+    `docs/integration-registry/expense-and-operations-report.md` (current platform operating
+    dependencies · tenant-authorized integrations · future Agency/Enterprise · Public Presence roadmap
+    GSC→GBP→Bing→Apple→Yelp→FB/LinkedIn→directories). **"M1" is disambiguated (owner ruling 2026-09-06):**
+    `cost_tracks` names **internal LLM-cost metering** (operating-cost visibility, §8.4) vs **M1
+    real-money spend control** (external spend backbone, §10). Any provider that can create purchases/
+    payments/ad-spend/bookkeeping/obligations points to the real-money track — the guard fails CI
+    otherwise, and rejects an unqualified "M1". §13 honesty: prices are NOT verified this slice
+    (checked-as-of null + source URL recorded); no price invented, no free plan assumed, custom/
+    enterprise recorded honestly. Provider API fees are separate from customer money movement; Paige is
+    never merchant of record (§38). The correction is go-forward only — historical closeouts are NOT
+    rewritten (§58).
   - **§13 grounding note:** the brief named a *"Marketplace Brain decision"* that has **no artifact
     under that phrase repo-wide** — the Marketplace rule is grounded on `MARKETPLACE-DATA-MODEL.md`
     instead; recorded as unresolved, not invented.
