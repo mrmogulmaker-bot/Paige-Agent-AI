@@ -156,8 +156,20 @@ is a leak (add a CI guard mirroring `lint:integration-registry`).
   `governMcpToolCall` (`paige-mcp/index.ts:5388-5433`). Fails closed to `tenant_unresolved`.
 - Owns the session/purpose/scope record, the Vault Connected Accounts record, the receipts, and the
   §10/§68 governance. The adapter owns none of these.
-- Reuses `_shared/capability-record.ts` `record_capability_run` (6 outcomes) for every receipt; reuses
-  the `paige_browser_usage`-class audit rail (tenant-scoped, append-only, service-role INSERT).
+- **Two receipt layers, not one.** `record_capability_run` (6 outcomes) is the **Rail SUMMARY** only
+  (tenant, actor, capability key, outcome, run id) — it does NOT hold the action detail; and
+  `paige_browser_usage` holds browse URL/HTTP telemetry, not action detail. So a Phase-3 consequential
+  action ALSO writes a **durable detailed action receipt** carrying the §10-dimension-5 fields: the
+  **exact action + target + amount**, the **policy/authority basis (grant id)**, the **provider
+  request/result**, the **verified readback**, and the **idempotency key** — extend RE-1's
+  `paige_automation_acts` (which already carries the act + idempotency) or add a dedicated
+  `secure_browser_action_receipts` table (tenant-scoped, `FORCE RLS`, append-only, no secrets/HTML).
+  `record_capability_run` remains the Rail summary that points at it. Without this durable detailed
+  receipt, A5/A6's "truthful, auditable receipt" cannot be produced (§10/§13).
+- **Per-worker credential handling (from the MVP plan §2 scope correction):** the worker adapter must
+  enforce **ephemeral credential input + log/telemetry/recording suppression + no persistence beyond the
+  encrypted session** — always for a Paige-operated Chromium/Playwright worker (where the credential
+  enters Paige's own worker), and asserted-at-the-boundary for a provider-held worker.
 
 ### B3. Vault "Connected Accounts" record (Phase 2) — schema + RLS
 - New Vault-scoped table (e.g. `vault_connected_accounts`): `tenant_id NOT NULL`, `purpose`,
@@ -202,8 +214,13 @@ report that honestly. Never fabricate completion (§13/§32).
 1. **Prerequisite security fixes** (B5) — their own PR, proven with §9 tenant-isolation tests.
 2. **The internal contract + control plane + read-only worker adapter** (B1/B2) — Phase-1 read path;
    headless smoke + the §70.1 gate (owner live-drive owed to a browser-capable session).
-3. **Phase-1 owner-assisted live session** (Part A A1–A8 ephemeral) behind the reviewed worker adapter,
-   **flagged off until the owner clears the provider review**.
+3. **Phase-1 owner-assisted live session** — the **READ-ONLY** subset of Part A only: **A1–A4** (open →
+   take control → owner sign-in/MFA → observe/read) + **A6** (safe result + receipt for the READ) +
+   **A8 ephemeral close** + **A10** (failure/abandon/switch), plus **A7** (any captured download → Vault
+   quarantine). **EXCLUDES A5** (Paige-driven consequential submit/download/payment = Phase 3, item 5)
+   and **A8's connect branch** (persistent connection = Phase 2, item 4) — those ship only after their
+   §10/§68 controls exist. Behind the reviewed worker adapter, **flagged off until the owner clears the
+   provider review**.
 4. **Phase-2 Vault Connected Accounts** (B3) — §9 isolation + revocation proofs.
 5. **Phase-3 governed actions** (B4) — §10 declaration + RE-2 + §37 inventory + §68 green + §32.c drive.
 6. **Phase-4 crawl hardening + skills.**

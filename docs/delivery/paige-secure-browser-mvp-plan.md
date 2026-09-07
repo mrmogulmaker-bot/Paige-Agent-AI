@@ -69,10 +69,19 @@ does any customer-facing surface or core domain type change?"* If yes, the abstr
 - **Fail closed** whenever a connection, authority policy, target domain, action type, freshness, or
   receipt requirement is missing.
 
-**Why this is the strongest posture (§59):** because the owner types the credential directly into the
-worker and Paige holds only an opaque reference, *the raw secret never transits Paige at all* — you
-cannot leak what you never held. This is stronger than the existing connection-token vault
-(`tenant_mcp_connections`), which stores encrypted tokens Paige can decrypt server-side.
+**Why this is the strongest posture (§59) — scoped honestly to the trust boundary:** the owner types
+the credential directly into the **worker**, never into Paige's control plane, logs, storage, chat, or
+model context, and Paige holds only an opaque reference.
+- **Provider-held worker (Browserbase bootstrap):** the raw secret **never touches Paige infrastructure
+  at all** — you cannot leak what you never held.
+- **Paige-operated Chromium/Playwright worker fleet:** the credential **DOES enter Paige's own isolated
+  worker**, so the guarantee is narrower and MUST be enforced by the worker — **ephemeral input** (used
+  at the keystroke, never persisted beyond the encrypted session), **log/telemetry/recording
+  suppression**, and **never crossing into the control plane, any durable store, or model context**.
+
+Either way it is stronger than the existing connection-token vault (`tenant_mcp_connections`), which
+stores encrypted tokens Paige can decrypt server-side. The build handoff carries the per-worker
+credential-handling requirement as a first-class backend item.
 
 ---
 
