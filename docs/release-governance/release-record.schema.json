@@ -9,6 +9,7 @@
     "schema_version",
     "record_id",
     "record_state",
+    "history",
     "classification",
     "internal_builds",
     "scope",
@@ -24,6 +25,12 @@
     "record_id": { "type": "string", "minLength": 1 },
     "record_state": {
       "enum": ["DRAFT", "OWNER_DECISION_PENDING", "APPROVED", "PUBLISHED", "CORRECTED", "RETRACTED"]
+    },
+    "history": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/correctionHistory" }
+      ]
     },
     "classification": {
       "enum": ["internal_only", "patch", "minor_candidate", "major_candidate"]
@@ -175,9 +182,57 @@
           }
         }
       }
+    },
+    {
+      "if": { "properties": { "record_state": { "enum": ["CORRECTED", "RETRACTED"] } }, "required": ["record_state"] },
+      "then": { "properties": { "history": { "$ref": "#/$defs/correctionHistory" } } },
+      "else": { "properties": { "history": { "type": "null" } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "internal_builds": {
+            "contains": {
+              "properties": {
+                "customer_release_scope": { "const": "referenced" },
+                "migration_status": { "properties": { "state": { "const": "PROOF_OWED" } } }
+              },
+              "required": ["customer_release_scope", "migration_status"]
+            }
+          }
+        },
+        "required": ["internal_builds"]
+      },
+      "then": { "properties": { "whats_new": { "properties": { "status": { "contains": { "const": "PROOF OWED" } } } } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "internal_builds": {
+            "contains": {
+              "properties": {
+                "customer_release_scope": { "const": "referenced" },
+                "edge_status": { "properties": { "state": { "const": "PROOF_OWED" } } }
+              },
+              "required": ["customer_release_scope", "edge_status"]
+            }
+          }
+        },
+        "required": ["internal_builds"]
+      },
+      "then": { "properties": { "whats_new": { "properties": { "status": { "contains": { "const": "PROOF OWED" } } } } } }
     }
   ],
   "$defs": {
+    "correctionHistory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supersedes_record_id", "reason"],
+      "properties": {
+        "supersedes_record_id": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
     "customerReleaseIdentity": {
       "type": "object",
       "additionalProperties": false,
@@ -350,10 +405,10 @@
         "technical_release_reference": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["visibility", "build_ids"],
+          "required": ["visibility", "source"],
           "properties": {
             "visibility": { "const": "internal_only" },
-            "build_ids": { "$ref": "#/$defs/nonEmptyStrings" }
+            "source": { "const": "internal_builds.customer_release_scope=referenced" }
           }
         },
         "paige_readable_summary": { "type": "string", "minLength": 1 }

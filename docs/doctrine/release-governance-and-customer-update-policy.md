@@ -35,9 +35,10 @@ Every PR and deployment closeout records:
 - evidence links or reproducible references;
 - rollback or forward-fix position.
 
-Within a release record, each internal build is marked `referenced` when its deployment ID appears in
-the customer note's internal technical reference, or `supporting` when it is retained only as build history.
-The two sets must agree exactly; supporting preview/development evidence cannot satisfy a publication gate.
+Within a release record, each internal build is marked `referenced` when it supplies the customer note's
+internal technical reference, or `supporting` when it is retained only as build history. The note resolves
+structurally to all and only the `referenced` builds; supporting preview/development evidence cannot satisfy
+a publication gate.
 
 This identity is operational truth. It is internal by default and need not appear in customer copy. `main`, a branch name, a PR number, “latest,” or a URL alone is not an exact build identity.
 
@@ -105,7 +106,9 @@ Customer copy never includes secrets, internal sensitive payloads, tenant data f
 
 The machine-readable contract is `docs/release-governance/release-record.schema.json`. A customer release candidate gets one record under `docs/release-governance/records/` before publication. Internal-only PRs still complete the release-governance fields in the PR body; they do not need a customer release record unless they join a named release train.
 
-Release records are additive historical evidence. Correct an error transparently; do not rewrite a dated release to imply proof that did not exist at publication time. The Master Project Reference remains the source for current platform truth.
+Release records are additive historical evidence. Correct or retract an error with a new record naming the
+superseded record and reason; never delete or rewrite the dated original to imply proof that did not exist at
+publication time. The Master Project Reference remains the source for current platform truth.
 
 Every PR answers:
 

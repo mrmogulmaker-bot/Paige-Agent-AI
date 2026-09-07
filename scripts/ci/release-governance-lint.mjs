@@ -27,7 +27,7 @@ const CLASSIFICATIONS = new Set(["internal_only", "patch", "minor_candidate", "m
 const RECORD_STATES = new Set(["DRAFT", "OWNER_DECISION_PENDING", "APPROVED", "PUBLISHED", "CORRECTED", "RETRACTED"]);
 const DELIVERY_STATES = new Set(["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAILED"]);
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
-const RECORD_KEYS = ["schema_version", "record_id", "record_state", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
+const RECORD_KEYS = ["schema_version", "record_id", "record_state", "history", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "customer_release_scope", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
 const STAGED_KEYS = ["owner_approval", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
 const STAGED_TEXT_KEYS = ["eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
@@ -135,6 +135,10 @@ export function validateReleaseRecord(record) {
   if (record.schema_version !== "1.0.0") findings.push("schema_version must be 1.0.0");
   if (!nonEmpty(record.record_id)) findings.push("record_id missing");
   if (!RECORD_STATES.has(record.record_state)) findings.push("record_state invalid");
+  if (["CORRECTED", "RETRACTED"].includes(record.record_state)) {
+    requireExactObject(record.history, ["supersedes_record_id", "reason"], "history", findings);
+    if (!nonEmpty(record.history?.supersedes_record_id) || !nonEmpty(record.history?.reason)) findings.push("corrected/retracted record history requires supersedes_record_id and reason");
+  } else if (record.history !== null) findings.push("history must be null unless record_state is CORRECTED or RETRACTED");
   if (!CLASSIFICATIONS.has(record.classification)) findings.push("classification invalid");
 
   if (!Array.isArray(record.internal_builds) || record.internal_builds.length === 0) {
@@ -191,46 +195,37 @@ export function validateReleaseRecord(record) {
         if (!nonEmpty(note[field])) findings.push(`whats_new.${field} missing`);
       if (!Array.isArray(note.status) || note.status.length === 0 || note.status.some((state) => !CUSTOMER_STATES.has(state))) findings.push("whats_new.status invalid");
       else if (new Set(note.status).size !== note.status.length) findings.push("whats_new.status must be unique");
-      requireExactObject(note.technical_release_reference, ["visibility", "build_ids"], "whats_new.technical_release_reference", findings);
-      if (note.technical_release_reference?.visibility !== "internal_only" || !Array.isArray(note.technical_release_reference?.build_ids) || note.technical_release_reference.build_ids.length === 0)
-        findings.push("technical_release_reference must be internal_only with build_ids[]");
-      else {
-        requireNonEmptyStrings(note.technical_release_reference.build_ids, "whats_new.technical_release_reference.build_ids", findings);
-        if (new Set(note.technical_release_reference.build_ids).size !== note.technical_release_reference.build_ids.length) findings.push("whats_new.technical_release_reference.build_ids must be unique");
-        const recordedBuildIds = new Set((record.internal_builds || []).map((build) => build?.deployment_id));
-        for (const id of note.technical_release_reference.build_ids)
-          if (!recordedBuildIds.has(id)) findings.push(`technical release reference ${id} is not a recorded deployment_id`);
-      }
+      requireExactObject(note.technical_release_reference, ["visibility", "source"], "whats_new.technical_release_reference", findings);
+      if (note.technical_release_reference?.visibility !== "internal_only" || note.technical_release_reference?.source !== "internal_builds.customer_release_scope=referenced")
+        findings.push("technical_release_reference must resolve internally to builds marked customer_release_scope referenced");
     }
   } else if (record.whats_new !== null) {
     findings.push("whats_new must be null when no customer release identity exists");
   }
   if (record.classification === "internal_only" && (customer !== null || record.whats_new !== null))
     findings.push("internal_only records must not carry a customer release identity or What's New note");
-  const noteBuildIds = new Set(record.whats_new?.technical_release_reference?.build_ids || []);
   const scopedBuildIds = new Set((record.internal_builds || []).filter((build) => build?.customer_release_scope === "referenced").map((build) => build.deployment_id));
   if (customer === null && scopedBuildIds.size > 0) findings.push("records without a customer identity must mark every internal build as supporting");
-  if (customer !== null && (noteBuildIds.size !== scopedBuildIds.size || [...noteBuildIds].some((id) => !scopedBuildIds.has(id))))
-    findings.push("technical build_ids must exactly match internal builds marked customer_release_scope referenced");
+  if (customer !== null && scopedBuildIds.size === 0) findings.push("customer release identity requires at least one internal build marked customer_release_scope referenced");
   if (["minor_candidate", "major_candidate"].includes(record.classification) && customer === null)
     findings.push(`${record.classification} requires a customer release identity`);
   if (["APPROVED", "PUBLISHED"].includes(record.record_state) && customer !== null) {
     if (customer?.owner_approval?.status !== "APPROVED") findings.push(`${record.record_state} customer release requires an APPROVED customer-publication decision`);
-    const referenced = new Set(record.whats_new?.technical_release_reference?.build_ids || []);
     for (const [index, build] of (record.internal_builds || []).entries()) {
-      if (!referenced.has(build?.deployment_id)) continue;
+      if (build?.customer_release_scope !== "referenced") continue;
       for (const field of ["ci", "security", "production_checks"])
         if (build?.checks?.[field]?.state !== "PASS") findings.push(`${record.record_state} release requires internal_builds[${index}].checks.${field}.state PASS`);
     }
   }
   if (record.record_state === "PUBLISHED") {
     if (customer === null) findings.push("PUBLISHED requires a customer release identity");
-    const referenced = new Set(record.whats_new?.technical_release_reference?.build_ids || []);
-    const referencedBuilds = (record.internal_builds || []).filter((build) => build?.customer_release_scope === "referenced" && referenced.has(build?.deployment_id));
+    const referencedBuilds = (record.internal_builds || []).filter((build) => build?.customer_release_scope === "referenced");
     if (referencedBuilds.length === 0 || referencedBuilds.some((build) => !["production", "staged"].includes(build?.release_channel) || build.deployment_id === "NOT_APPLICABLE"))
       findings.push("PUBLISHED technical references must resolve only to deployed production or staged builds");
     if (referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("FAILED")))
       findings.push("PUBLISHED technical references must not include FAILED migration or edge delivery state");
+    if (referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("PROOF_OWED")) && !record.whats_new?.status?.includes("PROOF OWED"))
+      findings.push("PUBLISHED referenced PROOF_OWED delivery state must be disclosed as PROOF OWED in What's New status");
   }
   return findings;
 }
@@ -279,10 +274,10 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     checks: { ci: { state: "PASS", evidence: ["run"] }, security: { state: "PASS", evidence: ["run"] }, production_checks: { state: "PASS", evidence: ["run"] } }, evidence: ["proof"],
   };
   const valid = {
-    schema_version: "1.0.0", record_id: "release-0.1.0", record_state: "OWNER_DECISION_PENDING", classification: "minor_candidate", internal_builds: [build],
+    schema_version: "1.0.0", record_id: "release-0.1.0", record_state: "OWNER_DECISION_PENDING", history: null, classification: "minor_candidate", internal_builds: [build],
     scope: ["outcome"], affected_audience: ["solo"], benefits: ["benefit"], limitations: ["limit"], rollback_recovery: { position: "forward fix", reference: "runbook" },
     customer_release_identity: { version: "0.1.0", release_name: "Paige Solo Preview", date: "2026-09-06", owner_approval: customerApprovalPending },
-    whats_new: { customer_outcome: "Outcome", what_changed: "Change", who_can_use_it: "Solo", owner_action: "None", status: ["PARTIAL", "PROOF OWED"], known_limitations: "Limit", safe_next_step: "Next", technical_release_reference: { visibility: "internal_only", build_ids: ["dpl_123"] }, paige_readable_summary: "Summary" },
+    whats_new: { customer_outcome: "Outcome", what_changed: "Change", who_can_use_it: "Solo", owner_action: "None", status: ["PARTIAL", "PROOF OWED"], known_limitations: "Limit", safe_next_step: "Next", technical_release_reference: { visibility: "internal_only", source: "internal_builds.customer_release_scope=referenced" }, paige_readable_summary: "Summary" },
   };
   const internal = { ...valid, classification: "internal_only", internal_builds: [{ ...build, customer_release_scope: "supporting" }], customer_release_identity: null, whats_new: null };
   const cases = [
@@ -292,12 +287,12 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects short SHA", { ...valid, internal_builds: [{ ...build, commit_sha: "abc" }] }, true],
     ["rejects unapproved version text", { ...valid, customer_release_identity: { ...valid.customer_release_identity, version: "vNext" } }, true],
     ["rejects invented status", { ...valid, whats_new: { ...valid.whats_new, status: ["SHIPPED"] } }, true],
-    ["rejects exposed technical reference", { ...valid, whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "customer", build_ids: ["dpl_123"] } } }, true],
+    ["rejects exposed technical reference", { ...valid, whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "customer", source: "internal_builds.customer_release_scope=referenced" } } }, true],
     ["rejects published release with pending approval", { ...valid, record_state: "PUBLISHED" }, true],
     ["rejects published release without green production checks", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, checks: { ...build.checks, production_checks: { state: "UNVERIFIED", evidence: ["not driven"] } } }] }, true],
     ["rejects published development-only release", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, environment: "development", release_channel: "development", deployment_id: "NOT_APPLICABLE" }] }, true],
-    ["rejects technical reference to another build", { ...valid, whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "internal_only", build_ids: ["dpl_fake"] } } }, true],
-    ["rejects published reference to development when another production build exists", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "dev_123", environment: "development", release_channel: "development" }], whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "internal_only", build_ids: ["dev_123"] } } }, true],
+    ["rejects free-form technical build list", { ...valid, whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "internal_only", build_ids: ["dpl_fake"] } } }, true],
+    ["rejects published reference to development when another production build exists", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, customer_release_scope: "supporting" }, { ...build, commit_sha: "b".repeat(40), deployment_id: "dev_123", environment: "development", release_channel: "development" }] }, true],
     ["rejects staged build without rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: null }] }, true],
     ["accepts staged build with rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, false],
     ["rejects staged build without rollout approval", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
@@ -314,6 +309,9 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects major version with minor component", { ...valid, classification: "major_candidate", customer_release_identity: { ...valid.customer_release_identity, version: "2.3.0" } }, true],
     ["rejects duplicate deployment identifiers", { ...valid, internal_builds: [build, { ...build, commit_sha: "b".repeat(40) }] }, true],
     ["rejects published failed migration state", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, migration_status: { state: "FAILED", evidence: ["migration 202609060001 failed"] } }] }, true],
+    ["rejects undisclosed referenced proof owed", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"] } }], whats_new: { ...valid.whats_new, status: ["LIVE"] } }, true],
+    ["rejects correction without history", { ...valid, record_state: "CORRECTED" }, true],
+    ["accepts correction with predecessor and reason", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope" } }, false],
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],
   ];
   let bad = 0;
