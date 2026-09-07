@@ -291,7 +291,7 @@
       "if": {
         "properties": {
           "record_state": { "enum": ["PUBLISHED", "CORRECTED"] },
-          "whats_new": { "properties": { "status": { "contains": { "const": "PROOF OWED" } } } }
+          "whats_new": { "type": "object", "properties": { "status": { "contains": { "const": "PROOF OWED" } } } }
         },
         "required": ["record_state", "whats_new"]
       },
@@ -312,7 +312,7 @@
     },
     {
       "if": {
-        "properties": { "whats_new": { "properties": { "status": { "contains": { "const": "PARTIAL" } } } } },
+        "properties": { "whats_new": { "type": "object", "properties": { "status": { "contains": { "const": "PARTIAL" } } } } },
         "required": ["whats_new"]
       },
       "then": { "properties": { "limitations": { "contains": { "$ref": "#/$defs/requiredPublicationFact" } } } }

@@ -289,6 +289,11 @@ export function validateReleaseRecordSet(records) {
     if (!nonEmpty(target)) continue;
     if (target === record.record_id) findings.push(`${record.record_id} history must not supersede itself`);
     else if (!byId.has(target)) findings.push(`${record.record_id} history target ${target} does not resolve to an existing release record`);
+    else if (
+      record.record_state === "CORRECTED" &&
+      (byId.get(target).record_state === "PUBLISHED" || byId.get(target).customer_release_identity !== null) &&
+      record.customer_release_identity === null
+    ) findings.push(`${record.record_id} corrects a customer-facing record and must preserve its customer release identity; use RETRACTED to withdraw it`);
   }
   for (const record of records) {
     const seen = new Set();
@@ -453,6 +458,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
   const correction = { ...valid, record_id: "release-0.1.0-correction", record_state: "CORRECTED", history: { supersedes_record_id: predecessor.record_id, reason: "Corrected audience scope" }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } };
   const recordSetCases = [
     ["accepts correction linked to an existing predecessor", [predecessor, correction], false],
+    ["accepts an internal correction linked to an internal predecessor", [predecessor, { ...internal, record_id: "release-0.0.9-correction", record_state: "CORRECTED", history: { supersedes_record_id: predecessor.record_id, reason: "Corrected internal evidence" } }], false],
+    ["rejects an internal correction that erases a customer-facing predecessor", [{ ...valid, record_id: "release-0.1.0-published", record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, { ...internal, record_id: "release-0.1.0-hidden-correction", record_state: "CORRECTED", history: { supersedes_record_id: "release-0.1.0-published", reason: "Incorrectly hid the customer release" } }], true],
     ["rejects correction linked to a missing predecessor", [correction], true],
     ["rejects correction self-reference", [{ ...correction, history: { ...correction.history, supersedes_record_id: correction.record_id } }], true],
     ["rejects duplicate record identifiers", [predecessor, { ...valid, record_id: predecessor.record_id }], true],
