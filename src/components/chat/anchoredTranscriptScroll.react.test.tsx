@@ -184,4 +184,14 @@ describe("anchored transcript React affected flow", () => {
     act(() => api.append({ id: "stream", height: 160, text: "streamed output" }));
     expect(api.measure("stream").bottomGap).toBe(0);
   });
+
+  it("keeps a one-pixel manual reading position through streaming and resize", () => {
+    act(() => api.scrollTo(899));
+    const baseline = api.measure("d");
+    expect(baseline.bottomGap).toBe(1);
+    act(() => api.append({ id: "stream", height: 160, text: "streamed output" }));
+    expect(api.measure("d")).toMatchObject({ offset: baseline.offset, scrollTop: baseline.scrollTop });
+    act(() => api.resize(240));
+    expect(api.measure("d")).toMatchObject({ offset: baseline.offset, scrollTop: baseline.scrollTop });
+  });
 });

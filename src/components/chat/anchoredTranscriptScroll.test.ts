@@ -45,6 +45,108 @@ afterEach(() => {
 });
 
 describe("createAnchoredTranscriptScroll", () => {
+  it.each([
+    ["wheel", () => new WheelEvent("wheel")],
+    ["touch", () => new Event("touchstart")],
+    ["pointer/scrollbar", () => new Event("pointerdown")],
+    ["keyboard", () => new KeyboardEvent("keydown", { key: "ArrowUp" })],
+  ])("lets a deliberate %s movement one pixel away from bottom immediately win", (label, inputEvent) => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-one-pixel-" + label });
+    controller.setContext("thread-a");
+    controller.attach(element);
+    expect(element.scrollTop).toBe(900);
+    element.dispatchEvent(inputEvent());
+    element.scrollTop = 899;
+    expect(controller.handleScroll()).toBe(false);
+    const before = element.querySelector<HTMLElement>('[data-paige-message-id="c"]')!.getBoundingClientRect().top
+      - element.getBoundingClientRect().top;
+    geometry.items.d.height += 120;
+    geometry.scrollHeight += 120;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(899);
+    expect(element.querySelector<HTMLElement>('[data-paige-message-id="c"]')!.getBoundingClientRect().top
+      - element.getBoundingClientRect().top).toBe(before);
+    expect(element.scrollTop).not.toBe(geometry.scrollHeight - geometry.clientHeight);
+  });
+
+  it("does not let hidden/minimized geometry replace a valid reading anchor", () => {
+    const geometry: Geometry = {
+      viewportTop: 20, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-hidden-return" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+    element.dispatchEvent(new WheelEvent("wheel"));
+    element.scrollTop = 425;
+    controller.handleScroll();
+    const before = element.querySelector<HTMLElement>('[data-paige-message-id="b"]')!.getBoundingClientRect().top
+      - element.getBoundingClientRect().top;
+    geometry.clientHeight = 0;
+    geometry.scrollHeight = 0;
+    element.scrollTop = 0;
+    controller.handleScroll();
+    controller.notifyLayoutChange();
+    geometry.viewportTop = 80;
+    geometry.clientHeight = 300;
+    geometry.scrollHeight = 1_200;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(425);
+    expect(element.querySelector<HTMLElement>('[data-paige-message-id="b"]')!.getBoundingClientRect().top
+      - element.getBoundingClientRect().top).toBe(before);
+  });
+
+  it("keeps automatic following for ordinary near-bottom layout drift without user input", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-near-bottom-layout" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+    element.scrollTop = 899;
+    controller.handleScroll();
+    geometry.items.d.height += 120;
+    geometry.scrollHeight += 120;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(1_020);
+    expect(controller.isAtBottom()).toBe(true);
+  });
+
+  it("resumes automatic following only after deliberate movement reaches the exact bottom", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-return-exact-bottom" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+
+    element.dispatchEvent(new WheelEvent("wheel"));
+    element.scrollTop = 899;
+    expect(controller.handleScroll()).toBe(false);
+    element.dispatchEvent(new WheelEvent("wheel"));
+    element.scrollTop = 900;
+    expect(controller.handleScroll()).toBe(true);
+
+    geometry.items.d.height += 120;
+    geometry.scrollHeight += 120;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(1_020);
+  });
+
   it("keeps the same visible message and pixel offset through reflow and prepends", () => {
     const geometry: Geometry = {
       viewportTop: 50,
@@ -63,6 +165,7 @@ describe("createAnchoredTranscriptScroll", () => {
     controller.setContext("thread-a");
     controller.attach(element);
 
+    element.dispatchEvent(new WheelEvent("wheel"));
     element.scrollTop = 410;
     controller.handleScroll();
     const before = element.querySelector<HTMLElement>('[data-paige-message-id="b"]')!
@@ -112,6 +215,7 @@ describe("createAnchoredTranscriptScroll", () => {
     controller.notifyLayoutChange();
     expect(element.scrollTop).toBe(740);
 
+    element.dispatchEvent(new WheelEvent("wheel"));
     element.scrollTop = 420;
     controller.handleScroll();
     geometry.items.a.height += 90;
@@ -137,11 +241,13 @@ describe("createAnchoredTranscriptScroll", () => {
     const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-thread" });
     controller.setContext("thread-a");
     controller.attach(first.element);
+    first.element.dispatchEvent(new WheelEvent("wheel"));
     first.element.scrollTop = 425;
     controller.handleScroll();
 
     controller.setContext("thread-b");
     expect(first.element.scrollTop).toBe(900);
+    first.element.dispatchEvent(new WheelEvent("wheel"));
     first.element.scrollTop = 155;
     controller.handleScroll();
     controller.setContext("thread-a");
@@ -171,6 +277,7 @@ describe("createAnchoredTranscriptScroll", () => {
     const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-commit-order" });
     controller.setContext("thread-a");
     controller.attach(element);
+    element.dispatchEvent(new WheelEvent("wheel"));
     element.scrollTop = 425;
     controller.handleScroll();
 
@@ -202,6 +309,7 @@ describe("createAnchoredTranscriptScroll", () => {
     const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-smooth" });
     controller.setContext("thread-a");
     controller.attach(element);
+    element.dispatchEvent(new WheelEvent("wheel"));
     element.scrollTop = 400;
     controller.handleScroll();
     element.scrollTo = vi.fn();

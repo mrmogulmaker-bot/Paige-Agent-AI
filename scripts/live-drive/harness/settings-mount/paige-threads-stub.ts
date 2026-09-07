@@ -38,6 +38,22 @@ const turnsByThread: Record<string, PaigeTurn[]> = {
   "harness-thread-b": makeTurns("b", 28),
 };
 
+const persistedHarnessTurns = (threadId: string): PaigeTurn[] => {
+  if (threadId !== "harness-thread-a" || typeof sessionStorage === "undefined") return [];
+  const completed = Number(sessionStorage.getItem("paige-harness-completed-turns") ?? 0);
+  return Array.from({ length: completed * 2 }, (_, index) => ({
+    id: `harness-a-persisted-turn-${index + 1}`,
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: index % 2 === 0
+      ? `HARNESS ONLY persisted user turn ${Math.floor(index / 2) + 1}.`
+      : "HARNESS ONLY streamed response completed.",
+    bundle_ref: null,
+    surfaces_used: null,
+    seq: turnsByThread["harness-thread-a"].length + index + 1,
+    created_at: new Date(Date.UTC(2026, 8, 7, 13, index)).toISOString(),
+  }));
+};
+
 const threads: PaigeThread[] = [
   {
     id: "harness-thread-a",
@@ -64,7 +80,7 @@ export function usePaigeThreads() {
     isFetched: true,
     loadTurns: async (threadId: string) => {
       await new Promise((resolve) => setTimeout(resolve, 20));
-      return turnsByThread[threadId] ?? [];
+      return [...(turnsByThread[threadId] ?? []), ...persistedHarnessTurns(threadId)];
     },
     ensureThread: async () => "harness-new-thread",
     renameThread: () => undefined,
