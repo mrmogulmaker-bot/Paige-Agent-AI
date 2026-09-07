@@ -651,25 +651,25 @@
       "group": "settings",
       "tier_scope": ["solo"],
       "owner_component": "src/solo/settings-public-presence.tsx mounted by src/solo/SoloBusinessContextSetup.tsx",
-      "canonical_source": "Solo Business Profile via useSoloBusinessContext; Public Presence is a read-only outward coordination surface in this slice",
+      "canonical_source": "Solo Business Profile via get_solo_business_context, narrowed by get_public_presence_paige_context; Public Presence does not create a second identity store",
       "chain": {
         "canonical_source": {"status": "real", "note": "Reads Business Profile fields with per-field provenance; edits return to Business Profile"},
-        "tenant_scope": {"status": "client_context_only", "note": "Authenticated shell supplies the tenant-scoped setup context; no new provider read exists"},
-        "safe_context": {"status": "none", "note": "Dedicated Paige handoff is intentionally unavailable until server-safe context assembly is implemented"},
+        "tenant_scope": {"status": "server_resolved", "note": "JWT-bound get_public_presence_paige_context accepts no tenant argument; paige-ai-chat rejects a projection whose tenant does not match its server-resolved tenant"},
+        "safe_context": {"status": "wired", "note": "Dedicated Paige workspace sends only step/action pointer; server emits allowlisted owner-confirmed facts, completed/missing steps, freshness, and explicit unavailable provider/authority states"},
         "authority": {"status": "none", "note": "No local permission toggle or standing provider authority is claimed"},
         "governed_write": {"status": "none", "note": "All external actions are rendered unavailable"},
         "verified_outcome": {"status": "none"},
         "rail_evidence": {"producer": "none", "read": "n/a", "note": "No external action occurs in this slice"},
-        "mind_eligibility": {"axis_a": "NO", "axis_b": "NO", "note": "Only owner-confirmed facts are marked eligible in the inspector; no Mind handoff is wired"},
+        "mind_eligibility": {"axis_a": "NO", "axis_b": "NO", "note": "Safe chat context is turn-local; no Public Presence fact or provider state is promoted to Mind"},
         "memory_retention": {"status": "none"}
       },
       "prohibited_context": ["Vault secrets", "provider tokens", "raw billing data", "private documents", "unreviewed uploads", "unconfirmed public facts"],
-      "state": "UNAVAILABLE",
-      "state_reason": "The owner-facing coordination UI is deployed at d4392b9786e68ce44b72905f3ffe6771aea319ab with canonical fact provenance and truthful unavailable provider states. Authenticated provider reads/writes, governed Paige handoff, authority policy, Rail evidence, and signed-in production owner proof are not implemented by this slice. The separately mounted legacy BusinessInfrastructureAssessment PublicPresenceSection and paige-write-back public_presence paths read/write business_public_presence; their self-checked booleans and local save result are not canonical facts, provider evidence, or verified public outcomes and are ineligible for this surface, Paige, Mind, and Memory pending retirement or reconciliation.",
+      "state": "PROOF_OWED",
+      "state_reason": "The safe Paige read handoff is implemented and fail-closed but requires CI real-Deno, migration/edge deployment, and authenticated owner proof. Google Search Console, Google Business Profile, all later providers, provider authority, external writes, verified outcomes, and Rail remain UNAVAILABLE. Registry or UI presence is not tenant connection evidence. The legacy business_public_presence path remains excluded.",
       "evidence_class": ["automated_test", "source_read", "rendered_structural"],
       "linked": [],
-      "next_slice": "BLOCKED on a missing Integration Capability Registry entry and Registry Steward ownership. After that canonical entry exists, define and authenticate the first approved provider contract, then add server-resolved context, bounded authority, verified result, Rail evidence, and owner runtime proof without changing Integrations ownership.",
-      "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md", "docs/brain/decision-log.md", "docs/doctrine/surface-cards/setup.md", "docs/doctrine/autonomy-architecture.md"]
+      "next_slice": "Platform provider owner supplies Google project/OAuth setup and tenant authorization; then ship source-backed read-only Google Search Console evidence first. Google Business Profile follows only with provider-specific consent and receipt/readback. Integrations retains connection setup.",
+      "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md", "docs/brain/decision-log.md", "docs/doctrine/surface-cards/setup.md", "docs/doctrine/autonomy-architecture.md", "docs/integration-registry/integration-capability-registry.json", "supabase/functions/_shared/paige-spine/domains/publicPresenceChatContext.ts"]
     },
     {
       "id": "settings.team",

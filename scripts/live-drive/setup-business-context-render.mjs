@@ -73,6 +73,7 @@ try {
     [1366, 768],
     [1024, 768],
     [900, 1000],
+    [390, 844],
   ])
     for (const theme of ["light", "dark"]) {
       const context = await browser.newContext({
@@ -96,7 +97,7 @@ try {
       page.on("pageerror", (e) => errors.push(e.message));
       await page.goto(
         `http://127.0.0.1:${port}/solo/1971670/settings/setup?theme=${theme}`,
-        { waitUntil: "networkidle" },
+        { waitUntil: "domcontentloaded" },
       );
       await page.locator(".setup-brief").waitFor({ timeout: 20000 });
       const initialFold = page.locator('#tenant-paige-workspace button[aria-label="Fold PAIGE conversation"]');
@@ -104,18 +105,62 @@ try {
       const setupRoot = `/solo/1971670/settings/setup`;
       const addresses = {
         "Business profile": "business-profile",
+        "Public Presence": "public-presence",
         "People & email": "people-email",
         "Knowledge bucket": "knowledge-bucket",
         Direction: "direction",
         "Paige brief": "paige-brief",
       };
+      if (width === 390) {
+        await page.getByRole("tab", { name: "Public Presence", exact: true }).click();
+        const geometry = await page.evaluate(() => {
+          const host = document.querySelector("[data-solo-screen-host]");
+          const tabs = document.querySelector(".setup-tabs");
+          const heading = document.querySelector(".presence-heading");
+          const tabBox = tabs?.getBoundingClientRect();
+          const headingBox = heading?.getBoundingClientRect();
+          const actions = [...document.querySelectorAll(".presence-heading__actions button")];
+          const scroll = [...document.querySelectorAll("*")].filter(
+            (el) => /(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight + 1,
+          );
+          return {
+            horizontal:
+              document.documentElement.scrollWidth > innerWidth + 1 ||
+              host.scrollWidth > host.clientWidth + 1,
+            redundantSetupBanner: document.querySelectorAll(".ss-page-head").length,
+            decorativePublicPresenceEyebrow:
+              document.body.textContent?.includes("SETUP · PUBLIC PRESENCE") ||
+              document.body.textContent?.includes("SOLO SETTINGS"),
+            stickyClearance: Boolean(headingBox && tabBox && headingBox.top >= tabBox.bottom - 1),
+            stickyTabsOpaque: tabs
+              ? (() => {
+                  const background = getComputedStyle(tabs).backgroundColor;
+                  return background !== "transparent" && !/rgba\([^)]*,\s*0(?:\.0+)?\)/.test(background);
+                })()
+              : false,
+            actionHeights: actions.map((action) => action.getBoundingClientRect().height),
+            scrollOwners: scroll.map((el) => ({ className: el.className, height: el.clientHeight, content: el.scrollHeight })),
+          };
+        });
+        await page.getByRole("button", { name: "Ask PAIGE", exact: true }).click();
+        const focusBanner = page.locator("[data-solo-paige-focus]");
+        await focusBanner.getByText("Safe public-business context", { exact: true }).waitFor();
+        const paigeOpen = await focusBanner.getByText("PUBLIC PRESENCE", { exact: true }).isVisible();
+        await page.screenshot({ path: path.join(out, `${width}x${height}-${theme}-Public-Presence-narrow-paige-open.png`), fullPage: false });
+        results.push({ key: `${width}x${height}-${theme}-Public-Presence-narrow`, ...geometry, paigeOpen, errors: [...errors] });
+        await page.screenshot({ path: path.join(out, `${width}x${height}-${theme}-Public-Presence-narrow.png`), fullPage: false });
+        if (geometry.actionHeights.some((height) => height < 44))
+          throw new Error("Public Presence mobile action fell below 44px");
+        await context.close();
+        continue;
+      }
       // Real BrowserRouter paths, not an in-memory tab fixture. New pages simulate
       // copied links and reloads without reading any signed-in browser state.
       for (const [label, leaf] of Object.entries(addresses)) {
         const direct = await context.newPage();
         await direct.goto(
           `http://127.0.0.1:${port}${setupRoot}/${leaf}?theme=${theme}`,
-          { waitUntil: "networkidle" },
+          { waitUntil: "domcontentloaded" },
         );
         await direct.getByRole("tab", { name: label, exact: true }).waitFor();
         if (
@@ -124,11 +169,11 @@ try {
             .getAttribute("aria-selected")) !== "true"
         )
           throw new Error("Direct entry did not select " + leaf);
-        if ((await direct.locator('[role="tabpanel"]').count()) !== 1)
+        if ((await direct.locator('.setup-brief > [role="tabpanel"]').count()) !== 1)
           throw new Error("More than one Setup child rendered");
-        await direct.reload({ waitUntil: "networkidle" });
+        await direct.reload({ waitUntil: "domcontentloaded" });
         if (
-          (await direct.locator('[role="tabpanel"]').getAttribute("id")) !==
+          (await direct.locator('.setup-brief > [role="tabpanel"]').getAttribute("id")) !==
           `setup-panel-${leaf}`
         )
           throw new Error("Reload lost " + leaf);
@@ -216,6 +261,7 @@ try {
       if (await fold.isVisible()) await fold.click();
       for (const tab of [
         "Business profile",
+        "Public Presence",
         "People & email",
         "Knowledge bucket",
         "Direction",
@@ -238,6 +284,9 @@ try {
         }, undefined, {timeout:3000});
         const geometry = await page.evaluate(() => {
           const host = document.querySelector("[data-solo-screen-host]");
+          const setupTabs = document.querySelector(".setup-tabs");
+          const presenceHeading = document.querySelector(".presence-heading");
+          const tabBox = setupTabs?.getBoundingClientRect();
           const box = document
             .querySelector(".setup-brief")
             .getBoundingClientRect();
@@ -264,6 +313,19 @@ try {
               host.scrollWidth > host.clientWidth + 1,
             setupWidth: box.width,
             hostWidth: host.clientWidth,
+            redundantSetupBanner: document.querySelectorAll(".ss-page-head").length,
+            decorativePublicPresenceEyebrow:
+              document.body.textContent?.includes("SETUP · PUBLIC PRESENCE") ||
+              document.body.textContent?.includes("SOLO SETTINGS"),
+            stickyClearance: presenceHeading && tabBox
+              ? presenceHeading.getBoundingClientRect().top >= tabBox.bottom - 1
+              : true,
+            stickyTabsOpaque: setupTabs
+              ? (() => {
+                  const background = getComputedStyle(setupTabs).backgroundColor;
+                  return background !== "transparent" && !/rgba\([^)]*,\s*0(?:\.0+)?\)/.test(background);
+                })()
+              : false,
             scrollOwners: scroll.map((el) => ({
               className: el.className,
               height: el.clientHeight,
@@ -273,7 +335,17 @@ try {
         });
         const key = `${width}x${height}-${theme}-${tab.replaceAll(/[^a-z]+/gi, "-")}`;
         await page.screenshot({ path: path.join(out, `${key}.png`) });
-        results.push({ key, ...geometry, errors: [...errors] });
+        let paigeOpen;
+        if (tab === "Public Presence") {
+          await page.getByRole("button", { name: "Ask PAIGE", exact: true }).click();
+          const focusBanner = page.locator("[data-solo-paige-focus]");
+          await focusBanner.getByText("Safe public-business context", { exact: true }).waitFor();
+          paigeOpen = await focusBanner.getByText("PUBLIC PRESENCE", { exact: true }).isVisible();
+          await page.screenshot({ path: path.join(out, `${key}-paige-open.png`) });
+          const foldAgain = page.locator('#tenant-paige-workspace button[aria-label="Fold PAIGE conversation"]');
+          if (await foldAgain.isVisible()) await foldAgain.click();
+        }
+        results.push({ key, ...geometry, paigeOpen, errors: [...errors] });
       }
       await page
         .getByRole("button", { name: "Edit business context", exact: true })
@@ -485,9 +557,17 @@ console.log(
   ),
 );
 if (
-  results.length !== 104 ||
+  results.length !== 114 ||
   results.some(
-    (r) => r.horizontal || r.errors?.length || r.clippedInputs?.length,
+    (r) =>
+      r.horizontal ||
+      r.errors?.length ||
+      r.clippedInputs?.length ||
+      r.redundantSetupBanner ||
+      r.decorativePublicPresenceEyebrow ||
+      r.stickyClearance === false ||
+      r.stickyTabsOpaque === false ||
+      (r.key?.includes("Public-Presence") && r.paigeOpen !== true),
   )
 )
   throw new Error("Structural Setup render failed: inspect report.json");

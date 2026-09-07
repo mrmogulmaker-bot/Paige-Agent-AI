@@ -128,6 +128,7 @@ export interface PaigeAIChatProps {
   clientId?: string | null;
   /** Prose describing the focused customer — added to the chat POST body. */
   clientContext?: string;
+  surfaceContext?: { kind: "public_presence"; step: "confirm_facts" | "verify_website" | "connect_venues" | "compare_facts" | "set_authority" | "maintain_presence"; intendedAction: "review" | "plan" | "prepare_connection" | "resolve_mismatch" };
   /** The chat is telling the surface that OWNS focus to let it go. Two reasons, both cases where
    *  continuing to assert a focus would make the UI say something untrue:
    *
@@ -243,6 +244,7 @@ const PaigeAIChatInner = ({
   fill = false,
   clientId = null,
   clientContext,
+  surfaceContext,
   onFocusRelease,
   focusBanner,
   chips,
@@ -838,6 +840,7 @@ const PaigeAIChatInner = ({
             ...(threadId ? { threadId } : {}),
             ...(clientId ? { clientId } : {}),
             ...(clientContext ? { clientContext } : {}),
+            ...(surfaceContext ? { surfaceContext } : {}),
             // The exact calls the person ticked on a confirm card. The gate will only run a call
             // whose fingerprint is here; `confirm:true` on its own no longer opens it.
             ...(approvedFingerprints?.length ? { approvedConfirmations: approvedFingerprints } : {}),

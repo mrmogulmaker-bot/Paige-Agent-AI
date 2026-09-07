@@ -573,7 +573,7 @@ function Fields({
   );
 }
 
-export function SoloBusinessContextSetup({ account }: { account: string }) {
+export function SoloBusinessContextSetup({ account, openPaige }: { account: string; openPaige?: () => void }) {
   const data = useSoloBusinessContext();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1382,11 +1382,13 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
             {tab === "public-presence" && (
               <SettingsPublicPresence
                 brief={data.brief}
+                activeTenantId={data.activeTenantId}
                 primaryBusinessEmail={data.primaryBusinessEmail}
                 primaryBusinessEmailProvenance={
                   data.primaryBusinessEmailProvenance
                 }
                 onReviewBusinessProfile={() => switchTab("business-profile")}
+                onOpenPaige={openPaige}
               />
             )}{" "}
             {tab === "people-email" && (
