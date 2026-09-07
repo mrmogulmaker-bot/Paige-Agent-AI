@@ -195,8 +195,8 @@ function isUnresolvedRestatement(value) {
     .trim()
     .split(" ")
     .filter(Boolean);
-  const causeCondition = /\b(?:unavailable|missing|absent|blocked|denied|failed|failure|outage|disabled|disconnected|unconfigured|requires|required|awaiting|without|lacks|no)\b|\bnot\s+(?:available|connected|configured|deployed|authorized|authenticated|accessible)\b/i;
-  const affectedScope = /\b(?:tenants?|accounts?|credentials?|environments?|providers?|permissions?|access|deployments?|migrations?|edge|integrations?|connections?|workspaces?|owners?|ci|security|production|preview|local|tests?|claims?|scope)\b/i;
+  const causeCondition = /\b(?:unavailable|missing|absent|blocked|denied|failed|failure|outage|disabled|disconnected|unconfigured|expired|revoked|invalid|requires|required|awaiting|without|lacks|no)\b|\bnot\s+(?:available|connected|configured|deployed|authorized|authenticated|accessible)\b/i;
+  const affectedScope = /\b(?:tenants?|accounts?|credentials?|keys?|tokens?|secrets?|certificates?|sessions?|api|oauth|environments?|providers?|permissions?|access|deployments?|migrations?|edge|integrations?|connections?|workspaces?|owners?|ci|security|production|preview|local|tests?|claims?|scope)\b/i;
   const connectorClause = /\b(?:because|due to|blocked by|awaiting|for|until|while)\b\s+(.+)$/i.exec(normalized)?.[1] ?? "";
   const hasConnectorReason = substantiveTerms(connectorClause).length >= 2 && (causeCondition.test(connectorClause) || affectedScope.test(connectorClause));
   const hasIndependentCause = raw.split(/[:;,.!?—–]+/).some((clause) => {
