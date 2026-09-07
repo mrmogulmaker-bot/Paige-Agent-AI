@@ -93,3 +93,5 @@ Post-compose evidence is PASS: 73/73 focused Mission, Business Game Plan, Paige 
 Local Deno execution and local pgTAP database execution remain UNAVAILABLE in this Windows session (Deno absent; Docker/Supabase database unavailable). CI must supply the real-Deno edge proof. Authenticated owner, denied-role, workspace-switch, canonical Mission and matching Rail browser proof remain PROOF OWED. The owner-complete vertical and overall Solo Tenant Brain remain PARTIAL; Mission Mind and durable Memory remain UNAVAILABLE.
 
 Draft release-candidate PR #1038 was opened from implementation commit 511a861eba534db113f9c1c341bfdf808c4cbd38. It is not merged or deployed; CI and preview are pending, and authenticated proof remains PROOF OWED.
+
+Database-contract repair on PR #1038: the first CI database run refused direct authenticated-role SELECTs on business_missions. The assertions now verify archived closure history through the caller-scoped get_business_mission projector; no raw-table grant was added. The repaired CI result remains pending.

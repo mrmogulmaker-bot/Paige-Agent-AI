@@ -96,8 +96,8 @@ SELECT throws_ok(format('SELECT public.transition_business_mission(%L,3,%L,%L)',
 SELECT is(public.transition_business_mission((SELECT id FROM mission_id),3,'d1000000-0000-4000-8000-000000007015','completed',NULL,'partly_achieved','Twenty registrations verified','Causality remains unknown')->>'state','completed','Mission closes with an honest partial outcome');
 SELECT throws_ok(format('SELECT public.transition_business_mission(%L,4,%L,%L,NULL,%L,%L,%L)',(SELECT id FROM mission_id),'d1000000-0000-4000-8000-000000007016','stopped','partly_achieved','Changed history','Causality remains unknown'),'22023','MISSION_ARCHIVE_HISTORY_MISMATCH','completed Mission archive refuses rewritten outcome history');
 SELECT is(public.transition_business_mission((SELECT id FROM mission_id),4,'d1000000-0000-4000-8000-000000007017','stopped',NULL,'partly_achieved','Twenty registrations verified','Causality remains unknown')->>'state','stopped','completed Mission archives without deletion');
-SELECT is((SELECT closure_outcome FROM public.business_missions WHERE id=(SELECT id FROM mission_id)),'partly_achieved','archive preserves the verified closure outcome');
-SELECT is((SELECT outcome_summary FROM public.business_missions WHERE id=(SELECT id FROM mission_id)),'Twenty registrations verified','archive preserves the verified outcome summary');
+SELECT is(public.get_business_mission((SELECT id FROM mission_id))->'mission'->>'closure_outcome','partly_achieved','archive preserves the verified closure outcome through the caller-scoped projector');
+SELECT is(public.get_business_mission((SELECT id FROM mission_id))->'mission'->>'outcome_summary','Twenty registrations verified','archive preserves the verified outcome summary through the caller-scoped projector');
 
 RESET ROLE;
 SELECT is((SELECT count(*)::integer FROM public.business_mission_brief_versions WHERE mission_id=(SELECT id FROM mission_id)),2,'Brief history contains both immutable versions');

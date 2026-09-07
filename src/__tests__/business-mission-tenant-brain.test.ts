@@ -718,5 +718,8 @@ describe("Business Game Plan owner-action and archive contracts", () => {
     expect(migration).toContain("then m.outcome_summary");
     expect(migration).toContain("then m.closed_at");
     expect(migration).not.toMatch(/delete\s+from\s+public\.business_missions/i);
+    const proof = readFileSync("supabase/tests/business_mission_foundation.sql", "utf8");
+    expect(proof).toContain("public.get_business_mission((SELECT id FROM mission_id))");
+    expect(proof).not.toContain("SELECT closure_outcome FROM public.business_missions");
   });
 });
