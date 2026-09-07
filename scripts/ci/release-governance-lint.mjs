@@ -77,7 +77,7 @@ function requireDeliveryState(value, label, findings) {
   requireExactObject(value, ["state", "evidence", "identifiers", "proof_owed"], label, findings);
   if (!DELIVERY_STATES.has(value?.state)) findings.push(`${label}.state invalid`);
   requireNonEmptyStrings(value?.evidence, `${label}.evidence`, findings, value?.state === "NOT_APPLICABLE");
-  if (value?.state === "APPLIED" && Array.isArray(value?.evidence) && value.evidence.some((item) => hasPlaceholder(item) || isNoValue(item))) findings.push(`${label}.evidence must contain resolved proof when state is APPLIED`);
+  if (value?.state === "APPLIED" && Array.isArray(value?.evidence) && value.evidence.some(hasUnresolvedToken)) findings.push(`${label}.evidence must contain resolved proof when state is APPLIED`);
   requireNonEmptyStrings(value?.identifiers, `${label}.identifiers`, findings, value?.state !== "APPLIED");
   if (value?.state !== "APPLIED" && Array.isArray(value?.identifiers) && value.identifiers.length > 0) findings.push(`${label}.identifiers must be empty unless state is APPLIED`);
   if (value?.state === "APPLIED" && Array.isArray(value?.identifiers)) {
@@ -100,7 +100,7 @@ function requireApproval(value, label, expectedScope, allowedStatuses, findings)
   if (value.scope !== expectedScope) findings.push(`${label}.scope must be ${expectedScope}`);
   if (!allowedStatuses.includes(value.status)) findings.push(`${label}.status invalid`);
   if (!nonEmpty(value.reference)) findings.push(`${label}.reference missing`);
-  else if (value.status === "APPROVED" && (hasPlaceholder(value.reference) || /^(?:none|n\/?a|not applicable|proof owed)$/i.test(value.reference.trim()))) findings.push(`${label}.reference must identify a completed approval decision`);
+  else if (value.status === "APPROVED" && hasUnresolvedToken(value.reference)) findings.push(`${label}.reference must identify a completed approval decision`);
 }
 
 function validDate(value) {
@@ -408,6 +408,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects placeholder evidence on applied delivery", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["TODO"], identifiers: ["20260907000001_example"], proof_owed: null } }] }, true],
     ["rejects placeholder published customer copy", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, whats_new: { ...valid.whats_new, customer_outcome: "TODO", what_changed: "TBD", paige_readable_summary: "REPLACE_ME" } }, true],
     ["rejects normalized placeholder approval reference", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: "PENDING_DECISION" } } }, true],
+    ["rejects normalized no-value approval reference", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: "PROOF_OWED" } } }, true],
     ["rejects placeholder published release name", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, release_name: "TODO", owner_approval: customerApproval } }, true],
     ["rejects placeholder published build evidence", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, evidence: ["TODO"] }] }, true],
     ["rejects placeholder published release facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["TODO"], rollback_recovery: { position: "TBD", reference: "REPLACE_ME" } }, true],
@@ -417,6 +418,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects normalized absent production deployment IDs", { ...valid, internal_builds: [{ ...build, deployment_id: "not_applicable" }] }, true],
     ["rejects punctuated anticipated deployment IDs", { ...valid, internal_builds: [{ ...build, deployment_id: "pending/deployment" }] }, true],
     ["rejects proof-owed evidence on passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["PROOF_OWED"] } } }] }, true],
+    ["rejects proof-owed evidence on applied delivery", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["proof-owed"], identifiers: ["20260907000001_example"], proof_owed: null } }] }, true],
     ["rejects proof-owed token in applied identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["migration log"], identifiers: ["20260907000001_PROOF_OWED"], proof_owed: null } }] }, true],
     ["rejects normalized no-value publication facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["NOT_APPLICABLE"], affected_audience: ["N_A"], rollback_recovery: { position: "forward fix", reference: "NOT-APPLICABLE" } }, true],
     ["rejects normalized no-evidence sentinel for passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["NOT_APPLICABLE"] } } }] }, true],
