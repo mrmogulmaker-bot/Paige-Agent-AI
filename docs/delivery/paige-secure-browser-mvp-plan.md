@@ -207,8 +207,8 @@ later). The control plane owns tenant scope, the Vault Connected Accounts record
 
 ## 6. What is owed / open decisions
 
-- **Owner:** the Browserbase (bootstrap worker) provider review (§4 Phase 0); and the vendor
-  confirmations from the audit §6.4 before any install.
+- **Owner/vendor gates still open:** the Browserbase desk review is complete at **CONDITIONAL GO**,
+  but all seven confirmations in audit §6.4 remain required before credentialed wiring or install.
 - **Prerequisite security fixes — RELEASED in PR #1042:** `browser_use_sessions` now has required,
   server-resolved tenant attribution; direct callers authenticate before contact lookup; canonical
   authority/grant checks fail closed; and both browser routes enforce read-only HTTP, popup,
