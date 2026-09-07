@@ -30,6 +30,7 @@ const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0
 const normalizeSentinel = (value) => String(value ?? "").trim().replace(/[^A-Za-z0-9]+/g, " ").replace(/\s+/g, " ").toLowerCase();
 const hasPlaceholder = (value) => /\b(?:todo|tbd|placeholder|replace me|pending|unknown)\b/.test(normalizeSentinel(value));
 const isNoValue = (value) => new Set(["none", "n a", "na", "not applicable"]).has(normalizeSentinel(value));
+const isUnresolvedValue = (value) => /\b(?:todo|tbd|placeholder|replace me)\b/.test(normalizeSentinel(value)) || new Set(["pending", "unknown", "none", "n a", "na", "not applicable", "proof owed"]).has(normalizeSentinel(value));
 const isNoLimitation = (value) => isNoValue(value) || /^no known limitations?$/.test(normalizeSentinel(value));
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "history", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "customer_release_scope", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
@@ -84,7 +85,7 @@ function requireDeliveryState(value, label, findings) {
     requireExactObject(value.proof_owed, ["boundary", "excluded_from_live_claim"], `${label}.proof_owed`, findings);
     for (const field of ["boundary", "excluded_from_live_claim"]) {
       const detail = String(value.proof_owed?.[field] || "").trim();
-      if (!nonEmpty(detail) || /\b(?:todo|tbd|placeholder|replace_me)\b/i.test(detail) || /^(?:none|n\/?a|not applicable)$/i.test(detail)) findings.push(`${label}.proof_owed.${field} must precisely name the owed boundary`);
+      if (!nonEmpty(detail) || isUnresolvedValue(detail)) findings.push(`${label}.proof_owed.${field} must precisely name the owed boundary`);
     }
   } else if (value?.proof_owed !== null) findings.push(`${label}.proof_owed must be null unless state is PROOF_OWED`);
 }
@@ -181,7 +182,7 @@ export function validateReleaseRecord(record) {
         if (requireExactObject(build?.staged_rollout, STAGED_KEYS, `${label}.staged_rollout`, findings)) {
           for (const field of STAGED_TEXT_KEYS) {
             const value = String(build.staged_rollout[field] || "").trim();
-            if (!nonEmpty(value) || /\b(?:todo|tbd|placeholder|replace_me|pending|unknown|none|n\/?a|not applicable|proof owed)\b/i.test(value)) findings.push(`${label}.staged_rollout.${field} must be a completed non-placeholder value`);
+            if (!nonEmpty(value) || hasPlaceholder(value) || isNoValue(value) || /\bproof owed\b/.test(normalizeSentinel(value))) findings.push(`${label}.staged_rollout.${field} must be a completed non-placeholder value`);
           }
           requireApproval(build.staged_rollout.owner_approval, `${label}.staged_rollout.owner_approval`, "staged_rollout", ["APPROVED"], findings);
           if (record.customer_release_identity && build.staged_rollout.owner_approval?.reference === record.customer_release_identity.owner_approval?.reference)
@@ -413,6 +414,9 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects normalized absent production deployment IDs", { ...valid, internal_builds: [{ ...build, deployment_id: "not_applicable" }] }, true],
     ["rejects normalized no-value publication facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["NOT_APPLICABLE"], affected_audience: ["N_A"], rollback_recovery: { position: "forward fix", reference: "NOT-APPLICABLE" } }, true],
     ["rejects normalized no-evidence sentinel for passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["NOT_APPLICABLE"] } } }] }, true],
+    ["rejects exact unresolved proof boundary values", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof remains outstanding"], identifiers: [], proof_owed: { boundary: "pending", excluded_from_live_claim: "proof owed" } } }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"] } }, true],
+    ["rejects normalized staged rollout placeholders", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "PENDING_DECISION", rollout_amount: "NOT_APPLICABLE", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "REPLACE-ME", recovery_path: "PROOF_OWED" } }] }, true],
+    ["accepts legitimate words containing placeholder substrings", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, release_name: "Mastodon Connections", owner_approval: customerApproval }, whats_new: { ...valid.whats_new, customer_outcome: "Routing changes depending on owner settings" } }, false],
   ];
   let bad = 0;
   for (const [label, record, shouldFail] of cases) {

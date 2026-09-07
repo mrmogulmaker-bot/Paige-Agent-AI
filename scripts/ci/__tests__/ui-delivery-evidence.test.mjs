@@ -164,6 +164,12 @@ test("rejects anticipated production deployment IDs", () => {
   const anticipated = validateEvidenceText(coreEvidence.replace("INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=NOT_APPLICABLE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=PR-checks", "INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=PENDING_DEPLOYMENT; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=production-checks").replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: production: awaiting deployment"), { required: true, solo: false });
   assert.equal(anticipated.ok, false);
   assert.match(anticipated.errors.join("\n"), /exact deployment ID/);
+
+  for (const sentinel of ["not applicable", "proof owed", "n / a"]) {
+    const spaced = validateEvidenceText(coreEvidence.replace("INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=NOT_APPLICABLE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=PR-checks", `INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=${sentinel}; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=production-checks`).replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: production: claimed live"), { required: true, solo: false });
+    assert.equal(spaced.ok, false, sentinel);
+    assert.match(spaced.errors.join("\n"), /exact deployment ID/);
+  }
 });
 
 test("requires notes for minor and major candidates", () => {

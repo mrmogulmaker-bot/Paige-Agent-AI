@@ -144,9 +144,17 @@ function isEvidenceValue(value) {
     && !hasPlaceholder(value);
 }
 
+function normalizeSentinel(value) {
+  return String(value ?? "").trim().replace(/[^A-Za-z0-9]+/g, " ").replace(/\s+/g, " ").toLowerCase();
+}
+
 function hasPlaceholder(value) {
-  const normalized = String(value ?? "").replace(/[^A-Za-z0-9]+/g, " ");
-  return /\b(?:TODO|TBD|PLACEHOLDER|REPLACE ME|ADD LINK|LINK HERE)\b/i.test(normalized);
+  return /\b(?:todo|tbd|placeholder|replace me|add link|link here)\b/.test(normalizeSentinel(value));
+}
+
+function lacksDeploymentIdentity(value) {
+  const normalized = normalizeSentinel(value);
+  return !normalized || /\b(?:todo|tbd|placeholder|replace me|pending|unknown)\b/.test(normalized) || new Set(["none", "na", "n a", "not applicable", "proof owed"]).has(normalized);
 }
 
 function isPassWithEvidence(value) {
@@ -178,7 +186,7 @@ export function validateEvidenceText(text, classification) {
   const releaseChannel = /^(development|preview|production|staged):\s*\S.+$/i.exec(fields.get("RELEASE_CHANNEL") ?? "")?.[1]?.toLowerCase();
   if (!releaseChannel) errors.push("RELEASE_CHANNEL must name a governed channel and evidence/reason.");
   const buildEnvironment = /\benvironment\s*=\s*(local|development|preview|production)\b/i.exec(buildIdentity)?.[1]?.toLowerCase();
-  const deploymentId = /\bdeployment\s*=\s*([^;\s]+)/i.exec(buildIdentity)?.[1];
+  const deploymentId = /\bdeployment\s*=\s*([^;]+)/i.exec(buildIdentity)?.[1]?.trim();
   const deliveryValue = (field) => new RegExp(`\\b${field}\\s*=\\s*([^;]+)`, "i").exec(buildIdentity)?.[1]?.trim();
   for (const field of ["migrations", "edge"]) {
     const value = deliveryValue(field) ?? "";
@@ -190,7 +198,7 @@ export function validateEvidenceText(text, classification) {
   }
   if (releaseChannel === "development" && !["local", "development"].includes(buildEnvironment)) errors.push("Development RELEASE_CHANNEL requires local/development build environment.");
   if (releaseChannel === "preview" && buildEnvironment !== "preview") errors.push("Preview RELEASE_CHANNEL requires preview build environment.");
-  if (["production", "staged"].includes(releaseChannel) && (buildEnvironment !== "production" || /(?:^|[_\-])(NOT_APPLICABLE|PROOF_OWED|TODO|TBD|PLACEHOLDER|REPLACE_ME|PENDING|UNKNOWN|NONE|N_?A)(?:$|[_\-])/i.test((deploymentId ?? "").replace(/\s+/g, "_")))) errors.push("Production/staged RELEASE_CHANNEL requires a production build environment and exact deployment ID.");
+  if (["production", "staged"].includes(releaseChannel) && (buildEnvironment !== "production" || lacksDeploymentIdentity(deploymentId))) errors.push("Production/staged RELEASE_CHANNEL requires a production build environment and exact deployment ID.");
   const releaseClassification = /^(internal-only|patch|minor-candidate|major-candidate):\s*\S.+$/i.exec(fields.get("RELEASE_CLASSIFICATION") ?? "")?.[1]?.toLowerCase();
   if (!releaseClassification) errors.push("RELEASE_CLASSIFICATION must name a governed classification and reason.");
   const customerIdentity = fields.get("CUSTOMER_RELEASE_IDENTITY") ?? "";
