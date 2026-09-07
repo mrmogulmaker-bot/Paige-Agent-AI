@@ -334,7 +334,7 @@
       "required": ["version", "release_name", "date", "owner_approval"],
       "properties": {
         "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
-        "release_name": { "type": "string", "minLength": 1 },
+        "release_name": { "type": "string", "minLength": 1, "pattern": "\\S" },
         "date": { "type": "string", "format": "date" },
         "owner_approval": { "$ref": "#/$defs/customerApproval" }
       }
