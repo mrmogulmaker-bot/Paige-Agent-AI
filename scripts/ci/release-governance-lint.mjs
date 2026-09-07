@@ -50,13 +50,20 @@ const isUnresolvedEvidence = (value) => {
   const unresolved = "(?:pending|unknown|proof owed)";
   return new RegExp(`(?:\\b${subject}\\b.*\\b${unresolved}\\b|\\b${unresolved}\\b.*\\b${subject}\\b)`).test(normalized);
 };
-const isUnresolvedCorrectionReason = (value) => new Set(["todo", "tbd", "placeholder", "replace me", "pending", "unknown", "none", "n a", "na", "not applicable", "proof owed"]).has(normalizeSentinel(value));
+const isUnresolvedCorrectionReason = (value) => {
+  const normalized = normalizeSentinel(value);
+  const unresolvedTerms = /\b(?:todo|tbd|placeholder|replace me|pending|unknown|proof owed)\b/;
+  const resolutionContext = /\b(?:corrected|replaced|removed|resolved|superseded|changed|updated|fixed|retracted|invalidated)\b/;
+  return new Set(["todo", "tbd", "placeholder", "replace me", "pending", "unknown", "none", "n a", "na", "not applicable", "proof owed"]).has(normalized)
+    || (unresolvedTerms.test(normalized) && !resolutionContext.test(normalized));
+};
 const isNonSubstantiveProofBoundary = (value) => {
   const normalized = normalizeSentinel(value);
-  const words = normalized.split(" ").filter(Boolean);
+  const genericWords = new Set(["proof", "result", "evidence", "verification", "check", "runtime", "status", "claim", "delivery", "production", "authenticated", "auth", "owner", "user", "workflow", "interaction", "feature", "deployment", "pending", "unknown", "owed", "is", "remains", "was", "still", "currently", "the", "a", "an", "for", "this"]);
+  const hasConcreteScope = normalized.split(" ").filter(Boolean).some((word) => !genericWords.has(word));
   const genericProofDebt = /\b(?:proof|result|evidence|verification|check|runtime)\b/.test(normalized)
     && /\b(?:pending|unknown|proof owed)\b/.test(normalized)
-    && words.length <= 5;
+    && !hasConcreteScope;
   return isUnresolvedValue(value)
     || genericProofDebt
     || /^(?:(?:authenticated|owner|user|production|runtime) )*(?:claim|feature|workflow|interaction|status)(?: is| remains| was)? (?:pending|unknown|proof owed)$/.test(normalized);
@@ -472,9 +479,12 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects placeholder general proof boundary", { ...valid, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "TODO", excluded_from_live_claim: "pending", evidence: ["unknown"] }] }] }, true],
     ["rejects generic general proof boundary prose", { ...valid, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "runtime proof pending", excluded_from_live_claim: "claim pending", evidence: ["proof pending"] }] }] }, true],
     ["accepts precise proof boundary that truthfully says pending", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "Authenticated client edit and save proof is pending because production account access was unavailable", excluded_from_live_claim: "Authenticated client edit and save workflow", evidence: ["Production account access was unavailable during the scheduled authenticated verification"] }] }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"], known_limitations: "Authenticated client editing remains outside the live claim" } }, false],
+    ["accepts concise proof boundary with concrete scope", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "Okta login proof remains pending", excluded_from_live_claim: "Okta login workflow", evidence: ["Okta production account access was unavailable during verification"] }] }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"], known_limitations: "Okta login remains outside the live claim" } }, false],
     ["rejects placeholder proof-owed boundary", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], identifiers: [], proof_owed: { boundary: "TODO: write exact boundary", excluded_from_live_claim: "TBD - fill later" } } }], whats_new: { ...valid.whats_new, status: ["LIVE", "PROOF OWED"], known_limitations: "None" } }, true],
     ["rejects correction without history", { ...valid, record_state: "CORRECTED" }, true],
     ["rejects placeholder correction reason", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "PROOF_OWED" }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, true],
+    ["rejects unresolved correction phrase without repair context", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "pending deployment ID" }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, true],
+    ["rejects TODO correction phrase without repair context", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "TODO status" }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, true],
     ["accepts correction reason that explains a former placeholder", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Replaced pending deployment ID and TODO value with dpl_123" }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, false],
     ["accepts structurally complete correction", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope" }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, false],
     ["rejects customer correction without publication gates", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected customer outcome" }, whats_new: { ...valid.whats_new, customer_outcome: "TODO" } }, true],
@@ -559,9 +569,12 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["canonical schema rejects symbolic deployment aliases", { ...published, internal_builds: [{ ...build, deployment_id: "latest" }] }, true],
     ["canonical schema rejects a URL-only deployment identifier", { ...published, internal_builds: [{ ...build, deployment_id: "https://example.vercel.app" }] }, true],
     ["canonical schema rejects placeholder correction reasons", { ...correction, history: { ...correction.history, reason: "pending" } }, true],
+    ["canonical schema rejects unresolved correction phrases without repair context", { ...correction, history: { ...correction.history, reason: "pending deployment ID" } }, true],
+    ["canonical schema rejects TODO correction phrases without repair context", { ...correction, history: { ...correction.history, reason: "TODO status" } }, true],
     ["canonical schema accepts a correction reason that names the repaired placeholder", { ...correction, history: { ...correction.history, reason: "Corrected TODO status from PROOF OWED to LIVE after authenticated run 42 passed" } }, false],
     ["canonical schema rejects generic general proof boundary prose", { ...published, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "runtime proof pending", excluded_from_live_claim: "claim pending", evidence: ["proof pending"] }] }], whats_new: { ...published.whats_new, status: ["PARTIAL", "PROOF OWED"] } }, true],
     ["canonical schema accepts a precise proof boundary that truthfully says pending", { ...published, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "Authenticated client edit and save proof is pending because production account access was unavailable", excluded_from_live_claim: "Authenticated client edit and save workflow", evidence: ["Production account access was unavailable during the scheduled authenticated verification"] }] }], whats_new: { ...published.whats_new, status: ["PARTIAL", "PROOF OWED"], known_limitations: "Authenticated client editing remains outside the live claim" } }, false],
+    ["canonical schema accepts a concise proof boundary with concrete scope", { ...published, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "Okta login proof remains pending", excluded_from_live_claim: "Okta login workflow", evidence: ["Okta production account access was unavailable during verification"] }] }], whats_new: { ...published.whats_new, status: ["PARTIAL", "PROOF OWED"], known_limitations: "Okta login remains outside the live claim" } }, false],
     ["canonical schema rejects approved records with failed referenced checks", { ...valid, record_state: "APPROVED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, checks: { ...build.checks, security: { state: "FAIL", evidence: ["security run failed"] } } }] }, true],
   ];
   for (const [label, record, shouldFail] of schemaCases) {

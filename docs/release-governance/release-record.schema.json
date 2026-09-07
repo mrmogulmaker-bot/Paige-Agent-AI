@@ -359,8 +359,19 @@
       "required": ["supersedes_record_id", "reason"],
       "properties": {
         "supersedes_record_id": { "type": "string", "minLength": 1, "pattern": "\\S" },
-        "reason": { "$ref": "#/$defs/proofBoundaryString" }
+        "reason": { "$ref": "#/$defs/correctionReason" }
       }
+    },
+    "correctionReason": {
+      "allOf": [
+        { "$ref": "#/$defs/proofBoundaryString" },
+        {
+          "anyOf": [
+            { "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][^A-Za-z0-9]*[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])" } },
+            { "pattern": "([Cc][Oo][Rr][Rr][Ee][Cc][Tt][Ee][Dd]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][Dd]|[Rr][Ee][Mm][Oo][Vv][Ee][Dd]|[Rr][Ee][Ss][Oo][Ll][Vv][Ee][Dd]|[Ss][Uu][Pp][Ee][Rr][Ss][Ee][Dd][Ee][Dd]|[Cc][Hh][Aa][Nn][Gg][Ee][Dd]|[Uu][Pp][Dd][Aa][Tt][Ee][Dd]|[Ff][Ii][Xx][Ee][Dd]|[Rr][Ee][Tt][Rr][Aa][Cc][Tt][Ee][Dd]|[Ii][Nn][Vv][Aa][Ll][Ii][Dd][Aa][Tt][Ee][Dd])" }
+          ]
+        }
+      ]
     },
     "customerReleaseIdentity": {
       "type": "object",
