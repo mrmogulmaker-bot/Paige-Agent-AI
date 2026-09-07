@@ -48,20 +48,20 @@ for (const { name, argv: declared, definition_file: definitionFile } of manifest
 
   const startedAt = new Date().toISOString();
   const result = await new Promise((resolve) => {
-    const process = spawn(process.execPath, declared.slice(1), {
+    const child = spawn(process.execPath, declared.slice(1), {
       cwd: root,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';
-    process.stdout.on('data', (data) => {
+    child.stdout.on('data', (data) => {
       output += data;
     });
-    process.stderr.on('data', (data) => {
+    child.stderr.on('data', (data) => {
       output += data;
     });
-    process.on('error', (error) => resolve({ exitCode: -1, output: String(error) }));
-    process.on('close', (exitCode) => resolve({ exitCode, output }));
+    child.on('error', (error) => resolve({ exitCode: -1, output: String(error) }));
+    child.on('close', (exitCode) => resolve({ exitCode, output }));
   });
 
   const log = `${name}.log`;
