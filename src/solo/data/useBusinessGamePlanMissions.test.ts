@@ -1,5 +1,12 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    rpc: vi.fn(),
+    functions: { invoke: vi.fn() },
+  },
+}));
 import { toStrategicPlay } from "./useBusinessGamePlanMissions";
 import type { BusinessMissionSummary } from "@/types/businessMission";
 
