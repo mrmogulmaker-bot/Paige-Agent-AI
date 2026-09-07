@@ -142,7 +142,7 @@ function fieldsFrom(text) {
 function isEvidenceValue(value) {
   const match = /^(PASS|UNVERIFIED|NOT_APPLICABLE):\s*(\S.+)$/i.exec(value ?? "");
   if (!match) return false;
-  return !isUnresolvedValue(match[2]);
+  return !isUnresolvedEvidence(match[2]);
 }
 
 function normalizeSentinel(value) {
@@ -163,13 +163,23 @@ function hasUnresolvedToken(value) {
   return hasPlaceholder(value) || /\b(?:pending|unknown|proof owed|none|n a|not applicable)\b/.test(normalized) || normalized === "na";
 }
 
+function isUnresolvedEvidence(value) {
+  if (isUnresolvedValue(value)) return true;
+  const raw = String(value ?? "").trim();
+  if (/^https?:\/\//i.test(raw) || /[\\/][^\\/]+\.[A-Za-z0-9]{1,10}(?:[?#].*)?$/.test(raw)) return false;
+  const normalized = normalizeSentinel(raw);
+  const subject = "(?:proof|result|evidence|verification|check|runtime|decision)";
+  const unresolved = "(?:pending|unknown|proof owed)";
+  return new RegExp(`(?:\\b${subject}\\b.*\\b${unresolved}\\b|\\b${unresolved}\\b.*\\b${subject}\\b)`).test(normalized);
+}
+
 function lacksDeploymentIdentity(value) {
   const normalized = normalizeSentinel(value);
   return !normalized || hasUnresolvedToken(value);
 }
 
 function isPassWithEvidence(value) {
-  return /^PASS:\s*\S.+$/i.test(value ?? "") && !isUnresolvedValue(String(value ?? "").replace(/^PASS:\s*/i, ""));
+  return /^PASS:\s*\S.+$/i.test(value ?? "") && !isUnresolvedEvidence(String(value ?? "").replace(/^PASS:\s*/i, ""));
 }
 
 export function validateEvidenceText(text, classification) {
@@ -200,7 +210,7 @@ export function validateEvidenceText(text, classification) {
   const deploymentId = /\bdeployment\s*=\s*([^;]+)/i.exec(buildIdentity)?.[1]?.trim();
   const deliveryValue = (field) => new RegExp(`\\b${field}\\s*=\\s*([^;]+)`, "i").exec(buildIdentity)?.[1]?.trim();
   const buildEvidence = deliveryValue("evidence") ?? "";
-  if (isUnresolvedValue(buildEvidence)) errors.push("INTERNAL_BUILD_IDENTITY evidence must be a substantive link or reproducible reference.");
+  if (isUnresolvedEvidence(buildEvidence)) errors.push("INTERNAL_BUILD_IDENTITY evidence must be a substantive link or reproducible reference.");
   for (const field of ["migrations", "edge"]) {
     const value = deliveryValue(field) ?? "";
     const applied = /^APPLIED\(([^)]+)\)$/i.exec(value);
@@ -221,7 +231,7 @@ export function validateEvidenceText(text, classification) {
   const noCustomerIdentity = /^none:\s*\S.+$/i.test(customerIdentity);
   const namedCustomerIdentity = /^(\d+\.\d+\.\d+)\s+—\s+([^;]+);\s*owner-decision=(\S+)$/i.exec(customerIdentity);
   if (namedCustomerIdentity && !namedCustomerIdentity[2].trim()) errors.push("CUSTOMER_RELEASE_IDENTITY must include a non-whitespace release name.");
-  if (namedCustomerIdentity && normalizeSentinel(namedCustomerIdentity[3]) !== "pending" && isUnresolvedValue(namedCustomerIdentity[3])) errors.push("CUSTOMER_RELEASE_IDENTITY owner-decision must be PENDING or a substantive decision reference.");
+  if (namedCustomerIdentity && normalizeSentinel(namedCustomerIdentity[3]) !== "pending" && isUnresolvedEvidence(namedCustomerIdentity[3])) errors.push("CUSTOMER_RELEASE_IDENTITY owner-decision must be PENDING or a substantive decision reference.");
   if (releaseClassification === "internal-only" && !noCustomerIdentity) errors.push("CUSTOMER_RELEASE_IDENTITY must be none: reason for internal-only work.");
   if (releaseClassification === "patch" && !noCustomerIdentity && !/^0\.\d+\.[1-9]\d*$/.test(namedCustomerIdentity?.[1] ?? "")) errors.push("Patch CUSTOMER_RELEASE_IDENTITY must be none: reason or 0.x.y with y greater than zero, a name, and owner-decision reference.");
   if (releaseClassification === "minor-candidate" && !/^0\.[1-9]\d*\.0$/.test(namedCustomerIdentity?.[1] ?? "")) errors.push("Minor-candidate CUSTOMER_RELEASE_IDENTITY must be 0.x.0 with a name and owner-decision reference.");

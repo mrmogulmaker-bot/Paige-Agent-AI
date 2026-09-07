@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 
 const POLICY = "docs/doctrine/release-governance-and-customer-update-policy.md";
 const SCHEMA = "docs/release-governance/release-record.schema.json";
@@ -35,11 +37,31 @@ const hasNoValueToken = (value) => /\b(?:none|n a|not applicable)\b/.test(normal
 const hasUnresolvedToken = (value) => hasPlaceholder(value) || hasNoValueToken(value) || /\bproof owed\b/.test(normalizeSentinel(value));
 const isUnresolvedDeploymentId = hasUnresolvedToken;
 const isNoLimitation = (value) => isNoValue(value) || /^no known limitations?$/.test(normalizeSentinel(value));
+const isUnresolvedEvidence = (value) => {
+  if (isUnresolvedValue(value)) return true;
+  const raw = String(value ?? "").trim();
+  if (/^https?:\/\//i.test(raw) || /[\\/][^\\/]+\.[A-Za-z0-9]{1,10}(?:[?#].*)?$/.test(raw)) return false;
+  const normalized = normalizeSentinel(raw);
+  const subject = "(?:proof|result|evidence|verification|check|runtime|decision)";
+  const unresolved = "(?:pending|unknown|proof owed)";
+  return new RegExp(`(?:\\b${subject}\\b.*\\b${unresolved}\\b|\\b${unresolved}\\b.*\\b${subject}\\b)`).test(normalized);
+};
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "history", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "customer_release_scope", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
 const STAGED_KEYS = ["owner_approval", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
 const STAGED_TEXT_KEYS = ["eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
 const NOTE_KEYS = ["customer_outcome", "what_changed", "who_can_use_it", "owner_action", "status", "known_limitations", "proof_owed", "safe_next_step", "technical_release_reference", "paige_readable_summary"];
+
+export function compileCanonicalReleaseSchema(schema) {
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  return ajv.compile(schema);
+}
+
+function canonicalSchemaFindings(validate, record) {
+  if (validate(record)) return [];
+  return (validate.errors || []).map((error) => `canonical schema ${error.instancePath || "/"} ${error.message}`);
+}
 
 function invokedDirectly() {
   try {
@@ -54,7 +76,7 @@ function requireEvidenceState(value, label, findings) {
   if (!CHECKS.has(value?.state) || !Array.isArray(value?.evidence) || value.evidence.length === 0)
     findings.push(`${label} must include PASS/FAIL/UNVERIFIED and non-empty evidence[]`);
   else if (value.evidence.some((item) => !nonEmpty(item))) findings.push(`${label}.evidence must contain only non-empty strings`);
-  else if (value.state === "PASS" && value.evidence.some(hasUnresolvedToken)) findings.push(`${label}.evidence must contain resolved proof when state is PASS`);
+  else if (value.state === "PASS" && value.evidence.some(isUnresolvedEvidence)) findings.push(`${label}.evidence must contain resolved proof when state is PASS`);
 }
 
 function requireExactObject(value, keys, label, findings) {
@@ -77,7 +99,7 @@ function requireDeliveryState(value, label, findings) {
   requireExactObject(value, ["state", "evidence", "identifiers", "proof_owed"], label, findings);
   if (!DELIVERY_STATES.has(value?.state)) findings.push(`${label}.state invalid`);
   requireNonEmptyStrings(value?.evidence, `${label}.evidence`, findings, value?.state === "NOT_APPLICABLE");
-  if (value?.state === "APPLIED" && Array.isArray(value?.evidence) && value.evidence.some(hasUnresolvedToken)) findings.push(`${label}.evidence must contain resolved proof when state is APPLIED`);
+  if (value?.state === "APPLIED" && Array.isArray(value?.evidence) && value.evidence.some(isUnresolvedEvidence)) findings.push(`${label}.evidence must contain resolved proof when state is APPLIED`);
   if (value?.state === "PROOF_OWED" && Array.isArray(value?.evidence) && value.evidence.some(isUnresolvedValue)) findings.push(`${label}.evidence must substantively describe why proof remains owed`);
   requireNonEmptyStrings(value?.identifiers, `${label}.identifiers`, findings, value?.state !== "APPLIED");
   if (value?.state !== "APPLIED" && Array.isArray(value?.identifiers) && value.identifiers.length > 0) findings.push(`${label}.identifiers must be empty unless state is APPLIED`);
@@ -198,7 +220,7 @@ export function validateReleaseRecord(record) {
       for (const field of ["ci", "security", "production_checks"])
         requireEvidenceState(build?.checks?.[field], `${label}.checks.${field}`, findings);
       requireNonEmptyStrings(build?.evidence, `${label}.evidence`, findings);
-      if (Array.isArray(build?.evidence) && build.evidence.some(isUnresolvedValue)) findings.push(`${label}.evidence must contain a substantive link or reproducible reference`);
+      if (Array.isArray(build?.evidence) && build.evidence.some(isUnresolvedEvidence)) findings.push(`${label}.evidence must contain a substantive link or reproducible reference`);
     });
     const deploymentIds = record.internal_builds.map((build) => build?.deployment_id).filter((id) => id !== "NOT_APPLICABLE");
     if (new Set(deploymentIds).size !== deploymentIds.length) findings.push("actual internal_builds deployment_id values must be unique");
@@ -266,7 +288,7 @@ export function validateReleaseRecord(record) {
     for (const field of ["position", "reference"])
       if (hasUnresolvedToken(record.rollback_recovery?.[field])) findings.push(`PUBLISHED rollback_recovery.${field} must be resolved`);
 
-    if (referencedBuilds.some((build) => build?.evidence?.some(isUnresolvedValue))) findings.push("PUBLISHED referenced builds must contain resolved build evidence");
+    if (referencedBuilds.some((build) => build?.evidence?.some(isUnresolvedEvidence))) findings.push("PUBLISHED referenced builds must contain resolved build evidence");
     if (referencedBuilds.length === 0 || referencedBuilds.some((build) => !["production", "staged"].includes(build?.release_channel) || build.deployment_id === "NOT_APPLICABLE"))
       findings.push("PUBLISHED technical references must resolve only to deployed production or staged builds");
     if (referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("FAILED")))
@@ -326,14 +348,16 @@ export function validateRepository() {
     for (const phrase of ["Internal build identity", "Release channel", "Customer release identity", "Paige Solo Preview", "PROOF OWED", "Required What's New format", "Future Updates UI handoff"])
       if (!policy.includes(phrase)) findings.push(`${POLICY} missing '${phrase}'`);
   }
+  let validateCanonicalSchema = null;
   if (fs.existsSync(SCHEMA)) {
     try {
       const schema = JSON.parse(fs.readFileSync(SCHEMA, "utf8"));
       if (schema.$id !== "https://paige.ai/schemas/release-record.schema.json") findings.push(`${SCHEMA} has wrong $id`);
       for (const key of ["internal_builds", "customer_release_identity", "whats_new"])
         if (!schema.properties?.[key]) findings.push(`${SCHEMA} missing ${key}`);
+      validateCanonicalSchema = compileCanonicalReleaseSchema(schema);
     } catch (error) {
-      findings.push(`${SCHEMA} invalid JSON: ${error?.message ?? error}`);
+      findings.push(`${SCHEMA} invalid or not compilable: ${error?.message ?? error}`);
     }
   }
   const recordsDir = "docs/release-governance/records";
@@ -344,6 +368,7 @@ export function validateRepository() {
       try {
         const record = JSON.parse(fs.readFileSync(file, "utf8"));
         records.push(record);
+        if (validateCanonicalSchema) for (const finding of canonicalSchemaFindings(validateCanonicalSchema, record)) findings.push(`${file}: ${finding}`);
         for (const finding of validateReleaseRecord(record)) findings.push(`${file}: ${finding}`);
       } catch (error) {
         findings.push(`${file} invalid JSON: ${error?.message ?? error}`);
@@ -429,6 +454,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects placeholder published build evidence", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, evidence: ["TODO"] }] }, true],
     ["rejects absent build evidence before publication", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["none"] }] }, true],
     ["accepts a build evidence path containing a state word", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["evidence/ui/pending-state.png"] }] }, false],
+    ["accepts a PASS check evidence path containing a state word", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", checks: { ...build.checks, ci: { state: "PASS", evidence: ["evidence/ui/pending-state.png"] } } }] }, false],
+    ["rejects unresolved prose in PASS check evidence", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", checks: { ...build.checks, ci: { state: "PASS", evidence: ["proof pending"] } } }] }, true],
     ["rejects placeholder published release facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["TODO"], rollback_recovery: { position: "TBD", reference: "REPLACE_ME" } }, true],
     ["rejects no-value sentinels in published facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["None"], affected_audience: ["N/A"], benefits: ["none"], rollback_recovery: { position: "forward fix", reference: "none" } }, true],
     ["rejects proof-owed sentinels in required published facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["PROOF_OWED"], affected_audience: ["PROOF OWED"], benefits: ["proof-owed"], rollback_recovery: { position: "forward fix", reference: "PROOF_OWED" } }, true],
@@ -481,7 +508,20 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     console.log(`  ${ok ? "ok  " : "FAIL"} ${label}`);
     if (!ok) bad++;
   }
-  const total = cases.length + historyCases.length + recordSetCases.length;
+  const canonicalSchema = compileCanonicalReleaseSchema(JSON.parse(fs.readFileSync(SCHEMA, "utf8")));
+  const published = { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } };
+  const schemaCases = [
+    ["canonical schema accepts a valid published record", published, false],
+    ["canonical schema rejects publication placeholders missed by handwritten code", { ...published, scope: ["add link"] }, true],
+    ["canonical schema rejects approved records with failed referenced checks", { ...valid, record_state: "APPROVED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, checks: { ...build.checks, security: { state: "FAIL", evidence: ["security run failed"] } } }] }, true],
+  ];
+  for (const [label, record, shouldFail] of schemaCases) {
+    const failed = canonicalSchemaFindings(canonicalSchema, record).length > 0;
+    const ok = failed === shouldFail;
+    console.log(`  ${ok ? "ok  " : "FAIL"} ${label}`);
+    if (!ok) bad++;
+  }
+  const total = cases.length + historyCases.length + recordSetCases.length + schemaCases.length;
   console.log(bad ? `\n✗ release-governance self-test: ${bad} failure(s).` : `\n✓ release-governance self-test passed — ${total} case(s).`);
   process.exit(bad ? 1 : 0);
 }
