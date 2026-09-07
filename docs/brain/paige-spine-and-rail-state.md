@@ -881,3 +881,11 @@ becomes available. Do not grow a parallel list here.
 | What may PAIGE perform, and how is it approved? | `supabase/functions/_shared/action-risk.ts` (the one classifier) + `../doctrine/one-approval-gate.md` |
 | What does a department actually do today? | its card in `../doctrine/surface-cards/` |
 | Can the owner see what PAIGE did? | this file — today, in Solo, largely **no** |
+
+## UPDATE 2026-09-07 — Campaign Brief verified planning-record evidence
+
+The Campaign Brief create/revise Spine capabilities now reach the existing workspace Rail only after a fresh canonical `get_campaign_briefs` read matches the mutation result's exact brief id and version, the current lifecycle, and every intended field. The recorded capability keys are `campaign_brief_create` and `campaign_brief_revise`.
+
+Their owner-visible copy says only that a Campaign Brief planning record was verified created/revised and explicitly denies campaign launch, publication, spend, performance and completion. Refusal, ambiguous selection, stale version, tenant/authority loss, unknown write, readback failure or mismatch never writes a success outcome.
+
+Mind and durable Memory remain `UNAVAILABLE`; authenticated owner/card/Rail production proof remains `PROOF OWED`.
