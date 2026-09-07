@@ -2,6 +2,7 @@
 /** Structural release-governance guard. It validates wiring and record honesty, not deployment truth. */
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const POLICY = "docs/doctrine/release-governance-and-customer-update-policy.md";
@@ -89,6 +90,27 @@ function validDateTime(value) {
   if (!match || !validDate(match[1])) return false;
   const [, , hour, minute, second, , offsetHour, offsetMinute] = match;
   return Number(hour) <= 23 && Number(minute) <= 59 && Number(second) <= 59 && (!offsetHour || (Number(offsetHour) <= 23 && Number(offsetMinute) <= 59));
+}
+
+function compareRecordHistory(baseRecords, currentRecords) {
+  const findings = [];
+  for (const [name, original] of baseRecords) {
+    if (!currentRecords.has(name)) findings.push(`${name} was deleted; release records are additive and immutable`);
+    else if (currentRecords.get(name).replace(/\r\n/g, "\n") !== original.replace(/\r\n/g, "\n")) findings.push(`${name} was rewritten; add a correction record instead`);
+  }
+  return findings;
+}
+
+function validateRecordHistory(base, recordsDir) {
+  if (!base) return [];
+  try {
+    const names = execFileSync("git", ["ls-tree", "-r", "--name-only", base, "--", recordsDir], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
+    const before = new Map(names.map((name) => [name, execFileSync("git", ["show", `${base}:${name}`], { encoding: "utf8" })]));
+    const current = new Map(names.filter((name) => fs.existsSync(name)).map((name) => [name, fs.readFileSync(name, "utf8")]));
+    return compareRecordHistory(before, current);
+  } catch (error) {
+    return [`could not compare release-record history with ${base}: ${error?.message ?? error}`];
+  }
 }
 
 export function validateReleaseRecord(record) {
@@ -185,6 +207,8 @@ export function validateReleaseRecord(record) {
     const referencedBuilds = (record.internal_builds || []).filter((build) => referenced.has(build?.deployment_id));
     if (referencedBuilds.length === 0 || referencedBuilds.some((build) => !["production", "staged"].includes(build?.release_channel) || build.deployment_id === "NOT_APPLICABLE"))
       findings.push("PUBLISHED technical references must resolve only to deployed production or staged builds");
+    if (referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("FAILED")))
+      findings.push("PUBLISHED technical references must not include FAILED migration or edge delivery state");
   }
   return findings;
 }
@@ -210,6 +234,7 @@ export function validateRepository() {
     }
   }
   const recordsDir = "docs/release-governance/records";
+  findings.push(...validateRecordHistory(process.env.RELEASE_GOVERNANCE_BASE, recordsDir));
   if (fs.existsSync(recordsDir)) {
     for (const name of fs.readdirSync(recordsDir).filter((name) => name.endsWith(".json"))) {
       const file = path.join(recordsDir, name);
@@ -266,6 +291,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects minor version with patch component", { ...valid, customer_release_identity: { ...valid.customer_release_identity, version: "0.1.7" } }, true],
     ["rejects major version with minor component", { ...valid, classification: "major_candidate", customer_release_identity: { ...valid.customer_release_identity, version: "2.3.0" } }, true],
     ["rejects duplicate deployment identifiers", { ...valid, internal_builds: [build, { ...build, commit_sha: "b".repeat(40) }] }, true],
+    ["rejects published failed migration state", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, migration_status: { state: "FAILED", evidence: ["migration 202609060001 failed"] } }] }, true],
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],
   ];
   let bad = 0;
@@ -275,7 +301,19 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     console.log(`  ${ok ? "ok  " : "FAIL"} ${label}`);
     if (!ok) bad++;
   }
-  console.log(bad ? `\n✗ release-governance self-test: ${bad} failure(s).` : `\n✓ release-governance self-test passed — ${cases.length} case(s).`);
+  const historyCases = [
+    ["accepts additive release record", new Map([["old.json", "old"]]), new Map([["old.json", "old"], ["new.json", "new"]]), false],
+    ["rejects deleted release record", new Map([["old.json", "old"]]), new Map(), true],
+    ["rejects rewritten release record", new Map([["old.json", "old"]]), new Map([["old.json", "changed"]]), true],
+  ];
+  for (const [label, before, current, shouldFail] of historyCases) {
+    const failed = compareRecordHistory(before, current).length > 0;
+    const ok = failed === shouldFail;
+    console.log(`  ${ok ? "ok  " : "FAIL"} ${label}`);
+    if (!ok) bad++;
+  }
+  const total = cases.length + historyCases.length;
+  console.log(bad ? `\n✗ release-governance self-test: ${bad} failure(s).` : `\n✓ release-governance self-test passed — ${total} case(s).`);
   process.exit(bad ? 1 : 0);
 }
 

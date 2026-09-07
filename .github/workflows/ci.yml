@@ -333,6 +333,10 @@ jobs:
       # and any checked-in customer release record must preserve exact build identity and honest state.
       - name: Release governance policy and records are complete
         if: ${{ !cancelled() }}
+        env:
+          # Historical release records compare with the CURRENT PR base, not the branch fork point:
+          # a stale branch must not erase a record that landed on main after it diverged.
+          RELEASE_GOVERNANCE_BASE: ${{ github.event.pull_request.base.sha }}
         run: npm run lint:release-governance
 
       - name: Release-governance guard catches what it claims to
