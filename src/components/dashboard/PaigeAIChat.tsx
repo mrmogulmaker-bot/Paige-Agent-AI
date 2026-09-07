@@ -236,6 +236,7 @@ export interface PaigeAIChatProps {
 export type ChatRailApi = {
   threads: PaigeThread[];
   isLoading: boolean;
+  isFetched: boolean;
   activeThreadId: string | null;
   streamingThreadId: string | null;
   onSelect: (id: string) => void;
@@ -1237,6 +1238,7 @@ const PaigeAIChatInner = ({
   const composerTextarea = (
     <Textarea
       ref={inputRef}
+      data-paige-composer
       value={input}
       rows={1}
       onChange={(e) => {
@@ -1344,6 +1346,7 @@ const PaigeAIChatInner = ({
   const railApi: ChatRailApi = {
     threads: threadsApi.threads,
     isLoading: threadsApi.isLoading,
+    isFetched: threadsApi.isFetched,
     activeThreadId,
     streamingThreadId,
     onSelect: (id) => void selectThread(id),

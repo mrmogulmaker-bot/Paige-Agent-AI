@@ -37,4 +37,20 @@ describe("DiscussionNeededCard", () => {
     expect(view.host.textContent).not.toContain("Choose the offer to prioritize");
     await act(async () => view.root.unmount()); view.host.remove();
   });
+
+  it("refreshes a changed decision after a stale response is rejected", async () => {
+    const refreshed = { ...decision, id: "action-2", decision: "Choose the revised capacity.", sourceRevision: 4 };
+    mocked.respond.mockRejectedValueOnce(new Error("DISCUSSION_REVISION_CONFLICT"));
+    mocked.get.mockResolvedValueOnce(decision).mockResolvedValueOnce(refreshed);
+    const view = await mount();
+    await act(async () => {
+      (Array.from(view.host.querySelectorAll("button")).find((b) => b.textContent === "Later") as HTMLButtonElement).click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(view.host.textContent).toContain("Choose the revised capacity.");
+    expect(view.host.textContent).toContain("Paige refreshed it");
+    await act(async () => view.root.unmount());
+    view.host.remove();
+  });
 });

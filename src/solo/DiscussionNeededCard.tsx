@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, MessageCircle, TimerOff } from "lucide-react";
 import { paigeDiscussionNeeded, type DiscussionNeeded } from "./data/paigeIntentfulInterview";
 
@@ -12,6 +12,8 @@ export function DiscussionNeededCard({
   const [discussion, setDiscussion] = useState<DiscussionNeeded | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const missionRef = useRef(missionId);
+  missionRef.current = missionId;
 
   useEffect(() => {
     let current = true;
@@ -25,14 +27,29 @@ export function DiscussionNeededCard({
 
   const respond = async (response: "talk_now" | "later" | "dont_ask_again") => {
     if (!discussion || busy) return;
+    const requestedMission = missionId;
     setBusy(true); setError(null);
     try {
       await paigeDiscussionNeeded.respond(discussion.id, discussion.sourceRevision, response);
+      if (missionRef.current !== requestedMission) return;
       if (response === "talk_now") onTalkNow(discussion);
       else setDiscussion(null);
     } catch {
-      setError("That choice could not be verified. The discussion remains unchanged.");
-    } finally { setBusy(false); }
+      if (missionRef.current !== requestedMission) return;
+      setDiscussion(null);
+      try {
+        const refreshed = await paigeDiscussionNeeded.get(requestedMission);
+        if (missionRef.current !== requestedMission) return;
+        setDiscussion(refreshed);
+        setError(refreshed
+          ? "This decision changed, so Paige refreshed it before you choose again."
+          : "This discussion is no longer needed.");
+      } catch {
+        if (missionRef.current === requestedMission) setError("That choice could not be verified. Refresh this page before choosing again.");
+      }
+    } finally {
+      if (missionRef.current === requestedMission) setBusy(false);
+    }
   };
 
   if (!discussion && !error) return null;

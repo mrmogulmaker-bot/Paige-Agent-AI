@@ -53,13 +53,19 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
   const [error, setError] = useState<string | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement | null>(null);
+  const focusPaigeOnClose = useRef(false);
 
   const visible = useMemo(() => brain.items.filter((item) => item.state !== "stopped"), [brain.items]);
   const archived = useMemo(() => brain.items.filter((item) => item.state === "stopped"), [brain.items]);
 
   useEffect(() => {
     if (!drawer) {
-      opener.current?.focus();
+      if (focusPaigeOnClose.current) {
+        focusPaigeOnClose.current = false;
+        document.querySelector<HTMLElement>("[data-paige-composer]")?.focus();
+      } else {
+        opener.current?.focus();
+      }
       return;
     }
     const previousOverflow = document.body.style.overflow;
@@ -120,7 +126,8 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
     setSelected(null);
     setPending(null);
     setError(null);
-    requestAnimationFrame(() => openPaige?.());
+    focusPaigeOnClose.current = true;
+    openPaige?.();
   };
 
   const finish = async (result: Awaited<ReturnType<typeof brain.mutate>>, success: string) => {

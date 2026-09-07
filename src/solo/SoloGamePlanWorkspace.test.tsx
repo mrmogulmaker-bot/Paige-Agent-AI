@@ -189,9 +189,18 @@ describe("Business Game Plan owner-complete vertical", () => {
     await openDetail("blocked");
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(host.querySelector('[role="dialog"]')).not.toBeNull();
-    await act(async () => { click("Talk now"); await Promise.resolve(); await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    const composer = document.createElement("textarea");
+    composer.setAttribute("data-paige-composer", "");
+    document.body.appendChild(composer);
+    await act(async () => {
+      click("Talk now");
+      await Promise.resolve();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
     expect(host.querySelector('[role="dialog"]')).toBeNull();
     expect(harness.openPaige).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(composer);
+    composer.remove();
     expect(getPaigeBusinessPlanScope("11111111-1111-4111-8111-111111111111")).toMatchObject({
       businessMissionId: missionId, ask: "resolve_missing_information",
     });

@@ -88,7 +88,8 @@ export function PaigeWorkingSessionCard({
   const pathRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const answerRef = useRef<HTMLTextAreaElement | null>(null);
   const recapHeadingRef = useRef<HTMLHeadingElement | null>(null);
-  const advanceFocusRef = useRef(false);
+  const resumeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const focusTargetRef = useRef<"answer" | "recap" | "resume" | null>(null);
   const acceptedEpoch = useRef(accountEpoch);
   acceptedEpoch.current = accountEpoch;
 
@@ -126,13 +127,15 @@ export function PaigeWorkingSessionCard({
   const parsedStep = Number((session?.stepKey ?? "question_0").replace("question_", ""));
   const step = Number.isFinite(parsedStep) ? parsedStep : 0;
   const question = pathConfig.questions[Math.min(Math.max(step, 0), pathConfig.questions.length - 1)];
-  const shouldOffer = !session && (explicitOffer || (state.eligibleForFirstUse && api.threads.length === 0));
+  const shouldOffer = !session && (explicitOffer || (state.eligibleForFirstUse && api.isFetched && api.threads.length === 0));
   useEffect(() => {
-    if (!advanceFocusRef.current || !session) return;
-    advanceFocusRef.current = false;
-    if (session.status === "recap") recapHeadingRef.current?.focus();
-    else answerRef.current?.focus();
-  }, [session?.revision, session?.status, session?.stepKey]);
+    const target = focusTargetRef.current;
+    if (!target || !session) return;
+    const node = target === "recap" ? recapHeadingRef.current : target === "resume" ? resumeButtonRef.current : answerRef.current;
+    if (!node) return;
+    focusTargetRef.current = null;
+    node.focus();
+  }, [api.activeThreadId, session?.revision, session?.status, session?.stepKey]);
 
   const begin = async (entrySource: "first_use" | "paige_brief") => {
     if (busy) return;
@@ -156,6 +159,9 @@ export function PaigeWorkingSessionCard({
     try {
       const next = await paigeIntentfulInterview.update(session, event, stepKey);
       if (acceptedEpoch.current !== epoch) return;
+      if (event === "pause") focusTargetRef.current = "resume";
+      else if (event === "resume") focusTargetRef.current = "answer";
+      else if (event === "recap") focusTargetRef.current = "recap";
       setState((current) => ({ ...current, session: next }));
       if (event === "skip" || event === "end") onFinished?.();
     } catch (caught) {
@@ -195,7 +201,7 @@ export function PaigeWorkingSessionCard({
         { fieldKey: question.fieldKey, value: answer.trim() },
       );
       if (acceptedEpoch.current !== epoch) return;
-      advanceFocusRef.current = true;
+      focusTargetRef.current = last ? "recap" : "answer";
       setState((current) => ({ ...current, session: next }));
       setAnswer("");
       if (last) setSelected(new Set());
@@ -238,8 +244,15 @@ export function PaigeWorkingSessionCard({
 
   if (!session) return error && explicitOffer ? <div className="pws-card pws-error" role="alert">{error}</div> : null;
 
+  if (session.status === "skipped" || session.status === "ended") return null;
+
+  if (session.status === "completed" || receipt) {
+    if (api.activeThreadId !== session.threadId) return null;
+    return <section className="pws-card pws-success"><div className="pws-heading"><SquareCheck aria-hidden size={18} /><div><small>VERIFIED</small><h3>Selected facts were saved to Paige Brief.</h3></div></div><p>The canonical Setup record was read back after the owner-authorized save. Unselected points were not saved.</p><details><summary>Receipt</summary><dl><div><dt>Saved to</dt><dd>{typeof receipt?.canonicalOwner === "string" ? receipt.canonicalOwner : "Paige Brief"}</dd></div><div><dt>Facts saved</dt><dd>{typeof receipt?.selectedCount === "number" ? receipt.selectedCount : selected.size}</dd></div><div><dt>Verified outcome</dt><dd>Canonical readback matched</dd></div><div><dt>Rail evidence</dt><dd>{receipt?.railRecorded === true ? "Recorded" : "Verification unavailable"}</dd></div><div><dt>Verified at</dt><dd>{typeof receipt?.verifiedAt === "string" ? new Date(receipt.verifiedAt).toLocaleString() : "Just now"}</dd></div></dl></details></section>;
+  }
+
   if (session.status === "paused" || api.activeThreadId !== session.threadId) {
-    return <section className="pws-card"><div className="pws-heading"><CirclePause aria-hidden size={18} /><div><small>READY TO RESUME</small><h3>Your {pathConfig.label.toLowerCase()} interview is ready to continue.</h3></div></div><p>Your place is saved as workflow state in this account. It is not business truth or Memory.</p>{error && <p className="pws-error" role="alert">{error}</p>}<div className="pws-actions"><button type="button" className="pws-secondary" disabled={busy} onClick={() => void update("end")}>End session</button><button type="button" className="pws-primary" disabled={busy} onClick={() => { if (api.activeThreadId !== session.threadId) api.onSelect(session.threadId); if (session.status === "paused") void update("resume"); }}><Play aria-hidden size={14} />Resume</button></div></section>;
+    return <section className="pws-card"><div className="pws-heading"><CirclePause aria-hidden size={18} /><div><small>READY TO RESUME</small><h3>Your {pathConfig.label.toLowerCase()} interview is ready to continue.</h3></div></div><p>Your place is saved as workflow state in this account. It is not business truth or Memory.</p>{error && <p className="pws-error" role="alert">{error}</p>}<div className="pws-actions"><button type="button" className="pws-secondary" disabled={busy} onClick={() => void update("end")}>End session</button><button ref={resumeButtonRef} type="button" className="pws-primary" disabled={busy} onClick={() => { focusTargetRef.current = "answer"; if (api.activeThreadId !== session.threadId) api.onSelect(session.threadId); if (session.status === "paused") void update("resume"); }}><Play aria-hidden size={14} />Resume</button></div></section>;
   }
 
   if (recapPending) {
@@ -264,11 +277,6 @@ export function PaigeWorkingSessionCard({
     );
   }
 
-  if (session.status === "completed" || receipt) {
-    return <section className="pws-card pws-success"><div className="pws-heading"><SquareCheck aria-hidden size={18} /><div><small>VERIFIED</small><h3>Selected facts were saved to Paige Brief.</h3></div></div><p>The canonical Setup record was read back after the owner-authorized save. Unselected points were not saved.</p><details><summary>Receipt</summary><dl><div><dt>Saved to</dt><dd>{typeof receipt?.canonicalOwner === "string" ? receipt.canonicalOwner : "Paige Brief"}</dd></div><div><dt>Facts saved</dt><dd>{typeof receipt?.selectedCount === "number" ? receipt.selectedCount : selected.size}</dd></div><div><dt>Verified outcome</dt><dd>Canonical readback matched</dd></div><div><dt>Rail evidence</dt><dd>{receipt?.railRecorded === true ? "Recorded" : "Verification unavailable"}</dd></div><div><dt>Verified at</dt><dd>{typeof receipt?.verifiedAt === "string" ? new Date(receipt.verifiedAt).toLocaleString() : "Just now"}</dd></div></dl></details></section>;
-  }
-
-  if (session.status === "skipped" || session.status === "ended") return null;
 
   return (
     <section className="pws-card" aria-labelledby="pws-question-title">
