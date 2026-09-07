@@ -37,8 +37,12 @@ describe("Intentful Interview security contract", () => {
     expect(migration).toContain("clock_timestamp()+interval '7 days'");
     expect(migration).toContain("result=jsonb_build_object('suppressed',true,'topic_key'");
     expect(migration).toContain("payload->>'source_id'=p_mission_id::text");
+    expect(migration).toContain("public.business_mission_brief_versions");
     expect(migration).toContain("p_expected_source_revision integer");
-    expect(migration).toContain("DISCUSSION_REVISION_CONFLICT");
+expect(migration).toContain("DISCUSSION_REVISION_CONFLICT");
+    expect(migration).toContain("m.lifecycle_state not in ('completed','stopped')");
+    expect(migration).not.toContain("business_mission_briefs");
+    expect(migration).not.toContain("m.current_brief_id");
   });
 
   it("blocks legacy automatic memory writes for selected-play working turns", () => {

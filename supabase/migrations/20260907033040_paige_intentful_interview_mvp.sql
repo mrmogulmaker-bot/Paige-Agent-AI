@@ -236,9 +236,13 @@ declare
   v_missing jsonb; v_topic text; v_action public.paige_actions%rowtype;
 begin
   if v_actor is null or v_tenant is null or not (public.solo_setup_access_scope()='owner_full') then return null; end if;
-  select m.id,m.title,m.revision,b.missing_information into v_mission
-    from public.business_missions m join public.business_mission_briefs b on b.id=m.current_brief_id
-    where m.id=p_mission_id and m.tenant_id=v_tenant and m.state not in ('completed','stopped');
+select m.id,m.title,m.revision,b.missing_information into v_mission
+    from public.business_missions m
+    join lateral (
+      select v.missing_information from public.business_mission_brief_versions v
+      where v.tenant_id=m.tenant_id and v.mission_id=m.id order by v.version desc limit 1
+    ) b on true
+    where m.id=p_mission_id and m.tenant_id=v_tenant and m.lifecycle_state not in ('completed','stopped');
   if not found then return null; end if;
   v_missing:=coalesce(to_jsonb(v_mission.missing_information),'[]'::jsonb);
   if jsonb_typeof(v_missing)<>'array' or jsonb_array_length(v_missing)=0 then
