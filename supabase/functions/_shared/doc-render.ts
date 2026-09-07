@@ -265,10 +265,18 @@ function coerceBlockArray(arr: unknown[], docTitle?: string, flattenInline = tru
       push(asText(b.helper));
       const kind = typeof b.field === "string" ? b.field.toLowerCase() : "lines";
       if (kind === "scale") {
-        const min = Number.isFinite(b.scaleMin as number) ? Math.round(b.scaleMin as number) : 1;
-        const max = Number.isFinite(b.scaleMax as number) ? Math.round(b.scaleMax as number) : 5;
+        // Clamp the endpoints EXACTLY like the canvas (DocumentPreview.tsx) so a reversed/out-of-range pair
+        // (e.g. scaleMin 5, scaleMax 1) still yields an ordered scale with ≥2 ticks instead of an EMPTY one
+        // that drops the rating affordance from the exported worksheet (Codex round-12f). `hi` is forced to
+        // at least `lo + 1`, so the loop always emits ≥2 ticks.
+        const clampInt = (v: unknown, lo: number, hi: number, dflt: number) => {
+          const n = Number.isFinite(v as number) ? Math.round(v as number) : dflt;
+          return Math.min(hi, Math.max(lo, n));
+        };
+        const lo = clampInt(b.scaleMin, 0, 9, 1);
+        const hi = clampInt(b.scaleMax, lo + 1, lo + 10, Math.max(lo + 4, lo + 1));
         const nums: string[] = [];
-        for (let i = min; i <= max && nums.length < 20; i++) nums.push(String(i));
+        for (let i = lo; i <= hi && nums.length < 20; i++) nums.push(String(i));
         const minL = asText(b.minLabel).trim();
         const maxL = asText(b.maxLabel).trim();
         push([minL, nums.join(" — "), maxL].filter((s) => s.length > 0).join("   "));
@@ -772,7 +780,9 @@ async function renderPptx(title: string | undefined, blocks: Block[], _style: Re
         const s = pptx.addSlide();
         s.addText(i === 0 ? sec.heading : `${sec.heading} (cont.)`, { x: 0.5, y: 0.4, w: 9, h: 1, fontSize: 26, bold: true });
         if (body.length) {
-          s.addText(body.map((t) => ({ text: t, options: { bullet: true } })), { x: 0.7, y: 1.6, w: 8.6, h: 5, fontSize: 16, valign: "top" });
+          // A body line already prefixed with a number ("1. …", from an ordered list) must NOT also get a
+          // bullet, or the slide shows "• 1. First" (Codex round-12f) — bullet only the un-numbered entries.
+          s.addText(body.map((t) => ({ text: t, options: { bullet: !/^\d+[.)]\s/.test(t) } })), { x: 0.7, y: 1.6, w: 8.6, h: 5, fontSize: 16, valign: "top" });
         }
       });
     }

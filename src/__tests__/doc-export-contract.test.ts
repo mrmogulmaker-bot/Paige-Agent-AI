@@ -338,6 +338,16 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(md).not.toMatch(/^const a = 1;$/m);   // …and it was NOT de-indented to prose
   });
 
+  it("clamps a reversed / out-of-range worksheet scale to an ordered ≥2-tick scale, like the canvas (Codex round-12f)", async () => {
+    // scaleMin 5 > scaleMax 1 previously produced an EMPTY scale (the ascending loop never ran), dropping the
+    // rating affordance. Now clamped like DocumentPreview.tsx: lo=5, hi=max(lo+1, clamp(1))=6 → "5 — 6".
+    const rev = await renderDoc({ format: "md", title: "W", content: [{ type: "worksheet-field", field: "scale", label: "Rate it", scaleMin: 5, scaleMax: 1 }] });
+    expect(dec(rev.bytes)).toContain("5 — 6");                 // ordered, at least two ticks — never empty
+    // an out-of-range max clamps to lo+10 at most and stays ordered from lo
+    const big = await renderDoc({ format: "md", title: "W", content: [{ type: "worksheet-field", field: "scale", label: "Rate it", scaleMin: 0, scaleMax: 99 }] });
+    expect(dec(big.bytes)).toContain("0 — 1 — 2");
+  });
+
   it("never throws and still produces a file for empty content (title-only)", async () => {
     const r = await renderDoc({ format: "md", title: "Only A Title", content: [] });
     expect(r.ext).toBe("md");
@@ -373,6 +383,13 @@ describe("doc-render binary-format guards (source contract — pdf/pptx use npm 
     expect(SRC).not.toContain('{ heading: title || "Overview", body: [] }'); // the duplicate-title default is gone
     expect(SRC).not.toContain("const lead: string[]");                        // no title-slide lead routing at all
     expect(SRC).not.toContain("sawHeading");
+  });
+
+  it("PPTX does not double-mark a pre-numbered list entry — bullets only un-numbered lines (Codex round-12f)", () => {
+    // An ordered-list body line is already prefixed "1. …", so it must NOT also get a bullet or the slide
+    // renders "• 1. First". The render guards the bullet on a leading number prefix; no unconditional bullet.
+    expect(SRC).toContain("/^\\d+[.)]\\s/.test(t)");
+    expect(SRC).not.toContain("options: { bullet: true }");
   });
 
   it("inline markdown protects code spans + link URLs before the emphasis passes (H2/H3)", () => {

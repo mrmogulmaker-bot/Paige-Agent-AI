@@ -312,6 +312,15 @@
   description ranked "PDF and Markdown are the most reliable" though PDF is UNVERIFIED — steering the model/user
   toward a degrading path; changed to "Markdown is the most reliable — it never fails; the others render when
   their libraries are available." doc-export 32/32, tsc ratchet 13/13, control-chars none, §50/§63 clean.
+  **TWENTIETH catch — Codex round 12f (review of head `0667fb25`): two P2, both FOLDED (concrete
+  correctness).** (Q) the worksheet SCALE endpoints were not clamped like the canvas — a reversed / out-of-range
+  pair (`scaleMin` 5 > `scaleMax` 1) produced an EMPTY scale (the ascending loop never ran), dropping the
+  rating affordance from EVERY exported format including LIVE md, while `DocumentPreview.tsx` clamps to a valid
+  ≥2-tick range. Mirrored the canvas: `clampInt(scaleMin,0,9,1)` + `clampInt(scaleMax, lo+1, lo+10, …)` forces
+  `hi ≥ lo+1`, so the loop always emits an ordered ≥2-tick scale (`5 → "5 — 6"`). (R) `renderPptx` bulleted
+  EVERY body line, including ordered-list entries already prefixed "1. " → a "• 1. First" double marker;
+  guarded the bullet on a leading number prefix (`/^\d+[.)]\s/`) so a pre-numbered entry renders "1. First" and
+  un-numbered entries keep their bullet. doc-export 34/34, tsc ratchet 13/13, control-chars none, §50/§63 clean.
 
 - **Secure Browser / Twin — Phase-0 audit corrected + owner ruling (2026-09-07).** Audit
   `docs/audits/paige-secure-browser-audit-2026-09-06.md` (PR #1030). **Vendor correction (owner-required):**
