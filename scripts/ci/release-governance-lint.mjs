@@ -52,19 +52,58 @@ const isUnresolvedEvidence = (value) => {
 };
 const PROOF_SCOPE_KINDS = new Set(["authenticated_workflow", "production_runtime", "provider_capability", "permission", "audience_tier"]);
 const PROOF_BLOCKER_KINDS = new Set(["access_unavailable", "credentials_unavailable", "provider_unavailable", "permission_denied", "evidence_not_captured", "production_check_unavailable"]);
-const CORRECTABLE_POINTER = /^\/(?:classification|internal_builds|scope|affected_audience|benefits|limitations|rollback_recovery|customer_release_identity|whats_new)(?:\/|$)/;
-const isScalar = (value) => value === null || ["string", "number", "boolean"].includes(typeof value);
+const CORRECTABLE_ROOTS = ["classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
+const CORRECTABLE_POINTER = new RegExp(`^/(?:${CORRECTABLE_ROOTS.join("|")})(?:/|$)`);
+const escapePointerSegment = (value) => String(value).replace(/~/g, "~0").replace(/\//g, "~1");
 const readJsonPointer = (value, pointer) => {
   if (!CORRECTABLE_POINTER.test(String(pointer || ""))) return { found: false };
   let current = value;
   for (const rawSegment of pointer.slice(1).split("/")) {
     const segment = rawSegment.replace(/~1/g, "/").replace(/~0/g, "~");
-    if (current === null || typeof current !== "object" || !Object.hasOwn(current, segment)) return { found: false };
-    current = current[segment];
+    if (Array.isArray(current)) {
+      if (!/^(?:0|[1-9]\d*)$/.test(segment) || Number(segment) >= current.length) return { found: false };
+      current = current[Number(segment)];
+    } else {
+      if (current === null || typeof current !== "object" || !Object.hasOwn(current, segment)) return { found: false };
+      current = current[segment];
+    }
   }
   return { found: true, value: current };
 };
 const sameJsonValue = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const collectJsonDifferences = (before, after, path, output) => {
+  if (sameJsonValue(before, after)) return;
+  const beforeObject = before !== null && typeof before === "object";
+  const afterObject = after !== null && typeof after === "object";
+  const sameContainer = beforeObject && afterObject && Array.isArray(before) === Array.isArray(after);
+  if (!sameContainer) {
+    output.set(path, { previous_exists: before !== undefined, previous_value: before ?? null, replacement_exists: after !== undefined, replacement_value: after ?? null });
+    return;
+  }
+  const keys = Array.isArray(before)
+    ? Array.from({ length: Math.max(before.length, after.length) }, (_, index) => String(index))
+    : [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+  if (keys.length === 0) {
+    output.set(path, { previous_exists: true, previous_value: before, replacement_exists: true, replacement_value: after });
+    return;
+  }
+  for (const key of keys) {
+    const beforeExists = Object.hasOwn(before, key);
+    const afterExists = Object.hasOwn(after, key);
+    if (!beforeExists || !afterExists) {
+      output.set(`${path}/${escapePointerSegment(key)}`, { previous_exists: beforeExists, previous_value: beforeExists ? before[key] : null, replacement_exists: afterExists, replacement_value: afterExists ? after[key] : null });
+    } else collectJsonDifferences(before[key], after[key], `${path}/${escapePointerSegment(key)}`, output);
+  }
+};
+const correctionDifferences = (before, after) => {
+  const output = new Map();
+  for (const root of CORRECTABLE_ROOTS) collectJsonDifferences(before?.[root], after?.[root], `/${root}`, output);
+  return output;
+};
+const validContextualReplacement = (path, value) => {
+  if (typeof value !== "string" || !isUnresolvedValue(value)) return true;
+  return normalizeSentinel(value) === "proof owed" && (/^\/whats_new\/status\/(?:0|[1-9]\d*)$/.test(path) || /^\/internal_builds\/(?:0|[1-9]\d*)\/(?:migration_status|edge_status)\/state$/.test(path));
+};
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "history", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "customer_release_scope", "deployed_at", "staged_rollout", "migration_status", "edge_status", "proof_boundaries", "checks", "evidence"];
 const STAGED_KEYS = ["owner_approval", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
@@ -210,10 +249,12 @@ export function validateReleaseRecord(record) {
       if (record.record_state === "CORRECTED" && record.history.corrected_values.length === 0) findings.push("CORRECTED record history.corrected_values must contain at least one changed field");
       record.history.corrected_values.forEach((item, index) => {
       const label = `history.corrected_values[${index}]`;
-      requireExactObject(item, ["field_path", "previous_value", "replacement_value"], label, findings);
+      requireExactObject(item, ["field_path", "previous_exists", "previous_value", "replacement_exists", "replacement_value"], label, findings);
         if (!CORRECTABLE_POINTER.test(String(item?.field_path || "")) || !/^\/(?:[^~/]|~[01])+(?:\/(?:[^~/]|~[01])+)*$/.test(String(item?.field_path || ""))) findings.push(`${label}.field_path must be a JSON Pointer to a correctable release field`);
-        if (!isScalar(item?.previous_value)) findings.push(`${label}.previous_value must be a JSON scalar`);
-        if (!isScalar(item?.replacement_value)) findings.push(`${label}.replacement_value must be a JSON scalar`);
+        if (typeof item?.previous_exists !== "boolean" || typeof item?.replacement_exists !== "boolean" || (!item?.previous_exists && !item?.replacement_exists)) findings.push(`${label} must declare at least one existing side`);
+        if (!item?.previous_exists && item?.previous_value !== null) findings.push(`${label}.previous_value must be null when previous_exists is false`);
+        if (!item?.replacement_exists && item?.replacement_value !== null) findings.push(`${label}.replacement_value must be null when replacement_exists is false`);
+        if (item?.replacement_exists && !validContextualReplacement(String(item?.field_path || ""), item?.replacement_value)) findings.push(`${label}.replacement_value is unresolved for this field`);
       });
     }
   } else if (record.history !== null) findings.push("history must be null unless record_state is CORRECTED or RETRACTED");
@@ -372,16 +413,28 @@ export function validateReleaseRecordSet(records) {
         record.customer_release_identity === null
       ) findings.push(`${record.record_id} corrects a customer-facing record and must preserve its customer release identity; use RETRACTED to withdraw it`);
       if (record.record_state === "CORRECTED") {
+        const expected = correctionDifferences(predecessor, record);
+        const declared = new Map();
         for (const [index, item] of (record.history?.corrected_values || []).entries()) {
           const label = `${record.record_id} history.corrected_values[${index}]`;
-          const before = readJsonPointer(predecessor, item?.field_path);
-          const after = readJsonPointer(record, item?.field_path);
-          if (!before.found) findings.push(`${label}.field_path does not resolve in predecessor ${target}`);
-          if (!after.found) findings.push(`${label}.field_path does not resolve in correction record`);
+          const pointer = String(item?.field_path || "");
+          if (declared.has(pointer)) findings.push(`${label}.field_path duplicates another correction entry`);
+          else declared.set(pointer, item);
+          const before = readJsonPointer(predecessor, pointer);
+          const after = readJsonPointer(record, pointer);
+          if (before.found !== item?.previous_exists) findings.push(`${label}.previous_exists does not match predecessor`);
+          if (after.found !== item?.replacement_exists) findings.push(`${label}.replacement_exists does not match correction record`);
           if (before.found && !sameJsonValue(before.value, item?.previous_value)) findings.push(`${label}.previous_value does not match predecessor`);
           if (after.found && !sameJsonValue(after.value, item?.replacement_value)) findings.push(`${label}.replacement_value does not match correction record`);
+          if (item?.replacement_exists && !validContextualReplacement(pointer, item.replacement_value)) findings.push(`${label}.replacement_value must be resolved, except PROOF OWED at an approved status path`);
           if (before.found && after.found && sameJsonValue(before.value, after.value)) findings.push(`${label}.field_path does not identify a changed value`);
         }
+        for (const [pointer, difference] of expected) {
+          const item = declared.get(pointer);
+          if (!item) findings.push(`${record.record_id} history.corrected_values missing changed field ${pointer}`);
+          else if (!sameJsonValue(difference, { previous_exists: item.previous_exists, previous_value: item.previous_value, replacement_exists: item.replacement_exists, replacement_value: item.replacement_value })) findings.push(`${record.record_id} history.corrected_values does not exactly describe ${pointer}`);
+        }
+        for (const pointer of declared.keys()) if (!expected.has(pointer)) findings.push(`${record.record_id} history.corrected_values declares unchanged or invalid field ${pointer}`);
       }
     }
   }
@@ -517,8 +570,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects TODO correction phrase without repair context", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "TODO status", corrected_values: [] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, true],
     ["rejects unrelated correction context before unresolved work", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Updated notes; deployment ID pending", corrected_values: [] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, true],
     ["rejects correction context tied to another field", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected copy but status remains TODO", corrected_values: [] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, true],
-    ["accepts correction reason that explains a former placeholder", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected deployment identity and status", corrected_values: [{ field_path: "/internal_builds/0/deployment_id", previous_value: "pending", replacement_value: "dpl_123" }, { field_path: "/whats_new/status/0", previous_value: "TODO", replacement_value: "LIVE" }] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, false],
-    ["accepts structurally complete correction", { ...valid, record_state: "CORRECTED", affected_audience: ["Solo owners"], history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope", corrected_values: [{ field_path: "/affected_audience/0", previous_value: "solo", replacement_value: "Solo owners" }] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, false],
+    ["accepts correction reason that explains a former placeholder", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected deployment identity and status", corrected_values: [{ field_path: "/internal_builds/0/deployment_id", previous_exists: true, previous_value: "pending", replacement_exists: true, replacement_value: "dpl_123" }, { field_path: "/whats_new/status/0", previous_exists: true, previous_value: "TODO", replacement_exists: true, replacement_value: "LIVE" }] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, false],
+    ["accepts structurally complete correction", { ...valid, record_state: "CORRECTED", affected_audience: ["Solo owners"], history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope", corrected_values: [{ field_path: "/affected_audience/0", previous_exists: true, previous_value: "solo", replacement_exists: true, replacement_value: "Solo owners" }] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, false],
     ["rejects customer correction without publication gates", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected customer outcome", corrected_values: [] }, whats_new: { ...valid.whats_new, customer_outcome: "TODO" } }, true],
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],
     ["rejects PARTIAL without a substantive limitation", { ...valid, limitations: ["None"], whats_new: { ...valid.whats_new, known_limitations: "None" } }, true],
@@ -570,17 +623,21 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     console.log(`  ${ok ? "ok  " : "FAIL"} ${label}`);
     if (!ok) bad++;
   }
-  const predecessor = { ...internal, record_id: "release-0.0.9" };
-  const correction = { ...valid, record_id: "release-0.1.0-correction", record_state: "CORRECTED", scope: ["corrected outcome"], history: { supersedes_record_id: predecessor.record_id, reason: "Corrected outcome scope", corrected_values: [{ field_path: "/scope/0", previous_value: "outcome", replacement_value: "corrected outcome" }] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } };
+  const predecessor = { ...valid, record_id: "release-0.0.9", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } };
+  const internalPredecessor = { ...internal, record_id: "release-internal-0.0.9" };
+  const correction = { ...valid, record_id: "release-0.1.0-correction", record_state: "CORRECTED", scope: ["corrected outcome"], history: { supersedes_record_id: predecessor.record_id, reason: "Corrected outcome scope", corrected_values: [{ field_path: "/scope/0", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "corrected outcome" }] }, customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } };
   const recordSetCases = [
     ["accepts correction linked to an existing predecessor", [predecessor, correction], false],
-    ["accepts an internal correction linked to an internal predecessor", [predecessor, { ...internal, record_id: "release-0.0.9-correction", record_state: "CORRECTED", scope: ["corrected internal outcome"], history: { supersedes_record_id: predecessor.record_id, reason: "Corrected internal outcome", corrected_values: [{ field_path: "/scope/0", previous_value: "outcome", replacement_value: "corrected internal outcome" }] } }], false],
+    ["accepts an internal correction linked to an internal predecessor", [internalPredecessor, { ...internal, record_id: "release-internal-0.0.9-correction", record_state: "CORRECTED", scope: ["corrected internal outcome"], history: { supersedes_record_id: internalPredecessor.record_id, reason: "Corrected internal outcome", corrected_values: [{ field_path: "/scope/0", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "corrected internal outcome" }] } }], false],
     ["rejects an internal correction that erases a customer-facing predecessor", [{ ...valid, record_id: "release-0.1.0-published", record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, { ...internal, record_id: "release-0.1.0-hidden-correction", record_state: "CORRECTED", history: { supersedes_record_id: "release-0.1.0-published", reason: "Incorrectly hid the customer release", corrected_values: [] } }], true],
     ["rejects correction linked to a missing predecessor", [correction], true],
     ["rejects correction with invented previous value", [predecessor, { ...correction, history: { ...correction.history, corrected_values: [{ ...correction.history.corrected_values[0], previous_value: "invented" }] } }], true],
     ["rejects correction with replacement not present in current record", [predecessor, { ...correction, history: { ...correction.history, corrected_values: [{ ...correction.history.corrected_values[0], replacement_value: "different outcome" }] } }], true],
-    ["rejects correction with a missing JSON Pointer", [predecessor, { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/scope/9", previous_value: "outcome", replacement_value: "corrected outcome" }] } }], true],
-    ["accepts PROOF OWED as a contextual correction replacement", [{ ...valid, record_id: "release-status-before", whats_new: { ...valid.whats_new, status: ["LIVE"] } }, { ...valid, record_id: "release-status-correction", record_state: "CORRECTED", whats_new: { ...valid.whats_new, status: ["PROOF OWED"] }, history: { supersedes_record_id: "release-status-before", reason: "Corrected the customer truth status", corrected_values: [{ field_path: "/whats_new/status/0", previous_value: "LIVE", replacement_value: "PROOF OWED" }] } }], false],
+    ["rejects correction with a missing JSON Pointer", [predecessor, { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/scope/9", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "corrected outcome" }] } }], true],
+    ["rejects JavaScript-only array length pointers", [predecessor, { ...correction, scope: ["outcome", "second outcome"], history: { ...correction.history, corrected_values: [{ field_path: "/scope/length", previous_exists: true, previous_value: 1, replacement_exists: true, replacement_value: 2 }] } }], true],
+    ["rejects correction history that omits another changed field", [predecessor, { ...correction, benefits: ["corrected benefit"] }], true],
+    ["rejects unresolved replacement outside an allowed status field", [predecessor, { ...correction, scope: ["TODO"], history: { ...correction.history, corrected_values: [{ field_path: "/scope/0", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "TODO" }] } }], true],
+    ["accepts PROOF OWED as a contextual correction replacement", [{ ...valid, record_id: "release-status-before", whats_new: { ...valid.whats_new, status: ["LIVE"] } }, { ...valid, record_id: "release-status-correction", record_state: "CORRECTED", whats_new: { ...valid.whats_new, status: ["PROOF OWED"] }, history: { supersedes_record_id: "release-status-before", reason: "Corrected the customer truth status", corrected_values: [{ field_path: "/whats_new/status/0", previous_exists: true, previous_value: "LIVE", replacement_exists: true, replacement_value: "PROOF OWED" }] } }], false],
     ["rejects correction self-reference", [{ ...correction, history: { ...correction.history, supersedes_record_id: correction.record_id } }], true],
     ["rejects duplicate record identifiers", [predecessor, { ...valid, record_id: predecessor.record_id }], true],
     ["rejects correction cycle", [{ ...correction, history: { ...correction.history, supersedes_record_id: "release-cycle-b" } }, { ...correction, record_id: "release-cycle-b", history: { ...correction.history, supersedes_record_id: correction.record_id } }], true],
@@ -605,14 +662,16 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["canonical schema rejects symbolic deployment aliases", { ...published, internal_builds: [{ ...build, deployment_id: "latest" }] }, true],
     ["canonical schema rejects a URL-only deployment identifier", { ...published, internal_builds: [{ ...build, deployment_id: "https://example.vercel.app" }] }, true],
     ["canonical schema rejects an empty corrected-values list", { ...correction, history: { ...correction.history, corrected_values: [] } }, true],
-    ["canonical schema accepts PROOF OWED as a contextual replacement value", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/whats_new/status/0", previous_value: "LIVE", replacement_value: "PROOF OWED" }] } }, false],
+    ["canonical schema accepts PROOF OWED as a contextual replacement value", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/whats_new/status/0", previous_exists: true, previous_value: "LIVE", replacement_exists: true, replacement_value: "PROOF OWED" }] } }, false],
+    ["canonical schema rejects JavaScript-only array length pointers", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/scope/length", previous_exists: true, previous_value: 1, replacement_exists: true, replacement_value: 2 }] } }, true],
+    ["canonical schema rejects unresolved replacements outside allowed status fields", { ...correction, history: { ...correction.history, corrected_values: [{ field_path: "/scope/0", previous_exists: true, previous_value: "outcome", replacement_exists: true, replacement_value: "TODO" }] } }, true],
     ["canonical schema rejects placeholder correction reasons", { ...correction, history: { ...correction.history, reason: "pending" } }, true],
     ["canonical schema rejects unresolved correction phrases without repair context", { ...correction, history: { ...correction.history, reason: "pending deployment ID" } }, true],
     ["canonical schema rejects TODO correction phrases without repair context", { ...correction, history: { ...correction.history, reason: "TODO status" } }, true],
     ["canonical schema rejects unrelated correction context before unresolved work", { ...correction, history: { ...correction.history, reason: "Updated notes; deployment ID pending" } }, true],
     ["canonical schema rejects correction context tied to another field", { ...correction, history: { ...correction.history, reason: "Corrected copy but status remains TODO" } }, true],
     ["canonical schema accepts ordinary words containing sentinel substrings", { ...correction, history: { ...correction.history, reason: "Clarified behavior depending on environment" } }, false],
-    ["canonical schema accepts a correction reason that names the repaired placeholder", { ...correction, history: { ...correction.history, reason: "Corrected customer status after authenticated run 42 passed", corrected_values: [{ field_path: "/whats_new/status/0", previous_value: "PROOF OWED", replacement_value: "LIVE" }] } }, false],
+    ["canonical schema accepts a correction reason that names the repaired placeholder", { ...correction, history: { ...correction.history, reason: "Corrected customer status after authenticated run 42 passed", corrected_values: [{ field_path: "/whats_new/status/0", previous_exists: true, previous_value: "PROOF OWED", replacement_exists: true, replacement_value: "LIVE" }] } }, false],
     ["canonical schema rejects unstructured generic general proof boundary", { ...published, internal_builds: [{ ...build, proof_boundaries: [{ boundary: "runtime proof pending", excluded_from_live_claim: "claim pending", evidence: ["proof pending"] }] }], whats_new: { ...published.whats_new, status: ["PARTIAL", "PROOF OWED"] } }, true],
     ["canonical schema accepts a precise proof boundary that truthfully says pending", { ...published, internal_builds: [{ ...build, proof_boundaries: [{ scope: { kind: "authenticated_workflow", reference: "Authenticated client edit and save workflow" }, blocker: { kind: "access_unavailable", detail: "Production account access was unavailable during verification" }, boundary: "Authenticated client edit and save proof is pending because production account access was unavailable", excluded_from_live_claim: "Authenticated client edit and save workflow", evidence: ["Production account access was unavailable during the scheduled authenticated verification"] }] }], whats_new: { ...published.whats_new, status: ["PARTIAL", "PROOF OWED"], known_limitations: "Authenticated client editing remains outside the live claim" } }, false],
     ["canonical schema accepts a concise proof boundary with concrete scope", { ...published, internal_builds: [{ ...build, proof_boundaries: [{ scope: { kind: "provider_capability", reference: "Okta login workflow" }, blocker: { kind: "access_unavailable", detail: "Okta production account access was unavailable during verification" }, boundary: "Okta login proof remains pending", excluded_from_live_claim: "Okta login workflow", evidence: ["Okta production account access was unavailable during verification"] }] }], whats_new: { ...published.whats_new, status: ["PARTIAL", "PROOF OWED"], known_limitations: "Okta login remains outside the live claim" } }, false],
