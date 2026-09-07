@@ -280,6 +280,9 @@ test("rejects unresolved values after PASS", () => {
     const result = validateEvidenceText(coreEvidence.replace(new RegExp(`^${field}:.*$`, "m"), evidence), { required: true, solo: false });
     assert.equal(result.ok, false, evidence);
   }
+
+  const validStatePath = validateEvidenceText(coreEvidence.replace("RENDERED_EVIDENCE: PASS: screenshot", "RENDERED_EVIDENCE: PASS: evidence/ui/pending-state.png"), { required: true, solo: false });
+  assert.equal(validStatePath.ok, true, validStatePath.errors.join("\n"));
 });
 
 test("rejects unresolved tokens in UI applied identifiers", () => {

@@ -198,6 +198,7 @@ export function validateReleaseRecord(record) {
       for (const field of ["ci", "security", "production_checks"])
         requireEvidenceState(build?.checks?.[field], `${label}.checks.${field}`, findings);
       requireNonEmptyStrings(build?.evidence, `${label}.evidence`, findings);
+      if (Array.isArray(build?.evidence) && build.evidence.some(isUnresolvedValue)) findings.push(`${label}.evidence must contain a substantive link or reproducible reference`);
     });
     const deploymentIds = record.internal_builds.map((build) => build?.deployment_id).filter((id) => id !== "NOT_APPLICABLE");
     if (new Set(deploymentIds).size !== deploymentIds.length) findings.push("actual internal_builds deployment_id values must be unique");
@@ -265,7 +266,7 @@ export function validateReleaseRecord(record) {
     for (const field of ["position", "reference"])
       if (hasUnresolvedToken(record.rollback_recovery?.[field])) findings.push(`PUBLISHED rollback_recovery.${field} must be resolved`);
 
-    if (referencedBuilds.some((build) => build?.evidence?.some(hasUnresolvedToken))) findings.push("PUBLISHED referenced builds must contain resolved build evidence");
+    if (referencedBuilds.some((build) => build?.evidence?.some(isUnresolvedValue))) findings.push("PUBLISHED referenced builds must contain resolved build evidence");
     if (referencedBuilds.length === 0 || referencedBuilds.some((build) => !["production", "staged"].includes(build?.release_channel) || build.deployment_id === "NOT_APPLICABLE"))
       findings.push("PUBLISHED technical references must resolve only to deployed production or staged builds");
     if (referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("FAILED")))
@@ -426,6 +427,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects placeholder published release name", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, release_name: "TODO", owner_approval: customerApproval } }, true],
     ["rejects unresolved published release name", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, release_name: "PROOF_OWED", owner_approval: customerApproval } }, true],
     ["rejects placeholder published build evidence", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, evidence: ["TODO"] }] }, true],
+    ["rejects absent build evidence before publication", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["none"] }] }, true],
+    ["accepts a build evidence path containing a state word", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["evidence/ui/pending-state.png"] }] }, false],
     ["rejects placeholder published release facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["TODO"], rollback_recovery: { position: "TBD", reference: "REPLACE_ME" } }, true],
     ["rejects no-value sentinels in published facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["None"], affected_audience: ["N/A"], benefits: ["none"], rollback_recovery: { position: "forward fix", reference: "none" } }, true],
     ["rejects proof-owed sentinels in required published facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["PROOF_OWED"], affected_audience: ["PROOF OWED"], benefits: ["proof-owed"], rollback_recovery: { position: "forward fix", reference: "PROOF_OWED" } }, true],
