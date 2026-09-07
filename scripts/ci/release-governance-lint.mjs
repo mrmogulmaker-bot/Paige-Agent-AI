@@ -65,9 +65,15 @@ function requireNonEmptyStrings(value, label, findings, allowEmpty = false) {
 }
 
 function requireDeliveryState(value, label, findings) {
-  requireExactObject(value, ["state", "evidence", "proof_owed"], label, findings);
+  requireExactObject(value, ["state", "evidence", "identifiers", "proof_owed"], label, findings);
   if (!DELIVERY_STATES.has(value?.state)) findings.push(`${label}.state invalid`);
   requireNonEmptyStrings(value?.evidence, `${label}.evidence`, findings, value?.state === "NOT_APPLICABLE");
+  requireNonEmptyStrings(value?.identifiers, `${label}.identifiers`, findings, value?.state !== "APPLIED");
+  if (value?.state !== "APPLIED" && Array.isArray(value?.identifiers) && value.identifiers.length > 0) findings.push(`${label}.identifiers must be empty unless state is APPLIED`);
+  if (value?.state === "APPLIED" && Array.isArray(value?.identifiers)) {
+    const pattern = label.endsWith("migration_status") ? /^\d{14}_[A-Za-z0-9_-]+$/ : /^[A-Za-z0-9._-]+@v?[A-Za-z0-9._-]+$/;
+    if (value.identifiers.some((identifier) => !pattern.test(identifier))) findings.push(`${label}.identifiers must contain exact ${label.endsWith("migration_status") ? "migration IDs" : "function@version IDs"}`);
+  }
   if (value?.state === "PROOF_OWED") {
     requireExactObject(value.proof_owed, ["boundary", "excluded_from_live_claim"], `${label}.proof_owed`, findings);
     for (const field of ["boundary", "excluded_from_live_claim"]) {
@@ -320,7 +326,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
   const stagedApproval = { approval_id: "staged-rollout-owner-message-456", scope: "staged_rollout", status: "APPROVED", reference: "owner-message-456" };
   const build = {
     commit_sha: "a".repeat(40), deployment_id: "dpl_123", environment: "production", release_channel: "production", customer_release_scope: "referenced", deployed_at: "2026-09-06T20:00:00Z", staged_rollout: null,
-    migration_status: { state: "NOT_APPLICABLE", evidence: [], proof_owed: null }, edge_status: { state: "NOT_APPLICABLE", evidence: [], proof_owed: null },
+    migration_status: { state: "NOT_APPLICABLE", evidence: [], identifiers: [], proof_owed: null }, edge_status: { state: "NOT_APPLICABLE", evidence: [], identifiers: [], proof_owed: null },
     checks: { ci: { state: "PASS", evidence: ["run"] }, security: { state: "PASS", evidence: ["run"] }, production_checks: { state: "PASS", evidence: ["run"] } }, evidence: ["proof"],
   };
   const valid = {
@@ -352,7 +358,9 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects placeholder approved publication reference", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: "pending" } } }, true],
     ["rejects placeholder staged rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "TBD", rollout_amount: "pending", start_condition: "TODO", stop_condition: "unknown", monitoring_owner: "none", recovery_path: "N/A" } }] }, true],
     ["rejects staged approval reused for publication", { ...valid, customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: stagedApproval.reference } }, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
-    ["rejects applied migration without identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: [], proof_owed: null } }] }, true],
+    ["rejects applied migration without identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["migration applied"], identifiers: [], proof_owed: null } }] }, true],
+    ["rejects generic APPLIED identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["done"], identifiers: ["done"], proof_owed: null } }] }, true],
+    ["accepts exact APPLIED identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["migration log"], identifiers: ["20260907000001_example"], proof_owed: null }, edge_status: { state: "APPLIED", evidence: ["function deployment"], identifiers: ["paige-example@v3"], proof_owed: null } }] }, false],
     ["rejects schema-forbidden extra property", { ...valid, invented: true }, true],
     ["rejects invalid date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "not-a-date" }] }, true],
     ["rejects normalized invalid calendar date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "2026-02-30T20:00:00Z" }] }, true],
@@ -363,10 +371,10 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects major version with minor component", { ...valid, classification: "major_candidate", customer_release_identity: { ...valid.customer_release_identity, version: "2.3.0" } }, true],
     ["rejects duplicate deployment identifiers", { ...valid, internal_builds: [build, { ...build, commit_sha: "b".repeat(40) }] }, true],
     ["accepts repeated NOT_APPLICABLE for non-deployed history", { ...internal, internal_builds: [{ ...build, commit_sha: "b".repeat(40), deployment_id: "NOT_APPLICABLE", environment: "development", release_channel: "development", customer_release_scope: "supporting" }, { ...build, commit_sha: "c".repeat(40), deployment_id: "NOT_APPLICABLE", environment: "development", release_channel: "development", customer_release_scope: "supporting" }] }, false],
-    ["rejects published failed migration state", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, migration_status: { state: "FAILED", evidence: ["migration 202609060001 failed"], proof_owed: null } }] }, true],
-    ["rejects undisclosed referenced proof owed", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], proof_owed: { boundary: "Authenticated edge interaction proof is pending", excluded_from_live_claim: "Edge-backed authenticated interaction" } } }], whats_new: { ...valid.whats_new, status: ["LIVE"] } }, true],
-    ["accepts exact proof-owed boundary excluded from LIVE", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], proof_owed: { boundary: "Authenticated edge interaction proof is pending", excluded_from_live_claim: "Edge-backed authenticated interaction" } } }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"], proof_owed: { visibility: "customer_and_internal", source: "referenced_builds.migration_status_or_edge_status.proof_owed" } } }, false],
-    ["rejects placeholder proof-owed boundary", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], proof_owed: { boundary: "TODO: write exact boundary", excluded_from_live_claim: "TBD - fill later" } } }], whats_new: { ...valid.whats_new, status: ["LIVE", "PROOF OWED"], known_limitations: "None" } }, true],
+    ["rejects published failed migration state", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, migration_status: { state: "FAILED", evidence: ["migration 202609060001 failed"], identifiers: [], proof_owed: null } }] }, true],
+    ["rejects undisclosed referenced proof owed", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], identifiers: [], proof_owed: { boundary: "Authenticated edge interaction proof is pending", excluded_from_live_claim: "Edge-backed authenticated interaction" } } }], whats_new: { ...valid.whats_new, status: ["LIVE"] } }, true],
+    ["accepts exact proof-owed boundary excluded from LIVE", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], identifiers: [], proof_owed: { boundary: "Authenticated edge interaction proof is pending", excluded_from_live_claim: "Edge-backed authenticated interaction" } } }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"], proof_owed: { visibility: "customer_and_internal", source: "referenced_builds.migration_status_or_edge_status.proof_owed" } } }, false],
+    ["rejects placeholder proof-owed boundary", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], identifiers: [], proof_owed: { boundary: "TODO: write exact boundary", excluded_from_live_claim: "TBD - fill later" } } }], whats_new: { ...valid.whats_new, status: ["LIVE", "PROOF OWED"], known_limitations: "None" } }, true],
     ["rejects correction without history", { ...valid, record_state: "CORRECTED" }, true],
     ["accepts structurally complete correction", { ...valid, record_state: "CORRECTED", history: { supersedes_record_id: "release-0.0.9", reason: "Corrected audience scope" } }, false],
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],

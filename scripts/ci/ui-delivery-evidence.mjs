@@ -181,11 +181,15 @@ export function validateEvidenceText(text, classification) {
   const deliveryValue = (field) => new RegExp(`\\b${field}\\s*=\\s*([^;]+)`, "i").exec(buildIdentity)?.[1]?.trim();
   for (const field of ["migrations", "edge"]) {
     const value = deliveryValue(field) ?? "";
-    if (/^APPLIED$/i.test(value) || (/^APPLIED\b/i.test(value) && (!/^APPLIED\([^)]+\)$/i.test(value) || hasPlaceholder(value)))) errors.push(`${field} APPLIED state must include exact identifiers as APPLIED(...).`);
+    const applied = /^APPLIED\(([^)]+)\)$/i.exec(value);
+    const allowedState = /^(?:NOT_APPLICABLE|PROOF_OWED\(\s*\S(?:[^)]*\S)?\s*\)|FAILED\(\s*\S(?:[^)]*\S)?\s*\))$/i.test(value);
+    const identifiers = applied?.[1]?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
+    const exactPattern = field === "migrations" ? /^\d{14}_[A-Za-z0-9_-]+$/ : /^[A-Za-z0-9._-]+@v?[A-Za-z0-9._-]+$/;
+    if ((!allowedState && !applied) || (applied && (identifiers.length === 0 || identifiers.some((identifier) => !exactPattern.test(identifier) || hasPlaceholder(identifier))))) errors.push(`${field} must be NOT_APPLICABLE or a complete APPLIED(exact identifier), PROOF_OWED(boundary), or FAILED(reason) state.`);
   }
   if (releaseChannel === "development" && !["local", "development"].includes(buildEnvironment)) errors.push("Development RELEASE_CHANNEL requires local/development build environment.");
   if (releaseChannel === "preview" && buildEnvironment !== "preview") errors.push("Preview RELEASE_CHANNEL requires preview build environment.");
-  if (["production", "staged"].includes(releaseChannel) && (buildEnvironment !== "production" || /\b(?:NOT_APPLICABLE|PROOF_OWED|TODO|TBD|PLACEHOLDER|REPLACE_ME|PENDING|UNKNOWN|NONE|N\/?A)\b/i.test(deploymentId ?? ""))) errors.push("Production/staged RELEASE_CHANNEL requires a production build environment and exact deployment ID.");
+  if (["production", "staged"].includes(releaseChannel) && (buildEnvironment !== "production" || /(?:^|[_\-])(NOT_APPLICABLE|PROOF_OWED|TODO|TBD|PLACEHOLDER|REPLACE_ME|PENDING|UNKNOWN|NONE|N_?A)(?:$|[_\-])/i.test((deploymentId ?? "").replace(/\s+/g, "_")))) errors.push("Production/staged RELEASE_CHANNEL requires a production build environment and exact deployment ID.");
   const releaseClassification = /^(internal-only|patch|minor-candidate|major-candidate):\s*\S.+$/i.exec(fields.get("RELEASE_CLASSIFICATION") ?? "")?.[1]?.toLowerCase();
   if (!releaseClassification) errors.push("RELEASE_CLASSIFICATION must name a governed classification and reason.");
   const customerIdentity = fields.get("CUSTOMER_RELEASE_IDENTITY") ?? "";

@@ -146,14 +146,18 @@ test("cross-checks release channel against build environment and deployment", ()
 test("requires identifiers for applied migration and edge states", () => {
   const bareApplied = validateEvidenceText(coreEvidence.replace("migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE", "migrations=APPLIED; edge=APPLIED"), { required: true, solo: false });
   assert.equal(bareApplied.ok, false);
-  assert.match(bareApplied.errors.join("\n"), /APPLIED state must include exact identifiers/);
+  assert.match(bareApplied.errors.join("\n"), /complete APPLIED/);
 
-  const exactApplied = validateEvidenceText(coreEvidence.replace("migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE", "migrations=APPLIED(202609070001_example); edge=APPLIED(paige-example@v3)"), { required: true, solo: false });
+  const nonsense = validateEvidenceText(coreEvidence.replace("migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE", "migrations=banana; edge=APPLIED(   )"), { required: true, solo: false });
+  assert.equal(nonsense.ok, false);
+  assert.match(nonsense.errors.join("\n"), /migrations must be|edge must be/);
+
+  const exactApplied = validateEvidenceText(coreEvidence.replace("migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE", "migrations=APPLIED(20260907000001_example); edge=APPLIED(paige-example@v3)"), { required: true, solo: false });
   assert.equal(exactApplied.ok, true, exactApplied.errors.join("\n"));
 });
 
 test("rejects anticipated production deployment IDs", () => {
-  const anticipated = validateEvidenceText(coreEvidence.replace("INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=NOT_APPLICABLE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=PR-checks", "INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=pending; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=production-checks").replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: production: awaiting deployment"), { required: true, solo: false });
+  const anticipated = validateEvidenceText(coreEvidence.replace("INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=NOT_APPLICABLE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=PR-checks", "INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=PENDING_DEPLOYMENT; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=production-checks").replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: production: awaiting deployment"), { required: true, solo: false });
   assert.equal(anticipated.ok, false);
   assert.match(anticipated.errors.join("\n"), /exact deployment ID/);
 });

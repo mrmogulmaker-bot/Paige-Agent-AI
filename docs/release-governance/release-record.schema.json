@@ -263,7 +263,7 @@
     "resolvedString": {
       "type": "string",
       "minLength": 1,
-      "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Nn]/?[Aa]|[Nn][Oo][Nn][Ee]|[Pp][Rr][Oo][Oo][Ff] [Oo][Ww][Ee][Dd])" }
+      "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff] [Oo][Ww][Ee][Dd])|^([Nn]/?[Aa]|[Nn][Oo][Nn][Ee])$" }
     },
     "nonEmptyStrings": {
       "type": "array",
@@ -282,10 +282,11 @@
     "deliveryState": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["state", "evidence", "proof_owed"],
+      "required": ["state", "evidence", "identifiers", "proof_owed"],
       "properties": {
         "state": { "enum": ["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAILED"] },
         "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "identifiers": { "type": "array", "items": { "$ref": "#/$defs/resolvedString" } },
         "proof_owed": {
           "oneOf": [
             { "type": "null" },
@@ -305,6 +306,11 @@
         {
           "if": { "properties": { "state": { "const": "NOT_APPLICABLE" } }, "required": ["state"] },
           "else": { "properties": { "evidence": { "minItems": 1 } } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "APPLIED" } }, "required": ["state"] },
+          "then": { "properties": { "identifiers": { "minItems": 1 } } },
+          "else": { "properties": { "identifiers": { "maxItems": 0 } } }
         },
         {
           "if": { "properties": { "state": { "const": "PROOF_OWED" } }, "required": ["state"] },
@@ -331,7 +337,7 @@
       ],
       "properties": {
         "commit_sha": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
-        "deployment_id": { "type": "string", "minLength": 1, "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Pp][Rr][Oo][Oo][Ff]_[Oo][Ww][Ee][Dd]|[Nn]/?[Aa]|[Nn][Oo][Nn][Ee])" } },
+        "deployment_id": { "type": "string", "minLength": 1, "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Pp][Rr][Oo][Oo][Ff]_[Oo][Ww][Ee][Dd])|^([Nn][Oo][Tt]_[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee]|[Nn][_/ -]?[Aa]|[Nn][Oo][Nn][Ee])$" } },
         "environment": { "enum": ["local", "development", "preview", "production"] },
         "release_channel": { "enum": ["development", "preview", "production", "staged"] },
         "customer_release_scope": { "enum": ["referenced", "supporting"] },
@@ -342,8 +348,24 @@
             { "$ref": "#/$defs/stagedRollout" }
           ]
         },
-        "migration_status": { "$ref": "#/$defs/deliveryState" },
-        "edge_status": { "$ref": "#/$defs/deliveryState" },
+        "migration_status": {
+          "allOf": [
+            { "$ref": "#/$defs/deliveryState" },
+            {
+              "if": { "properties": { "state": { "const": "APPLIED" } }, "required": ["state"] },
+              "then": { "properties": { "identifiers": { "items": { "pattern": "^[0-9]{14}_[A-Za-z0-9_-]+$" } } } }
+            }
+          ]
+        },
+        "edge_status": {
+          "allOf": [
+            { "$ref": "#/$defs/deliveryState" },
+            {
+              "if": { "properties": { "state": { "const": "APPLIED" } }, "required": ["state"] },
+              "then": { "properties": { "identifiers": { "items": { "pattern": "^[A-Za-z0-9._-]+@v?[A-Za-z0-9._-]+$" } } } }
+            }
+          ]
+        },
         "checks": {
           "type": "object",
           "additionalProperties": false,
