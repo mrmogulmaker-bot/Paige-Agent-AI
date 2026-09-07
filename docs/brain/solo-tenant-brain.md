@@ -68,9 +68,9 @@ The owner-mandated Integration Capability Registry is now live on main (#1019). 
 This one vertical slice does not make the Solo Tenant Brain complete. Campaign Briefs, tenant Knowledge, role/team context, client/engagement context, Public Presence, governed Memory promotion/revocation, Mind eligibility and Vault fact promotion remain later bounded lanes.
 
 
-## Owner-complete Business Game Plan vertical — active MVP, 2026-09-06
+## Owner-complete Business Game Plan vertical — released MVP, 2026-09-06
 
-The earlier Business Mission closeout remains historical truth: its deployed canonical Mission mutation, verified readback and post-verification Rail contracts are `LIVE`. Owner direction now makes the existing Command Center Business Game Plan the required product experience. The active release candidate:
+The earlier Business Mission closeout remains historical truth: its deployed canonical Mission mutation, verified readback and post-verification Rail contracts are `LIVE`. Owner direction now makes the existing Command Center Business Game Plan the required product experience. The released owner vertical:
 
 - preserves the existing owner Plan Brief for annual direction, current-quarter focus, desired outcome, success criteria, constraints, Paige operating guidance and prohibited assumptions;
 - replaces the unrelated right-column dependency/activity material with `Plan in Motion`, backed only by canonical Business Missions and labelled as Strategic Plays;
@@ -85,4 +85,4 @@ This candidate adds no Mission store, chat, approval system, Mind projection or 
 
 The current-main-composed candidate passes 73 focused contract tests, the complete 265-file / 3,832-test repository run, the TypeScript ratchet, production build, security/registry ledgers, and 198 real-component responsive/theme/state checks. Those renders use fictional provider stubs and prove structure and geometry only. Authenticated owner lifecycle, refusal, workspace-switch, canonical Mission and matching Rail evidence remain PROOF OWED; the owner-complete Business Game Plan and Solo Tenant Brain remain PARTIAL; Mission Mind and durable Memory remain UNAVAILABLE.
 
-Candidate PR #1038 is open as a clean, green draft release candidate. Implementation head 24d25b3f passed audit, contract, database-contract, lint, UI evidence, Vercel preview and the complete verify job. It is not merged or deployed. The Business Game Plan and Solo Tenant Brain therefore remain PARTIAL; Mission Mind and durable Memory remain UNAVAILABLE; authenticated proof remains PROOF OWED.
+PR #1038 rebased cleanly onto main `49d25f4c`, passed every required pre-merge check at head `efad4044`, and squash-merged as `cc1e86f512dbaf795f26444b57fa8c8bcce56d63`. Production migration run 34078642940 applied and persisted `20260907001343`; Edge run 34078642934 deployed `business-mission-action` and `paige-ai-chat`; `db-live` and `edge-live` both point to `cc1e86f5`. Both production version endpoints returned `cc1e86f512dbaf795f26444b57fa8c8bcce56d63-mtqnw05p`. This proves release infrastructure, not authenticated owner behavior. Business Game Plan and the Solo Tenant Brain remain `PARTIAL`; Mission Mind and durable Memory remain `UNAVAILABLE`; authenticated owner, denied-role, workspace-switch, canonical Mission and matching Rail browser proof remain `PROOF OWED`.
