@@ -72,7 +72,7 @@ function requireDeliveryState(value, label, findings) {
   if (value?.state !== "APPLIED" && Array.isArray(value?.identifiers) && value.identifiers.length > 0) findings.push(`${label}.identifiers must be empty unless state is APPLIED`);
   if (value?.state === "APPLIED" && Array.isArray(value?.identifiers)) {
     const pattern = label.endsWith("migration_status") ? /^\d{14}_[A-Za-z0-9_-]+$/ : /^[A-Za-z0-9._-]+@v?[A-Za-z0-9._-]+$/;
-    if (value.identifiers.some((identifier) => !pattern.test(identifier) || /\b(?:todo|tbd|placeholder|replace_me|pending|unknown|none|n\/?a)\b/i.test(identifier))) findings.push(`${label}.identifiers must contain exact non-placeholder ${label.endsWith("migration_status") ? "migration IDs" : "function@version IDs"}`);
+    if (value.identifiers.some((identifier) => !pattern.test(identifier) || /(?:^|[_\-])(TODO|TBD|PLACEHOLDER|REPLACE_ME|PENDING|UNKNOWN|NONE|N_?A)(?:$|[_\-])/i.test(identifier.replace(/[^A-Za-z0-9]+/g, "_")))) findings.push(`${label}.identifiers must contain exact non-placeholder ${label.endsWith("migration_status") ? "migration IDs" : "function@version IDs"}`);
   }
   if (value?.state === "PROOF_OWED") {
     requireExactObject(value.proof_owed, ["boundary", "excluded_from_live_claim"], `${label}.proof_owed`, findings);
@@ -339,6 +339,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
   const cases = [
     ["valid customer candidate", valid, false],
     ["valid internal-only record", internal, false],
+    ["rejects referenced build without customer identity", { ...internal, classification: "patch", internal_builds: [{ ...build, customer_release_scope: "referenced" }] }, true],
     ["rejects customer identity on internal-only record", { ...valid, classification: "internal_only", record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, true],
     ["rejects short SHA", { ...valid, internal_builds: [{ ...build, commit_sha: "abc" }] }, true],
     ["rejects unapproved version text", { ...valid, customer_release_identity: { ...valid.customer_release_identity, version: "vNext" } }, true],
@@ -360,7 +361,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects staged approval reused for publication", { ...valid, customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: stagedApproval.reference } }, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: { owner_approval: stagedApproval, eligibility_rule: "named cohort", rollout_amount: "10%", start_condition: "owner approval", stop_condition: "error budget exceeded", monitoring_owner: "release owner", recovery_path: "disable cohort" } }] }, true],
     ["rejects applied migration without identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["migration applied"], identifiers: [], proof_owed: null } }] }, true],
     ["rejects generic APPLIED identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["done"], identifiers: ["done"], proof_owed: null } }] }, true],
-    ["rejects placeholder-shaped APPLIED identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["migration log"], identifiers: ["20260907000001_TODO"], proof_owed: null }, edge_status: { state: "APPLIED", evidence: ["function deployment"], identifiers: ["TODO@v1"], proof_owed: null } }] }, true],
+    ["rejects placeholder-shaped APPLIED migration identifier", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["migration log"], identifiers: ["20260907000001_TODO"], proof_owed: null } }] }, true],
+    ["rejects placeholder-shaped APPLIED edge identifier", { ...valid, internal_builds: [{ ...build, edge_status: { state: "APPLIED", evidence: ["function deployment"], identifiers: ["TODO@v1"], proof_owed: null } }] }, true],
     ["accepts exact APPLIED identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["migration log"], identifiers: ["20260907000001_example"], proof_owed: null }, edge_status: { state: "APPLIED", evidence: ["function deployment"], identifiers: ["paige-example@v3"], proof_owed: null } }] }, false],
     ["rejects schema-forbidden extra property", { ...valid, invented: true }, true],
     ["rejects invalid date-time", { ...valid, internal_builds: [{ ...build, deployed_at: "not-a-date" }] }, true],

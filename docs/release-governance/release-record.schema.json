@@ -81,6 +81,22 @@
     },
     {
       "if": {
+        "properties": { "customer_release_identity": { "type": "null" } },
+        "required": ["customer_release_identity"]
+      },
+      "then": {
+        "properties": {
+          "internal_builds": {
+            "items": {
+              "properties": { "customer_release_scope": { "const": "supporting" } },
+              "required": ["customer_release_scope"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
         "properties": { "customer_release_identity": { "type": "object" } },
         "required": ["customer_release_identity"]
       },
@@ -353,7 +369,7 @@
             { "$ref": "#/$defs/deliveryState" },
             {
               "if": { "properties": { "state": { "const": "APPLIED" } }, "required": ["state"] },
-              "then": { "properties": { "identifiers": { "items": { "pattern": "^[0-9]{14}_[A-Za-z0-9_-]+$" } } } }
+              "then": { "properties": { "identifiers": { "items": { "allOf": [{ "pattern": "^[0-9]{14}_[A-Za-z0-9_-]+$" }, { "$ref": "#/$defs/resolvedString" }] } } } }
             }
           ]
         },
@@ -362,7 +378,7 @@
             { "$ref": "#/$defs/deliveryState" },
             {
               "if": { "properties": { "state": { "const": "APPLIED" } }, "required": ["state"] },
-              "then": { "properties": { "identifiers": { "items": { "pattern": "^[A-Za-z0-9._-]+@v?[A-Za-z0-9._-]+$" } } } }
+              "then": { "properties": { "identifiers": { "items": { "allOf": [{ "pattern": "^[A-Za-z0-9._-]+@v?[A-Za-z0-9._-]+$" }, { "$ref": "#/$defs/resolvedString" }] } } } }
             }
           ]
         },
