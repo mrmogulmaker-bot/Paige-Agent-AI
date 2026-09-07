@@ -76,7 +76,17 @@ export async function renderDoc(input: DocRenderInput): Promise<DocRenderResult>
   // but normalization/dispatch runs here too — so ANY unexpected throw degrades to needs_config rather
   // than escaping the router. This is the "router never crashes, it degrades" guarantee, end to end (§13).
   try {
-    const title = typeof input?.title === "string" ? input.title : undefined;
+    const rawTitle = typeof input?.title === "string" ? input.title : undefined;
+    // A `{title, blocks}` / `{title, content}` wrapper (what document_generate saves) carries its OWN title.
+    // If the caller passed no top-level title, PROMOTE the wrapper's so the renderer prints it as the H1 AND
+    // coerceBlockArray dedups a matching cover against the SAME string that will actually render — otherwise a
+    // cover-only doc suppressed its cover title, got `undefined` at the renderer, and exported EMPTY, and a
+    // doc with other blocks silently lost its title (Codex round-12d H).
+    const wrapperTitle = (input?.content && typeof input.content === "object" && !Array.isArray(input.content)
+      && typeof (input.content as { title?: unknown }).title === "string")
+      ? (input.content as { title: string }).title
+      : undefined;
+    const title = rawTitle ?? wrapperTitle;
     // Flatten inline markdown (strip emphasis, links → `label (url)`) ONLY for the binary renderers, which
     // can't parse markdown. The `.md` exporter is markdown — it keeps prose's raw markup verbatim (Codex P2).
     const blocks = normalizeBlocks(input?.content, title, String(input?.format).toLowerCase() !== "md");
@@ -505,6 +515,35 @@ function blockPlainText(b: Block): string {
   return "";
 }
 
+// Wrap one logical line to a width budget, HARD-BREAKING any single token that is itself wider than the
+// budget — a long booking/tracking URL with no whitespace — so it never runs off the page as a clipped line
+// reported as success (Codex round-12d J). `measure` returns a string's rendered width in the same unit as
+// `avail` (in renderPdf: `f.widthOfTextAtSize(s, size)`). Pure + injectable so the wrap logic is unit-tested
+// even though the PDF render itself stays PROOF-OWED. An empty line returns [] so the caller keeps the blank.
+export function wrapToWidth(text: string, measure: (s: string) => number, avail: number): string[] {
+  const out: string[] = [];
+  const words = String(text).split(/\s+/).filter((w) => w.length > 0);
+  let line = "";
+  const flush = () => { if (line) { out.push(line); line = ""; } };
+  for (const w of words) {
+    if (measure(w) > avail) {                    // the token ALONE overflows → flush, then hard-break it
+      flush();
+      let cur = "";
+      for (const ch of w) {
+        if (cur && measure(cur + ch) > avail) { out.push(cur); cur = ch; }
+        else cur += ch;
+      }
+      line = cur;                                // keep the tail so a following short word can pack onto it
+      continue;
+    }
+    const trial = line ? `${line} ${w}` : w;
+    if (measure(trial) > avail && line) { out.push(line); line = w; }
+    else line = trial;
+  }
+  flush();
+  return out;
+}
+
 async function renderPdf(title: string | undefined, blocks: Block[], _style: Record<string, unknown>): Promise<{ bytes: Uint8Array }> {
   // §13/§70 — pdf-lib's StandardFonts are WinAnsi (Latin) only, so a document written in Cyrillic / CJK /
   // Arabic (or heavy emoji) would render as a page of `?` while STILL returning a valid file + a success
@@ -555,17 +594,12 @@ async function renderPdf(title: string | undefined, blocks: Block[], _style: Rec
     const drawText = (text: string, size: number, f: any, indent = 0) => {
       const avail = maxWidth - indent;
       const lineH = size * 1.4;
+      const measure = (s: string) => f.widthOfTextAtSize(s, size);
+      const emit = (t: string) => { space(lineH); page.drawText(t, { x: MARGIN + indent, y: y - size, size, font: f, color: ink }); y -= lineH; };
       for (const rawLine of sanitizeWinAnsi(text).split("\n")) {
-        const words = rawLine.split(/\s+/).filter((w) => w.length > 0);
-        let line = "";
-        const emit = (t: string) => { space(lineH); page.drawText(t, { x: MARGIN + indent, y: y - size, size, font: f, color: ink }); y -= lineH; };
-        if (words.length === 0) { y -= lineH; continue; }
-        for (const w of words) {
-          const trial = line ? `${line} ${w}` : w;
-          if (f.widthOfTextAtSize(trial, size) > avail && line) { emit(line); line = w; }
-          else line = trial;
-        }
-        if (line) emit(line);
+        const wrapped = wrapToWidth(rawLine, measure, avail);   // hard-breaks an over-width token (long URL)
+        if (wrapped.length === 0) { y -= lineH; continue; }      // a blank source line stays a blank line
+        for (const ln of wrapped) emit(ln);
       }
     };
 

@@ -277,6 +277,25 @@
   fence-parse + pagination LOGIC is real-tested, not source-grepped). Note: binary-renderer markdown-fidelity
   is a best-effort convenience on an UNVERIFIED path; md is the fidelity-preserving format. doc-export 28/28,
   tsc ratchet 13/13, control-chars none, §50/§63 clean.
+  **EIGHTEENTH catch — Codex round 12d (review of head `a5ab8895`): five P2, all FOLDED.** (G, §13) the
+  `export-document` `needs_config` note recommended "Markdown AND DOCX" even when DOCX had just FAILED and is
+  runtime-unverified — steering the user back to the broken path; now it recommends only Markdown (the one
+  format that never degrades). (H) `renderDoc` passed `input.title` (possibly undefined) to the renderers
+  while `normalizeBlocks` deduped a cover against the WRAPPER's title, so a `{title, blocks:[cover]}` doc with
+  NO top-level title suppressed the cover title AND handed the renderer `undefined` → an EMPTY file (and a doc
+  with other blocks silently lost its title); now the wrapper title is PROMOTED so dedup and render use the
+  same string. (J, §13) `renderPdf`'s word-wrap broke only at whitespace, so a long CTA/booking URL (no
+  spaces) ran off the page clipped-as-success; extracted a pure exported `wrapToWidth` that hard-breaks an
+  over-width token into fitting pieces (behaviorally unit-tested via an injected `measure`), no char lost.
+  (I, §13 + K) the COPY of the capability matrix (`outputs/paige-at-cowork/09-paige-capability-system.md`)
+  still carried the PRE-round-12b stale status vocab (md LIVE / pdf LIVE-pending / PROOF-OWED) AND the stale
+  auth description (§9 caller-JWT read) — the SAME claims corrected in the master-ref in round-12b (B/C) but
+  never swept for in the twin. Corrected both (md PARTIAL / binary UNVERIFIED; privileged service-role read +
+  in-body manage check). **LESSON (§BRAIN.4 sweep):** when a claim is corrected in one doc, GREP for its
+  COPIES — the capability matrix lived in TWO files and round-12b fixed only one, so Codex re-found the
+  identical B/C defects in the copy. A fix not swept for its copies leaves the brain asserting BOTH the
+  corrected and the stale version, which is worse than never having corrected it. doc-export 30/30, tsc
+  ratchet 13/13, control-chars none, §50/§63 clean.
 
 - **Integration Capability Registry v1.1 — API Expense & Operations Layer + the "M1" disambiguation (2026-09-06, PR #1029, squash `1fee5418`; owner-authorized, incl. a mid-slice M1 terminology ruling).**
   Extended the existing registry JSON (§18, no second registry): an `expense_and_operations` block on **all 20

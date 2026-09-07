@@ -29,7 +29,7 @@ function loadDocRender() {
   return out;
 }
 
-const { renderDoc, inlineMdToText, parseMarkdown, paginateSlideBody } = loadDocRender();
+const { renderDoc, inlineMdToText, parseMarkdown, paginateSlideBody, wrapToWidth } = loadDocRender();
 const dec = (u: Uint8Array) => new TextDecoder().decode(u);
 
 describe("inlineMdToText — flatten markdown to clean text for BINARY renderers (Codex round-6/9)", () => {
@@ -79,6 +79,17 @@ describe("doc-render binary-path helpers (Codex round-12c)", () => {
     expect(code.text).toBe("    indented();\nplain();");   // leading 4 spaces kept
   });
 
+  it("wrapToWidth hard-breaks an over-width token (a long URL) so nothing runs off the page (Codex round-12d J)", () => {
+    const measure = (s: string) => s.length;   // 1 unit per char, injected in place of the pdf font metric
+    expect(wrapToWidth("hello world foo", measure, 11)).toEqual(["hello world", "foo"]); // wraps at whitespace
+    expect(wrapToWidth("", measure, 10)).toEqual([]);                                     // blank line → []
+    // a long token with NO whitespace (a booking/tracking URL) is hard-broken into fitting pieces, no char lost
+    const url = "https://ex.co/book/" + "x".repeat(40);
+    const parts = wrapToWidth(url, measure, 12);
+    expect(parts.every((p: string) => p.length <= 12)).toBe(true);
+    expect(parts.join("")).toBe(url);
+  });
+
   it("paginateSlideBody splits a long section, keeps a short one whole, and never drops content", () => {
     const many = Array.from({ length: 40 }, (_, i) => `Bullet ${i + 1}`);
     const pages = paginateSlideBody(many);
@@ -117,6 +128,16 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
   it("accepts the {docType,title,blocks} wrapper document_generate saves (defensive unwrap)", async () => {
     const r = await renderDoc({ format: "md", title: "Wrapped", content: { docType: "guide", title: "Wrapped", blocks: [{ type: "paragraph", text: "Body." }] } });
     expect(dec(r.bytes)).toContain("Body.");
+  });
+
+  it("promotes a wrapper's title to the renderer with NO top-level title — a cover-only doc is not empty (Codex round-12d H)", async () => {
+    // {title, blocks:[cover with the SAME title]} and NO input.title: coerceBlockArray dedups the cover title
+    // against the wrapper title, so the title must be promoted to the renderer or it renders NOWHERE (empty file).
+    const r = await renderDoc({ format: "md", content: { title: "Wrapped Plan", blocks: [{ type: "cover", title: "Wrapped Plan", subhead: "the sub" }] } });
+    const md = dec(r.bytes);
+    expect(md).toContain("# Wrapped Plan");   // the promoted wrapper title renders as the H1…
+    expect(md).toContain("the sub");          // …and the cover subhead survives
+    expect(r.bytes.length).toBeGreaterThan(0);
   });
 
   it("renders the REAL document_generate block schema (cover/section-header/prose/list/pricing-table/cta), not just the title", async () => {
