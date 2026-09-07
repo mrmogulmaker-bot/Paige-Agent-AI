@@ -195,6 +195,32 @@ describe("createAnchoredTranscriptScroll", () => {
     expect(element.scrollTop).toBe(410);
   });
 
+  it("releases Tab ownership when keyup lands after focus leaves the transcript", async () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    const composer = document.createElement("textarea");
+    document.body.append(element, composer);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-tab-focus-leave" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+
+    element.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    composer.focus();
+    composer.dispatchEvent(new KeyboardEvent("keyup", { key: "Tab", bubbles: true }));
+    await new Promise<void>((resolve) => requestAnimationFrame(() =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    element.scrollTop = 410;
+
+    expect(controller.handleScroll()).toBe(true);
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(900);
+    composer.remove();
+  });
+
   it("does not reconcile an incoming thread anchor against outgoing thread DOM", () => {
     const geometry: Geometry = {
       viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,

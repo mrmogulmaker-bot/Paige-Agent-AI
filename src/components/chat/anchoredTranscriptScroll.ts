@@ -337,7 +337,8 @@ export function createAnchoredTranscriptScroll({
     element?.ownerDocument.defaultView?.removeEventListener("pointerup", finishContinuousUserInput);
     element?.ownerDocument.defaultView?.removeEventListener("pointercancel", finishContinuousUserInput);
     element?.removeEventListener("keydown", beginKeyboardUserMovement);
-    element?.removeEventListener("keyup", finishContinuousUserInput);
+    element?.ownerDocument.defaultView?.removeEventListener("keyup", finishContinuousUserInput);
+    element?.ownerDocument.defaultView?.removeEventListener("blur", finishContinuousUserInput);
     element?.removeEventListener("scrollend", endUserMovement);
     intentionalBottom = false;
     pendingUserMovement = false;
@@ -381,7 +382,10 @@ export function createAnchoredTranscriptScroll({
       element.ownerDocument.defaultView?.addEventListener("pointerup", finishContinuousUserInput, { passive: true });
       element.ownerDocument.defaultView?.addEventListener("pointercancel", finishContinuousUserInput, { passive: true });
       element.addEventListener("keydown", beginKeyboardUserMovement);
-      element.addEventListener("keyup", finishContinuousUserInput);
+      // Tab can move focus outside the transcript before keyup. Window owns the
+      // release so keyboard intent cannot remain armed for a later layout scroll.
+      element.ownerDocument.defaultView?.addEventListener("keyup", finishContinuousUserInput);
+      element.ownerDocument.defaultView?.addEventListener("blur", finishContinuousUserInput);
       element.addEventListener("scrollend", endUserMovement);
       const view = element.ownerDocument.defaultView;
       const Mutation = view?.MutationObserver ?? globalThis.MutationObserver;
