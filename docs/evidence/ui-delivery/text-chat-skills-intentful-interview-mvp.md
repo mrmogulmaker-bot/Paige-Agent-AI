@@ -1,13 +1,13 @@
 # UI delivery evidence: Text-chat Skills and Intentful Interview MVP
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
-FLOW_BY_FLOW: PASS: grounded on current main 6e93b110; affected paths cover Setup -> Paige Brief, Business Game Plan -> selected Strategic Play -> Paige, the dedicated Paige transcript, canonical Setup save/readback, Action Bus Discussion Needed, Rail, and account-change fences
+FLOW_BY_FLOW: PASS: grounded on current main 15da5afe; affected paths cover Setup -> Paige Brief, Business Game Plan -> selected Strategic Play -> Paige, the dedicated Paige transcript, canonical Setup save/readback, Action Bus Discussion Needed, Rail, and account-change fences
 PAIGE_UI_DESIGN: PASS: repository Paige UI design and reference instructions were applied; the working session uses the existing Paige tokens, transcript scroll owner, action hierarchy, and truthful status language
 MATERIAL_FLOW_CHANGE: YES: adds three contextual entries into the one dedicated Paige workspace plus optional interview lifecycle and selective canonical confirmation
 FLOW_PROTOTYPE: PASS: owner-approved placement in this workstream requires no standalone Skills, Interview, Voice, or navigation destination; the real-component render harness preserves that contract
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a verified Solo owner may voluntarily clarify business context, plan against a selected Strategic Play, or resolve one named missing decision
 VISUAL_DIRECTION: PASS: existing Solo/Paige token layers and owning-surface card patterns; no new visual system or customer recipe catalogue
-AUTOMATED_EVIDENCE: PASS: pre-repair full Vitest suite 269 files / 3,880 tests; post-rebase affected interview, scope, workspace, Discussion Needed, Paige chat, Setup, update-banner, and navigation suite 134/134 green; GitHub full-suite conclusion is recorded on the final draft head
+AUTOMATED_EVIDENCE: PASS: pre-repair full Vitest suite 269 files / 3,880 tests; post-hotfix combined anchored-scroll, interview, scope, workspace, Discussion Needed, Paige chat, Business Mission, Campaign Brief, Setup, and navigation suite 163/163 green; GitHub full-suite conclusion is recorded on the final draft head
 STATIC_EVIDENCE: PASS: type ratchet has no new errors; changed client modules pass ESLint; migration-version, binding-ledger, chat-tool-registry, governed-execution, and regression checks pass; production build passes
 RENDERED_EVIDENCE: PASS: 24 visibly labelled real-component harness frames at 1536x770, 1366x768, 1024x768, and 900x1000 in light/dark for offer, selective recap, and Discussion Needed; existing Setup renderer passes 114 samples with no horizontal failures or runtime errors
 BEHAVIORAL_EVIDENCE: PASS: browser drove start, answer, continue, pause, resume, end, independent fact selection, verified receipt, Talk now, Later, Don't ask again, and selected-play Plan with Paige callback
@@ -43,7 +43,7 @@ SOLO_900X1000_PAIGE_OPEN: PASS: offer and recap light/dark frames; controls, sel
 - Classification: owner-complete text-chat vertical; PARTIAL until authenticated proof.
 - Affected flows: optional first-use/Paige Brief interview; selected Strategic Play planning handoff; inline Discussion Needed handoff.
 - Neighboring regressions: full Setup render, canonical Solo routing registry, no-floating-chat contract, existing Business Game Plan drawer, and production build.
-- Active-owner/file collisions: current main advanced through Business Game Plan release record; the ledger was reconciled. The separate Live Voice worktree owns modality controls and has no overlapping product-component edits in this change.
+- Active-owner/file collisions: scroll-stability PR #1050 landed first at 15da5afe and the shared Paige chat seam was reconciled; no active collision remains. The separate Live Voice worktree owns modality controls and has no overlapping product-component edits in this change.
 - Explicit exclusions: Live Voice UI/session behavior, provider setup, standalone Skills/Interview/Voice destinations, seeded recipe runner, new navigation, automatic Mind/Memory projection, merge, and deployment.
 
 ## User job and state map
