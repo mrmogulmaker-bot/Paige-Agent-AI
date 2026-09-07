@@ -321,3 +321,7 @@ Owner superseded competing Sales PR #905; its separate Clients fix remains with 
 ## 2026-09-06 current Business Game Plan delivery frame
 
 The Business Mission canonical-write/readback/Rail foundation remains `LIVE`. PR #1038 released the owner-complete `Command Center -> Business Game Plan` vertical: the existing Plan Brief supplies direction and canonical Mission records appear as owner-facing Strategic Plays, with no Mission sub-tab and no parallel store or approval system. The web, migration, and affected Edge graph are production-deployed at feature merge `cc1e86f5`; because the signed-in owner flow has not yet been browser-proven, the surface and Solo Tenant Brain remain `PARTIAL`. Authenticated owner, denied-role, workspace-switch, canonical Mission and matching Rail browser proof remain `PROOF OWED`; Mission Mind and durable Memory remain `UNAVAILABLE`.
+
+### 2026-09-07 Tenant Brain index addition
+
+`solo-tenant-brain.md` now also owns the Verified Campaign Brief with Paige lane: exact canonical id/version/lifecycle/field readback before successful Rail evidence, with Campaign Brief Mind and durable Memory unavailable.

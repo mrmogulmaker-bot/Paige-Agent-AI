@@ -21,13 +21,13 @@ import type { SpineCapability } from "../contracts.ts";
 export const CAMPAIGN_BRIEF_CREATE = {
   key:"campaign.create",domain:"campaign",owner:"campaign-brief-system",humanSurface:"/solo/:account/campaigns",
   action:{classification:"mutate",executor:"public.configure_campaign_brief",chatTool:"campaign_brief_create",riskPolicyKey:"ordinary",approvalAuthority:"chat-canonical",idempotency:"Tenant-scoped idempotency key on the command ledger plus a payload hash; a replay with the same key returns the stored result, a mismatched replay fails closed."},
-  outcome:{kinds:["created","refused","failed"],projector:"public.get_campaign_briefs",railVisibility:"UNAVAILABLE; a brief is a planning record and writes no Rail — nothing here proves a campaign is live."},
+  outcome:{kinds:["created","refused","failed"],projector:"public.get_campaign_briefs",railVisibility:"LIVE only after a fresh canonical readback exactly matches brief id, version, lifecycle, and intended fields; capability key campaign_brief_create records a verified planning-record outcome and never campaign launch, publish, spend, performance, or completion."},
   chatBinding:"LIVE",mindBinding:"UNAVAILABLE",sharedPrimitiveChange:"NONE",maturity:"PARTIAL",
 } as const satisfies SpineCapability;
 export const CAMPAIGN_BRIEF_REVISE = {
   key:"campaign.revise",domain:"campaign",owner:"campaign-brief-system",humanSurface:"/solo/:account/campaigns",
   action:{classification:"mutate",executor:"public.configure_campaign_brief",chatTool:"campaign_brief_revise",riskPolicyKey:"ordinary",approvalAuthority:"chat-canonical",idempotency:"Tenant-scoped idempotency key plus the brief id, an expected version compare-and-swap, and a payload hash; a replay with the same key returns the stored result."},
-  outcome:{kinds:["updated","refused","failed"],projector:"public.get_campaign_briefs",railVisibility:"UNAVAILABLE; a brief revision is a planning record and writes no Rail."},
+  outcome:{kinds:["updated","refused","failed"],projector:"public.get_campaign_briefs",railVisibility:"LIVE only after a fresh canonical readback exactly matches brief id, version, lifecycle, and intended fields; capability key campaign_brief_revise records a verified planning-record outcome and never campaign launch, publish, spend, performance, or completion."},
   chatBinding:"LIVE",mindBinding:"UNAVAILABLE",sharedPrimitiveChange:"NONE",maturity:"PARTIAL",
 } as const satisfies SpineCapability;
 export const CAMPAIGN_BRIEF_LIST = {

@@ -27,7 +27,9 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const bin = process.env.CAMPAIGN_PROOF_PG_BIN || "/usr/lib/postgresql/16/bin";
 const MIGRATION = "20261225000000_solo_campaign_briefs_foundation.sql";
+const RAIL_MIGRATION = "20270105000000_campaign_brief_verified_rail_copy.sql";
 if (!existsSync(join(root, "supabase/migrations", MIGRATION))) throw new Error(`Required migration absent: ${MIGRATION}`);
+if (!existsSync(join(root, "supabase/migrations", RAIL_MIGRATION))) throw new Error(`Required migration absent: ${RAIL_MIGRATION}`);
 
 const outputRoot = join(root, "outputs", "campaign-brief-db-proof");
 mkdirSync(outputRoot, { recursive: true });
@@ -148,6 +150,12 @@ create or replace function public.is_platform_owner() returns boolean language s
 create or replace function public.is_tenant_admin(uuid) returns boolean language sql stable as $$
   select coalesce(current_setting('test.is_admin', true) = 'true', false) $$;
 
+-- display dependencies retained by the complete Rail projection body
+create or replace function public._zapier_workspace_event_display(text) returns jsonb
+language sql immutable as $$ select jsonb_build_object('title','zapier') $$;
+create or replace function public._n8n_workspace_event_display(text) returns jsonb
+language sql immutable as $$ select jsonb_build_object('title','n8n') $$;
+
 -- prerequisite tables the migration references
 create table public.tenants (id uuid primary key, owner_user_id uuid);
 insert into public.tenants(id, owner_user_id) values ('${TA}','${UA}'),('${TB}','${UB}');
@@ -178,6 +186,21 @@ try {
     await psql(read(`supabase/migrations/${MIGRATION}`));
     const fns = await scalar(`select string_agg(proname, ',' order by proname) from pg_proc where proname in ('configure_campaign_brief','get_campaign_briefs');`);
     assert(fns === "configure_campaign_brief,get_campaign_briefs", `RPCs missing: ${fns}`);
+  });
+
+  await test("the Campaign Brief Rail presentation migration applies with truthful verified-planning copy", async () => {
+    await psql(read(`supabase/migrations/${RAIL_MIGRATION}`));
+    const created = await json(`select public._workspace_event_display('capability_run','capability_succeeded','campaign_brief_create');`);
+    const revised = await json(`select public._workspace_event_display('capability_run','capability_succeeded','campaign_brief_revise');`);
+    assert(created?.title === "Verified a Campaign Brief planning record was created", `unexpected create title: ${JSON.stringify(created)}`);
+    assert(revised?.title === "Verified a Campaign Brief planning record was revised", `unexpected revise title: ${JSON.stringify(revised)}`);
+    for (const event of [created, revised]) {
+      assert(event.actor_type === "paige_agent", `wrong actor: ${JSON.stringify(event)}`);
+      assert(event.audience === "owner" && event.visibility === "owner_internal", `wrong visibility: ${JSON.stringify(event)}`);
+      assert(event.summary.includes("did not launch or publish"), `launch boundary absent: ${event.summary}`);
+      assert(event.summary.includes("spend money"), `spend boundary absent: ${event.summary}`);
+      assert(event.summary.includes("prove performance"), `performance boundary absent: ${event.summary}`);
+    }
   });
 
   let briefId = null;

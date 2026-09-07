@@ -23,6 +23,7 @@ const REGISTRY = "supabase/functions/_shared/paige-spine/registry.ts";
 const RISK = "supabase/functions/_shared/action-risk.ts";
 const RISK_LINT = "scripts/ci/action-risk-lint.mjs";
 const CHAT = "supabase/functions/paige-ai-chat/index.ts";
+const TENANT_BRAIN = "supabase/functions/_shared/campaign-brief-tenant-brain.ts";
 
 const domain = () => readFileSync(DOMAIN, "utf8");
 const chat = readFileSync(CHAT, "utf8");
@@ -109,25 +110,36 @@ describe("Slice 2 — the reach is wired into paige-ai-chat via the registry, no
     expect(chat).toMatch(/campaign_brief_create["']?\s*\|\|\s*tc\.function\.name === ["']campaign_brief_revise["'][\s\S]{0,160}idempotency_key/);
   });
 
-  it("dispatches create/revise through the caller JWT to configure_campaign_brief with _actor_kind paige", () => {
-    // command-shaped RPC, actor marked paige, tenant NOT trusted from the arg (RPC re-resolves it)
-    expect(chat).toMatch(/configure_campaign_brief/);
-    expect(chat).toMatch(/_actor_kind:\s*["']paige["']/);
-    expect(chat).toMatch(/type:\s*["']create-brief["']/);
-    expect(chat).toMatch(/type:\s*["']update-brief["']/);
-    // the write goes through the JWT client (auth.uid resolves inside the SECURITY DEFINER RPC),
-    // never the service-role client — same posture as the mission branch
-    expect(chat).toMatch(/supabaseClient\.rpc\("configure_campaign_brief"/);
+  it("dispatches create/revise through the isolated verified-readback helper", () => {
+    expect(chat).toMatch(/executeVerifiedCampaignBriefMutation/);
+    expect(chat).toMatch(/caller:\s*supabaseClient/);
+    expect(chat).toMatch(/recordRun:\s*\(run\)\s*=>\s*recordCapabilityRun\(supabase,\s*run\)/);
+    const helper = readFileSync("supabase/functions/_shared/campaign-brief-tenant-brain.ts", "utf8");
+    // The helper, not the chat branch, owns the existing command shape and caller-JWT RPC.
+    expect(helper).toMatch(/caller\.rpc\("configure_campaign_brief"/);
+    expect(helper).toMatch(/_actor_kind:\s*"paige"/);
+    expect(helper).toMatch(/type:\s*"create-brief"/);
+    expect(helper).toMatch(/type:\s*"update-brief"/);
+    expect(helper).toMatch(/caller\.rpc\("get_campaign_briefs"/);
+    expect(chat).toMatch(/campaign_brief_command_results/);
+    expect(chat).toMatch(/readCommandReceipt/);
+    expect(helper).toMatch(/CAMPAIGN_BRIEF_READBACK_MISMATCH/);
+    expect(helper).toMatch(/CAMPAIGN_BRIEF_RAIL_WRITE_FAILED/);
   });
 
-  it("dispatches list through get_campaign_briefs", () => {
-    expect(chat).toMatch(/get_campaign_briefs/);
+  it("dispatches list through the source-labelled canonical resolver", () => {
+    expect(chat).toMatch(/resolveCampaignBriefListContext/);
+    const helper = readFileSync(TENANT_BRAIN, "utf8");
+    expect(helper).toMatch(/caller\.rpc\("get_campaign_briefs"/);
+    expect(helper).toMatch(/canonicalSource:\s*"public\.get_campaign_briefs"/);
   });
 
   it("maps the RPC error codes to honest, jargon-free reasons and never claims success on failure", () => {
     expect(chat).toMatch(/CAMPAIGN_BRIEF_VERSION_CONFLICT/);
     expect(chat).toMatch(/CAMPAIGN_BRIEF_FORBIDDEN/);
     expect(chat).toMatch(/CAMPAIGN_BRIEF_.*MISMATCH/);
+    expect(chat).toMatch(/CAMPAIGN_BRIEF_AMBIGUOUS/);
+    expect(chat).toMatch(/No successful Rail outcome was written/);
   });
 
   it("records the write target as the real campaign_briefs table", () => {

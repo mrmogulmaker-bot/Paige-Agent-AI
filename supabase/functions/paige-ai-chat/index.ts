@@ -1,6 +1,7 @@
 import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_mission.ts';
 import { executeVerifiedMissionMutation, resolveBusinessMissionThreadContext, resolveSelectedBusinessMissionContext } from '../_shared/business-mission-tenant-brain.ts';
 import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.ts';
+import { executeVerifiedCampaignBriefMutation, resolveCampaignBriefListContext } from '../_shared/campaign-brief-tenant-brain.ts';
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -176,8 +177,12 @@ function describeStep(
     case "mission_revise": return out?.replayed === true ? { label: "That Mission revision was already saved", group: "owner", detail: "replay · no duplicate change" } : { label: failed ? "Could not revise that Mission" : "Saved a new Mission brief version", group: "owner", detail: failed ? "nothing changed" : "record only · no work ran" };
     case "mission_transition": return out?.replayed === true ? { label: "That Mission state was already saved", group: "owner", detail: "replay · no duplicate change" } : { label: failed ? "Could not change that Mission" : "Changed the Mission state", group: "owner", detail: failed ? "nothing changed" : "record only · no work ran" };
     // Campaign briefs (owner) — a brief is a PLANNING record, never proof a campaign is live.
-    case "campaign_brief_create": return { label: failed ? "Could not save that campaign brief" : "Saved a campaign brief", group: "owner", detail: failed ? "nothing changed" : "record only · nothing launched" };
-    case "campaign_brief_revise": return { label: failed ? "Could not revise that campaign brief" : "Revised a campaign brief", group: "owner", detail: failed ? "nothing changed" : "record only · nothing launched" };
+    case "campaign_brief_create": return out?.code === "CAMPAIGN_BRIEF_RAIL_WRITE_FAILED"
+      ? { label: "Campaign Brief saved, evidence incomplete", group: "owner", detail: "canonical planning record verified · Rail not recorded" }
+      : { label: failed ? "Could not verify that Campaign Brief" : "Created and verified a Campaign Brief", group: "owner", detail: failed ? "no verified outcome" : "planning record · Rail recorded · nothing launched" };
+    case "campaign_brief_revise": return out?.code === "CAMPAIGN_BRIEF_RAIL_WRITE_FAILED"
+      ? { label: "Campaign Brief revision saved, evidence incomplete", group: "owner", detail: "canonical planning record verified · Rail not recorded" }
+      : { label: failed ? "Could not verify that Campaign Brief revision" : "Revised and verified a Campaign Brief", group: "owner", detail: failed ? "no verified outcome" : "planning record · Rail recorded · nothing launched" };
     case "campaign_brief_list": return { label: failed ? "Couldn't read your campaign briefs" : "Checked your campaign briefs", group: "owner" };
     // CRM (client)
     case "crm_search_contacts": return { label: "Looking through your contacts", group: "client", detail: typeof out?.count === "number" ? `${out.count} found` : undefined };
@@ -11555,55 +11560,72 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false,error:"The mission was not changed.",note:"No work ran and no Mission success may be claimed." }) });
           }
         } else if (tc.function.name === "campaign_brief_create" || tc.function.name === "campaign_brief_revise" || tc.function.name === "campaign_brief_list") {
-          // Campaign-brief reach. Writes use the CALLER JWT (supabaseClient) so auth.uid() resolves
-          // inside the SECURITY DEFINER RPC, which re-resolves the tenant from auth (never the arg,
-          // §9/§59) and gates on tenant-admin/owner (§53). A brief is a PLANNING record only — no
-          // Action Bus, worker, provider, Mind, or Rail write is reachable here, and nothing is
-          // launched, sent, published, or spent. `_actor_kind:'paige'` marks provenance; the write
-          // authority is still the caller's own.
+          // Solo Tenant Brain — Campaign Brief planning records. The helper uses the CALLER JWT
+          // for tenant/role resolution and the EXISTING configure RPC, then independently reopens
+          // the canonical projector and compares id/version/lifecycle/fields. Only a match reaches
+          // the EXISTING service-role capability recorder. No provider, campaign execution, Mind,
+          // Memory, or second approval system is reachable here.
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
             const tid = personaCtx?.tenant_id ?? null;
             if (tc.function.name === "campaign_brief_list") {
-              const { data: listData, error: listErr } = await supabaseClient.rpc("get_campaign_briefs", { _tenant_id: tid });
-              if (listErr) {
-                const msg = String(listErr.message || "");
-                const friendly = msg.includes("CAMPAIGN_BRIEF_FORBIDDEN")
-                  ? "You don't have access to this workspace's campaign briefs."
-                  : "Could not read the campaign briefs. Reopen the workspace and try again.";
+              const listResult = tid ? await resolveCampaignBriefListContext({ caller: supabaseClient, expectedTenantId: tid }) : { ok: false as const, code: "CAMPAIGN_BRIEF_TENANT_NOT_RESOLVED" };
+              if (!listResult.ok) {
+                const friendly = listResult.code === "CAMPAIGN_BRIEF_FORBIDDEN"
+                  ? "You don't have access to this workspace's Campaign Briefs."
+                  : listResult.code === "ACTIVE_ACCOUNT_CHANGED"
+                    ? "The active workspace changed. Reopen Campaigns in the current workspace."
+                    : "Could not read the Campaign Briefs. Reopen the workspace and try again.";
                 toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:friendly }) });
               } else {
-                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:true, ...(listData && typeof listData === "object" ? listData : { briefs: listData }), note:"These are PLANNING briefs. A brief's lifecycle status is a state the owner set — it is not proof any campaign is active, spent, published, or producing results." }) });
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:true, source:listResult.context, can_manage:listResult.canManage, briefs:listResult.briefs, note:"These are Campaign Brief PLANNING records from the current canonical projection. A lifecycle label is not proof any campaign launched, spent, published, performed, or completed. Mind and Memory are UNAVAILABLE." }) });
               }
             } else {
-              // Build the governed command from ONLY the fields the model supplied, so an absent field
-              // never becomes a null the RPC's key-presence merge would treat as a clear (§10/§37).
-              const CMD_FIELDS = ["name","objective","audience","positioning","channels","desiredOutcome","successDefinition","budgetTarget","timing","constraints","contentNeeds","conversionDestination","followupPath","offerId","pipelineId"] as const;
-              const command: Record<string, unknown> = tc.function.name === "campaign_brief_create"
-                ? { type: "create-brief" }
-                : { type: "update-brief", briefId: args.briefId, expectedVersion: args.expectedVersion };
-              for (const f of CMD_FIELDS) if (args[f] !== undefined) command[f] = args[f];
-              const { data: result, error } = await supabaseClient.rpc("configure_campaign_brief", {
-                _tenant_id: tid,
-                _command: command,
-                _idempotency_key: args.idempotency_key,
-                _actor_kind: "paige",
+              const result = tid ? await executeVerifiedCampaignBriefMutation({
+                caller: supabaseClient,
+                expectedTenantId: tid,
+                actorId: user.id,
+                tool: tc.function.name,
+                args,
+                recordRun: (run) => recordCapabilityRun(supabase, run),
+                readCommandReceipt: async ({ tenantId, actorId, idempotencyKey }) => {
+                  const { data, error } = await supabase.from("campaign_brief_command_results")
+                    .select("result").eq("tenant_id", tenantId).eq("actor_user_id", actorId)
+                    .eq("actor_kind", "paige").eq("idempotency_key", idempotencyKey).maybeSingle();
+                  if (error) throw error;
+                  return data?.result && typeof data.result === "object" ? data.result as Record<string, unknown> : null;
+                },
+              }) : { success: false, verified: false, code: "CAMPAIGN_BRIEF_TENANT_NOT_RESOLVED" };
+              const code = String(result.code ?? "");
+              const friendly =
+                  code === "CAMPAIGN_BRIEF_DUPLICATE_NAME" ? `A Campaign Brief with that name already exists${Array.isArray(result.options) ? ` (${result.options.join(", ")})` : ""}. Ask whether to revise that brief or use a distinct name before changing anything.`
+                : code === "CAMPAIGN_BRIEF_AMBIGUOUS" ? `More than one Campaign Brief has that name. Ask which short reference they mean before changing anything${Array.isArray(result.options) ? `: ${result.options.join(", ")}` : "."}`
+                : code === "CAMPAIGN_BRIEF_VERSION_CONFLICT" ? "This Campaign Brief changed since you read it. List the briefs again, show the current version, and ask before revising it."
+                : code === "CAMPAIGN_BRIEF_NOT_FOUND" ? "That Campaign Brief is not available in this workspace."
+                : code === "CAMPAIGN_BRIEF_OFFER_TENANT_MISMATCH" ? "That offer is not one this workspace owns, so it cannot be linked."
+                : code === "CAMPAIGN_BRIEF_PIPELINE_TENANT_MISMATCH" ? "That pipeline is not one this workspace owns, so it cannot be linked."
+                : code === "CAMPAIGN_BRIEF_NAME_REQUIRED" ? "A Campaign Brief needs a name."
+                : code === "CAMPAIGN_BRIEF_IDEMPOTENCY_CONFLICT" ? "That retry no longer matches the original change. Start a new revision after reopening the brief."
+                : code === "CAMPAIGN_BRIEF_FORBIDDEN" ? "Only an authorized owner or workspace administrator can save Campaign Briefs."
+                : code === "CAMPAIGN_BRIEF_ARGUMENTS_INVALID" ? "One or more Campaign Brief fields were malformed. Nothing was written; clarify the intended values before trying again."
+                : code === "ACTIVE_ACCOUNT_CHANGED" ? "The active workspace changed. The Campaign Brief outcome was not verified here; reopen it in the current workspace before doing anything else."
+                : code === "CAMPAIGN_BRIEF_RAIL_WRITE_FAILED" ? "The canonical Campaign Brief change was verified, but its Rail evidence did not finish after a same-key evidence retry. Do not call the end-to-end operation successful and do not repeat the Campaign Brief change; evidence repair is still required."
+                : code.includes("READ") || code.includes("WRITE_RESULT") || code.includes("WRITE_OUTCOME")
+                  ? "The Campaign Brief may have changed, but Paige could not verify the canonical result. Reopen it before retrying."
+                  : "The Campaign Brief was not changed or could not be verified. Reopen it and try again.";
+              toolResults.push({
+                tool_call_id: tc.id,
+                role: "tool",
+                content: JSON.stringify(result.success ? result : {
+                  ...result,
+                  error: friendly,
+                  note: result.verified === true
+                    ? "The canonical planning record is verified, but Rail evidence is incomplete. Do not claim end-to-end success. Nothing launched, published, spent money, performed, or completed."
+                    : result.mutationMayHavePersisted
+                      ? "Do not claim success and do not retry with a new request until the canonical Campaign Brief is reopened. No successful Rail outcome was written."
+                      : "Nothing was verified as changed. Do not claim success. No successful Rail outcome was written.",
+                }),
               });
-              if (error) {
-                const message = String(error.message || "");
-                const friendly =
-                    message.includes("CAMPAIGN_BRIEF_VERSION_CONFLICT") ? "This brief changed since you read it. List the briefs again to get the current version, then revise."
-                  : message.includes("CAMPAIGN_BRIEF_NOT_FOUND") ? "That campaign brief isn't in this workspace."
-                  : message.includes("CAMPAIGN_BRIEF_OFFER_TENANT_MISMATCH") ? "That offer isn't one this workspace owns, so it can't be linked. Leave the offer out or pick one from this workspace."
-                  : message.includes("CAMPAIGN_BRIEF_PIPELINE_TENANT_MISMATCH") ? "That pipeline isn't one this workspace owns, so it can't be linked. Leave the pipeline out or pick one from this workspace."
-                  : message.includes("CAMPAIGN_BRIEF_NAME_REQUIRED") ? "A campaign brief needs a name."
-                  : message.includes("CAMPAIGN_BRIEF_IDEMPOTENCY_CONFLICT") ? "That looks like a changed retry of an earlier save. Start the change again so it can be saved cleanly."
-                  : message.includes("CAMPAIGN_BRIEF_FORBIDDEN") ? "Only an owner or admin of this workspace can save campaign briefs."
-                  : "The campaign brief was not saved. Reopen the workspace and try again.";
-                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:friendly, note:"Nothing was changed. Do not claim the brief was saved." }) });
-              } else {
-                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:true, ...(result && typeof result === "object" ? result : { result }), note:"The campaign brief PLANNING record committed. Report only the saved brief — nothing is launched, sent, published, or spent, and no campaign results are proven." }) });
-              }
             }
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"The campaign brief was not saved.", note:"No work ran and no campaign result may be claimed." }) });

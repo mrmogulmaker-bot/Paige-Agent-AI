@@ -86,3 +86,21 @@ This candidate adds no Mission store, chat, approval system, Mind projection or 
 The current-main-composed candidate passes 73 focused contract tests, the complete 265-file / 3,832-test repository run, the TypeScript ratchet, production build, security/registry ledgers, and 198 real-component responsive/theme/state checks. Those renders use fictional provider stubs and prove structure and geometry only. Authenticated owner lifecycle, refusal, workspace-switch, canonical Mission and matching Rail evidence remain PROOF OWED; the owner-complete Business Game Plan and Solo Tenant Brain remain PARTIAL; Mission Mind and durable Memory remain UNAVAILABLE.
 
 PR #1038 rebased cleanly onto main `49d25f4c`, passed every required pre-merge check at head `efad4044`, and squash-merged as `cc1e86f512dbaf795f26444b57fa8c8bcce56d63`. Production migration run 34078642940 applied and persisted `20260907001343`; Edge run 34078642934 deployed `business-mission-action` and `paige-ai-chat`; `db-live` and `edge-live` both point to `cc1e86f5`. Both production version endpoints returned `cc1e86f512dbaf795f26444b57fa8c8bcce56d63-mtqnw05p`. This proves release infrastructure, not authenticated owner behavior. Business Game Plan and the Solo Tenant Brain remain `PARTIAL`; Mission Mind and durable Memory remain `UNAVAILABLE`; authenticated owner, denied-role, workspace-switch, canonical Mission and matching Rail browser proof remain `PROOF OWED`.
+
+## Verified Campaign Brief with Paige — active MVP, 2026-09-07
+
+This is the next bounded owner-visible Tenant Brain lane. It reuses the dedicated Paige workspace, the existing Campaigns Campaign Brief card, the existing ordinary-action authority and confirmation gate, `configure_campaign_brief`, `get_campaign_briefs`, the command-result receipt table and the workspace Rail. It creates no new screen, record store, chat, approval system, Campaigns lifecycle action, Mind projection or Memory writer.
+
+A create or revision is successful only when Paige has re-resolved the active tenant after the write, freshly reopened the canonical brief, and matched the exact brief id, returned version, lifecycle and all intended fields. The Rail write happens after that comparison. Missing, foreign, stale, denied, ambiguous, unknown-write, failed-read, mismatched-read and workspace-change paths fail closed and never emit a successful Rail outcome. If canonical verification succeeds but Rail recording fails, the record is truthfully reported as changed while the end-to-end operation remains incomplete.
+
+Rail wording is limited to a Campaign Brief planning record verified as created or revised. It is never evidence that a campaign launched, published, spent money, performed or completed. Raw chat remains a proposal/input rather than durable truth; the canonical record and receipt carry provenance.
+
+Current candidate boundary:
+
+- Campaign Brief verified create/revise plus Rail lane: `PARTIAL` pending release and authenticated proof.
+- Authenticated owner production proof: `PROOF OWED`.
+- Solo Tenant Brain overall: `PARTIAL`.
+- Campaign Brief Mind and durable Memory: `UNAVAILABLE`.
+- Secure Browser/Browserbase: unchanged; Browserbase remains `PROPOSED`, prohibited and unwired, and credentialed browser use remains `UNAVAILABLE`.
+
+Candidate proof is 38/38 focused tests, 161/161 adjacent-workstream regressions, a clean independent review, unchanged TypeScript ratchet, successful production build, security/governance/registry checks, a clean sensitive-data diff scan, and direct isolated PostgreSQL migration/readback proof. The full repository run passed 3,898/3,900 under parallel load; the two five-second repository-scan timeouts passed 21/21 immediately in isolation. PR #917's current head already conflicts with untouched current main in the same shared files, so this slice does not take or silently reconcile its orchestration ownership.
