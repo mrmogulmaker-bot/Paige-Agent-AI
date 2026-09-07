@@ -9,7 +9,7 @@ function check(condition, message) {
   else { failures += 1; console.error(`FAIL ${message}`); }
 }
 
-const migration = read("supabase/migrations/20260907170000_paige_secure_browser_control_plane.sql");
+const migration = read("supabase/migrations/20270105000000_paige_secure_browser_control_plane.sql");
 const contract = read("supabase/functions/_shared/secure-browser-contract.ts");
 const handler = read("supabase/functions/browser-use/index.ts");
 
