@@ -193,30 +193,52 @@ serve(async (req: Request) => {
       }
 
       if (attempt.provider === "elevenlabs") {
-        // ElevenLabs returns BUFFERED bytes (short chat messages) — return + cache them.
+        // Reserve a conservative cost upper bound atomically BEFORE transport. Cache hits above
+        // never reserve. Concurrent calls serialize on the readiness row, exact-cap is allowed,
+        // and provider failures release their reservation.
+        const requestRef = crypto.randomUUID();
+        const { data: reservation, error: reservationError } = await admin.rpc("reserve_paige_voice_cost_internal", {
+          _actor_user_id: user.id,
+          _tenant_id: meterTenantId,
+          _profile_revision: attempt.profileRevision,
+          _request_ref: requestRef,
+          _character_count: capped.length,
+        });
+        const reservationId = reservation && typeof reservation === "object" && typeof (reservation as Record<string, unknown>).reservation_id === "string"
+          ? String((reservation as Record<string, unknown>).reservation_id) : null;
+        if (reservationError || !reservationId) {
+          console.error("[paige-tts] provider cost reservation refused", { code: reservationError?.code });
+          return json({ error: "tts_cost_limit_unavailable" }, 503);
+        }
+
+        let res: Awaited<ReturnType<typeof elevenlabsTts>>;
         try {
-          const res = await elevenlabsTts({ text: capped, voiceId: attempt.voiceId, modelId: attempt.model });
-          const bytes = res.artifact_bytes;
-          if (!bytes || bytes.length === 0) throw new Error("elevenlabs_empty_bytes");
-          runAfter((async () => {
-            const { error: upErr } = await admin.storage
-              .from(CACHE_BUCKET)
-              .upload(cachePath, bytes, { contentType: "audio/mpeg", upsert: true });
-            if (upErr) console.error("[paige-tts] EL cache upload failed", { message: upErr.message, scope: storagePrefix });
-            else console.log("[paige-tts] cache STORED", { scope: storagePrefix, provider: "elevenlabs", profile_revision: attempt.profileRevision, bytes: bytes.length });
-            await meterChars(admin, meterTenantId, capped.length, {
-              provider: "elevenlabs", profile_revision: attempt.profileRevision, model: attempt.model,
-              voice_source: voiceSource, fell_back: fellBack, cache_hit: false,
-            });
-          })());
-          return new Response(bytes, { headers: audioHeaders }); // buffered — no tee needed
+          res = await elevenlabsTts({ text: capped, voiceId: attempt.voiceId, modelId: attempt.model });
         } catch (e) {
-          // NeedsConfig (key raced absent) OR an API error — LOUD, never silent (§32). There is no
-          // implicit provider fallback; a separately approved profile revision must be resolved.
+          await admin.rpc("settle_paige_voice_cost_internal", { _reservation_id: reservationId, _actor_user_id: user.id, _outcome: "released" });
           lastErr = (e as Error)?.message ?? "elevenlabs_error";
-          console.error("[paige-tts] ElevenLabs attempt failed, falling back:", lastErr);
+          console.error("[paige-tts] selected provider attempt failed:", lastErr);
           continue;
         }
+        const bytes = res.artifact_bytes;
+        if (!bytes || bytes.length === 0) {
+          await admin.rpc("settle_paige_voice_cost_internal", { _reservation_id: reservationId, _actor_user_id: user.id, _outcome: "released" });
+          lastErr = "elevenlabs_empty_bytes";
+          continue;
+        }
+        const { error: settleError } = await admin.rpc("settle_paige_voice_cost_internal", { _reservation_id: reservationId, _actor_user_id: user.id, _outcome: "committed" });
+        if (settleError) {
+          // Leave the reservation counting against the cap. Failing safe may over-count, but can
+          // never permit unrecorded provider spend.
+          console.error("[paige-tts] provider cost settlement failed closed", { code: settleError.code });
+          return json({ error: "tts_cost_settlement_unavailable" }, 503);
+        }
+        runAfter((async () => {
+          const { error: upErr } = await admin.storage.from(CACHE_BUCKET).upload(cachePath, bytes, { contentType: "audio/mpeg", upsert: true });
+          if (upErr) console.error("[paige-tts] EL cache upload failed", { message: upErr.message, scope: storagePrefix });
+          await meterChars(admin, meterTenantId, capped.length, { provider: "elevenlabs", profile_revision: attempt.profileRevision, model: attempt.model, voice_source: voiceSource, fell_back: fellBack, cache_hit: false });
+        })());
+        return new Response(bytes, { headers: audioHeaders });
       }
 
       // ── OpenAI attempt — keep the STREAMING tee path (progressive playback) ──

@@ -140,5 +140,10 @@
     "themePreserved": true,
     "underlyingComposerPreserved": true,
     "consequentialCardHasVisibleConfirmation": true
+  },
+  {
+    "existingPopout": true,
+    "backgroundInert": true,
+    "backgroundAriaHidden": true
   }
 ]

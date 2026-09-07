@@ -4,6 +4,8 @@
  * returns PROOF OWED, requests no microphone, and performs no network/provider/database action.
  */
 import { StrictMode } from "react";
+import { useState } from "react";
+import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { PaigeLiveConversation } from "@/components/paige/live/PaigeLiveConversation";
 import type { LiveConversationCard } from "@/lib/paigeLiveConversation/contract";
@@ -28,7 +30,7 @@ const cards: Record<string, LiveConversationCard> = {
 
 function Harness() {
   return (
-    <div className="min-h-screen bg-background p-6 text-foreground">
+    <div data-existing-popout-background className="min-h-screen bg-background p-6 text-foreground">
       <div className="mx-auto max-w-3xl rounded-2xl border bg-card p-5 shadow-sm">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Dedicated Paige workspace · geometry harness</p>
         <div className="mt-5 flex items-end gap-3 rounded-xl border bg-background p-3">
@@ -55,4 +57,22 @@ function Harness() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<StrictMode><Harness /></StrictMode>);
+function App() {
+  const [popoutDocument, setPopoutDocument] = useState<Document | null>(null);
+  if (params.get("host") !== "popout") return <Harness />;
+  return <>
+    <button type="button" onClick={() => {
+      const child = window.open("", "paige-existing-chat-popout", "popup,width=960,height=760,resizable=yes");
+      if (!child) return;
+      child.document.title = "Existing Paige chat pop-out";
+      child.document.head.replaceChildren(...Array.from(document.head.querySelectorAll('link[rel="stylesheet"],style')).map((node) => node.cloneNode(true)));
+      child.document.documentElement.className = document.documentElement.className;
+      child.document.body.replaceChildren();
+      child.document.body.style.margin = "0";
+      setPopoutDocument(child.document);
+    }}>Open existing Paige pop-out</button>
+    {popoutDocument ? createPortal(<Harness />, popoutDocument.body) : null}
+  </>;
+}
+
+createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);

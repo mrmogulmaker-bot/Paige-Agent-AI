@@ -509,7 +509,7 @@
       "taxonomy": "crm_calendar_communications",
       "business_reason": "Low-latency speech recognition and playback may improve Paige Live Conversation while Paige remains the sole owner of reasoning, tenant context, authority, records, and actions.",
       "paige_use_cases": ["future consented realtime speech-to-text transport", "future streaming text-to-speech for Paige-authored responses", "server-profile-resolved per-message speech playback"],
-      "connection_prerequisite": "Approved backend service credential with minimum scopes; approved exact voice reference; confirmed account/session retention posture; realtime eligibility/concurrency; quota; and a Paige hard cost ceiling. None is proven for production realtime audio.",
+      "connection_prerequisite": "Approved backend service credential with minimum scopes; approved exact voice reference; confirmed account/session retention posture; realtime eligibility/concurrency; quota; and a Paige calendar-month hard cost ceiling plus maximum price per 1,000 characters. None is proven for production realtime audio.",
       "required_scopes": ["text_to_speech", "speech_to_text", "single-use realtime token issuance only if browser STT is separately approved"],
       "safe_readable_context": "Only consented live-session audio and Paige-authored response text needed for transport. No tenant authority, provider credential, tool registry, business record ownership, or durable memory.",
       "allowed_writes_external_effects": "Audio/transcript transport only after readiness approval. No provider-side agent, client tool, or webhook may mutate a Paige record or execute external work.",
@@ -530,20 +530,20 @@
         "pricing_source_url": "https://elevenlabs.io/pricing/api",
         "pricing_checked_as_of": "2026-09-07",
         "pricing_note": "Public API list pricing checked 2026-09-07: Scribe v2 Realtime STT $0.39/audio hour; Flash/Turbo TTS $0.05/1,000 characters; multilingual/v3 TTS $0.10/1,000 characters. Mutable and plan-specific; verify the existing account before enablement.",
-        "access_prerequisite": "Minimum-scope backend service key, approved voice-profile revision, explicit retention decision, realtime entitlement/concurrency proof, quota, and Paige hard cost ceiling.",
+        "access_prerequisite": "Minimum-scope backend service key, approved voice-profile revision, explicit retention decision, realtime entitlement/concurrency proof, quota, and Paige calendar-month hard cost ceiling plus maximum price per 1,000 characters.",
         "expected_cost_driver": ["minutes", "model_usage"],
         "rate_limits_quotas": "Account concurrency and quota are unverified. Fail closed until independently checked; handle rate limits and provider disconnects without fabricating a live state.",
-        "usage_review_cadence": "Weekly during initial rollout, then monthly if enabled; alerts at the approved Paige hard ceiling.",
+        "usage_review_cadence": "Weekly during initial rollout, then monthly if enabled; service-only atomic reservations reject uncached TTS above the approved calendar-month hard ceiling before provider contact.",
         "renewal_deprecation_review": "Quarterly provider API/model/privacy review and before changing an approved voice-profile revision.",
         "data_privacy_retention": "Zero Retention Mode is not assumed. If requested-but-not-applied or otherwise unconfirmed for the account/session, realtime audio remains disabled. Raw audio/transcript is not durable Paige knowledge.",
         "money_movement": { "can_move_real_money": false, "m1_dependency_track": "none", "detail": "Voice usage is a metered platform operating cost, not permission to purchase or move customer funds; the separate Paige hard ceiling is required before enablement." },
         "receipt_reconciliation": "Provider request/session usage identifiers reconcile to the Paige voice session and platform cost meter; no provider receipt is recorded while disabled.",
         "rail_outcome": "No provider-side business outcome. Paige's canonical governed action owns verification, detailed receipt, and Rail evidence.",
-        "pause_revoke_path": "Disable transport readiness, revoke the backend credential, or deactivate the profile revision; active sessions fail closed and new sessions cannot start.",
+        "pause_revoke_path": "Disable transport readiness, revoke any canonical verification flag, revoke the backend credential, or deactivate the profile revision; profile resolution and cost reservation re-read proof and fail closed.",
         "next_owner": "Authorized platform operator",
         "next_slice": "Complete the independent account/privacy/cost proof without exposing secrets, then approve a bounded transport enablement change."
       },
-      "sources": ["https://elevenlabs.io/docs/overview/administration/workspaces/api-keys", "https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime", "https://elevenlabs.io/docs/eleven-api/resources/zero-retention-mode", "https://elevenlabs.io/pricing/api", "docs/doctrine/paige-modality-neutrality.md", "supabase/migrations/20260907155052_paige_live_conversation_control_plane.sql", "supabase/functions/paige-live-session/index.ts"]
+      "sources": ["https://elevenlabs.io/docs/overview/administration/workspaces/api-keys", "https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime", "https://elevenlabs.io/docs/eleven-api/resources/zero-retention-mode", "https://elevenlabs.io/pricing/api", "docs/doctrine/paige-modality-neutrality.md", "supabase/migrations/20260907155052_paige_live_conversation_control_plane.sql", "supabase/functions/paige-live-session/index.ts", "supabase/functions/paige-tts/index.ts", "scripts/sql/paige-voice-cost-proof.sql"]
     },
     {
       "id": "vapi",

@@ -13,7 +13,7 @@ describe("Paige voice profile SQL contract", () => {
     expect(sql).toContain("'cgSgspJ2msm6clMCkdW9'");
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.set_paige_voice_profile_internal[\s\S]*authenticated/);
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.resolve_paige_voice_profile_internal[\s\S]*authenticated/);
-    expect(sql).toMatch(/REVOKE ALL ON TABLE public\.paige_voice_provider_verifications, public\.paige_voice_profiles, public\.paige_voice_readiness FROM PUBLIC, anon, authenticated/);
+    expect(sql).toMatch(/REVOKE ALL ON TABLE public\.paige_voice_provider_verifications, public\.paige_voice_profiles, public\.paige_voice_readiness, public\.paige_voice_cost_reservations FROM PUBLIC, anon, authenticated/);
     expect(sql).not.toContain("admin_app_settings");
   });
 
@@ -32,6 +32,19 @@ describe("Paige voice profile SQL contract", () => {
     expect(sql).toContain("PAIGE_VOICE_PROFILE_CANONICAL_PROOF_REQUIRED");
     expect(sql).toContain("PAIGE_VOICE_READINESS_CANONICAL_PROOF_REQUIRED");
     expect(sql).toContain("PAIGE_VOICE_PROVIDER_PROOF_OWED");
+    expect(sql).toMatch(/NOT _verification\.key_scope_verified[\s\S]*NOT _verification\.voice_authorized[\s\S]*NOT _verification\.retention_policy_approved[\s\S]*NOT _verification\.zero_retention_confirmed[\s\S]*NOT _verification\.quota_verified/);
+    expect(sql).toContain("_verification.hard_cost_limit_usd<>_ready.hard_cost_limit_usd");
+    expect(sql).toContain("_verification.max_usd_per_1000_chars<>_ready.max_usd_per_1000_chars");
+  });
+
+  it("enforces an atomic hard-cost reservation before provider work", () => {
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.paige_voice_cost_reservations");
+    expect(sql).toContain("FOR UPDATE");
+    expect(sql).toContain("_used+_reserve>_ready.hard_cost_limit_usd");
+    expect(sql).toContain("PAIGE_VOICE_HARD_COST_LIMIT");
+    expect(sql).toContain("state IN ('reserved','committed')");
+    expect(sql).toContain("_outcome NOT IN ('committed','released')");
+    expect(sql).toMatch(/REVOKE ALL ON TABLE[\s\S]*public\.paige_voice_cost_reservations[\s\S]*authenticated/);
   });
 
   it("rejects approved profiles without a current effective time", () => {

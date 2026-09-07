@@ -19,6 +19,19 @@ describe("Paige voice provider boundary", () => {
     expect(tts).toContain("voice_override_not_allowed");
   });
 
+  it("reserves the hard-cost budget before provider entry, releases failures, and skips reservation on cache hits", () => {
+    const reserve = tts.indexOf('rpc("reserve_paige_voice_cost_internal"');
+    const provider = tts.indexOf("elevenlabsTts({");
+    const cache = tts.indexOf("download(cachePath)");
+    expect(cache).toBeGreaterThan(-1);
+    expect(cache).toBeLessThan(reserve);
+    expect(reserve).toBeGreaterThan(-1);
+    expect(reserve).toBeLessThan(provider);
+    expect(tts).toContain('_outcome: "released"');
+    expect(tts).toContain('_outcome: "committed"');
+    expect(tts).toContain("tts_cost_settlement_unavailable");
+  });
+
   it("requires scope on every transition and permits stale cleanup only for explicit end", () => {
     expect(session).toContain("thread_id: z.string().uuid()");
     expect(session).toContain("context_epoch: z.string().min(1).max(512)");

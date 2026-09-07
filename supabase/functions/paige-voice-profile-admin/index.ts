@@ -37,13 +37,13 @@ serve(async (req: Request) => {
 
   const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { data: proof, error: proofError } = await admin.from("paige_voice_provider_verifications")
-    .select("id,provider,provider_voice_ref,key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed,quota_verified,hard_cost_limit_usd,verified_at,evidence_ref")
+    .select("id,provider,provider_voice_ref,key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed,quota_verified,hard_cost_limit_usd,max_usd_per_1000_chars,verified_at,evidence_ref")
     .eq("id", parsed.data.verification_id).maybeSingle();
   const verifiedAt = proof?.verified_at ? new Date(proof.verified_at).getTime() : 0;
   const fresh = verifiedAt >= Date.now() - 5 * 60_000 && verifiedAt <= Date.now() + 60_000;
   if (proofError || !proof || !fresh || proof.provider !== parsed.data.provider || proof.provider_voice_ref !== parsed.data.provider_voice_ref
     || !proof.key_scope_verified || !proof.voice_authorized || !proof.retention_policy_approved || !proof.zero_retention_confirmed
-    || !proof.quota_verified || Number(proof.hard_cost_limit_usd) <= 0 || !proof.evidence_ref) {
+    || !proof.quota_verified || Number(proof.hard_cost_limit_usd) <= 0 || Number(proof.max_usd_per_1000_chars) <= 0 || !proof.evidence_ref) {
     return json({ code: "canonical_provider_proof_required" }, 409);
   }
 
@@ -51,6 +51,7 @@ serve(async (req: Request) => {
     _transport_enabled: true, _availability: "PARTIAL", _realtime_stt: "PARTIAL", _streaming_tts: "PARTIAL",
     _key_scope_verified: true, _voice_authorized: true, _retention_policy_approved: true,
     _zero_retention_confirmed: true, _quota_verified: true, _hard_cost_limit_usd: proof.hard_cost_limit_usd,
+    _max_usd_per_1000_chars: proof.max_usd_per_1000_chars,
     _provider_verification_id: proof.id, _account_verification_receipt_ref: proof.evidence_ref,
     _account_verified_at: proof.verified_at, _actor_user_id: user.id,
   });

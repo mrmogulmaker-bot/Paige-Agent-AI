@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public.paige_voice_provider_verifications (
   zero_retention_confirmed boolean NOT NULL,
   quota_verified boolean NOT NULL,
   hard_cost_limit_usd numeric NOT NULL CHECK (hard_cost_limit_usd>0),
+  max_usd_per_1000_chars numeric NOT NULL CHECK (max_usd_per_1000_chars>0),
   verified_at timestamptz NOT NULL,
   evidence_ref text NOT NULL,
   verified_by_actor_id uuid REFERENCES auth.users(id),
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS public.paige_voice_readiness (
   zero_retention_confirmed boolean NOT NULL DEFAULT false,
   quota_verified boolean NOT NULL DEFAULT false,
   hard_cost_limit_usd numeric,
+  max_usd_per_1000_chars numeric,
   account_verification_receipt_ref text,
   provider_verification_id uuid REFERENCES public.paige_voice_provider_verifications(id),
   account_verified_at timestamptz,
@@ -59,11 +61,26 @@ CREATE TABLE IF NOT EXISTS public.paige_voice_readiness (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS public.paige_voice_cost_reservations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_ref uuid NOT NULL UNIQUE,
+  tenant_id uuid REFERENCES public.tenants(id) ON DELETE SET NULL,
+  actor_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  profile_revision text NOT NULL,
+  character_count integer NOT NULL CHECK (character_count>0),
+  reserved_usd numeric NOT NULL CHECK (reserved_usd>0),
+  state text NOT NULL CHECK (state IN ('reserved','committed','released')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  settled_at timestamptz
+);
+
 ALTER TABLE public.paige_voice_provider_verifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.paige_voice_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.paige_voice_readiness ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.paige_voice_provider_verifications, public.paige_voice_profiles, public.paige_voice_readiness FROM PUBLIC, anon, authenticated;
-GRANT ALL ON TABLE public.paige_voice_provider_verifications, public.paige_voice_profiles, public.paige_voice_readiness TO service_role;
+ALTER TABLE public.paige_voice_cost_reservations ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.paige_voice_provider_verifications, public.paige_voice_profiles, public.paige_voice_readiness, public.paige_voice_cost_reservations FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.paige_voice_provider_verifications, public.paige_voice_profiles, public.paige_voice_readiness, public.paige_voice_cost_reservations TO service_role;
+CREATE INDEX IF NOT EXISTS idx_paige_voice_cost_period ON public.paige_voice_cost_reservations(created_at,state);
 
 INSERT INTO public.paige_voice_profiles(slot,profile_id,paige_facing_name,revision,provider,provider_voice_ref,approved,active,speech_policy,effective_at,provider_verification_receipt_ref,approved_at,status)
 VALUES
@@ -117,7 +134,7 @@ BEGIN
   IF _approved AND (nullif(btrim(_provider_verification_receipt_ref),'') IS NULL OR _provider_verified_at IS NULL OR _provider_verified_at<now()-interval '5 minutes' OR _provider_verified_at>now()+interval '1 minute') THEN RAISE EXCEPTION 'PAIGE_VOICE_PROFILE_UNVERIFIED' USING ERRCODE='22023'; END IF;
   IF _approved AND _provider='elevenlabs' THEN
     SELECT * INTO _verification FROM public.paige_voice_provider_verifications WHERE id=_provider_verification_id AND provider=_provider AND provider_voice_ref=_provider_voice_ref AND evidence_ref=_provider_verification_receipt_ref AND verified_at=_provider_verified_at;
-    IF _verification.id IS NULL OR NOT _verification.key_scope_verified OR NOT _verification.voice_authorized OR NOT _verification.retention_policy_approved OR NOT _verification.zero_retention_confirmed OR NOT _verification.quota_verified OR _verification.hard_cost_limit_usd<=0 THEN RAISE EXCEPTION 'PAIGE_VOICE_PROFILE_CANONICAL_PROOF_REQUIRED' USING ERRCODE='22023'; END IF;
+    IF _verification.id IS NULL OR NOT _verification.key_scope_verified OR NOT _verification.voice_authorized OR NOT _verification.retention_policy_approved OR NOT _verification.zero_retention_confirmed OR NOT _verification.quota_verified OR _verification.hard_cost_limit_usd<=0 OR _verification.max_usd_per_1000_chars<=0 THEN RAISE EXCEPTION 'PAIGE_VOICE_PROFILE_CANONICAL_PROOF_REQUIRED' USING ERRCODE='22023'; END IF;
   END IF;
   IF _speech_policy IS NOT NULL AND COALESCE(_speech_policy->>'source','') NOT IN ('paige-profile','provider-dashboard') THEN RAISE EXCEPTION 'PAIGE_VOICE_PROFILE_INVALID_TUNING_SOURCE' USING ERRCODE='22023'; END IF;
   SELECT revision INTO _previous_revision FROM public.paige_voice_profiles WHERE slot=_slot;
@@ -132,20 +149,20 @@ CREATE OR REPLACE FUNCTION public.set_paige_voice_readiness_internal(
   _transport_enabled boolean,_availability text,_realtime_stt text,_streaming_tts text,
   _key_scope_verified boolean,_voice_authorized boolean,_retention_policy_approved boolean,
   _zero_retention_confirmed boolean,_quota_verified boolean,_hard_cost_limit_usd numeric,
-  _provider_verification_id uuid,_account_verification_receipt_ref text,_account_verified_at timestamptz,_actor_user_id uuid
+  _max_usd_per_1000_chars numeric,_provider_verification_id uuid,_account_verification_receipt_ref text,_account_verified_at timestamptz,_actor_user_id uuid
 ) RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path TO 'public' AS $$
 DECLARE _verification public.paige_voice_provider_verifications%ROWTYPE;
 BEGIN
   IF auth.role()<>'service_role' THEN RAISE EXCEPTION 'PAIGE_VOICE_READINESS_FORBIDDEN' USING ERRCODE='42501'; END IF;
   IF _availability NOT IN ('LIVE','PARTIAL','UNAVAILABLE','PROOF OWED') OR _realtime_stt NOT IN ('LIVE','PARTIAL','UNAVAILABLE','PROOF OWED') OR _streaming_tts NOT IN ('LIVE','PARTIAL','UNAVAILABLE','PROOF OWED') THEN RAISE EXCEPTION 'PAIGE_VOICE_READINESS_INVALID_STATUS' USING ERRCODE='22023'; END IF;
-  IF _transport_enabled AND (NOT _key_scope_verified OR NOT _voice_authorized OR NOT _retention_policy_approved OR NOT _zero_retention_confirmed OR NOT _quota_verified OR COALESCE(_hard_cost_limit_usd,0)<=0 OR nullif(btrim(_account_verification_receipt_ref),'') IS NULL OR _account_verified_at IS NULL OR _account_verified_at<now()-interval '5 minutes' OR _account_verified_at>now()+interval '1 minute') THEN RAISE EXCEPTION 'PAIGE_VOICE_READINESS_PROOF_REQUIRED' USING ERRCODE='22023'; END IF;
+  IF _transport_enabled AND (NOT _key_scope_verified OR NOT _voice_authorized OR NOT _retention_policy_approved OR NOT _zero_retention_confirmed OR NOT _quota_verified OR COALESCE(_hard_cost_limit_usd,0)<=0 OR COALESCE(_max_usd_per_1000_chars,0)<=0 OR nullif(btrim(_account_verification_receipt_ref),'') IS NULL OR _account_verified_at IS NULL OR _account_verified_at<now()-interval '5 minutes' OR _account_verified_at>now()+interval '1 minute') THEN RAISE EXCEPTION 'PAIGE_VOICE_READINESS_PROOF_REQUIRED' USING ERRCODE='22023'; END IF;
   IF _transport_enabled THEN
     SELECT * INTO _verification FROM public.paige_voice_provider_verifications WHERE id=_provider_verification_id AND evidence_ref=_account_verification_receipt_ref AND verified_at=_account_verified_at;
-    IF _verification.id IS NULL OR NOT _verification.key_scope_verified OR NOT _verification.voice_authorized OR NOT _verification.retention_policy_approved OR NOT _verification.zero_retention_confirmed OR NOT _verification.quota_verified OR _verification.hard_cost_limit_usd<>_hard_cost_limit_usd THEN RAISE EXCEPTION 'PAIGE_VOICE_READINESS_CANONICAL_PROOF_REQUIRED' USING ERRCODE='22023'; END IF;
+    IF _verification.id IS NULL OR NOT _verification.key_scope_verified OR NOT _verification.voice_authorized OR NOT _verification.retention_policy_approved OR NOT _verification.zero_retention_confirmed OR NOT _verification.quota_verified OR _verification.hard_cost_limit_usd<>_hard_cost_limit_usd OR _verification.max_usd_per_1000_chars<>_max_usd_per_1000_chars THEN RAISE EXCEPTION 'PAIGE_VOICE_READINESS_CANONICAL_PROOF_REQUIRED' USING ERRCODE='22023'; END IF;
   END IF;
-  INSERT INTO public.paige_voice_readiness(singleton,surface_enabled,transport_enabled,availability,realtime_stt,streaming_tts,key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed,quota_verified,hard_cost_limit_usd,account_verification_receipt_ref,provider_verification_id,account_verified_at,updated_by,updated_at)
-  VALUES(true,true,_transport_enabled,_availability,_realtime_stt,_streaming_tts,_key_scope_verified,_voice_authorized,_retention_policy_approved,_zero_retention_confirmed,_quota_verified,_hard_cost_limit_usd,_account_verification_receipt_ref,_provider_verification_id,_account_verified_at,_actor_user_id,now())
-  ON CONFLICT(singleton) DO UPDATE SET transport_enabled=EXCLUDED.transport_enabled,availability=EXCLUDED.availability,realtime_stt=EXCLUDED.realtime_stt,streaming_tts=EXCLUDED.streaming_tts,key_scope_verified=EXCLUDED.key_scope_verified,voice_authorized=EXCLUDED.voice_authorized,retention_policy_approved=EXCLUDED.retention_policy_approved,zero_retention_confirmed=EXCLUDED.zero_retention_confirmed,quota_verified=EXCLUDED.quota_verified,hard_cost_limit_usd=EXCLUDED.hard_cost_limit_usd,account_verification_receipt_ref=EXCLUDED.account_verification_receipt_ref,provider_verification_id=EXCLUDED.provider_verification_id,account_verified_at=EXCLUDED.account_verified_at,updated_by=EXCLUDED.updated_by,updated_at=now();
+  INSERT INTO public.paige_voice_readiness(singleton,surface_enabled,transport_enabled,availability,realtime_stt,streaming_tts,key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed,quota_verified,hard_cost_limit_usd,max_usd_per_1000_chars,account_verification_receipt_ref,provider_verification_id,account_verified_at,updated_by,updated_at)
+  VALUES(true,true,_transport_enabled,_availability,_realtime_stt,_streaming_tts,_key_scope_verified,_voice_authorized,_retention_policy_approved,_zero_retention_confirmed,_quota_verified,_hard_cost_limit_usd,_max_usd_per_1000_chars,_account_verification_receipt_ref,_provider_verification_id,_account_verified_at,_actor_user_id,now())
+  ON CONFLICT(singleton) DO UPDATE SET transport_enabled=EXCLUDED.transport_enabled,availability=EXCLUDED.availability,realtime_stt=EXCLUDED.realtime_stt,streaming_tts=EXCLUDED.streaming_tts,key_scope_verified=EXCLUDED.key_scope_verified,voice_authorized=EXCLUDED.voice_authorized,retention_policy_approved=EXCLUDED.retention_policy_approved,zero_retention_confirmed=EXCLUDED.zero_retention_confirmed,quota_verified=EXCLUDED.quota_verified,hard_cost_limit_usd=EXCLUDED.hard_cost_limit_usd,max_usd_per_1000_chars=EXCLUDED.max_usd_per_1000_chars,account_verification_receipt_ref=EXCLUDED.account_verification_receipt_ref,provider_verification_id=EXCLUDED.provider_verification_id,account_verified_at=EXCLUDED.account_verified_at,updated_by=EXCLUDED.updated_by,updated_at=now();
   INSERT INTO public.paige_audit_log(actor_user_id,actor_role,action,target_type,payload) VALUES(_actor_user_id,'super_admin','platform.paige_voice_readiness.set','paige_voice_readiness',jsonb_build_object('transport_enabled',_transport_enabled,'availability',_availability,'realtime_stt',_realtime_stt,'streaming_tts',_streaming_tts,'key_scope_verified',_key_scope_verified,'voice_authorized',_voice_authorized,'retention_policy_approved',_retention_policy_approved,'zero_retention_confirmed',_zero_retention_confirmed,'quota_verified',_quota_verified,'hard_cost_limit_usd',_hard_cost_limit_usd,'account_verification_receipt_ref',_account_verification_receipt_ref));
   RETURN jsonb_build_object('transport_enabled',_transport_enabled,'availability',_availability,'updated_at',now());
 END; $$;
@@ -160,9 +177,42 @@ BEGIN
   IF _profile.provider='elevenlabs' THEN
     SELECT * INTO _ready FROM public.paige_voice_readiness WHERE singleton=true;
     SELECT * INTO _verification FROM public.paige_voice_provider_verifications WHERE id=_profile.provider_verification_id AND id=_ready.provider_verification_id AND provider=_profile.provider AND provider_voice_ref=_profile.provider_voice_ref AND evidence_ref=_ready.account_verification_receipt_ref;
-    IF _ready.singleton IS NULL OR _verification.id IS NULL OR NOT _ready.transport_enabled OR NOT _ready.key_scope_verified OR NOT _ready.voice_authorized OR NOT _ready.retention_policy_approved OR NOT _ready.zero_retention_confirmed OR NOT _ready.quota_verified OR COALESCE(_ready.hard_cost_limit_usd,0)<=0 OR nullif(btrim(_ready.account_verification_receipt_ref),'') IS NULL THEN RAISE EXCEPTION 'PAIGE_VOICE_PROVIDER_PROOF_OWED' USING ERRCODE='55000'; END IF;
+    IF _ready.singleton IS NULL OR _verification.id IS NULL OR NOT _verification.key_scope_verified OR NOT _verification.voice_authorized OR NOT _verification.retention_policy_approved OR NOT _verification.zero_retention_confirmed OR NOT _verification.quota_verified OR _verification.hard_cost_limit_usd<>_ready.hard_cost_limit_usd OR _verification.max_usd_per_1000_chars<>_ready.max_usd_per_1000_chars OR NOT _ready.transport_enabled OR NOT _ready.key_scope_verified OR NOT _ready.voice_authorized OR NOT _ready.retention_policy_approved OR NOT _ready.zero_retention_confirmed OR NOT _ready.quota_verified OR COALESCE(_ready.hard_cost_limit_usd,0)<=0 OR COALESCE(_ready.max_usd_per_1000_chars,0)<=0 OR nullif(btrim(_ready.account_verification_receipt_ref),'') IS NULL THEN RAISE EXCEPTION 'PAIGE_VOICE_PROVIDER_PROOF_OWED' USING ERRCODE='55000'; END IF;
   END IF;
   RETURN jsonb_build_object('profile_id',_profile.profile_id,'paige_facing_name',_profile.paige_facing_name,'revision',_profile.revision,'provider',_profile.provider,'provider_voice_ref',_profile.provider_voice_ref,'approved',_profile.approved,'active',_profile.active,'speech_policy',_profile.speech_policy,'effective_at',_profile.effective_at);
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.reserve_paige_voice_cost_internal(_actor_user_id uuid,_tenant_id uuid,_profile_revision text,_request_ref uuid,_character_count integer)
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path TO 'public' AS $$
+DECLARE _ready public.paige_voice_readiness%ROWTYPE; _profile public.paige_voice_profiles%ROWTYPE; _verification public.paige_voice_provider_verifications%ROWTYPE; _existing public.paige_voice_cost_reservations%ROWTYPE; _used numeric; _reserve numeric; _id uuid;
+BEGIN
+  IF auth.role()<>'service_role' THEN RAISE EXCEPTION 'PAIGE_VOICE_COST_FORBIDDEN' USING ERRCODE='42501'; END IF;
+  IF _character_count<=0 OR nullif(btrim(_profile_revision),'') IS NULL THEN RAISE EXCEPTION 'PAIGE_VOICE_COST_INVALID' USING ERRCODE='22023'; END IF;
+  SELECT * INTO _ready FROM public.paige_voice_readiness WHERE singleton=true FOR UPDATE;
+  SELECT * INTO _profile FROM public.paige_voice_profiles WHERE slot='active' AND revision=_profile_revision AND provider='elevenlabs' AND approved AND active;
+  SELECT * INTO _verification FROM public.paige_voice_provider_verifications WHERE id=_ready.provider_verification_id AND id=_profile.provider_verification_id AND provider='elevenlabs' AND provider_voice_ref=_profile.provider_voice_ref AND evidence_ref=_ready.account_verification_receipt_ref;
+  IF _profile.slot IS NULL OR _verification.id IS NULL OR NOT _ready.transport_enabled OR NOT _ready.key_scope_verified OR NOT _ready.voice_authorized OR NOT _ready.retention_policy_approved OR NOT _ready.zero_retention_confirmed OR NOT _ready.quota_verified OR NOT _verification.key_scope_verified OR NOT _verification.voice_authorized OR NOT _verification.retention_policy_approved OR NOT _verification.zero_retention_confirmed OR NOT _verification.quota_verified OR _verification.hard_cost_limit_usd<>_ready.hard_cost_limit_usd OR _verification.max_usd_per_1000_chars<>_ready.max_usd_per_1000_chars THEN RAISE EXCEPTION 'PAIGE_VOICE_PROVIDER_PROOF_OWED' USING ERRCODE='55000'; END IF;
+  SELECT * INTO _existing FROM public.paige_voice_cost_reservations WHERE request_ref=_request_ref;
+  IF _existing.id IS NOT NULL THEN
+    IF _existing.actor_user_id<>_actor_user_id OR _existing.tenant_id IS DISTINCT FROM _tenant_id OR _existing.profile_revision<>_profile_revision OR _existing.character_count<>_character_count OR _existing.state<>'reserved' THEN RAISE EXCEPTION 'PAIGE_VOICE_COST_IDEMPOTENCY_MISMATCH' USING ERRCODE='23505'; END IF;
+    RETURN jsonb_build_object('reservation_id',_existing.id,'reserved_usd',_existing.reserved_usd);
+  END IF;
+  _reserve:=(_character_count::numeric/1000)*_ready.max_usd_per_1000_chars;
+  SELECT COALESCE(sum(reserved_usd),0) INTO _used FROM public.paige_voice_cost_reservations WHERE state IN ('reserved','committed') AND created_at>=date_trunc('month',now());
+  IF _used+_reserve>_ready.hard_cost_limit_usd THEN RAISE EXCEPTION 'PAIGE_VOICE_HARD_COST_LIMIT' USING ERRCODE='54000'; END IF;
+  INSERT INTO public.paige_voice_cost_reservations(request_ref,tenant_id,actor_user_id,profile_revision,character_count,reserved_usd,state) VALUES(_request_ref,_tenant_id,_actor_user_id,_profile_revision,_character_count,_reserve,'reserved') ON CONFLICT(request_ref) DO NOTHING RETURNING id INTO _id;
+  IF _id IS NULL THEN SELECT id INTO _id FROM public.paige_voice_cost_reservations WHERE request_ref=_request_ref AND actor_user_id=_actor_user_id AND profile_revision=_profile_revision AND character_count=_character_count; END IF;
+  IF _id IS NULL THEN RAISE EXCEPTION 'PAIGE_VOICE_COST_IDEMPOTENCY_MISMATCH' USING ERRCODE='23505'; END IF;
+  RETURN jsonb_build_object('reservation_id',_id,'reserved_usd',_reserve);
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.settle_paige_voice_cost_internal(_reservation_id uuid,_actor_user_id uuid,_outcome text)
+RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path TO 'public' AS $$
+BEGIN
+  IF auth.role()<>'service_role' THEN RAISE EXCEPTION 'PAIGE_VOICE_COST_FORBIDDEN' USING ERRCODE='42501'; END IF;
+  IF _outcome NOT IN ('committed','released') THEN RAISE EXCEPTION 'PAIGE_VOICE_COST_INVALID_OUTCOME' USING ERRCODE='22023'; END IF;
+  UPDATE public.paige_voice_cost_reservations SET state=_outcome,settled_at=now() WHERE id=_reservation_id AND actor_user_id=_actor_user_id AND state='reserved';
+  IF NOT FOUND AND NOT EXISTS(SELECT 1 FROM public.paige_voice_cost_reservations WHERE id=_reservation_id AND actor_user_id=_actor_user_id AND state=_outcome) THEN RAISE EXCEPTION 'PAIGE_VOICE_COST_RESERVATION_NOT_FOUND' USING ERRCODE='42501'; END IF;
 END; $$;
 
 CREATE OR REPLACE FUNCTION public.paige_live_session_start_internal(_actor_user_id uuid,_thread_id uuid,_context_epoch text,_entry_mode text)
@@ -175,7 +225,7 @@ BEGIN
   IF _thread.id IS NULL OR _thread.tenant_id IS NULL THEN RAISE EXCEPTION 'PAIGE_LIVE_THREAD_SCOPE_MISMATCH' USING ERRCODE='42501'; END IF;
   SELECT * INTO _ready FROM public.paige_voice_readiness WHERE singleton=true;
   BEGIN _profile:=public.resolve_paige_voice_profile_internal(now()); EXCEPTION WHEN OTHERS THEN _profile:=NULL; END;
-  _availability:=CASE WHEN _ready.transport_enabled AND _ready.key_scope_verified AND _ready.voice_authorized AND _ready.retention_policy_approved AND _ready.zero_retention_confirmed AND _ready.quota_verified AND COALESCE(_ready.hard_cost_limit_usd,0)>0 AND _profile IS NOT NULL THEN 'PARTIAL' ELSE COALESCE(_ready.availability,'PROOF OWED') END;
+  _availability:=CASE WHEN _ready.transport_enabled AND _ready.key_scope_verified AND _ready.voice_authorized AND _ready.retention_policy_approved AND _ready.zero_retention_confirmed AND _ready.quota_verified AND COALESCE(_ready.hard_cost_limit_usd,0)>0 AND COALESCE(_ready.max_usd_per_1000_chars,0)>0 AND _profile IS NOT NULL THEN 'PARTIAL' ELSE COALESCE(_ready.availability,'PROOF OWED') END;
   _code:=CASE WHEN _profile IS NULL THEN 'voice_profile_unavailable' WHEN NOT COALESCE(_ready.retention_policy_approved,false) OR NOT COALESCE(_ready.zero_retention_confirmed,false) THEN 'privacy_not_approved' WHEN COALESCE(_ready.hard_cost_limit_usd,0)<=0 THEN 'cost_limit_not_approved' ELSE 'provider_unavailable' END;
   _explanation:=CASE WHEN _code='privacy_not_approved' THEN 'Live audio stays off until the account retention policy is explicitly approved. Nothing was recorded or sent.' WHEN _code='cost_limit_not_approved' THEN 'Live audio stays off until a Paige hard cost limit is approved. Nothing was recorded or sent.' WHEN _code='voice_profile_unavailable' THEN 'Paige does not have an approved voice profile available. Nothing was recorded or sent.' ELSE 'Live audio setup still needs account and voice authorization proof. You can continue in this same Paige conversation.' END;
   INSERT INTO public.paige_live_sessions(tenant_id,actor_user_id,thread_id,context_epoch,entry_mode,state,availability,failure_code,profile_id,profile_revision,profile_provider,profile_provider_voice_ref)
@@ -211,14 +261,18 @@ BEGIN
 END; $$;
 
 REVOKE ALL ON FUNCTION public.set_paige_voice_profile_internal(text,text,text,text,text,text,boolean,jsonb,timestamptz,uuid,uuid,timestamptz,text) FROM PUBLIC,anon,authenticated;
-REVOKE ALL ON FUNCTION public.set_paige_voice_readiness_internal(boolean,text,text,text,boolean,boolean,boolean,boolean,boolean,numeric,uuid,text,timestamptz,uuid) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.set_paige_voice_readiness_internal(boolean,text,text,text,boolean,boolean,boolean,boolean,boolean,numeric,numeric,uuid,text,timestamptz,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.resolve_paige_voice_profile_internal(timestamptz) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.paige_live_session_start_internal(uuid,uuid,text,text) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.paige_live_session_transition_internal(uuid,uuid,uuid,text,uuid,text) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.paige_live_session_end_stale_internal(uuid,uuid) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.reserve_paige_voice_cost_internal(uuid,uuid,text,uuid,integer) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.settle_paige_voice_cost_internal(uuid,uuid,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.set_paige_voice_profile_internal(text,text,text,text,text,text,boolean,jsonb,timestamptz,uuid,uuid,timestamptz,text) TO service_role;
-GRANT EXECUTE ON FUNCTION public.set_paige_voice_readiness_internal(boolean,text,text,text,boolean,boolean,boolean,boolean,boolean,numeric,uuid,text,timestamptz,uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.set_paige_voice_readiness_internal(boolean,text,text,text,boolean,boolean,boolean,boolean,boolean,numeric,numeric,uuid,text,timestamptz,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.resolve_paige_voice_profile_internal(timestamptz) TO service_role;
 GRANT EXECUTE ON FUNCTION public.paige_live_session_start_internal(uuid,uuid,text,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.paige_live_session_transition_internal(uuid,uuid,uuid,text,uuid,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.paige_live_session_end_stale_internal(uuid,uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.reserve_paige_voice_cost_internal(uuid,uuid,text,uuid,integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.settle_paige_voice_cost_internal(uuid,uuid,text) TO service_role;

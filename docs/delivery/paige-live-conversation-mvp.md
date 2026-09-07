@@ -2,7 +2,7 @@
 
 **Workstream:** dedicated Paige Live Conversation, separate from Skills and Intentful Interview
 
-**Grounded base:** `origin/main` at `3f75ad58822d5e071556cb6d37c4c201612c929f`
+**Grounded base:** `origin/main` at `6e93b1106d4ecd5593deaafd2a7c2ca269ea3fc5`
 
 **Product status:** Paige-owned UI and control plane implemented; provider-backed realtime audio
 remains `PROOF OWED`; authenticated owner production proof remains `UNVERIFIED` until deployment.
@@ -44,6 +44,13 @@ Brain, Mind, or Memory facts.
 - Profile, readiness, and independent provider-verification records use dedicated service-only
   relations; browser roles have no table privileges or RLS policy. The platform-owner activation
   endpoint consumes one matching fresh canonical verification record and returns no provider identity.
+- Profile resolution and every cost reservation re-read the canonical verification flags. Revoking
+  key scope, exact voice authorization, privacy/ZRM approval, quota, or either cost value fails closed
+  even if a previously written readiness snapshot still says enabled.
+- Provider TTS is preceded by an atomic, service-only calendar-month UTC cost reservation under the
+  approved hard account ceiling and conservative per-1,000-character price ceiling. Cache hits do not
+  reserve spend; provider failures release it; success commits it. A settlement fault leaves the
+  reservation counted and withholds audio, deliberately over-counting rather than exceeding the cap.
 - Studio narration's former request-selected provider route now fails closed as `UNAVAILABLE` until
   it is attached to this same profile/readiness resolver.
 
@@ -62,7 +69,8 @@ provider-side action. An authorized platform operator must independently verify 
 3. exact approved provider voice availability and authorization, never a display name;
 4. the account/session retention posture; Zero Retention Mode must be confirmed as applied, and a
    requested-but-not-applied warning fails closed;
-5. quota plus a Paige hard cost ceiling; and
+5. quota plus both a Paige calendar-month hard cost ceiling and approved maximum price per 1,000
+   characters; and
 6. whether profile request tuning or provider-dashboard tuning is authoritative.
 
 No provider-backed audio claim may advance until a fresh provider verification receipt supports

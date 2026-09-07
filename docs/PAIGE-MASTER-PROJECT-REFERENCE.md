@@ -1567,7 +1567,10 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
   only through the approved server-side Paige Voice Profile. No hosted provider agent owns reasoning,
   context, authority, memory, tools, records, or actions. Realtime transport remains disabled until
   account scopes, voice authorization, retention/ZRM application, quota, concurrency, and Paige's
-  hard cost limit are independently verified. No provider or voice reference appears in customer UI.
+  calendar-month hard cost limit plus conservative per-character price ceiling are independently
+  verified. The service-only control plane rechecks canonical proof and atomically reserves uncached
+  TTS cost before any provider call; revocation or an exceeded cap fails closed. No provider or voice
+  reference appears in customer UI.
 - ✅ **Supabase** — Postgres + RLS + edge functions + auth. Prod ref `xygzykjyynhzqytbqnzu`. 231+ edge functions. 688+ migrations. RLS helpers: `is_platform_owner()` (operator scope), `current_user_tenant_id()` (tenant scope).
 - ✅ **Vercel** — deploy target. `vercel.json` at repo root.
 - ✅ **LLM providers via `_shared/model-router.ts`** — text tier: Anthropic + Featherless. Capability tier: OpenAI + Gemini + Groq + Ideogram + Replicate + Meshy + ElevenLabs.

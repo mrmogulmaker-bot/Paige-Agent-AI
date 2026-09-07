@@ -143,7 +143,9 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   useEffect(() => {
     if (!open || !portalDocument || !stageRef.current) return;
     const stageElement = stageRef.current;
-    const siblings = Array.from(portalDocument.body.children).filter((node): node is HTMLElement => node instanceof HTMLElement && node !== stageElement);
+    // Realm-neutral: an existing chat pop-out's elements are not instanceof the opener realm's
+    // HTMLElement constructor even though they are real elements in portalDocument.
+    const siblings = Array.from(portalDocument.body.children).filter((node) => node.nodeType === 1 && node !== stageElement) as HTMLElement[];
     const previous = siblings.map((node) => ({ node, inert: node.hasAttribute("inert"), ariaHidden: node.getAttribute("aria-hidden") }));
     for (const { node } of previous) { node.setAttribute("inert", ""); node.setAttribute("aria-hidden", "true"); }
     return () => {

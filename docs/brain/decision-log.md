@@ -5,8 +5,10 @@
   preserves the platform page, supports minimize/focus return and one active real card, and reuses
   chat confirmation fingerprints for consequential work. The service-owned session/profile control
   plane is fail closed; provider-backed realtime audio remains `PROOF OWED` until account scope,
-  voice, retention/ZRM, quota, concurrency, and hard-cost evidence exists. The historical literal
-  and request-level Paige voice selection paths are superseded.
+  voice, retention/ZRM, quota, concurrency, and hard-cost evidence exists. Canonical proof is re-read
+  after activation, and every uncached TTS call must atomically reserve against the approved monthly
+  hard ceiling before provider contact. The historical literal and request-level Paige voice
+  selection paths are superseded.
 
 - **OWNER-LOCKED — Paige is modality-neutral (2026-09-06).** Text chat, Live Conversation, future
   phone/SIP, Secure Browser interactions, contextual handoffs, and platform cards are interfaces to
