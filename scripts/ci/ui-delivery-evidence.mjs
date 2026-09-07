@@ -142,7 +142,7 @@ function fieldsFrom(text) {
 function isEvidenceValue(value) {
   const match = /^(PASS|UNVERIFIED|NOT_APPLICABLE):\s*(\S.+)$/i.exec(value ?? "");
   if (!match) return false;
-  return match[1].toUpperCase() === "PASS" ? !hasUnresolvedToken(match[2]) : !hasPlaceholder(match[2]);
+  return match[1].toUpperCase() === "PASS" ? !hasUnresolvedToken(match[2]) : !isUnresolvedValue(match[2]);
 }
 
 function normalizeSentinel(value) {

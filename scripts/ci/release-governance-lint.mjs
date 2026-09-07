@@ -237,9 +237,15 @@ export function validateReleaseRecord(record) {
   }
   if (record.classification === "internal_only" && (customer !== null || record.whats_new !== null))
     findings.push("internal_only records must not carry a customer release identity or What's New note");
-  const scopedBuildIds = new Set((record.internal_builds || []).filter((build) => build?.customer_release_scope === "referenced").map((build) => build.deployment_id));
+  const referencedBuilds = (record.internal_builds || []).filter((build) => build?.customer_release_scope === "referenced");
+  const scopedBuildIds = new Set(referencedBuilds.map((build) => build.deployment_id));
   if (customer === null && scopedBuildIds.size > 0) findings.push("records without a customer identity must mark every internal build as supporting");
   if (customer !== null && scopedBuildIds.size === 0) findings.push("customer release identity requires at least one internal build marked customer_release_scope referenced");
+  if (customer !== null) {
+    const hasOwedProof = referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("PROOF_OWED"));
+    if (hasOwedProof && !record.whats_new?.status?.includes("PROOF OWED")) findings.push("Referenced PROOF_OWED delivery state must be disclosed as PROOF OWED in the customer What's New status");
+    if (record.whats_new?.status?.includes("PROOF OWED") && !hasOwedProof) findings.push("Customer PROOF OWED status requires an exact referenced build boundary");
+  }
   if (["minor_candidate", "major_candidate"].includes(record.classification) && customer === null)
     findings.push(`${record.classification} requires a customer release identity`);
   if ((record.record_state === "APPROVED" || customerPublicationRecord) && customer !== null) {
@@ -258,15 +264,13 @@ export function validateReleaseRecord(record) {
     if (record.limitations?.some(hasPlaceholder)) findings.push("PUBLISHED limitations must contain resolved customer facts");
     for (const field of ["position", "reference"])
       if (hasUnresolvedToken(record.rollback_recovery?.[field])) findings.push(`PUBLISHED rollback_recovery.${field} must be resolved`);
-    const referencedBuilds = (record.internal_builds || []).filter((build) => build?.customer_release_scope === "referenced");
+
     if (referencedBuilds.some((build) => build?.evidence?.some(hasUnresolvedToken))) findings.push("PUBLISHED referenced builds must contain resolved build evidence");
     if (referencedBuilds.length === 0 || referencedBuilds.some((build) => !["production", "staged"].includes(build?.release_channel) || build.deployment_id === "NOT_APPLICABLE"))
       findings.push("PUBLISHED technical references must resolve only to deployed production or staged builds");
     if (referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("FAILED")))
       findings.push("PUBLISHED technical references must not include FAILED migration or edge delivery state");
-    const hasOwedProof = referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("PROOF_OWED"));
-    if (hasOwedProof && !record.whats_new?.status?.includes("PROOF OWED")) findings.push("PUBLISHED referenced PROOF_OWED delivery state must be disclosed as PROOF OWED in What's New status");
-    if (record.whats_new?.status?.includes("PROOF OWED") && !hasOwedProof) findings.push("PUBLISHED PROOF OWED status requires an exact referenced build boundary");
+
     for (const field of ["customer_outcome", "what_changed", "who_can_use_it", "owner_action", "known_limitations", "safe_next_step", "paige_readable_summary"])
       if (hasPlaceholder(record.whats_new?.[field])) findings.push(`PUBLISHED whats_new.${field} must contain resolved customer copy`);
     for (const field of ["customer_outcome", "what_changed", "who_can_use_it", "safe_next_step", "paige_readable_summary"])
@@ -405,6 +409,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["accepts repeated NOT_APPLICABLE for non-deployed history", { ...internal, internal_builds: [{ ...build, commit_sha: "b".repeat(40), deployment_id: "NOT_APPLICABLE", environment: "development", release_channel: "development", customer_release_scope: "supporting" }, { ...build, commit_sha: "c".repeat(40), deployment_id: "NOT_APPLICABLE", environment: "development", release_channel: "development", customer_release_scope: "supporting" }] }, false],
     ["rejects published failed migration state", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, migration_status: { state: "FAILED", evidence: ["migration 202609060001 failed"], identifiers: [], proof_owed: null } }] }, true],
     ["rejects undisclosed referenced proof owed", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], identifiers: [], proof_owed: { boundary: "Authenticated edge interaction proof is pending", excluded_from_live_claim: "Edge-backed authenticated interaction" } } }], whats_new: { ...valid.whats_new, status: ["LIVE"] } }, true],
+    ["rejects undisclosed referenced proof owed in an owner-decision candidate", { ...valid, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], identifiers: [], proof_owed: { boundary: "Authenticated edge interaction proof is pending", excluded_from_live_claim: "Edge-backed authenticated interaction" } } }], whats_new: { ...valid.whats_new, status: ["LIVE"] } }, true],
     ["accepts exact proof-owed boundary excluded from LIVE", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], identifiers: [], proof_owed: { boundary: "Authenticated edge interaction proof is pending", excluded_from_live_claim: "Edge-backed authenticated interaction" } } }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"], proof_owed: { visibility: "customer_and_internal", source: "referenced_builds.migration_status_or_edge_status.proof_owed" } } }, false],
     ["rejects placeholder proof-owed boundary", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], identifiers: [], proof_owed: { boundary: "TODO: write exact boundary", excluded_from_live_claim: "TBD - fill later" } } }], whats_new: { ...valid.whats_new, status: ["LIVE", "PROOF OWED"], known_limitations: "None" } }, true],
     ["rejects correction without history", { ...valid, record_state: "CORRECTED" }, true],

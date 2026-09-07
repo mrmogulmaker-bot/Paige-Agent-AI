@@ -125,6 +125,12 @@ test("refuses missing or placeholder release-governance evidence", () => {
     assert.equal(recovery.ok, false, unresolved);
     assert.match(recovery.errors.join("\n"), /RELEASE_RECOVERY/);
   }
+
+  for (const [field, status] of [["AUTHENTICATED_RUNTIME", "UNVERIFIED"], ["RENDERED_EVIDENCE", "UNVERIFIED"], ["KEYBOARD_FOCUS", "NOT_APPLICABLE"]]) {
+    const absentReason = validateEvidenceText(coreEvidence.replace(new RegExp(`^${field}:.*$`, "m"), `${field}: ${status}: none`), { required: true, solo: false });
+    assert.equal(absentReason.ok, false, field);
+    assert.match(absentReason.errors.join("\n"), new RegExp(field));
+  }
 });
 
 test("binds customer release identity to its classification", () => {
