@@ -102,10 +102,16 @@ async function main() {
   console.log("\n[6] internal service preserves MCP channel and re-authorizes its actor");
   {
     const calls: string[] = [];
-    await refusal("browser_authority_unresolved", {
+    await refusal("browser_human_actor_required", {
       bearerToken: SERVICE, serviceKey: SERVICE, tenantHint: "tenant-a",
     }, {}, calls);
     assert(calls.length === 0, "internal service without actor performs zero tenant reads or writes");
+
+    const contactDerived = await resolveSecureBrowserAuthority(
+      { bearerToken: SERVICE, serviceKey: SERVICE, contactId: "a", invokerUserId: "owner" },
+      deps({ contactTenants: { a: "tenant-a" }, admin: true }, []),
+    );
+    assert(contactDerived.tenantId === "tenant-a" && contactDerived.invocationKind === "mcp", "internal human actor may derive tenant from a same-tenant contact");
 
     const adminResult = await resolveSecureBrowserAuthority(
       { bearerToken: SERVICE, serviceKey: SERVICE, tenantHint: "tenant-a", invokerUserId: "owner" },

@@ -51,7 +51,9 @@ export async function resolveSecureBrowserAuthority(
     actorUserId = input.invokerUserId ?? null;
     activeTenantId = input.tenantHint ?? null;
     invocationKind = "mcp";
-    if (!actorUserId || !activeTenantId) throw new Error("browser_authority_unresolved");
+    // Browser authority must still resolve to a human owner/admin or authorized representative.
+    // An actorless platform key is authenticated infrastructure, not delegated browser authority.
+    if (!actorUserId) throw new Error("browser_human_actor_required");
   } else {
     actorUserId = await deps.authenticate(presented);
     if (!actorUserId) throw new Error("browser_session_invalid");
@@ -63,16 +65,24 @@ export async function resolveSecureBrowserAuthority(
   // Deliberately after authentication: invalid callers cannot probe contact existence.
   const contactTenantId = input.contactId ? await deps.resolveContactTenant(input.contactId) : null;
   if (input.contactId && !contactTenantId) throw new Error("browser_contact_unresolved");
-  if (contactTenantId && contactTenantId !== activeTenantId) {
-    throw new Error(internalServiceCall ? "browser_tenant_mismatch" : "browser_contact_outside_active_workspace");
+  if (internalServiceCall) {
+    if (contactTenantId && activeTenantId && contactTenantId !== activeTenantId) {
+      throw new Error("browser_tenant_mismatch");
+    }
+    activeTenantId = contactTenantId ?? activeTenantId;
+    if (!activeTenantId) throw new Error("browser_authority_unresolved");
+  } else if (contactTenantId && contactTenantId !== activeTenantId) {
+    throw new Error("browser_contact_outside_active_workspace");
   }
 
+  const resolvedTenantId = activeTenantId;
+  if (!resolvedTenantId) throw new Error("browser_authority_unresolved");
   const [directAdmin, agencyManager] = await Promise.all([
-    deps.isTenantAdmin(actorUserId, activeTenantId),
-    deps.canAgencyManage(actorUserId, activeTenantId),
+    deps.isTenantAdmin(actorUserId, resolvedTenantId),
+    deps.canAgencyManage(actorUserId, resolvedTenantId),
   ]);
   if (!directAdmin && !agencyManager) throw new Error("browser_actor_not_authorized");
   const actorRole: SecureBrowserActorRole = directAdmin ? "admin" : "agency";
   if (!internalServiceCall) invocationKind = actorRole;
-  return { tenantId: activeTenantId, actorUserId, actorRole, invocationKind };
+  return { tenantId: resolvedTenantId, actorUserId, actorRole, invocationKind };
 }
