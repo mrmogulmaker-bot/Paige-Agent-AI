@@ -51,6 +51,28 @@ for (const theme of popoutOnly ? [] : ["light", "dark"]) {
   }
 }
 
+if (!popoutOnly) {
+  // 1536×770 at 200% browser zoom exposes roughly a 768×385 CSS-pixel viewport. This bounded
+  // reflow probe verifies the dialog retains its controls and a single internal main scroll owner.
+  const zoomContext = await browser.newContext({ viewport: { width: 768, height: 385 }, reducedMotion: "reduce" });
+  const zoomPage = await zoomContext.newPage();
+  await zoomPage.goto("http://127.0.0.1:5227/?theme=light&card=choice", { waitUntil: "networkidle" });
+  await zoomPage.getByRole("button", { name: "Talk live with Paige" }).click();
+  await zoomPage.getByText("PROOF OWED", { exact: true }).waitFor();
+  const zoomGeometry = await zoomPage.evaluate(() => {
+    const stage = document.querySelector(".plc-stage");
+    const controls = document.querySelector(".plc-controls");
+    const main = document.querySelector(".plc-stage__main");
+    if (!(stage instanceof HTMLElement) || !(controls instanceof HTMLElement) || !(main instanceof HTMLElement)) return null;
+    const rect = controls.getBoundingClientRect();
+    return { overflowX: stage.scrollWidth > stage.clientWidth, controlsClipped: rect.left < 0 || rect.right > innerWidth || rect.bottom > innerHeight, mainOverflowY: getComputedStyle(main).overflowY };
+  });
+  if (!zoomGeometry || zoomGeometry.overflowX || zoomGeometry.controlsClipped) throw new Error(`200% reflow failure: ${JSON.stringify(zoomGeometry)}`);
+  await zoomPage.screenshot({ path: path.join(output, "1536x770-at-200-percent-reflow.png") });
+  results.push({ zoom: "200% equivalent", zoomGeometry });
+  await zoomContext.close();
+}
+
 const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
 const page = await context.newPage();
 await page.goto("http://127.0.0.1:5227/?theme=dark&card=action", { waitUntil: "networkidle" });
@@ -70,4 +92,4 @@ results.push({ popout: true, themePreserved: true, underlyingComposerPreserved: 
 await context.close();
 await browser.close();
 await fs.writeFile(path.join(output, "render-results.json"), `${JSON.stringify(results, null, 2)}\n`);
-console.log(`Paige Live Conversation rendered evidence: ${results.length - 1} viewport/theme pairs + popout; PASS`);
+console.log(`Paige Live Conversation rendered evidence: 8 viewport/theme pairs + 200% reflow + popout; PASS`);
