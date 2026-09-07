@@ -202,8 +202,9 @@ function isUnresolvedRestatement(value) {
   const hasConnectorReason = substantiveTerms(connectorClause).length >= 2 && (causeCondition.test(connectorClause) || affectedScope.test(connectorClause));
   const hasIndependentCause = raw.split(/[:;,.!?—–]+/).some((clause) => {
     const normalizedClause = normalizeSentinel(clause);
-    const inabilityTarget = /\b(?:cannot|could not|can not|unable to)\s+(?:verify|test|access|reach|authenticate(?: to)?|connect(?: to)?)\s+(.+)$/i.exec(normalizedClause)?.[1] ?? "";
-    const hasScopedInability = inabilityCondition.test(normalizedClause) && (affectedScope.test(normalizedClause) || substantiveTerms(inabilityTarget).length >= 1);
+    const inabilityTarget = /\b(?:cannot|could not|can not|unable to)\s+(?:verify|test|access|reach|authenticate(?: to)?|connect(?: to)?)\s+(.+)$/i.exec(clause)?.[1]?.trim() ?? "";
+    const hasConcreteTarget = affectedScope.test(inabilityTarget) || /\b[A-Z][A-Za-z0-9._-]*\b/.test(inabilityTarget);
+    const hasScopedInability = inabilityCondition.test(normalizedClause) && hasConcreteTarget;
     return normalizedClause && !pair.test(normalizedClause) && (causeCondition.test(normalizedClause) || hasScopedInability) && substantiveTerms(normalizedClause).length >= 2;
   });
   return !(hasReference || hasConnectorReason || hasIndependentCause);
