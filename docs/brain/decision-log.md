@@ -1,5 +1,15 @@
 # Decision Log — chronological one-liners
 
+- **Secure Browser — MVP plan + builder handoff authored (2026-09-07, post-#1030-merge).** After #1030
+  merged (Phase-0 audit + owner ruling + product correction + `browserbase`→`PROPOSED`), wrote the two
+  owner-sequenced post-merge deliverables: `docs/delivery/paige-secure-browser-mvp-plan.md` (Paige-OWNED
+  framing; layered architecture Secure-Browser-UI+policy → Paige control plane → replaceable isolated
+  worker → website; Browserbase = replaceable bootstrap worker behind a provider-neutral internal
+  contract; Connected Accounts under Vault; downloads → Vault quarantine; phases 0–4; extends the
+  five-slice plan §18) and `docs/handoff/paige-secure-browser-build-handoff.md` (the EXACT builder spec —
+  leads with the owner-complete in-chat UI flow, then the backend contract; §00 visual design = CD; §70.1
+  owner-usability gate; §10/§68 governance; the security prerequisites from audit §4.3). No install/
+  account/login/crawl. Phase-0 exit remains the owner's Browserbase-worker provider review.
 - **Capability System — document EXPORT MVP: a real downloadable file (pdf/docx/pptx/md) (2026-09-06, Task #21, owner-authorized)** —
   the owner's doc-creation task. AUDIT (grounded, not from labels): today Paige's only "document" is
   block-JSON in `marketing_content` rendered on canvas (download = the browser's own Print→PDF); NO valid

@@ -1942,7 +1942,10 @@ progressively run her own Chromium/Playwright fleet — no provider API/MCP/bran
 leak into customer UI or core domain contracts (customer feature = "Paige Secure Browser"/"Secure Browser").
 Downloads/captured files → **Vault quarantine**. The `browserbase` registry entry is now `PROPOSED` (the
 worker runtime, replaceable) — updated in the audit PR. A dedicated **build handoff** (owner-complete in-chat
-UI flow FIRST, then backend) follows the MVP plan.
+UI flow FIRST, then backend) follows the MVP plan. **Both now written (2026-09-07):**
+`docs/delivery/paige-secure-browser-mvp-plan.md` (the phased MVP) and
+`docs/handoff/paige-secure-browser-build-handoff.md` (the exact builder spec). Still no install —
+Phase 0 exit is the owner's Browserbase-worker provider review.
 
 ### Solo n8n connection clarity — historical UI slice, 2026-09-03
 
