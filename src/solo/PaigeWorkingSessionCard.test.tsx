@@ -123,11 +123,10 @@ describe("PaigeWorkingSessionCard", () => {
   });
 
 
-  it("requires explicit resume when New chat has no selected interview thread", async () => {
+  it("selects an active interview thread without rewriting its workflow state", async () => {
     const active = session();
     const cardApi = api({ activeThreadId: null });
     mocked.get.mockResolvedValue({ eligibleForFirstUse: false, session: active });
-    mocked.update.mockResolvedValue({ ...active, revision: 2 });
     const { host, root } = await renderCard(cardApi, true);
     expect(host.textContent).toContain("ready to continue");
     expect(host.textContent).not.toContain("What name should Paige use");
@@ -136,7 +135,36 @@ describe("PaigeWorkingSessionCard", () => {
       await Promise.resolve();
     });
     expect(cardApi.onSelect).toHaveBeenCalledWith("thread-1");
-    expect(mocked.update).toHaveBeenCalledWith(active, "resume", "question_0");
+    expect(mocked.update).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("resumes a paused interview only after the owner chooses Resume", async () => {
+    const paused = session({ status: "paused" });
+    mocked.get.mockResolvedValue({ eligibleForFirstUse: false, session: paused });
+    mocked.update.mockResolvedValue({ ...paused, status: "active", revision: 2 });
+    const { host, root } = await renderCard(api({ activeThreadId: "thread-1" }), true);
+    await act(async () => {
+      (Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Resume")) as HTMLButtonElement).click();
+      await Promise.resolve();
+    });
+    expect(mocked.update).toHaveBeenCalledWith(paused, "resume", "question_0");
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("selects a recap thread without demoting the completed interview flow", async () => {
+    const recap = session({ status: "recap", stepKey: "recap" });
+    const cardApi = api({ activeThreadId: "thread-2" });
+    mocked.get.mockResolvedValue({ eligibleForFirstUse: false, session: recap });
+    const { host, root } = await renderCard(cardApi, true);
+    await act(async () => {
+      (Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Resume")) as HTMLButtonElement).click();
+      await Promise.resolve();
+    });
+    expect(cardApi.onSelect).toHaveBeenCalledWith("thread-1");
+    expect(mocked.update).not.toHaveBeenCalled();
     await act(async () => root.unmount());
     host.remove();
   });
@@ -161,6 +189,7 @@ describe("PaigeWorkingSessionCard", () => {
     expect(mocked.update).toHaveBeenCalledTimes(1);
     expect(mocked.update).toHaveBeenCalledWith(active, "answer", "recap", expect.objectContaining({ fieldKey: "idealCustomer", value: "Founder-led agencies" }));
     expect(mocked.update.mock.calls[0][3]).not.toHaveProperty("label");
+    expect(mocked.update.mock.calls[0][3]).not.toHaveProperty("id");
     await act(async () => root.unmount()); host.remove();
   });
 

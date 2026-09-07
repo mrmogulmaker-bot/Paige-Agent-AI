@@ -22,6 +22,10 @@ describe("Intentful Interview security contract", () => {
     expect(migration).toContain("count(distinct id) from unnest(p_selected_ids)");
     expect(migration).toContain("count(distinct f->>'fieldKey')");
     expect(migration).toContain("v_label:=case v_field");
+    expect(migration.match(/is distinct from p_expected_revision/g)).toHaveLength(2);
+    expect(migration).toContain("v_fact_id:=v_session.focus_path||':'||v_field");
+    expect(migration).not.toContain("p_fact->>'id'");
+    expect(migration).toContain("array['fieldKey','value']::text[]");
     expect(migration).toContain("p_event='answer' and p_step_key='recap'");
     expect(migration).toContain("(f-'value')");
     expect(migration).toContain("v_facts:='[]'::jsonb");
@@ -41,6 +45,7 @@ describe("Intentful Interview security contract", () => {
     expect(migration).toContain("public.business_mission_brief_versions");
     expect(migration).toContain("p_expected_source_revision integer");
     expect(migration).toContain("DISCUSSION_REVISION_CONFLICT");
+    expect(migration).toContain("v_current_revision is distinct from p_expected_source_revision");
     expect(migration).toContain("tenant_id=v_tenant for update;");
     expect(migration).toContain("m.lifecycle_state not in ('completed','stopped')");
     expect(migration).not.toContain("business_mission_briefs");

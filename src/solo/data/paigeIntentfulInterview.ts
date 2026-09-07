@@ -59,7 +59,6 @@ export const paigeIntentfulInterview = {
       p_focus_path: focusPath,
     }),
   update: (session: InterviewSession, event: "answer" | "pause" | "resume" | "recap" | "skip" | "end", stepKey: string | null, fact?: {
-    id: string;
     fieldKey: string;
     value: string;
   }) =>

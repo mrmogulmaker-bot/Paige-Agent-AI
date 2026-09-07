@@ -115,17 +115,17 @@ begin
     where s.id=p_session_id and s.tenant_id=v_tenant and s.owner_user_id=v_actor for update;
   if not found then raise exception 'INTERVIEW_NOT_FOUND' using errcode='P0002'; end if;
   perform 1 from public.paige_interview_assert_thread(v_session.thread_id);
-  if v_session.revision<>p_expected_revision then raise exception 'INTERVIEW_REVISION_CONFLICT' using errcode='40001'; end if;
+  if v_session.revision is distinct from p_expected_revision then raise exception 'INTERVIEW_REVISION_CONFLICT' using errcode='40001'; end if;
   if v_session.status in ('completed','skipped','ended') then raise exception 'INTERVIEW_ALREADY_FINISHED' using errcode='22023'; end if;
   v_facts:=v_session.proposed_facts; v_next_status:=v_session.status;
   if p_event='answer' then
     if v_session.status<>'active' or p_fact is null or jsonb_typeof(p_fact)<>'object' then raise exception 'INTERVIEW_ANSWER_INVALID' using errcode='22023'; end if;
-    v_fact_id:=nullif(btrim(p_fact->>'id'),''); v_field:=nullif(btrim(p_fact->>'fieldKey'),''); v_value:=nullif(btrim(p_fact->>'value'),'');
+    v_field:=nullif(btrim(p_fact->>'fieldKey'),''); v_value:=nullif(btrim(p_fact->>'value'),''); v_fact_id:=v_session.focus_path||':'||v_field;
     v_label:=case v_field when 'publicName' then 'Business name' when 'industry' then 'Industry' when 'idealCustomer' then 'Ideal customer' when 'offers' then 'Offers' when 'annualDirection' then 'Annual direction' when 'goals90Day' then '90-day goals' when 'successDefinition' then 'Success definition' when 'constraints' then 'Constraints' when 'deliveryModel' then 'Delivery model' when 'currentPriority' then 'Current priority' when 'operatingPreferences' then 'Operating preferences' when 'doNotAssume' then 'Do not assume' else 'Business context' end;
-    if v_fact_id is null or char_length(v_fact_id)>160 or v_field is null or not v_field=any(v_allowed_fields) or v_value is null or char_length(v_value)>800
+    if v_field is null or not v_field=any(v_allowed_fields) or v_value is null or char_length(v_value)>800
       or array_length(regexp_split_to_array(v_value,E'\r?\n'),1)>8
       then raise exception 'INTERVIEW_FACT_INVALID' using errcode='22023'; end if;
-    if exists(select 1 from jsonb_object_keys(p_fact) as item(key) where not key=any(array['id','fieldKey','value']::text[]))
+    if exists(select 1 from jsonb_object_keys(p_fact) as item(key) where not key=any(array['fieldKey','value']::text[]))
       or p_fact ?| array['tenantId','credential','secret','token','document','reasoning','transcript']
       or v_value ~* '(password|passcode|api[ _-]?key|access[ _-]?token|refresh[ _-]?token|authorization|bearer|private[ _-]?key|client[ _-]?secret|session[ _-]?(cookie|token))[[:space:]]*[:=]'
       or v_value ~ '-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|[A-Za-z0-9_-]{16,}[.][A-Za-z0-9_-]{16,}[.][A-Za-z0-9_-]{16,}'
@@ -171,7 +171,7 @@ begin
   if not found then raise exception 'INTERVIEW_NOT_FOUND' using errcode='P0002'; end if;
   perform 1 from public.paige_interview_assert_thread(v_session.thread_id);
   if v_session.status<>'recap' then raise exception 'INTERVIEW_RECAP_REQUIRED' using errcode='22023'; end if;
-  if v_session.revision<>p_expected_revision then raise exception 'INTERVIEW_REVISION_CONFLICT' using errcode='40001'; end if;
+  if v_session.revision is distinct from p_expected_revision then raise exception 'INTERVIEW_REVISION_CONFLICT' using errcode='40001'; end if;
   if coalesce(array_length(p_selected_ids,1),0)=0 then raise exception 'INTERVIEW_SELECT_FACTS' using errcode='22023'; end if;
   if coalesce(array_length(p_selected_ids,1),0)<>(select count(distinct id) from unnest(p_selected_ids) id)
     then raise exception 'INTERVIEW_SELECTION_INVALID' using errcode='22023'; end if;
@@ -282,7 +282,7 @@ begin
     and action_kind='owner.discussion_needed' and status in ('filed','assigned','blocked') for update;
   if not found then raise exception 'DISCUSSION_NOT_FOUND' using errcode='P0002'; end if;
   select revision into v_current_revision from public.business_missions where id=(v_action.payload->>'source_id')::uuid and tenant_id=v_tenant for update;
-  if v_current_revision is null or v_current_revision<>p_expected_source_revision then raise exception 'DISCUSSION_REVISION_CONFLICT' using errcode='40001'; end if;
+  if v_current_revision is null or v_current_revision is distinct from p_expected_source_revision then raise exception 'DISCUSSION_REVISION_CONFLICT' using errcode='40001'; end if;
   if p_response='later' then
     update public.paige_actions set due_at=clock_timestamp()+interval '7 days',decision_rationale='Owner chose Later.',updated_at=clock_timestamp() where id=v_action.id;
   elsif p_response='dont_ask_again' then

@@ -183,7 +183,7 @@ export function PaigeWorkingSessionCard({
         session,
         "answer",
         last ? "recap" : `question_${step + 1}`,
-        { id: `${session.focusPath}:${question.fieldKey}`, fieldKey: question.fieldKey, value: answer.trim() },
+        { fieldKey: question.fieldKey, value: answer.trim() },
       );
       if (acceptedEpoch.current !== epoch) return;
       setState((current) => ({ ...current, session: next }));
@@ -229,7 +229,7 @@ export function PaigeWorkingSessionCard({
   if (!session) return error && explicitOffer ? <div className="pws-card pws-error" role="alert">{error}</div> : null;
 
   if (session.status === "paused" || api.activeThreadId !== session.threadId) {
-    return <section className="pws-card"><div className="pws-heading"><CirclePause aria-hidden size={18} /><div><small>READY TO RESUME</small><h3>Your {pathConfig.label.toLowerCase()} interview is ready to continue.</h3></div></div><p>Your place is saved as workflow state in this account. It is not business truth or Memory.</p>{error && <p className="pws-error" role="alert">{error}</p>}<div className="pws-actions"><button type="button" className="pws-secondary" disabled={busy} onClick={() => void update("end")}>End session</button><button type="button" className="pws-primary" disabled={busy} onClick={() => { if (api.activeThreadId !== session.threadId) api.onSelect(session.threadId); void update("resume"); }}><Play aria-hidden size={14} />Resume</button></div></section>;
+    return <section className="pws-card"><div className="pws-heading"><CirclePause aria-hidden size={18} /><div><small>READY TO RESUME</small><h3>Your {pathConfig.label.toLowerCase()} interview is ready to continue.</h3></div></div><p>Your place is saved as workflow state in this account. It is not business truth or Memory.</p>{error && <p className="pws-error" role="alert">{error}</p>}<div className="pws-actions"><button type="button" className="pws-secondary" disabled={busy} onClick={() => void update("end")}>End session</button><button type="button" className="pws-primary" disabled={busy} onClick={() => { if (api.activeThreadId !== session.threadId) api.onSelect(session.threadId); if (session.status === "paused") void update("resume"); }}><Play aria-hidden size={14} />Resume</button></div></section>;
   }
 
   if (recapPending) {
