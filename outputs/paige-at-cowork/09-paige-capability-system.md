@@ -138,6 +138,24 @@ routing**; the missing artifact types (campaign_brief · HTML email_template · 
 as their own tracked sub-slices; regular-chat in-place refine. Each new type declares the artifact
 contract (§2).
 
+> **DOCUMENT EXPORT SHIPPED (Task #21, 2026-09-06):** the doc side of the "download/export action" is
+> now real. The binary renderer (`_shared/doc-render.ts`) + the router's persist/sign lane already
+> existed but were UNREACHED; a new `export-document` edge function (the §10 callable seam; a PRIVILEGED
+> service-role read fenced by an in-body tenant-manage check — owner/admin via `is_tenant_admin`, coach via
+> `has_tenant_role`, or a platform operator — authorizing BEFORE any kind/tenant-shape response, fail-closed
+> 404, NOT RLS-trusting; honest Rail `document_export` outcome) now turns a `document_generate` document into
+> a real downloadable file (md/docx/pptx/pdf) with a 30-day signed URL, and `document_generate` gained
+> an optional `export_format` so Paige exports conversationally. §18: an edge fn + a param on the
+> existing baseline tool, NOT a new inline tool (chat-tool-registry stays 94). Honest state (AGENTS.md
+> vocab): md PARTIAL (serializer headless-proven; authenticated end-to-end drive owed) · pdf/docx/pptx
+> UNVERIFIED (source-checked, each fail-closed to needs_config, not runtime-driven) · §32.c owner drive OWED. STILL OPEN: xlsx
+> (tabular, new lib); the artifact-card re-download button (Claude Design's, §00); **native Google
+> Docs/Sheets/Slides = UNAVAILABLE / provider-gated** (no Drive/Docs OAuth scope or client; needs an
+> Integration Capability Registry entry + a Google provider contract). Architecture note: a new
+> edge-native (non-n8n) capability can't be registered as a Spine `action` today (the executor
+> validation requires a `public.*` RPC or the n8n edge-proof shape), so export extends the baseline
+> tool rather than registering a Spine capability — see the decision log.
+
 > **RETIRED by owner decision (2026-09-06):** the earlier Slice-1 item "render the artifact card on
 > **all** chat surfaces" is REMOVED. There must be NO floating Paige chat inside the authenticated
 > platform; the only tenant-aware Paige experience is the dedicated authenticated Paige chat/workspace,
