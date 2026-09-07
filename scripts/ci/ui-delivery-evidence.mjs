@@ -140,8 +140,9 @@ function fieldsFrom(text) {
 }
 
 function isEvidenceValue(value) {
-  return /^(?:PASS|UNVERIFIED|NOT_APPLICABLE):\s*\S.+$/i.test(value ?? "")
-    && !hasPlaceholder(value);
+  const match = /^(PASS|UNVERIFIED|NOT_APPLICABLE):\s*(\S.+)$/i.exec(value ?? "");
+  if (!match) return false;
+  return match[1].toUpperCase() === "PASS" ? !hasUnresolvedToken(match[2]) : !hasPlaceholder(match[2]);
 }
 
 function normalizeSentinel(value) {
@@ -159,7 +160,7 @@ function isUnresolvedValue(value) {
 
 function hasUnresolvedToken(value) {
   const normalized = normalizeSentinel(value);
-  return hasPlaceholder(value) || /\b(?:pending|unknown|proof owed)\b/.test(normalized) || new Set(["none", "na", "n a", "not applicable"]).has(normalized);
+  return hasPlaceholder(value) || /\b(?:pending|unknown|proof owed|none|n a|not applicable)\b/.test(normalized) || normalized === "na";
 }
 
 function lacksDeploymentIdentity(value) {
@@ -168,7 +169,7 @@ function lacksDeploymentIdentity(value) {
 }
 
 function isPassWithEvidence(value) {
-  return /^PASS:\s*\S.+$/i.test(value ?? "") && !hasPlaceholder(value);
+  return /^PASS:\s*\S.+$/i.test(value ?? "") && !hasUnresolvedToken(String(value ?? "").replace(/^PASS:\s*/i, ""));
 }
 
 export function validateEvidenceText(text, classification) {
@@ -207,7 +208,7 @@ export function validateEvidenceText(text, classification) {
     const identifiers = applied?.[1]?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
     const exactPattern = field === "migrations" ? /^\d{14}_[A-Za-z0-9_-]+$/ : /^[A-Za-z0-9._-]+@v?[A-Za-z0-9._-]+$/;
     const detail = proofOwed?.[1]?.trim() ?? failed?.[1]?.trim();
-    if ((!allowedState && !applied) || (detail !== undefined && isUnresolvedValue(detail)) || (applied && (identifiers.length === 0 || identifiers.some((identifier) => !exactPattern.test(identifier) || hasPlaceholder(identifier))))) errors.push(`${field} must be NOT_APPLICABLE or a complete APPLIED(exact identifier), PROOF_OWED(boundary), or FAILED(reason) state.`);
+    if ((!allowedState && !applied) || (detail !== undefined && isUnresolvedValue(detail)) || (applied && (identifiers.length === 0 || identifiers.some((identifier) => !exactPattern.test(identifier) || hasUnresolvedToken(identifier))))) errors.push(`${field} must be NOT_APPLICABLE or a complete APPLIED(exact identifier), PROOF_OWED(boundary), or FAILED(reason) state.`);
   }
   if (releaseChannel === "development" && !["local", "development"].includes(buildEnvironment)) errors.push("Development RELEASE_CHANNEL requires local/development build environment.");
   if (releaseChannel === "preview" && buildEnvironment !== "preview") errors.push("Preview RELEASE_CHANNEL requires preview build environment.");

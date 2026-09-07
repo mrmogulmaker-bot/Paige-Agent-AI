@@ -31,7 +31,9 @@ const normalizeSentinel = (value) => String(value ?? "").trim().replace(/[^A-Za-
 const hasPlaceholder = (value) => /\b(?:todo|tbd|placeholder|replace me|pending|unknown)\b/.test(normalizeSentinel(value));
 const isNoValue = (value) => new Set(["none", "n a", "na", "not applicable"]).has(normalizeSentinel(value));
 const isUnresolvedValue = (value) => /\b(?:todo|tbd|placeholder|replace me)\b/.test(normalizeSentinel(value)) || new Set(["pending", "unknown", "none", "n a", "na", "not applicable", "proof owed"]).has(normalizeSentinel(value));
-const isUnresolvedDeploymentId = (value) => hasPlaceholder(value) || isNoValue(value) || /\bproof owed\b/.test(normalizeSentinel(value));
+const hasNoValueToken = (value) => /\b(?:none|n a|not applicable)\b/.test(normalizeSentinel(value)) || normalizeSentinel(value) === "na";
+const hasUnresolvedToken = (value) => hasPlaceholder(value) || hasNoValueToken(value) || /\bproof owed\b/.test(normalizeSentinel(value));
+const isUnresolvedDeploymentId = hasUnresolvedToken;
 const isNoLimitation = (value) => isNoValue(value) || /^no known limitations?$/.test(normalizeSentinel(value));
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "history", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "customer_release_scope", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
@@ -52,7 +54,7 @@ function requireEvidenceState(value, label, findings) {
   if (!CHECKS.has(value?.state) || !Array.isArray(value?.evidence) || value.evidence.length === 0)
     findings.push(`${label} must include PASS/FAIL/UNVERIFIED and non-empty evidence[]`);
   else if (value.evidence.some((item) => !nonEmpty(item))) findings.push(`${label}.evidence must contain only non-empty strings`);
-  else if (value.state === "PASS" && value.evidence.some((item) => hasPlaceholder(item) || isNoValue(item))) findings.push(`${label}.evidence must contain resolved proof when state is PASS`);
+  else if (value.state === "PASS" && value.evidence.some(hasUnresolvedToken)) findings.push(`${label}.evidence must contain resolved proof when state is PASS`);
 }
 
 function requireExactObject(value, keys, label, findings) {
@@ -80,7 +82,7 @@ function requireDeliveryState(value, label, findings) {
   if (value?.state !== "APPLIED" && Array.isArray(value?.identifiers) && value.identifiers.length > 0) findings.push(`${label}.identifiers must be empty unless state is APPLIED`);
   if (value?.state === "APPLIED" && Array.isArray(value?.identifiers)) {
     const pattern = label.endsWith("migration_status") ? /^\d{14}_[A-Za-z0-9_-]+$/ : /^[A-Za-z0-9._-]+@v?[A-Za-z0-9._-]+$/;
-    if (value.identifiers.some((identifier) => !pattern.test(identifier) || /(?:^|[_\-])(TODO|TBD|PLACEHOLDER|REPLACE_ME|PENDING|UNKNOWN|NONE|N_?A)(?:$|[_\-])/i.test(identifier.replace(/[^A-Za-z0-9]+/g, "_")))) findings.push(`${label}.identifiers must contain exact non-placeholder ${label.endsWith("migration_status") ? "migration IDs" : "function@version IDs"}`);
+    if (value.identifiers.some((identifier) => !pattern.test(identifier) || hasUnresolvedToken(identifier))) findings.push(`${label}.identifiers must contain exact non-placeholder ${label.endsWith("migration_status") ? "migration IDs" : "function@version IDs"}`);
   }
   if (value?.state === "PROOF_OWED") {
     requireExactObject(value.proof_owed, ["boundary", "excluded_from_live_claim"], `${label}.proof_owed`, findings);
@@ -255,7 +257,7 @@ export function validateReleaseRecord(record) {
     for (const field of ["position", "reference"])
       if (hasPlaceholder(record.rollback_recovery?.[field]) || isNoValue(record.rollback_recovery?.[field])) findings.push(`PUBLISHED rollback_recovery.${field} must be resolved`);
     const referencedBuilds = (record.internal_builds || []).filter((build) => build?.customer_release_scope === "referenced");
-    if (referencedBuilds.some((build) => build?.evidence?.some((item) => hasPlaceholder(item) || isNoValue(item)))) findings.push("PUBLISHED referenced builds must contain resolved build evidence");
+    if (referencedBuilds.some((build) => build?.evidence?.some(hasUnresolvedToken))) findings.push("PUBLISHED referenced builds must contain resolved build evidence");
     if (referencedBuilds.length === 0 || referencedBuilds.some((build) => !["production", "staged"].includes(build?.release_channel) || build.deployment_id === "NOT_APPLICABLE"))
       findings.push("PUBLISHED technical references must resolve only to deployed production or staged builds");
     if (referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("FAILED")))
@@ -414,6 +416,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects production build without deployment ID", { ...valid, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "NOT_APPLICABLE", customer_release_scope: "supporting" }] }, true],
     ["rejects normalized absent production deployment IDs", { ...valid, internal_builds: [{ ...build, deployment_id: "not_applicable" }] }, true],
     ["rejects punctuated anticipated deployment IDs", { ...valid, internal_builds: [{ ...build, deployment_id: "pending/deployment" }] }, true],
+    ["rejects proof-owed evidence on passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["PROOF_OWED"] } } }] }, true],
+    ["rejects proof-owed token in applied identifiers", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["migration log"], identifiers: ["20260907000001_PROOF_OWED"], proof_owed: null } }] }, true],
     ["rejects normalized no-value publication facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["NOT_APPLICABLE"], affected_audience: ["N_A"], rollback_recovery: { position: "forward fix", reference: "NOT-APPLICABLE" } }, true],
     ["rejects normalized no-evidence sentinel for passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["NOT_APPLICABLE"] } } }] }, true],
     ["rejects exact unresolved proof boundary values", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof remains outstanding"], identifiers: [], proof_owed: { boundary: "pending", excluded_from_live_claim: "proof owed" } } }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"] } }, true],

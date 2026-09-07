@@ -240,6 +240,22 @@ test("refuses placeholders even when the status word looks valid", () => {
   assert.match(result.errors.join("\n"), /RENDERED_EVIDENCE/);
 });
 
+test("rejects unresolved values after PASS", () => {
+  for (const evidence of ["FLOW_BY_FLOW: PASS: pending", "AUTOMATED_EVIDENCE: PASS: none"]) {
+    const [field] = evidence.split(":");
+    const result = validateEvidenceText(coreEvidence.replace(new RegExp(`^${field}:.*$`, "m"), evidence), { required: true, solo: false });
+    assert.equal(result.ok, false, evidence);
+  }
+});
+
+test("rejects unresolved tokens in UI applied identifiers", () => {
+  for (const [field, applied] of [["migrations", "APPLIED(20260907000001_PROOF_OWED)"], ["edge", "APPLIED(none@v1)"]]) {
+    const result = validateEvidenceText(coreEvidence.replace(`${field}=NOT_APPLICABLE`, `${field}=${applied}`), { required: true, solo: false });
+    assert.equal(result.ok, false, `${field}=${applied}`);
+    assert.match(result.errors.join("\n"), new RegExp(`${field} must be`));
+  }
+});
+
 test("requires every Solo viewport with PAIGE closed and open", () => {
   const result = validateEvidenceText(coreEvidence, { required: true, solo: true });
 
