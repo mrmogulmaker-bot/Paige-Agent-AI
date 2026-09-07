@@ -188,6 +188,10 @@ test("requires a claim boundary after the release truth status", () => {
   const bareStatus = validateEvidenceText(coreEvidence.replace("RELEASE_TRUTH_BOUNDARY: UNAVAILABLE: no customer-facing release claim", "RELEASE_TRUTH_BOUNDARY: LIVE"), { required: true, solo: false });
   assert.equal(bareStatus.ok, false);
   assert.match(bareStatus.errors.join("\n"), /claim boundary/);
+
+  const noValue = validateEvidenceText(coreEvidence.replace("RELEASE_TRUTH_BOUNDARY: UNAVAILABLE: no customer-facing release claim", "RELEASE_TRUTH_BOUNDARY: LIVE: none"), { required: true, solo: false });
+  assert.equal(noValue.ok, false);
+  assert.match(noValue.errors.join("\n"), /claim boundary/);
 });
 
 test("requires complete staged-rollout evidence", () => {

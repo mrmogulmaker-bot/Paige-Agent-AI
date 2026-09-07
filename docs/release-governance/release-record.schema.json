@@ -360,7 +360,7 @@
     "requiredPublicationFact": {
       "allOf": [
         { "$ref": "#/$defs/publicationCopy" },
-        { "not": { "pattern": "^[ \\t\\r\\n]*([Nn][Oo][Nn][Ee]|[Nn][^A-Za-z0-9]*[Aa]|[Nn][Oo][Tt][^A-Za-z0-9]*[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee])[ \\t\\r\\n]*$" } }
+        { "not": { "pattern": "^[ \\t\\r\\n]*([Nn][Oo][Nn][Ee]|[Nn][^A-Za-z0-9]*[Aa]|[Nn][Oo][Tt][^A-Za-z0-9]*[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee]|[Pp][Rr][Oo][Oo][Ff][^A-Za-z0-9]*[Oo][Ww][Ee][Dd])[ \\t\\r\\n]*$" } }
       ]
     },
     "proofBoundaryString": {

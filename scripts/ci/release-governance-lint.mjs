@@ -268,7 +268,7 @@ export function validateReleaseRecord(record) {
     for (const field of ["customer_outcome", "what_changed", "who_can_use_it", "owner_action", "known_limitations", "safe_next_step", "paige_readable_summary"])
       if (hasPlaceholder(record.whats_new?.[field])) findings.push(`PUBLISHED whats_new.${field} must contain resolved customer copy`);
     for (const field of ["customer_outcome", "what_changed", "who_can_use_it", "safe_next_step", "paige_readable_summary"])
-      if (isNoValue(record.whats_new?.[field])) findings.push(`PUBLISHED whats_new.${field} must contain substantive customer copy`);
+      if (hasUnresolvedToken(record.whats_new?.[field])) findings.push(`PUBLISHED whats_new.${field} must contain substantive customer copy`);
   }
   return findings;
 }
@@ -407,6 +407,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects placeholder evidence on passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["TODO"] } } }] }, true],
     ["rejects placeholder evidence on applied delivery", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["TODO"], identifiers: ["20260907000001_example"], proof_owed: null } }] }, true],
     ["rejects placeholder published customer copy", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, whats_new: { ...valid.whats_new, customer_outcome: "TODO", what_changed: "TBD", paige_readable_summary: "REPLACE_ME" } }, true],
+    ["rejects proof-owed published live outcome", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, whats_new: { ...valid.whats_new, status: ["LIVE"], customer_outcome: "PROOF_OWED" } }, true],
     ["rejects normalized placeholder approval reference", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: "PENDING_DECISION" } } }, true],
     ["rejects normalized no-value approval reference", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: "PROOF_OWED" } } }, true],
     ["rejects placeholder published release name", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, release_name: "TODO", owner_approval: customerApproval } }, true],

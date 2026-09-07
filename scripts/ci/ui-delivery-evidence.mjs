@@ -234,7 +234,8 @@ export function validateEvidenceText(text, classification) {
       if (!value || hasUnresolvedToken(value)) errors.push(`Staged RELEASE_CHANNEL requires a completed non-placeholder ${key}=... value.`);
     }
   }
-  if (!/^(?:LIVE|PARTIAL|UNAVAILABLE|PROOF OWED):\s*\S.+$/i.test(fields.get("RELEASE_TRUTH_BOUNDARY") ?? "")) errors.push("RELEASE_TRUTH_BOUNDARY must name at least one governed status and its claim boundary.");
+  const truthBoundary = /^(?:LIVE|PARTIAL|UNAVAILABLE|PROOF OWED):\s*(\S.+)$/i.exec(fields.get("RELEASE_TRUTH_BOUNDARY") ?? "");
+  if (!truthBoundary || isUnresolvedValue(truthBoundary[1])) errors.push("RELEASE_TRUTH_BOUNDARY must name at least one governed status and its claim boundary.");
   if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW"))) errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference.");
   if (!isPassWithEvidence(fields.get("PAIGE_UI_DESIGN"))) errors.push("PAIGE_UI_DESIGN must be PASS: with a non-placeholder evidence reference.");
 
