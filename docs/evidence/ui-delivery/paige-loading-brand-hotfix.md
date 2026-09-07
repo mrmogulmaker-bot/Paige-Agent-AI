@@ -21,13 +21,13 @@ SOLO_UI: NO: the changed surface is the route-agnostic pre-hydration platform co
 UNVERIFIED: authenticated reload-after-update banner click and real browser relaunch remain unverified because the authenticated browser-control runtime was unavailable; the same `window.location.reload()` primitive is covered by unit and built-browser evidence
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: 8e93eeee91e495b41841956b9fc138d8724474d2; deployment=local-production-preview-4173; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=the built entry paints the canonical chunk before dynamically importing the full app chunk
+INTERNAL_BUILD_IDENTITY: 9fd69254d3fbe117c3929f147ed8039432b1a070; deployment=local-production-preview-4173; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=the built entry paints the canonical chunk before dynamically importing the full app chunk
 RELEASE_CHANNEL: development: local production-build evidence complete; owner explicitly requested subsequent production release on 2026-09-07; monitoring-owner=release agent; recovery=revert implementation commit if live verification fails
 RELEASE_CLASSIFICATION: patch: narrow replacement of an incorrect loading-screen brand mark with no customer workflow or data-contract change
 CUSTOMER_RELEASE_IDENTITY: none: internal branding correction does not create a named customer release
 RELEASE_NOTE_REQUIRED: NO: invisible-to-workflow branding correction with no owner action or changed capability
 RELEASE_TRUTH_BOUNDARY: PARTIAL: local build and browser proof are complete; PROOF OWED for authenticated update-banner click and production deployment until post-merge verification
-RELEASE_RECOVERY: position=revert-before-forward-fix for any loading regression; reference=implementation commit 8e93eeee91e495b41841956b9fc138d8724474d2
+RELEASE_RECOVERY: position=revert-before-forward-fix for any loading regression; reference=final implementation commit 9fd69254d3fbe117c3929f147ed8039432b1a070
 
 ## Scope and collisions
 
@@ -46,7 +46,7 @@ The owner waits through the non-interactive platform boot cover. The canonical P
 - Before: `docs/evidence/ui-delivery/paige-loading-brand-hotfix/before-1366x768-obsidian.png` at 1366x768; old `.psx-plate/.psx-slash/.psx-dot` geometry present.
 - After: four viewport/theme artifacts listed above, plus `after-built-main-blocked-1366x768.png` and `relaunch-to-update-1366x768-obsidian.png`.
 - Route: `/solo/1971670/growth/sales`; anonymous pre-auth boundary; no customer-sensitive content captured.
-- Built artifact: entry `main-DqEWEmxk.js` synchronously mounts `paige-command-mark-Cl7u6VRF.js` and then dynamically imports `main-6yUJ8Bkh.js`; aborting the latter left the canonical mark visible.
+- Built artifact: entry `main-DXre5xPo.js` synchronously mounts the isolated canonical command-mark chunk and then dynamically imports `main-BK6Fcy2o.js`; aborting the latter left the canonical mark visible.
 - Theme results: Mineral uses the canonical light token treatment; Obsidian uses the canonical dark token treatment; neither reintroduces legacy splash geometry.
 - Security review: no hotfix-blocking issue; unchanged dependency advisories remain tracked outside this patch.
 
