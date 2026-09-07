@@ -203,7 +203,9 @@ function isUnresolvedRestatement(value) {
   const hasIndependentCause = raw.split(/[:;,.!?—–]+/).some((clause) => {
     const normalizedClause = normalizeSentinel(clause);
     const inabilityTarget = /\b(?:cannot|could not|can not|unable to)\s+(?:verify|test|access|reach|authenticate(?: to)?|connect(?: to)?)\s+(.+)$/i.exec(clause)?.[1]?.trim() ?? "";
-    const hasConcreteTarget = affectedScope.test(inabilityTarget) || /\b[A-Z][A-Za-z0-9._-]*\b/.test(inabilityTarget);
+    const targetTerms = substantiveTerms(inabilityTarget);
+    const hasNamedTarget = /\b[A-Z][A-Za-z0-9._-]*\b/.test(inabilityTarget) && targetTerms.length >= 1 && !/\b(?:it|this|that|them|there|here|something|anything|nothing|someone|anyone)\b/i.test(inabilityTarget) && !/\b[A-Za-z]+ly\b/i.test(inabilityTarget);
+    const hasConcreteTarget = affectedScope.test(inabilityTarget) || hasNamedTarget;
     const hasScopedInability = inabilityCondition.test(normalizedClause) && hasConcreteTarget;
     return normalizedClause && !pair.test(normalizedClause) && (causeCondition.test(normalizedClause) || hasScopedInability) && substantiveTerms(normalizedClause).length >= 2;
   });
