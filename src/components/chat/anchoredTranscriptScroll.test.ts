@@ -195,6 +195,32 @@ describe("createAnchoredTranscriptScroll", () => {
     expect(element.scrollTop).toBe(410);
   });
 
+  it("does not reconcile an incoming thread anchor against outgoing thread DOM", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 }, x: { top: 0, height: 600 }, y: { top: 600, height: 600 } },
+    };
+    sessionStorage.setItem("test-deferred-thread:thread-b", JSON.stringify({
+      kind: "anchor", messageId: "old-y", semanticKey: "message:y", indexFromStart: 1, indexFromEnd: 0, offsetPx: -55,
+    }));
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-deferred-thread" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+    element.scrollTop = 425;
+
+    controller.setContext("thread-b");
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(425);
+    expect(sessionStorage.getItem("test-deferred-thread:thread-b")).toContain('"messageId":"old-y"');
+
+    render(["x", "y"]);
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(655);
+    expect(sessionStorage.getItem("test-deferred-thread:thread-b")).toContain('"messageId":"y"');
+  });
+
   it("keeps automatic following for ordinary near-bottom layout drift without user input", () => {
     const geometry: Geometry = {
       viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,

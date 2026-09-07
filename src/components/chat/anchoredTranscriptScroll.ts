@@ -49,6 +49,13 @@ export function createAnchoredTranscriptScroll({
   let intentionalBottom = false;
   let pendingUserMovement = false;
   let continuousUserMovement = false;
+  let pendingContextDomSignature: string | null = null;
+
+  const messageDomSignature = () => element
+    ? Array.from(element.querySelectorAll<HTMLElement>(MESSAGE_SELECTOR))
+      .map((item) => item.dataset.paigeMessageId ?? "")
+      .join("\u0000")
+    : "";
 
   const markRestoring = () => {
     if (!element) return;
@@ -88,6 +95,11 @@ export function createAnchoredTranscriptScroll({
 
   const restore = () => {
     if (!element || !hasVisibleGeometry()) return;
+    if (pendingContextDomSignature !== null) {
+      const currentSignature = messageDomSignature();
+      if (currentSignature === pendingContextDomSignature) return;
+      pendingContextDomSignature = null;
+    }
     if (position.kind === "bottom") {
       const target = Math.max(0, element.scrollHeight - element.clientHeight);
       if (Math.abs(element.scrollTop - target) > EXACT_BOTTOM_EPSILON_PX) {
@@ -332,6 +344,15 @@ export function createAnchoredTranscriptScroll({
       continuousUserMovement = false;
       context = nextContext;
       position = readPosition();
+      if (element && position.kind === "anchor") {
+        const items = Array.from(element.querySelectorAll<HTMLElement>(MESSAGE_SELECTOR));
+        const incomingAnchorIsMounted = items.some((item) =>
+          item.dataset.paigeMessageId === position.messageId
+          || (!!position.semanticKey && item.dataset.paigeMessageAnchorKey === position.semanticKey));
+        pendingContextDomSignature = incomingAnchorIsMounted ? null : messageDomSignature();
+      } else {
+        pendingContextDomSignature = null;
+      }
       restore();
     },
     attach(nextElement: HTMLDivElement | null) {
