@@ -221,6 +221,27 @@
   read makes response ORDERING part of the access-control surface — every status-code branch that varies by
   row shape must sit AFTER the in-body scope check, or it leaks the existence the 404 was meant to hide.
   doc-export 22/22, tsc ratchet 13/13, control-chars none, §50/§63 clean.
+  **FIFTEENTH catch — Codex round 12 (one P1 + three P2): three P2 FOLDED, P1 PARKED as out-of-scope.**
+  (Finding-2, P2) the round-11 underscore-italic capture `[^_]+?` couldn't span a genuine `_tenant_id_`
+  (emphasis WRAPPING a snake_case word), so the `_` markers stayed visible in binary (pdf/docx/pptx) exports;
+  boundary-anchored the delimiters with `(?=\S)…(?<=\S)` so intraword underscores are kept in the CONTENT
+  while `utm_source`/`tenant_id_value` stay literal (their opening `_` is still preceded by an alnum → no
+  match). (Finding-3, P2) `normalizeBlocks`'s top-level string / `{markdown}` / `{text}` branches called
+  `parseMarkdown` unconditionally, so a LEGACY doc whose `body` is a raw markdown STRING lost its fenced code /
+  tables / hard breaks on md export; threaded `flattenInline` there too (md → one raw passthrough paragraph,
+  binary parse unchanged), mirroring the prose-block passthrough. (Finding-4, P2 §13) a single non-WinAnsi
+  currency mark (₹/₽/₩/₪/฿) sat below the 15% loss ratio, so `₹10,000` shipped as `?10,000` reported as
+  success — a materially WRONG price; the PDF charset guard now fails closed on ANY lost `\p{Sc}` mark,
+  independent of the ratio ($/£/€/¥/¢ still pass). (Finding-1, P1 §70 — PARKED, tracked follow-up) a
+  freshly-provisioned Solo owner (global role only `user`) can't reach `document_generate` in chat because it
+  sits inside a SHARED coarse global-role gate (`admin|coach|super_admin`, paige-ai-chat ~L9028-9116) covering
+  ~50 operator tools (crm_*, pipeline_*, team_*, `member_grant_role`, `comms_buy_number`, growth_*,
+  generate_image, …). My PR did NOT introduce it (document_generate was already inside the gate), and widening
+  a security gate over money-spending + permission-granting tools is a platform-wide §9/§37/§51 change needing
+  its own slice + full producer inventory + security review — not a doc-export-MVP fold (§70 "unavailable is a
+  per-item verdict with a reason + recovery path"). Honest scope: the ACTUAL owner is super_admin/admin and CAN
+  use export today; the gap is future fresh Solo tenants. doc-export 24/24, tsc ratchet 13/13, control-chars
+  none, §50/§63 clean.
 
 - **RE-2 M1-b — campaign + client/engagement scope caps (2026-09-06, owner-ruled required for M1 completeness).**
   Migration `20270103000000_re2_m1b_scope_caps.sql`. **DARK — ZERO producers**; proven with controlled fixtures

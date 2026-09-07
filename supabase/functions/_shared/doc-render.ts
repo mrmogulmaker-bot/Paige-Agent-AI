@@ -100,6 +100,15 @@ export async function renderDoc(input: DocRenderInput): Promise<DocRenderResult>
 // Content normalization — accept blocks OR markdown/plain, coerce EVERYTHING defensively (§13).
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════
 function normalizeBlocks(content: unknown, title?: string, flattenInline = true): Block[] {
+  // For a `.md` export (flattenInline === false) a RAW markdown source — a top-level string, a
+  // `{markdown}`/`{text}` wrapper, or a legacy body PostgREST handed us as a plain string — must round-trip
+  // VERBATIM: `parseMarkdown` would collapse fenced code, tables and hard line breaks (Codex round-12). The
+  // md serializer preserves a paragraph's internal newlines, so ONE raw paragraph reproduces the source.
+  // Binary renderers still parse (they can't render markup), so this only changes the md path. This mirrors
+  // the `prose`-block passthrough in coerceBlockArray for the string/object shapes that never became blocks.
+  const md = (s: string): Block[] =>
+    flattenInline ? parseMarkdown(s)
+      : s.trim() ? [{ type: "paragraph", text: s }] : (title ? [] : [{ type: "paragraph", text: "" }]);
   // {blocks:[...]} / {content:[...]} wrappers → unwrap to the inner array/string.
   if (content && typeof content === "object" && !Array.isArray(content)) {
     const c = content as Record<string, unknown>;
@@ -107,15 +116,15 @@ function normalizeBlocks(content: unknown, title?: string, flattenInline = true)
     const innerTitle = title ?? (typeof c.title === "string" ? c.title : undefined);
     if (Array.isArray(c.blocks)) return coerceBlockArray(c.blocks, innerTitle, flattenInline);
     if (Array.isArray(c.content)) return coerceBlockArray(c.content, innerTitle, flattenInline);
-    if (typeof c.markdown === "string") return parseMarkdown(c.markdown);
-    if (typeof c.text === "string") return parseMarkdown(c.text);
+    if (typeof c.markdown === "string") return md(c.markdown);
+    if (typeof c.text === "string") return md(c.text);
     // Some unknown object — stringify so we still produce a real (if plain) document.
-    try { return parseMarkdown(JSON.stringify(content, null, 2)); } catch { return []; }
+    try { return md(JSON.stringify(content, null, 2)); } catch { return []; }
   }
   if (Array.isArray(content)) return coerceBlockArray(content, title, flattenInline);
-  if (typeof content === "string") return parseMarkdown(content);
+  if (typeof content === "string") return md(content);
   if (content == null) return title ? [] : [{ type: "paragraph", text: "" }];
-  return parseMarkdown(String(content));
+  return md(String(content));
 }
 
 function asText(v: unknown): string {
@@ -394,12 +403,17 @@ export function inlineMdToText(s: string): string {
   // OUTER side opens/closes nothing — so the underscore rules are boundary-guarded (lookbehind/lookahead,
   // supported on the V8 runtime this bundles to): a snake_case or query-string underscore is never eaten.
   // Bold runs before italic so `**x**` / `__x__` is not consumed as two italics.
+  // The underscore rules boundary-anchor the DELIMITERS (an `_` flanked by an alphanumeric on its outer
+  // side opens/closes nothing, so `utm_source` / `tenant_id_value` are literal) BUT allow intraword
+  // underscores INSIDE the emphasis, so a genuine `_tenant_id_` still flattens to `tenant_id` (Codex round-12).
+  // `(?=\S)`/`(?<=\S)` keep the content non-empty and non-whitespace-flanked (CommonMark: `_ x_` is not
+  // emphasis); the non-greedy `.+?` stops at the first boundary-delimited closing `_`, never an intraword one.
   str = str
-    .replace(/\*\*(.+?)\*\*/g, "$1")                                 // bold (asterisks may be intraword)
-    .replace(/(?<![A-Za-z0-9])__(.+?)__(?![A-Za-z0-9])/g, "$1")      // bold (underscores need a word boundary)
-    .replace(/\*([^*]+?)\*/g, "$1")                                  // italic (asterisks may be intraword)
-    .replace(/(?<![A-Za-z0-9])_([^_]+?)_(?![A-Za-z0-9])/g, "$1")     // italic (underscores need a word boundary)
-    .replace(/~~(.+?)~~/g, "$1");                                    // strikethrough
+    .replace(/\*\*(.+?)\*\*/g, "$1")                                             // bold (asterisks may be intraword)
+    .replace(/(?<![A-Za-z0-9])__(?=\S)(.+?)(?<=\S)__(?![A-Za-z0-9])/g, "$1")     // bold (underscore-delimited)
+    .replace(/\*([^*]+?)\*/g, "$1")                                              // italic (asterisks may be intraword)
+    .replace(/(?<![A-Za-z0-9])_(?=\S)(.+?)(?<=\S)_(?![A-Za-z0-9])/g, "$1")       // italic (underscore-delimited)
+    .replace(/~~(.+?)~~/g, "$1");                                                // strikethrough
   str = str
     .replace(/@@CODE(\d+)@@/g, (_m, i) => codes[Number(i)] ?? "")             // restore code verbatim
     .replace(/@@URL(\d+)@@/g, (_m, i) => ` (${urls[Number(i)] ?? ""})`);      // restore raw URL as `(url)`
@@ -479,9 +493,14 @@ async function renderPdf(title: string | undefined, blocks: Block[], _style: Rec
     // best-effort; a longer doc rejects once 15% is unrenderable. Either way a wholesale non-Latin doc fails.
     const ratio = winAnsiLoss(sample) / nonWs;
     const threshold = nonWs >= 8 ? 0.15 : 0.5;
-    if (ratio > threshold) {
+    // A LOST currency symbol fails closed on its OWN, independent of the ratio: a single unencodable mark in
+    // `₹10,000` stays far below the percentage threshold, yet sanitizeWinAnsi would ship `?10,000` — a
+    // materially WRONG price reported as success (§13/§32; Codex round-12). `\p{Sc}` matches every currency
+    // mark; `winAnsiLoss(ch)` keeps only the ones WinAnsi can't encode, so $/£/€/¥/¢ pass and ₹/₽/₩/₪/฿ reject.
+    const lostCurrency = (sample.match(/\p{Sc}/gu) || []).some((ch) => winAnsiLoss(ch) > 0);
+    if (lostCurrency || ratio > threshold) {
       throw new NeedsConfigError("doc-render:pdf-charset",
-        "This document uses characters the PDF exporter can't render yet (Latin text only) — export it as DOCX or Markdown to keep them.");
+        "This document uses characters the PDF exporter can't render yet (Latin text only, and some currency symbols) — export it as DOCX or Markdown to keep them.");
     }
   }
 

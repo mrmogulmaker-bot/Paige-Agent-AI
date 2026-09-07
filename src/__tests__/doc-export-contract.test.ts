@@ -51,6 +51,12 @@ describe("inlineMdToText — flatten markdown to clean text for BINARY renderers
     // …but genuine underscore emphasis AT a word boundary still strips (bold and italic both).
     expect(inlineMdToText("a _real_ emphasis")).toBe("a real emphasis");                       // word-boundary italic
     expect(inlineMdToText("this is __very__ bold")).toBe("this is very bold");                 // word-boundary bold
+    // Codex round-12 — boundary-delimited emphasis WRAPPING a snake_case identifier flattens too: the
+    // internal underscore is intraword (kept), only the outer delimiters strip. This is the case the
+    // round-11 `[^_]` capture could not span; the `(?=\S)…(?<=\S)` anchors allow it without re-corrupting
+    // the bare `utm_source` / `tenant_id_value` above.
+    expect(inlineMdToText("see _tenant_id_ here")).toBe("see tenant_id here");                  // italic around snake_case
+    expect(inlineMdToText("the __field_name__ column")).toBe("the field_name column");         // bold around snake_case
   });
 });
 
@@ -196,6 +202,20 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
       .rejects.toMatchObject({ tag: "doc-render:pdf" });
   });
 
+  it("PDF fails closed when a PRICE currency symbol would be corrupted, even in mostly-English text (Codex round-12)", async () => {
+    // A single non-WinAnsi currency mark (₹/₽/₩) sits far below the 15% loss ratio, so the ratio guard alone
+    // would let `₹10,000` ship as `?10,000` reported as success — a materially wrong price (§13). The
+    // currency guard rejects any LOST `\p{Sc}` mark independent of the ratio.
+    await expect(renderDoc({ format: "pdf", title: "Quote",
+      content: [{ type: "paragraph", text: "Your total investment for the retainer engagement is ₹10,000 every month." }] }))
+      .rejects.toMatchObject({ tag: "doc-render:pdf-charset" });
+    // A Latin-currency price ($, WinAnsi-encodable) does NOT trip the currency guard — it fails later on the
+    // headless lib import (a DIFFERENT tag), proving the ₹ rejection above is the currency guard, not the ratio.
+    await expect(renderDoc({ format: "pdf", title: "Quote",
+      content: [{ type: "paragraph", text: "Your total investment for the retainer engagement is $10,000 every month." }] }))
+      .rejects.toMatchObject({ tag: "doc-render:pdf" });
+  });
+
   it("md keeps prose's RAW markdown (code spans, links) and preserves Unicode (Codex round-6/9 K3)", async () => {
     const r = await renderDoc({
       format: "md",
@@ -239,6 +259,21 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     const r = await renderDoc({ format: "md", title: "Code", content: [{ type: "prose", markdown: fence }] });
     const md = dec(r.bytes);
     expect(md).toContain("code line 1\n\n\ncode line 2");   // the two internal blank lines survive verbatim
+  });
+
+  it("passes a TOP-LEVEL raw markdown string through verbatim for md — a legacy string body is not re-parsed (Codex round-12)", async () => {
+    // A legacy document whose `body` is raw markdown (a STRING, not a block array) must round-trip for md:
+    // parseMarkdown would collapse the fenced code block and the table. The passthrough now covers the
+    // top-level string / {markdown} / {text} shapes, not just an in-array `prose` block.
+    const source = "## How it works\n\n```js\nconst a = 1;\n\n\nconst b = 2;\n```\n\n| Col A | Col B |\n| --- | --- |\n| 1 | 2 |";
+    const asString = await renderDoc({ format: "md", title: "Legacy", content: source });
+    const md1 = dec(asString.bytes);
+    expect(md1).toContain("```js\nconst a = 1;\n\n\nconst b = 2;\n```"); // fence + its internal blank run survive
+    expect(md1).toContain("| Col A | Col B |");                          // table row survives (parseMarkdown would drop the pipes)
+    expect(md1).toContain("| --- | --- |");
+    // The {markdown} wrapper shape (no block array) takes the same verbatim path.
+    const asWrapper = await renderDoc({ format: "md", content: { markdown: source } });
+    expect(dec(asWrapper.bytes)).toContain("```js\nconst a = 1;");
   });
 
   it("never throws and still produces a file for empty content (title-only)", async () => {
