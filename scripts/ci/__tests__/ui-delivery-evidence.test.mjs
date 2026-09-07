@@ -289,7 +289,7 @@ test("rejects unresolved values after PASS", () => {
 
   const bareUnverified = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", "AUTHENTICATED_RUNTIME: UNVERIFIED: pending"), { required: true, solo: false });
   assert.equal(bareUnverified.ok, false);
-  for (const unresolvedReason of ["proof pending", "unknown result"]) {
+  for (const unresolvedReason of ["proof pending", "unknown result", "proof is still currently pending", "result remains entirely unknown"]) {
     const unresolvedNonPass = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", `AUTHENTICATED_RUNTIME: UNVERIFIED: ${unresolvedReason}`), { required: true, solo: false });
     assert.equal(unresolvedNonPass.ok, false, unresolvedReason);
   }

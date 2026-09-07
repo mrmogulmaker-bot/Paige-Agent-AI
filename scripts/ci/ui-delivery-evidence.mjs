@@ -181,17 +181,15 @@ function isUnresolvedEvidence(value) {
 
 function isUnresolvedRestatement(value) {
   if (isUnresolvedValue(value)) return true;
-  const normalized = normalizeSentinel(value);
+  const raw = String(value ?? "").trim();
+  const normalized = normalizeSentinel(raw);
   const subject = "(?:proof|result|evidence|verification|check|runtime|decision|approval)";
   const unresolved = "(?:pending|unknown|proof owed)";
   const pair = new RegExp(`(?:\\b${subject}\\b.*\\b${unresolved}\\b|\\b${unresolved}\\b.*\\b${subject}\\b)`);
   if (!pair.test(normalized)) return false;
-  const remainder = normalized
-    .replace(/\b(?:proof|result|evidence|verification|check|runtime|decision|approval|pending|unknown|owed)\b/g, " ")
-    .replace(/\b(?:for|the|a|an|of|to|in|on|and|or|is|are|was|were)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return remainder.split(" ").filter(Boolean).length < 2;
+  const hasReference = /https?:\/\/\S+/i.test(raw) || /(?:^|[\s;(])(?:[A-Za-z]:)?[^\s;:()]*[\\/]\S+\.[A-Za-z0-9]{1,10}(?:[?#]\S*)?/i.test(raw);
+  const hasExplicitReason = /\b(?:because|due to|blocked by|awaiting|for|until|while)\b\s+\S+(?:\s+\S+)+/i.test(normalized);
+  return !(hasReference || hasExplicitReason);
 }
 
 function lacksDeploymentIdentity(value) {
