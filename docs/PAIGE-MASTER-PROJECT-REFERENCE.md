@@ -1728,8 +1728,27 @@ read-only scouts (file:line-citable).
 - **Create artifacts in chat (image·document·copy·page·funnel·form)** — **LIVE core** (`generate_image`
   4-provider, `document_generate` 8-type, copy, growth studio; durable home `marketing_content`
   `status='draft'`; `save_marketing_content`; `chatArtifacts`→`PaigeArtifactCard`; `studio_artifact_versions`).
-  GAPS: download button, multi-surface card render, image→campaign routing, missing types
-  (campaign_brief · HTML email_template · video · social-schedule).
+  **DOCUMENT EXPORT — SHIPPED (Task #21, 2026-09-06):** a document created with `document_generate` can now
+  be turned into a REAL downloadable file — the new `export-document` edge function (the §10 callable seam)
+  renders it via the existing in-band `doc-render` lane → private `studio-deliverables` bucket → 30-day
+  signed `download_url` + `document_export` Rail outcome; `document_generate` gained an optional
+  `export_format` (pdf/docx/pptx/md) that returns the link inline. **AUTHORIZATION (§9/§59):** the source
+  row is read with the SERVICE-ROLE client (a privileged, RLS-bypassing read — `marketing_content` RLS
+  refuses a fresh Solo owner AND a platform_admin), then authorized IN-BODY *before* any kind/tenant-shape
+  response: a MANAGE role in the ROW'S tenant (owner/admin via `is_tenant_admin`, coach via `has_tenant_role`)
+  OR a platform operator; a non-authorized caller fails CLOSED as a 404. NOT a coarse admin/coach global gate,
+  NOT RLS-trusting. Honest state (AGENTS.md vocab): **md — PARTIAL** (serializer proven headlessly; the
+  authenticated end-to-end download drive is §32.c owed), **pdf/docx/pptx — UNVERIFIED** (renderers
+  source-checked, each fail-closed to needs_config, not runtime-driven on Deno here), **§32.c owner drive
+  OWED**. GAPS: **xlsx = UNAVAILABLE** (tabular, needs a new lib — named follow-up); an export-ONLY path for
+  an existing doc (today `export_format` regenerates + version-stacks — L3 follow-up `task_6d770114`); a
+  re-download control on the artifact card
+  (Claude Design's, §00); **native Google Docs/Sheets/Slides = UNAVAILABLE** (provider-gated: no Docs/Sheets/
+  Slides API client and no tenant Drive OAuth scope — tenant Google carries only gmail.send + calendar.events;
+  a platform-ops-only Lovable-gateway Drive path exists in `ship-26-legacy-cleanup` but is not a tenant
+  authoring seam; an Integration Capability Registry ENTRY + a Google provider contract are prerequisites);
+  multi-surface card render,
+  image→campaign routing, other missing types (HTML email_template · video · social-schedule).
 - **Upload/download & inspect files** — **LIVE** (upload+inspect: `useChatDocumentUpload` 10MB pdf/img/docx,
   read-check + approve-to-apply extraction, `kb-ingest-file`; folder-scoped storage RLS + server-side scope
   refusal). PARTIAL: no generic chat→file download. **INJECTION FENCE — SHIPPED (Slice 2, Task #18,
