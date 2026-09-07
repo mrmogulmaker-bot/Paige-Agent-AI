@@ -40,10 +40,19 @@ describe("Intentful Interview security contract", () => {
     expect(migration).toContain("payload->>'source_id'=p_mission_id::text");
     expect(migration).toContain("public.business_mission_brief_versions");
     expect(migration).toContain("p_expected_source_revision integer");
-expect(migration).toContain("DISCUSSION_REVISION_CONFLICT");
+    expect(migration).toContain("DISCUSSION_REVISION_CONFLICT");
+    expect(migration).toContain("tenant_id=v_tenant for update;");
     expect(migration).toContain("m.lifecycle_state not in ('completed','stopped')");
     expect(migration).not.toContain("business_mission_briefs");
     expect(migration).not.toContain("m.current_brief_id");
+  });
+
+  it("clears incompatible public-presence context before opening an interview", () => {
+    const setup = source("src/solo/SoloBusinessContextSetup.tsx");
+    const interviewAt = setup.indexOf("setPaigeInterviewScope(data.activeTenantId)");
+    const clearAt = setup.lastIndexOf("clearPaigePublicPresenceScope();", interviewAt);
+    expect(clearAt).toBeGreaterThan(0);
+    expect(clearAt).toBeLessThan(interviewAt);
   });
 
   it("blocks legacy automatic memory writes for selected-play working turns", () => {

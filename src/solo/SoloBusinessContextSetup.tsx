@@ -29,6 +29,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { registerAccountSwitchGuard } from "@/lib/auth/accountSwitchGuard";
 import { setPaigeInterviewScope } from "./paigeClientScope";
+import { clearPaigePublicPresenceScope } from "./paigePublicPresenceScope";
 import { useSoloBusinessContext } from "./data/useSoloBusinessContext";
 import {
   cleanSoloBusinessOwners,
@@ -1473,6 +1474,7 @@ export function SoloBusinessContextSetup({ account, openPaige }: { account: stri
                   onKnowledge={() => switchTab("knowledge-bucket")}
                   onInterview={() => {
                     if (!owner || !data.activeTenantId || !openPaige) return;
+                    clearPaigePublicPresenceScope();
                     setPaigeInterviewScope(data.activeTenantId);
                     openPaige();
                   }}

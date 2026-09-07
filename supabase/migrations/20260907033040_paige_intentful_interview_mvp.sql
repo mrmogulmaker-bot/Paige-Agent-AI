@@ -281,7 +281,7 @@ begin
   select * into v_action from public.paige_actions where id=p_action_id and tenant_id=v_tenant
     and action_kind='owner.discussion_needed' and status in ('filed','assigned','blocked') for update;
   if not found then raise exception 'DISCUSSION_NOT_FOUND' using errcode='P0002'; end if;
-  select revision into v_current_revision from public.business_missions where id=(v_action.payload->>'source_id')::uuid and tenant_id=v_tenant;
+  select revision into v_current_revision from public.business_missions where id=(v_action.payload->>'source_id')::uuid and tenant_id=v_tenant for update;
   if v_current_revision is null or v_current_revision<>p_expected_source_revision then raise exception 'DISCUSSION_REVISION_CONFLICT' using errcode='40001'; end if;
   if p_response='later' then
     update public.paige_actions set due_at=clock_timestamp()+interval '7 days',decision_rationale='Owner chose Later.',updated_at=clock_timestamp() where id=v_action.id;
