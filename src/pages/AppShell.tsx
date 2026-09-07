@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import type { User, Session } from "@supabase/supabase-js";
 import { Outlet, useLocation } from "react-router-dom";
 import { PaigeChat } from "@/components/app/PaigeChat";
@@ -88,7 +89,9 @@ const AppShell = () => {
       const snoozedUntil = Number(localStorage.getItem("onboarding_snoozed_until") || 0);
       if (snoozedUntil && Date.now() < snoozedUntil) return;
       if (localStorage.getItem("onboarding_dismissed") === "true") return;
-    } catch {}
+    } catch {
+      // Continue when browser storage is unavailable.
+    }
     supabase
       .from("profiles")
       .select("full_name, phone, address")
@@ -222,7 +225,9 @@ const AppShell = () => {
     try {
       const stay = sessionStorage.getItem("paige_stay_in_client_view");
       if (stay === "1") return;
-    } catch {}
+    } catch {
+      // Continue when browser storage is unavailable.
+    }
 
     let cancelled = false;
     setRedirectingStaff(true);
@@ -313,7 +318,9 @@ const AppShell = () => {
 };
 
 // Default home content when on /app
-function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }) {
+type CreditFactorScores = Database["public"]["Tables"]["credit_factor_scores"]["Row"];
+
+function AppDashboardHome({ factors, userId }: { factors: CreditFactorScores | null | undefined; userId?: string }) {
   const pb = usePlaybook();
   // Tenant-authored portal greeting (Portal Studio → portal_config.welcome).
   // Fail-open: an unset/empty overlay falls back to the current defaults, so

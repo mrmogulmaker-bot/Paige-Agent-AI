@@ -36,10 +36,7 @@ if (!run.stdout.trim()) {
 
 const reports = JSON.parse(run.stdout);
 const appShell = path.normalize(path.resolve("src/pages/AppShell.tsx"));
-const allowedAppShellBaseline = new Map([
-  ["no-empty", 2],
-  ["@typescript-eslint/no-explicit-any", 1],
-]);
+const allowedAppShellBaseline = new Map();
 const failures = [];
 
 for (const report of reports) {
@@ -63,4 +60,4 @@ if (failures.length) {
 }
 
 const warnings = reports.reduce((total, report) => total + report.messages.filter((message) => message.severity === 1).length, 0);
-console.log(`✓ PAIGE scroll hotfix ESLint ratchet: no new errors (${warnings} existing warning(s); AppShell baseline 3 errors).`);
+console.log(`✓ PAIGE scroll hotfix ESLint ratchet: no errors (${warnings} existing warning(s)).`);
