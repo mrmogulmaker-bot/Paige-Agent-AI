@@ -290,10 +290,10 @@
     {
       "if": {
         "properties": {
-          "record_state": { "enum": ["PUBLISHED", "CORRECTED"] },
+          "customer_release_identity": { "type": "object" },
           "whats_new": { "type": "object", "properties": { "status": { "contains": { "const": "PROOF OWED" } } } }
         },
-        "required": ["record_state", "whats_new"]
+        "required": ["customer_release_identity", "whats_new"]
       },
       "then": {
         "properties": {
