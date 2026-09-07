@@ -430,6 +430,12 @@ Values intentionally omitted.
   `FRED_API_KEY`, `SSN_ENCRYPTION_KEY`.
 - **Enrichment / research:** Apollo (`APOLLO_API_KEY`), Firecrawl (`FIRECRAWL_API_KEY`),
   Browserbase (`BROWSERBASE_API_KEY`/`_PROJECT_ID`).
+  - **`BROWSERBASE_API_KEY` — present as an Edge Function secret (owner-provisioned 2026-09-07), INFRASTRUCTURE
+    READINESS ONLY, NOT WIRED.** No code path reads it; Browserbase is `PROPOSED` (CONDITIONAL GO desk
+    review) as the replaceable bootstrap browser-**worker** for the Paige-owned **Secure Browser**, behind a
+    provider-neutral internal contract. Credentialed wiring is gated on the seven owner-side vendor gates in
+    `docs/audits/paige-secure-browser-provider-review-browserbase-2026-09-07.md`. The secret's VALUE must
+    never be revealed, requested, logged, rotated, or tested (§34 — names only in the brain).
 - **Docs / signing:** DocuSign (`DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID`,
   `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_BASE_URI`, `DOCUSIGN_RSA_PRIVATE_KEY`, `DOCUSIGN_WEBHOOK_HMAC_KEY`).
 - **Social / ads:** Meta (`META_APP_SECRET`, `META_PAGE_ACCESS_TOKEN`, `META_DEFAULT_PAGE_ID`,
