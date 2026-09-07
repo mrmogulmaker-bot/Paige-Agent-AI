@@ -122,6 +122,7 @@
         "environment",
         "release_channel",
         "deployed_at",
+        "staged_rollout",
         "migration_status",
         "edge_status",
         "checks",
@@ -133,6 +134,12 @@
         "environment": { "type": "string", "minLength": 1 },
         "release_channel": { "enum": ["development", "preview", "production", "staged"] },
         "deployed_at": { "type": "string", "format": "date-time" },
+        "staged_rollout": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/stagedRollout" }
+          ]
+        },
         "migration_status": { "$ref": "#/$defs/deliveryState" },
         "edge_status": { "$ref": "#/$defs/deliveryState" },
         "checks": {
@@ -146,6 +153,29 @@
           }
         },
         "evidence": { "$ref": "#/$defs/nonEmptyStrings" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "release_channel": { "const": "staged" } },
+            "required": ["release_channel"]
+          },
+          "then": { "properties": { "staged_rollout": { "$ref": "#/$defs/stagedRollout" } } },
+          "else": { "properties": { "staged_rollout": { "type": "null" } } }
+        }
+      ]
+    },
+    "stagedRollout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"],
+      "properties": {
+        "eligibility_rule": { "type": "string", "minLength": 1 },
+        "rollout_amount": { "type": "string", "minLength": 1 },
+        "start_condition": { "type": "string", "minLength": 1 },
+        "stop_condition": { "type": "string", "minLength": 1 },
+        "monitoring_owner": { "type": "string", "minLength": 1 },
+        "recovery_path": { "type": "string", "minLength": 1 }
       }
     },
     "whatsNew": {
