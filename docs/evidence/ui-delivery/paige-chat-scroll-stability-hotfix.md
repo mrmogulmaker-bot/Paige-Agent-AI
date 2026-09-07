@@ -5,6 +5,13 @@ Owner scope: dedicated PAIGE workspace, ordinary chat, Solo dock/pop-out lifecyc
 Status: RELEASE CANDIDATE — exact-head CI, merge, deployment, and authenticated production verification pending
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
+INTERNAL_BUILD_IDENTITY: 4ead09acc88bfceab6f06239120e8dace35954d3; deployment=local-build; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=scripts/live-drive/artifacts/paige-scroll-stability-react/report.json
+RELEASE_CHANNEL: development: exact implementation commit verified locally before preview and production release
+RELEASE_CLASSIFICATION: patch: focused correction to existing PAIGE conversation reading-position behavior
+CUSTOMER_RELEASE_IDENTITY: none: no named customer release identity was assigned to this hotfix
+RELEASE_NOTE_REQUIRED: NO: no approved named customer release exists for this focused internal patch
+RELEASE_TRUTH_BOUNDARY: PARTIAL: local exact-implementation tests and rendered behavior pass; preview, authenticated owner, and production proof remain owed
+RELEASE_RECOVERY: position=Revert the hotfix PR before merge or revert its merge commit after release while preserving unrelated main history; reference=docs/evidence/ui-delivery/paige-chat-scroll-stability-hotfix.md
 FLOW_BY_FLOW: PASS: affected surfaces, scroll ownership, message identity, history hydration, streaming frames, responsive remounts, popup lifecycle, and active Skills/Interview collision were grounded before editing
 PAIGE_UI_DESIGN: PASS: the approved chat composition and separate Live Conversation workstream are unchanged; this is a behavior-only stability repair
 MATERIAL_FLOW_CHANGE: NO: no navigation, capability, authority, Spine, or visual redesign was added
