@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "artifact": "Paige OS Integration — Surface Binding Ledger",
   "generated": "2026-09-07",
-  "grounded_against": "origin/main ae0a16a0d5147a4652a06925356c427c4d543d56",
+  "grounded_against": "origin/main 15da5afe34c4be2740e381232b40a991d5ed8cfc",
   "scope": "solo",
   "owner": "backend (Claude Code) — §00: this ledger records what WORKS/is wired; it holds zero design opinion",
   "state_vocabulary": {
