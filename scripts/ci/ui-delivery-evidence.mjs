@@ -22,6 +22,7 @@ const ROOT_UI_FILES = new Set([
 ]);
 const TEST_ONLY = /(?:^|\/)(?:__tests__|test|tests|fixtures|snapshots)(?:\/|$)|\.(?:test|spec|stories)\.[^.]+$/i;
 const EVIDENCE_PATH = /^docs\/evidence\/ui-delivery\/(?!TEMPLATE\.md$).+\.md$/i;
+let integrationRegistryNames;
 
 const CORE_FIELDS = [
   "FLOW_BY_FLOW",
@@ -147,6 +148,17 @@ function isEvidenceValue(value) {
     : !isUnresolvedRestatement(match[2]);
 }
 
+function isRegistryNamedTarget(value) {
+  try {
+    integrationRegistryNames ??= JSON.parse(readFileSync(resolve(process.cwd(), "docs/integration-registry/integration-capability-registry.json"), "utf8"))
+      .providers.map((provider) => String(provider.name ?? "").toLowerCase());
+  } catch {
+    return false;
+  }
+  const target = String(value ?? "").trim().toLowerCase();
+  return Boolean(target) && integrationRegistryNames.some((name) => name.split(/[^a-z0-9]+/).includes(target));
+}
+
 function normalizeSentinel(value) {
   return String(value ?? "").trim().replace(/[^A-Za-z0-9]+/g, " ").replace(/\s+/g, " ").toLowerCase();
 }
@@ -204,7 +216,9 @@ function isUnresolvedRestatement(value) {
     const normalizedClause = normalizeSentinel(clause);
     const inabilityTarget = /\b(?:cannot|could not|can not|unable to)\s+(?:verify|test|access|reach|authenticate(?: to)?|connect(?: to)?)\s+(.+)$/i.exec(clause)?.[1]?.trim() ?? "";
     const targetTerms = substantiveTerms(inabilityTarget);
-    const hasNamedTarget = /\b[A-Z][A-Za-z0-9._-]*\b/.test(inabilityTarget) && targetTerms.length >= 1 && !/\b(?:it|this|that|them|there|here|something|anything|nothing|someone|anyone)\b/i.test(inabilityTarget) && (!/\b[A-Za-z]+ly\b/i.test(inabilityTarget) || /\b(?:Grammarly|Calendly)\b/.test(inabilityTarget));
+    const isLyTarget = /\b[A-Za-z]+ly\b/i.test(inabilityTarget);
+    const isGroundedLyTarget = /\b(?:Grammarly|Calendly|Fly)\b/.test(inabilityTarget) || isRegistryNamedTarget(inabilityTarget);
+    const hasNamedTarget = /\b[A-Z][A-Za-z0-9._-]*\b/.test(inabilityTarget) && targetTerms.length >= 1 && !/\b(?:it|this|that|them|there|here|something|anything|nothing|someone|anyone)\b/i.test(inabilityTarget) && (!isLyTarget || isGroundedLyTarget);
     const hasConcreteTarget = affectedScope.test(inabilityTarget) || hasNamedTarget;
     const hasScopedInability = inabilityCondition.test(normalizedClause) && hasConcreteTarget;
     return normalizedClause && !pair.test(normalizedClause) && (causeCondition.test(normalizedClause) || hasScopedInability) && substantiveTerms(normalizedClause).length >= 2;
