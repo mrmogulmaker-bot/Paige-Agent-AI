@@ -1,5 +1,4 @@
 {
-  "generatedAt": "2026-09-07T19:48:02.955Z",
   "baselineSha": "e70af9ddfe01aec2d482d07bedc05ca2c581d7cf",
   "evidenceClass": "Source-bound browser reproduction of exact legacy scroll assignment and browser remount default; synthetic transcript, not authenticated product runtime",
   "results": {

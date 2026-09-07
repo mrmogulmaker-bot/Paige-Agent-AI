@@ -112,6 +112,12 @@ describe("normal PaigeChat remount scroll behavior", () => {
     const remountId = remount.querySelector<HTMLElement>("[data-paige-message-id]")!.dataset.paigeMessageId;
     expect(remountId).not.toBe(firstId);
 
+    await act(async () => {
+      for (const callback of resizeCallbacks) callback([], {} as ResizeObserver);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    expect(remount.scrollTop).toBe(900);
+
     await act(async () => window.dispatchEvent(new Event("paige-factory-reset")));
     expect(remount.scrollTop).toBe(900);
 

@@ -7,11 +7,11 @@
     {"name":"lint","argv":["node","scripts/ci/paige-scroll-eslint-ratchet.mjs"],"definition_file":"scripts/ci/paige-scroll-eslint-ratchet.mjs"},
     {"name":"security","argv":["node","scripts/ci/definer-fn-lint.mjs"],"definition_file":"scripts/ci/definer-fn-lint.mjs"},
     {"name":"build","argv":["node","node_modules/vite/bin/vite.js","build"],"definition_file":"package.json"},
-    {"name":"baseline-reproduction","argv":["node","scripts/ci/paige-scroll-baseline-reproduction.mjs","e70af9ddfe01aec2d482d07bedc05ca2c581d7cf"],"definition_file":"scripts/ci/paige-scroll-baseline-reproduction.mjs"},
+    {"name":"baseline-reproduction","argv":["node","scripts/ci/paige-scroll-baseline-reproduction.mjs","e70af9ddfe01aec2d482d07bedc05ca2c581d7cf","outputs/paige-scroll-baseline"],"definition_file":"scripts/ci/paige-scroll-baseline-reproduction.mjs"},
     {"name":"runtime-proof","argv":["node","scripts/live-drive/paige-scroll-stability-react-drive.mjs"],"definition_file":"scripts/live-drive/paige-scroll-stability-react-drive.mjs"}
   ],
   "evidence": [
-    {"path":"evidence/verification/paige-scroll-baseline/report.json","produced_by":"baseline-reproduction","kind":"runtime","max_age_hours":24},
+    {"path":"outputs/paige-scroll-baseline/report.json","produced_by":"baseline-reproduction","kind":"runtime","max_age_hours":24},
     {"path":"scripts/live-drive/artifacts/paige-scroll-stability-react/report.json","produced_by":"runtime-proof","kind":"runtime","max_age_hours":24}
   ]
 }

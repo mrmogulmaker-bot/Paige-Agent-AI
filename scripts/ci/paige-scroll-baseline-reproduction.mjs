@@ -17,7 +17,10 @@ const sourceChecks = {
   duplicateResponsiveChatMounts: (shellSource.match(/<PaigeChat\b/g) ?? []).length === 2,
 };
 
-const output = path.join(root, "evidence/verification/paige-scroll-baseline");
+const output = path.resolve(
+  root,
+  process.argv[3] ?? "evidence/verification/paige-scroll-baseline",
+);
 fs.mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
@@ -78,7 +81,6 @@ const results = {
   remountResetToTop: afterResponsiveRemount.scrollTop === 0 && afterResponsiveRemount.anchor === "baseline-message-1",
 };
 const report = {
-  generatedAt: new Date().toISOString(),
   baselineSha,
   evidenceClass: "Source-bound browser reproduction of exact legacy scroll assignment and browser remount default; synthetic transcript, not authenticated product runtime",
   results,

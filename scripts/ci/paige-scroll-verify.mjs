@@ -92,14 +92,17 @@ const evidence = manifest.evidence.map((item) => {
   }
 });
 
+const workingTreeAfterCommands = git(['status', '--short']);
 const passed =
+  workingTreeBefore === '' &&
+  workingTreeAfterCommands === '' &&
   commandResults.every(({ exitCode }) => exitCode === 0) &&
   evidence.every(({ fresh }) => fresh);
 const packet = {
   generatedAt: new Date().toISOString(),
   revision,
   workingTreeBefore,
-  workingTreeAfter: git(['status', '--short']),
+  workingTreeAfterCommands,
   hashes,
   commands: commandResults,
   evidence,
