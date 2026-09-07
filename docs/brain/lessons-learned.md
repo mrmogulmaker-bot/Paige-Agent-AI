@@ -6,6 +6,26 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 0. A capability's honest Rail outcome depends on the EXECUTOR'S DOWNSTREAM CONTRACT, not just the classifier logic (2026-09-07)
+
+- **Symptom (caught by Codex, missed by an in-house §39 verifier + §5 compliance crew).** An increment adding
+  `crm_create_contact` to the capability-Rail classifier passed both crew passes on classifier LOGIC, but was
+  withdrawn (PR #1040) when Codex read the downstream contracts: `create_contact` returns an EXISTING row's id
+  without inserting on an exact-email match (so `success:true ≠ created` → a false `capability_succeeded`,
+  §947); `capability_refused`'s Rail DISPLAY copy is an auth-denial (misleading for a dedup question); and the
+  RPC's `current_user_tenant_id()` tenant diverges from the recorder's `personaCtx.tenant_id`.
+- **Root cause.** The crew reviewed the classifier in ISOLATION — is the mapping internally consistent? — and
+  did not read (a) the RPC the executor calls (its idempotency / return semantics), (b) the Rail DISPLAY copy
+  the chosen outcome renders as, or (c) the tenant seam between the executor's write and the recorder's
+  attribution. A `{ success:true }` from an executor is not proof an ACT happened; it is only proof the call
+  did not throw.
+- **Rule.** Before mapping any tool's result to an honest capability outcome, verify THREE downstream
+  contracts, not just the classifier: (1) does `success:true` PROVE the act occurred, or can the underlying
+  RPC no-op / return-existing / be idempotent? (2) does the chosen outcome's RENDERED Rail copy match this
+  branch's real meaning? (3) is the Rail row attributed to the SAME tenant the write actually used? A crew
+  brief for any outcome-recording change MUST route the reviewer to the executor's RPC migration + the Rail
+  display migration, not only the classifier file.
+
 ## 00. A new by-id EXPORT/read edge function that trusts RLS is a cross-tenant IDOR — marketing_content's RLS has a global-admin OR-branch (2026-09-06)
 
 - **Symptom (caught by the §39 peer-gate, missed by §5 compliance).** A new `export-document` edge fn

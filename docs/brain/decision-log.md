@@ -1,5 +1,33 @@
 # Decision Log — chronological one-liners
 
+- **Capability System — Slice 3 (F05) increment 3 (`crm_create_contact` Rail outcome): ATTEMPTED then WITHDRAWN after Codex found THREE confirmed defects (2026-09-07, PR #1040 withdrawn)** —
+  the increment added `crm_create_contact` to `crm-capability-outcome.ts` with a per-capability dedup-refusal
+  branch. The §39 verifier + §5 compliance crew passed the classifier LOGIC, but Codex — reading the DOWNSTREAM
+  contracts the crew did not — found three defects, ALL verified against the migrations, that make honest Rail
+  recording impossible in a bounded change:
+  1. **§947 false "created" (P2, blocking).** `create_contact` (`20261020010000_client_identity_contract.sql`
+     L66-71 + the `unique_violation` branch) RETURNS AN EXISTING row's id WITHOUT inserting on an exact-email
+     match — yet the executor still returns `{ success:true }`, so mapping `success:true → capability_succeeded`
+     records "Paige added a contact" when NOTHING was created (on `confirm_new:true`+existing-email, or a
+     fail-open/missed dedup). The executor's `result` cannot tell created from existing.
+  2. **Misleading refusal copy (P2).** `capability_refused` renders (`20261220000000_...sql` L149-151) as
+     "Not allowed to add a contact… what PAIGE is approved to do may need a look" — an AUTHORIZATION-denial
+     framing. A dedup "is this the same person?" question shown that way misleads; the dedup-clarification is
+     not a refusal (nor a terminal Rail outcome) at all.
+  3. **Tenant mis-attribution (P1, §9).** `create_contact` resolves tenant via `current_user_tenant_id()`
+     (RPC L62) for a JWT caller, but `recordCrmRun` attributes the Rail row to `personaCtx.tenant_id`; for a
+     multi-tenant staff user whose persona ≠ active tenant, the row is filed under the wrong tenant or lost
+     (a broader property of the recordCrmRun wiring, surfaced here).
+  **DECISION (§13):** the shipped state — `crm_create_contact` NOT in the Rail set (only `paige_audit_log`) —
+  is HONEST; the increment made it LESS honest by risking a false "succeeded." Withdrawn (branch reset to
+  `origin/main`; PR #1040 closed). **A proper slice REQUIRES:** (a) an inserted-vs-existing signal from
+  `create_contact` (a return-contract change → §37 sweep across all callers incl. paige-mcp's `create_contact`
+  tool) so success→`capability_succeeded` only when truly created (existing→a no-op outcome); (b) the
+  dedup-clarification records NOTHING (classifier → null), never `capability_refused`; (c) Rail attribution
+  matched to the RPC's resolved tenant. The three no-refusal CRM writes (Task #19) are UNAFFECTED — only
+  `create_contact` has the idempotent return-existing behavior. Layered review worked exactly as §39 intends
+  ("none alone is sufficient"): crew green on logic, Codex caught the downstream-contract defects.
+
 - **Capability System — document EXPORT MVP: a real downloadable file (pdf/docx/pptx/md) (2026-09-06, Task #21, owner-authorized)** —
   the owner's doc-creation task. AUDIT (grounded, not from labels): today Paige's only "document" is
   block-JSON in `marketing_content` rendered on canvas (download = the browser's own Print→PDF); NO valid
