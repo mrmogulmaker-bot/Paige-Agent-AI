@@ -10,7 +10,7 @@
  * synthetic. It proves GEOMETRY, STATE RENDERING and both palettes — never production data or
  * production behaviour. The authenticated live drive stays owed to a capable session.
  *
- *   /?mode=grounded&theme=dark   (modes: grounded · partial · empty · blocked · proposal · motion · loading · error)
+ *   /?mode=proposal&theme=dark   (modes: empty · draft · proposal · active · paused · complete · archived · blocked · loading · error · forbidden)
  */
 import { Component, StrictMode, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -61,7 +61,7 @@ function Harness() {
             <Routes>
               <Route
                 path="/solo/:account/*"
-                element={<SoloGamePlanWorkspace openPaige={() => {}} accountContext={{ accountName: "Clearpath Advisory", accountType: "standalone", parentTenantId: null }} workspaceId="review" />}
+                element={<SoloGamePlanWorkspace openPaige={() => {}} accountContext={{ accountName: "Clearpath Advisory", accountType: "standalone", parentTenantId: null }} workspaceId="11111111-1111-4111-8111-111111111111" />}
               />
             </Routes>
           </MemoryRouter>

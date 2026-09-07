@@ -1,264 +1,239 @@
-// @vitest-environment jsdom
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 
-/**
- * Business Game Plan — the STRATEGY DESK render + behaviour contract (owner-approved 2026-09-06).
- *
- * Drives the REAL component against a mocked view-model, so the assertions cover what a human
- * actually reaches: the strategy spine renders (not a readiness list), the Plan Brief is genuinely
- * EDITABLE and calls the persist seam (§70), Systems Check is a demoted supporting dependency, every
- * action goes somewhere real (a route this app mounts, or the one PAIGE conversation), and no route
- * string / internal identifier leaks into visible copy.
- */
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import type { StrategicPlay } from "./data/useBusinessGamePlanMissions";
 
-import type { SoloGamePlanView } from "./data/useSoloGamePlan";
+const harness = vi.hoisted(() => ({
+  openPaige: vi.fn(),
+  save: vi.fn(async () => ({ ok: true })),
+  refresh: vi.fn(),
+  mission: {
+    items: [] as StrategicPlay[],
+    status: "ready" as "loading" | "ready" | "forbidden" | "error",
+    errorCode: null,
+    refresh: vi.fn(),
+    getDetail: vi.fn(),
+    mutate: vi.fn(),
+  },
+}));
 
-const hooked = vi.hoisted(() => ({ view: null as SoloGamePlanView | null }));
-vi.mock("./data/useSoloGamePlan", () => ({ useSoloGamePlan: () => hooked.view }));
+vi.mock("./data/useSoloGamePlan", () => ({
+  useSoloGamePlan: () => ({
+    loading: false,
+    error: false,
+    empty: false,
+    refresh: harness.refresh,
+    greeting: { salutation: "Good morning", name: "Jordan", dateLabel: "Sep 7" },
+    horizons: [{ id: "annual", label: "Annual", sub: "This year" }, { id: "quarter", label: "This quarter", sub: "90 days" }],
+    planBrief: {
+      fields: {
+        annualDirection: "Build a durable advisory business.",
+        currentPriority: "Convert three warm referrals.",
+        goals90Day: "Six retained clients.",
+        successDefinition: "Twenty thousand monthly retained.",
+        constraints: "No more than eight active clients.",
+        operatingPreferences: "Draft, then ask.",
+        doNotAssume: "Do not infer revenue.",
+      },
+      hasPlan: true, canEdit: true, updatedAt: "2026-09-07T00:00:00Z",
+      provenance: {}, pendingProposal: null, proposalPlanOnly: true,
+      save: harness.save, applyProposal: vi.fn(), dismissProposal: vi.fn(),
+    },
+    decisions: [], decisionsStatus: "ready",
+  }),
+}));
+vi.mock("./data/useBusinessGamePlanMissions", async () => {
+  const actual = await vi.importActual<typeof import("./data/useBusinessGamePlanMissions")>("./data/useBusinessGamePlanMissions");
+  return { ...actual, useBusinessGamePlanMissions: () => harness.mission };
+});
 
 import { SoloGamePlanWorkspace } from "./SoloGamePlanWorkspace";
+import { getPaigeBusinessPlanScope, clearPaigeSurfaceScope } from "./paigeClientScope";
 
-let container: HTMLDivElement;
+let host: HTMLDivElement;
 let root: Root;
-const loc = { value: "" };
-
-function LocationProbe() {
-  const l = useLocation();
-  loc.value = l.pathname;
-  return null;
-}
-function mount(openPaige?: () => void) {
-  loc.value = "";
-  act(() => {
-    root.render(
-      <MemoryRouter initialEntries={["/solo/42/command-center/business-game-plan"]}>
-        <Routes>
-          <Route
-            path="/solo/:account/*"
-            element={<><SoloGamePlanWorkspace openPaige={openPaige} accountContext={{ accountName: "Clearpath Advisory", accountType: "standalone", parentTenantId: null }} /><LocationProbe /></>}
-          />
-        </Routes>
-      </MemoryRouter>,
-    );
-  });
-}
-function clickText(selector: string, text: string) {
-  const el = [...container.querySelectorAll(selector)].find((n) => (n.textContent || "").includes(text)) as HTMLElement | undefined;
-  if (!el) throw new Error(`no ${selector} containing "${text}"`);
-  act(() => { el.click(); });
-  return el;
-}
-function setTextarea(labelText: string, value: string) {
-  const field = [...container.querySelectorAll(".ov-field")].find((f) => (f.textContent || "").includes(labelText)) as HTMLElement | undefined;
-  const ta = field?.querySelector("textarea") as HTMLTextAreaElement | undefined;
-  if (!ta) throw new Error(`no textarea for "${labelText}"`);
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!;
-  act(() => { setter.call(ta, value); ta.dispatchEvent(new Event("input", { bubbles: true })); });
-}
-
-const saveMock = vi.fn().mockResolvedValue({ ok: true, kind: "saved" });
-
-const groundedView = (): SoloGamePlanView => ({
-  loading: false, error: false, empty: false,
-  greeting: { name: "Jordan", dateLabel: "Saturday, September 6", salutation: "Good afternoon" },
-  narrative: "", attention: [], bestMove: null, priorities: [], foundation: [],
-  coverage: { grounded: 0, partial: 0, degraded: 0, total: 5, caption: "" },
-  motion: { status: "ready", items: [], freshness: "No recorded work yet" },
-  firstRun: [],
-  planBrief: {
-    fields: {
-      annualDirection: "Become the default operations advisor in the Northeast.",
-      goals90Day: "6 retained clients by quarter end.",
-      currentPriority: "Convert the 3 warm referrals.",
-      successDefinition: "$20k/mo retained.",
-      constraints: "Max 8 active clients.",
-      operatingPreferences: "Draft, don't send.",
-      doNotAssume: "",
-    },
-    provenance: { annualDirection: "owner_confirmed", currentPriority: "owner_confirmed" },
-    hasPlan: true, canEdit: true, saving: false, pendingProposal: null, proposalPlanOnly: false, updatedAt: "2026-09-04T00:00:00Z",
-    save: saveMock,
-    applyProposal: vi.fn().mockResolvedValue({ ok: true, kind: "saved" }),
-    dismissProposal: vi.fn().mockResolvedValue({ ok: true }),
-  },
-  horizons: [
-    { id: "annual", label: "Annual", sub: "This year", direction: "Become the default operations advisor in the Northeast.", outcome: "$20k/mo retained.", defined: true },
-    { id: "quarter", label: "This quarter", sub: "90 days", direction: "Convert the 3 warm referrals.", outcome: "6 retained clients by quarter end.", defined: true },
-  ],
-  playsStatus: "ready",
-  plays: [
-    { id: "p1", name: "Q3 Launch campaign", objective: "Put the offer in front of the warm list.", audience: "Warm list", angle: "Find the leaks", window: "Sep 22 – Oct 3", channels: "Email", outcome: "20 booked diagnostics.", successSignal: "Bookings.", offerName: "Ops-audit", status: "approved", blocked: false },
-  ],
-  decisions: [
-    { id: "d1", title: "Review 3 drafts Paige is holding", detail: "Paige prepared these.", source: "recommendation", waiting: true, destination: "paige", evidence: "3 drafts waiting." },
-  ],
-  decisionsStatus: "ready",
-  dependencies: [
-    { id: "dep1", title: "Sending identity not verified", reason: "Blocks the launch send.", blocking: true },
-  ],
-  dependenciesStatus: "ready",
-  refresh: vi.fn(),
-});
-
 beforeEach(() => {
-  container = document.createElement("div");
-  document.body.appendChild(container);
-  root = createRoot(container);
-  saveMock.mockClear();
+  harness.openPaige.mockClear(); harness.save.mockClear(); harness.refresh.mockClear();
+  harness.mission.refresh.mockReset(); harness.mission.getDetail.mockReset(); harness.mission.mutate.mockReset();
+  harness.mission.items = []; harness.mission.status = "ready";
+  clearPaigeSurfaceScope();
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
 });
-afterEach(() => {
-  act(() => root.unmount());
-  container.remove();
-  vi.clearAllMocks();
-});
+afterEach(() => { act(() => root.unmount()); host.remove(); });
 
-describe("SoloGamePlanWorkspace (strategy desk)", () => {
-  it("renders a loading skeleton (aria-busy) while the plan resolves", () => {
-    hooked.view = { ...groundedView(), loading: true };
-    mount();
-    expect(container.querySelector("[aria-busy='true']")).toBeTruthy();
+function render() {
+  act(() => { root.render(<MemoryRouter initialEntries={["/solo/42/command-center/business-game-plan"]}><Routes><Route path="/solo/:account/*" element={<SoloGamePlanWorkspace workspaceId="11111111-1111-4111-8111-111111111111" accountContext={{ accountName: "Clearpath", accountType: "standalone", parentTenantId: null }} openPaige={harness.openPaige} />} /></Routes></MemoryRouter>); });
+}
+function click(label: string) {
+  const buttons = [...host.querySelectorAll("button")];
+  const button = (buttons.find((node) => node.textContent?.trim() === label)
+    ?? buttons.find((node) => node.textContent?.includes(label))) as HTMLButtonElement | undefined;
+  expect(button, label).toBeTruthy(); act(() => button!.click());
+}
+
+describe("Business Game Plan owner-complete vertical", () => {
+  it("preserves Set your plan and replaces generic system/activity material with Plan in Motion", () => {
+    render();
+    expect(host.textContent).toContain("Set your plan");
+    expect(host.textContent).toContain("Current-quarter focus");
+    expect(host.textContent).toContain("Success criteria");
+    expect(host.textContent).toContain("How Paige should operate");
+    expect(host.textContent).toContain("What Paige must not assume");
+    expect(host.textContent).toContain("Plan in Motion");
+    expect(host.textContent).toContain("No strategic plays yet");
+    expect(host.textContent).not.toContain("Plan dependencies");
+    expect(host.textContent).not.toContain("Work in motion");
+    expect(host.textContent).not.toContain("n8n");
+    expect(host.textContent).not.toContain("Zapier");
   });
 
-  it("renders a useful first-run experience for an empty workspace, and its steps navigate for real", () => {
-    hooked.view = {
-      ...groundedView(), empty: true,
-      firstRun: [
-        { label: "Complete your Business Context", hint: "Who you serve", destination: "setup" },
-        { label: "Add your first offer", hint: "What you sell", destination: "catalog" },
-        { label: "Connect one operating system", hint: "Calendar or email", destination: "connections" },
-      ],
-    };
-    mount();
-    expect(container.textContent).toContain("Let's build your game plan with Paige.");
-    clickText(".sd-first-step", "Add your first offer");
-    expect(loc.value).toBe("/solo/42/growth/catalog");
+  it("opens the plan editor and persists all owner-direction fields", async () => {
+    render(); click("Edit plan");
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain("What Paige must not assume");
+    const fields = host.querySelectorAll("textarea");
+    act(() => { const target = fields[6] as HTMLTextAreaElement; target.value = "Do not infer demand."; target.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => { click("Save plan"); await Promise.resolve(); });
+    expect(harness.save).toHaveBeenCalled();
   });
 
-  it("leads with the STRATEGY spine: greeting, the plan brief direction, plays — not a readiness list", () => {
-    hooked.view = groundedView();
-    mount();
-    expect(container.textContent).toContain("Good afternoon, Jordan.");
-    expect(container.textContent).toContain("Plan brief");
-    // The quarter horizon is the default lead; its direction shows.
-    expect(container.textContent).toContain("Convert the 3 warm referrals.");
-    expect(container.textContent).toContain("Q3 Launch campaign");
-    // Systems Check is demoted to a supporting dependency, never a "best move" spine.
-    expect(container.textContent).toContain("Plan dependencies");
-    expect(container.textContent).not.toContain("Top move · blocked");
+  it("opens the one Paige workspace with tenant-stamped Business Game Plan context", () => {
+    render(); click("Plan with Paige");
+    expect(harness.openPaige).toHaveBeenCalledTimes(1);
+    expect(getPaigeBusinessPlanScope("11111111-1111-4111-8111-111111111111")).toMatchObject({
+      surface: "business_game_plan", businessMissionId: null, label: "Business Game Plan",
+    });
+    expect(getPaigeBusinessPlanScope("22222222-2222-4222-8222-222222222222")).toBeNull();
   });
 
-  it("renders the owner's real, server-resolved account identity (§70) — name + tier, not a placeholder", () => {
-    hooked.view = groundedView();
-    mount();
-    expect(container.querySelector(".sd-kicker")?.textContent).toContain("Clearpath Advisory");
-    expect(container.querySelector(".sd-kicker")?.textContent).toContain("Solo");
-    expect(container.querySelector("[data-tenant-account-name]")?.textContent).toBe("Clearpath Advisory");
-    expect(container.querySelector("[data-tenant-account-tier]")?.textContent).toBe("Solo");
+  it("shows only truthful card fields and a blocker only for a blocked play", () => {
+    harness.mission.items = [{
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", title: "Protect renewal quality", state: "blocked",
+      stageLabel: "Blocked", horizonLabel: "Dec 31, 2026", nextOwner: "Owner",
+      desired_outcome: "Renew the right clients.", next_action: "Confirm capacity.", blocker: "Capacity decision needed.",
+      revision: 2, created_at: "", updated_at: "", deadline_on: "2026-12-31", success_definition: "Renewals signed",
+      brief_version: 2, closure_outcome: null, outcome_summary: null, state_reason: "Capacity decision needed.",
+    }];
+    render();
+    expect(host.textContent).toContain("Protect renewal quality");
+    expect(host.textContent).toContain("Desired outcome");
+    expect(host.textContent).toContain("Next meaningful step");
+    expect(host.textContent).toContain("Next owner");
+    expect(host.textContent).toContain("Capacity decision needed.");
+    expect(host.textContent).not.toContain("%");
   });
 
-  it("the Plan Brief is genuinely EDITABLE and persists through the save seam (§70)", () => {
-    hooked.view = groundedView();
-    mount();
-    clickText("button", "Edit brief");
-    // A dialog opened with the current values.
-    expect(container.querySelector('[role="dialog"]')).toBeTruthy();
-    setTextarea("Annual direction", "Own the Series-A ops-advisory category.");
-    clickText("button", "Save changes");
-    expect(saveMock).toHaveBeenCalledTimes(1);
-    expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ annualDirection: "Own the Series-A ops-advisory category." }));
+  it("fails closed when Mission reads are forbidden", () => {
+    harness.mission.status = "forbidden";
+    render();
+    expect(host.textContent).toContain("Owner access required");
+    expect(host.textContent).not.toContain("All clear");
   });
 
-  it("a NON-first Plan Brief field is editable and its value reaches the save seam (§70, peer-gate BLOCKER)", () => {
-    // The focus-trap effect once re-ran on every keystroke (unstable onClose dep), stealing focus
-    // back to field #1 so only the first field was editable. This drives a LATER field end-to-end;
-    // its value must flow to save — a regression guard for the multi-field first-run flow.
-    hooked.view = groundedView();
-    mount();
-    clickText("button", "Edit brief");
-    setTextarea("This quarter's focus", "Convert the 3 warm referrals into retained clients.");
-    clickText("button", "Save changes");
-    expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ currentPriority: "Convert the 3 warm referrals into retained clients." }));
+  const missionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const summary = (state: StrategicPlay["state"] = "active"): StrategicPlay => ({
+    id: missionId, title: "Protect renewal quality", state, state_reason: state === "blocked" ? "Capacity decision needed." : null,
+    stageLabel: state === "proposed" ? "Awaiting owner approval" : state === "active" ? "Active" : state === "blocked" ? "Blocked" : state === "paused" ? "Paused" : state === "completed" ? "Complete" : "Archived",
+    horizonLabel: "Dec 31, 2026", nextOwner: "Owner", desired_outcome: "Renew the right clients.",
+    next_action: "Confirm capacity.", blocker: state === "blocked" ? "Capacity decision needed." : null,
+    revision: 4, created_at: "", updated_at: "", deadline_on: "2026-12-31",
+    success_definition: "Renewals signed", brief_version: 2,
+    closure_outcome: state === "completed" ? "partly_achieved" : null,
+    outcome_summary: state === "completed" ? "Two renewals signed." : null,
+    request_source: state === "proposed" ? "paige_chat" : "owner_ui",
+  });
+  const detail = (state: StrategicPlay["state"] = "active") => ({
+    mission: {
+      ...summary(state), outcome_unknowns: state === "completed" ? "Third renewal pending." : null,
+      request_source: state === "proposed" ? "paige_chat" as const : "owner_ui" as const,
+      request_thread_id: null,
+    },
+    brief: {
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", version: 2, desired_outcome: "Renew the right clients.",
+      deadline_on: "2026-12-31", baseline: "Three renewals due.", strategy: "Lead with outcomes.",
+      constraints: ["Protect capacity"], success_definition: "Renewals signed", owner_authority: "Draft, then ask.",
+      assumptions: [], missing_information: [], revision_reason: "Owner refined scope.", created_at: "",
+    },
+  });
+  const openDetail = async (state: StrategicPlay["state"]) => {
+    harness.mission.items = [summary(state)];
+    harness.mission.getDetail.mockResolvedValue(detail(state));
+    harness.mission.mutate.mockResolvedValue({ ok: true, verified: true, railRecorded: true, missionId });
+    render();
+    await act(async () => { click("Protect renewal quality"); await Promise.resolve(); });
+  };
+  const setField = (label: string, value: string) => {
+    const field = [...host.querySelectorAll("label")].find((node) => node.textContent?.includes(label))?.querySelector("input,textarea,select") as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
+    expect(field, label).toBeTruthy();
+    const prototype = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype
+      : field instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+    act(() => { setter?.call(field, value); field!.dispatchEvent(new Event("input", { bubbles: true })); field!.dispatchEvent(new Event("change", { bubbles: true })); });
+  };
+
+  it("reviews and revises a canonical Strategic Play", async () => {
+    await openDetail("active");
+    expect(host.textContent).toContain("canonical Business Game Plan record");
+    click("Revise");
+    setField("Why this changed", "Owner changed the sequence.");
+    await act(async () => { click("Save revision"); await Promise.resolve(); });
+    expect(harness.mission.mutate).toHaveBeenCalledWith("mission_revise", expect.objectContaining({
+      mission_id: missionId, expected_revision: 4, revision_reason: "Owner changed the sequence.",
+    }));
   });
 
-  it("a Systems Check read OUTAGE shows 'Couldn't check', never a false 'All clear' (§13, peer-gate MAJOR)", () => {
-    hooked.view = { ...groundedView(), dependencies: [], dependenciesStatus: "unavailable" };
-    mount();
-    expect(container.textContent).toContain("Couldn't check");
-    expect(container.textContent).not.toContain("Nothing is blocking your plays");
-    expect(container.textContent).not.toContain("All clear");
+  it("approves a Paige-proposed draft through an explicit owner action", async () => {
+    await openDetail("proposed");
+    expect(host.textContent).toContain("Awaiting owner approval");
+    await act(async () => { click("Approve"); await Promise.resolve(); });
+    expect(harness.mission.mutate).toHaveBeenLastCalledWith("mission_transition", expect.objectContaining({ to_state: "active" }));
   });
 
-  it("a drafts read OUTAGE shows 'Couldn't check what's waiting', never 'All caught up' (§13, Codex P2)", () => {
-    hooked.view = { ...groundedView(), decisions: [], decisionsStatus: "unavailable" };
-    mount();
-    expect(container.textContent).toContain("Couldn't check what's waiting");
-    expect(container.textContent).not.toContain("All caught up");
+  it("declines a Paige proposal with a preserved reason", async () => {
+    await openDetail("proposed");
+    click("Decline");
+    setField("Reason", "Not aligned to this quarter.");
+    await act(async () => { click("Confirm"); await Promise.resolve(); });
+    expect(harness.mission.mutate).toHaveBeenLastCalledWith("mission_transition", expect.objectContaining({
+      to_state: "stopped", reason: "Not aligned to this quarter.", closure_outcome: "stopped",
+    }));
   });
 
-  it("a MIXED proposal (touches business details) offers 'Review in Setup', never an inline Apply (§13, Codex P1)", () => {
-    const v = groundedView();
-    v.planBrief = { ...v.planBrief, pendingProposal: { id: "p1", reason: "Narrow the quarter target.", proposedAt: "2026-09-06T00:00:00Z", patch: { currentPriority: "x", legalName: "Acme LLC" } } as never, proposalPlanOnly: false };
-    hooked.view = v;
-    mount();
-    expect(container.textContent).toContain("Review in Setup");
-    // No inline Apply for a proposal that reaches beyond the plan fields shown here.
-    const applyBtn = [...container.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Apply");
-    expect(applyBtn).toBeFalsy();
-    clickText("button", "Review in Setup");
-    expect(loc.value).toBe("/solo/42/settings/setup");
+  it.each([
+    ["Pause", "paused", "Capacity review.", "pause"],
+    ["Blocked", "blocked", "Capacity decision needed.", "block"],
+    ["Complete", "completed", "Two renewals signed.", "complete"],
+  ] as const)("runs the %s action only after the owner supplies its truthful reason", async (button, state, reason, _case) => {
+    await openDetail("active");
+    click(button);
+    setField(button === "Blocked" ? "What is blocking" : button === "Complete" ? "Truthful outcome" : "Reason", reason);
+    await act(async () => { click("Confirm"); await Promise.resolve(); });
+    expect(harness.mission.mutate).toHaveBeenLastCalledWith("mission_transition", expect.objectContaining({ to_state: state, reason }));
   });
 
-  it("a dismiss FAILURE surfaces its error, never a false 'Dismissed' success (§13, Codex P2)", async () => {
-    const dismiss = vi.fn().mockResolvedValue({ ok: false, error: "This plan changed elsewhere." });
-    const v = groundedView();
-    v.planBrief = { ...v.planBrief, pendingProposal: { id: "p1", reason: "r", proposedAt: "2026-09-06T00:00:00Z", patch: { currentPriority: "x" } } as never, proposalPlanOnly: true, dismissProposal: dismiss };
-    hooked.view = v;
-    mount();
-    await act(async () => { clickText("button", "Dismiss"); });
-    expect(dismiss).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("This plan changed elsewhere.");
-    expect(container.textContent).not.toContain("your approved plan is unchanged");
+  it("resumes a paused play", async () => {
+    await openDetail("paused");
+    await act(async () => { click("Resume"); await Promise.resolve(); });
+    expect(harness.mission.mutate).toHaveBeenLastCalledWith("mission_transition", expect.objectContaining({ to_state: "active" }));
   });
 
-  it("the primary act opens the one PAIGE conversation (never a fake action)", () => {
-    const openPaige = vi.fn();
-    hooked.view = groundedView();
-    mount(openPaige);
-    clickText("button", "Plan with Paige");
-    expect(openPaige).toHaveBeenCalledTimes(1);
+  it("archives a completed play without erasing its verified outcome", async () => {
+    await openDetail("completed");
+    click("Archive");
+    await act(async () => { click("Confirm"); await Promise.resolve(); });
+    expect(harness.mission.mutate).toHaveBeenLastCalledWith("mission_transition", expect.objectContaining({
+      to_state: "stopped", closure_outcome: "partly_achieved", outcome_summary: "Two renewals signed.", outcome_unknowns: "Third renewal pending.",
+    }));
   });
 
-  it("a plan dependency routes to Systems Check (demoted, but reachable)", () => {
-    hooked.view = groundedView();
-    mount();
-    // open the collapsible dependencies section, then click the finding.
-    clickText(".sd-dep-name", "Sending identity not verified");
-    expect(loc.value).toBe("/solo/42/command-center/systems-check");
-  });
-
-  it("a decision on the desk opens its backing surface (§36 drill-down)", () => {
-    const openPaige = vi.fn();
-    hooked.view = groundedView();
-    mount(openPaige);
-    clickText("button", "Open PAIGE");
-    expect(openPaige).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows 'No recorded work yet' for an empty recorded feed (never a fake activity feed)", () => {
-    hooked.view = groundedView();
-    mount();
-    expect(container.textContent).toContain("No recorded work yet");
-  });
-
-  it("leaks no route string, provider name, or internal identifier into visible copy", () => {
-    hooked.view = groundedView();
-    mount();
-    const text = container.textContent || "";
-    for (const forbidden of ["/solo/", "supabase", "business_brief", "campaign_briefs", "paige_", "get_solo", "RPC", "§"]) {
-      expect(text, `visible copy must not contain "${forbidden}"`).not.toContain(forbidden);
-    }
+  it("contains the drawer, closes on Escape, and restores the opener focus", async () => {
+    await openDetail("active");
+    expect(document.body.style.overflow).toBe("hidden");
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.body.style.overflow).toBe("");
+    expect(document.activeElement?.textContent).toContain("Protect renewal quality");
   });
 });

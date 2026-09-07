@@ -7,7 +7,7 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { useSoloKnowledge } from "./data/useSoloKnowledge";
 import { useSoloSkills } from "./data/useSoloSkills";
-import { clearPaigeClientScope, getPaigeClientScope, subscribePaigeClientScope } from "./paigeClientScope";
+import { clearPaigeSurfaceScope, getPaigeBusinessPlanScope, getPaigeClientScope, subscribePaigeClientScope } from "./paigeClientScope";
 import { clearPaigePublicPresenceScope, getPaigePublicPresenceScope, subscribePaigePublicPresenceScope } from "./paigePublicPresenceScope";
 import "./solo-paige-workspace.css";
 
@@ -284,10 +284,12 @@ export function SoloPaigeWorkspace({
   const clientScope = useSyncExternalStore(subscribePaigeClientScope, readScope, () => null);
   const readPresenceScope = useCallback(() => getPaigePublicPresenceScope(activeTenantId), [activeTenantId]);
   const presenceScope = useSyncExternalStore(subscribePaigePublicPresenceScope, readPresenceScope, () => null);
+  const readPlanScope = useCallback(() => getPaigeBusinessPlanScope(activeTenantId), [activeTenantId]);
+  const planScope = useSyncExternalStore(subscribePaigeClientScope, readPlanScope, () => null);
   // The chat asks the surface that OWNS focus to let it go — on a PERMISSION verdict, or
   // when a saved thread is resumed whose content is not about this client. Either way,
   // continuing to assert the focus would make the next turn mean something untrue.
-  const releaseScope = useCallback(() => clearPaigeClientScope(), []);
+  const releaseScope = useCallback(() => { clearPaigeSurfaceScope(); clearPaigePublicPresenceScope(); }, []);
   const [routedTab, setRoutedTab] = useSubtabRoute("solo", "paige", "chat");
   const [localTab, setLocalTab] = useState<SoloPaigeTab>(dockedTab ?? "chat");
   const acceptedRoutedTab = (TABS.some((item) => item.id === routedTab) ? routedTab : "chat") as SoloPaigeTab;
@@ -345,7 +347,8 @@ export function SoloPaigeWorkspace({
           renderRail={(api) => <SoloHistoryRail api={api} />}
           greeting="What are we moving? Tell me the outcome, and I’ll show what I can read, draft, or ask you to approve."
           clientId={clientScope?.clientId ?? null}
-          surfaceContext={!clientScope && presenceScope ? { kind: presenceScope.kind, step: presenceScope.step, intendedAction: presenceScope.intendedAction } : undefined}
+          surfaceContext={!clientScope && !planScope && presenceScope ? { kind: presenceScope.kind, step: presenceScope.step, intendedAction: presenceScope.intendedAction } : undefined}
+          businessMissionId={!clientScope ? planScope?.businessMissionId ?? null : null}
           onFocusRelease={releaseScope}
           focusBanner={clientScope ? (
             <div className="spw-chat-head" data-solo-paige-focus>
@@ -353,11 +356,17 @@ export function SoloPaigeWorkspace({
               <div><strong>{clientScope.label}</strong><span>Recorded outcomes for this client only. PAIGE reads them; she cannot change them.</span></div>
               <button type="button" className="spw-link-button spw-authority" onClick={releaseScope}>Clear</button>
             </div>
+          ) : planScope ? (
+            <div className="spw-chat-head" data-solo-paige-focus>
+              <TruthPill tone="partial">PLAN IN CONTEXT</TruthPill>
+              <div><strong>{planScope.label}</strong><span>Resolved from the active workspace. Changes still require authority, canonical readback, and Rail evidence.</span></div>
+              <button type="button" className="spw-link-button spw-authority" onClick={releaseScope}>Clear</button>
+            </div>
           ) : presenceScope ? (
             <div className="spw-chat-head" data-solo-paige-focus>
               <TruthPill tone="partial">PUBLIC PRESENCE</TruthPill>
               <div><strong>Safe public-business context</strong><span>PAIGE re-resolves approved facts and provider availability on the server for each turn.</span></div>
-              <button type="button" className="spw-link-button spw-authority" onClick={clearPaigePublicPresenceScope}>Clear</button>
+              <button type="button" className="spw-link-button spw-authority" onClick={releaseScope}>Clear</button>
             </div>
           ) : undefined}
           conversationHeader={<div className="spw-chat-head"><div><strong>PAIGE</strong><span>Active Solo account · tenant-scoped</span></div></div>}

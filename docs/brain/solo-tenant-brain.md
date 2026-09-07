@@ -66,3 +66,23 @@ PR #1016 is deployed at merge SHA `68d7c10f4381dd66a5d930d82f9400d004d189b5`: th
 The owner-mandated Integration Capability Registry is now live on main (#1019). Its controlling `excluded_delivery_infrastructure` contract explicitly places Supabase, Vercel and GitHub delivery under `config-registry.md`, not under a tenant-capability provider entry. This slice adds no customer provider integration, connection scope or external provider action, so no provider entry is changed and no duplicate infrastructure entry is created. Any later provider-facing Tenant Brain lane must read and update its actual provider entry in the same delivery.
 
 This one vertical slice does not make the Solo Tenant Brain complete. Campaign Briefs, tenant Knowledge, role/team context, client/engagement context, Public Presence, governed Memory promotion/revocation, Mind eligibility and Vault fact promotion remain later bounded lanes.
+
+
+## Owner-complete Business Game Plan vertical — active MVP, 2026-09-06
+
+The earlier Business Mission closeout remains historical truth: its deployed canonical Mission mutation, verified readback and post-verification Rail contracts are `LIVE`. Owner direction now makes the existing Command Center Business Game Plan the required product experience. The active release candidate:
+
+- preserves the existing owner Plan Brief for annual direction, current-quarter focus, desired outcome, success criteria, constraints, Paige operating guidance and prohibited assumptions;
+- replaces the unrelated right-column dependency/activity material with `Plan in Motion`, backed only by canonical Business Missions and labelled as Strategic Plays;
+- supports draft, Paige-proposed awaiting approval, active, blocked, paused, complete and archived states without inventing progress or business outcomes;
+- gives the verified Solo owner one drawer to create, review, revise, approve, decline, pause, resume, truthfully complete and archive a play; archive is a lifecycle transition that preserves prior completion evidence, never a delete;
+- sends only a tenant-stamped Mission UUID to the existing dedicated Paige workspace, where the active tenant and selected Mission are resolved again server-side; an invalid or foreign selection is refused;
+- shares the existing Mission mutation/readback/Rail helper between the owner UI action door and Paige, so success is not shown until canonical persistence is re-read and matched, and Rail is emitted only after that match.
+
+This candidate adds no Mission store, chat, approval system, Mind projection or Memory write. The backend foundation remains `LIVE`; the owner-complete Business Game Plan surface and overall Solo Tenant Brain remain `PARTIAL` until release plus authenticated proof. Signed-in create/edit/approval/refusal/pause/resume/complete/archive, workspace-switch, denied-role, canonical-row and matching-Rail-row browser evidence are `PROOF OWED`. Mission Mind and durable Memory remain `UNAVAILABLE`.
+
+## Owner-complete candidate evidence — 2026-09-06
+
+The current-main-composed candidate passes 73 focused contract tests, the complete 265-file / 3,832-test repository run, the TypeScript ratchet, production build, security/registry ledgers, and 198 real-component responsive/theme/state checks. Those renders use fictional provider stubs and prove structure and geometry only. Authenticated owner lifecycle, refusal, workspace-switch, canonical Mission and matching Rail evidence remain PROOF OWED; the owner-complete Business Game Plan and Solo Tenant Brain remain PARTIAL; Mission Mind and durable Memory remain UNAVAILABLE.
+
+Candidate PR #1038 is open as a clean, green draft release candidate. Implementation head 24d25b3f passed audit, contract, database-contract, lint, UI evidence, Vercel preview and the complete verify job. It is not merged or deployed. The Business Game Plan and Solo Tenant Brain therefore remain PARTIAL; Mission Mind and durable Memory remain UNAVAILABLE; authenticated proof remains PROOF OWED.

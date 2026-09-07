@@ -28,7 +28,16 @@ export type PaigeClientScope = {
   readonly label: string;
 };
 
-let current: PaigeClientScope | null = null;
+export type PaigeBusinessPlanScope = {
+  readonly tenantId: string;
+  readonly surface: "business_game_plan";
+  readonly businessMissionId: string | null;
+  readonly label: string;
+};
+
+export type PaigeSurfaceScope = PaigeClientScope | PaigeBusinessPlanScope;
+
+let current: PaigeSurfaceScope | null = null;
 const listeners = new Set<() => void>();
 
 function announce(): void {
@@ -43,8 +52,8 @@ function announce(): void {
 
 /** Read the scope for one account. Null when nothing is set, or when it belongs to another account. */
 export function getPaigeClientScope(tenantId: string | null | undefined): PaigeClientScope | null {
-  if (!tenantId || !current || current.tenantId !== tenantId) return null;
-  return current;
+  if (!tenantId || !current || current.tenantId !== tenantId || !("clientId" in current)) return null;
+  return current as PaigeClientScope;
 }
 
 export function setPaigeClientScope(scope: PaigeClientScope | null): void {
@@ -53,11 +62,11 @@ export function setPaigeClientScope(scope: PaigeClientScope | null): void {
     // scope. Clearing is the honest outcome: no focus, rather than a half-named one.
     scope = null;
   }
-  const same =
-    (current === null && scope === null) ||
-    (current !== null && scope !== null &&
-      current.tenantId === scope.tenantId && current.clientId === scope.clientId && current.label === scope.label);
-  if (same) return;
+  const same = current !== null && scope !== null && "clientId" in current
+    && current.tenantId === scope.tenantId
+    && current.clientId === scope.clientId
+    && current.label === scope.label;
+  if (same || (current === null && scope === null)) return;
   current = scope;
   announce();
 }
@@ -73,6 +82,27 @@ export function subscribePaigeClientScope(listener: () => void): () => void {
   };
 }
 
+
+export function getPaigeBusinessPlanScope(tenantId: string | null | undefined): PaigeBusinessPlanScope | null {
+  if (!tenantId || !current || current.tenantId !== tenantId || !("surface" in current) || current.surface !== "business_game_plan") return null;
+  return current as PaigeBusinessPlanScope;
+}
+
+export function setPaigeBusinessPlanScope(scope: PaigeBusinessPlanScope): void {
+  if (!scope.tenantId || !scope.label || (scope.businessMissionId !== null && !scope.businessMissionId.trim())) {
+    current = null;
+  } else {
+    current = { ...scope, businessMissionId: scope.businessMissionId?.trim() ?? null };
+  }
+  announce();
+}
+
+export function clearPaigeSurfaceScope(): void {
+  current = null;
+  announce();
+}
+
+export const subscribePaigeSurfaceScope = subscribePaigeClientScope;
 /**
  * Read a `paige:open` event's detail as a client scope.
  *

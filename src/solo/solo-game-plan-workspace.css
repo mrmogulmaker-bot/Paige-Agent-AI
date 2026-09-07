@@ -301,3 +301,42 @@
 /* ── toast ── */
 .paige-solo .sd-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 80; background: var(--ink); color: var(--ink-inv); border-radius: 11px; padding: 11px 15px; font-size: 12.5px; font-weight: 500; box-shadow: var(--sh-3); max-width: min(420px, 92vw); display: flex; gap: 9px; align-items: center; }
 .paige-solo .sd-toast svg { width: 16px; height: 16px; flex: none; color: var(--violet-2); }
+/* Owner-complete Plan in Motion */
+.paige-solo .pim { overflow: hidden; }
+.paige-solo .pim-head { align-items: flex-start; }
+.paige-solo .pim-head p { margin: 4px 0 0; color: var(--ink-3); font-size: 11.5px; line-height: 1.4; }
+.paige-solo .pim-state { display: flex; align-items: center; gap: 9px; padding: 16px; color: var(--ink-3); font-size: 12.5px; border-top: 1px solid var(--line-soft); }
+.paige-solo .pim-state svg { width: 16px; height: 16px; flex: none; }
+.paige-solo .pim-state .sd-btn { margin-left: auto; }
+.paige-solo .pim-spin { animation: pim-spin .9s linear infinite; }
+@keyframes pim-spin { to { transform: rotate(360deg); } }
+.paige-solo .pim-empty { padding: 24px 18px; text-align: center; display: flex; flex-direction: column; gap: 9px; align-items: center; border-top: 1px solid var(--line-soft); }
+.paige-solo .pim-empty > svg { width: 22px; color: var(--violet); }
+.paige-solo .pim-empty h3 { font-size: 14px; }
+.paige-solo .pim-empty p { margin: 0; color: var(--ink-3); font-size: 12px; line-height: 1.5; max-width: 36ch; }
+.paige-solo .pim-empty > div { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.paige-solo .pim-card { display: flex; flex-direction: column; gap: 9px; width: 100%; padding: 14px 15px; text-align: left; background: transparent; border: 0; border-top: 1px solid var(--line-soft); color: var(--ink); cursor: pointer; }
+.paige-solo .pim-card:hover { background: var(--surface-2); }
+.paige-solo .pim-card:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; }
+.paige-solo .pim-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 9px; }
+.paige-solo .pim-card-top b { font-size: 13.5px; line-height: 1.35; }
+.paige-solo .pim-stage { flex: none; border-radius: 99px; padding: 3px 8px; background: var(--surface-sunk); color: var(--ink-3); font-size: 9.5px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
+.paige-solo .pim-stage-active, .paige-solo .pim-stage-completed { background: var(--ok-tint); color: var(--ok); }
+.paige-solo .pim-stage-proposed { background: var(--violet-tint); color: var(--violet); }
+.paige-solo .pim-stage-blocked { background: var(--bad-tint); color: var(--bad); }
+.paige-solo .pim-stage-paused { background: var(--warn-tint); color: var(--warn); }
+.paige-solo .pim-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.paige-solo .pim-meta > span, .paige-solo .pim-line { font-size: 12px; color: var(--ink-2); line-height: 1.4; }
+.paige-solo .pim-meta small, .paige-solo .pim-line small { display: block; color: var(--ink-3); font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 2px; }
+.paige-solo .pim-blocker { display: flex; gap: 7px; align-items: flex-start; padding: 8px 9px; border-radius: 8px; background: var(--bad-tint); color: var(--bad); font-size: 11.5px; line-height: 1.4; }
+.paige-solo .pim-blocker svg { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.paige-solo .pim-archive { border-top: 1px solid var(--line-soft); }
+.paige-solo .pim-archive summary { cursor: pointer; padding: 11px 15px; color: var(--ink-3); font-size: 11.5px; font-weight: 650; }
+.paige-solo .pim-archive button { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 9px 15px; text-align: left; border: 0; border-top: 1px solid var(--line-soft); background: transparent; color: var(--ink-2); }
+.paige-solo .pim-archive button svg { width: 14px; }
+.paige-solo .pim-archive button small { color: var(--ink-3); }
+.paige-solo .pim-detail-stage { color: var(--violet); font-size: 11px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
+.paige-solo .pim-confirm { border: 1px solid var(--line); background: var(--surface-2); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.paige-solo .pim-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+@media (max-width: 1050px) { .paige-solo .sd-field { grid-template-columns: minmax(0, 1fr); } .paige-solo .sd-rail { display: block; } }
+@media (max-width: 620px) { .paige-solo .sd-top { align-items: flex-start; } .paige-solo .sd-acts { width: 100%; } .paige-solo .sd-acts .sd-btn { flex: 1; } .paige-solo .pim-card-top { flex-direction: column; } }

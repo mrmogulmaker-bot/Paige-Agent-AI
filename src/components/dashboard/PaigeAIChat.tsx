@@ -126,6 +126,8 @@ export interface PaigeAIChatProps {
   fill?: boolean;
   /** Focused customer id — added to the chat POST body so Paige acts on them. */
   clientId?: string | null;
+  /** Selected canonical Business Mission id; server-authorized UI context, never authority. */
+  businessMissionId?: string | null;
   /** Prose describing the focused customer — added to the chat POST body. */
   clientContext?: string;
   surfaceContext?: { kind: "public_presence"; step: "confirm_facts" | "verify_website" | "connect_venues" | "compare_facts" | "set_authority" | "maintain_presence"; intendedAction: "review" | "plan" | "prepare_connection" | "resolve_mismatch" };
@@ -243,6 +245,7 @@ const PaigeAIChatInner = ({
   hideHeader = false,
   fill = false,
   clientId = null,
+  businessMissionId = null,
   clientContext,
   surfaceContext,
   onFocusRelease,
@@ -370,7 +373,7 @@ const PaigeAIChatInner = ({
   //
   // Surfaces that never focus a client (the operator desk) pass no `clientId`, so their
   // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
-  const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}`;
+  const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}|${businessMissionId ?? ""}`;
   // The thread a person asked for, parked across the reset their own click causes (#765).
   // Same idiom, and same reason, as the refusal notice below: releasing focus changes the
   // epoch, and the epoch change invalidates the very load the release was made for.
@@ -630,7 +633,7 @@ const PaigeAIChatInner = ({
     //
     // Released rather than refused: the person asked to open this conversation, and it is a
     // conversation they own. What is not true is that it is about the client currently in focus.
-    if (clientId) {
+    if (clientId || businessMissionId) {
       // Park BEFORE releasing. The release drops the focus, which moves the epoch, which
       // invalidates this load through the request fence — so without this the person's click
       // is discarded and hydration resumes `threads[0]`, opening a conversation they did not
@@ -709,7 +712,7 @@ const PaigeAIChatInner = ({
     // the focus would carry another client's transcript into this client's context.
     //
     // Clearing the focus changes the epoch again, so the owner-level history resumes normally.
-    if (clientId) {
+    if (clientId || businessMissionId) {
       pendingThreadSelectionRef.current = null;
       setHistoryHydrated(true);
       return;
@@ -841,6 +844,7 @@ const PaigeAIChatInner = ({
             ...(clientId ? { clientId } : {}),
             ...(clientContext ? { clientContext } : {}),
             ...(surfaceContext ? { surfaceContext } : {}),
+            ...(businessMissionId ? { businessMissionId } : {}),
             // The exact calls the person ticked on a confirm card. The gate will only run a call
             // whose fingerprint is here; `confirm:true` on its own no longer opens it.
             ...(approvedFingerprints?.length ? { approvedConfirmations: approvedFingerprints } : {}),
@@ -1087,6 +1091,9 @@ const PaigeAIChatInner = ({
       if (enableHistory) setStreamingThreadId(null);
     } finally {
       if (timeoutId !== null) window.clearTimeout(timeoutId);
+      if (businessMissionId && ticketAccepted(requestTicket)) {
+        window.dispatchEvent(new CustomEvent("business-mission:refresh", { detail: { missionId: businessMissionId } }));
+      }
     }
   };
 

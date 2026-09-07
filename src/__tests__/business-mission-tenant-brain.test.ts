@@ -5,6 +5,7 @@ import {
   executeVerifiedMissionMutation as executeVerifiedMissionMutationImpl,
   resolveBusinessMissionContext as resolveBusinessMissionContextImpl,
   resolveBusinessMissionThreadContext as resolveBusinessMissionThreadContextImpl,
+  resolveSelectedBusinessMissionContext as resolveSelectedBusinessMissionContextImpl,
 } from "../../supabase/functions/_shared/business-mission-tenant-brain";
 
 const MISSION_ID = "11111111-1111-4111-8111-111111111111";
@@ -639,5 +640,86 @@ describe("Solo Tenant Brain — chat wiring", () => {
     expect(migration).toContain("grant execute on function public.get_paige_thread_business_mission(uuid) to authenticated");
     expect(migration).not.toContain("paige_owner_memory");
     expect(migration).not.toContain("paige_mind");
+  });
+});
+describe("Business Game Plan selected-context and owner provenance", () => {
+  it("resolves a selected Strategic Play by canonical id under the active tenant", async () => {
+    const caller = rpcPort({
+      current_user_tenant_id: { data: TENANT_ID, error: null },
+      get_business_mission: { data: canonical(), error: null },
+    });
+    const result = await resolveSelectedBusinessMissionContextImpl({
+      caller,
+      expectedTenantId: TENANT_ID,
+      missionId: MISSION_ID,
+      observedAt: new Date("2026-09-06T18:05:00.000Z"),
+    });
+    expect(caller.calls.map(([name]) => name)).toEqual(["current_user_tenant_id", "get_business_mission"]);
+    expect(result).toMatchObject({ ok: true, context: { sourceRef: MISSION_ID, revision: 3 } });
+    if (!result.ok) throw new Error("expected selected context");
+    expect(result.promptBlock).toContain("SELECTED STRATEGIC PLAY");
+    expect(result.promptBlock).toContain("Mind and Memory are UNAVAILABLE");
+  });
+
+  it("writes an owner-created draft with owner_ui provenance, verifies readback, then records Rail", async () => {
+    const created = canonical({
+      mission: { state: "proposed", revision: 1, request_source: "owner_ui", request_thread_id: null },
+      brief: { version: 1, revision_reason: "Initial mission brief" },
+    });
+    const caller = rpcPort({
+      current_user_tenant_id: [{ data: TENANT_ID, error: null }, { data: TENANT_ID, error: null }],
+      create_business_mission: { data: { ok: true, mission_id: MISSION_ID, revision: 1, state: "proposed" }, error: null },
+      get_business_mission: { data: created, error: null },
+    });
+    const recordRun = vi.fn(async () => true);
+    const result = await executeVerifiedMissionMutation({
+      caller,
+      actorId: ACTOR_ID,
+      tool: "mission_create",
+      requestSource: "owner_ui",
+      args: {
+        request_key: REQUEST_KEY,
+        title: "Launch the advisory offer",
+        desired_outcome: "Ten qualified sales conversations",
+        deadline_on: "2026-10-01",
+        baseline: "No repeatable offer yet",
+        strategy: "Interview, package, then sell",
+        constraints: ["No paid media"],
+        success_definition: "Ten qualified conversations booked",
+        owner_authority: "Paige may draft; owner confirms external action",
+        assumptions: ["Existing audience is reachable"],
+        missing_information: ["Final pricing"],
+        next_action: "Interview five customers",
+      },
+      recordRun,
+    });
+    const createArgs = caller.calls.find(([name]) => name === "create_business_mission")?.[1];
+    expect(createArgs).toMatchObject({ p_request_source: "owner_ui", p_request_thread_id: null });
+    expect(result).toMatchObject({ success: true, verified: true, railRecorded: true });
+    expect(recordRun).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Business Game Plan owner-action and archive contracts", () => {
+  it("keeps the owner action door tenant-derived and on the shared verified Mission helper", () => {
+    const action = readFileSync("supabase/functions/business-mission-action/index.ts", "utf8");
+    expect(action).toContain('caller.rpc("current_user_tenant_id")');
+    expect(action).toContain("executeVerifiedMissionMutation({");
+    expect(action).toContain('requestSource: "owner_ui"');
+    expect(action).toContain("expectedTenantId: tenantId");
+    expect(action).not.toMatch(/body\.(tenant|tenantId|tenant_id)/);
+  });
+
+  it("archives a completed Mission only when its verified outcome history is preserved", () => {
+    const migration = readFileSync("supabase/migrations/20260907001343_archive_completed_business_mission_history.sql", "utf8");
+    expect(migration).toContain("m.lifecycle_state='completed' and p_to_state='stopped'");
+    expect(migration).toContain("MISSION_ARCHIVE_HISTORY_MISMATCH");
+    expect(migration).toContain("then m.closure_outcome");
+    expect(migration).toContain("then m.outcome_summary");
+    expect(migration).toContain("then m.closed_at");
+    expect(migration).not.toMatch(/delete\s+from\s+public\.business_missions/i);
+    const proof = readFileSync("supabase/tests/business_mission_foundation.sql", "utf8");
+    expect(proof).toContain("public.get_business_mission((SELECT id FROM mission_id))");
+    expect(proof).not.toContain("SELECT closure_outcome FROM public.business_missions");
   });
 });
