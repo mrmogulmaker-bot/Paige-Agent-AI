@@ -7,7 +7,7 @@ MATERIAL_FLOW_CHANGE: YES: adds a feature-flagged owner review flow for requesti
 FLOW_PROTOTYPE: PASS: `docs/prototypes/paige-secure-browser-mvp-flow.md` is the approved interaction/state packet under the owner's 2026-09-07 implementation authorization; no immersive Live Voice or provider-backed design is implied.
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a workspace owner reviews a business purpose, HTTPS target, read/propose-only scope, and authority before asking Paige to prepare the capability; Vault owners can inspect and control safe account metadata.
 VISUAL_DIRECTION: PASS: the isolated cards use existing Paige ink, muted, lift, radius, gold-action, and focus conventions with no provider branding or new shell/navigation pattern.
-AUTOMATED_EVIDENCE: PASS: 10 focused Vitest cases passed for the request card, Vault Connected Accounts states, tenant switching, contract validation, and sensitive-key refusal; both Secure Browser smoke suites passed.
+AUTOMATED_EVIDENCE: PASS: 12 focused Vitest cases passed for the request card, Vault Connected Accounts states including truthful expiry, tenant switching, contract validation, and recursive sensitive-value refusal; both Secure Browser smoke suites passed.
 STATIC_EVIDENCE: PASS: focused ESLint, migration lint, definer-function lint, migration-version lint, Paige-token lint (44/44), production build, diff check, and `ci:tsc` ratchet passed with no new errors (baseline 13, current 13).
 RENDERED_EVIDENCE: UNVERIFIED: the real Paige components have not been browser-rendered across the required viewport/theme matrix; the chat card remains deliberately unmounted while PR #1044 owns the shared workspace files.
 BEHAVIORAL_EVIDENCE: PASS: jsdom tests prove review, cancel, unavailable, retry, empty, failure, pause, revoke, delete, tenant-change reset, and disabled-connect outcomes; this is automated component evidence, not authenticated browser proof.
@@ -20,8 +20,8 @@ TRUTHFUL_STATE_LABELS: PASS: customer copy names only Paige Secure Browser and s
 SOLO_UI: YES: the Vault Connected Accounts tab is mounted behind the exact-tenant `secure_browser` flag; the chat request card is isolated pending the active PR #1044 workspace collision.
 UNVERIFIED: real-shell rendering and geometry, keyboard/focus travel, zoom/reflow, authenticated runtime, deployed database/Edge identities, chat mounting, provider-backed work, and credentialed account behavior remain unverified or explicitly unavailable.
 
-INTERNAL_BUILD_IDENTITY: 1d368e9208ccdf9d76dd520d490ddfb8f287338d; deployment=4zX7E2Jm6FuQNXATVr1syARz8GAa; environment=preview; migrations=PROOF_OWED(PR-1046-Supabase-preview-skipped); edge=PROOF_OWED(browser-use-revision-awaits-merge); evidence=Vercel-preview-status-for-1d368e9208ccdf9d76dd520d490ddfb8f287338d
-RELEASE_CHANNEL: preview: Vercel preview `4zX7E2Jm6FuQNXATVr1syARz8GAa` succeeded for `1d368e9208ccdf9d76dd520d490ddfb8f287338d`; no production deployment, customer enablement, or Supabase preview exists
+INTERNAL_BUILD_IDENTITY: 2d1213607ca702249accb2b6606e75076ef3eef9; deployment=GugFRu3ASfKtryxnxZkkbEHor9JA; environment=preview; migrations=PROOF_OWED(production-application-excluded-from-this-preview); edge=PROOF_OWED(browser-use-revision-awaits-merge); evidence=Vercel-and-GitHub-CI-status-for-2d1213607ca702249accb2b6606e75076ef3eef9
+RELEASE_CHANNEL: preview: Vercel preview `GugFRu3ASfKtryxnxZkkbEHor9JA` succeeded for `2d1213607ca702249accb2b6606e75076ef3eef9`; no production deployment, customer enablement, Supabase preview branch, or deployed Edge revision exists
 RELEASE_CLASSIFICATION: internal-only: draft foundation is feature-flagged, provider-unavailable, and not yet mounted in the shared chat workspace
 CUSTOMER_RELEASE_IDENTITY: none: no customer release or live capability is claimed from this draft
 RELEASE_NOTE_REQUIRED: NO: internal-only draft with no customer enablement
@@ -53,13 +53,15 @@ The owner states a business purpose and public HTTPS target, reviews the fixed r
 
 - 2026-09-07, local development, no customer account or secret: `npm run smoke:secure-browser-security` — PASS.
 - 2026-09-07, local development: `npm run smoke:secure-browser-control-plane` — PASS.
-- 2026-09-07, jsdom: three focused test files, 10 tests — PASS.
+- 2026-09-07, jsdom: three focused test files, 12 tests — PASS.
 - 2026-09-07: focused ESLint, SQL migration lint, definer-function lint, migration-version lint, token lint 44/44, production build, and diff check — PASS.
 - 2026-09-07: `npm run ci:tsc` — PASS, no new errors; repository baseline 13 and current 13.
-- 2026-09-07, GitHub PR #1046 at `1d368e9208ccdf9d76dd520d490ddfb8f287338d`: aggregate `verify` — PASS, including 269 test files / 3,878 tests and every post-test security smoke. The previously unrelated full-suite test path did not fail again.
-- 2026-09-07, Vercel preview: deployment `4zX7E2Jm6FuQNXATVr1syARz8GAa` — READY; this is preview evidence only and the Secure Browser chat card remains unmounted.
+- 2026-09-07, GitHub PR #1046 at `2d1213607ca702249accb2b6606e75076ef3eef9`: `database-contract` — PASS after a clean migration replay, including all 28 Secure Browser pgTAP assertions. Earlier failures were owned: first migration ordering, then unsafe JSONPath recursion, then an incorrect expected SQLSTATE; all were repaired and rerun.
+- 2026-09-07, GitHub PR #1046 at `2d1213607ca702249accb2b6606e75076ef3eef9`: aggregate `verify` — PASS, including 274 test files / 3,889 tests and every post-test security smoke. The previously reported unrelated full-suite path did not fail on this required CI rerun.
+- 2026-09-07, independent repair review of `fc8174ba..2d121360` — PASS: generic secret/token rejection, exact actor provenance, tenant-coupled quarantine, budget settlement/expiry, truthful Connected Account expiry, and the provider boundary were confirmed with no remaining blocker.
+- 2026-09-07, Vercel preview: deployment `GugFRu3ASfKtryxnxZkkbEHor9JA` — READY; this is preview evidence only and the Secure Browser chat card remains unmounted.
 - Automated evidence is distinct from rendered evidence. No authenticated, provider-backed, credentialed, deployed, or customer-account evidence was collected.
 
 ## Review and limitations
 
-The initial CI UI-evidence failure correctly detected that the owner-visible code lacked this record. This file repairs only the documentation gate and preserves missing rendered/authenticated proof as `UNVERIFIED`. Independent PR audit, contract, database-contract, and remaining CI results are still required. Shared-chat mounting and its rendered matrix must wait for PR #1044 to merge or relinquish ownership. Provider work remains gated by the seven independently documented vendor gates.
+The initial CI UI-evidence failure correctly detected that the owner-visible code lacked this record. Later database-contract failures exposed and drove repairs to migration ordering, recursive sensitive-value validation, and the negative tenant-link assertion. The exact implementation head is now green and independently reviewed; this evidence-only follow-up preserves missing rendered/authenticated proof as `UNVERIFIED`. Shared-chat mounting and its rendered matrix must wait for PR #1044 to merge or relinquish ownership. Provider work remains gated by the seven independently documented vendor gates.
