@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Render the REAL Business Game Plan (SoloGamePlanWorkspace) + its real CSS with only the composed
-// reads stubbed, and check what it actually shows across every state, both palettes and the four
+// reads stubbed, and check what it actually shows across every owner-complete Plan in Motion state, both palettes and the four
 // Solo viewports. Proves GEOMETRY + STATE RENDERING; it does NOT prove the authenticated
 // production surface — §32.c stays owed to a session that can drive the deployed app.
 import fs from "node:fs";
@@ -30,7 +30,7 @@ const FRAMES = [
   { name: "open-614x768", width: 614, height: 768 },
   { name: "open-490x1000", width: 490, height: 1000 },
 ];
-const MODES = ["grounded", "partial", "empty", "blocked", "proposal", "motion", "loading", "error"];
+const MODES = ["empty", "draft", "proposal", "active", "paused", "complete", "archived", "blocked", "loading", "error", "forbidden"];
 const THEMES = ["light", "dark"];
 
 const results = [];
@@ -59,15 +59,16 @@ const waitServer = async () => {
 };
 async function stopTree(child) {
   if (!child?.pid) return;
-  const gone = () => { try { process.kill(-child.pid, 0); return false; } catch { return true; } };
-  try { process.kill(-child.pid, "SIGTERM"); } catch {}
+  const gone = () => { try { process.kill(process.platform === "win32" ? child.pid : -child.pid, 0); return false; } catch { return true; } };
+  try { process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGTERM"); } catch {}
   for (let i = 0; i < 20 && !gone(); i++) await new Promise((r) => setTimeout(r, 100));
-  if (!gone()) { try { process.kill(-child.pid, "SIGKILL"); } catch {} }
+  if (!gone()) { try { process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGKILL"); } catch {} }
 }
 
 (async () => {
   await portFree();
-  const vite = spawn("npx", ["vite", "--clearScreen", "false"], { cwd: MOUNT, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+  const viteBin = path.resolve(MOUNT, "../../../../node_modules/vite/bin/vite.js");
+  const vite = spawn(process.execPath, [viteBin, "--clearScreen", "false"], { cwd: MOUNT, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
   vite.stderr.on("data", (d) => { const s = String(d); if (/error/i.test(s)) process.stderr.write(s); });
   try {
     await waitServer();

@@ -1,7 +1,7 @@
 -- Business Mission Phase 2: durable tenant/RLS/lifecycle contract.
 -- Synthetic fixtures only; the enclosing transaction is always rolled back.
 BEGIN;
-SELECT plan(30);
+SELECT plan(34);
 
 SELECT ok(has_function_privilege('authenticated','public.create_business_mission(uuid,text,text,date,text,text,text[],text,text,text[],text[],text,text,uuid)','EXECUTE'),'authenticated callers may reach governed Mission create');
 SELECT ok(NOT has_function_privilege('anon','public.create_business_mission(uuid,text,text,date,text,text,text[],text,text,text[],text[],text,text,uuid)','EXECUTE'),'anonymous callers cannot reach Mission create');
@@ -94,12 +94,16 @@ SELECT throws_ok(format('SELECT public.transition_business_mission(%L,2,%L,%L)',
 SELECT is(public.transition_business_mission((SELECT id FROM mission_id),2,'d1000000-0000-4000-8000-000000007013','active')->>'state','active','proposed Mission activates');
 SELECT throws_ok(format('SELECT public.transition_business_mission(%L,3,%L,%L)',(SELECT id FROM mission_id),'d1000000-0000-4000-8000-000000007014','completed'),'22023','MISSION_OUTCOME_REQUIRED','close without an outcome is refused');
 SELECT is(public.transition_business_mission((SELECT id FROM mission_id),3,'d1000000-0000-4000-8000-000000007015','completed',NULL,'partly_achieved','Twenty registrations verified','Causality remains unknown')->>'state','completed','Mission closes with an honest partial outcome');
+SELECT throws_ok(format('SELECT public.transition_business_mission(%L,4,%L,%L,NULL,%L,%L,%L)',(SELECT id FROM mission_id),'d1000000-0000-4000-8000-000000007016','stopped','partly_achieved','Changed history','Causality remains unknown'),'22023','MISSION_ARCHIVE_HISTORY_MISMATCH','completed Mission archive refuses rewritten outcome history');
+SELECT is(public.transition_business_mission((SELECT id FROM mission_id),4,'d1000000-0000-4000-8000-000000007017','stopped',NULL,'partly_achieved','Twenty registrations verified','Causality remains unknown')->>'state','stopped','completed Mission archives without deletion');
+SELECT is((SELECT closure_outcome FROM public.business_missions WHERE id=(SELECT id FROM mission_id)),'partly_achieved','archive preserves the verified closure outcome');
+SELECT is((SELECT outcome_summary FROM public.business_missions WHERE id=(SELECT id FROM mission_id)),'Twenty registrations verified','archive preserves the verified outcome summary');
 
 RESET ROLE;
 SELECT is((SELECT count(*)::integer FROM public.business_mission_brief_versions WHERE mission_id=(SELECT id FROM mission_id)),2,'Brief history contains both immutable versions');
 SELECT throws_ok(format('UPDATE public.business_mission_brief_versions SET strategy=%L WHERE mission_id=%L','overwrite',(SELECT id FROM mission_id)),'55000','MISSION_BRIEF_IMMUTABLE','Brief history cannot be overwritten even by a privileged writer');
-SELECT is((SELECT count(*)::integer FROM public.business_mission_mutation_receipts WHERE mission_id=(SELECT id FROM mission_id)),4,'only committed create, revise, activate, and close receipts remain');
-SELECT is((SELECT count(*)::integer FROM public.paige_audit_log WHERE target_type='business_mission' AND target_id=(SELECT id FROM mission_id)),4,'only first committed mutations create audit rows');
+SELECT is((SELECT count(*)::integer FROM public.business_mission_mutation_receipts WHERE mission_id=(SELECT id FROM mission_id)),5,'only committed create, revise, activate, close, and archive receipts remain');
+SELECT is((SELECT count(*)::integer FROM public.paige_audit_log WHERE target_type='business_mission' AND target_id=(SELECT id FROM mission_id)),5,'only committed Mission mutations create audit rows');
 
 SELECT * FROM finish();
 ROLLBACK;

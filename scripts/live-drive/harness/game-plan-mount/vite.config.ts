@@ -12,6 +12,7 @@ export default defineConfig({
     alias: [
       // Only the composed reads are stubbed — the REAL component + CSS render.
       { find: "./data/useSoloGamePlan", replacement: path.join(import.meta.dirname, "useSoloGamePlan-stub.ts") },
+      { find: "./data/useBusinessGamePlanMissions", replacement: path.join(import.meta.dirname, "useBusinessGamePlanMissions-stub.ts") },
       { find: "@", replacement: path.join(repo, "src") },
     ],
   },

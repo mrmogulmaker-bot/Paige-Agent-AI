@@ -315,12 +315,10 @@ describe("Solo PAIGE workspace contract", () => {
   it("clears account-authored UI before the next account hydrates", () => {
     const chat = source("src/components/dashboard/PaigeAIChat.tsx");
     const app = source("src/solo/SoloApp.tsx");
-    // The epoch is now COMPOSITE — the active workspace AND the client in focus — because a
-    // client switch has to end the conversation for the same reason an account switch does:
-    // this component re-POSTs its whole transcript, so the previous client's answers would
-    // otherwise ship under the new scope. The ordering this line exists to pin (accept the new
-    // epoch, THEN invalidate, THEN clear) is unchanged; only the value it keys on widened.
-    expect(chat).toContain("const scopeEpoch = `${activeTenantId ?? \"\"}|${clientId ?? \"\"}`;");
+    // The epoch is composite across the active workspace and either focused record. A client or
+    // Strategic Play switch must end acceptance of the prior transcript/stream before any later
+    // response can render under the new scope. The ordering remains accept, invalidate, then clear.
+    expect(chat).toContain("const scopeEpoch = `${activeTenantId ?? \"\"}|${clientId ?? \"\"}|${businessMissionId ?? \"\"}`;");
     // Bounded so it cannot reach the LATER `invalidate()` calls (startNewChat, unmount). The
     // unbounded `[\s\S]*` version could not fail: inverting the accept/invalidate order left the
     // whole 507-test suite green.

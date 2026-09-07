@@ -1,5 +1,5 @@
 import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_mission.ts';
-import { executeVerifiedMissionMutation, resolveBusinessMissionThreadContext } from '../_shared/business-mission-tenant-brain.ts';
+import { executeVerifiedMissionMutation, resolveBusinessMissionThreadContext, resolveSelectedBusinessMissionContext } from '../_shared/business-mission-tenant-brain.ts';
 import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.ts';
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
@@ -369,6 +369,7 @@ const messageSchema = z.object({
     step: z.enum(["confirm_facts", "verify_website", "connect_venues", "compare_facts", "set_authority", "maintain_presence"]),
     intendedAction: z.enum(["review", "plan", "prepare_connection", "resolve_mismatch"]),
   }).optional(),
+  businessMissionId: z.string().uuid().nullable().optional(),
   // Owner "Your Paige" multi-chat: the persisted conversation this turn belongs to.
   // When set, paige-ai-chat persists both turns + rehydrates recall server-side (#94).
   threadId: z.string().uuid().nullable().optional(),
@@ -728,7 +729,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext: rawClientContext, surfaceContext, userTime, userTimezone, userTimeFormatted } = validatedData;
+    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, businessMissionId: payloadBusinessMissionId, threadId: payloadThreadId, clientContext: rawClientContext, surfaceContext, userTime, userTimezone, userTimeFormatted } = validatedData;
     // canvasArtifact is a CLIENT request field, meaningful ONLY in a server-resolved Studio session.
     // Declared `let` so it can be neutralized for a dedicated (non-Studio) chat once studio_session_id
     // is resolved (Codex P2): a dedicated-chat client must not be able to drive the reuse clamp with a
@@ -4325,16 +4326,25 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // it lets a one-field revision preserve every untouched canonical value. No client-supplied
     // tenant, raw transcript truth, Mind projection or Memory record participates.
     let businessMissionContextBlock = "";
-    if (personaCtx.tenant_id && payloadThreadId && callerTier !== "client") {
+    if (personaCtx.tenant_id && (payloadBusinessMissionId || payloadThreadId) && callerTier !== "client") {
       try {
-        const selectedMission = await resolveBusinessMissionThreadContext({
-          caller: supabaseClient,
-          expectedTenantId: personaCtx.tenant_id,
-          threadId: payloadThreadId,
-        });
+        const selectedMission = payloadBusinessMissionId
+          ? await resolveSelectedBusinessMissionContext({
+              caller: supabaseClient,
+              expectedTenantId: personaCtx.tenant_id,
+              missionId: payloadBusinessMissionId,
+            })
+          : await resolveBusinessMissionThreadContext({
+              caller: supabaseClient,
+              expectedTenantId: personaCtx.tenant_id,
+              threadId: payloadThreadId!,
+            });
         if (selectedMission.ok && selectedMission.promptBlock) {
           businessMissionContextBlock = selectedMission.promptBlock;
           markProtectedLate("business_mission_context");
+        } else if (payloadBusinessMissionId) {
+          businessMissionContextBlock = "SELECTED STRATEGIC PLAY UNAVAILABLE: Refuse to describe or change the selected play. Explain that it could not be verified in the active workspace and ask the owner to reopen it from Business Game Plan. Do not infer content from chat history.";
+          markProtectedLate("business_mission_context_refusal");
         }
       } catch (e) {
         console.warn("[paige-ai-chat] selected Mission context unavailable:", (e as Error)?.message);

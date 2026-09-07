@@ -85,36 +85,36 @@
       "id": "command-center.business-game-plan",
       "consequential": true,
       "intended_capability": {
-        "read": "The composite plan (metrics, attention, systems, missions) and the current Business Mission record; monitors mission progress and plan drift over time.",
+        "read": "The owner-approved Plan Brief plus caller-scoped canonical Business Mission records shown as Strategic Plays; monitors each play's current lifecycle and next step without inventing performance.",
         "draft": "Propose a plan, sequence missions, draft mission briefs and next moves, and model strategic options.",
         "auto": "Within policy, advance a mission through the non-destructive stages the tenant has pre-approved.",
         "confirm": "Create / revise / transition a Business Mission (high, chat-canonical) executes only after owner confirmation.",
         "prohibited": "Never fabricate progress or mark a mission advanced without a verified state change (§13).",
-        "completion_criterion": "Paige creates, sequences, and ADVANCES a real Business Mission on this surface, the state change is verified, and a Rail outcome records it — not a displayed plan. THIS IS THE NEXT RUNTIME SLICE: a real governed action + verified outcome + Rail evidence, not a richer context handoff."
+        "completion_criterion": "From Business Game Plan, the owner or Paige CREATES, REVISES, APPROVES, PAUSES, RESUMES, COMPLETES, or ARCHIVES a real Strategic Play; the persisted lifecycle or content change is canonically re-read and a truthful Rail outcome is recorded before success."
       },
       "surface": "Command Center -> Business Game Plan",
       "group": "command-center",
       "tier_scope": ["solo"],
-      "owner_component": "src/solo/SoloGamePlanWorkspace.tsx:59 (CommandCenter.tsx:112)",
-      "canonical_source": "composite useSoloGamePlan (practice_dashboard_metrics, paige_approval_queue_v, systems_check_snapshot, tenant_knowledge_docs, paige_actions); Business Mission via business_mission.create/.revise/.transition + get_paige_thread_business_mission selected-context projector + get_business_mission verification projector (migrations 20260905221203 and 20270101000000, #983)",
+      "owner_component": "src/solo/SoloGamePlanWorkspace.tsx with src/solo/PlanInMotion.tsx (CommandCenter.tsx)",
+      "canonical_source": "owner Plan Brief via existing useSoloGamePlan/save_solo_setup_context; Strategic Plays via caller-scoped list_business_missions/get_business_mission and existing create/revise/transition Mission RPCs; canonical verification via the shared Business Mission Tenant Brain helper",
       "chain": {
-        "canonical_source": {"status": "real", "note": "composite of caller-scoped reads; the Business Mission record is authored on this surface"},
+        "canonical_source": {"status": "real", "note": "the Plan Brief retains its existing governed save seam; Plan in Motion reads and mutates canonical Business Mission records rather than campaign briefs or a parallel strategy store"},
         "tenant_scope": {"status": "server_resolved", "note": "each underlying DEFINER lens resolves tenant in-body; the business_mission executors are §10 callable seams"},
-        "safe_context": {"status": "partial", "note": "before reasoning, the dedicated chat resolves the newest Mission canonically linked to the persisted Paige thread through caller-scoped current_user_tenant_id + owner-only public.get_paige_thread_business_mission; the bounded full editable brief preserves untouched values on one-field revisions and carries source/revision/lifecycle/freshness metadata; the thread id is a locator, never tenant authority; the composite-plan Mind lens remains unavailable"},
+        "safe_context": {"status": "partial", "note": "a Business Game Plan card passes only its canonical Mission UUID plus tenant-stamped client-side selection; paige-ai-chat re-resolves the active tenant and full Mission server-side before reasoning, refuses invalid/foreign selection, and preserves source/revision/lifecycle/freshness metadata; Mind remains unavailable"},
         "authority": {"status": "governed", "note": "business_mission.create/.revise/.transition are chat-canonical, approval-gated (classification mutate, risk high)"},
-        "governed_write": {"status": "wired", "note": "public.create_business_mission / revise_business_mission_brief / transition_business_mission; registered in the Spine (registry.ts) and spread into paige-ai-chat's live tool array; migration 20260905221203 (#983)"},
-        "verified_outcome": {"status": "wired", "note": "after create/revise/transition, paige-ai-chat re-reads public.get_business_mission and compares canonical id, revision, lifecycle and every requested persisted field; mismatch/failed read writes no Rail and cannot claim success; authenticated runtime proof remains owed"},
+        "governed_write": {"status": "wired", "note": "owner UI calls business-mission-action, which accepts no tenant id and composes the existing shared Mission mutation helper/RPCs; Paige continues through the registered chat-canonical Mission tools and existing authority gate"},
+        "verified_outcome": {"status": "wired", "note": "both owner UI and Paige create/revise/transition paths share a fresh caller-scoped get_business_mission readback that compares canonical id, revision, lifecycle and requested persisted fields; mismatch/failed read writes no Rail and cannot claim success; authenticated runtime proof remains owed"},
         "rail_evidence": {"producer": "wired", "read": "resolver", "note": "only a matching canonical readback calls the existing service-role record_capability_run writer with mission_create/mission_revise/mission_transition and the Mission request key as the stable run id; authenticated row/render proof remains owed"},
         "mind_eligibility": {"axis_a": "BLOCKED", "axis_b": "NO", "note": "business_mission mindBinding is UNAVAILABLE; the composite plan's Mind lens needs SCR-1/2/3 (#647). The GOVERNED WRITE is chat-bound today; Mind EVIDENCE over it is not"},
         "memory_retention": {"status": "UNAVAILABLE", "note": "this slice writes no paige_owner_memory or client_memory record and makes no learned/remembered claim"}
       },
       "prohibited_context": ["approval titles/summaries/draft bodies", "knowledge titles", "finding interpretation text", "check/run ids", "tenant-authored stage labels"],
       "state": "PARTIAL",
-      "state_reason": "PR #1016 code, migration and affected edge function are deployed at 68d7c10f4381dd66a5d930d82f9400d004d189b5. At its closeout both live markers matched; current main after descendant M1-a #1014 has edge-live at 68d7c10f and db-live at 94e08d8b, which includes the Mission migration. The Business Mission governed write remains chat-bound behind the existing approval/authority gate. The Tenant Brain Mission helper supplies persisted-thread-selected canonical Mission context before reasoning, re-resolves tenant after the write, verifies every normalized persisted change by readback, and only then records the existing capability_run Rail outcome. Still PARTIAL, never Tenant-Brain complete: authenticated production Mission/Rail row proof is owed; the policy-aware standing-authority oracle is dark until its owning runtime slice; Mind and Memory remain UNAVAILABLE; the composite-plan Mind lens still needs #647.",
-      "evidence_class": ["production_catalog", "automated_test", "source_read"],
+      "state_reason": "The deployed #1016 Mission/Rail foundation remains LIVE. The active owner-complete release candidate replaces unrelated right-column system material with Mission-backed Plan in Motion cards and a review/action drawer, adds the owner UI action door without accepting a tenant id, and safely attaches selected-plan context to the one dedicated Paige workspace. Automated tenant-switch, refusal, lifecycle, canonical-readback and Rail-ordering proof is green, and 176 real-component state/theme/viewport checks pass without horizontal overflow; the harness records are fictional, and the new owner flow is not deployed or authenticated-runtime proven. Therefore the surface and Solo Tenant Brain remain PARTIAL; Mind and Memory remain UNAVAILABLE.",
+      "evidence_class": ["production_catalog", "automated_test", "rendered_structural", "source_read"],
       "linked": ["#1016", "#983", "#647", "#639"],
-      "next_slice": "Drive an authenticated Solo owner through create/revise/transition at deployed SHA 68d7c10f4381dd66a5d930d82f9400d004d189b5, prove the canonical Mission revision and matching capability_run row/read projection, and retain the denied/cross-tenant path. The composite-plan Mind lens is separate and still needs #647; Memory promotion remains unavailable.",
-      "sources": ["supabase/functions/_shared/business-mission-tenant-brain.ts", "src/__tests__/business-mission-tenant-brain.test.ts", "supabase/functions/paige-ai-chat/index.ts", "supabase/functions/_shared/paige-spine/domains/business_mission.ts", "supabase/functions/_shared/paige-spine/registry.ts", "supabase/migrations/20260905221203_business_mission_foundation.sql", "supabase/migrations/20270101000000_paige_thread_business_mission_context.sql", "docs/architecture/paige-mind-integration-matrix.md#command-center (SUPERSEDED for the write — predates #983)", "docs/doctrine/command-center-four-surfaces.md"]
+      "next_slice": "Release-gate the owner-complete candidate, then drive one signed-in Solo owner through create/edit/approve/pause/resume/complete/archive plus Paige-selected-plan return; prove the same canonical revision and capability_run row, workspace-switch clearing, and denied-role refusal. Mind/Memory remain separately scoped and unavailable.",
+      "sources": ["src/solo/SoloGamePlanWorkspace.tsx", "src/solo/PlanInMotion.tsx", "src/solo/data/useBusinessGamePlanMissions.ts", "supabase/functions/business-mission-action/index.ts", "supabase/functions/_shared/business-mission-tenant-brain.ts", "src/__tests__/business-mission-tenant-brain.test.ts", "supabase/functions/paige-ai-chat/index.ts", "supabase/functions/_shared/paige-spine/domains/business_mission.ts", "supabase/functions/_shared/paige-spine/registry.ts", "supabase/migrations/20260905221203_business_mission_foundation.sql", "supabase/migrations/20270101000000_paige_thread_business_mission_context.sql", "supabase/migrations/20260907001343_archive_completed_business_mission_history.sql", "docs/architecture/paige-mind-integration-matrix.md#command-center (SUPERSEDED for the write — predates #983)", "docs/doctrine/command-center-four-surfaces.md"]
     },
     {
       "id": "command-center.systems-check",
@@ -353,7 +353,7 @@
       "prohibited_context": ["deal id", "pipeline/stage ids", "contact/client/user/tenant ids", "deal title", "stage labels", "activity summaries", "task titles", "client name", "provider bodies"],
       "state": "PROOF_OWED",
       "state_reason": "The one implemented Mind capability. Read lens registered + chat-injected + tested. Not LIVE: authenticated two-Solo-tenant drive never run, AND no campaigns_pipeline Rail row has ever been produced, so the lens returns empty for every tenant today. Writes blocked on #755.",
-      "evidence_class": ["production_catalog", "automated_test", "source_read"],
+      "evidence_class": ["production_catalog", "automated_test", "rendered_structural", "source_read"],
       "linked": ["#755", "#746", "PR #729", "PR #776"],
       "next_slice": "Authenticated drive of pipeline.deal_stage_evidence — prerequisite: produce one real campaigns_pipeline Rail row (a move_deal via configure_tenant_pipeline_as_paige on a contact-linked deal landing in the direct-move branch). Do NOT widen factValues before that drive exists.",
       "sources": ["docs/architecture/paige-mind-integration-matrix.md#pipeline", "docs/doctrine/surface-cards/pipeline.md", "supabase/functions/_shared/paige-spine/domains/pipeline.ts"]
@@ -388,7 +388,7 @@
       "prohibited_context": ["any provider metric (none exist)", "provider credentials/tokens"],
       "state": "PROOF_OWED",
       "state_reason": "social.presence read+write wired and unit-tested; authenticated runtime proof absent. Provider metrics remain UNAVAILABLE (no source). Supersedes the pre-2026-09-05 Mind matrix.",
-      "evidence_class": ["production_catalog", "automated_test", "source_read"],
+      "evidence_class": ["production_catalog", "automated_test", "rendered_structural", "source_read"],
       "linked": [],
       "next_slice": "Authenticated drive of the social.presence read/write on a real Solo tenant. Provider connections/metrics remain a separate, unstarted contract.",
       "sources": ["docs/brain/paige-spine-and-rail-state.md", "supabase/functions/_shared/paige-spine/domains/social.ts", "docs/delivery/solo-social-command.md", "docs/architecture/paige-mind-integration-matrix.md#campaigns-social-performance (SUPERSEDED — predates social.presence)"]
@@ -632,7 +632,7 @@
       "prohibited_context": ["raw values of website/phone/industry/email (status+provenance only)", "hostnames", "sender/reply-to addresses", "brand JSON", "tenant slug/name"],
       "state": "PROOF_OWED",
       "state_reason": "business_context.readiness is LIVE on production as a deployed function and chat-injected; not LIVE by this ledger's bar because the owner's own authenticated UI-flow proof is still owed. First WORKSPACE-level Spine capability (a live read, no Rail). SCOPE NOTE: the readiness binding covers the four business fields only; the knowledge-bucket subtab's tenant_knowledge_docs authoring is the owner's UI write (not a Paige governed write, and its Mind lens is scoped-out with command-center.mind), and direction/paige-brief persona authoring is deliberately not a Paige-safe evidence lens.",
-      "evidence_class": ["production_catalog", "automated_test", "source_read"],
+      "evidence_class": ["production_catalog", "automated_test", "rendered_structural", "source_read"],
       "linked": ["PR #864", "PR #958"],
       "next_slice": "Phase 4.4: authenticated owner runtime proof; keep status+provenance narrow (never a raw value); a setup save does not become Memory. The knowledge-bucket/persona subtabs' binding is a separate, unscoped concern (do not let Mind read them until contracted).",
       "sources": ["docs/brain/paige-spine-and-rail-state.md", "supabase/functions/_shared/paige-spine/domains/business_context.ts", "docs/doctrine/surface-cards/setup.md", "docs/delivery/canonical-readiness-contract.md"]
@@ -701,7 +701,7 @@
       "prohibited_context": ["member ids/emails/display names/job titles/responsibilities", "invite ids and token material"],
       "state": "PROOF_OWED",
       "state_reason": "team.authority read wired + injected; PAIGE can act on the team (capability PARTIAL). Not LIVE: authenticated runtime proof owed. Member identity crossing into Mind is an unresolved owner decision Mind must not pre-empt.",
-      "evidence_class": ["production_catalog", "automated_test", "source_read"],
+      "evidence_class": ["production_catalog", "automated_test", "rendered_structural", "source_read"],
       "linked": ["PR #876"],
       "next_slice": "Phase 5: record-aware, permission-aware context for legitimate owner/admin work. No role escalation, no provider secrets.",
       "sources": ["docs/brain/paige-spine-and-rail-state.md", "supabase/functions/_shared/paige-spine/domains/team.ts", "docs/doctrine/surface-cards/team.md"]
@@ -772,7 +772,7 @@
       "prohibited_context": ["the connection endpoint above all", "every credential-derived value", "host fragments", "error text", "labels", "approved capabilities", "capability-pin digests"],
       "state": "PARTIAL",
       "state_reason": "n8n readiness read wired + injected; 12 n8n management capabilities registered with 6 governed writes wired to the Rail capability-run write. Not proven: ZERO capability_run rows exist in production; no authenticated runtime drive. Connection-state Mind lens is UNAVAILABLE (needs SCR-1/2). Accounting/finance/paid-media provider connectors (e.g. QuickBooks reconcile/classify/pay) have NO connected seam yet — those sub-capabilities stay UNAVAILABLE and their seam+proof is owed; the intended_capability declares the delegated-execution target regardless (owner ruling 2026-09-06, §13). settings.integrations owns only the connected-tool execution SEAM; the tenant-facing Finance/bookkeeping SURFACE (§16 Finance) is deferred to its own slice when accounting-firm tenants land (§18/§56), not cemented under Integrations (§65).",
-      "evidence_class": ["production_catalog", "automated_test", "source_read"],
+      "evidence_class": ["production_catalog", "automated_test", "rendered_structural", "source_read"],
       "linked": [],
       "next_slice": "Authenticated drive of an n8n management write through chat to produce the first capability_run row and verify it renders on the owner's Command Center (#746 owner-visibility).",
       "sources": ["docs/brain/paige-spine-and-rail-state.md", "supabase/functions/_shared/paige-spine/domains/n8n_management.ts", "docs/architecture/paige-mind-integration-matrix.md#integrations-n8n-mcp"]

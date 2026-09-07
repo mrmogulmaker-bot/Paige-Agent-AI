@@ -65,9 +65,9 @@ function withPatch(patch: any) {
 
 export function viewFor(mode: string) {
   switch (mode) {
-    case "loading":
+    case "page-loading":
       return withPatch({ loading: true });
-    case "error":
+    case "page-error":
       return withPatch({ error: true });
     case "empty":
       return withPatch({
