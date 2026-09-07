@@ -27,9 +27,10 @@ const CLASSIFICATIONS = new Set(["internal_only", "patch", "minor_candidate", "m
 const RECORD_STATES = new Set(["DRAFT", "OWNER_DECISION_PENDING", "APPROVED", "PUBLISHED", "CORRECTED", "RETRACTED"]);
 const DELIVERY_STATES = new Set(["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAILED"]);
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
-const hasPlaceholder = (value) => /\b(?:todo|tbd|placeholder|replace me|pending|unknown)\b/i.test(String(value ?? "").replace(/[^A-Za-z0-9]+/g, " "));
-const isNoValue = (value) => /^(?:none|n\/?a|not applicable)$/i.test(String(value ?? "").trim());
-const isNoLimitation = (value) => isNoValue(value) || /^no known limitations?$/i.test(String(value ?? "").trim());
+const normalizeSentinel = (value) => String(value ?? "").trim().replace(/[^A-Za-z0-9]+/g, " ").replace(/\s+/g, " ").toLowerCase();
+const hasPlaceholder = (value) => /\b(?:todo|tbd|placeholder|replace me|pending|unknown)\b/.test(normalizeSentinel(value));
+const isNoValue = (value) => new Set(["none", "n a", "na", "not applicable"]).has(normalizeSentinel(value));
+const isNoLimitation = (value) => isNoValue(value) || /^no known limitations?$/.test(normalizeSentinel(value));
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "history", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "customer_release_scope", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
 const STAGED_KEYS = ["owner_approval", "eligibility_rule", "rollout_amount", "start_condition", "stop_condition", "monitoring_owner", "recovery_path"];
@@ -174,7 +175,7 @@ export function validateReleaseRecord(record) {
       if (!["referenced", "supporting"].includes(build?.customer_release_scope)) findings.push(`${label}.customer_release_scope invalid`);
       if (build?.release_channel === "development" && !["local", "development"].includes(build.environment)) findings.push(`${label} development channel requires local/development environment`);
       if (build?.release_channel === "preview" && build.environment !== "preview") findings.push(`${label} preview channel requires preview environment`);
-      if (["production", "staged"].includes(build?.release_channel) && (build.environment !== "production" || build.deployment_id === "NOT_APPLICABLE")) findings.push(`${label} production/staged channel requires production environment and exact deployment ID`);
+      if (["production", "staged"].includes(build?.release_channel) && (build.environment !== "production" || isNoValue(build.deployment_id))) findings.push(`${label} production/staged channel requires production environment and exact deployment ID`);
       if (!validDateTime(build?.deployed_at)) findings.push(`${label}.deployed_at must be an ISO date-time`);
       if (build?.release_channel === "staged") {
         if (requireExactObject(build?.staged_rollout, STAGED_KEYS, `${label}.staged_rollout`, findings)) {
@@ -409,6 +410,9 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects no-value sentinels in published facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["None"], affected_audience: ["N/A"], benefits: ["none"], rollback_recovery: { position: "forward fix", reference: "none" } }, true],
     ["rejects no-evidence sentinel for passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["none"] } } }] }, true],
     ["rejects production build without deployment ID", { ...valid, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "NOT_APPLICABLE", customer_release_scope: "supporting" }] }, true],
+    ["rejects normalized absent production deployment IDs", { ...valid, internal_builds: [{ ...build, deployment_id: "not_applicable" }] }, true],
+    ["rejects normalized no-value publication facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["NOT_APPLICABLE"], affected_audience: ["N_A"], rollback_recovery: { position: "forward fix", reference: "NOT-APPLICABLE" } }, true],
+    ["rejects normalized no-evidence sentinel for passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["NOT_APPLICABLE"] } } }] }, true],
   ];
   let bad = 0;
   for (const [label, record, shouldFail] of cases) {

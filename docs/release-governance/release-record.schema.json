@@ -337,17 +337,19 @@
     "resolvedString": {
       "type": "string",
       "minLength": 1,
-      "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff] [Oo][Ww][Ee][Dd])|^([Nn]/?[Aa]|[Nn][Oo][Nn][Ee])$" }
+      "pattern": "\\S",
+      "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][ _/-]*[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff][ _/-]*[Oo][Ww][Ee][Dd])|^[ \\t\\r\\n]*([Nn][ _/-]*[Aa]|[Nn][Oo][Nn][Ee]|[Nn][Oo][Tt][ _/-]*[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee])[ \\t\\r\\n]*$" }
     },
     "publicationCopy": {
       "type": "string",
       "minLength": 1,
-      "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Aa][Dd][Dd]_[Ll][Ii][Nn][Kk]|[Ll][Ii][Nn][Kk]_[Hh][Ee][Rr][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn])" }
+      "pattern": "\\S",
+      "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee][ _/-]*[Mm][Ee]|[Aa][Dd][Dd][ _/-]*[Ll][Ii][Nn][Kk]|[Ll][Ii][Nn][Kk][ _/-]*[Hh][Ee][Rr][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn])" }
     },
     "requiredPublicationFact": {
       "allOf": [
         { "$ref": "#/$defs/publicationCopy" },
-        { "not": { "pattern": "^([Nn][Oo][Nn][Ee]|[Nn]/?[Aa]|[Nn][Oo][Tt] [Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee])$" } }
+        { "not": { "pattern": "^[ \\t\\r\\n]*([Nn][Oo][Nn][Ee]|[Nn][ _/-]*[Aa]|[Nn][Oo][Tt][ _/-]*[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee])[ \\t\\r\\n]*$" } }
       ]
     },
     "nonEmptyStrings": {
@@ -492,7 +494,7 @@
         },
         {
           "if": { "properties": { "release_channel": { "enum": ["production", "staged"] } }, "required": ["release_channel"] },
-          "then": { "properties": { "environment": { "const": "production" }, "deployment_id": { "not": { "const": "NOT_APPLICABLE" } } } }
+          "then": { "properties": { "environment": { "const": "production" }, "deployment_id": { "not": { "pattern": "^[ \\t\\r\\n]*([Nn][Oo][Nn][Ee]|[Nn][ _/-]*[Aa]|[Nn][Oo][Tt][ _/-]*[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Bb][Ll][Ee])[ \\t\\r\\n]*$" } } } }
         }
       ]
     },
