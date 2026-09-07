@@ -237,7 +237,8 @@ export function validateEvidenceText(text, classification) {
     }
   }
   const releaseRecovery = fields.get("RELEASE_RECOVERY") ?? "";
-  if (hasUnresolvedToken(releaseRecovery)) errors.push("RELEASE_RECOVERY must include a substantive rollback/forward-fix position and reference.");
+  const recoveryParts = /^position=([^;]+);\s*reference=(\S.+)$/i.exec(releaseRecovery);
+  if (!recoveryParts || recoveryParts.slice(1).some((value) => !value.trim() || hasUnresolvedToken(value))) errors.push("RELEASE_RECOVERY must include substantive position=...; reference=... values.");
   const truthBoundary = /^(?:LIVE|PARTIAL|UNAVAILABLE|PROOF OWED):\s*(\S.+)$/i.exec(fields.get("RELEASE_TRUTH_BOUNDARY") ?? "");
   if (!truthBoundary || isUnresolvedValue(truthBoundary[1])) errors.push("RELEASE_TRUTH_BOUNDARY must name at least one governed status and its claim boundary.");
   if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW"))) errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference.");

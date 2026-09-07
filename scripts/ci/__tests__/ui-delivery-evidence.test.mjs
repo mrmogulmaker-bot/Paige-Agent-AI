@@ -36,7 +36,7 @@ RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome
 CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed
 RELEASE_NOTE_REQUIRED: NO: internal-only change
 RELEASE_TRUTH_BOUNDARY: UNAVAILABLE: no customer-facing release claim
-RELEASE_RECOVERY: revert exact commit and rerun checks
+RELEASE_RECOVERY: position=revert exact commit; reference=PR checks and commit history
 `;
 
 test("verifies the pinned upstream bundle against recorded hashes", () => {
@@ -120,7 +120,7 @@ test("refuses missing or placeholder release-governance evidence", () => {
   assert.equal(placeholder.ok, false);
   assert.match(placeholder.errors.join("\n"), /INTERNAL_BUILD_IDENTITY/);
 
-  for (const unresolved of ["none", "N/A", "PROOF_OWED"]) {
+  for (const unresolved of ["none", "N/A", "PROOF_OWED", "rollback", "resolved", "position=forward fix; reference=", "position=   ; reference=runbook"]) {
     const recovery = validateEvidenceText(coreEvidence.replace(/^RELEASE_RECOVERY:.*$/m, `RELEASE_RECOVERY: ${unresolved}`), { required: true, solo: false });
     assert.equal(recovery.ok, false, unresolved);
     assert.match(recovery.errors.join("\n"), /RELEASE_RECOVERY/);

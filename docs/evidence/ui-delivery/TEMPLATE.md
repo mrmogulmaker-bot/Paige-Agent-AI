@@ -29,7 +29,7 @@ RELEASE_CLASSIFICATION: REPLACE_ME: classification reason
 CUSTOMER_RELEASE_IDENTITY: REPLACE_ME as `none: reason` or `<version> — <release name>; owner-decision=<reference-or-PENDING>`
 RELEASE_NOTE_REQUIRED: REPLACE_ME: yes/no reason
 RELEASE_TRUTH_BOUNDARY: REPLACE_ME exact LIVE / PARTIAL / UNAVAILABLE / PROOF OWED claims
-RELEASE_RECOVERY: REPLACE_ME rollback/forward-fix position and reference
+RELEASE_RECOVERY: position=REPLACE_ME rollback/forward-fix position; reference=REPLACE_ME evidence or runbook
 
 For a non-material flow change, use `MATERIAL_FLOW_CHANGE: NO: reason` and `FLOW_PROTOTYPE: NOT_REQUIRED: reason`. Do not use `NOT_REQUIRED` merely because a prototype was inconvenient.
 
