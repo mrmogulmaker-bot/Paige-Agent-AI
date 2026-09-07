@@ -97,10 +97,12 @@ Rail wording is limited to a Campaign Brief planning record verified as created 
 
 Current candidate boundary:
 
-- Campaign Brief verified create/revise plus Rail lane: `PARTIAL` pending release and authenticated proof.
+- Campaign Brief verified create/revise plus post-readback Rail backend lane: `LIVE` in production; the owner-visible vertical remains `PARTIAL` pending authenticated proof.
 - Authenticated owner production proof: `PROOF OWED`.
 - Solo Tenant Brain overall: `PARTIAL`.
 - Campaign Brief Mind and durable Memory: `UNAVAILABLE`.
 - Secure Browser/Browserbase: unchanged; Browserbase remains `PROPOSED`, prohibited and unwired, and credentialed browser use remains `UNAVAILABLE`.
 
 Candidate proof is 38/38 focused tests, 161/161 adjacent-workstream regressions, a clean independent review, unchanged TypeScript ratchet, successful production build, security/governance/registry checks, a clean sensitive-data diff scan, and direct isolated PostgreSQL migration/readback proof. The full repository run passed 3,898/3,900 under parallel load; the two five-second repository-scan timeouts passed 21/21 immediately in isolation. PR #917's current head already conflicts with untouched current main in the same shared files, so this slice does not take or silently reconcile its orchestration ownership.
+
+Production closeout: PR #1047 supporting review-history head `8c9bf37f` passed required checks and clean re-review, then squash-merged as the referenced production build `ae0a16a0d5147a4652a06925356c427c4d543d56`. Migration run 34150733491 persisted `20270105000000_campaign_brief_verified_rail_copy.sql`; Edge run 34150733561 deployed `paige-ai-chat`; merge-time CI 34150733476, Spine 34150733506, Security 34150733474 and UI evidence 34150733493 passed; `db-live` and `edge-live` equal the merge; both production hosts return build `ae0a16a0d5147a4652a06925356c427c4d543d56-mtrk6vbx`. Authenticated owner proof remains `PROOF OWED`, so the owner-visible lane and Solo Tenant Brain remain `PARTIAL`; Mind and durable Memory remain `UNAVAILABLE`. Recovery is forward-fix/redeploy; applied migrations and tenant records are never rewritten or deleted.

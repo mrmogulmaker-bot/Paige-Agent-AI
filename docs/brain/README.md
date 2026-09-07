@@ -325,3 +325,5 @@ The Business Mission canonical-write/readback/Rail foundation remains `LIVE`. PR
 ### 2026-09-07 Tenant Brain index addition
 
 `solo-tenant-brain.md` now also owns the Verified Campaign Brief with Paige lane: exact canonical id/version/lifecycle/field readback before successful Rail evidence, with Campaign Brief Mind and durable Memory unavailable.
+
+PR #1047 released that backend lane as referenced production merge `ae0a16a0`: persisted migration and affected Edge deployment are proven, both live tags match, and both production version endpoints report the merge build. The backend verified-create/revise plus Rail contract is `LIVE`; the owner-visible lane stays `PARTIAL`, authenticated browser proof stays `PROOF OWED`, and Campaign Brief Mind/Memory stay `UNAVAILABLE`.

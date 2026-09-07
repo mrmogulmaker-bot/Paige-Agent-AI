@@ -889,3 +889,5 @@ The Campaign Brief create/revise Spine capabilities now reach the existing works
 Their owner-visible copy says only that a Campaign Brief planning record was verified created/revised and explicitly denies campaign launch, publication, spend, performance and completion. Refusal, ambiguous selection, stale version, tenant/authority loss, unknown write, readback failure or mismatch never writes a success outcome.
 
 Mind and durable Memory remain `UNAVAILABLE`; authenticated owner/card/Rail production proof remains `PROOF OWED`.
+
+Production closeout: PR #1047 referenced production merge `ae0a16a0`; migration run 34150733491 persisted the owner-safe Rail projection, Edge run 34150733561 deployed the affected graph, both live tags equal the merge, and merge-time CI/Spine/Security/UI gates passed. The post-readback Campaign Brief Rail producer is `LIVE`; authenticated owner/card/Rail browser proof remains `PROOF OWED`, so the owner-visible lane remains `PARTIAL` and Mind/Memory remain `UNAVAILABLE`.
