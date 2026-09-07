@@ -24,7 +24,7 @@ TRUTHFUL_STATE_LABELS: PASS: local browser artifacts remain visibly synthetic an
 SOLO_UI: YES: canonical Solo PAIGE transcript behavior is affected; mounting ownership is unchanged
 UNVERIFIED: authenticated production interaction, final hosted CI, and exact deployment identity
 
-INTERNAL_BUILD_IDENTITY: 852a0d0e4a0e0c1cdab3f169516f206689c23dfa; deployment=local-build; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=scripts/live-drive/artifacts/paige-scroll-stability-react/report.json
+INTERNAL_BUILD_IDENTITY: 2e0501f74e5e7b6780d475e8137e2599cd71638b; deployment=local-build; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=scripts/live-drive/artifacts/paige-scroll-stability-react/report.json
 RELEASE_CHANNEL: development: production promotion explicitly authorized after exact-head CI and review pass
 RELEASE_CLASSIFICATION: patch: focused reliability correction to an existing owner-visible behavior
 CUSTOMER_RELEASE_IDENTITY: none: no named customer release or publication was requested
