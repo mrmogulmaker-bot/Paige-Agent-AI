@@ -20,8 +20,8 @@ TRUTHFUL_STATE_LABELS: PASS: customer copy names only Paige Secure Browser and s
 SOLO_UI: YES: the Vault Connected Accounts tab is mounted behind the exact-tenant `secure_browser` flag; the chat request card is isolated pending the active PR #1044 workspace collision.
 UNVERIFIED: real-shell rendering and geometry, keyboard/focus travel, zoom/reflow, authenticated runtime, deployed database/Edge identities, chat mounting, provider-backed work, and credentialed account behavior remain unverified or explicitly unavailable.
 
-INTERNAL_BUILD_IDENTITY: b55630a7cb3431661618e3f127eb13681c3f047c; deployment=not-deployed; environment=development; migrations=PROOF_OWED(PR-1046-awaits-merge); edge=PROOF_OWED(browser-use-revision-awaits-merge); evidence=docs/evidence/ui-delivery/paige-secure-browser-owner-mvp.md
-RELEASE_CHANNEL: development: local build and automated tests only; no customer deployment or enablement
+INTERNAL_BUILD_IDENTITY: 1d368e9208ccdf9d76dd520d490ddfb8f287338d; deployment=4zX7E2Jm6FuQNXATVr1syARz8GAa; environment=preview; migrations=PROOF_OWED(PR-1046-Supabase-preview-skipped); edge=PROOF_OWED(browser-use-revision-awaits-merge); evidence=Vercel-preview-status-for-1d368e9208ccdf9d76dd520d490ddfb8f287338d
+RELEASE_CHANNEL: preview: Vercel preview `4zX7E2Jm6FuQNXATVr1syARz8GAa` succeeded for `1d368e9208ccdf9d76dd520d490ddfb8f287338d`; no production deployment, customer enablement, or Supabase preview exists
 RELEASE_CLASSIFICATION: internal-only: draft foundation is feature-flagged, provider-unavailable, and not yet mounted in the shared chat workspace
 CUSTOMER_RELEASE_IDENTITY: none: no customer release or live capability is claimed from this draft
 RELEASE_NOTE_REQUIRED: NO: internal-only draft with no customer enablement
@@ -56,6 +56,8 @@ The owner states a business purpose and public HTTPS target, reviews the fixed r
 - 2026-09-07, jsdom: three focused test files, 10 tests — PASS.
 - 2026-09-07: focused ESLint, SQL migration lint, definer-function lint, migration-version lint, token lint 44/44, production build, and diff check — PASS.
 - 2026-09-07: `npm run ci:tsc` — PASS, no new errors; repository baseline 13 and current 13.
+- 2026-09-07, GitHub PR #1046 at `1d368e9208ccdf9d76dd520d490ddfb8f287338d`: aggregate `verify` — PASS, including 269 test files / 3,878 tests and every post-test security smoke. The previously unrelated full-suite test path did not fail again.
+- 2026-09-07, Vercel preview: deployment `4zX7E2Jm6FuQNXATVr1syARz8GAa` — READY; this is preview evidence only and the Secure Browser chat card remains unmounted.
 - Automated evidence is distinct from rendered evidence. No authenticated, provider-backed, credentialed, deployed, or customer-account evidence was collected.
 
 ## Review and limitations
