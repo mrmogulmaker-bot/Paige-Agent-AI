@@ -441,7 +441,12 @@ function renderMarkdownDoc(title: string | undefined, blocks: Block[]): { bytes:
         break;
       }
       case "paragraph":
-        if (b.text.trim()) { lines.push(b.text.trim()); lines.push(""); }
+        // Emptiness is checked with trim(), but the PUSHED text strips only TRAILING whitespace — LEADING
+        // indentation is significant in a raw-markdown passthrough block (an indented code block's 4 spaces),
+        // so trimming both ends would demote its first line to prose while later lines stayed code (Codex
+        // round-12b). The serializer adds its own single blank separator below, so trailing whitespace is the
+        // only part safe to drop.
+        if (b.text.trim()) { lines.push(b.text.replace(/\s+$/, "")); lines.push(""); }
         break;
       case "list":
         b.items.forEach((item, i) => lines.push(b.ordered ? `${i + 1}. ${item}` : `- ${item}`));

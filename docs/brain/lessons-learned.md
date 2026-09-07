@@ -19,8 +19,16 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   TRUE for any row. Coaches are unaffected (global `coach`, not `admin`). RLS therefore does NOT scope an
   admin's by-id read to their own tenant.
 - **Rule (§59).** A NEW by-id data reader/exporter MUST re-enforce caller scope IN-BODY — never trust the
-  RLS grant. Require `is_tenant_member(row.tenant_id)`; allow cross-tenant ONLY for a platform operator
-  (super_admin/platform_admin via the operator role), NEVER the tenant-level app_role. And: a source-grep
+  RLS grant. Require a MANAGE role IN THE ROW'S TENANT: owner/admin via `is_tenant_admin(row.tenant_id)`, or
+  coach via `has_tenant_role(uid, row.tenant_id, 'coach')` — **NOT `is_tenant_member`**, which a PLAIN member
+  of the row's tenant passes, re-opening the exact cross-tenant bypass above (Codex #1017). Allow cross-tenant
+  ONLY for a platform operator (super_admin/platform_admin via the operator role), NEVER the tenant-level
+  app_role. And because `marketing_content` RLS itself REFUSES a legitimate freshly-provisioned Solo owner
+  (global role only `user`; their authority is an owner membership `is_tenant_admin` recognizes), the row is
+  read with the SERVICE-ROLE client (a privileged, RLS-bypassing read) and the in-body manage-role check is
+  the ONLY access decision — failing CLOSED as a 404 (never 403) so the by-id endpoint never reveals that an
+  out-of-scope row exists. Order matters: authorize BEFORE any response that varies by the row's kind/tenant
+  shape, or those status codes become a cross-tenant existence oracle (Codex #1017 M1). And: a source-grep
   test titled "tenant scope by RLS" that only greps for the read shape proves nothing about isolation —
   name it a source contract and owe the real two-tenant drive (§32.c). The underlying RLS OR-branch is a
   separate platform-wide gap (any tenant admin can read any tenant's marketing_content via raw PostgREST) —

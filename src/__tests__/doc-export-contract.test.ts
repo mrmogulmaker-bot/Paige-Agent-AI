@@ -276,6 +276,16 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(dec(asWrapper.bytes)).toContain("```js\nconst a = 1;");
   });
 
+  it("preserves LEADING indentation of a raw prose block — an indented code block round-trips for md (Codex round-12b)", async () => {
+    // A prose block whose markdown IS an indented code block (4-space) must keep those 4 leading spaces on
+    // md export: trimming both ends would demote the first line to prose while later lines stayed code.
+    const r = await renderDoc({ format: "md", title: "Snippet", content: [{ type: "prose", markdown: "    const a = 1;\n    const b = 2;" }] });
+    const md = dec(r.bytes);
+    expect(md).toMatch(/^ {4}const a = 1;$/m);   // first line keeps its 4-space indent (still a code line)
+    expect(md).toMatch(/^ {4}const b = 2;$/m);   // later lines unaffected
+    expect(md).not.toMatch(/^const a = 1;$/m);   // …and it was NOT de-indented to prose
+  });
+
   it("never throws and still produces a file for empty content (title-only)", async () => {
     const r = await renderDoc({ format: "md", title: "Only A Title", content: [] });
     expect(r.ext).toBe("md");

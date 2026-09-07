@@ -242,6 +242,25 @@
   per-item verdict with a reason + recovery path"). Honest scope: the ACTUAL owner is super_admin/admin and CAN
   use export today; the gap is future fresh Solo tenants. doc-export 24/24, tsc ratchet 13/13, control-chars
   none, §50/§63 clean.
+  **SIXTEENTH catch — Codex round 12b (review of the merge commit `4446cd9b`): one P1 + three P2, all
+  FOLDED (every one in this PR's OWN code/docs).** (A, P2) `renderMarkdownDoc`'s paragraph `trim()` stripped
+  LEADING indentation, so a raw prose block that IS an indented code block lost its first line's 4-space
+  indent (demoted to prose while later lines stayed code); now strips TRAILING whitespace only, emptiness
+  still checked via `trim()`. (B, P2 §13) the master-ref described export as "admin/coach-gated, §9
+  caller-JWT read" — the OPPOSITE of the shipped model (privileged SERVICE-ROLE read fenced by an in-body
+  tenant-scoped MANAGE check, fail-closed 404); corrected the summary + capability entry so a future reviewer
+  doesn't trust RLS. (C, P2 §13) the same entry labeled md "LIVE" and invented "pdf LIVE-pending" (not a valid
+  status) while the authenticated end-to-end drive is owed and only the md serializer is headless-proven;
+  reclassified to the AGENTS.md 4-word vocab — **md PARTIAL, pdf/docx/pptx UNVERIFIED, xlsx/native-Google
+  UNAVAILABLE**. (D, P1 §59) `lessons-learned.md`'s reusable security RULE still said "require
+  `is_tenant_member`" — the EXACT leak (a plain member of the row's tenant passes, re-opening the cross-tenant
+  bypass the same entry's symptom describes); corrected to require a MANAGE role (`is_tenant_admin`/
+  `has_tenant_role`), never `is_tenant_member`, plus the service-role-read / 404 / authorize-before-any-
+  kind-or-tenant-shape-response pattern. Lesson: when the CODE fix evolves (`is_tenant_member` →
+  `is_tenant_admin`, caller-JWT → service-role), the lessons-learned RULE and the master-ref that DOCUMENT it
+  must evolve in the SAME commit — a stale security rule teaches the next session the leak, and a stale
+  capability label lets a release trust an unproven path. doc-export 25/25, tsc ratchet 13/13, control-chars
+  none, §50/§63 clean.
 
 - **Integration Capability Registry v1.1 — API Expense & Operations Layer + the "M1" disambiguation (2026-09-06, PR #1029, squash `1fee5418`; owner-authorized, incl. a mid-slice M1 terminology ruling).**
   Extended the existing registry JSON (§18, no second registry): an `expense_and_operations` block on **all 20
