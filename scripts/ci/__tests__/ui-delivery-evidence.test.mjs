@@ -283,6 +283,12 @@ test("rejects unresolved values after PASS", () => {
 
   const validStatePath = validateEvidenceText(coreEvidence.replace("RENDERED_EVIDENCE: PASS: screenshot", "RENDERED_EVIDENCE: PASS: evidence/ui/pending-state.png"), { required: true, solo: false });
   assert.equal(validStatePath.ok, true, validStatePath.errors.join("\n"));
+
+  const honestUnverified = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", "AUTHENTICATED_RUNTIME: UNVERIFIED: approval pending for production tenant access"), { required: true, solo: false });
+  assert.equal(honestUnverified.ok, true, honestUnverified.errors.join("\n"));
+
+  const bareUnverified = validateEvidenceText(coreEvidence.replace("AUTHENTICATED_RUNTIME: UNVERIFIED: no authenticated test credential in this environment", "AUTHENTICATED_RUNTIME: UNVERIFIED: pending"), { required: true, solo: false });
+  assert.equal(bareUnverified.ok, false);
 });
 
 test("rejects unresolved tokens in UI applied identifiers", () => {
