@@ -31,6 +31,7 @@ const normalizeSentinel = (value) => String(value ?? "").trim().replace(/[^A-Za-
 const hasPlaceholder = (value) => /\b(?:todo|tbd|placeholder|replace me|pending|unknown)\b/.test(normalizeSentinel(value));
 const isNoValue = (value) => new Set(["none", "n a", "na", "not applicable"]).has(normalizeSentinel(value));
 const isUnresolvedValue = (value) => /\b(?:todo|tbd|placeholder|replace me)\b/.test(normalizeSentinel(value)) || new Set(["pending", "unknown", "none", "n a", "na", "not applicable", "proof owed"]).has(normalizeSentinel(value));
+const isUnresolvedDeploymentId = (value) => hasPlaceholder(value) || isNoValue(value) || /\bproof owed\b/.test(normalizeSentinel(value));
 const isNoLimitation = (value) => isNoValue(value) || /^no known limitations?$/.test(normalizeSentinel(value));
 const RECORD_KEYS = ["schema_version", "record_id", "record_state", "history", "classification", "internal_builds", "scope", "affected_audience", "benefits", "limitations", "rollback_recovery", "customer_release_identity", "whats_new"];
 const BUILD_KEYS = ["commit_sha", "deployment_id", "environment", "release_channel", "customer_release_scope", "deployed_at", "staged_rollout", "migration_status", "edge_status", "checks", "evidence"];
@@ -170,13 +171,13 @@ export function validateReleaseRecord(record) {
       requireExactObject(build, BUILD_KEYS, label, findings);
       if (!/^[0-9a-f]{40}$/i.test(String(build?.commit_sha || ""))) findings.push(`${label}.commit_sha must be an exact 40-character SHA`);
       if (!nonEmpty(build?.deployment_id)) findings.push(`${label}.deployment_id missing`);
-      else if (build.deployment_id !== "NOT_APPLICABLE" && /(?:^|[_\-])(TODO|TBD|PLACEHOLDER|REPLACE_ME|PENDING|UNKNOWN|NONE|N_?A|PROOF_OWED)(?:$|[_\-])/i.test(build.deployment_id.replace(/\s+/g, "_"))) findings.push(`${label}.deployment_id must not contain an anticipated or placeholder token`);
+      else if (build.deployment_id !== "NOT_APPLICABLE" && isUnresolvedDeploymentId(build.deployment_id)) findings.push(`${label}.deployment_id must not contain an anticipated or placeholder token`);
       if (!["local", "development", "preview", "production"].includes(build?.environment)) findings.push(`${label}.environment invalid`);
       if (!CHANNELS.has(build?.release_channel)) findings.push(`${label}.release_channel invalid`);
       if (!["referenced", "supporting"].includes(build?.customer_release_scope)) findings.push(`${label}.customer_release_scope invalid`);
       if (build?.release_channel === "development" && !["local", "development"].includes(build.environment)) findings.push(`${label} development channel requires local/development environment`);
       if (build?.release_channel === "preview" && build.environment !== "preview") findings.push(`${label} preview channel requires preview environment`);
-      if (["production", "staged"].includes(build?.release_channel) && (build.environment !== "production" || isNoValue(build.deployment_id))) findings.push(`${label} production/staged channel requires production environment and exact deployment ID`);
+      if (["production", "staged"].includes(build?.release_channel) && (build.environment !== "production" || isUnresolvedDeploymentId(build.deployment_id))) findings.push(`${label} production/staged channel requires production environment and exact deployment ID`);
       if (!validDateTime(build?.deployed_at)) findings.push(`${label}.deployed_at must be an ISO date-time`);
       if (build?.release_channel === "staged") {
         if (requireExactObject(build?.staged_rollout, STAGED_KEYS, `${label}.staged_rollout`, findings)) {
@@ -412,6 +413,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects no-evidence sentinel for passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["none"] } } }] }, true],
     ["rejects production build without deployment ID", { ...valid, internal_builds: [build, { ...build, commit_sha: "b".repeat(40), deployment_id: "NOT_APPLICABLE", customer_release_scope: "supporting" }] }, true],
     ["rejects normalized absent production deployment IDs", { ...valid, internal_builds: [{ ...build, deployment_id: "not_applicable" }] }, true],
+    ["rejects punctuated anticipated deployment IDs", { ...valid, internal_builds: [{ ...build, deployment_id: "pending/deployment" }] }, true],
     ["rejects normalized no-value publication facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["NOT_APPLICABLE"], affected_audience: ["N_A"], rollback_recovery: { position: "forward fix", reference: "NOT-APPLICABLE" } }, true],
     ["rejects normalized no-evidence sentinel for passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["NOT_APPLICABLE"] } } }] }, true],
     ["rejects exact unresolved proof boundary values", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof remains outstanding"], identifiers: [], proof_owed: { boundary: "pending", excluded_from_live_claim: "proof owed" } } }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"] } }, true],

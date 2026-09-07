@@ -152,9 +152,19 @@ function hasPlaceholder(value) {
   return /\b(?:todo|tbd|placeholder|replace me|add link|link here)\b/.test(normalizeSentinel(value));
 }
 
+function isUnresolvedValue(value) {
+  const normalized = normalizeSentinel(value);
+  return hasPlaceholder(value) || new Set(["pending", "unknown", "none", "na", "n a", "not applicable", "proof owed"]).has(normalized);
+}
+
+function hasUnresolvedToken(value) {
+  const normalized = normalizeSentinel(value);
+  return hasPlaceholder(value) || /\b(?:pending|unknown|proof owed)\b/.test(normalized) || new Set(["none", "na", "n a", "not applicable"]).has(normalized);
+}
+
 function lacksDeploymentIdentity(value) {
   const normalized = normalizeSentinel(value);
-  return !normalized || /\b(?:todo|tbd|placeholder|replace me|pending|unknown)\b/.test(normalized) || new Set(["none", "na", "n a", "not applicable", "proof owed"]).has(normalized);
+  return !normalized || hasUnresolvedToken(value);
 }
 
 function isPassWithEvidence(value) {
@@ -191,10 +201,13 @@ export function validateEvidenceText(text, classification) {
   for (const field of ["migrations", "edge"]) {
     const value = deliveryValue(field) ?? "";
     const applied = /^APPLIED\(([^)]+)\)$/i.exec(value);
-    const allowedState = /^(?:NOT_APPLICABLE|PROOF_OWED\(\s*\S(?:[^)]*\S)?\s*\)|FAILED\(\s*\S(?:[^)]*\S)?\s*\))$/i.test(value);
+    const proofOwed = /^PROOF_OWED\(([^)]+)\)$/i.exec(value);
+    const failed = /^FAILED\(([^)]+)\)$/i.exec(value);
+    const allowedState = /^NOT_APPLICABLE$/i.test(value) || Boolean(proofOwed || failed);
     const identifiers = applied?.[1]?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
     const exactPattern = field === "migrations" ? /^\d{14}_[A-Za-z0-9_-]+$/ : /^[A-Za-z0-9._-]+@v?[A-Za-z0-9._-]+$/;
-    if ((!allowedState && !applied) || (applied && (identifiers.length === 0 || identifiers.some((identifier) => !exactPattern.test(identifier) || hasPlaceholder(identifier))))) errors.push(`${field} must be NOT_APPLICABLE or a complete APPLIED(exact identifier), PROOF_OWED(boundary), or FAILED(reason) state.`);
+    const detail = proofOwed?.[1]?.trim() ?? failed?.[1]?.trim();
+    if ((!allowedState && !applied) || (detail !== undefined && isUnresolvedValue(detail)) || (applied && (identifiers.length === 0 || identifiers.some((identifier) => !exactPattern.test(identifier) || hasPlaceholder(identifier))))) errors.push(`${field} must be NOT_APPLICABLE or a complete APPLIED(exact identifier), PROOF_OWED(boundary), or FAILED(reason) state.`);
   }
   if (releaseChannel === "development" && !["local", "development"].includes(buildEnvironment)) errors.push("Development RELEASE_CHANNEL requires local/development build environment.");
   if (releaseChannel === "preview" && buildEnvironment !== "preview") errors.push("Preview RELEASE_CHANNEL requires preview build environment.");
@@ -217,7 +230,7 @@ export function validateEvidenceText(text, classification) {
     const channelEvidence = fields.get("RELEASE_CHANNEL") ?? "";
     for (const key of ["owner-approval", "eligibility", "amount", "start", "stop", "monitoring-owner", "recovery"]) {
       const value = new RegExp(`\\b${key}=([^;]+)`, "i").exec(channelEvidence)?.[1]?.trim();
-      if (!value || hasPlaceholder(value) || /^(?:pending|unknown|none|n\/?a|not applicable|proof owed)$/i.test(value)) errors.push(`Staged RELEASE_CHANNEL requires a completed non-placeholder ${key}=... value.`);
+      if (!value || hasUnresolvedToken(value)) errors.push(`Staged RELEASE_CHANNEL requires a completed non-placeholder ${key}=... value.`);
     }
   }
   if (!/^(?:LIVE|PARTIAL|UNAVAILABLE|PROOF OWED):\s*\S.+$/i.test(fields.get("RELEASE_TRUTH_BOUNDARY") ?? "")) errors.push("RELEASE_TRUTH_BOUNDARY must name at least one governed status and its claim boundary.");

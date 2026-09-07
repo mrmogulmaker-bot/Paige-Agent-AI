@@ -152,6 +152,12 @@ test("requires identifiers for applied migration and edge states", () => {
   assert.equal(nonsense.ok, false);
   assert.match(nonsense.errors.join("\n"), /migrations must be|edge must be/);
 
+  for (const detail of ["pending", "unknown", "not applicable"]) {
+    const unresolved = validateEvidenceText(coreEvidence.replace("migrations=NOT_APPLICABLE", `migrations=PROOF_OWED(${detail})`), { required: true, solo: false });
+    assert.equal(unresolved.ok, false, detail);
+    assert.match(unresolved.errors.join("\n"), /migrations must be/);
+  }
+
   const exactApplied = validateEvidenceText(coreEvidence.replace("migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE", "migrations=APPLIED(20260907000001_example); edge=APPLIED(paige-example@v3)"), { required: true, solo: false });
   assert.equal(exactApplied.ok, true, exactApplied.errors.join("\n"));
 
@@ -193,6 +199,14 @@ test("requires complete staged-rollout evidence", () => {
   const pendingApproval = validateEvidenceText(stagedBase.replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: staged: owner-approval=pending; eligibility= ; amount= ; start= ; stop= ; monitoring-owner= ; recovery=disable cohort"), { required: true, solo: false });
   assert.equal(pendingApproval.ok, false);
   assert.match(pendingApproval.errors.join("\n"), /completed non-placeholder owner-approval/);
+
+  const completeMetadata = "owner-approval=owner-message; eligibility=named cohort; amount=10 percent; start=owner approval; stop=error budget; monitoring-owner=release owner; recovery=disable cohort";
+  for (const [key, value] of [["owner-approval", "PENDING_DECISION"], ["eligibility", "NOT_APPLICABLE"], ["amount", "N_A"], ["recovery", "PROOF_OWED"]]) {
+    const invalidMetadata = completeMetadata.replace(new RegExp(`${key}=[^;]+`), `${key}=${value}`);
+    const staged = validateEvidenceText(stagedBase.replace("RELEASE_CHANNEL: development: branch checks only", `RELEASE_CHANNEL: staged: ${invalidMetadata}`), { required: true, solo: false });
+    assert.equal(staged.ok, false, `${key}=${value}`);
+    assert.match(staged.errors.join("\n"), new RegExp(`non-placeholder ${key}`));
+  }
 
   const complete = validateEvidenceText(stagedBase.replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: staged: owner-approval=owner-message; eligibility=named cohort; amount=10 percent; start=owner approval; stop=error budget; monitoring-owner=release owner; recovery=disable cohort"), { required: true, solo: false });
   assert.equal(complete.ok, true, complete.errors.join("\n"));
