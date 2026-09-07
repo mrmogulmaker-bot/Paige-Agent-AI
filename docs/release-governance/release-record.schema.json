@@ -186,7 +186,23 @@
       "if": { "properties": { "record_state": { "const": "PUBLISHED" } }, "required": ["record_state"] },
       "then": {
         "properties": {
-          "customer_release_identity": { "$ref": "#/$defs/customerReleaseIdentity" },
+          "customer_release_identity": {
+            "allOf": [
+              { "$ref": "#/$defs/customerReleaseIdentity" },
+              { "properties": { "release_name": { "$ref": "#/$defs/publicationCopy" } } }
+            ]
+          },
+          "whats_new": {
+            "properties": {
+              "customer_outcome": { "$ref": "#/$defs/publicationCopy" },
+              "what_changed": { "$ref": "#/$defs/publicationCopy" },
+              "who_can_use_it": { "$ref": "#/$defs/publicationCopy" },
+              "owner_action": { "$ref": "#/$defs/publicationCopy" },
+              "known_limitations": { "$ref": "#/$defs/publicationCopy" },
+              "safe_next_step": { "$ref": "#/$defs/publicationCopy" },
+              "paige_readable_summary": { "$ref": "#/$defs/publicationCopy" }
+            }
+          },
           "internal_builds": {
             "contains": { "properties": { "customer_release_scope": { "const": "referenced" } }, "required": ["customer_release_scope"] },
             "items": {
@@ -254,6 +270,29 @@
         "required": ["internal_builds"]
       },
       "then": { "properties": { "whats_new": { "properties": { "status": { "contains": { "const": "PROOF OWED" } } } } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "record_state": { "const": "PUBLISHED" },
+          "whats_new": { "properties": { "status": { "contains": { "const": "PROOF OWED" } } } }
+        },
+        "required": ["record_state", "whats_new"]
+      },
+      "then": {
+        "properties": {
+          "internal_builds": {
+            "contains": {
+              "properties": { "customer_release_scope": { "const": "referenced" } },
+              "required": ["customer_release_scope"],
+              "anyOf": [
+                { "properties": { "migration_status": { "properties": { "state": { "const": "PROOF_OWED" } } } }, "required": ["migration_status"] },
+                { "properties": { "edge_status": { "properties": { "state": { "const": "PROOF_OWED" } } } }, "required": ["edge_status"] }
+              ]
+            }
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -281,6 +320,11 @@
       "type": "string",
       "minLength": 1,
       "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Pp][Ee][Nn][Dd][Ii][Nn][Gg]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Pp][Rr][Oo][Oo][Ff] [Oo][Ww][Ee][Dd])|^([Nn]/?[Aa]|[Nn][Oo][Nn][Ee])$" }
+    },
+    "publicationCopy": {
+      "type": "string",
+      "minLength": 1,
+      "not": { "pattern": "([Tt][Oo][Dd][Oo]|[Tt][Bb][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_[Mm][Ee]|[Aa][Dd][Dd]_[Ll][Ii][Nn][Kk]|[Ll][Ii][Nn][Kk]_[Hh][Ee][Rr][Ee])" }
     },
     "nonEmptyStrings": {
       "type": "array",
@@ -334,6 +378,10 @@
           "if": { "properties": { "state": { "const": "APPLIED" } }, "required": ["state"] },
           "then": { "properties": { "identifiers": { "minItems": 1 } } },
           "else": { "properties": { "identifiers": { "maxItems": 0 } } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "APPLIED" } }, "required": ["state"] },
+          "then": { "properties": { "evidence": { "items": { "$ref": "#/$defs/resolvedString" } } } }
         },
         {
           "if": { "properties": { "state": { "const": "PROOF_OWED" } }, "required": ["state"] },

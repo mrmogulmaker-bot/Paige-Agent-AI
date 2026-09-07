@@ -172,6 +172,12 @@ test("requires notes for minor and major candidates", () => {
   assert.match(minorWithoutNote.errors.join("\n"), /require RELEASE_NOTE_REQUIRED: YES/);
 });
 
+test("requires a claim boundary after the release truth status", () => {
+  const bareStatus = validateEvidenceText(coreEvidence.replace("RELEASE_TRUTH_BOUNDARY: UNAVAILABLE: no customer-facing release claim", "RELEASE_TRUTH_BOUNDARY: LIVE"), { required: true, solo: false });
+  assert.equal(bareStatus.ok, false);
+  assert.match(bareStatus.errors.join("\n"), /claim boundary/);
+});
+
 test("requires complete staged-rollout evidence", () => {
   const stagedBase = coreEvidence.replace("INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=NOT_APPLICABLE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=PR-checks", "INTERNAL_BUILD_IDENTITY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; deployment=dpl_123; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=production-checks");
   const incomplete = validateEvidenceText(stagedBase.replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: staged: deployment dpl_123"), { required: true, solo: false });

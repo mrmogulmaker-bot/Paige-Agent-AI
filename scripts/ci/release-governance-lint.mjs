@@ -71,6 +71,7 @@ function requireDeliveryState(value, label, findings) {
   requireExactObject(value, ["state", "evidence", "identifiers", "proof_owed"], label, findings);
   if (!DELIVERY_STATES.has(value?.state)) findings.push(`${label}.state invalid`);
   requireNonEmptyStrings(value?.evidence, `${label}.evidence`, findings, value?.state === "NOT_APPLICABLE");
+  if (value?.state === "APPLIED" && Array.isArray(value?.evidence) && value.evidence.some(hasPlaceholder)) findings.push(`${label}.evidence must contain resolved proof when state is APPLIED`);
   requireNonEmptyStrings(value?.identifiers, `${label}.identifiers`, findings, value?.state !== "APPLIED");
   if (value?.state !== "APPLIED" && Array.isArray(value?.identifiers) && value.identifiers.length > 0) findings.push(`${label}.identifiers must be empty unless state is APPLIED`);
   if (value?.state === "APPLIED" && Array.isArray(value?.identifiers)) {
@@ -251,6 +252,8 @@ export function validateReleaseRecord(record) {
     const hasOwedProof = referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("PROOF_OWED"));
     if (hasOwedProof && !record.whats_new?.status?.includes("PROOF OWED")) findings.push("PUBLISHED referenced PROOF_OWED delivery state must be disclosed as PROOF OWED in What's New status");
     if (record.whats_new?.status?.includes("PROOF OWED") && !hasOwedProof) findings.push("PUBLISHED PROOF OWED status requires an exact referenced build boundary");
+    for (const field of ["customer_outcome", "what_changed", "who_can_use_it", "owner_action", "known_limitations", "safe_next_step", "paige_readable_summary"])
+      if (hasPlaceholder(record.whats_new?.[field])) findings.push(`PUBLISHED whats_new.${field} must contain resolved customer copy`);
   }
   return findings;
 }
@@ -387,6 +390,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects duplicate customer status", { ...valid, whats_new: { ...valid.whats_new, status: ["LIVE", "LIVE"] } }, true],
     ["rejects PARTIAL without a substantive limitation", { ...valid, limitations: ["None"], whats_new: { ...valid.whats_new, known_limitations: "None" } }, true],
     ["rejects placeholder evidence on passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["TODO"] } } }] }, true],
+    ["rejects placeholder evidence on applied delivery", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["TODO"], identifiers: ["20260907000001_example"], proof_owed: null } }] }, true],
+    ["rejects placeholder published customer copy", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, whats_new: { ...valid.whats_new, customer_outcome: "TODO", what_changed: "TBD", paige_readable_summary: "REPLACE_ME" } }, true],
   ];
   let bad = 0;
   for (const [label, record, shouldFail] of cases) {
