@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-09-07T23:37:12.715Z",
-  "revision": "583e2b7fadd17c0cbadf3e99f6c97b089a0a5072",
+  "generatedAt": "2026-09-07T23:57:42.538Z",
+  "revision": "d90a1fb834581697a8ac9d4fc6f02b2e86d8db33",
   "workingTreeBefore": "",
   "workingTreeAfterCommands": "",
   "hashes": {
-    "src/components/chat/anchoredTranscriptScroll.ts": "1fcff4a109021d92548e631a3b0530b8d30610632ccbbe5199103ef14515b388",
+    "src/components/chat/anchoredTranscriptScroll.ts": "f7c8a7753afde474b94201c4b631374d88b784fa4d5fda55963edc1761ce5d19",
     "src/components/dashboard/PaigeAIChat.tsx": "f17bbbb6c9bd23fbd5bf7630f55203fc54b5f0c93f617a049e3a7bf27c94bf39",
     "src/components/app/PaigeChat.tsx": "04f7307eebfcee9b49485ccf6e0c03ee98647c61ef804c1c4c60150d75bc5ce5",
     "src/pages/AppShell.tsx": "2211c517c4e2673df1ce06e041f82cd28e003a5666d0b7f35c2777a88fabf7f6",
-    "scripts/live-drive/paige-scroll-stability-react-drive.mjs": "e1120cf6cd7b44de5d6b9598a1a16d19e9f4ff0935da99e3bd3fa33f2878a75f"
+    "scripts/live-drive/paige-scroll-stability-react-drive.mjs": "4fc68402e3c8588a3801d94f5217f1fde836076cda1dc05e1e98db55dd984f26"
   },
   "commands": [
     {
@@ -31,10 +31,24 @@
         "src/components/dashboard/PaigeAIChat.clientScope.test.tsx"
       ],
       "definition_file": "package.json",
-      "startedAt": "2026-09-07T23:34:56.193Z",
-      "finishedAt": "2026-09-07T23:35:03.287Z",
+      "startedAt": "2026-09-07T23:53:32.614Z",
+      "finishedAt": "2026-09-07T23:53:39.566Z",
       "exitCode": 0,
       "log": "tests.log"
+    },
+    {
+      "name": "full-suite",
+      "argv": [
+        "node",
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--testTimeout=15000"
+      ],
+      "definition_file": "package.json",
+      "startedAt": "2026-09-07T23:53:39.567Z",
+      "finishedAt": "2026-09-07T23:55:20.804Z",
+      "exitCode": 0,
+      "log": "full-suite.log"
     },
     {
       "name": "types",
@@ -43,8 +57,8 @@
         "scripts/ci/tsc-ratchet.mjs"
       ],
       "definition_file": "scripts/ci/tsc-ratchet.mjs",
-      "startedAt": "2026-09-07T23:35:03.289Z",
-      "finishedAt": "2026-09-07T23:35:54.708Z",
+      "startedAt": "2026-09-07T23:55:20.805Z",
+      "finishedAt": "2026-09-07T23:56:13.018Z",
       "exitCode": 0,
       "log": "types.log"
     },
@@ -55,8 +69,8 @@
         "scripts/ci/paige-scroll-eslint-ratchet.mjs"
       ],
       "definition_file": "scripts/ci/paige-scroll-eslint-ratchet.mjs",
-      "startedAt": "2026-09-07T23:35:54.710Z",
-      "finishedAt": "2026-09-07T23:35:57.762Z",
+      "startedAt": "2026-09-07T23:56:13.019Z",
+      "finishedAt": "2026-09-07T23:56:15.946Z",
       "exitCode": 0,
       "log": "lint.log"
     },
@@ -67,8 +81,8 @@
         "scripts/ci/definer-fn-lint.mjs"
       ],
       "definition_file": "scripts/ci/definer-fn-lint.mjs",
-      "startedAt": "2026-09-07T23:35:57.765Z",
-      "finishedAt": "2026-09-07T23:35:58.737Z",
+      "startedAt": "2026-09-07T23:56:15.947Z",
+      "finishedAt": "2026-09-07T23:56:16.490Z",
       "exitCode": 0,
       "log": "security.log"
     },
@@ -80,8 +94,8 @@
         "build"
       ],
       "definition_file": "package.json",
-      "startedAt": "2026-09-07T23:35:58.738Z",
-      "finishedAt": "2026-09-07T23:36:25.585Z",
+      "startedAt": "2026-09-07T23:56:16.490Z",
+      "finishedAt": "2026-09-07T23:56:44.276Z",
       "exitCode": 0,
       "log": "build.log"
     },
@@ -94,8 +108,8 @@
         "outputs/paige-scroll-baseline"
       ],
       "definition_file": "scripts/ci/paige-scroll-baseline-reproduction.mjs",
-      "startedAt": "2026-09-07T23:36:25.587Z",
-      "finishedAt": "2026-09-07T23:36:26.746Z",
+      "startedAt": "2026-09-07T23:56:44.277Z",
+      "finishedAt": "2026-09-07T23:56:45.502Z",
       "exitCode": 0,
       "log": "baseline-reproduction.log"
     },
@@ -106,8 +120,8 @@
         "scripts/live-drive/paige-scroll-stability-react-drive.mjs"
       ],
       "definition_file": "scripts/live-drive/paige-scroll-stability-react-drive.mjs",
-      "startedAt": "2026-09-07T23:36:26.747Z",
-      "finishedAt": "2026-09-07T23:37:12.617Z",
+      "startedAt": "2026-09-07T23:56:45.502Z",
+      "finishedAt": "2026-09-07T23:57:42.445Z",
       "exitCode": 0,
       "log": "runtime-proof.log"
     }
