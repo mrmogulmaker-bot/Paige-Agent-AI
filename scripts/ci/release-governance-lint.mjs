@@ -166,6 +166,8 @@ export function validateReleaseRecord(record) {
   } else if (record.whats_new !== null) {
     findings.push("whats_new must be null when no customer release identity exists");
   }
+  if (record.classification === "internal_only" && (customer !== null || record.whats_new !== null))
+    findings.push("internal_only records must not carry a customer release identity or What's New note");
   if (["minor_candidate", "major_candidate"].includes(record.classification) && customer === null)
     findings.push(`${record.classification} requires a customer release identity`);
   if (["APPROVED", "PUBLISHED"].includes(record.record_state) && customer !== null) {
@@ -240,6 +242,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
   const cases = [
     ["valid customer candidate", valid, false],
     ["valid internal-only record", internal, false],
+    ["rejects customer identity on internal-only record", { ...valid, classification: "internal_only", record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } }, true],
     ["rejects short SHA", { ...valid, internal_builds: [{ ...build, commit_sha: "abc" }] }, true],
     ["rejects unapproved version text", { ...valid, customer_release_identity: { ...valid.customer_release_identity, version: "vNext" } }, true],
     ["rejects invented status", { ...valid, whats_new: { ...valid.whats_new, status: ["SHIPPED"] } }, true],

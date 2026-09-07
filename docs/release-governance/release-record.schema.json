@@ -61,6 +61,15 @@
   },
   "allOf": [
     {
+      "if": { "properties": { "classification": { "const": "internal_only" } }, "required": ["classification"] },
+      "then": {
+        "properties": {
+          "customer_release_identity": { "type": "null" },
+          "whats_new": { "type": "null" }
+        }
+      }
+    },
+    {
       "if": {
         "properties": { "customer_release_identity": { "type": "object" } },
         "required": ["customer_release_identity"]
