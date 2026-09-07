@@ -119,6 +119,12 @@ test("refuses missing or placeholder release-governance evidence", () => {
   const placeholder = validateEvidenceText(coreEvidence.replace(/^INTERNAL_BUILD_IDENTITY:.*$/m, "INTERNAL_BUILD_IDENTITY: REPLACE_ME"), { required: true, solo: false });
   assert.equal(placeholder.ok, false);
   assert.match(placeholder.errors.join("\n"), /INTERNAL_BUILD_IDENTITY/);
+
+  for (const unresolved of ["none", "N/A", "PROOF_OWED"]) {
+    const recovery = validateEvidenceText(coreEvidence.replace(/^RELEASE_RECOVERY:.*$/m, `RELEASE_RECOVERY: ${unresolved}`), { required: true, solo: false });
+    assert.equal(recovery.ok, false, unresolved);
+    assert.match(recovery.errors.join("\n"), /RELEASE_RECOVERY/);
+  }
 });
 
 test("binds customer release identity to its classification", () => {

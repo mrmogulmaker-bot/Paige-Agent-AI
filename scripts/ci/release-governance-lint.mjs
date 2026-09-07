@@ -252,7 +252,7 @@ export function validateReleaseRecord(record) {
   }
   if (customerPublicationRecord) {
     if (customer === null) findings.push("PUBLISHED requires a customer release identity");
-    if (hasPlaceholder(customer?.release_name) || isNoValue(customer?.release_name)) findings.push("PUBLISHED customer release name must be resolved");
+    if (hasUnresolvedToken(customer?.release_name)) findings.push("PUBLISHED customer release name must be resolved");
     for (const field of ["scope", "affected_audience", "benefits"])
       if (record[field]?.some((item) => hasPlaceholder(item) || isNoValue(item))) findings.push(`PUBLISHED ${field} must contain substantive customer facts`);
     if (record.limitations?.some(hasPlaceholder)) findings.push("PUBLISHED limitations must contain resolved customer facts");
@@ -419,6 +419,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects normalized placeholder approval reference", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: "PENDING_DECISION" } } }, true],
     ["rejects normalized no-value approval reference", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: "PROOF_OWED" } } }, true],
     ["rejects placeholder published release name", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, release_name: "TODO", owner_approval: customerApproval } }, true],
+    ["rejects unresolved published release name", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, release_name: "PROOF_OWED", owner_approval: customerApproval } }, true],
     ["rejects placeholder published build evidence", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, evidence: ["TODO"] }] }, true],
     ["rejects placeholder published release facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["TODO"], rollback_recovery: { position: "TBD", reference: "REPLACE_ME" } }, true],
     ["rejects no-value sentinels in published facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["None"], affected_audience: ["N/A"], benefits: ["none"], rollback_recovery: { position: "forward fix", reference: "none" } }, true],
