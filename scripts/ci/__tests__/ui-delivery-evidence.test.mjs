@@ -149,7 +149,7 @@ test("binds customer release identity to its classification", () => {
   assert.equal(wrongMinor.ok, false);
   assert.match(wrongMinor.errors.join("\n"), /Minor-candidate CUSTOMER_RELEASE_IDENTITY/);
 
-  for (const unresolved of ["none", "N/A", "NOT_APPLICABLE", "PROOF_OWED", "unknown", "PENDING_DECISION"]) {
+  for (const unresolved of ["none", "N/A", "NOT_APPLICABLE", "PROOF_OWED", "unknown", "PENDING_DECISION", "PENDING_APPROVAL", "APPROVAL_PENDING"]) {
     const absentDecision = validateEvidenceText(coreEvidence.replace("RELEASE_CLASSIFICATION: internal-only: no customer-visible outcome", "RELEASE_CLASSIFICATION: minor-candidate: meaningful owner-visible capability").replace("CUSTOMER_RELEASE_IDENTITY: none: no customer release proposed", `CUSTOMER_RELEASE_IDENTITY: 0.2.0 — Governed Capability; owner-decision=${unresolved}`).replace("RELEASE_NOTE_REQUIRED: NO: internal-only change", "RELEASE_NOTE_REQUIRED: YES: minor candidate requires a note"), { required: true, solo: false });
     assert.equal(absentDecision.ok, false, unresolved);
     assert.match(absentDecision.errors.join("\n"), /owner-decision/);
@@ -275,7 +275,7 @@ test("refuses placeholders even when the status word looks valid", () => {
 });
 
 test("rejects unresolved values after PASS", () => {
-  for (const evidence of ["FLOW_BY_FLOW: PASS: pending", "AUTOMATED_EVIDENCE: PASS: none", "AUTOMATED_EVIDENCE: PASS: proof pending", "AUTHENTICATED_RUNTIME: PASS: unknown result"]) {
+  for (const evidence of ["FLOW_BY_FLOW: PASS: pending", "AUTOMATED_EVIDENCE: PASS: none", "AUTOMATED_EVIDENCE: PASS: proof pending", "AUTHENTICATED_RUNTIME: PASS: unknown result", "AUTOMATED_EVIDENCE: PASS: proof pending; evidence/ui/pending-state.png"]) {
     const [field] = evidence.split(":");
     const result = validateEvidenceText(coreEvidence.replace(new RegExp(`^${field}:.*$`, "m"), evidence), { required: true, solo: false });
     assert.equal(result.ok, false, evidence);

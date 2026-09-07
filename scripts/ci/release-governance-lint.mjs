@@ -38,11 +38,15 @@ const hasUnresolvedToken = (value) => hasPlaceholder(value) || hasNoValueToken(v
 const isUnresolvedDeploymentId = hasUnresolvedToken;
 const isNoLimitation = (value) => isNoValue(value) || /^no known limitations?$/.test(normalizeSentinel(value));
 const isUnresolvedEvidence = (value) => {
-  if (isUnresolvedValue(value)) return true;
   const raw = String(value ?? "").trim();
-  if (/^https?:\/\//i.test(raw) || /[\\/][^\\/]+\.[A-Za-z0-9]{1,10}(?:[?#].*)?$/.test(raw)) return false;
-  const normalized = normalizeSentinel(raw);
-  const subject = "(?:proof|result|evidence|verification|check|runtime|decision)";
+  const prose = raw
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/(?:^|[\s;])\S*[\\/]\S+\.[A-Za-z0-9]{1,10}(?:[?#]\S*)?/g, " ")
+    .trim();
+  if (!prose) return false;
+  if (isUnresolvedValue(prose)) return true;
+  const normalized = normalizeSentinel(prose);
+  const subject = "(?:proof|result|evidence|verification|check|runtime|decision|approval)";
   const unresolved = "(?:pending|unknown|proof owed)";
   return new RegExp(`(?:\\b${subject}\\b.*\\b${unresolved}\\b|\\b${unresolved}\\b.*\\b${subject}\\b)`).test(normalized);
 };
@@ -512,6 +516,8 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
   const published = { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval } };
   const schemaCases = [
     ["canonical schema accepts a valid published record", published, false],
+    ["canonical schema accepts state words inside artifact paths", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["evidence/ui/pending-state.png"], checks: { ...build.checks, ci: { state: "PASS", evidence: ["evidence/ui/pending-state.png"] } } }] }, false],
+    ["canonical schema rejects unresolved prose beside an artifact path", { ...internal, internal_builds: [{ ...build, customer_release_scope: "supporting", evidence: ["build run"], checks: { ...build.checks, ci: { state: "PASS", evidence: ["proof pending; evidence/ui/pending-state.png"] } } }] }, true],
     ["canonical schema rejects publication placeholders missed by handwritten code", { ...published, scope: ["add link"] }, true],
     ["canonical schema rejects approved records with failed referenced checks", { ...valid, record_state: "APPROVED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, checks: { ...build.checks, security: { state: "FAIL", evidence: ["security run failed"] } } }] }, true],
   ];
