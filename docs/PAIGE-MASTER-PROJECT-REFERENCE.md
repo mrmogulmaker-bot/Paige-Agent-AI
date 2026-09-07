@@ -1942,7 +1942,30 @@ progressively run her own Chromium/Playwright fleet — no provider API/MCP/bran
 leak into customer UI or core domain contracts (customer feature = "Paige Secure Browser"/"Secure Browser").
 Downloads/captured files → **Vault quarantine**. The `browserbase` registry entry is now `PROPOSED` (the
 worker runtime, replaceable) — updated in the audit PR. A dedicated **build handoff** (owner-complete in-chat
-UI flow FIRST, then backend) follows the MVP plan.
+UI flow FIRST, then backend) follows the MVP plan. **Both now written (2026-09-07):**
+`docs/delivery/paige-secure-browser-mvp-plan.md` (the phased MVP) and
+`docs/handoff/paige-secure-browser-build-handoff.md` (the exact builder spec). Still no install —
+Phase 0 exit is the owner's Browserbase-worker provider review.
+
+**Phase-0 exit — #1037 merged + Browserbase worker-provider review = CONDITIONAL GO (2026-09-07, owner-authorized).**
+Owner approved #1037 → merged to `main` (squash `0a4ef0b`, CI green). Owner reported Browserbase account
+provisioned + `BROWSERBASE_API_KEY` stored as an Edge secret — **infrastructure readiness ONLY, not
+authorization to wire, and the secret value is never revealed/logged/rotated/tested (§34)**. The Phase-0
+Browserbase worker-provider desk review (read-only public materials; no account/login/API/session/crawl) is
+`docs/audits/paige-secure-browser-provider-review-browserbase-2026-09-07.md`, with the dedicated-builder
+kickoff at `docs/handoff/paige-secure-browser-builder-starting-packet.md`. **Verdict: CONDITIONAL GO** —
+Browserbase as the replaceable bootstrap browser-**worker** behind the provider-neutral internal contract;
+strong technical/contract fit (every internal op maps to a documented primitive; Contexts custody = "no raw
+credentials submitted"). **Credentialed wiring is gated on SEVEN owner-side vendor gates:** (1) NDA docs (SOC 2
+Type II report + HIPAA BAA on our tier + DPA no-training/erasure + subprocessor list/US); (2) spend bounding
+(vendor states "No caps. No cut-offs" → committed ceiling OR Paige-side per-tenant minute budget + concurrency
+cap + usage polling); (3) Live-View debug-URL security; (4) Context authorization / no cross-key replay; (5) US
+region pin (per-session, not project-locked); (6) Zero-Data-Retention mechanics (per-session flag); (7) deletion
+SLA + endpoints. **The GO authorizes building now:** the Paige-owned UI + control plane + provider-neutral
+contract + read-only Phase-1 worker path (flagged OFF) + the audit §4.3 security prerequisites. **It does NOT
+authorize:** account use, credential, live session, real Context, or tenant connect — those wait on the seven
+gates. Drive the REST API, not the thin MCP server. `browserbase` registry entry stays `PROPOSED` with the
+CONDITIONAL-GO dependency + 7 gates recorded.
 
 ### Solo n8n connection clarity — historical UI slice, 2026-09-03
 

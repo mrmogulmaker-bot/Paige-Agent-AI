@@ -28,6 +28,36 @@
   `create_contact` has the idempotent return-existing behavior. Layered review worked exactly as §39 intends
   ("none alone is sufficient"): crew green on logic, Codex caught the downstream-contract defects.
 
+- **Secure Browser — #1037 merged + Browserbase worker-provider review = CONDITIONAL GO (2026-09-07, owner-authorized).**
+  Owner approved #1037 (MVP plan + builder handoff) → merged to `main` (squash `0a4ef0b`) after CI green.
+  Owner also reported Browserbase account provisioned + `BROWSERBASE_API_KEY` stored as an Edge secret —
+  **infra readiness ONLY, NOT authorization to wire.** Then completed the Phase-0 Browserbase
+  worker-provider desk review (read-only, public materials, no account/login/API/session/crawl; the secret
+  value never touched): `docs/audits/paige-secure-browser-provider-review-browserbase-2026-09-07.md` +
+  `docs/handoff/paige-secure-browser-builder-starting-packet.md`. **Verdict: CONDITIONAL GO** — Browserbase
+  as the replaceable bootstrap browser-**worker** behind the provider-neutral internal Secure Browser
+  contract; strong technical/contract fit (every internal op maps to a documented primitive; Contexts
+  custody = "no raw credentials submitted to Browserbase"). **Credentialed wiring gated on SEVEN owner-side
+  vendor gates:** (1) NDA docs — SOC 2 Type II report + HIPAA BAA (our tier) + DPA (no-training + erasure) +
+  subprocessor list (US); (2) spend bounding — vendor states "No caps. No cut-offs", so a committed ceiling
+  OR Paige-side per-tenant minute budget + concurrency cap + usage polling; (3) Live-View debug-URL security;
+  (4) Context authorization / no cross-key replay; (5) US region pin (per-session, not project-locked);
+  (6) Zero-Data-Retention mechanics (per-session flag); (7) deletion SLA + endpoints. **What GO authorizes
+  now:** build the Paige-owned UI + control plane + provider-neutral contract + read-only Phase-1 worker path
+  (flagged OFF) + audit §4.3 security prerequisites. **What it does NOT:** account use, credential, live
+  session, real Context, tenant connect — all wait on the seven gates. Registry `browserbase` kept `PROPOSED`
+  with the CONDITIONAL-GO dependency + 7 gates; `BROWSERBASE_API_KEY` recorded by NAME (never value) in
+  config-registry as present-but-unwired (§34). Drive the REST API, not the thin MCP server.
+- **Secure Browser — MVP plan + builder handoff authored (2026-09-07, post-#1030-merge).** After #1030
+  merged (Phase-0 audit + owner ruling + product correction + `browserbase`→`PROPOSED`), wrote the two
+  owner-sequenced post-merge deliverables: `docs/delivery/paige-secure-browser-mvp-plan.md` (Paige-OWNED
+  framing; layered architecture Secure-Browser-UI+policy → Paige control plane → replaceable isolated
+  worker → website; Browserbase = replaceable bootstrap worker behind a provider-neutral internal
+  contract; Connected Accounts under Vault; downloads → Vault quarantine; phases 0–4; extends the
+  five-slice plan §18) and `docs/handoff/paige-secure-browser-build-handoff.md` (the EXACT builder spec —
+  leads with the owner-complete in-chat UI flow, then the backend contract; §00 visual design = CD; §70.1
+  owner-usability gate; §10/§68 governance; the security prerequisites from audit §4.3). No install/
+  account/login/crawl. Phase-0 exit remains the owner's Browserbase-worker provider review.
 - **Capability System — document EXPORT MVP: a real downloadable file (pdf/docx/pptx/md) (2026-09-06, Task #21, owner-authorized)** —
   the owner's doc-creation task. AUDIT (grounded, not from labels): today Paige's only "document" is
   block-JSON in `marketing_content` rendered on canvas (download = the browser's own Print→PDF); NO valid
