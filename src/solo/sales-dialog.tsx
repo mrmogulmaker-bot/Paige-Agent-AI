@@ -1,5 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 
 type SalesNavigateEvent = Event & { destination: { url: string } };
 type SalesNavigation = {
@@ -15,6 +16,7 @@ export function SalesDialogPortal({ children }: { children: React.ReactNode }) {
 export function useSalesDraftExit(draft: unknown, busy: boolean, onClose: () => void) {
   const initial = React.useRef(JSON.stringify(draft));
   const dirty = initial.current !== JSON.stringify(draft);
+  useBeforeUnloadGuard(dirty || busy);
   const [pending, setPending] = React.useState<null | (() => void)>(null);
   const confirmationRef = React.useRef<HTMLDivElement>(null);
   const bypass = React.useRef(false);

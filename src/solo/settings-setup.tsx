@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useConfirm } from "@/hooks/useConfirm";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { registerAccountSwitchGuard } from "@/lib/auth/accountSwitchGuard";
 import { PaigeBriefPanel, type PaigeBriefValues } from "./PaigeBriefPanel";
 import {
@@ -190,6 +191,7 @@ export function SoloSetupView({ account }: { account: string }) {
     || JSON.stringify(businessOwners) !== JSON.stringify(persistedOwners)
     || Object.keys(sourceDecisions).length > 0;
   const hasUnsavedSetup = (editing && dirty) || paigeDrawerDirty;
+  useBeforeUnloadGuard(hasUnsavedSetup || data.saving);
 
   useEffect(() => {
     if (!hasUnsavedSetup && !data.saving) return;

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Send, Loader2, Clock, Paperclip, X, ArrowDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { parsePaigeChatError } from "@/lib/paigeChatError";
 import { DictationMicButton } from "@/components/voice/DictationMicButton";
 import { appendDictation } from "@/lib/voice/useDictation";
@@ -315,6 +316,7 @@ const PaigeAIChatInner = ({
   // only (no turn-persistence of the attachment), matching PaigeChat.
   const {
     attachedDoc,
+    isProcessingFile,
     isDragOver,
     fileInputRef,
     acceptString,
@@ -326,6 +328,9 @@ const PaigeAIChatInner = ({
     openFilePicker,
     setAttachedDoc,
   } = useChatDocumentUpload();
+  // A deployment reload must never discard an unsent prompt, attachment, or
+  // response currently arriving from Paige.
+  useBeforeUnloadGuard(input.trim().length > 0 || attachedDoc !== null || isProcessingFile || isLoading);
 
   // ── Multi-chat history (#94) — owner "Your Paige" only (enableHistory). ──
   const scopedUserId = useScopedUserId();

@@ -133,20 +133,25 @@ Every deployment closeout replaces anticipated identifiers with exact observed i
 - **Required scope before publication:** the owner selects the small set of genuinely usable outcomes to include; each included outcome passes the announcement gate above. Unselected or unproven platform breadth stays out of the note.
 - **Not authorized by this recommendation:** assigning `1.0`, publishing marketing, sending a customer announcement, or claiming platform-wide operating-system coherence.
 
-## 8. UX direction — approved policy, interface not built
+## 8. Canonical in-app customer update experience
 
-Future Updates/Release Notes UX should:
+Canonical release records remain durable internal release evidence. The existing signed-in `PlatformUpdateBanner` is the sole customer-facing update surface for this MVP and the only place to announce an available update or show concise **What's new** content. Do not add an unread badge, workspace/account indicator, standalone Updates page, navigation item, update feed, modal, dashboard, release center, or competing customer destination.
 
-- place a subtle unread-update indicator in the existing workspace/account area;
-- provide one durable Updates/Release Notes destination;
-- avoid disruptive popups for routine patches;
-- reuse existing navigation chrome rather than add a second rail, header, launcher, or release center;
-- filter by the current workspace's eligible audience/tier and never expose internal technical references;
-- let Paige answer from the same published release record, using its Paige-readable summary rather than generating a broader claim.
+- A routine build without one safely resolved customer-publication record says only **“An update is ready”** and offers Reload.
+- A meaningful release may show its approved name/version, owner outcome, and inline **What’s new** details only from the canonical record tied to the exact deployed build.
+- Missing, invalid, stale (not bound to the detected build), ambiguous, future-dated, staged, superseded, unapproved, or technically unsafe records fail closed to the generic experience.
+- Ordinary owners never receive commit SHAs, deployment identifiers, provider names, architecture, or technical release records.
+- Dismissal applies to the detected build; a later build can reappear. The banner remains non-blocking and defers while an editable control has focus.
+- Reload is always explicit. Registered unsaved edits, saves, uploads, attached Paige documents, and streaming Paige responses block reload until work is cleared or saved.
+- No sign-in-preservation promise is made without authenticated proof. Cache cleanup does not clear application local storage.
 
-### Future Updates UI handoff
+The build-time customer manifest is a customer-safe projection, not a second release store: it is derived from `docs/release-governance/records/` through the canonical validator. After a release reload, the same projected record may remain available in the banner for the current session. Authenticated owner behavior, cross-workspace behavior, and deployment identity remain `PROOF OWED` until separately driven.
 
-Before production UI work, use Flow Prototype and obtain the required visual/intended-function approval. Ground the exact existing workspace/account container, unread-state ownership, per-user versus per-workspace read semantics, accessibility announcement behavior, and responsive fit. The implementation should consume published release records through one tenant-safe reader, persist a last-seen marker without treating it as release truth, support empty/loading/error/read/unread states, and preserve the existing shell and navigation. No modal or popup is required for patches. Authenticated cross-workspace and audience/tier proof is mandatory before calling the UI live.
+### Future expansion boundary
+
+The former future Updates handoff is superseded by the canonical banner contract above. A future Updates destination is a separately approved product decision, not an active requirement or fallback implementation. Any later expansion requires a new owner ruling and must not silently revive a second destination, workspace/account indicator, unread badge, navigation item, modal, or feed.
+
+Paige-authored answers may use the same published record’s Paige-readable summary, but this banner does not broaden Paige’s evidence or action authority.
 
 ## 9. Authority and conflicts
 

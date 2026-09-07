@@ -3,6 +3,7 @@ import { ChevronDown, Mail, RefreshCw, Search, ShieldCheck, Sparkles, UserPlus, 
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { readFunctionErrorBody } from "@/lib/integrations/connectError";
 import {
   inviteLifecycle,
@@ -158,6 +159,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   const permission = permissionPresentation(member.permission, member.is_owner);
   const identity = memberVisibleIdentity(member);
   const dirty = title !== savedTitle || responsibilities !== savedResponsibilities;
+  useBeforeUnloadGuard(dirty || saving || permissionDraft !== null);
 
   const save = async () => {
     if (!workspace.can_manage_profiles || !dirty || Object.keys(errors).length) return;

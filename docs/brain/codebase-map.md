@@ -192,6 +192,8 @@ the operator's OWN SMS line (PR #408, §9 seam). Store: `operator_conversations`
 Loose top-level: `PaigeCore`/`PaigeScene`/`PaigeHero3D`/`PaigePremiumFigure` (3D hero),
 `PlatformUpdateBanner`, `InstallPWA`, `ThemeToggle`, `PageTransition`.
 
+Update delivery: `usePlatformUpdate` polls the build-stamped `/version.json`; `customer-update-manifest.mjs` projects one exact-build, published release record into customer-safe fields; `useBeforeUnloadGuard` lets dirty owner workflows block explicit reload.
+
 ---
 
 ## 3. Edge functions (~241 dirs under `supabase/functions/`, excl. `_shared/`)

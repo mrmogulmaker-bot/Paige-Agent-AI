@@ -10,6 +10,7 @@ import { useZapierApi, readZapierApi, zapierApiWords, type ZapierApiReadiness } 
 import { supabase } from "@/integrations/supabase/client";
 import { armOAuthReturn } from "./data/oauthReturn";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
 import { createSettingsRequestGate, type SettingsTruth } from "./settings-contract";
 import "./settings-integrations.css";
 
@@ -265,6 +266,7 @@ function CapabilityApproval({ provider, onChanged }: { provider: "n8n" | "zapier
   const selection = chosen ?? (caps.tools ?? []).filter((t) => t.approved).map((t) => t.name);
   const dirty = chosen !== null
     && JSON.stringify([...chosen].sort()) !== JSON.stringify((caps.tools ?? []).filter((t) => t.approved).map((t) => t.name).sort());
+  useBeforeUnloadGuard(dirty || caps.saving);
 
   const toggle = (name: string) =>
     setChosen(selection.includes(name) ? selection.filter((n) => n !== name) : [...selection, name]);
@@ -366,7 +368,7 @@ export function zapierMcpAddressProblem(raw: string): string | null {
 }
 
 function ZapierMcpPanel({ m, onChanged }: { m: ReturnType<typeof useMcpConnection>; onChanged: () => void }) {
- const{activeTenantId}=useTenantContext();const[serverUrl,setServerUrl]=useState("");const[starting,setStarting]=useState(false);const[message,setMessage]=useState<string|null>(null);const[confirming,setConfirming]=useState(false);const[editing,setEditing]=useState(false);
+ const{activeTenantId}=useTenantContext();const[serverUrl,setServerUrl]=useState("");const[starting,setStarting]=useState(false);const[message,setMessage]=useState<string|null>(null);const[confirming,setConfirming]=useState(false);const[editing,setEditing]=useState(false);useBeforeUnloadGuard(serverUrl.trim().length > 0 || starting || m.saving);
  const begin=async()=>{setStarting(true);setMessage(null);const{data,error}=await supabase.functions.invoke("tenant-mcp-connect",{body:{provider:"zapier",action:"oauth_begin",server_url:serverUrl.trim(),expected_tenant_id:activeTenantId}});const url=data?.authorize_url;setServerUrl("");if(error||typeof url!=="string"){setStarting(false);setMessage("Zapier did not offer a compatible authorization flow for that MCP server. Confirm the server address and try again.");return;}armOAuthReturn(`${window.location.pathname}${window.location.search}`);window.location.assign(url);};
  if(m.loading)return <p className="ig-state" role="status">Checking PAIGE tools access…</p>;
  if(m.error)return <div className="ig-state" role="alert"><span>The PAIGE tools connection could not be read, so no state is being claimed.</span><button className="ig-btn" onClick={()=>void m.reload()}>Try again</button></div>;
@@ -635,6 +637,7 @@ function N8nDrawer({ a, m, initialMcp, onClose, onChanged }: { initialMcp?: bool
   const [savingClose, setSavingClose] = useState(false);
   const [discardTarget, setDiscardTarget] = useState<"close" | N8nTab | null>(null);
   const [formEpoch, setFormEpoch] = useState(0);
+  useBeforeUnloadGuard(dirty || a.saving || m.busy);
   const panel = useRef<HTMLElement>(null);
   const close = useRef<HTMLButtonElement>(null);
   const discard = useRef<HTMLButtonElement>(null);
@@ -705,6 +708,7 @@ function LegacyProviderPanel({ row, onClose, onChanged }: { row: ProviderRow; on
   const [apiDirty, setApiDirty] = useState(false);
   const [mcpDirty, setMcpDirty] = useState(false);
   const dirty = apiDirty || mcpDirty;
+  useBeforeUnloadGuard(dirty);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);

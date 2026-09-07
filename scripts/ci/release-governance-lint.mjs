@@ -465,7 +465,7 @@ export function validateRepository() {
     if (fs.existsSync(file) && !fs.readFileSync(file, "utf8").includes(MARKER)) findings.push(`${file} missing ${MARKER} pointer`);
   if (fs.existsSync(POLICY)) {
     const policy = fs.readFileSync(POLICY, "utf8");
-    for (const phrase of ["Internal build identity", "Release channel", "Customer release identity", "Paige Solo Preview", "PROOF OWED", "Required What's New format", "Future Updates UI handoff"])
+    for (const phrase of ["Internal build identity", "Release channel", "Customer release identity", "Paige Solo Preview", "PROOF OWED", "Required What's New format", "Future expansion boundary"])
       if (!policy.includes(phrase)) findings.push(`${POLICY} missing '${phrase}'`);
   }
   let validateCanonicalSchema = null;

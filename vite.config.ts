@@ -2,6 +2,7 @@ import { defineConfig, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import fs from "fs";
+import { spawnSync } from "node:child_process";
 
 // Serve /.well-known/* JSON files (oauth-protected-resource,
 // oauth-authorization-server) in dev. Static dotfile dirs are otherwise
@@ -46,6 +47,20 @@ function wellKnownPlugin() {
 const BUILD_ID = `${
   process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || "dev"
 }-${Date.now().toString(36)}`;
+function readCustomerUpdateManifest() {
+  try {
+    const result = spawnSync(process.execPath, [
+      path.resolve(__dirname, "scripts/release-governance/customer-update-manifest-cli.mjs"),
+      "--build-id",
+      BUILD_ID,
+    ], { encoding: "utf8" });
+    if (result.status !== 0) return null;
+    return JSON.parse(result.stdout || "null");
+  } catch {
+    return null;
+  }
+}
+const CUSTOMER_UPDATE = readCustomerUpdateManifest();
 
 // Writes <outDir>/version.json = { buildId } so the DEPLOYED build id is fetchable
 // from the same origin. Emits in `closeBundle` — which runs AFTER Vite copies the
@@ -68,7 +83,10 @@ function versionStampPlugin() {
       const target = path.join(resolvedOutDir, "version.json");
       try {
         fs.mkdirSync(resolvedOutDir, { recursive: true });
-        fs.writeFileSync(target, JSON.stringify({ buildId: BUILD_ID }) + "\n");
+        fs.writeFileSync(
+          target,
+          JSON.stringify({ buildId: BUILD_ID, customerUpdate: CUSTOMER_UPDATE }) + "\n",
+        );
         // Read-back assert: prove the stamp we intended is actually on disk.
         const written = JSON.parse(fs.readFileSync(target, "utf8")) as { buildId?: string };
         if (written.buildId !== BUILD_ID) {
