@@ -334,7 +334,10 @@ function coerceBlockArray(arr: unknown[], docTitle?: string, flattenInline = tru
       }
       if (entries.length) {
         push((asText(b.title).trim() || "Contents"), "heading", 1);
-        out.push({ type: "list", items: entries, ordered: false });
+        // ORDERED to match the canvas: DocumentPreview renders the toc entries in an <ol> with numeric
+        // indices (1, 2, 3…). An unordered (bullet) export would drop that numbering, so numbered
+        // cross-references to sections no longer match the exported contents page (Codex round-12h).
+        out.push({ type: "list", items: entries, ordered: true });
       }
       continue;
     }

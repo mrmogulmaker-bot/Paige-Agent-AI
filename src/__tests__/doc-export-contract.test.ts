@@ -239,8 +239,22 @@ describe("doc-render md serializer — a real, portable .md file (slice: doc exp
     expect(md).not.toContain("utmsource");
     // G2 — an entries-less toc auto-builds from the section-header/chapter-divider titles (mirrors the canvas).
     expect(md).toContain("Contents");                     // toc default title
-    expect(md).toContain("- Alpha");                      // derived TOC entry (a list item, not just the heading)
-    expect(md).toContain("- Beta");
+    // The canvas renders the toc as an ORDERED list (<ol>, numeric indices), so the export must number the
+    // derived entries too — never bullets (Codex round-12h). Alpha (section-header) then Beta (chapter-divider).
+    expect(md).toContain("1. Alpha");                     // derived TOC entry, numbered — not "- Alpha"
+    expect(md).toContain("2. Beta");
+    expect(md).not.toContain("- Alpha");                  // the old unordered form must be gone
+  });
+
+  it("exports a toc's explicit entries as a numbered list, matching the canvas <ol> (Codex round-12h)", async () => {
+    // The canvas renders toc entries in an ordered list; the export must number them so numbered
+    // cross-references to sections still line up with the contents page — never bullets.
+    const r = await renderDoc({ format: "md", title: "Guide", content: [{ type: "toc", title: "Inside", entries: ["Overview", "Pricing", "Next steps"] }] });
+    const md = dec(r.bytes);
+    expect(md).toContain("1. Overview");
+    expect(md).toContain("2. Pricing");
+    expect(md).toContain("3. Next steps");
+    expect(md).not.toContain("- Overview");               // the old unordered (bullet) form must be gone
   });
 
   it("PDF fails closed on a title-only Cyrillic document — the charset guard covers SHORT docs too (Codex round-7 I2)", async () => {
