@@ -186,6 +186,16 @@
       "if": { "properties": { "record_state": { "const": "PUBLISHED" } }, "required": ["record_state"] },
       "then": {
         "properties": {
+          "scope": { "items": { "$ref": "#/$defs/publicationCopy" } },
+          "affected_audience": { "items": { "$ref": "#/$defs/publicationCopy" } },
+          "benefits": { "items": { "$ref": "#/$defs/publicationCopy" } },
+          "limitations": { "items": { "$ref": "#/$defs/publicationCopy" } },
+          "rollback_recovery": {
+            "properties": {
+              "position": { "$ref": "#/$defs/publicationCopy" },
+              "reference": { "$ref": "#/$defs/resolvedString" }
+            }
+          },
           "customer_release_identity": {
             "allOf": [
               { "$ref": "#/$defs/customerReleaseIdentity" },
@@ -222,7 +232,8 @@
                           "security": { "properties": { "state": { "const": "PASS" } } },
                           "production_checks": { "properties": { "state": { "const": "PASS" } } }
                         }
-                      }
+                      },
+                      "evidence": { "items": { "$ref": "#/$defs/resolvedString" } }
                     }
                   }
                 }

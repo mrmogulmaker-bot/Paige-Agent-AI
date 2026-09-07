@@ -94,7 +94,7 @@ function requireApproval(value, label, expectedScope, allowedStatuses, findings)
   if (value.scope !== expectedScope) findings.push(`${label}.scope must be ${expectedScope}`);
   if (!allowedStatuses.includes(value.status)) findings.push(`${label}.status invalid`);
   if (!nonEmpty(value.reference)) findings.push(`${label}.reference missing`);
-  else if (value.status === "APPROVED" && /\b(?:todo|tbd|placeholder|replace_me|pending|unknown|none|n\/?a|not applicable|proof owed)\b/i.test(value.reference)) findings.push(`${label}.reference must identify a completed approval decision`);
+  else if (value.status === "APPROVED" && (hasPlaceholder(value.reference) || /^(?:none|n\/?a|not applicable|proof owed)$/i.test(value.reference.trim()))) findings.push(`${label}.reference must identify a completed approval decision`);
 }
 
 function validDate(value) {
@@ -244,7 +244,13 @@ export function validateReleaseRecord(record) {
   }
   if (record.record_state === "PUBLISHED") {
     if (customer === null) findings.push("PUBLISHED requires a customer release identity");
+    if (hasPlaceholder(customer?.release_name)) findings.push("PUBLISHED customer release name must be resolved");
+    for (const field of ["scope", "affected_audience", "benefits", "limitations"])
+      if (record[field]?.some(hasPlaceholder)) findings.push(`PUBLISHED ${field} must contain resolved customer facts`);
+    for (const field of ["position", "reference"])
+      if (hasPlaceholder(record.rollback_recovery?.[field])) findings.push(`PUBLISHED rollback_recovery.${field} must be resolved`);
     const referencedBuilds = (record.internal_builds || []).filter((build) => build?.customer_release_scope === "referenced");
+    if (referencedBuilds.some((build) => build?.evidence?.some(hasPlaceholder))) findings.push("PUBLISHED referenced builds must contain resolved build evidence");
     if (referencedBuilds.length === 0 || referencedBuilds.some((build) => !["production", "staged"].includes(build?.release_channel) || build.deployment_id === "NOT_APPLICABLE"))
       findings.push("PUBLISHED technical references must resolve only to deployed production or staged builds");
     if (referencedBuilds.some((build) => [build?.migration_status?.state, build?.edge_status?.state].includes("FAILED")))
@@ -392,6 +398,10 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects placeholder evidence on passed checks", { ...valid, internal_builds: [{ ...build, checks: { ...build.checks, ci: { state: "PASS", evidence: ["TODO"] } } }] }, true],
     ["rejects placeholder evidence on applied delivery", { ...valid, internal_builds: [{ ...build, migration_status: { state: "APPLIED", evidence: ["TODO"], identifiers: ["20260907000001_example"], proof_owed: null } }] }, true],
     ["rejects placeholder published customer copy", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, whats_new: { ...valid.whats_new, customer_outcome: "TODO", what_changed: "TBD", paige_readable_summary: "REPLACE_ME" } }, true],
+    ["rejects normalized placeholder approval reference", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: { ...customerApproval, reference: "PENDING_DECISION" } } }, true],
+    ["rejects placeholder published release name", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, release_name: "TODO", owner_approval: customerApproval } }, true],
+    ["rejects placeholder published build evidence", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, evidence: ["TODO"] }] }, true],
+    ["rejects placeholder published release facts", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, scope: ["TODO"], rollback_recovery: { position: "TBD", reference: "REPLACE_ME" } }, true],
   ];
   let bad = 0;
   for (const [label, record, shouldFail] of cases) {
