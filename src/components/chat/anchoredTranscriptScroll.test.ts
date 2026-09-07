@@ -20,10 +20,11 @@ function transcriptFixture(geometry: Geometry) {
     width: 600, height: geometry.clientHeight, toJSON: () => ({}),
   });
 
-  const render = (ids: string[]) => {
+  const render = (ids: string[], semanticKeys: Record<string, string> = {}) => {
     element.replaceChildren(...ids.map((id) => {
       const item = document.createElement("article");
       item.dataset.paigeMessageId = id;
+      item.dataset.paigeMessageAnchorKey = semanticKeys[id] ?? `message:${id}`;
       item.getBoundingClientRect = () => {
         const box = geometry.items[id];
         const top = geometry.viewportTop + box.top - element.scrollTop;
@@ -102,6 +103,32 @@ describe("createAnchoredTranscriptScroll", () => {
     expect(element.scrollTop).toBe(425);
     expect(element.querySelector<HTMLElement>('[data-paige-message-id="b"]')!.getBoundingClientRect().top
       - element.getBoundingClientRect().top).toBe(before);
+  });
+
+  it("reconciles a valid reading anchor when server rehydration replaces message IDs", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 }, "db-a": { top: 0, height: 300 }, "db-b": { top: 300, height: 300 }, "db-c": { top: 600, height: 300 }, "db-d": { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-rehydrated-id" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+    element.dispatchEvent(new WheelEvent("wheel"));
+    element.scrollTop = 425;
+    controller.handleScroll();
+    const before = element.querySelector<HTMLElement>('[data-paige-message-id="b"]')!.getBoundingClientRect().top;
+
+    render(["db-a", "db-b", "db-c", "db-d"], {
+      "db-a": "message:a", "db-b": "message:b", "db-c": "message:c", "db-d": "message:d",
+    });
+    element.scrollTop = 0;
+    controller.notifyLayoutChange();
+
+    expect(element.scrollTop).toBe(425);
+    expect(element.querySelector<HTMLElement>('[data-paige-message-id="db-b"]')!.getBoundingClientRect().top).toBe(before);
+    expect(sessionStorage.getItem("test-rehydrated-id:thread-a")).toContain('"messageId":"db-b"');
   });
 
   it("keeps automatic following for ordinary near-bottom layout drift without user input", () => {
@@ -290,7 +317,7 @@ describe("createAnchoredTranscriptScroll", () => {
     render(["a", "b", "c", "d"]);
     controller.setContext("thread-a");
     expect(element.scrollTop).toBe(425);
-    expect(JSON.parse(sessionStorage.getItem("test-commit-order:thread-a")!)).toEqual({
+    expect(JSON.parse(sessionStorage.getItem("test-commit-order:thread-a")!)).toMatchObject({
       kind: "anchor", messageId: "b", offsetPx: -125,
     });
   });

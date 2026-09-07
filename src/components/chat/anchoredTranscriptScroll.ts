@@ -1,6 +1,13 @@
 type TranscriptPosition =
   | { kind: "bottom" }
-  | { kind: "anchor"; messageId: string; offsetPx: number };
+  | {
+      kind: "anchor";
+      messageId: string;
+      semanticKey?: string;
+      indexFromStart?: number;
+      indexFromEnd?: number;
+      offsetPx: number;
+    };
 
 type AnchoredTranscriptScrollOptions = {
   storagePrefix: string;
@@ -10,6 +17,19 @@ type AnchoredTranscriptScrollOptions = {
 const MESSAGE_SELECTOR = "[data-paige-message-id]";
 const EXACT_BOTTOM_EPSILON_PX = 0.5;
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+
+// The database owns persisted turn IDs, while an in-flight turn starts with a
+// client ID. Keep a content-derived, non-reversible reconciliation key so an
+// anchor can survive that identity hand-off without storing transcript text.
+export function messageScrollAnchorKey(role: string, content: string) {
+  let hash = 2166136261;
+  const value = `${role}\u0000${content}`;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${role}:${(hash >>> 0).toString(36)}:${content.length}`;
+}
 
 export function createAnchoredTranscriptScroll({
   storagePrefix,
@@ -76,9 +96,32 @@ export function createAnchoredTranscriptScroll({
       return;
     }
     const anchorPosition = position;
-    const anchor = Array.from(element.querySelectorAll<HTMLElement>(MESSAGE_SELECTOR))
-      .find((item) => item.dataset.paigeMessageId === anchorPosition.messageId);
+    const items = Array.from(element.querySelectorAll<HTMLElement>(MESSAGE_SELECTOR));
+    let anchor = items.find((item) => item.dataset.paigeMessageId === anchorPosition.messageId);
+    if (!anchor && anchorPosition.semanticKey) {
+      const semanticMatches = items.filter((item) => item.dataset.paigeMessageAnchorKey === anchorPosition.semanticKey);
+      anchor = semanticMatches.length === 1
+        ? semanticMatches[0]
+        : semanticMatches.find((item) => items.indexOf(item) === anchorPosition.indexFromStart);
+    }
+    if (!anchor && anchorPosition.indexFromStart !== undefined) {
+      anchor = items[anchorPosition.indexFromStart];
+    }
+    if (!anchor && anchorPosition.indexFromEnd !== undefined) {
+      anchor = items[items.length - 1 - anchorPosition.indexFromEnd];
+    }
     if (!anchor) return;
+    const reconciledIndex = items.indexOf(anchor);
+    if (anchor.dataset.paigeMessageId && anchor.dataset.paigeMessageId !== anchorPosition.messageId) {
+      position = {
+        ...anchorPosition,
+        messageId: anchor.dataset.paigeMessageId,
+        semanticKey: anchor.dataset.paigeMessageAnchorKey,
+        indexFromStart: reconciledIndex,
+        indexFromEnd: items.length - 1 - reconciledIndex,
+      };
+      persist();
+    }
     const delta = anchor.getBoundingClientRect().top
       - element.getBoundingClientRect().top
       - anchorPosition.offsetPx;
@@ -217,9 +260,13 @@ export function createAnchoredTranscriptScroll({
       const anchor = items.find((item) => item.getBoundingClientRect().bottom > viewport.top)
         ?? items[0];
       if (anchor?.dataset.paigeMessageId) {
+        const anchorIndex = items.indexOf(anchor);
         position = {
           kind: "anchor",
           messageId: anchor.dataset.paigeMessageId,
+          semanticKey: anchor.dataset.paigeMessageAnchorKey,
+          indexFromStart: anchorIndex,
+          indexFromEnd: items.length - 1 - anchorIndex,
           offsetPx: anchor.getBoundingClientRect().top - viewport.top,
         };
       }

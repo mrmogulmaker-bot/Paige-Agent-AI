@@ -35,7 +35,7 @@ import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingInd
 import { PaigeArtifactCard, type PaigeArtifact } from "@/components/paige/chat/PaigeArtifactCard";
 import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
 import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
-import { createAnchoredTranscriptScroll } from "@/components/chat/anchoredTranscriptScroll";
+import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/components/chat/anchoredTranscriptScroll";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
@@ -1443,6 +1443,7 @@ const PaigeAIChatInner = ({
               <div
                 key={message.id}
                 data-paige-message-id={message.id}
+                data-paige-message-anchor-key={messageScrollAnchorKey(message.role, message.content)}
                 className={cn(
                   "flex min-w-0",
                   message.role === "user" ? "flex-row-reverse" : "w-full flex-row",

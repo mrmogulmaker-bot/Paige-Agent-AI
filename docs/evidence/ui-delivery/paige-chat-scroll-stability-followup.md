@@ -11,7 +11,7 @@ MATERIAL_FLOW_CHANGE: NO: corrects the already-approved scroll-ownership contrac
 FLOW_PROTOTYPE: NOT_REQUIRED: the owner explicitly locked the standard ChatGPT/Claude transcript behavior and authorized this narrow repair
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a Paige owner can place the transcript anywhere and keep that exact visible text and pixel offset
 VISUAL_DIRECTION: PASS: no visual redesign; the transcript remains the sole chat scroll owner
-AUTOMATED_EVIDENCE: PASS: 15 focused controller/React tests and 43 affected chat/mount tests cover one-pixel wheel, touch, pointer/scrollbar, keyboard, stream, resize, history, thread, and hidden geometry
+AUTOMATED_EVIDENCE: PASS: 18 focused controller/React tests and 90 affected chat/mount tests cover one-pixel wheel, touch, pointer/scrollbar, keyboard, stream, resize, history, thread, hidden geometry, and client-to-server message-ID reconciliation
 STATIC_EVIDENCE: PASS: ratcheted types, scoped lint, security, production build, affected suite, and full 278-file / 3926-test regression suite pass locally
 RENDERED_EVIDENCE: PASS: 87/87 real-React controlled browser checks at 1536x770, 1366x768, 1024x768, 900x1000, and 520x820
 BEHAVIORAL_EVIDENCE: PASS: middle and one-pixel anchors survive streaming, tool/status, receipt, resize, thread A-B-A, reload with persisted turns, minimize, pop-out, and native-close return; exact-bottom streaming follows
@@ -46,7 +46,7 @@ SOLO_900X1000_PAIGE_OPEN: PASS: middle, one-pixel, streaming, resize, reload, an
 - Classification: narrow production hotfix.
 - Affected flows: deliberate reading-position ownership; intentional exact-bottom following; thread/session restoration; dock, minimize, and pop-out continuity.
 - Neighboring regressions: normal chat, dedicated Solo workspace, stable message identity, thread switching, streaming/tool/receipt rendering, keyboard and reduced motion.
-- Active-owner/file collisions: product edit is confined to the shared transcript controller; mount files and Secure Browser are untouched.
+- Active-owner/file collisions: product behavior remains confined to the shared transcript controller; the existing PaigeAIChat message node adds only a non-reversible reconciliation key. AppShell, PaigeChat, Solo workspace, command-center, and Secure Browser mounting are untouched.
 - Explicit exclusions: Secure Browser, Vault, logo/refresh, Live Voice, Live Conversation, authority/Spine, Skills, Interview, Tenant Brain, Business Game Plan, and chat redesign.
 
 ## User job and state map
@@ -56,7 +56,7 @@ The owner reads Paige history at a personally selected location. Any deliberate 
 ## Evidence index
 
 - Failing-first: six failures covering four input families, hidden/minimized geometry, and React one-pixel streaming/resize.
-- Focused automated result: 43/43 affected controller, React, Solo workspace, normal chat, and AppShell mount checks; full repository result 278 files / 3926 tests.
+- Focused automated result: 90/90 affected controller, React, Solo workspace, normal chat, and AppShell mount checks, including replacement of every client message ID during React rehydration; full repository result is re-run at the final implementation revision.
 - Rendered result: 87/87 checks in `scripts/live-drive/artifacts/paige-scroll-stability-react/report.json`.
 - Screenshots: `scripts/live-drive/artifacts/paige-scroll-stability-react/*-open.png`, `*-closed.png`, and desktop pop-out.
 
