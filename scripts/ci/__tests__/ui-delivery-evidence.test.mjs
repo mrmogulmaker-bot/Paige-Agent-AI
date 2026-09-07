@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   classifyUiChanges,
+  isRegistryNamedTarget,
   parseNameStatus,
   pinnedBundlePaths,
   validateEvidenceText,
@@ -39,6 +40,12 @@ RELEASE_TRUTH_BOUNDARY: UNAVAILABLE: no customer-facing release claim
 RELEASE_RECOVERY: position=revert exact commit; reference=PR checks and commit history
 `;
 
+test("matches complete canonical provider names and deliberate word aliases", () => {
+  const names = ["Ledgerly Pro", "Paige Browser"];
+  assert.equal(isRegistryNamedTarget("Ledgerly Pro", names), true);
+  assert.equal(isRegistryNamedTarget("Ledgerly", names), true);
+  assert.equal(isRegistryNamedTarget("Reliably", names), false);
+});
 test("verifies the pinned upstream bundle against recorded hashes", () => {
   const result = verifyPinnedBundle();
 

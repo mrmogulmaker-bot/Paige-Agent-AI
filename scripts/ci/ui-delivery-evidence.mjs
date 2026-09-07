@@ -148,15 +148,16 @@ function isEvidenceValue(value) {
     : !isUnresolvedRestatement(match[2]);
 }
 
-function isRegistryNamedTarget(value) {
+export function isRegistryNamedTarget(value, providerNames) {
   try {
     integrationRegistryNames ??= JSON.parse(readFileSync(resolve(process.cwd(), "docs/integration-registry/integration-capability-registry.json"), "utf8"))
-      .providers.map((provider) => String(provider.name ?? "").toLowerCase());
+      .providers.map((provider) => String(provider.name ?? "").trim().toLowerCase());
   } catch {
     return false;
   }
   const target = String(value ?? "").trim().toLowerCase();
-  return Boolean(target) && integrationRegistryNames.some((name) => name.split(/[^a-z0-9]+/).includes(target));
+  const names = providerNames?.map((name) => String(name).trim().toLowerCase()) ?? integrationRegistryNames;
+  return Boolean(target) && names.some((name) => name === target || name.split(/[^a-z0-9]+/).includes(target));
 }
 
 function normalizeSentinel(value) {
