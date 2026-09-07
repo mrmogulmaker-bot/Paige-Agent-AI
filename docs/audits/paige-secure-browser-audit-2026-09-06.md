@@ -533,3 +533,22 @@ selected provider all attach to that single entry — **no duplicate registry** 
 *This packet is a decision + inventory record (attention-register §1: a dated write-up whose findings
 are individually issue-able). It records platform truth and a decision owed; it authorizes no schema,
 UI, or provider install.*
+
+
+---
+
+## 12. Security-prerequisite production evidence (2026-09-07)
+
+PR #1042 repaired the audit's pre-worker security prerequisites and remained deliberately provider-neutral. Exact head `2c83cfa37dd6554c597d440fe1984d3619eb9602` passed required CI, security and governance checks, migration validation, a clean independent review, and the final sensitive-data scan; squash merge is `ba3edd5386ba39a19f31a2c980f2245e6e4994a7`.
+
+Production evidence:
+
+- migration run 34084460116 applied and persisted `20260907023754`; post-apply structure/count proof confirmed required tenant attribution, forced RLS, denied authenticated quarantine access, 0 active legacy rows and 2 preserved quarantined rows;
+- Edge run 34084460086 deployed `browser-use` and `skill-runner`;
+- Fly run 34084460111 deployed `paige-browser` image `deployment-01M1X34VF9E8DFKSRVH6PM7R6X`, digest `sha256:343437e859025221232b1a41940816332eb72753e4436ed50d46c80b1a71c987`;
+- merge-time CI 34084460201, Security Audit 34084460211, UI evidence 34084460182 and PAIGE Spine contract 34084460128 passed;
+- both production version endpoints returned `ba3edd5386ba39a19f31a2c980f2245e6e4994a7-mtqrftk3`.
+
+The repeated local `operatorTarget.test.ts` timeout was a transient local resource timeout: its focused reruns passed and the exact-head and merge-time full suites passed. The Deno diagnostic found during review was real and fixed before the final head.
+
+This evidence releases only tenant-safe attribution, authority checks, read-only egress and deployment hardening. Browserbase remains `PROPOSED` and unwired; all seven vendor gates remain open. No provider credential was used, no browser session/Context was created, no external login or Connected Account exists, no credentialed execution occurred, and no Rail/Mind/Memory eligibility is claimed.
