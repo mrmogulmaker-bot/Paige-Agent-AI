@@ -219,7 +219,8 @@ export function validateEvidenceText(text, classification) {
   if (!releaseClassification) errors.push("RELEASE_CLASSIFICATION must name a governed classification and reason.");
   const customerIdentity = fields.get("CUSTOMER_RELEASE_IDENTITY") ?? "";
   const noCustomerIdentity = /^none:\s*\S.+$/i.test(customerIdentity);
-  const namedCustomerIdentity = /^(\d+\.\d+\.\d+)\s+—\s+\S.+;\s*owner-decision=\S+$/i.exec(customerIdentity);
+  const namedCustomerIdentity = /^(\d+\.\d+\.\d+)\s+—\s+([^;]+);\s*owner-decision=(\S+)$/i.exec(customerIdentity);
+  if (namedCustomerIdentity && normalizeSentinel(namedCustomerIdentity[3]) !== "pending" && hasUnresolvedToken(namedCustomerIdentity[3])) errors.push("CUSTOMER_RELEASE_IDENTITY owner-decision must be PENDING or a substantive decision reference.");
   if (releaseClassification === "internal-only" && !noCustomerIdentity) errors.push("CUSTOMER_RELEASE_IDENTITY must be none: reason for internal-only work.");
   if (releaseClassification === "patch" && !noCustomerIdentity && !/^0\.\d+\.[1-9]\d*$/.test(namedCustomerIdentity?.[1] ?? "")) errors.push("Patch CUSTOMER_RELEASE_IDENTITY must be none: reason or 0.x.y with y greater than zero, a name, and owner-decision reference.");
   if (releaseClassification === "minor-candidate" && !/^0\.[1-9]\d*\.0$/.test(namedCustomerIdentity?.[1] ?? "")) errors.push("Minor-candidate CUSTOMER_RELEASE_IDENTITY must be 0.x.0 with a name and owner-decision reference.");
