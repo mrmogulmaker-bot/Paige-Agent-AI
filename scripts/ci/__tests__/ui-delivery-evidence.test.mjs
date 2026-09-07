@@ -155,6 +155,10 @@ test("requires complete staged-rollout evidence", () => {
   assert.equal(incomplete.ok, false);
   assert.match(incomplete.errors.join("\n"), /Staged RELEASE_CHANNEL requires/);
 
+  const pendingApproval = validateEvidenceText(stagedBase.replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: staged: owner-approval=pending; eligibility= ; amount= ; start= ; stop= ; monitoring-owner= ; recovery=disable cohort"), { required: true, solo: false });
+  assert.equal(pendingApproval.ok, false);
+  assert.match(pendingApproval.errors.join("\n"), /completed non-placeholder owner-approval/);
+
   const complete = validateEvidenceText(stagedBase.replace("RELEASE_CHANNEL: development: branch checks only", "RELEASE_CHANNEL: staged: owner-approval=owner-message; eligibility=named cohort; amount=10 percent; start=owner approval; stop=error budget; monitoring-owner=release owner; recovery=disable cohort"), { required: true, solo: false });
   assert.equal(complete.ok, true, complete.errors.join("\n"));
 });

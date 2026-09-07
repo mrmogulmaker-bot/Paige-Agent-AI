@@ -198,7 +198,8 @@ export function validateEvidenceText(text, classification) {
   if (releaseChannel === "staged") {
     const channelEvidence = fields.get("RELEASE_CHANNEL") ?? "";
     for (const key of ["owner-approval", "eligibility", "amount", "start", "stop", "monitoring-owner", "recovery"]) {
-      if (!new RegExp(`\\b${key}=([^;]+)`, "i").test(channelEvidence)) errors.push(`Staged RELEASE_CHANNEL requires ${key}=... metadata.`);
+      const value = new RegExp(`\\b${key}=([^;]+)`, "i").exec(channelEvidence)?.[1]?.trim();
+      if (!value || hasPlaceholder(value) || /^(?:pending|unknown|none|n\/?a|not applicable|proof owed)$/i.test(value)) errors.push(`Staged RELEASE_CHANNEL requires a completed non-placeholder ${key}=... value.`);
     }
   }
   if (!/\b(?:LIVE|PARTIAL|UNAVAILABLE|PROOF OWED)\b/i.test(fields.get("RELEASE_TRUTH_BOUNDARY") ?? "")) errors.push("RELEASE_TRUTH_BOUNDARY must name at least one governed status and its claim boundary.");

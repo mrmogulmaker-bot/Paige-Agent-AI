@@ -156,7 +156,7 @@ export function validateReleaseRecord(record) {
       requireExactObject(build, BUILD_KEYS, label, findings);
       if (!/^[0-9a-f]{40}$/i.test(String(build?.commit_sha || ""))) findings.push(`${label}.commit_sha must be an exact 40-character SHA`);
       if (!nonEmpty(build?.deployment_id)) findings.push(`${label}.deployment_id missing`);
-      else if (/\b(?:todo|tbd|placeholder|replace_me|unknown)\b/i.test(build.deployment_id)) findings.push(`${label}.deployment_id must not contain a placeholder token`);
+      else if (/\b(?:todo|tbd|placeholder|replace_me|unknown|pending|proof_owed|n\/?a|none)\b/i.test(build.deployment_id)) findings.push(`${label}.deployment_id must not contain a placeholder token`);
       if (!["local", "development", "preview", "production"].includes(build?.environment)) findings.push(`${label}.environment invalid`);
       if (!CHANNELS.has(build?.release_channel)) findings.push(`${label}.release_channel invalid`);
       if (!["referenced", "supporting"].includes(build?.customer_release_scope)) findings.push(`${label}.customer_release_scope invalid`);
@@ -178,8 +178,8 @@ export function validateReleaseRecord(record) {
         requireEvidenceState(build?.checks?.[field], `${label}.checks.${field}`, findings);
       requireNonEmptyStrings(build?.evidence, `${label}.evidence`, findings);
     });
-    const deploymentIds = record.internal_builds.map((build) => build?.deployment_id);
-    if (new Set(deploymentIds).size !== deploymentIds.length) findings.push("internal_builds deployment_id values must be unique");
+    const deploymentIds = record.internal_builds.map((build) => build?.deployment_id).filter((id) => id !== "NOT_APPLICABLE");
+    if (new Set(deploymentIds).size !== deploymentIds.length) findings.push("actual internal_builds deployment_id values must be unique");
   }
 
   for (const field of ["scope", "affected_audience", "benefits", "limitations"]) requireNonEmptyStrings(record[field], field, findings);
@@ -338,6 +338,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects published release without green production checks", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, checks: { ...build.checks, production_checks: { state: "UNVERIFIED", evidence: ["not driven"] } } }] }, true],
     ["rejects published development-only release", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, environment: "development", release_channel: "development", deployment_id: "NOT_APPLICABLE" }] }, true],
     ["rejects published placeholder deployment identifier", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, deployment_id: "TODO-deployment" }] }, true],
+    ["rejects pending deployment identifier", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, deployment_id: "pending" }] }, true],
     ["rejects free-form technical build list", { ...valid, whats_new: { ...valid.whats_new, technical_release_reference: { visibility: "internal_only", build_ids: ["dpl_fake"] } } }, true],
     ["rejects published reference to development when another production build exists", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, customer_release_scope: "supporting" }, { ...build, commit_sha: "b".repeat(40), deployment_id: "dev_123", environment: "development", release_channel: "development" }] }, true],
     ["rejects staged build without rollout metadata", { ...valid, internal_builds: [{ ...build, release_channel: "staged", staged_rollout: null }] }, true],
@@ -355,6 +356,7 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
     ["rejects minor version with patch component", { ...valid, customer_release_identity: { ...valid.customer_release_identity, version: "0.1.7" } }, true],
     ["rejects major version with minor component", { ...valid, classification: "major_candidate", customer_release_identity: { ...valid.customer_release_identity, version: "2.3.0" } }, true],
     ["rejects duplicate deployment identifiers", { ...valid, internal_builds: [build, { ...build, commit_sha: "b".repeat(40) }] }, true],
+    ["accepts repeated NOT_APPLICABLE for non-deployed history", { ...internal, internal_builds: [{ ...build, commit_sha: "b".repeat(40), deployment_id: "NOT_APPLICABLE", environment: "development", release_channel: "development", customer_release_scope: "supporting" }, { ...build, commit_sha: "c".repeat(40), deployment_id: "NOT_APPLICABLE", environment: "development", release_channel: "development", customer_release_scope: "supporting" }] }, false],
     ["rejects published failed migration state", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, migration_status: { state: "FAILED", evidence: ["migration 202609060001 failed"], proof_owed: null } }] }, true],
     ["rejects undisclosed referenced proof owed", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], proof_owed: { boundary: "Authenticated edge interaction proof is pending", excluded_from_live_claim: "Edge-backed authenticated interaction" } } }], whats_new: { ...valid.whats_new, status: ["LIVE"] } }, true],
     ["accepts exact proof-owed boundary excluded from LIVE", { ...valid, record_state: "PUBLISHED", customer_release_identity: { ...valid.customer_release_identity, owner_approval: customerApproval }, internal_builds: [{ ...build, edge_status: { state: "PROOF_OWED", evidence: ["authenticated proof pending"], proof_owed: { boundary: "Authenticated edge interaction proof is pending", excluded_from_live_claim: "Edge-backed authenticated interaction" } } }], whats_new: { ...valid.whats_new, status: ["PARTIAL", "PROOF OWED"], proof_owed: { visibility: "customer_and_internal", source: "referenced_builds.migration_status_or_edge_status.proof_owed" } } }, false],
