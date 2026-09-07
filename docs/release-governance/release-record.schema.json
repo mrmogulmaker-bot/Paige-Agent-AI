@@ -410,7 +410,7 @@
           "then": {
             "anyOf": [
               { "properties": { "replacement_exists": { "const": false }, "replacement_value": { "type": "null" } }, "required": ["replacement_exists", "replacement_value"] },
-              { "properties": { "replacement_exists": { "const": true }, "replacement_value": { "anyOf": [{ "const": "PROOF OWED" }, { "$ref": "#/$defs/resolvedString" }] } }, "required": ["replacement_exists", "replacement_value"] }
+              { "properties": { "replacement_exists": { "const": true }, "replacement_value": { "enum": ["LIVE", "PARTIAL", "UNAVAILABLE", "PROOF OWED"] } }, "required": ["replacement_exists", "replacement_value"] }
             ]
           },
           "else": {
@@ -418,7 +418,7 @@
             "then": {
               "anyOf": [
                 { "properties": { "replacement_exists": { "const": false }, "replacement_value": { "type": "null" } }, "required": ["replacement_exists", "replacement_value"] },
-                { "properties": { "replacement_exists": { "const": true }, "replacement_value": { "anyOf": [{ "const": "PROOF_OWED" }, { "$ref": "#/$defs/resolvedString" }] } }, "required": ["replacement_exists", "replacement_value"] }
+                { "properties": { "replacement_exists": { "const": true }, "replacement_value": { "enum": ["APPLIED", "NOT_APPLICABLE", "PROOF_OWED", "FAILED"] } }, "required": ["replacement_exists", "replacement_value"] }
               ]
             },
             "else": {
