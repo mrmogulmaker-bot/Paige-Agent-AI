@@ -31,7 +31,8 @@ export default defineConfig({
   resolve: {
     alias: [
       // Must precede the generic "@" alias or neither ever matches.
-      { find: /^@\/integrations\/supabase\/client$/, replacement: path.join(shared, "supabase-stub.ts") },
+      { find: /^@\/integrations\/supabase\/client$/, replacement: path.join(import.meta.dirname, "supabase-paige-stub.ts") },
+      { find: /^@\/hooks\/usePaigeThreads$/, replacement: path.join(import.meta.dirname, "paige-threads-stub.ts") },
       { find: /^@\/hooks\/useTenantContext$/, replacement: path.join(shared, "tenant-context-stub.ts") },
       { find: "@", replacement: path.join(repo, "src") },
     ],
