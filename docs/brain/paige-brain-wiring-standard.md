@@ -76,9 +76,9 @@ construction — no second wiring path.
 
 ---
 
-## 3. The mandatory checklist — every capability, every tier
+## 3. The mandatory checklist — every capability, every tier, every modality
 
-When any surface, function, department or URL ships, it is not done until all five are true:
+When any surface, function, department or URL ships, it is not done until all six are true:
 
 - [ ] **1. Second-brain entry.** The relevant `docs/brain/` doc updated in the SAME commit
       (§BRAIN.3): `codebase-map.md` for new surface area, `config-registry.md` for integration
@@ -99,8 +99,16 @@ When any surface, function, department or URL ships, it is not done until all fi
 - [ ] **5. Honest when it cannot answer (§13).** A tool that has no substrate returns a stated gap —
       never a fabricated number and never silence.
 
-**The test, every time:** *"If the operator opens either chat door and asks about this, can Paige
-actually answer — and does a tenant asking the same question get only what their tier permits?"*
+- [ ] **6. Modality-neutral acceptance.** Every text, Live Conversation, future phone/SIP, Secure
+      Browser, handoff, and card surface reuses the one workspace and Spine path: server-resolved
+      scope → shared authority decision → canonical tool/RPC → verified readback → detailed receipt
+      + Rail evidence → truthful modality presentation. No surface may fork authority, mutation,
+      memory, or upgrade a capability's evidence state. See
+      `../doctrine/paige-modality-neutrality.md`.
+
+**The test, every time:** *"If the operator asks through any Paige modality, can Paige actually
+answer or act through the same governed contract — and does a tenant asking the same question get
+only what their tier permits?"*
 
 ---
 
@@ -169,7 +177,8 @@ RLS-scoped to `current_user_tenant_id()`. §37 producer inventory required befor
 §7 (Paige IS the portal) · §10 (Paige-governable, callable seam) · §13 (honest gaps) · §35 (OS north
 star — every seam is OS surface area) · §51/§53 (tier + operator role gating) · §52 (already-briefed
 operator context) · §60 (declared tier availability) · §BRAIN.1–.3 (second-brain discipline) ·
-`cd-pack-port-playbook.md` (how a tier surface gets ported in the first place).
+`cd-pack-port-playbook.md` (how a tier surface gets ported in the first place) ·
+`../doctrine/paige-modality-neutrality.md` (one workspace and execution path across modalities).
 
 ## Solo Team context — narrow contract (SHIPPED via PR #728, 2026-09-02; ~~Gate 2 pending~~)
 

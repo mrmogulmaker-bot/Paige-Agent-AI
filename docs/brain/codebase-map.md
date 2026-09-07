@@ -214,7 +214,7 @@ Grouped by theme with the load-bearing names (not all 241 enumerated — group +
 | **Credit-pull vendors** | 4 | `isoftpull-initiate`, `isoftpull-webhook`, `smartcredit-pull-snapshot`, `handle-smartcredit-alert-webhook` |
 | **Calendar / booking** | ~8 | `google-calendar-oauth-start/callback/disconnect`, `cal-list-bookings`, `cal-cancel-booking`, `handle-cal-webhook`, `public-booking`, `process-booking-notifications` |
 | **Zoom** | 3 | `zoom-oauth-start/callback/disconnect` |
-| **Voice / STT / TTS** | ~6 | `paige-tts`, `paige-stt`, `paige-dictate`, `voice-command-processor`, `voice-twiml`, `voice-access-token` |
+| **Voice / STT / TTS** | ~7 | `paige-live-session` (Paige-owned fail-closed Live Conversation control plane), `paige-tts`, `paige-stt`, `paige-dictate`, `voice-command-processor`, `voice-twiml`, `voice-access-token` |
 | **Studio / skills** | 5 | `studio-learn-from-artifact`, `studio-visual-critique`, `skill-forge`, `skill-runner`, `growth-studio-route` |
 | **Growth OS** | 7 | `growth-page-draft`, `growth-funnel-draft`, `growth-form-draft`, `growth-inbound`, `growth-process-submission`, `growth-block-edit` |
 | **Knowledge base / embeddings** | ~8 | `kb-search`, `kb-ingest-doc/file/url`, `kb-promote-to-network`, `embed-text`, `embed-client-financials`, `backfill-memory-embeddings` |
@@ -274,7 +274,7 @@ the derived `funding_enabled` signal + marketplace-install checks.)*
 | Vendor | Entry point | Wired? |
 |---|---|---|
 | **Twilio** | `_shared/twilio.ts` (+ `_shared/operator-twilio.ts`, `_shared/twilio-media.ts`); `twilio-inbound-webhook`, `twilio-status-callback`, `provision-tenant-twilio` | ✅ (ISV/reseller — see config-registry "Twilio ISV Architecture") |
-| **ElevenLabs** | `_shared/elevenlabs.ts` + `_shared/tts-router.ts` → `paige-tts`; auth `ELEVENLABS_API_KEY` via `envKey()` | ✅ (in-app TTS); ConvAI phone path UNWIRED |
+| **Paige voice profile / optional ElevenLabs transport** | `PaigeLiveConversation.tsx` + `paige-live-session` + service-only `paige_voice_profile` resolver → `_shared/tts-router.ts` / `paige-tts`; provider credentials remain server-side | UI/control plane implemented; realtime provider audio `PROOF OWED`; no hosted agent or provider action path |
 | **Stripe** | no shared module (SDK inline); `stripe-webhook`/`handle-stripe-webhook`, `create-checkout`, `tenant-stripe-connect` | ✅ |
 | **Meta (FB/IG)** | `handle-meta-webhook`, `meta-capi-admin`, `meta-track-conversion`; client `seo/MetaPixel` | ✅ |
 | **Google** | Calendar `google-calendar-oauth-*`; Gmail `_shared/gmail.ts` + `gmail-oauth-*` | ✅ |

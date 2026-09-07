@@ -1,18 +1,13 @@
-// #131/#579 — paige-tts: per-message chat voice PLAYBACK. A JWT-gated HTTP endpoint that synthesizes
-// a Paige/assistant message to speech via the ONE TTS home (_shared/tts-router.ts, §18/§34) and
-// returns the mp3 so the client's <audio> element plays it. ElevenLabs (Paige's primary voice) is the
-// default; OpenAI (nova) is the honest fallback.
+// paige-tts: per-message chat playback through the ONE server-resolved Paige Voice Profile.
+// A caller supplies text only. Provider identity, voice reference, tuning source, and immutable
+// profile revision stay server-side and cannot be overridden by a browser request.
 //
 // FLOW
 //   1. §9 GATE — resolve the tenant FROM the JWT (authed.rpc("current_user_tenant_id")), NEVER a
 //      body tenant_id. Any authenticated workspace member may play back a message (playback is
 //      benign; no role gate).
-//   2. Resolve the VOICE (§7 tenant-authored): tenants.features.playbook_config.paige_voice if the
-//      tenant authored one; else the subscription-tier default; else the base default (ElevenLabs
-//      primary). A caller body.voice_id (valid catalog voice, either provider) wins. Invalid/custom
-//      voices degrade — never a 400 (§15). resolveVoiceId returns { provider, id }.
-//   3. PLAN — planTtsSynthesis builds an ORDERED FALLBACK CHAIN of attempts (ElevenLabs primary →
-//      backup → OpenAI nova, gated by which provider keys are present, #579).
+//   2. Resolve the approved profile through the service-only config-as-data RPC.
+//   3. PLAN one attempt for that bound revision. No unapproved fallback or request override.
 //   4. §14 CACHE + SYNTH — for each attempt: key = SHA-256(provider:model:voice:text), path =
 //      <tenantId>/<hash>.mp3 in the PRIVATE, tenant-scoped `tts-cache` bucket (§9 — never cross-tenant,
 //      never cross-provider). HIT → return stored bytes (zero cost), meter cache_hit:true. MISS →
@@ -30,7 +25,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import {
   planTtsSynthesis,
-  resolveVoiceId,
+  resolveProfileVoice,
   ttsCacheKey,
   synthesizeSpeechStream,
 } from "../_shared/tts-router.ts";
@@ -143,58 +138,36 @@ serve(async (req: Request) => {
     // ── Body ──
     const body = await req.json().catch(() => ({}));
     const text = String(body?.text ?? "").trim();
-    const requestedVoice = body?.voice_id != null ? String(body.voice_id) : null;
+    if (body?.voice_id != null || body?.voiceId != null) return json({ error: "voice_override_not_allowed" }, 400);
     if (!text) return json({ error: "empty_text" }, 400);
     const capped = text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) : text;
 
     const admin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ── Resolve the voice (§7 tenant-authored config-as-data) ──
-    // playbook_config.paige_voice (authored) + the platform plan slug (tier default). Both are
-    // best-effort reads: a missing/unreadable value degrades to the tier/base default, never a 400.
-    // The OPERATOR path skips both reads (it has no tenant to read) — playbookVoice/planSlug stay
-    // null, so resolveVoiceId naturally returns the base default (DEFAULT_TTS_VOICE), which is what
-    // Paige's platform voice should be. A caller body.voice_id still wins for the operator too.
-    let playbookVoice: string | null = null;
-    let planSlug: string | null = null;
-    if (!isOperator) {
-      try {
-        const { data: t } = await admin.from("tenants").select("features").eq("id", tenantId).maybeSingle();
-        const features = ((t as { features?: unknown } | null)?.features ?? {}) as Record<string, unknown>;
-        const pc = (features.playbook_config ?? {}) as Record<string, unknown>;
-        if (typeof pc.paige_voice === "string") playbookVoice = pc.paige_voice;
-      } catch (e) {
-        console.warn("[paige-tts] tenant voice read failed (using tier/default):", (e as Error)?.message);
-      }
-      try {
-        // Join to the plan for its slug (tier default, §7). Active sub only; best-effort.
-        const { data: sub } = await admin
-          .from("platform_subscriptions")
-          .select("status, plan:platform_subscription_plans(slug)")
-          .eq("tenant_id", tenantId)
-          .eq("status", "active")
-          .maybeSingle();
-        const s = sub as { status?: string | null; plan?: { slug?: string | null } | null } | null;
-        if (s?.plan?.slug) planSlug = s.plan.slug;
-      } catch (e) {
-        console.warn("[paige-tts] plan read failed (using base default):", (e as Error)?.message);
-      }
+    // ── Resolve the one approved server profile. No tenant playbook value or request field can
+    // choose a provider voice. The returned object is internal and is never included in the response.
+    const { data: profile, error: profileError } = await admin.rpc("resolve_paige_voice_profile_internal", {
+      _session_started_at: new Date().toISOString(),
+    });
+    const resolvedVoice = profile && !profileError ? resolveProfileVoice(profile as Record<string, unknown>) : null;
+    if (!resolvedVoice) {
+      console.error("[paige-tts] approved Paige Voice Profile unavailable", { code: profileError?.code });
+      return json({ error: "voice_profile_unavailable" }, 503);
     }
+    const voiceSource = `paige_profile:${resolvedVoice.profileRevision}`;
 
-    const { voice: resolvedVoice, source: voiceSource } = resolveVoiceId({ requested: requestedVoice, playbookVoice, planSlug });
-
-    // ── Plan the synthesis as an ORDERED FALLBACK CHAIN (honest degrade before any cost, #579) ──
+    // ── Plan exactly one approved profile transport. Fallback is a separately approved profile
+    // revision selected by the resolver, never an implicit second attempt here. ──
     const plan = planTtsSynthesis(resolvedVoice);
     if (!plan.ok) {
-      // needs_config = NEITHER provider keyed. Honest 503 — MessageAudioButton keys its disabled
+      // needs_config = the selected profile's provider is not configured. Honest 503 — MessageAudioButton keys its disabled
       // state off this exact code (§37), so it must not change.
-      console.error("[paige-tts] no TTS provider configured (ElevenLabs + OpenAI both absent) — honest needs_config degrade");
+      console.error("[paige-tts] selected Paige Voice Profile transport is not configured — honest needs_config degrade");
       return json({ error: "tts_not_configured" }, 503);
     }
 
-    // Try each attempt in order; on an attempt's failure LOUD-log and fall to the next (§32). The
-    // cache key + meter are computed PER ATTEMPT from the provider/voice that will ACTUALLY serve, so
-    // an OpenAI-fallback render can never be stored under (or reported as) the ElevenLabs slot (§13).
+    // The one selected attempt owns this request. Cache and metering include its profile revision;
+    // provider identity never appears in the browser response.
     let lastErr: string | null = null;
     for (let i = 0; i < plan.attempts.length; i++) {
       const attempt = plan.attempts[i];
@@ -208,9 +181,9 @@ serve(async (req: Request) => {
         const { data: cached } = await admin.storage.from(CACHE_BUCKET).download(cachePath);
         if (cached) {
           const buf = await cached.arrayBuffer();
-          console.log("[paige-tts] cache HIT", { scope: storagePrefix, provider: attempt.provider, voice: usedVoice, bytes: buf.byteLength });
+          console.log("[paige-tts] cache HIT", { scope: storagePrefix, provider: attempt.provider, profile_revision: attempt.profileRevision, bytes: buf.byteLength });
           runAfter(meterChars(admin, meterTenantId, capped.length, {
-            provider: attempt.provider, voice: usedVoice, model: attempt.model,
+            provider: attempt.provider, profile_revision: attempt.profileRevision, model: attempt.model,
             voice_source: voiceSource, fell_back: fellBack, cache_hit: true,
           }));
           return new Response(buf, { headers: audioHeaders });
@@ -230,15 +203,16 @@ serve(async (req: Request) => {
               .from(CACHE_BUCKET)
               .upload(cachePath, bytes, { contentType: "audio/mpeg", upsert: true });
             if (upErr) console.error("[paige-tts] EL cache upload failed", { message: upErr.message, scope: storagePrefix });
-            else console.log("[paige-tts] cache STORED", { scope: storagePrefix, provider: "elevenlabs", voice: usedVoice, bytes: bytes.length });
+            else console.log("[paige-tts] cache STORED", { scope: storagePrefix, provider: "elevenlabs", profile_revision: attempt.profileRevision, bytes: bytes.length });
             await meterChars(admin, meterTenantId, capped.length, {
-              provider: "elevenlabs", voice: usedVoice, model: attempt.model,
+              provider: "elevenlabs", profile_revision: attempt.profileRevision, model: attempt.model,
               voice_source: voiceSource, fell_back: fellBack, cache_hit: false,
             });
           })());
           return new Response(bytes, { headers: audioHeaders }); // buffered — no tee needed
         } catch (e) {
-          // NeedsConfig (key raced absent) OR an API error — LOUD, never silent (§32); fall to next.
+          // NeedsConfig (key raced absent) OR an API error — LOUD, never silent (§32). There is no
+          // implicit provider fallback; a separately approved profile revision must be resolved.
           lastErr = (e as Error)?.message ?? "elevenlabs_error";
           console.error("[paige-tts] ElevenLabs attempt failed, falling back:", lastErr);
           continue;
@@ -282,9 +256,9 @@ serve(async (req: Request) => {
             .from(CACHE_BUCKET)
             .upload(cachePath, bytes, { contentType: "audio/mpeg", upsert: true });
           if (upErr) console.error("[paige-tts] cache upload failed", { message: upErr.message, scope: storagePrefix });
-          else console.log("[paige-tts] cache STORED", { scope: storagePrefix, provider: "openai", voice: usedVoice, bytes: bytes.length });
+          else console.log("[paige-tts] cache STORED", { scope: storagePrefix, provider: "openai", profile_revision: attempt.profileRevision, bytes: bytes.length });
           await meterChars(admin, meterTenantId, capped.length, {
-            provider: "openai", voice: usedVoice, model: attempt.model,
+            provider: "openai", profile_revision: attempt.profileRevision, model: attempt.model,
             voice_source: voiceSource, fell_back: fellBack, cache_hit: false,
           });
         })(),

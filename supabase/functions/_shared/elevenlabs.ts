@@ -16,8 +16,6 @@ import { envKey } from "./env-key.ts";
 
 const ELEVENLABS_BASE = Deno.env.get("ELEVENLABS_BASE_URL") ?? "https://api.elevenlabs.io/v1";
 const DEFAULT_MODEL = Deno.env.get("ELEVENLABS_MODEL") ?? "eleven_multilingual_v2";
-// "Rachel" — a standard, stable, public ElevenLabs voice available on every account by default.
-const DEFAULT_VOICE = Deno.env.get("ELEVENLABS_VOICE_ID") ?? "21m00Tcm4TlvDq8ikWAM";
 
 function elevenlabsKey(): string {
   const k = envKey("ELEVENLABS_API_KEY");
@@ -27,7 +25,8 @@ function elevenlabsKey(): string {
 
 export interface ElevenLabsTtsInput {
   text: string;
-  voiceId?: string;
+  /** Required server-resolved provider reference. There is deliberately no provider default. */
+  voiceId: string;
   modelId?: string;
 }
 
@@ -37,7 +36,8 @@ export interface ElevenLabsTtsInput {
  */
 export async function elevenlabsTts(opts: ElevenLabsTtsInput): Promise<ProviderCallResult> {
   const key = elevenlabsKey();
-  const voiceId = opts.voiceId || DEFAULT_VOICE;
+  const voiceId = opts.voiceId;
+  if (!voiceId) throw new NeedsConfigError("elevenlabs:paige_voice_profile");
   const modelId = opts.modelId || DEFAULT_MODEL;
   const started = Date.now();
 

@@ -238,7 +238,7 @@ Every external integration follows the same discipline: **one shared client seam
 | Service | Role | Where wired | State |
 |---|---|---|---|
 | **Anthropic (Claude)** | Primary LLM, all sensitive job kinds | `_shared/model-router.ts` | **Active** — 100% of prod traces |
-| **ElevenLabs** | Primary TTS (direct REST) | `_shared/elevenlabs.ts`, `_shared/tts-router.ts` | In-code, dormant (key likely unset) |
+| **ElevenLabs** | Optional Paige voice I/O transport | `_shared/elevenlabs.ts`, `_shared/tts-router.ts`, `paige-live-session` | `PROOF OWED`; transport disabled pending account/privacy/cost proof |
 | **Stripe** | Paige-held rails only (subs, marketplace, connect) | ~15 billing edge fns | In-code, not verified live |
 | **Twilio** | SMS + voice/telephony, per-tenant subaccounts | `_shared/twilio.ts` | **Active** — 5 tenant subaccounts |
 | **n8n** | Per-tenant workflow automation | `paige-n8n/index.ts` | In-code, not verified live |
@@ -247,9 +247,16 @@ Every external integration follows the same discipline: **one shared client seam
 | **Voyage AI** | Single canonical embedding space | `_shared/voyage.ts` | In-code, not verified live |
 | **Featherless / Groq / OpenAI / Gemini / Ideogram / Replicate** | Open-tier text, image, TTS via router | `_shared/model-router.ts` + per-provider `_shared/*.ts` | In-code, **dormant** (keys unset) |
 
-### ElevenLabs — TTS only, NOT ConvAI
+### ElevenLabs — optional voice transport, never Paige's brain
 
-**Important correction to the doctrine framing:** ElevenLabs is wired as Paige's **primary text-to-speech voice via direct REST** (`POST /v1/text-to-speech/{voiceId}`, `xi-api-key` header, returns mp3 bytes; owner-locked default voice `0S5oIfi8zOZixuSj8K6n` — Ivanna, owner-ruled 2026-08-09; was `6aDn1KB0hjpdcocrUkmq`). There is **no ElevenLabs ConvAI / conversational-agent wiring** anywhere — a grep for `convai` / `signed_url` / `agent_id` against the ElevenLabs seam returned nothing. Voice *conversations* are assembled from **Twilio media streams + Paige's own STT/TTS routers**, not an ElevenLabs agent. It is gated fail-closed: `elevenlabsKey()` throws `NeedsConfigError('elevenlabs')` and the TTS router honestly degrades to the OpenAI-standard fallback (`gpt-4o-mini-tts`). The code comment states the key is "very likely NOT set today," consistent with 0 non-Anthropic providers in `paige_llm_trace`.
+Paige owns conversation state, server-resolved tenant/context, reasoning, cards, authority, governed
+tools, verification, receipts, Rail, and durable-record eligibility. ElevenLabs may provide voice
+transport only after the account/privacy/cost gate is proven. Paige speech resolves through the
+service-only `paige_default_voice` profile; literal voice IDs and request-level overrides are
+forbidden. No hosted ElevenLabs agent, client tool, or webhook may mutate Paige records or execute
+external work. Realtime audio remains `PROOF OWED` and transport-disabled until key scopes, voice
+authorization, retention/ZRM application, quota, concurrency, and a Paige hard cost ceiling are
+independently verified.
 
 ### Twilio — active, per-tenant subaccount model
 

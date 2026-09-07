@@ -469,9 +469,10 @@ const voiceCell: RouteCell = {
   justification: "ElevenLabs voice synthesis — text→narration mp3; honest needs_config degrade until ELEVENLABS_API_KEY is set (§13).",
   invoke: (task, model) => {
     const v = (task as any)?.voiceId ?? (task as any)?.voice_id;
+    if (typeof v !== "string" || !v) throw new NeedsConfigError("elevenlabs:voice_profile", "An approved server-side voice reference is required");
     return elevenlabsTts({
       text: taskText(task),
-      voiceId: typeof v === "string" ? v : undefined,
+      voiceId: v,
       modelId: model,
     });
   },

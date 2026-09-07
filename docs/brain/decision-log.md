@@ -1,5 +1,23 @@
 # Decision Log — chronological one-liners
 
+- **Paige Live Conversation MVP implementation (2026-09-07).** The approved owner-facing stage is
+  entered only from `Talk live with Paige` in the dedicated composer, portals over the exact thread,
+  preserves the platform page, supports minimize/focus return and one active real card, and reuses
+  chat confirmation fingerprints for consequential work. The service-owned session/profile control
+  plane is fail closed; provider-backed realtime audio remains `PROOF OWED` until account scope,
+  voice, retention/ZRM, quota, concurrency, and hard-cost evidence exists. The historical literal
+  and request-level Paige voice selection paths are superseded.
+
+- **OWNER-LOCKED — Paige is modality-neutral (2026-09-06).** Text chat, Live Conversation, future
+  phone/SIP, Secure Browser interactions, contextual handoffs, and platform cards are interfaces to
+  the one tenant-aware Paige workspace and one PAIGE Spine. Every door must server-resolve actor,
+  tenant, workspace, context, and role; reuse the shared registry, authority decision, one approval
+  gate, and canonical tool/RPC; verify persisted outcomes; create detailed receipts plus Rail evidence;
+  and present the same truthful result through its modality. Raw text, audio, and transcripts never
+  become automatic durable facts. Spoken input may select ordinary conversational options, but never
+  bypasses consequential-action policy or substitutes a casual "yes" for approval proof. Canonical
+  contract and future-surface acceptance checklist: `../doctrine/paige-modality-neutrality.md`.
+
 - **Secure Browser — prerequisite security repair candidate (2026-09-07, dedicated builder).**
   Grounded current `main` at `49d25f4c`; #1039 is merged and its Browserbase review/starting packet
   remains authoritative. Candidate source now gives every `browser_use_sessions` writer a
