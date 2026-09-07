@@ -190,16 +190,18 @@ function isUnresolvedRestatement(value) {
   const hasReference = /https?:\/\/\S+/i.test(raw) || /(?:^|[\s;(])(?:[A-Za-z]:)?[^\s;:()]*[\\/]\S+\.[A-Za-z0-9]{1,10}(?:[?#]\S*)?/i.test(raw);
   const substantiveTerms = (clause) => normalizeSentinel(clause)
     .replace(/\b(?:proof|result|evidence|verification|validation|check|runtime|decision|approval|pending|unknown|owed)\b/g, " ")
-    .replace(/\b(?:for|the|a|an|of|to|in|on|and|or|is|are|was|were|be|been|being|still|current|currently|remain|remains|remaining|entire|entirely|just|simply|merely|yet|very|much|really|now|ongoing|unresolved|later)\b/g, " ")
+    .replace(/\b(?:for|the|a|an|of|to|in|on|and|or|is|are|was|were|be|been|being|still|current|currently|remain|remains|remaining|entire|entirely|just|simply|merely|yet|very|much|really|now|ongoing|unresolved|later|status|state|unchanged|same)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
     .filter(Boolean);
+  const causeCondition = /\b(?:unavailable|missing|absent|blocked|denied|failed|failure|outage|disabled|disconnected|unconfigured|requires|required|awaiting|without|lacks|no)\b|\bnot\s+(?:available|connected|configured|deployed|authorized|authenticated|accessible)\b/i;
+  const affectedScope = /\b(?:tenant|account|credential|environment|provider|permission|access|deployment|migration|edge|integration|connection|workspace|owner|ci|security|production|preview|local|test|claim|scope)\b/i;
   const connectorClause = /\b(?:because|due to|blocked by|awaiting|for|until|while)\b\s+(.+)$/i.exec(normalized)?.[1] ?? "";
-  const hasConnectorReason = substantiveTerms(connectorClause).length >= 2;
+  const hasConnectorReason = substantiveTerms(connectorClause).length >= 2 && (causeCondition.test(connectorClause) || affectedScope.test(connectorClause));
   const hasIndependentCause = raw.split(/[:;,.!?—–]+/).some((clause) => {
     const normalizedClause = normalizeSentinel(clause);
-    return normalizedClause && !pair.test(normalizedClause) && substantiveTerms(normalizedClause).length >= 2;
+    return normalizedClause && !pair.test(normalizedClause) && causeCondition.test(normalizedClause) && substantiveTerms(normalizedClause).length >= 2;
   });
   return !(hasReference || hasConnectorReason || hasIndependentCause);
 }
