@@ -18,7 +18,7 @@ MATERIAL_FLOW_CHANGE: NO: no navigation, capability, authority, Spine, or visual
 FLOW_PROTOTYPE: NOT_REQUIRED: the owner supplied the locked intended behavior and authorized this focused hotfix; no new product flow was designed
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: an owner can read older PAIGE content without ordinary updates moving the chosen text
 VISUAL_DIRECTION: PASS: preserve the existing PAIGE chat, workspace, rail, composer, and popup presentation
-AUTOMATED_EVIDENCE: PASS: failing-first normal-chat contracts reproduced unconditional update scrolling and index keys; anchor, real React reconciliation, thread-switch ordering, smooth-jump, normal-chat remount, Solo workspace, chat honesty, document proposal, client scope, Spine binding, overflow, and image-refine regressions pass; full suite 275 files / 3889 tests passes
+AUTOMATED_EVIDENCE: PASS: source-bound Chromium baseline reproduction captures the legacy update jump and responsive remount-to-top; anchor, real React reconciliation, thread-switch ordering, smooth-jump, real normal-chat regenerated-ID remount, Solo workspace, chat honesty, document proposal, client scope, Spine binding, overflow, and image-refine regressions pass; full suite 276 files / 3890 tests passes
 STATIC_EVIDENCE: PASS: hotfix-file ESLint has zero errors; TypeScript ratchet adds no errors to the 13-error baseline; production build passes with 5605 modules
 RENDERED_EVIDENCE: PASS: 72/72 local real-React checks use shipped SoloPaigeWorkspace and PaigeAIChat with stable synthetic history and controlled SSE at 1536x770, 1366x768, 1024x768, 900x1000, and 520x820
 BEHAVIORAL_EVIDENCE: PASS: same message and pixel offset survive ordinary React updates, controlled streaming, paige_step, approval receipt, reflow, thread A-B-A hydration, per-thread isolation, reload, minimize/return, pop-out/native-close return, and keyboard navigation; bottom-pinned streaming follows naturally
@@ -54,8 +54,8 @@ The shared controller records either an intentional bottom pin or the first visi
 
 ## Verification status
 
-- PASS — original faulty normal-chat source contracts failed before the fix and pass after it.
-- PASS — full repository test suite: 275 files, 3889 tests.
+- PASS — source-bound Chromium against baseline e70af9ddfe01aec2d482d07bedc05ca2c581d7cf reproduces the ordinary-update anchor loss and responsive remount reset to the first message; artifacts are explicitly synthetic and not authenticated product runtime.
+- PASS — full repository test suite: 276 files, 3890 tests.
 - PASS — TypeScript ratchet: no new errors; baseline remains 13.
 - PASS — hotfix-file ESLint: zero errors; two pre-existing `PaigeChat` hook warnings remain unchanged.
 - BASELINE FAIL — repository-wide ESLint retains 1842 unrelated errors and 244 warnings; this hotfix adds no scoped lint error.

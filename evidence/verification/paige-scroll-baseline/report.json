@@ -1,0 +1,32 @@
+{
+  "generatedAt": "2026-09-07T19:38:39.657Z",
+  "baselineSha": "e70af9ddfe01aec2d482d07bedc05ca2c581d7cf",
+  "evidenceClass": "Source-bound browser reproduction of exact legacy scroll assignment and browser remount default; synthetic transcript, not authenticated product runtime",
+  "results": {
+    "sourceChecks": {
+      "unconditionalMessageUpdateScroll": true,
+      "unstableIndexMessageKey": true,
+      "duplicateResponsiveChatMounts": true
+    },
+    "before": {
+      "anchor": "baseline-message-15",
+      "offset": -80,
+      "scrollTop": 1230,
+      "bottomGap": 1750
+    },
+    "afterOrdinaryUpdate": {
+      "anchor": "baseline-message-37",
+      "offset": -26,
+      "scrollTop": 2980,
+      "bottomGap": 0
+    },
+    "afterResponsiveRemount": {
+      "anchor": "baseline-message-1",
+      "offset": 2,
+      "scrollTop": 0,
+      "bottomGap": 2980
+    },
+    "ordinaryUpdateLostChosenAnchor": true,
+    "remountResetToTop": true
+  }
+}
