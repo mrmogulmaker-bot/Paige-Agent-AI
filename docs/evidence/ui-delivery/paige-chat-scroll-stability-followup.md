@@ -11,12 +11,12 @@ MATERIAL_FLOW_CHANGE: NO: corrects the already-approved scroll-ownership contrac
 FLOW_PROTOTYPE: NOT_REQUIRED: the owner explicitly locked the standard ChatGPT/Claude transcript behavior and authorized this narrow repair
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a Paige owner can place the transcript anywhere and keep that exact visible text and pixel offset
 VISUAL_DIRECTION: PASS: no visual redesign; the transcript remains the sole chat scroll owner
-AUTOMATED_EVIDENCE: PASS: 26 focused controller/React tests and 98 affected chat/mount tests cover one-pixel wheel, touch inertia, pointer/scrollbar, multi-event and Tab-focus keyboard scrolling, focus-leaving keyup, reverse-Tab entry, stream, resize, history, asynchronous thread transition, hidden geometry, client-to-server message-ID reconciliation, and duplicate-content reload after an ephemeral greeting disappears
-STATIC_EVIDENCE: PASS: ratcheted types, scoped lint, security, production build, affected suite, and full 278-file / 3936-test regression suite pass locally
+AUTOMATED_EVIDENCE: PASS: 27 focused controller/React tests and 99 affected chat/mount tests cover one-pixel wheel, touch inertia, pointer/scrollbar, multi-event and Tab-focus keyboard scrolling, focus-leaving keyup, reverse-Tab entry, pop-out document adoption, stream, resize, history, asynchronous thread transition, hidden geometry, client-to-server message-ID reconciliation, and duplicate-content reload after an ephemeral greeting disappears
+STATIC_EVIDENCE: PASS: ratcheted types, scoped lint, security, production build, affected suite, and full 278-file / 3937-test regression suite pass locally
 RENDERED_EVIDENCE: PASS: 107/107 real-React controlled browser checks at 1536x770, 1366x768, 1024x768, 900x1000, and 520x820 across two tenant contexts
 BEHAVIORAL_EVIDENCE: PASS: middle and one-pixel anchors survive streaming, tool/status, receipt, resize, thread A-B-A, reload with persisted turns, minimize, pop-out, and native-close return; exact-bottom streaming follows
 AUTHENTICATED_RUNTIME: UNVERIFIED: authenticated preview and production owner-account proof require the deployed exact merge revision
-KEYBOARD_FOCUS: PASS: Arrow/Page/Home/End intent is distinguished from non-scroll keys; window-scoped Tab captures reverse focus entry and focus-leaving keyup releases ownership; rendered PageDown/PageUp/Home/End and composer return remain operable
+KEYBOARD_FOCUS: PASS: Arrow/Page/Home/End intent is distinguished from non-scroll keys; window-scoped Tab captures reverse focus entry and focus-leaving keyup releases ownership; window listeners rebind when the mounted transcript is adopted into a pop-out document
 ZOOM_REFLOW: PASS: required Solo widths and compact 520x820 retain one scroll owner with no horizontal overflow
 REDUCED_MOTION: PASS: explicit Jump to latest remains automatic under reduced motion; manual one-pixel ownership is motion-independent
 STATE_COVERAGE: PASS: bottom-pinned, one-pixel-away, middle history, streaming, receipt/tool update, resize, hidden/minimized, pop-out return, reload, per-thread restore, and two-tenant persisted-position isolation
@@ -24,7 +24,7 @@ TRUTHFUL_STATE_LABELS: PASS: local browser artifacts remain visibly synthetic an
 SOLO_UI: YES: canonical Solo PAIGE transcript behavior is affected; mounting ownership is unchanged
 UNVERIFIED: authenticated production interaction, final hosted CI, and exact deployment identity
 
-INTERNAL_BUILD_IDENTITY: 7abed5f6d81e80a4f5985fab7b7f573e300a28e1; deployment=local-build; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=scripts/live-drive/artifacts/paige-scroll-stability-react/report.json
+INTERNAL_BUILD_IDENTITY: cd51b1d75aef516d5390f21a4303b7445407eaf2; deployment=local-build; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=scripts/live-drive/artifacts/paige-scroll-stability-react/report.json
 RELEASE_CHANNEL: development: production promotion explicitly authorized after exact-head CI and review pass
 RELEASE_CLASSIFICATION: patch: focused reliability correction to an existing owner-visible behavior
 CUSTOMER_RELEASE_IDENTITY: none: no named customer release or publication was requested
@@ -56,10 +56,10 @@ The owner reads Paige history at a personally selected location. Any deliberate 
 ## Evidence index
 
 - Failing-first: six original failures covered four input families, hidden/minimized geometry, and React one-pixel streaming/resize; independent review then identified touch-inertia and multi-event keyboard races, each locked with a focused regression.
-- Focused automated result: 98/98 affected controller, React, Solo workspace, normal chat, and AppShell mount checks, including delayed thread hydration, duplicate-content reload, live duplicate-index refresh, focus-leaving and reverse-entry Tab handling, and replacement of every client message ID during React rehydration; full repository result is 278/278 files and 3936/3936 tests.
+- Focused automated result: 99/99 affected controller, React, Solo workspace, normal chat, and AppShell mount checks, including delayed thread hydration, duplicate-content reload, live duplicate-index refresh, focus-leaving/reverse-entry Tab handling, pop-out document adoption, and replacement of every client message ID during React rehydration; full repository result is 278/278 files and 3937/3937 tests.
 - Rendered result: 107/107 checks in `scripts/live-drive/artifacts/paige-scroll-stability-react/report.json`, including distinct primary/second-tenant anchors and A-B-A tenant returns at every required viewport.
 - Screenshots: `scripts/live-drive/artifacts/paige-scroll-stability-react/*-open.png`, `*-closed.png`, `*-second-tenant.png`, and desktop pop-out.
 
 ## Review and limitations
 
-Independent PR review found and drove correction of touch-inertia, multi-event keyboard, Tab focus-navigation, focus-leaving keyup and reverse-Tab entry, outgoing-DOM thread-transition, duplicate semantic-match, and live duplicate-index metadata races; it also required two-tenant rendered isolation and transcript-backed full-suite proof. A fresh exact-head pass remains required. Authenticated production proof remains required. The local harness uses visibly synthetic records and a controlled stream, so it proves browser behavior and geometry, not tenant authentication or production data.
+Independent PR review found and drove correction of touch-inertia, multi-event keyboard, Tab focus-navigation, focus-leaving keyup, reverse-Tab entry and pop-out document adoption, outgoing-DOM thread-transition, duplicate semantic-match, and live duplicate-index metadata races; it also required two-tenant rendered isolation and transcript-backed full-suite proof. A fresh exact-head pass remains required. Authenticated production proof remains required. The local harness uses visibly synthetic records and a controlled stream, so it proves browser behavior and geometry, not tenant authentication or production data.
