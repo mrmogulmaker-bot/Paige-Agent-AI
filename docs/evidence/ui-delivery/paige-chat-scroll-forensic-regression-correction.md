@@ -25,7 +25,7 @@ SOLO_UI: YES: canonical Solo PAIGE transcript behavior is affected; mounting and
 UNVERIFIED: signed-in production interaction and exact deployment identity
 
 INTERNAL_BUILD_IDENTITY: 309467af1a3c38aae56d13ee22957dbba9d3eecc; deployment=PR-1057-pending; environment=preview; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=scripts/live-drive/artifacts/paige-scroll-stability-react/report.json
-RELEASE_CHANNEL: production: owner authorized merge and production deployment after exact-head CI and independent review; eligibility=all gates green; amount=100%; start=merge; stop=runtime regression; monitoring-owner=hotfix owner; recovery=revert merge
+RELEASE_CHANNEL: development: production promotion is owner-authorized only after exact-head CI and independent review pass; deployment identity remains pending
 RELEASE_CLASSIFICATION: patch: narrow owner-visible reliability correction to an existing shipped behavior
 CUSTOMER_RELEASE_IDENTITY: none: no named customer release or publication was requested
 RELEASE_NOTE_REQUIRED: NO: internal corrective hotfix closeout only
