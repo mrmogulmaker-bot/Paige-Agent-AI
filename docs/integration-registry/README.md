@@ -238,7 +238,7 @@ provider is connected/available/autonomous because it is listed (R1).
 | Google Calendar | CRM/calendar/communications | `PARTIAL` | confirm | FU-3 Rail contract; attribution truthfulness (#786) |
 | Resend | CRM/calendar/communications | `PARTIAL` | confirm | per-tenant sending identity; send receipt on Rail |
 | HubSpot | CRM/calendar/communications | `UNAVAILABLE` | prohibited | not wired; native CRM is default |
-| ElevenLabs (optional Paige voice I/O) | CRM/calendar/communications | `PROOF_OWED` | read | transport disabled pending account scopes, voice, retention/ZRM, quota, concurrency, and hard-cost proof |
+| ElevenLabs (optional Paige voice I/O) | CRM/calendar/communications | `PROOF_OWED` | read | transport disabled; owner-only metadata inspection in development cannot substitute for account scopes, voice, retention, quota, concurrency and cost proof |
 | Vapi (voice AI telephony) | CRM/calendar/communications | `UNAVAILABLE` | prohibited | not wired; provider-hosted agents cannot own Paige reasoning or actions |
 | Meta (FB + IG) | marketing/ads/social/analytics | `PARTIAL` | draft | per-tenant OAuth + `tenant_id` on posts table (owner decision owed) |
 | PostHog | marketing/ads/social/analytics | `PARTIAL` | read | operator-scoped analytics only |

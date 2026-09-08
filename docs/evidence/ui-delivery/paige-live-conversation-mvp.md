@@ -1,5 +1,18 @@
 # UI delivery evidence — Paige Live Conversation MVP
 
+## Full live-audio continuation — development, 2026-09-08
+
+Grounded main `610e609c491864e6c4384839e80c8e91b7e5fce4`. This continuation is not yet released.
+The first server dependency is owner-only configured-account inspection: fixed read-only GETs,
+server-owned candidate voice, sanitized metadata and existing audit attribution. Metadata does not
+prove speech scopes, applied retention, configured playback or live transport and cannot enable it.
+No provider request or real audio proof has occurred in this continuation. Browser bridge failure
+was isolated to sandbox startup before session access; an isolated Playwright browser reaches
+production, with manual sign-in requested for authenticated proof. No session credential export.
+Shared scroll acceptance is newly FAIL per the separately owned P0 notice; coordinate overlap and
+re-ground on the accepted correction before final Live integration. Historical release evidence
+below remains unchanged. Full MVP is incomplete; no new Rail/Mind/Memory mutation is claimed.
+
 ## PR #1068 production closeout — 2026-09-08
 
 Owner approved exact head `14a199927c6e70fc33a5690217afc1d512cd41d3`. PR #1068 merged as

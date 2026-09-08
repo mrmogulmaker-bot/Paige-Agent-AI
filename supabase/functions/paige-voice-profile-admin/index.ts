@@ -1,14 +1,18 @@
 // Platform-owner control seam for the server-owned Paige Voice Profile.
-// It consumes an independently created canonical verification record; it never inspects secrets,
-// calls a voice provider, or returns provider identity to a customer-facing client.
+// Activation consumes independent canonical proof. Read-only account inspection is a separate
+// owner-only action: metadata cannot activate audio or establish live transport/privacy proof.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
+import { envKey } from "../_shared/env-key.ts";
+import { inspectConfiguredVoiceProvider } from "../_shared/paige-voice-provider-inspection.ts";
 
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } });
 
-const requestSchema = z.object({
+const requestSchema = z.discriminatedUnion("action", [z.object({
+  action: z.literal("inspect-configured-account"),
+}).strict(), z.object({
   action: z.literal("activate-approved-profile"),
   profile_id: z.string().min(1).max(128),
   paige_facing_name: z.string().min(1).max(128),
@@ -18,7 +22,7 @@ const requestSchema = z.object({
   verification_id: z.string().uuid(),
   effective_at: z.string().datetime({ offset: true }),
   speech_policy: z.object({ source: z.enum(["paige-profile", "provider-dashboard"]) }).passthrough().optional(),
-});
+}).strict()]);
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -36,6 +40,34 @@ serve(async (req: Request) => {
   if (ownerError || isOwner !== true) return json({ code: "platform_owner_required" }, 403);
 
   const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  if (parsed.data.action === "inspect-configured-account") {
+    // The account key never leaves server memory. No caller-selected voice, host, or provider.
+    const { data: profile, error: profileError } = await admin.from("paige_voice_profiles")
+      .select("revision,provider,provider_voice_ref").eq("slot", "candidate").maybeSingle();
+    if (profileError || !profile || profile.provider !== "elevenlabs") {
+      return json({ code: "configured_candidate_unavailable", audio_enabled: false }, 409);
+    }
+    const observedAt = new Date().toISOString();
+    // Durable attribution must exist before key resolution or any provider contact.
+    const { data: audit, error: startAuditError } = await admin.from("paige_audit_log").insert({
+      actor_user_id: user.id, actor_role: "super_admin",
+      action: "platform.paige_voice_profile.inspect", target_type: "paige_voice_profiles",
+      payload: { profile_revision: profile.revision, observed_at: observedAt, phase: "inspection_started" },
+    }).select("id").single();
+    if (startAuditError || !audit?.id) return json({ code: "inspection_audit_unavailable", audio_enabled: false }, 503);
+    const inspection = await inspectConfiguredVoiceProvider({
+      apiKey: envKey("ELEVENLABS_API_KEY"), voiceRef: profile.provider_voice_ref,
+    });
+    // This observation is not proof accepted by activation. If settlement fails, the start row
+    // remains for reconciliation; do not claim the metadata was durably verified.
+    const { error: auditError } = await admin.from("paige_audit_log").update({
+      payload: { profile_revision: profile.revision, observed_at: observedAt,
+        completed_at: new Date().toISOString(), phase: "inspection_completed", inspection },
+    }).eq("id", audit.id);
+    if (auditError) return json({ code: "inspection_audit_unavailable", audio_enabled: false }, 503);
+    return json({ code: "metadata_only", profile_revision: profile.revision, observed_at: observedAt,
+      inspection, audio_enabled: false, live_audio_proof: "UNVERIFIED", retention_proof: "UNVERIFIED" });
+  }
   // One database call owns proof validation, readiness, and profile replacement. PostgreSQL rolls
   // the whole statement back if any step fails, so transport can never be enabled by a failed
   // activation response.

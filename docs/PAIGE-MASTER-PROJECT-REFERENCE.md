@@ -171,6 +171,14 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ### Paige Runtime Harness — owner-approved internal operating architecture (2026-09-08)
 
+**Live audio continuation (2026-09-08):** owner authorizes completing real Live Conversation using
+the existing account and server-only secrets, without new purchase/upgrade/legal agreement.
+Development begins with bounded owner-only account inspection, not activation from metadata.
+Provider audio remains UNAVAILABLE and authenticated voice PROOF OWED. Shared scroll P0 has been
+reopened by its owner; the previous acceptance is superseded pending that separate correction.
+The initial freeze was withdrawn; Live work coordinates concrete overlap and composes with the repair.
+Current scope and evidence remain in the existing Live delivery/evidence records, not a new ledger.
+
 **Active Live Presence iteration (2026-09-08):** the owner approved the organic asymmetric
 Live Conversation Presence and actual played-output reaction. This development candidate preserves
 the one-Harness/thread, accepted #1057 scroll contract and governed execution path. Safe production

@@ -287,6 +287,14 @@ not re-propose it.)* Module header `_shared/twilio.ts:24-35` states the model ex
 
 ## Voice / TTS / STT — Paige Voice Profile
 
+**2026-09-08 full-audio continuation (development):** owner authority now permits existing-account
+inspection and server-only use of the existing credential, not purchase/upgrade or legal acceptance.
+The existing `paige-voice-profile-admin` gains `inspect-configured-account`: platform-owner JWT
+required, candidate profile resolved server-side, fixed provider GETs, bounded/sanitized metadata
+and existing audit-log attribution. This is not an audio enablement or canonical verification record;
+STT/TTS scopes, retention, real playback and cost proof remain independently required. No key value
+is returned, persisted or logged. Canonical scope/evidence: existing Live Conversation packet.
+
 **2026-09-08 readiness audit / Presence recovery:** production safe metadata still has transport
 disabled, no independent provider-verification rows, false scope/voice/privacy/ZRM/quota flags and
 null cost values. This proves missing recorded authorization, not account incapability. Organic
