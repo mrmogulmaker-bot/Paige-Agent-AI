@@ -319,8 +319,8 @@ the new shared TTS path. Secret values were not inspected or tested in this deli
 
 | System | Voice resolution | Current state |
 |---|---|---|
-| Paige message playback | `paige-tts` → service-only profile resolver → provider-neutral router | Implemented; authenticated runtime proof owed |
-| Paige Live Conversation | immutable profile revision in `paige_live_sessions`; provider transport disabled | UI/control plane implemented; realtime audio `PROOF OWED` |
+| Paige message playback | `paige-tts` → service-only profile resolver → provider-neutral router | Deployed; authenticated runtime proof owed |
+| Paige Live Conversation | immutable profile revision in `paige_live_sessions`; provider transport disabled | UI/control plane deployed on `f8eb2362`; realtime audio `PROOF OWED`; authenticated owner E2E `UNVERIFIED` |
 | Studio voiceover | request-selected provider voice removed; model-router fails closed | `UNAVAILABLE` until this lane uses the same Paige Voice Profile/readiness resolver |
 | Hosted ElevenLabs agent | none | `UNAVAILABLE` and intentionally outside Paige ownership |
 

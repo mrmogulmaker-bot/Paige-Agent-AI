@@ -18,8 +18,9 @@ responsive remount, or index-based transcript identity. Draft PR #1044 remains a
 Skills/Intentful Interview workstream and must re-ground and rebase after this delivery; none of its
 client-scope, interview, or ledger changes are adopted here.
 
-**Product status:** Paige-owned UI and control plane implemented; provider-backed realtime audio
-remains `PROOF OWED`; authenticated owner production proof remains `UNVERIFIED` until deployment.
+**Product status:** Paige-owned UI and fail-closed control plane deployed on exact production build
+`f8eb2362beb03ec609dfe645b4d00f43c3eebf2d-mts66mnc`; provider-backed realtime audio
+remains `PROOF OWED`; authenticated owner end-to-end behavior remains `UNVERIFIED`.
 
 ## Locked product boundary
 
@@ -115,9 +116,9 @@ those facts and an approved transport-enablement change consumes it.
 
 | Collision | Resolution |
 |---|---|
-| Shipped PR #1054 owns Master Section 4.0 and retires `/premium`/`/legacy` | Preserve the sole chronological Shipped Delivery Log, canonical public-route redirects/removals, and the closeout-only exception. Live Conversation adds its verified row only after the product merge; it does not restore retired routes or create a parallel log. |
+| Shipped PRs #1054/#1055/#1058 own Master Section 4.0, public-route proof, and canonical production-closeout identity | Preserve the exact #1053/#1055 deployment rows, PR #1054 route evidence, and PR #1058 non-recursive closeout identity in the sole chronological Shipped Delivery Log. This closeout updates only the remaining routed Live Conversation records; it does not duplicate a Master row, restore retired routes, or create a parallel log. |
 | Skills/Intentful Interview PR #1044 touches Paige composer/workspace | Owner-paused and explicitly separate. This delivery adopts none of its interview, Skills, client-scope, or binding-ledger changes. After Live Conversation lands, #1044 must re-ground and rebase onto the resulting `main`. |
-| Shipped PRs #1050/#1051 own transcript position in `PaigeAIChat.tsx` | Current-main `createAnchoredTranscriptScroll`, stable message identity, context switching, exact-bottom ownership, hidden-geometry handling, and pop-out document rebinding are canonical and non-negotiable. Live Conversation is manually composed around them; no old auto-follow/remount/near-bottom behavior may return. |
+| Shipped PRs #1050/#1051/#1057 own transcript position in `PaigeAIChat.tsx` | Current-main `createAnchoredTranscriptScroll`, stable message identity, transient-hydration guard, provisional-to-server thread adoption, context switching, exact-bottom ownership, hidden-geometry handling, and pop-out document rebinding are canonical and non-negotiable. Live Conversation inherits them unchanged; no old auto-follow, bare-index fallback, remount reset, or near-bottom behavior may return. |
 | Shared `PaigeAIChat.tsx` composer and transcript | Live Conversation adds one adjacent composer trigger and portals the same transcript without replacing the canonical scroll element, controller, message anchors, text/attachment/dictation paths, permissions, history, or confirmations. Minimize/end returns focus to the exact trigger and leaves the transcript controller and underlying page mounted. |
 | Legacy literal/request voice selection | Closed in this branch: server profile is the sole Paige speech identity path; request overrides rejected; playbook voice field retired. |
 | Existing chat pop-out | Portal renders into the trigger's owner document. Embedded launch can create a user-initiated companion; minimize restores exact chat and unsaved state. |
@@ -131,3 +132,16 @@ Local automated, build, static, security-boundary, and rendered evidence is reco
 and state rendering only. It is not provider, tenant, canonical-record, receipt, Rail, deployment,
 or authenticated-account proof. Final merge/deployment identifiers and remaining proof state belong
 in the delivery closeout and release checks.
+## Production closeout — 2026-09-08
+
+- PR [#1053](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1053) merged exact reviewed head `93f1a207f9350b808d25bef92496d0233722f66c` as main commit `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d` after all required PR checks passed.
+- Exact-merge workflows passed: CI `34187129350`, migration deploy `34187129273`, Edge deploy `34187129301`, PAIGE Spine `34187129278`, Security Audit `34187129279`, and UI evidence `34187129313`.
+- Production migration proof is persisted, not inferred: remote `schema_migrations` contains `20260907155052`; `db-live` points to the merge commit.
+- Edge deployment proof is exact: `paige-live-session`, `paige-tts`, and `paige-voice-profile-admin` deployed successfully; `edge-live` points to the merge commit.
+- GitHub production deployment `6320643624` completed successfully, and canonical PR #1055 proof resolves the corresponding READY Vercel deployment as `dpl_79gKFA29LsSstU6tJFEMxNeYWXdw` at `https://paige-agent-nca3x7s4i-paige-agent-ai.vercel.app`. Both `paigeagent.ai/version.json` and `app.paigeagent.ai/version.json` returned HTTP 200 with build `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d-mts66mnc` and `customerUpdate: null`.
+- Exact production bundle `PaigeAIChat-CsaAbIbB.js` returned HTTP 200 and contains the `Talk live with Paige` entry, fail-closed `PROOF OWED`/`UNAVAILABLE` states, session controls, and all six card-kind contracts including `evidence-result`.
+- Authenticated owner E2E remains `UNVERIFIED`: the Windows browser helper failed before reading any browser/session state, so no signed-in launch, minimize/restore, workspace switch, or governed-card production interaction is claimed. No microphone permission or provider call was attempted.
+- Provider-backed realtime audio remains `PROOF OWED`. The missing gate is independent, secret-safe proof of existing-account key scopes, exact voice authorization, realtime STT/concurrency, applied ZRM or separately approved retention posture, quota, Paige monthly hard cost limit, and maximum unit price, followed by separately approved transport enablement.
+- Rail/Mind/Memory boundary is unchanged: consequential work uses the existing governed Spine, verified canonical readback, detailed receipt, and Rail evidence. Live cards are presentation objects. Raw audio, raw transcripts, card text, and casual conversation are not automatic Brain, Mind, or Memory facts.
+- PR #1044 remains separate and paused; it must re-ground and rebase onto this resulting `main` before resuming. No Skills/Intentful Interview, Secure Browser, or social-provider work was absorbed.
+- Customer release identity remains none. This is an internal production delivery with no approved customer version, name, release record, or announcement.

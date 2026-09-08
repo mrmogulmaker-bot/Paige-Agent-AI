@@ -543,7 +543,7 @@
         "next_owner": "Authorized platform operator",
         "next_slice": "Complete the independent account/privacy/cost proof without exposing secrets, then approve a bounded transport enablement change."
       },
-      "sources": ["https://elevenlabs.io/docs/overview/administration/workspaces/api-keys", "https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime", "https://elevenlabs.io/docs/eleven-api/resources/zero-retention-mode", "https://elevenlabs.io/pricing/api", "docs/doctrine/paige-modality-neutrality.md", "supabase/migrations/20260907155052_paige_live_conversation_control_plane.sql", "supabase/functions/paige-live-session/index.ts", "supabase/functions/paige-tts/index.ts", "scripts/sql/paige-voice-cost-proof.sql"]
+      "sources": ["https://elevenlabs.io/docs/overview/administration/workspaces/api-keys", "https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime", "https://elevenlabs.io/docs/eleven-api/resources/zero-retention-mode", "https://elevenlabs.io/pricing/api", "docs/doctrine/paige-modality-neutrality.md", "supabase/migrations/20260907155052_paige_live_conversation_control_plane.sql", "supabase/functions/paige-live-session/index.ts", "supabase/functions/paige-tts/index.ts", "scripts/sql/paige-voice-cost-proof.sql", "docs/delivery/paige-live-conversation-mvp.md"]
     },
     {
       "id": "vapi",
