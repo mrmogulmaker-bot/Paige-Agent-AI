@@ -23,9 +23,15 @@
   Identity-gated anchors, hidden/zero-geometry rejection, and explicit provisional-to-server thread
   adoption replace the transient hydration/index fallback races while retaining exact-bottom and
   Jump-to-latest behavior. Exact-head CI, 81/81 affected tests, 3,978/3,978 full tests, 107/107
-  rendered checks, and independent review passed. Signed-in owner production behavior remains
-  `UNVERIFIED` because the Windows computer-use bridge and scoped live-drive state were unavailable;
-  there is no verified last-known-good build, so this must not be called accepted or fixed yet.
+  rendered checks, and independent review passed. The initial closeout left signed-in production
+  behavior `UNVERIFIED` because the Windows computer-use bridge and scoped live-drive state were
+  unavailable. On 2026-09-08 the owner personally confirmed authenticated production acceptance:
+  after the intended Supabase project was resumed, login and authenticated data access were
+  restored, and deployed #1057 preserved the deliberate reading position when new activity appeared
+  and after minimize/pop-out return. The Supabase restoration is an environmental prerequisite, not
+  part of the #1057 code change. #1057 is the first owner-accepted known-good build for this contract;
+  the shared chat-scroll workstream is closed and must not change again without a new reproducible
+  defect.
 
 - **Paige Runtime Harness and Reusable Intelligence Platform (2026-09-08, owner-approved architecture).**
   The **Second Brain** is Paige's governed, scoped knowledge layer; the **Runtime Harness** is her
