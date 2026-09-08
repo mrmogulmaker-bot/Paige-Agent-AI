@@ -468,7 +468,7 @@ Current concrete overlaps checked 2026-09-08: #1068 (Master/config/decision/Inte
 
 | Capability | Status | Grounded current truth / next gate |
 |---|---|---|
-| Dedicated Paige workspace/chat and session/context behavior | `PARTIAL` | The tenant-aware workspace, persistent threads, account-switch fences, and transcript ownership exist. Context assembly remains distributed. The #1057 shared chat scroll correction is owner-accepted in authenticated production and that workstream is closed; no further shared-seam change is authorized without a new reproducible defect. |
+| Dedicated Paige workspace/chat and session/context behavior | `PARTIAL` | The tenant-aware workspace, persistent threads, account-switch fences, and transcript ownership exist. Context assembly remains distributed. **Chat-scroll P0 reopened:** the owner reproduced delayed position theft after #1057/#1066 acceptance. Indefinite manual ownership remains FAIL pending corrective release and fresh authenticated owner acceptance. Other workstreams continue undisturbed. |
 | Spine authority and registered-tool path | `PARTIAL` | The Spine registry, action-risk policy, approval/autonomy substrate, governed execution seam, and MCP tool door exist. Not every chat, skill, job, browser, voice, or external-tool path is proven to use one complete contract. |
 | Canonical-record readback and truthful success | `PARTIAL` | Mission and Campaign Brief flows establish the write → scoped readback → Rail pattern. Universal enforcement and authenticated proof across all mutations remain owed. |
 | Rail and detailed receipts | `PARTIAL` | Rail and capability-run evidence cover bounded paths. A universal, correlated, redacted detailed-receipt contract across all Harness work is not live. |
@@ -583,6 +583,13 @@ Reference or any domain ledger; it governs how their facts become release and cu
 ## 4. What's SHIPPED (stop asking about these)
 
 ### 4.0 Shipped Delivery Log
+
+**2026-09-08 chat-scroll acceptance correction:** the #1057 entry below remains a historical
+shipping/owner-acceptance record, not current behavioral acceptance. The owner has since reproduced
+delayed reading-position theft after #1066. The shared scroll workstream is REOPENED P0 / FAIL,
+with no verified last-known-good build for indefinite manual ownership. The existing
+[forensic closeout](evidence/ui-delivery/paige-chat-scroll-forensic-regression-correction.md) owns
+the corrective evidence. Other agents continue undisturbed. No corrective release is claimed yet.
 
 This is the **sole chronological log of deliveries to `main`**. It records every merged PR, including documentation/governance-only merges, because repository truth also ships. A row proves that the named commit reached `main`; it does not by itself prove migration apply, Edge/Fly/Vercel deployment, authenticated behavior, owner acceptance, or customer communication. Those are stated separately and linked to their canonical evidence.
 

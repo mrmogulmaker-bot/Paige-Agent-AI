@@ -2,7 +2,25 @@
 
 Date: 2026-09-08
 Owner scope: actual production transcript jump after the shipped exact-bottom hotfix
-Status: SHIPPED — OWNER-ACCEPTED
+Status: REOPENED P0 — delayed reading-position theft reported after #1057/#1066
+
+## Reopened affected-flow assessment — 2026-09-08
+
+The owner reproduced delayed transcript movement after the prior acceptance. That acceptance is historical and insufficient for the indefinite manual-ownership contract; current production behavior is FAIL. Grounded production build: `610e609c491864e6c4384839e80c8e91b7e5fce4-mtt0zfhp`; its shared controller is unchanged from #1057.
+
+The affected flow is owner scroll (wheel, touch, scrollbar or keyboard) → indefinite semantic-message/pixel reading position through streaming, completion, receipt/status, hydration, thread adoption, resize, minimize/pop-out and return → explicit Jump to latest or deliberate exact-bottom return. Existing tenant/workspace fences and stable identity protections remain required. No new UI or controller is authorized.
+
+Concrete failing-first result: four input-family tests against unchanged production code all fail, restoring scrollTop 899 to 900 when a layout callback precedes the queued scroll event. The actual baseline controller executed in Chromium reproduces all four failures; the corrected source preserves 899 in all four. Existing tests delivered the scroll handler synchronously and the rendered harness replaced native scrollTo, masking this ordering and native smooth cancellation. The controller's two-frame input-recognition expiry entered first-parent production in `53104500` (#1051); #1057 retained it. No build is verified last-known-good for indefinite manual ownership: the earlier owner acceptance remains historical, now contradicted by the delayed reproduction.
+
+The narrow correction cancels queued restoration on owner input, rejects stale callback epochs, captures compositor movement before layout can overwrite it, removes the two-frame intent expiry, uses native gesture completion, preserves semantic geometry through layout compensation, aborts interrupted smooth jumps, and rejects programmatic focus as owner intent. Exact bottom has no near-bottom tolerance. Detached/hidden/zero-width geometry cannot replace anchors or receive Jump writes. All existing tenant identity and #1057 hydration protections remain. Composer focus restoration uses preventScroll; no mount changes.
+
+Fresh local proof: 63 controller/React/Solo tests pass before the final intra-transcript focus variant; full final-head verification remains pending. The dev/test diagnostic schema contains only fixed source/action/phase categories, numeric geometry/epoch and pinned state. The browser harness now retains native scrolling, uses real one-pixel wheel input, crosses the actual 1800ms completion refresh, and covers no-preference as well as reduced motion. Authenticated browser execution is currently UNVERIFIED: the supplied browser tool exits with a Windows sandbox deny-read ACL initialization error. No production acceptance is inferred from controlled fixtures.
+
+Collision handling follows the owner's latest ruling: other agents continue; this task does not freeze or stop other workstreams. Integrate concrete overlaps from current main. Diagnostic records must contain only event categories, numeric geometry, state/epoch and allowed/rejected writes, never message content, IDs, tenant data or credentials. Acceptance remains FAIL until a correction is deployed and the owner confirms the formerly failing delayed behavior.
+
+## Historical #1057 / #1066 acceptance record — superseded for the reopened defect
+
+The following original closeout is retained as chronology, not current acceptance. Current status and remaining proof are stated above. Historical references to pausing other tasks no longer apply: the owner has explicitly directed that all other agents continue undisturbed.
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
 FLOW_BY_FLOW: PASS: first-parent forensics traced two post-#1050 identity races: transient hydration cleared the pending-context guard and accepted a bare list-index fallback, while provisional new-chat identity was replaced by a server thread ID without adopting the visible anchor

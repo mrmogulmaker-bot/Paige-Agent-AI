@@ -7,6 +7,16 @@ import { describe, expect, it, vi } from "vitest";
 import { createPaigeRequestFence, PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 import { SoloPaigeWorkspace } from "./SoloPaigeWorkspace";
 
+function visibleTranscriptGeometry(transcript: HTMLDivElement) {
+  transcript.getBoundingClientRect = () => ({ top: 0, bottom: 300, left: 0, right: 600, width: 600, height: 300, x: 0, y: 0, toJSON: () => ({}) });
+  transcript.querySelectorAll<HTMLElement>("[data-paige-message-id]").forEach((item, index) => {
+    item.getBoundingClientRect = () => {
+      const top = index * 1200 - transcript.scrollTop;
+      return { top, bottom: top + 1200, left: 0, right: 600, width: 600, height: 1200, x: 0, y: top, toJSON: () => ({}) };
+    };
+  });
+}
+
 const chatHarness = vi.hoisted(() => ({
   tenantId: "account-a" as string | null,
   loadTurns: vi.fn(),
@@ -497,6 +507,7 @@ describe("Solo PAIGE workspace contract", () => {
       clientHeight: { configurable: true, value: 300 },
       scrollHeight: { configurable: true, value: 1_200 },
     });
+    visibleTranscriptGeometry(transcript);
     transcript.dispatchEvent(new WheelEvent("wheel"));
     transcript.scrollTop = 240;
     await act(async () => transcript.dispatchEvent(new Event("scroll", { bubbles: true })));
@@ -505,7 +516,7 @@ describe("Solo PAIGE workspace contract", () => {
     expect(jump).toBeTruthy();
     expect(jump.getAttribute("aria-controls")).toBe("solo-paige-transcript");
 
-    const scrollTo = vi.fn(({ top }: ScrollToOptions) => { transcript.scrollTop = Number(top); });
+    const scrollTo = vi.fn(({ top }: ScrollToOptions) => { transcript.scrollTop = Math.min(Number(top), transcript.scrollHeight - transcript.clientHeight); });
     Object.defineProperty(transcript, "scrollTo", { configurable: true, value: scrollTo });
     await act(async () => {
       jump.click();
@@ -553,6 +564,7 @@ describe("Solo PAIGE workspace contract", () => {
       clientHeight: { configurable: true, value: 300 },
       scrollHeight: { configurable: true, value: 1_200 },
     });
+    visibleTranscriptGeometry(transcript);
     transcript.dispatchEvent(new WheelEvent("wheel"));
     transcript.scrollTop = 180;
     await act(async () => transcript.dispatchEvent(new Event("scroll", { bubbles: true })));
@@ -610,6 +622,7 @@ describe("Solo PAIGE workspace contract", () => {
       clientHeight: { configurable: true, value: 300 },
       scrollHeight: { configurable: true, value: 1_200 },
     });
+    visibleTranscriptGeometry(accountATranscript);
     accountATranscript.dispatchEvent(new WheelEvent("wheel"));
     accountATranscript.scrollTop = 120;
     await act(async () => accountATranscript.dispatchEvent(new Event("scroll", { bubbles: true })));

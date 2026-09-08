@@ -12,10 +12,25 @@ type TranscriptPosition =
 type AnchoredTranscriptScrollOptions = {
   storagePrefix: string;
   onPinnedChange?: (pinned: boolean) => void;
+  onDiagnostic?: (event: ScrollDiagnostic) => void;
+};
+
+type ScrollSource = "owner-wheel" | "owner-touch" | "owner-pointer" | "owner-keyboard"
+  | "jump-to-latest" | "stream-token" | "assistant-completion" | "status-tool-receipt"
+  | "resize-observer" | "message-render" | "layout-effect" | "hydration"
+  | "history-prepend" | "thread-adoption" | "focus" | "popout-restore" | "scroll-event";
+type ScrollDiagnostic = {
+  source: ScrollSource;
+  action: "intent" | "write" | "rejected" | "capture" | "hidden";
+  epoch: number;
+  pinned: boolean;
+  top: number;
+  target: number;
+  phase: "synchronous" | "animation-frame";
 };
 
 const MESSAGE_SELECTOR = "[data-paige-message-id]";
-const EXACT_BOTTOM_EPSILON_PX = 0.5;
+const EXACT_BOTTOM_EPSILON_PX = 0;
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " ", "Tab"]);
 
 // The database owns persisted turn IDs, while an in-flight turn starts with a
@@ -34,6 +49,7 @@ export function messageScrollAnchorKey(role: string, content: string) {
 export function createAnchoredTranscriptScroll({
   storagePrefix,
   onPinnedChange,
+  onDiagnostic,
 }: AnchoredTranscriptScrollOptions) {
   let context = "default";
   let element: HTMLDivElement | null = null;
@@ -42,15 +58,29 @@ export function createAnchoredTranscriptScroll({
   let resizeObserver: ResizeObserver | null = null;
   let animationFrame: number | null = null;
   let releaseFrame: number | null = null;
-  let userIntentFrame: number | null = null;
-  let userIntentStableFrames = 0;
-  let userIntentLastScrollTop = 0;
+  let intentEpoch = 0;
+  let lastScrollTop = 0;
+  let keyboardKey: string | null = null;
+  let gestureNode: HTMLElement | null = null;
+  let gestureNodeTop = 0;
+  let gestureViewportHeight = 0;
   let restoring = false;
   let intentionalBottom = false;
   let pendingUserMovement = false;
   let continuousUserMovement = false;
   let pendingContextDomSignature: string | null = null;
   let boundView: Window | null = null;
+  let diagnosticPhase: ScrollDiagnostic["phase"] = "synchronous";
+
+  // Development/test only; fixed-schema numeric diagnostics never include
+  // transcript text, message/thread IDs, storage keys, or tenant information.
+  const trace = (source: ScrollSource, action: ScrollDiagnostic["action"], target = element?.scrollTop ?? 0) => {
+    if (!import.meta.env.DEV) return;
+    const event: ScrollDiagnostic = { source, action, epoch: intentEpoch,
+      pinned: position.kind === "bottom", top: element?.scrollTop ?? 0, target, phase: diagnosticPhase };
+    onDiagnostic?.(event);
+    element?.dispatchEvent(new CustomEvent("paige:scroll-diagnostic", { detail: event, bubbles: true }));
+  };
 
   const messageDomSignature = () => element
     ? Array.from(element.querySelectorAll<HTMLElement>(MESSAGE_SELECTOR))
@@ -90,7 +120,7 @@ export function createAnchoredTranscriptScroll({
   const pinned = () => position.kind === "bottom";
   const announcePinned = () => onPinnedChange?.(pinned());
   const hasVisibleGeometry = () => {
-    if (!element || element.closest("[hidden]")) return false;
+    if (!element || !element.isConnected || element.closest("[hidden]")) return false;
     const view = element.ownerDocument.defaultView;
     for (let owner: HTMLElement | null = element; owner; owner = owner.parentElement) {
       const style = view?.getComputedStyle(owner);
@@ -99,18 +129,28 @@ export function createAnchoredTranscriptScroll({
         || style?.visibility === "collapse"
         || style?.contentVisibility === "hidden") return false;
     }
-    return element.clientHeight > 0 && element.scrollHeight > 0;
+    return element.clientHeight > 0 && element.scrollHeight > 0 && element.getBoundingClientRect().width > 0;
   };
 
-  const restore = () => {
-    if (!element || !hasVisibleGeometry()) return;
+  const restore = (source: ScrollSource = "layout-effect") => {
+    if (!element || !hasVisibleGeometry()) { trace(source, "hidden"); return; }
     bindCurrentView();
+    // Native/compositor movement may precede its queued scroll notification.
+    // Capture it before any layout callback can restore an obsolete anchor.
+    if ((pendingUserMovement || continuousUserMovement) && element.scrollTop !== lastScrollTop
+      && gestureGeometryIsCurrent()) {
+      restoring = false;
+      handleScroll();
+    }
     if (position.kind === "bottom") {
       const target = Math.max(0, element.scrollHeight - element.clientHeight);
       if (Math.abs(element.scrollTop - target) > EXACT_BOTTOM_EPSILON_PX) {
         markRestoring();
+        trace(source, "write", target);
         element.scrollTop = target;
+        lastScrollTop = element.scrollTop;
       }
+      snapshotGestureGeometry();
       announcePinned();
       return;
     }
@@ -167,18 +207,24 @@ export function createAnchoredTranscriptScroll({
       - anchorPosition.offsetPx;
     if (Math.abs(delta) > 0.75) {
       markRestoring();
+      trace(source, "write", element.scrollTop + delta);
       element.scrollTop += delta;
+      lastScrollTop = element.scrollTop;
     }
+    snapshotGestureGeometry();
     announcePinned();
   };
 
-  const scheduleRestore = () => {
+  const scheduleRestore = (source: ScrollSource) => {
     if (!element || animationFrame !== null) return;
     const view = element.ownerDocument.defaultView;
     const request = view?.requestAnimationFrame?.bind(view) ?? requestAnimationFrame;
+    const scheduledEpoch = intentEpoch;
     animationFrame = request(() => {
       animationFrame = null;
-      restore();
+      if (scheduledEpoch !== intentEpoch) { trace(source, "rejected"); return; }
+      diagnosticPhase = "animation-frame";
+      try { restore(source); } finally { diagnosticPhase = "synchronous"; }
     });
   };
 
@@ -210,16 +256,21 @@ export function createAnchoredTranscriptScroll({
       cancel(releaseFrame);
       releaseFrame = null;
     }
-    if (userIntentFrame !== null && element) {
-      const cancel = element.ownerDocument.defaultView?.cancelAnimationFrame?.bind(element.ownerDocument.defaultView)
-        ?? cancelAnimationFrame;
-      cancel(userIntentFrame);
-      userIntentFrame = null;
-    }
     restoring = false;
   };
 
   const cancelProgrammaticMovement = () => {
+    intentEpoch += 1;
+    if (animationFrame !== null && element) {
+      const view = element.ownerDocument.defaultView;
+      (view?.cancelAnimationFrame?.bind(view) ?? cancelAnimationFrame)(animationFrame);
+      animationFrame = null;
+    }
+    // Abort a browser-owned smooth animation at its current position.
+    if (intentionalBottom && element && hasVisibleGeometry()) {
+      trace("scroll-event", "write", element.scrollTop);
+      element.scrollTo?.({ top: element.scrollTop, behavior: "instant" as ScrollBehavior });
+    }
     intentionalBottom = false;
     if (releaseFrame !== null && element) {
       const cancel = element.ownerDocument.defaultView?.cancelAnimationFrame?.bind(element.ownerDocument.defaultView)
@@ -231,59 +282,45 @@ export function createAnchoredTranscriptScroll({
   };
 
   const endUserMovement = () => {
+    if (element && hasVisibleGeometry() && element.scrollTop !== lastScrollTop) handleScroll();
     continuousUserMovement = false;
     pendingUserMovement = false;
-    userIntentStableFrames = 0;
-    if (userIntentFrame !== null && element) {
-      const cancel = element.ownerDocument.defaultView?.cancelAnimationFrame?.bind(element.ownerDocument.defaultView)
-        ?? cancelAnimationFrame;
-      cancel(userIntentFrame);
-      userIntentFrame = null;
-    }
-  };
-
-  const releaseUserMovementAfterLayoutSettles = () => {
-    if (!element || continuousUserMovement) return;
-    const view = element.ownerDocument.defaultView;
-    const request = view?.requestAnimationFrame?.bind(view) ?? requestAnimationFrame;
-    const cancel = view?.cancelAnimationFrame?.bind(view) ?? cancelAnimationFrame;
-    if (userIntentFrame !== null) cancel(userIntentFrame);
-    userIntentLastScrollTop = element.scrollTop;
-    userIntentStableFrames = 0;
-    const check = () => {
-      userIntentFrame = null;
-      if (!element || continuousUserMovement) return;
-      if (Math.abs(element.scrollTop - userIntentLastScrollTop) <= EXACT_BOTTOM_EPSILON_PX) {
-        userIntentStableFrames += 1;
-      } else {
-        userIntentLastScrollTop = element.scrollTop;
-        userIntentStableFrames = 0;
-      }
-      if (userIntentStableFrames >= 2) {
-        endUserMovement();
-        return;
-      }
-      userIntentFrame = request(check);
-    };
-    userIntentFrame = request(check);
+    keyboardKey = null;
   };
 
   const beginOneShotUserMovement = (event?: Event) => {
     if (event instanceof KeyboardEvent && !SCROLL_KEYS.has(event.key)) return;
     cancelProgrammaticMovement();
     pendingUserMovement = true;
-    releaseUserMovementAfterLayoutSettles();
+    snapshotGestureGeometry();
+    trace("owner-wheel", "intent");
   };
 
-  const beginContinuousUserMovement = () => {
+  const beginContinuousUserMovement = (event?: Event) => {
     cancelProgrammaticMovement();
     pendingUserMovement = true;
     continuousUserMovement = true;
+    snapshotGestureGeometry();
+    if (event?.type === "touchstart") trace("owner-touch", "intent");
   };
+
+  const snapshotGestureGeometry = () => {
+    if (!element || !hasVisibleGeometry()) return;
+    gestureNode = Array.from(element.querySelectorAll<HTMLElement>(MESSAGE_SELECTOR))
+      .find((item) => item.getBoundingClientRect().bottom > element!.getBoundingClientRect().top) ?? null;
+    gestureNodeTop = gestureNode ? gestureNode.getBoundingClientRect().top + element.scrollTop : 0;
+    gestureViewportHeight = element.clientHeight;
+  };
+
+  const gestureGeometryIsCurrent = () => !!element && !!gestureNode && element.contains(gestureNode)
+    && element.clientHeight === gestureViewportHeight
+    && Math.abs(gestureNode.getBoundingClientRect().top + element.scrollTop - gestureNodeTop) <= 0.5;
 
   const beginKeyboardUserMovement = (event: KeyboardEvent) => {
     if (!SCROLL_KEYS.has(event.key)) return;
+    keyboardKey = event.key;
     beginContinuousUserMovement();
+    trace("owner-keyboard", "intent");
   };
 
   const beginWindowTabMovement = (event: KeyboardEvent) => {
@@ -291,6 +328,7 @@ export function createAnchoredTranscriptScroll({
     // its initiating keydown is outside the transcript even though the browser
     // then scrolls this transcript to reveal the focused descendant.
     if (event.key !== "Tab") return;
+    keyboardKey = "Tab";
     beginContinuousUserMovement();
   };
 
@@ -298,8 +336,13 @@ export function createAnchoredTranscriptScroll({
     if (!element) return;
     const NodeConstructor = element.ownerDocument.defaultView?.Node;
     if (!NodeConstructor || !(event.target instanceof NodeConstructor) || !element.contains(event.target)) return;
-    if (event.relatedTarget instanceof NodeConstructor && element.contains(event.relatedTarget)) return;
-    beginContinuousUserMovement();
+    // Programmatic focus is not owner intent. Real Tab keydown already armed
+    // the gesture before the browser reveals a focused message control.
+    if (keyboardKey === "Tab") return;
+    pendingUserMovement = false;
+    continuousUserMovement = false;
+    trace("focus", "rejected");
+    scheduleRestore("focus");
   };
 
   const beginPointerUserMovement = (event: Event) => {
@@ -307,11 +350,14 @@ export function createAnchoredTranscriptScroll({
     // content is not a scroll instruction and must not arm a later update.
     if (event.target !== element) return;
     beginContinuousUserMovement();
+    trace("owner-pointer", "intent");
   };
 
   const finishContinuousUserInput = () => {
     continuousUserMovement = false;
-    releaseUserMovementAfterLayoutSettles();
+    // Tab focus completes synchronously; a later layout scroll is not that Tab.
+    // Wheel/touch/key scrolling finishes on native scrollend, never a timer.
+    if (keyboardKey === "Tab") endUserMovement();
   };
 
   const bindCurrentView = () => {
@@ -339,12 +385,13 @@ export function createAnchoredTranscriptScroll({
     }
     const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
     const atExactBottom = distanceFromBottom <= EXACT_BOTTOM_EPSILON_PX;
-    if (restoring) return pinned();
+    if (restoring && (element.scrollTop === lastScrollTop || (!pendingUserMovement && !continuousUserMovement))) return pinned();
     if (intentionalBottom) {
       position = { kind: "bottom" };
       if (atExactBottom) intentionalBottom = false;
       persist();
       announcePinned();
+      lastScrollTop = element.scrollTop;
       return true;
     }
     const userMoved = pendingUserMovement || continuousUserMovement;
@@ -353,6 +400,9 @@ export function createAnchoredTranscriptScroll({
       // not own the reading position and must not replace the saved intent.
       return pinned();
     }
+    // A replaced transcript or resized/clamped viewport is not native input.
+    // Keep the saved semantic anchor until it can be restored against real DOM.
+    if (!gestureGeometryIsCurrent()) return pinned();
     pendingContextDomSignature = null;
     if (atExactBottom) {
       position = { kind: "bottom" };
@@ -374,6 +424,9 @@ export function createAnchoredTranscriptScroll({
       }
     }
     persist();
+    lastScrollTop = element.scrollTop;
+    snapshotGestureGeometry();
+    trace("scroll-event", "capture");
     announcePinned();
     return pinned();
   };
@@ -420,7 +473,7 @@ export function createAnchoredTranscriptScroll({
       } else {
         pendingContextDomSignature = null;
       }
-      restore();
+      restore("hydration");
     },
     adoptContext(nextContext: string) {
       if (nextContext === context) return;
@@ -430,6 +483,7 @@ export function createAnchoredTranscriptScroll({
       context = nextContext;
       pendingContextDomSignature = null;
       persist();
+      trace("thread-adoption", "capture");
       announcePinned();
     },
     attach(nextElement: HTMLDivElement | null) {
@@ -453,34 +507,38 @@ export function createAnchoredTranscriptScroll({
       const Mutation = view?.MutationObserver ?? globalThis.MutationObserver;
       const Resize = view?.ResizeObserver ?? globalThis.ResizeObserver;
       if (typeof Mutation !== "undefined") {
-        mutationObserver = new Mutation(() => { observeSizes(); scheduleRestore(); });
+        mutationObserver = new Mutation(() => { observeSizes(); scheduleRestore("message-render"); });
         mutationObserver.observe(element, { childList: true, subtree: true, characterData: true });
       }
       if (typeof Resize !== "undefined") {
-        resizeObserver = new Resize(() => scheduleRestore());
+        resizeObserver = new Resize(() => scheduleRestore("resize-observer"));
         observeSizes();
       }
-      restore();
+      restore("popout-restore");
     },
     detach,
     destroy: detach,
     handleScroll,
-    notifyLayoutChange() {
+    notifyLayoutChange(source: ScrollSource = "layout-effect") {
       bindCurrentView();
-      restore();
+      restore(source);
     },
     isAtBottom: pinned,
     jumpToBottom(behavior: ScrollBehavior = "auto") {
-      if (!element) return;
+      if (!element || !hasVisibleGeometry()) return;
+      cancelProgrammaticMovement();
+      endUserMovement();
       intentionalBottom = behavior === "smooth";
       pendingContextDomSignature = null;
       position = { kind: "bottom" };
       persist();
+      trace("jump-to-latest", "write", element.scrollHeight);
       if (typeof element.scrollTo === "function") {
         element.scrollTo({ top: element.scrollHeight, behavior });
       } else {
         element.scrollTop = element.scrollHeight;
       }
+      lastScrollTop = element.scrollTop;
       announcePinned();
     },
   };

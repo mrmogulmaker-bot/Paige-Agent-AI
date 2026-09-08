@@ -61,7 +61,16 @@
   C-suite roster and changes documentation only—no product code, active workstream ownership,
   provider wiring, tenant data, deployment, production behavior, or customer release.
 
-- **Paige transcript-anchor identity-race correction shipped (2026-09-08, PR #1057).**
+- **Paige chat-scroll P0 reopened after delayed owner-position theft (2026-09-08).**
+  The owner reproduced delayed movement after #1057/#1066 acceptance. Prior acceptance is
+  insufficient for indefinite manual ownership; current behavioral status is FAIL. Any deliberate
+  movement off exact bottom owns the semantic message/pixel anchor without expiration. Only
+  explicit Jump to latest or manual exact-bottom return resumes following. The correction is scoped
+  to the existing controller and non-scrolling focus restoration. Other agents continue undisturbed;
+  this workstream imposes no freeze. See the existing forensic closeout for source-bound failing-first
+  evidence and pending final-head, deployment, and authenticated owner acceptance gates.
+
+- **Paige transcript-anchor identity-race correction shipped (2026-09-08, PR #1057; historical acceptance superseded by the reopened P0 above).**
   PR #1057 merged as `af752d7a67c71f71e28a31ab87a962584b42105a`; READY Vercel deployment
   `dpl_FrWHHEkMqvtfnNcixPqkpZBufPX6` serves exact build
   `af752d7a67c71f71e28a31ab87a962584b42105a-mts7czby` on both public domains.

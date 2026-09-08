@@ -52,7 +52,6 @@ const measure = (page) => transcript(page).evaluate((owner) => {
   const anchor = items.find((item) => item.getBoundingClientRect().bottom > viewport.top);
   return {
     id: anchor?.getAttribute("data-paige-message-id") ?? null,
-    text: anchor?.textContent?.trim().slice(0, 90) ?? null,
     offset: anchor ? Math.round((anchor.getBoundingClientRect().top - viewport.top) * 100) / 100 : null,
     scrollTop: Math.round(owner.scrollTop * 100) / 100,
     bottomGap: Math.round((owner.scrollHeight - owner.scrollTop - owner.clientHeight) * 100) / 100,
@@ -99,10 +98,11 @@ async function scrollReaderToMiddle(page) {
 }
 
 async function scrollReaderOnePixelUp(page) {
-  await transcript(page).evaluate((owner) => {
-    owner.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }));
-    owner.scrollTop = Math.max(0, owner.scrollHeight - owner.clientHeight - 1);
-    owner.dispatchEvent(new Event("scroll", { bubbles: true }));
+  await transcript(page).hover();
+  await page.mouse.wheel(0, -1);
+  await page.waitForFunction(() => {
+    const owner = document.querySelector('[data-paige-transcript-scroll=true]');
+    return owner.scrollHeight - owner.clientHeight - owner.scrollTop >= 1;
   });
   await settle(page);
   return measure(page);
@@ -129,12 +129,40 @@ try {
 
   for (const [width, height] of VIEWPORTS) {
     const label = `${width}x${height}`;
-    const context = await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce" });
+    const context = await browser.newContext({ viewport: { width, height }, reducedMotion: width === 1366 ? "no-preference" : "reduce" });
     const page = await context.newPage();
+    page.setDefaultNavigationTimeout(120_000);
     const errors = [];
     page.on("pageerror", (error) => errors.push(String(error)));
     await page.addInitScript(() => {
       window.__paigeScrollCalls = [];
+      window.__paigeScrollDiagnostics = [];
+      let callbackPhase = "synchronous";
+      const nativeFrame = window.requestAnimationFrame.bind(window);
+      window.requestAnimationFrame = (callback) => nativeFrame((time) => {
+        const previous = callbackPhase;
+        callbackPhase = "animation-frame";
+        try { callback(time); } finally { callbackPhase = previous; }
+      });
+      const nativeTimeout = window.setTimeout.bind(window);
+      window.setTimeout = (callback, delay, ...args) => nativeTimeout(typeof callback === "function" ? () => {
+        const previous = callbackPhase;
+        callbackPhase = "timeout";
+        try { callback(...args); } finally { callbackPhase = previous; }
+      } : callback, delay);
+      document.addEventListener("paige:scroll-diagnostic", (event) => {
+        window.__paigeScrollDiagnostics.push({ ...event.detail, callbackPhase });
+      });
+      const nativeTop = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop");
+      Object.defineProperty(Element.prototype, "scrollTop", {
+        ...nativeTop,
+        set(top) {
+          if (this.matches?.('[data-paige-transcript-scroll=true]')) {
+            window.__paigeScrollCalls.push({ writer: "scrollTop", top, callbackPhase });
+          }
+          nativeTop.set.call(this, top);
+        },
+      });
       window.__paigeHarnessFrames = [];
       const originalScrollTo = HTMLElement.prototype.scrollTo;
       HTMLElement.prototype.scrollTo = function scrollTo(options, y) {
@@ -143,12 +171,8 @@ try {
           behavior: normalized.behavior ?? "auto",
           top: normalized.top ?? null,
           transcript: this.matches?.("[data-paige-transcript-scroll=true]") ?? false,
+          callbackPhase,
         });
-        if (this.matches?.("[data-paige-transcript-scroll=true]")) {
-          this.scrollTop = Math.max(0, Math.min(Number(normalized.top ?? 0), this.scrollHeight - this.clientHeight));
-          this.dispatchEvent(new Event("scroll", { bubbles: true }));
-          return;
-        }
         return originalScrollTo.call(this, options, y);
       };
 
@@ -188,7 +212,7 @@ try {
     await openTenant(page, primaryTenantUrl);
 
     const initial = await scrollReaderToMiddle(page);
-    record(`${label} real hydrated middle anchor`, !!initial.id && initial.text?.includes("HARNESS ONLY") && initial.bottomGap > 48, initial);
+    record(`${label} real hydrated middle anchor`, !!initial.id && initial.bottomGap > 48, initial);
 
     await send(page, `Actual React stream check ${label}`);
     await page.waitForFunction(() => document.body.textContent?.includes("Actual React stream check"));
@@ -236,7 +260,10 @@ try {
     await settle(page);
     const afterHome = await measure(page);
     await page.keyboard.press("End");
-    await settle(page);
+    await page.waitForFunction(() => {
+      const owner = document.querySelector('[data-paige-transcript-scroll=true]');
+      return owner.scrollHeight - owner.clientHeight - owner.scrollTop <= 0;
+    });
     const afterEnd = await measure(page);
     record(`${label} keyboard PageDown PageUp Home End`, afterPageDown.scrollTop > beforeKeyboard.scrollTop && afterHome.scrollTop <= 1 && Math.abs(afterEnd.bottomGap) <= 1, { beforeKeyboard, afterPageDown, afterHome, afterEnd });
 
@@ -255,6 +282,11 @@ try {
     await settle(page);
     const onePixelStreamed = await measure(page);
     record(`${label} one-pixel anchor survives streaming tool and receipt updates`, sameAnchor(onePixel, onePixelStreamed), { onePixel, onePixelStreamed });
+
+    // Cross the real 1800ms completion refresh as well as idle animation frames.
+    await page.waitForTimeout(2400);
+    const afterDelayedRefresh = await measure(page);
+    record(`${label} native one-pixel ownership survives delayed completion refresh`, sameAnchor(onePixel, afterDelayedRefresh), { onePixel, afterDelayedRefresh });
 
     await page.setViewportSize({ width: Math.max(400, width - 35), height: Math.max(700, height - 20) });
     await settle(page);
@@ -313,6 +345,10 @@ try {
 
     record(`${label} no horizontal overflow`, !(await measure(page)).horizontalOverflow, await measure(page));
     record(`${label} no runtime errors`, errors.length === 0, errors);
+    const diagnostics = await page.evaluate(() => window.__paigeScrollDiagnostics);
+    record(`${label} diagnostic schema contains no content or identifiers`, diagnostics.length > 0 && diagnostics.every(event =>
+      Object.keys(event).every(key => ['source', 'action', 'epoch', 'pinned', 'top', 'target', 'phase', 'callbackPhase'].includes(key))
+      && typeof event.top === 'number' && typeof event.target === 'number'), { events: diagnostics.length });
     await page.evaluate(() => {
       const marker = document.createElement("div");
       marker.textContent = "LOCAL REACT HARNESS — SYNTHETIC RECORDS, NOT AUTHENTICATED";
