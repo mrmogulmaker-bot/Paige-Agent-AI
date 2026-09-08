@@ -30,4 +30,15 @@ describe("truthful Paige Presence", () => {
     expect(loud.energy).toBe(.8);
     expect(presenceFrame("speaking", 2, { amplitude: NaN, brightness: Infinity }).energy).toBe(0);
   });
+  it("makes unavailable and ready ambient motion perceptible within two seconds without fake audio", () => {
+    for (const state of ["ready", "unavailable"] as const) {
+      const first = presenceFrame(state, 0), later = presenceFrame(state, 2);
+      expect(Math.abs(later.drift - first.drift)).toBeGreaterThan(5);
+      expect(Math.abs(later.turn - first.turn)).toBeGreaterThan(3);
+      expect(later.energy).toBe(0);
+      const a = first.path.match(/-?\d+\.\d+/g)!.map(Number);
+      const b = later.path.match(/-?\d+\.\d+/g)!.map(Number);
+      expect(Math.max(...a.map((n, i) => Math.abs(n - b[i])))).toBeGreaterThan(6);
+    }
+  });
 });

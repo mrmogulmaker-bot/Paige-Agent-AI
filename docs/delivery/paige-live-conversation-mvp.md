@@ -4,6 +4,17 @@
 
 ## Full live-audio completion — owner authority, 2026-09-08
 
+**Owner visual correction (2026-09-08):** the deployed Presence looks static to human eyes and
+occupies the smaller stage column. Approved correction makes Paige the primary (~60%) desktop
+region, keeps the same transcript/cards in a compact (~40%) region, enlarges the sculpture and
+requires perceptible calm shape/drift change within two seconds even when audio is unavailable.
+Reduced motion remains static; ambient movement conveys identity, never listening or speaking.
+FLOW_PROTOTYPE: NOT_REQUIRED for this presentation-only correction: no action, state, exit,
+permission, persistence or scroll-controller contract changes. Existing mounted prototype host
+provides both-theme/four-viewport geometry, actual motion recording and return/anchor regression.
+Goal: feel present with Paige, not read a chat panel beside a thumbnail. Existing owner screenshots
+are the failed visual baseline; enlarged scale must not clip controls or create another scroll owner.
+
 **Intended usable outcome:** an authenticated authorized owner speaks and hears Paige through the
 existing composer/thread, with real audio-reactive Presence, contextual cards, governed work and
 safe same-thread return. The latest owner instruction authorizes existing-account inspection and

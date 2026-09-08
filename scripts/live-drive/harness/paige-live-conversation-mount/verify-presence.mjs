@@ -1,9 +1,10 @@
-import { chromium } from "playwright";
+import { resolvePlaywright, buildLaunchOptions } from "../../live-drive.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
-const out = path.resolve("docs/evidence/ui-delivery/assets/paige-live-conversation/presence-recovery");
+const out = path.resolve(process.env.LIVE_EVIDENCE_DIR || "docs/evidence/ui-delivery/assets/paige-live-conversation/presence-recovery");
 await fs.mkdir(out, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+const { chromium } = await resolvePlaywright();
+const browser = await chromium.launch(buildLaunchOptions());
 const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, recordVideo: { dir: out, size: { width: 1366, height: 768 } } });
 const page = await context.newPage();
 const report = { evidenceClass: "local real-component + actual locally generated audio playback; NOT provider or authenticated tenant proof", states: [], outputSamples: [], checks: [] };
@@ -21,6 +22,19 @@ for (const state of ["ready", "listening", "thinking", "working", "held", "inter
 await page.goto("http://127.0.0.1:5227/?theme=dark");
 await page.getByRole("button", { name: "Talk live with Paige" }).click();
 await page.waitForSelector('[data-presence-state="unavailable"]');
+const sampleAmbient = () => page.locator(".paige-presence svg").evaluate(svg => ({
+  time: performance.now(), path: svg.querySelector("[data-presence-shape]").getAttribute("d"),
+  drift: parseFloat(svg.style.getPropertyValue("--presence-drift")),
+  energy: Number(svg.dataset.energy),
+}));
+const ambientFirst = await sampleAmbient();
+await page.waitForTimeout(2000);
+const ambientLast = await sampleAmbient();
+const a = ambientFirst.path.match(/-?\d+\.\d+/g).map(Number), b = ambientLast.path.match(/-?\d+\.\d+/g).map(Number);
+const maxShapeDelta = Math.max(...a.map((n, i) => Math.abs(n-b[i])));
+check("unavailable motion visibly changes silhouette within two seconds", maxShapeDelta > 6);
+check("unavailable ambient motion has no fake audio", ambientFirst.energy === 0 && ambientLast.energy === 0);
+report.ambientMotion = { elapsedMs: ambientLast.time-ambientFirst.time, maxShapeDelta, driftDelta: Math.abs(ambientLast.drift-ambientFirst.drift) };
 await page.screenshot({ path: path.join(out, "state-unavailable.png") });
 await page.evaluate(() => window.fixturePlay());
 await page.waitForSelector('[data-presence-state="speaking"]');

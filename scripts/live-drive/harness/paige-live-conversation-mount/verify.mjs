@@ -1,11 +1,12 @@
-import { chromium } from "playwright";
+import { resolvePlaywright, buildLaunchOptions } from "../../live-drive.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "../../../..");
-const output = path.join(root, "docs/evidence/ui-delivery/assets/paige-live-conversation/presence-recovery");
+const output = path.resolve(process.env.LIVE_EVIDENCE_DIR || path.join(root, "docs/evidence/ui-delivery/assets/paige-live-conversation/presence-recovery"));
 await fs.mkdir(output, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+const { chromium } = await resolvePlaywright();
+const browser = await chromium.launch(buildLaunchOptions());
 const viewports = [[1536, 770], [1366, 768], [1024, 768], [900, 1000]];
 const results = [];
 const popoutOnly = process.argv.includes("--popout-only");
@@ -36,11 +37,16 @@ for (const theme of popoutOnly ? [] : ["light", "dark"]) {
         stageRole: stage.getAttribute("role"),
         modal: stage.getAttribute("aria-modal"),
         motion: document.querySelector(".paige-presence").dataset.motion,
+        presenceWidth: document.querySelector(".plc-presence").getBoundingClientRect().width,
+        workspaceWidth: document.querySelector(".plc-workspace").getBoundingClientRect().width,
+        sculptureWidth: document.querySelector(".paige-presence").getBoundingClientRect().width,
+        mainOverflowY: document.querySelector(".plc-stage__main").scrollHeight > document.querySelector(".plc-stage__main").clientHeight + 1,
       };
     });
-    if (!geometry || geometry.documentOverflowX || geometry.stageOverflowX || geometry.controlsClipped || geometry.stageRole !== "dialog" || geometry.modal !== "true") {
+    if (!geometry || geometry.documentOverflowX || geometry.stageOverflowX || geometry.mainOverflowY || geometry.controlsClipped || geometry.stageRole !== "dialog" || geometry.modal !== "true") {
       throw new Error(`geometry failure ${theme} ${width}x${height}: ${JSON.stringify(geometry)}`);
     }
+    if (geometry.presenceWidth <= geometry.workspaceWidth || geometry.sculptureWidth < 360) throw new Error(`Presence not primary ${width}x${height}: ${JSON.stringify(geometry)}`);
     await page.screenshot({ path: path.join(output, `${width}x${height}-${theme}-live.png`) });
     await page.keyboard.press("Escape");
     await page.getByRole("dialog").waitFor({ state: "detached" });

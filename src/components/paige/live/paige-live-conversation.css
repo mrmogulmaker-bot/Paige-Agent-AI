@@ -9,8 +9,10 @@
 .plc-stage__identity span { color: hsl(var(--muted-foreground)); font-size: .72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plc-stage__header-actions { gap: .35rem; }
 .plc-stage__header-actions svg,.plc-controls svg,.plc-card__actions svg { width: .95rem; height: .95rem; }
-.plc-stage__main { min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(15rem,.7fr) minmax(0,1.3fr); gap: clamp(1rem,3vw,3rem); padding: clamp(1rem,3vw,2.5rem); }
-.plc-presence { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.plc-stage__main { min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(0,1.2fr) minmax(0,.8fr); gap: clamp(1rem,2.5vw,2.5rem); padding: clamp(.9rem,1.8vw,1.5rem); }
+.plc-presence { min-width: 0; display: grid; grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr); align-content: center; align-items: start; justify-items: center; column-gap: .75rem; text-align: center; }
+.plc-presence > .paige-presence,.plc-state,.plc-context { grid-column: 1 / -1; }
+.plc-presence > .plc-working,.plc-presence > .plc-notice { width: 100%; margin-top: .8rem; }
 .plc-state { margin-top: 1rem; display: flex; align-items: center; gap: .5rem; font-weight: 650; }
 .plc-state span { width: .55rem; height: .55rem; border-radius: 50%; background: hsl(var(--muted-foreground)); }
 [data-live-state="listening"] .plc-state span,[data-live-state="speaking"] .plc-state span { background: hsl(var(--primary)); }
@@ -29,7 +31,7 @@
 .plc-card-layer { max-height: 46vh; padding: 1rem; }
 .plc-section-title { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; gap: 1rem; padding-bottom: .65rem; background: hsl(var(--card)/.96); }
 .plc-section-title > span { font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
-.plc-turn { max-width: 86%; margin-top: .75rem; }
+.plc-turn { max-width: 96%; margin-top: .75rem; }
 .plc-turn--owner { margin-left: auto; }
 .plc-turn > span { color: hsl(var(--muted-foreground)); font-size: .68rem; font-weight: 650; }
 .plc-turn p { margin-top: .2rem; padding: .7rem .8rem; border-radius: .75rem; background: hsl(var(--muted)/.65); font-size: .84rem; line-height: 1.5; white-space: pre-wrap; }
@@ -64,7 +66,7 @@
 @keyframes plc-pulse { 0%,100% { opacity: .45; transform: scale(.85); } 50% { opacity: 1; transform: scale(1); } }
 @media (max-width: 800px) {
   .plc-stage__main { grid-template-columns: 1fr; grid-template-rows: auto minmax(0,1fr); padding: .8rem; gap: .8rem; }
-  .plc-presence { justify-content: flex-start; }
+  .plc-presence { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
   .plc-context { display: none; }
   .plc-working,.plc-notice { margin-top: .55rem; }
   .plc-workspace { display: flex; flex-direction: column; min-height: auto; }
