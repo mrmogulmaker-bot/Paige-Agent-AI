@@ -91,17 +91,20 @@ export function createAnchoredTranscriptScroll({
   const announcePinned = () => onPinnedChange?.(pinned());
   const hasVisibleGeometry = () => {
     if (!element || element.closest("[hidden]")) return false;
+    const view = element.ownerDocument.defaultView;
+    for (let owner: HTMLElement | null = element; owner; owner = owner.parentElement) {
+      const style = view?.getComputedStyle(owner);
+      if (style?.display === "none"
+        || style?.visibility === "hidden"
+        || style?.visibility === "collapse"
+        || style?.contentVisibility === "hidden") return false;
+    }
     return element.clientHeight > 0 && element.scrollHeight > 0;
   };
 
   const restore = () => {
     if (!element || !hasVisibleGeometry()) return;
     bindCurrentView();
-    if (pendingContextDomSignature !== null) {
-      const currentSignature = messageDomSignature();
-      if (currentSignature === pendingContextDomSignature) return;
-      pendingContextDomSignature = null;
-    }
     if (position.kind === "bottom") {
       const target = Math.max(0, element.scrollHeight - element.clientHeight);
       if (Math.abs(element.scrollTop - target) > EXACT_BOTTOM_EPSILON_PX) {
@@ -113,21 +116,33 @@ export function createAnchoredTranscriptScroll({
     }
     const anchorPosition = position;
     const items = Array.from(element.querySelectorAll<HTMLElement>(MESSAGE_SELECTOR));
+    const awaitingIncomingThread = pendingContextDomSignature !== null;
+    if (awaitingIncomingThread && messageDomSignature() === pendingContextDomSignature) return;
+
     let anchor = items.find((item) => item.dataset.paigeMessageId === anchorPosition.messageId);
     if (!anchor && anchorPosition.semanticKey) {
       const semanticMatches = items.filter((item) => item.dataset.paigeMessageAnchorKey === anchorPosition.semanticKey);
-      anchor = semanticMatches.length === 1
-        ? semanticMatches[0]
-        : semanticMatches.find((item) => items.length - 1 - items.indexOf(item) === anchorPosition.indexFromEnd)
-          ?? semanticMatches.find((item) => items.indexOf(item) === anchorPosition.indexFromStart);
+      if (awaitingIncomingThread) {
+        // A semantic match may repeat across threads. During a context handoff,
+        // also require its recorded relative position before accepting a new ID.
+        anchor = semanticMatches.find((item) =>
+          anchorPosition.indexFromEnd !== undefined
+          && items.length - 1 - items.indexOf(item) === anchorPosition.indexFromEnd)
+          ?? semanticMatches.find((item) =>
+            anchorPosition.indexFromEnd === undefined
+            && anchorPosition.indexFromStart !== undefined
+            && items.indexOf(item) === anchorPosition.indexFromStart);
+      } else {
+        anchor = semanticMatches.length === 1
+          ? semanticMatches[0]
+          : semanticMatches.find((item) => items.length - 1 - items.indexOf(item) === anchorPosition.indexFromEnd)
+            ?? semanticMatches.find((item) => items.indexOf(item) === anchorPosition.indexFromStart);
+      }
     }
-    if (!anchor && anchorPosition.indexFromEnd !== undefined) {
-      anchor = items[items.length - 1 - anchorPosition.indexFromEnd];
-    }
-    if (!anchor && anchorPosition.indexFromStart !== undefined) {
-      anchor = items[anchorPosition.indexFromStart];
-    }
+    // Never guess from a bare list index. During refresh/hydration, transient
+    // content can occupy the same index and must not replace a valid anchor.
     if (!anchor) return;
+    pendingContextDomSignature = null;
     const reconciledIndex = items.indexOf(anchor);
     const reconciledMessageId = anchor.dataset.paigeMessageId;
     const reconciledSemanticKey = anchor.dataset.paigeMessageAnchorKey;
@@ -338,6 +353,7 @@ export function createAnchoredTranscriptScroll({
       // not own the reading position and must not replace the saved intent.
       return pinned();
     }
+    pendingContextDomSignature = null;
     if (atExactBottom) {
       position = { kind: "bottom" };
     } else {
@@ -406,6 +422,16 @@ export function createAnchoredTranscriptScroll({
       }
       restore();
     },
+    adoptContext(nextContext: string) {
+      if (nextContext === context) return;
+      // The server can assign the durable thread ID after a new conversation is
+      // already visible. That is an identity adoption, not a thread switch.
+      cancelProgrammaticMovement();
+      context = nextContext;
+      pendingContextDomSignature = null;
+      persist();
+      announcePinned();
+    },
     attach(nextElement: HTMLDivElement | null) {
       if (element === nextElement) return;
       detach();
@@ -447,6 +473,7 @@ export function createAnchoredTranscriptScroll({
     jumpToBottom(behavior: ScrollBehavior = "auto") {
       if (!element) return;
       intentionalBottom = behavior === "smooth";
+      pendingContextDomSignature = null;
       position = { kind: "bottom" };
       persist();
       if (typeof element.scrollTo === "function") {

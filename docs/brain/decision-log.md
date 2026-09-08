@@ -1,5 +1,28 @@
 # Decision Log — chronological one-liners
 
+- **Paige Runtime Harness and Reusable Intelligence Platform (2026-09-08, owner-approved architecture).**
+  The **Second Brain** is Paige's governed, scoped knowledge layer; the **Runtime Harness** is her
+  provider-neutral internal operating layer for tenant-safe context, model/task routing, eligible
+  skills/tools, Spine authority, durable work, canonical verification, budgets, receipts/Rail,
+  evaluation, and controlled improvement. Spine remains the action/authority seam; Mind is bounded
+  working evidence; Memory is durable governed owner-confirmed knowledge only. No provider, model,
+  MCP server, browser worker, voice path, skill, or external tool may bypass server-resolved actor,
+  tenant, workspace, role, policy, approval, budget, readback, evidence, or learning-eligibility
+  rules. Current runtime truth is `PARTIAL` and distributed, not a centralized `LIVE` Harness.
+  Sequence: finish the active Solo/shared-chat work; formalize contracts without duplicating Brain,
+  Spine, Rail, jobs, or the Integration Registry; use the Platform Operator Shell; dogfood real
+  support, campaigns, strategy, provider, release, research, and approved proactive operations;
+  prove isolation, permissions, quality, spend, recovery, and evidence; only then assess a
+  provider-neutral SDK/API, Marketplace extension, or hosted offering. A future developer brings
+  and governs their own providers, knowledge, tools, users, tenants, policies, budgets, evaluations,
+  and evidence. Paige tenant/cross-tenant/customer/Platform Operator data, proprietary playbooks
+  absent separate license and authority, credentials, private browser content, hidden prompts, and
+  reasoning traces are never part of that product. This decision authorizes documentation only—not
+  runtime/product code, provider calls or changes, infrastructure, tenant-data movement, production
+  behavior, a developer API/SDK, Marketplace listing, customer promise, release identity, or deploy.
+  Canonical contract, current-status map, collision assessment, and future gate: Master Reference
+  Section 3, “Paige Runtime Harness.”
+
 - **Master Section 4 shipped-log reconciliation + public-version audit (2026-09-08, owner-directed).**
   Git history sets the backfill cutoff at PR #1029 / `1fee541808b71293329e8111f45b17cd28248794`;
   all 18 first-parent deliveries through #1051 / `531045004aa306beecb669b31c385c779c76c4b8`

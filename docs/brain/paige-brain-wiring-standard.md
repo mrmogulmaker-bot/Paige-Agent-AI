@@ -16,24 +16,36 @@ add without this wiring widens the blindness.
 
 ---
 
-## 1. There are TWO brains. Do not conflate them.
+## 1. Second Brain and Runtime Harness are distinct. Do not conflate them.
 
-| | **Second brain** (`docs/brain/`) | **Primary brain** (Paige's runtime) |
+The owner-approved canonical decision is in
+[`docs/PAIGE-MASTER-PROJECT-REFERENCE.md`, Section 3](../PAIGE-MASTER-PROJECT-REFERENCE.md#paige-runtime-harness--owner-approved-internal-operating-architecture-2026-09-08).
+It supersedes this file's older “two brains” shorthand.
+
+| | **Second Brain** | **Runtime Harness** |
 |---|---|---|
-| Who reads it | CC / Cowork / Codex sessions | **Paige herself, at runtime** |
-| What it is | Markdown index of doctrine, config, decisions, lessons | Her tier-scoped callable tool surface + context + memory |
-| Failure if stale | A session re-diagnoses something already solved | **Paige cannot see or act on the platform** |
-| Governing rule | §BRAIN.1–.3 | §10 (callable seam) · §52 (already-briefed) · §35 |
+| What it is | Paige's governed, scoped knowledge layer: approved business facts, plans, policies, evidence, skills, and eligible lessons | Paige's internal operating layer: context assembly, model routing, skill/tool selection, Spine authority, durable work, verification, cost controls, receipts/Rail, evaluation, and controlled improvement |
+| Durable record | `docs/brain/` is the architecture/governance/index home; it is not automatically injected into runtime context | Runtime components and canonical stores, reached only through tenant-safe server contracts |
+| Runtime rule | Knowledge enters a task only through an authorized, scoped projection | The Harness may use Brain knowledge but does not replace it or become a second knowledge store |
+| Failure if incomplete | Builders or Paige lack eligible, governed knowledge | Paige cannot safely see, act, verify, recover, or report |
 
-**Every shipped capability updates BOTH.** One without the other is half-done.
+The other boundaries remain load-bearing: **Paige Spine** is the governed action and authority seam;
+**Rail and receipts** are durable evidence of action, readback, outcome, and attribution; **Mind** is
+bounded working reasoning/evidence, not automatic durable memory; and **Memory** is durable,
+governed, owner-confirmed knowledge only. See `paige-spine-and-rail-state.md`,
+`paige-memory-contract.md`, and `paige-skills-inventory.md` rather than copying their contracts here.
+
+**Every shipped capability updates the relevant Second Brain record and completes its eligible
+Runtime Harness path.** One without the other is half-done.
 
 ---
 
-## 2. What Paige's primary brain actually is today (verified 2026-08-19)
+## 2. What Paige's distributed Runtime Harness components were on 2026-08-19
 
 Grounded in code, not aspiration. **It is more built than a quick grep suggests** — a first pass
-here looked only at `paige-mcp` + `paige-ai-chat` for one keyword and wrongly concluded the brain
-was thin. It is not. There are **four real layers**, and a capability can be wired into any of them:
+here looked only at `paige-mcp` + `paige-ai-chat` for one keyword and wrongly concluded the runtime
+was thin. It was not. The inventory below is historical grounding for **four real layers**, not a
+claim that the complete centralized Harness was live then or is live now:
 
 **Layer A — CONTEXT (what she already knows when the session opens).**
 `supabase/functions/_shared/owner-context.ts` (§52) composes the operator briefing that leads every
