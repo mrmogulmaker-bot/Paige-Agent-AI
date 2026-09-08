@@ -4,6 +4,12 @@
 source of truth; this report is a hand-maintained companion and must be updated with it (§BRAIN.3).**
 Grounded 2026-09-06 against `origin/main`.
 
+**Live voice continuation, 2026-09-08:** owner authorizes use of the existing provider entitlement,
+not purchase/upgrade, new payment method or legal acceptance. Read-only account metadata inspection
+is in development in existing Voice Profile administration; it makes no billable speech request and
+sets no price, quota, retention or transport flag. Actual account/scopes/voice/retention and bounded
+session cost/concurrency proof remain required; provider-backed live audio stays unavailable.
+
 ## What this is (and is NOT)
 
 This is the operating-cost + ownership view of the Integration Capability Registry — who bears each

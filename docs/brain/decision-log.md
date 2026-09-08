@@ -44,6 +44,28 @@
   and governance only: no production agent, product behavior, provider/account, external action,
   data migration, billing, customer claim, deployment, or workstream ownership changed.
 
+- **Full Live Conversation completion resumed (2026-09-08, owner authority).** Existing provider
+  account inspection and server-only secret use are authorized; purchases/upgrades/payment methods,
+  new agreements and hosted agents are not. The first dependency is a bounded read-only inspection
+  action in existing Voice Profile administration, with no audio activation from metadata. Shared
+  scroll P0 is separately reopened; its initial freeze was withdrawn, and concrete file overlaps
+  require coordination without stopping independent work. Actual
+  provider audio remains UNAVAILABLE and authenticated owner voice PROOF OWED until proven. Existing
+  Live delivery/evidence records remain authoritative; no new Brain, Harness, Rail or Memory store.
+
+- **Organic Presence/local playback-analysis release closeout (2026-09-08, PR #1068).**
+  Owner-approved head `14a199927c6e70fc33a5690217afc1d512cd41d3` merged as
+  `610e609c491864e6c4384839e80c8e91b7e5fce4`; READY production deployment
+  `dpl_7Pv8wCDuNyWmT6S2bWUWXZr26AnZ` serves build
+  `610e609c491864e6c4384839e80c8e91b7e5fce4-mtt0zfhp` on both production aliases.
+  Exact-head CI/review and public served-asset smoke passed. Organic Presence/local playback
+  analysis is released; captured audio is local test audio only. Provider-backed live audio is
+  UNAVAILABLE pending account/scopes, voice authorization, retention, quota and cost evidence.
+  Authenticated owner voice and signed-in surface proof remain PROOF OWED/unverified after the
+  browser bridge failed before session access. No provider configuration or new Rail/Mind/Memory
+  mutation was enabled. Canonical evidence: `../evidence/ui-delivery/paige-live-conversation-mvp.md`;
+  sole shipped record: Master Section 4.0. No named customer release or public claim was created.
+
 - **Paige Self-Knowledge & Migration Advisor is one read-first Harness capability (2026-09-08,
   owner-approved architecture contract).** Paige must answer what she can do for the active tenant,
   interpret replacement direction, and lead comparisons/migration plans from verified Paige coverage

@@ -2,6 +2,70 @@
 
 **Workstream:** dedicated Paige Live Conversation, separate from Skills and Intentful Interview
 
+## Full live-audio completion — owner authority, 2026-09-08
+
+**Intended usable outcome:** an authenticated authorized owner speaks and hears Paige through the
+existing composer/thread, with real audio-reactive Presence, contextual cards, governed work and
+safe same-thread return. The latest owner instruction authorizes existing-account inspection and
+server-only secret use, implementation, review, merge and deployment. It does not authorize a
+purchase, upgrade, payment method, new legal agreement, hosted agent or unrelated workstream.
+
+**Grounding/collision checkpoint:** current main `610e609c491864e6c4384839e80c8e91b7e5fce4`
+contains #1068; its mechanical closeout `955c6f6c368c0efa53a0c44538354c91fac11912` is preserved.
+#1044 Skills/Interview and #1046 Secure Browser remain independent drafts. Current-main composition
+at `716906ac6a1bada7fe6f230974a530139961d20f` includes shipped #1072 specialist-agent doctrine.
+Its two newer decisions remain above the Live entries, verbatim; no specialist role is activated.
+Mechanical closeout #1074 (`d69d239b7f103861ef2d0422f9ee98683aea61fb`) is also composed: the sole
+Master shipped log preserves #1068 before the newer #1072 row, without duplicate or changed claims.
+The #1057 shared scroll controller is not an implementation target. Only the existing Live
+component's intent/output callbacks may attach to ordinary chat; no duplicate transcript/runtime.
+
+**P0 coordination update:** the shared chat-scroll owner reopened delayed reading-position theft
+after #1057/#1066 (owner-directed notice, 2026-09-08, task `01a07d0a-d609-7a43-b769-28e47bff2560`).
+Current acceptance is FAIL pending that owner's correction and proof. The initial freeze request
+was immediately withdrawn by owner correction: continue authorized work, coordinate concrete
+overlaps in scroll/focus writers, anchor identity and mount lifecycle without stopping other work.
+Re-ground on the accepted repair before final integration.
+
+**First dependency:** current production metadata has no independent provider-verification rows.
+Existing hosted-agent token endpoints are not an account-inspection route and will not be used.
+Extend the existing platform-owner Voice Profile administration seam with a fixed-host, bounded,
+read-only provider inspection action. Resolve the candidate voice server-side; accept no URL, key,
+voice override or readiness assertion. Return only allowlisted metadata, never raw provider bodies.
+This inspection cannot activate a profile or mark scopes/retention/audio proven by a metadata GET.
+
+**Flow/dependency order:** owner-only account inspection; actual retention and entitlement proof;
+revision-bound session reservations and transport; consented microphone/STT; same chat intent and
+governed reply; streaming output and analyser; controls/recovery; authenticated quality proof.
+Account metadata is not actual STT/TTS proof. Use existing entitlement only, with fail-closed limits.
+
+| Flow | Failure/regression and proof obligation |
+|---|---|
+| Inspect configured account | Wrong role/unauthenticated denied before key use; no redirects, secret/error-body leakage, activation, spend or hosted agent |
+| Start/consent/refuse | Server actor/tenant/thread/profile revision and limits first; clear actual retention disclosure; no microphone before consent |
+| Speak/respond/cards | One chat/Harness; partial transcript ephemeral, committed content uses existing thread; actual output drives Presence; visible governed confirmation |
+| Hold/mute/interrupt/end | Stop capture/playback and pending work immediately; release or conservatively settle existing reservations; no false speech state |
+| Retry/disconnect/switch | Fresh scope and readiness, stale-result fences, bounded retry, canonical session cleanup and no duplicated intent |
+| Minimize/pop-out/return | Same mounted workspace and exact reading anchors; hidden analysis suspended; no old auto-follow/remount behavior |
+| Quality/release | Both themes/four viewports, keyboard/focus/reflow/reduced motion, real authenticated two-tenant proof, independent security and Experience Quality review |
+
+**Risk:** Deep/R3, sensitive microphone input, external processing, tenant identity and spend.
+The approved owner brief remains the design authority; the existing isolated Live harness is the
+Flow Prototype host for consent/recovery states. No separately named Experience Quality Harness
+record is present on this grounded main; apply the existing Paige UI quality/review standard and
+the owner's explicit experience checklist, without creating another harness or source of truth.
+Until actual proof exists: provider audio UNAVAILABLE, authenticated owner voice PROOF OWED.
+Raw audio/transcript never becomes durable Memory; existing Spine/readback/receipt/Rail remains
+the only work path. This section supersedes prior no-provider-use authority, not historical evidence.
+
+**Organic Presence release closeout:** #1068 merged at `610e609c491864e6c4384839e80c8e91b7e5fce4`;
+READY production `dpl_7Pv8wCDuNyWmT6S2bWUWXZr26AnZ`, both aliases verified on exact build
+`610e609c491864e6c4384839e80c8e91b7e5fce4-mtt0zfhp`. Organic Presence/local playback analysis is
+released; provider-backed audio remains UNAVAILABLE; authenticated owner voice/surface proof is
+PROOF OWED. Public asset smoke passed, not an authenticated UI drive. Exact evidence and remaining
+gates: `../evidence/ui-delivery/paige-live-conversation-mvp.md` → PR #1068 production closeout.
+The Master Section 4.0 row is the sole shipped record; historical checkpoints below remain historical.
+
 ## Organic Presence and audio recovery — active delivery, 2026-09-08
 
 Owner-approved scope: irregular layered obsidian/plum and warm-gold Presence replaces the Live
