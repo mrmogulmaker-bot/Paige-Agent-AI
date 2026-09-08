@@ -12,6 +12,15 @@
 > inside one shared Paige Runtime Harness; they do not authorize separate brains, memories, tools,
 > autonomy systems, or operating runtimes.
 
+> **Self-knowledge and migration routing override — 2026-09-08:** before adding capability answers,
+> competitor comparisons, replacement guidance, consolidation, cutover, or migration behavior, read
+> the Master Runtime Harness subsection **“Paige Self-Knowledge & Migration Advisor.”** The advisor is
+> one `UNAVAILABLE` shared-Harness capability. It derives a tenant-safe manifest from current canonical
+> runtime sources, keeps external claims dated and sourced, leads with Paige's real replacement path,
+> and defaults every migration class to read-only advice. This dated architecture, the Integration
+> Registry, and the Skills Inventory are inputs/governance—not proof of tenant connection, execution
+> authority, runtime eligibility, or customer release.
+
 > Synthesized by a **ground-truth-first** crew (§1/§14): research agents grepped the codebase and queried prod (Supabase MCP). Every architectural claim traces to a file path or a prod query result; aspirational items are labeled **(Roadmap)**. §32 honesty note: frontend line-number references are as-of 2026-08-08 `main` and may drift across commits — treat them as pointers, not fixed addresses.
 
 ---
@@ -377,6 +386,13 @@ flowchart LR
 
 ## 4. Customer Portal Architecture
 
+**2026-09-08 current architecture correction:** the Tenant Client Portal is a `PARTIAL`,
+launch-blocking MVP capability projected through the one Paige Runtime Harness:
+`Tenant business → shared governed Paige Runtime Harness → client-scoped portal experience`.
+It is not a separate app-level intelligence system, Brain, memory, or authority path, and it is
+distinct from a later Paige Enterprise Success Portal for Paige's direct enterprise customers.
+Existing routes/components prove real substrate, not the complete governed owner/client vertical.
+
 This is the tenant's **client-facing** surface — where a coach's end-consumers ("clients," the §51 Client tier) live. It is the one surface in the whole SPA built mobile-first. Below, each capability is marked **EXISTS** (in code + prod), **MVP GAP** (designed/partially built but broken or absent at runtime), or **Roadmap** (doctrine/strategy only).
 
 ### Mobile-first architecture — EXISTS
@@ -422,14 +438,17 @@ There is **no** named "holding company" model. Two distinct parent/child structu
 
 If the owner means a client's multi-entity structure → it's `businesses.parent_business_id`. If they mean platform org structure → `tenants.parent_tenant_id`. **OWNER INPUT REQUIRED** to disambiguate which "holding company" is intended; neither is a generic holding-co primitive.
 
-### Owner-Trilogy flavor for clients — OWNER INPUT REQUIRED
+### Owner-Trilogy flavor for clients — LOCKED PRODUCT MATRIX EXISTS
 
-There is **no single canonical "customer-portal taxonomy/matrix" doctrine section**, and no "Owner-Trilogy" taxonomy was found in code or docs. The nearest existing artifacts are three *different* things:
+The canonical product matrix is
+`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`. Keep it distinct from these
+implementation and architecture artifacts:
 - `docs/architecture/platform-operator-tenant-200.md` — the "one Clients taxonomy": **People · Pipeline · Conversations · Delivery · Client Portal** (a shipped-architecture note).
 - `docs/strategy/client-experience-workstream-2026-07-21.md` — the tab/tier/blocks portal taxonomy (**Roadmap**).
 - `docs/doctrine/tier-matrix.md` — the §51 **auth** tier matrix (God/Agency/Standalone/Sub-account/Client/Anonymous), not a portal-feature matrix.
 
-If the owner wants an authoritative "Owner-Trilogy" portal taxonomy, it does not yet exist as a numbered doctrine and should be written — **OWNER INPUT REQUIRED**.
+Do not create another taxonomy. The locked matrix governs the MVP rights/pillars while the code and
+strategy records describe current implementation and later expansion.
 
 ### Client signup → confirmation → agreement-signing — EXISTS (code-complete, unproven live)
 
@@ -462,7 +481,7 @@ flowchart LR
 | KB + references composition | **EXISTS** | `tenant_knowledge_docs` (4 RLS); `tenant-knowledge` bucket |
 | Client document upload | **MVP GAP (broken)** | `client_files` table exists; **no `client-files` bucket** (prod verified); no client UI |
 | Holding-co / subsidiary hierarchy | **EXISTS (2 models, no generic primitive)** | `tenants.parent_tenant_id`; `businesses.parent_business_id` — **OWNER INPUT** to disambiguate |
-| Owner-Trilogy portal taxonomy | **OWNER INPUT REQUIRED** | no canonical numbered doctrine found |
+| Owner-Trilogy portal taxonomy | **LOCKED SPEC** | `docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md` |
 | Signup → agreement-signing | **EXISTS (unproven live) — PDF-persist BROKEN** | `JoinWorkspace` → `finalize-agreement` → `paige_signed_agreements` (0 rows); PDF bucket `btf-onboarding` missing in prod → `signed_pdf_path` stays null |
 
 ## 5. Agent Topology — PAIGE + the Proposed 6-VP C-Suite
@@ -621,13 +640,16 @@ The specific *"db-live tag bug from the Supabase CLI api-keys regex"* named in t
 ### 7.4 Agent UI surface placement — **owner-owed** (see §5.3 callout)
 No shipped component renders named-agent / VP attribution to the operator. Doctrine (§20/§22/§36) describes intent; there is no verified artifact. **Strategy pass owed to the owner.**
 
-### 7.5 Customer-portal "Owner-Trilogy" taxonomy — **no single canonical doctrine section found**
-There is **no dedicated, numbered "customer-portal taxonomy/matrix" doctrine** as the brief's "Trilogy" framing implies. The nearest artifacts, all distinct:
+### 7.5 Customer-portal Owner-Trilogy taxonomy — **locked product matrix exists**
+The canonical rights/pillars contract is
+`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`. Keep these related artifacts
+distinct:
 - `docs/architecture/platform-operator-tenant-200.md` — the "one Clients taxonomy": **People · Pipeline · Conversations · Delivery · Client Portal** (shipped-architecture note).
 - `docs/strategy/client-experience-workstream-2026-07-21.md` — the detailed portal **tabs / tiers / blocks** taxonomy (**Roadmap**, not shipped).
 - `docs/doctrine/tier-matrix.md` (§51) — the **auth/tenancy** tier matrix (God/Agency/Standalone/Sub-account/Client/Anonymous), not a portal-feature matrix.
 
-A grep for `portal taxonomy` / `portal matrix` returned **no dedicated doctrine file**. If an authoritative portal taxonomy is wanted, it must be written and numbered.
+The matrix is authoritative even though it is a product spec rather than a numbered doctrine
+section. Do not write another taxonomy or infer implementation completeness from the matrix.
 
 ### 7.6 The 6-VP presentation identities are unbuilt **(Roadmap)**
 VERA/NEXUS/CURA/MENTOR/MERIT/ZION presentation/capability metadata is unbuilt (§5.2), and the historical `paige_agents` proposal is prohibited. Doctrine numbering is **ahead of the doctrine file** — the requested §42/§43/§47 roster anchors are **absent from `CLAUDE.md` as loaded for this historical inventory**.

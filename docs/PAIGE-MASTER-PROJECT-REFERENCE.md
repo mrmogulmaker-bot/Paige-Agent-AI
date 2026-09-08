@@ -75,9 +75,13 @@ Every paste Cowork produces for CC or Codex includes the line:
 
 Paige is the **AI COO** for a client-based service business — coaches, consultants, agencies, thought leaders, advisors. Not a chatbot. Not a CRM. An intelligent, tenant-authored, two-way client portal (§7) that orchestrates a team of specialist sub-agents (§8, §14) across a 10-department operating model (§16), and stays Paige-governable end-to-end so an operator or a tenant can drive it by voice or chat (§10, §20).
 
-**Two audiences, one brain (§7 + §8):**
+**Two audiences, one Paige Runtime Harness (§7 + §8):**
 - **For the operator/tenant:** pipeline, follow-ups, retainers, content, campaigns, at-risk triage, daily brief
-- **For each client:** hyper-personalized portal, onboarding, expert probing, answers, nurture
+- **For each client:** a deliberate client-scoped projection through the tenant's branded portal: onboarding, approved progress, messages, requests, tasks, documents, approvals, next steps, and bounded Paige help
+
+The **Tenant Client Portal is an MVP capability and competitive differentiator**. It is the governed,
+client-facing experience a Paige tenant provides to that tenant's own external clients. It is not the
+later **Paige Enterprise Success Portal**, which would serve Paige's direct enterprise customers.
 
 **The moat is intuitiveness (§36):** every capability enters through a path a non-technical owner can discover in <5 minutes. If the user has to learn how to prompt, we've regressed the category.
 
@@ -132,6 +136,10 @@ Canonical: **`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`**.
 7. **Support & Help** — how the client reaches the tenant, Paige, or platform support
 
 **5 stakeholders × rights matrix:** Client · Tenant/Coach · Sub-account · Agency · God/Super Admin, with **OWN · CONFIG · WRITE · READ · —** per pillar cell. See the LOCKED SPEC for the full matrix.
+
+**MVP Harness rule:** `Tenant business → shared governed Paige Runtime Harness → client-scoped portal experience`.
+Tenant-side Clients screens, portal configuration, routes, or invite primitives do not by themselves
+make this end-to-end client capability live.
 
 ---
 
@@ -249,6 +257,185 @@ remaining safe workflow stays truthfully resumable.
 
 This is the architecture contract, not a claim that every listed domain is currently connected.
 Each domain retains its status and acceptance evidence in its existing canonical record.
+
+#### Tenant Client Portal: MVP projection through the same Harness
+
+The Tenant Client Portal is a client-audience surface of the one Paige Runtime Harness, not a
+separate portal product, department agent, Brain, Harness, authority system, or memory. Its canonical
+path is:
+
+`Tenant business → shared governed Paige Runtime Harness → client-scoped portal experience`
+
+For every client-facing read, message, request, approval, task, document, status update, or
+Paige-assisted interaction, the Harness independently resolves the external client identity,
+sponsoring tenant, explicit client-to-tenant relationship, workspace and record scope, client role
+and consent, allowed shared information, tenant-defined authority and approval policy, applicable
+provider/file/document state, and verification, receipt, and Rail requirements. Breadth of Paige
+coordination never grants blanket client authority.
+
+The portal receives only a deliberate, client-scoped projection of canonical tenant information and
+approved shared work. It never automatically receives the tenant's full Second Brain, private Mind
+or Memory, Vault, Connected Accounts, internal team conversations, other clients, financial controls,
+private strategy, credentials, hidden prompts or reasoning traces, or autonomous action authority.
+
+The owner-complete MVP vertical is:
+
+1. Tenant owner selects or creates an existing canonical client relationship.
+2. Tenant explicitly invites or grants that client portal access.
+3. Client authenticates into a branded, tenant-scoped portal.
+4. Client sees only approved progress, messages, requests, tasks, documents, approvals, and next steps.
+5. Client may respond, ask Paige a bounded question, provide requested information, or approve/decline an item only where permitted.
+6. Every meaningful action crosses the same Spine authority, canonical write, verified readback, receipt, and Rail path.
+7. Tenant owner can review, revoke, or narrow access.
+8. Account/client/tenant switching, expired invitations, denied access, stale links, removed relationships, and unavailable provider/document states fail closed and explain the next safe action.
+
+**Current status: `PARTIAL`.** Current `main` contains a real external-client substrate: branded
+`/portal/:tenantSlug` sign-in, `/join/:token` registration, single-tenant client linkage, the
+authenticated `/app` shell, action-item responses, approval-status visibility, a platform
+legal-acceptance audit list, a dedicated Paige chat surface, and client-visible activity. The complete
+vertical is not proven: consumer-invite recipient binding in the final acceptance RPC; multi-workspace
+client membership and switching; revocation after acceptance; canonical tenant/client conversation
+and governed portal-tool execution; dedicated shared documents; client Planning/tasks; decision
+controls on approval records; tenant-facing support/escalation and booking; tenant service-agreement
+receipt/PDF; and authenticated isolation/denial/stale-session/recovery evidence remain unavailable,
+broken, or proof owed. Tenant-side
+Clients UI is management/configuration—not proof of the external-client journey. This correction
+does not authorize the dedicated Client Portal MVP build.
+
+#### Paige Self-Knowledge & Migration Advisor — canonical Harness contract
+
+**Owner decision and current truth (2026-09-08).** Paige must lead capability questions,
+platform comparisons, and migration planning from her own verified tenant-scoped powers. She is not
+a generic consultant that reflexively sends a tenant to another platform. This is one internal
+capability of the shared Paige Runtime Harness—not another assistant, Brain, Harness, registry,
+migration database, authority system, or Rail.
+
+The end-to-end **Paige Self-Knowledge & Migration Advisor is `UNAVAILABLE`** on current `main`.
+Paige already has `PARTIAL`, distributed self-description primitives—route/tier configuration,
+Spine and tool registrations, Skills Inventory, Integration Capability Registry, Surface Binding
+Ledger, provider-result state, model traces/cost estimates, release history, and narrow safe
+projections—but no server-owned, freshness-aware contract assembles them into an authorized answer
+or governed migration plan. Historical prose is planning evidence, never current runtime truth.
+
+The read-only advisory path is:
+
+`verified tenant capability projection → normalized migration direction → Paige-first coverage and gaps → dated comparison → staged recoverable plan → human-readable advisory receipt`
+
+It preserves four distinct source-of-truth layers:
+
+1. **Paige verified capability manifest.** A derived tenant-safe projection—not a new registry—with
+   capability key/name/domain; tenant/workspace/tier eligibility; delivery truth
+   (`LIVE`/`PARTIAL`/`UNAVAILABLE`/`PROOF OWED`); tenant availability and source; read/draft/auto/
+   confirm/prohibited authority lanes; provider and approval gates; budget/cost policy; limitations;
+   evidence references; source revision; observed/freshness timestamps; conflicts; and owner-facing
+   “can now / cannot yet / next gate” language. Evidence verification is a separate
+   `VERIFIED`/`UNVERIFIED` dimension: `PROOF OWED` is delivery code awaiting the named proof class,
+   while `UNVERIFIED` states that a particular runtime claim has not been proven. Neither is erased
+   or silently promoted by the other.
+2. **Tenant operating-system inventory.** Tenant-owned connected systems and declared functions,
+   connection truth/evidence, workflow dependencies, data/control ownership, replacement candidates,
+   authority/approval boundaries, last verification, and unknowns. It stores safe references and
+   summaries—not credentials, secrets, raw workflow definitions, or private payloads.
+3. **Dated comparison knowledge.** Each external claim records subject/provider, claim, source URL,
+   publisher, checked-as-of date, applicable plan/edition/region, limitation/confidence, and a
+   re-verification boundary. It may identify an honest competitor advantage or Paige gap, but never
+   overrides Paige's verified truth or makes a provider connected, eligible, or authorized.
+4. **Migration plan and evidence model.** Source system, target state, requested outcome, object
+   classes, inventory/evidence references, replacement coverage, gaps, staged cutover, per-stage
+   approvals/budgets, stop conditions, checkpoints, rollback/forward-fix, canonical readback,
+   receipt/Rail requirements, deliberately unchanged items, and truthful status.
+
+The manifest is a derived projection, not a circular new source. Implementations use this precedence
+and fail closed rather than selecting convenient prose when sources disagree:
+
+| Manifest field | Canonical owner | Runtime adapter and freshness/failure rule |
+|---|---|---|
+| Actor, tenant, workspace, tier, role, act-as, context epoch | Authenticated JWT plus server membership/role resolvers | Resolve per request and again per action; unresolved or changed scope stops. |
+| Route/tier eligibility | `src/lib/routing/tierBranches.ts` + `src/lib/tier/tierFeatures.ts` | Server manifest adapter is `UNAVAILABLE`; bind source revision and fail closed on drift. |
+| Spine capability and authority | `_shared/paige-spine/registry.ts` + server authority resolvers | Read current registration and authorization per step; registry presence alone grants nothing. |
+| Skill/version eligibility | Canonical `paige_skills` rows + skill interpreter policy | Read active scoped/versioned rows at request time; inventory prose or missing metadata is ineligible. |
+| Provider limitation vs tenant connection | Integration Registry JSON (governance) + `provider-result-contract.md` and tenant connection records (runtime) | Both are required; tenant result applies only within registry limits. Stale data preserves its last-known state plus age/stale warning and blocks decisions requiring current truth; conflicting/missing state is unavailable. |
+| Surface binding | Surface Binding Ledger JSON (governance/evidence) | No authority source; cite state/revision as a limitation and require live adapter proof. |
+| Model route, quality, latency, spend | `_shared/model-router.ts`, `paige_llm_trace`, and metered-event records | Use current routed result plus bounded evidence window; absent budget/quality evidence remains unknown. |
+| Release identity | Exact approved release record under the release schema; Section 4 is history | Only an approved exact record supports customer-release language; absence fails closed. |
+
+Server-resolved live tenant state outranks static eligibility/config for that tenant; static code/config
+defines allowable candidates; approved governance may narrow but never fabricate runtime state.
+Historical Master/Brain prose provides provenance and limitations only. Any unresolved contradiction,
+stale source, missing revision, or absent adapter produces an explicit gap—not a guessed answer.
+
+“Migration” is not one blanket operation. The plan names each affected class: model/provider route;
+integration connection or API version; skill/prompt/policy version; Spine or legacy-tool path;
+Marketplace capability version; tenant configuration; release/build cutover; or database/data-schema
+migration. Every class defaults to **read-only advice**. Schema/data moves, provider credentials,
+model-route changes, connection shutdowns, production cutovers, destructive cleanup, and other
+external effects are excluded until a separately owner-authorized delivery contract names the class,
+owner, approval lane, rollback, recovery, and proof.
+
+The normalized intent records source system, target state, desired outcome, object classes, scope,
+assumptions, ambiguities, and one of `off_external_to_paige`, `into_external`, `compare_only`, or
+`ambiguous`. When a GHL request's direction is genuinely ambiguous, Paige asks only: **“Are we moving
+off GHL into Paige-managed operations, or moving work into GHL?”** For another identified system she
+uses the same minimal source↔target form with that system's verified name; if no system is identified,
+she asks which system is involved. She never invents a product or infers authority from migration
+language.
+
+Paige's answer order is mandatory: **(1)** what Paige can genuinely handle now for this tenant,
+**(2)** gaps, prerequisites, and unavailable/proof-owed work, **(3)** the proposed staged transition
+and alternatives, **(4)** the exact approvals required before any external change, then dated
+comparison evidence where useful. “Listed,” “installed,” “connected,” “eligible,” “authorized,”
+“proven,” and “released” remain separate facts. Provider integration delivery, tenant connection,
+surface binding, release identity, capability proof, and authority must never collapse into
+“available.” With no approved release record, customer-release advice fails closed to verified
+internal build facts and non-release language.
+
+Each advisory result owes a redacted, human-readable **response artifact** naming what Paige was asked, what she
+read and as-of when, what she drafted, what she changed (**none** for advisory), what she verified,
+what she deliberately left unchanged, remaining gaps/unknowns, required approvals, rollback boundary,
+and request/plan identifiers. In the first read-only slice it is returned inline and is **not durable
+Memory or a new receipt store**. If persistence is later authorized, `_shared/capability-record.ts` /
+`record_capability_run` remains the existing Rail-summary seam; the universal immutable detailed-
+receipt contract is `PARTIAL` and must be approved in that shared seam before persistence. It contains
+no raw tenant data, secret, credential, transcript, private workflow/browser payload, hidden prompt,
+or reasoning trace. “Done,” “working on it,” or partial-step counts are never completion evidence.
+
+If a later execution slice is explicitly authorized, the Harness must re-resolve authenticated and
+effective actor, tenant, workspace, tier, role, act-as state, object scope, provider state, tool lane,
+approval, budget, and context epoch before every step; run an idempotent durable job; checkpoint before
+mutation; preserve the old route/tool/version until cutover verifies; perform canonical write and
+readback; record redacted receipt and Rail; and expose pending/running/paused/blocked/failed/
+`outcome_unknown`/verified state. Revocation or workspace switch invalidates later authority. An
+ambiguous provider outcome is `outcome_unknown` and must reconcile before retry. No destructive
+cleanup precedes export, compatibility, backfill, and rollback proof.
+
+Owner correction or quality evidence may propose a versioned skill, route, prompt, or policy lesson;
+it cannot auto-publish or enter durable confirmed Memory. Tenant data, private comparisons, raw logs,
+and one tenant's confidential operating knowledge never become cross-tenant learning.
+
+**Maturity gate.** A first callable server-owned read-only advisor is `PROOF OWED` until authenticated
+tenant/workspace/tier/role isolation, stale/conflict handling, source citation, approval denial,
+account switching, receipts, and regressions are proven. Migration execution remains separately
+`UNAVAILABLE` until each authorized effect proves durable orchestration, canonical readback,
+Rail/receipt, rollback/recovery, and honest partial or unknown outcomes.
+
+**Affected-flow and collision assessment.** The architecture covers capability questions, tenant
+system inventory, ambiguous or explicit replacement direction, dated comparisons, advisory plans,
+and a later separately authorized execution/recovery flow. First-use, empty, loading, stale,
+conflicting, disconnected, denied, unavailable, account-switch, cancellation, retry, rollback, and
+`outcome_unknown` states all fail closed with the next safe action. Active shared-chat/scroll,
+Text-chat Skills/Intentful Interview, Live Conversation, Secure Browser, Tenant Brain/Campaign Brief,
+Platform account choice, release/customer-update, social/Metricool, model/cost, orchestration/Rail,
+and Client Portal workstreams retain their owners and acceptance criteria. The dedicated
+Self-Knowledge & Migration Advisor implementation owner consumes this contract; this documentation
+lane does not edit or absorb UI, chat, runtime, provider, migration, or production files. Canonical
+record overlaps are resolved by rebasing on current `main` and preserving newer shipped-log, Harness,
+Live Conversation, portal, and shared-chat truth.
+
+Current concrete overlaps checked 2026-09-08: #1068 (Master/config/decision/Integration Registry),
+#754 (Master/Brain/wiring), #917 (Master/config/Spine/chat/jobs), #1044 (binding ledger/chat/skills),
+#572 (model router/trace/metering), #576/#591 (chat/knowledge isolation), #1040/#729
+(Master/decision/Rail), #921 (competing agent-registry framing), #1046 (Secure Browser), and #670
+(Marketplace release). Their product/runtime files remain outside this architecture branch.
 
 #### Paige-owned Harness responsibilities
 
@@ -453,6 +640,8 @@ This is the **sole chronological log of deliveries to `main`**. It records every
 | 2026-09-08 01:01 EDT | [#1057](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1057) / [`af752d7a67c71f71e28a31ab87a962584b42105a`](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/commit/af752d7a67c71f71e28a31ab87a962584b42105a) | **Paige transcript-anchor identity-race correction.** Removed bare-index guessing, gated restoration on stable message identity, ignored hidden/zero geometry, and explicitly adopted provisional new-chat context before the server thread ID changes so transient hydration cannot replace a valid owner reading anchor. | **Merged, deployed, and owner-accepted in authenticated production.** Vercel `dpl_FrWHHEkMqvtfnNcixPqkpZBufPX6` serves exact build `af752d7a67c71f71e28a31ab87a962584b42105a-mts7czby` on both domains. Exact-head CI, 81/81 affected tests, 3,978/3,978 full tests, 107/107 rendered checks, and independent review passed. On 2026-09-08 the owner personally confirmed that, after the intended Supabase project was resumed, login and authenticated data access were restored and the deployed #1057 behavior kept the deliberate reading position during new activity and after minimize/pop-out return. The Supabase restoration is an environmental prerequisite confirmation, not #1057 code scope. Authority: [forensic evidence](evidence/ui-delivery/paige-chat-scroll-forensic-regression-correction.md). The shared chat-scroll workstream is closed; no further shared-seam change without a new reproducible defect. | **No.** Internal hotfix accepted; no approved named customer release or publication exists. |
 | 2026-09-08 01:19 EDT | [#1060](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1060) / [`87a3a41d188c93b7073816e352f3c7604548f7a6`](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/commit/87a3a41d188c93b7073816e352f3c7604548f7a6) | **Deliberate Platform account choice after sign-in.** Platform staff now pause at the existing account chooser and deliberately select Platform or one directly authorized Paige workspace; outbound `/admin` fallback is retired, ordinary one-account entry remains direct, and failed authority/routing checks remain recoverable without ending the signed-in session. | **Merged and deployed; authenticated production behavior remains `PROOF OWED`.** Exact-head CI, Security Audit, and UI-delivery-evidence workflows passed; 108/108 affected tests, eight durable responsive screenshots, and 90/90 browser assertions are recorded. Vercel `dpl_95h8jrhA9VZ8wE7auvVCX3aH5yPR` is `READY`, and both domains serve exact build `87a3a41d188c93b7073816e352f3c7604548f7a6-mts7zmtk`. No migration or Edge function changed. Authority: [UI delivery evidence](evidence/ui-delivery/platform-account-choice-pause.md). Next gate: signed-in production proof of Platform/workspace selection, retry, session recovery, deep-link handling, and account switching before owner acceptance. | **No.** No approved canonical release record. |
 | 2026-09-08 11:27 EDT | [#1064](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1064) / [`a0721d40030b10279c20444c6003bfea256f9b5b`](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/commit/a0721d40030b10279c20444c6003bfea256f9b5b) | **One Paige Runtime Harness full-platform anti-silo architecture correction.** Established departments as capability domains inside one governed Paige runtime, made cross-domain work one continuous Paige-led job, required execution-time Spine authority for every step, retired the duplicate `paige_agents` plan, and bounded specialist/n8n memory and approval behavior to the shared Harness contracts. | **Merged, internal architecture/governance documentation only.** The centralized Harness remains `PARTIAL` and distributed; no domain was promoted or newly connected. Exact-head verify, audit, UI-evidence, Vercel-comment, nine focused governance checks, link validation, residual-conflict scanning, and independent documentation review passed; Supabase Preview correctly skipped. No product source, provider configuration/call, credential, tenant data, migration, infrastructure, deployment, active workstream ownership, production behavior, customer promise, SDK/API, or Marketplace capability changed. Authority: [Master Runtime Harness decision](#paige-runtime-harness--owner-approved-internal-operating-architecture-2026-09-08), [Second Brain wiring standard](brain/paige-brain-wiring-standard.md), and [decision log](brain/decision-log.md). | **No.** Internal architecture correction only; no approved canonical release record. |
+| 2026-09-08 12:45 EDT | [#1067](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1067) / [`69df6923a7b39436bbc0b4d9c22b3c56b8bf83df`](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/commit/69df6923a7b39436bbc0b4d9c22b3c56b8bf83df) | **Tenant Client Portal MVP boundary through one Paige Harness.** Corrected the MVP record so the tenant''s external-client experience remains a client-scoped projection of the shared Runtime Harness, with independent identity, relationship, consent, authority, provider-state, verification, receipt, and Rail resolution. | **Merged, internal architecture/MVP planning documentation only; Tenant Client Portal remains `PARTIAL`.** The branded portal substrate exists. Recipient-bound invitation acceptance, revocation after acceptance, client-scoped shared records, approval controls, tenant support/booking, tenant service-agreement artifacts, governed portal tools, confirmed-only client-memory eligibility/legacy-row remediation, and authenticated isolation/recovery proof remain incomplete. Paige Enterprise Success Portal remains separate future scope. No product source, migration, provider configuration/call, credential, tenant data, deployment, production behavior, external invitation, billing, or customer-availability promise changed. Authority: [Master Runtime Harness decision](#tenant-client-portal-mvp-projection-through-the-same-harness), [Second Brain wiring standard](brain/paige-brain-wiring-standard.md), [portal audit](handoff/two-way-client-portal-audit.md), and [binding ledger](binding-ledger/surface-binding-ledger.json). Next gate: an explicitly started dedicated Client Portal MVP build proving a recipient-bound, revocable client-access grant and minimal approved projection end to end. | **No.** Internal architecture/MVP planning only; no customer release identity or approved release record. |
+| 2026-09-08 13:32 EDT | [#1070](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1070) / [`13bfece4884857008aeffcf03490694b94850cfe`](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/commit/13bfece4884857008aeffcf03490694b94850cfe) | **Paige Self-Knowledge & Migration Advisor architecture and implementation contract.** Established one shared-Harness, tenant-scoped, evidence-backed path for capability answers, Paige-first comparisons, normalized migration direction, staged advisory plans, approvals, rollback, and receipts without creating another assistant or source of truth. | **Merged, internal architecture/governance documentation only.** The end-to-end advisor remains `UNAVAILABLE`; distributed self-description primitives remain `PARTIAL`. Delivery, connection, eligibility, authority, evidence verification, freshness, proof, and release identity remain separate. CI, governance, build, tests, smoke checks, automated review remediation, and independent corrected-head review passed. No product code, provider/model configuration, credential, tenant data, migration, external action, deployment, production behavior, or customer release promise changed. Authority: [Master advisor contract](#paige-self-knowledge--migration-advisor--canonical-harness-contract), [Second Brain wiring standard](brain/paige-brain-wiring-standard.md), and [decision log](brain/decision-log.md). Next gate: the dedicated implementation owner consumes the read-only contract; a callable path is `PROOF OWED` until authenticated isolation, freshness/conflict, citation, denial, switch, receipt, and regression proof. | **No.** Internal architecture/governance only; no approved customer release record. |
 
 PR #1061 already provides the mechanical non-recursive closeout for #1059, and PR #1056 provides
 the mechanical non-recursive Live Conversation closeout for #1053. This immediate follow-up records
@@ -1873,7 +2062,7 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
 - ✅ **§34 Intelligence spine** (partial): `paige_prompt_template` · `paige_prompt_memory` · `paige_llm_trace` · `paige_eval` · `paige_subagents_talent` · `paige_action_bus_drainer` · `paige_action_worker_cron` · `studio_visual_critique_log`. Prompt-forge at `_shared/prompt-forge.ts`; visual-critique gate at `_shared/visual-critique-gate.ts`.
 - ✅ **`paige_owner_memory` table** — migration `20260810120000`, shipped in PR #406. L6/L8 memory table, distinct from `paige_prompt_memory`.
 - ✅ **Voice = Ivanna** (ConvAI agent live post 2026-08-08 hotfix; in-app chat voice via `_shared/tts-router.ts` `DEFAULT_TTS_VOICE`)
-- ✅ **§60 structural tier-lock** (#122 + #125, 2026-08-11) — `src/lib/tier/tierFeatures.ts` is the ONE HOME for tier→feature mapping (`hasFeature`/`useTierFeatures`), guarded by CI `lint:tier-features`. Owner-locked: **`customer_portal_invite` = Solo + Sub-account only** (server-enforced in `create_tenant_invite_token`, migration `20260823000000`); **Growth + Vibe Studio = Solo/Sub/Enterprise/God, NOT Agency** (route-gated via `RequireFeature`). Tier baselines in `docs/doctrine/tier-matrix.md`.
+- ✅ **§60 structural tier-lock** (#122 + #125 + Enterprise hybrid #460, 2026-08-11) — `src/lib/tier/tierFeatures.ts` is the ONE HOME for tier→feature mapping (`hasFeature`/`useTierFeatures`), guarded by CI `lint:tier-features`. Current owner-locked rule: **`customer_portal_invite` = Solo + Sub-account + Enterprise**; Agency + Super Admin excluded. **Growth + Vibe Studio = Solo/Sub/Enterprise/God, NOT Agency** (route-gated via `RequireFeature`). Tier baselines in `docs/doctrine/tier-matrix.md`.
 - ✅ **Money Spine Lane B-ii-a + B-iv** merged.
 - ✅ **§27 facelift sweep** (PR `a2df4436`)
 - ✅ **§37 amendment** (PR #232)
@@ -3082,7 +3271,7 @@ does not prove identity, send permission, A2P, inbound, webhook, mailbox, or ope
 Video and Apple Messages for Business remain unavailable unless separately proven. Ordinary consumer
 iMessage is never claimed. No backend, provider, schema, auth, or business-data mutation is in scope.
 
-### GAP — Paige does not know her OWN design (task #219, owner-raised 2026-08-23)
+### PARTIAL — Paige self-knowledge is distributed; the governed advisor is unavailable (tasks #159/#219, corrected 2026-09-08)
 
 **Owner:** *"Paige should be aware of her own design."* · *"I just want to make sure that we, as a
 collective group, and then eventually Paige gets a lot smarter."*
@@ -3090,9 +3279,12 @@ collective group, and then eventually Paige gets a lot smarter."*
 **Verified state, not assumed.** Paige can be steered AWAY from bad design
 (`_shared/cheesy-tells.ts`, the runtime mirror of `docs/design-references/CHEESY-TELLS.md`,
 substituted into every generation prompt) and can brief a design agent
-(`_shared/design-agent-prompt.ts`). She has **no runtime knowledge of her own system** — asked why
-gold is only on the act, or what the operator shell's geometry is, she answers from a model's general
-sense of nice UI. She guesses, confidently.
+(`_shared/design-agent-prompt.ts`). Other bounded self-description primitives now exist across route,
+tier, Spine/tool, skill, provider, binding, release, and metering records, so the older claim that she
+has **no runtime knowledge of her own system** is superseded. Current truth is `PARTIAL`: those facts
+remain distributed, and the tenant-scoped, freshness-aware Self-Knowledge & Migration Advisor defined
+in the Runtime Harness section is `UNAVAILABLE`. The design-rationale corpus below is a separate
+audience-bound source; tenants must not receive Paige's private platform design rationale.
 
 **The source of truth now exists:** `docs/brain/design-system.md` (2026-08-23) — palette and the two
 separately-authored themes, gold-only-on-the-act, type ladder, layered depth, motion reserved for real
@@ -3278,9 +3470,15 @@ Recorded here for durability; §30 verdicts noted where CC's diagnostic already 
 - ❌ **#60 — Antonio Daniel LLC misclassified `SUB_ACCOUNT`** in the attention queue — tier reclassification audit (§51/§57 anchor case b).
 - ❌ **#61 — Super Admin Analytics gap** (empty vs. a sub-account's live Analytics) — §35 violation; at-least-parity required before shipping more sub-account analytics (§57 anchor case c).
 
-### Post-MVP CX workstream
+### Tenant Client Portal — MVP commitment; dedicated build not started
 
-Per `docs/strategy/client-experience-workstream-2026-07-21.md` — CX-1 (polish, ships anytime) → CX-2 (composable) → CX-3 (client-facing Paige) → CX-4 (transformation primitive) → CX-5 (Marketplace client blocks + Money Spine Lane B-vi).
+The owner-complete Tenant Client Portal vertical is launch-blocking MVP scope and is currently
+`PARTIAL`. It must reuse the one Harness and the existing canonical client relationship, invite,
+Spine, Rail, Brain/Mind/Memory, provider-state, and release contracts. The larger historical CX
+programme is now split: the secure branded owner/client vertical is MVP; composable Marketplace
+blocks, revenue-share, broad transformation catalogs, and third-party developer expansion remain
+later opportunities unless separately promoted. No implementation starts until the owner explicitly
+starts the dedicated Client Portal MVP build.
 
 ### Critical DOC gaps (files referenced but ABSENT from `docs/`)
 
@@ -3313,7 +3511,7 @@ Per `docs/strategy/client-experience-workstream-2026-07-21.md` — CX-1 (polish,
 | #5 | Owner Trilogy Customer Portal Taxonomy — Platform Team vs Tenant Team distinction row (companion to the taxonomy-matrix doc edit) | queued | — |
 | CX-1 | Client Portal config polish | pending | — |
 | CX-2 | Composable portal architecture | pending | CX-1 |
-| CX-3 | Client-facing Paige persona | pending | CX-2 |
+| CX-3 | Client-facing Paige experience through the one Harness | pending | CX-2 |
 | CX-4 | Transformation primitive | pending | CX-3 |
 | CX-5 | Marketplace client-side blocks | pending | CX-4 + Money Spine B-vi |
 
@@ -3327,6 +3525,7 @@ Per `docs/doctrine/canonical-build-order.md` (LIVING, updated 2026-08-08):
 - **Wave 2** ✅ COMPLETE (except #247 tail)
 - **Wave 2.5** 🔥 FIRING — Playwright dev-dep, live-drive backfills, per-sub-account curation, §3.b doctrine paste, #247
 - **Wave 4 = MVP HUB** 🎯 NEXT — 4 Owner Trilogy pillars + 5 Cowork-locked product specs + BRD-promoted items (L8 Memory Fabric, Interactive Analytics UI, Playwright web-browsing, Promo Account Type, Chat compaction/history/tasking)
+- **Tenant Client Portal MVP vertical** — explicit grant, branded client authentication, approved shared projection, bounded two-way Paige interaction, governed actions, owner revoke/narrow, and fail-closed switching/expiry/relationship/provider states. Current status `PARTIAL`; dedicated build requires a separate owner start.
 - **Wave 3** ⏸️ DEFERRED past W6 (Practice Blueprints)
 - **Wave 5** 📋 RESERVED
 - **Wave 6-7** 📋 QUEUED
@@ -4155,6 +4354,13 @@ delegate. (12) **Superpowers** (imported from the Claude Skills ecosystem) — d
 brand-guidelines/brandkit, algorithmic-art, imagegen, high-end-visual-design/apple-design, theme-factory,
 web-artifacts-builder, image-to-code, mcp-builder, skill-creator, morning, schedule, learn, doc-coauthoring,
 memory-management, task-management.
+
+**Approved inventory amendment — not yet executable:** **Paige Self-Knowledge & Migration Advisor**
+belongs in Operations & Process as a planned `UNAVAILABLE` Harness skill. It derives a tenant-safe
+capability projection, inventories declared systems and dependencies, normalizes migration direction,
+separates dated competitor evidence from Paige truth, and drafts coverage/gap, approval, rollback,
+verification, receipt, and Rail requirements. Inventory presence does not create a `paige_skills` row,
+runtime eligibility, tool authority, provider connection, or execution permission.
 
 **S2 seeding order (owner may reorder):** Vision → Documents → Client Delivery → Sales → Marketing → Analytics
 → Team → Financial → Compliance → Operations → Agent Orchestration → Superpowers. One PR per category

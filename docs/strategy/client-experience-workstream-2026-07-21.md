@@ -1,13 +1,20 @@
 # Paige Agent AI — Client Experience Workstream Strategy
 
-**For:** Antonio · **Date:** 2026-07-21 · **Status:** locked as future-execution spec (sequenced post-Slice-1c + post-Money-Spine)
+**For:** Antonio · **Date:** 2026-07-21 · **Status:** amended 2026-09-08 — core Tenant Client Portal is MVP; later expansion remains gated
 
-**Purpose:** the canonical strategy for the Client Experience workstream — the client-facing portal that turns Paige from "operator tooling for coaches" into a two-way intelligent portal per §7 doctrine. Covers config polish, composable portal architecture, client-facing Paige persona, transformation metrics primitive, and Marketplace client-side blocks. Reference doc for CX-workstream execution when Slice 1c wraps + Money Spine ships.
+**Purpose:** the canonical strategy for the Client Experience workstream. The secure two-way Tenant
+Client Portal vertical is MVP scope; composable Marketplace blocks, revenue-share, broad
+transformation catalogs, and third-party developer expansion remain later work unless separately
+promoted. This strategy is governed by the one Paige Runtime Harness and does not authorize a build.
+
+**2026-09-08 owner correction:** `Tenant business → shared governed Paige Runtime Harness →
+client-scoped portal experience`. The Tenant Client Portal is distinct from a later Paige Enterprise
+Success Portal for Paige's own direct enterprise customers.
 
 **Related doctrine:**
-- CLAUDE.md §7 — Paige as the intelligent client portal (two-way, one brain facing both sides) — this workstream operationalizes §7
-- CLAUDE.md §8 — Paige runs two departments (Owner Ops · Client Experience) — CX-3 makes the Client Experience department user-facing
-- CLAUDE.md §14 — Paige orchestrates a standing team — client-facing Paige is a scoped sub-agent
+- CLAUDE.md §7 — the intelligent Tenant Client Portal is a client-scoped surface of one Harness
+- CLAUDE.md §8 — Owner Ops and Client Experience are coordinated capability domains, not separate agents or runtimes
+- CLAUDE.md §14 — bounded specialists may execute routed work but own no separate memory, authority, or operating system
 - CLAUDE.md §17 — $1B Growth Map — Marketplace client-side blocks (Layer 5 revenue) materializes here
 - CLAUDE.md §18 — OS north star — client-side Marketplace blocks are OS ecosystem primitives
 
@@ -19,19 +26,26 @@
 
 ## 0. Executive summary
 
-The Client Portal is currently a functional-but-shallow config surface (tenant configures what clients see; fixed 3-tab menu). This workstream turns it into the **second-largest surface on the platform in terms of user-facing time** — every tenant has 1× user on operator side (them + their team); every tenant has N× users on client side (all their clients). At scale, more people spend more time in the client portal than the operator side.
+The Tenant Client Portal is currently `PARTIAL`: current `main` contains a real branded
+external-client gateway, invite/registration path, client linkage, authenticated shell, action items,
+approval-status visibility, platform legal-acceptance audit list/status visibility, Paige chat, and activity. It is not merely a tenant
+config surface, but the complete shared-record, revoke/switch, client-decision, isolation, and
+recovery flow is not proven. This workstream completes the MVP vertical and separately sequences
+later expansion.
 
 **Five sub-workstream layers:**
 
 1. **CX-1 — Config surface polish.** Kill the marketing hero banner on the tenant config page. Add logo size specs + validator. Slim `PageHeader` primitive. Small, ships anytime.
 2. **CX-2 — Composable portal architecture.** Tabs beyond fixed 3, block canvas within tabs, Playbook-defaulted portal templates. Foundational build; multi-slice.
-3. **CX-3 — Client-facing Paige persona.** Scoped Paige brain instance for client-facing use, configured from three entry points (Client Portal config · Paige tab · Playbook defaults). Escalation-to-human flow.
+3. **CX-3 — Client-facing Paige experience.** A client-scoped projection through the one shared Harness, configured from three entry points (Client Portal config · Paige tab · Playbook defaults). Escalation-to-human flow.
 4. **CX-4 — Transformation primitive.** `client_transformation_metrics` schema, baseline capture, timeseries + trends, Paige-narrated summaries, Client 360 read-back, cohort transformation view.
 5. **CX-5 — Marketplace client-side blocks.** Vertical-specific block libraries (fitness · funding · business · life · consulting · agency), Marketplace revenue-share (70/30), per-block data models, Paige-narration of block data.
 
 **Sequencing:** CX-1 (anytime) → CX-2 → CX-3 → CX-4 → CX-5. Each unlocks the next.
 
-**Roadmap placement:** ships AFTER Slice 1c wraps (client portal placeholder becomes real) + AFTER Money Spine (Marketplace revenue-share infrastructure needs Stripe Connect). Should ship BEFORE closed beta launches so Wave 1 founding partners (funding professionals + thought leaders) can showcase differentiated client experience on day one.
+**Roadmap placement:** the secure owner/client vertical is launch-blocking MVP scope. Money Spine and
+Marketplace revenue-share gate CX-5 only; they do not demote the core portal to post-MVP. A dedicated
+Client Portal MVP build begins only on explicit owner start.
 
 ---
 
@@ -40,8 +54,10 @@ The Client Portal is currently a functional-but-shallow config surface (tenant c
 **1.1 The client portal is not a config surface — it's a user-facing product surface.**
 Currently we've built the operator side to depth. The client side is functional but shallow. Every design decision in CX should serve the CLIENT viewing/using the portal, not just the tenant configuring it. Config surfaces exist to enable client experiences, not the reverse.
 
-**1.2 Two-way brain, scoped per audience (§7 + §8).**
-The client-facing Paige is the same brain as the operator-facing Paige, but with distinct scope, persona, and permissions. Never a separate LLM stack. Never a separate memory system. Same L1/L4/L6/§8/§16 primitives, different scope filter.
+**1.2 One Harness, scoped per audience (§7 + §8).**
+Client-facing Paige is the same Paige Runtime Harness as operator-facing Paige, with a deliberate
+client-scoped projection, persona, and permissions. Never a separate agent, Brain, LLM stack,
+authority path, tool island, or memory system.
 
 **1.3 Composable, not fixed (§18 OS pattern).**
 The client portal is a canvas the tenant composes from primitives (tabs + blocks) drawn from the Marketplace ecosystem + Playbook defaults. Tenants don't customize a fixed template; they assemble their client's experience from ecosystem parts.
@@ -234,7 +250,9 @@ Every Playbook ships with a **default portal template** — pre-configured tabs 
 
 ## 4. CX-3 — Client-facing Paige persona
 
-The client-facing Paige is a scoped instance of the same brain, configured for client-audience interaction. Deep integration with §8 (Client Experience department) + §14 (sub-agent orchestration).
+The client-facing Paige experience is a client-scoped projection through the same Runtime Harness,
+configured for client-audience interaction. Client Experience is a capability domain, not a separate
+agent product or operating system.
 
 ### 4.1 Persona configuration
 
@@ -620,7 +638,7 @@ Every client-facing surface wires to the brain per §16 10-department model:
 |---|---|---|
 | Portal Home / config | Client Experience | Reads tenant portal config; renders per tenant brand + Playbook defaults |
 | Custom tabs + blocks | Client Experience | Read from `tenant_portal_tabs` + `tenant_portal_tab_blocks`; RLS tenant+client-scoped |
-| Client-facing Paige chat | Client Experience | L1 traces `context: "client_facing"`; L4 reasoning invoked; L6 memory scoped to this client |
+| Client-facing Paige chat | Client Experience | One Harness assembles an authorized client projection; bounded working evidence is not durable Memory, and only reviewed owner-confirmed knowledge may become Memory |
 | Transformation dashboard | Client Experience | Reads `client_transformation_metrics`; Paige-narration via L4 |
 | Marketplace client blocks | Client Experience | Each block writes to `client_transformation_metrics`; Paige-narration per block config |
 | Client 360 (tenant view) | Fulfillment / Client Success | Reads all above data for a specific client; adds tenant-only overlay |
@@ -667,14 +685,16 @@ Client-facing anything is where §9 (tenant/operator isolation) matters MOST. Cl
 **Roadmap placement:**
 
 - Post-Slice-1c wrap (all 12 sub-slices merged)
-- Post-Money-Spine ship (need Layer 5 Marketplace revenue-share infrastructure for CX-5)
+- Money Spine Layer 5 is required for CX-5 only; it does not gate the secure core portal MVP
 - BEFORE closed beta launches (Wave 1 founding partners need differentiated client experience)
 
-**Gating conditions for CX workstream to start:**
+**Gating conditions for the secure core MVP vertical to start:**
 - Slice 1c fully merged (12 sub-slices)
-- Money Spine Lane B-i through B-iii shipped (subscription + credits + wave conversion)
-- Money Spine Lane B-vi (Stripe Connect for Marketplace) at least designed (can activate later for CX-5)
 - Communications workstream at least scoped (CX-3 escalation-to-human depends on it)
+
+**Additional gates for CX-5 only:**
+- Money Spine Lane B-i through B-iii shipped (subscription + credits + wave conversion)
+- Money Spine Lane B-vi (Stripe Connect for Marketplace) designed and separately authorized
 
 **Estimated CX workstream size:** comparable to Slice 1c overall — 8-12 sub-slices, each with own crew + verification cycle.
 
@@ -711,9 +731,9 @@ Client-facing anything is where §9 (tenant/operator isolation) matters MOST. Cl
 
 ## 11. Locked decisions
 
-1. **CX is a distinct workstream, ships post-Slice-1c + post-Money-Spine, before closed beta launches**
+1. **The secure Tenant Client Portal vertical is MVP and must complete before beta; only CX-5 is gated by Money Spine revenue-share**
 2. **Composable portal architecture** — tabs + blocks + Playbook defaults; never fixed templates
-3. **Client-facing Paige is a scoped instance of same brain** — never a separate stack; §9-clean scope filter server-side
+3. **Client-facing Paige is a client-scoped projection through one Harness** — never a separate agent, Brain, stack, memory, authority path, or tool island; server-side scope filter on every operation
 4. **Three config entry points for client-facing Paige** — Client Portal config (day-to-day) · Paige tab (deep) · Playbook (vertical defaults)
 5. **Transformation primitive is universal + Playbook-defined** — universal schema, per-Playbook metric definitions
 6. **Marketplace client-side blocks at 70/30 revenue split** — standard AppExchange terms
@@ -809,4 +829,6 @@ The CX workstream is where Layer 5 of the monetization stack (Marketplace revenu
 
 ---
 
-**End of doc. Locked at 2026-07-21 as future-execution spec. Amendments require owner review + explicit update. Next revision expected post-CX-2 launch to calibrate composability caps, block pricing, and Playbook default templates from real usage.**
+**End of doc. Locked at 2026-07-21 and owner-amended 2026-09-08.** The core Tenant Client Portal is
+MVP; implementation still requires an explicit dedicated-build start. Later composability,
+transformation, Marketplace, revenue-share, and developer expansion remain separately gated.

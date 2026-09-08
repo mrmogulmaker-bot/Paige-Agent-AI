@@ -1,5 +1,40 @@
 # Decision Log — chronological one-liners
 
+- **Paige Self-Knowledge & Migration Advisor is one read-first Harness capability (2026-09-08,
+  owner-approved architecture contract).** Paige must answer what she can do for the active tenant,
+  interpret replacement direction, and lead comparisons/migration plans from verified Paige coverage
+  before external alternatives. Four source layers remain distinct: a derived tenant-safe capability
+  manifest; the tenant operating-system inventory; dated/sourced external comparison knowledge; and
+  the staged migration plan/evidence model. Delivery, tenant connection, eligibility, authority,
+  proof, and release identity never collapse into “available.” Migration classes default to read-only
+  advice; shutdown, provider/model route, credential, schema/data, production, and other effects need
+  separate scoped authorization, durable execution, readback, receipt/Rail, and rollback proof. The
+  end-to-end advisor is `UNAVAILABLE`; distributed self-description primitives are `PARTIAL`.
+  This ruling creates no assistant, Brain, Harness, registry, migration database, skill row, provider
+  connection, product code, tenant-data access, deployment, production behavior, or customer promise.
+  The dedicated implementation owner consumes the Master contract and does not inherit documentation
+  ownership or action authority.
+
+- **Tenant Client Portal is an MVP projection through the one Paige Harness (2026-09-08, owner correction).**
+  The Tenant Client Portal is the governed, client-facing experience a Paige tenant provides to its
+  external clients and is a competitive MVP differentiator. Canonical rule:
+  `Tenant business → shared governed Paige Runtime Harness → client-scoped portal experience`.
+  It is not a separate app, agent, Brain, Harness, authority system, operating logic, or memory. Every
+  client read/action independently resolves client identity, sponsoring tenant, explicit
+  relationship, workspace/record scope, role/consent, allowed sharing, tenant policy,
+  provider/file/document state, verification, receipt, and Rail. Clients receive only an approved
+  canonical projection, never the tenant's full Brain, private Mind/Memory, Vault, connections,
+  internal conversations, other clients, financial controls, private strategy, or blanket action
+  authority. Current-main status is `PARTIAL`: real external-client entry/linkage/shell/action and
+  evidence substrate exists, while consumer-invite recipient binding, full shared-record
+  convergence, accepted-access revocation, multi-workspace switching, approval-record decisions,
+  tenant-facing support/booking, tenant service-agreement receipt/PDF, governed portal-tool
+  execution, and authenticated isolation/recovery proof remain unavailable, broken, or owed. A
+  future Paige Enterprise Success Portal for Paige's own enterprise
+  customers remains a separate later product. This correction authorizes documentation and MVP
+  planning only—no product implementation, provider setup, billing, invitations, migration,
+  deployment, public promise, production change, or active-workstream ownership change.
+
 - **Organic Paige Presence and real-audio recovery (2026-09-08, owner-approved delivery).**
   The Live stage's circular badge is replaced by a layered irregular obsidian/plum and warm-gold
   Presence with calm baseline motion and a static reduced-motion exception. Only actual played

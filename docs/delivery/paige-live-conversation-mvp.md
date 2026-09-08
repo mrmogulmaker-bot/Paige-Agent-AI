@@ -9,10 +9,18 @@ stage badge. Calm visible baseline motion is presentation, never activity proof;
 is the static exception. Speaking/listening energy requires real playback or consented active mic.
 The existing composer, thread, transcript, cards and controls remain the product surface.
 
-Grounded base: `ddbc5cd654b54fd58ce4e1b7ded7c37ffb994767`, including shipped #1066 owner scroll acceptance. Preserve #1057 exact scroll anchors,
+Grounded base: `ad4cf43fc1816fd6cdb8da206e67fb2dcd711feb`, including #1067/#1069 Tenant Client Portal and #1070/#1071 self-knowledge architecture records, plus shipped #1066 owner scroll acceptance. Preserve #1057 exact scroll anchors,
 #1060 account choice, and #1059/#1064 one-Harness rules. Shared chat/controller have zero product diff.
 #1044 Skills/Interview and #1046 Secure Browser remain separate drafts. No Campaign Brief,
 Platform account-choice, Social, Client Portal or binding-ledger ownership is absorbed.
+
+Current-main composition checkpoint (2026-09-08): merge current main into the published #1068
+branch without rewriting history. The only textual conflict is the decision-log insertion point:
+preserve the newer self-knowledge and Tenant Client Portal entries verbatim, followed by the
+existing Live Presence entry, in canonical newest-first order. Main's remaining documentation
+composes unchanged; no product, provider, credential, retention, or deployment change is added.
+The per-PR attestation remains a narrow pointer to existing canonical evidence. Exact-head CI and
+fresh independent review are required; PR merge and production deployment await final owner approval.
 
 Controlled edit surface: existing live components, provider-neutral session/audio seams, their
 tests/harness, and canonical Live delivery/Brain records. Shared PaigeAIChat and scroll controller

@@ -61,6 +61,11 @@ Owner ruled 2026-08-08 (BRD) — several items previously scheduled for later wa
 **Cowork-locked specs ready for build (2026-08-08):**
 - **Agent UI Placement** — per `docs/product/agent-ui-placement-spec.md`; right-rail + ⌘K launcher + Customer Portal floating avatar + Super Admin Paige Operator persona + agency scope switcher + impersonation banner/audit (11 downstream items)
 - **Customer Portal MVP** — per `docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`; 7 pillars × 5 stakeholders matrix, §38 money boundary load-bearing on pillar 4 (7 downstream items)
+  - **2026-09-08 correction:** this means the Tenant Client Portal a Paige tenant provides to its own
+    external clients through the one shared Runtime Harness. It is currently `PARTIAL`; the complete
+    owner/client flow, revocation/switching failures, canonical convergence, and authenticated
+    isolation proof remain launch work. It is distinct from any later Paige Enterprise Success Portal.
+    Composable Marketplace/revenue-share expansion is not a prerequisite for the secure core MVP.
 - **Paige Multi-Channel Comms + Deliverable Workflow** (NEW 2026-08-08) — per `docs/product/paige-multichannel-comms-and-deliverable-workflow-spec.md`; unified conversation operator across email/SMS/portal/social/voice (inbound + outbound + take-over) + Paige-authored client deliverables (proposals, offers, contracts) with 3-way delivery choice (SMS/Email/Portal/Voice-reminder) + acceptance loop-back. Tier-scoped per §2.3 — Super Admin FIRST (dogfood) → Solo + sub-account MVP → agency-parent NEVER (architectural; agencies run through own sub-account). Extends existing Twilio/ElevenLabs/send-transactional-email seams (§18). Compliance: A2P 10DLC + STIR/SHAKEN + recording disclosure + consent enforcement (12 downstream items).
 - **Interactive Analytics UI build** — per the spec above; 5 surface variations (Super Admin best / Agency roll-up + drill / Solo / sub-account / client Journey)
 - **Promotional account type build** — per the spec above; migration + Super Admin unified Invites surface + expiry cron + notifications + anti-abuse guard

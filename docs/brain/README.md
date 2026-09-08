@@ -27,6 +27,11 @@ index what you have not checked.
   Registry when a provider or connected app is involved. No surface may invent a parallel runtime,
   authority seam, Brain, Rail, receipt store, registry, or “agent memory”; departments are
   capability domains within one shared Paige Harness.
+- **Adding capability self-description, competitor comparison, replacement, consolidation, cutover,
+  or migration advice?** → read the Master Runtime Harness subsection **“Paige Self-Knowledge &
+  Migration Advisor”**, then `paige-brain-wiring-standard.md`, the Integration Capability Registry,
+  and Surface Binding Ledger. Derive tenant truth from current server-owned sources; do not create a
+  second capability registry, migration database, or customer-facing assistant.
 - **Hit a weird recurring bug?** → `lessons-learned.md` (symptom → root cause → rule).
 - **Opening/closing a PR, merging, deploying, versioning, or drafting a customer update?** →
   `../doctrine/release-governance-and-customer-update-policy.md`.
@@ -61,7 +66,7 @@ worse than none — it lies with authority.
 | `roles-permissions.md` | How roles actually work: the three stores, the owner→global-admin amplifier, which helper to use, live counts, what's not built | 2026-08-18 |
 | `decision-log.md` | Chronological one-liners: PRs #375+, dated rulings, wave decisions | "What changed / what did we decide?" |
 | `lessons-learned.md` | Recurring traps: symptom → root cause → rule | Before a class of work that's bitten us before |
-| `paige-brain-wiring-standard.md` | **The Second Brain versus Runtime Harness distinction, the one-runtime/many-capability-domains rule, and the six-part checklist every capability must satisfy** — knowledge record + callable seam + context feed + tool registration + tier availability + modality-neutral acceptance. Includes the running coverage ledger while routing current Harness authority to the Master decision | **Before department/domain, model, agent, skill, voice, browser, proactive-job, or external-tool work; and when shipping ANY capability** |
+| `paige-brain-wiring-standard.md` | **The Second Brain versus Runtime Harness distinction, one-runtime/many-capability-domains rule, Self-Knowledge & Migration Advisor consumption boundary, and six-part checklist every capability must satisfy** — knowledge record + callable seam + context feed + tool registration + tier availability + modality-neutral acceptance. Includes the running coverage ledger while routing current Harness authority to the Master decision | **Before department/domain, capability answer, comparison/migration, model, agent, skill, voice, browser, proactive-job, or external-tool work; and when shipping ANY capability** |
 | `cd-pack-port-playbook.md` | How to port a Claude Design pack surface to a live tier: the 7-step procedure + the 6 traps that have actually cost us. Written from the operator port so Agency/Sub-account/Solo/Enterprise don't re-learn them | Before porting any pack surface to any tier |
 | `design-system.md` | Palette · gold discipline · type · depth · motion · layout · taste — and where each source lives | ANY design work, or "what is our design system?" |
 | `../doctrine/paige-attention-register.md` | **Where a platform finding lives so it is never lost** — the five records and what each is for, the register's nine fields and eight views, the eleven delivery statuses and what each one means, intake and closeout rules, the board's acceptance criteria, and the honest record that the GitHub Project does not exist yet | **Whenever a finding is discovered outside the current assignment's scope**, or before closing out any workstream |
@@ -202,6 +207,16 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 
 ## Architecture index
 
+**Tenant Client Portal routing (owner correction 2026-09-08):** before adding or changing any
+client-facing model, skill, message, request, approval, task, document, portal tool, provider, or
+external action, read the Master Runtime Harness decision first, then
+`docs/product/BRD-MVP-2026-08-08.md`,
+`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`,
+`docs/strategy/client-experience-workstream-2026-07-21.md`, and
+`docs/handoff/two-way-client-portal-audit.md`. The Tenant Client Portal is a `PARTIAL` MVP
+capability projected through the one shared Harness. It is not a separate Brain/agent/runtime, and it
+is distinct from any later Paige Enterprise Success Portal for Paige's own enterprise customers.
+
 | Path | One-line | When to read |
 |---|---|---|
 | `docs/architecture/CANONICAL-SYSTEM-ARCHITECTURE-2026-08-08.md` | Canonical system architecture (newest, 2026-08-08) | First stop for "how is the system wired?" |
@@ -227,7 +242,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/strategy/agency-surface-competitive-research-2026-07-25.md` | Agency surface competitive research + proposal | Agency-surface features |
 | `docs/strategy/marketplace-competitive-landscape-2026-07-22.md` | Marketplace competitive landscape | Marketplace positioning |
 | `docs/strategy/monetization-rollout-2026-07-21.md` | Monetization rollout strategy | Monetization sequencing |
-| `docs/strategy/client-experience-workstream-2026-07-21.md` | Client-experience workstream strategy (§7/§8) | Client-portal experience work |
+| `docs/strategy/client-experience-workstream-2026-07-21.md` | Tenant Client Portal MVP vertical plus separately gated later client-experience expansion (§7/§8) | Client-portal experience work, after the Master Harness decision and locked portal matrix |
 | `docs/audits/paige-secure-browser-audit-2026-09-06.md` | Paige Secure Browser / Twin Phase-0 audit — current-state matrix (research LIVE/PARTIAL, credentialed modes UNAVAILABLE, no browser provider wired), collision packet vs the owner-locked five-slice plan, provider evaluation (the two distinct "Twin" vendors twin.so vs twin-browser.com disambiguated with dated sources; Browserbase/Anchor/Steel evidence), three-mode security architecture, Phase 0–4 roadmap; **owner-ruled 2026-09-07** — owner-direct-login + provider-held-persistent-session custody (opaque reference only), Browserbase adopted as PROPOSED Phase-1 candidate pending review | Any Secure Browser / Twin / connected-account-via-browser / owner-assisted-login / bounded-crawl work; "do we have a browser capability?" |
 | `docs/audits/money-spine-lane-b-i-discovery-2026-07-25.md` | Money Spine Lane B-i revenue-plumbing discovery | Money-spine build |
 | `docs/audits/b-iv-38-connect-posture-2026-07-26.md` | B-iv §38 Connect-posture diagnostic (spike, no code) | Stripe Connect posture (§38) |

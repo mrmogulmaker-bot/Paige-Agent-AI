@@ -5,6 +5,12 @@
 **Build owner:** Claude Code, when Customer Portal MVP work fires.
 **Doctrine anchors:** §2, §6, §7, §8, §9, §10, §16, §17, §35, §36, §38 in `CLAUDE.md`.
 
+**Owner correction (2026-09-08):** the **Tenant Client Portal is a tenant MVP capability and
+competitive differentiator**, currently `PARTIAL`. It is the experience a Paige tenant provides to
+that tenant's external clients through the one Paige Runtime Harness. A later **Paige Enterprise
+Success Portal** would serve Paige's direct enterprise customers and is a different product; it is
+not the MVP item approved here.
+
 ---
 
 ## 1. Purpose
@@ -156,6 +162,15 @@ If a build ever routes a client→tenant transaction through Paige's bank as mer
 
 ## 5. Cross-pillar rules
 
+- **One Harness / client projection** — `Tenant business → shared governed Paige Runtime Harness →
+  client-scoped portal experience`. Every read or action independently resolves external client,
+  sponsoring tenant, relationship, workspace/record scope, client role/consent, allowed shared
+  information, tenant policy, provider/file/document state, verification, receipt, and Rail.
+- **Deliberate sharing only** — the client never automatically receives the tenant's full Second
+  Brain, private Mind/Memory, Vault, Connected Accounts, internal team conversations, other clients,
+  financial controls, private strategy, credentials, private browser content, hidden prompts or
+  reasoning traces, or autonomous authority.
+
 - **§9 seam preservation** — no pillar leaks agency data into a sub-account's client experience, and no sub-account's data leaks up to the agency's clients. Agency configures defaults for its sub-accounts; sub-accounts serve their own clients privately.
 - **§7 tenant-authored** — every client-facing surface uses tenant brand (logo, name, colors), not Paige brand. Bug B PR #397 fixed the last known logo leakers; this matrix formalizes the principle across all pillars.
 - **§38 money boundary** — tenant→client transactions never route through Paige's bank as merchant of record.
@@ -168,13 +183,36 @@ If a build ever routes a client→tenant transaction through Paige's bank as mer
 ## 6. What this matrix does NOT decide
 
 - **The visual design of each pillar** — that's design work (Antonio + Figma AI + Claude Code translation).
-- **The autonomy tier of each Paige action** — that's decided per-action in `paige_action_kinds` (§16). This matrix defines ownership; §16 tiers define how Paige exercises write rights (auto vs draft vs briefed).
-- **Feature-flag gating per tier** — a Solo tenant gets all 7 pillars; an Agency tenant gets them + agency-configuration authority; Enterprise gets whatever's custom-contracted. Feature envelopes are defined in the tier matrix, not here.
+- **The effective authority of each Paige action** — this matrix defines ownership, while
+  `paige_action_kinds` supplies action defaults/metadata. At execution time the Spine independently
+  resolves tenant, actor, workspace, relationship, role, tool scope, provider state, approval rule,
+  budget, and verification. No matrix right or action default grants blanket authority.
+- **Feature-flag gating per tier** — Solo, Sub-account, and Enterprise tenants may operate the
+  tenant-to-client portal within their own client book; Agency curates/resells defaults for its
+  sub-accounts and has no agency-parent consumer invite surface; Super Admin reaches tenant context
+  only through governed act-as/break-glass. Feature envelopes are defined in the tier matrix, not
+  here. An Enterprise-tier tenant portal is still a Tenant Client Portal, never the future Paige
+  Enterprise Success Portal.
 - **Onboarding sequencing** — which pillar the client sees first is an onboarding UX decision. This matrix doesn't force an order.
 
 ---
 
 ## 7. Owed downstream work
+
+**Owner-complete MVP vertical (implementation not authorized by this record):**
+
+1. Select or create the canonical client relationship.
+2. Explicitly invite or grant portal access.
+3. Authenticate the client into the branded tenant scope.
+4. Show only approved progress, messages, requests, tasks, documents, approvals, and next steps.
+5. Permit bounded replies, questions, requested information, and allowed approve/decline decisions.
+6. Route meaningful action through Spine authority, canonical write/readback, receipts, and Rail.
+7. Let the tenant review, revoke, or narrow access.
+8. Fail closed on account/client/tenant switching, expired invitations, denied access, stale links,
+   removed relationships, and unavailable provider/document state, with a safe next action.
+
+Current `main` has a real external-client substrate, but missing or unproven portions of this flow
+keep the overall capability `PARTIAL`. Tenant-side portal configuration is not external-client proof.
 
 1. **RLS audit** — for every pillar's underlying tables, verify RLS policies match the ownership matrix. §32.b SET ROLE repros per row of the matrix. §39 peer-gate on the audit.
 2. **Callable-seam inventory** — for every OWN/CONFIG/WRITE cell above, confirm a callable seam exists (RPC, edge function, or MCP tool) that Paige can invoke. §10 test: could Paige do this from chat? File any missing seams as build tasks.
