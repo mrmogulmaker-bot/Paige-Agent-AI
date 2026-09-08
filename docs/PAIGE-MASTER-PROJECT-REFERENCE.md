@@ -662,7 +662,7 @@ shipping/owner-acceptance record, not current behavioral acceptance. The owner h
 delayed reading-position theft after #1066. The shared scroll workstream is REOPENED P0 / FAIL,
 with no verified last-known-good build for indefinite manual ownership. The existing
 [forensic closeout](evidence/ui-delivery/paige-chat-scroll-forensic-regression-correction.md) owns
-the corrective evidence. Other agents continue undisturbed. No corrective release is claimed yet.
+the corrective evidence. #1075 reached production as `f86b1c401c492c4d0dc122258b6c26b96870befe`, but the owner reports the reset persists. Same-parent portal reinsertion is now reproduced and under narrow correction; acceptance remains FAIL. Other agents continue undisturbed.
 
 This is the **sole chronological log of deliveries to `main`**. It records every merged PR, including documentation/governance-only merges, because repository truth also ships. A row proves that the named commit reached `main`; it does not by itself prove migration apply, Edge/Fly/Vercel deployment, authenticated behavior, owner acceptance, or customer communication. Those are stated separately and linked to their canonical evidence.
 

@@ -1,5 +1,7 @@
 # Decision Log — chronological one-liners
 
+- **Chat-scroll P0 remains open after #1075 (2026-09-08, owner report).** Actual shell parent refresh unconditionally reinserted the existing portal host, resetting native transcript scroll to zero. Failing-first real-component reproduction fails at all five viewports; a single parent-node guard removes the redundant move while preserving actual pop-out relocation. No context/memory, Secure Browser, voice or unrelated changes. Existing forensic closeout owns evidence; production acceptance remains owed. Other agents continue undisturbed.
+
 - **Vibe Studio Creative Production Team is a temporary Paige-assembled job team (2026-09-08,
   owner-approved agentization correction).** Seven bounded roles—Creative Brief and Strategy Specialist,
   Funnel and Conversion Copy Specialist, Forms and Conversion Flow Specialist, Long-Form Publishing Specialist, Visual Asset Specialist,

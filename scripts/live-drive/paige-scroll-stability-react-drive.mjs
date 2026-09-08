@@ -45,6 +45,14 @@ async function stop(child) {
 }
 
 const settle = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+const finishLayoutTransitions = async (page) => {
+  await page.evaluate(async () => {
+    const finite = document.getAnimations().filter(animation =>
+      (animation.playState === "running" || animation.pending) && animation.effect?.getTiming().iterations !== Infinity);
+    await Promise.allSettled(finite.map(animation => animation.finished));
+  });
+  await settle(page);
+};
 const transcript = (page) => page.locator("[data-paige-transcript-scroll=true]");
 const measure = (page) => transcript(page).evaluate((owner) => {
   const viewport = owner.getBoundingClientRect();
@@ -332,7 +340,7 @@ try {
     await transcript(page).waitFor({ state: "hidden" });
     await page.screenshot({ path: path.join(OUT, `${label}-closed.png`), fullPage: true });
     await page.getByRole("button", { name: "Direct PAIGE", exact: true }).evaluate((button) => button.click());
-    await settle(page);
+    await finishLayoutTransitions(page);
     const minimizedReturn = await measure(page);
     record(`${label} minimize return`, sameAnchor(reloaded, minimizedReturn), { reloaded, minimizedReturn });
 
