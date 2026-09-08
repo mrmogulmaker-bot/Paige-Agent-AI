@@ -3,14 +3,17 @@
 - **Master Section 4 shipped-log reconciliation + public-version audit (2026-09-08, owner-directed).**
   Git history sets the backfill cutoff at PR #1029 / `1fee541808b71293329e8111f45b17cd28248794`;
   all 18 first-parent deliveries through #1051 / `531045004aa306beecb669b31c385c779c76c4b8`
-  are reconciled in the sole chronological log at Master Reference Section 4.0. Both production
-  domains served the same public build `531045004aa306beecb669b31c385c779c76c4b8-mtry6b9s` from
-  READY Vercel deployment `dpl_5V2fqn1D8axaEH25Tg2tB6KgKh8P`; no customer-update record was
-  resolved. The unlinked prior homepage implementations at `/premium` and `/legacy` were proven
+  are reconciled in the sole chronological log at Master Reference Section 4.0. PR #1054 merged as
+  `2719d7d86ccfa23d0e781b841b5ee134ec8e7276`; both production domains now serve exact public build
+  `2719d7d86ccfa23d0e781b841b5ee134ec8e7276-mts5d4ii` from READY Vercel deployment
+  `dpl_CfH3jVVmkzrAm4vSzdUGDTU9Z9gQ`; no customer-update record resolved. The unlinked prior
+  homepage implementations at `/premium` and `/legacy` were proven
   outside the intended canonical surface, so both paths now replace-redirect to `/` and their
   obsolete page components are removed. The separately documented `/tenant-redesign` representative
-  prototype remains active pending a distinct owner retirement decision. No migration, Edge function,
-  provider, tenant record, public release/version, or customer communication changed.
+  prototype remains active pending a distinct owner retirement decision. Public `track-event`
+  requests emitted CORS/401 errors during route proof and need separate telemetry ownership. No
+  migration, Edge function, provider, tenant record, public release/version, or customer
+  communication changed.
 
 - **Secure Browser — prerequisite security repair candidate (2026-09-07, dedicated builder).**
   Grounded current `main` at `49d25f4c`; #1039 is merged and its Browserbase review/starting packet
