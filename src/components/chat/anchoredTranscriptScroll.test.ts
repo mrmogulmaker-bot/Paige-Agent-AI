@@ -246,6 +246,35 @@ describe("createAnchoredTranscriptScroll", () => {
     composer.remove();
   });
 
+  it("rebinds reverse Tab ownership when the mounted transcript moves into a pop-out document", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-popout-document" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    const popupDocument = frame.contentDocument!;
+    const popupComposer = popupDocument.createElement("textarea");
+    popupDocument.body.append(element, popupComposer);
+    controller.notifyLayoutChange();
+
+    popupComposer.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }));
+    element.scrollTop = 410;
+    expect(controller.handleScroll()).toBe(false);
+    popupComposer.dispatchEvent(new KeyboardEvent("keyup", { key: "Tab", shiftKey: true, bubbles: true }));
+    geometry.items.d.height += 100;
+    geometry.scrollHeight += 100;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(410);
+    frame.remove();
+  });
+
   it("does not reconcile an incoming thread anchor against outgoing thread DOM", () => {
     const geometry: Geometry = {
       viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,

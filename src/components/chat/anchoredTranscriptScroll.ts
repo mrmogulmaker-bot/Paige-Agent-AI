@@ -50,6 +50,7 @@ export function createAnchoredTranscriptScroll({
   let pendingUserMovement = false;
   let continuousUserMovement = false;
   let pendingContextDomSignature: string | null = null;
+  let boundView: Window | null = null;
 
   const messageDomSignature = () => element
     ? Array.from(element.querySelectorAll<HTMLElement>(MESSAGE_SELECTOR))
@@ -95,6 +96,7 @@ export function createAnchoredTranscriptScroll({
 
   const restore = () => {
     if (!element || !hasVisibleGeometry()) return;
+    bindCurrentView();
     if (pendingContextDomSignature !== null) {
       const currentSignature = messageDomSignature();
       if (currentSignature === pendingContextDomSignature) return;
@@ -277,6 +279,14 @@ export function createAnchoredTranscriptScroll({
     beginContinuousUserMovement();
   };
 
+  const beginTranscriptFocusMovement = (event: FocusEvent) => {
+    if (!element) return;
+    const NodeConstructor = element.ownerDocument.defaultView?.Node;
+    if (!NodeConstructor || !(event.target instanceof NodeConstructor) || !element.contains(event.target)) return;
+    if (event.relatedTarget instanceof NodeConstructor && element.contains(event.relatedTarget)) return;
+    beginContinuousUserMovement();
+  };
+
   const beginPointerUserMovement = (event: Event) => {
     // Native scrollbar drags target the scroll owner. A click on message
     // content is not a scroll instruction and must not arm a later update.
@@ -289,8 +299,25 @@ export function createAnchoredTranscriptScroll({
     releaseUserMovementAfterLayoutSettles();
   };
 
+  const bindCurrentView = () => {
+    const nextView = element?.ownerDocument.defaultView ?? null;
+    if (nextView === boundView) return;
+    boundView?.removeEventListener("pointerup", finishContinuousUserInput);
+    boundView?.removeEventListener("pointercancel", finishContinuousUserInput);
+    boundView?.removeEventListener("keydown", beginWindowTabMovement);
+    boundView?.removeEventListener("keyup", finishContinuousUserInput);
+    boundView?.removeEventListener("blur", finishContinuousUserInput);
+    boundView = nextView;
+    boundView?.addEventListener("pointerup", finishContinuousUserInput, { passive: true });
+    boundView?.addEventListener("pointercancel", finishContinuousUserInput, { passive: true });
+    boundView?.addEventListener("keydown", beginWindowTabMovement);
+    boundView?.addEventListener("keyup", finishContinuousUserInput);
+    boundView?.addEventListener("blur", finishContinuousUserInput);
+  };
+
   const handleScroll = () => {
     if (!element) return pinned();
+    bindCurrentView();
     if (!hasVisibleGeometry()) {
       pendingUserMovement = false;
       return pinned();
@@ -342,12 +369,14 @@ export function createAnchoredTranscriptScroll({
     element?.removeEventListener("touchend", finishContinuousUserInput);
     element?.removeEventListener("touchcancel", finishContinuousUserInput);
     element?.removeEventListener("pointerdown", beginPointerUserMovement);
-    element?.ownerDocument.defaultView?.removeEventListener("pointerup", finishContinuousUserInput);
-    element?.ownerDocument.defaultView?.removeEventListener("pointercancel", finishContinuousUserInput);
     element?.removeEventListener("keydown", beginKeyboardUserMovement);
-    element?.ownerDocument.defaultView?.removeEventListener("keydown", beginWindowTabMovement);
-    element?.ownerDocument.defaultView?.removeEventListener("keyup", finishContinuousUserInput);
-    element?.ownerDocument.defaultView?.removeEventListener("blur", finishContinuousUserInput);
+    element?.removeEventListener("focusin", beginTranscriptFocusMovement);
+    boundView?.removeEventListener("pointerup", finishContinuousUserInput);
+    boundView?.removeEventListener("pointercancel", finishContinuousUserInput);
+    boundView?.removeEventListener("keydown", beginWindowTabMovement);
+    boundView?.removeEventListener("keyup", finishContinuousUserInput);
+    boundView?.removeEventListener("blur", finishContinuousUserInput);
+    boundView = null;
     element?.removeEventListener("scrollend", endUserMovement);
     intentionalBottom = false;
     pendingUserMovement = false;
@@ -388,14 +417,11 @@ export function createAnchoredTranscriptScroll({
       element.addEventListener("touchend", finishContinuousUserInput, { passive: true });
       element.addEventListener("touchcancel", finishContinuousUserInput, { passive: true });
       element.addEventListener("pointerdown", beginPointerUserMovement, { passive: true });
-      element.ownerDocument.defaultView?.addEventListener("pointerup", finishContinuousUserInput, { passive: true });
-      element.ownerDocument.defaultView?.addEventListener("pointercancel", finishContinuousUserInput, { passive: true });
       element.addEventListener("keydown", beginKeyboardUserMovement);
-      element.ownerDocument.defaultView?.addEventListener("keydown", beginWindowTabMovement);
+      element.addEventListener("focusin", beginTranscriptFocusMovement);
       // Tab can move focus outside the transcript before keyup. Window owns the
       // release so keyboard intent cannot remain armed for a later layout scroll.
-      element.ownerDocument.defaultView?.addEventListener("keyup", finishContinuousUserInput);
-      element.ownerDocument.defaultView?.addEventListener("blur", finishContinuousUserInput);
+      bindCurrentView();
       element.addEventListener("scrollend", endUserMovement);
       const view = element.ownerDocument.defaultView;
       const Mutation = view?.MutationObserver ?? globalThis.MutationObserver;
@@ -413,7 +439,10 @@ export function createAnchoredTranscriptScroll({
     detach,
     destroy: detach,
     handleScroll,
-    notifyLayoutChange: restore,
+    notifyLayoutChange() {
+      bindCurrentView();
+      restore();
+    },
     isAtBottom: pinned,
     jumpToBottom(behavior: ScrollBehavior = "auto") {
       if (!element) return;
