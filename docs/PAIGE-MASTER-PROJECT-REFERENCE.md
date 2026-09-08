@@ -22,6 +22,18 @@
 > Updates page, navigation item, modal, feed, or dashboard is authorized. Any future Updates destination
 > requires a separate owner decision. Explicit reload must preserve registered forms, Paige drafts,
 > attachments/file processing, streaming responses, and Studio work.
+
+> **Current owner override — 2026-09-07:** After sign-in, Platform staff do not bypass account
+> selection. `/choose-account` pauses so the authenticated person deliberately selects either
+> **Platform** (the internal Platform Operator environment) or one of that person's directly
+> authorized Paige workspaces. Tenant choices remain the RLS-visible tenant intersection with the
+> caller's own active `tenant_members` rows and enter through the guarded `switchTenant` seam.
+> Platform selection exits tenant scope through the same audited context seam before navigating to
+> `/operator/fleet`. The retired `/admin` route is never a fallback, compatibility destination, or
+> special case. Non-platform users with exactly one valid membership retain direct entry. When the
+> chooser cannot resolve a valid selection, it stays fail-closed with honest recovery; established
+> non-membership signup/pricing routing is outside this repair. This supersedes the 2026-09-01 account-picker statement
+> that Platform operators retained direct routing.
 >
 > **Note on identifiers (§11/§34):** operator-infrastructure account SIDs (Twilio Org/Account/subaccount SIDs, etc.) are **redacted** from this in-repo doc — GitHub secret-scanning blocks them and doctrine keeps them out of artifacts. The literal values live in the owner's Twilio console + the owner handoff, never in the repository.
 
@@ -2800,10 +2812,10 @@ implementation begins from it.
 - **Evidence:** static/code for every audit row; prototype state coverage driven headless by the committed `docs/prototypes/platform-billing-gate1.drive.mjs` (34/34 states, structural-harness class, transcript in the packet §11); authenticated runtime NOT driven; UNVERIFIED — prod meter drain (#737), live `stripe_price_id` resolution, which Stripe account the platform rail uses in prod.
 - **GATE 1 APPROVED 2026-09-02 (rulings R1–R17 in packet §4.2–§4.4).** Owner-only billing acts (R2); Stripe-hosted portal (R3); Solo is the canonical billing experience, Operator screens control-plane only (R9); three beta offers — $74.50 paid beta plan (provider release later), 30-day $0 trial, Operator-granted promotional access — behind ONE entitlement projection with a documented precedence rule (R10/R11); **all currently eligible top-level workspaces go onto Promotional Beta Access via explicit records in a dedicated, reversible, separately Gate-B'd rollout after Foundation C — never as a fallback, never counted as revenue (R12–R15)**; paid-subscriber release discipline (R16). Twelve required Solo states (packet §9.1). **Sequence:** #803 docs merge → Foundation A → B → C → promotional rollout packet → its Gate B → trial / paid-beta provider releases. Platform Billing is a standing workstream; every slice carries an exact-head independent review and its own Gate B. **Nothing is merged, deployed, migrated, granted, or created in Stripe by this entry.**
 
-### Multi-membership login account picker (Gate 1 approved 2026-09-01; local branch, NOT LIVE)
+### Multi-membership login account picker (historical Gate 1 record; Platform rule SUPERSEDED 2026-09-07)
 
-- Google OAuth remains the identity authority. On an explicit login Google is asked to show its own identity chooser; after identity is established, Paige offers the workspace chooser only when that authenticated user has more than one active `tenant_members` row.
-- The chooser displays only the caller's RLS-filtered tenant records intersected with their own active membership rows. It never treats an account number, URL, email text or client-supplied tenant id as authorization. Platform operators, client/invite continuations and single-membership users retain their existing direct routing.
+- Google OAuth remains the identity authority. On an explicit login Google is asked to show its own identity chooser. **SUPERSEDED for Platform staff:** after identity is established, Platform staff always pause at `/choose-account`; non-platform users see the chooser when they have more than one active `tenant_members` row.
+- The chooser displays only the caller's RLS-filtered tenant records intersected with their own active membership rows. It never treats an account number, URL, email text or client-supplied tenant id as authorization. **The former Platform-operator direct-routing clause is superseded:** Platform staff explicitly choose Platform or a direct Paige membership. Client/invite continuations and non-platform single-membership users retain their established routing.
 - Choosing a workspace persists `profiles.active_tenant_id` through the existing guarded `switchTenant` seam before the browser scope changes. A failed write leaves the current workspace unchanged. The Solo header exposes the same independent-membership switcher; the existing server-gated agency parent/sub-account switcher remains separate and unchanged.
 - Truth status: 7 focused policy/OAuth/render tests pass, the TypeScript ratchet adds no errors, focused lint is green and the production build succeeds. Live authenticated Google return, both-account selection, retry, session expiry, account-switch persistence and preview runtime remain UNVERIFIED. Do not merge or deploy without the separate final go-live approval.
 ### Solo Settings → Team management — ~~local branch, NOT LIVE~~ **SUPERSEDED 2026-09-02: LIVE, capability `PARTIAL`**

@@ -24,6 +24,7 @@ import {
 import { useRequiredSignupDocs, recordAcceptances } from "@/lib/legal/useLegalDocuments";
 import { readableTextOn, isColorDark } from "@/lib/brand/contrast";
 import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
+import { operatorChooserTarget } from "@/lib/auth/operatorTarget";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -158,6 +159,26 @@ const Auth = () => {
     // redirects aren't suppressed by a stale flag from a previous session.
     clearClientViewOverride();
 
+    // Resolve the account-choice contract before any post-login continuation.
+    // Platform staff always pause, including on bookmarked operator deep links;
+    // the safe operator target is carried through the chooser and applied only
+    // after Platform is deliberately selected.
+    const accountChoiceContext = Promise.all([
+      supabase.from("tenant_members").select("tenant_id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "active"),
+      supabase.rpc("is_platform_admin"),
+    ]);
+    const [initialMemberships, initialStaff] = await accountChoiceContext;
+    if (initialMemberships.error || initialStaff.error) {
+      // Unknown authority is not permission to continue into a remembered or
+      // deep-linked context. The chooser owns the honest retry/error state.
+      navigate(operatorChooserTarget(window.location.search), { replace: true });
+      return;
+    }
+    if (!initialStaff.error && Boolean(initialStaff.data)) {
+      navigate(operatorChooserTarget(window.location.search), { replace: true });
+      return;
+    }
+
     // Plan-intent (task #66 reorder): a fresh signup that carried a plan goes to
     // /onboarding CARRYING the plan — the business-context + terms step, from which
     // checkout is launched LAST. Resolve the intent from the email-path ref first,
@@ -223,18 +244,23 @@ const Auth = () => {
       /* non-blocking */
     }
 
-    const [{ count: activeMembershipCount, error: membershipError }, staff] = await Promise.all([
-      supabase.from("tenant_members").select("tenant_id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "active"),
-      supabase.rpc("is_platform_admin"),
-    ]);
-    if (!membershipError && !staff.error && shouldOfferAccountPicker({ activeMembershipCount: activeMembershipCount ?? 0, isPlatformStaff: Boolean(staff.data) })) {
+    const [{ count: activeMembershipCount }, staff] = await accountChoiceContext;
+    const isPlatformStaff = Boolean(staff.data);
+    if (
+      shouldOfferAccountPicker({
+        activeMembershipCount: activeMembershipCount ?? 0,
+        isPlatformStaff,
+      })
+    ) {
       navigate("/choose-account", { replace: true });
       return;
     }
 
     const target = await Promise.race<string>([
       resolveLandingRoute(userId),
-      new Promise<string>((resolve) => setTimeout(() => resolve("/app"), 4000)),
+      // An unresolved route must never skip deliberate account selection and
+      // accidentally enter a remembered context.
+      new Promise<string>((resolve) => setTimeout(() => resolve("/choose-account"), 4000)),
     ]);
     navigate(target, { replace: true });
   };

@@ -6,6 +6,7 @@ import {
   routeAllowsTier,
   workspaceRootForTenant,
   clearWorkspaceScopedState,
+  forgetWorkspaceEntered,
   enterableWorkspaces,
   isEnterableTenantStatus,
   hasEnteredWorkspace,
@@ -271,6 +272,12 @@ describe("workspace entry containment", () => {
       rememberWorkspaceEntered(null);
       rememberWorkspaceEntered(undefined);
       rememberWorkspaceEntered("");
+      expect(sessionStorage.getItem("paige.workspace.entered")).toBeNull();
+    });
+
+    it("forgets the tenant settlement when the person chooses Platform", () => {
+      rememberWorkspaceEntered("tenant-a");
+      forgetWorkspaceEntered();
       expect(sessionStorage.getItem("paige.workspace.entered")).toBeNull();
     });
 

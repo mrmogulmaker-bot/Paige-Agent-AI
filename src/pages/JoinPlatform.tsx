@@ -3,9 +3,9 @@
  * Two jobs, one isolated page (separate from /auth and /operator):
  *  - With ?token=… : redeem a platform invite. Sign up (or sign in) with the
  *    invited email, then accept_platform_invite() grants the scoped Platform
- *    Admin role and lands the staffer in the God console.
+ *    Admin role and then requires deliberate account choice.
  *  - Without a token: the returning-staff sign-in — authenticate, verify
- *    is_platform_admin, route to the God console (non-staff bounced).
+ *    is_platform_admin, then route to the shared chooser (non-staff bounced).
  * Route: /join-platform.
  */
 import { useEffect, useRef, useState, type CSSProperties } from "react";
@@ -19,12 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
-// The operator door has ONE home (operatorTarget.ts). This page used to declare its own
-// GOD_CONSOLE pointing at /admin/platform/tenants, so a staffer arriving through the invite
-// door landed somewhere different from a staffer arriving through /auth — the same role, two
-// destinations. That only ever read as "two consoles"; there is one, and admin is a role and a
-// scope band inside it, never a URL. Import the constant instead of restating it.
-import { GOD_CONSOLE } from "@/lib/auth/operatorTarget";
+import { operatorChooserTarget } from "@/lib/auth/operatorTarget";
 
 export default function JoinPlatform() {
   const navigate = useNavigate();
@@ -54,15 +49,19 @@ export default function JoinPlatform() {
           toast({ title: "Couldn't accept invite", description: error.message, variant: "destructive" });
           return;
         }
-        navigate(GOD_CONSOLE, { replace: true });
+        navigate(operatorChooserTarget(window.location.search), { replace: true });
         return;
       }
-      // No token — returning staff. Only platform staff belong in the console.
-      const isStaff = await Promise.race<boolean>([
-        supabase.rpc("is_platform_admin").then(({ data }) => data === true),
-        new Promise<boolean>((r) => setTimeout(() => r(false), 4000)),
+      // No token — returning staff. Unknown authority is not a denial and cannot
+      // bypass deliberate account choice.
+      const isStaff = await Promise.race<boolean | null>([
+        supabase.rpc("is_platform_admin").then(({ data, error }) => error ? null : data === true),
+        new Promise<null>((r) => setTimeout(() => r(null), 4000)),
       ]);
-      if (isStaff) { navigate(GOD_CONSOLE, { replace: true }); return; }
+      if (isStaff !== false) {
+        navigate(operatorChooserTarget(window.location.search), { replace: true });
+        return;
+      }
       const { data: auth } = await supabase.auth.getUser();
       navigate(auth.user ? await resolveLandingRoute(auth.user.id) : "/auth", { replace: true });
     } catch (e) {
@@ -148,7 +147,7 @@ export default function JoinPlatform() {
           <p className="text-sm text-[#A79EC2] mt-1.5">
             {token
               ? "You've been invited as a Platform Admin. Create your account with your invited email."
-              : "Sign in to the operator console."}
+              : "Sign in, then choose where you want to work."}
           </p>
         </div>
 
@@ -179,7 +178,7 @@ export default function JoinPlatform() {
           <Button type="submit" disabled={isLoading || routing}
             className="w-full bg-gradient-to-r from-[#EBB94C] to-[#F2CE77] text-[#1B1230] font-semibold hover:opacity-95 focus-visible:ring-2 focus-visible:ring-[#F2CE77] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0912]">
             {(isLoading || routing) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {routing ? "Entering console…" : mode === "signup" ? "Create account & join" : "Sign in"}
+            {routing ? "Checking access…" : mode === "signup" ? "Create account & join" : "Sign in"}
           </Button>
         </form>
 

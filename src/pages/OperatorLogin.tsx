@@ -2,8 +2,9 @@
  * Operator Login — the God-tier entrance.
  * A dedicated, isolated sign-in for the platform operator (super-admin), kept
  * separate from the shared /auth door that every agency and coach uses. On
- * success it verifies platform-owner status and lands straight in the God
- * console; anyone who isn't an operator is routed to their normal home (the
+ * success it verifies platform authority and hands the person to the shared
+ * account chooser, preserving a safe operator deep link. Platform is entered
+ * only after the person deliberately selects it. Anyone who isn't an operator is routed to their normal home (the
  * God surfaces are RLS-gated regardless — this page is isolation, not the
  * security boundary). Route: /operator.
  */
@@ -18,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
-import { operatorTarget } from "@/lib/auth/operatorTarget";
+import { operatorChooserTarget } from "@/lib/auth/operatorTarget";
 
 export default function OperatorLogin() {
   const navigate = useNavigate();
@@ -44,20 +45,20 @@ export default function OperatorLogin() {
       // `resolveLandingRoute` — which has no platform_admin branch at all — to a tenant
       // surface. Caught by the §39 peer-gate; verified against both migrations before fixing.
       //
-      // Each call is raced so a stalled network can never trap the operator on
-      // "Entering console…" — it falls through to a sane default instead.
-      const isOperator = await Promise.race<boolean>([
-        supabase.rpc("is_platform_admin").then(({ data }) => data === true),
-        new Promise<boolean>((r) => setTimeout(() => r(false), 4000)),
+      // A timeout or error is UNKNOWN, not a denial. Unknown authority may enter
+      // the chooser's recovery state but must never bypass deliberate selection.
+      const isOperator = await Promise.race<boolean | null>([
+        supabase.rpc("is_platform_admin").then(({ data, error }) => error ? null : data === true),
+        new Promise<null>((r) => setTimeout(() => r(null), 4000)),
       ]);
-      if (isOperator) {
-        navigate(operatorTarget(window.location.search), { replace: true });
+      if (isOperator !== false) {
+        navigate(operatorChooserTarget(window.location.search), { replace: true });
         return;
       }
       // Authenticated, but not an operator — send them where they belong.
       const target = await Promise.race<string>([
         resolveLandingRoute(userId),
-        new Promise<string>((r) => setTimeout(() => r("/app"), 4000)),
+        new Promise<string>((r) => setTimeout(() => r("/choose-account"), 4000)),
       ]);
       navigate(target, { replace: true });
     } catch {

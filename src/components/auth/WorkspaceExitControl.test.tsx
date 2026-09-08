@@ -110,10 +110,12 @@ describe("WorkspaceExitControl", () => {
     expect(button).toBeTruthy();
   });
 
-  it("offers nothing to platform staff, who switch through the audited operator seam", async () => {
+  it("lets platform staff leave a tenant for the deliberate account chooser", async () => {
     h.ctx.isPlatformStaff = true;
-    const { button } = await render();
-    expect(button).toBeFalsy();
+    const { button, location } = await render();
+    expect(button).toBeTruthy();
+    await act(async () => { button?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    expect(location()).toBe("/choose-account");
   });
 
   it("navigates OUT to the chooser rather than switching anything itself", async () => {

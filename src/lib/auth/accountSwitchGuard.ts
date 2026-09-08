@@ -1,6 +1,6 @@
 export type AccountSwitchIntent = {
   fromTenantId: string | null;
-  toTenantId: string;
+  toTenantId: string | null;
   toTenantName: string;
 };
 

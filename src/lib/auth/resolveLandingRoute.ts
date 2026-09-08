@@ -1,5 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import { GOD_CONSOLE } from "@/lib/auth/operatorTarget";
 import { workspaceRootForTenant } from "@/lib/auth/workspaceEntry";
 
 // Pre-portal onboarding is now just two gates: welcome + agreement.
@@ -205,23 +204,27 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
         .maybeSingle(),
     ]);
 
+    // Role authority is required to decide whether Platform must be offered.
+    // A failed read is unknown authority, never evidence that the caller is an
+    // ordinary tenant user. Hold at the chooser instead of selecting any context.
+    if (rolesRes.error) return "/choose-account";
+
     // Typed rather than `any` (was pre-existing): CI lints CHANGED files, so touching
     // this file pulled the old `no-explicit-any` into scope. The select is
     // `user_roles.select("role")`, so the row shape is exactly this.
     let roles = (rolesRes.data || []).map((r: { role: string }) => r.role);
 
-    // Platform operators ALWAYS land on the operator console — never diverted to an
-    // agency side, even if they also own/admin an agency tenant. The platform
-    // operator and the agency operator are different §9 audiences. The door is
-    // GOD_CONSOLE, not a string restated here: a second copy is how the invite door
-    // drifted to a different destination for the same role.
+    // Platform operators ALWAYS pause at the shared account chooser — never enter
+    // Platform automatically and never get diverted to an agency side, even if they
+    // also own/admin an agency tenant. The chooser is the only place where Platform
+    // or a directly authorized Paige workspace can be selected deliberately.
     //
     // BOTH OPERATOR TIERS, NOT JUST GOD (§53). `platform_admin` is the delegated
     // operator tier and is admitted by `RequireOperator` exactly as `super_admin` is
     // — the guard's predicate is `is_platform_admin()`, which means EITHER role. The
     // two tiers differ in AUTHORITY (a platform_admin cannot grant roles or pass the
     // integrity gates frozen on `is_platform_owner()`); they do not differ in where
-    // they land. Testing only `super_admin` here sent a platform_admin — who by
+    // they must choose. Testing only `super_admin` here sent a platform_admin — who by
     // design holds no tenant membership, owns no tenant and has no client row — all
     // the way through to the "no role, no tenant, hasn't paid" fallback and out to
     // `/pricing`, on their own platform.
@@ -232,7 +235,7 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     // other entrance broken — the ordinary `/auth` sign-in and the landing header
     // both route through here. The root cause is closed at the resolver instead.
     if (roles.includes("super_admin") || roles.includes("platform_admin")) {
-      return GOD_CONSOLE;
+      return "/choose-account";
     }
     // Tenant/agency operators may prefer to land on their /agency side (#191);
     // a non-agency operator, or one who prefers 'last_account', falls to /admin.
@@ -324,11 +327,9 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     // subscribe, not to a free workspace-provisioning gate.
     return "/pricing";
   } catch {
-    // On any failure, default to /pricing (pay-before-workspace): we can't confirm a
-    // paid workspace here, and /pricing is self-correcting — an already-subscribed
-    // tenant that clicks a plan is routed straight to /admin (already_subscribed).
-    // Real tenant owners are routed to /admin by branch 4 on the happy path.
-    return "/pricing";
+    // A thrown identity/authority failure cannot safely select Platform, a tenant,
+    // a client portal, or billing. The chooser owns honest recovery.
+    return "/choose-account";
   }
 }
 

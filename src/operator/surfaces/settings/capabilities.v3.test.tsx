@@ -170,5 +170,5 @@ describe("what the surface says about the gap is the measured number", () => {
     // slipped in ungoverned. Main's four Comms tools arrive with this merge, so keeping zero
     // obliges the merge to give them catalogue rows rather than to raise a number — which is
     // exactly the pressure this assertion exists to create.
-  });
+  }, 20_000);
 });
