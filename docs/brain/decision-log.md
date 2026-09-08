@@ -1,5 +1,15 @@
 # Decision Log — chronological one-liners
 
+- **Live Conversation account-inspection and larger Presence closeout (2026-09-08, #1073/#1077).**
+  #1073 merged `3bdd26c2bc80a3d40298faad30e041a35734e5db`; owner-only inspection function v5 is
+  deployed but no provider inspection has occurred. #1077 merged `f3dbb1acefddcc8bbc36c24b43945c48945a9c68`;
+  READY `dpl_Dtr9wtw8iMtQRqm2vntusgTYx2Y7` serves the larger 60/40 stage and perceptible ambient
+  motion on both production aliases. Exact-head CI/review and local motion/rendered proof pass;
+  recording uses local test audio, not provider speech. Provider audio UNAVAILABLE; authenticated
+  owner voice PROOF OWED. No new Rail/Mind/Memory path. Owner confirmed independent Live delivery
+  continues without treating the separately owned chat-scroll work as a blocker. Exact identities
+  and proof boundaries: existing canonical Live evidence and Master Section4.0, not a new ledger.
+
 - **Vibe Studio Creative Production Team is a temporary Paige-assembled job team (2026-09-08,
   owner-approved agentization correction).** Seven bounded roles—Creative Brief and Strategy Specialist,
   Funnel and Conversion Copy Specialist, Forms and Conversion Flow Specialist, Long-Form Publishing Specialist, Visual Asset Specialist,

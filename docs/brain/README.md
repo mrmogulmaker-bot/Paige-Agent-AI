@@ -121,7 +121,8 @@ All figures below were checked live this session; how each was verified is in `c
 - **Paige voice identity:** server-resolved through the approved `paige_default_voice` profile and
   immutable session revision. Historical literal/request overrides were superseded by the
   2026-09-07 Live Conversation delivery. Provider-backed realtime audio remains `PROOF OWED`; see
-  `config-registry.md` → Voice.
+  `config-registry.md` → Voice. Exact #1073 account-inspection and #1077 larger-Presence release
+  identities and unchanged provider/owner proof gates are in the [canonical Live closeout](../evidence/ui-delivery/paige-live-conversation-mvp.md#prs-1073-and-1077-production-closeout--2026-09-08).
 - **Operator Communications:** live on prod — PR #408 (`2ee92903`), §32.a confirmed
   (`operator_conversations`/`operator_messages`). Inert until A2P MG SID + inbound token pasted.
 - **Wave 4a:** CLOSED — 4a.1 Agent right-rail (#405) · 4a.2 L8 Memory Fabric (#406) · 4a.3 chat
