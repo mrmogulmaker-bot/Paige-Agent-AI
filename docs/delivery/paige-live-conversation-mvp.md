@@ -15,6 +15,8 @@ contains #1068; its mechanical closeout `955c6f6c368c0efa53a0c44538354c91fac1191
 #1044 Skills/Interview and #1046 Secure Browser remain independent drafts. Current-main composition
 at `716906ac6a1bada7fe6f230974a530139961d20f` includes shipped #1072 specialist-agent doctrine.
 Its two newer decisions remain above the Live entries, verbatim; no specialist role is activated.
+Mechanical closeout #1074 (`d69d239b7f103861ef2d0422f9ee98683aea61fb`) is also composed: the sole
+Master shipped log preserves #1068 before the newer #1072 row, without duplicate or changed claims.
 The #1057 shared scroll controller is not an implementation target. Only the existing Live
 component's intent/output callbacks may attach to ordinary chat; no duplicate transcript/runtime.
 
