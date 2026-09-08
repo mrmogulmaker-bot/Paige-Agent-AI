@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Shield, TrendingUp, Zap, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { Loader2, ArrowLeft, Shield, TrendingUp, Zap, ChevronRight, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { z } from "zod";
 import type { User, Session } from "@supabase/supabase-js";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
@@ -15,7 +15,7 @@ import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthInd
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 import { signUpTenant } from "@/lib/auth/signUpTenant";
 import { trackEvent } from "@/hooks/useAnalytics";
-import { resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
+import { LANDING_ROUTE_RETRY, resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
 import { isSafeRedirectPath } from "@/lib/auth/safeRedirect";
 import {
   type PlanIntent, stashPlanIntent, readPlanIntent, clearPlanIntent,
@@ -48,6 +48,7 @@ const Auth = () => {
     setFullName([firstName.trim(), mi, lastName.trim()].filter(Boolean).join(" "));
   }, [firstName, middleInitial, lastName]);
   const [isLoading, setIsLoading] = useState(false);
+  const [routingError, setRoutingError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -155,6 +156,8 @@ const Auth = () => {
   }, [searchParams]);
 
   const redirectByRole = async (userId: string) => {
+    setRoutingError(null);
+    setIsLoading(true);
     // Always clear any "preview as client" override on a fresh login so role
     // redirects aren't suppressed by a stale flag from a previous session.
     clearClientViewOverride();
@@ -169,9 +172,11 @@ const Auth = () => {
     ]);
     const [initialMemberships, initialStaff] = await accountChoiceContext;
     if (initialMemberships.error || initialStaff.error) {
-      // Unknown authority is not permission to continue into a remembered or
-      // deep-linked context. The chooser owns the honest retry/error state.
-      navigate(operatorChooserTarget(window.location.search), { replace: true });
+      // Keep the authenticated person on this exact continuation. Moving to the
+      // chooser would discard an in-memory signup plan and cannot retry invite,
+      // role, or client resolution.
+      setRoutingError("Paige couldn't confirm your account access. Your sign-in is still active; try again.");
+      setIsLoading(false);
       return;
     }
     if (!initialStaff.error && Boolean(initialStaff.data)) {
@@ -258,10 +263,13 @@ const Auth = () => {
 
     const target = await Promise.race<string>([
       resolveLandingRoute(userId),
-      // An unresolved route must never skip deliberate account selection and
-      // accidentally enter a remembered context.
-      new Promise<string>((resolve) => setTimeout(() => resolve("/choose-account"), 4000)),
+      new Promise<string>((resolve) => setTimeout(() => resolve(LANDING_ROUTE_RETRY), 4000)),
     ]);
+    if (target === LANDING_ROUTE_RETRY) {
+      setRoutingError("Paige couldn't finish checking where you can work. Your sign-in is still active; try again.");
+      setIsLoading(false);
+      return;
+    }
     navigate(target, { replace: true });
   };
 
@@ -772,6 +780,14 @@ const Auth = () => {
             </div>
 
             {/* Form */}
+            {routingError && user && (
+              <div role="alert" className="rounded-xl border border-amber-300/40 bg-amber-300/10 p-4 text-sm text-foreground">
+                <p>{routingError}</p>
+                <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void redirectByRole(user.id)}>
+                  <RefreshCw className="mr-2 h-4 w-4" /> Retry account check
+                </Button>
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-5">
               {!isLogin && (
                 <div className="grid grid-cols-[1fr_4.5rem_1fr] gap-2">

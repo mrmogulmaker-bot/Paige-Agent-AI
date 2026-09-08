@@ -181,6 +181,13 @@ type LandingTenant = {
   features?: Record<string, unknown> | null;
 };
 
+/**
+ * A safe, signed-in recovery door for an unresolved landing decision. Callers
+ * must not turn an authority read failure into a guessed workspace or a chooser
+ * that cannot rerun the missing role/client reads.
+ */
+export const LANDING_ROUTE_RETRY = "/auth?mode=login&route=retry";
+
 export async function resolveLandingRoute(userId: string): Promise<string> {
   try {
     const [rolesRes, clientRes, ownedTenantRes, memberTenantRes, agencyTeamRes] = await Promise.all([
@@ -206,8 +213,9 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
 
     // Role authority is required to decide whether Platform must be offered.
     // A failed read is unknown authority, never evidence that the caller is an
-    // ordinary tenant user. Hold at the chooser instead of selecting any context.
-    if (rolesRes.error) return "/choose-account";
+    // ordinary tenant user. Return to the retryable signed-in door instead of
+    // selecting any context.
+    if (rolesRes.error) return LANDING_ROUTE_RETRY;
 
     // Typed rather than `any` (was pre-existing): CI lints CHANGED files, so touching
     // this file pulled the old `no-explicit-any` into scope. The select is
@@ -328,8 +336,9 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     return "/pricing";
   } catch {
     // A thrown identity/authority failure cannot safely select Platform, a tenant,
-    // a client portal, or billing. The chooser owns honest recovery.
-    return "/choose-account";
+    // a client portal, or billing. Return to the signed-in auth door so the full
+    // resolver can be retried; the account chooser cannot recover role/client reads.
+    return LANDING_ROUTE_RETRY;
   }
 }
 

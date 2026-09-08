@@ -240,13 +240,13 @@ describe("resolveLandingRoute — agency landing (§65)", () => {
     await expect(resolveLandingRoute("u-both")).resolves.toBe("/choose-account");
   });
 
-  it("fails closed to the chooser when role authority cannot be read", async () => {
+  it("fails closed to a retryable auth door when role authority cannot be read", async () => {
     mockTables({ rolesError: true });
-    await expect(resolveLandingRoute("u-unknown")).resolves.toBe("/choose-account");
+    await expect(resolveLandingRoute("u-unknown")).resolves.toBe("/auth?mode=login&route=retry");
   });
 
-  it("fails closed to the chooser when role resolution throws", async () => {
+  it("fails closed to a retryable auth door when role resolution throws", async () => {
     mockTables({ rolesThrow: true });
-    await expect(resolveLandingRoute("u-transport-error")).resolves.toBe("/choose-account");
+    await expect(resolveLandingRoute("u-transport-error")).resolves.toBe("/auth?mode=login&route=retry");
   });
 });

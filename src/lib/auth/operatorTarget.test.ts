@@ -146,14 +146,18 @@ describe("the operator door has exactly one home", () => {
 
     expect(sharedAuth).toContain("navigate(operatorChooserTarget(window.location.search)");
     expect(sharedAuth).toContain("if (initialMemberships.error || initialStaff.error)");
-    expect(sharedAuth.match(/navigate\(operatorChooserTarget\(window\.location\.search\)/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(sharedAuth).toContain('setTimeout(() => resolve("/choose-account"), 4000)');
+    expect(sharedAuth.match(/navigate\(operatorChooserTarget\(window\.location\.search\)/g)?.length).toBe(1);
+    expect(sharedAuth).toContain("setRoutingError(\"Paige couldn't confirm your account access.");
+    expect(sharedAuth).toContain("resolve(LANDING_ROUTE_RETRY)");
     expect(operatorLogin).toContain("navigate(operatorChooserTarget(window.location.search)");
     expect(operatorLogin).toContain("error ? null : data === true");
-    expect(operatorLogin).toContain("if (isOperator !== false)");
-    expect(operatorLogin).toContain('setTimeout(() => r("/choose-account"), 4000)');
+    expect(operatorLogin).toContain("if (isOperator === null)");
+    expect(operatorLogin).toContain("setRoutingError(\"Paige couldn't confirm Platform access.");
+    expect(operatorLogin).toContain("r(LANDING_ROUTE_RETRY)");
     expect(joinPlatform.match(/navigate\(operatorChooserTarget\(window\.location\.search\)/g)?.length).toBe(2);
-    expect(joinPlatform).toContain("if (isStaff !== false)");
+    expect(joinPlatform).toContain("await accountContext.refresh()");
+    expect(joinPlatform).toContain("if (isStaff === null)");
+    expect(joinPlatform).toContain("setRoutingError(\"Paige couldn't confirm Platform access.");
     expect(chooser).toContain("navigate(operatorTarget(location.search)");
     expect(sharedAuth).not.toContain('navigate("/admin"');
     expect(operatorLogin).not.toContain('navigate("/admin"');
