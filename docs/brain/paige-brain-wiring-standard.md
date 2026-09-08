@@ -85,7 +85,9 @@ live runtime truth.
 The wiring checklist for this capability is additive to the standing six-part checklist:
 
 1. preserve delivery, tenant connection, eligibility, authority, proof, and release identity as
-   separate fields with source revision, observed-at, freshness, and conflict state;
+   separate fields with source revision, observed-at, freshness, conflict state, and a distinct
+   `VERIFIED`/`UNVERIFIED` evidence dimension; stale facts retain their last-known state plus age but
+   cannot support a decision that requires current truth;
 2. resolve authenticated/effective actor, tenant, workspace, tier, role, act-as state, and object
    scope before advice, and again before every separately authorized action;
 3. lead with Paige's verified tenant replacement coverage and gaps; keep competitor claims dated,

@@ -321,7 +321,10 @@ It preserves four distinct source-of-truth layers:
    (`LIVE`/`PARTIAL`/`UNAVAILABLE`/`PROOF OWED`); tenant availability and source; read/draft/auto/
    confirm/prohibited authority lanes; provider and approval gates; budget/cost policy; limitations;
    evidence references; source revision; observed/freshness timestamps; conflicts; and owner-facing
-   “can now / cannot yet / next gate” language.
+   “can now / cannot yet / next gate” language. Evidence verification is a separate
+   `VERIFIED`/`UNVERIFIED` dimension: `PROOF OWED` is delivery code awaiting the named proof class,
+   while `UNVERIFIED` states that a particular runtime claim has not been proven. Neither is erased
+   or silently promoted by the other.
 2. **Tenant operating-system inventory.** Tenant-owned connected systems and declared functions,
    connection truth/evidence, workflow dependencies, data/control ownership, replacement candidates,
    authority/approval boundaries, last verification, and unknowns. It stores safe references and
@@ -344,7 +347,7 @@ and fail closed rather than selecting convenient prose when sources disagree:
 | Route/tier eligibility | `src/lib/routing/tierBranches.ts` + `src/lib/tier/tierFeatures.ts` | Server manifest adapter is `UNAVAILABLE`; bind source revision and fail closed on drift. |
 | Spine capability and authority | `_shared/paige-spine/registry.ts` + server authority resolvers | Read current registration and authorization per step; registry presence alone grants nothing. |
 | Skill/version eligibility | Canonical `paige_skills` rows + skill interpreter policy | Read active scoped/versioned rows at request time; inventory prose or missing metadata is ineligible. |
-| Provider limitation vs tenant connection | Integration Registry JSON (governance) + `provider-result-contract.md` and tenant connection records (runtime) | Both are required; current tenant result wins only within registry limits; stale/conflicting/missing state is unavailable. |
+| Provider limitation vs tenant connection | Integration Registry JSON (governance) + `provider-result-contract.md` and tenant connection records (runtime) | Both are required; tenant result applies only within registry limits. Stale data preserves its last-known state plus age/stale warning and blocks decisions requiring current truth; conflicting/missing state is unavailable. |
 | Surface binding | Surface Binding Ledger JSON (governance/evidence) | No authority source; cite state/revision as a limitation and require live adapter proof. |
 | Model route, quality, latency, spend | `_shared/model-router.ts`, `paige_llm_trace`, and metered-event records | Use current routed result plus bounded evidence window; absent budget/quality evidence remains unknown. |
 | Release identity | Exact approved release record under the release schema; Section 4 is history | Only an approved exact record supports customer-release language; absence fails closed. |
@@ -364,8 +367,10 @@ owner, approval lane, rollback, recovery, and proof.
 
 The normalized intent records source system, target state, desired outcome, object classes, scope,
 assumptions, ambiguities, and one of `off_external_to_paige`, `into_external`, `compare_only`, or
-`ambiguous`. When direction is genuinely ambiguous, Paige asks only: **“Are we moving off GHL into
-Paige-managed operations, or moving work into GHL?”** She never infers authority from migration
+`ambiguous`. When a GHL request's direction is genuinely ambiguous, Paige asks only: **“Are we moving
+off GHL into Paige-managed operations, or moving work into GHL?”** For another identified system she
+uses the same minimal source↔target form with that system's verified name; if no system is identified,
+she asks which system is involved. She never invents a product or infers authority from migration
 language.
 
 Paige's answer order is mandatory: **(1)** what Paige can genuinely handle now for this tenant,
