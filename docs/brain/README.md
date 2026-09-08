@@ -82,6 +82,12 @@ worse than none — it lies with authority.
 
 ## Verified platform snapshot (this session, 2026-08-09)
 
+**Current Solo-shell delivery correction (verified on production 2026-09-07):** the eligibility
+query now returns **4 active top-level standalone Solo tenants; all 4 have
+`features.solo_shell_enabled=true`; 0 eligible tenant is served the legacy shell**. The older
+7/4/3 count below and in the parity matrix is retained as historical rollout evidence, not current
+platform truth. This count does not by itself prove every authenticated surface or user journey.
+
 All figures below were checked live this session; how each was verified is in `config-registry.md`.
 
 - **Supabase project ref:** `xygzykjyynhzqytbqnzu` (verified: `config.toml`, Supabase MCP).

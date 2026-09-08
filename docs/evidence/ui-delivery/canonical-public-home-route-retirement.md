@@ -7,26 +7,26 @@ MATERIAL_FLOW_CHANGE: YES: direct visits to two superseded design URLs now repla
 FLOW_PROTOTYPE: PASS: compact flow model below; owner approval is the 2026-09-07 directive to remove verified obsolete platform routes without waiting for another approval.
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a public visitor should reach the one current Paige homepage and its real navigation, never an unlinked prior design.
 VISUAL_DIRECTION: PASS: no visual design was changed; PaigeHome remains the approved canonical public presentation.
-AUTOMATED_EVIDENCE: PENDING: focused route contract, full Vitest suite, and CI results will be recorded before merge.
-STATIC_EVIDENCE: PENDING: TypeScript ratchet, production build, route/reference scan, and governance lints will be recorded before merge.
-RENDERED_EVIDENCE: PENDING: local browser redirects and canonical landing at representative widths will be recorded before merge.
-BEHAVIORAL_EVIDENCE: PENDING: both retired paths, history replacement, and canonical navigation will be recorded before merge.
+AUTOMATED_EVIDENCE: PASS: the focused route contract passed 2/2 tests; the full suite passed 279/279 files and 3,939/3,939 tests with a 15-second per-test ceiling.
+STATIC_EVIDENCE: PASS: TypeScript ratchet passed at baseline/current 13, production build passed, the retired page modules are absent from the build graph, and release-governance, integration-registry, binding-ledger, and regression lints passed.
+RENDERED_EVIDENCE: PASS: local browser drive at 1366x768 and 900x1000 rendered the same canonical PaigeHome for root, premium, and legacy entry; screenshots are indexed below.
+BEHAVIORAL_EVIDENCE: PASS: both retired deep links ended at /, and a /about -> retired-path -> / drive returned to /about on Back, proving replacement rather than an extra history entry.
 AUTHENTICATED_RUNTIME: UNVERIFIED: authentication is not part of these public routes; post-merge production aliases and redirect behavior must be checked separately.
-KEYBOARD_FOCUS: PENDING: canonical landing keyboard entry will be checked; removed pages expose no controls.
-ZOOM_REFLOW: PENDING: canonical landing at 200 percent will be checked; redirect adds no layout.
-REDUCED_MOTION: PENDING: canonical landing preference behavior will be checked; redirect adds no motion.
+KEYBOARD_FOCUS: UNVERIFIED: five Tab presses left focus on BODY on the inherited canonical homepage. The redirect adds no control or focus owner, but canonical-home keyboard entry needs a separate bounded accessibility decision.
+ZOOM_REFLOW: PASS: at 200 percent root font sizing, the canonical result had no horizontal overflow at 1366 and 900 CSS pixels.
+REDUCED_MOTION: PASS: prefers-reduced-motion was emulated and both redirects still resolved to the canonical page without redirect-owned motion.
 STATE_COVERAGE: PASS: direct canonical entry and both legacy deep-link entries apply; loading, form validation, permission, mutation, retry, destructive, and workspace-switch states are N/A because this is a synchronous public redirect.
 TRUTHFUL_STATE_LABELS: PASS: no capability status changes; the old pages are described only as superseded route implementations.
 SOLO_UI: NO: this is the unauthenticated public homepage router, not the Solo shell.
 UNVERIFIED: post-merge production redirect and deployment identity remain pending until the exact merge deployment exists.
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: PENDING_COMMIT; deployment=PENDING_UNTIL_MERGE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this record plus exact Git/Vercel closeout
+INTERNAL_BUILD_IDENTITY: implementation=eabf56c53c48f1d6c2688be802d2e5e3e9606f08; deployment=PROOF_OWED_UNTIL_MERGE; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this record plus exact Git/Vercel closeout
 RELEASE_CHANNEL: development: production promotion occurs only through the reviewed merge; no staged rollout
-RELEASE_CLASSIFICATION: internal patch: canonical-route cleanup plus shipped-log governance reconciliation
+RELEASE_CLASSIFICATION: patch: canonical-route cleanup plus shipped-log governance reconciliation, without a customer release identity
 CUSTOMER_RELEASE_IDENTITY: none: no approved canonical customer release record
 RELEASE_NOTE_REQUIRED: no: no customer version or announcement was authorized
-RELEASE_TRUTH_BOUNDARY: redirect behavior is locally verifiable; production remains PROOF OWED until the exact deployment is checked
+RELEASE_TRUTH_BOUNDARY: PROOF OWED: local redirect behavior is verified; production identity and both public-domain routes remain owed until the exact merge deployment is checked
 RELEASE_RECOVERY: position=forward-fix or restore the two route mappings from Git history; reference=this record
 
 ## Scope and collisions
@@ -56,7 +56,12 @@ Variants: authentication, role, tenant, and provider state do not apply.
 
 ## Evidence index
 
-- Exact commands, browser observations, commit, checks, and production identifiers will replace every pending field before merge.
+- Focused contract: `npx vitest run src/__tests__/canonical-public-route.test.ts` — 1 file, 2 tests passed.
+- Full regression: `npm run test -- --run --testTimeout=15000` — 279 files, 3,939 tests passed.
+- Static/governance: TypeScript ratchet, production build, regression lint, release-governance lint, integration-registry lint, and binding-ledger lint all passed.
+- Browser drive: root, premium, and legacy entry at 1366x768 and 900x1000; both retired routes ended at `/`; Back history returned to `/about`; reduced-motion and 200 percent reflow exercised.
+- Screenshots: `canonical-1366x768.png`, `premium-1366x768.png`, `legacy-1366x768.png`, `canonical-900x1000.png`, `premium-900x1000.png`, `legacy-900x1000.png`, and `zoom-200-1366x768.png` in the adjacent evidence directory.
+- Localhost-only background telemetry emitted expected unauthenticated/CORS noise; it did not alter routing. Production HTTP and console behavior remain part of the post-merge proof gate.
 
 ## Review and limitations
 
