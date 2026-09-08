@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-08T04:03:00.627Z",
+  "generatedAt": "2026-09-08T04:34:00.470Z",
   "evidenceClass": "Real ChooseAccount component and production styles; deterministic local authorization adapter; not authenticated production proof",
   "viewports": [
     [
@@ -111,7 +111,7 @@
     {
       "name": "1536x770-mineral screenshot",
       "ok": true,
-      "detail": 307182
+      "detail": 307174
     },
     {
       "name": "1366x768-mineral meaningful content",
@@ -200,7 +200,7 @@
     {
       "name": "1366x768-mineral screenshot",
       "ok": true,
-      "detail": 274900
+      "detail": 274893
     },
     {
       "name": "1024x768-mineral meaningful content",
@@ -289,7 +289,7 @@
     {
       "name": "1024x768-mineral screenshot",
       "ok": true,
-      "detail": 194002
+      "detail": 193999
     },
     {
       "name": "900x1000-mineral meaningful content",
@@ -378,7 +378,7 @@
     {
       "name": "900x1000-mineral screenshot",
       "ok": true,
-      "detail": 183079
+      "detail": 183081
     },
     {
       "name": "1536x770-obsidian meaningful content",
@@ -645,7 +645,7 @@
     {
       "name": "1024x768-obsidian screenshot",
       "ok": true,
-      "detail": 218278
+      "detail": 218289
     },
     {
       "name": "900x1000-obsidian meaningful content",
@@ -734,7 +734,7 @@
     {
       "name": "900x1000-obsidian screenshot",
       "ok": true,
-      "detail": 220276
+      "detail": 220275
     },
     {
       "name": "Platform-only staff pauses",

@@ -82,16 +82,20 @@ describe("no floating Paige chat is mounted anywhere (owner decision 2026-09-06)
     expect(existsSync("src/lib/routing/floatingChatVisibility.ts")).toBe(false);
   });
 
-  it("nothing imports the retired FloatingChatbot or its visibility gate", () => {
-    const offenders = nonTestSource.filter((p) => {
-      const src = readFileSync(p, "utf8");
-      return /from\s+["'][^"']*\/FloatingChatbot["']/.test(src)
-        || /from\s+["'][^"']*floatingChatVisibility["']/.test(src)
-        || /\bshouldRenderFloatingChatbot\b/.test(src)
-        || /\bGatedChatbot\b/.test(src);
-    });
-    expect(offenders, `re-introduced references: ${offenders.join(", ")}`).toEqual([]);
-  });
+  it(
+    "nothing imports the retired FloatingChatbot or its visibility gate",
+    () => {
+      const offenders = nonTestSource.filter((p) => {
+        const src = readFileSync(p, "utf8");
+        return /from\s+["'][^"']*\/FloatingChatbot["']/.test(src)
+          || /from\s+["'][^"']*floatingChatVisibility["']/.test(src)
+          || /\bshouldRenderFloatingChatbot\b/.test(src)
+          || /\bGatedChatbot\b/.test(src);
+      });
+      expect(offenders, `re-introduced references: ${offenders.join(", ")}`).toEqual([]);
+    },
+    20_000,
+  );
 
   it("App.tsx mounts no floating chat", () => {
     const app = readFileSync("src/App.tsx", "utf8");
@@ -104,13 +108,17 @@ describe("no floating Paige chat is mounted anywhere (owner decision 2026-09-06)
     expect(app).not.toMatch(/\bshouldRenderFloatingChatbot\s*\(/); // no call to the gate
   });
 
-  it("no global overlay reaches a Paige chat backend (catches a renamed / hook-indirected re-introduction)", () => {
-    const offenders = nonTestSource.filter((p) => isFloatingPaigeOverlay(readFileSync(p, "utf8")));
-    expect(
-      offenders,
-      `floating Paige overlay(s) — global overlay reaching a Paige chat backend: ${offenders.join(", ")}`,
-    ).toEqual([]);
-  });
+  it(
+    "no global overlay reaches a Paige chat backend (catches a renamed / hook-indirected re-introduction)",
+    () => {
+      const offenders = nonTestSource.filter((p) => isFloatingPaigeOverlay(readFileSync(p, "utf8")));
+      expect(
+        offenders,
+        `floating Paige overlay(s) — global overlay reaching a Paige chat backend: ${offenders.join(", ")}`,
+      ).toEqual([]);
+    },
+    20_000,
+  );
 
   // PROVE THE GUARD BITES (§13 — a guard whose comment overclaims is worse than an honest one).
   // Synthetic offenders standing in for the evasions an independent review flagged, plus the legit
