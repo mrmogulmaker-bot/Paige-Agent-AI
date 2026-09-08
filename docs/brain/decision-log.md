@@ -4,9 +4,11 @@
   Git history sets the backfill cutoff at PR #1029 / `1fee541808b71293329e8111f45b17cd28248794`;
   all 18 first-parent deliveries through #1051 / `531045004aa306beecb669b31c385c779c76c4b8`
   are reconciled in the sole chronological log at Master Reference Section 4.0. PR #1054 merged as
-  `2719d7d86ccfa23d0e781b841b5ee134ec8e7276`; both production domains now serve exact public build
-  `2719d7d86ccfa23d0e781b841b5ee134ec8e7276-mts5d4ii` from READY Vercel deployment
-  `dpl_CfH3jVVmkzrAm4vSzdUGDTU9Z9gQ`; no customer-update record resolved. The unlinked prior
+  `2719d7d86ccfa23d0e781b841b5ee134ec8e7276`; the log now also records subsequently merged
+  Live Conversation PR #1053 / `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d`. Both production
+  domains serve that exact current public build, `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d-mts66mnc`,
+  from READY Vercel deployment `dpl_79gKFA29LsSstU6tJFEMxNeYWXdw`; no customer-update record
+  resolved. The unlinked prior
   homepage implementations at `/premium` and `/legacy` were proven
   outside the intended canonical surface, so both paths now replace-redirect to `/` and their
   obsolete page components are removed. The separately documented `/tenant-redesign` representative

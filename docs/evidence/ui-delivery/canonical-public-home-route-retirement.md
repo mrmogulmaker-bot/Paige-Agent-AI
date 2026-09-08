@@ -21,7 +21,7 @@ SOLO_UI: NO: this is the unauthenticated public homepage router, not the Solo sh
 UNVERIFIED: public track-event requests emitted CORS and 401 console errors on both domains during proof; routing was unaffected, but telemetry behavior requires separate ownership and diagnosis.
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: 2719d7d86ccfa23d0e781b841b5ee134ec8e7276; deployment=dpl_CfH3jVVmkzrAm4vSzdUGDTU9Z9gQ; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this record and both public version manifests
+INTERNAL_BUILD_IDENTITY: f8eb2362beb03ec609dfe645b4d00f43c3eebf2d; deployment=dpl_79gKFA29LsSstU6tJFEMxNeYWXdw; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this record and both embedded production drive manifests
 RELEASE_CHANNEL: production: Vercel READY deployment aliases the canonical public domains from exact main SHA
 RELEASE_CLASSIFICATION: patch: canonical-route cleanup plus shipped-log governance reconciliation, without a customer release identity
 CUSTOMER_RELEASE_IDENTITY: none: no approved canonical customer release record
@@ -60,7 +60,7 @@ Variants: authentication, role, tenant, and provider state do not apply.
 - Full regression: `npm run test -- --run --testTimeout=15000` — 279 files, 3,939 tests passed.
 - Static/governance: TypeScript ratchet, production build, regression lint, release-governance lint, integration-registry lint, and binding-ledger lint all passed.
 - Browser drive: local plus `paigeagent.ai` and `app.paigeagent.ai` at 1366x768 and 900x1000; both retired routes ended at `/`; Back history returned to `/about`; keyboard entry, reduced-motion, and 200 percent reflow exercised.
-- Production identity: PR #1054 merged as `2719d7d86ccfa23d0e781b841b5ee134ec8e7276`; Vercel `dpl_CfH3jVVmkzrAm4vSzdUGDTU9Z9gQ` READY; both `version.json` manifests returned `2719d7d86ccfa23d0e781b841b5ee134ec8e7276-mts5d4ii` and `customerUpdate: null`.
+- Production identity: route-remediation PR #1054 merged as `2719d7d86ccfa23d0e781b841b5ee134ec8e7276`; current descendant main is #1053 / `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d`; Vercel `dpl_79gKFA29LsSstU6tJFEMxNeYWXdw` READY; both embedded `versionManifest` objects record `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d-mts66mnc` and `customerUpdate: null`.
 - Durable production artifacts: `production-paigeagent-drive.json` and `production-app-paigeagent-drive.json` preserve each tested entry, final path, heading, history result, focus target, reflow measurement, and console finding. Eight adjacent `production-*-premium-*.png` / `production-*-legacy-*.png` files preserve both retired-route results on both domains at both viewports.
 - Screenshots: `canonical-1366x768.png`, `premium-1366x768.png`, `legacy-1366x768.png`, `canonical-900x1000.png`, `premium-900x1000.png`, `legacy-900x1000.png`, and `zoom-200-1366x768.png` in the adjacent evidence directory.
 - Both public domains emitted background `track-event` CORS/401 console errors during production proof. They did not alter the canonical-route result and remain a separately owned telemetry finding.

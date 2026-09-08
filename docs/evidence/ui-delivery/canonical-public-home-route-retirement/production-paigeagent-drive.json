@@ -1,6 +1,9 @@
 {
   "base": "https://paigeagent.ai",
-  "buildVerifiedSeparately": true,
+  "versionManifest": {
+    "buildId": "f8eb2362beb03ec609dfe645b4d00f43c3eebf2d-mts66mnc",
+    "customerUpdate": null
+  },
   "results": [
     {
       "viewport": "1366x768",
