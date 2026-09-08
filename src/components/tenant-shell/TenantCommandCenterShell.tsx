@@ -382,7 +382,9 @@ export function TenantCommandCenterShell({
     paigePortalHost.style.height = poppedOut ? "100vh" : "auto";
     paigePortalHost.style.minWidth = "0";
     paigePortalHost.style.overflow = poppedOut ? "hidden" : "visible";
-    target.appendChild(paigePortalHost);
+    // Re-inserting an already-parented host resets descendant browser scroll state.
+    // Move only for an actual workspace/pop-out transition, never a parent refresh.
+    if (paigePortalHost.parentNode !== target) target.appendChild(paigePortalHost);
   }, [isDark, paigePopout, paigePortalHost, soloPaigeWorkspace]);
 
   useEffect(() => {

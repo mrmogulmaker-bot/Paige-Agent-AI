@@ -45,6 +45,14 @@ async function stop(child) {
 }
 
 const settle = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+const finishLayoutTransitions = async (page) => {
+  await page.evaluate(async () => {
+    const finite = document.getAnimations().filter(animation =>
+      (animation.playState === "running" || animation.pending) && animation.effect?.getTiming().iterations !== Infinity);
+    await Promise.allSettled(finite.map(animation => animation.finished));
+  });
+  await settle(page);
+};
 const transcript = (page) => page.locator("[data-paige-transcript-scroll=true]");
 const measure = (page) => transcript(page).evaluate((owner) => {
   const viewport = owner.getBoundingClientRect();
@@ -61,6 +69,24 @@ const measure = (page) => transcript(page).evaluate((owner) => {
   };
 });
 const sameAnchor = (before, after) => before.id === after.id && Math.abs(before.offset - after.offset) <= 1;
+
+async function verifyParentRefresh(page, label) {
+  const trace = await transcript(page).evaluate(async (owner) => {
+    const before = owner.scrollTop;
+    const samples = [];
+    window.dispatchEvent(new Event("paige:harness-parent-refresh"));
+    samples.push(owner.scrollTop);
+    for (let frame = 0; frame < 12; frame += 1) {
+      await new Promise(requestAnimationFrame);
+      samples.push(owner.scrollTop);
+    }
+    // Cross the real completion-refresh delay; this is a test wait, not product logic.
+    await new Promise((resolve) => setTimeout(resolve, 2400));
+    samples.push(owner.scrollTop);
+    return { before, samples, connected: owner.isConnected };
+  });
+  record(`${label} parent refresh never resets even transiently`, trace.connected && trace.samples.every((top) => top === trace.before), trace);
+}
 
 async function openThread(page, title) {
   let button = page.getByRole("button", { name: title, exact: true });
@@ -214,6 +240,12 @@ try {
     const initial = await scrollReaderToMiddle(page);
     record(`${label} real hydrated middle anchor`, !!initial.id && initial.bottomGap > 48, initial);
 
+    await verifyParentRefresh(page, `${label} middle`);
+    if (process.argv.includes("--portal-only")) {
+      await context.close();
+      continue;
+    }
+
     await send(page, `Actual React stream check ${label}`);
     await page.waitForFunction(() => document.body.textContent?.includes("Actual React stream check"));
     const ordinary = await measure(page);
@@ -276,6 +308,7 @@ try {
 
     const onePixel = await scrollReaderOnePixelUp(page);
     record(`${label} deliberate one-pixel movement leaves bottom pin`, Math.abs(onePixel.bottomGap - 1) <= 0.1, onePixel);
+    await verifyParentRefresh(page, `${label} one-pixel`);
     await send(page, `One pixel ownership check ${label}`);
     await page.getByText("HARNESS ONLY streamed response completed.", { exact: false }).last().waitFor();
     await page.getByRole("button", { name: "Send message", exact: true }).waitFor();
@@ -307,7 +340,7 @@ try {
     await transcript(page).waitFor({ state: "hidden" });
     await page.screenshot({ path: path.join(OUT, `${label}-closed.png`), fullPage: true });
     await page.getByRole("button", { name: "Direct PAIGE", exact: true }).evaluate((button) => button.click());
-    await settle(page);
+    await finishLayoutTransitions(page);
     const minimizedReturn = await measure(page);
     record(`${label} minimize return`, sameAnchor(reloaded, minimizedReturn), { reloaded, minimizedReturn });
 

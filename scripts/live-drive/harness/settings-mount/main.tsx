@@ -32,7 +32,8 @@
  *
  *   /solo/1971670/settings/vault?theme=dark
  */
-import { Component, StrictMode, type ReactNode } from "react";
+import { Component, StrictMode, useEffect, useReducer, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useParams } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -106,6 +107,13 @@ const SETTINGS_ICONS = {
 };
 
 function Shell() {
+  const [, refresh] = useReducer((value: number) => value + 1, 0);
+  useEffect(() => {
+    // Test-only equivalent of SoloApp rerendering after a tenant-context refresh.
+    const onRefresh = () => flushSync(refresh);
+    window.addEventListener("paige:harness-parent-refresh", onRefresh);
+    return () => window.removeEventListener("paige:harness-parent-refresh", onRefresh);
+  }, []);
   const route = useParams();
   const { expandRail } = useAgentPresence();
   const account = route.account ?? "1971670";

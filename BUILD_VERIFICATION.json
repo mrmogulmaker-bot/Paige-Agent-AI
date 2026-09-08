@@ -2,6 +2,7 @@
   "schema_version": 1,
   "persistent_data": false,
   "commands": [
+    {"name":"shell-regression","argv":["node","node_modules/vitest/vitest.mjs","run","src/components/tenant-shell/TenantCommandCenterShell.ownership.test.tsx"],"definition_file":"package.json"},
     {"name":"tests","argv":["node","node_modules/vitest/vitest.mjs","run","src/components/chat/anchoredTranscriptScroll.test.ts","src/components/chat/anchoredTranscriptScroll.react.test.tsx","src/components/app/PaigeChat.scroll-stability.contract.test.ts","src/components/app/PaigeChat.remount.test.tsx","src/pages/AppShell.paige-mount.contract.test.ts","src/__tests__/paige-spine-chat-binding.test.ts","src/__tests__/dedicated-chat-overflow-contract.test.ts","src/__tests__/dedicated-chat-image-refine-anchor.test.ts","src/solo/SoloPaigeWorkspace.contract.test.tsx","src/components/dashboard/PaigeAIChat.honesty.test.tsx","src/components/dashboard/PaigeAIChat.documentProposal.test.tsx","src/components/dashboard/PaigeAIChat.clientScope.test.tsx"],"definition_file":"package.json"},
     {"name":"full-suite","argv":["node","node_modules/vitest/vitest.mjs","run","--testTimeout=15000"],"definition_file":"package.json"},
     {"name":"types","argv":["node","scripts/ci/tsc-ratchet.mjs"],"definition_file":"scripts/ci/tsc-ratchet.mjs"},

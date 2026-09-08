@@ -3,6 +3,9 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 const targets = [
+  "src/components/tenant-shell/TenantCommandCenterShell.tsx",
+  "src/components/tenant-shell/TenantCommandCenterShell.ownership.test.tsx",
+  "scripts/live-drive/harness/settings-mount/main.tsx",
   "src/components/chat/anchoredTranscriptScroll.ts",
   "src/components/chat/anchoredTranscriptScroll.test.ts",
   "src/components/chat/anchoredTranscriptScroll.react.test.tsx",
