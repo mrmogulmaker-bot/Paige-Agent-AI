@@ -13,7 +13,7 @@ AUTOMATED_EVIDENCE: PASS: 108/108 focused tests pass on the rebased head, includ
 STATIC_EVIDENCE: PASS: affected-file ESLint has 0 errors (one inherited Auth hook warning); TypeScript ratchet 13 baseline/13 current; production build, retired-route scan, release-governance lint, regression lint, sensitive-data scan, and diff integrity pass. Repository-wide `npm run lint` remains baseline-red with 1,839 errors in unrelated legacy files and is not presented as green.
 RENDERED_EVIDENCE: PASS: real ChooseAccount component with production styles at 1536x770, 1366x768, 1024x768, and 900x1000 in Mineral and Obsidian; 8 durable PNGs and report.json under docs/evidence/ui-delivery/platform-account-choice-pause/
 BEHAVIORAL_EVIDENCE: PASS: deterministic real-browser drive is 90/90, including Platform-only, staff with direct memberships, ordinary one-account entry, no-choice failure, inaccessible selection, membership/account-authority failure and Retry, safe deep-link recovery after choice, direct workspace switch, and refresh
-AUTHENTICATED_RUNTIME: UNVERIFIED: no signed-in production Platform or tenant identity has yet exercised the final deployed revision
+AUTHENTICATED_RUNTIME: PROOF OWED: no signed-in production Platform or tenant identity has yet exercised exact deployed revision `87a3a41d188c93b7073816e352f3c7604548f7a6`
 KEYBOARD_FOCUS: PASS: first Tab focuses Platform at all eight theme/viewport combinations; semantic native buttons and labelled main section are present
 ZOOM_REFLOW: PASS: 200% text-size browser drive at 900x1000 retains the Platform action with no horizontal overflow
 REDUCED_MOTION: PASS: every browser context uses reduced motion and the accessibility contract confirms the media preference is active
@@ -23,12 +23,12 @@ SOLO_UI: NO: this is the shared authentication/account-entry chooser before any 
 UNVERIFIED: authenticated production Platform selection, direct-workspace selection, refresh, and refusal remain proof owed until the exact deployed revision is driven with authorized identities. The chooser calls the existing registered unsaved-work guard before changing context; registrations for unrelated forms, chat, uploads, streaming, and Studio were not expanded or re-proven in this narrowly scoped auth repair.
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: 6ac5b43770d07cd1ba609acf568c815ea1da2dfd; deployment=local-build; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/platform-account-choice-pause/report.json
-RELEASE_CHANNEL: development: exact local candidate is tested and rendered; production promotion requires green hosted checks and reviewed merge
+INTERNAL_BUILD_IDENTITY: 86af9812eb8b6bb9bdc341303fced5a190869ad7; product-merge=87a3a41d188c93b7073816e352f3c7604548f7a6; deployment=dpl_9gN4AZ3mWMXo3hvRaH5NePpVnsXa; product-deployment=dpl_95h8jrhA9VZ8wE7auvVCX3aH5yPR; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/platform-account-choice-pause/report.json and Vercel exact-SHA deployment metadata
+RELEASE_CHANNEL: production: PR #1060 squash-merged to `main`; its exact product deployment reached `READY`, and current production is its documentation-only #1062 descendant
 RELEASE_CLASSIFICATION: patch: restores the owner-approved authentication choice without adding a new product surface
 CUSTOMER_RELEASE_IDENTITY: none: this authentication repair does not independently earn a customer-facing release record
 RELEASE_NOTE_REQUIRED: no: generic build freshness only
-RELEASE_TRUTH_BOUNDARY: PARTIAL: local automated, static, and rendered claims pass; exact production deployment and authenticated owner behavior remain PROOF OWED
+RELEASE_TRUTH_BOUNDARY: PARTIAL: exact production deployment, public build identity, anonymous chooser protection, and retired `/admin` behavior are proven; signed-in Platform/workspace choice, switch, refresh, and refusal remain PROOF OWED
 RELEASE_RECOVERY: position=frontend rollback to prior production deployment; reference=normal Vercel deployment recovery for a migration-free patch
 
 ## Scope and collisions
@@ -61,7 +61,17 @@ Variants: Platform-only staff, staff with memberships, ordinary multi-account an
 
 ## Evidence index
 
-Local browser evidence: `scripts/live-drive/account-choice-drive.mjs` → 90/90 PASS. Durable artifacts: `docs/evidence/ui-delivery/platform-account-choice-pause/{1536x770,1366x768,1024x768,900x1000}-{mineral,obsidian}.png` plus `report.json`. All identities and account names are synthetic (`example.invalid`, Example Studio, Northstar Advisors); the sensitive-data scan found no credential, token, private customer content, or internal secret. Final PR, CI, merge, deployment, and production proof are appended before closeout.
+Local browser evidence: `scripts/live-drive/account-choice-drive.mjs` → 90/90 PASS. Durable artifacts: `docs/evidence/ui-delivery/platform-account-choice-pause/{1536x770,1366x768,1024x768,900x1000}-{mineral,obsidian}.png` plus `report.json`. All identities and account names are synthetic (`example.invalid`, Example Studio, Northstar Advisors); the sensitive-data scan found no credential, token, private customer content, or internal secret.
+
+## Production closeout — 2026-09-08
+
+- PR [#1060](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1060) squash-merged as exact `main` commit [`87a3a41d188c93b7073816e352f3c7604548f7a6`](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/commit/87a3a41d188c93b7073816e352f3c7604548f7a6). Its exact final reviewed head was `96308f0004601dcb2d8d22ef8bbd9c4fa20aa73b`.
+- Hosted exact-head checks passed: `audit`, `Validate UI delivery evidence`, and `verify`; `Vercel Preview Comments` passed and `Supabase Preview` was correctly skipped because this patch has no database change.
+- Product deployment `dpl_95h8jrhA9VZ8wE7auvVCX3aH5yPR` reached `READY`, targeted production, used Vite, aliased `paigeagent.ai` and `app.paigeagent.ai`, and bound to exact Git SHA `87a3a41d188c93b7073816e352f3c7604548f7a6`. The Vite build completed in 31.99 seconds and deployment output completed successfully. Both production `/version.json` endpoints then returned build `87a3a41d188c93b7073816e352f3c7604548f7a6-mts7zmtk` with `customerUpdate: null`.
+- Current production is the documentation-only #1062 descendant: deployment `dpl_9gN4AZ3mWMXo3hvRaH5NePpVnsXa` is `READY`, aliases both domains, and binds to exact `main` SHA `86af9812eb8b6bb9bdc341303fced5a190869ad7`. Both `/version.json` endpoints return `86af9812eb8b6bb9bdc341303fced5a190869ad7-mts8jvzo` with `customerUpdate: null`. The product code from #1060 remains in this ancestry; neither deployment earns a customer release name or note.
+- Read-only production browser proof at 1366x768 showed `/auth` available, anonymous `/choose-account` returning to `/auth`, and `/admin` rendering the retired-route 404 with no fallback or special-case destination. The first post-deploy runtime-error query found no error clusters in the selected one-hour window.
+- No migration, Edge function, provider, tenant row, logout behavior, customer release record, or second account-management surface changed.
+- `PROOF OWED`: an authorized signed-in Platform identity must still prove Platform-only, Platform plus direct memberships, Platform selection, direct-workspace selection, inaccessible selection, guarded refusal, deep-link recovery, workspace switch, and refresh on this exact production ancestry. An authorized ordinary identity must still prove one-membership direct entry and no-valid-membership recovery. Automated, rendered, anonymous, or deployment evidence does not satisfy those authenticated claims.
 
 ## Review and limitations
 
