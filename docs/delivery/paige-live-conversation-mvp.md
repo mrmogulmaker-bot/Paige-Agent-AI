@@ -18,8 +18,9 @@ responsive remount, or index-based transcript identity. Draft PR #1044 remains a
 Skills/Intentful Interview workstream and must re-ground and rebase after this delivery; none of its
 client-scope, interview, or ledger changes are adopted here.
 
-**Product status:** Paige-owned UI and control plane implemented; provider-backed realtime audio
-remains `PROOF OWED`; authenticated owner production proof remains `UNVERIFIED` until deployment.
+**Product status:** Paige-owned UI and fail-closed control plane deployed on exact production build
+`f8eb2362beb03ec609dfe645b4d00f43c3eebf2d-mts66mnc`; provider-backed realtime audio
+remains `PROOF OWED`; authenticated owner end-to-end behavior remains `UNVERIFIED`.
 
 ## Locked product boundary
 
@@ -131,3 +132,16 @@ Local automated, build, static, security-boundary, and rendered evidence is reco
 and state rendering only. It is not provider, tenant, canonical-record, receipt, Rail, deployment,
 or authenticated-account proof. Final merge/deployment identifiers and remaining proof state belong
 in the delivery closeout and release checks.
+## Production closeout — 2026-09-08
+
+- PR [#1053](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1053) merged exact reviewed head `93f1a207f9350b808d25bef92496d0233722f66c` as main commit `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d` after all required PR checks passed.
+- Exact-merge workflows passed: CI `34187129350`, migration deploy `34187129273`, Edge deploy `34187129301`, PAIGE Spine `34187129278`, Security Audit `34187129279`, and UI evidence `34187129313`.
+- Production migration proof is persisted, not inferred: remote `schema_migrations` contains `20260907155052`; `db-live` points to the merge commit.
+- Edge deployment proof is exact: `paige-live-session`, `paige-tts`, and `paige-voice-profile-admin` deployed successfully; `edge-live` points to the merge commit.
+- Vercel/GitHub production deployment `6320643624` completed successfully at `https://paige-agent-nca3x7s4i-paige-agent-ai.vercel.app`. Both `paigeagent.ai/version.json` and `app.paigeagent.ai/version.json` returned HTTP 200 with build `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d-mts66mnc` and `customerUpdate: null`.
+- Exact production bundle `PaigeAIChat-CsaAbIbB.js` returned HTTP 200 and contains the `Talk live with Paige` entry, fail-closed `PROOF OWED`/`UNAVAILABLE` states, session controls, and all six card-kind contracts including `evidence-result`.
+- Authenticated owner E2E remains `UNVERIFIED`: the Windows browser helper failed before reading any browser/session state, so no signed-in launch, minimize/restore, workspace switch, or governed-card production interaction is claimed. No microphone permission or provider call was attempted.
+- Provider-backed realtime audio remains `PROOF OWED`. The missing gate is independent, secret-safe proof of existing-account key scopes, exact voice authorization, realtime STT/concurrency, applied ZRM or separately approved retention posture, quota, Paige monthly hard cost limit, and maximum unit price, followed by separately approved transport enablement.
+- Rail/Mind/Memory boundary is unchanged: consequential work uses the existing governed Spine, verified canonical readback, detailed receipt, and Rail evidence. Live cards are presentation objects. Raw audio, raw transcripts, card text, and casual conversation are not automatic Brain, Mind, or Memory facts.
+- PR #1044 remains separate and paused; it must re-ground and rebase onto this resulting `main` before resuming. No Skills/Intentful Interview, Secure Browser, or social-provider work was absorbed.
+- Customer release identity remains none. This is an internal production delivery with no approved customer version, name, release record, or announcement.
