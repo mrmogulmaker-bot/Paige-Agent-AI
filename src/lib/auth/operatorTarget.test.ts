@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { GOD_CONSOLE, operatorTarget } from "./operatorTarget";
+import { GOD_CONSOLE, operatorChooserTarget, operatorTarget } from "./operatorTarget";
 
 /**
  * This validator decides where an authenticated operator lands, from a value an attacker can
@@ -9,6 +9,14 @@ import { GOD_CONSOLE, operatorTarget } from "./operatorTarget";
  * is only worth what its rejections prove.
  */
 describe("operatorTarget", () => {
+  it("carries a safe operator deep link through deliberate account choice", () => {
+    expect(operatorChooserTarget("?next=%2Foperator%2Fsettings%2Fteam%2Froles")).toBe(
+      "/choose-account?next=%2Foperator%2Fsettings%2Fteam%2Froles",
+    );
+    expect(operatorChooserTarget("?next=%2Fadmin")).toBe(
+      `/choose-account?next=${encodeURIComponent(GOD_CONSOLE)}`,
+    );
+  });
   it("defaults to the God console when there is no next", () => {
     expect(operatorTarget("")).toBe(GOD_CONSOLE);
     expect(operatorTarget("?foo=bar")).toBe(GOD_CONSOLE);
@@ -128,5 +136,33 @@ describe("the operator door has exactly one home", () => {
 
   it("GOD_CONSOLE points inside the operator subtree", () => {
     expect(GOD_CONSOLE.startsWith("/operator/")).toBe(true);
+  });
+
+  it("both sign-in doors require the chooser before Platform and the chooser owns final operator navigation", () => {
+    const sharedAuth = fs.readFileSync(path.join(SRC, "pages", "Auth.tsx"), "utf8");
+    const operatorLogin = fs.readFileSync(path.join(SRC, "pages", "OperatorLogin.tsx"), "utf8");
+    const joinPlatform = fs.readFileSync(path.join(SRC, "pages", "JoinPlatform.tsx"), "utf8");
+    const chooser = fs.readFileSync(path.join(SRC, "pages", "ChooseAccount.tsx"), "utf8");
+
+    expect(sharedAuth).toContain("navigate(operatorChooserTarget(window.location.search)");
+    expect(sharedAuth).toContain("if (initialMemberships.error || initialStaff.error)");
+    expect(sharedAuth.match(/navigate\(operatorChooserTarget\(window\.location\.search\)/g)?.length).toBe(1);
+    expect(sharedAuth).toContain("setRoutingError(\"Paige couldn't confirm your account access.");
+    expect(sharedAuth).toContain("resolve(LANDING_ROUTE_RETRY)");
+    expect(operatorLogin).toContain("navigate(operatorChooserTarget(window.location.search)");
+    expect(operatorLogin).toContain("error ? null : data === true");
+    expect(operatorLogin).toContain("if (isOperator === null)");
+    expect(operatorLogin).toContain("setRoutingError(\"Paige couldn't confirm Platform access.");
+    expect(operatorLogin).toContain("r(LANDING_ROUTE_RETRY)");
+    expect(joinPlatform.match(/navigate\(operatorChooserTarget\(window\.location\.search\)/g)?.length).toBe(2);
+    expect(joinPlatform).toContain("await accountContext.refresh()");
+    expect(joinPlatform).toContain("if (isStaff === null)");
+    expect(joinPlatform).toContain("setRoutingError(\"Paige couldn't confirm Platform access.");
+    expect(chooser).toContain("navigate(operatorTarget(location.search)");
+    expect(sharedAuth).not.toContain('navigate("/admin"');
+    expect(operatorLogin).not.toContain('navigate("/admin"');
+    expect(joinPlatform).not.toContain("GOD_CONSOLE");
+    expect(joinPlatform).not.toContain('navigate("/admin"');
+    expect(chooser).not.toContain('navigate("/admin"');
   });
 });

@@ -10,8 +10,12 @@ describe("shouldOfferAccountPicker", () => {
     expect(shouldOfferAccountPicker({ activeMembershipCount: 1, isPlatformStaff: false })).toBe(false);
   });
 
-  it("keeps platform operators on the operator routing path", () => {
-    expect(shouldOfferAccountPicker({ activeMembershipCount: 8, isPlatformStaff: true })).toBe(false);
+  it("pauses platform staff at the chooser even with no direct tenant membership", () => {
+    expect(shouldOfferAccountPicker({ activeMembershipCount: 0, isPlatformStaff: true })).toBe(true);
+  });
+
+  it("pauses platform staff at the chooser when tenant memberships are also available", () => {
+    expect(shouldOfferAccountPicker({ activeMembershipCount: 8, isPlatformStaff: true })).toBe(true);
   });
 
   it("does not treat an empty or failed membership result as authorization", () => {

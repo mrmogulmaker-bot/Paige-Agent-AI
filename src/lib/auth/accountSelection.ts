@@ -5,7 +5,10 @@ export function shouldOfferAccountPicker({
   activeMembershipCount: number;
   isPlatformStaff: boolean;
 }): boolean {
-  return !isPlatformStaff && activeMembershipCount > 1;
+  // Platform staff always have a distinct Platform context in addition to any
+  // directly held tenant memberships. A fresh sign-in must pause so they choose
+  // that context explicitly instead of being routed into Platform automatically.
+  return isPlatformStaff || activeMembershipCount > 1;
 }
 
 export function tenantAccountLabel(accountType: string, parentTenantId: string | null): string {

@@ -3,14 +3,14 @@
  * Two jobs, one isolated page (separate from /auth and /operator):
  *  - With ?token=… : redeem a platform invite. Sign up (or sign in) with the
  *    invited email, then accept_platform_invite() grants the scoped Platform
- *    Admin role and lands the staffer in the God console.
+ *    Admin role and then requires deliberate account choice.
  *  - Without a token: the returning-staff sign-in — authenticate, verify
- *    is_platform_admin, route to the God console (non-staff bounced).
+ *    is_platform_admin, then route to the shared chooser (non-staff bounced).
  * Route: /join-platform.
  */
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,17 +18,14 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { PLATFORM } from "@/lib/platform/identity";
-import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
-// The operator door has ONE home (operatorTarget.ts). This page used to declare its own
-// GOD_CONSOLE pointing at /admin/platform/tenants, so a staffer arriving through the invite
-// door landed somewhere different from a staffer arriving through /auth — the same role, two
-// destinations. That only ever read as "two consoles"; there is one, and admin is a role and a
-// scope band inside it, never a URL. Import the constant instead of restating it.
-import { GOD_CONSOLE } from "@/lib/auth/operatorTarget";
+import { LANDING_ROUTE_RETRY, resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
+import { operatorChooserTarget } from "@/lib/auth/operatorTarget";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 export default function JoinPlatform() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const accountContext = useTenantContext();
   const [params] = useSearchParams();
   const token = params.get("token");
 
@@ -38,12 +35,14 @@ export default function JoinPlatform() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [routing, setRouting] = useState(false);
+  const [routingError, setRoutingError] = useState<string | null>(null);
   const handledRef = useRef(false);
 
   const routeAfterAuth = async () => {
     if (handledRef.current) return;
     handledRef.current = true;
     setRouting(true);
+    setRoutingError(null);
     try {
       if (token) {
         const { error } = await supabase.rpc("accept_platform_invite", { _token: token });
@@ -51,23 +50,49 @@ export default function JoinPlatform() {
           // Invalid / expired / wrong email — let them retry with the right account.
           handledRef.current = false;
           setRouting(false);
+          setIsLoading(false);
           toast({ title: "Couldn't accept invite", description: error.message, variant: "destructive" });
           return;
         }
-        navigate(GOD_CONSOLE, { replace: true });
+        // The role grant emits no auth event. Refresh the one shared account
+        // context before mounting the chooser so a cached non-staff verdict
+        // cannot hide Platform from the person who just accepted the invite.
+        await accountContext.refresh();
+        navigate(operatorChooserTarget(window.location.search), { replace: true });
         return;
       }
-      // No token — returning staff. Only platform staff belong in the console.
-      const isStaff = await Promise.race<boolean>([
-        supabase.rpc("is_platform_admin").then(({ data }) => data === true),
-        new Promise<boolean>((r) => setTimeout(() => r(false), 4000)),
+      // No token — returning staff. Unknown authority is not a denial and cannot
+      // bypass deliberate account choice.
+      const isStaff = await Promise.race<boolean | null>([
+        supabase.rpc("is_platform_admin").then(({ data, error }) => error ? null : data === true),
+        new Promise<null>((r) => setTimeout(() => r(null), 4000)),
       ]);
-      if (isStaff) { navigate(GOD_CONSOLE, { replace: true }); return; }
+      if (isStaff === null) {
+        handledRef.current = false;
+        setRouting(false);
+        setIsLoading(false);
+        setRoutingError("Paige couldn't confirm Platform access. Your sign-in is still active; try again.");
+        return;
+      }
+      if (isStaff) {
+        navigate(operatorChooserTarget(window.location.search), { replace: true });
+        return;
+      }
       const { data: auth } = await supabase.auth.getUser();
-      navigate(auth.user ? await resolveLandingRoute(auth.user.id) : "/auth", { replace: true });
+      const target = auth.user ? await resolveLandingRoute(auth.user.id) : "/auth";
+      if (target === LANDING_ROUTE_RETRY) {
+        handledRef.current = false;
+        setRouting(false);
+        setIsLoading(false);
+        setRoutingError("Paige couldn't finish checking where you can work. Your sign-in is still active; try again.");
+        return;
+      }
+      navigate(target, { replace: true });
     } catch (e) {
       handledRef.current = false;
       setRouting(false);
+      setIsLoading(false);
+      setRoutingError("Paige couldn't finish checking your access. Your sign-in is still active; try again.");
       toast({ title: "Something went wrong", description: (e as Error).message, variant: "destructive" });
     }
   };
@@ -148,11 +173,19 @@ export default function JoinPlatform() {
           <p className="text-sm text-[#A79EC2] mt-1.5">
             {token
               ? "You've been invited as a Platform Admin. Create your account with your invited email."
-              : "Sign in to the operator console."}
+              : "Sign in, then choose where you want to work."}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {routingError && (
+            <div role="alert" className="rounded-xl border border-[#EBB94C]/35 bg-[#EBB94C]/10 p-4 text-sm text-[#EDE8F6]">
+              <p>{routingError}</p>
+              <Button type="button" variant="outline" size="sm" className="mt-3 border-white/20 bg-white/5" onClick={() => void routeAfterAuth()}>
+                <RefreshCw className="mr-2 h-4 w-4" /> Retry account check
+              </Button>
+            </div>
+          )}
           {mode === "signup" && token && (
             <div className="grid gap-1.5">
               <Label htmlFor="jp-name" className="text-xs text-[#A79EC2]">Full name</Label>
@@ -179,7 +212,7 @@ export default function JoinPlatform() {
           <Button type="submit" disabled={isLoading || routing}
             className="w-full bg-gradient-to-r from-[#EBB94C] to-[#F2CE77] text-[#1B1230] font-semibold hover:opacity-95 focus-visible:ring-2 focus-visible:ring-[#F2CE77] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0912]">
             {(isLoading || routing) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {routing ? "Entering console…" : mode === "signup" ? "Create account & join" : "Sign in"}
+            {routing ? "Checking access…" : mode === "signup" ? "Create account & join" : "Sign in"}
           </Button>
         </form>
 

@@ -1,0 +1,875 @@
+{
+  "generatedAt": "2026-09-08T04:46:37.870Z",
+  "evidenceClass": "Real ChooseAccount component and production styles; deterministic local authorization adapter; not authenticated production proof",
+  "viewports": [
+    [
+      1536,
+      770
+    ],
+    [
+      1366,
+      768
+    ],
+    [
+      1024,
+      768
+    ],
+    [
+      900,
+      1000
+    ]
+  ],
+  "themes": [
+    "mineral",
+    "obsidian"
+  ],
+  "results": [
+    {
+      "name": "1536x770-mineral meaningful content",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1536x770-mineral no hidden account",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1536x770-mineral fit",
+      "ok": true,
+      "detail": {
+        "bodyText": "Paige Agent AI\nSecure workspace access\nWhere do you want to work?\n\nSigned in as operator@example.invalid. Choose the Platform or a Paige account to continue.\n\nPlatform\nPlatform operations\nExample Studio\nSolo account · Owner\nNorthstar Advisors\nAgency · Admin\nUse a different Google account\n\nYou only see accounts where this email has active access.",
+        "horizontalOverflow": false,
+        "sectionFits": true,
+        "buttons": [
+          {
+            "name": "PlatformPlatform operations",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Example StudioSolo account · Owner",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Northstar AdvisorsAgency · Admin",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Use a different Google account",
+            "width": 439,
+            "height": 35
+          }
+        ],
+        "theme": "mineral",
+        "overlay": false
+      }
+    },
+    {
+      "name": "1536x770-mineral targets",
+      "ok": true,
+      "detail": [
+        {
+          "name": "PlatformPlatform operations",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Example StudioSolo account · Owner",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Northstar AdvisorsAgency · Admin",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Use a different Google account",
+          "width": 439,
+          "height": 35
+        }
+      ]
+    },
+    {
+      "name": "1536x770-mineral runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "1536x770-mineral theme",
+      "ok": true,
+      "detail": "mineral"
+    },
+    {
+      "name": "1536x770-mineral keyboard",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1536x770-mineral screenshot",
+      "ok": true,
+      "detail": 307182
+    },
+    {
+      "name": "1366x768-mineral meaningful content",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1366x768-mineral no hidden account",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1366x768-mineral fit",
+      "ok": true,
+      "detail": {
+        "bodyText": "Paige Agent AI\nSecure workspace access\nWhere do you want to work?\n\nSigned in as operator@example.invalid. Choose the Platform or a Paige account to continue.\n\nPlatform\nPlatform operations\nExample Studio\nSolo account · Owner\nNorthstar Advisors\nAgency · Admin\nUse a different Google account\n\nYou only see accounts where this email has active access.",
+        "horizontalOverflow": false,
+        "sectionFits": true,
+        "buttons": [
+          {
+            "name": "PlatformPlatform operations",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Example StudioSolo account · Owner",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Northstar AdvisorsAgency · Admin",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Use a different Google account",
+            "width": 439,
+            "height": 35
+          }
+        ],
+        "theme": "mineral",
+        "overlay": false
+      }
+    },
+    {
+      "name": "1366x768-mineral targets",
+      "ok": true,
+      "detail": [
+        {
+          "name": "PlatformPlatform operations",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Example StudioSolo account · Owner",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Northstar AdvisorsAgency · Admin",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Use a different Google account",
+          "width": 439,
+          "height": 35
+        }
+      ]
+    },
+    {
+      "name": "1366x768-mineral runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "1366x768-mineral theme",
+      "ok": true,
+      "detail": "mineral"
+    },
+    {
+      "name": "1366x768-mineral keyboard",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1366x768-mineral screenshot",
+      "ok": true,
+      "detail": 274893
+    },
+    {
+      "name": "1024x768-mineral meaningful content",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1024x768-mineral no hidden account",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1024x768-mineral fit",
+      "ok": true,
+      "detail": {
+        "bodyText": "Paige Agent AI\nSecure workspace access\nWhere do you want to work?\n\nSigned in as operator@example.invalid. Choose the Platform or a Paige account to continue.\n\nPlatform\nPlatform operations\nExample Studio\nSolo account · Owner\nNorthstar Advisors\nAgency · Admin\nUse a different Google account\n\nYou only see accounts where this email has active access.",
+        "horizontalOverflow": false,
+        "sectionFits": true,
+        "buttons": [
+          {
+            "name": "PlatformPlatform operations",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Example StudioSolo account · Owner",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Northstar AdvisorsAgency · Admin",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Use a different Google account",
+            "width": 439,
+            "height": 35
+          }
+        ],
+        "theme": "mineral",
+        "overlay": false
+      }
+    },
+    {
+      "name": "1024x768-mineral targets",
+      "ok": true,
+      "detail": [
+        {
+          "name": "PlatformPlatform operations",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Example StudioSolo account · Owner",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Northstar AdvisorsAgency · Admin",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Use a different Google account",
+          "width": 439,
+          "height": 35
+        }
+      ]
+    },
+    {
+      "name": "1024x768-mineral runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "1024x768-mineral theme",
+      "ok": true,
+      "detail": "mineral"
+    },
+    {
+      "name": "1024x768-mineral keyboard",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1024x768-mineral screenshot",
+      "ok": true,
+      "detail": 193999
+    },
+    {
+      "name": "900x1000-mineral meaningful content",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "900x1000-mineral no hidden account",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "900x1000-mineral fit",
+      "ok": true,
+      "detail": {
+        "bodyText": "Paige Agent AI\nSecure workspace access\nWhere do you want to work?\n\nSigned in as operator@example.invalid. Choose the Platform or a Paige account to continue.\n\nPlatform\nPlatform operations\nExample Studio\nSolo account · Owner\nNorthstar Advisors\nAgency · Admin\nUse a different Google account\n\nYou only see accounts where this email has active access.",
+        "horizontalOverflow": false,
+        "sectionFits": true,
+        "buttons": [
+          {
+            "name": "PlatformPlatform operations",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Example StudioSolo account · Owner",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Northstar AdvisorsAgency · Admin",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Use a different Google account",
+            "width": 439,
+            "height": 35
+          }
+        ],
+        "theme": "mineral",
+        "overlay": false
+      }
+    },
+    {
+      "name": "900x1000-mineral targets",
+      "ok": true,
+      "detail": [
+        {
+          "name": "PlatformPlatform operations",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Example StudioSolo account · Owner",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Northstar AdvisorsAgency · Admin",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Use a different Google account",
+          "width": 439,
+          "height": 35
+        }
+      ]
+    },
+    {
+      "name": "900x1000-mineral runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "900x1000-mineral theme",
+      "ok": true,
+      "detail": "mineral"
+    },
+    {
+      "name": "900x1000-mineral keyboard",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "900x1000-mineral screenshot",
+      "ok": true,
+      "detail": 183081
+    },
+    {
+      "name": "1536x770-obsidian meaningful content",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1536x770-obsidian no hidden account",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1536x770-obsidian fit",
+      "ok": true,
+      "detail": {
+        "bodyText": "Paige Agent AI\nSecure workspace access\nWhere do you want to work?\n\nSigned in as operator@example.invalid. Choose the Platform or a Paige account to continue.\n\nPlatform\nPlatform operations\nExample Studio\nSolo account · Owner\nNorthstar Advisors\nAgency · Admin\nUse a different Google account\n\nYou only see accounts where this email has active access.",
+        "horizontalOverflow": false,
+        "sectionFits": true,
+        "buttons": [
+          {
+            "name": "PlatformPlatform operations",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Example StudioSolo account · Owner",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Northstar AdvisorsAgency · Admin",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Use a different Google account",
+            "width": 439,
+            "height": 35
+          }
+        ],
+        "theme": "obsidian",
+        "overlay": false
+      }
+    },
+    {
+      "name": "1536x770-obsidian targets",
+      "ok": true,
+      "detail": [
+        {
+          "name": "PlatformPlatform operations",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Example StudioSolo account · Owner",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Northstar AdvisorsAgency · Admin",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Use a different Google account",
+          "width": 439,
+          "height": 35
+        }
+      ]
+    },
+    {
+      "name": "1536x770-obsidian runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "1536x770-obsidian theme",
+      "ok": true,
+      "detail": "obsidian"
+    },
+    {
+      "name": "1536x770-obsidian keyboard",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1536x770-obsidian screenshot",
+      "ok": true,
+      "detail": 347630
+    },
+    {
+      "name": "1366x768-obsidian meaningful content",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1366x768-obsidian no hidden account",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1366x768-obsidian fit",
+      "ok": true,
+      "detail": {
+        "bodyText": "Paige Agent AI\nSecure workspace access\nWhere do you want to work?\n\nSigned in as operator@example.invalid. Choose the Platform or a Paige account to continue.\n\nPlatform\nPlatform operations\nExample Studio\nSolo account · Owner\nNorthstar Advisors\nAgency · Admin\nUse a different Google account\n\nYou only see accounts where this email has active access.",
+        "horizontalOverflow": false,
+        "sectionFits": true,
+        "buttons": [
+          {
+            "name": "PlatformPlatform operations",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Example StudioSolo account · Owner",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Northstar AdvisorsAgency · Admin",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Use a different Google account",
+            "width": 439,
+            "height": 35
+          }
+        ],
+        "theme": "obsidian",
+        "overlay": false
+      }
+    },
+    {
+      "name": "1366x768-obsidian targets",
+      "ok": true,
+      "detail": [
+        {
+          "name": "PlatformPlatform operations",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Example StudioSolo account · Owner",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Northstar AdvisorsAgency · Admin",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Use a different Google account",
+          "width": 439,
+          "height": 35
+        }
+      ]
+    },
+    {
+      "name": "1366x768-obsidian runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "1366x768-obsidian theme",
+      "ok": true,
+      "detail": "obsidian"
+    },
+    {
+      "name": "1366x768-obsidian keyboard",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1366x768-obsidian screenshot",
+      "ok": true,
+      "detail": 305540
+    },
+    {
+      "name": "1024x768-obsidian meaningful content",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1024x768-obsidian no hidden account",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1024x768-obsidian fit",
+      "ok": true,
+      "detail": {
+        "bodyText": "Paige Agent AI\nSecure workspace access\nWhere do you want to work?\n\nSigned in as operator@example.invalid. Choose the Platform or a Paige account to continue.\n\nPlatform\nPlatform operations\nExample Studio\nSolo account · Owner\nNorthstar Advisors\nAgency · Admin\nUse a different Google account\n\nYou only see accounts where this email has active access.",
+        "horizontalOverflow": false,
+        "sectionFits": true,
+        "buttons": [
+          {
+            "name": "PlatformPlatform operations",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Example StudioSolo account · Owner",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Northstar AdvisorsAgency · Admin",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Use a different Google account",
+            "width": 439,
+            "height": 35
+          }
+        ],
+        "theme": "obsidian",
+        "overlay": false
+      }
+    },
+    {
+      "name": "1024x768-obsidian targets",
+      "ok": true,
+      "detail": [
+        {
+          "name": "PlatformPlatform operations",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Example StudioSolo account · Owner",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Northstar AdvisorsAgency · Admin",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Use a different Google account",
+          "width": 439,
+          "height": 35
+        }
+      ]
+    },
+    {
+      "name": "1024x768-obsidian runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "1024x768-obsidian theme",
+      "ok": true,
+      "detail": "obsidian"
+    },
+    {
+      "name": "1024x768-obsidian keyboard",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "1024x768-obsidian screenshot",
+      "ok": true,
+      "detail": 218278
+    },
+    {
+      "name": "900x1000-obsidian meaningful content",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "900x1000-obsidian no hidden account",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "900x1000-obsidian fit",
+      "ok": true,
+      "detail": {
+        "bodyText": "Paige Agent AI\nSecure workspace access\nWhere do you want to work?\n\nSigned in as operator@example.invalid. Choose the Platform or a Paige account to continue.\n\nPlatform\nPlatform operations\nExample Studio\nSolo account · Owner\nNorthstar Advisors\nAgency · Admin\nUse a different Google account\n\nYou only see accounts where this email has active access.",
+        "horizontalOverflow": false,
+        "sectionFits": true,
+        "buttons": [
+          {
+            "name": "PlatformPlatform operations",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Example StudioSolo account · Owner",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Northstar AdvisorsAgency · Admin",
+            "width": 439,
+            "height": 68.5
+          },
+          {
+            "name": "Use a different Google account",
+            "width": 439,
+            "height": 35
+          }
+        ],
+        "theme": "obsidian",
+        "overlay": false
+      }
+    },
+    {
+      "name": "900x1000-obsidian targets",
+      "ok": true,
+      "detail": [
+        {
+          "name": "PlatformPlatform operations",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Example StudioSolo account · Owner",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Northstar AdvisorsAgency · Admin",
+          "width": 439,
+          "height": 68.5
+        },
+        {
+          "name": "Use a different Google account",
+          "width": 439,
+          "height": 35
+        }
+      ]
+    },
+    {
+      "name": "900x1000-obsidian runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "900x1000-obsidian theme",
+      "ok": true,
+      "detail": "obsidian"
+    },
+    {
+      "name": "900x1000-obsidian keyboard",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "900x1000-obsidian screenshot",
+      "ok": true,
+      "detail": 220276
+    },
+    {
+      "name": "Platform-only staff pauses",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Platform-only staff has no invented workspace",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Platform-only staff runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "One-account ordinary user enters sole direct workspace",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "One-account ordinary user runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "No valid membership stays fail-closed",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "No valid membership runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "Inaccessible selection changes no scope",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Inaccessible selection stays fail-closed",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Inaccessible selection runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "Membership read failure exposes Retry",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Membership read failure runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "Account authority failure explains unchanged access",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Account authority failure exposes no choices",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Account authority Retry restores authorized choices",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Account authority failure runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "Operator deep link waits for Platform choice",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Operator deep-link recovery runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "Workspace switch uses chosen direct membership",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Workspace switch runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "Chooser refresh still pauses staff",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Chooser refresh runtime",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "Reduced-motion preference is honored by browser context",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Chooser has a labelled main region",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "200% text reflow remains reachable",
+      "ok": true,
+      "detail": {
+        "reducedMotion": true,
+        "labelled": true,
+        "horizontalOverflow": false,
+        "platformVisible": true
+      }
+    },
+    {
+      "name": "Accessibility contract runtime",
+      "ok": true,
+      "detail": []
+    }
+  ]
+}

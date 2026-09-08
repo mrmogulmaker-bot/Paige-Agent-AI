@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Building2, ChevronRight, Loader2, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { Button } from "@/components/ui/button";
 import { useTenantContext, type TenantSummary } from "@/hooks/useTenantContext";
@@ -10,27 +10,15 @@ import { tenantAccountLabel } from "@/lib/auth/accountSelection";
 import { allowAccountSwitch } from "@/lib/auth/accountSwitchGuard";
 import {
   clearWorkspaceScopedState,
-  doorWouldAskAgain,
   enterableWorkspaces,
+  forgetWorkspaceEntered,
   rememberWorkspaceEntered,
   workspaceRootForTenant,
 } from "@/lib/auth/workspaceEntry";
-import { GOD_CONSOLE } from "@/lib/auth/operatorTarget";
+import { operatorTarget } from "@/lib/auth/operatorTarget";
 
 type Membership = { tenant_id: string; role: string };
 type Choice = { tenant: TenantSummary; role: string };
-
-/**
- * Where to send someone leaving this page, given the workspace root we resolved.
- *
- * A null root means the tenant's shell only exists inline at `/admin`, and the
- * `/admin` fallback carries a query marker ALONGSIDE the session record. The
- * record is the durable signal and does the real work; the marker is a
- * second-chance one for the case the record cannot be written at all — private
- * mode, blocked storage — where a canary-off tenant would otherwise bounce
- * between here and the door on every click, one hop per click, forever. It
- * survives only the immediate hop, which is precisely the hop that needs saving.
- */
 
 function roleLabel(role: string): string {
   return role === "owner" ? "Owner" : role === "admin" ? "Admin" : role === "coach" ? "Team member" : role;
@@ -38,6 +26,7 @@ function roleLabel(role: string): string {
 
 export default function ChooseAccount() {
   const navigate = useNavigate();
+  const location = useLocation();
   const context = useTenantContext();
   const [email, setEmail] = useState("");
   const [memberships, setMemberships] = useState<Membership[]>([]);
@@ -114,58 +103,35 @@ export default function ChooseAccount() {
     return true;
   }, [context]);
 
-  // Nothing to choose, so do not ask.
+  // A platform operator always pauses here after sign-in. Platform is a real
+  // operating context, not an automatic default, and tenant entry still runs
+  // through the audited switchTenant seam below.
   //
   // A FAILED READ IS NOT ZERO CHOICES. When the membership query errors this page
   // has learned nothing, so it renders its error card and its Retry rather than
   // leaving. Navigating away on an error is what made that card unreachable and
   // turned any transient failure on one query into a redirect storm.
   //
-  // AND IT REFUSES TO HAND BACK TO A DOOR THAT WILL RETURN IT. With no choice to
-  // offer there is no transition to make and nothing honest to record, so leaving
-  // for `/admin` is only safe when the door would not immediately ask again. The
-  // door counts the SAME population this page does, so that is answerable here:
-  // when it would ask, this page stops and says so instead of starting a cycle.
+  // With no choice to offer there is no transition to make and nothing honest to
+  // record. The chooser stays put with recovery guidance; there is no retired
+  // route fallback and no guessed tenant.
   useEffect(() => {
     if (loading || error) return;
     if (context.accountContextLoading || context.accountContextStatus !== "ready") return;
-    if (!context.isPlatformStaff && choices.length >= 2) return;
+    if (context.isPlatformStaff || choices.length >= 2) return;
     void (async () => {
-      // Platform staff keep their existing landing exactly (§58): they move between
-      // tenants through the audited operator seam, not this chooser, so they are
-      // never sent into a tenant workspace root by it.
-      if (context.isPlatformStaff) {
-        navigate(GOD_CONSOLE, { replace: true });
-        return;
-      }
       if (choices.length === 1) {
         const only = choices[0].tenant;
-        if (!(await enterWorkspace(only))) return;
         const root = workspaceRootForTenant(only);
         if (!root) {
           setError("Paige couldn't confirm this account's canonical workspace address. Your access has not changed.");
           return;
         }
+        if (!(await enterWorkspace(only))) return;
         // A real switch just happened, so re-resolve every provider from scratch
         // rather than carry the previous workspace's caches across.
         if (only.id !== context.activeTenantId) window.location.assign(root);
         else navigate(root, { replace: true });
-        return;
-      }
-      // The SAME predicate the door runs (§18), not a copy of it. An earlier copy
-      // counted workspaces but never consulted the entry record, so it could refuse
-      // to hand back to a door that would have accepted — parking someone on an
-      // error card the door itself would never have shown them.
-      if (
-        doorWouldAskAgain({
-          tenants: context.tenants,
-          activeTenantId: context.activeTenantId,
-          isPlatformStaff: context.isPlatformStaff,
-        })
-      ) {
-        setError(
-          "Paige couldn't confirm which workspaces you can open. Your access has not changed.",
-        );
         return;
       }
       setError(
@@ -184,17 +150,42 @@ export default function ChooseAccount() {
   const choose = async (choice: Choice) => {
     setError(null);
     setSwitchingTo(choice.tenant.id);
-    if (!(await enterWorkspace(choice.tenant))) {
-      setSwitchingTo(null);
-      return;
-    }
     const root = workspaceRootForTenant(choice.tenant);
     if (!root) {
       setSwitchingTo(null);
       setError("Paige couldn't confirm this account's canonical workspace address. Your access has not changed.");
       return;
     }
+    if (!(await enterWorkspace(choice.tenant))) {
+      setSwitchingTo(null);
+      return;
+    }
     window.location.assign(root);
+  };
+
+  const choosePlatform = async () => {
+    setError(null);
+    setSwitchingTo("platform");
+    if (context.activeTenantId !== null) {
+      const allowed = await allowAccountSwitch({
+        fromTenantId: context.activeTenantId,
+        toTenantId: null,
+        toTenantName: "Platform",
+      });
+      if (!allowed) {
+        setSwitchingTo(null);
+        return;
+      }
+      const switched = await context.switchTenant(null);
+      if (!switched) {
+        setSwitchingTo(null);
+        setError("Paige couldn't open the Platform. Your current workspace is unchanged.");
+        return;
+      }
+    }
+    clearWorkspaceScopedState();
+    forgetWorkspaceEntered();
+    navigate(operatorTarget(location.search), { replace: true });
   };
 
   const handleDifferentGoogleAccount = async () => {
@@ -209,6 +200,19 @@ export default function ChooseAccount() {
   };
 
   const resolving = loading || context.accountContextLoading;
+  const contextFailed = context.accountContextStatus === "error";
+  const visibleError = error ?? (contextFailed
+    ? "Paige couldn't confirm your account access. Your access has not changed."
+    : null);
+
+  const retryResolution = async () => {
+    setError(null);
+    if (contextFailed) {
+      await Promise.all([load(), context.refresh()]);
+      return;
+    }
+    await load();
+  };
 
   return (
     <main className="min-h-dvh bg-[radial-gradient(circle_at_top,#f4f0ff_0,#f8f8fb_38%,#eef0f5_100%)] px-4 py-8 text-slate-950 dark:bg-[radial-gradient(circle_at_top,#28203f_0,#15131b_42%,#0d0c10_100%)] dark:text-white sm:py-14">
@@ -223,13 +227,13 @@ export default function ChooseAccount() {
 
         <h1 id="account-picker-title" className="text-3xl font-semibold tracking-tight">Where do you want to work?</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-          Signed in as <strong className="font-semibold text-slate-900 dark:text-white">{email || "your Google account"}</strong>. Choose a Paige account to continue.
+          Signed in as <strong className="font-semibold text-slate-900 dark:text-white">{email || "your Google account"}</strong>. {context.isPlatformStaff ? "Choose the Platform or a Paige account to continue." : "Choose a Paige account to continue."}
         </p>
 
-        {error && (
+        {visibleError && (
           <div role="alert" className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-200">
-            <p>{error}</p>
-            <Button variant="outline" size="sm" className="mt-3" onClick={() => void load()}>
+            <p>{visibleError}</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => void retryResolution()}>
               <RefreshCw className="mr-2 h-4 w-4" /> Retry
             </Button>
           </div>
@@ -240,24 +244,41 @@ export default function ChooseAccount() {
             <div role="status" className="flex min-h-36 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
               <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading your Paige accounts…
             </div>
-          ) : choices.map((choice) => (
-            <button
-              type="button"
-              key={choice.tenant.id}
-              disabled={!!switchingTo}
-              onClick={() => void choose(choice)}
-              className="group flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-violet-400 hover:bg-violet-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-60 dark:border-white/10 dark:bg-white/[.03] dark:hover:border-violet-500 dark:hover:bg-violet-500/10"
-            >
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"><Building2 className="h-5 w-5" /></span>
-              <span className="min-w-0 flex-1">
-                <strong className="block truncate text-base">{choice.tenant.name}</strong>
-                <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
-                  {tenantAccountLabel(choice.tenant.account_type, choice.tenant.parent_tenant_id)} · {roleLabel(choice.role)}
+          ) : context.accountContextStatus === "ready" ? <>
+            {context.isPlatformStaff && (
+              <button
+                type="button"
+                disabled={!!switchingTo}
+                onClick={() => void choosePlatform()}
+                className="group flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-violet-400 hover:bg-violet-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-60 dark:border-white/10 dark:bg-white/[.03] dark:hover:border-violet-500 dark:hover:bg-violet-500/10"
+              >
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"><ShieldCheck className="h-5 w-5" /></span>
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate text-base">Platform</strong>
+                  <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">Platform operations</span>
                 </span>
-              </span>
-              {switchingTo === choice.tenant.id ? <Loader2 className="h-5 w-5 animate-spin" /> : <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:translate-x-0.5" />}
-            </button>
-          ))}
+                {switchingTo === "platform" ? <Loader2 className="h-5 w-5 animate-spin" /> : <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:translate-x-0.5" />}
+              </button>
+            )}
+            {choices.map((choice) => (
+              <button
+                type="button"
+                key={choice.tenant.id}
+                disabled={!!switchingTo}
+                onClick={() => void choose(choice)}
+                className="group flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-violet-400 hover:bg-violet-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-60 dark:border-white/10 dark:bg-white/[.03] dark:hover:border-violet-500 dark:hover:bg-violet-500/10"
+              >
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"><Building2 className="h-5 w-5" /></span>
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate text-base">{choice.tenant.name}</strong>
+                  <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                    {tenantAccountLabel(choice.tenant.account_type, choice.tenant.parent_tenant_id)} · {roleLabel(choice.role)}
+                  </span>
+                </span>
+                {switchingTo === choice.tenant.id ? <Loader2 className="h-5 w-5 animate-spin" /> : <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:translate-x-0.5" />}
+              </button>
+            ))}
+          </> : null}
         </div>
 
         <Button type="button" variant="ghost" className="mt-6 w-full" disabled={!!switchingTo} onClick={() => void handleDifferentGoogleAccount()}>

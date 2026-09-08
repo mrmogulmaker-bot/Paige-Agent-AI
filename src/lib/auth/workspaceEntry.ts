@@ -1,4 +1,3 @@
-import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 import { resolveTierKey, type TierClassification, type TierKey } from "@/lib/tier/tierFeatures";
 
 /**
@@ -7,10 +6,12 @@ import { resolveTierKey, type TierClassification, type TierKey } from "@/lib/tie
  *
  * OWNER RULING 2026-09-02. Account choice happens at ENTRY, never inside a
  * workspace. A person authenticates as themselves first; the platform then
- * determines their server-authorized top-level contexts; if there is more than
- * one they choose at `/choose-account`; and once they enter a Solo workspace
- * that shell is LOCKED to that single authorized context. Returning to another
- * authorized workspace means explicitly LEAVING and re-entering through the
+ * determines their server-authorized top-level contexts. A non-platform person
+ * chooses when more than one directly authorized workspace exists. Platform
+ * staff ALWAYS pause at `/choose-account` so they deliberately choose Platform
+ * or one of their own direct memberships. Once they enter a Solo workspace that
+ * shell is LOCKED to that single authorized context. Returning to another
+ * authorized context means explicitly LEAVING and re-entering through the
  * chooser — never an in-shell picker, and never an automatic fallback.
  *
  * WHY THIS FILE EXISTS RATHER THAN AN INLINE CHECK IN EACH ENTRY. `/business/*`
@@ -220,73 +221,16 @@ export function reachableWorkspaceCount(
 }
 
 /**
- * Would the `/admin` door ask the entry question, for a caller in this state?
- *
- * ONE HOME (§18), because the chooser has to be able to answer it. When the
- * chooser has nothing to offer it wants to hand back to `/admin` — but only if
- * the door will accept, otherwise it starts a cycle it cannot win. So the chooser
- * SIMULATES the door, and a simulation that consults different inputs than the
- * thing it simulates is not a simulation.
- *
- * WHY THIS EXISTS. Round eight drove exactly that divergence: the chooser's copy
- * counted workspaces but never consulted the entry record, so with a record
- * already naming the active workspace and a membership read that transiently
- * returned nothing, the chooser refused to hand back to a door that would in fact
- * have let the person straight through — and parked them on an error card. Same
- * class as the round-four and round-seven defects: two surfaces asking one
- * question with different inputs. There is now one predicate and both call it.
- *
- * The caller supplies `chooserSettled` because that half is read from the URL of
- * the hop in progress, which only the rendering surface can see.
- */
-export function doorWouldAskAgain(input: {
-  tenants: readonly { id: string; status?: string | null }[] | null | undefined;
-  activeTenantId: string | null | undefined;
-  isPlatformStaff: boolean;
-  chooserSettled?: boolean;
-}): boolean {
-  // Platform staff move between tenants through the audited operator seam (§53),
-  // never this one — checked here as well as inside the shared predicate so the
-  // short-circuit is visible at the door rather than implied.
-  if (input.isPlatformStaff) return false;
-  // Already asked and answered on this hop, on a browser that cannot hold a record.
-  if (input.chooserSettled) return false;
-  // Already answered durably: this person chose THIS workspace.
-  if (hasEnteredWorkspace(input.activeTenantId)) return false;
-  return shouldOfferAccountPicker({
-    // Honest note on the quantity: the predicate's parameter is a MEMBERSHIP
-    // count, and `Auth.tsx` feeds it exactly that. Here it is the RLS-visible
-    // tenant list. For a non-staff caller the two coincide today — the `tenants`
-    // SELECT policy is `is_tenant_member(id)`, and that helper requires an active
-    // membership — so this asks the same question by a different route. If that
-    // policy ever widens, this count widens with it.
-    activeMembershipCount: reachableWorkspaceCount(input.tenants, input.activeTenantId),
-    isPlatformStaff: input.isPlatformStaff,
-  });
-}
-
-/**
- * The workspace root a given tenant should be entered at, or null when that
- * tenant has no deep-linkable root and must be entered inline at `/admin`.
+ * The canonical workspace root a given tenant should be entered at, or null
+ * when its server-resolved classification or address is not safe to route.
  *
  * ONE home (§18) for "this is the context — where does the person land?", shared
  * by the chooser and by the shell host.
  *
- * IT HONOURS THE PER-TENANT CANARY FLAGS, WHICH IS THE WHOLE POINT (§57/§58).
- * The three gates in `Admin.tsx` are deliberately flag-conditional — the Solo
- * gate requires `solo_shell_enabled` AND a literal `account_type='standalone'`,
- * Gates A and B require `agency_shell_enabled` — and each carries an explicit
- * "byte-unchanged when the flag is unset" contract, because these are
- * operator-set per-tenant canaries, not a tier-wide switch. A resolver that
- * classified on tier alone would hand the un-canaried shell to tenants whose
- * operator has not enabled it, silently overriding a decision that is not ours
- * to make. Returning null for those tenants is not a failure: `/admin` renders
- * their shell inline exactly as it does today.
- *
- * The `standalone` requirement is copied from the Solo gate for the reason that
- * gate states in its own comment — `resolveTierKey` fail-safes an unknown or
- * absent `account_type` to "solo", so tier alone would route a
- * freshly-provisioned tenant, mid-setup, into the Solo shell.
+ * It never falls back through the retired privileged route. Unknown or
+ * incomplete classification returns null so the caller can remain on the
+ * chooser with an honest error. The literal `standalone` check prevents
+ * `resolveTierKey`'s safe default from routing incomplete data as a Solo tenant.
  */
 export function workspaceRootForTenant(tenant: {
   account_type?: string | null;
@@ -400,6 +344,16 @@ export function rememberWorkspaceEntered(tenantId: string | null | undefined): v
     // Accepted rather than papered over: the alternatives are a durable marker in
     // a store that is by definition unavailable, or a URL token that would have to
     // survive bookmarking, which is a bypass, not a fix.
+  }
+}
+
+/** Clear the tenant-entry settlement when the person explicitly chooses Platform. */
+export function forgetWorkspaceEntered(): void {
+  try {
+    sessionStorage.removeItem(WORKSPACE_ENTERED_KEY);
+  } catch {
+    // Best-effort only. The marker grants no access; an unavailable store simply
+    // means a later tenant entry asks the person to choose again.
   }
 }
 

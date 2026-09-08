@@ -22,6 +22,11 @@
 /** The operator's default landing surface — Claude Design's console. */
 export const GOD_CONSOLE = "/operator/fleet/tenants";
 
+/** Preserve a safe operator deep link while requiring deliberate account choice. */
+export function operatorChooserTarget(search: string): string {
+  return `/choose-account?next=${encodeURIComponent(operatorTarget(search))}`;
+}
+
 export function operatorTarget(search: string): string {
   const raw = new URLSearchParams(search).get("next");
   if (!raw) return GOD_CONSOLE;

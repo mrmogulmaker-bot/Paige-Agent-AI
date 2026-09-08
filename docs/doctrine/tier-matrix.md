@@ -2341,7 +2341,15 @@ route now refuses.
 | `/business/*` | Sub-account shell (`AgencyApp mode="subaccount"`) | — (no tenant ⇒ held) | → `/agency/{n}` | → `/agency/{n}` | → `/solo/{n}` | ✓ | — | → `/auth` |
 | `/agency/*` numeric | Agency shell | unchanged | ✓ | ✓ | **unchanged — see below** | ✓ *(acting-child)* | — | unchanged |
 | `/agency/*` non-numeric | Legacy board | unchanged | ✓ | ✓ | unchanged | unchanged | — | unchanged |
-| `/choose-account` | Entry chooser | → `/admin` | ✓ | ✓ | ✓ | ✓ | — | → `/auth` |
+| `/choose-account` | Entry chooser | ✓ **Platform or direct membership** | ✓ | ✓ | ✓ | ✓ | — | → `/auth` |
+
+> **SUPERSEDING OWNER DECISION — 2026-09-07:** Platform staff always pause here after sign-in and
+> deliberately choose Platform or one of their directly authorized Paige workspaces. Platform is
+> tenant-less operator scope and continues only to `/operator/fleet`; a tenant choice uses the same
+> guarded `switchTenant` seam as every other chooser entry. The former God → `/admin` cell and the
+> older statement that Platform staff bypassed this chooser are retired. `/admin` is not a fallback,
+> compatibility destination, or special case. The historical `/admin`-door analysis below remains
+> evidence of the defect repaired by #811, not an active route contract.
 
 **`/agency/*` is deliberately NOT gated, and that is a stated gap rather than an oversight.** A first
 revision of this change gated the numeric leg too, and CI proved it destroyed a shipped capability
