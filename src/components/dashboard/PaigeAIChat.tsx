@@ -384,10 +384,13 @@ const PaigeAIChatInner = ({
   // Surfaces that never focus a client (the operator desk) pass no `clientId`, so their
   // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
   const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}|${businessMissionId ?? ""}`;
-  const transcriptContext = [
+  const transcriptContextPrefix = [
     platform ? "platform" : soloTenantSafety ? "solo" : presentation,
     scopedUserId ?? "anonymous",
     activeTenantId ?? "no-tenant",
+  ].join(":");
+  const transcriptContext = [
+    transcriptContextPrefix,
     enableHistory ? (activeThreadId ?? messages[0]?.id ?? "new") : scopeEpoch,
   ].join(":");
   const transcriptScrollRef = useRef<ReturnType<typeof createAnchoredTranscriptScroll> | null>(null);
@@ -816,6 +819,7 @@ const PaigeAIChatInner = ({
             // The transcript on screen IS this new thread's — mark it hydrated so the
             // controlled-sync effect below doesn't immediately re-load and wipe it.
             hydratedFromRef.current = threadId;
+            transcriptScrollRef.current?.adoptContext([transcriptContextPrefix, threadId].join(":"));
             setActiveThreadId(threadId);
           }
           setStreamingThreadId(threadId);
